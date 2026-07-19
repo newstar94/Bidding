@@ -36,11 +36,13 @@ python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 4
 `GOOGLE_CLIENT_ID` phải là client OAuth loại **Web application**. Trong Google Cloud
 Console, mở **APIs & Services** → **Credentials** → đúng OAuth 2.0 Client ID đang
 được khai báo trong `.env`, rồi thêm các giá trị sau vào **Authorized JavaScript
-origins** cho môi trường phát triển:
+origins** cho môi trường phát triển. Google yêu cầu khai báo cả `localhost` không
+cổng và `localhost` kèm cổng:
 
 ```text
-http://127.0.0.1:8000
+http://localhost
 http://localhost:8000
+http://127.0.0.1:8000
 ```
 
 Origin phải khớp tuyệt đối giao thức, hostname và cổng đang hiện trên thanh địa chỉ;
