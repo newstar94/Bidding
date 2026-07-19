@@ -46,6 +46,17 @@ def test_toast_feedback_keeps_content_concise_and_has_safe_defaults():
     assert _normalize("", "error")["message"] == "Thao tác không thành công. Vui lòng thử lại."
 
 
+def test_toast_feedback_preserves_action_context_and_useful_next_step():
+    message = "Không thể lưu kế hoạch. Vui lòng kiểm tra dữ liệu và thử lại."
+    normalized = _normalize(message, "error")
+
+    assert normalized == {
+        "title": "Thất bại",
+        "message": message,
+        "type": "error",
+    }
+
+
 def test_sync_toasts_do_not_expose_backend_terminology():
     source = (ROOT / "frontend" / "app" / "BiddingControllerSync.js").read_text(encoding="utf-8")
     assert '"Đã xác nhận trên máy chủ"' not in source
