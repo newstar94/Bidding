@@ -87,6 +87,13 @@ Mốc kiểm tra mặc định yêu cầu p50 không thấp hơn 30 ms và p95 k
 
 Mọi tác vụ DOCX/XLSX chạy trong Bubblewrap với mount root rỗng, namespace user/PID/network riêng, UID/GID sandbox không phải root và policy seccomp chặn socket, child process, `exec`, mount, tracing. Cài `bubblewrap` và `libseccomp` từ kho gói của hệ điều hành, sau đó cấu hình:
 
+Trên Ubuntu 24.04, cài và nạp profile AppArmor đi kèm trước khi khởi động dịch vụ. Profile chỉ cho Bubblewrap tạo user namespace; worker cuối cùng vẫn bắt buộc không còn capability và chịu policy seccomp:
+
+```bash
+sudo install -o root -g root -m 0644 deploy/apparmor-biddingflow-bwrap /etc/apparmor.d/biddingflow-bwrap
+sudo apparmor_parser --replace /etc/apparmor.d/biddingflow-bwrap
+```
+
 ```text
 APP_ENV=production
 DOCUMENT_WORKER_SANDBOX=bwrap

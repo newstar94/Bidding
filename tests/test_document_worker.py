@@ -262,6 +262,21 @@ def test_seccomp_policy_denies_network_process_and_kernel_escape_syscalls() -> N
     assert required <= set(_DENIED_SYSCALLS)
 
 
+def test_ubuntu_ci_uses_targeted_bwrap_user_namespace_profile() -> None:
+    profile = (PROJECT_ROOT / "deploy" / "apparmor-biddingflow-bwrap").read_text(
+        encoding="utf-8"
+    )
+    workflow = (
+        PROJECT_ROOT / ".github" / "workflows" / "security-quality.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "/usr/bin/bwrap flags=(unconfined)" in profile
+    assert "userns," in profile
+    assert "apparmor_parser --replace /etc/apparmor.d/biddingflow-bwrap" in workflow
+    assert "apparmor_restrict_unprivileged_userns=0" not in workflow
+    assert "kernel.apparmor_restrict_unprivileged_userns=0" not in workflow
+
+
 @pytest.mark.skipif(
     os.name != "posix" or not shutil.which("bwrap") or not seccomp_library_name(),
     reason="Real Bubblewrap/seccomp probe requires a Linux staging runner.",

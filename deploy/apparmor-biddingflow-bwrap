@@ -1,0 +1,14 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# Ubuntu 24.04 restricts capabilities inside unprivileged user namespaces by
+# default. Bubblewrap needs those capabilities only while it creates the
+# isolated mount/PID/network namespaces. The BiddingFlow command then drops
+# every capability before exec and applies its own seccomp policy in the
+# document worker.
+/usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/biddingflow-bwrap>
+}

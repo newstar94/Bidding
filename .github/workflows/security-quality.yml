@@ -96,7 +96,9 @@ jobs:
       - name: Install locked dependencies and Linux sandbox
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends bubblewrap libseccomp2
+          sudo apt-get install --yes --no-install-recommends apparmor bubblewrap libseccomp2
+          sudo install -o root -g root -m 0644 deploy/apparmor-biddingflow-bwrap /etc/apparmor.d/biddingflow-bwrap
+          sudo apparmor_parser --replace /etc/apparmor.d/biddingflow-bwrap
           python -m pip install --require-hashes --no-deps -r requirements.txt
           python -m pip install --require-hashes -r requirements-ci.txt
           npm ci --ignore-scripts
