@@ -1,0 +1,492 @@
+# Kế hoạch bảo mật, chịu tải và sẵn sàng public BiddingFlow
+
+> Ngày lập: 19/07/2026  
+> Phạm vi: mã nguồn và cấu hình triển khai trong `D:\Bidding`  
+> Cơ sở dữ liệu mục tiêu: PostgreSQL fresh install, không chuyển dữ liệu cũ  
+> Trạng thái: kế hoạch khắc phục sau rà soát pre-production  
+> Nguyên tắc giao diện: không thay đổi frontend, CSS, bố cục hoặc hợp đồng hiển thị nếu công việc không được phê duyệt riêng
+
+## 1. Mục tiêu
+
+Kế hoạch này đưa BiddingFlow từ trạng thái chạy thử nội bộ sang trạng thái đủ điều kiện cung cấp công khai trên Internet. Bốn mục tiêu chính:
+
+1. Không để người dùng vượt tenant, tiếp tục dùng quyền đã bị thu hồi hoặc chiếm quyền tài khoản.
+2. Chống được brute force, credential stuffing, XSS, CSRF, upload độc hại, khai thác parser tài liệu, lạm dụng API và các hình thức làm cạn tài nguyên phổ biến.
+3. Duy trì độ trễ ổn định khi tăng tải, không để queue, pool PostgreSQL hoặc công việc nền làm nghẽn toàn bộ ứng dụng.
+4. Có quy trình build, kiểm thử, giám sát, backup, phục hồi và rollback đủ tin cậy để vận hành sản phẩm thương mại.
+
+## 2. Phạm vi và ràng buộc
+
+### 2.1. Trong phạm vi
+
+- Backend Starlette, xác thực, session, phân quyền cá nhân/tổ chức và Super Admin.
+- PostgreSQL, transaction, connection pool, index, runtime role và tenant isolation.
+- WebSocket, multi-worker, background task, document worker và email.
+- Các thư viện JavaScript/Python, kể cả thư viện được chép trực tiếp vào `views/vendor`.
+- Nginx, systemd, TLS, WAF/CDN, secrets, log, metrics, cảnh báo và backup.
+- CI/CD, test bảo mật, test hợp đồng API, test tải và release gate.
+
+### 2.2. Ngoài phạm vi
+
+- Không nhập hoặc bảo tồn dữ liệu từ hệ cơ sở dữ liệu cũ.
+- Không thay đổi nghiệp vụ, UI, CSS, nội dung hiển thị hoặc định dạng dữ liệu trả về nếu không có yêu cầu riêng.
+- Không coi bài thử tải trên máy phát triển là chứng nhận năng lực production.
+- Không coi rà soát mã nguồn là thay thế cho penetration test trên staging.
+
+### 2.3. Các đường dẫn không được thay đổi trong đợt backend/hạ tầng
+
+```text
+frontend/**
+views/**/*.html
+**/*.css
+```
+
+Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ hổng hoặc thay đổi nội bộ bắt buộc để loại bỏ lỗ hổng XSS; mọi ngoại lệ phải giữ nguyên giao diện và được kiểm tra hồi quy trực quan.
+
+## 3. Baseline đã kiểm chứng
+
+| Hạng mục | Kết quả hiện tại |
+|---|---|
+| Python compile | Đạt |
+| Test ứng dụng | 17/17 đạt với `pytest -q tests` |
+| Secure frontend build | Đạt |
+| Production package | Đạt, tạo được `release/biddingflow-production.zip` |
+| `npm audit` | 0 lỗ hổng trong dependency npm |
+| `pip-audit` | Không phát hiện lỗ hổng đã biết |
+| Secret trong file Git theo dõi | Không phát hiện secret có độ tin cậy cao |
+| Thử tải 16 concurrent, 4 worker | 524,44 request/giây; p95 53,7 ms; không lỗi |
+| Thử tải 32 concurrent, 4 worker | 192,03 request/giây; 6 ReadTimeout; request chậm nhất trên 20 giây |
+
+Lưu ý: `npm audit` không kiểm tra `views/vendor/xlsx/xlsx.full.min.js`. File này đang là SheetJS 0.18.5 và phải được quản lý như một dependency độc lập.
+
+## 4. Điều kiện chặn phát hành hiện tại
+
+Ứng dụng ở trạng thái **No-Go** cho tới khi hoàn thành toàn bộ P0 sau:
+
+1. Thu hồi quyền tổ chức có hiệu lực ngay trên tất cả worker.
+2. Rate limiter hoạt động nguyên tử dưới request đồng thời.
+3. SheetJS được nâng khỏi phiên bản có CVE.
+4. SMTP xác minh chứng thư TLS đầy đủ.
+5. Document worker không trao đổi kết quả bằng pickle và có ranh giới sandbox thực tế.
+6. Bài thử tải mục tiêu không còn timeout và không sụt thông lượng bất thường khi tăng concurrency.
+7. Runtime PostgreSQL production được xác nhận không phải superuser và không có quyền DDL.
+8. Backup production thử phục hồi thành công trên một database sạch.
+
+## 5. Giai đoạn P0 — Khắc phục blocker bảo mật
+
+### 5.1. Thu hồi quyền tổ chức trên multi-worker
+
+**Hiện trạng**
+
+- `backend/auth/session_utils.py` cache `OrganizationContext` trong 60 giây theo process.
+- Các API xóa thành viên chỉ vô hiệu hóa cache của worker xử lý request.
+- PostgreSQL broker hiện chỉ phát broadcast và đóng WebSocket, chưa xóa cache phân quyền ở tất cả worker.
+
+**Công việc**
+
+1. Không dùng positive cache làm nguồn quyết định cuối cùng cho membership trên request ghi, export và API nhạy cảm.
+2. Bổ sung broker event `invalidate_user_access` chứa tối thiểu `user_id` và revision.
+3. Mỗi worker khi nhận event phải xóa organization cache, session-derived cache và mọi entitlement cache của người dùng.
+4. Ghi revision quyền/membership trong PostgreSQL; cache chỉ hợp lệ khi revision trùng DB.
+5. Nếu broker lỗi, request nhạy cảm phải fail-closed hoặc đọc trực tiếp PostgreSQL.
+6. Thu hồi session/WebSocket khi role, gói hoặc membership thay đổi.
+
+**Test bắt buộc**
+
+- Đăng nhập một session dùng qua ít nhất 4 worker.
+- Làm nóng cache quyền trên mọi worker.
+- Xóa người dùng khỏi tổ chức bằng worker A.
+- Request sang worker B/C/D với `X-Active-Org` cũ phải nhận 403 ngay, không chờ TTL.
+- Không được đọc, ghi, đồng bộ, export hoặc mở WebSocket vào tổ chức cũ.
+
+**Tiêu chí nghiệm thu**
+
+- Thời gian thu hồi quyền p99 nhỏ hơn 1 giây trong staging.
+- Không có request thành công sau commit thu hồi quyền.
+
+### 5.2. Làm rate limiter nguyên tử
+
+**Công việc**
+
+1. Thay chuỗi `SELECT` → kiểm tra → `UPSERT` bằng một câu lệnh PostgreSQL nguyên tử có `RETURNING`.
+2. Không chạy `DELETE WHERE expires_at <= now` trên mọi request.
+3. Tách cleanup thành job có advisory lock hoặc dùng TTL trong Redis.
+4. Áp dụng đồng thời khóa theo IP, tài khoản/email chuẩn hóa và fingerprint phù hợp.
+5. Login thất bại phải tiêu thụ quota; login thành công xóa hoặc giảm bucket theo chính sách rõ ràng.
+6. Giới hạn admission trước khi đưa PBKDF2/Argon2 vào CPU worker queue.
+7. Trả `429` và `Retry-After`; lỗi storage phải fail-closed cho endpoint xác thực.
+
+**Test bắt buộc**
+
+- 100 request đồng thời vào bucket giới hạn 5 chỉ được phép đúng tối đa 5 request.
+- Test nhiều process/worker, không chỉ nhiều thread.
+- Test reset cửa sổ, lỗi PostgreSQL, lock timeout và clock boundary.
+- Test credential stuffing phân tán trên nhiều username từ một IP và một username từ nhiều IP.
+
+### 5.3. Nâng và quản lý SheetJS
+
+**Công việc**
+
+1. Nâng SheetJS lên phiên bản không bị CVE-2023-30533 và CVE-2024-22363, tối thiểu 0.20.2.
+2. Chỉ lấy artifact từ nguồn chính thức; lưu URL nguồn, phiên bản và SHA-256.
+3. Tạo manifest cho toàn bộ thư viện trong `views/vendor`.
+4. Thêm job CI kiểm tra version/hash và đối chiếu CVE cho dependency vendored.
+5. Kiểm thử workbook malformed, zip bomb, ReDoS và prototype-pollution payload.
+
+**Tiêu chí nghiệm thu**
+
+- Không còn SheetJS thấp hơn 0.20.2 trong source và production archive.
+- Import/export Excel giữ nguyên hành vi và giao diện.
+
+### 5.4. Bảo vệ SMTP và luồng mật khẩu Google
+
+**Công việc bắt buộc**
+
+1. Dùng `ssl.create_default_context()` khi STARTTLS hoặc chuyển sang `SMTP_SSL`.
+2. Kiểm tra hostname, chuỗi chứng thư và timeout; không cho phép fallback plaintext.
+3. Startup production phải từ chối SMTP cấu hình thiếu sender, credential hoặc TLS policy.
+4. Không ghi OTP, mật khẩu tạm, reset token hoặc nội dung email nhạy cảm vào log.
+5. Trạng thái `temporary_password_sent` chỉ được xác nhận sau khi mail provider chấp nhận email; background failure phải được lưu trạng thái và retry có giới hạn.
+
+**Thiết kế khuyến nghị**
+
+- Thay gửi mật khẩu tạm bằng liên kết đặt mật khẩu một lần.
+- Token phải được tạo ngẫu nhiên, chỉ lưu hash, hết hạn sau 15–30 phút và chỉ dùng một lần.
+- Tài khoản Google vẫn đăng nhập được bằng Google; đăng nhập password chỉ bật sau khi đặt mật khẩu thành công.
+
+### 5.5. Cô lập xử lý tài liệu
+
+**Công việc**
+
+1. Loại bỏ `pickle` khỏi IPC giữa web process và document worker.
+2. Dùng JSON có schema chặt cho metadata; dữ liệu nhị phân truyền bằng file riêng với kích thước/hash được xác minh.
+3. Chạy worker bằng UID/GID riêng, không cùng tài khoản với web service.
+4. Đặt worker trong container hoặc systemd service riêng với:
+   - read-only root filesystem;
+   - thư mục job riêng, quyền `0700`;
+   - network namespace không có egress;
+   - giới hạn CPU, RAM, file size, file descriptor, process count;
+   - seccomp/AppArmor/SELinux;
+   - timeout và kill toàn bộ process tree.
+5. Không mount source chứa secrets, file `.env`, backup hoặc Unix socket PostgreSQL vào worker.
+6. Mỗi job dùng thư mục ngẫu nhiên và bị xóa chắc chắn sau xử lý.
+
+**Test bắt buộc**
+
+- Zip-slip, zip bomb, external relationship, encrypted OOXML, entity expansion và file hỏng.
+- Worker cố mở socket, đọc `.env`, truy cập DB hoặc tạo child process phải thất bại.
+- Worker bị kill/timeout không làm hỏng web process và không để file tạm tồn tại.
+- Kết quả có schema/hash sai phải bị parent từ chối mà không deserialize nguy hiểm.
+
+### 5.6. Khóa API tra cứu doanh nghiệp
+
+1. Bắt buộc session hợp lệ cho `/api/lookup-tax-code` nếu tính năng chỉ dùng trong ứng dụng.
+2. Rate limit theo user và IP, thấp hơn mức hiện tại.
+3. Cache kết quả dương và âm trong thời gian phù hợp.
+4. Có circuit breaker, outbound concurrency limit và timeout riêng cho từng upstream.
+5. Không retry đồng loạt; dùng exponential backoff có jitter.
+6. Theo dõi tỷ lệ timeout, lỗi upstream và số request theo tenant.
+
+## 6. Giai đoạn P1 — Củng cố ứng dụng và PostgreSQL
+
+### 6.1. Mật khẩu và tài khoản
+
+1. Đổi mật khẩu mới sang Argon2id; giữ verify PBKDF2 cũ và rehash khi đăng nhập.
+2. Nếu tiếp tục dùng PBKDF2-HMAC-SHA256, dùng tối thiểu 600.000 vòng và benchmark CPU trước triển khai.
+3. Mật khẩu một yếu tố tối thiểu 15 ký tự; tối đa ít nhất 64 ký tự.
+4. Thêm blocklist mật khẩu phổ biến/rò rỉ; không yêu cầu quy tắc ký tự phức tạp cứng nhắc.
+5. Thêm MFA cho Super Admin và khuyến nghị MFA cho manager.
+6. Giữ step-up authentication cho thao tác nhạy cảm; bổ sung re-auth cho đổi email, gói, role và quyền tùy chỉnh.
+7. Thông báo bảo mật khi đổi email, mật khẩu, role, gói hoặc đăng nhập thiết bị mới.
+
+### 6.2. XSS và Trusted Types
+
+1. Loại bỏ default Trusted Types policy tự động chấp nhận mọi sink.
+2. Dùng policy tường minh và sanitizer đã được duy trì, hoặc tạo DOM bằng `textContent`/API DOM.
+3. Kiểm kê toàn bộ `innerHTML`, `outerHTML`, `insertAdjacentHTML`, template string và URL sink.
+4. Bật ESLint rule chống unsanitized DOM và chặn build khi vi phạm.
+5. Thêm test payload vào tên người dùng, tên tổ chức, dữ liệu gói thầu, nội dung import Excel và dữ liệu upstream.
+6. Giữ CSP `require-trusted-types-for 'script'` ở chế độ enforce.
+
+### 6.3. Ảnh và file media
+
+1. `save_base64_image` phải fail-closed; không trả lại nguyên payload khi decode/Pillow/lưu file thất bại.
+2. Giới hạn cả số byte, số pixel, chiều rộng/cao và compression ratio.
+3. Re-encode ảnh hợp lệ trước khi lưu; không tin MIME hoặc extension từ client.
+4. Không lưu base64 lớn trong PostgreSQL; dùng object storage hoặc filesystem được quản lý.
+5. Quét file độc hại nếu cho phép loại file ngoài ảnh/OOXML.
+
+### 6.4. Runtime database role
+
+1. Production startup truy vấn `pg_roles` và ACL để xác nhận runtime role:
+   - không phải superuser;
+   - không có `CREATEDB`, `CREATEROLE`, replication hoặc bypass RLS;
+   - không có quyền tạo/alter/drop schema và table;
+   - chỉ có CRUD/sequence/function cần thiết.
+2. Migrator role chỉ tồn tại trong migration job, không đưa vào environment của web service.
+3. PostgreSQL chỉ nghe private network; bắt buộc `sslmode=verify-full`.
+4. Cân nhắc Row-Level Security cho bảng tenant với transaction-local tenant context.
+5. Thêm test thiếu `organization_id` và test cố đọc ID thuộc tenant khác trên mọi repository/API.
+
+### 6.5. Host header và proxy trust
+
+1. Thêm allowlist hostname trong ứng dụng hoặc `TrustedHostMiddleware`.
+2. Nginx có default server trả `444` cho hostname không được cấu hình.
+3. Chỉ tin `X-Forwarded-*` từ CIDR reverse proxy đã khai báo.
+4. Không dùng Host header chưa xác minh để tạo URL reset, OAuth redirect hoặc link email.
+
+## 7. Giai đoạn P1 — Hiệu năng và khả năng chịu tải
+
+### 7.1. Tìm nguyên nhân timeout tại 32 concurrent
+
+Đo riêng các đoạn sau bằng histogram và trace ID:
+
+- chờ admission queue;
+- chờ DB read/write executor;
+- chờ lấy connection PostgreSQL;
+- thời gian query;
+- lock wait/statement timeout;
+- session lookup;
+- organization/entitlement lookup;
+- serialization JSON;
+- WebSocket broker/outbox;
+- background audit và document worker.
+
+Không tăng pool/worker mù quáng trước khi có số liệu. Mỗi thay đổi phải chạy lại cùng workload và so sánh p50/p95/p99, throughput, error rate, DB CPU, connection count và lock wait.
+
+### 7.2. Tối ưu session và authorization
+
+1. Không `SELECT accounts.*`; chỉ đọc các trường cần cho quyết định xác thực.
+2. Đảm bảo index duy nhất trên `auth_sessions.token_hash` và index phục vụ session expiry/revocation cleanup.
+3. Tách trạng thái session revocation khỏi hồ sơ tài khoản lớn.
+4. Nếu dùng cache phân tán, cache phải có revision và cơ chế revoke; không hy sinh hiệu lực thu hồi quyền để lấy tốc độ.
+5. Batch hoặc giảm tần suất cập nhật `last_seen_at`, tránh ghi nóng mỗi request.
+
+### 7.3. PostgreSQL và query
+
+1. Bật `pg_stat_statements` trên staging/production.
+2. Lấy top query theo total time, mean time, calls, rows và temporary bytes.
+3. Dùng `EXPLAIN (ANALYZE, BUFFERS)` với dữ liệu có kích thước gần production.
+4. Kiểm tra index theo `organization_id`, trạng thái active, `sync_version`, `updated_at`, khóa sort và foreign key.
+5. Tránh `COUNT(*)` không cần thiết trên mọi lần phân trang; ưu tiên keyset pagination.
+6. Tránh `%keyword%` trên bảng lớn; dùng PostgreSQL full-text/trigram index khi phù hợp.
+7. Giới hạn transaction ghi; không gọi network hoặc xử lý file trong transaction.
+8. Theo dõi autovacuum, table/index bloat, dead tuple và WAL growth.
+
+### 7.4. Pool, worker và job nền
+
+1. Tính ngân sách connection toàn cụm:
+
+```text
+tổng connection tối đa = số instance × số uvicorn worker × pool max mỗi worker
+```
+
+2. Tổng trên phải thấp hơn `max_connections` sau khi dành chỗ cho migrator, monitoring, backup và thao tác khẩn cấp.
+3. Cân nhắc PgBouncer transaction pooling khi scale nhiều instance.
+4. Periodic job chỉ chạy một lần bằng advisory lock hoặc worker service riêng.
+5. Email, lookup dài và công việc tài liệu cần queue bền vững, retry có giới hạn và dead-letter state.
+6. WebSocket quota phải tính trên toàn cụm, không chỉ process-local.
+
+### 7.5. Tối ưu phân phối frontend mà không đổi giao diện
+
+1. Bật gzip hoặc Brotli cho JS, CSS, JSON, SVG và font ở Nginx/CDN.
+2. Giữ immutable cache cho asset có content hash.
+3. Không cache response `/api/**`, session hoặc dữ liệu người dùng ở shared CDN.
+4. Kiểm tra source map không nằm trong production archive nếu không chủ động công khai.
+5. Dùng CDN cho static asset nếu có nhiều người dùng ở nhiều khu vực.
+
+## 8. Giai đoạn P1 — Hạ tầng chặn tấn công và vận hành
+
+### 8.1. Lớp biên
+
+- Đặt CDN/WAF có chống DDoS phía trước Nginx.
+- Bật managed rules cho OWASP Core Rule Set, bot/credential-stuffing và request anomaly.
+- Rate limit riêng cho login, OTP, reset password, Google login, lookup, sync, upload và export.
+- Giới hạn connection, body size, header size, timeout và WebSocket handshake.
+- Chỉ mở 80/443; PostgreSQL, Prometheus và admin endpoint ở private network/VPN.
+
+### 8.2. Quản lý bí mật
+
+- Không đưa `.env` vào release artifact, image hoặc Git.
+- Dùng secret manager hoặc file environment quyền `0600` ngoài thư mục ứng dụng.
+- Tách credential runtime DB, migrator DB, backup, SMTP, Google OAuth và audit HMAC.
+- Có lịch rotate tối đa 90 ngày và quy trình revoke khẩn cấp.
+- Log phải redact cookie, authorization, password, OTP, reset token, Google credential và connection string.
+
+### 8.3. Backup và phục hồi
+
+- Backup PostgreSQL có mã hóa, checksum và bản sao offsite/immutable.
+- Backup riêng file media/template nếu không nằm trong DB.
+- Kiểm tra restore tự động vào database sạch.
+- Đo và phê duyệt RPO/RTO.
+- Trước mỗi release schema phải có backup và rollback/runbook tương ứng.
+
+### 8.4. Quan sát và cảnh báo
+
+Tối thiểu phải có dashboard/cảnh báo cho:
+
+- request rate, error rate, p50/p95/p99;
+- 401/403/429 và login failure tăng bất thường;
+- DB pool wait, query timeout, lock timeout, deadlock;
+- CPU/RAM/file descriptor/disk/WAL;
+- document queue, timeout, reject và crash;
+- WebSocket connection/broker lag;
+- email failure và partner upstream failure;
+- audit chain/checkpoint failure;
+- backup/restore drill quá hạn.
+
+## 9. CI/CD và kiểm thử bắt buộc
+
+### 9.1. Pipeline cho mọi pull request
+
+1. Cài dependency trong môi trường sạch bằng lockfile/hash.
+2. `python -m compileall -q backend scripts tests`.
+3. `pytest -q tests` trên PostgreSQL disposable.
+4. `npm ci` và `npm run build:secure`.
+5. `npm audit` và `pip-audit`.
+6. Scan dependency vendored bằng manifest/hash.
+7. Secret scan, SAST và rule phát hiện `pickle.load`, `shell=True`, SQL động, unsafe HTML sink.
+8. Kiểm tra production archive chỉ chứa allowlist runtime file.
+9. Sinh SBOM cho Python, npm và vendored assets.
+
+Thêm cấu hình pytest để chỉ thu thập `tests/**`, không đi vào `data/tools`, `node_modules`, `dist` hoặc môi trường portable.
+
+### 9.2. Coverage tối thiểu
+
+- Backend tổng thể: bắt đầu từ 70%, nâng dần theo release.
+- Module xác thực, phân quyền, subscription, tenant scope, sync/delete và archive validation: tối thiểu 90% branch coverage.
+- Mọi bug bảo mật phải có regression test trước khi đóng.
+
+### 9.3. Ma trận kiểm thử bảo mật
+
+| Nhóm | Trường hợp tối thiểu |
+|---|---|
+| Authentication | brute force đồng thời, credential stuffing, session fixation, revoked session, idle/absolute expiry |
+| Authorization | personal ↔ organization, former member, manager/employee, Super Admin, đổi role/gói, IDOR tenant chéo |
+| CSRF/CORS | thiếu token, Origin/Referer sai, origin null, Host giả, preflight ngoài allowlist |
+| XSS | stored/reflected/DOM XSS qua mọi trường text, import Excel và dữ liệu upstream |
+| SQL | injection payload, identifier tampering, pagination cursor tampering |
+| Upload | zip-slip, zip bomb, malformed OOXML, external link, image bomb, oversized/chunked body |
+| SSRF | URL/redirect/DNS bất thường ở toàn bộ outbound connector |
+| WebSocket | origin sai, session revoke, tenant switch, connection flood, broker replay |
+| Business abuse | tăng quyền, dùng gói tổ chức ở personal scope, export không entitlement, quota race |
+
+### 9.4. Kiểm thử tải staging
+
+Chạy tối thiểu ba workload với dữ liệu mô phỏng đủ lớn:
+
+1. **Steady state:** 60 phút ở tải dự kiến trung bình.
+2. **Peak:** 15 phút ở 2 lần tải cao điểm dự kiến.
+3. **Soak:** 8–24 giờ để phát hiện leak, bloat và queue backlog.
+
+SLO ban đầu đề xuất:
+
+- API đọc p95 dưới 300 ms, p99 dưới 800 ms.
+- API ghi/sync p95 dưới 750 ms, p99 dưới 2 giây với payload chuẩn.
+- Tỷ lệ lỗi không chủ ý dưới 0,1%.
+- Không có ReadTimeout ở tải mục tiêu.
+- Không vượt 70% ngân sách DB connection trong steady state.
+- Không có queue tăng liên tục sau khi tải trở lại bình thường.
+
+Các con số phải được điều chỉnh sau khi xác định tải kinh doanh thực tế, nhưng không được hạ chuẩn chỉ để làm bài test đạt.
+
+## 10. Penetration test trước public
+
+Sau khi hoàn thành P0/P1 và triển khai staging giống production:
+
+1. Thực hiện DAST tự động trên toàn bộ endpoint.
+2. Penetration test thủ công tập trung tenant escape, IDOR, role/subscription, account recovery, OAuth, file parser và WebSocket.
+3. Kiểm tra cấu hình TLS, cookie, header, DNS, WAF bypass và origin server exposure.
+4. Quét production artifact/SBOM độc lập với workspace phát triển.
+5. Không còn phát hiện Critical hoặc High chưa xử lý; Medium phải có quyết định chấp nhận rủi ro bằng văn bản và thời hạn sửa.
+
+## 11. Quy trình triển khai
+
+### 11.1. Trước triển khai
+
+- Release ID bất biến và commit/tag đã ký.
+- CI xanh, production package hash đã lưu.
+- Database fresh install/migration chạy bằng migrator role.
+- Runtime role test đạt.
+- Backup/restore drill đạt.
+- Cấu hình production được kiểm tra tự động, không dùng giá trị placeholder.
+- Runbook, on-call và dashboard đã sẵn sàng.
+
+### 11.2. Triển khai canary
+
+1. Triển khai một instance/nhóm người dùng nhỏ.
+2. Theo dõi error, latency, DB pool, login, sync, WebSocket và audit.
+3. Tăng lưu lượng theo từng bước 5% → 25% → 50% → 100%.
+4. Dừng ngay khi vi phạm error budget hoặc xuất hiện lỗi phân quyền/dữ liệu.
+
+### 11.3. Rollback
+
+- Artifact cũ phải còn sẵn và có checksum.
+- Thay đổi schema phải backward-compatible trong cửa sổ rollout hoặc có kế hoạch rollback đã thử.
+- Không rollback bằng cách xóa dữ liệu production.
+- Nếu có sự cố phân quyền/tenant leak: tắt endpoint liên quan, revoke session chịu ảnh hưởng, bảo toàn audit log và kích hoạt incident response.
+
+## 12. Release gate Go/No-Go
+
+Chỉ được **Go** khi tất cả điều kiện sau đạt:
+
+- [ ] Toàn bộ P0 hoàn thành và có regression test.
+- [ ] Không còn dependency Critical/High, kể cả vendored assets.
+- [ ] Thu hồi membership/role/gói có hiệu lực ngay trên toàn cụm.
+- [ ] Rate limiter concurrency test đạt.
+- [ ] SMTP và PostgreSQL xác minh TLS đầy đủ.
+- [ ] Runtime DB role least-privilege được startup kiểm chứng.
+- [ ] Document worker vượt qua test cô lập và không dùng pickle IPC.
+- [ ] Staging load/soak test đạt SLO, không timeout.
+- [ ] Backup và restore drill đạt RPO/RTO.
+- [ ] CI, SAST, secret scan, dependency scan và SBOM đạt.
+- [ ] Penetration test không còn Critical/High.
+- [ ] WAF/CDN, firewall, monitoring và cảnh báo đã hoạt động.
+- [ ] Production package không chứa `.env`, source map, test data, tool portable hoặc file tạm.
+- [ ] Giao diện và hợp đồng API không thay đổi ngoài phạm vi được phê duyệt.
+
+Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là **No-Go**.
+
+## 13. Thứ tự triển khai đề xuất
+
+### Đợt 1 — Blocker bảo mật
+
+1. Authorization cache cross-worker.
+2. Atomic rate limiter.
+3. SheetJS và dependency vendored.
+4. SMTP TLS và trạng thái gửi email.
+5. Document worker IPC/sandbox.
+6. Bảo vệ partner lookup.
+
+### Đợt 2 — Authentication và tenant hardening
+
+1. Argon2id/chính sách mật khẩu/MFA.
+2. Runtime DB role và tenant test.
+3. Trusted Types/XSS/media fail-closed.
+4. Host/proxy hardening.
+
+### Đợt 3 — Hiệu năng và vận hành
+
+1. Profiling lỗi tại 32 concurrent.
+2. Tối ưu session/query/index/pool.
+3. Job nền, queue và WebSocket toàn cụm.
+4. Compression, CDN/WAF, metrics và alert.
+
+### Đợt 4 — Xác nhận phát hành
+
+1. CI đầy đủ và production artifact scan.
+2. Load, peak và soak test.
+3. Restore drill.
+4. Penetration test.
+5. Canary và quyết định Go/No-Go.
+
+## 14. Hồ sơ phải lưu sau khi hoàn thành
+
+- Báo cáo dependency/SBOM và checksum artifact.
+- Báo cáo test, coverage, load/soak và penetration test.
+- Kết quả restore drill, RPO/RTO thực tế.
+- Danh sách production environment variables không chứa giá trị secret.
+- Sơ đồ quyền DB, firewall, WAF và luồng dữ liệu.
+- Runbook incident, credential rotation, backup/restore và rollback.
+- Biên bản Go/No-Go có người chịu trách nhiệm phê duyệt.
+
