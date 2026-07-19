@@ -49,6 +49,62 @@ pytest -q tests
 python scripts/setup_local_postgres.py --reset
 ```
 
+## Xem dữ liệu PostgreSQL bằng DBeaver
+
+PostgreSQL không lưu toàn bộ database trong một file `.db`. Để xem bảng, lọc dữ liệu và quan sát quan hệ trực quan, có thể dùng [DBeaver Community](https://dbeaver.io/download/) (miễn phí).
+
+Môi trường PostgreSQL portable local cũng đã kèm pgAdmin. Có thể mở trực tiếp mà không cần cài thêm:
+
+```powershell
+& "D:\Bidding\data\tools\postgresql17\pgsql\pgAdmin 4\runtime\pgAdmin4.exe"
+```
+
+Các thông số kết nối bên dưới dùng được cho cả DBeaver và pgAdmin.
+
+Sau khi cài DBeaver:
+
+1. Chọn **New Database Connection** → **PostgreSQL**.
+2. Nhập thông tin kết nối local mặc định:
+
+   ```text
+   Host:     127.0.0.1
+   Port:     55432
+   Database: biddingflow_dev
+   Username: postgres
+   Password: lấy từ DATABASE_URL trong file .env
+   ```
+
+3. Chọn **Test Connection** rồi **Finish**. DBeaver có thể đề nghị tải PostgreSQL JDBC driver trong lần kết nối đầu tiên.
+4. Mở cây dữ liệu:
+
+   ```text
+   biddingflow_dev
+   └── Schemas
+       └── public
+           └── Tables
+   ```
+
+5. Nhấp phải vào một bảng → **View Data** → **All Rows**.
+
+Các bảng thường dùng:
+
+| Bảng | Nội dung |
+|---|---|
+| `tai_khoan` | Tài khoản người dùng |
+| `to_chuc` | Tổ chức |
+| `thanh_vien_to_chuc` | Thành viên và trạng thái làm việc trong tổ chức |
+| `ke_hoach_lcnt` | Kế hoạch lựa chọn nhà thầu |
+| `goi_thau` | Gói thầu |
+| `hop_dong` | Hợp đồng |
+| `audit_log` | Nhật ký audit chống sửa đổi |
+| `database_metadata` | Phiên bản schema và định danh fresh installation |
+
+Nếu chỉ cần quan sát, bật chế độ **Read-only** cho connection để tránh sửa hoặc xóa dữ liệu ngoài ý muốn. Không chỉnh sửa trực tiếp các bảng audit, metadata hoặc sync. PostgreSQL phải đang chạy, nhưng backend không bắt buộc phải chạy để DBeaver kết nối.
+
+Thông tin trong bảng trên là mặc định của môi trường local do `scripts/setup_local_postgres.py` tạo. Nếu đã thay `DATABASE_URL`, hãy dùng host, port, database và username tương ứng trong `.env`. Không commit hoặc chia sẻ mật khẩu từ `.env`.
+
+Tham khảo: [hướng dẫn tạo kết nối của DBeaver](https://dbeaver.com/docs/dbeaver/Create-Connection/).
+
 ## Backup và restore drill
 
 ```bash

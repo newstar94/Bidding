@@ -7,8 +7,6 @@ import re
 import time
 from hashlib import sha256
 
-from psycopg import sql
-
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
@@ -18,7 +16,6 @@ from backend.db.upgrades import (
     record_database_version,
 )
 from backend.shared.logging_utils import log_error
-from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME
 
 
 _SYSTEM_TIMESTAMP_COLUMNS = frozenset(
@@ -880,13 +877,6 @@ def initialize_postgres_database(database) -> int:
         connection = database.get_connection()
         cursor = connection.cursor()
         cursor.execute("BEGIN")
-        database_name = cursor.execute("SELECT current_database()").fetchone()[0]
-        cursor.execute(
-            sql.SQL("ALTER DATABASE {} SET timezone TO {}").format(
-                sql.Identifier(database_name),
-                sql.Literal(VIETNAM_TIMEZONE_NAME),
-            )
-        )
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtext('biddingflow-schema-upgrade'))"
         )

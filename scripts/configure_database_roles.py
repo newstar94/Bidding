@@ -10,9 +10,10 @@ import sys
 import psycopg
 from psycopg import sql
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME
 
 
 def _load_env() -> None:
@@ -70,6 +71,11 @@ def main() -> int:
         _ensure_login_role(cursor, runtime_role, runtime_password)
         _ensure_login_role(cursor, migrator_role, migrator_password)
         database_name = cursor.execute("SELECT current_database()").fetchone()[0]
+        cursor.execute(
+            sql.SQL("ALTER DATABASE {} SET timezone TO {}").format(
+                sql.Identifier(database_name), sql.Literal(VIETNAM_TIMEZONE_NAME)
+            )
+        )
         cursor.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
         cursor.execute(
             sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}").format(
