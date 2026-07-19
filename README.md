@@ -166,7 +166,11 @@ python scripts/backup.py restore --snapshot <thu-muc-backup>
 python scripts/backup.py drill --snapshot <thu-muc-backup>
 ```
 
-`drill` bắt buộc dùng `RESTORE_DRILL_DATABASE_URL` khác database chính và tạo marker HMAC để metrics vận hành xác minh. Công cụ truyền credential qua biến môi trường PostgreSQL, không đưa mật khẩu lên command line.
+`drill` bắt buộc dùng `RESTORE_DRILL_DATABASE_URL` khác database chính và tạo
+marker ký Ed25519 để metrics vận hành xác minh. Web chỉ giữ public key; private
+key chỉ thuộc service restore drill. Công cụ truyền credential qua biến môi
+trường PostgreSQL, không đưa mật khẩu lên command line. Có thể dùng
+`python scripts/backup.py drill-latest` cho lịch diễn tập tự động.
 
 ## Tạo gói production
 

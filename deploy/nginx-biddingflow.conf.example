@@ -2,12 +2,48 @@
 # Include this file from Nginx's `http` context. Replace the host and
 # certificate paths, then tune rates only after a representative load test.
 
-limit_req_zone $binary_remote_addr zone=biddingflow_auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=biddingflow_login:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=biddingflow_otp:10m rate=20r/m;
+limit_req_zone $binary_remote_addr zone=biddingflow_google:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=biddingflow_lookup:10m rate=30r/m;
 limit_req_zone $binary_remote_addr zone=biddingflow_api:10m rate=20r/s;
 limit_req_zone $binary_remote_addr zone=biddingflow_sync:10m rate=2r/s;
-limit_req_zone $binary_remote_addr zone=biddingflow_document:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=biddingflow_upload:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=biddingflow_export:10m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=biddingflow_websocket:10m rate=10r/m;
 limit_conn_zone $binary_remote_addr zone=biddingflow_connections:10m;
+
+map $request_uri $biddingflow_cache_control {
+    default "public, max-age=0, must-revalidate";
+    ~^/dist/assets/ "public, max-age=31536000, immutable";
+    ~^/api/ "no-store, no-cache, must-revalidate";
+    ~^/ws/ "no-store";
+}
+
+# Compress proxied text responses. WOFF/WOFF2 and raster images are already
+# compressed and deliberately omitted. `gzip_vary` keeps intermediary caches
+# from mixing encoded and identity responses.
+gzip on;
+gzip_vary on;
+gzip_proxied any;
+gzip_min_length 1024;
+gzip_comp_level 6;
+gzip_types
+    application/javascript
+    application/json
+    application/manifest+json
+    application/xml
+    image/svg+xml
+    text/css
+    text/javascript
+    text/plain
+    text/xml;
+
+# If the deployed Nginx build includes ngx_brotli, enable the equivalent
+# directives after verifying them with `nginx -t`:
+# brotli on;
+# brotli_comp_level 5;
+# brotli_types application/javascript application/json image/svg+xml text/css text/plain;
 
 upstream biddingflow_backend {
     server 127.0.0.1:8000;
@@ -54,12 +90,17 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
+    proxy_hide_header Cache-Control;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Cache-Control $biddingflow_cache_control always;
 
     client_max_body_size 1m;
+    client_header_buffer_size 1k;
+    large_client_header_buffers 4 8k;
     client_body_timeout 60s;
     client_header_timeout 15s;
     keepalive_timeout 65s;
+    send_timeout 120s;
 
     # A host-local Prometheus agent may scrape this path. Remote clients are
     # denied before the request reaches Python; widen only to a dedicated
@@ -87,8 +128,8 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Forwarded "";
-        expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
+        # This path is the only safe CDN/cache origin. Vite filenames contain
+        # a content hash and the production packager rejects unhashed assets.
     }
 
     location /ws/ {
@@ -124,7 +165,7 @@ server {
 
     location = /api/templates/upload {
         client_max_body_size 11m;
-        limit_req zone=biddingflow_document burst=2 nodelay;
+        limit_req zone=biddingflow_upload burst=2 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $server_name;
@@ -139,7 +180,7 @@ server {
 
     location = /api/import-excel {
         client_max_body_size 11m;
-        limit_req zone=biddingflow_document burst=2 nodelay;
+        limit_req zone=biddingflow_upload burst=2 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $server_name;
@@ -152,9 +193,39 @@ server {
         proxy_send_timeout 120s;
     }
 
-    location ~ ^/api/auth/(login|google-login|register|verify|resend-code|forgot-password|reset-password)$ {
+    location = /api/auth/login {
         client_max_body_size 1m;
-        limit_req zone=biddingflow_auth burst=5 nodelay;
+        limit_req zone=biddingflow_login burst=5 nodelay;
+        proxy_pass http://biddingflow_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $server_name;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Forwarded "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+
+    location = /api/auth/google-login {
+        client_max_body_size 1m;
+        limit_req zone=biddingflow_google burst=3 nodelay;
+        proxy_pass http://biddingflow_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $server_name;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Forwarded "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+
+    location ~ ^/api/auth/(register|verify|resend-code|forgot-password|reset-password|verify-email-change|mfa/(setup|confirm|disable))$ {
+        client_max_body_size 1m;
+        limit_req zone=biddingflow_otp burst=5 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $server_name;
@@ -169,7 +240,7 @@ server {
 
     location ~ ^/api/export {
         client_max_body_size 1m;
-        limit_req zone=biddingflow_document burst=2 nodelay;
+        limit_req zone=biddingflow_export burst=3 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $server_name;
@@ -180,6 +251,21 @@ server {
         proxy_connect_timeout 5s;
         proxy_read_timeout 120s;
         proxy_send_timeout 120s;
+    }
+
+    location = /api/lookup-tax-code {
+        client_max_body_size 1m;
+        limit_req zone=biddingflow_lookup burst=5 nodelay;
+        proxy_pass http://biddingflow_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $server_name;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Forwarded "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
     }
 
     location /api/ {

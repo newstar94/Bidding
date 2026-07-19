@@ -181,7 +181,10 @@ class SecurityHeadersMiddleware:
                 headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             if path.startswith(("/api/", "/ws/")):
                 headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-            elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
+            elif (
+                path.startswith("/dist/assets/")
+                or request.query_params.get("v")
+            ) and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
                 headers["Cache-Control"] = "public, max-age=31536000, immutable"
             elif path.endswith(('.js', '.css')):
                 headers["Cache-Control"] = "public, max-age=0, must-revalidate"

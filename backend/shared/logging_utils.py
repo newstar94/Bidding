@@ -31,13 +31,25 @@ _secret_patterns = (
     ),
     (
         re.compile(
-            r"(?i)[\"']?\b(session_token|csrf_token|access_token|refresh_token|password|mat_khau)\b"
+            r"(?i)[\"']?\b(session_token|csrf_token|access_token|refresh_token|"
+            r"password|temporary_password|mat_khau|otp|otp_code|verification_code|"
+            r"reset_token|credential|google_credential|client_secret|smtp_password|"
+            r"database_url|connection_string|mfa_secret|encryption_key)\b"
             r"[\"']?\s*[:=]\s*[\"']?[^\s,;\]}\"']+"
         ),
         "[REDACTED_SECRET]",
     ),
     (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer [REDACTED_SECRET]"),
-    (re.compile(r"(?i)([?&]token=)[^&\s]+"), r"\1[REDACTED_SECRET]"),
+    (
+        re.compile(
+            r"(?i)([?&](?:token|code|credential|access_token|refresh_token)=)[^&\s]+"
+        ),
+        r"\1[REDACTED_SECRET]",
+    ),
+    (
+        re.compile(r"(?i)\bpostgres(?:ql)?://[^\s\"'<>\]]+"),
+        "postgresql://[REDACTED_CONNECTION]",
+    ),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[REDACTED_EMAIL]"),
     (re.compile(r"(?i)data:[^;\s]+;base64,[A-Za-z0-9+/=]{32,}"), "[REDACTED_FILE_CONTENT]"),
     (

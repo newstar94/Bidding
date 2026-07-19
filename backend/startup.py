@@ -4,11 +4,13 @@ These checks deliberately live outside ``backend.app`` so they can be tested
 without starting the ASGI server or touching the configured application DB.
 """
 
+import base64
 import os
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from backend.auth.email_utils import smtp_configuration_errors
 from backend.auth.email_delivery_service import (
     EmailOutboxConfigurationError,
@@ -106,6 +108,42 @@ def validate_database_connection_budget(
             f"reserved={budget['reserved']}, max_connections={server_max}."
         )
     return budget
+
+
+def validate_secret_separation(environ=None) -> None:
+    """Reject credential reuse across independent production trust domains."""
+
+    environ = os.environ if environ is None else environ
+    secrets_by_name = {}
+    database_url = str(environ.get("DATABASE_URL", "")).strip()
+    if database_url:
+        database_password = urlparse(database_url).password
+        if database_password:
+            secrets_by_name["DATABASE_URL password"] = database_password
+    for name in (
+        "SMTP_PASSWORD",
+        "GOOGLE_CLIENT_SECRET",
+        "AUDIT_CHECKPOINT_HMAC_KEY",
+        "MFA_ENCRYPTION_KEY",
+        "EMAIL_OUTBOX_ENCRYPTION_KEY",
+    ):
+        value = str(environ.get(name, "")).strip()
+        if value:
+            secrets_by_name[name] = value
+
+    owners_by_value = {}
+    for name, value in secrets_by_name.items():
+        owners_by_value.setdefault(value, []).append(name)
+    reused = [
+        names
+        for names in owners_by_value.values()
+        if len(names) > 1
+    ]
+    if reused:
+        raise StartupValidationError(
+            "Production secrets must be independently rotatable; reused by: "
+            + "; ".join(", ".join(names) for names in reused)
+        )
 
 
 def _runtime_role_snapshot(connection):
@@ -337,6 +375,9 @@ def _validate_postgresql_configuration(database, environ, *, production):
                 "MIGRATOR_DATABASE_URL",
                 "DATABASE_MIGRATOR_PASSWORD",
                 "DATABASE_ADMIN_PASSWORD",
+                "BACKUP_DATABASE_URL",
+                "DATABASE_BACKUP_PASSWORD",
+                "BIDDING_RESTORE_DRILL_PRIVATE_KEY",
             )
             if str(environ.get(name, "")).strip()
         ]
@@ -381,6 +422,7 @@ def validate_startup_configuration(database, environ=None):
     _validate_postgresql_configuration(database, environ, production=is_production)
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if is_production:
+        validate_secret_separation(environ)
         smtp_errors = smtp_configuration_errors(environ, production=True)
         if smtp_errors:
             raise StartupValidationError(
@@ -399,13 +441,21 @@ def validate_startup_configuration(database, environ=None):
             raise StartupValidationError(
                 "AUDIT_CHECKPOINT_HMAC_KEY must contain at least 32 bytes in production."
             )
-        restore_drill_hmac_key = str(
-            environ.get("BIDDING_RESTORE_DRILL_HMAC_KEY", "")
-        )
-        if len(restore_drill_hmac_key.encode("utf-8")) < 32:
-            raise StartupValidationError(
-                "BIDDING_RESTORE_DRILL_HMAC_KEY must contain at least 32 bytes in production."
+        restore_drill_public_key = str(
+            environ.get("BIDDING_RESTORE_DRILL_PUBLIC_KEY", "")
+        ).strip()
+        try:
+            restore_public_bytes = base64.urlsafe_b64decode(
+                restore_drill_public_key.encode("ascii")
             )
+            if len(restore_public_bytes) != 32:
+                raise ValueError
+            Ed25519PublicKey.from_public_bytes(restore_public_bytes)
+        except (TypeError, ValueError) as exc:
+            raise StartupValidationError(
+                "BIDDING_RESTORE_DRILL_PUBLIC_KEY must be a base64 "
+                "Ed25519 raw public key in production."
+            ) from exc
         if str(environ.get("AUDIT_CHECKPOINT_OFFHOST_CONFIRMED", "")).strip().lower() != "true":
             raise StartupValidationError(
                 "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED=true is required after configuring immutable off-host checkpoint replication."

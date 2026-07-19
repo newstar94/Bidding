@@ -6,6 +6,13 @@
 2. Đối chiếu tỷ lệ 5xx, p95/p99, event-loop lag, worker queue và PostgreSQL pool trong cùng cửa sổ 15 phút.
 3. Không restart hàng loạt. Loại từng instance khỏi load balancer, lưu log/request ID rồi restart tuần tự.
 4. Nếu rollback ứng dụng, không hạ schema. Chỉ dùng release cũ khi `database_metadata.schema_version` nằm trong dải release đó hỗ trợ.
+5. Prometheus/agent, Node Exporter và PostgreSQL Exporter chỉ nghe loopback/private
+   network. Import `deploy/grafana/biddingflow-overview.json` và nạp
+   `deploy/prometheus/biddingflow-alerts.yml`; kiểm tra mọi alert có receiver
+   thực tế bằng một cảnh báo thử trước khi public.
+6. Theo dõi CPU/RAM/descriptor theo từng worker, còn disk/WAL/lock/queue dùng
+   giá trị toàn cụm (`max`, không `sum`) để tránh đếm lặp khi scrape nhiều
+   worker cùng đọc một PostgreSQL.
 
 ## PostgreSQL pool và lock
 
@@ -59,6 +66,36 @@ production khởi động nếu phép tính startup báo không an toàn.
   tự thu hồi sau khi worker chết.
 - Retention, email cleanup và xuất audit checkpoint dùng advisory lock. Cache
   cleanup trong RAM vẫn chạy ở từng process vì cache là process-local.
+
+Khi `biddingflow_background_jobs{status="failed"}` tăng, lọc theo nhãn `queue`:
+email cần kiểm tra SMTP và cấu hình người gửi; partner cần kiểm tra circuit
+breaker/upstream; document cần kiểm tra sandbox, storage và manifest. Không sửa
+trực tiếp payload đã mã hóa hoặc đổi trạng thái DB. Sau khi khắc phục nguyên
+nhân, dùng quy trình retry có kiểm soát của service hoặc tạo lại yêu cầu nghiệp
+vụ; giữ bản ghi failed để điều tra trong thời hạn retention.
+
+## Nén, cache và CDN cho frontend
+
+1. Áp dụng `deploy/nginx-biddingflow.conf.example` và chạy `nginx -t` trên host
+   đích. Nginx nén JS/CSS/JSON/SVG bằng gzip, trả `Vary: Accept-Encoding` và
+   chỉ đặt immutable một năm cho `/dist/assets/`.
+2. Trước mỗi release, chạy `python scripts/package_production.py --check`.
+   Packager từ chối asset không có content hash, asset thừa ngoài Vite
+   manifest, file `.map` và cả chỉ dẫn `sourceMappingURL`.
+3. Kiểm tra header trên staging:
+
+   ```bash
+   curl --compressed -I https://bidding.example.com/dist/assets/<asset-hash>.js
+   curl -I https://bidding.example.com/api/sync-version
+   ```
+
+   Asset phải có `Content-Encoding: gzip` khi đủ lớn và
+   `Cache-Control: public, max-age=31536000, immutable`; API phải có
+   `Cache-Control: no-store`.
+4. Ứng dụng hiện phục vụ tại Việt Nam/một vùng nên CDN chưa bắt buộc. Khi mở
+   nhiều vùng, chỉ đưa `/dist/assets/` qua CDN, giữ nguyên cache key có
+   `Accept-Encoding`, bắt buộc TLS tới origin. Không cache `/api/**`, `/ws/**`,
+   HTML, cookie hoặc response theo người dùng ở shared CDN.
 
 ## PostgreSQL query, autovacuum và WAL
 
@@ -138,9 +175,31 @@ production khởi động nếu phép tính startup báo không an toàn.
 ```bash
 python scripts/backup.py verify --snapshot <snapshot>
 python scripts/backup.py drill --snapshot <snapshot>
+python scripts/backup.py drill-latest
 ```
 
-`RESTORE_DRILL_DATABASE_URL` phải là database cô lập. Drill thành công phải tạo marker HMAC mà metrics nhận diện. Kiểm tra RPO bằng tuổi backup, RTO bằng thời gian từ lúc bắt đầu restore đến khi schema/FK/readiness xanh. Không chạy `restore` trực tiếp vào production khi chưa đóng traffic và chưa có phê duyệt sự cố.
+`RESTORE_DRILL_DATABASE_URL` phải là database cô lập. Drill thành công tạo marker
+được ký Ed25519; web/metrics chỉ giữ `BIDDING_RESTORE_DRILL_PUBLIC_KEY` để xác
+thực, còn `BIDDING_RESTORE_DRILL_PRIVATE_KEY` chỉ nằm trong secret scope của
+service restore drill. Marker mặc định đặt tại
+`/var/lib/biddingflow/observability/last-restore-drill.json`.
+
+Tách tối thiểu ba file môi trường, quyền `0600`, chủ sở hữu đúng service:
+
+- `biddingflow.env`: chỉ runtime DSN và public key; không có admin, migrator,
+  backup DSN hoặc private signing key.
+- `biddingflow-backup.env`: `BACKUP_DATABASE_URL` của role chỉ đọc,
+  `BIDDING_BACKUP_DIR`, media path và retention.
+- `biddingflow-restore-drill.env`: primary DSN chỉ để so sánh đích,
+  `RESTORE_DRILL_DATABASE_URL`, private signing key, RPO/RTO và state path.
+
+Sao chép snapshot sang object storage/off-site đã mã hóa, bật immutability/object
+lock và retention độc lập với máy ứng dụng. `BIDDING_BACKUP_RETENTION_COUNT` chỉ
+dọn snapshot cục bộ có tên hợp lệ; không thay thế retention off-site. Kích hoạt
+`biddingflow-restore-drill.timer` để diễn tập hàng tháng. Kiểm tra RPO bằng tuổi
+backup, RTO bằng thời gian từ lúc bắt đầu restore đến khi schema/FK xanh. Không
+chạy `restore` trực tiếp vào production khi chưa đóng traffic và chưa có phê
+duyệt sự cố.
 
 ## WebSocket outbox tồn đọng
 

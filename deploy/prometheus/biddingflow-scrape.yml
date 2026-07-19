@@ -12,3 +12,20 @@ scrape_configs:
           environment: production
     # bearer_token_file: /run/secrets/biddingflow-metrics-token
 
+  # Install these exporters as separate least-privilege services on the private
+  # network. Their ports must never be exposed through the public firewall.
+  - job_name: biddingflow-node
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels:
+          service: biddingflow
+          environment: production
+
+  - job_name: biddingflow-postgresql
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["127.0.0.1:9187"]
+        labels:
+          service: biddingflow
+          environment: production

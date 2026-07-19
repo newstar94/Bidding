@@ -8,6 +8,7 @@ text format and the counters/gauges needed by the operations runbook.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import ipaddress
@@ -18,6 +19,7 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import threading
 import time
 from collections import Counter, OrderedDict
@@ -25,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
@@ -415,24 +419,46 @@ def _restore_drill_timestamp(backup_directory: Path) -> float | None:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
-    if payload.get("format") != "biddingflow-restore-drill" or payload.get("version") != 1:
+    if payload.get("format") != "biddingflow-restore-drill" or payload.get("version") != 2:
         return None
     integrity = payload.get("integrity")
-    hmac_key = str(os.environ.get("BIDDING_RESTORE_DRILL_HMAC_KEY", ""))
-    if not isinstance(integrity, dict) or len(hmac_key.encode("utf-8")) < 32:
+    public_key_text = str(
+        os.environ.get("BIDDING_RESTORE_DRILL_PUBLIC_KEY", "")
+    ).strip()
+    if (
+        not isinstance(integrity, dict)
+        or integrity.get("algorithm") != "Ed25519"
+        or not public_key_text
+    ):
         return None
     unsigned = {key: value for key, value in payload.items() if key != "integrity"}
     material = json.dumps(
         unsigned, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
-    expected_hmac = hmac.new(hmac_key.encode("utf-8"), material, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(str(integrity.get("hmacSha256") or ""), expected_hmac):
+    try:
+        public_key_bytes = base64.urlsafe_b64decode(
+            public_key_text.encode("ascii")
+        )
+        signature = base64.urlsafe_b64decode(
+            str(integrity.get("signature") or "").encode("ascii")
+        )
+        if len(public_key_bytes) != 32 or len(signature) != 64:
+            return None
+        Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
+            signature,
+            material,
+        )
+    except (InvalidSignature, TypeError, ValueError):
         return None
     try:
         snapshot = Path(str(payload.get("snapshot") or "")).resolve(strict=True)
         if snapshot.parent != backup_directory.resolve() or not (snapshot / "manifest.json").is_file():
             return None
         if payload.get("databaseVerified") is not True or payload.get("filesVerified") is not True:
+            return None
+        if float(payload.get("rpoSeconds", -1)) < 0 or float(
+            payload.get("rtoSeconds", -1)
+        ) < 0:
             return None
     except (OSError, ValueError, TypeError):
         return None
@@ -537,6 +563,69 @@ def _filesystem_metrics() -> dict[str, Any]:
                       COALESCE(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at))), 0)
                FROM websocket_events"""
         ).fetchone()
+        queue_rows = connection.execute(
+            """
+            SELECT queue_name, status, row_count, oldest_seconds
+            FROM (
+                SELECT 'email' AS queue_name, status, COUNT(*) AS row_count,
+                       COALESCE(
+                           EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
+                           - MIN(created_at),
+                           0
+                       ) AS oldest_seconds
+                FROM email_delivery_status
+                GROUP BY status
+                UNION ALL
+                SELECT 'partner', status, COUNT(*),
+                       COALESCE(
+                           EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
+                           - MIN(created_at),
+                           0
+                       )
+                FROM partner_enrichment_jobs
+                GROUP BY status
+                UNION ALL
+                SELECT 'document', status, COUNT(*),
+                       COALESCE(
+                           EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
+                           - MIN(created_at),
+                           0
+                       )
+                FROM document_jobs
+                GROUP BY status
+            ) AS queue_state
+            """
+        ).fetchall()
+        upstream_health = connection.execute(
+            """
+            SELECT upstream,
+                   CASE WHEN opened_until >
+                       EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
+                   THEN 1 ELSE 0 END
+            FROM partner_upstream_health
+            """
+        ).fetchall()
+        postgres_stats = connection.execute(
+            """
+            SELECT deadlocks, conflicts, temp_files, temp_bytes,
+                   xact_commit, xact_rollback
+            FROM pg_stat_database
+            WHERE datname = current_database()
+            """
+        ).fetchone()
+        waiting_locks = connection.execute(
+            "SELECT COUNT(*) FROM pg_locks WHERE NOT granted"
+        ).fetchone()[0]
+        active_websocket_leases = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM websocket_connection_leases
+            WHERE expires_at > EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
+            """
+        ).fetchone()[0]
+        wal_bytes_row = connection.execute(
+            "SELECT wal_bytes FROM pg_stat_wal"
+        ).fetchone()
     finally:
         connection.close()
     pool_stats = database.pool_stats()
@@ -545,6 +634,37 @@ def _filesystem_metrics() -> dict[str, Any]:
         "postgres_pool": pool_stats,
         "websocket_outbox_rows": int(outbox[0] or 0),
         "websocket_outbox_oldest_seconds": float(outbox[1] or 0),
+        "websocket_cluster_active_connections": int(
+            active_websocket_leases or 0
+        ),
+        "background_jobs": {
+            (str(row[0]), str(row[1])): {
+                "count": int(row[2] or 0),
+                "oldest_seconds": max(0.0, float(row[3] or 0)),
+            }
+            for row in queue_rows
+        },
+        "partner_upstream_open": {
+            str(row[0]): int(row[1] or 0) for row in upstream_health
+        },
+        "postgres_stats": {
+            key: int(value or 0)
+            for key, value in zip(
+                (
+                    "deadlocks",
+                    "conflicts",
+                    "temp_files",
+                    "temp_bytes",
+                    "xact_commit",
+                    "xact_rollback",
+                ),
+                postgres_stats or (0, 0, 0, 0, 0, 0),
+            )
+        },
+        "postgres_waiting_locks": int(waiting_locks or 0),
+        "postgres_wal_bytes": int(
+            (wal_bytes_row[0] if wal_bytes_row else 0) or 0
+        ),
         "disk": {},
     }
     for volume, path in (("data", data_directory), ("backup", backup_directory)):
@@ -566,6 +686,66 @@ def _filesystem_metrics() -> dict[str, Any]:
         }
     )
     return result
+
+
+def _process_resource_metrics() -> dict[str, float]:
+    resident_bytes = 0
+    open_descriptors = 0
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            process = ctypes.windll.kernel32.GetCurrentProcess()
+            counters = _ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(counters)
+            if ctypes.windll.psapi.GetProcessMemoryInfo(
+                process,
+                ctypes.byref(counters),
+                counters.cb,
+            ):
+                resident_bytes = int(counters.WorkingSetSize)
+            handle_count = wintypes.DWORD()
+            if ctypes.windll.kernel32.GetProcessHandleCount(
+                process,
+                ctypes.byref(handle_count),
+            ):
+                open_descriptors = int(handle_count.value)
+        except (AttributeError, OSError, TypeError, ValueError):
+            pass
+    else:
+        try:
+            import resource
+
+            maximum_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            resident_bytes = int(
+                maximum_rss if sys.platform == "darwin" else maximum_rss * 1024
+            )
+        except (ImportError, OSError, ValueError):
+            pass
+        try:
+            open_descriptors = sum(1 for _ in Path("/proc/self/fd").iterdir())
+        except OSError:
+            pass
+    return {
+        "cpu_seconds": max(0.0, time.process_time()),
+        "resident_memory_bytes": max(0, resident_bytes),
+        "open_descriptors": max(0, open_descriptors),
+    }
 
 
 def _pool_samples(lines: list[str]) -> None:
@@ -638,6 +818,13 @@ def render_prometheus(application: object | None = None) -> str:
     lines.append(_sample("biddingflow_process_start_time_seconds", _PROCESS_STARTED_AT))
     _metric_header(lines, "biddingflow_process_id", "Operating-system process identifier for per-worker diagnostics.", "gauge")
     lines.append(_sample("biddingflow_process_id", os.getpid()))
+    process_resources = _process_resource_metrics()
+    _metric_header(lines, "biddingflow_process_cpu_seconds_total", "Process CPU time consumed in seconds.", "counter")
+    lines.append(_sample("biddingflow_process_cpu_seconds_total", process_resources["cpu_seconds"]))
+    _metric_header(lines, "biddingflow_process_resident_memory_bytes", "Resident memory used by this process.", "gauge")
+    lines.append(_sample("biddingflow_process_resident_memory_bytes", process_resources["resident_memory_bytes"]))
+    _metric_header(lines, "biddingflow_process_open_descriptors", "Open file descriptors or operating-system handles held by this process.", "gauge")
+    lines.append(_sample("biddingflow_process_open_descriptors", process_resources["open_descriptors"]))
     _metric_header(lines, "biddingflow_http_active_requests", "HTTP requests currently executing.", "gauge")
     lines.append(_sample("biddingflow_http_active_requests", active_http))
     _metric_header(lines, "biddingflow_http_requests_total", "Completed HTTP requests by code-owned endpoint and status.", "counter")
@@ -767,7 +954,7 @@ def render_prometheus(application: object | None = None) -> str:
         filesystem = _filesystem_metrics()
     except (OSError, ValueError, TypeError):
         filesystem_ok = 0
-        filesystem = {"postgres_database_bytes": 0, "postgres_pool": {}, "websocket_outbox_rows": 0, "websocket_outbox_oldest_seconds": 0, "disk": {}, "backup_timestamp": None, "backup_age": None, "restore_timestamp": None, "restore_age": None}
+        filesystem = {"postgres_database_bytes": 0, "postgres_pool": {}, "websocket_outbox_rows": 0, "websocket_outbox_oldest_seconds": 0, "websocket_cluster_active_connections": 0, "background_jobs": {}, "partner_upstream_open": {}, "postgres_stats": {}, "postgres_waiting_locks": 0, "postgres_wal_bytes": 0, "disk": {}, "backup_timestamp": None, "backup_age": None, "restore_timestamp": None, "restore_age": None}
     _metric_header(lines, "biddingflow_metrics_filesystem_collection_success", "Whether filesystem-backed operational metrics were collected successfully.", "gauge")
     lines.append(_sample("biddingflow_metrics_filesystem_collection_success", filesystem_ok))
     _metric_header(lines, "biddingflow_operational_artifact_last_check_timestamp_seconds", "Unix timestamp of the latest full backup/restore artifact verification attempt.", "gauge")
@@ -782,6 +969,24 @@ def render_prometheus(application: object | None = None) -> str:
     lines.append(_sample("biddingflow_websocket_outbox_rows", filesystem["websocket_outbox_rows"]))
     _metric_header(lines, "biddingflow_websocket_outbox_oldest_seconds", "Age of the oldest durable websocket event.", "gauge")
     lines.append(_sample("biddingflow_websocket_outbox_oldest_seconds", filesystem["websocket_outbox_oldest_seconds"]))
+    _metric_header(lines, "biddingflow_websocket_cluster_active_connections", "Active WebSocket connection leases across the PostgreSQL-backed cluster.", "gauge")
+    lines.append(_sample("biddingflow_websocket_cluster_active_connections", filesystem.get("websocket_cluster_active_connections", 0)))
+    _metric_header(lines, "biddingflow_background_jobs", "Durable background jobs by bounded queue and status.", "gauge")
+    _metric_header(lines, "biddingflow_background_job_oldest_seconds", "Age of the oldest durable background job by bounded queue and status.", "gauge")
+    for (queue, status), state in sorted(filesystem.get("background_jobs", {}).items()):
+        labels = {"queue": queue, "status": status}
+        lines.append(_sample("biddingflow_background_jobs", state["count"], labels))
+        lines.append(_sample("biddingflow_background_job_oldest_seconds", state["oldest_seconds"], labels))
+    _metric_header(lines, "biddingflow_partner_upstream_circuit_open", "Whether the shared PostgreSQL circuit breaker is open for an upstream.", "gauge")
+    for upstream, value in sorted(filesystem.get("partner_upstream_open", {}).items()):
+        lines.append(_sample("biddingflow_partner_upstream_circuit_open", value, {"upstream": upstream}))
+    _metric_header(lines, "biddingflow_postgres_stat", "Selected current-database PostgreSQL statistics.", "gauge")
+    for stat, value in sorted(filesystem.get("postgres_stats", {}).items()):
+        lines.append(_sample("biddingflow_postgres_stat", value, {"stat": stat}))
+    _metric_header(lines, "biddingflow_postgres_waiting_locks", "PostgreSQL locks currently waiting for a grant.", "gauge")
+    lines.append(_sample("biddingflow_postgres_waiting_locks", filesystem.get("postgres_waiting_locks", 0)))
+    _metric_header(lines, "biddingflow_postgres_wal_bytes", "WAL bytes reported by pg_stat_wal since its last reset.", "gauge")
+    lines.append(_sample("biddingflow_postgres_wal_bytes", filesystem.get("postgres_wal_bytes", 0)))
     _metric_header(lines, "biddingflow_disk_free_bytes", "Free bytes on managed runtime volumes.", "gauge")
     _metric_header(lines, "biddingflow_disk_total_bytes", "Total bytes on managed runtime volumes.", "gauge")
     for volume, usage in sorted(filesystem["disk"].items()):

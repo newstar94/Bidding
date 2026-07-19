@@ -83,6 +83,65 @@
         }
       ],
       "gridPos": {"h": 7, "w": 24, "x": 0, "y": 22}
+    },
+    {
+      "id": 10,
+      "title": "Durable queue state",
+      "type": "timeseries",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (queue, status) (biddingflow_background_jobs)",
+          "legendFormat": "{{queue}} / {{status}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29}
+    },
+    {
+      "id": 11,
+      "title": "Queue oldest job",
+      "type": "timeseries",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (queue, status) (biddingflow_background_job_oldest_seconds{status=~\"pending|retry|processing\"})",
+          "legendFormat": "{{queue}} / {{status}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29}
+    },
+    {
+      "id": 12,
+      "title": "PostgreSQL health",
+      "type": "timeseries",
+      "targets": [
+        {"refId": "A", "expr": "max by (stat) (biddingflow_postgres_stat{stat=~\"deadlocks|conflicts|xact_rollback\"})", "legendFormat": "{{stat}}"},
+        {"refId": "B", "expr": "max(biddingflow_postgres_waiting_locks)", "legendFormat": "waiting locks"},
+        {"refId": "C", "expr": "max(biddingflow_postgres_pool_value{stat=\"requests_waiting\"})", "legendFormat": "pool waiters"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37}
+    },
+    {
+      "id": 13,
+      "title": "Worker resources",
+      "type": "timeseries",
+      "targets": [
+        {"refId": "A", "expr": "rate(biddingflow_process_cpu_seconds_total[5m])", "legendFormat": "CPU {{instance}}"},
+        {"refId": "B", "expr": "biddingflow_process_resident_memory_bytes", "legendFormat": "RAM {{instance}}"},
+        {"refId": "C", "expr": "biddingflow_process_open_descriptors", "legendFormat": "FD/handles {{instance}}"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37}
+    },
+    {
+      "id": 14,
+      "title": "WebSocket cluster and broker",
+      "type": "timeseries",
+      "targets": [
+        {"refId": "A", "expr": "max(biddingflow_websocket_cluster_active_connections)", "legendFormat": "cluster connections"},
+        {"refId": "B", "expr": "max(biddingflow_websocket_outbox_oldest_seconds)", "legendFormat": "oldest broker event (s)"}
+      ],
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 45}
     }
   ],
   "refresh": "30s",
@@ -93,5 +152,5 @@
   "timezone": "browser",
   "title": "BiddingFlow Production Overview",
   "uid": "biddingflow-production",
-  "version": 1
+  "version": 2
 }

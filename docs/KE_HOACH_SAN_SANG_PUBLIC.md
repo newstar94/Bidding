@@ -90,30 +90,6 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 - Worker bị kill/timeout không làm hỏng web process và không để file tạm tồn tại.
 - Kết quả có schema/hash sai phải bị parent từ chối mà không deserialize nguy hiểm.
 
-## 7. Giai đoạn P1 — Hiệu năng và khả năng chịu tải
-
-### 7.4. Pool, worker và job nền
-
-1. Tính ngân sách connection toàn cụm:
-
-```text
-tổng connection tối đa = số instance × số uvicorn worker × pool max mỗi worker
-```
-
-2. Tổng trên phải thấp hơn `max_connections` sau khi dành chỗ cho migrator, monitoring, backup và thao tác khẩn cấp.
-3. Cân nhắc PgBouncer transaction pooling khi scale nhiều instance.
-4. Periodic job chỉ chạy một lần bằng advisory lock hoặc worker service riêng.
-5. Email, lookup dài và công việc tài liệu cần queue bền vững, retry có giới hạn và dead-letter state.
-6. WebSocket quota phải tính trên toàn cụm, không chỉ process-local.
-
-### 7.5. Tối ưu phân phối frontend mà không đổi giao diện
-
-1. Bật gzip hoặc Brotli cho JS, CSS, JSON, SVG và font ở Nginx/CDN.
-2. Giữ immutable cache cho asset có content hash.
-3. Không cache response `/api/**`, session hoặc dữ liệu người dùng ở shared CDN.
-4. Kiểm tra source map không nằm trong production archive nếu không chủ động công khai.
-5. Dùng CDN cho static asset nếu có nhiều người dùng ở nhiều khu vực.
-
 ## 8. Giai đoạn P1 — Hạ tầng chặn tấn công và vận hành
 
 ### 8.1. Lớp biên
@@ -126,33 +102,26 @@ tổng connection tối đa = số instance × số uvicorn worker × pool max m
 
 ### 8.2. Quản lý bí mật
 
-- Không đưa `.env` vào release artifact, image hoặc Git.
-- Dùng secret manager hoặc file environment quyền `0600` ngoài thư mục ứng dụng.
-- Tách credential runtime DB, migrator DB, backup, SMTP, Google OAuth và audit HMAC.
-- Có lịch rotate tối đa 90 ngày và quy trình revoke khẩn cấp.
-- Log phải redact cookie, authorization, password, OTP, reset token, Google credential và connection string.
+- Nạp secret production bằng secret manager hoặc file environment quyền `0600`
+  ngoài thư mục ứng dụng.
+- Cấp giá trị độc lập cho runtime DB, migrator DB, backup, SMTP, Google OAuth,
+  email/MFA encryption và audit; thiết lập lịch rotate tối đa 90 ngày cùng quy
+  trình revoke khẩn cấp.
 
 ### 8.3. Backup và phục hồi
 
-- Backup PostgreSQL có mã hóa, checksum và bản sao offsite/immutable.
-- Backup riêng file media/template nếu không nằm trong DB.
-- Kiểm tra restore tự động vào database sạch.
-- Đo và phê duyệt RPO/RTO.
-- Trước mỗi release schema phải có backup và rollback/runbook tương ứng.
+- Kết nối job backup với kho offsite được mã hóa và bật
+  immutability/object-lock; xác minh media/template cũng được sao chép.
+- Bật timer backup/restore drill trên host đích và ghi nhận người phê duyệt
+  RPO/RTO.
+- Đưa backup trước thay đổi schema cùng rollback runbook thành release gate bắt
+  buộc trong CI/CD production.
 
 ### 8.4. Quan sát và cảnh báo
 
-Tối thiểu phải có dashboard/cảnh báo cho:
-
-- request rate, error rate, p50/p95/p99;
-- 401/403/429 và login failure tăng bất thường;
-- DB pool wait, query timeout, lock timeout, deadlock;
-- CPU/RAM/file descriptor/disk/WAL;
-- document queue, timeout, reject và crash;
-- WebSocket connection/broker lag;
-- email failure và partner upstream failure;
-- audit chain/checkpoint failure;
-- backup/restore drill quá hạn.
+- Triển khai cấu hình Prometheus/Grafana đã kiểm chứng lên staging/production,
+  nối tất cả severity với receiver/on-call thực tế và chạy thử cảnh báo trước
+  khi public.
 
 ## 9. CI/CD và kiểm thử bắt buộc
 

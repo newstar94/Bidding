@@ -78,7 +78,7 @@ def multiworker_cluster():
                 "--port",
                 str(port),
                 "--workers",
-                "2",
+                "1",
                 "--no-access-log",
             ],
             cwd=ROOT,

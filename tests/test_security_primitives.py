@@ -2,11 +2,15 @@ import asyncio
 import base64
 import hashlib
 import io
+import json
 import time
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from PIL import Image, PngImagePlugin
 
 from backend.auth.auth_helper import (
@@ -22,13 +26,16 @@ from backend.http_middleware import (
     ProxyHeaderTrustMiddleware,
     SecurityHeadersMiddleware,
 )
+from backend.shared.logging_utils import redact_log_value
 from backend.startup import (
     StartupValidationError,
     calculate_database_connection_budget,
     validate_database_connection_budget,
     validate_runtime_role_snapshot,
+    validate_secret_separation,
 )
 from backend.shared import media_helper
+from backend.observability.metrics import _restore_drill_timestamp
 
 
 def _image_data_url(
@@ -77,6 +84,81 @@ def test_database_connection_budget_is_cluster_wide_and_fail_closed():
     assert validate_database_connection_budget(100, environment) == budget
     with pytest.raises(StartupValidationError, match="budget"):
         validate_database_connection_budget(92, environment)
+
+
+def test_production_secrets_must_be_independently_rotatable():
+    shared = "same-secret-material-that-must-not-be-reused"
+    with pytest.raises(StartupValidationError, match="reused"):
+        validate_secret_separation(
+            {
+                "DATABASE_URL": (
+                    "postgresql://runtime:"
+                    + shared
+                    + "@db.example.test/biddingflow"
+                ),
+                "SMTP_PASSWORD": shared,
+            }
+        )
+    validate_secret_separation(
+        {
+            "DATABASE_URL": (
+                "postgresql://runtime:database-secret"
+                "@db.example.test/biddingflow"
+            ),
+            "SMTP_PASSWORD": "smtp-secret",
+            "MFA_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
+            "EMAIL_OUTBOX_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
+        }
+    )
+
+
+def test_restore_drill_marker_uses_public_key_verification(
+    tmp_path,
+    monkeypatch,
+):
+    snapshot = tmp_path / "biddingflow-backup-test"
+    snapshot.mkdir()
+    (snapshot / "manifest.json").write_text("{}", encoding="utf-8")
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(
+        serialization.Encoding.Raw,
+        serialization.PublicFormat.Raw,
+    )
+    payload = {
+        "format": "biddingflow-restore-drill",
+        "version": 2,
+        "recordedAt": datetime.now(timezone.utc).isoformat(),
+        "snapshot": str(snapshot),
+        "databaseVerified": True,
+        "filesVerified": True,
+        "schemaVersion": 1,
+        "rpoSeconds": 10.0,
+        "rtoSeconds": 2.0,
+    }
+    material = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    payload["integrity"] = {
+        "algorithm": "Ed25519",
+        "signature": base64.urlsafe_b64encode(
+            private_key.sign(material)
+        ).decode("ascii"),
+    }
+    state_file = tmp_path / "last-restore-drill.json"
+    state_file.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setenv(
+        "BIDDING_RESTORE_DRILL_PUBLIC_KEY",
+        base64.urlsafe_b64encode(public_bytes).decode("ascii"),
+    )
+    monkeypatch.setenv("BIDDING_RESTORE_DRILL_STATE_FILE", str(state_file))
+    assert _restore_drill_timestamp(tmp_path) is not None
+
+    payload["rtoSeconds"] = 3.0
+    state_file.write_text(json.dumps(payload), encoding="utf-8")
+    assert _restore_drill_timestamp(tmp_path) is None
 
 
 def test_legacy_pbkdf2_password_is_verified_and_marked_for_upgrade():
@@ -180,6 +262,84 @@ def test_csp_enforces_explicit_trusted_types_policy_without_default_policy():
     assert "require-trusted-types-for 'script'" in csp
     assert "trusted-types biddingflow-html goog#html 'allow-duplicates'" in csp
     assert "default" not in csp.split("trusted-types ", 1)[1]
+
+
+def test_cache_policy_separates_hashed_assets_from_api_data():
+    async def inspect(path):
+        async def app(_scope, _receive, send):
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"application/javascript")],
+                }
+            )
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        messages = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        await SecurityHeadersMiddleware(app)(
+            {
+                "type": "http",
+                "asgi": {"version": "3.0"},
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "https",
+                "path": path,
+                "raw_path": path.encode("ascii"),
+                "query_string": b"",
+                "root_path": "",
+                "headers": [],
+                "client": ("127.0.0.1", 12345),
+                "server": ("testserver", 443),
+            },
+            receive,
+            send,
+        )
+        response_start = next(
+            item for item in messages if item["type"] == "http.response.start"
+        )
+        return {
+            key.decode("latin-1").lower(): value.decode("latin-1")
+            for key, value in response_start["headers"]
+        }
+
+    asset_headers = asyncio.run(inspect("/dist/assets/app-AbCd1234.js"))
+    api_headers = asyncio.run(inspect("/api/get-all-data"))
+    assert asset_headers["cache-control"] == (
+        "public, max-age=31536000, immutable"
+    )
+    assert api_headers["cache-control"].startswith("no-store")
+
+
+def test_log_redaction_covers_authentication_and_connection_secrets():
+    raw = (
+        'Authorization: Bearer header-secret\n'
+        'Cookie: session_token=cookie-secret\n'
+        '{"otp_code":"123456","reset_token":"reset-secret",'
+        '"credential":"google-secret","smtp_password":"smtp-secret",'
+        '"database_url":"postgresql://user:password@db.internal/app"} '
+        "https://app.test/reset?code=query-secret"
+    )
+    redacted = redact_log_value(raw)
+    for secret in (
+        "header-secret",
+        "cookie-secret",
+        "123456",
+        "reset-secret",
+        "google-secret",
+        "smtp-secret",
+        "user:password",
+        "query-secret",
+    ):
+        assert secret not in redacted
+    assert "[REDACTED" in redacted
 
 
 def test_proxy_headers_are_visible_only_from_trusted_socket_peer(monkeypatch):

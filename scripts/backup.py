@@ -20,17 +20,21 @@ Environment variables
 """
 
 import argparse
+import base64
 import hashlib
 import hmac
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, unquote, urlparse
 from uuid import uuid4
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -41,6 +45,9 @@ from backend.shared.paths import DATA_DIR, resolve_runtime_path
 _SNAPSHOT_PREFIX = "biddingflow-backup"
 _MANIFEST_FILENAME = "manifest.json"
 _MAX_MANIFEST_FILES = 500_000
+_SNAPSHOT_NAME_PATTERN = re.compile(
+    rf"^{re.escape(_SNAPSHOT_PREFIX)}-(\d{{8}}T\d{{6}}Z)$"
+)
 
 
 def _load_env() -> None:
@@ -200,8 +207,52 @@ def _write_manifest(staging: pathlib.Path, database_entry: dict, file_entries: l
     )
 
 
+def _snapshot_directories(backup_dir: pathlib.Path) -> list[pathlib.Path]:
+    if not backup_dir.is_dir():
+        return []
+    snapshots: list[pathlib.Path] = []
+    resolved_root = backup_dir.resolve()
+    for candidate in backup_dir.iterdir():
+        match = _SNAPSHOT_NAME_PATTERN.fullmatch(candidate.name)
+        if not match or not candidate.is_dir() or candidate.is_symlink():
+            continue
+        try:
+            datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+        except ValueError:
+            continue
+        resolved_candidate = candidate.resolve()
+        if resolved_candidate.parent != resolved_root:
+            continue
+        snapshots.append(resolved_candidate)
+    return sorted(snapshots, key=lambda item: item.name, reverse=True)
+
+
+def _prune_local_snapshots(backup_dir: pathlib.Path) -> list[str]:
+    try:
+        retention_count = int(
+            os.environ.get("BIDDING_BACKUP_RETENTION_COUNT", "14")
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            "BIDDING_BACKUP_RETENTION_COUNT must be an integer."
+        ) from exc
+    if retention_count < 1 or retention_count > 10_000:
+        raise RuntimeError(
+            "BIDDING_BACKUP_RETENTION_COUNT must be between 1 and 10000."
+        )
+    removed: list[str] = []
+    for snapshot in _snapshot_directories(backup_dir)[retention_count:]:
+        # _snapshot_directories already rejects symlinks, invalid names and
+        # anything outside the exact backup root before recursive deletion.
+        shutil.rmtree(snapshot)
+        removed.append(snapshot.name)
+    return removed
+
+
 def cmd_create(args) -> int:
-    database_url = _require_env("DATABASE_URL")
+    database_url = os.environ.get("BACKUP_DATABASE_URL", "").strip()
+    if not database_url:
+        database_url = _require_env("DATABASE_URL")
     backup_dir = pathlib.Path(
         args.backup_dir or os.environ.get("BIDDING_BACKUP_DIR") or str(DATA_DIR / "backups")
     ).resolve()
@@ -234,12 +285,14 @@ def cmd_create(args) -> int:
         file_entries += _copy_directory(word_template_dir, "word-templates", staging_path)
         _write_manifest(staging_path, db_entry, file_entries, timestamp)
         staging_path.rename(final_path)
+        removed_snapshots = _prune_local_snapshots(backup_dir)
         total_size = sum(e["sizeBytes"] for e in [db_entry] + file_entries)
         result = {
             "snapshot": str(final_path),
             "createdAt": timestamp.isoformat().replace("+00:00", "Z"),
             "fileCount": len(file_entries) + 1,
             "totalSizeBytes": total_size,
+            "retentionRemoved": removed_snapshots,
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -359,6 +412,7 @@ def cmd_verify(args) -> int:
 def cmd_drill(args) -> int:
     import psycopg
 
+    drill_started_at = datetime.now(timezone.utc)
     snapshot = pathlib.Path(args.snapshot).resolve()
     try:
         manifest = _verify_snapshot(snapshot)
@@ -406,26 +460,73 @@ def cmd_drill(args) -> int:
         if not version or invalid_fks:
             print("ERROR: restored database failed schema verification.", file=sys.stderr)
             return 1
-    hmac_key = _require_env("BIDDING_RESTORE_DRILL_HMAC_KEY")
-    if len(hmac_key.encode("utf-8")) < 32:
-        print("ERROR: BIDDING_RESTORE_DRILL_HMAC_KEY must contain at least 32 bytes.", file=sys.stderr)
+    private_key_text = _require_env("BIDDING_RESTORE_DRILL_PRIVATE_KEY")
+    try:
+        private_key_bytes = base64.urlsafe_b64decode(
+            private_key_text.encode("ascii")
+        )
+        if len(private_key_bytes) != 32:
+            raise ValueError
+        signing_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+    except (ValueError, TypeError) as exc:
+        print(
+            "ERROR: BIDDING_RESTORE_DRILL_PRIVATE_KEY must be a base64 "
+            "Ed25519 raw private key.",
+            file=sys.stderr,
+        )
         return 1
-    recorded_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    completed_at = datetime.now(timezone.utc)
+    try:
+        snapshot_created_at = datetime.fromisoformat(
+            str(manifest["createdAt"]).replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+    except (KeyError, TypeError, ValueError):
+        print("ERROR: Backup creation timestamp is invalid.", file=sys.stderr)
+        return 1
+    rto_seconds = max(
+        0.0,
+        (completed_at - drill_started_at).total_seconds(),
+    )
+    rpo_seconds = max(
+        0.0,
+        (drill_started_at - snapshot_created_at).total_seconds(),
+    )
+    max_rto = max(
+        1,
+        int(os.environ.get("RESTORE_MAX_RTO_SECONDS", "3600")),
+    )
+    max_rpo = max(
+        1,
+        int(os.environ.get("BACKUP_MAX_RPO_SECONDS", "93600")),
+    )
+    if rto_seconds > max_rto or rpo_seconds > max_rpo:
+        print(
+            "ERROR: Restore drill violates approved RPO/RTO "
+            f"(rpo={rpo_seconds:.3f}s/{max_rpo}s, "
+            f"rto={rto_seconds:.3f}s/{max_rto}s).",
+            file=sys.stderr,
+        )
+        return 1
+    recorded_at = completed_at.isoformat().replace("+00:00", "Z")
     payload = {
         "format": "biddingflow-restore-drill",
-        "version": 1,
+        "version": 2,
         "recordedAt": recorded_at,
         "snapshot": str(snapshot),
         "databaseVerified": True,
         "filesVerified": True,
         "schemaVersion": int(version[0]),
+        "rpoSeconds": round(rpo_seconds, 3),
+        "rtoSeconds": round(rto_seconds, 3),
     }
     material = json.dumps(
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     payload["integrity"] = {
-        "algorithm": "HMAC-SHA256",
-        "hmacSha256": hmac.new(hmac_key.encode("utf-8"), material, hashlib.sha256).hexdigest(),
+        "algorithm": "Ed25519",
+        "signature": base64.urlsafe_b64encode(
+            signing_key.sign(material)
+        ).decode("ascii"),
     }
     state_file = pathlib.Path(
         os.environ.get("BIDDING_RESTORE_DRILL_STATE_FILE")
@@ -449,11 +550,7 @@ def cmd_list(args) -> int:
     if not backup_dir.is_dir():
         print(f"No backup directory found at {backup_dir}")
         return 0
-    snapshots = sorted(
-        [d for d in backup_dir.iterdir() if d.is_dir() and d.name.startswith(_SNAPSHOT_PREFIX)],
-        key=lambda d: d.name,
-        reverse=True,
-    )
+    snapshots = _snapshot_directories(backup_dir)
     if not snapshots:
         print("No backups found.")
         return 0
@@ -468,6 +565,20 @@ def cmd_list(args) -> int:
                 pass
         print(f"  {snap.name}  ({created_at})")
     return 0
+
+
+def cmd_drill_latest(args) -> int:
+    backup_dir = pathlib.Path(
+        args.backup_dir
+        or os.environ.get("BIDDING_BACKUP_DIR")
+        or str(DATA_DIR / "backups")
+    ).resolve()
+    snapshots = _snapshot_directories(backup_dir)
+    if not snapshots:
+        print(f"ERROR: No backup snapshot found in {backup_dir}.", file=sys.stderr)
+        return 1
+    args.snapshot = str(snapshots[0])
+    return cmd_drill(args)
 
 
 def _build_parser():
@@ -488,6 +599,12 @@ def _build_parser():
     drill_p = sub.add_parser("drill", help="Restore and verify in an isolated drill database")
     drill_p.add_argument("--snapshot", required=True)
 
+    drill_latest_p = sub.add_parser(
+        "drill-latest",
+        help="Restore and verify the newest snapshot in an isolated drill database",
+    )
+    drill_latest_p.add_argument("--backup-dir", default=None)
+
     sub.add_parser("list", help="List available backups")
     return parser
 
@@ -506,6 +623,8 @@ def main(argv=None) -> int:
         return cmd_verify(args)
     elif args.command == "drill":
         return cmd_drill(args)
+    elif args.command == "drill-latest":
+        return cmd_drill_latest(args)
     return 1
 
 

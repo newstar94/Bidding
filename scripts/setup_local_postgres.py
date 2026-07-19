@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import argparse
+import base64
 import secrets
 import sys
 from pathlib import Path
@@ -17,6 +18,8 @@ import subprocess
 import tempfile
 from urllib.parse import quote, urlparse
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -355,10 +358,13 @@ def main() -> None:
     _replace_env_value(lines, "POSTGRES_LOCAL_ADMIN_PASSWORD", password)
     runtime_password = values.get("DATABASE_RUNTIME_PASSWORD") or secrets.token_urlsafe(32)
     migrator_password = values.get("DATABASE_MIGRATOR_PASSWORD") or secrets.token_urlsafe(32)
+    backup_password = values.get("DATABASE_BACKUP_PASSWORD") or secrets.token_urlsafe(32)
     _replace_env_value(lines, "DATABASE_RUNTIME_ROLE", "biddingflow_app")
     _replace_env_value(lines, "DATABASE_MIGRATOR_ROLE", "biddingflow_migrator")
+    _replace_env_value(lines, "DATABASE_BACKUP_ROLE", "biddingflow_backup")
     _replace_env_value(lines, "DATABASE_RUNTIME_PASSWORD", runtime_password)
     _replace_env_value(lines, "DATABASE_MIGRATOR_PASSWORD", migrator_password)
+    _replace_env_value(lines, "DATABASE_BACKUP_PASSWORD", backup_password)
     runtime_url = (
         f"postgresql://biddingflow_app:{quote(runtime_password, safe='')}@127.0.0.1:"
         f"{PORT}/{DATABASE}?sslmode=disable"
@@ -367,8 +373,13 @@ def main() -> None:
         f"postgresql://biddingflow_migrator:{quote(migrator_password, safe='')}@127.0.0.1:"
         f"{PORT}/{DATABASE}?sslmode=disable"
     )
+    backup_url = (
+        f"postgresql://biddingflow_backup:{quote(backup_password, safe='')}@127.0.0.1:"
+        f"{PORT}/{DATABASE}?sslmode=disable"
+    )
     _replace_env_value(lines, "RUNTIME_DATABASE_URL", runtime_url)
     _replace_env_value(lines, "MIGRATOR_DATABASE_URL", migrator_url)
+    _replace_env_value(lines, "BACKUP_DATABASE_URL", backup_url)
     test_database_url = database_url.replace(f"/{DATABASE}?", f"/{TEST_DATABASE}?")
     _replace_env_value(lines, "TEST_DATABASE_URL", test_database_url)
     api_test_database_url = database_url.replace(
@@ -407,11 +418,32 @@ def main() -> None:
                 "Rotated invalid bootstrap ADMIN_PASSWORD in the ignored .env file.",
                 flush=True,
             )
-    if len(values.get("BIDDING_RESTORE_DRILL_HMAC_KEY", "").encode("utf-8")) < 32:
+    if (
+        not values.get("BIDDING_RESTORE_DRILL_PRIVATE_KEY", "")
+        or not values.get("BIDDING_RESTORE_DRILL_PUBLIC_KEY", "")
+    ):
+        restore_private_key = Ed25519PrivateKey.generate()
+        restore_public_key = restore_private_key.public_key()
         _replace_env_value(
             lines,
-            "BIDDING_RESTORE_DRILL_HMAC_KEY",
-            secrets.token_urlsafe(48),
+            "BIDDING_RESTORE_DRILL_PRIVATE_KEY",
+            base64.urlsafe_b64encode(
+                restore_private_key.private_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PrivateFormat.Raw,
+                    serialization.NoEncryption(),
+                )
+            ).decode("ascii"),
+        )
+        _replace_env_value(
+            lines,
+            "BIDDING_RESTORE_DRILL_PUBLIC_KEY",
+            base64.urlsafe_b64encode(
+                restore_public_key.public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
+            ).decode("ascii"),
         )
     if not values.get("MFA_ENCRYPTION_KEY", ""):
         _replace_env_value(

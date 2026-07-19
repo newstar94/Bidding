@@ -30,6 +30,15 @@ groups:
           summary: "Application 429 ratio is above 10%"
           runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
 
+      - alert: BiddingFlowAuthorizationFailuresSpike
+        expr: |
+          sum(rate(biddingflow_http_requests_total{status=~"401|403"}[5m])) > 2
+        for: 10m
+        labels: {severity: warning, owner: security-oncall}
+        annotations:
+          summary: "Authentication or authorization failures exceed 2 requests/second"
+          runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
+
       - alert: BiddingFlowHighP95Latency
         expr: |
           histogram_quantile(0.95,
@@ -74,6 +83,26 @@ groups:
           summary: "Document worker rejected queued exports/imports"
           runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
 
+      - alert: BiddingFlowDurableQueueBacklog
+        expr: |
+          biddingflow_background_jobs{status=~"pending|retry|processing"} > 100
+          or biddingflow_background_job_oldest_seconds{
+            status=~"pending|retry|processing"
+          } > 900
+        for: 10m
+        labels: {severity: warning, owner: application-oncall}
+        annotations:
+          summary: "A durable background queue is growing or older than 15 minutes"
+          runbook: "docs/RUNBOOK.md#job-nen-ben-vung"
+
+      - alert: BiddingFlowDurableQueueFailures
+        expr: biddingflow_background_jobs{status="failed"} > 0
+        for: 5m
+        labels: {severity: critical, owner: application-oncall}
+        annotations:
+          summary: "Email, partner or document jobs reached terminal failure"
+          runbook: "docs/RUNBOOK.md#job-nen-ben-vung"
+
       - alert: BiddingFlowPartnerUpstreamDegraded
         expr: |
           sum by (upstream) (
@@ -94,6 +123,14 @@ groups:
         labels: {severity: warning, owner: application-oncall}
         annotations:
           summary: "Partner lookup concurrency is saturated"
+          runbook: "docs/RUNBOOK.md#tra-cuu-doi-tac-bi-gian-doan"
+
+      - alert: BiddingFlowPartnerCircuitOpen
+        expr: biddingflow_partner_upstream_circuit_open == 1
+        for: 5m
+        labels: {severity: warning, owner: application-oncall}
+        annotations:
+          summary: "A shared partner-upstream circuit breaker is open"
           runbook: "docs/RUNBOOK.md#tra-cuu-doi-tac-bi-gian-doan"
 
       - alert: BiddingFlowPostgreSQLLockTimeout
@@ -137,6 +174,53 @@ groups:
         annotations:
           summary: "Requests are waiting for a PostgreSQL pool connection"
           runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
+
+      - alert: BiddingFlowPostgreSQLDeadlock
+        expr: increase(biddingflow_postgres_stat{stat="deadlocks"}[10m]) > 0
+        labels: {severity: critical, owner: database-oncall}
+        annotations:
+          summary: "PostgreSQL reported a deadlock"
+          runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
+
+      - alert: BiddingFlowPostgreSQLWaitingLocks
+        expr: biddingflow_postgres_waiting_locks > 0
+        for: 5m
+        labels: {severity: warning, owner: database-oncall}
+        annotations:
+          summary: "PostgreSQL locks have remained blocked for five minutes"
+          runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
+
+      - alert: BiddingFlowWebSocketBrokerLag
+        expr: biddingflow_websocket_outbox_oldest_seconds > 300
+        for: 10m
+        labels: {severity: warning, owner: application-oncall}
+        annotations:
+          summary: "The oldest WebSocket broker event is over five minutes old"
+          runbook: "docs/RUNBOOK.md#websocket-outbox-ton-dong"
+
+      - alert: BiddingFlowProcessMemoryHigh
+        expr: biddingflow_process_resident_memory_bytes > 1073741824
+        for: 15m
+        labels: {severity: warning, owner: platform-oncall}
+        annotations:
+          summary: "A BiddingFlow worker uses more than 1 GiB resident memory"
+          runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
+
+      - alert: BiddingFlowProcessCPUHigh
+        expr: rate(biddingflow_process_cpu_seconds_total[5m]) > 0.9
+        for: 15m
+        labels: {severity: warning, owner: platform-oncall}
+        annotations:
+          summary: "A BiddingFlow worker consumes over 90% of one CPU core"
+          runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
+
+      - alert: BiddingFlowProcessDescriptorHigh
+        expr: biddingflow_process_open_descriptors > 2048
+        for: 15m
+        labels: {severity: warning, owner: platform-oncall}
+        annotations:
+          summary: "A BiddingFlow worker holds more than 2048 descriptors/handles"
+          runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
 
       - alert: BiddingFlowDiskSpaceLow
         expr: |

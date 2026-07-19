@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -53,8 +54,11 @@ FORBIDDEN_PARTS = {
     "tests",
 }
 FORBIDDEN_NAMES = {".env", "bidding.db", "bidding.db-shm", "bidding.db-wal"}
-FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".pyc", ".tmp"}
+FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".map", ".pyc", ".tmp"}
 REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+HASHED_ASSET_PATH = re.compile(
+    r"^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$"
+)
 
 
 def _load_env() -> None:
@@ -83,6 +87,51 @@ def _assert_safe(relative_path: Path) -> None:
         raise RuntimeError(f"Forbidden production file: {relative_path.as_posix()}")
 
 
+def _validate_frontend_artifacts(manifest_path: Path) -> None:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or not manifest:
+        raise RuntimeError("Vite manifest is empty or invalid.")
+    referenced: set[str] = set()
+    for entry in manifest.values():
+        if not isinstance(entry, dict):
+            raise RuntimeError("Vite manifest contains an invalid entry.")
+        values = [entry.get("file")]
+        values.extend(entry.get("css") or [])
+        values.extend(entry.get("assets") or [])
+        for value in values:
+            if value is None:
+                continue
+            asset_path = str(value).replace("\\", "/")
+            if not HASHED_ASSET_PATH.fullmatch(asset_path):
+                raise RuntimeError(
+                    f"Production asset is not content-hashed: {asset_path}"
+                )
+            candidate = (PROJECT_ROOT / "dist" / asset_path).resolve()
+            dist_root = (PROJECT_ROOT / "dist").resolve()
+            if dist_root not in candidate.parents or not candidate.is_file():
+                raise RuntimeError(
+                    f"Vite manifest references a missing/unsafe asset: {asset_path}"
+                )
+            if candidate.suffix.lower() in {".js", ".css"} and b"sourceMappingURL=" in candidate.read_bytes():
+                raise RuntimeError(
+                    f"Production asset exposes source-map metadata: {asset_path}"
+                )
+            referenced.add(asset_path)
+
+    actual = {
+        path.relative_to(PROJECT_ROOT / "dist").as_posix()
+        for path in (PROJECT_ROOT / "dist" / "assets").rglob("*")
+        if path.is_file()
+    }
+    if referenced != actual:
+        missing = sorted(actual - referenced)
+        stale = sorted(referenced - actual)
+        raise RuntimeError(
+            "Vite asset set does not match its manifest "
+            f"(unreferenced={missing[:5]}, missing={stale[:5]})."
+        )
+
+
 def collect_runtime_files() -> list[tuple[Path, Path]]:
     selected: dict[str, tuple[Path, Path]] = {}
     for directory_name, predicate in RUNTIME_DIRECTORIES.items():
@@ -107,6 +156,7 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
     manifest_path = PROJECT_ROOT / "dist" / ".vite" / "manifest.json"
     if manifest_path.as_posix() not in {source.as_posix() for source, _ in selected.values()}:
         raise RuntimeError("Vite manifest is missing from the production selection.")
+    _validate_frontend_artifacts(manifest_path)
     secure_build_path = PROJECT_ROOT / "dist" / "secure-build.json"
     if not secure_build_path.is_file():
         raise RuntimeError(

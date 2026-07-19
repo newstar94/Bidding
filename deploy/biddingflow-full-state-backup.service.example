@@ -7,10 +7,10 @@ RequiresMountsFor=/var/lib/biddingflow /var/backups/biddingflow
 
 [Service]
 Type=oneshot
-User=biddingflow
+User=biddingflow-backup
 Group=biddingflow
 WorkingDirectory=/opt/biddingflow
-EnvironmentFile=/etc/biddingflow/biddingflow.env
+EnvironmentFile=/etc/biddingflow/biddingflow-backup.env
 # pg_dump creates an online, transactionally consistent snapshot; web workers
 # remain available for the entire backup.
 ExecStart=/opt/biddingflow/.venv/bin/python /opt/biddingflow/scripts/backup.py create
@@ -20,6 +20,9 @@ IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 PrivateTmp=true
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=true
 ProtectSystem=strict
 ProtectHome=true
 ReadOnlyPaths=/var/lib/biddingflow/uploads /var/lib/biddingflow/word-templates

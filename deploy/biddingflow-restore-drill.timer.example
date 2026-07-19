@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the BiddingFlow restore drill monthly
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+RandomizedDelaySec=6h
+Unit=biddingflow-restore-drill.service
+
+[Install]
+WantedBy=timers.target

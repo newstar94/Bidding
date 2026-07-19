@@ -110,6 +110,27 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
         terminate_process_tree(process, timeout=15)
 
 
+def test_backup_role_is_read_only_and_cannot_create_objects() -> None:
+    database_url = os.environ.get("BACKUP_DATABASE_URL", "").strip()
+    if not database_url:
+        pytest.skip("BACKUP_DATABASE_URL is not configured")
+
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM database_metadata"
+        ).fetchone()[0] >= 1
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "UPDATE database_metadata SET updated_at = updated_at WHERE false"
+            )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("CREATE TABLE backup_role_escape_probe(id integer)")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "CREATE TEMP TABLE backup_temp_escape_probe(id integer)"
+            )
+
+
 def test_runtime_startup_fails_closed_when_schema_is_missing() -> None:
     database_url = os.environ.get("RESTORE_DRILL_DATABASE_URL", "").strip()
     if not database_url:
