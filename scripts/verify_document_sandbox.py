@@ -10,6 +10,13 @@ import subprocess
 import sys
 import tempfile
 
+# Direct execution sets ``sys.path[0]`` to ``scripts/`` on Linux. Add the
+# immutable repository root before importing the worker modules so the same
+# command used by systemd/CI behaves consistently across platforms.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from backend.documents.document_sandbox import (
     build_bwrap_command,
     validate_document_sandbox_configuration,
