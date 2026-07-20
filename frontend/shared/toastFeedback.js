@@ -54,6 +54,35 @@ const DELETE_ENTITIES = Object.freeze([
   { pattern: /xóa .*trạng thái hồ sơ/u, message: "Xóa trạng thái hồ sơ thành công." }
 ]);
 
+const TOAST_ENTITIES = Object.freeze([
+  { pattern: /báo cáo đánh giá/u, label: "báo cáo đánh giá" },
+  { pattern: /phê duyệt.*(?:danh sách nhà thầu|kết quả)/u, label: "kết quả gói thầu" },
+  { pattern: /kết quả (?:lựa chọn nhà thầu|trúng thầu)/u, label: "kết quả gói thầu" },
+  { pattern: /(?:biên bản )?mở thầu/u, label: "thông tin mở thầu" },
+  { pattern: /(?:hồ sơ )?mời thầu|hsmt/u, label: "hồ sơ mời thầu" },
+  { pattern: /phân quyền|ma trận thầu/u, label: "phân quyền" },
+  { pattern: /thiết lập tài khoản|thông tin tài khoản/u, label: "thiết lập tài khoản" },
+  { pattern: /vai trò người dùng/u, label: "vai trò người dùng" },
+  { pattern: /tài khoản (?:người dùng|nhân viên)/u, label: "tài khoản" },
+  { pattern: /thông tin cá nhân/u, label: "thông tin cá nhân" },
+  { pattern: /nhân viên|nhân sự/u, label: "nhân viên" },
+  { pattern: /gói (?:đăng ký|dịch vụ|cước)/u, label: "gói dịch vụ" },
+  { pattern: /tổ chức/u, label: "tổ chức" },
+  { pattern: /chủ đầu tư/u, label: "chủ đầu tư" },
+  { pattern: /nhà thầu/u, label: "nhà thầu" },
+  { pattern: /chuyên gia/u, label: "chuyên gia" },
+  { pattern: /gói thầu/u, label: "gói thầu" },
+  { pattern: /kế hoạch(?: lựa chọn nhà thầu| lcnt)?/u, label: "kế hoạch" },
+  { pattern: /hợp đồng/u, label: "hợp đồng" },
+  { pattern: /timeline/u, label: "timeline" },
+  { pattern: /biểu mẫu(?: word)?|mẫu/u, label: "biểu mẫu" },
+  { pattern: /trạng thái hồ sơ/u, label: "trạng thái hồ sơ" },
+  { pattern: /phân công/u, label: "phân công" },
+  { pattern: /phần lô/u, label: "phần lô" },
+  { pattern: /biến (?:ánh xạ|danh sách|kết quả)/u, label: "biến Word" },
+  { pattern: /dữ liệu|dòng|excel|file/u, label: "dữ liệu" }
+]);
+
 const SAVE_ENTITIES = Object.freeze([
   { pattern: /kế hoạch/u, label: "kế hoạch" },
   { pattern: /gói thầu/u, label: "gói thầu" },
@@ -68,8 +97,13 @@ const SAVE_ENTITIES = Object.freeze([
 
 const FAILURE_ACTIONS = Object.freeze([
   { pattern: /(?:xóa|loại bỏ)/u, action: "Xóa" },
-  { pattern: /(?:lưu|đồng bộ|ghi nhận)/u, action: "Lưu" },
   { pattern: /(?:cập nhật|thay đổi|chỉnh sửa)/u, action: "Cập nhật" },
+  { pattern: /(?:thêm lại|khôi phục)/u, action: "Khôi phục" },
+  { pattern: /(?:thêm|tạo)/u, action: "Thêm" },
+  { pattern: /(?:phê duyệt|duyệt)/u, action: "Phê duyệt" },
+  { pattern: /phát hành/u, action: "Phát hành" },
+  { pattern: /(?:mở thầu|tiến hành mở thầu)/u, action: "Mở thầu" },
+  { pattern: /(?:lưu|đồng bộ|ghi nhận)/u, action: "Lưu" },
   { pattern: /(?:tải danh sách|tải dữ liệu|khởi tạo dữ liệu)/u, action: "Tải dữ liệu" },
   { pattern: /(?:tải lên|upload)/u, action: "Tải lên" },
   { pattern: /(?:tải xuống|download)/u, action: "Tải xuống" },
@@ -89,11 +123,34 @@ function cleanMessage(message) {
 function normalizeSuccessMessage(message) {
   const comparable = message.toLocaleLowerCase("vi-VN");
   const hasSaveAction = /(?:^|\s)(?:đã\s+)?lưu(?!\s+trữ)(?=\s|[.!?,]|$)/u.test(comparable);
+  const entity = TOAST_ENTITIES.find(({ pattern }) => pattern.test(comparable))?.label;
 
-  if (hasSaveAction && /phê duyệt/u.test(comparable)) return "Phê duyệt thành công.";
+  if (hasSaveAction && /phê duyệt/u.test(comparable)) {
+    return entity ? `Phê duyệt ${entity} thành công.` : "Phê duyệt thành công.";
+  }
 
   const deletedEntity = DELETE_ENTITIES.find(({ pattern }) => pattern.test(comparable));
   if (deletedEntity) return deletedEntity.message;
+
+  if (entity) {
+    if (/(?:nhập|import|xử lý).*?(?:dòng|dữ liệu|excel)/u.test(comparable)) return `Nhập ${entity} thành công.`;
+    if (/(?:thêm lại|khôi phục)/u.test(comparable)) return `Khôi phục ${entity} thành công.`;
+    if (/(?:thêm|tạo)(?: mới)?/u.test(comparable)) return `Thêm ${entity} thành công.`;
+    if (/(?:cập nhật|thay đổi|chỉnh sửa|ghi đè|áp dụng|đồng bộ)/u.test(comparable)) {
+      return `Cập nhật ${entity} thành công.`;
+    }
+    if (/(?:mở thầu|tiến hành mở thầu)/u.test(comparable)) return `Mở thầu ${entity} thành công.`;
+    if (/(?:phê duyệt|duyệt)/u.test(comparable)) return `Phê duyệt ${entity} thành công.`;
+    if (/(?:phát hành)/u.test(comparable)) return `Phát hành ${entity} thành công.`;
+    if (/(?:tải lên|upload)/u.test(comparable)) return `Tải lên ${entity} thành công.`;
+    if (/(?:tải xuống|download)/u.test(comparable)) return `Tải xuống ${entity} thành công.`;
+    if (/(?:xuất|export)/u.test(comparable)) return `Xuất ${entity} thành công.`;
+    if (/(?:sao chép|copy)/u.test(comparable)) return `Sao chép ${entity} thành công.`;
+    if (/(?:mở khóa|unlock)/u.test(comparable)) return `Mở khóa ${entity} thành công.`;
+    if (/(?:khóa|lock)/u.test(comparable)) return `Khóa ${entity} thành công.`;
+    if (/(?:gia hạn)/u.test(comparable)) return `Gia hạn ${entity} thành công.`;
+    if (hasSaveAction) return `Lưu ${entity} thành công.`;
+  }
 
   if (hasSaveAction) {
     const entity = SAVE_ENTITIES.find(({ pattern }) => pattern.test(comparable));
@@ -113,7 +170,10 @@ function normalizeErrorMessage(message) {
     return message;
   }
   const match = FAILURE_ACTIONS.find(({ pattern }) => pattern.test(comparable));
-  if (match) return `${match.action} thất bại. Vui lòng thử lại.`;
+  if (match) {
+    const entity = TOAST_ENTITIES.find(({ pattern }) => pattern.test(comparable))?.label;
+    return `${match.action}${entity ? ` ${entity}` : ""} thất bại. Vui lòng thử lại.`;
+  }
   return message && message.length <= 120 ? message : DEFAULT_MESSAGES.error;
 }
 
