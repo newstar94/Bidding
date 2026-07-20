@@ -843,7 +843,8 @@ SCHEMA_DINH_NGHIA = {
             "loai": "TEXT NOT NULL DEFAULT 'chuyen_gia'",
             "chuc_vu": "TEXT",
             "cong_viec": "TEXT",
-            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         },
         "primary_keys": ["organization_id", "goi_thau_id", "chuyen_gia_id", "loai"],
         "foreign_keys": [

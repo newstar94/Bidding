@@ -186,7 +186,7 @@ export function renderSuperAdminPanel() {
                     <ul class="package-features">
                         <li><i data-lucide="check"></i> Hạn mức nhân sự: <strong>${escapeHTML(quotaText)}</strong></li>
                         <li><i data-lucide="check"></i> Lập ma trận phân quyền</li>
-                        <li><i data-lucide="check"></i> Đồng bộ dữ liệu SQLite động</li>
+                        <li><i data-lucide="check"></i> Đồng bộ dữ liệu PostgreSQL tự động</li>
                         <li><i data-lucide="check"></i> Nhập dữ liệu thầu từ Excel</li>
                     </ul>
                     <div class="package-action-btn-group">

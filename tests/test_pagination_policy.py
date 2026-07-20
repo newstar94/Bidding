@@ -318,6 +318,22 @@ def test_offset_pagination_clamps_bounds_and_uses_only_allowlisted_sort(monkeypa
     assert connection.closed >= 1
 
 
+def test_postgres_text_search_binds_wildcards_in_parameter(monkeypatch):
+    cursor, _ = _install_success_policy(monkeypatch)
+
+    response = pagination._paginate_records_blocking(
+        _request(table="kehoach", search="Admin")
+    )
+
+    assert response.status_code == 200
+    count_sql, count_params = next(
+        call for call in cursor.calls if "COUNT(*)" in call[0]
+    )
+    assert "LIKE bf_unaccent(lower(?))" in count_sql
+    assert "LIKE '%'" not in count_sql
+    assert count_params[-1] == "%admin%"
+
+
 def test_cursor_pagination_issues_and_accepts_only_signed_cursor(monkeypatch):
     rows = [
         {"id": "a", "organization_id": "org-1", "name": "A"},
@@ -448,7 +464,7 @@ def test_search_uses_fixed_column_sets_and_bound_parameter(
     )
     assert expected_column in count_sql
     assert "O'REILLY" not in count_sql
-    assert count_params[-1] == "o'reilly%"
+    assert count_params[-1] == "%o'reilly%%"
 
 
 def test_expert_search_hides_identity_column_without_sensitive_permission(monkeypatch):

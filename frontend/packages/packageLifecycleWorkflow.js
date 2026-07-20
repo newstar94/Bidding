@@ -70,7 +70,6 @@ export async function deleteGoiThau(id) {
       await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
       return;
     }
-    await this.view.customAlert("Thành công", "Đã xóa phiên bản gói thầu gần nhất!", "check-circle");
   } else if (deleteChoice === 2 || deleteConfirmed) {
     deleteAllPackageVersions(this.model, deleteContext);
     deleteContext.planIds.forEach((pId) => {
@@ -99,6 +98,5 @@ export async function deleteGoiThau(id) {
       await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
       return;
     }
-    await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của gói thầu!", "check-circle");
   }
 }

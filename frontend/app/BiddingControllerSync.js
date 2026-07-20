@@ -376,6 +376,8 @@ export function ensureDetailRecordLoaded(tabName, action) {
   return promise;
 }
 export function autoSync() {
+  const deferPostCommitRender = this._deferPostCommitRender === true;
+  this._deferPostCommitRender = false;
   if (this._autoSyncPromise) {
     this._autoSyncQueued = true;
     return this._autoSyncPromise.then((result) => {
@@ -562,15 +564,11 @@ export function autoSync() {
       hasDeletions: deletedKeys.size > 0,
       serverStateChanged: orphanStateChanged
     });
-    await renderChangedState(this, postCommitRenderKeys);
+    if (!deferPostCommitRender) {
+      await renderChangedState(this, postCommitRenderKeys);
+    }
     if (Array.isArray(data.deleteImpacts) && data.deleteImpacts.length > 0 && this.view?.showToast) {
-      const affected = data.deleteImpacts.reduce((total, impact) => total + Number(impact?.totalCount || 0), 0);
-      const archived = data.deleteImpacts.filter((impact) => impact?.action === "archived").length;
-      this.view.showToast(
-        "Thành công",
-        `${archived ? `${archived} mục đã được lưu trữ; ` : ""}${affected} bản ghi liên quan đã được cập nhật.`,
-        "success"
-      );
+      this.view.showToast("Thành công", "Xóa thành công.", "success");
     }
     this._syncConflict = null;
     hideOfflineBanner();

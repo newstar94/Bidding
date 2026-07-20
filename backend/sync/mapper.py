@@ -4,7 +4,7 @@ import re
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.shared.domain_enums import enum_label
-from backend.shared.date_utils import normalize_datetime_value
+from backend.shared.date_utils import normalize_date_value, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
 from backend.shared.text_utils import (
@@ -241,7 +241,8 @@ def _save_evaluation_rounds(cursor, package_id, item, organization_id, owner_typ
             (
                 round_id, organization_id, owner_type, package_id, round_type, order,
                 "completed" if saved else "draft", block.get("soBaoCao") or "",
-                block.get("ngayBaoCao") or "", 1 if block.get("qualifiedSaved") else 0,
+                normalize_date_value(block.get("ngayBaoCao")),
+                1 if block.get("qualifiedSaved") else 0,
                 actor_user_id if saved else None, updated_at if saved else None,
                 dump_evaluation_metadata(extension), sync_version, updated_at,
             ),

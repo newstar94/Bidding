@@ -303,9 +303,13 @@ def _paginate_records_blocking(request):
                     f"COALESCE({column}, '')" for column in columns
                 )
                 query_parts.append(
-                    f"bf_unaccent(lower({expression})) LIKE '%' || bf_unaccent(lower(?)) || '%'"
+                    f"bf_unaccent(lower({expression})) LIKE bf_unaccent(lower(?))"
                 )
-                query_params.append(search)
+                # Keep wildcard characters in the bound value. Literal `%`
+                # characters in the SQL text are interpreted by psycopg as
+                # placeholder prefixes after the qmark adapter translates `?`
+                # to `%s`, which made every non-empty search return HTTP 500.
+                query_params.append(f"%{search}%")
 
 
         if search:

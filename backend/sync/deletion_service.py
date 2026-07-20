@@ -13,7 +13,6 @@ from backend.sync.delete_policy import (
     build_delete_impact,
     delete_assignment_dependents,
     find_blocking_delete_references,
-    has_recent_password_reauthentication,
     insert_delete_audit,
 )
 from backend.sync.mapper import map_db_to_json
@@ -120,16 +119,6 @@ def apply_sync_deletions(
                     "impact": impact,
                 })
                 continue
-            if not has_recent_password_reauthentication(
-                cursor, actor_user_id, privileged_reauth_ttl_seconds, session_id
-            ):
-                result["privilegedError"] = {
-                    "error": privileged_reauth_error_message,
-                    "code": "PRIVILEGED_REAUTH_REQUIRED",
-                    "deleteImpact": {"table": table_key, "id": record_id, **impact},
-                }
-                return result
-
         references = find_blocking_delete_references(
             cursor, organization_id, table_name, record_id
         )

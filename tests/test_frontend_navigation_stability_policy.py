@@ -132,3 +132,12 @@ def test_plan_success_waits_for_paginated_tables_to_finish_refreshing():
     assert "afterPersist: () => Promise.all([" in save_block
     assert "this.view.renderKeHoachTable()" in save_block
     assert "this.view.renderGoiThauTable()" in save_block
+
+
+def test_server_paginated_mutation_defers_duplicate_post_commit_render():
+    mutation_source = _source("frontend/shared/MutationService.js")
+    sync_source = _source("frontend/app/BiddingControllerSync.js")
+
+    assert "controller._deferPostCommitRender = true;" in mutation_source
+    assert "const deferPostCommitRender = this._deferPostCommitRender === true;" in sync_source
+    assert "if (!deferPostCommitRender)" in sync_source

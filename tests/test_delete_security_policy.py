@@ -157,7 +157,6 @@ class _DeletionHarness:
     record: dict
     allowed: bool = True
     manager: bool = True
-    reauthenticated: bool = True
     references: list | None = None
     archive_count: int = 1
 
@@ -174,11 +173,6 @@ class _DeletionHarness:
             deletion_service,
             "is_organization_manager",
             lambda *_args, **_kwargs: self.manager,
-        )
-        self.monkeypatch.setattr(
-            deletion_service,
-            "has_recent_password_reauthentication",
-            lambda *_args, **_kwargs: self.reauthenticated,
         )
         self.monkeypatch.setattr(
             deletion_service,
@@ -284,7 +278,7 @@ def test_deletion_rejects_version_conflict_and_archived_record(
     assert archived["impacts"] == []
 
 
-def test_deletion_enforces_record_and_elevated_permissions(
+def test_deletion_enforces_record_and_elevated_permissions_without_password_reauthentication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     record = {"id": "record-1", "row_version": 1}
@@ -302,14 +296,14 @@ def test_deletion_enforces_record_and_elevated_permissions(
     )
     assert result["errors"][0]["code"] == "DELETE_ELEVATED_PERMISSION_REQUIRED"
 
-    needs_reauth = _DeletionHarness(
-        monkeypatch, record, reauthenticated=False
-    ).install()
+    allowed_manager = _DeletionHarness(monkeypatch, record).install()
     result = _apply(
         _DeletionCursor(record),
         [{"table": "goithau", "id": "record-1", "expectedVersion": 1}],
     )
-    assert result["privilegedError"]["code"] == "PRIVILEGED_REAUTH_REQUIRED"
+    assert result["errors"] == []
+    assert result["privilegedError"] is None
+    assert result["impacts"][0]["action"] == "deleted"
 
 
 def test_personal_owner_can_delete_own_high_impact_aggregate(
@@ -320,7 +314,6 @@ def test_personal_owner_can_delete_own_high_impact_aggregate(
         monkeypatch,
         record,
         manager=False,
-        reauthenticated=False,
     ).install()
     result = _apply(
         _DeletionCursor(record),

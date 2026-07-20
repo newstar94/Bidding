@@ -4,6 +4,14 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
     await controller.model.persistData(key);
   }
   const usesServerPagination = Boolean(controller.model?.useServerSidePagination);
+  // The server-side mutation flow already refreshes changed tables from
+  // autoSync(). Defer that refresh when the caller supplies afterPersist so
+  // the view is rendered exactly once after the sync has committed. Rendering
+  // twice can abort the first pagination request and briefly show a false
+  // "cannot load data" state after a delete.
+  if (usesServerPagination && typeof afterPersist === "function") {
+    controller._deferPostCommitRender = true;
+  }
   if (!usesServerPagination && typeof afterPersist === "function") {
     await afterPersist();
   }

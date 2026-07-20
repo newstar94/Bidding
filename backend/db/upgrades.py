@@ -83,6 +83,17 @@ def _upgrade_to_v4_enforce_single_active_session(cursor, context):
     )
 
 
+def _upgrade_to_v5_add_package_expert_updated_at(cursor, context):
+    """Add the timestamp written by package expert relation upserts."""
+
+    del context
+    cursor.execute(
+        """ALTER TABLE goi_thau_chuyen_gia
+           ADD COLUMN IF NOT EXISTS updated_at
+           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -94,6 +105,11 @@ UPGRADES = (
         4,
         "enforce_single_active_session",
         _upgrade_to_v4_enforce_single_active_session,
+    ),
+    DatabaseUpgrade(
+        5,
+        "add_package_expert_updated_at",
+        _upgrade_to_v5_add_package_expert_updated_at,
     ),
 )
 

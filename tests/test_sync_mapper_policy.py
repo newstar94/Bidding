@@ -326,7 +326,13 @@ def test_save_plan_and_complete_package_children():
     assert len(_many_rows(cursor, "goi_thau_lam_ro")) == 2
     assert len(_many_rows(cursor, "goi_thau_moc_tien_do")) == 1
     assert len(_many_rows(cursor, "goi_thau_chuyen_gia")) == 1
-    assert any("INSERT INTO vong_danh_gia" in sql for sql, _ in cursor.calls)
+    evaluation_round_params = [
+        params
+        for sql, params in cursor.calls
+        if "INSERT INTO vong_danh_gia" in sql
+    ]
+    assert len(evaluation_round_params) == 2
+    assert all(params[8] is None for params in evaluation_round_params)
     assert any("INSERT INTO tieu_chi_danh_gia" in sql for sql, _ in cursor.calls)
 
 

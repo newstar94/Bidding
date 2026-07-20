@@ -47,7 +47,6 @@ export async function deleteKeHoach(id) {
       await persistAndSync(this, "kehoach", {
         afterPersist: () => this.view.renderKeHoachTable()
       });
-      await this.view.customAlert("Thành công", "Đã xóa phiên bản kế hoạch gần nhất!", "check-circle");
       return;
     } else if (choice === 2) {
       const deletionCheck = canDeleteVersions(relatedPlans, [{
@@ -67,7 +66,6 @@ export async function deleteKeHoach(id) {
       await persistAndSync(this, "kehoach", {
         afterPersist: () => this.view.renderKeHoachTable()
       });
-      await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của kế hoạch!", "check-circle");
       return;
     }
   } else {

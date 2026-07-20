@@ -47,7 +47,6 @@ export async function deleteHopDong(id) {
     } catch (e) {
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
-    await this.view.customAlert("Thành công", "Đã xóa phiên bản hợp đồng gần nhất!", "check-circle");
   } else if (deleteChoice === 2 || deleteConfirmed) {
     const result = removeAllVersions(this.model.state.hopdong, targetHd);
     this.model.state.hopdong = result.records;
@@ -61,9 +60,6 @@ export async function deleteHopDong(id) {
       }
     } catch (e) {
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
-    }
-    if (deleteChoice === 2) {
-      await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của hợp đồng!", "check-circle");
     }
   }
 }

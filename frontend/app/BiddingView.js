@@ -970,7 +970,8 @@ export class BiddingView {
   customAlert(title, message, iconName = "info", focusTarget = null) {
     const isSuccess = title === "Thành công" || title && title.toLowerCase().includes("thành công") || title === "Chúc mừng" || title === "Hoàn thành" || iconName === "check-circle";
     if (isSuccess) {
-      this.showToast("Thành công", message, "success");
+      const feedbackMessage = title && title !== "Thành công" ? `${title}. ${message || ""}` : message;
+      this.showToast("Thành công", feedbackMessage, "success");
       return new Promise((resolve) => {
         setTimeout(() => resolve(true), 1800);
       });
