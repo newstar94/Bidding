@@ -102,7 +102,8 @@ export async function renderHopDongTable() {
       contractActions.push(...standardEditDeleteActions({
         id: displayedHd.id,
         editCommand: "edit-contract",
-        deleteCommand: "delete-contract"
+        deleteCommand: "delete-contract",
+        allowDelete: this.model.state.activerole !== "employee"
       }));
       const actionHtml = renderEntityActions(contractActions, { visible: displayedHd.id === h.id });
       return `

@@ -98,6 +98,17 @@ export function collectCommittedMutationKeys(payload = {}) {
 const DASHBOARD_SUMMARY_KEYS = new Set([
   "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments"
 ]);
+const DELETE_ENTITY_LABELS = Object.freeze({
+  kehoach: "kế hoạch",
+  goithau: "gói thầu",
+  chudautu: "chủ đầu tư",
+  nhathau: "nhà thầu",
+  chuyengia: "chuyên gia",
+  hopdong: "hợp đồng",
+  assignments: "phân công",
+  thongtinmothau: "thông tin mở thầu",
+  custompaperstatuses: "trạng thái hồ sơ"
+});
 const NON_RETRYABLE_WEBSOCKET_CLOSE_CODES = new Set([1000, 4001, 4003, 4401, 4403]);
 const PASSIVE_WORKSPACE_STORAGE_KEYS = new Set([
   "bf_last_sync_version",
@@ -283,6 +294,16 @@ function showSyncErrorReport(controller, errors, rejectedCount = 0) {
       }
     );
   }
+}
+
+function deleteSuccessMessage(payload = {}, deleteImpacts = []) {
+  const deletionKeys = [
+    ...(Array.isArray(payload.deletions) ? payload.deletions.map((item) => item?.table) : []),
+    ...(Array.isArray(deleteImpacts) ? deleteImpacts.map((item) => item?.table) : [])
+  ].filter((key) => DELETE_ENTITY_LABELS[key]);
+  const labels = [...new Set(deletionKeys.map((key) => DELETE_ENTITY_LABELS[key]))];
+  if (labels.length === 0) return "Xóa thành công.";
+  return `Xóa ${labels[0]} thành công.`;
 }
 const DETAIL_ROUTE_TABLE = {
   "goithau-detail": "goithau",
@@ -568,7 +589,7 @@ export function autoSync() {
       await renderChangedState(this, postCommitRenderKeys);
     }
     if (Array.isArray(data.deleteImpacts) && data.deleteImpacts.length > 0 && this.view?.showToast) {
-      this.view.showToast("Thành công", "Xóa thành công.", "success");
+      this.view.showToast("Thành công", deleteSuccessMessage(payload, data.deleteImpacts), "success");
     }
     this._syncConflict = null;
     hideOfflineBanner();

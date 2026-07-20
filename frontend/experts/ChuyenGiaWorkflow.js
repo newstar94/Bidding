@@ -1,7 +1,7 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import {
   createInitialVersion,
   createNextVersion,
@@ -28,6 +28,7 @@ export async function deleteChuyenGia(id) {
     await this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép xóa Chuyên gia khỏi hệ thống!", "lock");
     return;
   }
+  await refreshRecordBeforeDelete(this, "chuyengia", id);
   const assignedPackages = this.model.state.goithau.filter((gt) => {
     const inChuyenGia = (gt.toChuyenGia || []).some((item) => item.chuyenGiaId === id);
     const inThamDinh = (gt.toThamDinh || []).some((item) => item.chuyenGiaId === id);
@@ -61,10 +62,6 @@ export async function deleteChuyenGia(id) {
   }
 }
 export function editChuyenGia(id) {
-  if (id && this.model.state.activerole === "employee") {
-    this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép chỉnh sửa thông tin Chuyên gia!", "lock");
-    return;
-  }
   if (!document.getElementById("modal-chuyengia")) {
     this.ensureLazyModal?.("modal-chuyengia").then(() => this.editChuyenGia(id));
     return;

@@ -37,6 +37,24 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
   return syncResult;
 }
 
+/**
+ * Deletions can be initiated from a paginated view whose IndexedDB copy is
+ * older than the server row. Refresh the target before capturing its
+ * expectedVersion so the first delete request is not rejected as a conflict.
+ */
+export async function refreshRecordBeforeDelete(controller, tableKey, recordId) {
+  const localRecord = controller?.model?.state?.[tableKey]?.find?.(
+    (record) => String(record?.id) === String(recordId)
+  ) || null;
+  if (typeof controller?.fetchRecordByLookup !== "function") return localRecord;
+  try {
+    return await controller.fetchRecordByLookup(tableKey, recordId) || localRecord;
+  } catch (error) {
+    console.warn(`[Delete] Could not refresh ${tableKey}/${recordId} before deletion.`, error);
+    return localRecord;
+  }
+}
+
 export function applyStateMutations(model, { upserts = {}, deletions = {}, mutate } = {}) {
   const changed = new Set();
   if (typeof mutate === "function") mutate(model.state, model);

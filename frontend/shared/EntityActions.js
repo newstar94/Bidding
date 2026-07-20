@@ -17,9 +17,9 @@ export function renderEntityActions(actions, { visible = true } = {}) {
   return `<div class="action-btn-group">${buttons}</div>`;
 }
 
-export function standardEditDeleteActions({ id, editCommand, deleteCommand }) {
+export function standardEditDeleteActions({ id, editCommand, deleteCommand, allowEdit = true, allowDelete = true }) {
   return [
-    { id, command: editCommand, className: "btn-edit", title: "Sửa", icon: "edit-2" },
-    { id, command: deleteCommand, className: "btn-delete", title: "Xóa", icon: "trash-2" }
-  ];
+    allowEdit && { id, command: editCommand, className: "btn-edit", title: "Sửa", icon: "edit-2" },
+    allowDelete && { id, command: deleteCommand, className: "btn-delete", title: "Xóa", icon: "trash-2" }
+  ].filter(Boolean);
 }

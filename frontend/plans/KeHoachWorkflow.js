@@ -10,12 +10,12 @@ import {
   removeAllVersions,
   removeLatestVersion
 } from "../shared/VersionedEntityService.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 export async function deleteKeHoach(id) {
-  const targetPlan = this.model.state.kehoach.find((k) => k.id === id);
+  const targetPlan = await refreshRecordBeforeDelete(this, "kehoach", id);
   if (!targetPlan) return;
   const rootId = targetPlan.rootId || targetPlan.id;
   const relatedPlans = this.model.state.kehoach.filter((kh) => (kh.rootId || kh.id) === rootId);

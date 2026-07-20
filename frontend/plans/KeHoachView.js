@@ -83,7 +83,8 @@ export async function renderKeHoachTable() {
       const planActions = standardEditDeleteActions({
         id: displayedKh.id,
         editCommand: "edit-plan",
-        deleteCommand: "delete-plan"
+        deleteCommand: "delete-plan",
+        allowDelete: this.model.state.activerole !== "employee"
       });
       if (!isLatest) planActions.shift();
       const actionHtml = renderEntityActions(planActions);

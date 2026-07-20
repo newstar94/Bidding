@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 ﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { createInitialVersion, createNextVersion, getNextVersion, preserveRowVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -17,6 +17,7 @@ import {
 } from "./PartnerFormController.js";
 const todayYmd = getCurrentDateYmd;
 export async function deleteChuDauTu(id) {
+  await refreshRecordBeforeDelete(this, "chudautu", id);
   const hasPlans = this.model.state.kehoach.some((k) => k.chuDauTuId === id);
   if (hasPlans) {
     await this.view.customAlert(

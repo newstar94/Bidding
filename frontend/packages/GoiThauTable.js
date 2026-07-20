@@ -202,6 +202,7 @@ export async function renderGoiThauTable() {
             `;
       const isCanceledPackage = displayedGt.trangThai === "Hủy thầu";
       const isCompletedPackage = displayedGt.trangThai === "Đã có kết quả";
+      const allowDelete = this.model.state.activerole !== "employee";
       let packageActions;
       if (displayedGt.id !== gt.id) {
         packageActions = [{ id: displayedGt.id, command: "show-package", className: "btn-view", title: "Xem chi tiết Gói thầu", icon: "eye" }];
@@ -212,13 +213,14 @@ export async function renderGoiThauTable() {
             title: "Khôi phục hủy thầu", icon: "rotate-ccw", style: "color: var(--success, #10b981);"
           },
           { id: displayedGt.id, command: "view-package", className: "btn-view", title: "Xem chi tiết Gói thầu", icon: "eye" },
-          { id: displayedGt.id, command: "delete-package", className: "btn-delete", title: "Xóa", icon: "trash-2" }
+          allowDelete && { id: displayedGt.id, command: "delete-package", className: "btn-delete", title: "Xóa", icon: "trash-2" }
         ];
       } else {
         packageActions = standardEditDeleteActions({
           id: displayedGt.id,
           editCommand: "edit-package",
-          deleteCommand: "delete-package"
+          deleteCommand: "delete-package",
+          allowDelete
         });
       }
       const actionHtml = renderEntityActions(packageActions);

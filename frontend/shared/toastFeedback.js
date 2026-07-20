@@ -41,6 +41,19 @@ const SUCCESS_ACTIONS = Object.freeze([
   { pattern: /(?:cập nhật|thay đổi|chỉnh sửa|ghi đè|áp dụng|đồng bộ)/u, message: "Cập nhật thành công." }
 ]);
 
+const DELETE_ENTITIES = Object.freeze([
+  { pattern: /xóa (?:toàn bộ )?(?:các )?phiên bản .*hợp đồng/u, message: "Xóa hợp đồng thành công." },
+  { pattern: /xóa .*kế hoạch/u, message: "Xóa kế hoạch thành công." },
+  { pattern: /xóa .*gói thầu/u, message: "Xóa gói thầu thành công." },
+  { pattern: /xóa .*chủ đầu tư/u, message: "Xóa chủ đầu tư thành công." },
+  { pattern: /xóa .*nhà thầu/u, message: "Xóa nhà thầu thành công." },
+  { pattern: /xóa .*chuyên gia/u, message: "Xóa chuyên gia thành công." },
+  { pattern: /xóa .*hợp đồng/u, message: "Xóa hợp đồng thành công." },
+  { pattern: /xóa .*phân công/u, message: "Xóa phân công thành công." },
+  { pattern: /xóa .*thông tin mở thầu/u, message: "Xóa thông tin mở thầu thành công." },
+  { pattern: /xóa .*trạng thái hồ sơ/u, message: "Xóa trạng thái hồ sơ thành công." }
+]);
+
 const SAVE_ENTITIES = Object.freeze([
   { pattern: /kế hoạch/u, label: "kế hoạch" },
   { pattern: /gói thầu/u, label: "gói thầu" },
@@ -78,6 +91,9 @@ function normalizeSuccessMessage(message) {
   const hasSaveAction = /(?:^|\s)(?:đã\s+)?lưu(?!\s+trữ)(?=\s|[.!?,]|$)/u.test(comparable);
 
   if (hasSaveAction && /phê duyệt/u.test(comparable)) return "Phê duyệt thành công.";
+
+  const deletedEntity = DELETE_ENTITIES.find(({ pattern }) => pattern.test(comparable));
+  if (deletedEntity) return deletedEntity.message;
 
   if (hasSaveAction) {
     const entity = SAVE_ENTITIES.find(({ pattern }) => pattern.test(comparable));

@@ -2,7 +2,7 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml, safeImageSrc } from "../shared/view_helpers.js";
 import { createInitialVersion, createNextVersion, getNextVersion, preserveRowVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
@@ -34,7 +34,7 @@ const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {
   if (removeBtn) setRuntimeStyle(removeBtn, "display", isReadOnly ? "none" : "");
 };
 export async function deleteNhaThau(id) {
-  const nt = this.model.state.nhathau.find((n) => n.id === id);
+  const nt = await refreshRecordBeforeDelete(this, "nhathau", id);
   if (!nt) return;
   const wonPackages = this.model.state.goithau.filter((gt) => gt.nhaThauTrungThauId === id);
   if (wonPackages.length > 0) {

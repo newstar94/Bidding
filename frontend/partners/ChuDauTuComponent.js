@@ -61,7 +61,8 @@ export async function renderChuDauTuTable() {
       const actionHtml = renderEntityActions(standardEditDeleteActions({
         id: displayedCdt.id,
         editCommand: "edit-investor",
-        deleteCommand: "delete-investor"
+        deleteCommand: "delete-investor",
+        allowDelete: this.model.state.activerole !== "employee"
       }), { visible: displayedCdt.id === c.id && displayedCdt.canEdit !== false });
       return `
             <tr>

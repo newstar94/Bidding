@@ -4,6 +4,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import {
   buildProfileUpdatePayload,
   deriveEmailChangeUiState,
@@ -1135,7 +1136,7 @@ export function editHoSoGiayStatus(id) {
   lucide.createIcons();
 }
 export async function deleteHoSoGiayStatus(id) {
-  const status = this.model.state.custompaperstatuses.find((s) => s.id === id);
+  const status = await refreshRecordBeforeDelete(this, "custompaperstatuses", id);
   if (!status) return;
   const confirmed = await this.view.customConfirm(
     "Xác nhận xóa trạng thái",
@@ -1145,15 +1146,15 @@ export async function deleteHoSoGiayStatus(id) {
   if (!confirmed) return;
   this.model.state.custompaperstatuses = this.model.state.custompaperstatuses.filter((s) => s.id !== id);
   this.model.markDeleted?.("custompaperstatuses", [id]);
-  await this.model.persistData("custompaperstatuses");
   const editingId = document.getElementById("form-hosogiay-id").value;
   if (editingId === id) {
     document.getElementById("form-manager-hosogiay").reset();
     document.getElementById("form-hosogiay-id").value = "";
     document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
   }
-  this.view.renderManagerHoSoGiayPanel();
-  const syncResult = await this.autoSync();
+  const syncResult = await persistAndSync(this, "custompaperstatuses", {
+    afterPersist: () => this.view.renderManagerHoSoGiayPanel()
+  });
   if (!syncResult?.ok) {
     await this.view.customAlert(
       "Không thể xóa",
@@ -1162,7 +1163,6 @@ export async function deleteHoSoGiayStatus(id) {
     );
     return;
   }
-  await this.view.customAlert("Thành công", "Đã xóa trạng thái hồ sơ giấy thành công!", "check-circle");
 }
 export async function editSystemPackage(pkgId) {
   const pkg = this.model.state.systempackages.find((p) => p.id === pkgId);

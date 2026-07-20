@@ -62,7 +62,7 @@ def test_toast_feedback_maps_common_actions_to_short_messages():
         "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!",
         "success",
     )["message"] == "Lưu kế hoạch thành công."
-    assert _normalize("Đã xóa toàn bộ các phiên bản của hợp đồng!", "success")["message"] == "Xóa thành công."
+    assert _normalize("Đã xóa toàn bộ các phiên bản của hợp đồng!", "success")["message"] == "Xóa hợp đồng thành công."
     assert _normalize("Thông tin nhân viên đã được cập nhật thành công!", "success")["message"] == "Cập nhật thành công."
     assert _normalize("Đã nhập thành công 25 dòng dữ liệu từ Excel.", "success")["message"] == "Nhập dữ liệu thành công."
     assert _normalize("Đã xử lý 25 dòng: thêm mới 20, cập nhật 5.", "success")["message"] == "Nhập dữ liệu thành công."
@@ -102,7 +102,8 @@ def test_success_dialog_title_contributes_action_context_to_toast():
 
 def test_delete_sync_has_one_concise_success_toast_and_no_duplicate_workflow_toast():
     sync_source = (ROOT / "frontend" / "app" / "BiddingControllerSync.js").read_text(encoding="utf-8")
-    assert 'this.view.showToast("Thành công", "Xóa thành công.", "success")' in sync_source
+    assert 'this.view.showToast("Thành công", deleteSuccessMessage(payload, data.deleteImpacts), "success")' in sync_source
+    assert 'goithau: "gói thầu"' in sync_source
     assert "mục đã được lưu trữ" not in sync_source
 
     for relative_path in (

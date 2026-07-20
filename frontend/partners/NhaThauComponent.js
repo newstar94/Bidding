@@ -62,7 +62,8 @@ export async function renderNhaThauTable() {
       const actionHtml = renderEntityActions(standardEditDeleteActions({
         id: displayedNt.id,
         editCommand: "edit-contractor",
-        deleteCommand: "delete-contractor"
+        deleteCommand: "delete-contractor",
+        allowDelete: this.model.state.activerole !== "employee"
       }), { visible: displayedNt.id === n.id && displayedNt.canEdit !== false });
       const isJV = displayedNt.loaiNhaThau === "Liên danh";
       if (isJV) {

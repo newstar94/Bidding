@@ -1,6 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 
 export function openPackageWizardStep() {
   if (!this.packageWizard.active) return;
@@ -21,6 +21,7 @@ export function openPackageWizardStep() {
   }
 }
 export async function deleteGoiThau(id) {
+  await refreshRecordBeforeDelete(this, "goithau", id);
   const deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
   if (!deleteContext) return;
   let deleteConfirmed = false;

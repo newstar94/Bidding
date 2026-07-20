@@ -14,7 +14,6 @@ export async function renderChuyenGiaTable() {
   const searchVal = document.getElementById("search-chuyengia").value.toLowerCase();
   const requestId = (this._chuyenGiaRenderRequestId || 0) + 1;
   this._chuyenGiaRenderRequestId = requestId;
-  const isEmployee = this.model.state.activerole === "employee";
   let slicedData = [];
   let totalItems = 0;
   const currentPage = this.model.currentPage.chuyengia || 1;
@@ -65,8 +64,9 @@ export async function renderChuyenGiaTable() {
       const actionHtml = renderEntityActions(standardEditDeleteActions({
         id: displayedCg.id,
         editCommand: "edit-expert",
-        deleteCommand: "delete-expert"
-      }), { visible: !isEmployee && displayedCg.id === cg.id });
+        deleteCommand: "delete-expert",
+        allowDelete: this.model.state.activerole !== "employee"
+      }), { visible: displayedCg.id === cg.id });
       const expertCccd = escapeHtml(displayedCg.soCCCD || "");
       const certificateNo = escapeHtml(displayedCg.soChungChi || "");
       const certificateIssuer = escapeHtml(displayedCg.donViCapChungChi || "--");

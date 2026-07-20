@@ -3,13 +3,13 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 export async function deleteHopDong(id) {
-  const targetHd = this.model.state.hopdong.find((h) => h.id === id);
+  const targetHd = await refreshRecordBeforeDelete(this, "hopdong", id);
   if (!targetHd) return;
   const rootId = targetHd.rootId || targetHd.id;
   const relatedHds = this.model.state.hopdong.filter((h) => (h.rootId || h.id) === rootId);
@@ -37,9 +37,10 @@ export async function deleteHopDong(id) {
     if (!result.removed.length) return;
     this.model.state.hopdong = result.records;
     this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
-    await this.model.persistData("hopdong");
     try {
-      const syncResult = await this.autoSync();
+      const syncResult = await persistAndSync(this, "hopdong", {
+        afterPersist: () => this.view.renderHopDongTable()
+      });
       if (!syncResult?.ok) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
@@ -51,9 +52,10 @@ export async function deleteHopDong(id) {
     const result = removeAllVersions(this.model.state.hopdong, targetHd);
     this.model.state.hopdong = result.records;
     this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
-    await this.model.persistData("hopdong");
     try {
-      const syncResult = await this.autoSync();
+      const syncResult = await persistAndSync(this, "hopdong", {
+        afterPersist: () => this.view.renderHopDongTable()
+      });
       if (!syncResult?.ok) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
