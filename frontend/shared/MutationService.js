@@ -1,7 +1,20 @@
 export async function persistAndSync(controller, tableKeys, { afterPersist } = {}) {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
-  for (const key of keys) {
-    await controller.model.persistData(key);
+  controller._deferImmediateSync = true;
+  if (controller._syncImmediateTimer) {
+    clearTimeout(controller._syncImmediateTimer);
+    controller._syncImmediateTimer = null;
+  }
+  try {
+    for (const key of keys) {
+      await controller.model.persistData(key);
+    }
+  } finally {
+    controller._deferImmediateSync = false;
+    if (controller._syncImmediateTimer) {
+      clearTimeout(controller._syncImmediateTimer);
+      controller._syncImmediateTimer = null;
+    }
   }
   const usesServerPagination = Boolean(controller.model?.useServerSidePagination);
   // The server-side mutation flow already refreshes changed tables from

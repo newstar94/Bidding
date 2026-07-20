@@ -58,7 +58,7 @@ export function setupSyncUx() {
     }
   });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
-    if (!pendingCount || this._syncImmediateTimer) return;
+    if (!pendingCount || this._syncImmediateTimer || this._deferImmediateSync) return;
     this._syncImmediateTimer = setTimeout(() => {
       this._syncImmediateTimer = null;
       void this.autoSync();

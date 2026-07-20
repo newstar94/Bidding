@@ -328,7 +328,10 @@ export async function editHopDong(id) {
       captureModalReturnState(this.model.state.activetab || "hopdong", this.model.state.activeaction || null);
       this.switchTab("hopdong", "chinhsua", true);
       document.getElementById("modal-hopdong-title").textContent = "Cập nhật Hợp đồng";
-      const hd = this.model.state.hopdong.find((h) => h.id === id);
+      const hd = await this.fetchRecordByLookup("hopdong", id)
+        || this.model.state.hopdong.find((contract) => contract.id === id);
+      if (!hd) throw new Error("Không tìm thấy hợp đồng cần cập nhật.");
+      form.dataset.originalPackageIds = JSON.stringify(hd.goiThauIds || []);
       document.getElementById("form-hopdong-id").value = hd.id;
       document.getElementById("hd-ten").value = hd.tenHopDong;
       document.getElementById("hd-so").value = hd.soHopDong;
@@ -337,7 +340,8 @@ export async function editHopDong(id) {
       const relatedRecordsToLoad = [
         ["chudautu", hd.chuDauTuId],
         ["nhathau", hd.nhaThauId],
-        ["kehoach", hd.keHoachId]
+        ["kehoach", hd.keHoachId],
+        ...(hd.goiThauIds || []).map((packageId) => ["goithau", packageId])
       ].filter(([table, recordId]) => recordId && !this.model.state[table]?.some((item) => String(item.id) === String(recordId)));
       await Promise.all(relatedRecordsToLoad.map(([table, recordId]) => this.fetchRecordByLookup(table, recordId)));
       const currentCdt = this.model.state.chudautu.find((c) => c.id === hd.chuDauTuId);
@@ -394,6 +398,7 @@ export async function editHopDong(id) {
       this.switchTab("hopdong", "taomoi", true);
       document.getElementById("modal-hopdong-title").textContent = "Thêm Hợp đồng mới";
       form.reset();
+      form.dataset.originalPackageIds = "[]";
       document.getElementById("hd-phanloai").value = "Tư vấn";
       coQdSelect.value = "0";
       soQdInput.value = "";
@@ -505,13 +510,41 @@ export async function handleHopDongSubmit(e) {
       return;
     }
   }
-  const checkboxes = document.querySelectorAll('input[name="hd-goithau-checkbox"]:checked');
-  const goiThauIds = Array.from(checkboxes).map((cb) => cb.value);
+  const packageCheckboxes = document.querySelectorAll('input[name="hd-goithau-checkbox"]');
+  const checkedPackageIds = Array.from(packageCheckboxes)
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => checkbox.value);
+  const currentContractForPackages = id
+    ? this.model.state.hopdong.find((contract) => contract.id === id)
+    : null;
+  let originalPackageIds = [];
+  try {
+    const parsedPackageIds = JSON.parse(form.dataset.originalPackageIds || "[]");
+    originalPackageIds = Array.isArray(parsedPackageIds) ? parsedPackageIds : [];
+  } catch (error) {
+    originalPackageIds = currentContractForPackages?.goiThauIds || [];
+  }
+  const goiThauIds = packageCheckboxes.length === 0 && currentContractForPackages
+    ? [...originalPackageIds]
+    : checkedPackageIds;
   if (!Array.isArray(this.model.state.hopdong)) {
     this.model.state.hopdong = [];
   }
   let finalHdId = id;
-  const assignedEmpId = document.getElementById("hd-nhanvienphutrach").value;
+  const assignedEmpSelect = document.getElementById("hd-nhanvienphutrach");
+  const currentContractAssignment = id
+    ? (this.model.state.assignments || []).find((assignment) => assignment.targetId === id && assignment.type === "hopdong")
+    : null;
+  const assignedEmpId = String(assignedEmpSelect?.value || currentContractAssignment?.empId || "").trim();
+  if (!assignedEmpId) {
+    await this.view.customAlert(
+      "Dữ liệu không hợp lệ",
+      "Vui lòng chọn chuyên viên phụ trách hợp đồng.",
+      "alert-triangle",
+      assignedEmpSelect
+    );
+    return;
+  }
   let data = {
     tenHopDong,
     soHopDong,
@@ -578,26 +611,46 @@ export async function handleHopDongSubmit(e) {
     this.model.state.hopdong.push(data);
     finalHdId = newId;
   }
+  if (id && finalHdId && finalHdId !== id) {
+    const hasHistoricalAssignment = (this.model.state.assignments || [])
+      .some((assignment) => assignment.targetId === id && assignment.type === "hopdong");
+    if (!hasHistoricalAssignment) {
+      this.model.state.assignments = this.model.state.assignments || [];
+      this.model.state.assignments.push({
+        id: generateRecordId("assignments"),
+        empId: assignedEmpId,
+        targetId: id,
+        type: "hopdong"
+      });
+    }
+  }
   if (finalHdId) {
-    const oldAssignments = this.model.state.assignments.filter((a) => a.targetId === finalHdId && a.type === "hopdong");
+    const oldAssignments = (this.model.state.assignments || []).filter((a) => a.targetId === finalHdId && a.type === "hopdong");
     const retainedAssignment = assignedEmpId
       ? oldAssignments.find((assignment) => assignment.empId === assignedEmpId)
       : null;
-    for (const oldA of oldAssignments.filter((assignment) => assignment !== retainedAssignment)) {
-      await this.model.deleteRecord("assignments", oldA.id);
-    }
+    const assignmentIdsToRemove = new Set(
+      oldAssignments
+        .filter((assignment) => assignment !== retainedAssignment)
+        .map((assignment) => String(assignment.id))
+    );
+    this.model.state.assignments = (this.model.state.assignments || [])
+      .filter((assignment) => !assignmentIdsToRemove.has(String(assignment.id)));
     if (assignedEmpId && !retainedAssignment) {
-      await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: finalHdId, type: "hopdong" });
+      this.model.state.assignments.push({
+        id: generateRecordId("assignments"),
+        empId: assignedEmpId,
+        targetId: finalHdId,
+        type: "hopdong"
+      });
     }
   }
   if (hasModalReturnState("hopdong-detail") && finalHdId) {
     updateModalReturnAction(finalHdId);
   }
-  await persistAndSync(this, "hopdong", {
-    afterPersist: () => {
-      this.closeModal("modal-hopdong");
-      this.view.renderHopDongTable();
-    }
-  });
+  const syncResult = await persistAndSync(this, ["hopdong", "assignments"]);
+  if (!syncResult?.ok) return;
+  this.closeModal("modal-hopdong");
+  await this.view.renderHopDongTable();
 }
 import { generateRecordId } from "../shared/idUtils.js";
