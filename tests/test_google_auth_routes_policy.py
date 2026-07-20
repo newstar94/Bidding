@@ -443,7 +443,7 @@ def test_google_email_match_links_existing_account(monkeypatch, username):
     assert any("UPDATE tai_khoan SET anh_dai_dien" in sql for sql, _ in cursor.calls)
 
 
-def test_new_google_account_hashes_and_sends_temporary_password_once(monkeypatch):
+def test_new_google_account_hashes_and_queues_temporary_password_once(monkeypatch):
     new_user = _user(
         id="new-user",
         ten_dang_nhap=None,
@@ -480,7 +480,8 @@ def test_new_google_account_hashes_and_sends_temporary_password_once(monkeypatch
 
     assert response.status_code == 200
     assert payload["is_new_account"] is True
-    assert payload["temporary_password_sent"] is True
+    assert payload["temporary_password_sent"] is False
+    assert payload["temporary_password_queued"] is True
     assert payload["needs_username"] is True
     assert payload["suggested_username"] == "owner1"
     assert clear_passwords and len(clear_passwords[0]) >= 12
@@ -491,15 +492,14 @@ def test_new_google_account_hashes_and_sends_temporary_password_once(monkeypatch
     )
     assert insert_account[1] == "argon2-hash"
     assert connection.commits == 1
+    assert response.background is not None
+    assert any(
+        task.func is google_auth_routes.deliver_email_once
+        for task in response.background.tasks
+    )
 
 
-@pytest.mark.parametrize(
-    "delivery_error",
-    [BlockingIOBusyError("busy"), BlockingIOTimeoutError("timeout")],
-)
-def test_temporary_password_delivery_queue_failure_does_not_rollback_account(
-    monkeypatch, delivery_error
-):
+def test_temporary_password_delivery_is_not_awaited_by_google_login(monkeypatch):
     new_user = _user(id="new-user", ten_dang_nhap=None)
     cursor = _GoogleCursor(new_user=new_user)
     connection = _Connection(cursor)
@@ -508,7 +508,7 @@ def test_temporary_password_delivery_queue_failure_does_not_rollback_account(
     async def blocking(function, *args, **kwargs):
         if function is google_auth_routes._verify_google_token:
             return _google_payload()
-        raise delivery_error
+        raise AssertionError("Email delivery must not block the Google login response")
 
     async def hash_password(*args, **kwargs):
         return "hash"
@@ -524,6 +524,7 @@ def test_temporary_password_delivery_queue_failure_does_not_rollback_account(
 
     assert response.status_code == 200
     assert _body(response)["temporary_password_sent"] is False
+    assert _body(response)["temporary_password_queued"] is True
     assert connection.commits == 1
     assert connection.rollbacks == 0
 

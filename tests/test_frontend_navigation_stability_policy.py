@@ -80,6 +80,28 @@ def test_timeline_combobox_uses_standard_control_focus_ring():
     assert "0 0 0 3px" not in focus_rule
 
 
+def test_sidebar_focus_ring_does_not_stack_a_second_thick_border():
+    stylesheet = _source("views/css/ui-redesign.css")
+    focus_rule = stylesheet[
+        stylesheet.index(".nav-btn:focus-visible {"):
+        stylesheet.index(".nav-btn.active {")
+    ]
+
+    assert "outline: 1px solid var(--brand) !important;" in focus_rule
+    assert "outline-offset: 2px !important;" in focus_rule
+
+
+def test_google_identity_script_starts_before_full_window_load():
+    source = _source("frontend/auth/AuthFlowController.js")
+    loader_block = source[
+        source.index('if (document.readyState === "loading")'):
+        source.index("\n}", source.index('if (document.readyState === "loading")'))
+    ]
+
+    assert 'document.addEventListener("DOMContentLoaded"' in loader_block
+    assert 'window.addEventListener("load"' not in loader_block
+
+
 def test_timeline_combobox_empty_state_is_compact_and_readable():
     stylesheet = _source("views/css/views.css")
     empty_rule = stylesheet[

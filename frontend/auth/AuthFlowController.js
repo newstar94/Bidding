@@ -683,9 +683,12 @@ export function setupAuth() {
       document.head.appendChild(script);
     }
   };
-  if (document.readyState === "complete") {
-    setTimeout(loadGoogleIdentity, 0);
+  // The Google script does not depend on images, fonts or other page assets.
+  // Start as soon as the DOM is ready instead of waiting for window.load,
+  // otherwise slow assets keep the sign-in button in its loading state.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(loadGoogleIdentity, 0), { once: true });
   } else {
-    window.addEventListener("load", () => setTimeout(loadGoogleIdentity, 0), { once: true });
+    setTimeout(loadGoogleIdentity, 0);
   }
 }

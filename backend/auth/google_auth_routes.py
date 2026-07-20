@@ -158,6 +158,7 @@ async def google_login_api(request):
     temporary_password = None
     temporary_password_delivery_id = None
     temporary_password_sent = False
+    temporary_password_queued = False
     created_new_account = False
     try:
         ip = get_client_ip(request)
@@ -398,17 +399,10 @@ async def google_login_api(request):
         disconnect_user_websockets(user["id"])
 
         if created_new_account and temporary_password and temporary_password_delivery_id:
-            try:
-                temporary_password_sent = await run_blocking_io(
-                    deliver_email_once,
-                    database,
-                    temporary_password_delivery_id,
-                    timeout_seconds=15,
-                )
-            except BlockingIOBusyError:
-                temporary_password_sent = False
-            except BlockingIOTimeoutError:
-                temporary_password_sent = False
+            # The durable outbox worker already retries pending deliveries. Run
+            # the first attempt after the response as well, so Google login is
+            # never held open by the SMTP timeout.
+            temporary_password_queued = True
 
         for audit_action, audit_kwargs in pending_audits:
             bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
@@ -423,6 +417,12 @@ async def google_login_api(request):
             request=request,
             metadata={"email": email},
         )
+        if temporary_password_queued:
+            bg_tasks.add_task(
+                deliver_email_once,
+                database,
+                temporary_password_delivery_id,
+            )
         needs_username = not user.get("ten_dang_nhap")
 
 
@@ -444,6 +444,7 @@ async def google_login_api(request):
             "account_linked": account_linked,
             "is_new_account": created_new_account,
             "temporary_password_sent": temporary_password_sent,
+            "temporary_password_queued": temporary_password_queued,
         }, background=bg_tasks)
         cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(

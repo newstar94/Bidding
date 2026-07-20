@@ -97,6 +97,13 @@ label[for] {
   background: var(--brand-soft);
 }
 
+/* The selected item already has its own border. Keep keyboard focus visible,
+   but avoid stacking the global 2px ring into the heavy double border. */
+.nav-btn:focus-visible {
+  outline: 1px solid var(--brand) !important;
+  outline-offset: 2px !important;
+}
+
 .nav-btn.active {
   border-color: var(--brand);
   color: #fff !important;
