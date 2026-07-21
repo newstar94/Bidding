@@ -295,7 +295,7 @@ async def add_user_to_org_api(request):
             )
 
         if not is_organization_manager(
-            cursor, str(role_or_err), role_or_err.user_id, org_id
+            cursor, role_or_err, role_or_err.user_id, org_id
         ):
             conn.rollback()
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
@@ -533,7 +533,7 @@ async def remove_user_from_org_api(request):
                 status_code=409,
             )
         if not is_organization_manager(
-            cursor, str(role_or_err), role_or_err.user_id, org_id
+            cursor, role_or_err, role_or_err.user_id, org_id
         ):
             conn.close()
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
@@ -577,8 +577,12 @@ async def remove_user_from_org_api(request):
                    FROM thanh_vien_to_chuc tv JOIN tai_khoan tk ON tk.id = tv.user_id
                    WHERE tv.organization_id = ? AND tv.user_id != ?
                      AND COALESCE(tv.trang_thai_thanh_vien, 'active') = 'active'
-                   ORDER BY lower(name)""",
-                (org_id, user_id),
+                     AND (
+                         lower(trim(COALESCE(tv.vai_tro_trong_to_chuc, ''))) = 'employee'
+                         OR tv.user_id = ?
+                     )
+                   ORDER BY lower(COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ho_ten, tk.ten_dang_nhap))""",
+                (org_id, user_id, role_or_err.user_id),
             ).fetchall()
             conn.rollback()
             return JSONResponse({
@@ -750,7 +754,7 @@ async def list_former_organization_members_api(request):
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        if not is_organization_manager(cursor, str(session), session.user_id, org_id):
+        if not is_organization_manager(cursor, session, session.user_id, org_id):
             return JSONResponse({"error": "Không có quyền xem lịch sử nhân sự."}, status_code=403)
         rows = cursor.execute(
             """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ho_ten, tk.ten_dang_nhap) AS name,

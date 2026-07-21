@@ -216,7 +216,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
             log_sync_error(f"Xác thực thất bại khi đồng bộ: {role_or_err}")
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        role_str = str(role_or_err)
+        role_str = role_or_err
         user_id = role_or_err.user_id
         client_mutation_id = (data.get("clientMutationId") or "").strip()
         if client_mutation_id:

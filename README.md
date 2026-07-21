@@ -25,6 +25,28 @@ Khởi tạo schema bằng credential migrator:
 python scripts/manage_database.py
 ```
 
+### Dữ liệu demo và làm sạch dữ liệu
+
+Tạo bộ dữ liệu demo có đủ các trạng thái kế hoạch, gói thầu, mở thầu, đánh
+giá, hợp đồng, phân công, quyền và thông báo:
+
+```bash
+python scripts/seed_demo_data.py --confirm-demo
+```
+
+Các tài khoản demo dùng mật khẩu `DemoUser123!` mặc định; có thể đổi bằng
+`--password`. Script chỉ thêm dữ liệu và không thay đổi mật khẩu admin.
+
+Xóa toàn bộ dữ liệu ứng dụng nhưng giữ các tài khoản `super_admin`, danh mục
+gói dịch vụ và metadata schema:
+
+```bash
+python scripts/reset_data_keep_admin.py --confirm-reset
+```
+
+Hai script đều từ chối chạy trong production nếu không truyền rõ
+`--allow-production`. Chỉ chạy script reset khi đã có backup dữ liệu cần giữ.
+
 Sau đó khởi động ứng dụng bằng runtime role không có quyền DDL:
 
 ```bash

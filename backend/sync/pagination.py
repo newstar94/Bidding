@@ -187,7 +187,7 @@ def _paginate_records_blocking(request):
         media_session_token = str(
             getattr(request, "cookies", {}).get("session_token", "")
         )
-        role_str = str(role_or_err)
+        role_str = role_or_err
         user_id = role_or_err.user_id
         conn = database.get_connection()
         cursor = conn.cursor()

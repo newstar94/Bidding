@@ -287,6 +287,20 @@ def main() -> int:
                 sql.Identifier(runtime_role)
             )
         )
+        # bf_unaccent() is owned by the migrator and delegates to the
+        # extension's public.unaccent() function. The extension function is
+        # not owned by the migrator, so grant the two supported signatures
+        # explicitly; otherwise inserts into indexed business tables fail
+        # with "permission denied for function unaccent".
+        for function_signature in (
+            "public.unaccent(regdictionary, text)",
+            "public.unaccent(text)",
+        ):
+            cursor.execute(
+                sql.SQL("GRANT EXECUTE ON FUNCTION {} TO {}").format(
+                    sql.SQL(function_signature), sql.Identifier(migrator_role)
+                )
+            )
         cursor.execute(
             sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {}").format(
                 sql.Identifier(migrator_role), sql.Identifier(runtime_role)

@@ -28,8 +28,8 @@ def create_session(cursor, *, user_id, token, absolute_expires_at,
         INSERT INTO auth_sessions (
             id, user_id, token_hash, created_at, last_seen_at,
             idle_expires_at, absolute_expires_at, revoked_at,
-            remember_me, device_info, privileged_reauth_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)
+            remember_me, device_info, privileged_reauth_at, active_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)
         """,
         (
             session_id, user_id, hash_session_token(token), current, current,
@@ -89,7 +89,7 @@ def load_session_user(database, token):
                    sessions.last_seen_at, sessions.idle_expires_at,
                    sessions.absolute_expires_at, sessions.revoked_at,
                    sessions.remember_me, sessions.device_info,
-                   sessions.privileged_reauth_at
+                   sessions.privileged_reauth_at, sessions.active_role
             FROM auth_sessions AS sessions
             JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
             WHERE sessions.token_hash = ?
@@ -188,5 +188,17 @@ def set_session_reauthentication(cursor, token, reauthenticated_at):
     cursor.execute(
         "UPDATE auth_sessions SET privileged_reauth_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
         (int(reauthenticated_at), hash_session_token(token)),
+    )
+    return cursor.rowcount == 1
+
+
+def set_session_active_role(cursor, session_id, user_id, active_role):
+    """Persist the authorization mode selected for one active session."""
+
+    cursor.execute(
+        """UPDATE auth_sessions
+           SET active_role = ?
+           WHERE id = ? AND user_id = ? AND revoked_at IS NULL""",
+        (active_role, session_id, user_id),
     )
     return cursor.rowcount == 1

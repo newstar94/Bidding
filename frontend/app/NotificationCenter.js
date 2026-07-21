@@ -42,6 +42,16 @@ function activityIcon(kind) {
   return "log-out";
 }
 
+function activityTone(item) {
+  const severity = String(item?.severity || "").toLowerCase();
+  // Notifications that represent a failed/negative outcome use the danger
+  // tone so they are not mistaken for an informational update.
+  if (["error", "danger", "failed", "failure"].includes(severity) || severity === "warning") {
+    return "red";
+  }
+  return "info";
+}
+
 function workAlerts(controller) {
   const summaryItems = controller?.model?.dashboardSummary?.alertItems;
   if (Array.isArray(summaryItems)) return summaryItems;
@@ -90,12 +100,13 @@ function renderActivities(state, elements) {
   elements.list.innerHTML = trustedHTML(items.map((item) => {
     const unread = !item.readAt;
     const actionable = Boolean(item.route && item.targetId);
+    const tone = activityTone(item);
     return `
-      <button type="button" class="notification-item ${unread ? "is-unread" : ""}"
+      <button type="button" class="notification-item ${unread ? "is-unread" : ""} notification-item-tone-${tone}"
           data-notification-id="${safeAttr(item.id)}"
           data-target-type="${safeAttr(item.targetType || "")}"
           data-target-id="${safeAttr(item.targetId || "")}" ${actionable ? "" : 'data-static="true"'}>
-        <span class="notification-item-icon tone-${item.severity === "warning" ? "warning" : "info"}">
+        <span class="notification-item-icon tone-${tone}">
           ${htmlIcon(activityIcon(item.kind), 'aria-hidden="true"')}
         </span>
         <span class="notification-item-copy">

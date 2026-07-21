@@ -81,7 +81,7 @@ def _can_export_package(role_or_err, org_name, package_id):
         cursor = conn.cursor()
         return can_read_record(
             cursor,
-            str(role_or_err),
+            role_or_err,
             role_or_err.user_id,
             org_name,
             "goithau",

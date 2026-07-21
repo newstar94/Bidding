@@ -181,11 +181,11 @@ def _can_export_record(role_or_err, org_name, payload_key, table_name, record_id
         cursor = conn.cursor()
         return (
             can_use_word_export(
-                cursor, str(role_or_err), role_or_err.user_id, org_name
+                cursor, role_or_err, role_or_err.user_id, org_name
             )
             and can_read_record(
                 cursor,
-                str(role_or_err),
+                role_or_err,
                 role_or_err.user_id,
                 org_name,
                 payload_key,
@@ -201,7 +201,7 @@ def _word_export_subscription_response(role_or_err, organization_id):
     conn = database.get_connection()
     try:
         enabled = can_use_word_export(
-            conn.cursor(), str(role_or_err), role_or_err.user_id, organization_id
+            conn.cursor(), role_or_err, role_or_err.user_id, organization_id
         )
     finally:
         conn.close()
@@ -221,7 +221,7 @@ def _word_config_access_response(request, role_or_err):
     conn = database.get_connection()
     try:
         allowed = can_manage_word_config(
-            conn.cursor(), str(role_or_err), role_or_err.user_id, organization_id
+            conn.cursor(), role_or_err, role_or_err.user_id, organization_id
         )
     finally:
         conn.close()
@@ -418,7 +418,7 @@ async def export_plan_api(request):
                 plan_id,
                 user_id,
                 org_name,
-                str(role_or_err),
+                role_or_err,
                 timeout_seconds=30,
             )
         except BlockingIOBusyError:
@@ -510,7 +510,7 @@ async def export_report_api(request):
                 package_id,
                 user_id,
                 org_name,
-                str(role_or_err),
+                role_or_err,
                 type_param,
                 timeout_seconds=30,
             )
@@ -749,7 +749,7 @@ async def list_word_mappings_api(request):
         org_name = get_active_org(request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
+        if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
         ensure_default_word_mappings(cursor, org_name)
@@ -843,7 +843,7 @@ async def save_word_mapping_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
+        if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
 
@@ -926,7 +926,7 @@ async def delete_word_mapping_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
+        if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?", (mapping_id, org_name))
         conn.commit()

@@ -45,6 +45,7 @@ from backend.auth.session_store import (
     revoke_user_sessions,
     session_invalid_reason,
     set_session_reauthentication,
+    set_session_active_role,
     touch_session,
 )
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
@@ -59,7 +60,10 @@ from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.logging_utils import error_response
 from backend.shared.request_validation import read_json_object, validate_or_response
-from backend.shared.access_policy import is_business_organization
+from backend.shared.access_policy import (
+    is_business_organization,
+    organization_membership_role,
+)
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_read, run_database_write
@@ -427,6 +431,7 @@ async def login_api(request):
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
             **access_payload,
+            "active_role": user.get('active_role'),
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
@@ -523,6 +528,7 @@ def build_session_bootstrap(request):
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
             **access_payload,
+            "active_role": user.get('active_role'),
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
@@ -599,6 +605,94 @@ async def check_session_api(request):
         )
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _database_lane_unavailable_response(request, write=False)
+
+
+def _set_active_role_sync(request, active_role):
+    is_valid, session = verify_session(request)
+    if not is_valid:
+        return JSONResponse({"error": session}, status_code=403)
+
+    platform_role = str(getattr(session, "platform_role", session) or "").strip()
+    if active_role == "super_admin" and platform_role != "super_admin":
+        return JSONResponse(
+            {"error": "Tài khoản không có quyền Super Admin."},
+            status_code=403,
+        )
+
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        organization_id = get_active_org(request, session.user_id, cursor=cursor)
+        if active_role == "manager" and platform_role != "super_admin":
+            membership_role = organization_membership_role(
+                cursor, session.user_id, organization_id
+            )
+            if membership_role != "manager":
+                return JSONResponse(
+                    {"error": "Tài khoản không có quyền Quản lý trong tổ chức này."},
+                    status_code=403,
+                )
+
+        if not set_session_active_role(
+            cursor,
+            session.session_id,
+            session.user_id,
+            active_role,
+        ):
+            conn.rollback()
+            return JSONResponse(
+                {"error": "Phiên làm việc không còn hiệu lực."},
+                status_code=403,
+            )
+        log_audit(
+            "auth.active_role_changed",
+            actor_user_id=session.user_id,
+            organization_id=organization_id,
+            target_type="auth_session",
+            target_id=session.session_id,
+            request=request,
+            metadata={"active_role": active_role},
+            cursor=cursor,
+            required=True,
+        )
+        conn.commit()
+        token = (request.cookies.get("session_token") or "").strip()
+        _session_cache_invalidate(token)
+        return JSONResponse({"success": True, "activeRole": active_role})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+async def set_active_role_api(request):
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    invalid = validate_or_response(request, data, {
+        "active_role": {
+            "type": "string",
+            "required": True,
+            "enum": {"super_admin", "manager", "employee"},
+        },
+    })
+    if invalid:
+        return invalid
+    try:
+        return await run_database_write(
+            _set_active_role_sync,
+            request,
+            str(data["active_role"]).strip().lower(),
+        )
+    except BlockingIOBusyError:
+        return _database_lane_unavailable_response(request, write=True)
+    except Exception as exc:
+        log_error(exc, "set_active_role_api")
+        return JSONResponse(
+            {"error": "Không thể chuyển chế độ làm việc."},
+            status_code=500,
+        )
 
 
 async def update_profile_api(request):
@@ -1460,7 +1554,13 @@ async def update_user_role_api(request):
         if "," in new_role:
             return JSONResponse({"error": "Mỗi phạm vi chỉ được có một vai trò."}, status_code=400)
 
-        actor_platform_admin = "super_admin" in get_effective_roles(str(role_or_err))
+        actor_platform_admin = (
+            getattr(role_or_err, "active_role", None) == "super_admin"
+            or (
+                getattr(role_or_err, "active_role", None) is None
+                and getattr(role_or_err, "platform_role", str(role_or_err)) == "super_admin"
+            )
+        )
         actor_session = _load_user_by_session_token(
             request.cookies.get("session_token")
         ) or {}

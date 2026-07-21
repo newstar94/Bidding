@@ -91,6 +91,7 @@ export class BiddingController {
       "modal-detail-chuyengia": "/modals/modal_detail_chuyengia.html",
       "modal-hopdong": "/modals/modal_hopdong.html",
       "modal-manager-employee": "/modals/modal_manager_employee.html",
+      "modal-manager-employee-detail": "/modals/modal_employee_detail.html",
       "modal-edit-package": "/modals/modal_edit_package.html",
       "modal-detail-system-user": "/modals/modal_detail_system_user.html"
     };
@@ -998,6 +999,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const editSystemPackage = (pkgId) => this.editSystemPackage(pkgId);
     const togglePackageLock = (id) => this.togglePackageLock(id);
     const editEmployee = (id) => this.editEmployee(id);
+    const viewEmployee = (id) => this.viewEmployee(id);
     const deleteEmployee = (id) => this.deleteEmployee(id);
     const reAddEmployee = (id, actionButton) => this.reAddEmployee(id, actionButton);
     const editHoSoGiayStatus = (id) => this.editHoSoGiayStatus(id);
@@ -1114,6 +1116,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       editSystemPackage,
       togglePackageLock,
       editEmployee,
+      viewEmployee,
       deleteEmployee,
       reAddEmployee,
       editHoSoGiayStatus,

@@ -83,6 +83,7 @@ export function checkInactivity() {
 export function startBackgroundSessionChecker() {
   if (this._sessionInterval) clearInterval(this._sessionInterval);
   this._sessionExpiryHandled = false;
+  this._activeRoleBootstrapAttempted = false;
   const checkSession = () => {
     if (this._sessionCheckInFlight) return this._sessionCheckInFlight;
     if (this.checkInactivity()) {
@@ -136,7 +137,31 @@ export function startBackgroundSessionChecker() {
           });
           const previousOrgId = getActiveOrganizationId();
           applyAccessContext(activeuser, data.user);
-          const nextActiveRole = this.model.constructor.resolveAllowedActiveRole(activeuser, this.model.state.activerole);
+          let serverActiveRole = data.user.active_role || null;
+          let roleRestoreFailed = false;
+          if (!serverActiveRole && !this._activeRoleBootstrapAttempted) {
+            this._activeRoleBootstrapAttempted = true;
+            const storedActiveRole = this.model.state.activerole;
+            if (storedActiveRole && storedActiveRole !== "super_admin") {
+              try {
+                const roleResponse = await apiFetch("/api/auth/active-role", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ active_role: storedActiveRole })
+                });
+                const rolePayload = await roleResponse.json();
+                serverActiveRole = rolePayload.activeRole || null;
+              } catch (error) {
+                roleRestoreFailed = true;
+                console.warn("Could not restore the active role on the server:", error);
+              }
+            }
+          }
+          if (roleRestoreFailed) this.model.state.activerole = null;
+          const nextActiveRole = this.model.constructor.resolveAllowedActiveRole(
+            activeuser,
+            serverActiveRole || this.model.state.activerole
+          );
           if (this.model.state.activerole !== nextActiveRole) {
             this.model.state.activerole = nextActiveRole;
             hasChanges = true;

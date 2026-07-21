@@ -36,10 +36,9 @@ ASSIGNED_TABLE_TYPES = {
     "hop_dong": "hopdong",
 }
 
-OWNERSHIP_SCOPED_TABLES = {
-    "chu_dau_tu",
-    "nha_thau",
-}
+OWNERSHIP_SCOPED_TABLES = set()
+
+SHARED_REFERENCE_TABLES = frozenset({"chu_dau_tu", "nha_thau"})
 
 
 @dataclass(frozen=True)
@@ -79,6 +78,9 @@ def is_manager_role(role_str):
     be resolved against a concrete membership and organization.
     """
 
+    active_role = getattr(role_str, "active_role", None)
+    if active_role is not None:
+        return active_role == "super_admin"
     return bool(_roles(role_str) & PLATFORM_ADMIN_ROLES)
 
 
@@ -118,6 +120,8 @@ def is_personal_workspace_owner(cursor, user_id, organization_id):
 
 
 def is_organization_manager(cursor, role_str, user_id, organization_id):
+    if getattr(role_str, "active_role", None) == "employee":
+        return False
     if is_manager_role(role_str):
         return True
     return organization_membership_role(cursor, user_id, organization_id) in ORGANIZATION_MANAGER_ROLES
@@ -192,6 +196,8 @@ def has_module_permission(cursor, role_str, user_id, organization_id, module_nam
         return True
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False
+    if module_name in {"chudautu", "nhathau"}:
+        return True
     permission = _permission_for(cursor, organization_id, user_id, module_name)
     if action == "edit":
         return permission == "edit"
@@ -396,7 +402,19 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
         return AccessDecision(True)
 
     module_name = TABLE_TO_MODULE.get(table_name)
-    if not has_module_permission(cursor, role_str, user_id, organization_id, module_name, "edit"):
+    if (
+        table_name in SHARED_REFERENCE_TABLES
+        and not has_active_organization_membership(
+            cursor, role_str, user_id, organization_id
+        )
+    ):
+        return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
+    if (
+        table_name not in SHARED_REFERENCE_TABLES
+        and not has_module_permission(
+            cursor, role_str, user_id, organization_id, module_name, "edit"
+        )
+    ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
 
     if table_name == "thong_tin_mo_thau":
@@ -425,6 +443,8 @@ def can_read_table(cursor, role_str, user_id, organization_id, payload_key, tabl
         return payload_key not in WRITE_PROTECTED_KEYS
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False
+    if table_name in SHARED_REFERENCE_TABLES:
+        return True
     if payload_key in {"assignments", "permissionmatrix"}:
         return True
     module_name = TABLE_TO_MODULE.get(table_name)

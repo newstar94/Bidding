@@ -104,7 +104,7 @@ def _read_sync_data_blocking(request):
         media_session_token = str(
             getattr(request, "cookies", {}).get("session_token", "")
         )
-        role_str = str(role_or_err)
+        role_str = role_or_err
         user_id = role_or_err.user_id
         sensitive_read_policy = resolve_sensitive_read_policy(
             cursor, role_str, user_id, org_name
@@ -525,7 +525,7 @@ def _read_single_record_blocking(request):
         media_session_token = str(
             getattr(request, "cookies", {}).get("session_token", "")
         )
-        role_str = str(role_or_err)
+        role_str = role_or_err
         user_id = role_or_err.user_id
         conn = database.get_connection()
         cursor = conn.cursor()

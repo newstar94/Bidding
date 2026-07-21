@@ -498,6 +498,9 @@ def test_record_write_enforces_module_ownership_and_assignment(
         access_policy, "is_personal_workspace_owner", lambda *_args: False
     )
     monkeypatch.setattr(
+        access_policy, "has_active_organization_membership", lambda *_args: True
+    )
+    monkeypatch.setattr(
         access_policy, "has_module_permission", lambda *_args: False
     )
     assert not access_policy.authorize_record_write(
@@ -524,10 +527,6 @@ def test_record_write_enforces_module_ownership_and_assignment(
         access_policy, "_existing_lineage_root", lambda *_args: "root"
     )
     monkeypatch.setattr(access_policy, "_record_owned_by", lambda *_args: False)
-    assert not access_policy.authorize_record_write(
-        _Cursor(), "employee", "user", "org", "nhathau", "nha_thau", {"id": "1"}
-    ).allowed
-    monkeypatch.setattr(access_policy, "_record_owned_by", lambda *_args: True)
     assert access_policy.authorize_record_write(
         _Cursor(), "employee", "user", "org", "nhathau", "nha_thau", {"id": "1"}
     ).allowed

@@ -377,6 +377,7 @@ from backend.auth.auth_routes import (
     update_user_access_settings_api,
     update_user_role_api,
     update_user_metadata_api,
+    set_active_role_api,
     list_system_packages_api,
     list_public_packages_api,
     update_system_package_api,
@@ -572,7 +573,7 @@ async def protected_image_api(request):
         required_module = "nhathau" if rel_path.startswith('nha_thau/') else "chuyengia"
         if not has_module_permission(
             cursor,
-            str(role_or_err),
+            role_or_err,
             role_or_err.user_id,
             organization_id,
             required_module,
@@ -689,6 +690,7 @@ routes = [
     Route("/api/auth/google-login", google_login_api, methods=["POST"]),
     Route("/api/auth/set-username", set_username_api, methods=["POST"]),
     Route("/api/auth/check-session", check_session_api, methods=["POST"]),
+    Route("/api/auth/active-role", set_active_role_api, methods=["POST"]),
     Route("/api/auth/logout", logout_api, methods=["POST"]),
     Route("/api/auth/forgot-password", forgot_password_api, methods=["POST"]),
     Route("/api/auth/reset-password", reset_password_api, methods=["POST"]),

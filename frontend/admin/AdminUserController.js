@@ -304,30 +304,34 @@ export async function showSystemUserDetail(userId) {
 }
 export function setupRBACEvents() {
   const profileDropdown = document.getElementById("profile-dropdown-menu");
-  bindAdminEvent(document, "click", "switch-active-role", (e) => {
+  bindAdminEvent(document, "click", "switch-active-role", async (e) => {
       const btn = e.target.closest?.(".dropdown-role-btn");
       if (!btn) return;
       const val = btn.getAttribute("data-switch-role");
+      if (!["super_admin", "manager", "employee"].includes(val)) return;
       const currentUser = this.model.state.activeuser;
       const userName = currentUser ? currentUser.name : "Vy Tuấn Dương";
-      if (val === "super_admin") {
-        this.model.switchActiveRole("super_admin", userName, "sa-1");
-      } else if (val === "manager") {
-        this.model.switchActiveRole("manager", userName, "mgr-1");
-      } else {
-        let realUserId = sessionStorage.getItem("bf_user_id") || "1";
-        if (!realUserId.startsWith("user-") && !realUserId.startsWith("emp-")) {
-          realUserId = "user-" + realUserId;
-        }
-        this.model.switchActiveRole("employee", userName, realUserId);
-      }
-      this.view.updateActiveUserProfileDisplay();
-      document.querySelectorAll(".modal-overlay:not(#modal-custom-dialog)").forEach((m) => m.classList.remove("active"));
-      if (profileDropdown) profileDropdown.classList.remove("active");
-      if (val === "super_admin") {
-        this.switchTab("superadmin-dashboard");
-      } else {
-        this.switchTab("dashboard");
+      const realUserId = currentUser?.id || sessionStorage.getItem("bf_user_id") || "";
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      try {
+        const response = await apiFetch("/api/auth/active-role", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ active_role: val })
+        });
+        const result = await response.json();
+        this.model.switchActiveRole(result.activeRole || val, userName, realUserId);
+        this.view.updateActiveUserProfileDisplay();
+        document.querySelectorAll(".modal-overlay:not(#modal-custom-dialog)").forEach((m) => m.classList.remove("active"));
+        if (profileDropdown) profileDropdown.classList.remove("active");
+        await this.model.purgeWorkspaceData?.();
+        window.location.assign(val === "super_admin" ? "/tong-quan-admin" : "/tong-quan");
+      } catch (error) {
+        await this.view.customAlert("Không thể chuyển chế độ", error?.message || "Vui lòng thử lại.", "alert-triangle");
+      } finally {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
       }
   });
   const btnAddEmp = document.getElementById("btn-manager-add-employee");
@@ -958,6 +962,15 @@ export async function editEmployee(id) {
   document.getElementById("emp-email").value = emp.email;
   document.getElementById("emp-phone").value = emp.phone;
   this.view.openModal("modal-manager-employee");
+}
+
+export async function viewEmployee(id) {
+  if (!this.view.renderEmployeeDetail) return;
+  if (!document.getElementById("modal-manager-employee-detail")) {
+    await this.ensureLazyModal?.("modal-manager-employee-detail");
+  }
+  this.view.renderEmployeeDetail(id);
+  this.view.openModal("modal-manager-employee-detail");
 }
 export async function deleteEmployee(id) {
   const emp = this.model.state.employees.find((e) => e.id === id);

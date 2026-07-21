@@ -143,10 +143,20 @@ def _session_cache_cleanup():
             del _session_cache[k]
 
 class SessionRole(str):
-    def __new__(cls, role, user_id, session_id=None):
+    def __new__(
+        cls,
+        role,
+        user_id,
+        session_id=None,
+        *,
+        platform_role=None,
+        active_role=None,
+    ):
         instance = super().__new__(cls, role)
         instance.user_id = user_id
         instance.session_id = session_id
+        instance.platform_role = platform_role or role
+        instance.active_role = active_role
         return instance
 
 
@@ -207,7 +217,24 @@ def verify_session(request, required_role=None):
         _session_cache_invalidate(token)
         return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
 
-    if required_role and required_role not in get_effective_roles(user['vai_tro']):
+    platform_role = normalize_platform_role(user['vai_tro'])
+    requested_active_role = str(user.get('active_role') or '').strip().lower()
+    allowed_active_roles = (
+        {'super_admin', 'manager', 'employee'}
+        if platform_role == 'super_admin'
+        else {'manager', 'employee'}
+    )
+    active_role = (
+        requested_active_role
+        if requested_active_role in allowed_active_roles
+        else None
+    )
+    effective_role = active_role or platform_role
+
+    if required_role and (
+        required_role not in get_effective_roles(user['vai_tro'])
+        or required_role not in get_effective_roles(effective_role)
+    ):
         return False, "Bạn không có quyền thực hiện thao tác này!"
     if required_role == 'super_admin':
         controls_valid, controls_error = verify_super_admin_controls(request, user)
@@ -222,5 +249,9 @@ def verify_session(request, required_role=None):
         pass
     _session_cache_set(token, user)
     return True, SessionRole(
-        normalize_platform_role(user['vai_tro']), user['id'], user.get('session_id')
+        effective_role,
+        user['id'],
+        user.get('session_id'),
+        platform_role=platform_role,
+        active_role=active_role,
     )

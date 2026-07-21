@@ -222,19 +222,35 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     const option = Array.from(select.options).find((entry) => entry.value === item.dataset.value);
     selectOption(option);
   });
-  select.addEventListener("change", () => refresh());
-  document.addEventListener("pointerdown", (event) => {
+  const onSelectChange = () => refresh();
+  const onDocumentPointerDown = (event) => {
     if (!wrapper.contains(event.target)) setOpen(false, { restoreSelection: true });
-  });
-  wrapper.addEventListener("focusout", () => {
+  };
+  const onWrapperFocusOut = () => {
     setTimeout(() => {
       if (!wrapper.contains(document.activeElement)) {
         setOpen(false, { restoreSelection: true });
       }
     }, 0);
-  });
+  };
+  select.addEventListener("change", onSelectChange);
+  document.addEventListener("pointerdown", onDocumentPointerDown);
+  wrapper.addEventListener("focusout", onWrapperFocusOut);
 
-  const api = { configure, refresh, close: () => setOpen(false, { restoreSelection: true }) };
+  const api = {
+    configure,
+    refresh,
+    close: () => setOpen(false, { restoreSelection: true }),
+    destroy: () => {
+      setOpen(false);
+      select.removeEventListener("change", onSelectChange);
+      document.removeEventListener("pointerdown", onDocumentPointerDown);
+      wrapper.removeEventListener("focusout", onWrapperFocusOut);
+      if (select.__bfAccessibleCombobox === api) {
+        select.__bfAccessibleCombobox = null;
+      }
+    }
+  };
   select.__bfAccessibleCombobox = api;
   refresh();
   return api;

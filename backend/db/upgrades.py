@@ -163,6 +163,26 @@ def _upgrade_to_v7_add_user_notifications(cursor, context):
            ON user_notifications (user_id, created_at DESC)
            WHERE read_at IS NULL"""
     )
+
+
+def _upgrade_to_v8_add_session_active_role(cursor, context):
+    """Persist the role mode selected in the current authenticated session."""
+
+    del context
+    cursor.execute(
+        "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS active_role TEXT"
+    )
+    cursor.execute(
+        """ALTER TABLE auth_sessions
+           DROP CONSTRAINT IF EXISTS auth_sessions_active_role_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE auth_sessions
+           ADD CONSTRAINT auth_sessions_active_role_check
+           CHECK(active_role IS NULL OR active_role IN (
+               'super_admin', 'manager', 'employee'
+           ))"""
+    )
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -189,6 +209,11 @@ UPGRADES = (
         7,
         "add_user_notifications",
         _upgrade_to_v7_add_user_notifications,
+    ),
+    DatabaseUpgrade(
+        8,
+        "add_session_active_role",
+        _upgrade_to_v8_add_session_active_role,
     ),
 )
 

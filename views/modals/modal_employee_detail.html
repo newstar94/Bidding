@@ -1,0 +1,32 @@
+<div class="modal-overlay" id="modal-manager-employee-detail">
+    <div class="modal-card employee-detail-modal">
+        <div class="modal-header">
+            <div>
+                <span class="employee-detail-kicker">Chi tiết nhân sự</span>
+                <h3 id="employee-detail-title">Thông tin nhân viên</h3>
+            </div>
+            <button type="button" class="modal-close" data-close="modal-manager-employee-detail" aria-label="Đóng">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="employee-detail-summary">
+                <div class="employee-detail-avatar" id="employee-detail-avatar" aria-hidden="true">NV</div>
+                <div class="employee-detail-identity">
+                    <strong id="employee-detail-name">--</strong>
+                    <span id="employee-detail-email">--</span>
+                    <span id="employee-detail-phone">--</span>
+                </div>
+                <div id="employee-detail-status"></div>
+            </div>
+            <section class="employee-detail-assignments" aria-labelledby="employee-detail-assignments-title">
+                <div class="employee-detail-section-header">
+                    <h4 id="employee-detail-assignments-title">Công việc được giao</h4>
+                    <span class="employee-detail-count" id="employee-detail-assignment-count">0</span>
+                </div>
+                <div id="employee-detail-assignments" class="employee-detail-assignment-list"></div>
+            </section>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close="modal-manager-employee-detail">Đóng</button>
+        </div>
+    </div>
+</div>

@@ -10,6 +10,7 @@ import { executeAppCommand } from "./commandBus.js";
 import { getAppController } from "./controllerRef.js";
 import { renderPackageStatusBadge } from "../shared/statusBadges.js";
 import { normalizeToastFeedback } from "../shared/toastFeedback.js";
+import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 
 export function toastDeduplicationKey(title, message, type) {
   return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
@@ -977,6 +978,20 @@ export class BiddingView {
       const statusEl = content.querySelector(".assignment-transfer-status");
       const selectedMode = () => radios.find((radio) => radio.checked)?.value || "all";
 
+      // Use the same searchable select used throughout partner/workflow forms.
+      // Native <select> rendering varies by browser and made this transfer
+      // dialog look inconsistent with the rest of the application.
+      const transferComboboxes = [initAccessibleCombobox(allSelect, {
+        placeholder: "Tìm kiếm nhân sự tiếp quản...",
+        includeEmptyOption: false
+      })];
+      individualSelects.forEach((select) => {
+        transferComboboxes.push(initAccessibleCombobox(select, {
+          placeholder: "Tìm kiếm nhân sự tiếp quản...",
+          includeEmptyOption: false
+        }));
+      });
+
       const updateState = () => {
         const isIndividual = selectedMode() === "individual";
         allPanel.hidden = isIndividual;
@@ -1014,6 +1029,7 @@ export class BiddingView {
       individualSelects.forEach((select) => select.addEventListener("change", updateState));
 
       const cleanup = () => {
+        transferComboboxes.forEach((combobox) => combobox?.destroy?.());
         okBtn.removeEventListener("click", onOk);
         cancelBtn.removeEventListener("click", onCancel);
         if (closeBtn) closeBtn.removeEventListener("click", onCancel);

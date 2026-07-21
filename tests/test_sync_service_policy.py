@@ -360,7 +360,7 @@ def test_sync_success_inserts_all_table_types_tracks_versions_and_broadcasts(mon
     assert tx.closed == 1
     assert tx.commits == 1
     sql_text = "\n".join(sql for sql, _ in tx_cursor.calls)
-    assert "INSERT INTO record_edit_ownership" in sql_text
+    assert "INSERT INTO record_edit_ownership" not in sql_text
     assert "DELETE FROM phan_cong_nhan_su" in sql_text
     assert "DELETE FROM ma_tran_phan_quyen" in sql_text
 

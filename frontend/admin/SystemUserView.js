@@ -356,17 +356,7 @@ export function renderManagerNhanVienPanel() {
   const tbody = document.getElementById("manager-employees-tbody");
   if (tbody) {
     const activeRows = orgEmployees.map((emp) => {
-      const empAssignments = this.model.state.assignments.filter((a) => a.empId === emp.id);
-      const assignedTasks = empAssignments.map((a) => {
-        if (a.type === "goithau") {
-          const gt = this.model.state.goithau.find((g) => g.id === a.targetId);
-          return gt ? `<span class="badge badge-neutral bf-s-032fd79442">GT: ${escapeHTML(gt.maGoiThau)}</span>` : "";
-        } else if (a.type === "hopdong") {
-          const hd = this.model.state.hopdong.find((h) => h.id === a.targetId);
-          return hd ? `<span class="badge badge-info bf-s-032fd79442">HD: ${escapeHTML(hd.soHopDong)}</span>` : "";
-        }
-        return "";
-      }).filter(Boolean).join(" ");
+      const viewArgsKey = registerCommandArgs([String(emp.id || "")]);
       const editArgsKey = registerCommandArgs([String(emp.id || "")]);
       const deleteArgsKey = registerCommandArgs([String(emp.id || "")]);
       return `
@@ -377,9 +367,9 @@ export function renderManagerNhanVienPanel() {
                     <td class="employee-status-cell">
                         <span class="badge badge-success"><i data-lucide="circle-check" aria-hidden="true"></i> Đang làm việc</span>
                     </td>
-                    <td class="bf-s-922aea7b47">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
                     <td class="bf-s-0c5104285b">
                         <div class="action-btn-group bf-s-273ba347d4">
+                            <button type="button" class="action-btn btn-view" data-bf-action="call" data-fn="viewEmployee" data-arg-key="${viewArgsKey}" title="Xem chi tiết nhân viên" aria-label="Xem chi tiết nhân viên ${safeAttr(emp.name)}"><i data-lucide="eye" aria-hidden="true"></i></button>
                             <button type="button" class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-arg-key="${editArgsKey}" title="Sửa nhân viên" aria-label="Sửa nhân viên ${safeAttr(emp.name)}"><i data-lucide="edit-2" aria-hidden="true"></i></button>
                             <button type="button" class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-arg-key="${deleteArgsKey}" title="Cho nhân viên rời tổ chức" aria-label="Cho nhân viên ${safeAttr(emp.name)} rời tổ chức"><i data-lucide="trash-2" aria-hidden="true"></i></button>
                         </div>
@@ -388,13 +378,7 @@ export function renderManagerNhanVienPanel() {
             `;
     }).join("");
     const formerRows = (this.model.state.formerEmployees || []).map((emp) => {
-      const history = (emp.assignmentHistory || []).map((assignment) => {
-        const target = assignment.type === "goithau"
-          ? this.model.state.goithau.find((item) => item.id === assignment.targetId)
-          : this.model.state.hopdong.find((item) => item.id === assignment.targetId);
-        const label = assignment.type === "goithau" ? target?.maGoiThau : target?.soHopDong;
-        return label ? `<span class="badge badge-neutral">${assignment.type === "goithau" ? "GT" : "HD"}: ${escapeHTML(label)}</span>` : "";
-      }).filter(Boolean).join(" ");
+      const viewArgsKey = registerCommandArgs([String(emp.id || "")]);
       const reAddArgsKey = registerCommandArgs([String(emp.id || ""), null]);
       const leftDate = emp.leftAt ? formatDateOnly(emp.leftAt) : "";
       return `<tr class="is-former-member">
@@ -404,9 +388,11 @@ export function renderManagerNhanVienPanel() {
           <span class="badge badge-danger"><i data-lucide="user-minus" aria-hidden="true"></i> Đã rời</span>
           ${leftDate ? `<span class="employee-status-meta">${escapeHTML(leftDate)}</span>` : ""}
         </td>
-        <td>${history || '<span class="text-muted">Không có lịch sử phân công</span>'}</td>
         <td>
           <div class="action-btn-group">
+            <button type="button" class="action-btn btn-view" data-bf-action="call" data-fn="viewEmployee" data-arg-key="${viewArgsKey}" title="Xem chi tiết nhân viên" aria-label="Xem chi tiết nhân viên ${safeAttr(emp.name)}">
+              <i data-lucide="eye" aria-hidden="true"></i>
+            </button>
             <button type="button" class="action-btn btn-view" data-bf-action="call" data-fn="reAddEmployee" data-arg-key="${reAddArgsKey}" title="Thêm lại nhân viên" aria-label="Thêm lại nhân viên ${safeAttr(emp.name)}">
               <i data-lucide="user-plus" aria-hidden="true"></i>
             </button>
@@ -416,7 +402,7 @@ export function renderManagerNhanVienPanel() {
     }).join("");
     tbody.innerHTML = trustedHTML(activeRows + formerRows || `
       <tr>
-        <td colspan="6" class="text-center text-muted">Chưa có nhân viên trong danh sách.</td>
+        <td colspan="5" class="text-center text-muted">Chưa có nhân viên trong danh sách.</td>
       </tr>`);
   }
   const matrixTbody = document.getElementById("manager-matrix-tbody");
@@ -456,6 +442,70 @@ export function renderManagerNhanVienPanel() {
     }).join(""));
   }
   lucide.createIcons();
+}
+
+function describeEmployeeAssignment(model, assignment) {
+  const type = String(assignment?.type || "");
+  const targetId = String(assignment?.targetId || "");
+  const collection = type === "goithau"
+    ? model.state.goithau
+    : type === "hopdong"
+      ? model.state.hopdong
+      : type === "kehoach"
+        ? model.state.kehoach
+        : [];
+  const target = collection.find((item) => String(item.id) === targetId);
+  if (!target) return null;
+  const meta = type === "goithau"
+    ? { prefix: "GT", code: target.maGoiThau, name: target.tenGoiThau, icon: "briefcase-business" }
+    : type === "hopdong"
+      ? { prefix: "HD", code: target.soHopDong, name: target.tenHopDong, icon: "file-signature" }
+      : { prefix: "KH", code: target.maKeHoach, name: target.tenKeHoach, icon: "file-text" };
+  return { ...meta, targetId };
+}
+
+export function renderEmployeeDetail(id) {
+  const employeeId = String(id || "");
+  const employee = this.model.state.employees.find((item) => String(item.id) === employeeId)
+    || (this.model.state.formerEmployees || []).find((item) => String(item.id) === employeeId);
+  if (!employee) return;
+  const isFormer = (this.model.state.formerEmployees || []).some((item) => String(item.id) === employeeId);
+  const assignments = isFormer
+    ? (employee.assignmentHistory || []).map((item) => ({ ...item, historical: true }))
+    : (this.model.state.assignments || []).filter((item) => String(item.empId) === employeeId);
+  const assignmentItems = assignments.map((assignment) => describeEmployeeAssignment(this.model, assignment)).filter(Boolean);
+  const setText = (elementId, value) => {
+    const element = document.getElementById(elementId);
+    if (element) element.textContent = String(value || "--");
+  };
+  setText("employee-detail-title", employee.name || "Thông tin nhân viên");
+  setText("employee-detail-name", employee.name);
+  setText("employee-detail-email", employee.email);
+  setText("employee-detail-phone", employee.phone || "Chưa cập nhật số điện thoại");
+  setText("employee-detail-avatar", getUserInitials(employee.name, employee.email));
+  const status = document.getElementById("employee-detail-status");
+  if (status) {
+    status.innerHTML = trustedHTML(isFormer
+      ? '<span class="badge badge-danger"><i data-lucide="user-minus" aria-hidden="true"></i> Đã rời tổ chức</span>'
+      : '<span class="badge badge-success"><i data-lucide="circle-check" aria-hidden="true"></i> Đang làm việc</span>');
+  }
+  const count = document.getElementById("employee-detail-assignment-count");
+  if (count) count.textContent = String(assignmentItems.length);
+  const list = document.getElementById("employee-detail-assignments");
+  if (list) {
+    list.innerHTML = trustedHTML(assignmentItems.length
+      ? assignmentItems.map((item) => `
+          <div class="employee-detail-assignment-item">
+            <span class="employee-detail-assignment-icon">${item.prefix}</span>
+            <span class="employee-detail-assignment-copy">
+              <strong>${escapeHTML(item.code || "Chưa có mã")}</strong>
+              <span>${escapeHTML(item.name || "")}</span>
+            </span>
+            ${item.historical ? '<span class="employee-detail-assignment-state">Lịch sử</span>' : '<span class="employee-detail-assignment-state is-active">Đang phụ trách</span>'}
+          </div>`).join("")
+      : '<div class="employee-detail-empty"><i data-lucide="inbox" aria-hidden="true"></i><span>Chưa có công việc được giao.</span></div>');
+  }
+  this.createIconsScoped?.(document.getElementById("modal-manager-employee-detail"));
 }
 export function renderManagerHoSoGiayPanel() {
   // The sync endpoint already scopes this collection to the active organization.
