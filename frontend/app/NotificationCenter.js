@@ -15,12 +15,6 @@ const EMPTY_ACTIVITY = `
     <span>Chưa có thông báo mới</span>
   </div>`;
 
-const EMPTY_WORK = `
-  <div class="notification-empty">
-    ${htmlIcon("circle-check-big", 'aria-hidden="true"')}
-    <span>Không có cảnh báo công việc</span>
-  </div>`;
-
 function formatMoment(value) {
   const numeric = Number(value);
   const date = Number.isFinite(numeric) && numeric > 0
@@ -89,15 +83,16 @@ function navigateToTarget(controller, targetType, targetId) {
   if (tab) controller.switchTab(tab, String(targetId));
 }
 
-function renderActivities(state, elements) {
+function renderNotifications(state, controller, elements) {
   const items = state.items || [];
-  elements.activityCount.textContent = String(state.unreadCount || 0);
+  const alerts = workAlerts(controller);
   elements.readAll.disabled = !state.unreadCount;
-  if (!items.length) {
+  if (!items.length && !alerts.length) {
     elements.list.innerHTML = trustedHTML(EMPTY_ACTIVITY);
     return;
   }
-  elements.list.innerHTML = trustedHTML(items.map((item) => {
+
+  const activityMarkup = items.map((item) => {
     const unread = !item.readAt;
     const actionable = Boolean(item.route && item.targetId);
     const tone = activityTone(item);
@@ -116,17 +111,9 @@ function renderActivities(state, elements) {
         </span>
         ${unread ? '<span class="notification-unread-dot" aria-label="Chưa đọc"></span>' : ""}
       </button>`;
-  }).join(""));
-}
+  }).join("");
 
-function renderWork(controller, elements) {
-  const items = workAlerts(controller);
-  elements.workCount.textContent = String(items.length);
-  if (!items.length) {
-    elements.workList.innerHTML = trustedHTML(EMPTY_WORK);
-    return;
-  }
-  elements.workList.innerHTML = trustedHTML(items.map((item) => {
+  const workMarkup = alerts.map((item) => {
     const meta = ALERT_META[item.alertKey] || {
       label: "Công việc cần xử lý",
       detail: "Kiểm tra tiến độ",
@@ -148,8 +135,10 @@ function renderWork(controller, elements) {
         </span>
         ${htmlIcon("chevron-right", 'class="notification-chevron" aria-hidden="true"')}
       </button>`;
-  }).join(""));
-  window.lucide?.createIcons?.({ root: elements.workList });
+  }).join("");
+
+  elements.list.innerHTML = trustedHTML(`${activityMarkup}${workMarkup}`);
+  window.lucide?.createIcons?.({ root: elements.list });
 }
 
 function updateBadge(state, elements) {
@@ -172,10 +161,7 @@ export function initializeNotificationCenter(controller) {
     badge: document.getElementById("notification-badge"),
     panel: document.getElementById("notification-panel"),
     readAll: document.getElementById("notification-read-all"),
-    activityCount: document.getElementById("notification-activity-count"),
-    workCount: document.getElementById("notification-work-count"),
-    list: document.getElementById("notification-list"),
-    workList: document.getElementById("notification-work-list")
+    list: document.getElementById("notification-list")
   };
   if (Object.values(elements).some((element) => !element)) return null;
   const state = { items: [], unreadCount: 0, loading: false };
@@ -189,8 +175,7 @@ export function initializeNotificationCenter(controller) {
       const payload = await response.json();
       state.items = Array.isArray(payload.items) ? payload.items : [];
       state.unreadCount = Number(payload.unreadCount || 0);
-      renderActivities(state, elements);
-      renderWork(controller, elements);
+      renderNotifications(state, controller, elements);
       updateBadge(state, elements);
       window.lucide?.createIcons?.({ root: elements.panel });
     } catch (error) {
@@ -204,7 +189,7 @@ export function initializeNotificationCenter(controller) {
     elements.panel.hidden = !open;
     elements.trigger.setAttribute("aria-expanded", String(open));
     if (open) {
-      renderWork(controller, elements);
+      renderNotifications(state, controller, elements);
       refresh();
     }
   };
@@ -219,27 +204,28 @@ export function initializeNotificationCenter(controller) {
     if (response.ok) await refresh();
   });
   elements.list.addEventListener("click", async (event) => {
-    const item = event.target.closest?.("[data-notification-id]");
-    if (!item) return;
-    const id = item.dataset.notificationId;
-    const current = state.items.find((entry) => entry.id === id);
-    if (current && !current.readAt) {
-      await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
-      current.readAt = Math.floor(Date.now() / 1000);
-      state.unreadCount = Math.max(0, state.unreadCount - 1);
-      renderActivities(state, elements);
-      updateBadge(state, elements);
+    const notificationItem = event.target.closest?.("[data-notification-id]");
+    if (notificationItem) {
+      const id = notificationItem.dataset.notificationId;
+      const current = state.items.find((entry) => entry.id === id);
+      if (current && !current.readAt) {
+        await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+        current.readAt = Math.floor(Date.now() / 1000);
+        state.unreadCount = Math.max(0, state.unreadCount - 1);
+        renderNotifications(state, controller, elements);
+        updateBadge(state, elements);
+      }
+      if (notificationItem.dataset.static !== "true") {
+        setOpen(false);
+        navigateToTarget(controller, notificationItem.dataset.targetType, notificationItem.dataset.targetId);
+      }
+      return;
     }
-    if (item.dataset.static !== "true") {
-      setOpen(false);
-      navigateToTarget(controller, item.dataset.targetType, item.dataset.targetId);
-    }
-  });
-  elements.workList.addEventListener("click", (event) => {
-    const item = event.target.closest?.("[data-work-target-id]");
-    if (!item) return;
+
+    const workItem = event.target.closest?.("[data-work-target-id]");
+    if (!workItem) return;
     setOpen(false);
-    navigateToTarget(controller, item.dataset.workTargetType, item.dataset.workTargetId);
+    navigateToTarget(controller, workItem.dataset.workTargetType, workItem.dataset.workTargetId);
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest?.("#notification-center")) setOpen(false);
@@ -257,8 +243,7 @@ export function initializeNotificationCenter(controller) {
     if (!document.hidden) refresh();
   }, 60000);
 
-  renderActivities(state, elements);
-  renderWork(controller, elements);
+  renderNotifications(state, controller, elements);
   refresh();
   return { refresh };
 }

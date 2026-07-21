@@ -484,6 +484,8 @@ export function getGoiThauFormInputValues(model) {
     const el = document.getElementById(id);
     return el ? el.value : "";
   };
+  const phuongPhapDanhGia = getRawVal("gt-phuongphapdanhgia");
+  const trongSoKyThuatRaw = getVal("gt-trongsokythuat");
   return {
     id: getVal("form-goithau-id"),
     keHoachId: getVal("gt-kehoachid"),
@@ -492,8 +494,10 @@ export function getGoiThauFormInputValues(model) {
     thoiGianThucHien: getVal("gt-thoigian"),
     hinhThucLuaChon: getRawVal("gt-hinhthuc"),
     phuongThucLuaChon: getRawVal("gt-phuongthuc"),
-    phuongPhapDanhGia: getRawVal("gt-phuongphapdanhgia"),
-    trongSoKyThuat: getVal("gt-trongsokythuat") !== "" ? parseInt(getVal("gt-trongsokythuat")) : null,
+    phuongPhapDanhGia,
+    trongSoKyThuat: phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && trongSoKyThuatRaw !== ""
+      ? parseInt(trongSoKyThuatRaw)
+      : null,
     trangThai: getRawVal("gt-trangthai"),
     linhVuc: getRawVal("gt-linhvuc"),
     isThuoc: document.querySelector('input[name="gt-goithauthuoc"]:checked')?.value === "1" ? 1 : 0,

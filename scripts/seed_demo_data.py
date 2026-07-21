@@ -371,7 +371,7 @@ def seed(cursor, *, demo_password: str) -> dict[str, int]:
             "hieu_luc_hsdt": 120,
             "hieu_luc_dam_bao_du_thau": 150,
             "phuong_phap_danh_gia": "Giá thấp nhất",
-            "trong_so_ky_thuat": 70,
+            "trong_so_ky_thuat": None,
             "ty_le_bao_dam_hop_dong": 10,
             "is_thuoc": 0,
             "is_rebid": 0,

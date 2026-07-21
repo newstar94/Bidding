@@ -69,7 +69,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                         <span class="package-info-label">Phương pháp đánh giá</span>
                                         <span class="package-info-value">${escapeHtml(gt.phuongPhapDanhGia || "--")}</span>
                                     </div>
-                                    ${gt.trongSoKyThuat ? `
+                                    ${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat != null ? `
                                     <div class="package-info-row">
                                         <span class="package-info-label">Trọng số kỹ thuật (%)</span>
                                         <span class="package-info-value">${escapeHtml(gt.trongSoKyThuat)}%</span>

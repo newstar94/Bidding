@@ -798,7 +798,9 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     }
   }
   const phuongPhapDanhGia = formVals.phuongPhapDanhGia;
-  const trongSoKyThuat = formVals.trongSoKyThuat;
+  const trongSoKyThuat = phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá"
+    ? formVals.trongSoKyThuat
+    : null;
   const phuongThucLuaChon = formVals.phuongThucLuaChon;
   if (this.validateTrongSoKyThuat) {
     if (!this.validateTrongSoKyThuat(true)) {

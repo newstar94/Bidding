@@ -553,6 +553,7 @@ def test_package_rebid_status_schedule_and_numeric_rules() -> None:
         thoiGianDangTai="2026-07-20T10:00:00",
         thoiGianDongThau="2026-07-20T09:00:00",
         thoiGianMoThau="2026-07-20T08:00:00",
+        phuongPhapDanhGia="Kết hợp giữa kỹ thuật và giá",
         trongSoKyThuat=101,
         giaGoiThau=-1,
         toChuyenGia=[{"chucVu": "Member"}],
@@ -570,6 +571,24 @@ def test_package_rebid_status_schedule_and_numeric_rules() -> None:
     )
     _, errors, _ = validation.validate_sync_item("goi_thau", inconsistent)
     assert errors
+
+
+def test_package_technical_weight_only_applies_to_combined_method() -> None:
+    lowest_price = _minimal_package(
+        phuongPhapDanhGia="Giá thấp nhất",
+        trongSoKyThuat=70,
+    )
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", lowest_price)
+    assert normalized["trongSoKyThuat"] is None
+    assert errors == []
+
+    combined = _minimal_package(
+        phuongPhapDanhGia="Kết hợp giữa kỹ thuật và giá",
+        trongSoKyThuat=70,
+    )
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", combined)
+    assert normalized["trongSoKyThuat"] == 70
+    assert errors == []
 
 
 @pytest.mark.parametrize(

@@ -183,6 +183,21 @@ def _upgrade_to_v8_add_session_active_role(cursor, context):
                'super_admin', 'manager', 'employee'
            ))"""
     )
+
+
+def _upgrade_to_v9_normalize_package_technical_weight(cursor, context):
+    """Remove technical weights from evaluation methods that do not use them."""
+
+    del context
+    cursor.execute(
+        """UPDATE goi_thau
+           SET trong_so_ky_thuat = NULL
+           WHERE trong_so_ky_thuat IS NOT NULL
+             AND COALESCE(TRIM(phuong_phap_danh_gia), '')
+                 <> 'Kết hợp giữa kỹ thuật và giá'"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -214,6 +229,11 @@ UPGRADES = (
         8,
         "add_session_active_role",
         _upgrade_to_v8_add_session_active_role,
+    ),
+    DatabaseUpgrade(
+        9,
+        "normalize_package_technical_weight",
+        _upgrade_to_v9_normalize_package_technical_weight,
     ),
 )
 

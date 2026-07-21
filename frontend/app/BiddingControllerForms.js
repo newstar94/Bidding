@@ -372,6 +372,7 @@ export function setupActionListeners() {
     } else {
       setVisible(gtTrongSoKyThuatContainer, false);
       setRequired(gtTrongSoKyThuatInput, false);
+      if (gtTrongSoKyThuatInput) gtTrongSoKyThuatInput.value = "";
       setFieldFeedback(gtTrongSoKyThuatInput);
     }
   };

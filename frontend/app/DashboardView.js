@@ -552,7 +552,7 @@ export function renderSuperAdminDashboard() {
       const fill = document.getElementById(`sad-pkg-${packageId}-fill`);
       if (fill) setRuntimeStyle(fill, "width", `${percent}%`);
     });
-    const orgListContainer = document.getElementById("sa-org-list-tbody");
+    const orgListContainer = document.getElementById("sad-recent-orgs-tbody");
     if (orgListContainer) {
       const list = summary.organizations;
       if (list.length === 0) {
@@ -561,19 +561,18 @@ export function renderSuperAdminDashboard() {
         orgListContainer.innerHTML = trustedHTML(list.map((org) => {
           const pkgName = org.package_id === "diamond" ? "Gói Kim Cương" : org.package_id === "gold" ? "Gói Vàng" : org.package_id === "silver" ? "Gói Bạc" : "Chưa đăng ký";
           const pkgClass = org.package_id === "diamond" ? "badge-primary" : org.package_id === "gold" ? "badge-warning" : org.package_id === "silver" ? "badge-success" : "badge-neutral";
+          const isActive = org.status === "active";
+          const statusBadge = isActive
+            ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Hoạt động</span>'
+            : '<span class="badge badge-danger"><i data-lucide="lock"></i> Đã khóa</span>';
           return `
                             <tr>
                                 <td class="bf-s-78e97210a5">${escapeHtml(org.name)}</td>
                                 <td>${org.manager ? escapeHtml(org.manager) : '<span class="text-muted">Chưa cấu hình</span>'}</td>
-                                <td>${org.email ? escapeHtml(org.email) : '<span class="text-muted">Chưa có</span>'}</td>
+                                <td>${org.phone ? escapeHtml(org.phone) : '<span class="text-muted">Chưa có</span>'}</td>
                                 <td><span class="badge ${pkgClass}">${pkgName}</span></td>
                                 <td class="bf-s-6e8bcfac8d">${org.end ? escapeHtml(org.end) : '<span class="text-muted">Vô thời hạn</span>'}</td>
-                                <td class="bf-s-ef70dae7ee">${org.userCount}</td>
-                                <td class="text-right">
-                                    <div class="actions-group">
-                                        <button class="btn btn-icon btn-neutral" data-bf-action="switch-tab" data-tab="superadmin" title="Quản lý chi tiết"><i data-lucide="edit"></i></button>
-                                    </div>
-                                </td>
+                                <td>${statusBadge}</td>
                             </tr>
                         `;
         }).join(""));
@@ -594,7 +593,7 @@ export function summarizeSuperAdminOrganizations(users = [], systemPackages = []
           id: organization.id,
           name: organization.name,
           manager: "",
-          email: "",
+          phone: "",
           package_id: subscription.package_id || "none",
           start: subscription.start_date || "",
           end: subscription.end_date || "",
@@ -604,7 +603,7 @@ export function summarizeSuperAdminOrganizations(users = [], systemPackages = []
         existing.userIds.add(String(user.id || user.username || user.email || ""));
         if (["owner", "manager"].includes(organization.role) || !existing.manager) {
           existing.manager = organization.employee_name || user.name || user.username || "";
-          existing.email = user.email || "";
+          existing.phone = organization.employee_phone || "";
         }
         organizationMap.set(organization.id, existing);
       });

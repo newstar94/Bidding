@@ -804,6 +804,10 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
         _validate_single_team_leader(item, "toChuyenGia", "Tổ chuyên gia", errors)
         _validate_single_team_leader(item, "toThamDinh", "Tổ thẩm định", errors)
 
+        phuong_phap = str(item.get("phuongPhapDanhGia") or "").strip()
+        if phuong_phap != "Kết hợp giữa kỹ thuật và giá":
+            item["trongSoKyThuat"] = None
+
         trong_so = item.get("trongSoKyThuat")
         if trong_so is not None:
             ts_val = safe_int(trong_so)

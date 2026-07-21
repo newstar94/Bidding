@@ -296,6 +296,12 @@ def main() -> int:
             "public.unaccent(regdictionary, text)",
             "public.unaccent(text)",
         ):
+            function_exists = cursor.execute(
+                "SELECT to_regprocedure(%s)",
+                (function_signature,),
+            ).fetchone()[0]
+            if function_exists is None:
+                continue
             cursor.execute(
                 sql.SQL("GRANT EXECUTE ON FUNCTION {} TO {}").format(
                     sql.SQL(function_signature), sql.Identifier(migrator_role)
