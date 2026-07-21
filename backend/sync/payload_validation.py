@@ -5,6 +5,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
+from backend.partners.position_normalization import derive_investor_head_position
 from .mapper import json_key_for_column
 from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value, vietnam_today
@@ -539,6 +540,9 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
     if table_name == "chu_dau_tu":
         if not str(item.get("tenChuDauTu") or "").strip():
             errors.append("Tên chủ đầu tư không được để trống.")
+        item["chucVuNguoiDungDau"] = derive_investor_head_position(
+            item.get("chucVuDaiDien")
+        )
     elif table_name == "ke_hoach_lcnt":
         _require_fields(item, (
             ("tenKeHoach", "Tên kế hoạch LCNT"),

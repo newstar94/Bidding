@@ -11,6 +11,7 @@ import random
 import uuid
 from backend.shared.helpers import database
 from backend.partners.address_parser import compose_external_address, parse_vietnam_address_to_internal
+from backend.partners.position_normalization import derive_investor_head_position
 from backend.shared.text_utils import normalize_organization_name, normalize_person_name
 from backend.shared.logging_utils import log_error, log_structured_event
 from backend.observability.metrics import record_partner_upstream
@@ -381,6 +382,7 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
     ]
     address = compose_external_address(data.get("officeAdd"), *administrative_names)
 
+    representative_position = clean_text(data.get("repPosition"))
     return {
         "name": normalize_organization_name(data.get("orgFullName")),
         "address": address,
@@ -390,7 +392,8 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
         "tax_code": clean_text(data.get("taxCode")),
         "english_name": clean_text(data.get("orgEnName")),
         "representative_name": normalize_person_name(data.get("repName")),
-        "representative_position": clean_text(data.get("repPosition")),
+        "representative_position": representative_position,
+        "head_position": derive_investor_head_position(representative_position),
         "phone": clean_text(data.get("officePhone")),
         "business_type": clean_text(data.get("businessType")),
         "businesses": data.get("businesses") or [],

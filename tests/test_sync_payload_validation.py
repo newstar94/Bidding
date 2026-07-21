@@ -545,6 +545,25 @@ def _minimal_package(**overrides):
     return item
 
 
+def test_investor_head_position_is_derived_from_representative_position() -> None:
+    deputy = {
+        "tenChuDauTu": "Trường Demo",
+        "chucVuDaiDien": "Hiệu phó",
+        "chucVuNguoiDungDau": "Dữ liệu không hợp lệ",
+    }
+    normalized, errors, _ = validation.validate_sync_item("chu_dau_tu", deputy)
+    assert normalized["chucVuNguoiDungDau"] == "Hiệu trưởng"
+    assert errors == []
+
+    head = {
+        "tenChuDauTu": "Đơn vị Demo",
+        "chucVuDaiDien": "Chủ tịch",
+    }
+    normalized, errors, _ = validation.validate_sync_item("chu_dau_tu", head)
+    assert normalized["chucVuNguoiDungDau"] == "Chủ tịch"
+    assert errors == []
+
+
 def test_package_rebid_status_schedule_and_numeric_rules() -> None:
     item = _minimal_package(
         isRebid=True,

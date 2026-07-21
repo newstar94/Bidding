@@ -59,26 +59,62 @@ function setValue(root, id, value) {
   if (element) element.value = value ?? "";
 }
 
+export function deriveInvestorHeadPosition(representativePosition) {
+  const position = String(representativePosition || "").trim();
+  if (!position) return "";
+
+  let headPosition = position.replace(/^hiệu\s+phó(?=\s|$|[:,-])/iu, "Hiệu trưởng");
+  if (headPosition === position) {
+    headPosition = position.replace(/^phó(?=\s|$|[:,-])[\s:,-]*/iu, "").trim();
+  }
+  if (!headPosition || headPosition === position) return position;
+  return headPosition.charAt(0).toLocaleUpperCase("vi-VN") + headPosition.slice(1);
+}
+
+function bindInvestorHeadPosition(root, config) {
+  const representativePosition = control(root, config.representativePositionId);
+  const headPosition = control(root, config.extraFields?.head_position);
+  if (!representativePosition || !headPosition) return;
+
+  representativePosition.__bfHeadPositionCleanup?.();
+  const syncHeadPosition = () => {
+    headPosition.value = deriveInvestorHeadPosition(representativePosition.value);
+  };
+  representativePosition.addEventListener("input", syncHeadPosition);
+  representativePosition.addEventListener("change", syncHeadPosition);
+  representativePosition.__bfHeadPositionCleanup = () => {
+    representativePosition.removeEventListener("input", syncHeadPosition);
+    representativePosition.removeEventListener("change", syncHeadPosition);
+    delete representativePosition.__bfHeadPositionCleanup;
+  };
+  syncHeadPosition();
+}
+
 export function mapPartnerLookupFields(data, config) {
+  const lookupData = { ...data };
+  if (config.extraFields?.head_position && !lookupData.head_position) {
+    lookupData.head_position = deriveInvestorHeadPosition(lookupData.representative_position);
+  }
   const result = {
-    [config.codeId]: data.org_code || "",
-    [config.taxId]: data.tax_code || "",
-    [config.nameId]: normalizeOrganizationName(data.name),
-    [config.shortNameId]: data.short_name || "",
-    [config.representativeId]: normalizePersonName(data.representative_name || ""),
-    [config.representativePositionId]: data.representative_position || "",
-    [config.phoneId]: data.phone || "",
-    [config.emailId]: data.email || "",
-    [config.bankAccountId]: data.bank_account || "",
-    [config.bankNameId]: data.bank_name || ""
+    [config.codeId]: lookupData.org_code || "",
+    [config.taxId]: lookupData.tax_code || "",
+    [config.nameId]: normalizeOrganizationName(lookupData.name),
+    [config.shortNameId]: lookupData.short_name || "",
+    [config.representativeId]: normalizePersonName(lookupData.representative_name || ""),
+    [config.representativePositionId]: lookupData.representative_position || "",
+    [config.phoneId]: lookupData.phone || "",
+    [config.emailId]: lookupData.email || "",
+    [config.bankAccountId]: lookupData.bank_account || "",
+    [config.bankNameId]: lookupData.bank_name || ""
   };
   Object.entries(config.extraFields || {}).forEach(([sourceKey, targetId]) => {
-    result[targetId] = data[sourceKey] || "";
+    result[targetId] = lookupData[sourceKey] || "";
   });
   return Object.fromEntries(Object.entries(result).filter(([id]) => Boolean(id)));
 }
 
 export function createPartnerLookupHandlers({ form, config, root = document, applyAddress = applyRawAddressToAddressControls }) {
+  bindInvestorHeadPosition(root, config);
   const clearAddress = () => {
     setValue(root, config.address.detailInputId, "");
     setValue(root, config.address.provinceSelectId, "");
@@ -126,6 +162,9 @@ export function collectPartnerFormData(root, form, config, { convertDate, fallba
   data.maSoThue = normalizeVietnamTaxCode(data.maSoThue || "");
   data[config.nameField] = normalizeOrganizationName(data[config.nameField] || "");
   data[config.representativeField] = normalizePersonName(data[config.representativeField] || "");
+  if (Object.hasOwn(data, "chucVuNguoiDungDau")) {
+    data.chucVuNguoiDungDau = deriveInvestorHeadPosition(data.chucVuDaiDien);
+  }
   data.ngayApDung = convertDate?.(data.ngayApDung) || fallbackDate || "";
   const address = config.lookup.address;
   data.diaChi = composeInternalAddress(
