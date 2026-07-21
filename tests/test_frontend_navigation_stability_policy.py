@@ -102,6 +102,20 @@ def test_google_identity_script_starts_before_full_window_load():
     assert 'window.addEventListener("load"' not in loader_block
 
 
+def test_employee_editor_loads_lazy_modal_before_populating_fields():
+    source = _source("frontend/admin/AdminUserController.js")
+    edit_block = source[
+        source.index("export async function editEmployee"):
+        source.index("export async function deleteEmployee")
+    ]
+
+    lazy_load = edit_block.index('await this.ensureLazyModal?.("modal-manager-employee")')
+    populate_title = edit_block.index('document.getElementById("modal-employee-title").textContent')
+
+    assert 'if (!document.getElementById("modal-manager-employee"))' in edit_block
+    assert lazy_load < populate_title
+
+
 def test_timeline_combobox_empty_state_is_compact_and_readable():
     stylesheet = _source("views/css/views.css")
     empty_rule = stylesheet[

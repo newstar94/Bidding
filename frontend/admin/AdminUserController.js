@@ -974,9 +974,12 @@ export function setupRBACEvents() {
     });
   }
 }
-export function editEmployee(id) {
+export async function editEmployee(id) {
   const emp = this.model.state.employees.find((e) => e.id === id);
   if (!emp) return;
+  if (!document.getElementById("modal-manager-employee")) {
+    await this.ensureLazyModal?.("modal-manager-employee");
+  }
   document.getElementById("modal-employee-title").textContent = "Cập nhật Nhân sự phòng thầu";
   document.getElementById("form-employee-id").value = emp.id;
   document.getElementById("emp-name").value = emp.name;
