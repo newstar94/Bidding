@@ -117,6 +117,52 @@ def _upgrade_to_v6_reconcile_record_ownership_constraint(cursor, context):
     )
 
 
+def _upgrade_to_v7_add_user_notifications(cursor, context):
+    """Add transactional in-app notifications and general notification email."""
+
+    del context
+    cursor.execute(
+        """ALTER TABLE email_delivery_status
+           DROP CONSTRAINT IF EXISTS email_delivery_status_purpose_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE email_delivery_status
+           ADD CONSTRAINT email_delivery_status_purpose_check
+           CHECK (purpose IN ('google_temporary_password', 'user_notification'))"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS user_notifications (
+               id TEXT PRIMARY KEY,
+               user_id TEXT NOT NULL,
+               organization_id TEXT,
+               kind TEXT NOT NULL CHECK(kind IN (
+                   'assignment_added', 'assignment_removed',
+                   'organization_added', 'organization_removed'
+               )),
+               severity TEXT NOT NULL DEFAULT 'info'
+                   CHECK(severity IN ('info', 'warning')),
+               title TEXT NOT NULL CHECK(trim(title) != ''),
+               message TEXT NOT NULL CHECK(trim(message) != ''),
+               target_type TEXT CHECK(
+                   target_type IS NULL OR target_type IN ('goithau', 'hopdong')
+               ),
+               target_id TEXT,
+               route TEXT,
+               read_at BIGINT,
+               created_at BIGINT NOT NULL CHECK(created_at > 0),
+               CONSTRAINT fk_user_notifications_user
+                   FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE
+           )"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_user_notifications_user_created
+           ON user_notifications (user_id, created_at DESC)"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_user_notifications_user_unread
+           ON user_notifications (user_id, created_at DESC)
+           WHERE read_at IS NULL"""
+    )
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -138,6 +184,11 @@ UPGRADES = (
         6,
         "reconcile_record_ownership_constraint",
         _upgrade_to_v6_reconcile_record_ownership_constraint,
+    ),
+    DatabaseUpgrade(
+        7,
+        "add_user_notifications",
+        _upgrade_to_v7_add_user_notifications,
     ),
 )
 

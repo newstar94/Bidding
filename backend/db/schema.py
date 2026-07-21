@@ -111,7 +111,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "user_id": "TEXT NOT NULL",
-            "purpose": "TEXT NOT NULL CHECK(purpose IN ('google_temporary_password'))",
+            "purpose": "TEXT NOT NULL CHECK(purpose IN ('google_temporary_password', 'user_notification'))",
             "recipient_hash": "TEXT NOT NULL CHECK(recipient_hash != '')",
             "recipient_ciphertext": "TEXT",
             "subject_ciphertext": "TEXT",
@@ -126,6 +126,25 @@ SCHEMA_DINH_NGHIA = {
             "accepted_at": "INTEGER",
             "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
             "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "user_notifications": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "user_id": "TEXT NOT NULL",
+            "organization_id": "TEXT",
+            "kind": "TEXT NOT NULL CHECK(kind IN ('assignment_added', 'assignment_removed', 'organization_added', 'organization_removed'))",
+            "severity": "TEXT NOT NULL DEFAULT 'info' CHECK(severity IN ('info', 'warning'))",
+            "title": "TEXT NOT NULL CHECK(trim(title) != '')",
+            "message": "TEXT NOT NULL CHECK(trim(message) != '')",
+            "target_type": "TEXT CHECK(target_type IS NULL OR target_type IN ('goithau', 'hopdong'))",
+            "target_id": "TEXT",
+            "route": "TEXT",
+            "read_at": "INTEGER",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)"
         },
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"

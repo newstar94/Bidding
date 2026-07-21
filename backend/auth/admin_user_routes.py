@@ -23,7 +23,6 @@ from backend.shared.workspace_scope import personal_scope_id, personal_workspace
 from backend.shared.subscription_policy import get_account_subscription
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.shared.request_validation import read_json_object
-from backend.auth.security_notifications import build_security_notification_tasks
 
 
 _DOCUMENT_CAPABILITY_FIELDS = ("financial", "identity", "signature")
@@ -486,13 +485,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 {"event": "user_access_settings_changed"},
             )
         return JSONResponse(
-            {"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."},
-            background=build_security_notification_tasks(
-                email=target[1],
-                display_name=target[2],
-                subject="[BiddingFlow] Thiết lập quyền hoặc gói đã thay đổi",
-                message="Vai trò, gói dịch vụ hoặc quyền tùy chỉnh của tài khoản vừa được quản trị viên cập nhật.",
-            ),
+            {"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."}
         )
     except Exception as exc:
         if conn:

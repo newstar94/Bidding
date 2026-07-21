@@ -24,7 +24,7 @@ const CONTRACT_STATUS_CODES = {
   CANCELLED: "Đã hủy"
 };
 const CONTRACT_EXPIRY_WARNING_DAYS = 10;
-const ALERT_META = {
+export const ALERT_META = {
   closingToday: { label: "Đóng thầu hôm nay", detail: "Chưa chuyển sang đã mở thầu", icon: "calendar-clock", tone: "blue" },
   closingSoon: { label: "Sắp đóng thầu", detail: "Trong 7 ngày tới", icon: "clock-3", tone: "amber" },
   overdueOpening: { label: "Quá hạn mở thầu", detail: "Đã qua ngày đóng thầu", icon: "circle-alert", tone: "red" },

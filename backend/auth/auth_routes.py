@@ -1478,11 +1478,6 @@ async def update_user_role_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN")
-        target_account = cursor.execute(
-            "SELECT email, ho_ten FROM tai_khoan WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-
         if scope == "platform":
             if not actor_platform_admin:
                 conn.rollback()
@@ -1585,17 +1580,8 @@ async def update_user_role_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
-        notification_tasks = None
-        if target_account:
-            notification_tasks = build_security_notification_tasks(
-                email=target_account[0],
-                display_name=target_account[1],
-                subject="[BiddingFlow] Quyền tài khoản đã được thay đổi",
-                message=f"Vai trò của bạn trong phạm vi {scope} vừa được đổi thành {new_role}.",
-            )
         return JSONResponse(
-            {"success": True, "message": "Cập nhật vai trò thành công!"},
-            background=notification_tasks,
+            {"success": True, "message": "Cập nhật vai trò thành công!"}
         )
     except OrgPermissionError as e:
         if conn:

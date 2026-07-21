@@ -962,19 +962,29 @@ export async function editEmployee(id) {
 export async function deleteEmployee(id) {
   const emp = this.model.state.employees.find((e) => e.id === id);
   if (!emp) return;
-  const assignmentsCount = this.model.state.assignments.filter((a) => a.empId === id).length;
+  const assignmentsCount = this.model.state.assignments.filter(
+    (assignment) => assignment.empId === id && ["goithau", "hopdong"].includes(assignment.type)
+  ).length;
   let warningText = `Bạn có chắc chắn muốn gỡ nhân sự "${emp.name}" khỏi đơn vị? Họ sẽ không còn quyền truy cập dữ liệu của đơn vị này nữa.`;
   if (assignmentsCount > 0) {
     warningText += `
 
-⚠️ CHÚ Ý: Nhân sự này hiện đang được phân công phụ trách ${assignmentsCount} gói thầu/hợp đồng. Nếu gỡ bỏ, các thầu này sẽ không có chuyên viên phụ trách!`;
+⚠️ CHÚ Ý: Nhân sự này đang phụ trách ${assignmentsCount} gói thầu/hợp đồng. Bạn bắt buộc phải chọn một nhân sự khác tiếp quản trước khi cho họ rời tổ chức.`;
   }
-  const confirmed = await this.view.customConfirm("Xác nhận gỡ nhân sự", warningText, "trash-2");
+  const confirmed = assignmentsCount > 0
+    ? true
+    : await this.view.customConfirm("Xác nhận gỡ nhân sự", warningText, "trash-2");
   if (confirmed) {
     try {
-      const submitOffboarding = (successorUserId = "") => {
+      const submitOffboarding = ({ successorUserId = "", assignmentSuccessors = [] } = {}) => {
         const payload = { user_id: id };
         if (successorUserId) payload.successor_user_id = successorUserId;
+        if (assignmentSuccessors.length) {
+          payload.assignment_successors = assignmentSuccessors.map((item) => ({
+            assignment_id: item.assignmentId,
+            successor_user_id: item.successorUserId
+          }));
+        }
         return apiFetch("/api/auth/users/remove-from-org", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -989,13 +999,32 @@ export async function deleteEmployee(id) {
           await this.view.customAlert("Chưa thể cho rời tổ chức", "Không có nhân sự đang hoạt động để tiếp quản công việc.", "alert-triangle");
           return;
         }
-        const successorId = await this.view.customSelectConfirm(
-          "Chọn người tiếp quản",
-          `${emp.name} còn ${data.openAssignments?.length || 0} gói thầu/hợp đồng chưa kết thúc. Chọn người tiếp quản trước khi cho nhân sự rời tổ chức.`,
+        const assignmentsToTransfer = data.assignmentsRequiringTransfer || data.openAssignments || [];
+        const describeAssignment = (assignment) => {
+          const type = assignment.type === "hopdong" ? "hopdong" : "goithau";
+          const records = type === "hopdong"
+            ? (this.model.state.hopdong || [])
+            : (this.model.state.goithau || []);
+          const target = records.find((record) => String(record.id) === String(assignment.targetId))
+            || records.find((record) => String(record.rootId || record.id) === String(assignment.targetId));
+          const code = type === "hopdong" ? target?.soHopDong : target?.maGoiThau;
+          const name = type === "hopdong" ? target?.tenHopDong : target?.tenGoiThau;
+          return {
+            assignmentId: assignment.id,
+            targetId: assignment.targetId,
+            type,
+            typeLabel: type === "hopdong" ? "Hợp đồng" : "Gói thầu",
+            label: [code, name].filter(Boolean).join(" – ") || assignment.targetId
+          };
+        };
+        const transferChoice = await this.view.customAssignmentTransferConfirm(
+          "Chọn cách chuyển giao công việc",
+          `${emp.name} đang phụ trách ${assignmentsToTransfer.length} gói thầu/hợp đồng. Mọi công việc phải có người tiếp quản trước khi gỡ nhân sự.`,
+          assignmentsToTransfer.map(describeAssignment),
           candidates.map((candidate) => ({ value: candidate.user_id, label: candidate.name }))
         );
-        if (!successorId) return;
-        res = await submitOffboarding(successorId);
+        if (!transferChoice) return;
+        res = await submitOffboarding(transferChoice);
         data = await res.json().catch(() => ({}));
       }
       if (res.ok) {

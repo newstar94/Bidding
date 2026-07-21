@@ -851,6 +851,213 @@ export class BiddingView {
       if (closeBtn) closeBtn.addEventListener("click", onClose);
     });
   }
+
+  customAssignmentTransferConfirm(title, message, assignments = [], options = []) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById("modal-custom-dialog");
+      const titleEl = document.getElementById("dialog-title");
+      const messageEl = document.getElementById("dialog-message");
+      const iconContainer = document.getElementById("dialog-icon-container");
+      const iconEl = document.getElementById("dialog-icon");
+      const okBtn = document.getElementById("btn-dialog-ok");
+      const cancelBtn = document.getElementById("btn-dialog-cancel");
+      const closeBtn = document.getElementById("btn-dialog-close");
+      const buttonContainer = document.getElementById("dialog-buttons");
+      const cardEl = modal?.querySelector(".modal-card");
+      if (!modal || !titleEl || !messageEl || !okBtn || !cancelBtn || !cardEl) {
+        resolve(null);
+        return;
+      }
+
+      const assignmentItems = Array.isArray(assignments) ? assignments : [];
+      const candidateOptions = Array.isArray(options) ? options : [];
+      const originalMessageText = messageEl.textContent;
+      const originalMessageStyle = getRuntimeStyle(messageEl, "display");
+      const originalOkText = okBtn.textContent;
+      const originalOkClass = okBtn.className;
+
+      buttonContainer?.classList.remove("dialog-buttons-single");
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      iconEl?.setAttribute("data-lucide", "users-round");
+      applyDialogTone(modal, "users-round");
+      setRuntimeStyle(iconContainer, "background", "var(--primary-soft)");
+      setRuntimeStyle(iconContainer, "color", "var(--primary)");
+      setRuntimeStyle(cancelBtn, "display", "block");
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
+      okBtn.className = "btn btn-primary";
+      setRuntimeStyle(okBtn, "background", "");
+      setRuntimeStyle(okBtn, "borderColor", "");
+      okBtn.textContent = "Chuyển giao và gỡ nhân viên";
+
+      const candidateMarkup = candidateOptions.map((candidate) => `
+        <option value="${escapeHtml(candidate?.value ?? "")}">${escapeHtml(candidate?.label ?? "")}</option>
+      `).join("");
+      const content = document.createElement("div");
+      content.className = "assignment-transfer-content";
+      content.innerHTML = trustedHTML(`
+        <fieldset class="assignment-transfer-mode-group">
+          <legend>Cách phân công công việc</legend>
+          <div class="assignment-transfer-mode-options">
+            <label class="assignment-transfer-mode is-selected">
+              <input type="radio" name="assignment-transfer-mode" value="all" checked>
+              <span>
+                <strong>Phân công tất cả</strong>
+                <small>Một nhân sự tiếp quản toàn bộ công việc</small>
+              </span>
+            </label>
+            <label class="assignment-transfer-mode">
+              <input type="radio" name="assignment-transfer-mode" value="individual">
+              <span>
+                <strong>Phân công từng công việc</strong>
+                <small>Có thể chọn người khác nhau cho từng việc</small>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+        <section class="assignment-transfer-panel" data-transfer-panel="all">
+          <label for="assignment-transfer-all-select">Nhân sự tiếp quản tất cả <span aria-hidden="true">*</span></label>
+          <select id="assignment-transfer-all-select" class="form-control" required>
+            <option value="">Chọn nhân sự tiếp quản...</option>
+            ${candidateMarkup}
+          </select>
+          <div class="assignment-transfer-summary">
+            <i data-lucide="list-checks" aria-hidden="true"></i>
+            <span>Người được chọn sẽ tiếp quản toàn bộ ${assignmentItems.length} công việc.</span>
+          </div>
+          <div class="assignment-transfer-list assignment-transfer-preview-list" role="list"
+            aria-label="Danh sách công việc sẽ được chuyển giao">
+            ${assignmentItems.map((item) => {
+              const fallback = item.type === "hopdong" ? "Hợp đồng" : "Gói thầu";
+              return `
+                <div class="assignment-transfer-item is-preview" role="listitem">
+                  <span class="assignment-transfer-icon">
+                    <i data-lucide="${item.type === "hopdong" ? "file-signature" : "briefcase-business"}" aria-hidden="true"></i>
+                  </span>
+                  <span class="assignment-transfer-copy">
+                    <strong>${escapeHtml(item.label || fallback)}</strong>
+                    <small>${escapeHtml(item.typeLabel || fallback)}</small>
+                  </span>
+                </div>`;
+            }).join("")}
+          </div>
+        </section>
+        <section class="assignment-transfer-panel" data-transfer-panel="individual" hidden>
+          <div class="assignment-transfer-list" role="list" aria-label="Danh sách công việc cần chuyển giao">
+            ${assignmentItems.map((item, index) => {
+              const fallback = item.type === "hopdong" ? "Hợp đồng" : "Gói thầu";
+              return `
+                <div class="assignment-transfer-item" role="listitem">
+                  <span class="assignment-transfer-icon">
+                    <i data-lucide="${item.type === "hopdong" ? "file-signature" : "briefcase-business"}" aria-hidden="true"></i>
+                  </span>
+                  <label class="assignment-transfer-copy" for="assignment-transfer-item-${index}">
+                    <strong>${escapeHtml(item.label || fallback)}</strong>
+                    <small>${escapeHtml(item.typeLabel || fallback)}</small>
+                  </label>
+                  <select id="assignment-transfer-item-${index}" class="form-control assignment-transfer-item-select"
+                    data-assignment-index="${index}" required>
+                    <option value="">Chọn người tiếp quản...</option>
+                    ${candidateMarkup}
+                  </select>
+                </div>`;
+            }).join("")}
+          </div>
+        </section>
+        <p class="assignment-transfer-status" role="status" aria-live="polite"></p>
+      `);
+      messageEl.after(content);
+      cardEl.classList.add("assignment-transfer-dialog");
+
+      const radios = [...content.querySelectorAll('input[name="assignment-transfer-mode"]')];
+      const allPanel = content.querySelector('[data-transfer-panel="all"]');
+      const individualPanel = content.querySelector('[data-transfer-panel="individual"]');
+      const allSelect = content.querySelector("#assignment-transfer-all-select");
+      const individualSelects = [...content.querySelectorAll(".assignment-transfer-item-select")];
+      const statusEl = content.querySelector(".assignment-transfer-status");
+      const selectedMode = () => radios.find((radio) => radio.checked)?.value || "all";
+
+      const updateState = () => {
+        const isIndividual = selectedMode() === "individual";
+        allPanel.hidden = isIndividual;
+        individualPanel.hidden = !isIndividual;
+        content.querySelectorAll(".assignment-transfer-mode").forEach((label) => {
+          label.classList.toggle("is-selected", Boolean(label.querySelector("input")?.checked));
+        });
+        const unassignedCount = isIndividual
+          ? individualSelects.filter((select) => !select.value).length
+          : (allSelect?.value ? 0 : assignmentItems.length);
+        okBtn.disabled = candidateOptions.length === 0 || assignmentItems.length === 0 || unassignedCount > 0;
+        statusEl.textContent = unassignedCount > 0
+          ? `Còn ${unassignedCount} công việc chưa có người tiếp quản.`
+          : `Đã phân công đủ ${assignmentItems.length} công việc.`;
+        statusEl.dataset.state = unassignedCount > 0 ? "pending" : "complete";
+      };
+
+      radios.forEach((radio) => radio.addEventListener("change", () => {
+        if (
+          selectedMode() === "individual"
+          && allSelect?.value
+          && individualSelects.every((select) => !select.value)
+        ) {
+          individualSelects.forEach((select) => {
+            select.value = allSelect.value;
+          });
+        }
+        updateState();
+        requestAnimationFrame(() => {
+          if (selectedMode() === "individual") individualSelects[0]?.focus();
+          else allSelect?.focus();
+        });
+      }));
+      allSelect?.addEventListener("change", updateState);
+      individualSelects.forEach((select) => select.addEventListener("change", updateState));
+
+      const cleanup = () => {
+        okBtn.removeEventListener("click", onOk);
+        cancelBtn.removeEventListener("click", onCancel);
+        if (closeBtn) closeBtn.removeEventListener("click", onCancel);
+        modal.classList.remove("active");
+        cardEl.classList.remove("assignment-transfer-dialog");
+        content.remove();
+        messageEl.textContent = originalMessageText;
+        setRuntimeStyle(messageEl, "display", originalMessageStyle);
+        okBtn.textContent = originalOkText;
+        okBtn.className = originalOkClass;
+        okBtn.disabled = false;
+      };
+      const onOk = () => {
+        const mode = selectedMode();
+        if (mode === "all") {
+          const successorUserId = String(allSelect?.value || "").trim();
+          if (!successorUserId) return;
+          cleanup();
+          resolve({ mode, successorUserId, assignmentSuccessors: [] });
+          return;
+        }
+        const assignmentSuccessors = assignmentItems.map((item, index) => ({
+          assignmentId: String(item.assignmentId || ""),
+          successorUserId: String(individualSelects[index]?.value || "").trim()
+        }));
+        if (assignmentSuccessors.some((item) => !item.assignmentId || !item.successorUserId)) return;
+        cleanup();
+        resolve({ mode, successorUserId: "", assignmentSuccessors });
+      };
+      const onCancel = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      okBtn.addEventListener("click", onOk);
+      cancelBtn.addEventListener("click", onCancel);
+      if (closeBtn) closeBtn.addEventListener("click", onCancel);
+      updateState();
+      lucide.createIcons();
+      modal.classList.add("active");
+      requestAnimationFrame(() => allSelect?.focus());
+    });
+  }
+
   showLoader() {
     let loader = document.getElementById("top-bar-loader");
     if (!loader) {

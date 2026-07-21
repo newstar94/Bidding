@@ -816,6 +816,7 @@ export function setupWebSocketConnection() {
       if (msg.event === "db_changed") {
         if (!workspaceIsCurrent(this, workspace)) return;
         if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
+        this.notificationCenter?.refresh?.();
         this.scheduleBackgroundSync(300);
       } else if (msg.event === "organization_member_changed") {
         if (!workspaceIsCurrent(this, workspace)) return;

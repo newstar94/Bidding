@@ -416,6 +416,11 @@ from backend.partners.address_routes import (
     get_wards_api,
     lookup_tax_code_api
 )
+from backend.notifications.routes import (
+    list_notifications_api,
+    mark_all_notifications_read_api,
+    mark_notification_read_api,
+)
 
 
 _holidays_cache = None
@@ -646,6 +651,9 @@ routes = [
     Route("/api/paginate", paginate_api, methods=["GET"]),
     Route("/api/record", record_api, methods=["GET"]),
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
+    Route("/api/notifications", list_notifications_api, methods=["GET"]),
+    Route("/api/notifications/read-all", mark_all_notifications_read_api, methods=["POST"]),
+    Route("/api/notifications/{notification_id}/read", mark_notification_read_api, methods=["POST"]),
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
     Route("/api/export-timeline/{package_id}", export_timeline_api, methods=["GET"]),

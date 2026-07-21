@@ -26,6 +26,11 @@ from backend.shared.access_policy import (
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import vietnam_date_from_epoch, vietnam_now_sql
+from backend.notifications.service import (
+    queue_assignment_state_changes,
+    queue_membership_notification,
+    snapshot_assignment_state,
+)
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -413,6 +418,12 @@ async def add_user_to_org_api(request):
             cursor=cursor,
             required=True,
         )
+        queue_membership_notification(
+            cursor,
+            user_id=user_id,
+            organization_id=org_id,
+            added=True,
+        )
         conn.commit()
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
@@ -468,11 +479,41 @@ async def remove_user_from_org_api(request):
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
             "successor_user_id": {"type": "string", "max_length": 128},
+            "assignment_successors": {"type": "array", "max_length": 500},
         })
         if invalid:
             return invalid
         user_id = data.get('user_id')
         successor_user_id = str(data.get('successor_user_id') or '').strip()
+        assignment_successor_rows = data.get('assignment_successors') or []
+        if successor_user_id and assignment_successor_rows:
+            return JSONResponse({
+                "error": "Chỉ được chọn một cách chuyển giao công việc.",
+                "code": "TRANSFER_MODE_CONFLICT",
+            }, status_code=400)
+        assignment_successors = {}
+        for index, item in enumerate(assignment_successor_rows):
+            if not isinstance(item, dict):
+                return JSONResponse({
+                    "error": "Danh sách người tiếp quản không hợp lệ.",
+                    "code": "ASSIGNMENT_SUCCESSORS_INVALID",
+                    "index": index,
+                }, status_code=400)
+            assignment_id = str(item.get('assignment_id') or '').strip()
+            item_successor_id = str(item.get('successor_user_id') or '').strip()
+            if (
+                not assignment_id
+                or not item_successor_id
+                or len(assignment_id) > 128
+                or len(item_successor_id) > 128
+                or assignment_id in assignment_successors
+            ):
+                return JSONResponse({
+                    "error": "Mỗi công việc phải có đúng một người tiếp quản hợp lệ.",
+                    "code": "ASSIGNMENT_SUCCESSORS_INVALID",
+                    "index": index,
+                }, status_code=400)
+            assignment_successors[assignment_id] = item_successor_id
         if not user_id:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
 
@@ -519,23 +560,18 @@ async def remove_user_from_org_api(request):
                 conn.close()
                 return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
 
+        assignment_state_before = snapshot_assignment_state(cursor, org_id)
         assignment_rows = cursor.execute(
-            """SELECT pc.*,
-                      CASE
-                        WHEN pc.loai_doi_tuong = 'goithau' THEN
-                          (SELECT CASE WHEN gt.trang_thai IN ('AWARDED','CANCELLED') THEN 0 ELSE 1 END
-                           FROM goi_thau gt WHERE gt.organization_id = pc.organization_id AND gt.id = pc.id_muc_tieu)
-                        WHEN pc.loai_doi_tuong = 'hopdong' THEN
-                          (SELECT CASE WHEN hd.trang_thai_hop_dong IN ('COMPLETED','LIQUIDATED','CANCELLED') THEN 0 ELSE 1 END
-                           FROM hop_dong hd WHERE hd.organization_id = pc.organization_id AND hd.id = pc.id_muc_tieu)
-                        ELSE 0
-                      END AS is_open
+            """SELECT pc.*
                FROM phan_cong_nhan_su pc
                WHERE pc.id_nhan_vien = ? AND pc.organization_id = ?""",
             (user_id, org_id),
         ).fetchall()
-        open_assignments = [row for row in assignment_rows if int(row['is_open'] or 0) == 1]
-        if open_assignments and not successor_user_id:
+        transfer_required_assignments = [
+            row for row in assignment_rows
+            if str(row['loai_doi_tuong'] or '') in {'goithau', 'hopdong'}
+        ]
+        if transfer_required_assignments and not successor_user_id and not assignment_successors:
             candidates = cursor.execute(
                 """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ho_ten, tk.ten_dang_nhap) AS name
                    FROM thanh_vien_to_chuc tv JOIN tai_khoan tk ON tk.id = tv.user_id
@@ -546,27 +582,49 @@ async def remove_user_from_org_api(request):
             ).fetchall()
             conn.rollback()
             return JSONResponse({
-                "error": "Nhân sự còn công việc đang mở. Phải chọn người tiếp quản trước khi rời tổ chức.",
+                "error": "Nhân sự còn gói thầu hoặc hợp đồng đang phụ trách. Phải chọn người tiếp quản trước khi rời tổ chức.",
                 "code": "SUCCESSOR_REQUIRED",
                 "openAssignments": [
                     {"id": row['id'], "targetId": row['id_muc_tieu'], "type": row['loai_doi_tuong']}
-                    for row in open_assignments
+                    for row in transfer_required_assignments
+                ],
+                "assignmentsRequiringTransfer": [
+                    {"id": row['id'], "targetId": row['id_muc_tieu'], "type": row['loai_doi_tuong']}
+                    for row in transfer_required_assignments
                 ],
                 "successorCandidates": [dict(row) for row in candidates],
             }, status_code=409)
-        if successor_user_id:
+        required_assignment_ids = {
+            str(row['id']) for row in transfer_required_assignments
+        }
+        if assignment_successors and set(assignment_successors) != required_assignment_ids:
+            conn.rollback()
+            return JSONResponse({
+                "error": "Danh sách công việc đã thay đổi hoặc chưa được phân công đầy đủ. Vui lòng thực hiện lại.",
+                "code": "ASSIGNMENT_SUCCESSORS_INCOMPLETE",
+                "missingAssignmentIds": sorted(required_assignment_ids - set(assignment_successors)),
+            }, status_code=409)
+
+        requested_successor_ids = (
+            {successor_user_id}
+            if successor_user_id
+            else set(assignment_successors.values())
+        )
+        for requested_successor_id in requested_successor_ids:
             successor = cursor.execute(
                 """SELECT 1 FROM thanh_vien_to_chuc WHERE organization_id = ? AND user_id = ?
                    AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
-                (org_id, successor_user_id),
+                (org_id, requested_successor_id),
             ).fetchone()
-            if not successor or successor_user_id == str(user_id):
+            if not successor or requested_successor_id == str(user_id):
                 conn.rollback()
                 return JSONResponse({"error": "Người tiếp quản không hợp lệ."}, status_code=400)
 
         for assignment in assignment_rows:
-            is_open = int(assignment['is_open'] or 0) == 1
-            successor = successor_user_id if is_open else None
+            requires_transfer = str(assignment['loai_doi_tuong'] or '') in {'goithau', 'hopdong'}
+            successor = (
+                successor_user_id or assignment_successors.get(str(assignment['id']))
+            ) if requires_transfer else None
             cursor.execute(
                 """INSERT INTO phan_cong_nhan_su_lich_su
                    (organization_id, assignment_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong,
@@ -613,7 +671,7 @@ async def remove_user_from_org_api(request):
             "rootCount": 1,
             "permissionRows": len(pq_rows),
             "assignments": len(assignment_rows),
-            "transferredAssignments": len(open_assignments),
+            "transferredAssignments": len(transfer_required_assignments),
         }
         impact["totalCount"] = sum(impact.values())
 
@@ -624,9 +682,28 @@ async def remove_user_from_org_api(request):
             target_type="organization_membership",
             target_id=f"{org_id}:{user_id}",
             request=request,
-            metadata={"organization_id": org_id, "impact": impact, "successor_user_id": successor_user_id or None},
+            metadata={
+                "organization_id": org_id,
+                "impact": impact,
+                "transfer_mode": "individual" if assignment_successors else "all" if successor_user_id else None,
+                "successor_user_id": successor_user_id or None,
+                "assignment_successors": assignment_successors or None,
+            },
             cursor=cursor,
             required=True,
+        )
+        assignment_state_after = snapshot_assignment_state(cursor, org_id)
+        queue_assignment_state_changes(
+            cursor,
+            organization_id=org_id,
+            before=assignment_state_before,
+            after=assignment_state_after,
+        )
+        queue_membership_notification(
+            cursor,
+            user_id=user_id,
+            organization_id=org_id,
+            added=False,
         )
         conn.commit()
         conn.close()

@@ -481,7 +481,7 @@ def test_update_access_success_updates_both_scopes_and_invalidates_members(monke
     assert disconnected == ["target-user"]
     assert broadcasts == [("org-1", {"event": "user_access_settings_changed"})]
     assert audits[0][0] == "admin.user_access_settings_updated"
-    assert response.background is not None
+    assert response.background is None
     assert any("INSERT INTO account_subscriptions" in sql for sql, _ in cursor.calls)
     assert any("INSERT INTO organization_subscriptions" in sql for sql, _ in cursor.calls)
     assert not any("ma_tran_phan_quyen" in sql for sql, _ in cursor.calls)

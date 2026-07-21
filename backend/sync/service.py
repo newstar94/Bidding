@@ -91,6 +91,11 @@ from backend.sync.opening_uniqueness import validate_opening_participant_uniquen
 from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.database_io import run_database_write
 from backend.shared.request_validation import read_json_object
+from backend.notifications.service import (
+    find_unreplaced_assignment_removals,
+    queue_assignment_state_changes,
+    snapshot_assignment_state,
+)
 
 
 async def process_sync_request(request, broadcast_callback=None):
@@ -300,6 +305,12 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 {"error": "Không thể xác định phạm vi sở hữu dữ liệu.", "code": "WORKSPACE_NOT_FOUND"},
                 status_code=400,
             )
+
+        assignment_state_before = (
+            snapshot_assignment_state(cursor, org_name)
+            if owner_type == "organization"
+            else {}
+        )
 
         # Khi request tạo mới chưa chỉ định người phụ trách, backend giao cho
         # người tạo ngay trong cùng transaction. Một phân công được gửi rõ ràng
@@ -1043,6 +1054,26 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 plan_ids=affected_plan_ids,
             )
 
+        assignment_state_after = {}
+        if owner_type == "organization" and not sync_item_errors:
+            assignment_state_after = snapshot_assignment_state(cursor, org_name)
+            for missing_assignment in find_unreplaced_assignment_removals(
+                cursor,
+                organization_id=org_name,
+                before=assignment_state_before,
+                after=assignment_state_after,
+            ):
+                sync_item_errors.append({
+                    "table": "phan_cong_nhan_su",
+                    "id": missing_assignment["target_id"],
+                    "field": "id_nhan_vien",
+                    "code": "ASSIGNMENT_SUCCESSOR_REQUIRED",
+                    "message": (
+                        "Không thể hủy phân công khi công việc vẫn tồn tại. "
+                        "Phải chọn một nhân sự khác tiếp quản trong cùng thao tác."
+                    ),
+                })
+
         if sync_item_errors:
             conflict = any(error.get("code") == "ROW_VERSION_CONFLICT" for error in sync_item_errors)
             return rollback_sync_response(
@@ -1050,6 +1081,14 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 sync_item_errors,
                 "Không thể đồng bộ vì có bản ghi không hợp lệ.",
                 status_code=409 if conflict else 400,
+            )
+
+        if owner_type == "organization":
+            queue_assignment_state_changes(
+                cursor,
+                organization_id=org_name,
+                before=assignment_state_before,
+                after=assignment_state_after,
             )
 
         response_data = commit_sync_response(

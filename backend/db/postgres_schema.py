@@ -66,6 +66,7 @@ _BIGINT_COLUMNS = frozenset(
         "absolute_expires_at",
         "revoked_at",
         "privileged_reauth_at",
+        "read_at",
     }
 )
 
@@ -427,6 +428,8 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_email_delivery_user_purpose ON email_delivery_status (user_id, purpose, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_email_delivery_retry ON email_delivery_status (status, next_attempt_at)",
         "CREATE INDEX IF NOT EXISTS idx_email_delivery_stale ON email_delivery_status (locked_at) WHERE status = 'sending'",
+        "CREATE INDEX IF NOT EXISTS idx_user_notifications_user_created ON user_notifications (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_user_notifications_user_unread ON user_notifications (user_id, created_at DESC) WHERE read_at IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_partner_lookup_cache_expiry ON partner_lookup_cache (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_partner_upstream_open ON partner_upstream_health (opened_until, probe_locked_until)",

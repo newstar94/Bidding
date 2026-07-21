@@ -835,7 +835,7 @@ def test_update_platform_role_success_and_last_admin_protection(monkeypatch):
     response = asyncio.run(auth_routes.update_user_role_api(_Request()))
     assert response.status_code == 200
     assert connection.commits == 1
-    assert response.background is not None
+    assert response.background is None
 
     def last_admin(sql, _params):
         if sql.startswith("SELECT email, ho_ten"):

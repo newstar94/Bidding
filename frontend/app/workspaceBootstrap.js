@@ -11,6 +11,7 @@ import { installAdminModule } from "./adminModuleLoader.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { beginExplicitLogout, hideInitLoader } from "../auth/authRuntimeState.js";
 import { setActiveOrganizationId } from "./workspaceState.js";
+import { initializeNotificationCenter } from "./NotificationCenter.js";
 
 export function sessionHasActiveWorkspace(initialSession) {
   const user = initialSession?.user;
@@ -129,4 +130,5 @@ export async function bootstrapWorkspace(initialSession) {
   const controller = new BiddingController(model, view);
   controller._initialSessionData = initialSession;
   await controller.init();
+  controller.notificationCenter = initializeNotificationCenter(controller);
 }

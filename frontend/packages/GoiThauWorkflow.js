@@ -409,7 +409,6 @@ export async function editGoiThau(id, isReadOnly = false) {
     "gt-thoigiandangtai",
     "gt-thoigiandongthau",
     "gt-thoigianmothau",
-    "gt-nhanvienphutrach",
     "gt-giatribaomothau",
     "gt-hieuluchsdt",
     "gt-hieuluchbaomothau"
@@ -533,6 +532,16 @@ export async function editGoiThau(id, isReadOnly = false) {
 export async function handleGoiThauSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-goithau");
+  const assignedEmpSelect = document.getElementById("gt-nhanvienphutrach");
+  if (!String(assignedEmpSelect?.value || "").trim()) {
+    await this.view.customAlert(
+      "Chưa chọn người tiếp quản",
+      "Gói thầu bắt buộc phải có chuyên viên phụ trách. Muốn thay đổi phân công, hãy chọn một nhân sự khác tiếp quản.",
+      "alert-triangle",
+      assignedEmpSelect
+    );
+    return;
+  }
   if (!this.view.validateForm(form)) return;
   const formVals = this.view.getGoiThauFormInputValues(this.model);
   if (formVals.giaGoiThau < 0) {
