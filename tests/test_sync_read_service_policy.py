@@ -48,7 +48,7 @@ def _table_row(table):
         },
         "chuyen_gia": {"id": "cg-1", "anh_chung_chi": "cert.png", "anh_chu_ky": "sig.png"},
         "nha_thau": {"id": "nt-1", "anh_dau": "stamp.png"},
-        "trang_thai_ho_so_giay": {"id": "status-1"},
+        "danh_muc_trang_thai_hop_dong": {"id": "status-1"},
         "hop_dong": {"id": "hd-1"},
         "phan_cong_nhan_su": {"id": "assignment-1"},
         "thong_tin_mo_thau": {"id": "ttmt-1"},

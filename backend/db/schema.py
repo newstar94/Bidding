@@ -304,9 +304,12 @@ SCHEMA_DINH_NGHIA = {
             "ngay_qd_phe_duyet_du_an": "TEXT",
             "co_quan_phe_duyet_du_an": "TEXT",
             "phe_duyet": "TEXT",
+            "so_to_trinh_du_toan": "TEXT",
             "ngay_trinh_du_toan": "TEXT",
             "ngay_phe_duyet_du_toan": "TEXT",
             "so_qd_phe_duyet_du_toan": "TEXT",
+            "so_to_trinh_ke_hoach": "TEXT",
+            "so_to_trinh_du_toan_ke_hoach": "TEXT",
             "ngay_trinh_ke_hoach": "TEXT",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
@@ -319,9 +322,12 @@ SCHEMA_DINH_NGHIA = {
             "don_vi_trinh_cdt": "donViTrinhCdt",
             "ten_viet_tat_don_vi_trinh": "tenVietTatDonViTrinh",
             "phe_duyet": "pheDuyet",
+            "so_to_trinh_du_toan": "soToTrinhDuToan",
             "ngay_trinh_du_toan": "ngayTrinhDuToan",
             "ngay_phe_duyet_du_toan": "ngayPheDuyetDuToan",
             "so_qd_phe_duyet_du_toan": "soQdPheDuyetDuToan",
+            "so_to_trinh_ke_hoach": "soToTrinhKeHoach",
+            "so_to_trinh_du_toan_ke_hoach": "soToTrinhDuToanKeHoach",
             "ngay_trinh_ke_hoach": "ngayTrinhKeHoach"
         }
     },
@@ -633,8 +639,7 @@ SCHEMA_DINH_NGHIA = {
             "gia_tri": "INTEGER NOT NULL CHECK(typeof(gia_tri) = 'integer' AND gia_tri >= 0)",
             "loai_hop_dong": "TEXT NOT NULL CHECK(trim(loai_hop_dong) != '')",
             "thoi_gian_thuc_hien": "TEXT NOT NULL CHECK(trim(thoi_gian_thuc_hien) != '')",
-            "trang_thai_hop_dong": "TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(trang_thai_hop_dong IN ('NOT_EFFECTIVE','ACTIVE','SUSPENDED','COMPLETED','LIQUIDATED','CANCELLED'))",
-            "trang_thai_ho_so": "TEXT",
+            "trang_thai_hop_dong": "TEXT NOT NULL DEFAULT 'Đang thực hiện' CHECK(trim(trang_thai_hop_dong) != '')",
             "phan_loai": "TEXT",
             "co_qd_chi_dinh": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(co_qd_chi_dinh) = 'integer' AND co_qd_chi_dinh IN (0,1))",
             "so_qd_chi_dinh": "TEXT",
@@ -649,12 +654,11 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (chu_dau_tu_thanh_ly_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_thanh_ly_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT",
-            "FOREIGN KEY (organization_id, trang_thai_ho_so) REFERENCES trang_thai_ho_so_giay(organization_id, name) ON DELETE RESTRICT"
+            "FOREIGN KEY (organization_id, trang_thai_hop_dong) REFERENCES danh_muc_trang_thai_hop_dong(organization_id, name) ON UPDATE CASCADE ON DELETE RESTRICT"
         ],
         "unique_constraints": [
             "CHECK(NULLIF(ngay_ky, '') IS NULL OR NULLIF(ngay_thanh_ly, '') IS NULL OR (date(ngay_ky) IS NOT NULL AND date(ngay_thanh_ly) IS NOT NULL AND date(ngay_thanh_ly) >= date(ngay_ky)))",
             "CHECK((co_qd_chi_dinh = 0 AND COALESCE(trim(so_qd_chi_dinh), '') = '' AND COALESCE(trim(ngay_qd_chi_dinh), '') = '') OR (co_qd_chi_dinh = 1 AND COALESCE(trim(so_qd_chi_dinh), '') != '' AND date(ngay_qd_chi_dinh) IS NOT NULL AND date(ngay_qd_chi_dinh) <= date(ngay_ky)))"
-            ,"CHECK((trang_thai_hop_dong = 'LIQUIDATED' AND date(ngay_thanh_ly) IS NOT NULL) OR (trang_thai_hop_dong != 'LIQUIDATED' AND COALESCE(trim(ngay_thanh_ly), '') = ''))"
         ],
         "field_map": {
             "thoi_gian_thuc_hien": "soNgayThucHien",
@@ -703,7 +707,7 @@ SCHEMA_DINH_NGHIA = {
 
 
 
-    "trang_thai_ho_so_giay": {
+    "danh_muc_trang_thai_hop_dong": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
@@ -1221,7 +1225,7 @@ _SIMPLE_ID_FK = re.compile(
 
 ROW_VERSION_TABLES = frozenset({
     "chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "chuyen_gia", "nha_thau",
-    "hop_dong", "phan_cong_nhan_su", "trang_thai_ho_so_giay",
+    "hop_dong", "phan_cong_nhan_su", "danh_muc_trang_thai_hop_dong",
     "thong_tin_mo_thau", "ma_tran_phan_quyen",
 })
 

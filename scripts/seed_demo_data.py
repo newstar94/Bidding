@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.shared.audit_chain import _entry_hash
+from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
+from backend.shared.domain_enums import CONTRACT_STATUS_LABELS
 
 
 def _load_env() -> None:
@@ -531,9 +533,9 @@ def seed(cursor, *, demo_password: str) -> dict[str, int]:
         "cong_viec": "Đánh giá hồ sơ tài chính",
     })
 
-    for name, color in (("Chưa nhận hồ sơ", "#64748b"), ("Đang xử lý", "#2563eb"), ("Đã hoàn thành", "#16a34a")):
-        _insert(cursor, "trang_thai_ho_so_giay", {
-            "id": f"demo-paper-{name}",
+    for index, (name, color) in enumerate(DEFAULT_CONTRACT_STATUSES, 1):
+        _insert(cursor, "danh_muc_trang_thai_hop_dong", {
+            "id": f"demo-contract-status-{index}",
             "organization_id": org_id,
             "owner_type": "organization",
             "name": name,
@@ -567,8 +569,7 @@ def seed(cursor, *, demo_password: str) -> dict[str, int]:
             "gia_tri": 1_000_000_000 + index * 50_000_000,
             "loai_hop_dong": "Trọn gói",
             "thoi_gian_thuc_hien": "180 ngày",
-            "trang_thai_hop_dong": status,
-            "trang_thai_ho_so": "Đang xử lý" if status in {"ACTIVE", "SUSPENDED"} else "Đã hoàn thành",
+            "trang_thai_hop_dong": CONTRACT_STATUS_LABELS[status],
             "phan_loai": "Hợp đồng xây lắp",
             "co_qd_chi_dinh": 0,
             "sync_version": 40 + index,

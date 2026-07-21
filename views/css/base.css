@@ -4,12 +4,13 @@
   box-sizing: border-box;
 }
 body {
-  font-family: var(--font-primary);
+  font-family: var(--font-body, var(--font-primary));
   background-color: var(--bg-app);
   color: var(--text-main);
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: hidden;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
   -webkit-font-smoothing: antialiased;
   transition: background-color var(--transition-normal), color var(--transition-normal);
 }
@@ -51,7 +52,7 @@ a:hover {
   select,
   textarea,
   [tabindex]:not([tabindex="-1"])
-):focus {
+):focus-visible {
   outline: 2px solid var(--primary) !important;
   outline-offset: 2px !important;
 }
@@ -71,7 +72,8 @@ a:hover {
 .app-container {
   display: flex;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
+  min-width: 0;
   position: relative;
   /* Keep high-z-index widgets inside the application shell from escaping
      above body-level dialogs and authentication overlays. */
@@ -251,14 +253,28 @@ a:hover {
 }
 @media (max-width: 768px) {
   .sidebar {
-    position: absolute;
+    position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
     transform: translateX(-100%);
+    z-index: 200;
+    width: min(var(--sidebar-width), calc(100vw - 32px));
+    box-shadow: var(--shadow-lg);
   }
   .sidebar.active {
     transform: translateX(0);
+  }
+  .app-container:has(.sidebar.active)::after {
+    position: fixed;
+    z-index: 150;
+    inset: 0;
+    background: var(--color-scrim);
+    content: "";
+  }
+  .main-content {
+    width: 100%;
+    min-width: 0;
   }
   .menu-toggle-btn {
     display: block;

@@ -153,7 +153,7 @@
     "tong-quan-admin": ["superadmin-dashboard", "Bảng điều khiển Super Admin BiddingFlow", "tổng quan quản trị"],
     "quan-ly-tai-khoan": ["superadmin", "Quản lý Đơn vị & Tài khoản Thành viên", "tài khoản thành viên"],
     "nhan-su": ["managernhanvien", "Quản lý Chuyên viên & Phân quyền Matrix", "nhân sự và phân quyền"],
-    "trang-thai-ho-so": ["managerhosogiay", "Cấu hình Danh mục Trạng thái Hồ sơ giấy", "trạng thái hồ sơ giấy"],
+    "trang-thai-hop-dong": ["managerhosogiay", "Cấu hình trạng thái hợp đồng", "trạng thái hợp đồng"],
     "trang-ca-nhan": ["profile", "Thông tin tài khoản cá nhân", "thông tin tài khoản"],
     "goi-thau-chi-tiet": ["goithau", "Chi tiết Quy trình Gói thầu", "chi tiết gói thầu"],
     "ke-hoach-chi-tiet": ["kehoach", "Chi tiết Kế hoạch Lựa chọn Nhà thầu", "chi tiết kế hoạch"],

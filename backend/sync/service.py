@@ -72,7 +72,7 @@ from backend.sync.repository import (
     next_sync_version,
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
-from backend.sync.validator import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
+from backend.sync.validator import validate_sync_item
 from backend.sync.payload_validation import (
     validate_contract_status_transition,
     validate_package_status_transition,
@@ -368,7 +368,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         def get_clean_id(tbl, raw_id):
             if raw_id is None:
                 return None
-            if tbl in ["phan_cong_nhan_su", "trang_thai_ho_so_giay"]:
+            if tbl in ["phan_cong_nhan_su", "danh_muc_trang_thai_hop_dong"]:
                 return str(raw_id).strip()
             return clean_id(raw_id)
 
@@ -428,20 +428,20 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 if record_id:
                     table_ids.add(str(record_id))
                     table_records[str(record_id)] = canonical_item
-        incoming_paper_status_names = {
+        incoming_contract_status_names = {
             str(item.get("name") or item.get("tenTrangThai") or "").strip()
-            for item in data.get("custompaperstatuses", [])
+            for item in data.get("customcontractstatuses", [])
             if isinstance(item, dict) and str(item.get("name") or item.get("tenTrangThai") or "").strip()
         }
-        existing_paper_status_names = {
+        existing_contract_status_names = {
             str(row[0] or "").strip()
             for row in cursor.execute(
-                "SELECT name FROM trang_thai_ho_so_giay WHERE organization_id = ?",
+                "SELECT name FROM danh_muc_trang_thai_hop_dong WHERE organization_id = ?",
                 (org_name,),
             ).fetchall()
             if str(row[0] or "").strip()
         }
-        allowed_paper_status_names = existing_paper_status_names | incoming_paper_status_names
+        allowed_contract_status_names = existing_contract_status_names | incoming_contract_status_names
 
         validation_errors.extend(validate_opening_participant_uniqueness(
             cursor,
@@ -494,10 +494,10 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                     ).fetchone()
                     if archived_row and archived_row[0]:
                         item_errors.append("Bản ghi đã được lưu trữ và không thể chỉnh sửa.")
-                item, pure_errors, requested_paper_statuses = validate_sync_item(
+                item, pure_errors, requested_contract_statuses = validate_sync_item(
                     table_name,
                     item,
-                    allowed_paper_status_names
+                    allowed_contract_status_names
                 )
                 item_errors.extend(pure_errors)
                 if table_name == "goi_thau" and current_record:
@@ -505,10 +505,6 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                         current_record.get("trang_thai"), item
                     ))
                     item_errors.extend(validate_package_locked_fields(current_record, item))
-                if table_name == "hop_dong" and current_record:
-                    item_errors.extend(validate_contract_status_transition(
-                        current_record.get("trang_thai_hop_dong"), item
-                    ))
                 if owner_type == "organization" and table_name in {
                     "ke_hoach_lcnt", "goi_thau", "hop_dong"
                 } and c_id:
@@ -600,15 +596,15 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                         if cursor.fetchone():
                             item_errors.append(f"Số hợp đồng '{so_hd}' đã tồn tại.")
 
-                elif table_name == "trang_thai_ho_so_giay":
+                elif table_name == "danh_muc_trang_thai_hop_dong":
                     status_name = item.get("name") or item.get("tenTrangThai")
                     if status_name and str(status_name).strip():
                         cursor.execute(
-                            "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND lower(trim(name)) = lower(trim(?)) AND id != ?",
+                            "SELECT 1 FROM danh_muc_trang_thai_hop_dong WHERE organization_id = ? AND lower(trim(name)) = lower(trim(?)) AND id != ?",
                             (org_name, str(status_name).strip(), c_id)
                         )
                         if cursor.fetchone():
-                            item_errors.append(f"Trạng thái hồ sơ giấy '{status_name}' đã tồn tại.")
+                            item_errors.append(f"Trạng thái hợp đồng '{status_name}' đã tồn tại.")
 
                 if item_errors:
                     display_name = item.get("tenChuDauTu") or item.get("tenKeHoach") or item.get("tenGoiThau") or item.get("tenNhaThau") or item.get("hoTen") or item.get("tenHopDong") or item.get("id")

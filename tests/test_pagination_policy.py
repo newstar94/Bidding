@@ -271,7 +271,7 @@ def test_pagination_returns_empty_result_when_table_access_is_denied(monkeypatch
     monkeypatch.setattr(pagination, "can_read_table", lambda *args: False)
 
     response = pagination._paginate_records_blocking(
-        _request(table="custompaperstatuses")
+        _request(table="customcontractstatuses")
     )
 
     assert response.status_code == 200
@@ -297,7 +297,7 @@ def test_offset_pagination_clamps_bounds_and_uses_only_allowlisted_sort(monkeypa
 
     response = pagination._paginate_records_blocking(
         _request(
-            table="custompaperstatuses",
+            table="customcontractstatuses",
             page="-10",
             pageSize="9999",
             sortBy="id; DROP TABLE tai_khoan",
@@ -342,7 +342,7 @@ def test_cursor_pagination_issues_and_accepts_only_signed_cursor(monkeypatch):
     _install_success_policy(monkeypatch, rows)
     first = pagination._paginate_records_blocking(
         _request(
-            table="custompaperstatuses",
+            table="customcontractstatuses",
             pagination="cursor",
             pageSize="1",
         )
@@ -354,7 +354,7 @@ def test_cursor_pagination_issues_and_accepts_only_signed_cursor(monkeypatch):
     assert first_payload["nextCursor"]
     assert pagination._decode_keyset_cursor(
         first_payload["nextCursor"],
-        "trang_thai_ho_so_giay",
+        "danh_muc_trang_thai_hop_dong",
         "id",
         "ASC",
         signing_key="session-secret-with-enough-entropy",
@@ -363,7 +363,7 @@ def test_cursor_pagination_issues_and_accepts_only_signed_cursor(monkeypatch):
     cursor, _ = _install_success_policy(monkeypatch, [])
     second = pagination._paginate_records_blocking(
         _request(
-            table="custompaperstatuses",
+            table="customcontractstatuses",
             pagination="cursor",
             cursor=first_payload["nextCursor"],
         )
@@ -378,7 +378,7 @@ def test_cursor_pagination_issues_and_accepts_only_signed_cursor(monkeypatch):
     tampered = first_payload["nextCursor"][:-1] + "A"
     rejected = pagination._paginate_records_blocking(
         _request(
-            table="custompaperstatuses",
+            table="customcontractstatuses",
             pagination="cursor",
             cursor=tampered,
         )
@@ -727,7 +727,7 @@ def test_org_scope_error_is_stable_and_unexpected_error_is_redacted(monkeypatch)
 
     monkeypatch.setattr(pagination, "get_active_org", deny)
     denied = pagination._paginate_records_blocking(
-        _request(table="custompaperstatuses")
+        _request(table="customcontractstatuses")
     )
     assert denied.status_code == 403
     assert _body(denied)["code"] == "ORG_ACCESS_DENIED"
@@ -739,7 +739,7 @@ def test_org_scope_error_is_stable_and_unexpected_error_is_redacted(monkeypatch)
         lambda: (_ for _ in ()).throw(RuntimeError("database-secret")),
     )
     failed = pagination._paginate_records_blocking(
-        _request(table="custompaperstatuses")
+        _request(table="customcontractstatuses")
     )
     assert failed.status_code == 500
     assert _body(failed)["code"] == "PAGINATION_FAILED"

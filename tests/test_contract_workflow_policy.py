@@ -71,3 +71,18 @@ def test_multi_table_persist_defers_background_sync_until_batch_is_ready():
     assert "controller._deferImmediateSync = true;" in mutation_source
     assert "controller._deferImmediateSync = false;" in mutation_source
     assert "this._deferImmediateSync" in sync_source
+
+
+def test_contract_duration_and_plan_share_requested_responsive_grid():
+    modal = (ROOT / "views" / "modals" / "modal_hopdong.html").read_text(
+        encoding="utf-8"
+    )
+    stylesheet = (ROOT / "views" / "css" / "components.css").read_text(
+        encoding="utf-8"
+    )
+
+    group = modal.split('class="contract-plan-duration-grid"', 1)[1]
+    group = group.split('class="form-group col-span-2"', 1)[0]
+    assert group.index('id="hd-songay"') < group.index('id="hd-kehoachid"')
+    assert ".contract-plan-duration-grid {" in stylesheet
+    assert "grid-template-columns: minmax(0, 3fr) minmax(0, 9fr);" in stylesheet

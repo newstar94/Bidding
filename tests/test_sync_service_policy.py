@@ -326,7 +326,7 @@ def _all_table_payload():
         "goithau": [{"id": "gt-1", "rootId": "gt-root", "keHoachId": "kh-1", "maGoiThau": "GT"}],
         "chuyengia": [{"id": "cg-1", "soCCCD": "001"}],
         "nhathau": [{"id": "nt-1", "maNhaThau": "NT", "maSoThue": "020", "nguoiDaiDien": " tran van b "}],
-        "custompaperstatuses": [{"id": "status-1", "name": "Đang xử lý"}],
+        "customcontractstatuses": [{"id": "status-1", "name": "Đang thực hiện"}],
         "hopdong": [{"id": "hd-1", "rootId": "hd-root", "soHopDong": "HD", "goiThauIds": []}],
         "assignments": [
             {"id": "a-1", "empId": "user-1", "targetId": "kh-1", "type": "kehoach"},
@@ -441,7 +441,7 @@ def test_sync_validation_collects_access_version_archive_domain_and_reference_er
         ("nhathau", {"id": "nt", "rootId": "r", "maNhaThau": "NT", "maSoThue": "020"}, "FROM nha_thau"),
         ("chuyengia", {"id": "cg", "rootId": "r", "soCCCD": "001"}, "FROM chuyen_gia"),
         ("hopdong", {"id": "hd", "rootId": "r", "soHopDong": "HD"}, "FROM hop_dong"),
-        ("custompaperstatuses", {"id": "s", "name": "Status"}, "FROM trang_thai_ho_so_giay"),
+        ("customcontractstatuses", {"id": "s", "name": "Status"}, "FROM danh_muc_trang_thai_hop_dong"),
     ],
 )
 def test_sync_rejects_domain_uniqueness_conflicts(monkeypatch, payload_key, item, conflict_sql):

@@ -19,3 +19,14 @@ export function renderNeutralStatusBadge(status) {
   const label = String(status || "").trim() || "Chưa cập nhật";
   return `<span class="badge badge-neutral">${escapeHtml(label)}</span>`;
 }
+
+export function renderCustomStatusBadge(status, catalog = []) {
+  const label = String(status || "").trim() || "Chưa cập nhật";
+  const configured = Array.isArray(catalog)
+    ? catalog.find((item) => String(item?.name || "").trim() === label)
+    : null;
+  const color = /^#[0-9a-fA-F]{6}$/.test(String(configured?.color || ""))
+    ? configured.color
+    : "#64748B";
+  return `<span class="status-pill" style="background-color: ${color};">${escapeHtml(label)}</span>`;
+}

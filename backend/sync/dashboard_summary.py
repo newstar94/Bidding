@@ -86,11 +86,6 @@ def _contract_expiry_date(signed_date, raw_duration):
     return signed_date + timedelta(days=days)
 
 
-def _contract_has_invoice(paper_status):
-    normalized = _normalize_search_text(paper_status)
-    return any(label in normalized for label in ("da xuat hoa don", "hoa don da xuat", "da lap hoa don"))
-
-
 def _select_alert_items(items, limit=8):
     ordered = sorted(items, key=lambda item: (ALERT_PRIORITY.get(item.get("alertKey"), 99), str(item.get("deadline") or "")))
     selected = []
@@ -428,10 +423,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             contract_value_by_status[status] = str(
                 int(contract_value_by_status.get(status, "0")) + int(row[1] or 0)
             )
-        contract_rows = [
-            row for row in all_contract_rows
-            if str(row[2] or "") not in {"NOT_EFFECTIVE", "CANCELLED"}
-        ]
+        contract_rows = list(all_contract_rows)
         counts["hopdong"] = len(contract_rows)
         total_contract_value = str(sum(int(row[1] or 0) for row in contract_rows))
 
@@ -451,9 +443,9 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         cursor.execute(f"""
             SELECT hd.id, hd.so_hop_dong, hd.ten_hop_dong, hd.ngay_ky,
                    hd.thoi_gian_thuc_hien, hd.trang_thai_hop_dong,
-                   hd.ngay_thanh_ly, hd.trang_thai_ho_so
+                   hd.ngay_thanh_ly
             FROM ({latest_contracts_sql}) hd
-            WHERE hd.trang_thai_hop_dong IN ('ACTIVE', 'SUSPENDED', 'COMPLETED')
+            WHERE hd.ngay_thanh_ly IS NULL
               {contract_alert_filter_sql}
         """, tuple(contract_alert_params))
         today = vietnam_today()
@@ -462,14 +454,11 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             deadline = _contract_expiry_date(_parse_iso_date(row[3]), row[4])
             if not deadline or deadline > warning_limit:
                 continue
-            missing_invoice = not _contract_has_invoice(row[7])
             missing_liquidation = not str(row[6] or "").strip()
-            if not missing_invoice and not missing_liquidation:
+            if not missing_liquidation:
                 continue
             alert_key = "contractExpired" if deadline < today else "contractExpiring"
             missing_steps = []
-            if missing_invoice:
-                missing_steps.append("Chưa xuất hóa đơn")
             if missing_liquidation:
                 missing_steps.append("Chưa thanh lý")
             alert_counts[alert_key] += 1
@@ -484,11 +473,9 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             })
 
         cursor.execute(f"""
-            SELECT COUNT(*),
-                   SUM(CASE WHEN hd.trang_thai_hop_dong = 'ACTIVE' THEN 1 ELSE 0 END)
+            SELECT COUNT(*), COUNT(*)
             FROM ({latest_contracts_sql}) hd
-            WHERE hd.trang_thai_hop_dong NOT IN ('NOT_EFFECTIVE', 'CANCELLED')
-              AND EXISTS (
+            WHERE EXISTS (
                 SELECT 1 FROM phan_cong_nhan_su pc
                 WHERE pc.organization_id = hd.organization_id
                   AND pc.id_nhan_vien = ?

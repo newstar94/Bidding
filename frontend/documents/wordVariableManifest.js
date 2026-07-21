@@ -729,14 +729,14 @@ export const FIELD_METADATA_BY_TABLE = {
       "label": "Th\u1eddi gian th\u1ef1c hien",
       "wordVariable": "tg_thuc_hien_hd"
     },
-    "trang_thai_ho_so": {
-      "column": "trang_thai_ho_so",
+    "trang_thai_hop_dong": {
+      "column": "trang_thai_hop_dong",
       "dataType": "string",
       "excelCompatible": true,
       "format": "text",
-      "jsonKey": "trangThaiHoSo",
-      "label": "Tr\u1ea1ng thai ho s\u1ed1",
-      "wordVariable": "trang_thai_hs_hd"
+      "jsonKey": "trangThaiHopDong",
+      "label": "Tr\u1ea1ng th\u00e1i h\u1ee3p \u0111\u1ed3ng",
+      "wordVariable": "trang_thai_hd"
     }
   },
   "ke_hoach_lcnt": {
@@ -901,6 +901,33 @@ export const FIELD_METADATA_BY_TABLE = {
       "jsonKey": "soQdPheDuyetDuToan",
       "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 toan",
       "wordVariable": "so_qd_du_toan"
+    },
+    "so_to_trinh_du_toan": {
+      "column": "so_to_trinh_du_toan",
+      "dataType": "string",
+      "excelCompatible": true,
+      "format": "text",
+      "jsonKey": "soToTrinhDuToan",
+      "label": "Số tờ trình dự toán",
+      "wordVariable": "so_ttr_du_toan"
+    },
+    "so_to_trinh_du_toan_ke_hoach": {
+      "column": "so_to_trinh_du_toan_ke_hoach",
+      "dataType": "string",
+      "excelCompatible": true,
+      "format": "text",
+      "jsonKey": "soToTrinhDuToanKeHoach",
+      "label": "Số tờ trình dự toán và kế hoạch",
+      "wordVariable": "so_ttr_du_toan_ke_hoach"
+    },
+    "so_to_trinh_ke_hoach": {
+      "column": "so_to_trinh_ke_hoach",
+      "dataType": "string",
+      "excelCompatible": true,
+      "format": "text",
+      "jsonKey": "soToTrinhKeHoach",
+      "label": "Số tờ trình kế hoạch",
+      "wordVariable": "so_ttr_ke_hoach"
     },
     "ten_du_an_du_toan": {
       "column": "ten_du_an_du_toan",
@@ -1372,6 +1399,13 @@ export const DEFAULT_WORD_VARIABLES = [
     "sourceTable": "tai_khoan"
   },
   {
+    "format": "text",
+    "label": "Số tờ trình dự toán",
+    "name": "so_ttr_du_toan",
+    "sourceColumn": "so_to_trinh_du_toan",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
     "format": "date",
     "label": "Ng\u00e0y ap dung",
     "name": "ngay_ap_dung_cdt",
@@ -1551,6 +1585,20 @@ export const DEFAULT_WORD_VARIABLES = [
     "label": "Is tong muc tu \u0111\u00f3ng",
     "name": "tong_muc_tu_dong",
     "sourceColumn": "is_tong_muc_tu_dong",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
+    "format": "text",
+    "label": "Số tờ trình kế hoạch",
+    "name": "so_ttr_ke_hoach",
+    "sourceColumn": "so_to_trinh_ke_hoach",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
+    "format": "text",
+    "label": "Số tờ trình dự toán và kế hoạch",
+    "name": "so_ttr_du_toan_ke_hoach",
+    "sourceColumn": "so_to_trinh_du_toan_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
@@ -2171,9 +2219,9 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Tr\u1ea1ng thai ho s\u1ed1",
-    "name": "trang_thai_hs_hd",
-    "sourceColumn": "trang_thai_ho_so",
+    "label": "Tr\u1ea1ng th\u00e1i h\u1ee3p \u0111\u1ed3ng",
+    "name": "trang_thai_hd",
+    "sourceColumn": "trang_thai_hop_dong",
     "sourceTable": "hop_dong"
   },
   {

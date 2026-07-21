@@ -14,7 +14,7 @@ export const PARTNER_FORM_CONFIGS = {
       id: "form-chudautu-id", maChuDauTu: "cdt-ma", maSoThue: "cdt-mst", tenChuDauTu: "cdt-ten",
       tenVietTat: "cdt-tenviettat", ngayApDung: "cdt-ngayapdung", chucVuNguoiDungDau: "cdt-chucvunguoidungdau",
       daiDienCdt: "cdt-daidiencdt", chucVuDaiDien: "cdt-chucvudaidien",
-      danhXung: { target: "cdt-danhxung", defaultValue: "Ông" },
+      danhXung: "cdt-danhxung",
       soDienThoai: "cdt-sdt", soTaiKhoan: "cdt-sotaikhoan", noiMoTaiKhoan: "cdt-noimotaikhoan",
       email: "cdt-email", maQHNS: "cdt-maqhns", coQuanChuQuan: "cdt-coquanchuquan"
     },
@@ -35,7 +35,7 @@ export const PARTNER_FORM_CONFIGS = {
     fields: {
       id: "form-nhathau-id", maNhaThau: "nt-ma", maSoThue: "nt-mst", tenNhaThau: "nt-ten",
       tenVietTat: "nt-tenviettat", ngayApDung: "nt-ngayapdung", nguoiDaiDien: "nt-nguoidaidien",
-      chucVuDaiDien: "nt-chucvudaidien", danhXung: { target: "nt-danhxung", defaultValue: "Ông" },
+      chucVuDaiDien: "nt-chucvudaidien", danhXung: "nt-danhxung",
       soDienThoai: "nt-sdt", email: "nt-email",
       soTaiKhoan: "nt-sotaikhoan", noiMoTaiKhoan: "nt-noimotaikhoan", maNganHang: "nt-manganhang"
     },

@@ -198,6 +198,107 @@ def _upgrade_to_v9_normalize_package_technical_weight(cursor, context):
     )
 
 
+def _upgrade_to_v10_add_plan_submission_numbers(cursor, context):
+    """Persist the submission document numbers used by plan approval flows."""
+
+    del context
+    cursor.execute(
+        "ALTER TABLE ke_hoach_lcnt ADD COLUMN IF NOT EXISTS so_to_trinh_du_toan TEXT"
+    )
+    cursor.execute(
+        "ALTER TABLE ke_hoach_lcnt ADD COLUMN IF NOT EXISTS so_to_trinh_ke_hoach TEXT"
+    )
+    cursor.execute(
+        """ALTER TABLE ke_hoach_lcnt
+           ADD COLUMN IF NOT EXISTS so_to_trinh_du_toan_ke_hoach TEXT"""
+    )
+
+
+def _upgrade_to_v11_replace_paper_status_with_contract_catalog(cursor, context):
+    """Reconcile an older database with the fresh-install status model."""
+
+    del context
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS danh_muc_trang_thai_hop_dong (
+               id TEXT PRIMARY KEY,
+               organization_id TEXT NOT NULL CHECK(organization_id != ''),
+               owner_type TEXT NOT NULL DEFAULT 'organization'
+                   CHECK(owner_type IN ('organization', 'personal')),
+               name TEXT NOT NULL CHECK(trim(name) != ''),
+               color TEXT NOT NULL DEFAULT '#64748B'
+                   CHECK(color ~ '^#[0-9A-Fa-f]{6}$'),
+               sync_version BIGINT NOT NULL DEFAULT 0,
+               row_version BIGINT NOT NULL DEFAULT 1 CHECK(row_version >= 1),
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               UNIQUE(organization_id, name)
+           )"""
+    )
+    cursor.execute(
+        """INSERT INTO danh_muc_trang_thai_hop_dong
+               (id, organization_id, owner_type, name, color)
+           SELECT 'tthd-' || md5(org.organization_id || ':' || status.name),
+                  org.organization_id,
+                  CASE WHEN org.organization_id LIKE '__personal__:%'
+                       THEN 'personal' ELSE 'organization' END,
+                  status.name,
+                  status.color
+           FROM (
+               SELECT id AS organization_id FROM to_chuc
+               UNION
+               SELECT DISTINCT organization_id FROM hop_dong
+           ) AS org
+           CROSS JOIN (VALUES
+               ('Chưa hiệu lực', '#64748B'),
+               ('Đang thực hiện', '#2563EB'),
+               ('Tạm dừng', '#D97706'),
+               ('Đã hoàn thành', '#059669'),
+               ('Đã thanh lý', '#0F766E'),
+               ('Đã hủy', '#DC2626')
+           ) AS status(name, color)
+           ON CONFLICT (organization_id, name) DO NOTHING"""
+    )
+    cursor.execute(
+        """DO $$
+           DECLARE item RECORD;
+           BEGIN
+             FOR item IN
+               SELECT conname FROM pg_constraint
+               WHERE conrelid = 'hop_dong'::regclass
+                 AND (pg_get_constraintdef(oid) ILIKE '%trang_thai_hop_dong%'
+                      OR pg_get_constraintdef(oid) ILIKE '%trang_thai_ho_so%')
+             LOOP
+               EXECUTE format('ALTER TABLE hop_dong DROP CONSTRAINT IF EXISTS %I', item.conname);
+             END LOOP;
+           END $$"""
+    )
+    cursor.execute(
+        """UPDATE hop_dong SET trang_thai_hop_dong = CASE trang_thai_hop_dong
+               WHEN 'NOT_EFFECTIVE' THEN 'Chưa hiệu lực'
+               WHEN 'ACTIVE' THEN 'Đang thực hiện'
+               WHEN 'SUSPENDED' THEN 'Tạm dừng'
+               WHEN 'COMPLETED' THEN 'Đã hoàn thành'
+               WHEN 'LIQUIDATED' THEN 'Đã thanh lý'
+               WHEN 'CANCELLED' THEN 'Đã hủy'
+               ELSE COALESCE(NULLIF(trim(trang_thai_hop_dong), ''), 'Đang thực hiện')
+           END"""
+    )
+    cursor.execute("ALTER TABLE hop_dong DROP COLUMN IF EXISTS trang_thai_ho_so CASCADE")
+    cursor.execute("ALTER TABLE hop_dong ALTER COLUMN trang_thai_hop_dong SET DEFAULT 'Đang thực hiện'")
+    cursor.execute(
+        """ALTER TABLE hop_dong
+           ADD CONSTRAINT hop_dong_contract_status_fk
+           FOREIGN KEY (organization_id, trang_thai_hop_dong)
+           REFERENCES danh_muc_trang_thai_hop_dong(organization_id, name)
+           ON UPDATE CASCADE ON DELETE RESTRICT"""
+    )
+    cursor.execute("DROP TABLE IF EXISTS trang_thai_ho_so_giay CASCADE")
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_hop_dong_trang_thai
+           ON hop_dong (organization_id, trang_thai_hop_dong)"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -234,6 +335,16 @@ UPGRADES = (
         9,
         "normalize_package_technical_weight",
         _upgrade_to_v9_normalize_package_technical_weight,
+    ),
+    DatabaseUpgrade(
+        10,
+        "add_plan_submission_numbers",
+        _upgrade_to_v10_add_plan_submission_numbers,
+    ),
+    DatabaseUpgrade(
+        11,
+        "replace_paper_status_with_contract_catalog",
+        _upgrade_to_v11_replace_paper_status_with_contract_catalog,
     ),
 )
 

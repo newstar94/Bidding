@@ -1,6 +1,6 @@
 
     <div class="modal-overlay" id="modal-hopdong">
-        <div class="modal-card modal-lg">
+        <div class="modal-card modal-lg modal-wide-form">
             <div class="modal-header bf-s-d5564bfe2a"
                >
                 <div class="bf-s-89f8466bda">
@@ -12,26 +12,30 @@
                 <input type="hidden" id="form-hopdong-id">
                 <div class="modal-body bf-s-f1f87a8c4e">
                     <div class="form-grid">
-                        <div class="form-group col-span-2">
-                            <label for="hd-ten">Tên hợp đồng <span class="required">*</span></label>
-                            <input type="text" id="hd-ten" required
-                                placeholder="Ví dụ: Hợp đồng cung cấp dịch vụ máy chủ năm 2026">
-                            <span class="error-text">Vui lòng nhập tên hợp đồng</span>
+                        <div class="contract-identity-grid">
+                            <div class="form-group">
+                                <label for="hd-so">Số hợp đồng <span class="required">*</span></label>
+                                <input type="text" id="hd-so" required placeholder="Ví dụ: 01/2026/HĐ-CD">
+                                <span class="error-text">Vui lòng nhập số hợp đồng</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="hd-ten">Tên hợp đồng <span class="required">*</span></label>
+                                <input type="text" id="hd-ten" required
+                                    placeholder="Ví dụ: Hợp đồng cung cấp dịch vụ máy chủ năm 2026">
+                                <span class="error-text">Vui lòng nhập tên hợp đồng</span>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="hd-so">Số hợp đồng <span class="required">*</span></label>
-                            <input type="text" id="hd-so" required placeholder="Ví dụ: 01/2026/HĐ-CD">
-                            <span class="error-text">Vui lòng nhập số hợp đồng</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="hd-ngayky">Ngày ký hợp đồng <span class="required">*</span></label>
-                            <input type="text" id="hd-ngayky" class="flatpickr-date" required placeholder="dd/MM/yyyy">
-                            <span class="error-text">Vui lòng chọn ngày ký</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="hd-ngaythanhly">Ngày thanh lý hợp đồng</label>
-                            <input type="text" id="hd-ngaythanhly" class="flatpickr-date" placeholder="dd/MM/yyyy">
-                            <span class="helper-text">Để trống khi hợp đồng chưa thanh lý.</span>
+                        <div class="contract-date-grid">
+                            <div class="form-group">
+                                <label for="hd-ngayky">Ngày ký hợp đồng <span class="required">*</span></label>
+                                <input type="text" id="hd-ngayky" class="flatpickr-date" required placeholder="dd/MM/yyyy">
+                                <span class="error-text">Vui lòng chọn ngày ký</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="hd-ngaythanhly">Ngày thanh lý hợp đồng</label>
+                                <input type="text" id="hd-ngaythanhly" class="flatpickr-date" placeholder="dd/MM/yyyy">
+                                <span class="helper-text">Để trống khi hợp đồng chưa thanh lý.</span>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="hd-chudautuid">Chủ đầu tư <span class="required">*</span></label>
@@ -135,32 +139,23 @@
                         <div class="form-group">
                             <label for="hd-trangthai-hopdong">Trạng thái hợp đồng <span class="required">*</span></label>
                             <select id="hd-trangthai-hopdong" required>
-                                <option value="Chưa hiệu lực">Chưa hiệu lực</option>
-                                <option value="Đang thực hiện" selected>Đang thực hiện</option>
-                                <option value="Tạm dừng">Tạm dừng</option>
-                                <option value="Đã hoàn thành">Đã hoàn thành</option>
-                                <option value="Đã thanh lý">Đã thanh lý</option>
-                                <option value="Đã hủy">Đã hủy</option>
+                                <option value="">-- Chọn trạng thái hợp đồng --</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="hd-trangthai">Trạng thái hồ sơ giấy <span class="required">*</span></label>
-                            <select id="hd-trangthai" required>
-                                <option value="">-- Chọn Trạng thái --</option>
-                            </select>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="hd-songay">Thời gian thực hiện hợp đồng <span class="required">*</span></label>
-                            <input type="text" id="hd-songay" required placeholder="Ví dụ: 90 ngày hoặc 3 tháng">
-                            <span class="error-text">Vui lòng nhập thời gian thực hiện hợp đồng</span>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="hd-kehoachid">Kế hoạch LCNT <span class="required">*</span></label>
-                            <select id="hd-kehoachid" required>
-                                <option value="">-- Chọn Kế hoạch LCNT --</option>
+                        <div class="contract-plan-duration-grid">
+                            <div class="form-group">
+                                <label for="hd-songay">Thời gian thực hiện hợp đồng <span class="required">*</span></label>
+                                <input type="text" id="hd-songay" required placeholder="Ví dụ: 90 ngày hoặc 3 tháng">
+                                <span class="error-text">Vui lòng nhập thời gian thực hiện hợp đồng</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="hd-kehoachid">Kế hoạch LCNT <span class="required">*</span></label>
+                                <select id="hd-kehoachid" required>
+                                    <option value="">-- Chọn Kế hoạch LCNT --</option>
 
-                            </select>
-                            <span class="error-text">Vui lòng chọn Kế hoạch LCNT</span>
+                                </select>
+                                <span class="error-text">Vui lòng chọn Kế hoạch LCNT</span>
+                            </div>
                         </div>
                         <div class="form-group col-span-2">
                             <label>Gói thầu liên kết (Chọn một hoặc nhiều)</label>

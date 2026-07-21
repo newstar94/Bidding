@@ -5,7 +5,7 @@ from .schema_contract import json_key_for_column
 from backend.shared.workspace_scope import personal_scope_owner_id
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 7
+WORD_DEFAULT_MAPPINGS_VERSION = 8
 
 
 WORD_SINGLE_SOURCES = {
@@ -49,9 +49,12 @@ WORD_SINGLE_SOURCES = {
         "ngay_qd_phe_duyet_du_an",
         "co_quan_phe_duyet_du_an",
         "phe_duyet",
+        "so_to_trinh_du_toan",
         "ngay_trinh_du_toan",
         "ngay_phe_duyet_du_toan",
         "so_qd_phe_duyet_du_toan",
+        "so_to_trinh_ke_hoach",
+        "so_to_trinh_du_toan_ke_hoach",
         "ngay_trinh_ke_hoach",
     ],
     "goi_thau": [
@@ -161,7 +164,7 @@ WORD_SINGLE_SOURCES = {
         "gia_tri",
         "loai_hop_dong",
         "thoi_gian_thuc_hien",
-        "trang_thai_ho_so",
+        "trang_thai_hop_dong",
         "phan_loai",
         "co_qd_chi_dinh",
         "so_qd_chi_dinh",
@@ -239,9 +242,12 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("ke_hoach_lcnt", "ngay_qd_phe_duyet_du_an"): "ngay_qd_du_an",
     ("ke_hoach_lcnt", "co_quan_phe_duyet_du_an"): "cq_phe_duyet_du_an",
     ("ke_hoach_lcnt", "phe_duyet"): "nguoi_phe_duyet_kh",
+    ("ke_hoach_lcnt", "so_to_trinh_du_toan"): "so_ttr_du_toan",
     ("ke_hoach_lcnt", "ngay_trinh_du_toan"): "ngay_trinh_du_toan",
     ("ke_hoach_lcnt", "ngay_phe_duyet_du_toan"): "ngay_phe_duyet_du_toan",
     ("ke_hoach_lcnt", "so_qd_phe_duyet_du_toan"): "so_qd_du_toan",
+    ("ke_hoach_lcnt", "so_to_trinh_ke_hoach"): "so_ttr_ke_hoach",
+    ("ke_hoach_lcnt", "so_to_trinh_du_toan_ke_hoach"): "so_ttr_du_toan_ke_hoach",
     ("ke_hoach_lcnt", "ngay_trinh_ke_hoach"): "ngay_trinh_kh",
 
     ("goi_thau", "ma_goi_thau"): "ma_gt",
@@ -339,7 +345,7 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("hop_dong", "ngay_thanh_ly"): "ngay_thanh_ly_hd",
     ("hop_dong", "loai_hop_dong"): "loai_hd",
     ("hop_dong", "thoi_gian_thuc_hien"): "tg_thuc_hien_hd",
-    ("hop_dong", "trang_thai_ho_so"): "trang_thai_hs_hd",
+    ("hop_dong", "trang_thai_hop_dong"): "trang_thai_hd",
     ("hop_dong", "co_qd_chi_dinh"): "co_qd_chi_dinh",
     ("hop_dong", "so_qd_chi_dinh"): "so_qd_chi_dinh",
     ("hop_dong", "ngay_qd_chi_dinh"): "ngay_qd_chi_dinh",

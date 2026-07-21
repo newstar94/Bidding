@@ -8,6 +8,7 @@ import time
 from hashlib import sha256
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
+from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
 from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
     DatabaseUpgradeContext,
@@ -278,7 +279,7 @@ def _create_indexes(cursor) -> None:
     )
     synced_tables = versioned_tables + (
         "phan_cong_nhan_su",
-        "trang_thai_ho_so_giay",
+        "danh_muc_trang_thai_hop_dong",
         "thong_tin_mo_thau",
         "ma_tran_phan_quyen",
     )
@@ -461,7 +462,7 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_winner ON goi_thau_phan_lo (organization_id, nha_thau_trung_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu_thanh_ly ON hop_dong (organization_id, chu_dau_tu_thanh_ly_id)",
         "CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau_thanh_ly ON hop_dong (organization_id, nha_thau_thanh_ly_id)",
-        "CREATE INDEX IF NOT EXISTS idx_hop_dong_trang_thai_ho_so ON hop_dong (organization_id, trang_thai_ho_so)",
+        "CREATE INDEX IF NOT EXISTS idx_hop_dong_trang_thai ON hop_dong (organization_id, trang_thai_hop_dong)",
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_chu_dau_tu ON ke_hoach_lcnt (organization_id, chu_dau_tu_id)",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau_opening ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id, thong_tin_mo_thau_id)",
@@ -717,7 +718,7 @@ def _create_triggers(cursor) -> None:
         "chuyen_gia",
         "hop_dong",
         "phan_cong_nhan_su",
-        "trang_thai_ho_so_giay",
+        "danh_muc_trang_thai_hop_dong",
         "thong_tin_mo_thau",
         "ma_tran_phan_quyen",
     ):
@@ -900,6 +901,16 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
         "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (%s, %s)",
         (organization_id, organization_name),
     )
+    for status_name, color in DEFAULT_CONTRACT_STATUSES:
+        status_id = "tthd-" + sha256(
+            f"{organization_id}:{status_name}".encode("utf-8")
+        ).hexdigest()[:32]
+        cursor.execute(
+            """INSERT INTO danh_muc_trang_thai_hop_dong
+                   (id, organization_id, owner_type, name, color)
+               VALUES (%s, %s, 'organization', %s, %s)""",
+            (status_id, organization_id, status_name, color),
+        )
     cursor.execute(
         """INSERT INTO thanh_vien_to_chuc
            (user_id, organization_id, vai_tro_trong_to_chuc)

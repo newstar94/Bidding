@@ -477,22 +477,22 @@ export function setupRBACEvents() {
       const name = document.getElementById("hsg-name").value.trim();
       const color = document.getElementById("hsg-color").value;
       const currentStatus = id
-        ? this.model.state.custompaperstatuses.find((status) => status.id === id)
+        ? this.model.state.customcontractstatuses.find((status) => status.id === id)
         : null;
       const data = {
         ...(currentStatus || {}),
         organizationId,
-        id: id || generateRecordId("custompaperstatuses"),
+        id: id || generateRecordId("customcontractstatuses"),
         name,
         color
       };
       if (id) {
-        const idx = this.model.state.custompaperstatuses.findIndex((s) => s.id === id);
-        if (idx !== -1) this.model.state.custompaperstatuses[idx] = data;
+        const idx = this.model.state.customcontractstatuses.findIndex((s) => s.id === id);
+        if (idx !== -1) this.model.state.customcontractstatuses[idx] = data;
       } else {
-        this.model.state.custompaperstatuses.push(data);
+        this.model.state.customcontractstatuses.push(data);
       }
-      await this.model.persistData("custompaperstatuses");
+      await this.model.persistData("customcontractstatuses");
       this.view.renderManagerHoSoGiayPanel();
       const syncResult = await this.autoSync();
       if (!syncResult?.ok) {
@@ -508,7 +508,7 @@ export function setupRBACEvents() {
       document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
       lucide.createIcons();
       this.view.renderManagerHoSoGiayPanel();
-      await this.view.customAlert("Thành công", "Trạng thái hồ sơ giấy đã được cập nhật thành công!", "check-circle");
+      await this.view.customAlert("Thành công", "Trạng thái hợp đồng đã được cập nhật thành công!", "check-circle");
     });
   }
   const accountPackageSelect = document.getElementById("detail-su-account-package");
@@ -1144,7 +1144,7 @@ export async function reloadEmployeesFromDatabase() {
   }
 }
 export function editHoSoGiayStatus(id) {
-  const status = this.model.state.custompaperstatuses.find((s) => s.id === id);
+  const status = this.model.state.customcontractstatuses.find((s) => s.id === id);
   if (!status) return;
   document.getElementById("form-hosogiay-id").value = status.id;
   document.getElementById("hsg-name").value = status.name;
@@ -1153,23 +1153,23 @@ export function editHoSoGiayStatus(id) {
   lucide.createIcons();
 }
 export async function deleteHoSoGiayStatus(id) {
-  const status = await refreshRecordBeforeDelete(this, "custompaperstatuses", id);
+  const status = await refreshRecordBeforeDelete(this, "customcontractstatuses", id);
   if (!status) return;
   const confirmed = await this.view.customConfirm(
     "Xác nhận xóa trạng thái",
-    `Bạn có chắc chắn muốn xóa trạng thái hồ sơ "${status.name}"?`,
+    `Bạn có chắc chắn muốn xóa trạng thái hợp đồng "${status.name}"? Trạng thái đang được hợp đồng sử dụng sẽ không thể xóa.`,
     "trash-2"
   );
   if (!confirmed) return;
-  this.model.state.custompaperstatuses = this.model.state.custompaperstatuses.filter((s) => s.id !== id);
-  this.model.markDeleted?.("custompaperstatuses", [id]);
+  this.model.state.customcontractstatuses = this.model.state.customcontractstatuses.filter((s) => s.id !== id);
+  this.model.markDeleted?.("customcontractstatuses", [id]);
   const editingId = document.getElementById("form-hosogiay-id").value;
   if (editingId === id) {
     document.getElementById("form-manager-hosogiay").reset();
     document.getElementById("form-hosogiay-id").value = "";
     document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
   }
-  const syncResult = await persistAndSync(this, "custompaperstatuses", {
+  const syncResult = await persistAndSync(this, "customcontractstatuses", {
     afterPersist: () => this.view.renderManagerHoSoGiayPanel()
   });
   if (!syncResult?.ok) {

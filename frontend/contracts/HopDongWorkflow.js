@@ -320,11 +320,11 @@ export async function editHopDong(id) {
     } else {
       _populateHdEmpDropdown();
     }
-    const statusSelect = document.getElementById("hd-trangthai");
+    const statusSelect = document.getElementById("hd-trangthai-hopdong");
     if (statusSelect) {
       // The sync endpoint already scopes this collection to the active organization.
-      const orgStatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses : [];
-      statusSelect.innerHTML = trustedHTML('<option value="">-- Chọn Trạng thái --</option>' + orgStatuses.map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join(""));
+      const orgStatuses = Array.isArray(this.model.state.customcontractstatuses) ? this.model.state.customcontractstatuses : [];
+      statusSelect.innerHTML = trustedHTML('<option value="">-- Chọn trạng thái hợp đồng --</option>' + orgStatuses.map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join(""));
     }
     if (id) {
       captureModalReturnState(this.model.state.activetab || "hopdong", this.model.state.activeaction || null);
@@ -382,10 +382,7 @@ export async function editHopDong(id) {
       ngayQdInput.value = this.model.formatForDateInput(hd.ngayQdChiDinh);
       toggleQdFields();
       document.getElementById("hd-songay").value = hd.soNgayThucHien || "";
-      document.getElementById("hd-trangthai-hopdong").value = hd.trangThaiHopDong || "Đang thực hiện";
-      if (statusSelect) {
-        statusSelect.value = hd.trangThaiHoSo || "";
-      }
+      statusSelect.value = hd.trangThaiHopDong || "Đang thực hiện";
       if (hd.keHoachId) {
         khSelect.value = hd.keHoachId;
         khSelect.dispatchEvent(new Event("change"));
@@ -410,7 +407,9 @@ export async function editHopDong(id) {
       const ngayKyInp = document.getElementById("hd-ngayky");
       if (ngayKyInp) ngayKyInp.value = "";
       document.getElementById("hd-ngaythanhly").value = "";
-      document.getElementById("hd-trangthai-hopdong").value = "Đang thực hiện";
+      statusSelect.value = (this.model.state.customcontractstatuses || []).some((status) => status.name === "Đang thực hiện")
+        ? "Đang thực hiện"
+        : (this.model.state.customcontractstatuses?.[0]?.name || "");
       cdtSelect.value = "";
       cdtSelect.dispatchEvent(new Event("change"));
       handleCdtChange("");
@@ -472,16 +471,7 @@ export async function handleHopDongSubmit(e) {
   const soQdChiDinh = coQdChiDinh ? document.getElementById("hd-soqdchidinh").value.trim() : "";
   const ngayQdChiDinh = coQdChiDinh ? document.getElementById("hd-ngayqdchidinh").value : "";
   const soNgayThucHien = document.getElementById("hd-songay").value.trim();
-  const trangThaiHoSo = document.getElementById("hd-trangthai").value;
   const trangThaiHopDong = document.getElementById("hd-trangthai-hopdong").value;
-  if (ngayThanhLy && trangThaiHopDong !== "Đã thanh lý") {
-    await this.view.customAlert("Dữ liệu không hợp lệ", "Khi có ngày thanh lý, trạng thái hợp đồng phải là Đã thanh lý.", "alert-triangle", document.getElementById("hd-trangthai-hopdong"));
-    return;
-  }
-  if (!ngayThanhLy && trangThaiHopDong === "Đã thanh lý") {
-    await this.view.customAlert("Dữ liệu không hợp lệ", "Hợp đồng đã thanh lý phải có ngày thanh lý.", "alert-triangle", document.getElementById("hd-ngaythanhly"));
-    return;
-  }
   if (soHopDong) {
     const currentContract = id ? this.model.state.hopdong.find((h) => h.id === id) : null;
     const currentRootId = currentContract ? currentContract.rootId || currentContract.id : "";
@@ -565,7 +555,6 @@ export async function handleHopDongSubmit(e) {
     ngayQdChiDinh: ngayQdChiDinh ? this.model.convertDMYToYMD(ngayQdChiDinh) : "",
     soNgayThucHien,
     goiThauIds,
-    trangThaiHoSo,
     trangThaiHopDong
   };
   if (id) {

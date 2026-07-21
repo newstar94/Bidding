@@ -51,7 +51,7 @@ const DELETE_ENTITIES = Object.freeze([
   { pattern: /xóa .*hợp đồng/u, message: "Xóa hợp đồng thành công." },
   { pattern: /xóa .*phân công/u, message: "Xóa phân công thành công." },
   { pattern: /xóa .*thông tin mở thầu/u, message: "Xóa thông tin mở thầu thành công." },
-  { pattern: /xóa .*trạng thái hồ sơ/u, message: "Xóa trạng thái hồ sơ thành công." }
+  { pattern: /xóa .*trạng thái hợp đồng/u, message: "Xóa trạng thái hợp đồng thành công." }
 ]);
 
 const TOAST_ENTITIES = Object.freeze([
@@ -76,7 +76,7 @@ const TOAST_ENTITIES = Object.freeze([
   { pattern: /hợp đồng/u, label: "hợp đồng" },
   { pattern: /timeline/u, label: "timeline" },
   { pattern: /biểu mẫu(?: word)?|mẫu/u, label: "biểu mẫu" },
-  { pattern: /trạng thái hồ sơ/u, label: "trạng thái hồ sơ" },
+  { pattern: /trạng thái hợp đồng/u, label: "trạng thái hợp đồng" },
   { pattern: /phân công/u, label: "phân công" },
   { pattern: /phần lô/u, label: "phần lô" },
   { pattern: /biến (?:ánh xạ|danh sách|kết quả)/u, label: "biến Word" },

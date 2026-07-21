@@ -248,16 +248,16 @@ def _read_sync_data_blocking(request):
                 assignments.append(map_db_to_json("phan_cong_nhan_su", dict(row)))
 
 
-        custompaperstatuses = []
-        if not is_partial_response or "custompaperstatuses" in requested_keys:
+        customcontractstatuses = []
+        if not is_partial_response or "customcontractstatuses" in requested_keys:
             if after_version is not None:
-                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
+                cursor.execute("SELECT * FROM danh_muc_trang_thai_hop_dong WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
             elif since != '1970-01-01 00:00:00' and since != '0':
-                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE organization_id = ? AND updated_at > ?", (org_name, since))
+                cursor.execute("SELECT * FROM danh_muc_trang_thai_hop_dong WHERE organization_id = ? AND updated_at > ?", (org_name, since))
             else:
-                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE organization_id = ?", (org_name,))
+                cursor.execute("SELECT * FROM danh_muc_trang_thai_hop_dong WHERE organization_id = ?", (org_name,))
             for row in cursor.fetchall():
-                custompaperstatuses.append(map_db_to_json("trang_thai_ho_so_giay", dict(row)))
+                customcontractstatuses.append(map_db_to_json("danh_muc_trang_thai_hop_dong", dict(row)))
 
 
         thongtinmothau = []
@@ -319,7 +319,7 @@ def _read_sync_data_blocking(request):
         goithau = filter_items_for_read(cursor, role_str, user_id, org_name, "goithau", "goi_thau", goithau)
         hopdong = filter_items_for_read(cursor, role_str, user_id, org_name, "hopdong", "hop_dong", hopdong)
         assignments = filter_items_for_read(cursor, role_str, user_id, org_name, "assignments", "phan_cong_nhan_su", assignments)
-        custompaperstatuses = filter_items_for_read(cursor, role_str, user_id, org_name, "custompaperstatuses", "trang_thai_ho_so_giay", custompaperstatuses)
+        customcontractstatuses = filter_items_for_read(cursor, role_str, user_id, org_name, "customcontractstatuses", "danh_muc_trang_thai_hop_dong", customcontractstatuses)
         thongtinmothau = filter_items_for_read(cursor, role_str, user_id, org_name, "thongtinmothau", "thong_tin_mo_thau", thongtinmothau)
         permissionmatrix = filter_items_for_read(cursor, role_str, user_id, org_name, "permissionmatrix", "ma_tran_phan_quyen", permissionmatrix)
 
@@ -422,7 +422,7 @@ def _read_sync_data_blocking(request):
             "goithau": goithau,
             "hopdong": hopdong,
             "assignments": assignments,
-            "custompaperstatuses": custompaperstatuses,
+            "customcontractstatuses": customcontractstatuses,
             "thongtinmothau": thongtinmothau,
             "permissionmatrix": permissionmatrix,
             "deletions": deletions,

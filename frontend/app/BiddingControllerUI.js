@@ -447,7 +447,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     "superadmin-dashboard": "Bảng điều khiển Super Admin BiddingFlow",
     superadmin: "Quản lý Đơn vị & Tài khoản Thành viên",
     managernhanvien: "Quản lý Chuyên viên & Phân quyền Matrix",
-    managerhosogiay: "Cấu hình Danh mục Trạng thái Hồ sơ giấy",
+    managerhosogiay: "Cấu hình trạng thái hợp đồng",
     mothau: "Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)",
     danhgiahsdt: "Đánh giá Hồ sơ dự thầu (E-HSDT)",
     "goithau-detail": "Chi tiết Quy trình Gói thầu",

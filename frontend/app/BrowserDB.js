@@ -14,7 +14,7 @@ export class BrowserDB {
       "organizations",
       "employees",
       "permissionmatrix",
-      "custompaperstatuses",
+      "customcontractstatuses",
       "assignments",
       "thongtinmothau",
       "kv_store"
@@ -22,7 +22,7 @@ export class BrowserDB {
   }
   init() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 2);
+      const request = indexedDB.open(this.dbName, 3);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
         this.stores.forEach((storeName) => {

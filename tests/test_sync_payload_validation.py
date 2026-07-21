@@ -345,7 +345,7 @@ def test_status_transition_and_locked_field_policies() -> None:
     ) == []
     assert validation.validate_contract_status_transition(
         liquidated, {"trangThaiHopDong": active}
-    )
+    ) == []
 
 
 def test_internal_numeric_and_list_helpers_are_strict() -> None:
@@ -442,6 +442,44 @@ def test_plan_item_validation_covers_required_money_project_and_date_order() -> 
         "ke_hoach_lcnt", valid
     )
     assert normalized["isTongMucTuDong"] == 0
+    assert errors == []
+
+
+def test_plan_submission_numbers_follow_the_selected_approval_flow() -> None:
+    plan = {
+        "tenKeHoach": "Kế hoạch mua sắm",
+        "tenDuAnDuToan": "Dự toán thiết bị",
+        "loaiHinhMuaSam": "Dự toán mua sắm",
+        "chuDauTuId": "investor",
+        "ngayPheDuyet": "2026-07-22",
+        "quyetDinhPheDuyet": "01/QĐ-CĐT",
+        "pheDuyet": "Kế hoạch",
+        "ngayTrinhDuToan": "2026-07-19",
+        "ngayPheDuyetDuToan": "2026-07-20",
+        "soQdPheDuyetDuToan": "02/QĐ-CĐT",
+        "ngayTrinhKeHoach": "2026-07-21",
+    }
+    _, errors, _ = validation.validate_sync_item("ke_hoach_lcnt", plan)
+    assert any("Số tờ trình dự toán" in error for error in errors)
+    assert any("Số tờ trình kế hoạch" in error for error in errors)
+
+    plan.update({
+        "soToTrinhDuToan": "01/TTr-CĐT",
+        "soToTrinhKeHoach": "02/TTr-CĐT",
+    })
+    _, errors, _ = validation.validate_sync_item("ke_hoach_lcnt", plan)
+    assert errors == []
+
+    combined = {
+        **plan,
+        "pheDuyet": "Dự toán và kế hoạch",
+        "soToTrinhDuToan": "",
+        "soToTrinhKeHoach": "",
+    }
+    _, errors, _ = validation.validate_sync_item("ke_hoach_lcnt", combined)
+    assert any("Số tờ trình dự toán và kế hoạch" in error for error in errors)
+    combined["soToTrinhDuToanKeHoach"] = "03/TTr-CĐT"
+    _, errors, _ = validation.validate_sync_item("ke_hoach_lcnt", combined)
     assert errors == []
 
 
@@ -716,7 +754,6 @@ def _minimal_contract(**overrides):
         "loaiHopDong": "Fixed",
         "soNgayThucHien": "30",
         "trangThaiHopDong": CONTRACT_STATUS_LABELS["ACTIVE"],
-        "trangThaiHoSo": "Complete",
         "goiThauIds": ["package"],
     }
     item.update(overrides)
@@ -730,12 +767,11 @@ def test_contract_validation_covers_dates_direct_award_status_and_catalog() -> N
         coQdChiDinh=True,
         ngayQdChiDinh="2026-07-21",
         trangThaiHopDong="INVALID",
-        trangThaiHoSo="Unknown",
     )
     _, errors, _ = validation.validate_sync_item(
-        "hop_dong", item, allowed_paper_status_names={"Complete"}
+        "hop_dong", item, allowed_contract_status_names={CONTRACT_STATUS_LABELS["ACTIVE"]}
     )
-    assert len(errors) >= 7
+    assert len(errors) >= 4
 
     inconsistent = _minimal_contract(
         coQdChiDinh=False,
@@ -743,33 +779,33 @@ def test_contract_validation_covers_dates_direct_award_status_and_catalog() -> N
         ngayThanhLy="2026-07-21",
     )
     _, errors, _ = validation.validate_sync_item(
-        "hop_dong", inconsistent, allowed_paper_status_names={"Complete"}
+        "hop_dong", inconsistent, allowed_contract_status_names={CONTRACT_STATUS_LABELS["ACTIVE"]}
     )
-    assert len(errors) >= 2
+    assert errors
 
     liquidated = _minimal_contract(
         trangThaiHopDong=CONTRACT_STATUS_LABELS["LIQUIDATED"],
         ngayThanhLy=None,
     )
     _, errors, _ = validation.validate_sync_item(
-        "hop_dong", liquidated, allowed_paper_status_names={"Complete"}
+        "hop_dong", liquidated, allowed_contract_status_names={CONTRACT_STATUS_LABELS["LIQUIDATED"]}
     )
-    assert errors
+    assert errors == []
 
     valid = _minimal_contract()
     _, errors, _ = validation.validate_sync_item(
-        "hop_dong", valid, allowed_paper_status_names={"Complete"}
+        "hop_dong", valid, allowed_contract_status_names={CONTRACT_STATUS_LABELS["ACTIVE"]}
     )
     assert errors == []
 
 
-def test_paper_status_and_opening_discount_validation() -> None:
+def test_contract_status_catalog_and_opening_discount_validation() -> None:
     _, errors, _ = validation.validate_sync_item(
-        "trang_thai_ho_so_giay", {"name": "", "color": "red"}
+        "danh_muc_trang_thai_hop_dong", {"name": "", "color": "red"}
     )
     assert len(errors) == 2
     _, errors, _ = validation.validate_sync_item(
-        "trang_thai_ho_so_giay", {"name": "Complete", "color": "#00AA11"}
+        "danh_muc_trang_thai_hop_dong", {"name": "Complete", "color": "#00AA11"}
     )
     assert errors == []
 

@@ -50,7 +50,7 @@ export class BiddingController {
       "superadmin-dashboard": "tong-quan-admin",
       "superadmin": "quan-ly-tai-khoan",
       "managernhanvien": "nhan-su",
-      "managerhosogiay": "trang-thai-ho-so",
+      "managerhosogiay": "trang-thai-hop-dong",
       "profile": "trang-ca-nhan",
       "goithau-detail": "goi-thau-chi-tiet",
       "kehoach-detail": "ke-hoach-chi-tiet",
@@ -254,7 +254,6 @@ export class BiddingController {
       || localStorage.getItem("bf_perf_debug") === "true"
       || new URLSearchParams(window.location.search).get("bf_perf_debug") === "true";
     if (perfDebugEnabled) {
-      console.info(`[Startup Metrics] ${JSON.stringify(metrics)}`);
       console.table(metrics);
     }
   }
@@ -522,7 +521,7 @@ export class BiddingController {
       [this.routeMap["superadmin-dashboard"]]: ["SYSTEMPACKAGES", "ORGANIZATIONS", "EMPLOYEES", "PERMISSIONMATRIX"],
       [this.routeMap.superadmin]: ["SYSTEMPACKAGES", "ORGANIZATIONS", "EMPLOYEES", "PERMISSIONMATRIX"],
       [this.routeMap.managernhanvien]: ["EMPLOYEES", "PERMISSIONMATRIX", "ORGANIZATIONS"],
-      [this.routeMap.managerhosogiay]: ["CUSTOMPAPERSTATUSES"],
+      [this.routeMap.managerhosogiay]: ["CUSTOMCONTRACTSTATUSES"],
       [this.routeMap.kehoach]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
       [this.routeMap["kehoach-detail"]]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
       [this.routeMap.goithau]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "NHATHAU", "THONGTINMOTHAU", "ASSIGNMENTS"],
@@ -544,7 +543,7 @@ export class BiddingController {
   getSyncTableKeysForPath(pathname = window.location.pathname) {
     return this.getStartupPriorityKeys(pathname)
       .map((key) => String(key || "").toLowerCase())
-      .filter((key) => ["chudautu", "kehoach", "goithau", "chuyengia", "nhathau", "hopdong", "assignments", "custompaperstatuses", "thongtinmothau", "permissionmatrix"].includes(key));
+      .filter((key) => ["chudautu", "kehoach", "goithau", "chuyengia", "nhathau", "hopdong", "assignments", "customcontractstatuses", "thongtinmothau", "permissionmatrix"].includes(key));
   }
   loadInitDataInBackground() {
     const load = async () => {

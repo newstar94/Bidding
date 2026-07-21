@@ -81,6 +81,64 @@ def test_schema_metadata_cleaners_and_invalid_types():
         excel_handler.parse_excel(b"", "missing")
 
 
+def test_plan_excel_schema_covers_submission_approval_workflow():
+    schema = excel_handler.ENTITY_SCHEMA["kehoach"]
+    fields = {entry["field"]: entry for entry in schema}
+
+    expected_fields = {
+        "pheDuyet",
+        "soToTrinhDuToan",
+        "ngayTrinhDuToan",
+        "ngayPheDuyetDuToan",
+        "soQdPheDuyetDuToan",
+        "soToTrinhKeHoach",
+        "soToTrinhDuToanKeHoach",
+        "ngayTrinhKeHoach",
+    }
+    assert expected_fields <= fields.keys()
+    assert fields["pheDuyet"]["options"] == ["Kế hoạch", "Dự toán và kế hoạch"]
+    assert "Số TTr dự toán" in fields["soToTrinhDuToan"]["aliases"]
+    assert "Số TTr kế hoạch" in fields["soToTrinhKeHoach"]["aliases"]
+    assert "Số TTr dự toán và kế hoạch" in fields["soToTrinhDuToanKeHoach"]["aliases"]
+
+    workbook = excel_service.create_excel_template("kehoach")
+    headers = [cell.value for cell in workbook["Nhap Lieu"][1]]
+    assert "Số tờ trình dự toán" in headers
+    assert "Số tờ trình kế hoạch" in headers
+    assert "Số tờ trình dự toán và kế hoạch" in headers
+    formats = excel_handler._schema_to_formats("kehoach")
+    assert formats["Số tờ trình dự toán"] == "text"
+    assert formats["Ngày trình dự toán"] == "date"
+    assert formats["Ngày trình kế hoạch"] == "date"
+
+
+def test_plan_excel_import_maps_submission_number_aliases():
+    headers = [
+        "Mã kế hoạch",
+        "Tên kế hoạch",
+        "Hình thức phê duyệt",
+        "Số TTr dự toán",
+        "Số TTr kế hoạch",
+        "Số TTr dự toán và kế hoạch",
+    ]
+    values = [
+        "KH-01",
+        "Kế hoạch thử nghiệm",
+        "Kế hoạch",
+        "01/TTr-CĐT",
+        "02/TTr-CĐT",
+        "03/TTr-CĐT",
+    ]
+
+    result = excel_handler.parse_excel(_workbook_bytes(headers, [values]), "kehoach")
+
+    assert result[0]["isValid"]
+    assert result[0]["data"]["pheDuyet"] == "Kế hoạch"
+    assert result[0]["data"]["soToTrinhDuToan"] == "01/TTr-CĐT"
+    assert result[0]["data"]["soToTrinhKeHoach"] == "02/TTr-CĐT"
+    assert result[0]["data"]["soToTrinhDuToanKeHoach"] == "03/TTr-CĐT"
+
+
 @pytest.mark.parametrize(
     ("import_type", "overrides", "expected_comment"),
     [

@@ -1,6 +1,6 @@
 
     <div class="modal-overlay" id="modal-nhathau">
-        <div class="modal-card modal-lg">
+        <div class="modal-card modal-lg modal-wide-form">
             <div class="modal-header bf-s-d5564bfe2a"
                >
                 <div class="bf-s-89f8466bda">
@@ -30,41 +30,46 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="form-group col-span-2">
-                            <label for="nt-ten">Tên nhà thầu <span class="required">*</span></label>
-                            <input type="text" id="nt-ten" required placeholder="Tên đầy đủ của doanh nghiệp">
-                            <span class="error-text">Vui lòng nhập tên doanh nghiệp</span>
+                        <div class="entity-name-date-grid">
+                            <div class="form-group">
+                                <label for="nt-ten">Tên nhà thầu <span class="required">*</span></label>
+                                <input type="text" id="nt-ten" required placeholder="Tên đầy đủ của doanh nghiệp">
+                                <span class="error-text">Vui lòng nhập tên doanh nghiệp</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="nt-ngayapdung">Ngày áp dụng <span class="required">*</span></label>
+                                <input type="text" id="nt-ngayapdung" class="flatpickr-date" required placeholder="dd/MM/yyyy">
+                                <span class="error-text">Vui lòng chọn ngày áp dụng</span>
+                            </div>
                         </div>
-                        <div class="form-group col-span-2">
-                            <label for="nt-ngayapdung">Ngày áp dụng <span class="required">*</span></label>
-                            <input type="text" id="nt-ngayapdung" class="flatpickr-date" required placeholder="dd/MM/yyyy">
-                            <span class="error-text">Vui lòng chọn ngày áp dụng</span>
+                        <div class="contractor-representative-grid">
+                            <div class="form-group">
+                                <label for="nt-danhxung">Danh xưng <span class="required">*</span></label>
+                                <input type="text" id="nt-danhxung" required autocomplete="honorific-prefix"
+                                    placeholder="Ví dụ: Ông, Bà, Tiến sĩ">
+                                <span class="error-text">Vui lòng nhập danh xưng</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="nt-nguoidaidien">Người đại diện <span class="required">*</span></label>
+                                <input type="text" id="nt-nguoidaidien" required placeholder="Họ và tên">
+                                <span class="error-text">Vui lòng nhập người đại diện</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="nt-chucvudaidien">Chức vụ người đại diện</label>
+                                <input type="text" id="nt-chucvudaidien" placeholder="Ví dụ: Giám đốc">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="nt-nguoidaidien">Người đại diện <span class="required">*</span></label>
-                            <input type="text" id="nt-nguoidaidien" required placeholder="Họ và tên">
-                            <span class="error-text">Vui lòng nhập người đại diện</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="nt-chucvudaidien">Chức vụ người đại diện</label>
-                            <input type="text" id="nt-chucvudaidien" placeholder="Ví dụ: Giám đốc">
-                        </div>
-                        <div class="form-group">
-                            <label for="nt-danhxung">Danh xưng <span class="required">*</span></label>
-                            <select id="nt-danhxung" required>
-                                <option value="Ông" selected>Ông</option>
-                                <option value="Bà">Bà</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="nt-sdt">Điện thoại</label>
-                            <input type="tel" id="nt-sdt" placeholder="Số điện thoại">
-                            <span class="error-text">Vui lòng nhập số điện thoại</span>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="nt-email">Email</label>
-                            <input type="email" id="nt-email" placeholder="contact@nhathau.com">
-                            <span class="error-text">Email không hợp lệ</span>
+                        <div class="entity-contact-grid">
+                            <div class="form-group">
+                                <label for="nt-sdt">Điện thoại</label>
+                                <input type="tel" id="nt-sdt" placeholder="Số điện thoại">
+                                <span class="error-text">Vui lòng nhập số điện thoại</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="nt-email">Email</label>
+                                <input type="email" id="nt-email" placeholder="contact@nhathau.com">
+                                <span class="error-text">Email không hợp lệ</span>
+                            </div>
                         </div>
                         <div class="form-group col-span-2">
                             <div class="form-grid bf-s-277dcc7f77">

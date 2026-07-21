@@ -51,7 +51,7 @@ export function renderWorkspaceSwitcher() {
         class="dropdown-item dropdown-org-btn" data-org="${escapeHtml(workspace.id)}"
         style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBackground}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">
         <div class="bf-s-1ec945a6d2">
-          <div style="width: 24px; height: 24px; border-radius: 6px; background: ${isActive ? "var(--primary)" : "var(--border-color)"}; color: ${isActive ? "#ffffff" : "var(--text-muted)"}; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; transition: all 0.2s;">
+          <div style="width: 24px; height: 24px; border-radius: 6px; background: ${isActive ? "var(--primary)" : "var(--border-color)"}; color: ${isActive ? "#ffffff" : "var(--text-muted)"}; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; transition: background-color 0.2s, color 0.2s;">
             ${initials}
           </div>
           <span style="font-size: 0.78rem; font-weight: ${isActive ? "700" : "500"}; color: ${isActive ? "var(--primary)" : "var(--text-main)"}; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: 1; min-width: 0;">

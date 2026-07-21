@@ -1,6 +1,6 @@
 
 <div class="modal-overlay" id="modal-chudautu">
-    <div class="modal-card bf-s-95905b1a03">
+    <div class="modal-card modal-lg modal-wide-form bf-s-95905b1a03">
         <div class="modal-header bf-s-d5564bfe2a"
            >
             <div class="bf-s-89f8466bda">
@@ -30,45 +30,49 @@
                             </div>
                         </div>
                     </div>
-                    <div class="form-group col-span-2">
-                        <label for="cdt-ten">Tên chủ đầu tư <span class="required">*</span></label>
-                        <input type="text" id="cdt-ten" required
-                            placeholder="Ví dụ: Ban Quản lý Dự án Công nghệ Thông tin">
-                        <span class="error-text">Vui lòng nhập tên chủ đầu tư</span>
-                    </div>
-                    <div class="form-group col-span-2">
-                        <label for="cdt-ngayapdung">Ngày áp dụng <span class="required">*</span></label>
-                        <input type="text" id="cdt-ngayapdung" class="flatpickr-date" required placeholder="dd/MM/yyyy">
-                        <span class="error-text">Vui lòng chọn ngày áp dụng</span>
+                    <div class="entity-name-date-grid">
+                        <div class="form-group">
+                            <label for="cdt-ten">Tên chủ đầu tư <span class="required">*</span></label>
+                            <input type="text" id="cdt-ten" required
+                                placeholder="Ví dụ: Ban Quản lý Dự án Công nghệ Thông tin">
+                            <span class="error-text">Vui lòng nhập tên chủ đầu tư</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="cdt-ngayapdung">Ngày áp dụng <span class="required">*</span></label>
+                            <input type="text" id="cdt-ngayapdung" class="flatpickr-date" required placeholder="dd/MM/yyyy">
+                            <span class="error-text">Vui lòng chọn ngày áp dụng</span>
+                        </div>
                     </div>
                     <div class="form-group col-span-2">
                         <label for="cdt-coquanchuquan">Cơ quan chủ quản</label>
                         <input type="text" id="cdt-coquanchuquan" placeholder="Ví dụ: Bộ Giáo dục và Đào tạo">
                     </div>
-                    <div class="form-group">
-                        <label for="cdt-chucvunguoidungdau">Chức vụ người đứng đầu <span
-                                class="required">*</span></label>
-                        <input type="text" id="cdt-chucvunguoidungdau" required
-                            placeholder="Ví dụ: Giám đốc, Tổng giám đốc">
-                        <span class="error-text">Vui lòng nhập chức vụ người đứng đầu</span>
+                    <div class="investor-signer-grid">
+                        <div class="form-group">
+                            <label for="cdt-danhxung">Danh xưng người ký <span class="required">*</span></label>
+                            <input type="text" id="cdt-danhxung" required autocomplete="honorific-prefix"
+                                placeholder="Ví dụ: Ông, Bà, Tiến sĩ">
+                            <span class="error-text">Vui lòng nhập danh xưng</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="cdt-daidiencdt">Đại diện CĐT <span class="required">*</span></label>
+                            <input type="text" id="cdt-daidiencdt" required placeholder="Ví dụ: Nguyễn Văn A">
+                            <span class="error-text">Vui lòng nhập họ tên đại diện CĐT</span>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="cdt-daidiencdt">Đại diện CĐT <span class="required">*</span></label>
-                        <input type="text" id="cdt-daidiencdt" required placeholder="Ví dụ: Nguyễn Văn A">
-                        <span class="error-text">Vui lòng nhập họ tên đại diện CĐT</span>
-                    </div>
-                    <div class="form-group">
-                        <label for="cdt-chucvudaidien">Chức vụ người đại diện <span class="required">*</span></label>
-                        <input type="text" id="cdt-chucvudaidien" required placeholder="Ví dụ: Phó Chủ tịch, Giám đốc">
-                        <span class="error-text">Vui lòng nhập chức vụ người đại diện</span>
-                    </div>
-                    <div class="form-group">
-                        <label for="cdt-danhxung">Danh xưng người ký <span class="required">*</span></label>
-                        <select id="cdt-danhxung" required>
-                            <option value="Ông">Ông</option>
-                            <option value="Bà">Bà</option>
-                        </select>
-                        <span class="error-text">Vui lòng chọn danh xưng</span>
+                    <div class="investor-position-grid">
+                        <div class="form-group">
+                            <label for="cdt-chucvunguoidungdau">Chức vụ người đứng đầu <span
+                                    class="required">*</span></label>
+                            <input type="text" id="cdt-chucvunguoidungdau" required
+                                placeholder="Ví dụ: Giám đốc, Tổng giám đốc">
+                            <span class="error-text">Vui lòng nhập chức vụ người đứng đầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="cdt-chucvudaidien">Chức vụ người đại diện <span class="required">*</span></label>
+                            <input type="text" id="cdt-chucvudaidien" required placeholder="Ví dụ: Phó Chủ tịch, Giám đốc">
+                            <span class="error-text">Vui lòng nhập chức vụ người đại diện</span>
+                        </div>
                     </div>
                     <div class="form-group col-span-2">
                         <div class="form-grid bf-s-277dcc7f77">
@@ -91,15 +95,17 @@
                             </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="cdt-sdt">Số điện thoại</label>
-                        <input type="tel" id="cdt-sdt" placeholder="Ví dụ: 0243xxxxxx">
-                        <span class="error-text">Số điện thoại không đúng định dạng</span>
-                    </div>
-                    <div class="form-group">
-                        <label for="cdt-email">Địa chỉ Email</label>
-                        <input type="email" id="cdt-email" placeholder="contact@domain.gov.vn">
-                        <span class="error-text">Địa chỉ email không hợp lệ</span>
+                    <div class="entity-contact-grid">
+                        <div class="form-group">
+                            <label for="cdt-sdt">Số điện thoại</label>
+                            <input type="tel" id="cdt-sdt" placeholder="Ví dụ: 0243xxxxxx">
+                            <span class="error-text">Số điện thoại không đúng định dạng</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="cdt-email">Địa chỉ Email</label>
+                            <input type="email" id="cdt-email" placeholder="contact@domain.gov.vn">
+                            <span class="error-text">Địa chỉ email không hợp lệ</span>
+                        </div>
                     </div>
                     <div class="form-group col-span-2">
                         <div class="form-grid bf-s-49a9a0fd7f">

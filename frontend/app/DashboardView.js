@@ -15,14 +15,6 @@ const PACKAGE_STATUS_COLORS = {
 const PACKAGE_STATUS_ORDER = Object.keys(PACKAGE_STATUS_COLORS);
 const PLAN_STATUS_ORDER = ["Chưa triển khai", "Đang thực hiện", "Hoàn thành"];
 const CONTRACT_STATUS_ORDER = ["Chưa hiệu lực", "Đang thực hiện", "Tạm dừng", "Đã hoàn thành", "Đã thanh lý", "Đã hủy"];
-const CONTRACT_STATUS_CODES = {
-  NOT_EFFECTIVE: "Chưa hiệu lực",
-  ACTIVE: "Đang thực hiện",
-  SUSPENDED: "Tạm dừng",
-  COMPLETED: "Đã hoàn thành",
-  LIQUIDATED: "Đã thanh lý",
-  CANCELLED: "Đã hủy"
-};
 const CONTRACT_EXPIRY_WARNING_DAYS = 10;
 export const ALERT_META = {
   closingToday: { label: "Đóng thầu hôm nay", detail: "Chưa chuyển sang đã mở thầu", icon: "calendar-clock", tone: "blue" },
@@ -37,7 +29,7 @@ export const ALERT_META = {
 const ALERT_PRIORITY = ["overdueOpening", "contractExpired", "planPublishingOverdue", "closingToday", "delayedEvaluation", "contractExpiring", "planPublishingWarning", "closingSoon"];
 const DASHBOARD_ROLE_CONTEXT = Object.freeze({
   manager: Object.freeze({
-    alertsKicker: "Điều hành tiến độ",
+    alertsKicker: "Cần xử lý hôm nay",
     alertsTitle: "Cảnh báo toàn đơn vị",
     priorityTitle: "Việc cần điều phối",
     recentTitle: "Gói thầu của đơn vị mới cập nhật",
@@ -46,7 +38,7 @@ const DASHBOARD_ROLE_CONTEXT = Object.freeze({
     overviewDescription: "Trạng thái kế hoạch được tổng hợp từ tiến độ các gói thầu thuộc phạm vi đơn vị."
   }),
   employee: Object.freeze({
-    alertsKicker: "Theo dõi thời hạn",
+    alertsKicker: "Cần xử lý hôm nay",
     alertsTitle: "Cảnh báo công việc của tôi",
     priorityTitle: "Việc của tôi cần xử lý",
     recentTitle: "Gói thầu được giao mới cập nhật",
@@ -93,13 +85,21 @@ export function normalizeDashboardStatusCounts(incoming = {}) {
   return counts;
 }
 
-export function normalizeContractStatusCounts(incoming = {}) {
-  const normalized = normalizeOrderedCounts({}, CONTRACT_STATUS_ORDER);
+export function normalizeContractStatusCounts(incoming = {}, order = CONTRACT_STATUS_ORDER) {
+  const normalized = normalizeOrderedCounts({}, order);
   Object.entries(incoming || {}).forEach(([rawStatus, rawCount]) => {
-    const status = CONTRACT_STATUS_CODES[rawStatus] || rawStatus;
-    if (Object.hasOwn(normalized, status)) normalized[status] = Number(rawCount || 0);
+    const status = rawStatus;
+    normalized[status] = Number(rawCount || 0);
   });
   return normalized;
+}
+
+function getContractStatusCatalog(model) {
+  const configured = Array.isArray(model?.state?.customcontractstatuses)
+    ? model.state.customcontractstatuses
+    : [];
+  if (configured.length) return configured;
+  return CONTRACT_STATUS_ORDER.map((name) => ({ name, color: "#64748B" }));
 }
 
 export function derivePlanStatusCounts(plans = [], packages = []) {
@@ -263,13 +263,6 @@ function addContractDuration(startDate, rawDuration) {
   return result;
 }
 
-function contractHasInvoice(contract) {
-  if ([true, 1, "1", "true", "yes"].includes(contract.daXuatHoaDon)) return true;
-  if (String(contract.soHoaDon || contract.ngayXuatHoaDon || "").trim()) return true;
-  const paperStatus = normalizedDashboardSearchText(contract.trangThaiHoSo);
-  return ["da xuat hoa don", "hoa don da xuat", "da lap hoa don"].some((label) => paperStatus.includes(label));
-}
-
 export function deriveContractExpiryAlerts(contracts = [], now = new Date(), warningDays = CONTRACT_EXPIRY_WARNING_DAYS) {
   const counts = { contractExpired: 0, contractExpiring: 0 };
   const items = [];
@@ -277,17 +270,13 @@ export function deriveContractExpiryAlerts(contracts = [], now = new Date(), war
   const warningLimit = new Date(today);
   warningLimit.setDate(warningLimit.getDate() + warningDays);
   contracts.forEach((contract) => {
-    const status = CONTRACT_STATUS_CODES[contract.trangThaiHopDong] || contract.trangThaiHopDong || "Đang thực hiện";
-    if (["Chưa hiệu lực", "Đã thanh lý", "Đã hủy"].includes(status)) return;
+    if (String(contract.ngayThanhLy || "").trim()) return;
     const signedAt = parseDashboardDate(contract.ngayKy);
     const signedDate = signedAt ? new Date(signedAt.getFullYear(), signedAt.getMonth(), signedAt.getDate()) : null;
     const deadline = signedDate ? addContractDuration(signedDate, contract.soNgayThucHien || contract.thoiGianThucHien) : null;
     if (!deadline || deadline > warningLimit) return;
     const alertKey = deadline < today ? "contractExpired" : "contractExpiring";
-    const missingInvoice = !contractHasInvoice(contract);
-    const missingLiquidation = status !== "Đã thanh lý" && !String(contract.ngayThanhLy || "").trim();
-    if (!missingInvoice && !missingLiquidation) return;
-    const missingSteps = [missingInvoice ? "Chưa xuất hóa đơn" : "", missingLiquidation ? "Chưa thanh lý" : ""].filter(Boolean);
+    const missingSteps = ["Chưa thanh lý"];
     counts[alertKey]++;
     items.push({
       ...contract,
@@ -337,19 +326,19 @@ function buildLocalDashboardData(view) {
   const packages = model.getFilteredGoiThau();
   const plans = model.getFilteredKeHoach();
   const contracts = model.getFilteredHopDong();
+  const contractStatusCatalog = getContractStatusCatalog(model);
+  const contractStatusOrder = contractStatusCatalog.map((status) => status.name);
   const packageStatusCounts = normalizeDashboardStatusCounts();
-  const contractStatusCounts = normalizeContractStatusCounts();
-  const contractValues = Object.fromEntries(CONTRACT_STATUS_ORDER.map((status) => [status, 0]));
+  const contractStatusCounts = normalizeContractStatusCounts({}, contractStatusOrder);
+  const contractValues = Object.fromEntries(contractStatusOrder.map((status) => [status, 0]));
   packages.forEach((pkg) => {
     const status = pkg.trangThai === "Huỷ thầu" ? "Hủy thầu" : pkg.trangThai;
     if (Object.hasOwn(packageStatusCounts, status)) packageStatusCounts[status]++;
   });
   contracts.forEach((contract) => {
-    const status = CONTRACT_STATUS_CODES[contract.trangThaiHopDong] || contract.trangThaiHopDong || "Đang thực hiện";
-    if (Object.hasOwn(contractStatusCounts, status)) {
-      contractStatusCounts[status]++;
-      contractValues[status] = model.sumVND([contractValues[status], contract.giaTri || 0]);
-    }
+    const status = contract.trangThaiHopDong || "Đang thực hiện";
+    contractStatusCounts[status] = Number(contractStatusCounts[status] || 0) + 1;
+    contractValues[status] = model.sumVND([contractValues[status] || 0, contract.giaTri || 0]);
   });
   const assignedContracts = model.getLatestContracts().filter(
     (contract) => model.isAssigned(model.state.activeuser?.id, contract.id, "hopdong")
@@ -373,6 +362,7 @@ function buildLocalDashboardData(view) {
     packageStatusCounts,
     contractStatusCounts,
     contractValues,
+    contractStatusCatalog,
     totalContractValue: model.sumVND(contracts.map((contract) => contract.giaTri || 0)),
     recentPackages: [...packages].reverse().slice(0, 4),
     alerts: {
@@ -382,8 +372,10 @@ function buildLocalDashboardData(view) {
   };
 }
 
-function buildServerDashboardData(summary) {
+function buildServerDashboardData(view, summary) {
   const counts = summary.counts || {};
+  const contractStatusCatalog = getContractStatusCatalog(view.model);
+  const contractStatusOrder = contractStatusCatalog.map((status) => status.name);
   return {
     counts: {
       ...counts,
@@ -391,8 +383,9 @@ function buildServerDashboardData(summary) {
     },
     planStatusCounts: normalizeOrderedCounts(summary.planStatusCounts, PLAN_STATUS_ORDER),
     packageStatusCounts: normalizeDashboardStatusCounts(summary.statusCounts),
-    contractStatusCounts: normalizeContractStatusCounts(summary.contractStatusCounts),
-    contractValues: normalizeOrderedCounts(summary.contractValueByStatus, CONTRACT_STATUS_ORDER),
+    contractStatusCounts: normalizeContractStatusCounts(summary.contractStatusCounts, contractStatusOrder),
+    contractValues: normalizeContractStatusCounts(summary.contractValueByStatus, contractStatusOrder),
+    contractStatusCatalog,
     totalContractValue: summary.totalContractValueAll ?? summary.totalContractValue ?? 0,
     recentPackages: Array.isArray(summary.recentPackages) ? summary.recentPackages : [],
     alerts: {
@@ -414,16 +407,18 @@ function renderMetricBreakdown(containerId, counts, formatter = (value) => Strin
   `).join(""));
 }
 
-function renderContractSummary(counts, values) {
+function renderContractSummary(counts, values, catalog = []) {
   const container = document.getElementById("contract-summary-breakdown");
   if (!container) return;
   const statuses = [...new Set([...Object.keys(counts || {}), ...Object.keys(values || {})])];
-  container.innerHTML = trustedHTML(statuses.map((status, index) => {
+  container.innerHTML = trustedHTML(statuses.map((status) => {
     const count = Number(counts?.[status] || 0);
     const formattedValue = compactCurrency(values?.[status] || 0);
+    const configuredColor = catalog.find((item) => item?.name === status)?.color;
+    const color = /^#[0-9a-fA-F]{6}$/.test(String(configuredColor || "")) ? configuredColor : "#64748B";
     return `
       <div class="dashboard-contract-row" role="group" aria-label="${safeAttr(`${status}: ${count} hợp đồng, ${formattedValue}`)}">
-        <span class="dashboard-contract-status"><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span>
+        <span class="dashboard-contract-status"><i class="dashboard-status-dot" style="background-color: ${color};"></i>${escapeHtml(status)}</span>
         <span class="dashboard-contract-values"><strong>${count} HĐ</strong><em>${escapeHtml(formattedValue)}</em></span>
       </div>
     `;
@@ -518,7 +513,7 @@ function renderDashboardSnapshot(view, data) {
     setText("dashboard-evaluation-rule", `Báo cáo đánh giá được cảnh báo khi quá ${data.evaluationDelayDays} ngày sau mở thầu.`);
   }
   renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts);
-  renderContractSummary(data.contractStatusCounts, data.contractValues);
+  renderContractSummary(data.contractStatusCounts, data.contractValues, data.contractStatusCatalog);
   renderDashboardAlerts(data.alerts);
   renderPackageDonut(data.packageStatusCounts);
   renderRecentPackages(view, data.recentPackages);
@@ -527,7 +522,7 @@ function renderDashboardSnapshot(view, data) {
 export function renderDashboard() {
   renderDashboardRoleContext(this);
   const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
-  const data = serverSummary?.counts ? buildServerDashboardData(serverSummary) : buildLocalDashboardData(this);
+  const data = serverSummary?.counts ? buildServerDashboardData(this, serverSummary) : buildLocalDashboardData(this);
   renderDashboardSnapshot(this, data);
   this.createIconsScoped(document.getElementById("tab-dashboard"));
 }

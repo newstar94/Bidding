@@ -12,7 +12,7 @@ def test_delete_flows_refresh_the_server_row_before_capturing_row_version():
         "frontend/partners/ChuDauTuWorkflow.js": 'refreshRecordBeforeDelete(this, "chudautu", id)',
         "frontend/partners/NhaThauWorkflow.js": 'refreshRecordBeforeDelete(this, "nhathau", id)',
         "frontend/experts/ChuyenGiaWorkflow.js": 'refreshRecordBeforeDelete(this, "chuyengia", id)',
-        "frontend/admin/AdminUserController.js": 'refreshRecordBeforeDelete(this, "custompaperstatuses", id)',
+        "frontend/admin/AdminUserController.js": 'refreshRecordBeforeDelete(this, "customcontractstatuses", id)',
     }
     for relative_path, marker in expected.items():
         source = (ROOT / relative_path).read_text(encoding="utf-8-sig")

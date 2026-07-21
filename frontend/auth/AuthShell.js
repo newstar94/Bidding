@@ -12,7 +12,7 @@ const STORAGE_KEYS = {
   ORGANIZATIONS: "bf_organizations",
   EMPLOYEES: "bf_employees",
   PERMISSIONMATRIX: "bf_permission_matrix",
-  CUSTOMPAPERSTATUSES: "bf_custom_paper_statuses",
+  CUSTOMCONTRACTSTATUSES: "bf_custom_contract_statuses",
   ASSIGNMENTS: "bf_assignments",
   SYSTEMPACKAGES: "bf_system_packages",
   THONGTINMOTHAU: "bf_thong_tin_mo_thau"

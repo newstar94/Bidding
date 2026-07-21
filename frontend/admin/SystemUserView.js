@@ -509,13 +509,13 @@ export function renderEmployeeDetail(id) {
 }
 export function renderManagerHoSoGiayPanel() {
   // The sync endpoint already scopes this collection to the active organization.
-  const orgStatuses = Array.isArray(this.model.state.custompaperstatuses)
-    ? this.model.state.custompaperstatuses
+  const orgStatuses = Array.isArray(this.model.state.customcontractstatuses)
+    ? this.model.state.customcontractstatuses
     : [];
   const tbody = document.getElementById("manager-hosogiay-tbody");
   if (tbody) {
     if (orgStatuses.length === 0) {
-      tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Chưa cấu hình trạng thái hồ sơ giấy nào.</td></tr>`);
+      tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Chưa cấu hình trạng thái hợp đồng nào.</td></tr>`);
     } else {
       tbody.innerHTML = trustedHTML(orgStatuses.map((status) => {
         const safeName = escapeHTML(status.name);

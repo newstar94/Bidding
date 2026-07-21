@@ -8,7 +8,7 @@ import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSel
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
-import { renderNeutralStatusBadge } from "../shared/statusBadges.js";
+import { renderCustomStatusBadge } from "../shared/statusBadges.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
@@ -31,7 +31,7 @@ export async function renderHopDongTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 12);
+    renderTableLoading(tableBody, 11);
     try {
       const data = await loadPaginatedRecords(this.model, "hopdong", {
         page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
@@ -43,7 +43,7 @@ export async function renderHopDongTable() {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated contracts", e);
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 12, message: "Không thể tải danh sách hợp đồng. Vui lòng thử lại.", onRetry: () => this.renderHopDongTable() });
+      renderTableError(tableBody, { colspan: 11, message: "Không thể tải danh sách hợp đồng. Vui lòng thử lại.", onRetry: () => this.renderHopDongTable() });
       return;
     }
   } else {
@@ -59,7 +59,7 @@ export async function renderHopDongTable() {
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
     const pag = document.getElementById("hopdong-pagination");
-    renderTableEmpty(tableBody, { colspan: 12, message: "Không tìm thấy Hợp đồng nào phù hợp", icon: "file-check-2", pagination: pag });
+    renderTableEmpty(tableBody, { colspan: 11, message: "Không tìm thấy Hợp đồng nào phù hợp", icon: "file-check-2", pagination: pag });
   } else {
     renderVirtualTable(tableBody, slicedData, (h) => {
       if (!this.model.state.selectedHopDongVersion) {
@@ -86,8 +86,10 @@ export async function renderHopDongTable() {
         if (!gt) return "";
         return `<a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="${safeAttr(gt.tenGoiThau || "")}" class="bf-s-1ab2d5a4d0"><span class="detail-code link-hover">${escapeHtml(gt.maGoiThau || "Gói")}</span></a>`;
       }).filter(Boolean).join(" ");
-      const statusBadge = renderNeutralStatusBadge(displayedHd.trangThaiHoSo);
-      const contractStatusBadge = `<span class="badge badge-info">${escapeHtml(displayedHd.trangThaiHopDong || "Đang thực hiện")}</span>`;
+      const contractStatusBadge = renderCustomStatusBadge(
+        displayedHd.trangThaiHopDong || "Đang thực hiện",
+        this.model.state.customcontractstatuses
+      );
       const wordExportEnabled = Boolean(this.model.state.activeuser?.wordExportEnabled);
       const contractActions = displayedHd.goiThauIds?.length ? [{
         id: displayedHd.goiThauIds[0],
@@ -124,13 +126,12 @@ export async function renderHopDongTable() {
                     <td><span class="badge badge-secondary bf-s-f9ecd915ac">${escapeHtml(displayedHd.phanLoai || "Tư vấn")}</span></td>
                     <td>${escapeHtml(displayedHd.soNgayThucHien ? isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : `${displayedHd.soNgayThucHien} ngày` : "--")}</td>
                     <td>${contractStatusBadge}</td>
-                    <td>${statusBadge}</td>
                     <td class="text-right">
                         ${actionHtml}
                     </td>
                 </tr>
             `;
-    }, { colSpan: 12, rowHeight: 86, onRender: () => lucide.createIcons({ root: tableBody }) });
+    }, { colSpan: 11, rowHeight: 86, onRender: () => lucide.createIcons({ root: tableBody }) });
     executeAppCommand("renderTablePagination", "hopdong-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
@@ -179,8 +180,10 @@ export function renderContractVersionDetails(versionId) {
   const linkedPkgs = (hd.goiThauIds || []).map((gtId) => {
     return goithauList.find((g) => g.id === gtId);
   }).filter(Boolean);
-  const statusBadge = renderNeutralStatusBadge(hd.trangThaiHoSo);
-  const contractStatusBadge = `<span class="badge badge-info">${escapeHtml(hd.trangThaiHopDong || "Đang thực hiện")}</span>`;
+  const contractStatusBadge = renderCustomStatusBadge(
+    hd.trangThaiHopDong || "Đang thực hiện",
+    this.model.state.customcontractstatuses
+  );
   const rootId = hd.rootId || hd.id;
   const allRelated = this.model.state.hopdong.filter((h) => (h.rootId || h.id) === rootId);
   const verMap = {};
@@ -219,7 +222,6 @@ export function renderContractVersionDetails(versionId) {
                 <h4 class="detail-title bf-s-4749e65682">${escapeHtml(hd.tenHopDong || "Hợp đồng không có tên")}</h4>
                 <div class="bf-s-2d505736cb">
                     ${contractStatusBadge}
-                    ${statusBadge}
                 </div>
             </div>
 

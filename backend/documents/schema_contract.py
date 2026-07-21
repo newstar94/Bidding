@@ -13,7 +13,7 @@ CLIENT_TABLE_MAP = {
     "chuyengia": "chuyen_gia",
     "hopdong": "hop_dong",
     "assignments": "phan_cong_nhan_su",
-    "custompaperstatuses": "trang_thai_ho_so_giay",
+    "customcontractstatuses": "danh_muc_trang_thai_hop_dong",
     "thongtinmothau": "thong_tin_mo_thau",
     "organizations": "to_chuc",
     "permissionmatrix": "ma_tran_phan_quyen",

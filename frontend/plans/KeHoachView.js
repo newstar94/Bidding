@@ -297,6 +297,10 @@ export async function renderPlanVersionDetails(versionId) {
   if (kh.pheDuyet === "Kế hoạch") {
     pheDuyetDetailHtml = `
             <div class="detail-item">
+                <div class="detail-label">Số tờ trình dự toán</div>
+                <div class="detail-value">${escapeHtml(kh.soToTrinhDuToan || "--")}</div>
+            </div>
+            <div class="detail-item">
                 <div class="detail-label">Ngày trình dự toán</div>
                 <div class="detail-value">${formatDate(kh.ngayTrinhDuToan) || "--"}</div>
             </div>
@@ -307,6 +311,25 @@ export async function renderPlanVersionDetails(versionId) {
             <div class="detail-item bf-s-6d00fde401">
                 <div class="detail-label">Số QĐ phê duyệt dự toán</div>
                 <div class="detail-value">${escapeHtml(kh.soQdPheDuyetDuToan || "--")}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Số tờ trình kế hoạch</div>
+                <div class="detail-value">${escapeHtml(kh.soToTrinhKeHoach || "--")}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Ngày trình kế hoạch</div>
+                <div class="detail-value">${formatDate(kh.ngayTrinhKeHoach) || "--"}</div>
+            </div>
+        `;
+  } else if (kh.pheDuyet === "Dự toán và kế hoạch") {
+    pheDuyetDetailHtml = `
+            <div class="detail-item">
+                <div class="detail-label">Số tờ trình dự toán và kế hoạch</div>
+                <div class="detail-value">${escapeHtml(kh.soToTrinhDuToanKeHoach || "--")}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Ngày trình dự toán và kế hoạch</div>
+                <div class="detail-value">${formatDate(kh.ngayTrinhKeHoach) || "--"}</div>
             </div>
         `;
   }

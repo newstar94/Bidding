@@ -1,3 +1,4 @@
+/* Hallmark · genre: modern-minimal · tone: operational-editorial · anchor hue: cobalt · macrostructure: Workbench · design-system: design.md · designed-as-app · pre-emit critique: P5 H4 E4 S5 R5 V4 · contrast: pass (40–41) · nav: N2 · footer: n/a · slop: pass (42–49) · mobile: pass (34, 49–57) */
 /*
  * BiddingFlow UI refresh — presentation-only overrides.
  * Existing identifiers, data hooks and application behavior remain unchanged.
@@ -15,6 +16,19 @@ body {
   background: var(--canvas);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-body, var(--font-primary));
 }
 
 body[data-active-role="super_admin"] {
@@ -259,7 +273,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   border-radius: 9px;
   color: var(--ink);
   background: var(--surface-subtle);
-  transition: background-color 160ms ease-out, border-color 160ms ease-out;
+  transition: background-color var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out);
 }
 
 .notification-trigger:hover,
@@ -299,7 +313,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.17);
+  box-shadow: var(--shadow-dialog);
 }
 
 .notification-panel-header {
@@ -345,8 +359,20 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .notification-list {
+  position: relative;
   display: grid;
-  gap: 8px;
+  gap: 0;
+  padding-left: 4px;
+}
+
+.notification-list::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 20px;
+  width: 1px;
+  background: var(--line);
+  content: "";
 }
 
 .notification-item {
@@ -355,31 +381,30 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   grid-template-columns: 34px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  padding: 12px 8px 12px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   color: inherit;
   text-align: left;
-  transition: border-color 140ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out;
+  transition: background-color var(--dur-short) var(--ease-out);
+}
+
+.notification-item:last-child {
+  border-bottom: 0;
 }
 
 .notification-item:hover {
-  border-color: color-mix(in srgb, var(--brand) 28%, var(--line));
   background: var(--surface-subtle);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 
 .notification-item.is-unread {
-  border-color: color-mix(in srgb, var(--brand) 20%, var(--line));
   background: color-mix(in srgb, var(--brand) 4%, var(--surface));
-  box-shadow: inset 2px 0 var(--brand);
 }
 
 .notification-item.notification-item-tone-red.is-unread {
-  border-color: color-mix(in srgb, var(--danger) 18%, var(--line));
   background: color-mix(in srgb, var(--danger) 3%, var(--surface));
-  box-shadow: inset 2px 0 var(--danger);
 }
 
 .notification-item:focus-visible {
@@ -403,23 +428,23 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .notification-item-icon.tone-warning {
-  color: #b45309;
-  background: #fff7ed;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 
 .notification-item-icon.tone-red {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 
 .notification-item-icon.tone-amber {
-  color: #b45309;
-  background: #fffbeb;
+  color: var(--color-warning);
+  background: var(--color-paper-2);
 }
 
 .notification-item-icon.tone-violet {
-  color: #7e22ce;
-  background: #faf5ff;
+  color: var(--role-super-admin);
+  background: var(--role-super-admin-soft);
 }
 
 .notification-item-copy {
@@ -479,6 +504,22 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .notification-empty svg {
   width: 18px;
   height: 18px;
+}
+
+.notification-empty.is-error {
+  min-height: 140px;
+  color: var(--danger);
+}
+
+.notification-retry {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-input);
+  color: var(--brand-strong);
+  background: var(--surface);
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 #modal-custom-dialog .modal-card.assignment-transfer-dialog {
@@ -1061,8 +1102,18 @@ button:disabled {
 }
 
 .table-container {
+  position: relative;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) var(--surface-subtle);
+}
+
+/* One data surface: the table owns the visual boundary, not a nested card. */
+.card-body > .table-container,
+.dashboard-card .card-body > .table-container {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .data-table {
@@ -1075,6 +1126,9 @@ button:disabled {
 }
 
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   padding: 12px 16px;
   color: var(--ink-muted);
   background: var(--surface-subtle);
@@ -1083,12 +1137,31 @@ button:disabled {
   letter-spacing: 0.045em;
 }
 
+/* Data density is an explicit page-level choice, never an ad-hoc component tweak. */
+.data-table[data-density="compact"] th,
+.data-table[data-density="compact"] td {
+  padding-block: 8px;
+}
+
+.data-table[data-density="comfortable"] th,
+.data-table[data-density="comfortable"] td {
+  padding-block: 16px;
+}
+
+.data-table[data-density="compact"] td {
+  font-size: 0.78rem;
+}
+
 .data-table td {
   padding: 14px 16px;
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 550;
   line-height: 1.45;
+}
+
+.data-table[data-density="compact"] td {
+  font-size: 0.78rem;
 }
 
 .data-table tbody tr:hover {
@@ -1139,11 +1212,25 @@ button:disabled {
   box-shadow: var(--shadow-lg);
 }
 
+/* Long entity forms share one wide work surface. */
+.modal-card.modal-wide-form {
+  width: min(1120px, 100%);
+  max-width: min(1120px, 100%);
+  height: min(92dvh, 900px);
+  max-height: min(92dvh, 900px);
+}
+
+.modal-card.modal-wide-form .modal-body {
+  max-height: none;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
 .modal-header {
   min-height: 64px;
   padding: 16px 20px;
   border-bottom-color: var(--line);
-  background: linear-gradient(180deg, #fff, #fbfcff);
+  background: var(--color-surface);
 }
 
 .modal-header h3 {
@@ -1278,11 +1365,11 @@ button:disabled {
 }
 
 .dashboard-alert-card.alert-red {
-  border-left: 3px solid var(--dashboard-red);
+  border-color: color-mix(in oklch, var(--dashboard-red) 28%, var(--color-rule));
 }
 
 .dashboard-alert-card.alert-amber {
-  border-left: 3px solid var(--dashboard-amber);
+  border-color: color-mix(in oklch, var(--dashboard-amber) 32%, var(--color-rule));
 }
 
 .dashboard-alert-icon,
@@ -1626,6 +1713,8 @@ button:disabled {
 
   .content-viewport {
     padding: 16px;
+    min-width: 0;
+    overflow-x: clip;
   }
 
   .date-display,
@@ -1659,6 +1748,8 @@ button:disabled {
   .modal-card.modal-lg,
   .modal-card.modal-xl {
     width: 100%;
+    max-width: 100%;
+    height: 100dvh;
     max-height: 100dvh;
     border: 0;
     border-radius: 0;
@@ -1668,8 +1759,92 @@ button:disabled {
     padding: 16px;
   }
 
+  .modal-body .form-grid,
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #kh-project-fields,
+  #kh-pheduyet-kehoach-fields {
+    grid-column: 1 / -1;
+  }
+
+  .modal-body .col-span-2,
+  .col-span-2 {
+    grid-column: span 1;
+  }
+
   .modal-footer {
     padding: 10px 16px max(10px, env(safe-area-inset-bottom));
+  }
+
+  /* Entity tables become readable row-cards on narrow screens. The table
+     remains semantic; labels are copied from the header by BiddingView. */
+  table[data-mobile-layout="cards"] {
+    display: block;
+    width: 100%;
+  }
+
+  table[data-mobile-layout="cards"] thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  table[data-mobile-layout="cards"] tbody {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  table[data-mobile-layout="cards"] tbody tr:not([data-table-state]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+
+  table[data-mobile-layout="cards"] tbody tr:not([data-table-state]) td {
+    display: grid;
+    grid-template-columns: minmax(86px, 0.42fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    min-width: 0;
+    padding: 7px 0;
+    border: 0;
+    background: transparent;
+  }
+
+  table[data-mobile-layout="cards"] tbody tr:not([data-table-state]) td::before {
+    color: var(--ink-muted);
+    content: attr(data-label);
+    font-size: 0.65rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+
+  table[data-mobile-layout="cards"] tbody tr:not([data-table-state]) td:last-child {
+    grid-template-columns: 1fr;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+
+  table[data-mobile-layout="cards"] tbody tr:not([data-table-state]) td:last-child::before {
+    display: none;
+  }
+
+  table[data-mobile-layout="cards"] tbody tr[data-table-state] td {
+    display: table-cell;
   }
 
   .dashboard-work-grid .dashboard-card .card-header {
@@ -1740,6 +1915,16 @@ button:disabled {
 
   .modal-footer .btn {
     flex: 1 1 140px;
+  }
+
+  .modal-header,
+  .modal-body {
+    padding-inline: 12px;
+  }
+
+  .modal-header h3 {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -1930,5 +2115,229 @@ button:disabled {
   .assignment-transfer-dialog .bf-combobox-chevron,
   .assignment-transfer-dialog .bf-combobox-option {
     transition: none;
+  }
+}
+
+/* Hallmark mobile hard floor: legacy landing rules must not reintroduce page-level overflow. */
+html,
+body {
+  overflow-x: clip !important;
+}
+
+/* The landing page keeps one deliberate page-level reveal; individual cards stay visible. */
+.landing-page [data-landing-reveal] {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Operational Editorial v2 -------------------------------------------------
+   A visible desktop Workbench pass: flatter shell, clearer hierarchy and one
+   data surface. These rules intentionally sit after the compatibility layer. */
+@media (min-width: 48.0625rem) {
+  .sidebar {
+    width: var(--shell-sidebar-width);
+    border-inline-end: 1px solid var(--color-rule);
+    background: var(--color-surface);
+  }
+
+  .sidebar-brand,
+  .app-header {
+    height: var(--shell-header-height);
+    min-height: var(--shell-header-height);
+  }
+
+  .sidebar-brand {
+    padding-inline: var(--space-4);
+    border-block-end: 1px solid var(--color-rule);
+  }
+
+  .brand-icon {
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-input);
+    color: var(--color-accent-ink);
+    background: var(--color-accent);
+    box-shadow: none;
+  }
+
+  .brand-text h1 {
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    font-weight: 800;
+  }
+
+  .brand-text span {
+    color: var(--color-subtle);
+  }
+
+  .sidebar-menu {
+    padding: var(--space-3) var(--space-2) var(--space-6);
+  }
+
+  .menu-divider {
+    margin: var(--space-5) var(--space-3) var(--space-2);
+    color: var(--color-subtle);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+  }
+
+  .nav-btn {
+    min-height: var(--control-height);
+    margin-block: 0;
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-input);
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+    box-shadow: none;
+  }
+
+  .sidebar[data-active-role] .nav-btn.active,
+  body[data-active-role] .sidebar .nav-btn.active,
+  body[data-active-role="super_admin"] .sidebar[data-active-role="super_admin"] .role-menu-superadmin .nav-btn.active,
+  body[data-active-role] .sidebar .nav-btn.active:hover {
+    border-color: color-mix(in oklch, var(--active-role-accent) 22%, var(--color-rule)) !important;
+    color: var(--active-role-strong) !important;
+    background: var(--active-role-soft) !important;
+    box-shadow: inset 3px 0 0 var(--active-role-accent) !important;
+  }
+
+  .sidebar[data-active-role] .nav-btn.active :is(i, svg, span),
+  body[data-active-role] .sidebar .nav-btn.active :is(i, svg, span),
+  body[data-active-role="super_admin"] .sidebar[data-active-role="super_admin"] .role-menu-superadmin .nav-btn.active :is(i, svg, span) {
+    color: var(--active-role-strong) !important;
+    stroke: var(--active-role-strong) !important;
+  }
+
+  .app-header {
+    padding-inline: var(--space-6);
+    border-block-end: 1px solid var(--color-rule);
+    background: var(--color-surface);
+    backdrop-filter: none;
+  }
+
+  .page-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.035em;
+    overflow-wrap: anywhere;
+  }
+
+  .page-title::before {
+    width: 3px;
+    height: 1.25em;
+    flex: 0 0 3px;
+    border-radius: var(--radius-pill);
+    background: var(--active-role-accent);
+    content: "";
+  }
+
+  .date-display,
+  .workspace-pill,
+  .notification-trigger,
+  .header-profile-trigger {
+    min-height: var(--control-height);
+    border-color: var(--color-rule);
+    border-radius: var(--radius-input);
+    background: var(--color-paper-2);
+    box-shadow: none;
+  }
+
+  .content-viewport {
+    padding: var(--space-6);
+    background: var(--color-paper);
+  }
+
+  .tab-pane.active {
+    animation: operational-page-in var(--dur-medium) var(--ease-out) both;
+  }
+
+  .table-actions-bar {
+    margin-block-end: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: none;
+  }
+
+  .search-box input,
+  .select-wrapper select,
+  .btn,
+  .btn-excel-action,
+  .btn-add-row {
+    min-height: var(--control-height);
+  }
+
+  .btn-primary {
+    border-color: var(--color-accent);
+    color: var(--color-accent-ink);
+    background: var(--color-accent);
+    box-shadow: none;
+  }
+
+  .btn-primary:hover {
+    border-color: var(--color-accent-strong);
+    color: var(--color-accent-ink);
+    background: var(--color-accent-strong);
+    box-shadow: none;
+  }
+
+  .table-container,
+  .dashboard-card,
+  .card {
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: none;
+  }
+
+  .data-table th {
+    padding: var(--space-3) var(--space-4);
+    border-block-end: 1px solid var(--color-rule);
+    color: var(--color-muted);
+    background: var(--color-paper-2);
+    font-size: var(--text-xs);
+    letter-spacing: 0.01em;
+    text-transform: none;
+  }
+
+  .data-table td {
+    padding: var(--space-4);
+    border-block-end-color: var(--color-rule);
+    color: var(--color-ink);
+    font-size: 0.8125rem;
+  }
+
+  .data-table tbody tr:hover {
+    background: var(--color-accent-soft);
+  }
+
+  .modal-card.modal-wide-form {
+    width: min(1120px, 100%);
+    max-width: min(1120px, 100%);
+    height: min(92dvh, 900px);
+    max-height: min(92dvh, 900px);
+    border-radius: var(--radius-dialog);
+  }
+}
+
+@keyframes operational-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }

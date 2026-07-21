@@ -135,12 +135,26 @@ export class BiddingView {
     tables.forEach((table) => {
       if (!this.isEnhancementTargetActive(table)) return;
       this.enhanceTableHeaders(table);
+      this.enhanceResponsiveTable(table);
     });
     this.upgradeAllSelects(root);
     this.initFlatpickr(root);
     if (this._tableObserver) {
       this._tableObserver.observe(document.body, { childList: true, subtree: true });
     }
+  }
+  enhanceResponsiveTable(table) {
+    if (!table || table.dataset.mobileLayout !== "cards") return;
+    const headers = Array.from(table.querySelectorAll("thead th")).map((header) => header.textContent?.trim() || "");
+    if (!headers.length) return;
+    table.querySelectorAll("tbody tr").forEach((row) => {
+      if (row.dataset.tableState) return;
+      Array.from(row.children).forEach((cell, index) => {
+        if (cell.tagName !== "TD" || cell.hasAttribute("data-label")) return;
+        const label = headers[index];
+        if (label) cell.setAttribute("data-label", label);
+      });
+    });
   }
   upgradeAllSelects(container = document) {
     document.querySelectorAll("body > .custom-select-dropdown").forEach((dropdown) => {
@@ -273,7 +287,7 @@ export class BiddingView {
         "loaihopdong": "loaiHopDong",
         "thoigianthuchien": "soNgayThucHien",
         "goithaulienket": "goiThauId",
-        "trangthaihoso": "trangThaiHoSo"
+        "trangthaihopdong": "trangThaiHopDong"
       }
     };
     const ths = table.querySelectorAll("thead th");

@@ -269,8 +269,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
         soNgayThucHien: row.soNgayThucHien ? String(row.soNgayThucHien).trim() : "",
         keHoachId: plan?.id || existing?.keHoachId || "",
         goiThauIds: packageIds.length ? packageIds : existing?.goiThauIds || [],
-        trangThaiHopDong: row.trangThaiHopDong || existing?.trangThaiHopDong || "Đang thực hiện",
-        trangThaiHoSo: row.trangThaiHoSo || existing?.trangThaiHoSo || ""
+        trangThaiHopDong: row.trangThaiHopDong || existing?.trangThaiHopDong || "Đang thực hiện"
       };
     });
     assertImportRecords("hopdong", mappedData);

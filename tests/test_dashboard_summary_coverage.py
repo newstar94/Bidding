@@ -70,8 +70,8 @@ class _DashboardCursor:
                 ("hd-no-date", "HD-4", "Không ngày", "", "10 ngày", "ACTIVE", "", ""),
                 ("hd-done", "HD-5", "Đủ hồ sơ", "2026-07-01", "10 ngày", "COMPLETED", "2026-07-10", "Hóa đơn đã xuất"),
             ]
-        elif "SELECT COUNT(*), SUM(CASE WHEN hd.trang_thai_hop_dong" in self.sql:
-            self.rows = [(2, 1)]
+        elif "SELECT COUNT(*), COUNT(*)" in self.sql:
+            self.rows = [(2, 2)]
         else:
             self.rows = []
         return self
@@ -105,8 +105,6 @@ def test_dashboard_date_contract_and_alert_helpers_cover_edge_cases():
     assert dashboard_summary._contract_expiry_date(date(2024, 2, 29), "1 năm") == date(2025, 2, 28)
     assert dashboard_summary._contract_expiry_date(start, "2 tuần") == start + timedelta(days=14)
     assert dashboard_summary._contract_expiry_date(start, "2,9 ngày") == start + timedelta(days=2)
-    assert dashboard_summary._contract_has_invoice("Đã xuất hóa đơn")
-    assert not dashboard_summary._contract_has_invoice("Chưa có")
 
     items = [
         {"targetType": "package", "alertKey": "closingSoon", "deadline": "3", "id": "p"},
@@ -171,11 +169,11 @@ def test_dashboard_summary_projects_manager_and_employee_paths(monkeypatch, mana
     }
     assert result["counts"]["goithau"] == 3
     assert result["counts"]["activeGoithau"] == 2
-    assert result["counts"]["hopdong"] == 2
-    assert result["totalContractValue"] == "150"
+    assert result["counts"]["hopdong"] == 4
+    assert result["totalContractValue"] == "200"
     assert result["totalContractValueAll"] == "200"
     assert result["counts"]["assignedHopdong"] == 2
-    assert result["counts"]["activeAssignedHopdong"] == 1
+    assert result["counts"]["activeAssignedHopdong"] == 2
     assert result["alertCounts"]["planPublishingOverdue"] == 1
     assert result["alertCounts"]["planPublishingWarning"] == 1
     assert result["alertCounts"]["contractExpired"] == 1

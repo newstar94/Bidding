@@ -107,7 +107,7 @@ const DELETE_ENTITY_LABELS = Object.freeze({
   hopdong: "hợp đồng",
   assignments: "phân công",
   thongtinmothau: "thông tin mở thầu",
-  custompaperstatuses: "trạng thái hồ sơ"
+  customcontractstatuses: "trạng thái hợp đồng"
 });
 const NON_RETRYABLE_WEBSOCKET_CLOSE_CODES = new Set([1000, 4001, 4003, 4401, 4403]);
 const PASSIVE_WORKSPACE_STORAGE_KEYS = new Set([

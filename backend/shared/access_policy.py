@@ -11,7 +11,7 @@ ORGANIZATION_MANAGER_ROLES = {"manager"}
 DOCUMENT_EXPORT_CAPABILITY_IDS = frozenset({"financial", "identity", "signature"})
 WRITE_PROTECTED_KEYS = {
     "assignments",
-    "custompaperstatuses",
+    "customcontractstatuses",
     "permissionmatrix",
     "organizations",
     "employees",
@@ -27,7 +27,7 @@ TABLE_TO_MODULE = {
     "hop_dong": "hopdong",
     # Opening records are children of a package and inherit its module grant.
     "thong_tin_mo_thau": "goithau",
-    "trang_thai_ho_so_giay": "hopdong",
+    "danh_muc_trang_thai_hop_dong": "hopdong",
 }
 
 ASSIGNED_TABLE_TYPES = {

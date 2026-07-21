@@ -43,7 +43,19 @@ def test_mfa_removal_upgrades_drop_legacy_objects_and_advance_version():
         "SET trong_so_ky_thuat = NULL" in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 9
+    assert any(
+        "ADD COLUMN IF NOT EXISTS so_to_trinh_du_toan TEXT" in statement
+        for statement in statements
+    )
+    assert any(
+        "ADD COLUMN IF NOT EXISTS so_to_trinh_ke_hoach TEXT" in statement
+        for statement in statements
+    )
+    assert any(
+        "ADD COLUMN IF NOT EXISTS so_to_trinh_du_toan_ke_hoach TEXT" in statement
+        for statement in statements
+    )
+    assert version == upgrades.DB_SCHEMA_VERSION == 11
 
 
 def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
@@ -62,7 +74,7 @@ def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
         in statements
     )
     assert any("ROW_NUMBER() OVER" in statement for statement in statements)
-    assert version == upgrades.DB_SCHEMA_VERSION == 9
+    assert version == upgrades.DB_SCHEMA_VERSION == 11
 
 
 def test_v3_installation_enforces_one_active_session_in_v4():
@@ -81,7 +93,7 @@ def test_v3_installation_enforces_one_active_session_in_v4():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 9
+    assert version == upgrades.DB_SCHEMA_VERSION == 11
 
 
 def test_v4_installation_adds_package_expert_updated_at_in_v5():
@@ -99,4 +111,4 @@ def test_v4_installation_adds_package_expert_updated_at_in_v5():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 9
+    assert version == upgrades.DB_SCHEMA_VERSION == 11

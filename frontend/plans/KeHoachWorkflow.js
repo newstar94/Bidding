@@ -112,18 +112,64 @@ export async function editKeHoach(id) {
     void this.editChuDauTu(null);
   };
   this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
+  const setSectionAvailability = (section, visible) => {
+    if (!section) return;
+    setRuntimeStyle(section, "display", visible ? "block" : "none");
+    section.querySelectorAll("input, select, textarea").forEach((control) => {
+      control.disabled = !visible;
+    });
+  };
+  const setFieldAvailability = (containerId, inputId, visible, required = false) => {
+    const container = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+    if (container) setRuntimeStyle(container, "display", visible ? "flex" : "none");
+    if (!input) return;
+    input.disabled = !visible;
+    input.required = visible && required;
+  };
   const loaiHinhSelect = document.getElementById("kh-loaihinh");
   const projectFields = document.getElementById("kh-project-fields");
+  const projectIdentityFields = document.getElementById("kh-project-identity-fields");
+  const projectCodeGroup = document.getElementById("kh-project-code-group");
+  const projectNameLabel = document.getElementById("lbl-kh-duan");
+  const projectNameInput = document.getElementById("kh-duan");
+  const totalInvestmentLabel = document.getElementById("lbl-kh-tongmuc");
+  const totalInvestmentInput = document.getElementById("kh-tongmuc");
   const toggleProjectFields = () => {
-    if (loaiHinhSelect.value === "Dự án") {
-      setRuntimeStyle(projectFields, "display", "block");
-    } else {
-      setRuntimeStyle(projectFields, "display", "none");
+    const isProject = loaiHinhSelect.value === "Dự án";
+    const isBudget = loaiHinhSelect.value === "Dự toán mua sắm";
+    setSectionAvailability(projectFields, isProject);
+    if (projectCodeGroup) setRuntimeStyle(projectCodeGroup, "display", isProject ? "flex" : "none");
+    document.getElementById("kh-maduan").disabled = !isProject;
+    document.getElementById("kh-maduan").required = isProject;
+    projectIdentityFields?.classList.toggle("is-budget", !isProject);
+    if (projectNameLabel) {
+      projectNameLabel.firstChild.textContent = isProject
+        ? "Tên dự án "
+        : loaiHinhSelect.value === "Dự toán mua sắm"
+          ? "Tên dự toán "
+          : "Tên dự án/dự toán ";
+    }
+    if (projectNameInput) {
+      projectNameInput.placeholder = isProject
+        ? "Ví dụ: Dự án Tăng cường Năng lực CNTT ngành Y tế"
+        : "Ví dụ: Dự toán mua sắm thiết bị CNTT";
+    }
+    const totalFieldName = isProject
+      ? "Tổng mức đầu tư"
+      : isBudget
+        ? "Tổng dự toán"
+        : "Tổng dự toán/Tổng mức đầu tư";
+    if (totalInvestmentLabel) totalInvestmentLabel.textContent = totalFieldName;
+    if (totalInvestmentInput && !totalInvestmentInput.value.trim()) {
+      totalInvestmentInput.placeholder = `Nhập ${totalFieldName.toLowerCase()}`;
     }
   };
   loaiHinhSelect.onchange = toggleProjectFields;
   const pheDuyetSelect = document.getElementById("kh-pheduyet");
+  const approvalRecords = document.getElementById("kh-approval-records");
   const pheDuyetFields = document.getElementById("kh-pheduyet-kehoach-fields");
+  const commonPheDuyetFields = document.getElementById("kh-pheduyet-common-fields");
   const setRequiredLabel = (label, text) => {
     if (!label) return;
     label.textContent = `${text} `;
@@ -133,25 +179,34 @@ export async function editKeHoach(id) {
     label.append(marker);
   };
   const togglePheDuyetFields = () => {
-    const container = document.getElementById("kh-ngaytrinhkehoach-container");
     const label = document.getElementById("lbl-ngaytrinhkehoach");
     const labelPheDuyet = document.getElementById("lbl-ngaypheduyet");
     const labelQuyetDinh = document.getElementById("lbl-quyetdinh");
+    setRuntimeStyle(approvalRecords, "display", pheDuyetSelect.value ? "grid" : "none");
     if (pheDuyetSelect.value === "Kế hoạch") {
-      setRuntimeStyle(pheDuyetFields, "display", "block");
-      if (container) setRuntimeStyle(container, "display", "block");
+      setSectionAvailability(pheDuyetFields, true);
+      setSectionAvailability(commonPheDuyetFields, true);
+      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", true, true);
+      setFieldAvailability("kh-sototrinhkehoach-container", "kh-sototrinhkehoach", true, true);
+      setFieldAvailability("kh-sototrinhdutoankehoach-container", "kh-sototrinhdutoankehoach", false);
       setRequiredLabel(label, "Ngày trình kế hoạch");
       setRequiredLabel(labelPheDuyet, "Ngày phê duyệt kế hoạch");
       setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt kế hoạch");
     } else if (pheDuyetSelect.value === "Dự toán và kế hoạch") {
-      setRuntimeStyle(pheDuyetFields, "display", "none");
-      if (container) setRuntimeStyle(container, "display", "block");
+      setSectionAvailability(pheDuyetFields, false);
+      setSectionAvailability(commonPheDuyetFields, true);
+      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", true, true);
+      setFieldAvailability("kh-sototrinhkehoach-container", "kh-sototrinhkehoach", false);
+      setFieldAvailability("kh-sototrinhdutoankehoach-container", "kh-sototrinhdutoankehoach", true, true);
       setRequiredLabel(label, "Ngày trình dự toán và kế hoạch");
       setRequiredLabel(labelPheDuyet, "Ngày phê duyệt dự toán và kế hoạch");
       setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt dự toán và kế hoạch");
     } else {
-      setRuntimeStyle(pheDuyetFields, "display", "none");
-      if (container) setRuntimeStyle(container, "display", "none");
+      setSectionAvailability(pheDuyetFields, false);
+      setSectionAvailability(commonPheDuyetFields, false);
+      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", false);
+      setFieldAvailability("kh-sototrinhkehoach-container", "kh-sototrinhkehoach", false);
+      setFieldAvailability("kh-sototrinhdutoankehoach-container", "kh-sototrinhdutoankehoach", false);
       setRequiredLabel(labelPheDuyet, "Ngày phê duyệt");
       setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt");
     }
@@ -188,7 +243,10 @@ export async function editKeHoach(id) {
     document.getElementById("kh-pheduyet").value = kh.pheDuyet || "";
     togglePheDuyetFields();
     document.getElementById("kh-ngaytrinhkehoach").value = this.model.formatForDateInput(kh.ngayTrinhKeHoach);
+    document.getElementById("kh-sototrinhkehoach").value = kh.soToTrinhKeHoach || "";
+    document.getElementById("kh-sototrinhdutoankehoach").value = kh.soToTrinhDuToanKeHoach || "";
     document.getElementById("kh-ngaytrinhdutoan").value = this.model.formatForDateInput(kh.ngayTrinhDuToan);
+    document.getElementById("kh-sototrinhdutoan").value = kh.soToTrinhDuToan || "";
     document.getElementById("kh-ngaypheduyetdutoan").value = this.model.formatForDateInput(kh.ngayPheDuyetDuToan);
     document.getElementById("kh-quyetdinhpheduyetdutoan").value = kh.soQdPheDuyetDuToan || "";
     document.getElementById("kh-maduan").value = kh.maDuan || "";
@@ -218,7 +276,10 @@ export async function editKeHoach(id) {
     document.getElementById("kh-pheduyet").value = "";
     togglePheDuyetFields();
     document.getElementById("kh-ngaytrinhkehoach").value = "";
+    document.getElementById("kh-sototrinhkehoach").value = "";
+    document.getElementById("kh-sototrinhdutoankehoach").value = "";
     document.getElementById("kh-ngaytrinhdutoan").value = "";
+    document.getElementById("kh-sototrinhdutoan").value = "";
     document.getElementById("kh-ngaypheduyetdutoan").value = "";
     document.getElementById("kh-quyetdinhpheduyetdutoan").value = "";
     document.getElementById("kh-donvitrinhcdt").value = "";
@@ -352,8 +413,11 @@ export async function handleKeHoachSubmit(e) {
   const pheDuyet = document.getElementById("kh-pheduyet").value;
   const ngayTrinhKeHoachRaw = document.getElementById("kh-ngaytrinhkehoach").value;
   const ngayTrinhKeHoachYMD = this.model.convertDMYToYMD(ngayTrinhKeHoachRaw);
+  const soToTrinhKeHoach = document.getElementById("kh-sototrinhkehoach").value.trim();
+  const soToTrinhDuToanKeHoach = document.getElementById("kh-sototrinhdutoankehoach").value.trim();
   const ngayTrinhDuToanRaw = document.getElementById("kh-ngaytrinhdutoan").value;
   const ngayTrinhDuToanYMD = this.model.convertDMYToYMD(ngayTrinhDuToanRaw);
+  const soToTrinhDuToan = document.getElementById("kh-sototrinhdutoan").value.trim();
   const ngayPheDuyetDuToanRaw = document.getElementById("kh-ngaypheduyetdutoan").value;
   const ngayPheDuyetDuToanYMD = this.model.convertDMYToYMD(ngayPheDuyetDuToanRaw);
   const soQdPheDuyetDuToan = document.getElementById("kh-quyetdinhpheduyetdutoan").value.trim();
@@ -380,7 +444,10 @@ export async function handleKeHoachSubmit(e) {
   }
   const parsedTongMuc = isTongMucTuDong ? 0 : this.model.parseVND(currentVal);
   if (parsedTongMuc < 0) {
-    await this.view.customAlert("Dữ liệu không hợp lệ", "Tổng mức đầu tư không được nhỏ hơn 0.", "alert-triangle", tmInput);
+    const totalFieldName = document.getElementById("kh-loaihinh").value === "Dự án"
+      ? "Tổng mức đầu tư"
+      : "Tổng dự toán";
+    await this.view.customAlert("Dữ liệu không hợp lệ", `${totalFieldName} không được nhỏ hơn 0.`, "alert-triangle", tmInput);
     return;
   }
   this.backupKeHoachState = JSON.parse(JSON.stringify(this.model.state.kehoach));
@@ -409,7 +476,10 @@ export async function handleKeHoachSubmit(e) {
     thongtinKhac,
     pheDuyet,
     ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
+    soToTrinhKeHoach: pheDuyet === "Kế hoạch" ? soToTrinhKeHoach : "",
+    soToTrinhDuToanKeHoach: pheDuyet === "Dự toán và kế hoạch" ? soToTrinhDuToanKeHoach : "",
     ngayTrinhDuToan: pheDuyet === "Kế hoạch" ? ngayTrinhDuToanYMD : "",
+    soToTrinhDuToan: pheDuyet === "Kế hoạch" ? soToTrinhDuToan : "",
     ngayPheDuyetDuToan: pheDuyet === "Kế hoạch" ? ngayPheDuyetDuToanYMD : "",
     soQdPheDuyetDuToan: pheDuyet === "Kế hoạch" ? soQdPheDuyetDuToan : ""
   };

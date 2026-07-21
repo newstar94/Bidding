@@ -15,6 +15,13 @@ const EMPTY_ACTIVITY = `
     <span>Chưa có thông báo mới</span>
   </div>`;
 
+const NOTIFICATION_UNAVAILABLE = `
+  <div class="notification-empty is-error" role="status">
+    ${htmlIcon("cloud-off", 'aria-hidden="true"')}
+    <span>Không thể tải thông báo lúc này.</span>
+    <button type="button" class="notification-retry" data-notification-retry>Thử lại</button>
+  </div>`;
+
 function formatMoment(value) {
   const numeric = Number(value);
   const date = Number.isFinite(numeric) && numeric > 0
@@ -84,6 +91,12 @@ function navigateToTarget(controller, targetType, targetId) {
 }
 
 function renderNotifications(state, controller, elements) {
+  if (state.unavailable) {
+    elements.readAll.disabled = true;
+    elements.list.innerHTML = trustedHTML(NOTIFICATION_UNAVAILABLE);
+    window.lucide?.createIcons?.({ root: elements.list });
+    return;
+  }
   const items = state.items || [];
   const alerts = workAlerts(controller);
   elements.readAll.disabled = !state.unreadCount;
@@ -164,15 +177,21 @@ export function initializeNotificationCenter(controller) {
     list: document.getElementById("notification-list")
   };
   if (Object.values(elements).some((element) => !element)) return null;
-  const state = { items: [], unreadCount: 0, loading: false };
+  const state = { items: [], unreadCount: 0, loading: false, unavailable: false };
 
   const refresh = async () => {
     if (state.loading) return;
     state.loading = true;
     try {
       const response = await apiFetch("/api/notifications?limit=40");
-      if (!response.ok) return;
+      if (!response.ok) {
+        state.unavailable = true;
+        renderNotifications(state, controller, elements);
+        updateBadge(state, elements);
+        return;
+      }
       const payload = await response.json();
+      state.unavailable = false;
       state.items = Array.isArray(payload.items) ? payload.items : [];
       state.unreadCount = Number(payload.unreadCount || 0);
       renderNotifications(state, controller, elements);
@@ -180,6 +199,9 @@ export function initializeNotificationCenter(controller) {
       window.lucide?.createIcons?.({ root: elements.panel });
     } catch (error) {
       console.warn("Unable to refresh notifications:", error);
+      state.unavailable = true;
+      renderNotifications(state, controller, elements);
+      updateBadge(state, elements);
     } finally {
       state.loading = false;
     }
@@ -204,6 +226,10 @@ export function initializeNotificationCenter(controller) {
     if (response.ok) await refresh();
   });
   elements.list.addEventListener("click", async (event) => {
+    if (event.target.closest?.("[data-notification-retry]")) {
+      await refresh();
+      return;
+    }
     const notificationItem = event.target.closest?.("[data-notification-id]");
     if (notificationItem) {
       const id = notificationItem.dataset.notificationId;

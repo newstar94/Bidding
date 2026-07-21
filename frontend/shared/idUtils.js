@@ -8,7 +8,7 @@ const RECORD_ID_PREFIXES = {
   hopdong: "hd-", hop_dong: "hd-",
   thongtinmothau: "mt-", thong_tin_mo_thau: "mt-",
   assignments: "asg-", phan_cong_nhan_su: "asg-",
-  custompaperstatuses: "hsg-", trang_thai_ho_so_giay: "hsg-",
+  customcontractstatuses: "tthd-", danh_muc_trang_thai_hop_dong: "tthd-",
   permissionmatrix: "perm-", ma_tran_phan_quyen: "perm-",
   phanlo: "pl-", goi_thau_phan_lo: "pl-",
   tuychonmuathem: "tcmt-", goi_thau_tuy_chon_mua_them: "tcmt-",
@@ -35,4 +35,3 @@ export function generateRecordId(type) {
   const key = String(type || "").trim().toLowerCase();
   return `${RECORD_ID_PREFIXES[key] || ""}${generateUUID()}`;
 }
-

@@ -11,12 +11,7 @@ from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value, vietnam_today
 from backend.shared.text_utils import safe_int
 from backend.shared.numeric_utils import parse_vnd_amount
-from backend.shared.domain_enums import (
-    CONTRACT_STATUS_CODES,
-    PACKAGE_STATUS_CODES,
-    PACKAGE_STATUS_LABELS,
-    enum_label,
-)
+from backend.shared.domain_enums import PACKAGE_STATUS_CODES, PACKAGE_STATUS_LABELS, enum_label
 from backend.sync.evaluation_metadata import parse_evaluation_metadata
 
 
@@ -24,7 +19,7 @@ PACKAGE_STATUSES = set(PACKAGE_STATUS_LABELS.values())
 LEGACY_PACKAGE_STATUS_ALIASES = {
     "Huỷ thầu": "Hủy thầu"
 }
-DEFAULT_PAPER_STATUS_COLOR = "#64748b"
+DEFAULT_CONTRACT_STATUS_COLOR = "#64748B"
 PLAIN_TEXT_FIELDS = {"thoi_gian_bat_dau_to_chuc"}
 DATE_KEYS_BY_TABLE = {
     table_name: [
@@ -42,15 +37,6 @@ PACKAGE_STATUS_TRANSITIONS = {
     "Đã có kết quả": {"Đang chấm thầu", "Hủy thầu"},
     # Khôi phục hủy thầu dùng trạng thái nghiệp vụ đã lưu ở phía client.
     "Hủy thầu": PACKAGE_STATUSES - {"Hủy thầu"},
-}
-CONTRACT_STATUSES = set(CONTRACT_STATUS_CODES)
-CONTRACT_STATUS_TRANSITIONS = {
-    "Chưa hiệu lực": {"Đang thực hiện", "Đã hủy"},
-    "Đang thực hiện": {"Tạm dừng", "Đã hoàn thành", "Đã thanh lý", "Đã hủy"},
-    "Tạm dừng": {"Đang thực hiện", "Đã hủy"},
-    "Đã hoàn thành": {"Đã thanh lý"},
-    "Đã thanh lý": set(),
-    "Đã hủy": set(),
 }
 PACKAGE_LOCKED_FIELDS_AFTER_INVITATION = {
     "maGoiThau": "ma_goi_thau",
@@ -288,12 +274,9 @@ def validate_package_locked_fields(previous_record, item):
 
 
 def validate_contract_status_transition(previous_status, item):
-    old_status = str(enum_label("hop_dong", "trang_thai_hop_dong", previous_status) or "Đang thực hiện").strip()
-    new_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
-    if old_status == new_status:
-        return []
-    if new_status not in CONTRACT_STATUS_TRANSITIONS.get(old_status, set()):
-        return [f"Không được chuyển trạng thái hợp đồng từ '{old_status}' sang '{new_status}'."]
+    """Custom contract statuses intentionally have no hard-coded transition graph."""
+
+    del previous_status, item
     return []
 
 
@@ -529,8 +512,8 @@ def parse_date(val):
     return parse_datetime_value(val)
 
 
-def validate_sync_item(table_name, item, allowed_paper_status_names=None):
-    allowed_paper_status_names = allowed_paper_status_names or set()
+def validate_sync_item(table_name, item, allowed_contract_status_names=None):
+    allowed_contract_status_names = allowed_contract_status_names or set()
     errors = []
 
     if table_name in {"chu_dau_tu", "nha_thau"} and not str(item.get("ngayApDung") or "").strip():
@@ -587,7 +570,6 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
             ("loaiHopDong", "Loại hợp đồng"),
             ("soNgayThucHien", "Thời gian thực hiện hợp đồng"),
             ("trangThaiHopDong", "Trạng thái hợp đồng"),
-            ("trangThaiHoSo", "Trạng thái hồ sơ giấy"),
         ), errors)
         if not _as_list(item.get("goiThauIds")):
             errors.append("Hợp đồng phải liên kết với ít nhất một gói thầu.")
@@ -843,10 +825,17 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
             ), errors)
         if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
             _require_fields(item, (
+                ("soToTrinhDuToan", "Số tờ trình dự toán"),
                 ("ngayTrinhDuToan", "Ngày trình dự toán"),
                 ("ngayPheDuyetDuToan", "Ngày phê duyệt dự toán"),
                 ("soQdPheDuyetDuToan", "Số quyết định phê duyệt dự toán"),
+                ("soToTrinhKeHoach", "Số tờ trình kế hoạch"),
                 ("ngayTrinhKeHoach", "Ngày trình kế hoạch"),
+            ), errors)
+        elif str(item.get("pheDuyet") or "").strip() == "Dự toán và kế hoạch":
+            _require_fields(item, (
+                ("soToTrinhDuToanKeHoach", "Số tờ trình dự toán và kế hoạch"),
+                ("ngayTrinhKeHoach", "Ngày trình dự toán và kế hoạch"),
             ), errors)
         plan_date_pairs = (
             ("ngayTrinhDuToan", "ngayPheDuyetDuToan", "Ngày phê duyệt dự toán không được trước ngày trình dự toán."),
@@ -879,27 +868,18 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
                 errors.append("Ngày quyết định chỉ định thầu không được sau ngày ký hợp đồng.")
         elif not _is_blank(item.get("soQdChiDinh")) or not _is_blank(item.get("ngayQdChiDinh")):
             errors.append("Thông tin quyết định chỉ định thầu phải để trống khi không áp dụng.")
-        trang_thai_hs = item.get("trangThaiHoSo")
-        if trang_thai_hs:
-            trang_thai_hs = str(trang_thai_hs).strip()
-            if trang_thai_hs not in allowed_paper_status_names:
-                errors.append("Trạng thái hồ sơ giấy không tồn tại trong danh mục của tổ chức.")
         contract_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
         item["trangThaiHopDong"] = contract_status
-        if contract_status not in CONTRACT_STATUSES:
-            errors.append("Trạng thái hợp đồng không hợp lệ.")
-        if contract_status == "Đã thanh lý" and not liquidation_date:
-            errors.append("Hợp đồng đã thanh lý phải có ngày thanh lý.")
-        if liquidation_date and contract_status != "Đã thanh lý":
-            errors.append("Hợp đồng có ngày thanh lý phải ở trạng thái Đã thanh lý.")
+        if contract_status not in allowed_contract_status_names:
+            errors.append("Trạng thái hợp đồng không tồn tại trong danh mục của tổ chức.")
 
-    elif table_name == "trang_thai_ho_so_giay":
+    elif table_name == "danh_muc_trang_thai_hop_dong":
         status_name = item.get("name") or item.get("tenTrangThai")
-        status_color = item.get("color") or item.get("mauSac") or DEFAULT_PAPER_STATUS_COLOR
+        status_color = item.get("color") or item.get("mauSac") or DEFAULT_CONTRACT_STATUS_COLOR
         if not status_name or not str(status_name).strip():
-            errors.append("Tên trạng thái hồ sơ giấy không được để trống.")
+            errors.append("Tên trạng thái hợp đồng không được để trống.")
         if status_color and not re.match(r"^#[0-9a-fA-F]{6}$", str(status_color).strip()):
-            errors.append("Màu trạng thái hồ sơ giấy phải ở dạng HEX.")
+            errors.append("Màu trạng thái hợp đồng phải ở dạng HEX.")
 
     elif table_name == "thong_tin_mo_thau":
         bid_price = parse_vnd_amount(item.get("giaDuThau"))
