@@ -18,6 +18,12 @@ function requiredRoleForTab(tabName) {
 function defaultTabForRole(model) {
   return model?.state?.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard";
 }
+
+export function dashboardTitleForRole(role) {
+  if (role === "manager") return "Tổng quan đơn vị";
+  if (role === "employee") return "Công việc của tôi";
+  return "Tổng quan hệ thống";
+}
 function canAccessTab(controller, tabName) {
   const requiredRole = requiredRoleForTab(tabName);
   return !requiredRole || controller.model.hasActiveEffectiveRole(requiredRole);
@@ -429,7 +435,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     }
   });
   const titleMap = {
-    dashboard: "Tổng quan hệ thống",
+    dashboard: dashboardTitleForRole(this.model?.state?.activerole),
     kehoach: "Kế hoạch lựa chọn nhà thầu",
     goithau: "Danh sách Gói thầu",
     "goithau-timeline": "Timeline gói thầu",

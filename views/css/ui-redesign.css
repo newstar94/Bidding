@@ -8,10 +8,31 @@ html {
 }
 
 body {
+  --active-role-accent: var(--role-employee);
+  --active-role-strong: var(--role-employee-strong);
+  --active-role-soft: var(--role-employee-soft);
   color: var(--ink);
   background: var(--canvas);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+body[data-active-role="super_admin"] {
+  --active-role-accent: var(--role-super-admin);
+  --active-role-strong: var(--role-super-admin-strong);
+  --active-role-soft: var(--role-super-admin-soft);
+}
+
+body[data-active-role="manager"] {
+  --active-role-accent: var(--role-manager);
+  --active-role-strong: var(--role-manager-strong);
+  --active-role-soft: var(--role-manager-soft);
+}
+
+body[data-active-role="employee"] {
+  --active-role-accent: var(--role-employee);
+  --active-role-strong: var(--role-employee-strong);
+  --active-role-soft: var(--role-employee-soft);
 }
 
 button,
@@ -111,6 +132,33 @@ label[for] {
   box-shadow: 0 6px 16px rgba(49, 87, 232, 0.2);
 }
 
+body[data-active-role="manager"] .sidebar .nav-btn.active,
+body[data-active-role="employee"] .sidebar .nav-btn.active {
+  border-color: var(--active-role-accent);
+  background: var(--active-role-accent);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--active-role-accent) 22%, transparent);
+}
+
+body[data-active-role="manager"] .sidebar .nav-btn:hover,
+body[data-active-role="employee"] .sidebar .nav-btn:hover {
+  color: var(--active-role-strong);
+  background: var(--active-role-soft);
+}
+
+/* An active item already communicates its state. Do not restyle it on hover;
+   retain the solid role color and white label/icon used by the initial design. */
+body[data-active-role="manager"] .sidebar .nav-btn.active:hover,
+body[data-active-role="employee"] .sidebar .nav-btn.active:hover {
+  border-color: var(--active-role-accent);
+  color: #fff !important;
+  background: var(--active-role-accent);
+}
+
+body[data-active-role="manager"] .sidebar .nav-btn:focus-visible,
+body[data-active-role="employee"] .sidebar .nav-btn:focus-visible {
+  outline-color: var(--active-role-accent) !important;
+}
+
 /* The child rule matches the legacy !important contract so icons and labels
    always retain strong contrast on the selected navigation item. */
 .nav-btn.active i,
@@ -160,6 +208,29 @@ label[for] {
 
 .header-right {
   gap: 10px;
+}
+
+body[data-active-role="super_admin"] #header-profile-avatar:not(.has-image),
+body[data-active-role="super_admin"] #header-profile-avatar.has-initials,
+body[data-active-role="manager"] #header-profile-avatar:not(.has-image),
+body[data-active-role="manager"] #header-profile-avatar.has-initials,
+body[data-active-role="employee"] #header-profile-avatar:not(.has-image),
+body[data-active-role="employee"] #header-profile-avatar.has-initials {
+  background: var(--active-role-accent) !important;
+}
+
+.dropdown-role-btn.is-active {
+  color: var(--active-role-strong) !important;
+  background: var(--active-role-soft) !important;
+}
+
+.dropdown-role-btn.is-active::after {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--active-role-accent);
+  content: "";
 }
 
 .date-display,
@@ -962,6 +1033,26 @@ button:disabled {
 @media (max-width: 480px) {
   .content-viewport {
     padding: 12px;
+  }
+
+  .app-header {
+    padding-inline: 10px;
+  }
+
+  .header-left {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .page-title {
+    overflow: hidden;
+    font-size: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-right {
+    gap: 6px;
   }
 
   .dashboard-section-heading p {

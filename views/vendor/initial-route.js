@@ -19,6 +19,17 @@
     else switchableRoles = ["employee"];
     return requested && switchableRoles.includes(requested) ? requested : switchableRoles[0];
   };
+  const roleContexts = {
+    super_admin: {
+      label: "Super Admin", dashboard: "Tổng quan nền tảng", section: "Quản trị hệ thống"
+    },
+    manager: {
+      label: "Quản lý", dashboard: "Tổng quan đơn vị", section: "Nghiệp vụ đơn vị"
+    },
+    employee: {
+      label: "Chuyên viên", dashboard: "Công việc của tôi", section: "Công việc của tôi"
+    }
+  };
   const hydrateStableShell = () => {
     const appContainer = document.querySelector(".app-container");
     if (localStorage.getItem("bf_sidebar_collapsed") === "true") {
@@ -36,20 +47,28 @@
 
     const sessionNode = document.getElementById("bf-session-bootstrap");
     const bootstrap = readJson(sessionNode?.textContent);
-    if (!bootstrap?.valid || !bootstrap.user) return;
+    if (!bootstrap?.valid || !bootstrap.user) return "employee";
     const user = bootstrap.user;
     const activeRole = resolveActiveRole(user);
-    const roleLabels = {
-      super_admin: "Super Admin",
-      manager: "Quản lý",
-      employee: "Chuyên viên"
-    };
+    const roleContext = roleContexts[activeRole] || roleContexts.employee;
     const name = user.name || user.username || "Người dùng";
     const profileName = document.getElementById("header-profile-name");
     const profileRole = document.getElementById("header-profile-role");
     const avatar = document.getElementById("header-profile-avatar");
     if (profileName) profileName.textContent = name;
-    if (profileRole) profileRole.textContent = `Chế độ: ${roleLabels[activeRole] || roleLabels.employee}`;
+    if (profileRole) profileRole.textContent = `Chế độ: ${roleContext.label}`;
+    document.body.dataset.activeRole = activeRole;
+    const sidebar = document.getElementById("sidebar");
+    if (sidebar) sidebar.dataset.activeRole = activeRole;
+    const dashboardLabel = document.getElementById("sidebar-dashboard-label");
+    if (dashboardLabel) dashboardLabel.textContent = roleContext.dashboard;
+    const primarySection = document.getElementById("sidebar-primary-section-label");
+    if (primarySection) primarySection.textContent = roleContext.section;
+    const dashboardButton = document.getElementById("btn-tab-dashboard");
+    if (dashboardButton) {
+      dashboardButton.dataset.tooltip = roleContext.dashboard;
+      dashboardButton.setAttribute("aria-label", roleContext.dashboard);
+    }
     if (avatar) {
       avatar.dataset.bfRole = activeRole;
       if (user.avatar) {
@@ -109,9 +128,15 @@
     document.querySelectorAll(".role-menu-client").forEach((item) => {
       item.hidden = activeRole === "super_admin";
     });
+    document.querySelectorAll(".dropdown-role-btn").forEach((button) => {
+      const isActive = button.getAttribute("data-switch-role") === activeRole;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-current", isActive ? "true" : "false");
+    });
+    return activeRole;
   };
 
-  hydrateStableShell();
+  const activeRole = hydrateStableShell();
   const route = window.location.pathname.split("/").filter(Boolean)[0] || "tong-quan";
   const routes = {
     "tong-quan": ["dashboard", "Tổng quan hệ thống", "tổng quan"],
@@ -136,7 +161,10 @@
     "chu-dau-tu-chi-tiet": ["chudautu", "Chi tiết Chủ đầu tư", "chi tiết chủ đầu tư"],
     "nha-thau-chi-tiet": ["nhathau", "Chi tiết Nhà thầu", "chi tiết nhà thầu"]
   };
-  const [tab, title, loadingLabel] = routes[route] || routes["tong-quan"];
+  const [tab, routeTitle, loadingLabel] = routes[route] || routes["tong-quan"];
+  const title = route === "tong-quan"
+    ? activeRole === "manager" ? "Tổng quan đơn vị" : activeRole === "employee" ? "Công việc của tôi" : routeTitle
+    : routeTitle;
   const pageTitle = document.getElementById("page-title");
   const loadingTitle = document.getElementById("initial-route-loading-title");
   if (pageTitle) pageTitle.textContent = title;

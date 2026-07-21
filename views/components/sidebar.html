@@ -16,10 +16,24 @@
 
     <nav class="sidebar-menu" aria-label="Điều hướng chính">
         <ul>
+            <li class="menu-divider role-menu-manager bf-s-6aa34d7432">Điều hành đơn vị</li>
+            <li class="role-menu-manager bf-s-6aa34d7432">
+                <button type="button" class="nav-btn text-blue fw-bold" data-tab="managernhanvien" id="btn-tab-managernhanvien" aria-label="Nhân sự và phân quyền">
+                    <i data-lucide="users-2" class="text-blue"></i>
+                    <span>Nhân sự & Phân quyền</span>
+                </button>
+            </li>
+            <li class="role-menu-manager bf-s-6aa34d7432">
+                <button type="button" class="nav-btn text-blue fw-bold" data-tab="managerhosogiay" id="btn-tab-managerhosogiay" aria-label="Trạng thái hồ sơ giấy">
+                    <i data-lucide="folder-cog" class="text-blue"></i>
+                    <span>Trạng thái Hồ sơ giấy</span>
+                </button>
+            </li>
+            <li class="menu-divider role-menu-client" id="sidebar-primary-section-label">Công việc của tôi</li>
             <li class="role-menu-client">
                 <button type="button" class="nav-btn active" data-tab="dashboard" id="btn-tab-dashboard" data-tooltip="Tổng quan" aria-label="Tổng quan">
                     <i data-lucide="layout-dashboard"></i>
-                    <span>Tổng quan</span>
+                    <span id="sidebar-dashboard-label">Công việc của tôi</span>
                 </button>
             </li>
             <li class="menu-divider role-menu-client">Nghiệp vụ chính</li>
@@ -88,20 +102,6 @@
                 <button type="button" class="nav-btn text-purple fw-bold" data-tab="superadmin" id="btn-tab-superadmin" aria-label="Quản lý người dùng">
                     <i data-lucide="users-2" class="text-purple"></i>
                     <span>Quản lý Người dùng</span>
-                </button>
-            </li>
-
-            <li class="menu-divider role-menu-manager bf-s-6aa34d7432">Quản lý đơn vị</li>
-            <li class="role-menu-manager bf-s-6aa34d7432">
-                <button type="button" class="nav-btn text-blue fw-bold" data-tab="managernhanvien" id="btn-tab-managernhanvien" aria-label="Nhân sự và phân quyền">
-                    <i data-lucide="users-2" class="text-blue"></i>
-                    <span>Nhân sự & Phân quyền</span>
-                </button>
-            </li>
-            <li class="role-menu-manager bf-s-6aa34d7432">
-                <button type="button" class="nav-btn text-blue fw-bold" data-tab="managerhosogiay" id="btn-tab-managerhosogiay" aria-label="Trạng thái hồ sơ giấy">
-                    <i data-lucide="folder-cog" class="text-blue"></i>
-                    <span>Trạng thái Hồ sơ giấy</span>
                 </button>
             </li>
         </ul>

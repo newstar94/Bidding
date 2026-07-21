@@ -36,4 +36,4 @@ def test_excel_preview_stylesheet_cache_version_is_current():
     index = (ROOT / "views" / "index.html").read_text(encoding="utf-8")
 
     assert '/css/views.css?v=6.29' in index
-    assert index.count('/frontend/app/app.js?v=6.40') == 2
+    assert index.count('/frontend/app/app.js?v=6.41') == 2

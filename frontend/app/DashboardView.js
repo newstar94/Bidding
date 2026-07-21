@@ -35,10 +35,45 @@ const ALERT_META = {
   planPublishingOverdue: { label: "Quá hạn đăng kế hoạch", detail: "Đã quá 5 ngày làm việc", icon: "circle-alert", tone: "red" }
 };
 const ALERT_PRIORITY = ["overdueOpening", "contractExpired", "planPublishingOverdue", "closingToday", "delayedEvaluation", "contractExpiring", "planPublishingWarning", "closingSoon"];
+const DASHBOARD_ROLE_CONTEXT = Object.freeze({
+  manager: Object.freeze({
+    alertsKicker: "Điều hành tiến độ",
+    alertsTitle: "Cảnh báo toàn đơn vị",
+    priorityTitle: "Việc cần điều phối",
+    recentTitle: "Gói thầu của đơn vị mới cập nhật",
+    overviewKicker: "Toàn đơn vị",
+    overviewTitle: "Quy mô và trạng thái nghiệp vụ",
+    overviewDescription: "Trạng thái kế hoạch được tổng hợp từ tiến độ các gói thầu thuộc phạm vi đơn vị."
+  }),
+  employee: Object.freeze({
+    alertsKicker: "Theo dõi thời hạn",
+    alertsTitle: "Cảnh báo công việc của tôi",
+    priorityTitle: "Việc của tôi cần xử lý",
+    recentTitle: "Gói thầu được giao mới cập nhật",
+    overviewKicker: "Phạm vi được phân công",
+    overviewTitle: "Tiến độ công việc của tôi",
+    overviewDescription: "Chỉ hiển thị dữ liệu thuộc phạm vi công việc bạn được phép truy cập."
+  })
+});
+
+export function getDashboardRoleContext(role) {
+  return DASHBOARD_ROLE_CONTEXT[role] || DASHBOARD_ROLE_CONTEXT.employee;
+}
 
 function setText(id, value) {
   const element = document.getElementById(id);
   if (element) element.textContent = String(value ?? "");
+}
+
+function renderDashboardRoleContext(view) {
+  const context = getDashboardRoleContext(view?.model?.state?.activerole);
+  setText("dashboard-alerts-kicker", context.alertsKicker);
+  setText("dashboard-alerts-title", context.alertsTitle);
+  setText("dashboard-priority-title", context.priorityTitle);
+  setText("dashboard-recent-title", context.recentTitle);
+  setText("dashboard-overview-kicker", context.overviewKicker);
+  setText("dashboard-overview-title", context.overviewTitle);
+  setText("dashboard-overview-description", context.overviewDescription);
 }
 
 function normalizeOrderedCounts(incoming, order) {
@@ -490,6 +525,7 @@ function renderDashboardSnapshot(view, data) {
 }
 
 export function renderDashboard() {
+  renderDashboardRoleContext(this);
   const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
   const data = serverSummary?.counts ? buildServerDashboardData(serverSummary) : buildLocalDashboardData(this);
   renderDashboardSnapshot(this, data);

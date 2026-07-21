@@ -7,6 +7,44 @@ import { businessOrganizations, normalizeOrganizations, organizationDisplayName,
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 
+const ROLE_UI_CONTEXT = Object.freeze({
+  super_admin: Object.freeze({
+    label: "Super Admin",
+    dashboardLabel: "Tổng quan nền tảng",
+    primarySection: "Quản trị hệ thống"
+  }),
+  manager: Object.freeze({
+    label: "Quản lý",
+    dashboardLabel: "Tổng quan đơn vị",
+    primarySection: "Nghiệp vụ đơn vị"
+  }),
+  employee: Object.freeze({
+    label: "Chuyên viên",
+    dashboardLabel: "Công việc của tôi",
+    primarySection: "Công việc của tôi"
+  })
+});
+
+export function getRoleUiContext(role) {
+  return ROLE_UI_CONTEXT[role] || ROLE_UI_CONTEXT.employee;
+}
+
+export function updateRoleContextShell(activeRole = "employee") {
+  const role = ROLE_UI_CONTEXT[activeRole] ? activeRole : "employee";
+  const context = getRoleUiContext(role);
+  document.body.dataset.activeRole = role;
+  const dashboardLabel = document.getElementById("sidebar-dashboard-label");
+  if (dashboardLabel) dashboardLabel.textContent = context.dashboardLabel;
+  const primarySection = document.getElementById("sidebar-primary-section-label");
+  if (primarySection) primarySection.textContent = context.primarySection;
+  const dashboardButton = document.getElementById("btn-tab-dashboard");
+  if (dashboardButton) {
+    dashboardButton.dataset.tooltip = context.dashboardLabel;
+    dashboardButton.setAttribute("aria-label", context.dashboardLabel);
+  }
+  globalThis.lucide?.createIcons?.();
+}
+
 export function getUserInitials(name, username = "") {
   const source = String(name || username || "U").trim();
   const parts = source.split(/\s+/).filter(Boolean);
@@ -71,6 +109,7 @@ export function updateActiveUserProfileDisplay() {
     const activeRole = this.model.state.activerole || "employee";
     const sidebar = document.getElementById("sidebar");
     if (sidebar) sidebar.dataset.activeRole = activeRole;
+    updateRoleContextShell(activeRole);
     avatar.dataset.bfRole = activeRole;
     const renderAvatarFallback = () => {
       avatar.replaceChildren();
@@ -114,11 +153,11 @@ export function updateActiveUserProfileDisplay() {
       document.querySelectorAll(".dropdown-role-btn").forEach((btn) => {
         const role = btn.getAttribute("data-switch-role");
         if (role === this.model.state.activerole) {
-          setRuntimeStyle(btn, "background", "rgba(147, 51, 234, 0.08)");
-          setRuntimeStyle(btn, "color", "#a855f7");
+          btn.classList.add("is-active");
+          btn.setAttribute("aria-current", "true");
         } else {
-          setRuntimeStyle(btn, "background", "transparent");
-          setRuntimeStyle(btn, "color", "var(--text-main)");
+          btn.classList.remove("is-active");
+          btn.setAttribute("aria-current", "false");
         }
       });
     }

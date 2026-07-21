@@ -38,6 +38,15 @@
   --brand: #3157e8;
   --brand-strong: #2446c7;
   --brand-soft: #edf2ff;
+  --role-super-admin: #6d28d9;
+  --role-super-admin-strong: #5b21b6;
+  --role-super-admin-soft: #f3e8ff;
+  --role-manager: #1d4ed8;
+  --role-manager-strong: #1e40af;
+  --role-manager-soft: #eff6ff;
+  --role-employee: #0f766e;
+  --role-employee-strong: #115e59;
+  --role-employee-soft: #ecfdf5;
   --aqua: #0797a6;
   --aqua-strong: #087d89;
   --aqua-soft: #e8fafb;
