@@ -128,11 +128,6 @@ function idempotencyKey(prefix) {
   return `${prefix}:${random}`;
 }
 
-const ACCESS_PERMISSION_MODULES = [
-  "kehoach", "goithau", "thongtinmothau", "hopdong",
-  "chudautu", "nhathau", "chuyengia"
-];
-
 function accessPackageOptions(controller) {
   const packages = Array.isArray(controller.model.state.systempackages)
     ? controller.model.state.systempackages.filter((item) => item.status !== "inactive")
@@ -157,15 +152,6 @@ function populateAccessPackageSelect(controller, select, selectedValue) {
   });
   select.replaceChildren(noneOption, ...options);
   select.value = selectedValue || "none";
-}
-
-function populatePermissionSelect(select, value) {
-  if (!select) return;
-  select.innerHTML = trustedHTML(`
-    <option value="">Không truy cập</option>
-    <option value="view">Chỉ xem</option>
-    <option value="edit">Thêm / Sửa / Xóa</option>`);
-  select.value = value || "view";
 }
 
 function renderWordEntitlement(element, enabled, message) {
@@ -210,11 +196,6 @@ function renderOrganizationAccessSettings(controller, user, organizationId) {
     organization?.subscription?.package_id || "none"
   );
   const isManager = organization?.role === "manager";
-  ACCESS_PERMISSION_MODULES.forEach((module) => {
-    const select = document.querySelector(`[data-permission-module="${module}"]`);
-    populatePermissionSelect(select, isManager ? "edit" : organization?.permissions?.[module] || "view");
-    if (select) select.disabled = isManager;
-  });
   document.querySelectorAll("[data-document-capability]").forEach((input) => {
     const field = input.dataset.documentCapability;
     input.checked = isManager || Boolean(organization?.document_capabilities?.[field]);
@@ -309,9 +290,9 @@ export async function showSystemUserDetail(userId) {
     const selectedOrganization = organizations.find((item) => item.id === getActiveOrganizationId()) || organizations[0] || null;
     if (organizationSelect) organizationSelect.value = selectedOrganization?.id || "";
     const organizationSection = document.getElementById("detail-su-organization-section");
-    const permissionsSection = document.getElementById("detail-su-permissions-section");
+    const documentCapabilitiesSection = document.getElementById("detail-su-document-capabilities-section");
     if (organizationSection) organizationSection.hidden = !selectedOrganization;
-    if (permissionsSection) permissionsSection.hidden = !selectedOrganization;
+    if (documentCapabilitiesSection) documentCapabilitiesSection.hidden = !selectedOrganization;
     const form = document.getElementById("form-detail-system-user");
     form.__detailUser = user;
     renderOrganizationAccessSettings(this, user, selectedOrganization?.id || "");
@@ -560,10 +541,6 @@ export function setupRBACEvents() {
   const organizationRoleSelect = document.getElementById("detail-su-role");
   bindAdminEvent(organizationRoleSelect, "change", "toggle-inherited-manager-permissions", (event) => {
     const isManager = event.target.value === "manager";
-    document.querySelectorAll("[data-permission-module]").forEach((select) => {
-      select.disabled = isManager;
-      if (isManager) select.value = "edit";
-    });
     document.querySelectorAll("[data-document-capability]").forEach((input) => {
       input.disabled = isManager || document.getElementById("detail-su-package")?.value === "none";
       if (isManager) input.checked = true;
@@ -579,10 +556,6 @@ export function setupRBACEvents() {
       const accountPackageId = document.getElementById("detail-su-account-package").value;
       const organizationId = formSu.dataset.organizationId || "";
       const submitButton = document.getElementById("detail-su-submit");
-      const permissions = Object.fromEntries(ACCESS_PERMISSION_MODULES.map((module) => [
-        module,
-        document.querySelector(`[data-permission-module="${module}"]`)?.value || ""
-      ]));
       const documentCapabilities = Object.fromEntries(
         Array.from(document.querySelectorAll("[data-document-capability]")).map((input) => [
           input.dataset.documentCapability,
@@ -605,7 +578,6 @@ export function setupRBACEvents() {
             organization_id: organizationId || null,
             organization_role: organizationId ? document.getElementById("detail-su-role").value : null,
             organization_package_id: organizationId ? document.getElementById("detail-su-package").value : null,
-            permissions: organizationId ? permissions : null,
             document_capabilities: organizationId ? documentCapabilities : null
           })
         });

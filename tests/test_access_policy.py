@@ -404,6 +404,37 @@ def test_payload_key_write_protection() -> None:
     ).allowed
 
 
+def test_only_organization_manager_can_write_module_permission_matrix(monkeypatch) -> None:
+    monkeypatch.setattr(
+        access_policy,
+        "organization_membership_role",
+        lambda _cursor, user_id, _organization_id: (
+            "manager" if user_id in {"manager-user", "platform-admin"} else None
+        ),
+    )
+
+    assert access_policy.authorize_record_write(
+        _Cursor(),
+        "user",
+        "manager-user",
+        "org",
+        "permissionmatrix",
+        "ma_tran_phan_quyen",
+        {"empId": "employee-user", "kehoach": "edit"},
+    ).allowed
+    denied_super_admin = access_policy.authorize_record_write(
+        _Cursor(),
+        "super_admin",
+        "platform-admin",
+        "org",
+        "permissionmatrix",
+        "ma_tran_phan_quyen",
+        {"empId": "employee-user", "kehoach": "edit"},
+    )
+    assert not denied_super_admin.allowed
+    assert "Super Admin" in denied_super_admin.message
+
+
 def test_assignment_write_only_allows_self_claim_of_new_valid_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -513,6 +544,44 @@ def test_record_write_enforces_module_ownership_and_assignment(
     assert access_policy.authorize_record_write(
         _Cursor(), "employee", "user", "org", "goithau", "goi_thau", {"id": "1"}
     ).allowed
+
+
+def test_opening_read_and_write_inherit_package_module_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checked_permissions = []
+    monkeypatch.setattr(
+        access_policy, "is_organization_manager", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        access_policy, "is_personal_workspace_owner", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        access_policy, "has_active_organization_membership", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        access_policy,
+        "has_module_permission",
+        lambda _cursor, _role, _user, _org, module, action="view": (
+            checked_permissions.append((module, action)) or module == "goithau"
+        ),
+    )
+    monkeypatch.setattr(
+        access_policy, "_assigned_for_table", lambda *_args: True
+    )
+
+    opening = {"id": "opening-1", "goiThauId": "package-1"}
+    assert access_policy.can_read_record(
+        _Cursor(), "employee", "user", "org",
+        "thongtinmothau", "thong_tin_mo_thau", opening,
+    )
+    assert access_policy.authorize_record_write(
+        _Cursor(), "employee", "user", "org",
+        "thongtinmothau", "thong_tin_mo_thau", opening,
+    ).allowed
+    assert ("goithau", "view") in checked_permissions
+    assert ("goithau", "edit") in checked_permissions
+    assert all(module != "thongtinmothau" for module, _action in checked_permissions)
 
 
 def test_record_write_manager_personal_and_protected_shortcuts(

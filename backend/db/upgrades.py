@@ -94,6 +94,29 @@ def _upgrade_to_v5_add_package_expert_updated_at(cursor, context):
     )
 
 
+def _upgrade_to_v6_reconcile_record_ownership_constraint(cursor, context):
+    """Reconcile the creator-lineage compatibility constraint from v6.
+
+    Version 6 was already applied to some installations. The lineage table is
+    retained for compatibility, while authorization still enforces manager-only
+    deletion and assignment-scoped employee edits.
+    """
+
+    del context
+    cursor.execute(
+        """ALTER TABLE record_edit_ownership
+           DROP CONSTRAINT IF EXISTS record_edit_ownership_table_name_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE record_edit_ownership
+           ADD CONSTRAINT record_edit_ownership_table_name_check
+           CHECK (table_name IN (
+               'chu_dau_tu', 'ke_hoach_lcnt', 'goi_thau',
+               'thong_tin_mo_thau', 'hop_dong', 'nha_thau', 'chuyen_gia'
+           ))"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -110,6 +133,11 @@ UPGRADES = (
         5,
         "add_package_expert_updated_at",
         _upgrade_to_v5_add_package_expert_updated_at,
+    ),
+    DatabaseUpgrade(
+        6,
+        "reconcile_record_ownership_constraint",
+        _upgrade_to_v6_reconcile_record_ownership_constraint,
     ),
 )
 

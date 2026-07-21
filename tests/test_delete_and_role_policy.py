@@ -48,4 +48,4 @@ def test_employee_can_edit_but_delete_actions_are_hidden():
 def test_server_rejects_non_manager_organization_deletes_for_non_aggregate_rows():
     source = (ROOT / "backend/sync/deletion_service.py").read_text(encoding="utf-8")
     assert '"DELETE_ROLE_PROTECTED"' in source
-    assert "Chuyên viên chỉ được chỉnh sửa, không được xóa dữ liệu." in source
+    assert "Chỉ Quản lý tổ chức được phép xóa dữ liệu; Chuyên viên không được phép xóa." in source

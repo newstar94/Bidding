@@ -22,16 +22,10 @@ from backend.sync.api import broadcast_websocket_event, disconnect_user_websocke
 from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscription
 from backend.db.schema import SCHEMA_DINH_NGHIA
-from backend.db.id_utils import generate_record_id
 from backend.shared.request_validation import read_json_object
-from backend.sync.repository import next_sync_version
 from backend.auth.security_notifications import build_security_notification_tasks
 
 
-_USER_PERMISSION_MODULES = (
-    "kehoach", "goithau", "chudautu", "nhathau",
-    "chuyengia", "hopdong", "thongtinmothau",
-)
 _DOCUMENT_CAPABILITY_FIELDS = ("financial", "identity", "signature")
 
 
@@ -134,7 +128,6 @@ def _list_users_sync(request):
                        pkg.trang_thai AS package_status,
                        permission.kehoach, permission.goithau, permission.chudautu,
                        permission.nhathau, permission.chuyengia, permission.hopdong,
-                       permission.thongtinmothau,
                        export_grant.financial, export_grant.identity, export_grant.signature,
                        (SELECT count(*) FROM thanh_vien_to_chuc members
                         WHERE members.organization_id = tc.id
@@ -196,7 +189,7 @@ def _list_users_sync(request):
                         module: str(row[module] or "")
                         for module in (
                             "kehoach", "goithau", "chudautu", "nhathau",
-                            "chuyengia", "hopdong", "thongtinmothau",
+                            "chuyengia", "hopdong",
                         )
                     },
                     "document_capabilities": {
@@ -260,21 +253,19 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 {"error": "Thiếu tài khoản hoặc vai trò hệ thống không hợp lệ."},
                 status_code=400,
             )
-        if permissions is not None and not isinstance(permissions, dict):
-            return JSONResponse({"error": "Cấu hình phân quyền không hợp lệ."}, status_code=400)
+        if permissions is not None:
+            return JSONResponse(
+                {
+                    "error": (
+                        "Quyền theo phân hệ do Quản lý tổ chức cấu hình cho "
+                        "chuyên viên; Super Admin không được thay đổi."
+                    )
+                },
+                status_code=403,
+            )
         if document_capabilities is not None and not isinstance(document_capabilities, dict):
             return JSONResponse({"error": "Cấu hình quyền xuất Word không hợp lệ."}, status_code=400)
 
-        normalized_permissions = {}
-        if permissions is not None:
-            for module in _USER_PERMISSION_MODULES:
-                value = str(permissions.get(module) or "").strip().lower()
-                if value not in {"", "view", "edit"}:
-                    return JSONResponse(
-                        {"error": f"Quyền phân hệ {module} không hợp lệ."},
-                        status_code=400,
-                    )
-                normalized_permissions[module] = value
         normalized_capabilities = {}
         if document_capabilities is not None:
             for field in _DOCUMENT_CAPABILITY_FIELDS:
@@ -353,7 +344,6 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             )
 
         affected_org_members = []
-        sync_version = None
         if organization_id:
             membership = cursor.execute(
                 """SELECT lower(trim(vai_tro_trong_to_chuc))
@@ -439,37 +429,6 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                     ),
                 )
 
-            if normalized_permissions:
-                sync_version = next_sync_version(cursor, organization_id)
-                permission_id = cursor.execute(
-                    """SELECT id FROM ma_tran_phan_quyen
-                       WHERE organization_id = ? AND emp_id = ?""",
-                    (organization_id, user_id),
-                ).fetchone()
-                permission_id = permission_id[0] if permission_id else generate_record_id("ma_tran_phan_quyen")
-                cursor.execute(
-                    """INSERT INTO ma_tran_phan_quyen (
-                           id, organization_id, owner_type, emp_id,
-                           kehoach, goithau, chudautu, nhathau,
-                           chuyengia, hopdong, thongtinmothau, sync_version
-                       ) VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(organization_id, emp_id) DO UPDATE SET
-                           kehoach = excluded.kehoach,
-                           goithau = excluded.goithau,
-                           chudautu = excluded.chudautu,
-                           nhathau = excluded.nhathau,
-                           chuyengia = excluded.chuyengia,
-                           hopdong = excluded.hopdong,
-                           thongtinmothau = excluded.thongtinmothau,
-                           sync_version = excluded.sync_version,
-                           updated_at = CURRENT_TIMESTAMP""",
-                    (
-                        permission_id, organization_id, user_id,
-                        *(normalized_permissions[module] for module in _USER_PERMISSION_MODULES),
-                        sync_version,
-                    ),
-                )
-
             if normalized_capabilities:
                 cursor.execute(
                     """INSERT INTO document_export_capabilities (
@@ -506,7 +465,6 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 "organization_id": organization_id or None,
                 "organization_role": organization_role or None,
                 "organization_package_id": organization_package_id if organization_id else None,
-                "permission_modules": list(normalized_permissions),
                 "document_capabilities": {
                     field: bool(value) for field, value in normalized_capabilities.items()
                 },

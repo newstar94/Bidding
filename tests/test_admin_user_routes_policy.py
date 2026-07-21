@@ -117,7 +117,6 @@ def _organization_row(**overrides):
         "nhathau": "",
         "chuyengia": "",
         "hopdong": "",
-        "thongtinmothau": "",
     }
     row.update(overrides)
     return row
@@ -293,14 +292,9 @@ def test_list_users_closes_connection_on_permission_and_unexpected_errors(monkey
     [
         ({}, "vai trò hệ thống"),
         ({"user_id": "u", "platform_role": "root"}, "vai trò hệ thống"),
-        ({"user_id": "u", "platform_role": "user", "permissions": []}, "phân quyền"),
         (
             {"user_id": "u", "platform_role": "user", "document_capabilities": []},
             "quyền xuất Word",
-        ),
-        (
-            {"user_id": "u", "platform_role": "user", "permissions": {"kehoach": "owner"}},
-            "kehoach",
         ),
         (
             {
@@ -323,6 +317,23 @@ def test_update_access_rejects_malformed_policy_before_database(monkeypatch, pay
     )
     assert response.status_code == 400
     assert message in _body(response)["error"]
+
+
+@pytest.mark.parametrize("permissions", [[], {}, {"kehoach": "edit"}])
+def test_super_admin_cannot_change_organization_module_permissions(monkeypatch, permissions):
+    monkeypatch.setattr(
+        admin_user_routes.database,
+        "get_connection",
+        lambda: pytest.fail("database must not be opened"),
+    )
+    response = admin_user_routes._update_user_access_settings_sync(
+        _request(),
+        "actor-user",
+        {"user_id": "target-user", "platform_role": "user", "permissions": permissions},
+    )
+
+    assert response.status_code == 403
+    assert "Quản lý tổ chức" in _body(response)["error"]
 
 
 def _valid_update(**overrides):
@@ -418,8 +429,6 @@ def test_update_access_success_updates_both_scopes_and_invalidates_members(monke
             return _Answer(one=(25,))
         if sql.startswith("SELECT starts_at, expires_at FROM organization_subscriptions"):
             return _Answer(one=None)
-        if sql.startswith("SELECT id FROM ma_tran_phan_quyen"):
-            return _Answer(one=None)
         if sql.startswith("SELECT user_id FROM thanh_vien_to_chuc"):
             return _Answer(all_rows=[("target-user",), ("peer-user",)])
         return _Answer()
@@ -433,10 +442,6 @@ def test_update_access_success_updates_both_scopes_and_invalidates_members(monke
     audits = []
     monkeypatch.setattr(
         admin_user_routes.database, "get_connection", lambda: connection
-    )
-    monkeypatch.setattr(admin_user_routes, "next_sync_version", lambda *_args: 42)
-    monkeypatch.setattr(
-        admin_user_routes, "generate_record_id", lambda _table: "permission-1"
     )
     monkeypatch.setattr(
         admin_user_routes, "log_audit", lambda event, **kwargs: audits.append((event, kwargs))
@@ -454,7 +459,6 @@ def test_update_access_success_updates_both_scopes_and_invalidates_members(monke
         lambda org_id, event: broadcasts.append((org_id, event)),
     )
 
-    permissions = {module: "edit" for module in admin_user_routes._USER_PERMISSION_MODULES}
     capabilities = {field: True for field in admin_user_routes._DOCUMENT_CAPABILITY_FIELDS}
     response = admin_user_routes._update_user_access_settings_sync(
         _request(),
@@ -464,7 +468,6 @@ def test_update_access_success_updates_both_scopes_and_invalidates_members(monke
             organization_id="org-1",
             organization_role="manager",
             organization_package_id="business",
-            permissions=permissions,
             document_capabilities=capabilities,
         ),
     )
@@ -481,7 +484,7 @@ def test_update_access_success_updates_both_scopes_and_invalidates_members(monke
     assert response.background is not None
     assert any("INSERT INTO account_subscriptions" in sql for sql, _ in cursor.calls)
     assert any("INSERT INTO organization_subscriptions" in sql for sql, _ in cursor.calls)
-    assert any("INSERT INTO ma_tran_phan_quyen" in sql for sql, _ in cursor.calls)
+    assert not any("ma_tran_phan_quyen" in sql for sql, _ in cursor.calls)
     assert any("INSERT INTO document_export_capabilities" in sql for sql, _ in cursor.calls)
 
 
@@ -714,4 +717,3 @@ def test_update_async_wrapper_dispatches_valid_payload(monkeypatch):
     monkeypatch.setattr(admin_user_routes, "run_database_write", write)
     response = asyncio.run(admin_user_routes.update_user_access_settings_api(_request()))
     assert response.status_code == 200
-

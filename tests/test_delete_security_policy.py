@@ -306,6 +306,28 @@ def test_deletion_enforces_record_and_elevated_permissions_without_password_reau
     assert result["impacts"][0]["action"] == "deleted"
 
 
+def test_organization_employee_cannot_delete_even_data_they_created(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = {
+        "id": "expert-created-by-employee",
+        "row_version": 1,
+        "created_by": "employee-1",
+    }
+    _DeletionHarness(monkeypatch, record, allowed=True, manager=False).install()
+
+    result = _apply(
+        _DeletionCursor(record),
+        [{"table": "chuyengia", "id": record["id"], "expectedVersion": 1}],
+        actor_role="employee",
+        actor_user_id="employee-1",
+    )
+
+    assert result["errors"][0]["code"] == "DELETE_ROLE_PROTECTED"
+    assert "Chỉ Quản lý tổ chức" in result["errors"][0]["message"]
+    assert result["impacts"] == []
+
+
 def test_personal_owner_can_delete_own_high_impact_aggregate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

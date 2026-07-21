@@ -61,11 +61,14 @@
                             <i data-lucide="grid" class="text-muted"></i>
                         </div>
                         <div class="card-body">
-                            <p class="text-muted mb-3 bf-s-05bb49c4c2"><i
-                                    data-lucide="shield-check"
-                                    class="bf-s-47f5184954"></i> Quản lý có đặc quyền tối
-                                cao. Chuyên viên thầu chỉ được thao tác các danh mục được bật quyền bên dưới và trong
-                                phạm vi gói thầu được phân công phụ trách.</p>
+                            <div class="permission-policy-note mb-3">
+                                <div class="permission-policy-title"><i data-lucide="shield-check"></i> Quy tắc thao tác của chuyên viên</div>
+                                <ul>
+                                    <li><strong>Thêm:</strong> được tạo dữ liệu mới trong phân hệ đã cấp quyền.</li>
+                                    <li><strong>Sửa:</strong> chỉ được sửa công việc đã được phân công; yêu cầu này được kiểm tra lại tại API.</li>
+                                    <li><strong>Xóa:</strong> chỉ Quản lý tổ chức được phép xóa; Chuyên viên không được xóa kể cả dữ liệu do mình tạo.</li>
+                                </ul>
+                            </div>
                             <div class="table-container">
                                 <table class="data-table" id="manager-matrix-table">
                                     <thead>

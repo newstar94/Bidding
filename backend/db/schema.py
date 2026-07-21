@@ -1058,7 +1058,11 @@ SCHEMA_DINH_NGHIA = {
     "record_edit_ownership": {
         "columns": {
             "organization_id": "TEXT NOT NULL",
-            "table_name": "TEXT NOT NULL CHECK(table_name IN ('chu_dau_tu', 'nha_thau'))",
+            "table_name": (
+                "TEXT NOT NULL CHECK(table_name IN ("
+                "'chu_dau_tu', 'ke_hoach_lcnt', 'goi_thau', "
+                "'thong_tin_mo_thau', 'hop_dong', 'nha_thau', 'chuyen_gia'))"
+            ),
             "record_id": "TEXT NOT NULL",
             "user_id": "TEXT NOT NULL",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"

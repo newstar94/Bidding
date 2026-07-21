@@ -47,11 +47,30 @@ def test_redundant_role_context_blocks_are_not_rendered():
     assert 'id="sidebar-dashboard-label"' in sidebar
 
 
-def test_manager_navigation_is_prioritized_before_shared_work_navigation():
+def test_manager_navigation_is_placed_after_shared_work_navigation():
     sidebar = (ROOT / "views" / "components" / "sidebar.html").read_text(encoding="utf-8")
 
-    assert sidebar.index("Điều hành đơn vị") < sidebar.index('id="sidebar-primary-section-label"')
-    assert sidebar.index('data-tab="managernhanvien"') < sidebar.index('data-tab="dashboard"')
+    assert sidebar.index("Điều hành đơn vị") > sidebar.index("Hệ thống mẫu")
+    assert sidebar.index('data-tab="managernhanvien"') > sidebar.index('data-tab="bieumau"')
+
+
+def test_module_permissions_belong_to_organization_manager_ui_only():
+    superadmin_modal = (ROOT / "views" / "modals" / "modal_detail_system_user.html").read_text(encoding="utf-8")
+    manager_tab = (ROOT / "views" / "tabs" / "tab_managernhanvien.html").read_text(encoding="utf-8")
+    manager_view = (ROOT / "frontend" / "admin" / "SystemUserView.js").read_text(encoding="utf-8")
+    admin_controller = (ROOT / "frontend" / "admin" / "AdminUserController.js").read_text(encoding="utf-8")
+
+    assert "Quyền theo phân hệ" not in superadmin_modal
+    assert "data-permission-module" not in superadmin_modal
+    assert "permissions: organizationId" not in admin_controller
+    assert "Thông tin mở thầu" not in manager_tab
+    assert 'getCellHtml("thongtinmothau")' not in manager_view
+    assert '["", "view", "edit"].includes(matrix[moduleName])' in manager_view
+    assert "Không truy cập" in manager_view
+    assert "Thêm / Sửa có điều kiện" in manager_view
+    assert "chỉ được sửa công việc đã được phân công" in manager_tab
+    assert "kiểm tra lại tại API" in manager_tab
+    assert "Chuyên viên không được xóa kể cả dữ liệu do mình tạo" in manager_tab
 
 
 def test_role_context_keeps_role_specific_navigation_language():

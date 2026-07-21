@@ -91,6 +91,28 @@ def test_sidebar_focus_ring_does_not_stack_a_second_thick_border():
     assert "outline-offset: 2px !important;" in focus_rule
 
 
+def test_modal_close_button_is_visually_compact_with_full_touch_target():
+    stylesheet = _source("views/css/ui-redesign.css")
+    button_rule = stylesheet[
+        stylesheet.index(".modal-close {"):
+        stylesheet.index(".modal-close::before {")
+    ]
+    icon_rule = stylesheet[
+        stylesheet.index(".modal-close::before {"):
+        stylesheet.index(".modal-header .modal-close {")
+    ]
+    touch_target_rule = stylesheet[
+        stylesheet.index(".modal-close::after {"):
+        stylesheet.index(".modal-close:hover {")
+    ]
+
+    assert "width: 36px;" in button_rule
+    assert "height: 36px;" in button_rule
+    assert "width: 12px;" in icon_rule
+    assert "height: 12px;" in icon_rule
+    assert "inset: -4px;" in touch_target_rule
+
+
 def test_google_identity_script_starts_before_full_window_load():
     source = _source("frontend/auth/AuthFlowController.js")
     loader_block = source[

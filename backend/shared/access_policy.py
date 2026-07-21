@@ -25,7 +25,8 @@ TABLE_TO_MODULE = {
     "chuyen_gia": "chuyengia",
     "nha_thau": "nhathau",
     "hop_dong": "hopdong",
-    "thong_tin_mo_thau": "thongtinmothau",
+    # Opening records are children of a package and inherit its module grant.
+    "thong_tin_mo_thau": "goithau",
     "trang_thai_ho_so_giay": "hopdong",
 }
 
@@ -350,6 +351,19 @@ def authorize_payload_key_write(role_str, payload_key, *, organization_manager=F
 
 
 def authorize_record_write(cursor, role_str, user_id, organization_id, payload_key, table_name, item):
+    if payload_key == "permissionmatrix":
+        if is_manager_role(role_str):
+            return AccessDecision(
+                False,
+                "Super Admin không được cấu hình quyền theo phân hệ của tổ chức.",
+            )
+        membership_role = organization_membership_role(cursor, user_id, organization_id)
+        if membership_role not in ORGANIZATION_MANAGER_ROLES:
+            return AccessDecision(
+                False,
+                "Chỉ Quản lý của tổ chức được cấu hình quyền theo phân hệ cho chuyên viên.",
+            )
+        return AccessDecision(True)
     organization_manager = is_organization_manager(cursor, role_str, user_id, organization_id)
     if table_name == "phan_cong_nhan_su" and not organization_manager and not is_manager_role(role_str):
         employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))

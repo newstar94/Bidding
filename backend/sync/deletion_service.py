@@ -103,10 +103,9 @@ def apply_sync_deletions(
                 "table": table_name, "id": record_id, "message": access.message,
             })
             continue
-        # Organization employees may edit records they are allowed to see,
-        # but deletion remains a manager-only operation. Keep personal
-        # workspaces owner-managed, and preserve the existing elevated-impact
-        # handling for plans/packages/contracts.
+        # Employees may create data and edit assigned work, but deletion in an
+        # organization is always reserved for an organization manager. This is
+        # enforced here so direct API calls cannot bypass the UI.
         if (
             table_name not in HIGH_IMPACT_DELETE_TABLES
             and not _is_actor_personal_scope(organization_id, actor_user_id)
@@ -116,7 +115,7 @@ def apply_sync_deletions(
                 "table": table_name,
                 "id": record_id,
                 "code": "DELETE_ROLE_PROTECTED",
-                "message": "Chuyên viên chỉ được chỉnh sửa, không được xóa dữ liệu.",
+                "message": "Chỉ Quản lý tổ chức được phép xóa dữ liệu; Chuyên viên không được phép xóa.",
             })
             continue
         impact = build_delete_impact(cursor, organization_id, table_name, record_id)

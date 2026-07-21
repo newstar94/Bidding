@@ -431,12 +431,13 @@ export function renderManagerNhanVienPanel() {
         chuyengia: "view"
       };
       const getCellHtml = (moduleName) => {
-        const mode = matrix[moduleName] || "view";
+        const mode = ["", "view", "edit"].includes(matrix[moduleName]) ? matrix[moduleName] : "view";
         return `
                     <td class="matrix-checkbox-cell">
                         <select class="form-control matrix-select bf-s-c75f9a3f39" data-emp-id="${safeAttr(emp.id)}" data-module="${safeAttr(moduleName)}">
-                            <option value="view" ${mode === "view" ? "selected" : ""}>Xem</option>
-                            <option value="edit" ${mode === "edit" ? "selected" : ""}>Sửa đổi</option>
+                            <option value="" ${mode === "" ? "selected" : ""}>Không truy cập</option>
+                            <option value="view" ${mode === "view" ? "selected" : ""}>Chỉ xem</option>
+                            <option value="edit" ${mode === "edit" ? "selected" : ""}>Thêm / Sửa có điều kiện</option>
                         </select>
                     </td>
                 `;

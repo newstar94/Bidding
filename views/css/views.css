@@ -1841,6 +1841,49 @@ table th {
   cursor: pointer !important;
   accent-color: var(--primary);
 }
+.permission-policy-note {
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border-color));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary) 5%, var(--bg-card));
+}
+.permission-policy-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text-main);
+  font-weight: 700;
+}
+.permission-policy-title i {
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+}
+.permission-policy-note ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.permission-policy-note li {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.permission-policy-note li strong {
+  color: var(--text-main);
+}
+@media (max-width: 900px) {
+  .permission-policy-note ul {
+    grid-template-columns: 1fr;
+  }
+}
 .status-pill {
   display: inline-flex;
   align-items: center;
