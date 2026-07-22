@@ -1,7 +1,6 @@
 from backend.shared.helpers import clean_id
 from backend.sync.mapper import get_payload_value
 from backend.shared.domain_enums import enum_label
-from backend.shared.numeric_utils import parse_vnd_amount
 from backend.shared.workspace_scope import personal_scope_owner_id
 
 
@@ -198,27 +197,15 @@ def validate_owner_scoped_references(
         contract_plan_root = _plan_root_id(
             cursor, organization_id, contract_plan_id, incoming_records_by_table
         )
-        contractor_id = clean_id(get_payload_value(table_name, item, "nha_thau_id"))
-        is_direct_award = get_payload_value(table_name, item, "co_qd_chi_dinh") in (
-            True, 1, "1", "true", "True"
-        )
-        awarded_total = 0
-        budget_total = 0
-        has_invalid_package = False
         for package_id in package_ids:
             incoming_package = _incoming_record(
                 incoming_records_by_table, "goi_thau", package_id
             )
             if incoming_package:
                 package_plan_id = clean_id(get_payload_value("goi_thau", incoming_package, "ke_hoach_id"))
-                package_status = str(get_payload_value("goi_thau", incoming_package, "trang_thai") or "").strip()
-                winner_id = clean_id(get_payload_value("goi_thau", incoming_package, "nha_thau_trung_thau_id"))
-                package_award = parse_vnd_amount(get_payload_value("goi_thau", incoming_package, "gia_trung_thau"))
-                package_budget = parse_vnd_amount(get_payload_value("goi_thau", incoming_package, "gia_goi_thau"))
             else:
                 package_row = cursor.execute(
-                    """SELECT ke_hoach_id, trang_thai, nha_thau_trung_thau_id,
-                              gia_trung_thau, gia_goi_thau
+                    """SELECT ke_hoach_id
                        FROM goi_thau
                        WHERE organization_id = ? AND id = ? AND archived_at IS NULL
                        LIMIT 1""",
@@ -226,36 +213,14 @@ def validate_owner_scoped_references(
                 ).fetchone()
                 if not package_row:
                     errors.append(f"Gói thầu {package_id} không tồn tại, đã lưu trữ hoặc khác tổ chức.")
-                    has_invalid_package = True
                     continue
-                package_plan_id, package_status, winner_id, package_award, package_budget = package_row
-                package_plan_id = clean_id(package_plan_id)
-                package_status = str(enum_label("goi_thau", "trang_thai", package_status) or "").strip()
-                winner_id = clean_id(winner_id)
-                package_award = parse_vnd_amount(package_award)
-                package_budget = parse_vnd_amount(package_budget)
-
-            awarded_total += int(package_award or 0)
-            budget_total += int(package_budget or 0)
+                package_plan_id = clean_id(package_row[0])
 
             package_plan_root = _plan_root_id(
                 cursor, organization_id, package_plan_id, incoming_records_by_table
             )
             if not contract_plan_root or package_plan_root != contract_plan_root:
                 errors.append(f"Gói thầu {package_id} không thuộc kế hoạch/lineage của hợp đồng.")
-            if not is_direct_award and package_status != "Đã có kết quả":
-                errors.append(f"Gói thầu {package_id} chưa đủ điều kiện lập hợp đồng.")
-            if winner_id and contractor_id and winner_id != contractor_id:
-                errors.append(f"Nhà thầu trên hợp đồng không khớp nhà thầu trúng gói {package_id}.")
-            if not is_direct_award and not winner_id:
-                errors.append(f"Gói thầu {package_id} chưa có nhà thầu trúng thầu.")
-
-        contract_value = parse_vnd_amount(get_payload_value(table_name, item, "gia_tri"))
-        if package_ids and contract_value is not None and not has_invalid_package:
-            if is_direct_award and contract_value > budget_total:
-                errors.append("Giá trị hợp đồng chỉ định thầu không được vượt tổng giá các gói thầu.")
-            elif not is_direct_award and contract_value != awarded_total:
-                errors.append("Giá trị hợp đồng phải bằng tổng giá trúng thầu của các gói được chọn.")
 
     if table_name == "thong_tin_mo_thau":
         package_id = clean_id(get_payload_value(table_name, item, "goi_thau_id"))

@@ -159,6 +159,70 @@ def test_delete_controls_use_the_compact_trash_icon_pattern():
         assert 'data-lucide="trash-2"' in remove_file_markup
 
 
+def test_notification_actions_and_rows_use_the_compact_panel_pattern():
+    template = _source("views/components/header.html")
+    index = _source("views/index.html")
+    stylesheet = _source("views/css/ui-redesign.css")
+    read_all_rule = stylesheet[
+        stylesheet.index(".notification-read-all {"):
+        stylesheet.index(".notification-read-all svg {")
+    ]
+    icon_rule = stylesheet[
+        stylesheet.index(".notification-read-all svg {"):
+        stylesheet.index(".notification-read-all > span {")
+    ]
+    disabled_rule = stylesheet[
+        stylesheet.index(".notification-read-all:disabled {"):
+        stylesheet.index(".notification-panel-scroll {")
+    ]
+    list_rule = stylesheet[
+        stylesheet.index(".notification-list {"):
+        stylesheet.index(".notification-list::before {")
+    ]
+    item_rule = stylesheet[
+        stylesheet.index(".notification-item {"):
+        stylesheet.index(".notification-item:hover {")
+    ]
+
+    assert 'data-lucide="check"' in template
+    assert 'data-lucide="check-check"' not in template
+    assert '<span>Đánh dấu tất cả đã đọc</span>' in template
+    assert '/css/ui-redesign.css?v=1.3.12' in index
+    assert "border: 0;" in read_all_rule
+    assert "background: transparent;" in read_all_rule
+    assert "display: block;" in icon_rule
+    assert "flex: 0 0 16px;" in icon_rule
+    assert "background: transparent;" in disabled_rule
+    assert "gap: 6px;" in list_rule
+    assert "border-radius: 10px;" in item_rule
+    assert "border: 1px solid transparent;" in item_rule
+
+
+def test_dashboard_recent_packages_fit_without_horizontal_scrolling():
+    template = _source("views/tabs/tab_dashboard.html")
+    script = _source("frontend/app/DashboardView.js")
+    stylesheet = _source("views/css/ui-redesign.css")
+
+    assert 'class="data-table dashboard-recent-table"' in template
+    assert 'class="dashboard-recent-code-column"' in template
+    assert 'class="dashboard-recent-name-column"' in template
+    assert 'class="dashboard-recent-price-column"' in template
+    assert 'class="dashboard-recent-status-column"' in template
+    assert 'class="dashboard-recent-link dashboard-recent-code"' in script
+    assert 'class="dashboard-recent-link dashboard-recent-name"' in script
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in stylesheet
+    assert ".dashboard-work-grid .recent-activity .dashboard-table-body" in stylesheet
+    assert "overflow-x: hidden;" in stylesheet
+    assert "#recent-packages-table" in stylesheet
+    assert "table-layout: fixed;" in stylesheet
+    assert "-webkit-line-clamp: 2;" in stylesheet
+    recent_link_hover = stylesheet[
+        stylesheet.index("#recent-packages-table .dashboard-recent-link:hover"):
+        stylesheet.index("#recent-packages-table .dashboard-recent-code {")
+    ]
+    assert "text-decoration: none;" in recent_link_hover
+
+
 def test_focus_indicators_share_one_compact_width_token():
     variables = _source("views/css/variables.css")
     assert "--focus-ring-width: 1px;" in variables

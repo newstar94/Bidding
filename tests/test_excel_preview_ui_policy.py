@@ -35,5 +35,5 @@ def test_excel_preview_styles_cover_interaction_and_validation_states():
 def test_excel_preview_stylesheet_cache_version_is_current():
     index = (ROOT / "views" / "index.html").read_text(encoding="utf-8")
 
-    assert '/css/views.css?v=1.3.4' in index
-    assert index.count('/frontend/app/app.js?v=1.3.4') == 2
+    assert '/css/views.css?v=1.3.6' in index
+    assert index.count('/frontend/app/app.js?v=1.3.10') == 2

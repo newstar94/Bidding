@@ -150,7 +150,7 @@ ENTITY_SCHEMA = {
         {'field': 'loaiHopDong',          'label': 'Loại hợp đồng',               'aliases': ['Loại hợp đồng', 'loaiHopDong'],
                                            'options': ['Trọn gói', 'Theo đơn giá cố định', 'Theo đơn giá điều chỉnh', 'Theo thời gian', 'Hợp đồng theo tỷ lệ phần trăm', 'Hợp đồng hỗn hợp']},
         {'field': 'phanLoai',             'label': 'Phân loại',                  'aliases': ['Phân loại', 'phanLoai'],
-                                           'options': ['Tư vấn', 'Thẩm định']},
+                                           'options': ['Tư vấn', 'Thẩm định', 'Khác']},
         {'field': 'coQdChiDinh',          'label': 'Có QĐ chỉ định thầu không',   'aliases': ['Có QĐ chỉ định thầu không', 'coQdChiDinh'],
                                            'options': ['Không', 'Có']},
         {'field': 'soQdChiDinh',          'label': 'Số QĐ chỉ định',             'aliases': ['Số QĐ chỉ định', 'soQdChiDinh']},

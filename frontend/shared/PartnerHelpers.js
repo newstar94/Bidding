@@ -305,6 +305,9 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
 export function makeSearchableSelect(select, placeholder) {
   if (!select) return;
   select.setAttribute("data-no-custom", "true");
+  const genericContainer = select.parentNode.querySelector(`.custom-select-container[data-target="${select.id}"]`);
+  if (genericContainer) genericContainer.remove();
+  document.querySelectorAll(`body > .custom-select-options[data-parent="${select.id}"]`).forEach((stale) => stale.remove());
   let wrapper = select.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
   if (wrapper) {
     refreshCustomOptions(select, wrapper);

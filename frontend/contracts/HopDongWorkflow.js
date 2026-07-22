@@ -4,7 +4,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
-import { escapeHtml } from "../shared/view_helpers.js";
+import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
@@ -120,16 +120,9 @@ export async function editHopDong(id) {
         return;
       }
       const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
-      const selectedContractorId = ntSelect.value;
-      const isDirectAward = coQdSelect.value === "1";
-      const filteredGoithau = goithauList.filter((g) => {
-        if (!planVersionIds.includes(g.keHoachId)) return false;
-        if (isDirectAward) return true;
-        return g.trangThai === "Đã có kết quả" &&
-          (!selectedContractorId || String(g.nhaThauTrungThauId || "") === String(selectedContractorId));
-      });
+      const filteredGoithau = goithauList.filter((g) => planVersionIds.includes(g.keHoachId));
       if (filteredGoithau.length === 0) {
-        gtContainer.innerHTML = trustedHTML('<p class="text-muted bf-s-64c2770c2f">Không có gói thầu đủ điều kiện lập hợp đồng</p>');
+        gtContainer.innerHTML = trustedHTML('<p class="text-muted bf-s-64c2770c2f">Kế hoạch này chưa có gói thầu để liên kết</p>');
       } else {
         gtContainer.innerHTML = trustedHTML(filteredGoithau.map((g) => `
                     <label class="checkbox-item bf-s-64d00981be">
@@ -142,7 +135,7 @@ export async function editHopDong(id) {
     khSelect.onchange = (e) => {
       renderPackagesForPlan(e.target.value, []);
     };
-    const rerenderEligiblePackages = () => {
+    const rerenderPlanPackages = () => {
       const checkedIds = Array.from(
         document.querySelectorAll('input[name="hd-goithau-checkbox"]:checked')
       ).map((checkbox) => checkbox.value);
@@ -150,12 +143,13 @@ export async function editHopDong(id) {
     };
     coQdSelect.onchange = () => {
       toggleQdFields();
-      rerenderEligiblePackages();
+      rerenderPlanPackages();
     };
     const handleCdtChange = (selectedCdtId, selectVersionId = null) => {
       const versionGroup = document.getElementById("hd-chudautu-version-group");
       const versionSelect = document.getElementById("hd-chudautu-version-select");
       const confirmContainer = document.getElementById("hd-chudautu-confirm-container");
+      const confirmTitle = document.getElementById("hd-chudautu-confirm-title");
       const confirmInfo = document.getElementById("hd-chudautu-confirm-info");
       if (!selectedCdtId) {
         if (versionGroup) setRuntimeStyle(versionGroup, "display", "none");
@@ -170,8 +164,7 @@ export async function editHopDong(id) {
       if (versionSelect && versionGroup) {
         versionSelect.innerHTML = trustedHTML(versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
-          const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
-          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
+          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
         }).join(""));
         setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
@@ -179,6 +172,10 @@ export async function editHopDong(id) {
           const selectedVerCdt = this.model.state.chudautu.find((c) => c.id === e.target.value);
           if (selectedVerCdt && confirmContainer && confirmInfo) {
             setRuntimeStyle(confirmContainer, "display", "block");
+            if (confirmTitle) {
+              const effectiveDate = selectedVerCdt.ngayApDung ? this.model.formatDate(selectedVerCdt.ngayApDung) : "--";
+              confirmTitle.textContent = `Thông tin Chủ đầu tư - Ngày ${effectiveDate}`;
+            }
             confirmInfo.innerHTML = trustedHTML(`
                             <strong>Mã:</strong> ${escapeHtml(formatPartnerIdentityCode(selectedVerCdt.maChuDauTu, "--"))}<br>
                             <strong>Tên:</strong> ${escapeHtml(selectedVerCdt.tenChuDauTu || "--")}<br>
@@ -189,8 +186,12 @@ export async function editHopDong(id) {
                         `);
           }
         };
-        versionSelect.value = selectVersionId || selectedCdtId;
+        const defaultVersionId = selectVersionId && versions.some((version) => version.id === selectVersionId)
+          ? selectVersionId
+          : versions[0]?.id || selectedCdtId;
+        versionSelect.value = defaultVersionId;
         versionSelect.dispatchEvent(new Event("change"));
+        initCustomSelect(versionSelect.id);
       }
     };
     cdtSelect.onchange = (e) => {
@@ -206,6 +207,7 @@ export async function editHopDong(id) {
       const versionGroup = document.getElementById("hd-nhathau-version-group");
       const versionSelect = document.getElementById("hd-nhathau-version-select");
       const confirmContainer = document.getElementById("hd-nhathau-confirm-container");
+      const confirmTitle = document.getElementById("hd-nhathau-confirm-title");
       const confirmInfo = document.getElementById("hd-nhathau-confirm-info");
       if (!selectedNtId) {
         if (versionGroup) setRuntimeStyle(versionGroup, "display", "none");
@@ -220,8 +222,7 @@ export async function editHopDong(id) {
       if (versionSelect && versionGroup) {
         versionSelect.innerHTML = trustedHTML(versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
-          const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
-          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
+          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
         }).join(""));
         setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
@@ -229,6 +230,10 @@ export async function editHopDong(id) {
           const selectedVerNt = this.model.state.nhathau.find((n) => n.id === e.target.value);
           if (selectedVerNt && confirmContainer && confirmInfo) {
             setRuntimeStyle(confirmContainer, "display", "block");
+            if (confirmTitle) {
+              const effectiveDate = selectedVerNt.ngayApDung ? this.model.formatDate(selectedVerNt.ngayApDung) : "--";
+              confirmTitle.textContent = `Thông tin Nhà thầu - Ngày ${effectiveDate}`;
+            }
             const isJV = selectedVerNt.loaiNhaThau === "Liên danh";
             let detailsHtml = `
                             <strong>Mã:</strong> ${escapeHtml(formatPartnerIdentityCode(selectedVerNt.maNhaThau, "--"))}<br>
@@ -251,8 +256,12 @@ export async function editHopDong(id) {
             confirmInfo.innerHTML = trustedHTML(detailsHtml);
           }
         };
-        versionSelect.value = selectVersionId || selectedNtId;
+        const defaultVersionId = selectVersionId && versions.some((version) => version.id === selectVersionId)
+          ? selectVersionId
+          : versions[0]?.id || selectedNtId;
+        versionSelect.value = defaultVersionId;
         versionSelect.dispatchEvent(new Event("change"));
+        initCustomSelect(versionSelect.id);
       }
     };
     ntSelect.onchange = (e) => {
@@ -263,7 +272,7 @@ export async function editHopDong(id) {
         return;
       }
       handleNtChange(e.target.value);
-      rerenderEligiblePackages();
+      rerenderPlanPackages();
     };
     const _roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };
     const restoreHdEmpValue = () => {

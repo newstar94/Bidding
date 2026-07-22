@@ -34,57 +34,49 @@
                             <div class="form-group">
                                 <label for="hd-ngaythanhly">Ngày thanh lý hợp đồng</label>
                                 <input type="text" id="hd-ngaythanhly" class="flatpickr-date" placeholder="dd/MM/yyyy">
-                                <span class="helper-text">Để trống khi hợp đồng chưa thanh lý.</span>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="hd-chudautuid">Chủ đầu tư <span class="required">*</span></label>
-                            <select id="hd-chudautuid" required>
-                                <option value="">-- Chọn Chủ đầu tư --</option>
-
-                            </select>
-                            <span class="error-text">Vui lòng chọn Chủ đầu tư</span>
-                        </div>
-                        <div class="form-group bf-s-65d1f1c3d7" id="hd-chudautu-version-group">
-                            <label for="hd-chudautu-version-select">Phiên bản Chủ đầu tư <span
-                                    class="required">*</span></label>
-                            <select id="hd-chudautu-version-select" required>
-                                <option value="">-- Chọn Phiên bản --</option>
-                            </select>
-                            <span class="error-text">Vui lòng chọn Phiên bản Chủ đầu tư</span>
-                        </div>
-                        <div class="form-group col-span-2 bf-s-9801002122" id="hd-chudautu-confirm-container"
-                           >
-                            <div
-                                class="bf-s-38a848e25c">
-                                Xác nhận Thông tin Chủ đầu tư:</div>
-                            <div id="hd-chudautu-confirm-info"
-                                class="bf-s-99627f5b38"></div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="hd-nhathauid">Nhà thầu <span class="required">*</span></label>
-                            <select id="hd-nhathauid" required>
-                                <option value="">-- Chọn Nhà thầu --</option>
-
-                            </select>
-                            <span class="error-text">Vui lòng chọn Nhà thầu</span>
-                        </div>
-                        <div class="form-group bf-s-65d1f1c3d7" id="hd-nhathau-version-group">
-                            <label for="hd-nhathau-version-select">Phiên bản Nhà thầu <span
-                                    class="required">*</span></label>
-                            <select id="hd-nhathau-version-select" required>
-                                <option value="">-- Chọn Phiên bản --</option>
-                            </select>
-                            <span class="error-text">Vui lòng chọn Phiên bản Nhà thầu</span>
-                        </div>
-                        <div class="form-group col-span-2 bf-s-9801002122" id="hd-nhathau-confirm-container"
-                           >
-                            <div
-                                class="bf-s-38a848e25c">
-                                Xác nhận Thông tin Nhà thầu:</div>
-                            <div id="hd-nhathau-confirm-info"
-                                class="bf-s-99627f5b38"></div>
+                        <div class="contract-partner-section">
+                            <div class="contract-partner-select-grid">
+                                <div class="form-group">
+                                    <label for="hd-chudautuid">Chủ đầu tư <span class="required">*</span></label>
+                                    <select id="hd-chudautuid" required>
+                                        <option value="">-- Chọn Chủ đầu tư --</option>
+                                    </select>
+                                    <span class="error-text">Vui lòng chọn Chủ đầu tư</span>
+                                </div>
+                                <div class="form-group bf-s-65d1f1c3d7" id="hd-chudautu-version-group">
+                                    <label for="hd-chudautu-version-select">Phiên bản <span class="required">*</span></label>
+                                    <select id="hd-chudautu-version-select" required>
+                                        <option value="">--</option>
+                                    </select>
+                                    <span class="error-text">Vui lòng chọn Phiên bản Chủ đầu tư</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="hd-nhathauid">Nhà thầu <span class="required">*</span></label>
+                                    <select id="hd-nhathauid" required>
+                                        <option value="">-- Chọn Nhà thầu --</option>
+                                    </select>
+                                    <span class="error-text">Vui lòng chọn Nhà thầu</span>
+                                </div>
+                                <div class="form-group bf-s-65d1f1c3d7" id="hd-nhathau-version-group">
+                                    <label for="hd-nhathau-version-select">Phiên bản <span class="required">*</span></label>
+                                    <select id="hd-nhathau-version-select" required>
+                                        <option value="">--</option>
+                                    </select>
+                                    <span class="error-text">Vui lòng chọn Phiên bản Nhà thầu</span>
+                                </div>
+                            </div>
+                            <div class="contract-partner-info-grid">
+                                <div class="form-group bf-s-9801002122" id="hd-chudautu-confirm-container">
+                                    <div id="hd-chudautu-confirm-title" class="bf-s-38a848e25c">Thông tin Chủ đầu tư</div>
+                                    <div id="hd-chudautu-confirm-info" class="bf-s-99627f5b38"></div>
+                                </div>
+                                <div class="form-group bf-s-9801002122" id="hd-nhathau-confirm-container">
+                                    <div id="hd-nhathau-confirm-title" class="bf-s-38a848e25c">Thông tin Nhà thầu</div>
+                                    <div id="hd-nhathau-confirm-info" class="bf-s-99627f5b38"></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="hd-giatri">Giá trị hợp đồng (VND) <span class="required">*</span></label>
@@ -106,6 +98,7 @@
                             <select id="hd-phanloai" required>
                                 <option value="Tư vấn" selected>Tư vấn</option>
                                 <option value="Thẩm định">Thẩm định</option>
+                                <option value="Khác">Khác</option>
                             </select>
                         </div>
                         <div class="form-group">

@@ -678,14 +678,6 @@ def _create_trigger_functions(cursor) -> None:
                  AND hd.archived_at IS NULL AND gt.archived_at IS NULL
                  AND COALESCE(NULLIF(hdkh.id_goc, ''), hdkh.id)
                    = COALESCE(NULLIF(gtkh.id_goc, ''), gtkh.id)
-                 AND (
-                   hd.co_qd_chi_dinh = 1
-                   OR (
-                     gt.trang_thai = 'AWARDED'
-                     AND gt.nha_thau_trung_thau_id IS NOT NULL
-                     AND gt.nha_thau_trung_thau_id = hd.nha_thau_id
-                   )
-                 )
              ) THEN
                RAISE EXCEPTION 'CONTRACT_PACKAGE_BUSINESS_MISMATCH' USING ERRCODE = '23514';
              END IF;

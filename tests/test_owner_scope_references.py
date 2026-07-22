@@ -290,7 +290,7 @@ def _contract_incoming_ids():
     }
 
 
-def test_contract_packages_must_share_plan_winner_status_and_value() -> None:
+def test_contract_packages_only_need_to_exist_and_share_the_selected_plan() -> None:
     assert ownership.validate_owner_scoped_references(
         _Cursor(),
         "org",
@@ -304,26 +304,35 @@ def test_contract_packages_must_share_plan_winner_status_and_value() -> None:
         _Cursor(),
         "org",
         "hop_dong",
-        _contract_item(goiThauIds=["package", "package"], giaTri="999"),
+        _contract_item(giaTri="999"),
         incoming_ids_by_table=_contract_incoming_ids(),
         incoming_records_by_table=_contract_incoming_records(
-            keHoachId="other-plan",
             trangThai=PACKAGE_STATUS_LABELS["INVITED"],
             nhaThauTrungThauId="other",
-            giaTrungThau="100",
+            giaTrungThau=None,
         ),
     )
-    assert len(errors) >= 5
+    assert errors == []
 
-    direct_errors = ownership.validate_owner_scoped_references(
+    wrong_plan_errors = ownership.validate_owner_scoped_references(
         _Cursor(),
         "org",
         "hop_dong",
-        _contract_item(coQdChiDinh=True, giaTri="151"),
+        _contract_item(),
+        incoming_ids_by_table=_contract_incoming_ids(),
+        incoming_records_by_table=_contract_incoming_records(keHoachId="other-plan"),
+    )
+    assert wrong_plan_errors
+
+    duplicate_errors = ownership.validate_owner_scoped_references(
+        _Cursor(),
+        "org",
+        "hop_dong",
+        _contract_item(goiThauIds=["package", "package"]),
         incoming_ids_by_table=_contract_incoming_ids(),
         incoming_records_by_table=_contract_incoming_records(),
     )
-    assert any("vượt" in error for error in direct_errors)
+    assert duplicate_errors
 
 
 def test_contract_missing_stored_package_does_not_run_value_comparison() -> None:

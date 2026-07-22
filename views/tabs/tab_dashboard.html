@@ -59,8 +59,14 @@
                 <h3 class="card-title" id="dashboard-recent-title">Gói thầu được giao mới cập nhật</h3>
                 <button class="btn btn-outline btn-sm" id="btn-view-all-packages" type="button">Xem tất cả</button>
             </div>
-            <div class="card-body overflow-x dashboard-table-body">
-                <table class="data-table" id="recent-packages-table" data-density="compact">
+            <div class="card-body dashboard-table-body">
+                <table class="data-table dashboard-recent-table" id="recent-packages-table" data-density="compact">
+                    <colgroup>
+                        <col class="dashboard-recent-code-column">
+                        <col class="dashboard-recent-name-column">
+                        <col class="dashboard-recent-price-column">
+                        <col class="dashboard-recent-status-column">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th>Mã gói thầu</th>

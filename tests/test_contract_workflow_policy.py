@@ -86,3 +86,102 @@ def test_contract_duration_and_plan_share_requested_responsive_grid():
     assert group.index('id="hd-songay"') < group.index('id="hd-kehoachid"')
     assert ".contract-plan-duration-grid {" in stylesheet
     assert "grid-template-columns: minmax(0, 3fr) minmax(0, 9fr);" in stylesheet
+
+
+def test_contract_partner_version_options_refresh_the_visible_controls():
+    source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
+        encoding="utf-8-sig"
+    )
+
+    assert "initCustomSelect" in source.split("from \"../shared/view_helpers.js\";")[0]
+    assert source.count("initCustomSelect(versionSelect.id);") >= 2
+
+
+def test_contract_partners_use_compact_5_1_5_1_version_layout():
+    modal = (ROOT / "views" / "modals" / "modal_hopdong.html").read_text(
+        encoding="utf-8"
+    )
+    source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
+        encoding="utf-8-sig"
+    )
+    stylesheet = (ROOT / "views" / "css" / "ui-redesign.css").read_text(
+        encoding="utf-8"
+    )
+
+    controls = modal[
+        modal.index('<div class="contract-partner-section">'):
+        modal.index('id="hd-giatri"')
+    ]
+    assert controls.index('id="hd-chudautuid"') < controls.index('id="hd-chudautu-version-select"')
+    assert controls.index('id="hd-chudautu-version-select"') < controls.index('id="hd-nhathauid"')
+    assert controls.index('id="hd-nhathauid"') < controls.index('id="hd-nhathau-version-select"')
+    assert controls.count('>Phiên bản <span class="required">*</span></label>') == 2
+    assert "Phiên bản Chủ đầu tư <span" not in controls
+    assert "Phiên bản Nhà thầu <span" not in controls
+    assert "minmax(0, 5fr) minmax(92px, 1fr)" in stylesheet
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in stylesheet
+    assert "· áp dụng" not in source
+    assert "versions[0]?.id" in source
+    assert "Thông tin Chủ đầu tư - Ngày ${effectiveDate}" in source
+    assert "Thông tin Nhà thầu - Ngày ${effectiveDate}" in source
+
+
+def test_contract_package_links_are_not_restricted_by_procurement_result():
+    source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
+        encoding="utf-8-sig"
+    )
+    package_renderer = source[
+        source.index("const renderPackagesForPlan"):
+        source.index("const handleCdtChange")
+    ]
+
+    assert "planVersionIds.includes(g.keHoachId)" in package_renderer
+    assert "g.trangThai" not in package_renderer
+    assert "nhaThauTrungThauId" not in package_renderer
+    assert "selectedContractorId" not in package_renderer
+    assert "Không có gói thầu đủ điều kiện lập hợp đồng" not in package_renderer
+
+
+def test_contract_classification_supports_other():
+    modal = (ROOT / "views" / "modals" / "modal_hopdong.html").read_text(
+        encoding="utf-8"
+    )
+    classification = modal[
+        modal.index('id="hd-phanloai"'):
+        modal.index('id="hd-coqdchidinh"')
+    ]
+    excel_handler = (ROOT / "backend" / "documents" / "excel_handler.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '<option value="Khác">Khác</option>' in classification
+    assert "'options': ['Tư vấn', 'Thẩm định', 'Khác']" in excel_handler
+
+
+def test_searchable_word_combobox_removes_the_superseded_generic_control():
+    source = (ROOT / "frontend" / "shared" / "PartnerHelpers.js").read_text(
+        encoding="utf-8-sig"
+    )
+    helper = source[
+        source.index("export function makeSearchableSelect"):
+        source.index("function searchableSelectSignature")
+    ]
+
+    assert ".custom-select-container[data-target=" in helper
+    assert "genericContainer.remove();" in helper
+    assert 'body > .custom-select-options[data-parent="' in helper
+
+
+def test_contract_package_checkboxes_align_with_their_labels():
+    stylesheet = (ROOT / "views" / "css" / "ui-redesign.css").read_text(
+        encoding="utf-8"
+    )
+    label_start = stylesheet.index("#hd-goithau-list .checkbox-item {")
+    label_rule = stylesheet[label_start:stylesheet.index("}", label_start)]
+    input_start = stylesheet.index("#hd-goithau-list .checkbox-item input[type=checkbox] {")
+    input_rule = stylesheet[input_start:stylesheet.index("}", input_start)]
+
+    assert "align-items: center;" in label_rule
+    assert "grid-template-columns: 18px minmax(0, 1fr);" in label_rule
+    assert "min-height: 18px;" in input_rule
+    assert "margin: 0;" in input_rule

@@ -490,10 +490,10 @@ function renderRecentPackages(view, packages) {
   }
   tbody.innerHTML = trustedHTML(packages.map((pkg) => `
     <tr>
-      <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="text-blue fw-bold link-hover"><span class="detail-code">${escapeHtml(pkg.maGoiThau || "")}</span></a></td>
-      <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="view-package-link">${escapeHtml(pkg.tenGoiThau || "")}</a></td>
-      <td>${view.model.formatCurrency(pkg.giaGoiThau || 0)}</td>
-      <td>${view.getStatusBadge(pkg.trangThai)}</td>
+      <td class="dashboard-recent-code-cell"><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-code">${escapeHtml(pkg.maGoiThau || "")}</a></td>
+      <td class="dashboard-recent-name-cell"><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-name" title="${safeAttr(pkg.tenGoiThau || "")}">${escapeHtml(pkg.tenGoiThau || "")}</a></td>
+      <td class="dashboard-recent-price-cell">${view.model.formatCurrency(pkg.giaGoiThau || 0)}</td>
+      <td class="dashboard-recent-status-cell">${view.getStatusBadge(pkg.trangThai)}</td>
     </tr>
   `).join(""));
 }
