@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import threading
 import time
-from contextlib import AbstractContextManager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -295,19 +294,6 @@ class PostgresConnection:
         return False
 
 
-class _NoopLease(AbstractContextManager):
-    """Compatibility while lifecycle code is being made backend-neutral."""
-
-    def acquire(self):
-        return self
-
-    def release(self):
-        return None
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        return False
-
-
 class PostgresDatabase:
     engine = "postgresql"
 
@@ -438,11 +424,6 @@ class PostgresDatabase:
             cursor.execute(sql.SQL("SET TIME ZONE {}").format(sql.Literal(VIETNAM_TIMEZONE_NAME)))
         return connection
 
-    def acquire_writer_lease(self):
-        # PostgreSQL provides database-level concurrency; schema upgrades use a
-        # dedicated advisory lock rather than a process-wide file lease.
-        return _NoopLease()
-
     def pool_stats(self) -> dict[str, Any]:
         if self._pool is None:
             return {}
@@ -458,8 +439,3 @@ class PostgresDatabase:
 
 models = None
 database = PostgresDatabase()
-
-
-def load_and_register(name, filepath):
-    del filepath
-    return database if name == "database" else models

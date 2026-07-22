@@ -20,7 +20,6 @@ MANIFEST_VERSION = 1
 REPORT_DOCUMENT_TYPES = frozenset(
     {"evaluation", "hsmt", "opening", "result", "contract", "liquidation"}
 )
-DOCX_DOCUMENT_TYPES = frozenset({"plan", "timeline"}) | REPORT_DOCUMENT_TYPES
 _SAFE_ROOT_RE = re.compile(r"^[a-z][a-z0-9_]{0,127}$")
 
 _IMAGE_SOURCE_FIELDS = {

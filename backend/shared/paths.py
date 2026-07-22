@@ -43,9 +43,6 @@ def resolve_runtime_path(name, *, environ=None, allow_empty=False):
 
 
 LOG_DIR = resolve_runtime_path("BIDDING_LOG_DIR")
-TEMPLATE_DATA_DIR = Path(
-    os.environ.get("BIDDING_TEMPLATE_DATA_DIR") or DATA_DIR / "templates"
-).resolve()
 IMAGE_DIR = resolve_runtime_path("BIDDING_UPLOAD_DIR")
 WORD_TEMPLATE_DIR = resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")
 

@@ -99,14 +99,13 @@ chuyên viên = green. Nút hành động vẫn dùng accent chung.
 - Runtime token source: `views/css/tokens.css`.
 - Compatibility tokens legacy giữ trong `views/css/variables.css` trong thời
   gian migration; không thêm token mới vào legacy nếu đã có semantic token.
-- Mọi phase phải cập nhật `docs/frontend-redesign-plan.md` và chạy build.
+- Mọi thay đổi giao diện phải cập nhật tài liệu thiết kế này và chạy build.
 
 ## Exports
 
 ### Runtime `tokens.css`
 
-Nguồn chạy thật là `views/css/tokens.css`; file `tokens.css` ở root chỉ làm cầu
-nối để tái sử dụng ngoài runtime.
+Nguồn token duy nhất là `views/css/tokens.css`.
 
 ### Tailwind v4 `@theme`
 

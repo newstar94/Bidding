@@ -898,7 +898,6 @@ class TemplateRenderError(ValueError):
 def generate_report_from_custom_template(
     template_path,
     context,
-    custom_vars=None,
     context_manifest=None,
 ):
 

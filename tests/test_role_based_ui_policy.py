@@ -106,11 +106,3 @@ def test_role_styles_have_semantic_tokens_and_responsive_rules():
     assert ".sidebar-role-context" not in styles
     assert "@media (max-width: 480px)" in styles
     assert "@media (prefers-reduced-motion: reduce)" in styles
-
-
-def test_role_ui_plan_is_stored_with_acceptance_criteria():
-    plan = (ROOT / "docs" / "ROLE_BASED_UI_DIFFERENTIATION_PLAN.md").read_text(encoding="utf-8")
-
-    assert "# Kế hoạch phân biệt giao diện theo vai trò" in plan
-    assert "## 7. Tiêu chí nghiệm thu" in plan
-    assert "không được xóa" in plan.casefold()

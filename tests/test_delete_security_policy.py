@@ -234,12 +234,9 @@ def _apply(cursor, deletions, **overrides):
         "organization_id": "org-1",
         "actor_role": "manager",
         "actor_user_id": "user-1",
-        "session_id": "session-1",
         "current_time": 100,
         "sync_version": 101,
         "clean_record_id": lambda _table, value: str(value or "").strip(),
-        "privileged_reauth_ttl_seconds": 300,
-        "privileged_reauth_error_message": "reauth",
         "ip_address": "127.0.0.1",
     }
     arguments.update(overrides)
@@ -302,7 +299,6 @@ def test_deletion_enforces_record_and_elevated_permissions_without_password_reau
         [{"table": "goithau", "id": "record-1", "expectedVersion": 1}],
     )
     assert result["errors"] == []
-    assert result["privilegedError"] is None
     assert result["impacts"][0]["action"] == "deleted"
 
 
@@ -344,7 +340,6 @@ def test_personal_owner_can_delete_own_high_impact_aggregate(
         actor_role="employee",
     )
     assert result["errors"] == []
-    assert result["privilegedError"] is None
     assert result["impacts"][0]["action"] == "deleted"
 
 

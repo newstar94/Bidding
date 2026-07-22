@@ -17,14 +17,6 @@ TABLE_KEYS = {
     "permissionmatrix": "ma_tran_phan_quyen"
 }
 
-FTS_SEARCH_TABLES = {
-    "ke_hoach_lcnt",
-    "goi_thau",
-    "chu_dau_tu",
-    "nha_thau",
-    "hop_dong",
-}
-
 SYNCED_TABLES = set(TABLE_KEYS.values())
 ALLOWED_ORPHAN_TABLES = {
     "goi_thau",

@@ -43,13 +43,6 @@ export function collectFormValues(root, mapping, schemaType = null) {
   return result;
 }
 
-export function normalizeFormValues(data, schema = {}) {
-  return Object.fromEntries(Object.entries(data || {}).map(([key, value]) => {
-    const normalize = schema[key]?.normalize || schema[key];
-    return [key, typeof normalize === "function" ? normalize(value, data) : value];
-  }));
-}
-
 export function resetFormState(form, { values = null, root = document, mapping = null } = {}) {
   form?.reset?.();
   clearFormValidation(form);

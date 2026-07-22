@@ -261,16 +261,6 @@ def _resolve_template_path(user_id, filename):
     return path, safe_name
 
 
-def _persist_user_template(user_id, filename, content):
-    user_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
-    dest_path = os.path.realpath(os.path.join(user_dir, filename))
-    if not dest_path.startswith(user_dir + os.sep):
-        raise ValueError("Tên tệp không hợp lệ")
-    with open(dest_path, "wb") as template_file:
-        template_file.write(content)
-    custom_exporter.set_active_template(filename, user_id)
-
-
 def _persist_user_template_from_path(user_id, filename, source_path):
     user_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
     dest_path = os.path.realpath(os.path.join(user_dir, filename))
@@ -352,7 +342,7 @@ def _prepare_plan_render(plan_id, user_id, organization_id, role_str):
     template_path, _ = _resolve_template_path(
         user_id, active_template
     )
-    return context, manifest, mappings, template_path, sensitive_groups
+    return context, manifest, template_path, sensitive_groups
 
 
 def _prepare_report_render(
@@ -387,7 +377,7 @@ def _prepare_report_render(
     template_path, _ = _resolve_template_path(
         user_id, active_template
     )
-    return context, manifest, mappings, template_path, sensitive_groups
+    return context, manifest, template_path, sensitive_groups
 
 
 async def export_plan_api(request):
@@ -410,7 +400,6 @@ async def export_plan_api(request):
             (
                 unified_context,
                 context_manifest,
-                mappings_rows,
                 tpl_path,
                 sensitive_groups,
             ) = await run_database_read(
@@ -425,15 +414,11 @@ async def export_plan_api(request):
             return _database_read_unavailable_response(request)
         except BlockingIOTimeoutError:
             return _database_read_unavailable_response(request, timed_out=True)
-
-        custom_vars_list = [row[0].lower() for row in mappings_rows]
-
         docx_bytes = await run_document_job_async(
             "render_docx",
             {
                 "template_path": tpl_path,
                 "context": unified_context,
-                "custom_vars": custom_vars_list,
                 "context_manifest": context_manifest,
             },
         )
@@ -502,7 +487,6 @@ async def export_report_api(request):
             (
                 unified_context,
                 context_manifest,
-                mappings_rows,
                 tpl_path,
                 sensitive_groups,
             ) = await run_database_read(
@@ -518,15 +502,11 @@ async def export_report_api(request):
             return _database_read_unavailable_response(request)
         except BlockingIOTimeoutError:
             return _database_read_unavailable_response(request, timed_out=True)
-
-        custom_vars_list = [row[0].lower() for row in mappings_rows]
-
         docx_bytes = await run_document_job_async(
             "render_docx",
             {
                 "template_path": tpl_path,
                 "context": unified_context,
-                "custom_vars": custom_vars_list,
                 "context_manifest": context_manifest,
             },
         )

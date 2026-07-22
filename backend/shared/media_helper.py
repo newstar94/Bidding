@@ -15,7 +15,6 @@ from backend.shared.paths import IMAGE_DIR
 from backend.shared.logging_utils import log_error
 
 
-_load_image_cache: dict = {}
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 8_192
 MAX_IMAGE_PIXELS = 20_000_000
@@ -191,22 +190,8 @@ def delete_managed_image_files(managed_paths) -> list[str]:
                 removed.append(related_path)
             except OSError:
                 continue
-
-        stale_cache_keys = [
-            key for key in _load_image_cache
-            if isinstance(key, tuple) and key and key[0] == managed_path
-        ]
-        for key in stale_cache_keys:
-            _load_image_cache.pop(key, None)
     return removed
 
-
-def remove_unreferenced_image_files(cursor, candidates) -> list[str]:
-    """Compatibility wrapper; new transaction code should use the split phases."""
-
-    return delete_managed_image_files(
-        find_unreferenced_image_paths(cursor, candidates)
-    )
 
 def _decode_and_validate_image(
     base64_str: str,
@@ -401,43 +386,3 @@ def save_base64_image(
                 os.remove(temporary_path)
             except OSError:
                 pass
-
-def load_base64_image(db_value: str) -> str:
-    if not db_value or not isinstance(db_value, str):
-        return ""
-    if not db_value.startswith("images/"):
-        return db_value
-
-    try:
-        filepath = os.path.join(IMAGE_DIR, db_value.removeprefix("images/"))
-        if not os.path.exists(filepath):
-            return db_value
-        mtime = os.path.getmtime(filepath)
-        cache_key = (db_value, mtime)
-    except Exception:
-        cache_key = (db_value, 0)
-        filepath = os.path.join(IMAGE_DIR, db_value.removeprefix("images/"))
-
-    if cache_key in _load_image_cache:
-        return _load_image_cache[cache_key]
-    try:
-        if os.path.exists(filepath):
-            with open(filepath, "rb") as f:
-                file_data = f.read()
-            ext = db_value.split(".")[-1].lower()
-            mime = "image/png"
-            if ext in ["jpg", "jpeg"]:
-                mime = "image/jpeg"
-            elif ext == "webp":
-                mime = "image/webp"
-            elif ext == "gif":
-                mime = "image/gif"
-            b64 = f"data:{mime};base64,{base64.b64encode(file_data).decode('utf-8')}"
-
-            if len(_load_image_cache) >= 256:
-                _load_image_cache.pop(next(iter(_load_image_cache)))
-            _load_image_cache[cache_key] = b64
-            return b64
-    except Exception as e:
-        log_error(e, "Media.LoadImage")
-    return db_value

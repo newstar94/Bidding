@@ -807,9 +807,6 @@
   }
 }
 @media (max-width: 1180px) {
-  .dashboard-work-grid {
-    grid-template-columns: 1fr;
-  }
   .dashboard-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

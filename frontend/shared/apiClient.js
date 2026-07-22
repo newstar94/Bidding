@@ -65,11 +65,6 @@ export function configureApiClient({ activeOrganization, onHttpError } = {}) {
   }
 }
 
-export function resetApiClientConfiguration() {
-  clientConfiguration.activeOrganization = defaultActiveOrganization;
-  clientConfiguration.onHttpError = null;
-}
-
 export function readCookie(name, cookieSource = globalThis.document?.cookie || "") {
   const prefix = `${name}=`;
   const raw = String(cookieSource)
@@ -322,12 +317,4 @@ export function getJson(url, options = {}, fetchImpl) {
 
 export function postJson(url, body, options = {}, fetchImpl) {
   return requestJson(url, { ...options, method: "POST", body }, fetchImpl);
-}
-
-export function putJson(url, body, options = {}, fetchImpl) {
-  return requestJson(url, { ...options, method: "PUT", body }, fetchImpl);
-}
-
-export function deleteJson(url, body = null, options = {}, fetchImpl) {
-  return requestJson(url, { ...options, method: "DELETE", body }, fetchImpl);
 }

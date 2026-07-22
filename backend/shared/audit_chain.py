@@ -442,10 +442,3 @@ def write_audit_checkpoint(checkpoint, destination):
             pass
         raise
     return final_path
-
-
-def export_audit_checkpoint(cursor, destination, *, hmac_key=None):
-    """Compatibility wrapper for callers that already manage transaction scope."""
-
-    checkpoint = build_audit_checkpoint(cursor, hmac_key=hmac_key)
-    return write_audit_checkpoint(checkpoint, destination)

@@ -154,5 +154,3 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   }
   return { changedKeys, deletionsByTable, useServerSidePagination, persistencePromise };
 }
-
-export const applySyncPayload = applyServerSnapshot;

@@ -161,7 +161,6 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         stream = generate_report_from_custom_template(
             payload["template_path"],
             payload["context"],
-            payload.get("custom_vars"),
             context_manifest,
         )
         result = stream.getvalue()

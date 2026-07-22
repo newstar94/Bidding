@@ -29,7 +29,7 @@ from backend.shared.helpers import (
     OrgPermissionError,
     gui_email,
 )
-from backend.auth.auth_helper import _session_cache_get, _session_cache_set
+from backend.auth.auth_helper import _session_cache_set
 from backend.auth.auth_helper import (
     PRIVILEGED_REAUTH_TTL_SECONDS,
     SESSION_ACTIVITY_TOUCH_SECONDS,

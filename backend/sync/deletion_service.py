@@ -33,12 +33,9 @@ def apply_sync_deletions(
     organization_id,
     actor_role,
     actor_user_id,
-    session_id,
     current_time,
     sync_version,
     clean_record_id,
-    privileged_reauth_ttl_seconds,
-    privileged_reauth_error_message,
     ip_address,
 ):
     result = {
@@ -48,7 +45,6 @@ def apply_sync_deletions(
         "affectedVersionFamilies": {},
         "affectedPlanIds": set(),
         "imageCleanupCandidates": set(),
-        "privilegedError": None,
     }
     if not isinstance(deletions, list):
         return result

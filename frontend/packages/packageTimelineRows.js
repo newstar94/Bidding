@@ -230,16 +230,6 @@ export function timelineIsOverdue(row, today = new Date()) {
   return Number.isFinite(deadline.getTime()) && deadline < today;
 }
 
-export function calculateTimelineStats(rows, today = new Date()) {
-  const applicable = rows.filter((row) => row.isApplicable !== false && row.trangThai !== "NOT_APPLICABLE");
-  return {
-    total: applicable.length,
-    done: applicable.filter((row) => row.trangThai === "DONE").length,
-    open: applicable.filter((row) => ["PENDING", "IN_PROGRESS"].includes(row.trangThai)).length,
-    overdue: applicable.filter((row) => timelineIsOverdue(row, today)).length
-  };
-}
-
 export function copyTimelineForNewVersion(previousRows = []) {
   return createDefaultTimelineRows().map((defaultRow) => {
     const previous = previousRows.find((row) => row.maMoc === defaultRow.maMoc);

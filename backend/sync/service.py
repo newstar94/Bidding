@@ -13,7 +13,6 @@ from backend.shared.helpers import (
     clean_id,
     database,
     get_active_org,
-    load_base64_image,
     log_error,
     recalculate_is_latest,
     recalculate_tong_muc_dau_tu,
@@ -26,10 +25,6 @@ from backend.shared.access_policy import OWNERSHIP_SCOPED_TABLES, authorize_reco
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
 from backend.observability.metrics import record_database_phase
-from backend.auth.auth_helper import (
-    PRIVILEGED_REAUTH_REQUIRED,
-    PRIVILEGED_REAUTH_TTL_SECONDS,
-)
 from backend.shared.date_utils import (
     is_datetime_column,
     normalize_date_value,
@@ -57,7 +52,6 @@ from backend.shared.numeric_utils import parse_vnd_amount
 from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.sync.queries import (
     ALLOWED_ORPHAN_TABLES,
-    SYNCED_TABLES,
     TABLE_KEYS,
 )
 from backend.sync.ownership import get_owner_type, validate_owner_scoped_references
@@ -74,7 +68,6 @@ from backend.sync.repository import (
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
 from backend.sync.validator import validate_sync_item
 from backend.sync.payload_validation import (
-    validate_contract_status_transition,
     validate_package_status_transition,
     validate_package_locked_fields,
     validate_sync_payload_shape,
@@ -1015,17 +1008,11 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
             organization_id=org_name,
             actor_role=role_str,
             actor_user_id=user_id,
-            session_id=getattr(role_or_err, "session_id", None),
             current_time=current_time,
             sync_version=batch_sync_version,
             clean_record_id=get_clean_id,
-            privileged_reauth_ttl_seconds=PRIVILEGED_REAUTH_TTL_SECONDS,
-            privileged_reauth_error_message=PRIVILEGED_REAUTH_REQUIRED,
             ip_address=get_client_ip(request),
         )
-        if deletion_result["privilegedError"]:
-            conn.rollback()
-            return JSONResponse(deletion_result["privilegedError"], status_code=403)
         sync_item_errors.extend(deletion_result["errors"])
         delete_impacts.extend(deletion_result["impacts"])
         for table_name, families in deletion_result["affectedVersionFamilies"].items():

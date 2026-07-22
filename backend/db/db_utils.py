@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from backend.db.db_helper import database
-from backend.db.postgres_schema import build_create_table_sql as _build_create_table_sql
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION
 

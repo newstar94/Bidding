@@ -24,9 +24,3 @@ export function installPrototypeModules(TargetClass, modules, { allowOverride = 
   installedModules.set(TargetClass, installed);
   return TargetClass;
 }
-
-
-export function getInstalledPrototypeModules(TargetClass) {
-  return new Map(installedModules.get(TargetClass) || []);
-}
-

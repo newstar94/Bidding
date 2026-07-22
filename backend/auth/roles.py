@@ -2,10 +2,6 @@
 
 PLATFORM_ROLES = frozenset({"super_admin", "user"})
 ORGANIZATION_ROLES = frozenset({"manager", "employee"})
-ORGANIZATION_ROLE_RANK = {
-    "employee": 0,
-    "manager": 1,
-}
 
 
 def normalize_platform_role(value):

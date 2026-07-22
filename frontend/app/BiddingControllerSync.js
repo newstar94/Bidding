@@ -848,7 +848,8 @@ export function setupWebSocketConnection() {
         this._wsReconnectTimer = null;
       }
       this._wsRetryDelay = 5e3;
-      if (debug) {
+      const intentionalWorkspaceChange = event.code === 1000 && event.reason === "workspace_changed";
+      if (debug && !intentionalWorkspaceChange) {
         console.warn(`WebSocket connection closed permanently for this session (code: ${event.code || "unknown"}). A new login is required before reconnecting.`);
       }
       return;

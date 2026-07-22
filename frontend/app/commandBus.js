@@ -12,7 +12,3 @@ export function executeAppCommand(name, ...args) {
   return activeExecutor(name, ...args);
 }
 
-export function hasCommandExecutor() {
-  return typeof activeExecutor === "function";
-}
-

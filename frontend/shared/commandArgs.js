@@ -23,8 +23,3 @@ export function resolveCommandArgs(key) {
   if (!key || !commandArguments.has(key)) return [];
   return [...commandArguments.get(key)];
 }
-
-export function clearCommandArgsForTests() {
-  commandArguments.clear();
-  nextArgumentId = 0;
-}

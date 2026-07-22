@@ -15,11 +15,6 @@ export function renderPackageStatusBadge(status) {
   return `<span class="badge ${className}"><i data-lucide="${icon}" aria-hidden="true"></i>${escapeHtml(label)}</span>`;
 }
 
-export function renderNeutralStatusBadge(status) {
-  const label = String(status || "").trim() || "Chưa cập nhật";
-  return `<span class="badge badge-neutral">${escapeHtml(label)}</span>`;
-}
-
 export function renderCustomStatusBadge(status, catalog = []) {
   const label = String(status || "").trim() || "Chưa cập nhật";
   const configured = Array.isArray(catalog)

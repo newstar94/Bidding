@@ -96,7 +96,6 @@ class _Connection:
 
 def _empty_deletion_result(**overrides):
     result = {
-        "privilegedError": None,
         "errors": [],
         "impacts": [],
         "affectedVersionFamilies": {},
@@ -122,7 +121,6 @@ def _install_core_defaults(monkeypatch, connections, *, owner_type="personal"):
     monkeypatch.setattr(service, "validate_sync_item", lambda _table, item, _statuses: (item, [], set()))
     monkeypatch.setattr(service, "validate_package_status_transition", lambda *_args: [])
     monkeypatch.setattr(service, "validate_package_locked_fields", lambda *_args: [])
-    monkeypatch.setattr(service, "validate_contract_status_transition", lambda *_args: [])
     monkeypatch.setattr(service, "validate_owner_scoped_references", lambda *_args: [])
     monkeypatch.setattr(service, "validate_opening_participant_uniqueness", lambda *_args: [])
     monkeypatch.setattr(service, "save_child_payloads", lambda *_args, **_kwargs: None)
@@ -523,19 +521,7 @@ def test_sync_updates_existing_row_and_handles_write_time_optimistic_conflict(mo
     assert response.status_code == 409
 
 
-def test_sync_deletion_privileged_error_and_item_errors_roll_back(monkeypatch):
-    auth = _Connection(_Cursor())
-    tx = _Connection(_Cursor())
-    _install_core_defaults(monkeypatch, [auth, tx])
-    monkeypatch.setattr(
-        service,
-        "apply_sync_deletions",
-        lambda *_args, **_kwargs: _empty_deletion_result(privilegedError={"error": "reauth"}),
-    )
-    response = service._process_sync_request_blocking(_Request(), {"deletions": [{"table": "goithau", "id": "gt"}]})
-    assert response.status_code == 403
-    assert tx.rollbacks == 1
-
+def test_sync_item_errors_roll_back(monkeypatch):
     class ForeignKeyError(Exception):
         sqlstate = "23503"
 

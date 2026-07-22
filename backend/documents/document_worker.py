@@ -39,8 +39,6 @@ from backend.observability.metrics import (
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
-MAX_RESULT_BYTES = 64 * 1024 * 1024
-MAX_JOB_BYTES = 64 * 1024 * 1024
 _BUSY_MESSAGE = (
     "Hệ thống đang xử lý quá nhiều tài liệu. Vui lòng thử lại sau."
 )

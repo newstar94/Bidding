@@ -129,19 +129,6 @@ def clean_id(val):
 
 
 
-def format_date_str(date_str):
-    if not date_str:
-        return '--'
-    date_str = str(date_str).strip().split(' ')[0]
-    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
-        try:
-            return datetime.datetime.strptime(date_str, fmt).strftime('%d/%m/%Y')
-        except ValueError:
-            pass
-    return date_str
-
-
-
 class VietnameseFloat(float):
     def __str__(self):
         try:
@@ -159,11 +146,3 @@ class VietnameseFloat(float):
             return formatted.replace(",", ".")
         except Exception:
             return super().__format__(spec)
-
-
-
-def clean_admin_prefix(name):
-    if not name:
-        return ""
-    pattern = r"^(thành phố|tỉnh|phường|xã|thị trấn)\s+"
-    return re.sub(pattern, '', name, flags=re.IGNORECASE)

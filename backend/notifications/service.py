@@ -10,9 +10,6 @@ import uuid
 from backend.auth.email_delivery_service import create_email_delivery
 
 
-ASSIGNMENT_TYPES = frozenset({"goithau", "hopdong"})
-
-
 def _organization_name(cursor, organization_id: str) -> str:
     row = cursor.execute(
         "SELECT ten_to_chuc FROM to_chuc WHERE id = ? LIMIT 1",
