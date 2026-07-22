@@ -14,6 +14,7 @@ import {
   ensureCurrentUserAssignee,
   resolvePackageAssigneeId,
 } from "./packageAssignmentPolicy.js";
+import { derivePackagePrice } from "./packagePricing.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function editGoiThau(id, isReadOnly = false) {
@@ -747,6 +748,11 @@ export async function handleGoiThauSubmit(e) {
   }
   const collectedPhanLoList = this._collectPhanLoRows();
   const collectedTuyChonList = this._collectTuyChonMuaThemRows();
+  const packagePriceToSave = derivePackagePrice({
+    phanLo: formVals.phanLo,
+    giaGoiThau: formVals.giaGoiThau,
+    phanLoList: collectedPhanLoList
+  });
   if (isPhanLo) {
     const codes = collectedPhanLoList.map((item) => item.maPhanLo ? item.maPhanLo.trim().toLowerCase() : "");
     const duplicateCodes = codes.filter((code, idx) => code !== "" && codes.indexOf(code) !== idx);
@@ -802,20 +808,6 @@ export async function handleGoiThauSubmit(e) {
         return;
       }
     }
-    const giaGoiThau = formVals.giaGoiThau || 0;
-    const totalPhanLoVal = this.model.sumVND(collectedPhanLoList.map((item) => item.giaTriPhanLo));
-    if (String(this.model.parseVND(giaGoiThau) || 0) !== String(totalPhanLoVal)) {
-      const confirmed = await this.view.customConfirm(
-        "Cảnh báo chênh lệch giá",
-        `Giá gói thầu (${this.model.formatVND(giaGoiThau)} VND) khác với tổng giá trị của các phần lô (${this.model.formatVND(totalPhanLoVal)} VND).
-
-Bạn có chắc chắn muốn tiếp tục lưu không?`,
-        "alert-triangle"
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
   }
   const phuongPhapDanhGia = formVals.phuongPhapDanhGia;
   const trongSoKyThuat = phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá"
@@ -840,7 +832,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
   const gtData = {
     keHoachId: planIdToSave,
     tenGoiThau: formVals.tenGoiThau,
-    giaGoiThau: formVals.giaGoiThau,
+    giaGoiThau: packagePriceToSave,
     thoiGianThucHien: formVals.thoiGianThucHien,
     hinhThucLuaChon: formVals.hinhThucLuaChon,
     phuongThucLuaChon,

@@ -22,9 +22,10 @@ export function addEvaluationLetterRow({ view, model, containerId, letter = { so
     ` : `
         <input type="text" class="form-control letter-so-cv bf-s-6621c14642" placeholder="Số công văn" value="${escapeHtml(letter.soCv || "")}" required>
         <input type="date" class="form-control letter-ngay-cv bf-s-6621c14642" value="${escapeHtml(ngayFormattedInput)}" required>
-        <button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="remove-closest" data-selector=".letter-row">&times;</button>
+        <button type="button" class="action-btn btn-delete btn-delete-row" data-bf-action="remove-closest" data-selector=".letter-row" aria-label="Xóa công văn" title="Xóa công văn"><i data-lucide="trash-2" aria-hidden="true"></i></button>
     `);
   container.appendChild(div);
+  view.createIconsScoped?.(div);
 }
 export function renderEvaluationSummary({ container, gt, tenCdt, tenKhStr, model, is1G2T, isReadOnly, currentTab }) {
   if (!container) return;

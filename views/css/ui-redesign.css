@@ -341,15 +341,52 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .notification-read-all {
-  padding: 4px 0;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #cbd7ff;
+  border-radius: 8px;
   color: var(--brand);
+  background: var(--brand-soft);
   font-size: 0.73rem;
   font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    color var(--dur-short) var(--ease-out),
+    background-color var(--dur-short) var(--ease-out),
+    border-color var(--dur-short) var(--ease-out);
+}
+
+.notification-read-all svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.25;
+}
+
+.notification-read-all:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: #fff;
+  background: var(--brand);
+}
+
+.notification-read-all:active:not(:disabled) {
+  border-color: var(--brand-strong);
+  background: var(--brand-strong);
 }
 
 .notification-read-all:disabled {
+  border-color: var(--line);
   color: var(--ink-subtle);
+  background: var(--surface-subtle);
   cursor: default;
+  opacity: 0.72;
 }
 
 .notification-panel-scroll {

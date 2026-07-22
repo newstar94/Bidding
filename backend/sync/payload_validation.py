@@ -214,6 +214,22 @@ def _as_list(value):
     return []
 
 
+def _derive_lotted_package_price(item):
+    if str(item.get("phanLo") or "").strip() != "Có":
+        return None
+    lots = _as_list(item.get("phanLoList"))
+    if not lots:
+        return None
+    total = 0
+    for lot in lots:
+        if not isinstance(lot, dict):
+            continue
+        value = parse_vnd_amount(lot.get("giaTriPhanLo", lot.get("gia_tri_phan_lo")))
+        if value is not None:
+            total += value
+    return total
+
+
 def _validate_single_team_leader(item, field_name, label, errors):
     members = _as_list(item.get(field_name))
     if members:
@@ -536,6 +552,9 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             ("quyetDinhPheDuyet", "Quyết định phê duyệt kế hoạch"),
         ), errors)
     elif table_name == "goi_thau":
+        derived_package_price = _derive_lotted_package_price(item)
+        if derived_package_price is not None:
+            item["giaGoiThau"] = str(derived_package_price)
         _require_fields(item, (
             ("keHoachId", "Kế hoạch LCNT liên kết"),
             ("tenGoiThau", "Tên gói thầu"),
@@ -739,9 +758,8 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                     lot_total += value
             if len(normalized_codes) != len(set(normalized_codes)):
                 errors.append("Mã phần lô không được trùng trong cùng gói thầu.")
-            package_value = parse_vnd_amount(item.get("giaGoiThau"))
-            if package_value is not None and phan_lo_list and lot_total != package_value:
-                errors.append("Tổng giá trị các phần lô phải bằng giá gói thầu.")
+            if phan_lo_list:
+                item["giaGoiThau"] = str(lot_total)
         elif phan_lo_list:
             errors.append("Gói không phân lô không được chứa danh sách phần lô.")
 

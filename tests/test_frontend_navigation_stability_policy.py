@@ -105,6 +105,60 @@ def test_package_lot_input_focus_ring_is_compact():
     assert "box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);" in focus_rule
 
 
+def test_package_subtable_add_buttons_use_idempotent_event_binding():
+    source = _source("frontend/app/BiddingControllerForms.js")
+
+    for button_id in (
+        "btn-them-phanlo",
+        "btn-them-tuychonmuathem",
+        "btn-them-giahan",
+        "btn-them-yeucaulamro",
+        "btn-them-traloilamro",
+    ):
+        assert f'onById("{button_id}", "click"' in source
+
+
+def test_lotted_package_price_is_readonly_and_recalculated_from_rows():
+    form_controller = _source("frontend/app/BiddingControllerForms.js")
+    sub_tables = _source("frontend/shared/FormSubTables.js")
+    workflow = _source("frontend/packages/GoiThauWorkflow.js")
+    template = _source("views/modals/modal_goithau.html")
+
+    assert "export function recalculateTotalLotPrice()" in form_controller
+    assert 'setReadonlyVisual(packagePriceInput, phanLo === "Có")' in form_controller
+    assert "this.recalculateTotalLotPrice()" in sub_tables
+    assert "Cảnh báo chênh lệch giá" not in workflow
+    assert "giaGoiThau: packagePriceToSave" in workflow
+    assert 'id="gt-gia-derived-hint"' in template
+    assert "Tự động tính bằng tổng giá trị các phần lô." in template
+
+
+def test_delete_controls_use_the_compact_trash_icon_pattern():
+    components = _source("views/css/components.css")
+    sub_tables = _source("frontend/shared/FormSubTables.js")
+    breakdown = _source("frontend/plans/KeHoachWorkflow.js")
+    evaluation = _source("frontend/packages/bidEvaluationRender.js")
+    expert_modal = _source("views/modals/modal_chuyengia.html")
+    contractor_modal = _source("views/modals/modal_nhathau.html")
+
+    button_rule = components[components.index(".action-btn {"):components.index(".action-btn i,")]
+    assert "width: 32px;" in button_rule
+    assert "height: 32px;" in button_rule
+    icon_rule = components[components.index(".action-btn i,"):components.index(".action-btn:hover {")]
+    assert ".action-btn svg" in icon_rule
+    assert "width: 14px;" in icon_rule
+    assert "height: 14px;" in icon_rule
+
+    assert "btn btn-icon btn-danger" not in sub_tables
+    assert sub_tables.count('class="action-btn btn-delete') >= 5
+    for source in (breakdown, evaluation):
+        assert "&times;" not in source
+        assert 'data-lucide="trash-2"' in source
+    for source in (expert_modal, contractor_modal):
+        remove_file_markup = source[source.index("btn-remove-file"):]
+        assert 'data-lucide="trash-2"' in remove_file_markup
+
+
 def test_focus_indicators_share_one_compact_width_token():
     variables = _source("views/css/variables.css")
     assert "--focus-ring-width: 1px;" in variables

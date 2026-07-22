@@ -646,20 +646,20 @@ export function addBreakdownRow(type, data = null) {
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-unit bf-s-fa7eceb10a" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-doc bf-s-fa7eceb10a" value="${escapeHtml(data?.vanBanPheDuyet || "")}" placeholder="Văn bản phê duyệt..."></td>
-            <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]'>&times;</button></td>
+            <td class="bf-s-4f08020cfe"><button type="button" class="action-btn btn-delete btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]' aria-label="Xóa công việc" title="Xóa công việc"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
         `);
   } else if (type === "khongapdung") {
     row.innerHTML = trustedHTML(`
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-unit bf-s-fa7eceb10a" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..."></td>
-            <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]'>&times;</button></td>
+            <td class="bf-s-4f08020cfe"><button type="button" class="action-btn btn-delete btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]' aria-label="Xóa công việc" title="Xóa công việc"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
         `);
   } else if (type === "chuadudieuKien") {
     row.innerHTML = trustedHTML(`
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
-            <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]'>&times;</button></td>
+            <td class="bf-s-4f08020cfe"><button type="button" class="action-btn btn-delete btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]' aria-label="Xóa công việc" title="Xóa công việc"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
         `);
   }
   const priceInput = row.querySelector(".breakdown-value");
@@ -672,6 +672,7 @@ export function addBreakdownRow(type, data = null) {
     });
   }
   tbody.appendChild(row);
+  lucide.createIcons({ root: row });
 }
 export function removeBreakdownRow(btn, type) {
   const planId = document.getElementById("breakdown-plan-id").value;

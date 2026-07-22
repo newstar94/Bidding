@@ -1148,6 +1148,11 @@
   background-color: var(--danger);
   transform: scale(1.05);
 }
+.btn-remove-file i,
+.btn-remove-file svg {
+  width: 14px;
+  height: 14px;
+}
 .expert-profile-grid {
   display: grid;
   grid-template-columns: 320px 1fr;

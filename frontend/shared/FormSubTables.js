@@ -34,10 +34,11 @@ export function addPhanLoRow(data = {}) {
         <td><input type="text" class="pl-price-input bf-s-e278f41ed9" value="${price ? this.model.formatVND(price) : ""}" placeholder="Nhập giá trị Lô (VND)..."></td>
         <td class="col-baodam-phanlo-cell" style="${displayStyle}"><input type="text" class="pl-baodam-input mt-format-vnd bf-s-e278f41ed9" ${requiredAttr} value="${baoDamVal ? this.model.formatVND(baoDamVal) : ""}" placeholder="Bảo đảm dự thầu..."></td>
         <td><input type="text" class="pl-duration-input bf-s-e278f41ed9" value="${escapeHtml(duration)}" placeholder="Ví dụ: 90 ngày..."></td>
-        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-pl-row-btn bf-s-b1e83e90e6" aria-label="Xóa phân loại"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-pl-row-btn" aria-label="Xóa phần lô" title="Xóa phần lô"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   const priceInput = tr.querySelector(".pl-price-input");
   bindCurrencyElement(priceInput, (value) => this.model.formatVND(this.model.parseVND(value)));
+  priceInput.addEventListener("input", () => this.recalculateTotalLotPrice());
   const baodamInput = tr.querySelector(".pl-baodam-input");
   if (baodamInput) {
     bindCurrencyElement(baodamInput, (value) => this.model.formatVND(this.model.parseVND(value)));
@@ -45,9 +46,11 @@ export function addPhanLoRow(data = {}) {
   }
   tr.querySelector(".remove-pl-row-btn").addEventListener("click", () => {
     tr.remove();
+    this.recalculateTotalLotPrice();
     this.recalculateTotalLotSecurities();
   });
   tbody.appendChild(tr);
+  this.recalculateTotalLotPrice();
   lucide.createIcons();
 }
 export function _loadPhanLoRows(list) {
@@ -101,7 +104,7 @@ export function addTuyChonMuaThemRow(data = {}) {
         <td><input type="number" class="tc-quantity-input bf-s-e278f41ed9" value="${escapeHtml(soLuong)}" placeholder="Khối lượng..."></td>
         <td><input type="number" class="tc-percent-input bf-s-e278f41ed9" value="${escapeHtml(tyLe)}" placeholder="Tỷ lệ %..."></td>
         <td><input type="text" class="tc-price-input bf-s-e278f41ed9" value="${giaTriUocTinh ? this.model.formatVND(giaTriUocTinh) : ""}" placeholder="Giá trị (VND)..."></td>
-        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-tc-row-btn bf-s-b1e83e90e6" aria-label="Xóa tùy chọn"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-tc-row-btn" aria-label="Xóa tùy chọn" title="Xóa tùy chọn"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   const priceInput = tr.querySelector(".tc-price-input");
   bindCurrencyElement(priceInput, (value) => this.model.formatVND(this.model.parseVND(value)));
@@ -205,7 +208,7 @@ export function addGiaHanRow(data = {}) {
         <td class="gh-index-cell bf-s-d5b21f1b33">Lần ...</td>
         <td><input type="text" class="gh-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : "")}" placeholder="dd/MM/yyyy HH:mm"></td>
         <td><input type="text" class="gh-reason-input bf-s-e278f41ed9" value="${escapeHtml(data.lyDoGiaHan || "")}" placeholder="Nhập lý do gia hạn..."></td>
-        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-gh-row-btn bf-s-b1e83e90e6" aria-label="Xóa lần gia hạn"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-gh-row-btn" aria-label="Xóa lần gia hạn" title="Xóa lần gia hạn"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   const timeInput = tr.querySelector(".gh-time-input");
   timeInput.addEventListener("change", () => this.validateGiaHanRealtime());
@@ -262,7 +265,7 @@ export function addYeuCauLamRoRow(data = {}) {
         <td class="yc-index-cell bf-s-d5b21f1b33">...</td>
         <td><input type="text" class="yc-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianYeuCau ? this.model.formatForDatetimeLocal(data.thoiGianYeuCau) : "")}" placeholder="dd/MM/yyyy HH:mm" required></td>
         <td><input type="text" class="yc-content-input bf-s-e278f41ed9" value="${escapeHtml(data.noiDungYeuCau || "")}" placeholder="Nhập nội dung yêu cầu làm rõ..." required></td>
-        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-yc-row-btn bf-s-b1e83e90e6" aria-label="Xóa yêu cầu làm rõ"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-yc-row-btn" aria-label="Xóa yêu cầu làm rõ" title="Xóa yêu cầu làm rõ"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   tr.querySelector(".remove-yc-row-btn").addEventListener("click", () => {
     tr.remove();
@@ -316,7 +319,7 @@ export function addTraLoiLamRoRow(data = {}) {
         <td class="tl-index-cell bf-s-d5b21f1b33">...</td>
         <td><input type="text" class="tl-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianTraLoi ? this.model.formatForDatetimeLocal(data.thoiGianTraLoi) : "")}" placeholder="dd/MM/yyyy HH:mm" required></td>
         <td><input type="text" class="tl-content-input bf-s-e278f41ed9" value="${escapeHtml(data.noiDungTraLoi || "")}" placeholder="Nhập nội dung trả lời làm rõ..." required></td>
-        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-tl-row-btn bf-s-b1e83e90e6" aria-label="Xóa câu trả lời"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-tl-row-btn" aria-label="Xóa câu trả lời" title="Xóa câu trả lời"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   tr.querySelector(".remove-tl-row-btn").addEventListener("click", () => {
     tr.remove();

@@ -5,6 +5,7 @@ import { bindImageUploadPreview } from "./fileUploadUtils.js";
 import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisible } from "./formStateUtils.js";
 import { setupInlineExcelControls } from "./inlineExcelControls.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
+import { derivePackagePrice } from "../packages/packagePricing.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -574,10 +575,7 @@ export function setupActionListeners() {
     gtTuyChonMuaThemSelect.addEventListener("change", handleTuyChonMuaThemChange);
     this.handleTuyChonMuaThemChange = handleTuyChonMuaThemChange;
   }
-  const btnThemTuyChon = document.getElementById("btn-them-tuychonmuathem");
-  if (btnThemTuyChon) {
-    btnThemTuyChon.addEventListener("click", () => this.addTuyChonMuaThemRow());
-  }
+  onById("btn-them-tuychonmuathem", "click", () => this.addTuyChonMuaThemRow());
   const gtPhanLoSelect = document.getElementById("gt-phanlo");
   if (gtPhanLoSelect && gtPhanLoTableContainer) {
     const handlePhanLoChange = () => {
@@ -594,22 +592,10 @@ export function setupActionListeners() {
     gtPhanLoSelect.addEventListener("change", handlePhanLoChange);
     this.handlePhanLoChange = handlePhanLoChange;
   }
-  const btnThemPhanLo = document.getElementById("btn-them-phanlo");
-  if (btnThemPhanLo) {
-    btnThemPhanLo.addEventListener("click", () => this.addPhanLoRow());
-  }
-  const btnThemGiaHan = document.getElementById("btn-them-giahan");
-  if (btnThemGiaHan) {
-    btnThemGiaHan.addEventListener("click", () => this.addGiaHanRow());
-  }
-  const btnThemYeuCau = document.getElementById("btn-them-yeucaulamro");
-  if (btnThemYeuCau) {
-    btnThemYeuCau.addEventListener("click", () => this.addYeuCauLamRoRow());
-  }
-  const btnThemTraLoi = document.getElementById("btn-them-traloilamro");
-  if (btnThemTraLoi) {
-    btnThemTraLoi.addEventListener("click", () => this.addTraLoiLamRoRow());
-  }
+  onById("btn-them-phanlo", "click", () => this.addPhanLoRow());
+  onById("btn-them-giahan", "click", () => this.addGiaHanRow());
+  onById("btn-them-yeucaulamro", "click", () => this.addYeuCauLamRoRow());
+  onById("btn-them-traloilamro", "click", () => this.addTraLoiLamRoRow());
   setupInlineExcelControls(this);
   const gtQuaMangSelect = document.getElementById("gt-quatmang");
   const gtTrongNuocSelect = document.getElementById("gt-trongnuocquocte");
@@ -835,6 +821,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   setVisible(traLoiLamRoContainer, showClarifications);
   const linhVuc = document.getElementById("gt-linhvuc")?.value || "";
   const phanLo = document.getElementById("gt-phanlo")?.value || "";
+  this.recalculateTotalLotPrice();
   const mainBaoDamInput = document.getElementById("gt-giatribaomothau");
   const hieulucHsdtInput = document.getElementById("gt-hieuluchsdt");
   const hieulucBaoDamInput = document.getElementById("gt-hieuluchbaomothau");
@@ -921,6 +908,26 @@ export function recalculateTotalLotSecurities() {
       mainBaoDamInput.value = this.model.formatVND(sum);
     }
   }
+}
+export function recalculateTotalLotPrice() {
+  const phanLo = document.getElementById("gt-phanlo")?.value;
+  const packagePriceInput = document.getElementById("gt-gia");
+  if (!packagePriceInput) return 0;
+  setReadonlyVisual(packagePriceInput, phanLo === "Có");
+  const derivedHint = document.getElementById("gt-gia-derived-hint");
+  if (derivedHint) derivedHint.hidden = phanLo !== "Có";
+  if (phanLo !== "Có") {
+    return this.model.parseVND(packagePriceInput.value) || 0;
+  }
+  const total = derivePackagePrice({
+    phanLo,
+    phanLoList: Array.from(
+      document.querySelectorAll("#phanlo-tbody .pl-price-input"),
+      (input) => ({ giaTriPhanLo: input.value })
+    )
+  });
+  packagePriceInput.value = this.model.formatVND(total);
+  return total;
 }
 export function updateAwardedContractorUI(defaultDataList = null) {
   const trangThai = document.getElementById("gt-trangthai")?.value;

@@ -127,7 +127,7 @@ def _temporary_password_email(display_name, email, temporary_password):
     safe_name = html.escape(str(display_name or "bạn"))
     safe_email = html.escape(str(email))
     safe_password = html.escape(str(temporary_password))
-    subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản Google"
+    subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản"
     body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">

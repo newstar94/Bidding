@@ -682,7 +682,7 @@ def test_package_lot_and_purchase_option_invariants() -> None:
         ],
     )
     _, errors, _ = validation.validate_sync_item("goi_thau", lots)
-    assert len(errors) >= 3
+    assert len(errors) >= 2
 
     unexpected_lots = _minimal_package(
         phanLo="Không", phanLoList=[{"maPhanLo": "A", "giaTriPhanLo": "100"}]
@@ -698,6 +698,32 @@ def test_package_lot_and_purchase_option_invariants() -> None:
     )
     _, errors, _ = validation.validate_sync_item("goi_thau", unexpected_options)
     assert errors
+
+
+def test_lotted_package_derives_package_price_from_its_lots() -> None:
+    item = _minimal_package(
+        phanLo="Có",
+        giaGoiThau="999",
+        phanLoList=[
+            {"maPhanLo": "A", "giaTriPhanLo": "40"},
+            {"maPhanLo": "B", "giaTriPhanLo": "60"},
+        ],
+    )
+
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", item)
+
+    assert errors == []
+    assert normalized["giaGoiThau"] == "100"
+
+    missing_price = _minimal_package(
+        phanLo="Có",
+        giaGoiThau="",
+        phanLoList=[{"maPhanLo": "A", "giaTriPhanLo": "75"}],
+    )
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", missing_price)
+
+    assert errors == []
+    assert normalized["giaGoiThau"] == "75"
 
 
 def test_awarded_lots_validate_membership_winner_value_and_derive_total() -> None:

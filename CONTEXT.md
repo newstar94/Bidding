@@ -2,6 +2,16 @@
 
 BiddingFlow là hệ thống điều hành hồ sơ lựa chọn nhà thầu và hợp đồng theo phạm vi từng tổ chức.
 
+## Gói thầu
+
+**Giá gói thầu**:
+Giá trị dự toán của gói thầu; đối với gói thầu có phần lô, giá gói thầu bằng tổng giá trị của tất cả phần lô và không được nhập độc lập.
+_Avoid_: Tổng giá dự thầu, giá trúng thầu
+
+**Phần lô**:
+Phạm vi độc lập thuộc một gói thầu mà nhà thầu có thể tham dự và được đánh giá riêng.
+_Avoid_: Gói thầu con
+
 ## Hợp đồng
 
 **Trạng thái hợp đồng**:

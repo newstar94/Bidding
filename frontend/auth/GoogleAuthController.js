@@ -91,7 +91,7 @@ export function setupGoogleSignIn() {
       if (accountLinked) {
         descEl.innerHTML = trustedHTML('Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>');
       } else {
-        descEl.innerHTML = trustedHTML('Tài khoản Google của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.');
+        descEl.innerHTML = trustedHTML('Tài khoản của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.');
       }
     }
     setRuntimeStyle(modalOverlay, "display", "flex");

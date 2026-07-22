@@ -1,6 +1,7 @@
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
 import { persistAndSync } from "../shared/MutationService.js";
+import { derivePackagePrice } from "./packagePricing.js";
 
 export async function moThauGoiThau(id) {
   const requestedPackage = this.model.state.goithau.find((g) => g.id === id);
@@ -219,6 +220,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
     } else {
       gt.giaTriDamBaoDuThau = 0;
     }
+    gt.giaGoiThau = derivePackagePrice(gt);
     gt.trangThai = "Đang mời thầu";
     this.view.closeModal("modal-phathanh-hsmt");
     const syncResult = await persistAndSync(this, "goithau");
