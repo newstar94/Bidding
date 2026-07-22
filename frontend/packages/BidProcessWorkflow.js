@@ -23,6 +23,8 @@ import { renderOpeningSummary } from "./bidProcessRender.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
+import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
+import { persistAndSync } from "../shared/MutationService.js";
 import {
   enrichOpeningRowsWithPartnerInfo,
   findContractorByCode,
@@ -500,7 +502,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${typeSelectHtml}</td>
             <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
             <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
-            <td>${this.model.formatVND(bidData.giaDuThau || gt.giaGoiThau) || "--"}</td>
+            <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td>${escapeHtml(defaultDurationPkg)}</td>
         ` : `
             <td>${typeSelectHtml}</td>
@@ -509,24 +511,19 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
-            <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau || gt.giaGoiThau) || ""}" required placeholder="Giá dự thầu"></td>
+            <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(defaultDurationPkg)}" required placeholder="Thời gian gói"></td>
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "DIRECT_SPECIAL_WITH_LOT") {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
-    let defaultLotPrice = "";
-    if (bidData.maPhanLo) {
-      const foundLot = lotList.find((l) => l.maPhanLo === bidData.maPhanLo);
-      if (foundLot) defaultLotPrice = this.model.formatVND(foundLot.giaTriPhanLo) || "";
-    }
     cellHtml = readOnly ? `
             <td>${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
             <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
-            <td>${this.model.formatVND(bidData.giaDuThau) || defaultLotPrice || "--"}</td>
+            <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td>${escapeHtml(defaultDurationPkg)}</td>
         ` : `
             <td>
@@ -542,7 +539,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
-            <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || defaultLotPrice}" required placeholder="Giá dự thầu"></td>
+            <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(defaultDurationPkg)}" required placeholder="Thời gian gói"></td>
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
         `;
@@ -564,10 +561,6 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         if (dbInput) dbInput.value = this.model.formatVND(chosenLot.baoDamDuThau) || "";
         const gtDbInput = tr.querySelector(".mt-gia-tri-dam-bao");
         if (gtDbInput) gtDbInput.value = this.model.formatVND(chosenLot.baoDamDuThau) || "";
-        const giaInput = tr.querySelector(".mt-gia-du-thau");
-        if (giaInput && !giaInput.value.trim()) {
-          giaInput.value = this.model.formatVND(chosenLot.giaTriPhanLo) || "";
-        }
       }
     });
   }
@@ -750,13 +743,15 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
 export async function saveThongTinMoThau() {
   const select = document.getElementById("mothau-goithau-select");
   if (!select) return;
-  const gtId = select.value;
+  let gtId = select.value;
   if (!gtId) {
     await this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu để lưu!", "alert-triangle", select);
     return;
   }
-  const gt = this.model.state.goithau.find((g) => g.id === gtId);
+  const requestedPackage = this.model.state.goithau.find((g) => g.id === gtId);
+  const gt = resolveLatestPackage(this.model, requestedPackage || gtId);
   if (!gt) return;
+  gtId = gt.id;
   const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
   const isDirectOrSpecial = isDirectOrSpecialPackage(gt);
   const isAllowedToSave = canSaveOpeningInfo(gt);
@@ -834,24 +829,27 @@ export async function saveThongTinMoThau() {
   }
   this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId));
   this.model.state.thongtinmothau.push(...tempBids);
-  await this.model.persistData("thongtinmothau");
   gt.trangThai = "Đang chấm thầu";
-  await this.model.persistData("goithau");
   const stepKey = is1G2T ? "opening_tech" : "opening";
   if (this.view._editingState) {
     this.view._editingState[stepKey] = false;
   }
-  this.view.renderGoiThauTable();
-  const syncResult = await this.autoSync();
+  const syncResult = await persistAndSync(this, ["thongtinmothau", "goithau"]);
   if (!syncResult?.ok) return;
+  this.view.renderGoiThauTable();
   const successMsg = isDirectOrSpecial ? "Đã lưu thành công dữ liệu nhà thầu" : `Đã lưu toàn bộ thông tin mở thầu (E-HSDT / E-HSĐXKT) của gói thầu "${gt.tenGoiThau}" thành công! Trạng thái gói thầu đã được chuyển sang Đang chấm thầu.`;
-  await this.view.customAlert("Lưu thành công", successMsg, "check-circle");
   this.renderMoThauPanel();
   const detailPane = document.getElementById("tab-goithau-detail");
   if (detailPane && detailPane.classList.contains("active")) {
-    this.view._currentWorkflowTab = isDirectOrSpecial ? "result" : "eval_tech";
-    this.view.showPackageDetails(gtId);
+    const detailPackageId = selectPackageDetailTab(
+      this.view,
+      isDirectOrSpecial ? "result" : "eval_tech",
+      gt,
+      this.model
+    );
+    await this.view.showPackageDetails(detailPackageId);
   }
+  await this.view.customAlert("Lưu thành công", successMsg, "check-circle");
 }
 export async function saveKetQuaChiDinhThau(gtId) {
   const gt = this.model.state.goithau.find((g) => g.id === gtId);

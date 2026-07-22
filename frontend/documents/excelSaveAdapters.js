@@ -1,5 +1,10 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 ﻿import { normalizePersonName } from "../app/domUtils.js";
+import {
+  filterBidsByEvaluationLotScope,
+  getActiveEvaluationLotScope,
+  isPartialEvaluationLotScope
+} from "../packages/lotEvaluationScope.js";
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
 import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
@@ -377,9 +382,20 @@ async function saveEvaluationImport(controller, validRows) {
   const select = document.getElementById("danhgiahsdt-goithau-select");
   const gtId = select ? select.value : "";
   if (!gtId) return 0;
+  const pkg = controller.model.state.goithau.find((item) => String(item.id) === String(gtId));
+  const activeDetails = getActiveEvaluationLotScope(controller, pkg);
+  const activeScopeKey = `${String(gtId)}:${String(controller.currentDanhGiaTab || "technical")}`;
+  const activeScope = controller._evaluationLotScopes?.[activeScopeKey];
+  const allowedBidIds = isPartialEvaluationLotScope(activeDetails)
+    ? new Set(filterBidsByEvaluationLotScope(
+      controller.model.state.thongtinmothau.filter((bid) => String(bid.goiThauId) === String(gtId)),
+      pkg,
+      activeScope
+    ).map((bid) => String(bid.id)))
+    : null;
   validRows.forEach((row) => {
     const bid = controller.model.state.thongtinmothau.find((b) => b.id === row.id);
-    if (!bid) return;
+    if (!bid || allowedBidIds && !allowedBidIds.has(String(bid.id))) return;
     if (controller.currentDanhGiaTab === "financial") {
       bid.giaDuThau = row.giaDuThau || 0;
       bid.tyLeGiamGia = row.tyLeGiamGia || 0;
@@ -427,8 +443,8 @@ async function saveAwardResultImport(controller, validRows) {
         tenNhaThau: row.tenNhaThau || (foundNt ? foundNt.tenNhaThau : ""),
         loaiNhaThau: foundNt ? foundNt.loaiNhaThau : "Độc lập",
         thanhVienLienDanh: foundNt ? foundNt.thanhVienLienDanh : [],
-        giaDuThau: goiThau.giaGoiThau,
-        giaSauGiamGia: goiThau.giaGoiThau,
+        giaDuThau: 0,
+        giaSauGiamGia: 0,
         danhGiaHopLe: "Đạt",
         danhGiaNangLuc: "Đạt",
         danhGiaKyThuat: "Đạt",

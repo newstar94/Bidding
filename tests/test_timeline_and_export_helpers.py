@@ -122,6 +122,8 @@ def test_timeline_context_filters_sources_dates_and_contracts(monkeypatch):
             "id": "plan-1",
             "chu_dau_tu_id": "investor-1",
             "phe_duyet": "Kế hoạch",
+            "so_to_trinh_ke_hoach": "11/TTr-KH",
+            "ngay_trinh_ke_hoach": "2026-07-16",
             "quyet_dinh_phe_duyet": "22/QĐ",
             "ngay_phe_duyet": "2026-07-17",
         }],
@@ -155,6 +157,9 @@ def test_timeline_context_filters_sources_dates_and_contracts(monkeypatch):
     flat = [item for section in result["timeline_sections"] for item in section["items"]]
     by_code = {item["ma_moc"]: item for item in flat}
     assert "1.7" not in by_code and "1.8" not in by_code
+    assert by_code["1.5"]["so_van_ban"] == "11/TTr-KH"
+    assert by_code["1.5"]["display_date"] == "16/07/2026"
+    assert by_code["1.6"]["so_van_ban"] == "22/QĐ"
     assert by_code["2.1"]["is_overdue"] is True
     assert by_code["2.5"]["so_van_ban"] == "QĐ-TVL"
     assert by_code["5.2"]["so_van_ban"] == "BC-KT"
@@ -162,6 +167,39 @@ def test_timeline_context_filters_sources_dates_and_contracts(monkeypatch):
     assert by_code["5.6"]["so_van_ban"] == "BC-TC"
     assert by_code["4.3"]["display_date"] == "18/07/2026"
     assert result["planned_date_note"]
+
+
+def test_timeline_export_sources_include_all_plan_submission_numbers():
+    items = [
+        {
+            "ma_moc": code,
+            "source_mode": "AUTO",
+            "source_key": "",
+            "so_van_ban": "",
+            "ngay_thuc_te": "",
+            "trang_thai": "PENDING",
+        }
+        for code in ("1.3", "1.5", "1.7")
+    ]
+    plan = {
+        "so_to_trinh_du_toan": "01/TTr-DT",
+        "ngay_trinh_du_toan": "2026-07-14",
+        "so_to_trinh_ke_hoach": "02/TTr-KH",
+        "so_to_trinh_du_toan_ke_hoach": "03/TTr-DTKH",
+        "ngay_trinh_ke_hoach": "2026-07-15",
+    }
+
+    by_code = {
+        item["ma_moc"]: item
+        for item in context_service._apply_sources(items, {}, plan)
+    }
+
+    assert by_code["1.3"]["so_van_ban"] == "01/TTr-DT"
+    assert by_code["1.3"]["ngay_thuc_te"] == "2026-07-14"
+    assert by_code["1.5"]["so_van_ban"] == "02/TTr-KH"
+    assert by_code["1.5"]["ngay_thuc_te"] == "2026-07-15"
+    assert by_code["1.7"]["so_van_ban"] == "03/TTr-DTKH"
+    assert by_code["1.7"]["ngay_thuc_te"] == "2026-07-15"
 
 
 def test_timeline_context_rejects_missing_package_and_covers_applicability(monkeypatch):

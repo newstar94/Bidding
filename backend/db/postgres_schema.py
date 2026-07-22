@@ -28,6 +28,9 @@ _SYSTEM_TIMESTAMP_COLUMNS = frozenset(
         "left_at",
         "assigned_at",
         "ended_at",
+        "closed_at",
+        "finalized_at",
+        "voided_at",
     }
 )
 
@@ -125,7 +128,7 @@ def postgres_column_definition(table_name: str, column_name: str, definition: st
         elif _is_boolean_definition(result):
             result = "SMALLINT" + result[len("INTEGER") :]
     elif result.startswith("TEXT"):
-        is_date = column_name.startswith("ngay_")
+        is_date = column_name.startswith("ngay_") or column_name == "document_date"
         is_timestamp = (
             column_name in _SYSTEM_TIMESTAMP_COLUMNS
             or (table_name, column_name) in _BUSINESS_TIMESTAMP_COLUMNS
@@ -395,6 +398,20 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (organization_id, nha_thau_trung_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_active_code ON goi_thau_phan_lo (organization_id, goi_thau_id, lower(trim(ma_phan_lo))) WHERE archived_at IS NULL AND ma_phan_lo IS NOT NULL AND trim(ma_phan_lo) <> ''",
+        "CREATE INDEX IF NOT EXISTS idx_lot_batch_package ON dot_xu_ly_phan_lo (organization_id, goi_thau_id, sequence_no)",
+        "CREATE INDEX IF NOT EXISTS idx_lot_batch_created_by ON dot_xu_ly_phan_lo (created_by_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lot_batch_detail_batch ON dot_xu_ly_phan_lo_chi_tiet (organization_id, batch_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lot_batch_detail_lot ON dot_xu_ly_phan_lo_chi_tiet (organization_id, lot_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_lot_batch_detail_one_active ON dot_xu_ly_phan_lo_chi_tiet (organization_id, lot_id) WHERE is_active = 1",
+        "CREATE INDEX IF NOT EXISTS idx_lot_dependency_package ON nhom_phu_thuoc_phan_lo (organization_id, goi_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lot_dependency_member_group ON nhom_phu_thuoc_phan_lo_thanh_vien (organization_id, dependency_group_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lot_dependency_member_lot ON nhom_phu_thuoc_phan_lo_thanh_vien (organization_id, lot_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_batch ON ho_so_nghiep_vu_lcnt (organization_id, batch_id, artifact_type, revision)",
+        "CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_lot ON ho_so_nghiep_vu_lcnt_phan_lo (organization_id, lot_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_finalized_by ON ho_so_nghiep_vu_lcnt (finalized_by_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_voided_by ON ho_so_nghiep_vu_lcnt (voided_by_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_supersedes ON ho_so_nghiep_vu_lcnt (organization_id, supersedes_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_tuy_chon_parent ON goi_thau_tuy_chon_mua_them (organization_id, goi_thau_id, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_gia_han_parent ON goi_thau_gia_han (organization_id, goi_thau_id, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (organization_id, goi_thau_id, loai, sort_order)",

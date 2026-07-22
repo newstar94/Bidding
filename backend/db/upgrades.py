@@ -299,6 +299,119 @@ def _upgrade_to_v11_replace_paper_status_with_contract_catalog(cursor, context):
     )
 
 
+def _upgrade_to_v12_add_lot_selection_lifecycle(cursor, context):
+    """Add stable lot identity and the lot-scoped selection lifecycle."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v12 requires the canonical table builder.")
+
+    cursor.execute(
+        """ALTER TABLE goi_thau_phan_lo
+           ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_phan_lo
+           ADD COLUMN IF NOT EXISTS row_version BIGINT NOT NULL DEFAULT 1
+           CHECK(row_version > 0)"""
+    )
+    cursor.execute(
+        """DO $$
+           DECLARE item RECORD;
+           BEGIN
+             FOR item IN
+               SELECT conname FROM pg_constraint
+               WHERE conrelid = 'goi_thau'::regclass
+                 AND contype = 'c'
+                 AND pg_get_constraintdef(oid) ILIKE '%AWARDED%'
+                 AND pg_get_constraintdef(oid) ILIKE '%nha_thau_trung_thau_id%'
+             LOOP
+               EXECUTE format(
+                   'ALTER TABLE goi_thau DROP CONSTRAINT IF EXISTS %I',
+                   item.conname
+               );
+             END LOOP;
+           END $$"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           ADD CONSTRAINT goi_thau_awarded_result_check
+           CHECK(
+               trang_thai != 'AWARDED'
+               OR (
+                   gia_trung_thau IS NOT NULL
+                   AND so_quyet_dinh_ket_qua IS NOT NULL
+                   AND trim(so_quyet_dinh_ket_qua) != ''
+                   AND ngay_quyet_dinh_ket_qua IS NOT NULL
+                   AND (
+                       phan_lo = 'Có'
+                       OR (
+                           nha_thau_trung_thau_id IS NOT NULL
+                           AND trim(nha_thau_trung_thau_id) != ''
+                       )
+                   )
+               )
+           )"""
+    )
+
+    lifecycle_tables = (
+        "dot_xu_ly_phan_lo",
+        "dot_xu_ly_phan_lo_chi_tiet",
+        "nhom_phu_thuoc_phan_lo",
+        "nhom_phu_thuoc_phan_lo_thanh_vien",
+        "ho_so_nghiep_vu_lcnt",
+        "ho_so_nghiep_vu_lcnt_phan_lo",
+    )
+    for table_name in lifecycle_tables:
+        cursor.execute(
+            context.build_create_table_sql(
+                table_name,
+                SCHEMA_DINH_NGHIA[table_name],
+            )
+        )
+
+    indexes = (
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_active_code
+           ON goi_thau_phan_lo (
+               organization_id, goi_thau_id, lower(trim(ma_phan_lo))
+           ) WHERE archived_at IS NULL AND ma_phan_lo IS NOT NULL
+             AND trim(ma_phan_lo) <> ''""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_batch_package
+           ON dot_xu_ly_phan_lo (organization_id, goi_thau_id, sequence_no)""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_batch_created_by
+           ON dot_xu_ly_phan_lo (created_by_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_batch_detail_batch
+           ON dot_xu_ly_phan_lo_chi_tiet (organization_id, batch_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_batch_detail_lot
+           ON dot_xu_ly_phan_lo_chi_tiet (organization_id, lot_id)""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_lot_batch_detail_one_active
+           ON dot_xu_ly_phan_lo_chi_tiet (organization_id, lot_id)
+           WHERE is_active = 1""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_dependency_package
+           ON nhom_phu_thuoc_phan_lo (organization_id, goi_thau_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_dependency_member_group
+           ON nhom_phu_thuoc_phan_lo_thanh_vien
+               (organization_id, dependency_group_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lot_dependency_member_lot
+           ON nhom_phu_thuoc_phan_lo_thanh_vien
+               (organization_id, lot_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_batch
+           ON ho_so_nghiep_vu_lcnt
+               (organization_id, batch_id, artifact_type, revision)""",
+        """CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_lot
+           ON ho_so_nghiep_vu_lcnt_phan_lo (organization_id, lot_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_finalized_by
+           ON ho_so_nghiep_vu_lcnt (finalized_by_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_voided_by
+           ON ho_so_nghiep_vu_lcnt (voided_by_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_lcnt_artifact_supersedes
+           ON ho_so_nghiep_vu_lcnt (organization_id, supersedes_id)""",
+    )
+    for statement in indexes:
+        cursor.execute(statement)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -345,6 +458,11 @@ UPGRADES = (
         11,
         "replace_paper_status_with_contract_catalog",
         _upgrade_to_v11_replace_paper_status_with_contract_catalog,
+    ),
+    DatabaseUpgrade(
+        12,
+        "add_lot_selection_lifecycle",
+        _upgrade_to_v12_add_lot_selection_lifecycle,
     ),
 )
 

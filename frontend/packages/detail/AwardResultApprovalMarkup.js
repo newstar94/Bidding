@@ -9,13 +9,17 @@ export function buildAwardResultApprovalMarkup(view, {
   metadata,
   soBctdResult,
   ngayBctdResult,
-  is1G2T2
+  is1G2T2,
+  bids = null,
+  scopedDraft = null
 }) {
         const kh2 = view.model.getLatestPlan(gt.keHoachId);
         const cdt = kh2 ? view.model.state.chudautu.find((c) => c.id === kh2.chuDauTuId) : null;
         const tenCdt = cdt ? cdt.tenChuDauTu : "Không rõ";
         const tenKhStr = kh2 ? kh2.tenKeHoach : "Không rõ";
-        const allBids = view.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
+        const allBids = Array.isArray(bids)
+          ? [...bids]
+          : view.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
         allBids.sort((x, y) => {
           const lotX = String(x.maPhanLo || "").trim();
           const lotY = String(y.maPhanLo || "").trim();
@@ -228,17 +232,28 @@ export function buildAwardResultApprovalMarkup(view, {
                         </div>
                     </div>
 
+                    ${scopedDraft ? `
+                    <div class="alert alert-info" role="status">
+                        <strong>Kết quả theo ${escapeHtml(scopedDraft.label || "đợt phần lô")}</strong>
+                        <div>Chỉ hiển thị và lưu dữ liệu của ${escapeHtml(scopedDraft.lotCodes?.join(", ") || "các phần lô đã chọn")}. Các phần lô khác được giữ nguyên.</div>
+                    </div>
+                    ` : ""}
+
                     <div class="bf-s-95b5643dd9">
                         <div>
                             <h4 class="bf-s-ff3bca23d8">
-                                Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)
+                                ${scopedDraft ? "Kết quả LCNT theo đợt phần lô" : "Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)"}
                             </h4>
                             <p class="text-muted bf-s-2089b6623a">
-                                ${gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt" ? "Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT." : "Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới."}
+                                ${scopedDraft
+                                  ? "Nhập kết quả cho đúng các phần lô trong đợt hiện tại. Dữ liệu được lưu theo đợt và chưa hoàn tất toàn bộ gói thầu."
+                                  : gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt"
+                                    ? "Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT."
+                                    : "Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới."}
                             </p>
                         </div>
                         <div class="bf-s-c896deef0d">
-                            ${!isDirectOrSpecial ? `
+                            ${!isDirectOrSpecial && !scopedDraft ? `
                                 <button class="btn-excel-action btn-sm bf-s-5a83b4877e" id="btn-result-export-excel-template">
                                     <i data-lucide="download"></i> Tải Excel Mẫu
                                 </button>
@@ -380,7 +395,7 @@ export function buildAwardResultApprovalMarkup(view, {
 
                     <div class="bf-s-004d08f0e5">
                         <button class="btn btn-primary bf-s-a9f6996ecf" id="btn-approve-award">
-                            <i data-lucide="check-circle2"></i> Phê duyệt & Hoàn thành LCNT
+                            <i data-lucide="check-circle2"></i> ${scopedDraft ? "Lưu nháp kết quả đợt phần lô" : "Phê duyệt & Hoàn thành LCNT"}
                         </button>
                     </div>
                 `;

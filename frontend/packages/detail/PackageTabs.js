@@ -1,3 +1,5 @@
+import { resolveActiveSavedEvaluationScope } from "../lotEvaluationScope.js";
+
 export function checkBidQualified(bid) {
   if (!bid) return false;
   const conclusion = String(bid.danhGiaKetLuan || "").trim().toLowerCase();
@@ -23,11 +25,16 @@ export function getPackageWorkflowState(pkg, bids = []) {
   const metadata = parseMetadata(pkg?.danhGiaHsdtMetadata);
   const isTwoEnvelope = pkg?.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
   const qualifiedBids = bids.filter(checkBidQualified);
+  const activeSavedEvaluationScope = !isTwoEnvelope
+    ? resolveActiveSavedEvaluationScope(pkg, metadata)
+    : null;
   return {
     isTwoEnvelope,
     isTechEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && metadata.technical?.saved) : false,
     isFinEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && metadata.financial?.saved) : false,
     isSingleEnvelopeEvalSaved: !isTwoEnvelope && Boolean(metadata.saved),
+    isSingleEnvelopeScopedEvalSaved: Boolean(activeSavedEvaluationScope),
+    activeSavedEvaluationScope,
     isQualifiedSaved: Boolean(isTwoEnvelope && metadata.is1G2T && metadata.technical?.qualifiedSaved),
     qualifiedBids,
     isFinOpeningSaved: qualifiedBids.some((bid) => Number(bid.giaDuThau) > 0),
@@ -66,7 +73,7 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     if (pkg.trangThai !== "Đang mời thầu" && pkg.trangThai !== "Đã mở thầu" && (pkg.trangThai !== "Hủy thầu" || state.isSingleEnvelopeEvalSaved)) {
       tabs.push({ id: "eval_tech", label: "Báo cáo đánh giá E-HSDT" });
     }
-    if (state.isSingleEnvelopeEvalSaved || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && state.isSingleEnvelopeEvalSaved && pkg.soQuyetDinhKetQua)) {
+    if (state.isSingleEnvelopeEvalSaved || state.isSingleEnvelopeScopedEvalSaved || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && state.isSingleEnvelopeEvalSaved && pkg.soQuyetDinhKetQua)) {
       tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
     }
   }

@@ -6,6 +6,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_inherited_specialist_access_matches_role_hierarchy():
+    subprocess.run(
+        ["node", "--test", "tests/js/role_access_policy.test.mjs"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
 def _role_contexts():
     system_user_uri = (ROOT / "frontend" / "admin" / "SystemUserView.js").resolve().as_uri()
     dashboard_uri = (ROOT / "frontend" / "app" / "DashboardView.js").resolve().as_uri()

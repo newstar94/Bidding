@@ -75,11 +75,11 @@ TIMELINE_SECTIONS = (
 )
 
 SOURCE_BY_MILESTONE = {
-    "1.3": ("plan.ngay_trinh_du_toan", "", "ngay_trinh_du_toan"),
+    "1.3": ("plan.ngay_trinh_du_toan", "so_to_trinh_du_toan", "ngay_trinh_du_toan"),
     "1.4": ("plan.qd_phe_duyet_du_toan", "so_qd_phe_duyet_du_toan", "ngay_phe_duyet_du_toan"),
-    "1.5": ("plan.ngay_trinh_ke_hoach", "", "ngay_trinh_ke_hoach"),
+    "1.5": ("plan.ngay_trinh_ke_hoach", "so_to_trinh_ke_hoach", "ngay_trinh_ke_hoach"),
     "1.6": ("plan.qd_phe_duyet", "quyet_dinh_phe_duyet", "ngay_phe_duyet"),
-    "1.7": ("plan.trinh_ke_hoach_du_toan", "", "ngay_trinh_ke_hoach"),
+    "1.7": ("plan.trinh_ke_hoach_du_toan", "so_to_trinh_du_toan_ke_hoach", "ngay_trinh_ke_hoach"),
     "1.8": ("plan.qd_phe_duyet", "quyet_dinh_phe_duyet", "ngay_phe_duyet"),
     "4.1": ("package.to_trinh_hsmt", "so_to_trinh_hsmt", "ngay_trinh_hsmt"),
     "4.2": ("package.bao_cao_tham_dinh_hsmt", "so_bao_cao_tham_dinh_hsmt", "ngay_bao_cao_tham_dinh_hsmt"),

@@ -133,6 +133,19 @@ def has_active_organization_membership(cursor, role_str, user_id, organization_i
     return organization_membership_role(cursor, user_id, organization_id) is not None
 
 
+def has_inherited_specialist_access(cursor, role_str, user_id, organization_id):
+    """Keep operational edit rights when an admin or manager acts as employee."""
+
+    if getattr(role_str, "active_role", None) != "employee":
+        return False
+    platform_role = str(getattr(role_str, "platform_role", "") or "").strip().lower()
+    if platform_role in PLATFORM_ADMIN_ROLES:
+        return True
+    return organization_membership_role(
+        cursor, user_id, organization_id
+    ) in ORGANIZATION_MANAGER_ROLES
+
+
 def resolve_document_export_capabilities(cursor, role_str, user_id, organization_id):
     """Resolve sensitive Word fields after the scope subscription is authorized."""
 
@@ -193,6 +206,10 @@ def has_module_permission(cursor, role_str, user_id, organization_id, module_nam
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return True
     if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return True
+    if has_inherited_specialist_access(
+        cursor, role_str, user_id, organization_id
+    ):
         return True
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False

@@ -1,5 +1,6 @@
 ﻿import { normalizePersonName, normalizeTaxCodeForCompare, normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { getExactContractorVersion, selectContractorVersionForDate } from "../partners/contractorVersionBinding.js";
+import { preserveRowVersion } from "../shared/VersionedEntityService.js";
 function normalizeOpeningCode(value) {
   return normalizeTaxCodeForCompare(value);
 }
@@ -297,7 +298,7 @@ export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecia
     const resolvedTenNhaThau = isJointVenture ? tenNhaThau : foundNt ? foundNt.tenNhaThau : tenNhaThau;
     const tyLeGiamGiaRaw = row.querySelector(".mt-ty-le-giam-gia")?.value || "0";
     const bidJvMembers = isJointVenture ? collectJvMembers(row, foundNt, maNhaThau, latestNhaThauList, model, businessDate) : [];
-    return {
+    const bid = {
       id,
       goiThauId: gtId,
       nhaThauId: foundNt.id,
@@ -321,6 +322,10 @@ export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecia
       danhGiaKetLuan: isDirectOrSpecial ? "Đạt" : "",
       danhGiaTaiChinh: isDirectOrSpecial ? "Xếp hạng 1" : ""
     };
+    const currentBid = (model.state.thongtinmothau || []).find(
+      (item) => String(item.id) === String(id)
+    );
+    return preserveRowVersion(bid, currentBid);
   });
 }
 import { generateRecordId } from "../shared/idUtils.js";

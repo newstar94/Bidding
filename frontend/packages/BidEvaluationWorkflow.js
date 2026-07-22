@@ -7,6 +7,113 @@ import { setVisible } from "../app/formStateUtils.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "../partners/contractorVersionBinding.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import {
+  EVALUATION_LOT_SCOPE_MODE,
+  filterBidsByEvaluationLotScope,
+  findScopedEvaluationMetadata,
+  getEvaluationLotScopeDetails,
+  getPackageEvaluationLots,
+  initializeEvaluationLotScope,
+  isPartialEvaluationLotScope,
+  updateEvaluationLotScope
+} from "./lotEvaluationScope.js";
+
+function evaluationScopeKey(packageId, tab) {
+  return `${String(packageId || "")}:${String(tab || "technical")}`;
+}
+
+function getEvaluationScopeStore(controller) {
+  if (!controller._evaluationLotScopes) controller._evaluationLotScopes = {};
+  return controller._evaluationLotScopes;
+}
+
+function renderEvaluationLotScopeControls(controller, pkg, scope, {
+  isLocked = false,
+  onChange = () => {}
+} = {}) {
+  const container = controller.view.getActiveElement("danhgiahsdt-scope-container");
+  const options = controller.view.getActiveElement("danhgiahsdt-lot-options");
+  const feedback = controller.view.getActiveElement("danhgiahsdt-scope-feedback");
+  const badge = controller.view.getActiveElement("danhgiahsdt-scope-badge");
+  const title = controller.view.getActiveElement("danhgiahsdt-table-title");
+  const lots = getPackageEvaluationLots(pkg);
+  if (!container || lots.length === 0 || !scope) {
+    if (container) {
+      container.classList.add("is-hidden");
+      setRuntimeStyle(container, "display", "none");
+    }
+    return;
+  }
+
+  container.classList.remove("is-hidden");
+  setRuntimeStyle(container, "display", "block");
+  const allRadio = container.querySelector('input[name="danhgiahsdt-scope-mode"][value="all"]');
+  const selectedRadio = container.querySelector('input[name="danhgiahsdt-scope-mode"][value="selected"]');
+  if (allRadio) {
+    allRadio.checked = scope.mode !== EVALUATION_LOT_SCOPE_MODE.SELECTED;
+    allRadio.disabled = isLocked;
+  }
+  if (selectedRadio) {
+    selectedRadio.checked = scope.mode === EVALUATION_LOT_SCOPE_MODE.SELECTED;
+    selectedRadio.disabled = isLocked;
+  }
+
+  const selectedSet = new Set(scope.selectedLotIds || []);
+  if (options) {
+    options.innerHTML = trustedHTML(lots.map((lot) => {
+      const disabled = scope.mode !== EVALUATION_LOT_SCOPE_MODE.SELECTED || isLocked;
+      return `
+        <label class="evaluation-lot-option ${disabled ? "is-disabled" : ""}">
+          <input type="checkbox" data-evaluation-lot-id="${escapeHtml(lot.id)}"
+            ${selectedSet.has(lot.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
+          <span><strong>${escapeHtml(lot.code)}</strong><small title="${escapeHtml(lot.name)}">${escapeHtml(lot.name || "Chưa có tên phần lô")}</small></span>
+        </label>`;
+    }).join(""));
+  }
+
+  const details = getEvaluationLotScopeDetails(pkg, scope);
+  const isPartialScope = isPartialEvaluationLotScope(details);
+  const selectedLabel = details?.lotCodes?.join(", ") || "chưa chọn phần lô";
+  if (badge) badge.textContent = scope.batchId ? `Đợt ${selectedLabel}` : `Phạm vi: ${selectedLabel}`;
+  if (feedback) {
+    const hasSelection = Boolean(details?.lotIds?.length);
+    feedback.textContent = hasSelection
+      ? `${details.lotIds.length}/${lots.length} phần lô sẽ được đưa vào báo cáo và bảng đánh giá của đợt này.${isPartialScope ? " Nhập/xuất Excel sẽ được mở sau khi có tệp phạm vi theo đợt." : ""}`
+      : "Vui lòng chọn ít nhất một phần lô trước khi lưu đánh giá.";
+    feedback.classList.toggle("is-error", !hasSelection);
+  }
+  if (title) {
+    title.textContent = `Đánh giá chi tiết các HSDT nộp — ${selectedLabel}`;
+  }
+  [
+    controller.view.getActiveElement("btn-danhgiahsdt-download-excel"),
+    controller.view.getActiveElement("btn-danhgiahsdt-import-excel")
+  ].filter(Boolean).forEach((button) => {
+    button.disabled = isPartialScope;
+    button.setAttribute("aria-disabled", isPartialScope ? "true" : "false");
+    button.title = isPartialScope
+      ? "Chưa hỗ trợ Excel cho phạm vi một phần lô vì tệp hiện tại không có dấu phạm vi đợt."
+      : "";
+  });
+
+  const applyMode = (mode) => {
+    const next = updateEvaluationLotScope(scope, lots, { mode });
+    onChange(next);
+  };
+  if (allRadio) allRadio.onchange = () => applyMode(EVALUATION_LOT_SCOPE_MODE.ALL);
+  if (selectedRadio) selectedRadio.onchange = () => applyMode(EVALUATION_LOT_SCOPE_MODE.SELECTED);
+  options?.querySelectorAll("[data-evaluation-lot-id]").forEach((checkbox) => {
+    checkbox.onchange = () => {
+      const selectedLotIds = Array.from(options.querySelectorAll("[data-evaluation-lot-id]:checked"))
+        .map((item) => item.getAttribute("data-evaluation-lot-id"));
+      onChange(updateEvaluationLotScope(scope, lots, {
+        mode: EVALUATION_LOT_SCOPE_MODE.SELECTED,
+        selectedLotIds
+      }));
+    };
+  });
+}
+
 export function renderDanhGiaHsdtPanel() {
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
   if (!select) return;
@@ -45,27 +152,47 @@ export function renderDanhGiaHsdtPanel() {
     const tenCdt = cdt ? cdt.tenChuDauTu : "Không rõ";
     const tenKhStr = kh ? kh.tenKeHoach : "Không rõ";
     const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
-    let isTechEvalSaved = false;
-    let isFinEvalSaved = false;
-    let isEvalSaved1G1T = false;
-    let isQualifiedSaved = false;
+    if (is1G2T) {
+      if (this.currentDanhGiaTab !== "technical" && this.currentDanhGiaTab !== "financial") {
+        this.currentDanhGiaTab = "technical";
+      }
+    } else {
+      this.currentDanhGiaTab = "unified";
+    }
+    let metadata = { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [] };
     if (gt.danhGiaHsdtMetadata) {
       try {
-        const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-        if (is1G2T) {
-          if (parsed.is1G2T) {
-            isTechEvalSaved = !!(parsed.technical && parsed.technical.saved);
-            isFinEvalSaved = !!(parsed.financial && parsed.financial.saved);
-            isQualifiedSaved = !!(parsed.technical && parsed.technical.qualifiedSaved);
-          }
-        } else {
-          isEvalSaved1G1T = !!parsed.saved;
-        }
+        metadata = JSON.parse(gt.danhGiaHsdtMetadata);
       } catch (e) {
         console.error("Error parsing evaluation metadata:", e);
       }
     }
-    const isCompleted = this.currentDanhGiaTab === "technical" ? is1G2T ? isTechEvalSaved : isEvalSaved1G1T : isFinEvalSaved;
+    if (is1G2T && !metadata.is1G2T) {
+      const oldMeta = { ...metadata };
+      metadata = {
+        is1G2T: true,
+        technical: oldMeta.soBaoCao ? oldMeta : { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [], saved: false },
+        financial: { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [], saved: false }
+      };
+    }
+    const isTechEvalSaved = Boolean(is1G2T && metadata.technical?.saved);
+    const isQualifiedSaved = Boolean(is1G2T && metadata.technical?.qualifiedSaved);
+    if (is1G2T && this.currentDanhGiaTab === "financial" && !isTechEvalSaved) {
+      this.currentDanhGiaTab = "technical";
+    }
+    const baseEvaluationMeta = is1G2T
+      ? (this.currentDanhGiaTab === "financial" ? metadata.financial || {} : metadata.technical || {})
+      : metadata;
+    const scopeStore = getEvaluationScopeStore(this);
+    const scopeKey = evaluationScopeKey(gtId, this.currentDanhGiaTab);
+    const lotScope = initializeEvaluationLotScope(gt, baseEvaluationMeta, scopeStore[scopeKey]);
+    if (lotScope) scopeStore[scopeKey] = lotScope;
+    const matchingScopeMeta = lotScope
+      ? findScopedEvaluationMetadata(baseEvaluationMeta, lotScope.selectedLotIds)
+      : null;
+    const hasScopedHistory = Boolean(baseEvaluationMeta?.lotBatches && Object.keys(baseEvaluationMeta.lotBatches).length);
+    const currentEvaluationMeta = matchingScopeMeta || (!hasScopedHistory ? baseEvaluationMeta : {});
+    const isCompleted = Boolean(currentEvaluationMeta.saved);
     const stepKey = this.currentDanhGiaTab === "financial" ? "eval_fin" : "eval_tech";
     const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
     const isLocked = gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu";
@@ -213,34 +340,13 @@ export function renderDanhGiaHsdtPanel() {
     const tabsHeader = this.view.getActiveElement("danhgiahsdt-tabs-header");
     const tabBtnKt = this.view.getActiveElement("tab-btn-hsdxt-kt");
     const tabBtnTc = this.view.getActiveElement("tab-btn-hsdxt-tc");
-    let metadata = { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [] };
-    if (gt.danhGiaHsdtMetadata) {
-      try {
-        metadata = JSON.parse(gt.danhGiaHsdtMetadata);
-        if (metadata && metadata.quyTrinhDanhGia) {
-          gt.quyTrinhDanhGia = metadata.quyTrinhDanhGia;
-        }
-      } catch (e) {
-        console.error("Failed to parse evaluation metadata:", e);
-      }
-    }
+    if (metadata && metadata.quyTrinhDanhGia) gt.quyTrinhDanhGia = metadata.quyTrinhDanhGia;
     if (is1G2T) {
       const isWorkflowView = this.view.isGoiThauDetailTabActive();
       if (tabsHeader) {
         setRuntimeStyle(tabsHeader, "display", isWorkflowView ? "none" : "flex");
       }
-      if (!this.currentDanhGiaTab || this.currentDanhGiaTab !== "technical" && this.currentDanhGiaTab !== "financial") {
-        this.currentDanhGiaTab = "technical";
-      }
       this._lastSelectedGtId = gtId;
-      if (!metadata.is1G2T) {
-        const oldMeta = { ...metadata };
-        metadata = {
-          is1G2T: true,
-          technical: oldMeta.soBaoCao ? oldMeta : { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [], saved: false },
-          financial: { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [], saved: false }
-        };
-      }
       const isKtSaved = !!(metadata.technical && metadata.technical.saved);
       if (tabBtnKt && tabBtnTc) {
         if (isKtSaved) {
@@ -291,10 +397,22 @@ export function renderDanhGiaHsdtPanel() {
       if (tabsHeader) setRuntimeStyle(tabsHeader, "display", "none");
       this.currentDanhGiaTab = "unified";
     }
-    let activeMeta = metadata;
-    if (is1G2T) {
-      activeMeta = this.currentDanhGiaTab === "technical" ? metadata.technical : metadata.financial;
-    }
+    const activeBaseMeta = is1G2T
+      ? (this.currentDanhGiaTab === "technical" ? metadata.technical || {} : metadata.financial || {})
+      : metadata;
+    const activeScopedMeta = lotScope
+      ? findScopedEvaluationMetadata(activeBaseMeta, lotScope.selectedLotIds)
+      : null;
+    const isPartialLotScope = isPartialEvaluationLotScope(getEvaluationLotScopeDetails(gt, lotScope));
+    const activeHasScopedHistory = Boolean(activeBaseMeta?.lotBatches && Object.keys(activeBaseMeta.lotBatches).length);
+    const activeMeta = activeScopedMeta || (!activeHasScopedHistory ? activeBaseMeta : {});
+    renderEvaluationLotScopeControls(this, gt, lotScope, {
+      isLocked,
+      onChange: (nextScope) => {
+        scopeStore[evaluationScopeKey(gtId, this.currentDanhGiaTab)] = nextScope;
+        handlePackageSelection();
+      }
+    });
     const soBaocaoInput = this.view.getActiveElement("danhgiahsdt-so-baocao");
     const ngayBaocaoInput = this.view.getActiveElement("danhgiahsdt-ngay-baocao");
     const ngayMoiDoichieuInput = this.view.getActiveElement("danhgiahsdt-ngay-moi-doichieu");
@@ -354,7 +472,9 @@ export function renderDanhGiaHsdtPanel() {
         }
       } else {
         setVisible(saveBtn, true, "");
-        saveBtn.innerHTML = trustedHTML('<i data-lucide="save"></i> Lưu thông tin đánh giá');
+        saveBtn.innerHTML = trustedHTML(isPartialLotScope
+          ? '<i data-lucide="save"></i> Lưu nháp đợt phần lô'
+          : '<i data-lucide="save"></i> Lưu thông tin đánh giá');
         saveBtn.className = "btn btn-primary";
         saveBtn.onclick = () => this.saveDanhGiaHsdt();
       }
@@ -406,15 +526,16 @@ export function renderDanhGiaHsdtPanel() {
     }
     const tableTitle = this.view.getActiveElement("danhgiahsdt-table-title");
     if (tableTitle) {
+      const lotLabel = getEvaluationLotScopeDetails(gt, lotScope)?.lotCodes?.join(", ");
+      let baseTitle = "Đánh giá chi tiết các HSDT nộp";
       if (is1G2T || isTuVan) {
         if (this.currentDanhGiaTab === "technical") {
-          tableTitle.textContent = "Đánh giá chi tiết các E-HSĐXKT đã nộp";
+          baseTitle = "Đánh giá chi tiết các E-HSĐXKT đã nộp";
         } else {
-          tableTitle.textContent = "Đánh giá chi tiết các E-HSĐXTC đã nộp";
+          baseTitle = "Đánh giá chi tiết các E-HSĐXTC đã nộp";
         }
-      } else {
-        tableTitle.textContent = "Đánh giá chi tiết các HSDT nộp";
       }
+      tableTitle.textContent = lotLabel ? `${baseTitle} — ${lotLabel}` : baseTitle;
     }
     const isCombinedMethod = gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá";
     const showCombinedScore = isCombinedMethod && !(is1G2T && this.currentDanhGiaTab === "technical");
@@ -625,18 +746,11 @@ export function renderDanhGiaHsdtPanel() {
               setRuntimeStyle(el, "cursor", "not-allowed");
             });
           } else if (!isReadOnly) {
-            const inpHopLe2 = tr.querySelector(".mt-dg-hop-le");
-            const inpLamRoHopLe = tr.querySelector(".mt-lam-ro-hop-le");
-            if (inpHopLe2) {
-              inpHopLe2.removeAttribute("disabled");
-              setRuntimeStyle(inpHopLe2, "background", "");
-              setRuntimeStyle(inpHopLe2, "cursor", "");
-            }
-            if (inpLamRoHopLe) {
-              inpLamRoHopLe.removeAttribute("disabled");
-              setRuntimeStyle(inpLamRoHopLe, "background", "");
-              setRuntimeStyle(inpLamRoHopLe, "cursor", "");
-            }
+            tr.querySelectorAll(".mt-dg-hop-le, .mt-lam-ro-hop-le, .mt-lam-ro-nang-luc, .mt-lam-ro-ky-thuat, .mt-lam-ro-tai-chinh, .mt-reason-fail-hople, .mt-reason-fail-nangluc, .mt-reason-fail-kythuat").forEach((el) => {
+              el.removeAttribute("disabled");
+              setRuntimeStyle(el, "background", "");
+              setRuntimeStyle(el, "cursor", "");
+            });
           }
           if (!is1G2T && gt.quyTrinhDanhGia === "quytrinh2" && foundPassedBidder) {
             this.updateRowConclusion(tr, "Không đánh giá", true);
@@ -721,6 +835,9 @@ export function renderDanhGiaHsdtPanel() {
     };
     tbody.innerHTML = trustedHTML("");
     let bids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
+    if (lotScope) {
+      bids = filterBidsByEvaluationLotScope(bids, gt, lotScope);
+    }
     if (is1G2T && this.currentDanhGiaTab === "financial") {
       bids = bids.filter((b) => {
         const kl = String(b.danhGiaKetLuan || "").trim().toLowerCase();
@@ -914,27 +1031,27 @@ export function renderDanhGiaHsdtPanel() {
             }
             cellHtml += `
                             <td>
-                                <select class="form-control mt-dg-hop-le bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+                                <select class="form-control mt-dg-hop-le" ${forceRowDisabled ? 'disabled' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valHopLe === "Đạt" || valHopLe === "" ? "selected" : ""}>Đạt</option>
                                     <option value="Không đạt" ${valHopLe === "Không đạt" ? "selected" : ""}>Không đạt</option>
                                 </select>
                                 <input type="text" class="form-control mt-reason-fail-hople" value="${escapeHtml(bid.nguyenNhanKhongDatHopLe || "")}" placeholder="Lý do không đạt hợp lệ..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valHopLe === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-hop-le bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoHopLe)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ hợp lệ..."}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-hop-le" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoHopLe)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ hợp lệ..."}"></td>
                             <td>
-                                <select class="form-control mt-dg-nang-luc bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+                                <select class="form-control mt-dg-nang-luc" ${forceRowDisabled ? 'disabled' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valNangLuc === "Đạt" || valNangLuc === "" ? "selected" : ""}>Đạt</option>
                                     <option value="Không đạt" ${valNangLuc === "Không đạt" ? "selected" : ""}>Không đạt</option>
                                 </select>
                                 <input type="text" class="form-control mt-reason-fail-nangluc" value="${escapeHtml(bid.nguyenNhanKhongDatNangLuc || "")}" placeholder="Lý do không đạt năng lực..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valNangLuc === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-nang-luc bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoNangLuc)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ năng lực..."}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoNangLuc)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ năng lực..."}"></td>
                             <td>
-                                <input type="text" class="form-control mt-dg-ky-thuat bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" ? "Nhập điểm kỹ thuật..." : "Điểm hoặc Đạt..."}">
+                                <input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" ? "Nhập điểm kỹ thuật..." : "Điểm hoặc Đạt..."}">
                                 <input type="text" class="form-control mt-reason-fail-kythuat bf-s-32fe8a23fe" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..." ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ kỹ thuật..."}"></td>
-                            ${isTechnical ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoTaiChinh)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ tài chính..."}"></td>`}
+                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ kỹ thuật..."}"></td>
+                            ${isTechnical ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoTaiChinh)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ tài chính..."}"></td>`}
                             ${showCombinedScore ? `<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>` : ""}
                             <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
                             ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}

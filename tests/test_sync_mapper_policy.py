@@ -336,6 +336,46 @@ def test_save_plan_and_complete_package_children():
     assert any("INSERT INTO tieu_chi_danh_gia" in sql for sql, _ in cursor.calls)
 
 
+def test_save_lots_preserves_existing_identity_and_archives_removed_rows():
+    cursor = RecordingCursor(
+        {
+            "goi_thau_phan_lo": [
+                {"id": "stable-lot-a", "ma_phan_lo": "A"},
+                {"id": "stable-lot-b", "ma_phan_lo": "B"},
+                {"id": "removed-lot-c", "ma_phan_lo": "C"},
+            ]
+        }
+    )
+
+    mapper._save_lots(
+        cursor,
+        "package-1",
+        [
+            {"maPhanLo": "B", "tenPhanLo": "Lô B"},
+            {"maPhanLo": "A", "tenPhanLo": "Lô A"},
+        ],
+        [],
+        "org-1",
+        "organization",
+        5,
+        "2026-07-22",
+    )
+
+    rows = _many_rows(cursor, "goi_thau_phan_lo")
+    assert [row[0] for row in rows] == ["stable-lot-b", "stable-lot-a"]
+    assert not any(
+        sql.startswith("DELETE FROM goi_thau_phan_lo")
+        for sql, _ in cursor.calls
+    )
+    archive_call = next(
+        (sql, params)
+        for sql, params in cursor.calls
+        if sql.startswith("UPDATE goi_thau_phan_lo SET archived_at")
+    )
+    assert "id NOT IN (?, ?)" in archive_call[0]
+    assert archive_call[1][-2:] == ("stable-lot-b", "stable-lot-a")
+
+
 def test_save_members_opening_registry_and_bid_evaluation():
     datasets = {
         "contractor_roots": [

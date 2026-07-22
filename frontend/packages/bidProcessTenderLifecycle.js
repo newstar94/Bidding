@@ -1,8 +1,12 @@
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
+import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
+import { persistAndSync } from "../shared/MutationService.js";
 
 export async function moThauGoiThau(id) {
-  const gt = this.model.state.goithau.find((g) => g.id === id);
+  const requestedPackage = this.model.state.goithau.find((g) => g.id === id);
+  const gt = resolveLatestPackage(this.model, requestedPackage || id);
   if (!gt) return;
+  id = gt.id;
   const thoiGianMoThauStr = await this.view.customPrompt(
     "Chọn thời gian mở thầu",
     `Chọn Thời gian mở thầu cho gói thầu "${gt.tenGoiThau}":`,
@@ -83,16 +87,19 @@ export async function moThauGoiThau(id) {
   const ymdStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
   gt.thoiGianMoThau = ymdStr;
   gt.trangThai = "Đã mở thầu";
-  await this.model.persistData("goithau");
-  this.view.renderGoiThauTable();
-  const syncResult = await this.autoSync();
+  const syncResult = await persistAndSync(this, "goithau");
   if (!syncResult?.ok) return;
+  this.view.renderGoiThauTable();
+  const targetTab = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ"
+    ? "opening_tech"
+    : "opening";
+  const detailPackageId = selectPackageDetailTab(this.view, targetTab, gt, this.model);
+  await this.switchTab("goithau-detail", detailPackageId);
   await this.view.customAlert(
     "Thành công",
     `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
     "check-circle"
   );
-  this.switchTab("goithau-detail", id);
 }
 export async function phatHanhHsmtGoiThau(id) {
   const gt = this.model.state.goithau.find((g) => g.id === id);
@@ -106,11 +113,35 @@ export async function phatHanhHsmtGoiThau(id) {
 export async function handlePhatHanhHsmtSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-phathanh-hsmt");
-  if (!this.view.validateForm(form)) return;
+  if (!form) {
+    await this.view.customAlert(
+      "Không thể phát hành",
+      "Không tìm thấy biểu mẫu phát hành HSMT. Vui lòng đóng cửa sổ và thử lại.",
+      "alert-triangle"
+    );
+    return;
+  }
+  if (!this.view.validateForm(form)) {
+    const firstInvalidControl = form.querySelector('[aria-invalid="true"]');
+    await this.view.customAlert(
+      "Thiếu thông tin",
+      "Vui lòng nhập đầy đủ các trường bắt buộc trước khi phát hành HSMT.",
+      "alert-triangle",
+      firstInvalidControl
+    );
+    return;
+  }
   const data = this.view.getPhathanhHsmtFormData(this.model);
   const { id, maGoiThauVal, hieuLucHsdtVal, giaTriDamBaoVal, soQuyetDinh, thoiGianDangTai, thoiGianDongThau, ngayQuyetDinh, soToTrinhHsmt, ngayTrinhHsmt, yeuCauThamDinhHsmt, soBaoCaoThamDinhHsmt, ngayBaoCaoThamDinhHsmt, phanLoRows } = data;
   const gt = this.model.state.goithau.find((g) => g.id === id);
-  if (!gt) return;
+  if (!gt) {
+    await this.view.customAlert(
+      "Không thể phát hành",
+      "Không tìm thấy gói thầu cần phát hành. Vui lòng đóng cửa sổ và tải lại dữ liệu.",
+      "alert-triangle"
+    );
+    return;
+  }
   const isTuVan = gt.linhVuc === "Tư vấn";
   const isPhanLo = gt.phanLo === "Có";
   if (!maGoiThauVal) {
@@ -189,11 +220,14 @@ export async function handlePhatHanhHsmtSubmit(e) {
       gt.giaTriDamBaoDuThau = 0;
     }
     gt.trangThai = "Đang mời thầu";
-    await this.model.persistData("goithau");
     this.view.closeModal("modal-phathanh-hsmt");
-    this.view.showPackageDetails(id);
-    const syncResult = await this.autoSync();
+    const syncResult = await persistAndSync(this, "goithau");
     if (!syncResult?.ok) return;
+    const targetTab = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ"
+      ? "opening_tech"
+      : "opening";
+    const detailPackageId = selectPackageDetailTab(this.view, targetTab, gt, this.model);
+    await this.view.showPackageDetails(detailPackageId);
     await this.view.customAlert("Thành công", "Đã phát hành HSMT và chuyển gói thầu sang trạng thái Đang mời thầu!", "check-circle");
   }
 }

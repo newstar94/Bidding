@@ -52,11 +52,11 @@ export const TIMELINE_SECTIONS = Object.freeze([
 ]);
 
 const AUTO_SOURCES = Object.freeze({
-  "1.3": ["plan.ngayTrinhDuToan", "", "ngayTrinhDuToan"],
+  "1.3": ["plan.ngayTrinhDuToan", "soToTrinhDuToan", "ngayTrinhDuToan"],
   "1.4": ["plan.qdPheDuyetDuToan", "soQdPheDuyetDuToan", "ngayPheDuyetDuToan"],
-  "1.5": ["plan.ngayTrinhKeHoach", "", "ngayTrinhKeHoach"],
+  "1.5": ["plan.ngayTrinhKeHoach", "soToTrinhKeHoach", "ngayTrinhKeHoach"],
   "1.6": ["plan.qdPheDuyet", "quyetDinhPheDuyet", "ngayPheDuyet"],
-  "1.7": ["plan.trinhKeHoachDuToan", "", "ngayTrinhKeHoach"],
+  "1.7": ["plan.trinhKeHoachDuToan", "soToTrinhDuToanKeHoach", "ngayTrinhKeHoach"],
   "1.8": ["plan.qdPheDuyet", "quyetDinhPheDuyet", "ngayPheDuyet"],
   "4.1": ["package.toTrinhHsmt", "soToTrinhHsmt", "ngayTrinhHsmt"],
   "4.2": ["package.baoCaoThamDinhHsmt", "soBaoCaoThamDinhHsmt", "ngayBaoCaoThamDinhHsmt"],

@@ -180,11 +180,11 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
     initCustomSelect("detail-workflow-version-select");
   }
   const tabHeadersEl = document.getElementById("detail-workflow-tabs-header");
-  renderPackageTabHeaders(tabHeadersEl, tabs, this._currentWorkflowTab, (tabId) => {
+  renderPackageTabHeaders(tabHeadersEl, tabs, this._currentWorkflowTab, async (tabId) => {
     this._inPlaceEditMode = false;
     this._biddingInfoEditMode = false;
-    selectPackageDetailTab(this, tabId, id);
-    this.showPackageDetails(id);
+    const detailPackageId = selectPackageDetailTab(this, tabId, gt, this.model);
+    await this.showPackageDetails(detailPackageId);
   });
   const contentWrapper = document.getElementById("detail-workflow-content-wrapper");
   if (!contentWrapper) return;

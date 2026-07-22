@@ -706,13 +706,19 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                 errors.append("Hiệu lực HSDT phải lớn hơn 0 khi gói đã mời thầu.")
         if status_level >= 2 and not is_direct_or_special:
             _require_fields(item, (("thoiGianMoThau", "Thời gian mở thầu"),), errors)
+        is_lotted_package = str(item.get("phanLo") or "").strip() == "Có"
         if status_level >= 4:
             _require_fields(item, (
                 ("soQuyetDinhKetQua", "Số quyết định kết quả"),
                 ("ngayQuyetDinhKetQua", "Ngày quyết định kết quả"),
-                ("nhaThauTrungThauId", "Nhà thầu trúng thầu"),
                 ("giaTrungThau", "Giá trúng thầu"),
             ), errors)
+            if not is_lotted_package:
+                _require_fields(
+                    item,
+                    (("nhaThauTrungThauId", "Nhà thầu trúng thầu"),),
+                    errors,
+                )
 
         phan_lo_list = _as_list(item.get("phanLoList"))
         if str(item.get("phanLo") or "").strip() == "Có":
@@ -739,7 +745,7 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
         elif phan_lo_list:
             errors.append("Gói không phân lô không được chứa danh sách phần lô.")
 
-        if status_level >= 4 and str(item.get("phanLo") or "").strip() == "Có":
+        if status_level >= 4 and is_lotted_package:
             awarded_lots = _as_list(item.get("awardedPhanLoList"))
             if not awarded_lots:
                 awarded_lots = [
@@ -756,7 +762,7 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             }
             awarded_codes = []
             awarded_total = 0
-            overall_winner = str(item.get("nhaThauTrungThauId") or "").strip()
+            awarded_winner_ids = set()
             for lot in awarded_lots:
                 if not isinstance(lot, dict):
                     continue
@@ -768,8 +774,8 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                     errors.append("Kết quả trúng thầu chứa phần lô không thuộc gói thầu.")
                 if not winner:
                     errors.append("Mỗi phần lô trúng thầu phải xác định nhà thầu trúng thầu.")
-                elif overall_winner and winner != overall_winner:
-                    errors.append("Nhà thầu trúng từng phần lô phải khớp nhà thầu trúng thầu của gói.")
+                else:
+                    awarded_winner_ids.add(winner)
                 if value is None:
                     errors.append("Mỗi phần lô trúng thầu phải có giá trúng thầu hợp lệ.")
                 else:
@@ -780,6 +786,14 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                 # Derived financial totals are server-authoritative. The UI may
                 # preview the value, but cannot persist a divergent total.
                 item["giaTrungThau"] = str(awarded_total)
+                # The legacy package winner remains a compatibility projection
+                # only when every awarded lot has the same winner. Lot results
+                # are the source of truth for a lotted package.
+                item["nhaThauTrungThauId"] = (
+                    next(iter(awarded_winner_ids))
+                    if len(awarded_winner_ids) == 1
+                    else None
+                )
 
         option_list = _as_list(item.get("tuyChonMuaThemList"))
         if str(item.get("tuyChonMuaThem") or "").strip() == "Có" and not option_list:

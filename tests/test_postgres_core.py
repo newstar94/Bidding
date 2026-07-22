@@ -42,6 +42,8 @@ from backend.sync.websocket import (
     _release_cluster_lease,
 )
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME, vietnam_now
+from backend.lot_lifecycle_service import create_batch, query_lifecycle
+from backend.lot_selection_lifecycle import LotLifecyclePolicyError
 
 
 @pytest.fixture(scope="session")
@@ -83,6 +85,95 @@ def test_fresh_schema_contract(postgres_database: PostgresDatabase) -> None:
         assert cursor.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
         ).fetchone()[0] == DB_SCHEMA_VERSION
+
+
+def test_lot_batch_command_claims_scope_atomically(
+    postgres_database: PostgresDatabase,
+) -> None:
+    connection = postgres_database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id = cursor.execute(
+            "SELECT id FROM to_chuc ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        user_id = cursor.execute(
+            "SELECT id FROM tai_khoan ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        cursor.execute(
+            """INSERT INTO chu_dau_tu (
+                   id, organization_id, owner_type, ten_chu_dau_tu
+               ) VALUES ('lot-test-investor', ?, 'organization', 'Chủ đầu tư')""",
+            (organization_id,),
+        )
+        cursor.execute(
+            """INSERT INTO ke_hoach_lcnt (
+                   id, organization_id, owner_type, ten_ke_hoach,
+                   ten_du_an_du_toan, loai_hinh_mua_sam, chu_dau_tu_id,
+                   ngay_phe_duyet, quyet_dinh_phe_duyet
+               ) VALUES (
+                   'lot-test-plan', ?, 'organization', 'Kế hoạch',
+                   'Dự án', 'Mua sắm', 'lot-test-investor',
+                   '2026-07-22', 'QĐ-KH'
+               )""",
+            (organization_id,),
+        )
+        cursor.execute(
+            """INSERT INTO goi_thau (
+                   id, organization_id, owner_type, ke_hoach_id,
+                   ten_goi_thau, gia_goi_thau, thoi_gian_thuc_hien,
+                   nguon_von, thoi_gian_to_chuc,
+                   thoi_gian_bat_dau_to_chuc, phan_lo,
+                   phuong_thuc_lua_chon
+               ) VALUES (
+                   'lot-test-package', ?, 'organization', 'lot-test-plan',
+                   'Gói nhiều lô', 100, '30 ngày', 'Ngân sách', '30 ngày',
+                   '2026-07-22', 'Có', 'Một giai đoạn hai túi hồ sơ'
+               )""",
+            (organization_id,),
+        )
+        cursor.executemany(
+            """INSERT INTO goi_thau_phan_lo (
+                   id, organization_id, owner_type, goi_thau_id,
+                   ma_phan_lo, ten_phan_lo, gia_tri_phan_lo, sort_order
+               ) VALUES (?, ?, 'organization', 'lot-test-package', ?, ?, ?, ?)""",
+            [
+                ('lot-test-a', organization_id, 'A', 'Lô A', 40, 0),
+                ('lot-test-b', organization_id, 'B', 'Lô B', 60, 1),
+            ],
+        )
+
+        batch = create_batch(
+            cursor,
+            organization_id,
+            'lot-test-package',
+            ['lot-test-a'],
+            approval_mode='CONSOLIDATED_APPROVAL',
+            actor_user_id=user_id,
+        )
+
+        assert batch['initialStage'] == 'TECHNICAL_DRAFT'
+        assert batch['lotIds'] == ['lot-test-a']
+        lifecycle = query_lifecycle(cursor, organization_id, 'lot-test-package')
+        assert lifecycle['packageStatus'] == 'IN_PROGRESS'
+        assert lifecycle['counts'] == {
+            'totalLots': 2,
+            'completedLots': 0,
+            'pendingLots': 2,
+        }
+        assert lifecycle['batches'][0]['lots'][0]['lot_id'] == 'lot-test-a'
+
+        with pytest.raises(LotLifecyclePolicyError):
+            create_batch(
+                cursor,
+                organization_id,
+                'lot-test-package',
+                ['lot-test-a'],
+                approval_mode='CONSOLIDATED_APPROVAL',
+                actor_user_id=user_id,
+            )
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 def test_session_lookup_and_cleanup_indexes_are_narrow(

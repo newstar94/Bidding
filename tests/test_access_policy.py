@@ -4,6 +4,7 @@ from collections import deque
 
 import pytest
 
+from backend.auth.auth_helper import SessionRole
 from backend.shared import access_policy
 from backend.shared.access_policy import AccessDecision, DocumentExportCapabilities
 
@@ -402,6 +403,35 @@ def test_payload_key_write_protection() -> None:
     assert access_policy.authorize_payload_key_write(
         "employee", "goithau"
     ).allowed
+
+
+@pytest.mark.parametrize(
+    ("platform_role", "membership_rows"),
+    [
+        ("super_admin", []),
+        ("user", [("manager",)]),
+    ],
+)
+def test_admin_or_manager_in_employee_context_keeps_specialist_edit_access(
+    platform_role, membership_rows
+) -> None:
+    role = SessionRole(
+        "employee",
+        "user-1",
+        platform_role=platform_role,
+        active_role="employee",
+    )
+    decision = access_policy.authorize_record_write(
+        _Cursor(one=membership_rows),
+        role,
+        "user-1",
+        "org-1",
+        "chuyengia",
+        "chuyen_gia",
+        {"id": "cg-1", "hoTen": "Chuyên gia"},
+    )
+
+    assert decision.allowed
 
 
 def test_only_organization_manager_can_write_module_permission_matrix(monkeypatch) -> None:

@@ -474,6 +474,27 @@ def _lot_match_key(row):
     return str(_first_value(row, "maPhanLo", "ma_phan_lo", "tenPhanLo", "ten_phan_lo", default="")).strip().lower()
 
 
+def _existing_lot_ids_by_key(cursor, parent_id, organization_id):
+    rows = cursor.execute(
+        """SELECT id, ma_phan_lo
+           FROM goi_thau_phan_lo
+           WHERE organization_id = ? AND goi_thau_id = ?""",
+        (organization_id, parent_id),
+    ).fetchall()
+    result = {}
+    for row in rows:
+        if isinstance(row, dict):
+            row_id = clean_id(row.get("id"))
+            code = row.get("ma_phan_lo")
+        else:
+            row_id = clean_id(row[0]) if row else None
+            code = row[1] if len(row) > 1 else None
+        key = str(code or "").strip().lower()
+        if row_id and key:
+            result[key] = row_id
+    return result
+
+
 def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, sync_version, updated_at):
     merged_by_key = {}
     ordered = []
@@ -498,11 +519,23 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
         target["thoiGianGoiThau"] = _first_value(award, "thoiGianGoiThau", "thoi_gian_goi_thau", default="")
         target["thoiGianHopDong"] = _first_value(award, "thoiGianHopDong", "thoi_gian_hop_dong", default="")
 
-    cursor.execute("DELETE FROM goi_thau_phan_lo WHERE organization_id = ? AND goi_thau_id = ?", (organization_id, parent_id))
+    existing_ids_by_key = _existing_lot_ids_by_key(
+        cursor,
+        parent_id,
+        organization_id,
+    )
     rows = []
+    retained_ids = []
     for index, row in enumerate(ordered):
+        key = _lot_match_key(row)
+        row_id = (
+            existing_ids_by_key.get(key)
+            or clean_id(_first_value(row, "id"))
+            or _child_row_id(parent_id, "lot", index, None)
+        )
+        retained_ids.append(row_id)
         rows.append((
-            _child_row_id(parent_id, "lot", index, _first_value(row, "id")),
+            row_id,
             organization_id,
             owner_type,
             parent_id,
@@ -527,7 +560,39 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
                 nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau,
                 thoi_gian_hop_dong, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (organization_id, id) DO UPDATE SET
+                owner_type=excluded.owner_type,
+                ma_phan_lo=excluded.ma_phan_lo,
+                ten_phan_lo=excluded.ten_phan_lo,
+                gia_tri_phan_lo=excluded.gia_tri_phan_lo,
+                bao_dam_du_thau=excluded.bao_dam_du_thau,
+                thoi_gian_thuc_hien=excluded.thoi_gian_thuc_hien,
+                nha_thau_trung_thau_id=excluded.nha_thau_trung_thau_id,
+                gia_trung_thau=excluded.gia_trung_thau,
+                thoi_gian_goi_thau=excluded.thoi_gian_goi_thau,
+                thoi_gian_hop_dong=excluded.thoi_gian_hop_dong,
+                sort_order=excluded.sort_order,
+                archived_at=NULL,
+                sync_version=excluded.sync_version,
+                row_version=goi_thau_phan_lo.row_version + 1,
+                updated_at=excluded.updated_at
         """, rows)
+
+    archive_sql = """UPDATE goi_thau_phan_lo
+       SET archived_at = COALESCE(archived_at, ?),
+           sync_version = ?,
+           row_version = row_version + 1,
+           updated_at = ?
+       WHERE organization_id = ? AND goi_thau_id = ?
+         AND archived_at IS NULL"""
+    if retained_ids:
+        archive_sql += " AND id NOT IN ({})".format(
+            ", ".join("?" for _ in retained_ids)
+        )
+    cursor.execute(
+        archive_sql,
+        (updated_at, sync_version, updated_at, organization_id, parent_id, *retained_ids),
+    )
 
 
 def _save_options(cursor, parent_id, value, organization_id, owner_type, sync_version, updated_at):
@@ -772,13 +837,22 @@ def fetch_package_lot_codes(cursor, goi_thau_id, organization_id):
     cursor.execute("""
         SELECT ma_phan_lo
         FROM goi_thau_phan_lo
-        WHERE goi_thau_id = ? AND organization_id = ? AND COALESCE(ma_phan_lo, '') != ''
+        WHERE goi_thau_id = ? AND organization_id = ?
+          AND archived_at IS NULL AND COALESCE(ma_phan_lo, '') != ''
         ORDER BY sort_order, id
     """, (goi_thau_id, organization_id))
     return [row[0] for row in cursor.fetchall()]
 
 
-def _select_children(cursor, table, parent_col, parent_ids, organization_id=None, extra_order="sort_order, id"):
+def _select_children(
+    cursor,
+    table,
+    parent_col,
+    parent_ids,
+    organization_id=None,
+    extra_order="sort_order, id",
+    extra_where="",
+):
     placeholders = ", ".join(["?"] * len(parent_ids))
     params = list(parent_ids)
     owner_filter = ""
@@ -786,7 +860,7 @@ def _select_children(cursor, table, parent_col, parent_ids, organization_id=None
         owner_filter = " AND organization_id = ?"
         params.append(organization_id)
     cursor.execute(
-        f"SELECT * FROM {table} WHERE {parent_col} IN ({placeholders}){owner_filter} ORDER BY {parent_col}, {extra_order}",
+        f"SELECT * FROM {table} WHERE {parent_col} IN ({placeholders}){owner_filter}{extra_where} ORDER BY {parent_col}, {extra_order}",
         params,
     )
     return [dict(row) for row in cursor.fetchall()]
@@ -828,7 +902,14 @@ def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming)
     for item in by_id.values():
         item.update({key: [] for key in defaults})
 
-    for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", parent_ids, organization_id):
+    for row in _select_children(
+        cursor,
+        "goi_thau_phan_lo",
+        "goi_thau_id",
+        parent_ids,
+        organization_id,
+        extra_where=" AND archived_at IS NULL",
+    ):
         item = by_id.get(row.get("goi_thau_id"))
         if not item:
             continue
@@ -1014,13 +1095,30 @@ def _enrich_opening_bid_contractor_versions(cursor, by_id, organization_id, nami
 
 
 def _fetch_lots(cursor, parent_id, organization_id):
-    return [_format_lot_child(row, "camel") for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", [parent_id], organization_id)]
+    return [
+        _format_lot_child(row, "camel")
+        for row in _select_children(
+            cursor,
+            "goi_thau_phan_lo",
+            "goi_thau_id",
+            [parent_id],
+            organization_id,
+            extra_where=" AND archived_at IS NULL",
+        )
+    ]
 
 
 def _fetch_awards(cursor, parent_id, organization_id):
     return [
         _format_award_child(row, "camel")
-        for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", [parent_id], organization_id)
+        for row in _select_children(
+            cursor,
+            "goi_thau_phan_lo",
+            "goi_thau_id",
+            [parent_id],
+            organization_id,
+            extra_where=" AND archived_at IS NULL",
+        )
         if _has_lot_award(row)
     ]
 

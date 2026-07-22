@@ -112,6 +112,22 @@ def test_assignment_references_require_active_owner_membership_and_target() -> N
     ) == []
 
 
+def test_assignment_reference_accepts_platform_admin_as_an_effective_specialist() -> None:
+    cursor = _Cursor([None, (1,)])
+    errors = ownership.validate_owner_scoped_references(
+        cursor,
+        "org-1",
+        "phan_cong_nhan_su",
+        {"empId": "admin-1", "targetId": "package-1", "type": "goithau"},
+        incoming_ids_by_table={"goi_thau": {"package-1"}},
+    )
+
+    assert errors == []
+    membership_query = cursor.calls[0][0]
+    assert "tai_khoan" in membership_query
+    assert "super_admin" in membership_query
+
+
 def test_owner_references_accept_incoming_ids_and_reject_cross_tenant_rows() -> None:
     item = {
         "keHoachId": "plan-1",

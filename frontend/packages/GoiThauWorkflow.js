@@ -9,6 +9,11 @@ import { persistAndSync } from "../shared/MutationService.js";
 import { createInitialVersion, createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeProfile } from "../auth/accessContext.js";
+import {
+  derivePackageAssigneeControlState,
+  ensureCurrentUserAssignee,
+  resolvePackageAssigneeId,
+} from "./packageAssignmentPolicy.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function editGoiThau(id, isReadOnly = false) {
@@ -36,31 +41,35 @@ export async function editGoiThau(id, isReadOnly = false) {
   }
   this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu trúng thầu...");
   const roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };
+  const currentUserId = String(this.model.state.activeuser?.id || globalThis.sessionStorage?.getItem("bf_user_id") || "").trim();
+  const currentUserCandidate = {
+    id: currentUserId,
+    name: this.model.state.activeuser?.name || this.model.state.activeuser?.username || "Người tạo",
+    email: this.model.state.activeuser?.email || "",
+    role: this.model.state.activerole || this.model.state.activeuser?.dbRole || "employee"
+  };
   const restoreEmpValue = () => {
     const empSelect = document.getElementById("gt-nhanvienphutrach");
     if (empSelect) {
-      if (id) {
-        const assignment = this.model.state.assignments.find((a) => a.targetId === gt.id && a.type === "goithau");
-        empSelect.value = assignment ? assignment.empId : "";
-      } else {
-        const activeWorkspace = (this.model.state.activeuser?.organizations || []).find(
-          (organization) => String(organization.id) === String(this.model.workspaceScope?.organizationId || "")
-        );
-        const currentUserId = this.model.state.activeuser?.id || sessionStorage.getItem("bf_user_id");
-        empSelect.value = activeWorkspace?.scope_type === "organization" ? currentUserId || "" : "";
-      }
-      if (this.model.state.activerole === "employee") {
-        empSelect.disabled = true;
-      } else {
-        empSelect.disabled = false;
-      }
+      const assignment = id
+        ? this.model.state.assignments.find((a) => a.targetId === gt.id && a.type === "goithau")
+        : null;
+      const controlState = derivePackageAssigneeControlState({
+        activeRole: this.model.state.activerole,
+        packageId: id,
+        assignedEmpId: assignment?.empId,
+        creatorId: currentUserId,
+      });
+      empSelect.value = controlState.value;
+      empSelect.disabled = controlState.disabled;
       this.makeSearchableSelect(empSelect, "Tìm kiếm Chuyên viên phụ trách...");
+      empSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }
   };
   const _populateEmpDropdown = () => {
     const empDropdown = document.getElementById("gt-nhanvienphutrach");
     if (!empDropdown) return;
-    const employees = Array.isArray(this.model.state.employees) ? this.model.state.employees : [];
+    const employees = ensureCurrentUserAssignee(this.model.state.employees, currentUserCandidate);
     const optHtml = employees.map((e) => {
       const roleLabel = roleLabelMap[e.role] || e.role;
       const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === e.name.toLowerCase().trim());
@@ -70,26 +79,28 @@ export async function editGoiThau(id, isReadOnly = false) {
     empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
     restoreEmpValue();
   };
-  if (!this.model.state.employees || this.model.state.employees.length === 0) {
-    apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
-      this.model.state.employees = users.map((u) => {
-        const employeeProfile = organizationEmployeeProfile(u);
-        return {
-          id: String(u.id || ""),
-          name: employeeProfile.name,
-          email: u.email || "",
-          phone: employeeProfile.phone,
-          role: u.role
-        };
+  const loadAndPopulateEmpDropdown = () => {
+    if (!this.model.state.employees || this.model.state.employees.length === 0) {
+      apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
+        this.model.state.employees = users.map((u) => {
+          const employeeProfile = organizationEmployeeProfile(u);
+          return {
+            id: String(u.id || ""),
+            name: employeeProfile.name,
+            email: u.email || "",
+            phone: employeeProfile.phone,
+            role: u.role
+          };
+        });
+        _populateEmpDropdown();
+      }).catch((err) => {
+        console.error("Failed to load users:", err);
+        _populateEmpDropdown();
       });
+    } else {
       _populateEmpDropdown();
-    }).catch((err) => {
-      console.error("Failed to load users:", err);
-      _populateEmpDropdown();
-    });
-  } else {
-    _populateEmpDropdown();
-  }
+    }
+  };
   const toChuyenGiaTbody = document.getElementById("to-chuyengia-tbody");
   toChuyenGiaTbody.innerHTML = trustedHTML(this.model.state.chuyengia.map((cg) => `
         <tr data-expert-id="${escapeHtml(cg.id)}">
@@ -189,6 +200,7 @@ export async function editGoiThau(id, isReadOnly = false) {
   setupCheckboxListeners("to-chuyengia-tbody", "tochuyengia-select", "tochuyengia-chucvu", "tochuyengia-congviec", "to-thamdinh-tbody");
   setupCheckboxListeners("to-thamdinh-tbody", "tothamdinh-select", "tothamdinh-chucvu", "tothamdinh-congviec", "to-chuyengia-tbody");
   if (id) {
+    loadAndPopulateEmpDropdown();
     captureModalReturnState(this.model.state.activetab || "goithau", this.model.state.activeaction || null);
     this.switchTab("goithau", "chinhsua", true);
     document.getElementById("modal-goithau-title").textContent = isReadOnly ? "Chi tiết Gói thầu" : "Cập nhật Gói thầu";
@@ -324,6 +336,7 @@ export async function editGoiThau(id, isReadOnly = false) {
     if (inputMoEhsdxtc) inputMoEhsdxtc.value = "";
     document.getElementById("modal-goithau-title").textContent = isReadOnly ? "Chi tiết Gói thầu" : "Thêm Gói thầu mới";
     form.reset();
+    loadAndPopulateEmpDropdown();
     if (this.updatePhuongPhapDanhGiaOptions) {
       this.updatePhuongPhapDanhGiaOptions();
     }
@@ -533,7 +546,14 @@ export async function handleGoiThauSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-goithau");
   const assignedEmpSelect = document.getElementById("gt-nhanvienphutrach");
-  if (!String(assignedEmpSelect?.value || "").trim()) {
+  const isNewPackage = !String(document.getElementById("form-goithau-id")?.value || "").trim();
+  const currentUserId = String(this.model.state.activeuser?.id || globalThis.sessionStorage?.getItem("bf_user_id") || "").trim();
+  const creatorFallbackId = isNewPackage ? currentUserId : "";
+  const assignedEmpId = resolvePackageAssigneeId(assignedEmpSelect?.value, creatorFallbackId);
+  if (assignedEmpSelect && assignedEmpId && !assignedEmpSelect.value) {
+    assignedEmpSelect.value = assignedEmpId;
+  }
+  if (!assignedEmpId) {
     await this.view.customAlert(
       "Chưa chọn người tiếp quản",
       "Gói thầu bắt buộc phải có chuyên viên phụ trách. Muốn thay đổi phân công, hãy chọn một nhân sự khác tiếp quản.",
@@ -915,7 +935,6 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
       clearCompetitiveQuotationAppraisal(newPackageVersion);
       this.model.state.goithau.push(newPackageVersion);
       rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
-      const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       if (assignedEmpId) {
         await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
       }
@@ -924,7 +943,6 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
       Object.assign(oldGt, gtData);
       clearCompetitiveQuotationAppraisal(oldGt);
       oldGt.updatedAt = this.model.getCurrentDateTimeString();
-      const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       const oldAssignments = this.model.state.assignments.filter((a) => a.targetId === id && a.type === "goithau");
       const retainedAssignment = assignedEmpId
         ? oldAssignments.find((assignment) => assignment.empId === assignedEmpId)
@@ -950,7 +968,6 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     }, { id: newGtId, timestamp });
     clearCompetitiveQuotationAppraisal(newPackage);
     this.model.state.goithau.push(newPackage);
-    const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
     if (assignedEmpId) {
       await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
     }

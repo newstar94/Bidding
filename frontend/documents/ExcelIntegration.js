@@ -11,6 +11,10 @@ import {
 } from "./excelImportAdapters.js";
 import { isBasicExcelImportType, saveBasicExcelImport, saveBusinessExcelImport } from "./excelSaveAdapters.js";
 import { renderExcelPreview } from "../packages/GoiThauModals.js";
+import {
+  getActiveEvaluationLotScope,
+  isPartialEvaluationLotScope
+} from "../packages/lotEvaluationScope.js";
 const IMPORT_STATE_KEY = {
   plan: "kehoach",
   kehoach: "kehoach",
@@ -124,6 +128,18 @@ export function triggerExcelImport(type) {
       this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu trước khi nhập file Excel!", "alert-triangle", select);
       return;
     }
+    if (type === "danhgiahsdt") {
+      const pkg = this.model.state.goithau.find((item) => String(item.id) === String(select.value));
+      if (isPartialEvaluationLotScope(getActiveEvaluationLotScope(this, pkg))) {
+        this.view.customAlert(
+          "Chưa hỗ trợ Excel theo đợt lô",
+          "Tệp Excel hiện tại chưa có dấu phạm vi đợt. Vui lòng nhập trực tiếp để bảo đảm không cập nhật nhầm lô ngoài phạm vi.",
+          "alert-triangle",
+          select
+        );
+        return;
+      }
+    }
   }
   if (type === "ketquaqd") {
     const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");
@@ -149,6 +165,19 @@ export function triggerExcelImport(type) {
   fileInput.click();
 }
 export function triggerExcelTemplateDownload(type) {
+  if (type === "danhgiahsdt") {
+    const select = document.getElementById("danhgiahsdt-goithau-select");
+    const pkg = this.model.state.goithau.find((item) => String(item.id) === String(select?.value || ""));
+    if (isPartialEvaluationLotScope(getActiveEvaluationLotScope(this, pkg))) {
+      this.view.customAlert(
+        "Chưa hỗ trợ Excel theo đợt lô",
+        "Chỉ xuất mẫu Excel khi đánh giá toàn bộ phần lô; mẫu theo đợt sẽ được mở khi có manifest phạm vi.",
+        "alert-triangle",
+        select
+      );
+      return;
+    }
+  }
   triggerTemplateDownload(this, type);
 }
 async function renderClientExcelImport(controller, file, parser) {

@@ -874,7 +874,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
         setReadonlyVisual(mainBaoDamInput, true);
         setRequired(mainBaoDamInput, false);
       }
-      setVisible(thBaoDam, true, "");
+      setVisible(thBaoDam, true, "table-cell");
       document.querySelectorAll(".col-baodam-phanlo-cell").forEach((cell) => {
         setVisible(cell, true, "");
         const input = cell.querySelector("input");

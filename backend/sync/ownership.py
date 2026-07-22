@@ -73,8 +73,15 @@ def validate_owner_scoped_references(
         emp_id = clean_id(get_payload_value(table_name, item, "id_nhan_vien" if table_name == "phan_cong_nhan_su" else "emp_id"))
         if emp_id and str(emp_id) != str(organization_id):
             cursor.execute(
-                "SELECT 1 FROM thanh_vien_to_chuc WHERE organization_id = ? AND user_id = ? LIMIT 1",
-                (organization_id, emp_id),
+                """SELECT 1
+                   FROM tai_khoan tk
+                   LEFT JOIN thanh_vien_to_chuc tvtc
+                     ON tvtc.user_id = tk.id AND tvtc.organization_id = ?
+                   WHERE tk.id = ?
+                     AND (tvtc.user_id IS NOT NULL
+                          OR (? = 1 AND lower(trim(tk.vai_tro)) = 'super_admin'))
+                   LIMIT 1""",
+                (organization_id, emp_id, int(table_name == "phan_cong_nhan_su")),
             )
             if not cursor.fetchone():
                 errors.append(f"Nhan su {emp_id} khong thuoc owner hien tai.")
@@ -275,7 +282,8 @@ def validate_owner_scoped_references(
                 str(row[0] or "").strip().casefold()
                 for row in cursor.execute(
                     """SELECT ma_phan_lo FROM goi_thau_phan_lo
-                       WHERE organization_id = ? AND goi_thau_id = ?""",
+                       WHERE organization_id = ? AND goi_thau_id = ?
+                         AND archived_at IS NULL""",
                     (organization_id, package_id),
                 ).fetchall()
             }

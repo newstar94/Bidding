@@ -1,4 +1,10 @@
-﻿function findOpeningPackage(controller) {
+﻿import {
+  getActiveEvaluationLotScope,
+  isBidWithinEvaluationLotDetails,
+  isPartialEvaluationLotScope
+} from "../packages/lotEvaluationScope.js";
+
+function findOpeningPackage(controller) {
   const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
   const gtId = select ? select.value : controller._currentPackageId || "";
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
@@ -72,13 +78,20 @@ export async function parseBidEvaluationImport(controller, rows) {
     return null;
   }
   const hasPhanLo = goiThau.phanLo === "Có";
+  const activeLotDetails = getActiveEvaluationLotScope(controller, goiThau);
+  const isPartialScope = isPartialEvaluationLotScope(activeLotDetails);
   return rows.map((row) => {
     const maNhaThau = String(row["Mã nhà thầu"] || row["Mã định danh"] || row["Mã số thuế"] || row["Mã"] || "").trim();
     const tenNhaThau = String(row["Tên nhà thầu"] || row["Nhà thầu"] || "").trim();
     const maPhanLo = String(row["Mã phần lô"] || row["Phần lô"] || row["Mã lô"] || "").trim();
     const foundBid = findEvaluationBid(controller, gtId, maNhaThau, tenNhaThau, maPhanLo, hasPhanLo);
-    const isValid = Boolean(foundBid);
-    const comment = isValid ? "Hợp lệ" : "Không tìm thấy nhà thầu/lô tương ứng trong thông tin mở thầu của gói thầu này!";
+    const inSelectedScope = !isPartialScope || isBidWithinEvaluationLotDetails(foundBid, activeLotDetails);
+    const isValid = Boolean(foundBid && inSelectedScope);
+    const comment = isValid
+      ? "Hợp lệ"
+      : foundBid && !inSelectedScope
+        ? "Dòng này thuộc phần lô ngoài phạm vi đợt đánh giá đang chọn."
+        : "Không tìm thấy nhà thầu/lô tương ứng trong thông tin mở thầu của gói thầu này!";
     if (controller.currentDanhGiaTab === "financial") {
       const giaDuThauRaw = String(row["Giá dự thầu (VND)"] || row["Giá dự thầu (VND)"] || row["Giá dự thầu"] || row["Giá"] || "0").trim();
       const tyLeGiamRaw = String(row["Tỷ lệ %"] || row["Tỷ lệ giảm giá (%)"] || row["Tỷ lệ"] || "0").trim();

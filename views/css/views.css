@@ -501,7 +501,7 @@
   transform: translateY(-2px);
 }
 .dashboard-alert-card:focus-visible {
-  outline: 3px solid rgba(49, 87, 232, 0.28);
+  outline: var(--focus-ring-width) solid rgba(49, 87, 232, 0.28);
   outline-offset: 2px;
 }
 .dashboard-alert-icon {
@@ -730,8 +730,8 @@
 .dashboard-partner-link:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 3px solid var(--primary);
-  outline-offset: -3px;
+  outline: var(--focus-ring-width) solid var(--primary);
+  outline-offset: -1px;
 }
 .dashboard-partner-link:active {
   background: var(--bg-app);
@@ -1451,7 +1451,7 @@ table th {
   border-color: var(--brand);
   background: var(--surface);
   outline: none !important;
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
 }
 
 #modal-excel-preview .excel-preview-input--numeric {
@@ -1474,7 +1474,7 @@ table th {
 #modal-excel-preview .excel-preview-input.is-invalid:focus,
 #modal-excel-preview .excel-preview-input[aria-invalid="true"]:focus {
   outline: none !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 20%, transparent);
+  box-shadow: 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 #modal-excel-preview .excel-preview-input:disabled,
@@ -1584,7 +1584,7 @@ table th {
 .phanlo-table td input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-soft);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
   background: var(--bg-card);
 }
 .phanlo-table td input.input-gia {
@@ -2041,7 +2041,7 @@ table th {
 .auth-input-wrapper input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-soft);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
   background: var(--bg-card);
 }
 .auth-input-wrapper .toggle-password {
@@ -2377,7 +2377,7 @@ table th {
 }
 #mothau-goithau-select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-soft);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
 }
 #btn-mothau-add-bid,
 #btn-result-add-bidder {
@@ -2563,6 +2563,32 @@ table th {
 .evaluation-process-title { color: var(--text-main); font-size: 0.85rem; font-weight: 700; }
 .evaluation-process-choice { display: inline-flex; align-items: center; gap: 8px; color: var(--text-main); font-size: 0.85rem; font-weight: 600; cursor: pointer; }
 .evaluation-process-choice.is-separated { margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--border-color); }
+.evaluation-lot-scope { margin: 0 0 20px; padding: 18px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); }
+.evaluation-lot-scope-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.evaluation-lot-scope-heading h4 { margin: 0 0 4px; color: var(--text-main); font-size: 0.95rem; }
+.evaluation-lot-scope-heading p { margin: 0; color: var(--text-muted); font-size: 0.8rem; line-height: 1.5; }
+.evaluation-lot-scope-badge { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; color: var(--primary); background: rgba(59, 91, 219, 0.09); font-size: 0.75rem; font-weight: 700; }
+.evaluation-lot-scope-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.evaluation-lot-scope-mode { display: flex; align-items: flex-start; gap: 10px; min-height: 76px; padding: 13px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; }
+.evaluation-lot-scope-mode:has(input:checked) { border-color: var(--primary); background: rgba(59, 91, 219, 0.05); }
+.evaluation-lot-scope-mode input { margin-top: 3px; }
+.evaluation-lot-scope-mode span { display: grid; gap: 4px; }
+.evaluation-lot-scope-mode strong { color: var(--text-main); font-size: 0.84rem; }
+.evaluation-lot-scope-mode small { color: var(--text-muted); font-size: 0.76rem; line-height: 1.45; }
+.evaluation-lot-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 12px; }
+.evaluation-lot-option { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--neutral-soft); }
+.evaluation-lot-option input { margin-top: 3px; }
+.evaluation-lot-option span { display: grid; gap: 2px; min-width: 0; }
+.evaluation-lot-option strong { color: var(--text-main); font-size: 0.8rem; }
+.evaluation-lot-option small { overflow: hidden; color: var(--text-muted); font-size: 0.74rem; text-overflow: ellipsis; white-space: nowrap; }
+.evaluation-lot-option.is-disabled { opacity: 0.68; }
+.evaluation-lot-scope-feedback { min-height: 18px; margin: 10px 0 0; color: var(--text-muted); font-size: 0.78rem; }
+.evaluation-lot-scope-feedback.is-error { color: var(--danger); font-weight: 600; }
+@media (max-width: 760px) {
+  .evaluation-lot-scope-modes { grid-template-columns: 1fr; }
+  .evaluation-lot-scope-heading { display: grid; }
+  .evaluation-lot-scope-badge { justify-self: start; }
+}
 .evaluation-choice-input { accent-color: var(--primary); cursor: pointer; }
 .evaluation-warning { color: #ef4444; font-size: 0.8rem; font-weight: 600; }
 .compact-field-label { display: block; margin-bottom: 4px; font-size: 0.78rem; font-weight: 600; }
@@ -2913,7 +2939,7 @@ table th {
 .timeline-page .bf-combobox-input:focus {
   border-color: var(--brand);
   outline: none !important;
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
 }
 
 .timeline-page .bf-combobox-input:disabled {
@@ -3035,7 +3061,7 @@ table th {
   border-color: var(--brand);
   outline: none !important;
   outline-offset: 0 !important;
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
 }
 
 .timeline-actionbar {

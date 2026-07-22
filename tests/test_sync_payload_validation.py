@@ -729,7 +729,7 @@ def test_awarded_lots_validate_membership_winner_value_and_derive_total() -> Non
         ],
     )
     normalized, errors, _ = validation.validate_sync_item("goi_thau", item)
-    assert len(errors) >= 5
+    assert len(errors) >= 4
     assert normalized["giaTrungThau"] == "90"
 
     no_award = _minimal_package(
@@ -740,6 +740,73 @@ def test_awarded_lots_validate_membership_winner_value_and_derive_total() -> Non
     )
     _, errors, _ = validation.validate_sync_item("goi_thau", no_award)
     assert errors
+
+
+def test_lotted_package_allows_different_winners_and_derives_package_projection() -> None:
+    item = _minimal_package(
+        trangThai=PACKAGE_STATUS_LABELS["AWARDED"],
+        hinhThucLuaChon="Chỉ định thầu rút gọn",
+        phanLo="Có",
+        soQuyetDinhKetQua="QĐ-01",
+        ngayQuyetDinhKetQua="2026-07-22",
+        giaTrungThau="1",
+        phanLoList=[
+            {"maPhanLo": "A", "giaTriPhanLo": "40"},
+            {"maPhanLo": "B", "giaTriPhanLo": "60"},
+        ],
+        nhaThauTrungThauId="legacy-winner",
+        awardedPhanLoList=[
+            {
+                "maPhanLo": "A",
+                "nhaThauTrungThauId": "winner-a",
+                "giaTrungThau": "35",
+            },
+            {
+                "maPhanLo": "B",
+                "nhaThauTrungThauId": "winner-b",
+                "giaTrungThau": "55",
+            },
+        ],
+    )
+
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", item)
+
+    assert errors == []
+    assert normalized["nhaThauTrungThauId"] is None
+    assert normalized["giaTrungThau"] == "90"
+
+
+def test_lotted_package_projects_single_common_winner_for_legacy_consumers() -> None:
+    item = _minimal_package(
+        trangThai=PACKAGE_STATUS_LABELS["AWARDED"],
+        hinhThucLuaChon="Chỉ định thầu rút gọn",
+        phanLo="Có",
+        soQuyetDinhKetQua="QĐ-02",
+        ngayQuyetDinhKetQua="2026-07-22",
+        giaTrungThau="1",
+        phanLoList=[
+            {"maPhanLo": "A", "giaTriPhanLo": "40"},
+            {"maPhanLo": "B", "giaTriPhanLo": "60"},
+        ],
+        awardedPhanLoList=[
+            {
+                "maPhanLo": "A",
+                "nhaThauTrungThauId": "winner",
+                "giaTrungThau": "35",
+            },
+            {
+                "maPhanLo": "B",
+                "nhaThauTrungThauId": "winner",
+                "giaTrungThau": "55",
+            },
+        ],
+    )
+
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", item)
+
+    assert errors == []
+    assert normalized["nhaThauTrungThauId"] == "winner"
+    assert normalized["giaTrungThau"] == "90"
 
 
 def _minimal_contract(**overrides):

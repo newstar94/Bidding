@@ -481,7 +481,7 @@ SCHEMA_DINH_NGHIA = {
             "CHECK(NULLIF(thoi_gian_dang_tai, '') IS NULL OR NULLIF(thoi_gian_dong_thau, '') IS NULL OR (datetime(thoi_gian_dang_tai) IS NOT NULL AND datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_dong_thau) > datetime(thoi_gian_dang_tai)))",
             "CHECK(NULLIF(thoi_gian_dong_thau, '') IS NULL OR NULLIF(thoi_gian_mo_thau, '') IS NULL OR (datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) >= datetime(thoi_gian_dong_thau)))",
             "CHECK((is_rebid = 0 AND rebid_from_package_id IS NULL) OR (is_rebid = 1 AND rebid_from_package_id IS NOT NULL AND rebid_from_package_id != id))",
-            "CHECK(trang_thai != 'AWARDED' OR (nha_thau_trung_thau_id IS NOT NULL AND trim(nha_thau_trung_thau_id) != '' AND gia_trung_thau IS NOT NULL AND so_quyet_dinh_ket_qua IS NOT NULL AND trim(so_quyet_dinh_ket_qua) != '' AND ngay_quyet_dinh_ket_qua IS NOT NULL AND date(ngay_quyet_dinh_ket_qua) IS NOT NULL))"
+            "CHECK(trang_thai != 'AWARDED' OR (gia_trung_thau IS NOT NULL AND so_quyet_dinh_ket_qua IS NOT NULL AND trim(so_quyet_dinh_ket_qua) != '' AND ngay_quyet_dinh_ket_qua IS NOT NULL AND date(ngay_quyet_dinh_ket_qua) IS NOT NULL AND (phan_lo = 'Có' OR (nha_thau_trung_thau_id IS NOT NULL AND trim(nha_thau_trung_thau_id) != ''))))"
         ],
         "field_map": {
             "nha_thau_trung_thau_id": "nhaThauTrungThauId",
@@ -523,6 +523,7 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_goi_thau": "TEXT",
             "thoi_gian_hop_dong": "TEXT",
             "sort_order": "INTEGER DEFAULT 0",
+            "archived_at": "TEXT",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
@@ -530,6 +531,151 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
+        ]
+    },
+    "dot_xu_ly_phan_lo": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "sequence_no": "INTEGER NOT NULL CHECK(sequence_no > 0)",
+            "procedure_kind": "TEXT NOT NULL CHECK(procedure_kind IN ('1G1T', '1G2T'))",
+            "approval_mode": "TEXT NOT NULL DEFAULT 'CONSOLIDATED_APPROVAL' CHECK(approval_mode IN ('CONSOLIDATED_APPROVAL', 'STAGED_APPROVAL'))",
+            "status": "TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'ACTIVE', 'CLOSED', 'VOID'))",
+            "policy_version": "INTEGER NOT NULL DEFAULT 1 CHECK(policy_version > 0)",
+            "staged_approval_authorized": "INTEGER NOT NULL DEFAULT 0 CHECK(staged_approval_authorized IN (0,1))",
+            "authorization_basis": "TEXT",
+            "created_by_id": "TEXT",
+            "closed_at": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, goi_thau_id, sequence_no)"
+        ]
+    },
+    "dot_xu_ly_phan_lo_chi_tiet": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "batch_id": "TEXT NOT NULL",
+            "lot_id": "TEXT NOT NULL",
+            "current_stage": "TEXT NOT NULL DEFAULT 'NOT_STARTED' CHECK(current_stage IN ('NOT_STARTED', 'EVALUATION_DRAFT', 'EVALUATION_FINALIZED', 'TECHNICAL_DRAFT', 'TECHNICAL_EVALUATED', 'TECHNICAL_APPRAISED', 'TECHNICAL_APPROVED', 'FINANCIAL_OPENED', 'FINANCIAL_EVALUATED', 'RESULT_APPRAISED', 'RESULT_APPROVED'))",
+            "lifecycle_revision": "INTEGER NOT NULL DEFAULT 1 CHECK(lifecycle_revision > 0)",
+            "outcome": "TEXT CHECK(outcome IS NULL OR outcome IN ('AWARDED', 'NO_BID', 'NO_TECHNICAL_QUALIFIER', 'NO_FINANCIAL_QUALIFIER', 'NO_RESPONSIVE_BID', 'CANCELLED_LOT', 'REPROCUREMENT_REQUIRED', 'OTHER_APPROVED_OUTCOME'))",
+            "is_active": "INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1))",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (batch_id) REFERENCES dot_xu_ly_phan_lo(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (lot_id) REFERENCES goi_thau_phan_lo(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, batch_id, lot_id)",
+            "CHECK((current_stage = 'RESULT_APPROVED' AND outcome IS NOT NULL) OR (current_stage != 'RESULT_APPROVED' AND outcome IS NULL))"
+        ]
+    },
+    "nhom_phu_thuoc_phan_lo": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "dependency_kind": "TEXT NOT NULL CHECK(dependency_kind IN ('HSMT_GROUP_EVALUATION', 'CROSS_LOT_DISCOUNT', 'AGGREGATE_CAPACITY', 'AWARD_OPTIMIZATION', 'FINANCIAL_DISCLOSURE'))",
+            "reason": "TEXT NOT NULL CHECK(trim(reason) != '')",
+            "must_move_together": "INTEGER NOT NULL DEFAULT 1 CHECK(must_move_together IN (0,1))",
+            "policy_version": "INTEGER NOT NULL DEFAULT 1 CHECK(policy_version > 0)",
+            "is_active": "INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1))",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT"
+        ]
+    },
+    "nhom_phu_thuoc_phan_lo_thanh_vien": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "dependency_group_id": "TEXT NOT NULL",
+            "lot_id": "TEXT NOT NULL",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (dependency_group_id) REFERENCES nhom_phu_thuoc_phan_lo(id) ON DELETE CASCADE",
+            "FOREIGN KEY (lot_id) REFERENCES goi_thau_phan_lo(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, dependency_group_id, lot_id)"
+        ]
+    },
+    "ho_so_nghiep_vu_lcnt": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "batch_id": "TEXT NOT NULL",
+            "artifact_type": "TEXT NOT NULL CHECK(artifact_type IN ('SINGLE_STAGE_EVALUATION_REPORT', 'TECHNICAL_EVALUATION_REPORT', 'TECHNICAL_APPRAISAL_REPORT', 'TECHNICAL_APPROVAL_DECISION', 'FINANCIAL_OPENING_MINUTES', 'FINANCIAL_EVALUATION_REPORT', 'RESULT_APPRAISAL_REPORT', 'RESULT_APPROVAL_DECISION'))",
+            "status": "TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'FINAL', 'VOID', 'SUPERSEDED'))",
+            "document_number": "TEXT",
+            "document_date": "TEXT",
+            "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",
+            "snapshot_schema_version": "INTEGER NOT NULL DEFAULT 1 CHECK(snapshot_schema_version > 0)",
+            "snapshot_json": "TEXT NOT NULL DEFAULT '{}'",
+            "scope_hash": "TEXT NOT NULL CHECK(trim(scope_hash) != '')",
+            "content_digest": "TEXT",
+            "finalized_by_id": "TEXT",
+            "finalized_at": "TEXT",
+            "voided_by_id": "TEXT",
+            "voided_at": "TEXT",
+            "void_reason": "TEXT",
+            "supersedes_id": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (batch_id) REFERENCES dot_xu_ly_phan_lo(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (finalized_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+            "FOREIGN KEY (voided_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+            "FOREIGN KEY (supersedes_id) REFERENCES ho_so_nghiep_vu_lcnt(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, batch_id, artifact_type, revision)",
+            "CHECK((status != 'FINAL') OR (document_number IS NOT NULL AND trim(document_number) != '' AND document_date IS NOT NULL))",
+            "CHECK((status != 'VOID') OR (void_reason IS NOT NULL AND trim(void_reason) != ''))"
+        ]
+    },
+    "ho_so_nghiep_vu_lcnt_phan_lo": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "artifact_id": "TEXT NOT NULL",
+            "lot_id": "TEXT NOT NULL",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (artifact_id) REFERENCES ho_so_nghiep_vu_lcnt(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (lot_id) REFERENCES goi_thau_phan_lo(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, artifact_id, lot_id)"
         ]
     },
     "goi_thau_tuy_chon_mua_them": {
@@ -1226,7 +1372,9 @@ _SIMPLE_ID_FK = re.compile(
 ROW_VERSION_TABLES = frozenset({
     "chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "chuyen_gia", "nha_thau",
     "hop_dong", "phan_cong_nhan_su", "danh_muc_trang_thai_hop_dong",
-    "thong_tin_mo_thau", "ma_tran_phan_quyen",
+    "thong_tin_mo_thau", "ma_tran_phan_quyen", "goi_thau_phan_lo",
+    "dot_xu_ly_phan_lo", "dot_xu_ly_phan_lo_chi_tiet",
+    "nhom_phu_thuoc_phan_lo", "ho_so_nghiep_vu_lcnt",
 })
 
 

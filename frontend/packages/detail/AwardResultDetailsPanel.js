@@ -16,6 +16,12 @@ import { getLotWinnersStore } from "../../shared/runtimeState.js";
 import { generateRecordId, generateUUID } from "../../shared/idUtils.js";
 import { appendExportSnapshotVersion } from "../../shared/exportSnapshot.js";
 import { buildAwardResultApprovalMarkup } from "./AwardResultApprovalMarkup.js";
+import {
+  isBidWithinEvaluationLotDetails,
+  resolveActiveSavedEvaluationScope
+} from "../lotEvaluationScope.js";
+import { mergeScopedAwardLotResults } from "../lotAwardResultScope.js";
+import { selectPackageDetailTab } from "./PackageDetailState.js";
 
 function isLeadJointVentureMember(member) {
   return String(member?.vaiTro || "").trim().toLocaleLowerCase("vi-VN") === "đứng đầu liên danh";
@@ -69,9 +75,21 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           console.error(e);
         }
       }
-      const soBctdResult = metadata.result.soBctdKetQua || "";
-      const ngayBctdResult = metadata.result.ngayBctdKetQua || "";
-      const resultBindings = new Map((metadata.result.contractorBindings || []).map((item) => [String(item.bidId || ""), item]));
+      const isAwarded = gt.trangThai === "Đã có kết quả";
+      const preferredResultBatchId = String(view._currentResultLotBatchId || "");
+      const activeScopedEvaluation = !is1G2T2 && !isAwarded
+        ? resolveActiveSavedEvaluationScope(gt, metadata, preferredResultBatchId)
+          || resolveActiveSavedEvaluationScope(gt, metadata)
+        : null;
+      if (activeScopedEvaluation) {
+        view._currentResultLotBatchId = activeScopedEvaluation.batchId;
+      }
+      const resultMetadata = activeScopedEvaluation
+        ? activeScopedEvaluation.batch?.result || {}
+        : metadata.result;
+      const soBctdResult = resultMetadata.soBctdKetQua || "";
+      const ngayBctdResult = resultMetadata.ngayBctdKetQua || "";
+      const resultBindings = new Map((resultMetadata.contractorBindings || []).map((item) => [String(item.bidId || ""), item]));
       const bindResultVersion = (bid) => {
         const binding = resultBindings.get(String(bid.id || ""));
         if (!binding) return bid;
@@ -86,10 +104,13 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           }))
         };
       };
-      const allBidsForResult = view.model.state.thongtinmothau.filter(
-        (b) => String(b.goiThauId) === String(gt.id) && checkBidQualified(b)
-      ).map(bindResultVersion);
-      const isAwarded = gt.trangThai === "Đã có kết quả";
+      const packageBidsForResult = view.model.state.thongtinmothau.filter(
+        (b) => String(b.goiThauId) === String(gt.id)
+      );
+      const scopedBidsForResult = activeScopedEvaluation
+        ? packageBidsForResult.filter((bid) => isBidWithinEvaluationLotDetails(bid, activeScopedEvaluation))
+        : packageBidsForResult;
+      const allBidsForResult = scopedBidsForResult.filter(checkBidQualified).map(bindResultVersion);
       if (isAwarded) {
         if (!gt.nhaThauTrungThauId && allBidsForResult.length === 1) {
           gt.nhaThauTrungThauId = allBidsForResult[0].nhaThauId || allBidsForResult[0].id;
@@ -332,12 +353,24 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           refreshIcons: () => lucide.createIcons()
         });
       } else {
+        const scopedResultPackage = activeScopedEvaluation
+          ? {
+            ...gt,
+            soQuyetDinhKetQua: resultMetadata.soQuyetDinhKetQua || "",
+            ngayQuyetDinhKetQua: resultMetadata.ngayQuyetDinhKetQua || ""
+          }
+          : gt;
         const approvalPanel = buildAwardResultApprovalMarkup(view, {
-          gt,
-          metadata,
+          gt: scopedResultPackage,
+          metadata: activeScopedEvaluation ? { ...metadata, result: resultMetadata } : metadata,
           soBctdResult,
           ngayBctdResult,
-          is1G2T2
+          is1G2T2,
+          bids: scopedBidsForResult,
+          scopedDraft: activeScopedEvaluation ? {
+            label: `đợt ${activeScopedEvaluation.lotCodes.join(", ")}`,
+            lotCodes: activeScopedEvaluation.lotCodes
+          } : null
         });
         const { allBids, isDirectOrSpecial } = approvalPanel;
         contentWrapper.innerHTML = trustedHTML(approvalPanel.html);
@@ -818,8 +851,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                   tenNhaThau,
                   loaiNhaThau: loaiNt,
                   thanhVienLienDanh: fullJvList,
-                  giaDuThau: giaTrung || gt.giaGoiThau,
-                  giaSauGiamGia: giaTrung || gt.giaGoiThau,
+                  giaDuThau: giaTrung || 0,
+                  giaSauGiamGia: giaTrung || 0,
                   danhGiaHopLe: "Đạt",
                   danhGiaNangLuc: "Đạt",
                   danhGiaKyThuat: "Đạt",
@@ -844,56 +877,44 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                 }
               }
             });
-            let hasWinner = winnerRows.length > 0;
             let winnerIdStr = "none";
             if (gt.phanLo === "Có") {
               const plList = typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [];
-              plList.forEach((pl) => {
-                const lotWinnerTr = winnerRows.find((tr) => {
-                  if (isDirectOrSpecial) {
-                    return tr.querySelector(".row-ma-phan-lo")?.value === pl.maPhanLo;
-                  } else {
-                    return tr.cells[0]?.textContent.trim() === pl.maPhanLo;
-                  }
-                });
-                if (lotWinnerTr) {
-                  let wId = lotWinnerTr.getAttribute("data-nt-id");
-                  if (isDirectOrSpecial) {
-                    const wMa = lotWinnerTr.querySelector(".row-ma-nha-thau")?.value.trim() || "";
-                    const wTen = lotWinnerTr.querySelector(".row-ten-nha-thau")?.value.trim() || "";
-                    const foundWinnerNt = resolveApprovalContractor(lotWinnerTr, wMa, wTen);
-                    wId = foundWinnerNt ? foundWinnerNt.id : lotWinnerTr.getAttribute("data-approve-bid-id");
-                  }
-                  wId = resolveResultContractorId(wId);
-                  pl.nhaThauTrungThauId = wId ? isNaN(wId) ? wId : parseInt(wId) : "";
-                  pl.giaTrungThau = view.model.parseVND(lotWinnerTr.querySelector(".row-gia-trung")?.value || "0");
-                  pl.thoiGianGoiThau = lotWinnerTr.querySelector(".row-tg-goithau")?.value.trim() || "";
-                  pl.thoiGianHopDong = lotWinnerTr.querySelector(".row-tg-hopdong")?.value.trim() || "";
-                } else {
-                  pl.nhaThauTrungThauId = "";
-                  pl.giaTrungThau = 0;
-                  pl.thoiGianGoiThau = "";
-                  pl.thoiGianHopDong = "";
-                }
-              });
-              gt.phanLoList = plList;
-              const firstWinner = winnerRows[0];
-              if (firstWinner) {
-                let wId = firstWinner.getAttribute("data-nt-id");
+              const scopedLotResults = winnerRows.map((winnerRow) => {
+                const code = isDirectOrSpecial
+                  ? winnerRow.querySelector(".row-ma-phan-lo")?.value || ""
+                  : winnerRow.cells[0]?.textContent.trim() || "";
+                const lot = plList.find((item) => String(item.maPhanLo || "") === String(code));
+                let winnerId = winnerRow.getAttribute("data-nt-id");
                 if (isDirectOrSpecial) {
-                  const wMa = firstWinner.querySelector(".row-ma-nha-thau")?.value.trim() || "";
-                  const wTen = firstWinner.querySelector(".row-ten-nha-thau")?.value.trim() || "";
-                  const foundWinnerNt = resolveApprovalContractor(firstWinner, wMa, wTen);
-                  wId = foundWinnerNt ? foundWinnerNt.id : firstWinner.getAttribute("data-approve-bid-id");
+                  const winnerCode = winnerRow.querySelector(".row-ma-nha-thau")?.value.trim() || "";
+                  const winnerName = winnerRow.querySelector(".row-ten-nha-thau")?.value.trim() || "";
+                  const foundWinner = resolveApprovalContractor(winnerRow, winnerCode, winnerName);
+                  winnerId = foundWinner ? foundWinner.id : winnerRow.getAttribute("data-approve-bid-id");
                 }
-                wId = resolveResultContractorId(wId);
-                gt.nhaThauTrungThauId = wId ? isNaN(wId) ? wId : parseInt(wId) : "";
-                gt.giaTrungThau = view.model.sumVND(winnerRows.map((tr) => tr.querySelector(".row-gia-trung")?.value || "0"));
-                winnerIdStr = wId || "none";
-              } else {
-                gt.nhaThauTrungThauId = "";
-                gt.giaTrungThau = 0;
-              }
+                winnerId = resolveResultContractorId(winnerId);
+                return {
+                  id: lot?.id || "",
+                  maPhanLo: code,
+                  nhaThauTrungThauId: winnerId ? isNaN(winnerId) ? winnerId : parseInt(winnerId) : "",
+                  giaTrungThau: view.model.parseVND(winnerRow.querySelector(".row-gia-trung")?.value || "0"),
+                  thoiGianGoiThau: winnerRow.querySelector(".row-tg-goithau")?.value.trim() || "",
+                  thoiGianHopDong: winnerRow.querySelector(".row-tg-hopdong")?.value.trim() || ""
+                };
+              });
+              const completeScope = {
+                lotIds: plList.map((lot) => String(lot.id || "")).filter(Boolean),
+                lotCodes: plList.map((lot) => String(lot.maPhanLo || "")).filter(Boolean)
+              };
+              const mergedAward = mergeScopedAwardLotResults({
+                phanLoList: plList,
+                scope: activeScopedEvaluation || completeScope,
+                scopedLotResults
+              });
+              gt.phanLoList = mergedAward.phanLoList;
+              gt.nhaThauTrungThauId = mergedAward.nhaThauTrungThauId;
+              gt.giaTrungThau = mergedAward.giaTrungThau;
+              winnerIdStr = mergedAward.nhaThauTrungThauId || "none";
               gt.thoiGianGoiThau = "";
               gt.thoiGianHopDong = "";
             } else {
@@ -925,10 +946,29 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
             } catch (e) {
             }
-            if (!meta.result) meta.result = {};
-            meta.result.soBctdKetQua = soBctdResultVal;
-            meta.result.ngayBctdKetQua = ngayBctdResultVal;
-            meta.result.contractorBindings = winnerRows.map((row) => {
+            let resultMetadataTarget;
+            if (activeScopedEvaluation) {
+              const scopedBatch = meta.lotBatches?.[activeScopedEvaluation.batchId];
+              if (!scopedBatch) {
+                await view.customAlert(
+                  "Không thể lưu kết quả",
+                  "Không tìm thấy đợt phần lô đang xử lý. Vui lòng tải lại gói thầu và thử lại.",
+                  "alert-triangle"
+                );
+                return;
+              }
+              if (!scopedBatch.result || typeof scopedBatch.result !== "object") scopedBatch.result = {};
+              resultMetadataTarget = scopedBatch.result;
+              resultMetadataTarget.soQuyetDinhKetQua = decNo;
+              resultMetadataTarget.ngayQuyetDinhKetQua = decDate;
+              resultMetadataTarget.saved = true;
+            } else {
+              if (!meta.result) meta.result = {};
+              resultMetadataTarget = meta.result;
+            }
+            resultMetadataTarget.soBctdKetQua = soBctdResultVal;
+            resultMetadataTarget.ngayBctdKetQua = ngayBctdResultVal;
+            resultMetadataTarget.contractorBindings = winnerRows.map((row) => {
               const bidId = row.getAttribute("data-approve-bid-id") || "";
               const bid = view.model.state.thongtinmothau.find((item) => String(item.id) === String(bidId));
               return {
@@ -938,6 +978,21 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                 memberVersionIds: (bid?.thanhVienLienDanh || []).map((member) => resolveResultContractorId(member.thanhVienNhaThauId)).filter(Boolean)
               };
             });
+            if (activeScopedEvaluation) {
+              gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+              const syncResult = await commitPackageAwardDecision(appController || view, {
+                afterPersist: () => view.renderGoiThauTable()
+              });
+              if (!syncResult?.ok) return;
+              await view.customAlert(
+                "Đã lưu nháp kết quả đợt phần lô",
+                `Đã lưu kết quả cho ${activeScopedEvaluation.lotCodes.join(", ")}. Các phần lô ngoài phạm vi được giữ nguyên.`,
+                "check-circle"
+              );
+              const detailPackageId = selectPackageDetailTab(view, "result", gt, view.model);
+              await view.showPackageDetails(detailPackageId);
+              return;
+            }
             const hasActualWinner = gt.phanLo === "Có" ? (typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || []).some((pl) => pl.nhaThauTrungThauId) : winnerIdStr !== "none" && !!gt.nhaThauTrungThauId;
             if (!hasActualWinner) {
               if (!meta.cancelDetails) meta.cancelDetails = {};
@@ -948,12 +1003,13 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               clearCompetitiveQuotationAppraisal(gt);
               gt.soQuyetDinhKetQua = decNo;
               gt.ngayQuyetDinhKetQua = decDate;
-              await commitPackageAwardDecision(appController || view, {
+              const syncResult = await commitPackageAwardDecision(appController || view, {
                 afterPersist: () => view.renderGoiThauTable()
               });
-              view._currentWorkflowTab = "cancel";
+              if (!syncResult?.ok) return;
               await view.customAlert("Không có nhà thầu trúng thầu", "Không có nhà thầu nào đạt yêu cầu. Hệ thống đã tự động điền các thông tin hủy thầu tương ứng và chuyển bạn sang tab Hủy thầu để xem lại hoặc điều chỉnh trước khi xác nhận hủy thầu chính thức.", "info");
-              view.showPackageDetails(gt.id);
+              const detailPackageId = selectPackageDetailTab(view, "cancel", gt, view.model);
+              await view.showPackageDetails(detailPackageId);
               return;
             }
             gt.danhGiaHsdtMetadata = JSON.stringify(meta);
@@ -961,11 +1017,13 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             gt.soQuyetDinhKetQua = decNo;
             gt.ngayQuyetDinhKetQua = decDate;
             gt.trangThai = "Đã có kết quả";
-            await commitPackageAwardDecision(appController || view, {
+            const syncResult = await commitPackageAwardDecision(appController || view, {
               afterPersist: () => view.renderGoiThauTable()
             });
+            if (!syncResult?.ok) return;
             await view.customAlert("Chúc mừng", `Đã phê duyệt kết quả trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`, "check-circle");
-            view.showPackageDetails(id);
+            const detailPackageId = selectPackageDetailTab(view, "result", gt, view.model);
+            await view.showPackageDetails(detailPackageId);
           };
         }
       }

@@ -458,7 +458,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     profile: "Thông tin tài khoản cá nhân"
   };
   this.view.elements.pageTitle.textContent = titleMap[tabName] || "Hệ thống Quản lý";
-  this.renderTabData(tabName, action);
+  const renderTask = this.renderTabData(tabName, action);
   if (action === "taomoi") {
     setTimeout(() => {
       if (!shouldAutoOpenCreateModal(this.model?.state, tabName)) return;
@@ -489,6 +489,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
       setRuntimeStyle(document.body, "overflow", "");
     }
   }
+  return renderTask;
 }
 
 export function resetTimelineOnNavigation(controller, nextTab) {
@@ -590,11 +591,10 @@ export function renderTabData(tabName, action = null) {
     case "goithau-detail":
       const activeId = action || (history.state ? history.state.action : null);
       if (activeId) {
-        this.view.showPackageDetails(activeId);
+        return this.view.showPackageDetails(activeId);
       } else {
-        this.switchTab("goithau");
+        return this.switchTab("goithau");
       }
-      break;
     case "kehoach-detail":
       const khId = action || (history.state ? history.state.action : null);
       if (khId) {

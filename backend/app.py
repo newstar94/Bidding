@@ -422,6 +422,10 @@ from backend.notifications.routes import (
     mark_all_notifications_read_api,
     mark_notification_read_api,
 )
+from backend.lot_lifecycle_routes import (
+    create_lot_batch_api,
+    get_lot_lifecycle_api,
+)
 
 
 _holidays_cache = None
@@ -652,6 +656,8 @@ routes = [
     Route("/api/paginate", paginate_api, methods=["GET"]),
     Route("/api/record", record_api, methods=["GET"]),
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
+    Route("/api/packages/{package_id}/lot-lifecycle", get_lot_lifecycle_api, methods=["GET"]),
+    Route("/api/packages/{package_id}/lot-batches", create_lot_batch_api, methods=["POST"]),
     Route("/api/notifications", list_notifications_api, methods=["GET"]),
     Route("/api/notifications/read-all", mark_all_notifications_read_api, methods=["POST"]),
     Route("/api/notifications/{notification_id}/read", mark_notification_read_api, methods=["POST"]),

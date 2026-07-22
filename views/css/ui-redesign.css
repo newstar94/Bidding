@@ -132,10 +132,10 @@ label[for] {
   background: var(--brand-soft);
 }
 
-/* The selected item already has its own border. Keep keyboard focus visible,
-   but avoid stacking the global 2px ring into the heavy double border. */
+/* The selected item already has its own border. Keep keyboard focus visible
+   without stacking a second ring. */
 .nav-btn:focus-visible {
-  outline: 1px solid var(--brand) !important;
+  outline: var(--focus-ring-width) solid var(--brand) !important;
   outline-offset: 2px !important;
 }
 
@@ -408,7 +408,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .notification-item:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--brand) 28%, transparent);
   outline-offset: 2px;
 }
 
@@ -758,8 +758,8 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .assignment-transfer-mode input:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--brand) 30%, transparent);
-  outline-offset: 3px;
+  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--brand) 30%, transparent);
+  outline-offset: 2px;
 }
 
 .assignment-transfer-mode span,
@@ -851,7 +851,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 
 .assignment-transfer-item:focus-within {
   border-color: color-mix(in srgb, var(--brand) 48%, var(--line));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 10%, transparent);
+  box-shadow: 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
 .assignment-transfer-icon {
@@ -1026,7 +1026,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .form-control:focus {
   outline: none !important;
   border-color: var(--brand);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
 }
 
 .form-group label {
@@ -1034,6 +1034,43 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   color: var(--ink-muted);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.form-group .radio-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-height: 42px;
+  margin-top: 0;
+}
+
+.form-group .radio-options .radio-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.form-group .radio-options .radio-option-input {
+  width: 18px !important;
+  min-width: 18px;
+  height: 18px !important;
+  min-height: 18px;
+  margin: 0;
+  flex: 0 0 18px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+.form-group .radio-options .radio-option-input:focus-visible {
+  outline: var(--focus-ring-width) solid var(--brand) !important;
+  outline-offset: 2px !important;
 }
 
 .form-group .error-text {
@@ -1214,6 +1251,20 @@ button:disabled {
   max-width: min(1120px, 100%);
   height: min(92dvh, 900px);
   max-height: min(92dvh, 900px);
+}
+
+.modal-card.modal-wide-width {
+  width: min(1120px, 100%);
+  max-width: min(1120px, 100%);
+}
+
+#modal-plan-breakdown .modal-card.modal-wide-width {
+  height: auto;
+}
+
+.modal-card.modal-wide-width .modal-body {
+  flex: 0 1 auto;
+  overflow-y: auto;
 }
 
 .modal-card.modal-wide-form .modal-body {
@@ -2000,7 +2051,7 @@ button:disabled {
 .assignment-transfer-dialog .bf-combobox-input:focus {
   border-color: var(--brand);
   outline: none !important;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
 }
 
 .assignment-transfer-dialog .bf-combobox-input:disabled {

@@ -821,8 +821,16 @@ export class BiddingModel {
       && String(organization?.scope_type || "").trim().toLowerCase() === "personal"
     ));
   }
+  hasInheritedSpecialistAccess() {
+    if (this.state.activerole !== "employee") return false;
+    const activeUser = this.state.activeuser || {};
+    const sourceRoles = Array.isArray(activeUser.dbRoles) && activeUser.dbRoles.length > 0
+      ? activeUser.dbRoles
+      : [activeUser.dbRole || activeUser.platformRole || activeUser.role].filter(Boolean);
+    return sourceRoles.some((role) => BiddingModel.getEffectiveRoles(role).has("manager"));
+  }
   hasPermission(empId, moduleName, permissionType) {
-    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager") || this.hasInheritedSpecialistAccess()) {
       return true;
     }
     const matrix = this.state.permissionmatrix.find((m) => m.empId === empId);

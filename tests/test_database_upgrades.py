@@ -10,13 +10,23 @@ class _Cursor:
         return self
 
 
+def _context():
+    return upgrades.DatabaseUpgradeContext(
+        lambda table_name, _table_spec: (
+            f"CREATE TABLE IF NOT EXISTS {table_name} (id TEXT)"
+        ),
+        None,
+        None,
+    )
+
+
 def test_mfa_removal_upgrades_drop_legacy_objects_and_advance_version():
     cursor = _Cursor()
 
     version = upgrades.apply_database_upgrades(
         cursor,
         upgrades.BASELINE_SCHEMA_VERSION,
-        upgrades.DatabaseUpgradeContext(None, None, None),
+        _context(),
     )
 
     statements = [statement for statement, _ in cursor.calls]
@@ -55,7 +65,10 @@ def test_mfa_removal_upgrades_drop_legacy_objects_and_advance_version():
         "ADD COLUMN IF NOT EXISTS so_to_trinh_du_toan_ke_hoach TEXT" in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 11
+    assert any("dot_xu_ly_phan_lo" in statement for statement in statements)
+    assert any("idx_lot_batch_detail_one_active" in statement for statement in statements)
+    assert any("goi_thau_awarded_result_check" in statement for statement in statements)
+    assert version == upgrades.DB_SCHEMA_VERSION == 12
 
 
 def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
@@ -64,7 +77,7 @@ def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
     version = upgrades.apply_database_upgrades(
         cursor,
         2,
-        upgrades.DatabaseUpgradeContext(None, None, None),
+        _context(),
     )
 
     statements = [statement for statement, _ in cursor.calls]
@@ -74,7 +87,7 @@ def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
         in statements
     )
     assert any("ROW_NUMBER() OVER" in statement for statement in statements)
-    assert version == upgrades.DB_SCHEMA_VERSION == 11
+    assert version == upgrades.DB_SCHEMA_VERSION == 12
 
 
 def test_v3_installation_enforces_one_active_session_in_v4():
@@ -83,7 +96,7 @@ def test_v3_installation_enforces_one_active_session_in_v4():
     version = upgrades.apply_database_upgrades(
         cursor,
         3,
-        upgrades.DatabaseUpgradeContext(None, None, None),
+        _context(),
     )
 
     statements = [statement for statement, _ in cursor.calls]
@@ -93,7 +106,7 @@ def test_v3_installation_enforces_one_active_session_in_v4():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 11
+    assert version == upgrades.DB_SCHEMA_VERSION == 12
 
 
 def test_v4_installation_adds_package_expert_updated_at_in_v5():
@@ -102,7 +115,7 @@ def test_v4_installation_adds_package_expert_updated_at_in_v5():
     version = upgrades.apply_database_upgrades(
         cursor,
         4,
-        upgrades.DatabaseUpgradeContext(None, None, None),
+        _context(),
     )
 
     statements = [statement for statement, _ in cursor.calls]
@@ -111,4 +124,4 @@ def test_v4_installation_adds_package_expert_updated_at_in_v5():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 11
+    assert version == upgrades.DB_SCHEMA_VERSION == 12

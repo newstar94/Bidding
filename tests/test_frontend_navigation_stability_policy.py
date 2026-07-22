@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -76,8 +77,75 @@ def test_timeline_combobox_uses_standard_control_focus_ring():
     ]
 
     assert "outline: none !important;" in focus_rule
-    assert "box-shadow: 0 0 0 2px var(--focus-ring);" in focus_rule
-    assert "0 0 0 3px" not in focus_rule
+    assert "box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);" in focus_rule
+
+
+def test_package_lot_table_keeps_all_headers_visible_and_aligned():
+    template = _source("views/modals/modal_goithau.html")
+    controller = _source("frontend/app/BiddingControllerForms.js")
+    table = template[
+        template.index('<table class="phanlo-table" id="phanlo-table">'):
+        template.index('</table>', template.index('<table class="phanlo-table" id="phanlo-table">'))
+    ]
+
+    assert 'id="th-baodam-phanlo"' in table
+    assert "Bảo đảm dự thầu (VNĐ)" in table
+    assert '<th class="col-action">Thao tác</th>' in table
+    assert 'setVisible(thBaoDam, true, "table-cell");' in controller
+
+
+def test_package_lot_input_focus_ring_is_compact():
+    stylesheet = _source("views/css/views.css")
+    focus_rule = stylesheet[
+        stylesheet.index(".phanlo-table td input:focus {"):
+        stylesheet.index("}", stylesheet.index(".phanlo-table td input:focus {"))
+    ]
+
+    assert "outline: none;" in focus_rule
+    assert "box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);" in focus_rule
+
+
+def test_focus_indicators_share_one_compact_width_token():
+    variables = _source("views/css/variables.css")
+    assert "--focus-ring-width: 1px;" in variables
+
+    for path in (
+        "views/css/base.css",
+        "views/css/components.css",
+        "views/css/ui-redesign.css",
+        "views/css/views.css",
+    ):
+        stylesheet = _source(path)
+        focus_rules = re.findall(
+            r"[^{}]*:focus(?:-visible|-within)?[^{}]*\{[^{}]*\}",
+            stylesheet,
+        )
+        assert focus_rules, f"Expected focus rules in {path}"
+        for rule in focus_rules:
+            assert not re.search(r"outline:\s*[2-9]px\s+solid", rule), rule
+            assert not re.search(r"box-shadow:\s*0 0 0 [2-9]px", rule), rule
+
+
+def test_plan_breakdown_modal_shares_wide_width_without_fixed_height():
+    template = _source("views/modals/modal_plan_breakdown.html")
+    stylesheet = _source("views/css/ui-redesign.css")
+    card_markup = template[template.index('<div class="modal-card'):]
+    card_markup = card_markup[:card_markup.index(">")]
+    width_rule = stylesheet[
+        stylesheet.index(".modal-card.modal-wide-width {"):
+        stylesheet.index("}", stylesheet.index(".modal-card.modal-wide-width {"))
+    ]
+    content_height_rule = stylesheet[
+        stylesheet.index("#modal-plan-breakdown .modal-card.modal-wide-width {"):
+        stylesheet.index("}", stylesheet.index("#modal-plan-breakdown .modal-card.modal-wide-width {"))
+    ]
+
+    assert "modal-wide-width" in card_markup
+    assert "modal-wide-form" not in card_markup
+    assert "width: min(1120px, 100%);" in width_rule
+    assert "height:" not in width_rule
+    assert "max-height:" not in width_rule
+    assert "height: auto;" in content_height_rule
 
 
 def test_sidebar_focus_ring_does_not_stack_a_second_thick_border():
@@ -87,7 +155,7 @@ def test_sidebar_focus_ring_does_not_stack_a_second_thick_border():
         stylesheet.index(".nav-btn.active {")
     ]
 
-    assert "outline: 1px solid var(--brand) !important;" in focus_rule
+    assert "outline: var(--focus-ring-width) solid var(--brand) !important;" in focus_rule
     assert "outline-offset: 2px !important;" in focus_rule
 
 

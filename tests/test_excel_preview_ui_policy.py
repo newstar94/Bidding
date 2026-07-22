@@ -25,7 +25,7 @@ def test_excel_preview_styles_cover_interaction_and_validation_states():
     assert "#modal-excel-preview .excel-preview-input:disabled" in stylesheet
     assert "var(--focus-ring)" in stylesheet
     assert "var(--danger-soft)" in stylesheet
-    assert "box-shadow: 0 0 0 2px var(--focus-ring);" in stylesheet
+    assert "box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);" in stylesheet
     assert "box-shadow: 0 0 0 3px var(--focus-ring);" not in stylesheet[
         stylesheet.index("#modal-excel-preview .excel-preview-input {"):
         stylesheet.index("#modal-excel-preview .excel-preview-feedback")
