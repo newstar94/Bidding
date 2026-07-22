@@ -8,6 +8,7 @@ import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+import { ensureCurrentUserAssignee } from "../packages/packageAssignmentPolicy.js";
 export async function deleteHopDong(id) {
   const targetHd = await refreshRecordBeforeDelete(this, "hopdong", id);
   if (!targetHd) return;
@@ -152,7 +153,12 @@ export async function editHopDong(id) {
       const confirmTitle = document.getElementById("hd-chudautu-confirm-title");
       const confirmInfo = document.getElementById("hd-chudautu-confirm-info");
       if (!selectedCdtId) {
-        if (versionGroup) setRuntimeStyle(versionGroup, "display", "none");
+        if (versionSelect) {
+          versionSelect.innerHTML = trustedHTML('<option value="">--</option>');
+          versionSelect.value = "";
+          versionSelect.disabled = true;
+          initCustomSelect(versionSelect.id);
+        }
         if (confirmContainer) setRuntimeStyle(confirmContainer, "display", "none");
         return;
       }
@@ -162,11 +168,11 @@ export async function editHopDong(id) {
       const versions = this.model.state.chudautu.filter((c) => c.rootId === rootId || c.id === rootId);
       versions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (versionSelect && versionGroup) {
+        versionSelect.disabled = false;
         versionSelect.innerHTML = trustedHTML(versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
           return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
         }).join(""));
-        setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
           if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerCdt = this.model.state.chudautu.find((c) => c.id === e.target.value);
@@ -210,7 +216,12 @@ export async function editHopDong(id) {
       const confirmTitle = document.getElementById("hd-nhathau-confirm-title");
       const confirmInfo = document.getElementById("hd-nhathau-confirm-info");
       if (!selectedNtId) {
-        if (versionGroup) setRuntimeStyle(versionGroup, "display", "none");
+        if (versionSelect) {
+          versionSelect.innerHTML = trustedHTML('<option value="">--</option>');
+          versionSelect.value = "";
+          versionSelect.disabled = true;
+          initCustomSelect(versionSelect.id);
+        }
         if (confirmContainer) setRuntimeStyle(confirmContainer, "display", "none");
         return;
       }
@@ -220,11 +231,11 @@ export async function editHopDong(id) {
       const versions = this.model.state.nhathau.filter((n) => n.rootId === rootId || n.id === rootId);
       versions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (versionSelect && versionGroup) {
+        versionSelect.disabled = false;
         versionSelect.innerHTML = trustedHTML(versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
           return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
         }).join(""));
-        setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
           if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerNt = this.model.state.nhathau.find((n) => n.id === e.target.value);
@@ -275,6 +286,13 @@ export async function editHopDong(id) {
       rerenderPlanPackages();
     };
     const _roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };
+    const currentUserId = String(this.model.state.activeuser?.id || sessionStorage.getItem("bf_user_id") || "").trim();
+    const currentUserCandidate = {
+      id: currentUserId,
+      name: this.model.state.activeuser?.name || this.model.state.activeuser?.username || "Người tạo",
+      email: this.model.state.activeuser?.email || "",
+      role: this.model.state.activerole || this.model.state.activeuser?.dbRole || "employee"
+    };
     const restoreHdEmpValue = () => {
       const empSelect = document.getElementById("hd-nhanvienphutrach");
       if (empSelect) {
@@ -282,11 +300,7 @@ export async function editHopDong(id) {
           const assignment = this.model.state.assignments.find((a) => a.targetId === id && a.type === "hopdong");
           empSelect.value = assignment ? assignment.empId : "";
         } else {
-          const activeWorkspace = (this.model.state.activeuser?.organizations || []).find(
-            (organization) => String(organization.id) === String(this.model.workspaceScope?.organizationId || "")
-          );
-          const currentUserId = this.model.state.activeuser?.id || sessionStorage.getItem("bf_user_id");
-          empSelect.value = activeWorkspace?.scope_type === "organization" ? currentUserId || "" : "";
+          empSelect.value = currentUserId;
         }
         if (this.model.state.activerole === "employee") {
           empSelect.disabled = true;
@@ -299,8 +313,8 @@ export async function editHopDong(id) {
     const _populateHdEmpDropdown = () => {
       const empDropdown = document.getElementById("hd-nhanvienphutrach");
       if (!empDropdown) return;
-      const employees = Array.isArray(this.model.state.employees) ? this.model.state.employees : [];
-      const optHtml = employees.map((e) => {
+      const selectableEmployees = ensureCurrentUserAssignee(this.model.state.employees, currentUserCandidate);
+      const optHtml = selectableEmployees.map((e) => {
         const roleLabel = _roleLabelMap[e.role] || e.role;
         const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === e.name.toLowerCase().trim());
         const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
@@ -309,26 +323,28 @@ export async function editHopDong(id) {
       empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
       restoreHdEmpValue();
     };
-    if (!this.model.state.employees || this.model.state.employees.length === 0) {
-      apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
-        this.model.state.employees = users.map((u) => {
-          const employeeProfile = organizationEmployeeProfile(u);
-          return {
-            id: String(u.id || ""),
-            name: employeeProfile.name,
-            email: u.email || "",
-            phone: employeeProfile.phone,
-            role: u.role
-          };
+    const loadAndPopulateHdEmpDropdown = () => {
+      if (!this.model.state.employees || this.model.state.employees.length === 0) {
+        apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
+          this.model.state.employees = users.map((u) => {
+            const employeeProfile = organizationEmployeeProfile(u);
+            return {
+              id: String(u.id || ""),
+              name: employeeProfile.name,
+              email: u.email || "",
+              phone: employeeProfile.phone,
+              role: u.role
+            };
+          });
+          _populateHdEmpDropdown();
+        }).catch((err) => {
+          console.error("Failed to load users:", err);
+          _populateHdEmpDropdown();
         });
+      } else {
         _populateHdEmpDropdown();
-      }).catch((err) => {
-        console.error("Failed to load users:", err);
-        _populateHdEmpDropdown();
-      });
-    } else {
-      _populateHdEmpDropdown();
-    }
+      }
+    };
     const statusSelect = document.getElementById("hd-trangthai-hopdong");
     if (statusSelect) {
       // The sync endpoint already scopes this collection to the active organization.
@@ -429,6 +445,7 @@ export async function editHopDong(id) {
       khSelect.dispatchEvent(new Event("change"));
       renderPackagesForPlan("", []);
     }
+    loadAndPopulateHdEmpDropdown();
     if (this.model.state.activerole === "employee") {
       const empSelect = document.getElementById("hd-nhanvienphutrach");
       if (empSelect) {

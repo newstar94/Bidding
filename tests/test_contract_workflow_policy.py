@@ -126,6 +126,50 @@ def test_contract_partners_use_compact_5_1_5_1_version_layout():
     assert "Thông tin Nhà thầu - Ngày ${effectiveDate}" in source
 
 
+def test_contract_empty_partner_state_keeps_disabled_version_columns_visible():
+    modal = (ROOT / "views" / "modals" / "modal_hopdong.html").read_text(
+        encoding="utf-8"
+    )
+    source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
+        encoding="utf-8-sig"
+    )
+
+    owner_group = modal[
+        modal.index('id="hd-chudautu-version-group"') - 80:
+        modal.index('id="hd-nhathauid"')
+    ]
+    contractor_group = modal[
+        modal.index('id="hd-nhathau-version-group"') - 80:
+        modal.index('class="contract-partner-info-grid"')
+    ]
+    assert "bf-s-65d1f1c3d7" not in owner_group
+    assert "bf-s-65d1f1c3d7" not in contractor_group
+    assert 'id="hd-chudautu-version-select" required disabled' in owner_group
+    assert 'id="hd-nhathau-version-select" required disabled' in contractor_group
+    assert source.count('versionSelect.disabled = true;') >= 2
+    assert source.count('versionSelect.disabled = false;') >= 2
+    assert source.count('initCustomSelect(versionSelect.id);') >= 4
+
+
+def test_contract_employee_dropdown_always_contains_the_current_specialist():
+    source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
+        encoding="utf-8-sig"
+    )
+    populate = source[
+        source.index("const _populateHdEmpDropdown"):
+        source.index("if (!this.model.state.employees")
+    ]
+
+    assert "ensureCurrentUserAssignee" in populate
+    assert "selectableEmployees" in populate
+    assert "selectableEmployees.map" in populate
+    assert "empSelect.value = currentUserId;" in source
+
+    reset_position = source.index("form.reset();")
+    populate_position = source.index("loadAndPopulateHdEmpDropdown();", reset_position)
+    assert populate_position > reset_position
+
+
 def test_contract_package_links_are_not_restricted_by_procurement_result():
     source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
         encoding="utf-8-sig"

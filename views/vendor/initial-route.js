@@ -32,7 +32,11 @@
   };
   const hydrateStableShell = () => {
     const appContainer = document.querySelector(".app-container");
-    if (localStorage.getItem("bf_sidebar_collapsed") === "true") {
+    const isMobileViewport = window.matchMedia("(max-width: 768px)").matches;
+    const isCompactViewport = window.matchMedia("(min-width: 769px) and (max-width: 1180px)").matches;
+    if (isCompactViewport) {
+      appContainer?.classList.add("sidebar-collapsed", "sidebar-auto-collapsed");
+    } else if (!isMobileViewport && localStorage.getItem("bf_sidebar_collapsed") === "true") {
       appContainer?.classList.add("sidebar-collapsed");
     }
 

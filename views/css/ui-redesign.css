@@ -1953,6 +1953,20 @@ button:disabled {
 @media (max-width: 768px) {
   .app-header {
     min-height: 64px;
+    padding-inline: 16px;
+  }
+
+  .menu-toggle-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--touch-target-min);
+    background: var(--surface);
+  }
+
+  .menu-toggle-btn :is(i, svg) {
+    width: 20px;
+    height: 20px;
   }
 
   .content-viewport {
@@ -2104,6 +2118,20 @@ button:disabled {
   .dashboard-alert-copy em {
     white-space: normal;
   }
+}
+
+.app-container.sidebar-auto-collapsed .brand-icon {
+  cursor: default;
+}
+
+.app-container.sidebar-auto-collapsed .brand-icon:hover,
+.app-container.sidebar-auto-collapsed .brand-icon:focus-visible {
+  transform: none;
+  box-shadow: none;
+}
+
+.app-container.sidebar-auto-collapsed .brand-icon::after {
+  display: none;
 }
 
 @media (max-width: 480px) {

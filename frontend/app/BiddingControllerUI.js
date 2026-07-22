@@ -2,6 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import {
+  createCompactSidebarMediaQuery,
   createSidebarMediaQuery,
   handleProfileMenuKeydown,
   setDesktopSidebarCollapsed,
@@ -56,26 +57,32 @@ export function setupSidebar() {
   const sidebarToggle = this.view.elements.sidebarToggle;
   const btnCollapse = document.getElementById("btn-sidebar-collapse");
   const mediaQuery = createSidebarMediaQuery(window);
-  const isCollapsed = localStorage.getItem("bf_sidebar_collapsed") === "true";
-  setDesktopSidebarCollapsed(appContainer, btnCollapse, isCollapsed);
+  const compactMediaQuery = createCompactSidebarMediaQuery(window);
+  const storedDesktopCollapsed = () => localStorage.getItem("bf_sidebar_collapsed") === "true";
   const synchronizeViewport = () => {
-    if (!mediaQuery.matches) {
-      appContainer.classList.toggle("sidebar-collapsed", localStorage.getItem("bf_sidebar_collapsed") === "true");
-    }
     return synchronizeSidebarViewport({
       appContainer,
       sidebar,
       toggle: sidebarToggle,
       collapseButton: btnCollapse,
-      mediaQuery
+      mediaQuery,
+      compactMediaQuery,
+      desktopCollapsed: storedDesktopCollapsed()
     });
   };
   synchronizeViewport();
   if (typeof mediaQuery.addEventListener === "function") mediaQuery.addEventListener("change", synchronizeViewport);
   else mediaQuery.addListener?.(synchronizeViewport);
+  if (typeof compactMediaQuery.addEventListener === "function") compactMediaQuery.addEventListener("change", synchronizeViewport);
+  else compactMediaQuery.addListener?.(synchronizeViewport);
 
   if (btnCollapse) {
     btnCollapse.addEventListener("click", () => {
+      if (mediaQuery.matches) {
+        setMobileSidebarOpen(sidebar, sidebarToggle, false, { focus: "toggle" });
+        return;
+      }
+      if (compactMediaQuery.matches) return;
       const collapsed = !appContainer.classList.contains("sidebar-collapsed");
       setDesktopSidebarCollapsed(appContainer, btnCollapse, collapsed);
       localStorage.setItem("bf_sidebar_collapsed", collapsed);
@@ -84,6 +91,7 @@ export function setupSidebar() {
   }
   const brandIcon = sidebar?.querySelector(".brand-icon");
   const expandCollapsedSidebar = () => {
+    if (compactMediaQuery.matches) return;
     if (!appContainer.classList.contains("sidebar-collapsed")) return;
     setDesktopSidebarCollapsed(appContainer, btnCollapse, false);
     localStorage.setItem("bf_sidebar_collapsed", "false");
@@ -98,6 +106,11 @@ export function setupSidebar() {
   sidebarToggle.addEventListener("click", () => {
     const open = !sidebar.classList.contains("active");
     setMobileSidebarOpen(sidebar, sidebarToggle, open, { focus: open ? "sidebar" : "toggle" });
+  });
+  appContainer.addEventListener("click", (event) => {
+    if (!mediaQuery.matches || !sidebar.classList.contains("active")) return;
+    if (sidebar.contains(event.target) || sidebarToggle.contains(event.target)) return;
+    setMobileSidebarOpen(sidebar, sidebarToggle, false);
   });
   this.view.elements.navButtons.forEach((btn) => {
     btn.addEventListener("click", () => {

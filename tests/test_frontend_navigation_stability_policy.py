@@ -25,6 +25,31 @@ def test_active_tab_still_renders_during_startup_and_workspace_changes():
     assert "this.renderTabData(tabName, action);" in switch_block
 
 
+def test_sidebar_has_compact_tablet_mode_and_reachable_mobile_drawer():
+    shell = _source("frontend/app/shellAccessibility.js")
+    controller = _source("frontend/app/BiddingControllerUI.js")
+    base = _source("views/css/base.css")
+    redesign = _source("views/css/ui-redesign.css")
+    initial_route = _source("views/vendor/initial-route.js")
+
+    assert 'const COMPACT_SIDEBAR_QUERY = "(min-width: 769px) and (max-width: 1180px)";' in shell
+    assert "createCompactSidebarMediaQuery" in shell
+    assert "compactMediaQuery" in controller
+    assert 'classList.toggle("sidebar-auto-collapsed", autoCollapsed)' in shell
+    assert "desktopCollapsed" in shell
+    assert "compactMediaQuery.matches" in controller
+    assert "sidebarToggle.contains(event.target)" in controller
+    assert 'matchMedia("(min-width: 769px) and (max-width: 1180px)")' in initial_route
+
+    mobile_rule = redesign[redesign.index("@media (max-width: 768px)"):]
+    assert ".menu-toggle-btn" in mobile_rule
+    assert "display: inline-flex !important;" in mobile_rule
+    assert "align-items: center;" in mobile_rule
+    assert "justify-content: center;" in mobile_rule
+    assert "transform: translateX(-100%);" in base
+    assert ".sidebar.active" in base
+
+
 def test_background_sync_does_not_reenter_router_for_list_tabs():
     source = _source("frontend/app/BiddingControllerSync.js")
     render_block = source[source.index("function renderChangedState"):source.index("export function buildSyncErrorDetailLines")]
@@ -187,7 +212,7 @@ def test_notification_actions_and_rows_use_the_compact_panel_pattern():
     assert 'data-lucide="check"' in template
     assert 'data-lucide="check-check"' not in template
     assert '<span>Đánh dấu tất cả đã đọc</span>' in template
-    assert '/css/ui-redesign.css?v=1.3.12' in index
+    assert '/css/ui-redesign.css?v=1.3.13' in index
     assert "border: 0;" in read_all_rule
     assert "background: transparent;" in read_all_rule
     assert "display: block;" in icon_rule

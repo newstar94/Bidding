@@ -1,4 +1,5 @@
 const MOBILE_SIDEBAR_QUERY = "(max-width: 768px)";
+const COMPACT_SIDEBAR_QUERY = "(min-width: 769px) and (max-width: 1180px)";
 
 function setToggleAttribute(element, name, enabled) {
   if (!element) return;
@@ -80,15 +81,26 @@ export function handleProfileMenuKeydown(event, trigger, menu) {
   return true;
 }
 
-export function setDesktopSidebarCollapsed(appContainer, collapseButton, collapsed) {
+export function setDesktopSidebarCollapsed(appContainer, collapseButton, collapsed, { interactive = true } = {}) {
   const isCollapsed = Boolean(collapsed);
   appContainer?.classList.toggle("sidebar-collapsed", isCollapsed);
+  appContainer?.querySelectorAll?.(".sidebar .nav-btn").forEach((button) => {
+    if (isCollapsed) button.title = button.dataset.tooltip || button.getAttribute("aria-label") || "";
+    else button.removeAttribute("title");
+  });
   const brandIcon = appContainer?.querySelector?.(".brand-icon");
   if (brandIcon) {
-    brandIcon.setAttribute("aria-hidden", String(!isCollapsed));
-    brandIcon.setAttribute("aria-label", "Mở rộng thanh bên");
-    brandIcon.setAttribute("role", "button");
-    brandIcon.tabIndex = isCollapsed ? 0 : -1;
+    const canExpand = isCollapsed && interactive;
+    brandIcon.setAttribute("aria-hidden", String(!canExpand));
+    if (canExpand) {
+      brandIcon.setAttribute("aria-label", "Mở rộng thanh bên");
+      brandIcon.setAttribute("role", "button");
+      brandIcon.tabIndex = 0;
+    } else {
+      brandIcon.removeAttribute("aria-label");
+      brandIcon.removeAttribute("role");
+      brandIcon.tabIndex = -1;
+    }
   }
   if (collapseButton) {
     collapseButton.setAttribute("aria-expanded", String(!isCollapsed));
@@ -116,23 +128,47 @@ export function setMobileSidebarOpen(sidebar, toggle, open, { focus = "none" } =
   return expanded;
 }
 
-export function synchronizeSidebarViewport({ appContainer, sidebar, toggle, collapseButton, mediaQuery }) {
+export function synchronizeSidebarViewport({
+  appContainer,
+  sidebar,
+  toggle,
+  collapseButton,
+  mediaQuery,
+  compactMediaQuery,
+  desktopCollapsed = false
+}) {
   const mobile = Boolean(mediaQuery?.matches);
   if (mobile) {
     appContainer?.classList.remove("sidebar-collapsed");
+    appContainer?.classList.remove("sidebar-auto-collapsed");
+    if (collapseButton) {
+      collapseButton.setAttribute("aria-expanded", "true");
+      collapseButton.setAttribute("aria-label", "Đóng thanh điều hướng");
+      collapseButton.title = "Đóng thanh điều hướng";
+    }
     setMobileSidebarOpen(sidebar, toggle, sidebar?.classList.contains("active"));
   } else {
+    const autoCollapsed = Boolean(compactMediaQuery?.matches);
+    appContainer?.classList.toggle("sidebar-auto-collapsed", autoCollapsed);
     sidebar?.classList.remove("active");
     setToggleAttribute(sidebar, "inert", false);
     sidebar?.removeAttribute("aria-hidden");
     toggle?.setAttribute("aria-expanded", "true");
     toggle?.setAttribute("aria-label", "Thanh điều hướng đang hiển thị");
-    const collapsed = appContainer?.classList.contains("sidebar-collapsed");
-    setDesktopSidebarCollapsed(appContainer, collapseButton, collapsed);
+    setDesktopSidebarCollapsed(
+      appContainer,
+      collapseButton,
+      autoCollapsed || Boolean(desktopCollapsed),
+      { interactive: !autoCollapsed }
+    );
   }
   return mobile;
 }
 
 export function createSidebarMediaQuery(view = globalThis.window) {
   return view?.matchMedia?.(MOBILE_SIDEBAR_QUERY) || { matches: false };
+}
+
+export function createCompactSidebarMediaQuery(view = globalThis.window) {
+  return view?.matchMedia?.(COMPACT_SIDEBAR_QUERY) || { matches: false };
 }
