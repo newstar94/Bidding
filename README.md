@@ -184,16 +184,36 @@ python scripts/manage_database.py
 pytest -q tests
 ```
 
-`--reset` chỉ dùng cho các database cục bộ dùng một lần:
+### Đặt lại database (Reset DB)
+
+Dùng khi muốn **xóa sạch toàn bộ dữ liệu** và khởi tạo lại schema từ đầu:
 
 ```powershell
 python scripts/setup_local_postgres.py --reset
 ```
 
-Khi reset, script giữ hai bí mật tách biệt trong `.env` bị Git ignore:
-`ADMIN_PASSWORD` cho tài khoản Super Admin của ứng dụng và
-`POSTGRES_LOCAL_ADMIN_PASSWORD` cho superuser PostgreSQL local. Secret không đạt
-policy sẽ được xoay tự động nhưng không được in ra console.
+Script sẽ thực hiện tuần tự:
+1. Xóa toàn bộ database cục bộ (`biddingflow_dev`, `_test`, `_api_test`, v.v.)
+2. Tạo lại sạch tất cả database
+3. Đồng bộ mật khẩu các role ứng dụng từ `.env` vào PostgreSQL
+4. Khởi tạo schema (migrations)
+
+**Quy tắc mật khẩu khi reset:**
+
+| Biến trong `.env` | Hành vi khi reset |
+|---|---|
+| `POSTGRES_LOCAL_ADMIN_PASSWORD` | Script **dùng để kết nối** — phải khớp với mật khẩu thực trong PostgreSQL |
+| `DATABASE_RUNTIME_PASSWORD` | Script **tự cập nhật** vào PostgreSQL theo giá trị trong `.env` (≥ 16 ký tự) |
+| `DATABASE_MIGRATOR_PASSWORD` | Script **tự cập nhật** vào PostgreSQL theo giá trị trong `.env` (≥ 16 ký tự) |
+| `DATABASE_BACKUP_PASSWORD` | Script **tự cập nhật** vào PostgreSQL theo giá trị trong `.env` (≥ 16 ký tự) |
+| `DATABASE_DOCUMENT_WORKER_PASSWORD` | Script **tự cập nhật** vào PostgreSQL theo giá trị trong `.env` (≥ 16 ký tự) |
+
+Mật khẩu mặc định cho môi trường dev cục bộ:
+
+```text
+PostgreSQL admin (postgres):     12345678
+Các role ứng dụng (biddingflow_*): Dev@Local12345678!
+```
 
 ## Xem dữ liệu PostgreSQL bằng DBeaver
 
@@ -217,8 +237,10 @@ Sau khi cài DBeaver:
    Port:     55432
    Database: biddingflow_dev
    Username: postgres
-   Password: lấy từ POSTGRES_LOCAL_ADMIN_PASSWORD trong file .env
+   Password: 12345678
    ```
+
+   > Nếu mật khẩu không đúng, lấy giá trị thực từ `POSTGRES_LOCAL_ADMIN_PASSWORD` trong file `.env`.
 
 3. Chọn **Test Connection** rồi **Finish**. DBeaver có thể đề nghị tải PostgreSQL JDBC driver trong lần kết nối đầu tiên.
 4. Mở cây dữ liệu:

@@ -224,34 +224,6 @@ def main() -> None:
     else:
         _run(*settings_psql, "-c", "SELECT pg_reload_conf()", env=child_env)
     if args.reset:
-        if (
-            not configured_postgres_password
-            or len(configured_postgres_password) < 24
-        ):
-            import psycopg
-            from psycopg import sql
-
-            rotated_postgres_password = secrets.token_urlsafe(32)
-            with psycopg.connect(
-                host="127.0.0.1",
-                port=PORT,
-                dbname="postgres",
-                user="postgres",
-                password=password,
-                autocommit=True,
-            ) as connection:
-                connection.execute(
-                    sql.SQL("ALTER ROLE {} PASSWORD {}").format(
-                        sql.Identifier("postgres"),
-                        sql.Literal(rotated_postgres_password),
-                    )
-                )
-            password = rotated_postgres_password
-            child_env["PGPASSWORD"] = password
-            print(
-                "Rotated the local PostgreSQL admin credential in the ignored .env file.",
-                flush=True,
-            )
         print("Resetting development database...", flush=True)
         common_psql = (
             str(bin_dir / "psql.exe"),
