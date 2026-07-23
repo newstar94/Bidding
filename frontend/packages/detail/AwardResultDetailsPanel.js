@@ -217,6 +217,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                 || String(view._editingWholePackageResultPackageId) === String(gt.id)),
           });
           statusBadge.innerHTML = trustedHTML(view.getStatusBadge(editingStatus));
+          if (window.lucide) window.lucide.createIcons({ root: statusBadge });
         }
         renderAwardResultDetailsPanel(view, {
           contentWrapper,

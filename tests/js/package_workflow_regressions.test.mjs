@@ -228,6 +228,22 @@ test("award result form initializes Lucide icons immediately after rendering", a
   );
 });
 
+test("changing result-edit status initializes the detail badge icon without a reload", async () => {
+  const source = await readFile(
+    new URL("../../frontend/packages/detail/AwardResultDetailsPanel.js", import.meta.url),
+    "utf8",
+  );
+  const rerenderStart = source.indexOf("const rerenderResultPanel = () => {");
+  const recursiveRender = source.indexOf("renderAwardResultDetailsPanel(view, {", rerenderStart);
+
+  assert.notEqual(rerenderStart, -1);
+  assert.notEqual(recursiveRender, -1);
+  assert.match(
+    source.slice(rerenderStart, recursiveRender),
+    /window\.lucide\.createIcons\(\{ root: statusBadge \}\)/,
+  );
+});
+
 
 test("controller navigation waits for package-detail rendering", async () => {
   let finishRender;
