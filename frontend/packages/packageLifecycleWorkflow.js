@@ -20,9 +20,38 @@ export function openPackageWizardStep() {
     planSelect.dispatchEvent(new Event("change"));
   }
 }
+export async function refreshPackageDeleteDependencies(controller, deleteContext) {
+  if (!deleteContext) return null;
+  const references = [];
+  const seen = new Set();
+  const addReference = (table, id) => {
+    const normalizedId = String(id || "").trim();
+    const key = `${table}:${normalizedId}`;
+    if (!normalizedId || seen.has(key)) return;
+    seen.add(key);
+    references.push([table, normalizedId]);
+  };
+  deleteContext.versionRefs.forEach((record) => addReference("goithau", record?.id));
+  deleteContext.planIds.forEach((id) => addReference("kehoach", id));
+  const packageIds = new Set(deleteContext.relatedIds.map(String));
+  (controller.model.state.thongtinmothau || []).forEach((record) => {
+    if (packageIds.has(String(record?.goiThauId))) {
+      addReference("thongtinmothau", record.id);
+    }
+  });
+  await Promise.all(
+    references.map(([table, id]) => refreshRecordBeforeDelete(controller, table, id))
+  );
+  return getPackageDeleteContext(
+    controller.model.state.goithau,
+    deleteContext.targetPackage.id
+  );
+}
 export async function deleteGoiThau(id) {
   await refreshRecordBeforeDelete(this, "goithau", id);
-  const deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
+  let deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
+  if (!deleteContext) return;
+  deleteContext = await refreshPackageDeleteDependencies(this, deleteContext);
   if (!deleteContext) return;
   let deleteConfirmed = false;
   let deleteChoice = null;
