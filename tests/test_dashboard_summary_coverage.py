@@ -83,6 +83,40 @@ class _DashboardCursor:
         return list(self.rows)
 
 
+class _ResultAwareDashboardCursor(_DashboardCursor):
+    """Model packages whose persisted status lags behind official results."""
+
+    def execute(self, sql, params=()):
+        normalized = " ".join(str(sql).split())
+        if "status_name, COUNT(*) AS total" in normalized:
+            self.sql = normalized
+            self.params = tuple(params)
+            self.calls.append((self.sql, self.params))
+            self.rows = [
+                ("AWARDED", 1),
+                ("PARTIALLY_AWARDED", 1),
+            ] if "effective_status" in normalized else [("EVALUATING", 2)]
+            return self
+        if "ORDER BY COALESCE(updated_at, created_at) DESC" in normalized:
+            self.sql = normalized
+            self.params = tuple(params)
+            self.calls.append((self.sql, self.params))
+            self.rows = [
+                {
+                    "id": "gt-completed",
+                    "trang_thai": "EVALUATING",
+                    "effective_status": "AWARDED",
+                },
+                {
+                    "id": "gt-partial",
+                    "trang_thai": "EVALUATING",
+                    "effective_status": "PARTIALLY_AWARDED",
+                },
+            ]
+            return self
+        return super().execute(sql, params)
+
+
 def test_dashboard_date_contract_and_alert_helpers_cover_edge_cases():
     assert dashboard_summary._parse_iso_date(None) is None
     assert dashboard_summary._parse_iso_date("2026-07-19T10:00:00") == date(2026, 7, 19)
@@ -183,6 +217,70 @@ def test_dashboard_summary_projects_manager_and_employee_paths(monkeypatch, mana
     if not manager:
         assert any("pc_plan" in sql for sql, _params in cursor.calls)
         assert any(params and "user-1" in params for _sql, params in cursor.calls)
+
+
+def test_dashboard_summary_uses_official_result_status_instead_of_stale_package_status(
+    monkeypatch,
+):
+    cursor = _ResultAwareDashboardCursor()
+    monkeypatch.setattr(dashboard_summary, "is_organization_manager", lambda *_args: True)
+    monkeypatch.setattr(dashboard_summary, "can_read_table", lambda *_args: True)
+    monkeypatch.setattr(
+        dashboard_summary,
+        "enum_label",
+        lambda table, column, value: {
+            "EVALUATING": "Đang chấm thầu",
+            "PARTIALLY_AWARDED": "Đã có kết quả một phần",
+            "AWARDED": "Đã có kết quả",
+        }.get(value, value),
+    )
+    monkeypatch.setattr(
+        dashboard_summary,
+        "map_db_to_json",
+        lambda _table, row: {
+            "id": row.get("id"),
+            "trangThai": dashboard_summary.enum_label(
+                "goi_thau",
+                "trang_thai",
+                row.get("trang_thai"),
+            ),
+        },
+    )
+
+    result = dashboard_summary.build_dashboard_summary(
+        cursor,
+        "org-1",
+        "manager",
+        "user-1",
+    )
+
+    assert result["statusCounts"] == {
+        "Đã có kết quả": 1,
+        "Đã có kết quả một phần": 1,
+    }
+    assert [item["trangThai"] for item in result["recentPackages"]] == [
+        "Đã có kết quả",
+        "Đã có kết quả một phần",
+    ]
+
+
+def test_dashboard_effective_status_accepts_legacy_saved_official_result_batches():
+    sql = dashboard_summary._effective_package_rows_sql("SELECT * FROM goi_thau")
+
+    assert "vong_danh_gia" in sql
+    assert "legacy_official_results.lot_id IS NOT NULL" in sql
+    assert "batch.value -> 'result' ->> 'saved'" in sql
+
+
+def test_dashboard_effective_status_respects_persisted_result_edit_state():
+    sql = dashboard_summary._effective_package_rows_sql("SELECT * FROM goi_thau")
+
+    assert "resultEdit" in sql
+    assert "result_edit.edit_type = 'whole'" in sql
+    assert "editing_batch_lots.lot_id IS NULL" in sql
+    assert sql.index("result_edit.edit_type = 'whole'") < sql.index(
+        "COALESCE(lot_progress.completed_lots, 0) = lot_progress.total_lots"
+    )
 
 
 def test_dashboard_summary_returns_zero_projection_when_access_is_denied(monkeypatch):

@@ -233,20 +233,26 @@ export function buildAwardResultApprovalMarkup(view, {
                     </div>
 
                     ${scopedDraft ? `
-                    <div class="alert alert-info" role="status">
-                        <strong>Kết quả theo ${escapeHtml(scopedDraft.label || "đợt phần lô")}</strong>
-                        <div>Chỉ hiển thị và lưu dữ liệu của ${escapeHtml(scopedDraft.lotCodes?.join(", ") || "các phần lô đã chọn")}. Các phần lô khác được giữ nguyên.</div>
+                    <div class="alert alert-info scoped-result-context" role="status">
+                        <div>
+                            <strong>${scopedDraft.isWholePackage ? "Chỉnh sửa kết quả toàn gói thầu" : scopedDraft.isEditingOfficialResult ? `Chỉnh sửa kết quả Lần ${escapeHtml(scopedDraft.sequenceNo || "")}` : `Kết quả theo ${escapeHtml(scopedDraft.label || "đợt phần lô")}`}</strong>
+                            <div>${scopedDraft.isWholePackage ? "Cập nhật kết quả chính thức đã phê duyệt của gói thầu." : `Chỉ hiển thị và lưu dữ liệu của ${escapeHtml(scopedDraft.lotCodes?.join(", ") || "các phần lô đã chọn")}. Các phần lô khác được giữ nguyên.`}</div>
+                        </div>
                     </div>
                     ` : ""}
 
                     <div class="bf-s-95b5643dd9">
                         <div>
                             <h4 class="bf-s-ff3bca23d8">
-                                ${scopedDraft ? "Kết quả LCNT theo đợt phần lô" : "Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)"}
+                                ${scopedDraft?.isWholePackage ? "Chỉnh sửa kết quả LCNT" : scopedDraft?.isEditingOfficialResult ? `Chỉnh sửa kết quả LCNT Lần ${escapeHtml(scopedDraft.sequenceNo || "")}` : scopedDraft ? "Kết quả LCNT theo đợt phần lô" : "Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)"}
                             </h4>
                             <p class="text-muted bf-s-2089b6623a">
                                 ${scopedDraft
-                                  ? "Nhập kết quả cho đúng các phần lô trong đợt hiện tại. Dữ liệu được lưu theo đợt và chưa hoàn tất toàn bộ gói thầu."
+                                  ? scopedDraft.isWholePackage
+                                    ? "Cập nhật kết quả chính thức của gói thầu và lưu lại các thay đổi."
+                                    : scopedDraft.isEditingOfficialResult
+                                    ? "Cập nhật kết quả chính thức của đợt này. Kết quả các đợt và phần lô khác được giữ nguyên."
+                                    : "Phê duyệt kết quả chính thức cho đúng các phần lô trong đợt hiện tại. Các phần lô còn lại sẽ được xử lý ở đợt sau."
                                   : gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt"
                                     ? "Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT."
                                     : "Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới."}
@@ -393,9 +399,10 @@ export function buildAwardResultApprovalMarkup(view, {
                         </table>
                     </div>
 
-                    <div class="bf-s-004d08f0e5">
+                    <div class="bf-s-004d08f0e5 official-result-form-actions">
+                        ${scopedDraft?.isEditingOfficialResult ? `<button type="button" class="btn btn-outline-secondary bf-s-a9f6996ecf scoped-result-cancel-button" id="btn-cancel-official-result-edit">Hủy chỉnh sửa</button>` : ""}
                         <button class="btn btn-primary bf-s-a9f6996ecf" id="btn-approve-award">
-                            <i data-lucide="check-circle2"></i> ${scopedDraft ? "Lưu nháp kết quả đợt phần lô" : "Phê duyệt & Hoàn thành LCNT"}
+                            <i data-lucide="${scopedDraft?.isEditingOfficialResult ? "save" : "check-circle2"}"></i> ${scopedDraft?.isEditingOfficialResult ? "Lưu thay đổi" : scopedDraft ? "Phê duyệt kết quả đợt" : "Phê duyệt & Hoàn thành LCNT"}
                         </button>
                     </div>
                 `;

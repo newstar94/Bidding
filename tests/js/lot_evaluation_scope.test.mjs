@@ -7,13 +7,17 @@ import {
   EVALUATION_LOT_SCOPE_MODE,
   ensureWholePackageEvaluationAvailable,
   ensureEvaluationLotBatch,
+  finalizeEvaluationLotBatch,
   filterBidsByEvaluationLotScope,
   findScopedEvaluationMetadata,
+  getOfficialEvaluationLotState,
   getEvaluationLotScopeDetails,
   initializeEvaluationLotScope,
   isPartialEvaluationLotScope,
   resolveActiveSavedEvaluationScope,
+  resolvePackageResultStatus,
   saveEvaluationScopeMetadata,
+  finalizeEvaluationScopeMetadata,
   updateEvaluationLotScope,
 } from "../../frontend/packages/lotEvaluationScope.js";
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
@@ -67,10 +71,239 @@ test("partial reports are stored by immutable batch scope without completing the
   assert.equal(saved.saved, false);
   assert.equal(saved.activeLotBatchId, "batch-1");
   assert.equal(saved.lotBatches["batch-1"].soBaoCao, "01/BC");
+  assert.equal(saved.lotBatches["batch-1"].status, "ACTIVE");
   assert.deepEqual(
     findScopedEvaluationMetadata(saved, ["lot-1"]).lotIds,
     ["lot-1"],
   );
+});
+
+test("official rounds expose completed history and only remaining lots for the next round", () => {
+  const fiveLotPackage = {
+    ...pkg,
+    phanLoList: Array.from({ length: 5 }, (_, index) => ({
+      id: `lot-${index + 1}`,
+      maPhanLo: `PL${index + 1}`,
+      tenPhanLo: `Phần lô ${index + 1}`,
+    })),
+  };
+  const evaluated = saveEvaluationScopeMetadata(
+    {},
+    { id: "batch-1", sequenceNo: 1, lotIds: ["lot-1", "lot-2"], lotCodes: ["PL1", "PL2"] },
+    { saved: true, soBaoCao: "01/BC" },
+    fiveLotPackage.phanLoList.map((lot) => lot.id),
+  );
+  const finalized = finalizeEvaluationScopeMetadata(evaluated, "batch-1", {
+    saved: true,
+    soQuyetDinhKetQua: "01/QĐ",
+  });
+  const state = getOfficialEvaluationLotState(fiveLotPackage, finalized);
+
+  assert.deepEqual(state.completedLotIds, ["lot-1", "lot-2"]);
+  assert.deepEqual(state.pendingLots.map((lot) => lot.id), ["lot-3", "lot-4", "lot-5"]);
+  assert.equal(state.history[0].sequenceNo, 1);
+  assert.equal(state.history[0].status, "FINAL");
+
+  const nextScope = initializeEvaluationLotScope(fiveLotPackage, finalized);
+  assert.deepEqual(nextScope.availableLotIds, ["lot-3", "lot-4", "lot-5"]);
+  assert.deepEqual(nextScope.selectedLotIds, ["lot-3", "lot-4", "lot-5"]);
+
+  const oneMoreLot = updateEvaluationLotScope(nextScope, fiveLotPackage.phanLoList, {
+    mode: EVALUATION_LOT_SCOPE_MODE.SELECTED,
+    selectedLotIds: ["lot-3", "lot-1"],
+  });
+  assert.deepEqual(oneMoreLot.selectedLotIds, ["lot-3"]);
+});
+
+test("legacy saved lot result is projected as an official round instead of reopening the form", () => {
+  const legacyMetadata = {
+    saved: false,
+    activeLotBatchId: "batch-legacy",
+    lotBatches: {
+      "batch-legacy": {
+        batchId: "batch-legacy",
+        sequenceNo: 1,
+        lotIds: ["lot-1"],
+        lotCodes: ["PL1"],
+        saved: true,
+        result: {
+          saved: true,
+          soQuyetDinhKetQua: "01/QD",
+        },
+      },
+    },
+  };
+
+  const state = getOfficialEvaluationLotState(pkg, legacyMetadata);
+
+  assert.equal(state.history.length, 1);
+  assert.equal(state.history[0].batchId, "batch-legacy");
+  assert.deepEqual(state.completedLotIds, ["lot-1"]);
+  assert.deepEqual(state.pendingLots.map((lot) => lot.id), ["lot-2"]);
+  assert.equal(resolveActiveSavedEvaluationScope(pkg, legacyMetadata), null);
+});
+
+test("package status is completed when every lot has an official result round", () => {
+  const completedPackage = {
+    ...pkg,
+    trangThai: "Đang chấm thầu",
+    danhGiaHsdtMetadata: JSON.stringify({
+      lotBatches: {
+        "batch-1": {
+          batchId: "batch-1",
+          lotIds: ["lot-1"],
+          lotCodes: ["PL1"],
+          saved: true,
+          result: { saved: true },
+        },
+        "batch-2": {
+          batchId: "batch-2",
+          lotIds: ["lot-2"],
+          lotCodes: ["PL2"],
+          saved: true,
+          result: { saved: true },
+        },
+      },
+    }),
+  };
+
+  assert.equal(resolvePackageResultStatus(completedPackage), "Đã có kết quả");
+  assert.equal(resolvePackageResultStatus({
+    ...completedPackage,
+    danhGiaHsdtMetadata: JSON.stringify({
+      lotBatches: {
+        "batch-1": {
+          lotIds: ["lot-1"],
+          saved: true,
+          result: { saved: true },
+        },
+      },
+    }),
+  }), "Đã có kết quả một phần");
+  assert.equal(resolvePackageResultStatus({
+    ...completedPackage,
+    danhGiaHsdtMetadata: JSON.stringify({ lotBatches: {} }),
+  }), "Đang chấm thầu");
+});
+
+test("editing an official result immediately exposes the package's non-final workflow status", () => {
+  const completedPackage = {
+    ...pkg,
+    trangThai: "Đã có kết quả",
+    danhGiaHsdtMetadata: JSON.stringify({
+      lotBatches: {
+        "batch-1": {
+          batchId: "batch-1",
+          lotIds: ["lot-1"],
+          saved: true,
+          result: { saved: true },
+        },
+        "batch-2": {
+          batchId: "batch-2",
+          lotIds: ["lot-2"],
+          saved: true,
+          result: { saved: true },
+        },
+      },
+    }),
+  };
+
+  assert.equal(
+    resolvePackageResultStatus(completedPackage, { editingBatchId: "batch-1" }),
+    "Đã có kết quả một phần",
+  );
+  assert.equal(
+    resolvePackageResultStatus(completedPackage, { editingWholePackage: true }),
+    "Đang chấm thầu",
+  );
+  assert.equal(resolvePackageResultStatus(completedPackage), "Đã có kết quả");
+});
+
+test("persisted result-edit state remains visible to package list and dashboard status resolvers", () => {
+  const completedPackage = {
+    ...pkg,
+    trangThai: "Đã có kết quả",
+    danhGiaHsdtMetadata: JSON.stringify({
+      resultEdit: { type: "batch", batchId: "batch-1" },
+      lotBatches: {
+        "batch-1": {
+          batchId: "batch-1",
+          lotIds: ["lot-1"],
+          saved: true,
+          result: { saved: true },
+        },
+        "batch-2": {
+          batchId: "batch-2",
+          lotIds: ["lot-2"],
+          saved: true,
+          result: { saved: true },
+        },
+      },
+    }),
+  };
+
+  assert.equal(resolvePackageResultStatus(completedPackage), "Đã có kết quả một phần");
+  assert.equal(resolvePackageResultStatus({
+    ...completedPackage,
+    phanLo: "Không",
+    danhGiaHsdtMetadata: JSON.stringify({
+      resultEdit: { type: "whole" },
+      result: { saved: true },
+    }),
+  }), "Đang chấm thầu");
+});
+
+test("two-envelope packages retain result-edit state in the persisted technical block", () => {
+  const twoEnvelopePackage = {
+    ...pkg,
+    phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ",
+    trangThai: "Đã có kết quả",
+    danhGiaHsdtMetadata: JSON.stringify({
+      is1G2T: true,
+      technical: {
+        resultEdit: { type: "batch", batchId: "batch-1" },
+        lotBatches: {
+          "batch-1": {
+            batchId: "batch-1",
+            lotIds: ["lot-1"],
+            saved: true,
+            result: { saved: true },
+          },
+          "batch-2": {
+            batchId: "batch-2",
+            lotIds: ["lot-2"],
+            saved: true,
+            result: { saved: true },
+          },
+        },
+      },
+      financial: {},
+    }),
+  };
+
+  assert.equal(resolvePackageResultStatus(twoEnvelopePackage), "Đã có kết quả một phần");
+});
+
+test("finalizing an official batch calls the lifecycle endpoint with an outcome for every lot", async () => {
+  const calls = [];
+  const response = await finalizeEvaluationLotBatch({
+    packageId: "pkg-1",
+    batchId: "batch-1",
+    outcomes: { "lot-1": "AWARDED", "lot-2": "NO_RESPONSIVE_BID" },
+    fetcher: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        ok: true,
+        json: async () => ({ packageStatus: "PARTIALLY_COMPLETED", counts: { pendingLots: 3 } }),
+      };
+    },
+  });
+
+  assert.equal(response.packageStatus, "PARTIALLY_COMPLETED");
+  assert.equal(calls[0].url, "/api/packages/pkg-1/lot-batches/batch-1/finalize");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    outcomes: { "lot-1": "AWARDED", "lot-2": "NO_RESPONSIVE_BID" },
+  });
 });
 
 test("an all-lot batch keeps the legacy completed projection compatible", () => {
@@ -123,7 +356,7 @@ test("a saved active selected-lot batch exposes the 1G1T result tab without comp
   assert.equal(state.tabs.some((tab) => tab.id === "result"), true);
 });
 
-test("active saved scope resolution rejects unsaved, empty, or unknown lot snapshots", () => {
+test("active saved scope resolution rejects unsaved, invalid, or already-resulted lot snapshots", () => {
   const metadata = {
     activeLotBatchId: "active",
     lotBatches: {
@@ -137,13 +370,7 @@ test("active saved scope resolution rejects unsaved, empty, or unknown lot snaps
   assert.equal(resolveActiveSavedEvaluationScope(pkg, metadata), null);
   assert.equal(resolveActiveSavedEvaluationScope(pkg, metadata, "empty"), null);
   assert.equal(resolveActiveSavedEvaluationScope(pkg, metadata, "unknown"), null);
-  assert.deepEqual(resolveActiveSavedEvaluationScope(pkg, metadata, "saved"), {
-    batchId: "saved",
-    lotIds: ["lot-2"],
-    lotCodes: ["PL2"],
-    isWholePackage: false,
-    batch: metadata.lotBatches.saved,
-  });
+  assert.equal(resolveActiveSavedEvaluationScope(pkg, metadata, "saved"), null);
 });
 
 test("whole-package 1G1T result-tab behavior remains based on the legacy saved projection", () => {
@@ -157,6 +384,37 @@ test("whole-package 1G1T result-tab behavior remains based on the legacy saved p
 
   const state = buildPackageTabs(wholePackage, []);
   assert.equal(state.isSingleEnvelopeEvalSaved, true);
+  assert.equal(state.tabs.some((tab) => tab.id === "result"), true);
+});
+
+test("a finalized 1G2T round keeps evaluation and result history tabs available", () => {
+  const twoEnvelope = {
+    ...pkg,
+    trangThai: "Đang chấm thầu",
+    phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ",
+    hinhThucLuaChon: "Đấu thầu rộng rãi",
+    danhGiaHsdtMetadata: JSON.stringify({
+      is1G2T: true,
+      technical: {
+        lotBatches: {
+          "batch-1": {
+            batchId: "batch-1",
+            sequenceNo: 1,
+            lotIds: ["lot-1"],
+            lotCodes: ["PL1"],
+            saved: true,
+            status: "FINAL",
+            result: { saved: true, soQuyetDinhKetQua: "01/QĐ" },
+          },
+        },
+      },
+      financial: {},
+    }),
+  };
+
+  const state = buildPackageTabs(twoEnvelope, []);
+  assert.equal(state.hasOfficialLotResults, true);
+  assert.equal(state.tabs.some((tab) => tab.id === "eval_tech"), true);
   assert.equal(state.tabs.some((tab) => tab.id === "result"), true);
 });
 
@@ -187,7 +445,7 @@ test("batch creation reuses an active batch with the exact same lot snapshot", a
   assert.equal(calls.length, 1);
 });
 
-test("new selected scope is posted with consolidated approval as the safe default", async () => {
+test("new selected scope is posted as an official staged round without special authorization", async () => {
   const calls = [];
   const fetcher = async (url, options = {}) => {
     calls.push({ url, options });
@@ -210,8 +468,7 @@ test("new selected scope is posted with consolidated approval as the safe defaul
   assert.equal(batch.reused, false);
   assert.deepEqual(JSON.parse(calls[1].options.body), {
     lotIds: ["lot-2"],
-    approvalMode: "CONSOLIDATED_APPROVAL",
-    stagedApprovalAuthorized: false,
+    approvalMode: "STAGED_APPROVAL",
   });
 });
 

@@ -25,6 +25,7 @@ import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVen
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
 import { persistAndSync } from "../shared/MutationService.js";
+import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
 import {
   enrichOpeningRowsWithPartnerInfo,
   findContractorByCode,
@@ -45,15 +46,16 @@ export function renderMoThauPanel() {
     if (g.id === selectedVal) return true;
     const isDirectOrSpecial = isDirectOrSpecialPackage(g);
     if (isDirectOrSpecial) return true;
-    if (g.trangThai !== "Đang mời thầu" && g.trangThai !== "Đã mở thầu" && g.trangThai !== "Đang chấm thầu" && g.trangThai !== "Đã có kết quả") return false;
-    if (g.trangThai === "Đang mời thầu") {
+    const effectiveStatus = resolvePackageResultStatus(g);
+    if (!["Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả một phần", "Đã có kết quả"].includes(effectiveStatus)) return false;
+    if (effectiveStatus === "Đang mời thầu") {
       if (!g.thoiGianDongThau) return false;
       const dongThau = new Date(g.thoiGianDongThau);
       if (dongThau >= now) return false;
     }
     return true;
   });
-  select.innerHTML = trustedHTML('<option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join(""));
+  select.innerHTML = trustedHTML('<option value="">-- Chọn Gói thầu theo trạng thái nghiệp vụ --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join(""));
   if (selectedVal && targetPackages.some((g) => g.id === selectedVal)) {
     select.value = selectedVal;
   } else {
@@ -90,7 +92,7 @@ export function renderMoThauPanel() {
     const isCompleted = gt.trangThai !== "Đang mời thầu" && gt.trangThai !== "Đã mở thầu" && isNextStepSaved || hasSavedOpeningData;
     const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
     const lockedStatuses = ["Đã có kết quả", "Hủy thầu"];
-    const isLocked = lockedStatuses.includes(gt.trangThai);
+    const isLocked = lockedStatuses.includes(resolvePackageResultStatus(gt));
     const isReadOnly = isCompleted && !isEditingThisStep || isLocked;
     const isEditable = !isReadOnly;
     renderOpeningSummary({

@@ -1,3 +1,5 @@
+import { enhanceButtonSystem } from "./buttonSystem.js";
+
 function readableName(value) {
   return String(value || "")
     .replace(/^bf-|^(input|select|textarea|btn)-/i, "")
@@ -47,6 +49,7 @@ function matchingElements(root, selector) {
 }
 
 export function enhanceSemanticAccessibility(root = document) {
+  enhanceButtonSystem(root);
   matchingElements(root, "table:not(:has(caption))").forEach((table) => {
     const caption = document.createElement("caption");
     caption.className = "visually-hidden";
@@ -67,6 +70,9 @@ export function enhanceSemanticAccessibility(root = document) {
     if (control.closest("label") || (escapedId && document.querySelector(`label[for="${escapedId}"]`))) return;
     const name = control.getAttribute("placeholder") || control.getAttribute("title") || readableName(control.name || control.id);
     if (name) control.setAttribute("aria-label", name);
+  });
+  matchingElements(root, "button.modal-close:not([aria-label])").forEach((button) => {
+    button.setAttribute("aria-label", "Đóng hộp thoại");
   });
   matchingElements(root, "button:not([aria-label])").forEach((button) => {
     if (button.textContent?.trim()) return;

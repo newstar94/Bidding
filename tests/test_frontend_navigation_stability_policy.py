@@ -212,7 +212,7 @@ def test_notification_actions_and_rows_use_the_compact_panel_pattern():
     assert 'data-lucide="check"' in template
     assert 'data-lucide="check-check"' not in template
     assert '<span>Đánh dấu tất cả đã đọc</span>' in template
-    assert '/css/ui-redesign.css?v=1.3.13' in index
+    assert '/css/ui-redesign.css?v=1.3.26' in index
     assert "border: 0;" in read_all_rule
     assert "background: transparent;" in read_all_rule
     assert "display: block;" in icon_rule

@@ -268,7 +268,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                             <button id="btn-save-inplace" class="btn btn-primary bf-s-62c1ff7ddc">Lưu</button>
                         </div>
                     ` : `
-                        ${isEditable && gt.trangThai !== "Đang chấm thầu" && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu" ? `
+                        ${isEditable && gt.trangThai !== "Đang chấm thầu" && gt.trangThai !== "Đã có kết quả một phần" && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu" ? `
                             <div class="bf-s-d6f1b866d4">
                                 <button id="btn-edit-goithau-bottom" class="btn btn-primary bf-s-62c1ff7ddc">
                                     <i data-lucide="edit"></i> Sửa gói thầu

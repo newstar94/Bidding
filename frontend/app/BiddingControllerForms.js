@@ -751,7 +751,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   }
   const phuongThuc = document.getElementById("gt-phuongthuc")?.value || "";
   const is1G2T = phuongThuc === "Một giai đoạn hai túi hồ sơ";
-  const isOpenedOrLaterStatus = trangThai === "Đã mở thầu" || trangThai === "Đang chấm thầu" || trangThai === "Đã có kết quả" || trangThai === "Hủy thầu";
+  const isOpenedOrLaterStatus = ["Đã mở thầu", "Đang chấm thầu", "Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(trangThai);
   const fields = [
     { id: "gt-soquyetdinh", required: true, label: "Số QĐ phê duyệt" },
     { id: "gt-ngayquyetdinh", required: true, label: "Ngày QĐ phê duyệt" },

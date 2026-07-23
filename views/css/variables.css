@@ -92,6 +92,14 @@
   --space-6: 24px;
   --space-8: 32px;
   --touch-target-min: 44px;
+  --button-height: 44px;
+  --button-height-sm: 36px;
+  --button-height-xs: 32px;
+  --button-icon-size: 18px;
+  --button-icon-size-sm: 16px;
+  --button-padding-x: 18px;
+  --button-padding-x-sm: 12px;
+  --button-gap: 8px;
   --transition-fast: 0.15s ease-out;
   --transition-normal: 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }

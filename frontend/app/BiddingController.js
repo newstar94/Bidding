@@ -22,6 +22,7 @@ import {
   setActiveOrganizationId
 } from "./workspaceState.js";
 import { apiFetch, configureApiClient } from "../shared/apiClient.js";
+import { showLotWinnersModal as renderLotWinnersModal } from "../packages/lotWinnersModal.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -883,6 +884,23 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const showChuyenGiaDetails = (id) => invokeLazyViewMethod("chuyengia", "showChuyenGiaDetails", id);
     const showChuDauTuDetails = (id) => invokeLazyViewMethod("chudautu-detail", "showChuDauTuDetails", id);
     const showNhaThauDetails = (id) => invokeLazyViewMethod("nhathau-detail", "showNhaThauDetails", id);
+    const showNhaThauInfoModal = (id) => invokeLazyViewMethod("nhathau-detail", "showNhaThauInfoModal", id);
+    const showLotWinnersModal = (id) => {
+      try {
+        return renderLotWinnersModal({
+          model: this.model,
+          view: this.view,
+        }, id);
+      } catch (error) {
+        console.error("Failed to show lot winners:", error);
+        this.view?.showToast?.(
+          "Không thể mở thông tin",
+          "Dữ liệu nhà thầu trúng thầu theo phần lô chưa thể hiển thị. Vui lòng thử lại.",
+          "error",
+        );
+        return false;
+      }
+    };
     const zoomCertificateImage = (id) => {
       const cg = this.model.state.chuyengia.find((c) => c.id === id);
       const safeSrc = safeImageSrc(cg?.anhChungChi, cg?.updatedAt || cg?.createdAt);
@@ -1079,6 +1097,8 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       showChuyenGiaDetails,
       showChuDauTuDetails,
       showNhaThauDetails,
+      showNhaThauInfoModal,
+      showLotWinnersModal,
       zoomCertificateImage,
       zoomSignatureImage,
       editKeHoach,
@@ -1218,13 +1238,26 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           return call("deleteChuDauTu", id);
         case "show-contractor":
           return call("showNhaThauDetails", id);
+        case "show-contractor-modal": {
+          const openContractorModal = () => call("showNhaThauInfoModal", id);
+          const modalId = target.dataset.closeBefore;
+          if (modalId) {
+            return this.closeModal(modalId, { restoreRoute: false }).then(openContractorModal);
+          }
+          return openContractorModal();
+        }
         case "show-contractor-close-jv":
           return call("showNhaThauDetailsAndCloseJV", id);
         case "show-jv":
           if (getJvData(id)) {
             event.preventDefault();
             const data = getJvData(id);
-            this.executeCommand("openMoThauJVViewModal", data.members, data.leadName, data.leadCode, data.leadContractorVersionId || "");
+            const openJointVenture = () => this.executeCommand("openMoThauJVViewModal", data.members, data.leadName, data.leadCode, data.leadContractorVersionId || "");
+            const modalId = target.dataset.closeBefore;
+            if (modalId) {
+              return this.closeModal(modalId, { restoreRoute: false }).then(openJointVenture);
+            }
+            return openJointVenture();
           }
           return;
         case "show-lot-winners":

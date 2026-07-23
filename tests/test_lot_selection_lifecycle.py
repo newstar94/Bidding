@@ -109,26 +109,23 @@ def test_completed_member_does_not_keep_dependency_group_locked():
     assert assess_batch_start(context, ["LOT-2"]).allowed
 
 
-def test_consolidated_mode_allows_partial_draft_but_not_partial_publication():
+def test_partial_official_publication_is_allowed_for_a_valid_unfinished_scope():
     context = _context(approval_mode=ApprovalMode.CONSOLIDATED)
 
     assert assess_batch_start(context, ["LOT-1"]).allowed
     publication = assess_partial_result_publication(context, ["LOT-1"])
 
-    assert not publication.allowed
-    assert publication.blockers[-1].code == (
-        BlockerCode.CONSOLIDATED_MODE_CANNOT_PUBLISH_PARTIAL_RESULT
-    )
+    assert publication.allowed
 
 
-def test_staged_publication_requires_explicit_authorization():
+def test_staged_publication_does_not_require_separate_authorization():
     unauthorized = _context(approval_mode=ApprovalMode.STAGED)
     authorized = _context(
         approval_mode=ApprovalMode.STAGED,
         staged_approval_authorized=True,
     )
 
-    assert not assess_partial_result_publication(unauthorized, ["LOT-1"]).allowed
+    assert assess_partial_result_publication(unauthorized, ["LOT-1"]).allowed
     assert assess_partial_result_publication(authorized, ["LOT-1"]).allowed
 
 
@@ -228,4 +225,3 @@ def test_artifact_scope_must_exactly_match_batch_snapshot():
         validate_artifact_scope(["LOT-1"], ["LOT-1", "LOT-2"])
 
     assert error.value.blockers[0].code == BlockerCode.INVALID_ARTIFACT_SCOPE
-

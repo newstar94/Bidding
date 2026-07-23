@@ -1,11 +1,12 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
-export function renderAwardedResultPanel(container, {
+export function buildAwardedResultPanelMarkup({
   pkg,
   winnerHtml,
   bidderRowsHtml,
   tableHeaderHtml,
+  resultHistoryHtml = "",
   appraisalNumber = "",
   appraisalDate = "",
   isEditable = false,
@@ -13,9 +14,9 @@ export function renderAwardedResultPanel(container, {
   formatCurrency,
   formatDate
 } = {}) {
-  if (!container) return;
   const showAppraisal = pkg?.hinhThucLuaChon !== "Chào hàng cạnh tranh";
-  container.innerHTML = trustedHTML(`
+  const hasOfficialResultHistory = Boolean(String(resultHistoryHtml || "").trim());
+  return `
     <div class="card award-result-card">
       <div class="award-result-header">
         <div class="award-result-heading">
@@ -40,8 +41,14 @@ export function renderAwardedResultPanel(container, {
     <div class="table-container package-table-frame has-bottom-space table-card-bg">
       <table class="data-table table-full-width"><thead>${tableHeaderHtml}</thead><tbody>${bidderRowsHtml}</tbody></table>
     </div>
-    ${isEditable ? '<div class="workflow-action-row with-top-space"><button class="btn btn-primary action-strong" id="btn-edit-result-bottom"><i data-lucide="edit"></i> Sửa kết quả</button></div>' : ""}
-  `);
+    ${isEditable && !hasOfficialResultHistory ? '<div class="workflow-action-row with-top-space"><button class="btn btn-primary action-strong" id="btn-edit-result-bottom"><i data-lucide="edit-3"></i> Sửa kết quả</button></div>' : ""}
+    ${resultHistoryHtml}
+  `;
+}
+
+export function renderAwardedResultPanel(container, options = {}) {
+  if (!container) return;
+  container.innerHTML = trustedHTML(buildAwardedResultPanelMarkup(options));
 }
 
 export function bindAwardResultPanel(container, {

@@ -29,6 +29,11 @@ import { renderPackageSummary } from "./detail/PackageSummary.js";
 import { renderBidContractorLink } from "./detail/BidderTable.js";
 import { renderWorkflowActions } from "./detail/WorkflowActions.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
+import {
+  isBidWithinEvaluationLotDetails,
+  resolveActiveSavedEvaluationScope,
+  resolvePackageResultStatus,
+} from "./lotEvaluationScope.js";
 export { checkBidQualified };
 export async function showPackageDetails(id, isSwitchingVersion = false) {
   const appController = getAppController();
@@ -91,6 +96,12 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   const detailCard = document.getElementById("detail-workflow-card");
   if (detailCard) setRuntimeStyle(detailCard, "visibility", "visible");
   const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
+  const effectivePackageStatus = resolvePackageResultStatus(gt, {
+    editingBatchId: this._editingOfficialResultLotBatchId,
+    editingWholePackage: this._editingWholePackageResult === true
+      && (!this._editingWholePackageResultPackageId
+        || String(this._editingWholePackageResultPackageId) === String(gt.id)),
+  });
   const inviteComparisonLabel = is1G2T ? "Ngày mời đối chiếu tài liệu/Thương thảo" : "Ngày mời đối chiếu tài liệu";
   const comparisonLabel = is1G2T ? "Ngày đối chiếu tài liệu/Thương thảo" : "Ngày đối chiếu tài liệu";
   const allBidsForOpening = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
@@ -121,11 +132,11 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   const badgeEl = document.getElementById("detail-workflow-status-badge");
   const titleEl = document.getElementById("detail-workflow-title");
   if (codeEl) codeEl.innerText = gt.maGoiThau || "Gói thầu";
-  if (badgeEl) badgeEl.innerHTML = trustedHTML(this.getStatusBadge(gt.trangThai));
+  if (badgeEl) badgeEl.innerHTML = trustedHTML(this.getStatusBadge(effectivePackageStatus));
   if (titleEl) titleEl.innerText = gt.tenGoiThau || "Chưa nhập tên";
   const actionsEl = document.getElementById("detail-workflow-actions");
   if (actionsEl) {
-    const canCancel = !["Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Hủy thầu"].includes(gt.trangThai);
+    const canCancel = !["Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Hủy thầu"].includes(effectivePackageStatus);
     renderWorkflowActions(actionsEl, {
       canCancel,
       onCancel: () => {
@@ -327,7 +338,19 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
       }
       break;
     case "qualified": {
-      const allBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
+      let qualifiedMetadata = {};
+      try {
+        qualifiedMetadata = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+      } catch {
+        qualifiedMetadata = {};
+      }
+      const activeTechnicalScope = resolveActiveSavedEvaluationScope(
+        gt,
+        qualifiedMetadata.technical || {},
+      );
+      const allBids = this.model.state.thongtinmothau
+        .filter((b) => String(b.goiThauId) === String(gt.id))
+        .filter((b) => !activeTechnicalScope || isBidWithinEvaluationLotDetails(b, activeTechnicalScope));
       const qualifiedBids = allBids.filter(checkBidQualified);
       const hasTechScore = qualifiedBids.some((b) => {
         if (!b.danhGiaKyThuat) return false;
@@ -368,15 +391,17 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         if (!metadata2.technical) {
           metadata2.technical = { saved: true };
         }
-        const soQd = metadata2.technical.soQdPheDuyetKt || "";
-        const ngayQd = metadata2.technical.ngayQdPheDuyetKt || "";
-        const soBctd = metadata2.technical.soBctdKt || "";
-        const ngayBctd = metadata2.technical.ngayBctdKt || "";
-        const isCompleted = !!metadata2.technical.qualifiedSaved;
+        const activeQualifiedBatch = activeTechnicalScope?.batch || null;
+        const qualifiedTarget = activeQualifiedBatch || metadata2.technical;
+        const soQd = qualifiedTarget.soQdPheDuyetKt || "";
+        const ngayQd = qualifiedTarget.ngayQdPheDuyetKt || "";
+        const soBctd = qualifiedTarget.soBctdKt || "";
+        const ngayBctd = qualifiedTarget.ngayBctdKt || "";
+        const isCompleted = !!qualifiedTarget.qualifiedSaved;
         const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
         const isFinOpened = !!gt.thoiGianMoEhsdxtc;
-        const isReadOnly = isCompleted && !isEditingThisStep || gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu";
-        const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu";
+        const isReadOnly = isCompleted && !isEditingThisStep || effectivePackageStatus === "Đã có kết quả" || effectivePackageStatus === "Hủy thầu";
+        const canEdit = isReadOnly && isCompleted && !isFinOpened && effectivePackageStatus !== "Đã có kết quả" && effectivePackageStatus !== "Hủy thầu";
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
         contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-8bd3eb473c">
@@ -536,21 +561,23 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                 this.focusInvalidControl(errorInputs[0]);
                 return;
               }
-              metadata2.technical.soQdPheDuyetKt = valSo;
-              metadata2.technical.ngayQdPheDuyetKt = this.model.convertDMYToYMD(valNgayRaw);
-              if (inpSoBctd) metadata2.technical.soBctdKt = valSoBctd;
-              if (inpNgayBctd) metadata2.technical.ngayBctdKt = this.model.convertDMYToYMD(valNgayBctdRaw);
+              qualifiedTarget.soQdPheDuyetKt = valSo;
+              qualifiedTarget.ngayQdPheDuyetKt = this.model.convertDMYToYMD(valNgayRaw);
+              if (inpSoBctd) qualifiedTarget.soBctdKt = valSoBctd;
+              if (inpNgayBctd) qualifiedTarget.ngayBctdKt = this.model.convertDMYToYMD(valNgayBctdRaw);
               if (isCompetitiveQuotationPackage(gt)) {
-                delete metadata2.technical.soBctdKt;
-                delete metadata2.technical.ngayBctdKt;
+                delete qualifiedTarget.soBctdKt;
+                delete qualifiedTarget.ngayBctdKt;
               }
-              metadata2.technical.qualifiedSaved = true;
+              qualifiedTarget.qualifiedSaved = true;
               await saveQualifiedApproval(appController || this, gt, metadata2);
               if (this._editingState) {
                 this._editingState[this._currentWorkflowTab] = false;
               }
               await this.customAlert("Thành công", "Đã lưu QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!", "check-circle");
-              const allBids2 = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
+              const allBids2 = this.model.state.thongtinmothau
+                .filter((b) => String(b.goiThauId) === String(gt.id))
+                .filter((b) => !activeTechnicalScope || isBidWithinEvaluationLotDetails(b, activeTechnicalScope));
               const qualifiedBids2 = allBids2.filter(checkBidQualified);
               this._currentWorkflowTab = qualifiedBids2.length > 0 ? "opening_fin" : "result";
               this.showPackageDetails(gt.id);
@@ -561,7 +588,16 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
       break;
     }
     case "opening_fin": {
-      const allBidsForOpening2 = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
+      let openingMetadata = {};
+      try {
+        openingMetadata = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+      } catch {
+        openingMetadata = {};
+      }
+      const openingScope = resolveActiveSavedEvaluationScope(gt, openingMetadata.technical || {});
+      const allBidsForOpening2 = this.model.state.thongtinmothau
+        .filter((b) => String(b.goiThauId) === String(gt.id))
+        .filter((b) => !openingScope || isBidWithinEvaluationLotDetails(b, openingScope));
       const qualifiedBidsForOpening2 = allBidsForOpening2.filter(checkBidQualified);
       qualifiedBidsForOpening2.sort((a, b) => {
         const lotA = String(a.maPhanLo || "").toLowerCase();
@@ -586,21 +622,24 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
                 `);
       } else {
-        const isFinOpeningSaved2 = qualifiedBidsForOpening2.some((b) => b.giaDuThau && b.giaDuThau > 0);
+        const scopedOpening = openingScope?.batch?.financialOpening || {};
+        const isFinOpeningSaved2 = Boolean(scopedOpening.saved)
+          || qualifiedBidsForOpening2.some((b) => b.giaDuThau && b.giaDuThau > 0);
         const isCompleted = isFinOpeningSaved2;
         const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
         let isFinEvalSaved2 = false;
         if (gt.danhGiaHsdtMetadata) {
           try {
             const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-            if (parsed.financial && parsed.financial.saved) {
+            const activeFinancialScope = resolveActiveSavedEvaluationScope(gt, parsed.financial || {});
+            if (parsed.financial && (parsed.financial.saved || activeFinancialScope?.batch?.saved)) {
               isFinEvalSaved2 = true;
             }
           } catch (e) {
           }
         }
-        const isReadOnly = isCompleted && !isEditingThisStep || gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" || isFinEvalSaved2;
-        const canEdit = !isFinEvalSaved2 && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu";
+        const isReadOnly = isCompleted && !isEditingThisStep || effectivePackageStatus === "Đã có kết quả" || effectivePackageStatus === "Hủy thầu" || isFinEvalSaved2;
+        const canEdit = !isFinEvalSaved2 && effectivePackageStatus !== "Đã có kết quả" && effectivePackageStatus !== "Hủy thầu";
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
         contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-175e7e1f51">
@@ -640,7 +679,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</span></div>
                             <div class="bf-s-ca978d48b2">
                                 <span>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXTC:</strong></span>
-                                ${isReadOnly ? `<span class="text-dark fw-bold">${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở")}</span>` : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime bf-s-ab24ccb4e7" value="${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : "")}" placeholder="dd/MM/yyyy HH:mm">`}
+                                ${isReadOnly ? `<span class="text-dark fw-bold">${escapeHtml(scopedOpening.openingTime || gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(scopedOpening.openingTime || gt.thoiGianMoEhsdxtc) : "Chưa mở")}</span>` : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime bf-s-ab24ccb4e7" value="${escapeHtml(scopedOpening.openingTime || gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(scopedOpening.openingTime || gt.thoiGianMoEhsdxtc) : "")}" placeholder="dd/MM/yyyy HH:mm">`}
                             </div>
                             ` : ""}
                         </div>
@@ -708,6 +747,11 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                 collectFinancialOpeningRows(rows, { parseVND: (value) => this.model.parseVND(value) }),
                 { openingTime }
               );
+              if (openingScope?.batch) {
+                openingScope.batch.financialOpening = { saved: true, openingTime };
+                gt.danhGiaHsdtMetadata = JSON.stringify(openingMetadata);
+                await saveQualifiedApproval(appController || this, gt, openingMetadata);
+              }
               if (this._editingState) {
                 this._editingState[this._currentWorkflowTab] = false;
               }

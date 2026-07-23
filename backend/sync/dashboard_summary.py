@@ -99,6 +99,127 @@ def _select_alert_items(items, limit=8):
     return sorted(selected, key=lambda item: (ALERT_PRIORITY.get(item.get("alertKey"), 99), str(item.get("deadline") or "")))
 
 
+def _effective_package_rows_sql(latest_packages_sql):
+    """Project package status from authoritative official result data."""
+
+    return f"""
+        SELECT package_rows.*,
+               CASE
+                   WHEN package_rows.trang_thai = 'CANCELLED' THEN 'CANCELLED'
+                   WHEN result_edit.edit_type = 'whole' THEN 'EVALUATING'
+                   WHEN result_edit.edit_type = 'batch'
+                    AND COALESCE(lot_progress.completed_lots, 0) = 0
+                       THEN 'EVALUATING'
+                   WHEN COALESCE(lot_progress.total_lots, 0) > 0
+                    AND COALESCE(lot_progress.completed_lots, 0) = lot_progress.total_lots
+                       THEN 'AWARDED'
+                   WHEN COALESCE(lot_progress.completed_lots, 0) > 0
+                       THEN 'PARTIALLY_AWARDED'
+                   WHEN package_rows.trang_thai IN ('AWARDED', 'PARTIALLY_AWARDED')
+                       THEN package_rows.trang_thai
+                   WHEN COALESCE(trim(package_rows.so_quyet_dinh_ket_qua), '') <> ''
+                    AND package_rows.ngay_quyet_dinh_ket_qua IS NOT NULL
+                    AND package_rows.gia_trung_thau IS NOT NULL
+                    AND (
+                        package_rows.phan_lo = 'Có'
+                        OR COALESCE(trim(package_rows.nha_thau_trung_thau_id), '') <> ''
+                    )
+                       THEN 'AWARDED'
+                   ELSE package_rows.trang_thai
+               END AS effective_status
+        FROM ({latest_packages_sql}) package_rows
+        LEFT JOIN (
+            SELECT lots.organization_id,
+                   lots.goi_thau_id,
+                   COUNT(DISTINCT lots.id) AS total_lots,
+                   COUNT(DISTINCT CASE
+                       WHEN (
+                           details.current_stage = 'RESULT_APPROVED'
+                           OR legacy_official_results.lot_id IS NOT NULL
+                       )
+                        AND editing_batch_lots.lot_id IS NULL
+                       THEN lots.id
+                   END) AS completed_lots
+            FROM goi_thau_phan_lo lots
+            LEFT JOIN dot_xu_ly_phan_lo_chi_tiet details
+              ON details.organization_id = lots.organization_id
+             AND details.lot_id = lots.id
+            LEFT JOIN (
+                SELECT DISTINCT evaluation.organization_id,
+                       evaluation.goi_thau_id,
+                       legacy_lot.lot_id
+                FROM vong_danh_gia evaluation
+                CROSS JOIN LATERAL jsonb_each(
+                    CASE
+                        WHEN jsonb_typeof(evaluation.extension_json::jsonb -> 'lotBatches') = 'object'
+                        THEN evaluation.extension_json::jsonb -> 'lotBatches'
+                        ELSE '{{}}'::jsonb
+                    END
+                ) AS batch(key, value)
+                CROSS JOIN LATERAL jsonb_array_elements_text(
+                    CASE
+                        WHEN jsonb_typeof(batch.value -> 'lotIds') = 'array'
+                        THEN batch.value -> 'lotIds'
+                        ELSE '[]'::jsonb
+                    END
+                ) AS legacy_lot(lot_id)
+                WHERE COALESCE(batch.value -> 'result' ->> 'saved', 'false') = 'true'
+            ) legacy_official_results
+              ON legacy_official_results.organization_id = lots.organization_id
+             AND legacy_official_results.goi_thau_id = lots.goi_thau_id
+             AND legacy_official_results.lot_id = lots.id
+            LEFT JOIN (
+                SELECT DISTINCT evaluation.organization_id,
+                       evaluation.goi_thau_id,
+                       editing_lot.lot_id
+                FROM vong_danh_gia evaluation
+                CROSS JOIN LATERAL jsonb_array_elements_text(
+                    CASE
+                        WHEN evaluation.extension_json::jsonb -> 'resultEdit' ->> 'type' = 'batch'
+                         AND jsonb_typeof(evaluation.extension_json::jsonb -> 'lotBatches') = 'object'
+                         AND jsonb_typeof(
+                             evaluation.extension_json::jsonb
+                             -> 'lotBatches'
+                             -> (evaluation.extension_json::jsonb -> 'resultEdit' ->> 'batchId')
+                             -> 'lotIds'
+                         ) = 'array'
+                        THEN evaluation.extension_json::jsonb
+                             -> 'lotBatches'
+                             -> (evaluation.extension_json::jsonb -> 'resultEdit' ->> 'batchId')
+                             -> 'lotIds'
+                        ELSE '[]'::jsonb
+                    END
+                ) AS editing_lot(lot_id)
+            ) editing_batch_lots
+              ON editing_batch_lots.organization_id = lots.organization_id
+             AND editing_batch_lots.goi_thau_id = lots.goi_thau_id
+             AND editing_batch_lots.lot_id = lots.id
+            WHERE lots.archived_at IS NULL
+            GROUP BY lots.organization_id, lots.goi_thau_id
+        ) lot_progress
+          ON lot_progress.organization_id = package_rows.organization_id
+         AND lot_progress.goi_thau_id = package_rows.id
+        LEFT JOIN (
+            SELECT evaluation.organization_id,
+                   evaluation.goi_thau_id,
+                   CASE
+                       WHEN BOOL_OR(
+                           evaluation.extension_json::jsonb -> 'resultEdit' ->> 'type' = 'whole'
+                       ) THEN 'whole'
+                       WHEN BOOL_OR(
+                           evaluation.extension_json::jsonb -> 'resultEdit' ->> 'type' = 'batch'
+                       ) THEN 'batch'
+                       ELSE ''
+                   END AS edit_type
+            FROM vong_danh_gia evaluation
+            WHERE jsonb_typeof(evaluation.extension_json::jsonb -> 'resultEdit') = 'object'
+            GROUP BY evaluation.organization_id, evaluation.goi_thau_id
+        ) result_edit
+          ON result_edit.organization_id = package_rows.organization_id
+         AND result_edit.goi_thau_id = package_rows.id
+    """
+
+
 def build_dashboard_summary(cursor, organization_id, role_str, user_id):
     manager = is_organization_manager(cursor, role_str, user_id, organization_id)
 
@@ -243,10 +364,10 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             SELECT kh.id, kh.ma_ke_hoach, kh.ten_ke_hoach,
                    kh.ngay_phe_duyet, kh.thoi_gian_dang_tai,
                    COUNT(gt.id) AS package_count,
-                   SUM(CASE WHEN gt.id IS NOT NULL AND gt.trang_thai != 'PREPARING' THEN 1 ELSE 0 END) AS started_count,
-                   SUM(CASE WHEN gt.id IS NOT NULL AND gt.trang_thai NOT IN ('AWARDED', 'CANCELLED') THEN 1 ELSE 0 END) AS unfinished_count
+                   SUM(CASE WHEN gt.id IS NOT NULL AND gt.effective_status != 'PREPARING' THEN 1 ELSE 0 END) AS started_count,
+                   SUM(CASE WHEN gt.id IS NOT NULL AND gt.effective_status NOT IN ('AWARDED', 'CANCELLED') THEN 1 ELSE 0 END) AS unfinished_count
             FROM ({latest_cte("ke_hoach_lcnt")}) kh
-            LEFT JOIN ({latest_cte("goi_thau")}) gt
+            LEFT JOIN ({_effective_package_rows_sql(latest_cte("goi_thau"))}) gt
               ON gt.ke_hoach_id = kh.id
              AND gt.organization_id = kh.organization_id
              {package_access_sql}
@@ -299,11 +420,12 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         package_params.append(user_id)
 
     if can("goithau", "goi_thau"):
+        effective_packages_sql = _effective_package_rows_sql(latest_cte("goi_thau"))
         cursor.execute(f"""
-            SELECT COALESCE(trang_thai, '') AS status_name, COUNT(*) AS total
-            FROM ({latest_cte("goi_thau")}) latest_rows
+            SELECT COALESCE(effective_status, '') AS status_name, COUNT(*) AS total
+            FROM ({effective_packages_sql}) latest_rows
             WHERE 1 = 1 {package_filter_sql}
-            GROUP BY COALESCE(trang_thai, '')
+            GROUP BY COALESCE(effective_status, '')
         """, tuple(package_params))
         for row in cursor.fetchall():
             status_counts[str(enum_label("goi_thau", "trang_thai", row[0]) or "")] = int(row[1] or 0)
@@ -315,20 +437,27 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
 
         cursor.execute(f"""
             SELECT *
-            FROM ({latest_cte("goi_thau")}) latest_rows
+            FROM ({effective_packages_sql}) latest_rows
             WHERE 1 = 1 {package_filter_sql}
             ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
             LIMIT 4
         """, tuple(package_params))
-        recent_packages = [map_db_to_json("goi_thau", dict(row)) for row in cursor.fetchall()]
+        recent_packages = []
+        for row in cursor.fetchall():
+            raw_item = dict(row)
+            raw_item["trang_thai"] = raw_item.pop(
+                "effective_status",
+                raw_item.get("trang_thai"),
+            )
+            recent_packages.append(map_db_to_json("goi_thau", raw_item))
 
         visible_packages_sql = f"""
             SELECT latest_rows.*
-            FROM ({latest_cte("goi_thau")}) latest_rows
+            FROM ({effective_packages_sql}) latest_rows
             WHERE 1 = 1 {package_filter_sql}
         """
         delayed_evaluation_condition = f"""
-            vp.trang_thai IN ('OPENED', 'EVALUATING')
+            vp.effective_status IN ('OPENED', 'EVALUATING')
             AND COALESCE(vp.thoi_gian_mo_thau, vp.thoi_gian_dong_thau)
                 <= CURRENT_TIMESTAMP - INTERVAL '{EVALUATION_REPORT_DELAY_DAYS} days'
             AND NOT EXISTS (
@@ -339,9 +468,9 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             )
         """
         alert_conditions = {
-            "closingToday": "vp.trang_thai = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
-            "closingSoon": "vp.trang_thai = 'INVITED' AND vp.thoi_gian_dong_thau > CURRENT_TIMESTAMP AND vp.thoi_gian_dong_thau <= CURRENT_TIMESTAMP + INTERVAL '7 days' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
-            "overdueOpening": "vp.trang_thai = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+            "closingToday": "vp.effective_status = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+            "closingSoon": "vp.effective_status = 'INVITED' AND vp.thoi_gian_dong_thau > CURRENT_TIMESTAMP AND vp.thoi_gian_dong_thau <= CURRENT_TIMESTAMP + INTERVAL '7 days' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+            "overdueOpening": "vp.effective_status = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
             "delayedEvaluation": delayed_evaluation_condition,
         }
         union_parts = [

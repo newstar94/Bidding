@@ -286,6 +286,7 @@ def test_save_plan_and_complete_package_children():
         "toThamDinh": [],
         "danhGiaHsdtMetadata": {
             "is1G2T": True,
+            "resultEdit": {"type": "whole"},
             "technical": {
                 "saved": True,
                 "qualifiedSaved": True,
@@ -333,6 +334,8 @@ def test_save_plan_and_complete_package_children():
     ]
     assert len(evaluation_round_params) == 2
     assert all(params[8] is None for params in evaluation_round_params)
+    technical_round = next(params for params in evaluation_round_params if params[4] == "technical")
+    assert json.loads(technical_round[12])["resultEdit"] == {"type": "whole"}
     assert any("INSERT INTO tieu_chi_danh_gia" in sql for sql, _ in cursor.calls)
 
 
@@ -547,7 +550,7 @@ def test_attach_plan_package_and_evaluation_children_in_both_namings():
                 "da_luu_danh_sach_dat": 1,
                 "so_bao_cao": "BC",
                 "ngay_bao_cao": "2026-07-19",
-                "extension_json": '{"schemaVersion":1,"note":"kept"}',
+                "extension_json": '{"schemaVersion":1,"note":"kept","resultEdit":{"type":"whole"}}',
             },
             {
                 "id": "round-fin",
@@ -585,6 +588,7 @@ def test_attach_plan_package_and_evaluation_children_in_both_namings():
     metadata = json.loads(package["danhGiaHsdtMetadata"])
     assert metadata["is1G2T"] is True
     assert metadata["technical"]["criteria"][0]["code"] == "TC-1"
+    assert metadata["resultEdit"] == {"type": "whole"}
     assert metadata["financial"]["schemaVersion"] == 1
 
     snake = {"id": "package-1", "danh_gia_hsdt_metadata": "{}"}

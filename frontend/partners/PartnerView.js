@@ -1,6 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { renderChuDauTuTable, showChuDauTuDetails, renderChuDauTuVersionDetails } from "./ChuDauTuComponent.js";
 import { renderNhaThauTable, showNhaThauDetails, renderNhaThauVersionDetails } from "./NhaThauComponent.js";
+import { showNhaThauInfoModal } from "./contractorInfoModal.js";
 import { renderChuyenGiaTable, showChuyenGiaDetails } from "../experts/ChuyenGiaComponent.js";
 import { renderHopDongTable, showHopDongDetails, renderContractVersionDetails } from "../contracts/HopDongComponent.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
@@ -11,6 +12,7 @@ export {
   renderChuDauTuVersionDetails,
   renderNhaThauTable,
   showNhaThauDetails,
+  showNhaThauInfoModal,
   renderNhaThauVersionDetails,
   renderChuyenGiaTable,
   showChuyenGiaDetails,

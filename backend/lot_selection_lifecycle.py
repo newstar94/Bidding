@@ -257,38 +257,19 @@ def assess_partial_result_publication(
     *,
     current_batch_id: Optional[str] = None,
 ) -> EligibilityDecision:
-    """Check whether an approval decision may cover fewer than all pending lots."""
+    """Check whether an official approval may cover the selected pending lots.
+
+    A package may be approved in multiple official rounds.  The approval mode
+    is retained as audit metadata; it must not turn a valid partial round into
+    a draft or require an out-of-band authorization flag.
+    """
 
     base = _assess_scope(
         context,
         selected_lot_ids,
         current_batch_id=current_batch_id,
     )
-    blockers = list(base.blockers)
-    selected = base.selected_lot_ids
-    pending_lots = frozenset(
-        lot_id for lot_id, lot in context.lots.items() if not lot.is_completed
-    )
-    is_partial = bool(selected) and selected != pending_lots
-
-    if is_partial and context.approval_mode == ApprovalMode.CONSOLIDATED:
-        blockers.append(
-            PolicyBlocker(
-                BlockerCode.CONSOLIDATED_MODE_CANNOT_PUBLISH_PARTIAL_RESULT,
-                "Consolidated approval mode cannot publish a result for only part of the pending lots.",
-                selected,
-            )
-        )
-    elif is_partial and not context.staged_approval_authorized:
-        blockers.append(
-            PolicyBlocker(
-                BlockerCode.STAGED_APPROVAL_NOT_AUTHORIZED,
-                "Staged approval has not been authorized by the procurement documents and legal review.",
-                selected,
-            )
-        )
-
-    return EligibilityDecision(selected, tuple(blockers))
+    return base
 
 
 def allowed_next_stages(
@@ -364,4 +345,3 @@ def validate_artifact_scope(
             artifact_scope,
         )
         raise LotLifecyclePolicyError(blocker.message, (blocker,))
-

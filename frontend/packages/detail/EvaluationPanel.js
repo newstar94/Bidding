@@ -29,6 +29,8 @@ export function renderEvaluationPanel(container, pkg, {
     <select id="danhgiahsdt-goithau-select" class="bf-s-6aa34d7432"><option value="${packageId}" selected>${packageName}</option></select>
     <div id="danhgiahsdt-goithau-summary" class="bf-s-6aa34d7432"></div>
     <div id="danhgiahsdt-container" class="bf-s-6aa34d7432">
+      <div id="danhgiahsdt-round-history" class="evaluation-round-history is-hidden" aria-live="polite"></div>
+      <section id="danhgiahsdt-current-round" class="evaluation-current-round">
       <div id="danhgiahsdt-tabs-header" class="bf-s-6aa34d7432">
         <button type="button" id="tab-btn-hsdxt-kt" class="${isTechnical ? "active" : ""}">KT</button>
         <button type="button" id="tab-btn-hsdxt-tc" class="${isTechnical ? "" : "active"}">TC</button>
@@ -88,6 +90,7 @@ export function renderEvaluationPanel(container, pkg, {
       <div class="workflow-action-row">
         <button class="btn btn-primary workflow-primary-action" id="btn-danhgiahsdt-save"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>
       </div>
+      </section>
     </div>
     <div id="danhgiahsdt-empty-state" class="bf-s-6aa34d7432"></div>
   `);

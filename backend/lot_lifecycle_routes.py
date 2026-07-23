@@ -6,6 +6,7 @@ from backend.lot_lifecycle_service import (
     LotLifecycleInputError,
     LotLifecycleNotFoundError,
     create_batch,
+    finalize_batch,
     query_lifecycle,
 )
 from backend.lot_selection_lifecycle import LotLifecyclePolicyError
@@ -112,27 +113,6 @@ async def create_lot_batch_api(request):
             connection.rollback()
             return JSONResponse({"error": write_decision.reason}, status_code=403)
         staged_authorized = bool(data.get("stagedApprovalAuthorized", False))
-        if staged_authorized and not (
-            is_organization_manager(
-                cursor,
-                session,
-                session.user_id,
-                organization_id,
-            )
-            or is_personal_workspace_owner(
-                cursor,
-                session.user_id,
-                organization_id,
-            )
-        ):
-            connection.rollback()
-            return JSONResponse(
-                {
-                    "error": "Chỉ quản lý được xác nhận căn cứ phê duyệt theo đợt.",
-                    "code": "STAGED_APPROVAL_AUTHORIZATION_REQUIRED",
-                },
-                status_code=403,
-            )
         batch = create_batch(
             cursor,
             organization_id,
@@ -185,6 +165,80 @@ async def create_lot_batch_api(request):
             "create_lot_batch_api",
             "LOT_BATCH_CREATE_FAILED",
             "Không thể tạo đợt xử lý phần lô.",
+        )
+    finally:
+        if connection:
+            connection.close()
+
+
+async def finalize_lot_batch_api(request):
+    connection = None
+    try:
+        valid, session = verify_session(request)
+        if not valid:
+            return JSONResponse({"error": session}, status_code=403)
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        outcomes = data.get("outcomes")
+        if not isinstance(outcomes, dict) or not outcomes:
+            return JSONResponse(
+                {"error": "Phải xác định kết quả của từng phần lô.", "code": "INVALID_LOT_OUTCOMES"},
+                status_code=400,
+            )
+        package_id = str(request.path_params.get("package_id") or "").strip()
+        batch_id = str(request.path_params.get("batch_id") or "").strip()
+        organization_id = get_active_org(request, session.user_id)
+        connection = database.get_connection()
+        connection.execute("BEGIN")
+        cursor = connection.cursor()
+        write_decision = authorize_record_write(
+            cursor,
+            session,
+            session.user_id,
+            organization_id,
+            "goithau",
+            "goi_thau",
+            {"id": package_id},
+        )
+        if not write_decision.allowed:
+            connection.rollback()
+            return JSONResponse({"error": write_decision.reason}, status_code=403)
+        lifecycle = finalize_batch(
+            cursor,
+            organization_id,
+            package_id,
+            batch_id,
+            {str(key): str(value) for key, value in outcomes.items()},
+            actor_user_id=session.user_id,
+        )
+        connection.commit()
+        return JSONResponse({"success": True, **lifecycle})
+    except LotLifecyclePolicyError as exc:
+        if connection:
+            connection.rollback()
+        return JSONResponse({"error": str(exc), "code": "LOT_SCOPE_BLOCKED"}, status_code=409)
+    except LotLifecycleNotFoundError as exc:
+        if connection:
+            connection.rollback()
+        return JSONResponse({"error": str(exc), "code": "LOT_BATCH_NOT_FOUND"}, status_code=404)
+    except LotLifecycleInputError as exc:
+        if connection:
+            connection.rollback()
+        return JSONResponse({"error": str(exc), "code": "LOT_BATCH_FINALIZE_INVALID"}, status_code=400)
+    except OrgPermissionError:
+        if connection:
+            connection.rollback()
+        return JSONResponse({"error": "Không có quyền truy cập tổ chức."}, status_code=403)
+    except Exception as exc:
+        if connection:
+            connection.rollback()
+        return log_and_error(
+            request,
+            exc,
+            "finalize_lot_batch_api",
+            "LOT_BATCH_FINALIZE_FAILED",
+            "Không thể phê duyệt kết quả đợt phần lô.",
         )
     finally:
         if connection:

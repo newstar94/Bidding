@@ -14,6 +14,7 @@ import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationSer
 import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 export async function deleteKeHoach(id) {
   const targetPlan = await refreshRecordBeforeDelete(this, "kehoach", id);
   if (!targetPlan) return;
@@ -616,10 +617,11 @@ export function renderBreakdownPackagesList(planId) {
   }
   tbody.innerHTML = trustedHTML(pkgs.map((gt) => {
     const hinhThuc = gt.hinhThucLuaChon || "--";
+    const effectiveStatus = resolvePackageResultStatus(gt);
     const getStatusBadge = this.view?.getStatusBadge || this.getStatusBadge;
     const trangThaiBadge = typeof getStatusBadge === "function"
-      ? getStatusBadge.call(this.view || this, gt.trangThai)
-      : escapeHtml(gt.trangThai || "--");
+      ? getStatusBadge.call(this.view || this, effectiveStatus)
+      : escapeHtml(effectiveStatus || "--");
     return `
             <tr class="bf-s-ddc4ced4b2">
                 <td class="bf-s-e69a70165f">${escapeHtml(this.model.getPackageBaseCode(gt.maGoiThau) || "--")}</td>
@@ -628,7 +630,7 @@ export function renderBreakdownPackagesList(planId) {
                 <td class="bf-s-c6760d4ab4">${escapeHtml(hinhThuc)}</td>
                 <td class="bf-s-69a042494b">${trangThaiBadge}</td>
                 <td class="bf-s-59809c145b">
-                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}">Sửa</button>`}
+                    ${["Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(effectiveStatus) ? `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}">Sửa</button>`}
                 </td>
             </tr>
         `;

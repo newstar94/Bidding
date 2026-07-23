@@ -3,6 +3,7 @@
 PACKAGE_STATUS_LABELS = {
     "PREPARING": "Chuẩn bị", "INVITED": "Đang mời thầu",
     "OPENED": "Đã mở thầu", "EVALUATING": "Đang chấm thầu",
+    "PARTIALLY_AWARDED": "Đã có kết quả một phần",
     "AWARDED": "Đã có kết quả", "CANCELLED": "Hủy thầu",
 }
 CONTRACT_STATUS_LABELS = {

@@ -6,7 +6,10 @@ import { switchTab } from "../../frontend/app/BiddingControllerUI.js";
 import { setAppController } from "../../frontend/app/controllerRef.js";
 import { resolvePostEvaluationTargetTab } from "../../frontend/packages/bidEvaluationActions.js";
 import { saveThongTinMoThau } from "../../frontend/packages/BidProcessWorkflow.js";
-import { commitPackageAwardDecision } from "../../frontend/packages/packageEvaluationProgress.js";
+import {
+  commitPackageAwardDecision,
+  commitPackageResultEditState,
+} from "../../frontend/packages/packageEvaluationProgress.js";
 import { collectOpeningBidsFromRows } from "../../frontend/packages/bidProcessOpeningData.js";
 import {
   handlePhatHanhHsmtSubmit,
@@ -126,6 +129,103 @@ test("award approval always uses the application controller for server sync", as
 
   assert.equal(syncCalls, 1);
   assert.deepEqual(persisted, ["goithau", "thongtinmothau"]);
+});
+
+test("award approval refreshes the result only after the successful sync", async () => {
+  const events = [];
+  const applicationController = {
+    model: {
+      useServerSidePagination: false,
+      state: { goithau: [{}], thongtinmothau: [{}] },
+      persistData: async (table) => events.push(`persist:${table}`),
+    },
+    autoSync: async () => {
+      events.push("sync");
+      return { ok: true };
+    },
+  };
+
+  await commitPackageAwardDecision(applicationController, {
+    afterPersist: async () => events.push("refresh"),
+  });
+
+  assert.deepEqual(events, [
+    "persist:goithau",
+    "persist:thongtinmothau",
+    "sync",
+    "refresh",
+  ]);
+});
+
+test("starting or cancelling result editing persists the package status and refreshes dashboard data", async () => {
+  const events = [];
+  const packageRecord = { id: "pkg-1", trangThai: "Đang chấm thầu" };
+  const applicationController = {
+    model: {
+      state: { goithau: [{}] },
+      updateRecord: async (table, record) => events.push(`update:${table}:${record.id}`),
+      persistData: async (table) => events.push(`persist:${table}`),
+    },
+    autoSync: async () => {
+      events.push("sync");
+      return { ok: true };
+    },
+  };
+
+  await commitPackageResultEditState(applicationController, {
+    packageRecord,
+    afterPersist: async () => events.push("refresh"),
+  });
+
+  assert.deepEqual(events, [
+    "update:goithau:pkg-1",
+    "persist:goithau",
+    "sync",
+    "refresh",
+  ]);
+});
+
+
+test("package workflow tabs reuse the dashboard card top accent treatment", async () => {
+  const coordinatorSource = await readFile(
+    new URL("../../frontend/packages/detail/PackageDetailCoordinator.js", import.meta.url),
+    "utf8",
+  );
+  const cssSource = await readFile(
+    new URL("../../views/css/views.css", import.meta.url),
+    "utf8",
+  );
+  const dashboardCssSource = await readFile(
+    new URL("../../views/css/ui-redesign.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(coordinatorSource, /class="btn package-workflow-tab \$\{active \? "active" : ""\}"/);
+  assert.match(dashboardCssSource, /\.dashboard-work-grid \.dashboard-card\s*\{[\s\S]*?border-top:\s*3px solid transparent;[\s\S]*?border-top-color:\s*var\(--brand\)/);
+  assert.match(cssSource, /\.package-workflow-tab\s*\{[\s\S]*?border:\s*1px solid transparent;[\s\S]*?border-radius:\s*11px 11px 0 0/);
+  assert.match(cssSource, /\.package-workflow-tab\.active\s*\{[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*inset 0 3px 0 var\(--brand\)/);
+  assert.doesNotMatch(cssSource, /\.package-workflow-tab\s*\{[\s\S]*?border-top:\s*3px solid transparent/);
+  assert.doesNotMatch(cssSource, /\.package-workflow-tab\.active::after\s*\{/);
+  assert.doesNotMatch(cssSource, /border-bottom-right-radius:\s*18px 8px/);
+  assert.doesNotMatch(cssSource, /border-bottom-left-radius:\s*18px 8px/);
+});
+
+
+test("award result form initializes Lucide icons immediately after rendering", async () => {
+  const source = await readFile(
+    new URL("../../frontend/packages/detail/AwardResultDetailsPanel.js", import.meta.url),
+    "utf8",
+  );
+  const renderMarker = "contentWrapper.innerHTML = trustedHTML(approvalPanel.html);";
+  const renderIndex = source.indexOf(renderMarker);
+  const bindIndex = source.indexOf("bindOfficialResultEditActions();", renderIndex);
+
+  assert.notEqual(renderIndex, -1);
+  assert.notEqual(bindIndex, -1);
+  assert.match(
+    source.slice(renderIndex, bindIndex),
+    /window\.lucide\.createIcons\(\{ root: contentWrapper \}\)/,
+  );
 });
 
 
@@ -505,7 +605,7 @@ test("award-result import never invents bid prices from the package estimate", a
 });
 
 
-test("partial-lot evaluation disables generic Excel actions until a scoped manifest exists", async () => {
+test("partial-lot evaluation disables generic Excel actions and always creates an official batch", async () => {
   const source = await readFile(
     new URL("../../frontend/packages/BidEvaluationWorkflow.js", import.meta.url),
     "utf8",
@@ -519,7 +619,8 @@ test("partial-lot evaluation disables generic Excel actions until a scoped manif
     new URL("../../frontend/packages/bidEvaluationActions.js", import.meta.url),
     "utf8",
   );
-  assert.match(saveSource, /if \(isPartialEvaluationLotScope\(evaluationLotDetails\)\)/);
+  assert.match(saveSource, /evaluationBatch = await ensureEvaluationLotBatch/);
+  assert.doesNotMatch(saveSource, /Lưu nháp đợt phần lô/);
 });
 
 

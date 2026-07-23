@@ -33,8 +33,9 @@ PACKAGE_STATUS_TRANSITIONS = {
     "Chuẩn bị": {"Đang mời thầu", "Hủy thầu"},
     "Đang mời thầu": {"Đã mở thầu", "Hủy thầu"},
     "Đã mở thầu": {"Đang chấm thầu", "Hủy thầu"},
-    "Đang chấm thầu": {"Đã có kết quả", "Hủy thầu"},
-    "Đã có kết quả": {"Đang chấm thầu", "Hủy thầu"},
+    "Đang chấm thầu": {"Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"},
+    "Đã có kết quả một phần": {"Đang chấm thầu", "Đã có kết quả", "Hủy thầu"},
+    "Đã có kết quả": {"Đang chấm thầu", "Đã có kết quả một phần", "Hủy thầu"},
     # Khôi phục hủy thầu dùng trạng thái nghiệp vụ đã lưu ở phía client.
     "Hủy thầu": PACKAGE_STATUSES - {"Hủy thầu"},
 }
@@ -257,7 +258,7 @@ def validate_package_status_transition(previous_status, item):
         "Lựa chọn nhà thầu trong trường hợp đặc biệt",
     }
     if direct_or_special and old_status == "Chuẩn bị" and new_status in {
-        "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"
+        "Đang chấm thầu", "Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"
     }:
         return []
     if new_status not in PACKAGE_STATUS_TRANSITIONS.get(old_status, set()):
@@ -695,6 +696,8 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             item["trangThai"] = normalized_status
             if normalized_status not in PACKAGE_STATUSES:
                 errors.append(f"Trạng thái gói thầu '{raw_status}' không hợp lệ.")
+            elif normalized_status == "Đã có kết quả một phần" and str(item.get("phanLo") or "").strip() != "Có":
+                errors.append("Trạng thái 'Đã có kết quả một phần' chỉ áp dụng cho gói thầu có phần lô.")
 
         dang_tai = parse_date(item.get("thoiGianDangTai"))
         dong_thau = parse_date(item.get("thoiGianDongThau"))
@@ -708,7 +711,8 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             "Đang mời thầu": 1,
             "Đã mở thầu": 2,
             "Đang chấm thầu": 3,
-            "Đã có kết quả": 4,
+            "Đã có kết quả một phần": 4,
+            "Đã có kết quả": 5,
         }
         status_level = status_order.get(item.get("trangThai"), 0)
         is_direct_or_special = str(item.get("hinhThucLuaChon") or "").strip() in {

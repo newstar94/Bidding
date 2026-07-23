@@ -211,10 +211,16 @@ def _save_evaluation_rounds(cursor, package_id, item, organization_id, owner_typ
         return
     metadata = parse_evaluation_metadata(item.get("danhGiaHsdtMetadata"), require_version=False)
     is_two_envelope = bool(metadata.get("is1G2T"))
-    blocks = (
-        [("technical", metadata.get("technical") or {}), ("financial", metadata.get("financial") or {})]
-        if is_two_envelope else [("single", metadata)]
-    )
+    if is_two_envelope:
+        technical_block = dict(metadata.get("technical") or {})
+        if isinstance(metadata.get("resultEdit"), dict):
+            technical_block["resultEdit"] = metadata["resultEdit"]
+        blocks = [
+            ("technical", technical_block),
+            ("financial", metadata.get("financial") or {}),
+        ]
+    else:
+        blocks = [("single", metadata)]
     for order, (round_type, raw_block) in enumerate(blocks):
         block = raw_block if isinstance(raw_block, dict) else {}
         extension = {
@@ -989,6 +995,11 @@ def _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming
                 metadata.update(block)
             else:
                 metadata[row["loai_vong"]] = block
+                if (
+                    row["loai_vong"] == "technical"
+                    and isinstance(block.get("resultEdit"), dict)
+                ):
+                    metadata["resultEdit"] = block["resultEdit"]
         item[metadata_key] = dump_evaluation_metadata(metadata)
 
 

@@ -11,10 +11,14 @@ import {
   EVALUATION_LOT_SCOPE_MODE,
   filterBidsByEvaluationLotScope,
   findScopedEvaluationMetadata,
+  getOfficialEvaluationLotState,
   getEvaluationLotScopeDetails,
   getPackageEvaluationLots,
   initializeEvaluationLotScope,
+  isBidWithinEvaluationLotDetails,
   isPartialEvaluationLotScope,
+  resolveActiveSavedEvaluationScope,
+  resolvePackageResultStatus,
   updateEvaluationLotScope
 } from "./lotEvaluationScope.js";
 
@@ -27,6 +31,84 @@ function getEvaluationScopeStore(controller) {
   return controller._evaluationLotScopes;
 }
 
+function formatRoundDate(model, value) {
+  return value ? model.formatDate(value) : "--";
+}
+
+function renderEvaluationRoundHistory(controller, pkg, metadataBlock, {
+  onContinue = () => {},
+  twoEnvelopeMetadata = null,
+} = {}) {
+  const container = controller.view.getActiveElement("danhgiahsdt-round-history");
+  const currentRound = controller.view.getActiveElement("danhgiahsdt-current-round");
+  if (!container) return { showCurrentRound: true };
+  const state = getOfficialEvaluationLotState(pkg, metadataBlock);
+  if (state.history.length === 0) {
+    container.innerHTML = trustedHTML("");
+    container.classList.add("is-hidden");
+    setRuntimeStyle(currentRound, "display", "block");
+    return { ...state, showCurrentRound: true };
+  }
+
+  const packageBids = controller.model.state.thongtinmothau.filter(
+    (bid) => String(bid.goiThauId) === String(pkg.id),
+  );
+  const cards = state.history.map((batch) => {
+    const technicalBatch = twoEnvelopeMetadata?.technical?.lotBatches?.[batch.batchId] || batch;
+    const financialBatch = twoEnvelopeMetadata?.financial?.lotBatches?.[batch.batchId] || {};
+    const scopedBids = packageBids.filter((bid) => isBidWithinEvaluationLotDetails(bid, batch));
+    const result = technicalBatch.result || financialBatch.result || batch.result || {};
+    const reportFields = twoEnvelopeMetadata ? `
+          <div><span>Số BC đánh giá kỹ thuật</span><strong>${escapeHtml(technicalBatch.soBaoCao || "--")}</strong></div>
+          <div><span>Ngày BC đánh giá kỹ thuật</span><strong>${escapeHtml(formatRoundDate(controller.model, technicalBatch.ngayBaoCao))}</strong></div>
+          <div><span>Số BCTĐ kỹ thuật</span><strong>${escapeHtml(technicalBatch.soBctdKt || "--")}</strong></div>
+          <div><span>Số QĐ đạt kỹ thuật</span><strong>${escapeHtml(technicalBatch.soQdPheDuyetKt || "--")}</strong></div>
+          <div><span>Mở E-HSĐXTC</span><strong>${escapeHtml(technicalBatch.financialOpening?.openingTime ? controller.model.formatDateWithTime(technicalBatch.financialOpening.openingTime) : "--")}</strong></div>
+          <div><span>Số BC đánh giá tài chính</span><strong>${escapeHtml(financialBatch.soBaoCao || "--")}</strong></div>
+          <div><span>Ngày BC đánh giá tài chính</span><strong>${escapeHtml(formatRoundDate(controller.model, financialBatch.ngayBaoCao))}</strong></div>` : `
+          <div><span>Số báo cáo đánh giá</span><strong>${escapeHtml(batch.soBaoCao || "--")}</strong></div>
+          <div><span>Ngày báo cáo</span><strong>${escapeHtml(formatRoundDate(controller.model, batch.ngayBaoCao))}</strong></div>`;
+    const rows = scopedBids.map((bid) => `
+      <tr>
+        <td>${escapeHtml(bid.maPhanLo || "--")}</td>
+        <td>${escapeHtml(bid.tenNhaThau || "--")}</td>
+        <td>${escapeHtml(bid.danhGiaKetLuan || "--")}</td>
+        <td>${escapeHtml(bid.danhGiaTaiChinh || "--")}</td>
+      </tr>`).join("");
+    return `
+      <article class="evaluation-round-card">
+        <header class="evaluation-round-card-header">
+          <div><span class="evaluation-round-index">Lần ${batch.sequenceNo}</span><h4>${escapeHtml((batch.lotCodes || []).join(", ") || "Các phần lô trong đợt")}</h4></div>
+          <span class="evaluation-round-status"><i data-lucide="badge-check"></i> Đã ra kết quả chính thức</span>
+        </header>
+        <div class="evaluation-round-fields">
+          ${reportFields}
+          <div><span>Số BCTĐ kết quả</span><strong>${escapeHtml(result.soBctdKetQua || "--")}</strong></div>
+          <div><span>Ngày BCTĐ kết quả</span><strong>${escapeHtml(formatRoundDate(controller.model, result.ngayBctdKetQua))}</strong></div>
+          <div><span>Số QĐ phê duyệt</span><strong>${escapeHtml(result.soQuyetDinhKetQua || "--")}</strong></div>
+          <div><span>Ngày QĐ phê duyệt</span><strong>${escapeHtml(formatRoundDate(controller.model, result.ngayQuyetDinhKetQua))}</strong></div>
+        </div>
+        <div class="table-container package-table-frame evaluation-round-table">
+          <table class="data-table"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết luận</th><th>Xếp hạng tài chính</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" class="text-muted">Không có hồ sơ trong phạm vi đợt.</td></tr>'}</tbody></table>
+        </div>
+      </article>`;
+  }).join("");
+  const pendingCodes = state.pendingLots.map((lot) => lot.code).join(", ");
+  const mustWaitForContinue = state.pendingLots.length > 0 && !state.activeBatch
+    && !controller._continueOfficialLotEvaluation?.[pkg.id];
+  const continuation = state.pendingLots.length > 0 && !state.activeBatch ? `
+    <div class="evaluation-round-continuation" role="status">
+      <div><strong>Còn ${state.pendingLots.length} phần lô chưa đánh giá</strong><p>${escapeHtml(pendingCodes)} chưa thuộc đợt chính thức nào.</p></div>
+      <button type="button" class="btn btn-primary" id="btn-continue-lot-evaluation"><i data-lucide="arrow-right"></i> Tiếp tục đánh giá</button>
+    </div>` : "";
+  container.innerHTML = trustedHTML(cards + continuation);
+  container.classList.remove("is-hidden");
+  container.querySelector("#btn-continue-lot-evaluation")?.addEventListener("click", onContinue);
+  setRuntimeStyle(currentRound, "display", mustWaitForContinue || state.isComplete ? "none" : "block");
+  return { ...state, showCurrentRound: !mustWaitForContinue && !state.isComplete };
+}
+
 function renderEvaluationLotScopeControls(controller, pkg, scope, {
   isLocked = false,
   onChange = () => {}
@@ -36,7 +118,9 @@ function renderEvaluationLotScopeControls(controller, pkg, scope, {
   const feedback = controller.view.getActiveElement("danhgiahsdt-scope-feedback");
   const badge = controller.view.getActiveElement("danhgiahsdt-scope-badge");
   const title = controller.view.getActiveElement("danhgiahsdt-table-title");
-  const lots = getPackageEvaluationLots(pkg);
+  const allLots = getPackageEvaluationLots(pkg);
+  const availableSet = new Set(scope?.availableLotIds || []);
+  const lots = availableSet.size ? allLots.filter((lot) => availableSet.has(lot.id)) : allLots;
   if (!container || lots.length === 0 || !scope) {
     if (container) {
       container.classList.add("is-hidden");
@@ -78,7 +162,7 @@ function renderEvaluationLotScopeControls(controller, pkg, scope, {
   if (feedback) {
     const hasSelection = Boolean(details?.lotIds?.length);
     feedback.textContent = hasSelection
-      ? `${details.lotIds.length}/${lots.length} phần lô sẽ được đưa vào báo cáo và bảng đánh giá của đợt này.${isPartialScope ? " Nhập/xuất Excel sẽ được mở sau khi có tệp phạm vi theo đợt." : ""}`
+      ? `${details.lotIds.length}/${lots.length} phần lô còn lại sẽ được đưa vào báo cáo chính thức của đợt này.${isPartialScope ? " Nhập/xuất Excel sẽ được mở sau khi có tệp phạm vi theo đợt." : ""}`
       : "Vui lòng chọn ít nhất một phần lô trước khi lưu đánh giá.";
     feedback.classList.toggle("is-error", !hasSelection);
   }
@@ -120,9 +204,9 @@ export function renderDanhGiaHsdtPanel() {
   const selectedVal = select.value;
   const targetPackages = this.model.state.goithau.filter((g) => {
     if (g.id === selectedVal) return true;
-    return g.trangThai === "Đang chấm thầu" || g.trangThai === "Đã có kết quả";
+    return ["Đang chấm thầu", "Đã có kết quả một phần", "Đã có kết quả"].includes(resolvePackageResultStatus(g));
   });
-  select.innerHTML = trustedHTML('<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join(""));
+  select.innerHTML = trustedHTML('<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả một phần / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join(""));
   if (selectedVal && targetPackages.some((g) => g.id === selectedVal)) {
     select.value = selectedVal;
   } else {
@@ -175,8 +259,13 @@ export function renderDanhGiaHsdtPanel() {
         financial: { soBaoCao: "", ngayBaoCao: "", cvLamRo: [], cvTraLoi: [], cvGuiCdt: [], saved: false }
       };
     }
-    const isTechEvalSaved = Boolean(is1G2T && metadata.technical?.saved);
-    const isQualifiedSaved = Boolean(is1G2T && metadata.technical?.qualifiedSaved);
+    const activeTechnicalScope = is1G2T
+      ? resolveActiveSavedEvaluationScope(gt, metadata.technical || {})
+      : null;
+    const isTechEvalSaved = Boolean(is1G2T && (metadata.technical?.saved || activeTechnicalScope));
+    const isQualifiedSaved = Boolean(is1G2T && (
+      metadata.technical?.qualifiedSaved || activeTechnicalScope?.batch?.qualifiedSaved
+    ));
     if (is1G2T && this.currentDanhGiaTab === "financial" && !isTechEvalSaved) {
       this.currentDanhGiaTab = "technical";
     }
@@ -185,7 +274,8 @@ export function renderDanhGiaHsdtPanel() {
       : metadata;
     const scopeStore = getEvaluationScopeStore(this);
     const scopeKey = evaluationScopeKey(gtId, this.currentDanhGiaTab);
-    const lotScope = initializeEvaluationLotScope(gt, baseEvaluationMeta, scopeStore[scopeKey]);
+    const lifecycleScopeMeta = is1G2T ? metadata.technical || {} : baseEvaluationMeta;
+    const lotScope = initializeEvaluationLotScope(gt, lifecycleScopeMeta, scopeStore[scopeKey]);
     if (lotScope) scopeStore[scopeKey] = lotScope;
     const matchingScopeMeta = lotScope
       ? findScopedEvaluationMetadata(baseEvaluationMeta, lotScope.selectedLotIds)
@@ -195,7 +285,8 @@ export function renderDanhGiaHsdtPanel() {
     const isCompleted = Boolean(currentEvaluationMeta.saved);
     const stepKey = this.currentDanhGiaTab === "financial" ? "eval_fin" : "eval_tech";
     const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
-    const isLocked = gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu";
+    const effectiveStatus = resolvePackageResultStatus(gt);
+    const isLocked = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
     const isTabLocked = isLocked || is1G2T && this.currentDanhGiaTab === "technical" && isQualifiedSaved;
     const isReadOnly = isTabLocked || isCompleted && !isEditingThisStep;
     const isEditable = !isReadOnly;
@@ -347,7 +438,7 @@ export function renderDanhGiaHsdtPanel() {
         setRuntimeStyle(tabsHeader, "display", isWorkflowView ? "none" : "flex");
       }
       this._lastSelectedGtId = gtId;
-      const isKtSaved = !!(metadata.technical && metadata.technical.saved);
+      const isKtSaved = Boolean(metadata.technical?.saved || activeTechnicalScope);
       if (tabBtnKt && tabBtnTc) {
         if (isKtSaved) {
           tabBtnTc.removeAttribute("disabled");
@@ -406,6 +497,15 @@ export function renderDanhGiaHsdtPanel() {
     const isPartialLotScope = isPartialEvaluationLotScope(getEvaluationLotScopeDetails(gt, lotScope));
     const activeHasScopedHistory = Boolean(activeBaseMeta?.lotBatches && Object.keys(activeBaseMeta.lotBatches).length);
     const activeMeta = activeScopedMeta || (!activeHasScopedHistory ? activeBaseMeta : {});
+    this._continueOfficialLotEvaluation = this._continueOfficialLotEvaluation || {};
+    renderEvaluationRoundHistory(this, gt, activeBaseMeta, {
+      twoEnvelopeMetadata: is1G2T ? metadata : null,
+      onContinue: () => {
+        this._continueOfficialLotEvaluation[gt.id] = true;
+        delete scopeStore[scopeKey];
+        handlePackageSelection();
+      }
+    });
     renderEvaluationLotScopeControls(this, gt, lotScope, {
       isLocked,
       onChange: (nextScope) => {
@@ -472,8 +572,8 @@ export function renderDanhGiaHsdtPanel() {
         }
       } else {
         setVisible(saveBtn, true, "");
-        saveBtn.innerHTML = trustedHTML(isPartialLotScope
-          ? '<i data-lucide="save"></i> Lưu nháp đợt phần lô'
+        saveBtn.innerHTML = trustedHTML(lotScope
+          ? '<i data-lucide="save"></i> Lưu báo cáo đánh giá đợt'
           : '<i data-lucide="save"></i> Lưu thông tin đánh giá');
         saveBtn.className = "btn btn-primary";
         saveBtn.onclick = () => this.saveDanhGiaHsdt();

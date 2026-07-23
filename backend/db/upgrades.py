@@ -412,6 +412,38 @@ def _upgrade_to_v12_add_lot_selection_lifecycle(cursor, context):
         cursor.execute(statement)
 
 
+def _upgrade_to_v13_add_partial_package_result_status(cursor, context):
+    """Allow a package status for official results that cover only some lots."""
+
+    cursor.execute(
+        """DO $$
+           DECLARE item RECORD;
+           BEGIN
+             FOR item IN
+               SELECT conname FROM pg_constraint
+               WHERE conrelid = 'goi_thau'::regclass
+                 AND contype = 'c'
+                 AND pg_get_constraintdef(oid) ILIKE '%trang_thai%'
+                 AND pg_get_constraintdef(oid) ILIKE '%PREPARING%'
+                 AND pg_get_constraintdef(oid) ILIKE '%CANCELLED%'
+             LOOP
+               EXECUTE format(
+                   'ALTER TABLE goi_thau DROP CONSTRAINT IF EXISTS %I',
+                   item.conname
+               );
+             END LOOP;
+           END $$"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           ADD CONSTRAINT goi_thau_status_check
+           CHECK(trang_thai IN (
+               'PREPARING', 'INVITED', 'OPENED', 'EVALUATING',
+               'PARTIALLY_AWARDED', 'AWARDED', 'CANCELLED'
+           ))"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -463,6 +495,11 @@ UPGRADES = (
         12,
         "add_lot_selection_lifecycle",
         _upgrade_to_v12_add_lot_selection_lifecycle,
+    ),
+    DatabaseUpgrade(
+        13,
+        "add_partial_package_result_status",
+        _upgrade_to_v13_add_partial_package_result_status,
     ),
 )
 

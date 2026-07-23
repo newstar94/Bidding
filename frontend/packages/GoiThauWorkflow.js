@@ -401,7 +401,7 @@ export async function editGoiThau(id, isReadOnly = false) {
   const selectedPlanId = document.getElementById("gt-kehoachid").value;
   this.updateNguonVonFieldState(selectedPlanId);
   this.updatePackageFieldsVisibility(isReadOnly);
-  const isOpenedOrLater = gt && ["Đã mở thầu", "Đang chấm thầu", "Đã có kết quả"].includes(gt.trangThai);
+  const isOpenedOrLater = gt && ["Đã mở thầu", "Đang chấm thầu", "Đã có kết quả một phần", "Đã có kết quả"].includes(gt.trangThai);
   const preOpeningFields = [
     "gt-ma",
     "gt-kehoachid",

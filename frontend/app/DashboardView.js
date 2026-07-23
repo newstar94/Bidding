@@ -4,11 +4,13 @@ import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js"
 import { normalizeOrganizations } from "../auth/accessContext.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { getHolidays } from "../shared/runtimeState.js";
+import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 const PACKAGE_STATUS_COLORS = {
-  "Chuẩn bị": "var(--text-light)",
-  "Đang mời thầu": "var(--primary)",
-  "Đã mở thầu": "#f59e0b",
-  "Đang chấm thầu": "#9333ea",
+  "Chuẩn bị": "#74829a",
+  "Đang mời thầu": "var(--dashboard-blue)",
+  "Đã mở thầu": "var(--dashboard-amber)",
+  "Đang chấm thầu": "var(--dashboard-violet)",
+  "Đã có kết quả một phần": "var(--dashboard-green)",
   "Đã có kết quả": "var(--success)",
   "Hủy thầu": "var(--danger)"
 };
@@ -85,6 +87,16 @@ export function normalizeDashboardStatusCounts(incoming = {}) {
   return counts;
 }
 
+export function derivePackageStatusCounts(packages = []) {
+  const counts = normalizeDashboardStatusCounts();
+  packages.forEach((pkg) => {
+    const resolvedStatus = resolvePackageResultStatus(pkg);
+    const status = resolvedStatus === "Huỷ thầu" ? "Hủy thầu" : resolvedStatus;
+    if (Object.hasOwn(counts, status)) counts[status]++;
+  });
+  return counts;
+}
+
 export function normalizeContractStatusCounts(incoming = {}, order = CONTRACT_STATUS_ORDER) {
   const normalized = normalizeOrderedCounts({}, order);
   Object.entries(incoming || {}).forEach(([rawStatus, rawCount]) => {
@@ -112,7 +124,7 @@ export function derivePlanStatusCounts(plans = [], packages = []) {
   });
   plans.forEach((plan) => {
     const planPackages = packagesByPlan.get(String(plan.id || "")) || [];
-    const statuses = planPackages.map((pkg) => pkg.trangThai || "Chuẩn bị");
+    const statuses = planPackages.map((pkg) => resolvePackageResultStatus(pkg) || "Chuẩn bị");
     if (!statuses.length || statuses.every((status) => status === "Chuẩn bị")) {
       result["Chưa triển khai"]++;
     } else if (statuses.some((status) => !["Đã có kết quả", "Hủy thầu", "Huỷ thầu"].includes(status))) {
@@ -149,7 +161,7 @@ export function deriveDashboardAlerts(packages = [], now = new Date(), delayDays
   const soonLimit = new Date(now); soonLimit.setDate(soonLimit.getDate() + 7);
   const evaluationLimit = new Date(now); evaluationLimit.setDate(evaluationLimit.getDate() - delayDays);
   packages.forEach((pkg) => {
-    const status = pkg.trangThai || "Chuẩn bị";
+    const status = resolvePackageResultStatus(pkg) || "Chuẩn bị";
     const closing = parseDashboardDate(pkg.thoiGianDongThau);
     const opening = parseDashboardDate(pkg.thoiGianMoThau || pkg.thoiGianDongThau);
     let alertKey = "";
@@ -328,13 +340,9 @@ function buildLocalDashboardData(view) {
   const contracts = model.getFilteredHopDong();
   const contractStatusCatalog = getContractStatusCatalog(model);
   const contractStatusOrder = contractStatusCatalog.map((status) => status.name);
-  const packageStatusCounts = normalizeDashboardStatusCounts();
+  const packageStatusCounts = derivePackageStatusCounts(packages);
   const contractStatusCounts = normalizeContractStatusCounts({}, contractStatusOrder);
   const contractValues = Object.fromEntries(contractStatusOrder.map((status) => [status, 0]));
-  packages.forEach((pkg) => {
-    const status = pkg.trangThai === "Huỷ thầu" ? "Hủy thầu" : pkg.trangThai;
-    if (Object.hasOwn(packageStatusCounts, status)) packageStatusCounts[status]++;
-  });
   contracts.forEach((contract) => {
     const status = contract.trangThaiHopDong || "Đang thực hiện";
     contractStatusCounts[status] = Number(contractStatusCounts[status] || 0) + 1;
@@ -396,6 +404,20 @@ function buildServerDashboardData(view, summary) {
   };
 }
 
+export function shouldUseServerDashboardSummary(summary, scopedPackages = []) {
+  if (!summary?.counts) return false;
+  if (!Array.isArray(scopedPackages) || scopedPackages.length === 0) return true;
+  const declaredPackageCount = Number(summary.counts.goithau || 0);
+  const statusPackageCount = Object.values(summary.statusCounts || {})
+    .reduce((total, count) => total + Number(count || 0), 0);
+  const recentPackageCount = Array.isArray(summary.recentPackages)
+    ? summary.recentPackages.length
+    : 0;
+  return declaredPackageCount > 0
+    && statusPackageCount > 0
+    && recentPackageCount > 0;
+}
+
 function renderMetricBreakdown(containerId, counts, formatter = (value) => String(value)) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -425,25 +447,45 @@ function renderContractSummary(counts, values, catalog = []) {
   }).join(""));
 }
 
-function renderPackageDonut(statusCounts) {
+export function buildPackageStatusChartModel(statusCounts = {}) {
   const total = Object.values(statusCounts).reduce((sum, count) => sum + Number(count || 0), 0);
-  setText("donut-total-count", total);
   let accumulated = 0;
-  const gradientParts = [];
+  const items = PACKAGE_STATUS_ORDER.map((status) => {
+    const count = Number(statusCounts[status] || 0);
+    const percent = total ? count / total * 100 : 0;
+    const start = accumulated;
+    const end = accumulated + percent;
+    if (count > 0) accumulated = end;
+    return {
+      status,
+      count,
+      percent,
+      color: PACKAGE_STATUS_COLORS[status],
+      start,
+      end,
+    };
+  });
+  const gradientParts = items
+    .filter((item) => item.count > 0)
+    .map((item) => `${item.color} ${item.start}% ${item.end}%`);
+  return {
+    total,
+    items,
+    gradient: gradientParts.length ? `conic-gradient(${gradientParts.join(", ")})` : "var(--neutral-soft)",
+  };
+}
+
+function renderPackageDonut(statusCounts) {
+  const chartModel = buildPackageStatusChartModel(statusCounts);
+  setText("donut-total-count", chartModel.total);
   const legend = document.getElementById("status-legend-list");
   if (legend) {
-    legend.innerHTML = trustedHTML(PACKAGE_STATUS_ORDER.map((status, index) => {
-      const count = Number(statusCounts[status] || 0);
-      const percent = total ? count / total * 100 : 0;
-      if (count > 0) {
-        gradientParts.push(`${PACKAGE_STATUS_COLORS[status]} ${accumulated}% ${accumulated + percent}%`);
-        accumulated += percent;
-      }
-      return `<div class="legend-item"><div class="legend-info"><span class="legend-dot status-tone-${index % 6}"></span><span>${escapeHtml(status)}</span></div><span class="legend-val">${count} (${percent.toFixed(0)}%)</span></div>`;
+    legend.innerHTML = trustedHTML(chartModel.items.map((item) => {
+      return `<div class="legend-item"><div class="legend-info"><span class="legend-dot" style="background-color: ${item.color};"></span><span>${escapeHtml(item.status)}</span></div><span class="legend-val">${item.count} (${item.percent.toFixed(0)}%)</span></div>`;
     }).join(""));
   }
   const donut = document.querySelector("#tab-dashboard .status-donut-chart");
-  if (donut) setRuntimeStyle(donut, "background", gradientParts.length ? `conic-gradient(${gradientParts.join(", ")})` : "var(--neutral-soft)");
+  if (donut) setRuntimeStyle(donut, "background", chartModel.gradient);
 }
 
 function renderDashboardAlerts(alerts) {
@@ -493,7 +535,7 @@ function renderRecentPackages(view, packages) {
       <td class="dashboard-recent-code-cell"><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-code">${escapeHtml(pkg.maGoiThau || "")}</a></td>
       <td class="dashboard-recent-name-cell"><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-name" title="${safeAttr(pkg.tenGoiThau || "")}">${escapeHtml(pkg.tenGoiThau || "")}</a></td>
       <td class="dashboard-recent-price-cell">${view.model.formatCurrency(pkg.giaGoiThau || 0)}</td>
-      <td class="dashboard-recent-status-cell">${view.getStatusBadge(pkg.trangThai)}</td>
+      <td class="dashboard-recent-status-cell">${view.getStatusBadge(resolvePackageResultStatus(pkg))}</td>
     </tr>
   `).join(""));
 }
@@ -521,7 +563,13 @@ function renderDashboardSnapshot(view, data) {
 
 export function renderDashboard() {
   renderDashboardRoleContext(this);
-  const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
+  const scopedPackages = this.model.useServerSidePagination
+    ? this.model.getFilteredGoiThau()
+    : [];
+  const serverSummary = this.model.useServerSidePagination
+    && shouldUseServerDashboardSummary(this.model.dashboardSummary, scopedPackages)
+    ? this.model.dashboardSummary
+    : null;
   const data = serverSummary?.counts ? buildServerDashboardData(this, serverSummary) : buildLocalDashboardData(this);
   renderDashboardSnapshot(this, data);
   this.createIconsScoped(document.getElementById("tab-dashboard"));

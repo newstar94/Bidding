@@ -293,6 +293,8 @@ def test_status_transition_and_locked_field_policies() -> None:
     preparing = PACKAGE_STATUS_LABELS["PREPARING"]
     invited = PACKAGE_STATUS_LABELS["INVITED"]
     opened = PACKAGE_STATUS_LABELS["OPENED"]
+    evaluating = PACKAGE_STATUS_LABELS["EVALUATING"]
+    partially_awarded = PACKAGE_STATUS_LABELS["PARTIALLY_AWARDED"]
     awarded = PACKAGE_STATUS_LABELS["AWARDED"]
     cancelled = PACKAGE_STATUS_LABELS["CANCELLED"]
     assert validation.validate_package_status_transition(
@@ -314,6 +316,12 @@ def test_status_transition_and_locked_field_policies() -> None:
     assert validation.validate_package_status_transition(
         invited, {"trangThai": awarded}
     )
+    assert validation.validate_package_status_transition(
+        evaluating, {"trangThai": partially_awarded}
+    ) == []
+    assert validation.validate_package_status_transition(
+        partially_awarded, {"trangThai": awarded}
+    ) == []
     assert validation.validate_package_status_transition(
         cancelled, {"trangThai": preparing}
     ) == []
@@ -666,6 +674,15 @@ def test_package_status_levels_require_server_business_fields(
     _, direct_errors, _ = validation.validate_sync_item("goi_thau", direct)
     if status_code != "AWARDED":
         assert direct_errors == []
+
+
+def test_partial_result_status_only_applies_to_lotted_packages() -> None:
+    item = _minimal_package(
+        trangThai=PACKAGE_STATUS_LABELS["PARTIALLY_AWARDED"],
+        phanLo="Không",
+    )
+    _, errors, _ = validation.validate_sync_item("goi_thau", item)
+    assert any("chỉ áp dụng cho gói thầu có phần lô" in error for error in errors)
 
 
 def test_package_lot_and_purchase_option_invariants() -> None:

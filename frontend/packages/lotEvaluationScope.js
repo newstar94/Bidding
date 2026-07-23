@@ -12,6 +12,18 @@ function parseList(value) {
   }
 }
 
+function parseMetadataRecord(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizedCode(value) {
   return String(value || "").trim().toLocaleLowerCase("vi-VN").replace(/\s+/g, " ");
 }
@@ -24,6 +36,127 @@ function sameScope(left, right) {
   const a = unique(left).sort();
   const b = unique(right).sort();
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function batchSequence(batch, fallback = 0) {
+  const value = Number(batch?.sequenceNo ?? batch?.sequence_no ?? fallback);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function isFinalBatch(batch) {
+  const status = String(batch?.status || "").trim().toUpperCase();
+  if (status === "FINAL" || status === "CLOSED") return true;
+
+  // Compatibility for lot results saved before official round statuses were introduced.
+  // Those records already contain an approved result, but have no batch status at all.
+  return !status && batch?.saved === true && batch?.result?.saved === true;
+}
+
+export function getOfficialEvaluationLotState(pkg, metadataBlock = {}) {
+  const lots = getPackageEvaluationLots(pkg);
+  const batches = Object.entries(metadataBlock?.lotBatches || {})
+    .map(([key, value], index) => ({
+      ...(value || {}),
+      batchId: String(value?.batchId || value?.id || key),
+      sequenceNo: batchSequence(value, index + 1),
+    }))
+    .filter((batch) => Array.isArray(batch.lotIds) && batch.lotIds.length > 0)
+    .sort((left, right) => left.sequenceNo - right.sequenceNo || left.batchId.localeCompare(right.batchId));
+  const completed = new Set(
+    batches.filter(isFinalBatch).flatMap((batch) => unique(batch.lotIds)),
+  );
+  const activeBatch = batches.find((batch) => batch.status === "ACTIVE") || null;
+  return {
+    batches,
+    history: batches.filter(isFinalBatch),
+    activeBatch,
+    completedLotIds: lots.filter((lot) => completed.has(lot.id)).map((lot) => lot.id),
+    completedLots: lots.filter((lot) => completed.has(lot.id)),
+    pendingLots: lots.filter((lot) => !completed.has(lot.id)),
+    isComplete: lots.length > 0 && lots.every((lot) => completed.has(lot.id)),
+  };
+}
+
+export function resolvePackageResultStatus(pkg, editState = {}) {
+  const storedStatus = String(pkg?.trangThai || "").trim();
+  if (storedStatus === "Hủy thầu") return storedStatus;
+
+  const metadata = parseMetadataRecord(pkg?.danhGiaHsdtMetadata);
+  if (!metadata) return storedStatus;
+  const isTwoEnvelope = pkg?.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
+  const lifecycleMetadata = isTwoEnvelope ? metadata?.technical || {} : metadata;
+  const persistedEditState = metadata?.resultEdit || lifecycleMetadata?.resultEdit || {};
+  const isEditingWholePackage = editState?.editingWholePackage === true
+    || persistedEditState?.type === "whole";
+  if (isEditingWholePackage) {
+    return "Đang chấm thầu";
+  }
+  const editingBatchId = String(
+    editState?.editingBatchId
+    || (persistedEditState?.type === "batch" ? persistedEditState?.batchId : "")
+    || "",
+  ).trim();
+  if (editingBatchId && pkg?.phanLo === "Có") {
+    const state = getOfficialEvaluationLotState(pkg, lifecycleMetadata);
+    const editingBatchExists = state.history.some(
+      (batch) => String(batch.batchId || "") === editingBatchId,
+    );
+    if (editingBatchExists) {
+      const completedByOtherBatches = new Set(
+        state.history
+          .filter((batch) => String(batch.batchId || "") !== editingBatchId)
+          .flatMap((batch) => unique(batch.lotIds)),
+      );
+      return completedByOtherBatches.size > 0
+        ? "Đã có kết quả một phần"
+        : "Đang chấm thầu";
+    }
+  }
+  if (storedStatus === "Đã có kết quả") return storedStatus;
+  if (pkg?.phanLo !== "Có" && metadata?.result?.saved === true) {
+    return "Đã có kết quả";
+  }
+  const state = getOfficialEvaluationLotState(pkg, lifecycleMetadata);
+  if (state.isComplete) return "Đã có kết quả";
+  if (state.history.length > 0) return "Đã có kết quả một phần";
+  return storedStatus;
+}
+
+export function setPackageResultEditState(pkg, editState = {}) {
+  if (!pkg) return false;
+  const type = editState?.type === "batch" ? "batch" : "whole";
+  const batchId = type === "batch" ? String(editState?.batchId || "").trim() : "";
+  if (type === "batch" && !batchId) return false;
+  const metadata = parseMetadataRecord(pkg.danhGiaHsdtMetadata);
+  if (!metadata) return false;
+  const resultEdit = type === "batch" ? { type, batchId } : { type };
+  metadata.resultEdit = resultEdit;
+  if (pkg?.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ") {
+    metadata.technical = metadata.technical && typeof metadata.technical === "object"
+      ? metadata.technical
+      : {};
+    metadata.technical.resultEdit = resultEdit;
+  }
+  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  if (pkg.trangThai !== "Hủy thầu") {
+    pkg.trangThai = resolvePackageResultStatus(pkg);
+  }
+  return true;
+}
+
+export function clearPackageResultEditState(pkg) {
+  if (!pkg) return false;
+  const metadata = parseMetadataRecord(pkg.danhGiaHsdtMetadata);
+  if (!metadata) return false;
+  delete metadata.resultEdit;
+  if (metadata.technical && typeof metadata.technical === "object") {
+    delete metadata.technical.resultEdit;
+  }
+  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  if (pkg.trangThai !== "Hủy thầu") {
+    pkg.trangThai = resolvePackageResultStatus(pkg);
+  }
+  return true;
 }
 
 export function getPackageEvaluationLots(pkg) {
@@ -58,7 +191,12 @@ export function resolveActiveSavedEvaluationScope(pkg, metadataBlock, preferredB
   if (!batchId) return null;
 
   const batch = metadataBlock.lotBatches[batchId];
-  if (!batch || batch.saved !== true || !Array.isArray(batch.lotIds)) return null;
+  if (
+    !batch
+    || batch.saved !== true
+    || isFinalBatch(batch)
+    || !Array.isArray(batch.lotIds)
+  ) return null;
 
   const lotIds = batch.lotIds.map((lotId) => String(lotId || "").trim());
   const knownLots = new Map(lots.map((lot) => [lot.id, lot]));
@@ -81,43 +219,51 @@ export function resolveActiveSavedEvaluationScope(pkg, metadataBlock, preferredB
 
 export function initializeEvaluationLotScope(pkg, block = {}, previous = null) {
   const lots = getPackageEvaluationLots(pkg);
-  const allLotIds = lots.map((lot) => lot.id);
+  const officialState = getOfficialEvaluationLotState(pkg, block);
+  const pendingLotIds = officialState.pendingLots.map((lot) => lot.id);
+  const activeIds = unique(officialState.activeBatch?.lotIds).filter((id) => pendingLotIds.includes(id));
+  const allLotIds = activeIds.length > 0 ? activeIds : pendingLotIds;
   if (allLotIds.length === 0) return null;
 
   const previousIds = unique(previous?.selectedLotIds).filter((id) => allLotIds.includes(id));
-  if (previous) {
+  if (previous && (previousIds.length > 0 || previous.mode === MODE_SELECTED)) {
     const previousMode = previous.mode === MODE_SELECTED ? MODE_SELECTED : MODE_ALL;
     const effectiveIds = previousMode === MODE_ALL ? allLotIds : previousIds;
     const matched = findScopedEvaluationMetadata(block, previousIds);
     return {
       mode: previousMode,
       selectedLotIds: effectiveIds,
+      availableLotIds: allLotIds,
       batchId: matched?.batchId || previous.batchId || null,
     };
   }
 
-  const activeBatch = block?.activeLotBatchId && block?.lotBatches?.[block.activeLotBatchId]
+  const activeBatch = officialState.activeBatch || (block?.activeLotBatchId && block?.lotBatches?.[block.activeLotBatchId]
     ? block.lotBatches[block.activeLotBatchId]
-    : null;
+    : null);
   const storedIds = unique(activeBatch?.lotIds).filter((id) => allLotIds.includes(id));
   if (storedIds.length > 0) {
     return {
-      mode: storedIds.length === allLotIds.length ? MODE_ALL : MODE_SELECTED,
+      mode: storedIds.length === pendingLotIds.length ? MODE_ALL : MODE_SELECTED,
       selectedLotIds: storedIds,
+      availableLotIds: pendingLotIds,
       batchId: activeBatch.batchId || block.activeLotBatchId,
     };
   }
 
-  return { mode: MODE_ALL, selectedLotIds: allLotIds, batchId: null };
+  return { mode: MODE_ALL, selectedLotIds: allLotIds, availableLotIds: allLotIds, batchId: null };
 }
 
 export function updateEvaluationLotScope(scope, lots, { mode, selectedLotIds } = {}) {
-  const allLotIds = (lots || []).map((lot) => String(lot.id));
+  const packageLotIds = (lots || []).map((lot) => String(lot.id));
+  const allLotIds = unique(scope?.availableLotIds).filter((id) => packageLotIds.includes(id));
+  const availableLotIds = allLotIds.length > 0 ? allLotIds : packageLotIds;
   const nextMode = mode === MODE_SELECTED ? MODE_SELECTED : MODE_ALL;
-  const requested = unique(selectedLotIds ?? scope?.selectedLotIds).filter((id) => allLotIds.includes(id));
+  const requested = unique(selectedLotIds ?? scope?.selectedLotIds).filter((id) => availableLotIds.includes(id));
   return {
     mode: nextMode,
-    selectedLotIds: nextMode === MODE_ALL ? allLotIds : requested,
+    selectedLotIds: nextMode === MODE_ALL ? availableLotIds : requested,
+    availableLotIds,
     batchId: null,
   };
 }
@@ -125,18 +271,22 @@ export function updateEvaluationLotScope(scope, lots, { mode, selectedLotIds } =
 export function getEvaluationLotScopeDetails(pkg, scope) {
   const lots = getPackageEvaluationLots(pkg);
   if (lots.length === 0) return null;
+  const availableSet = new Set(unique(scope?.availableLotIds));
+  const availableLots = availableSet.size > 0 ? lots.filter((lot) => availableSet.has(lot.id)) : lots;
   const selectedIds = scope?.mode === MODE_SELECTED
     ? unique(scope.selectedLotIds)
-    : lots.map((lot) => lot.id);
+    : availableLots.map((lot) => lot.id);
   const selectedSet = new Set(selectedIds);
-  const selectedLots = lots.filter((lot) => selectedSet.has(lot.id));
+  const selectedLots = availableLots.filter((lot) => selectedSet.has(lot.id));
   return {
     mode: scope?.mode === MODE_SELECTED ? MODE_SELECTED : MODE_ALL,
-    allLots: lots,
+    allLots: availableLots,
+    packageLots: lots,
     selectedLots,
     lotIds: selectedLots.map((lot) => lot.id),
     lotCodes: selectedLots.map((lot) => lot.code),
     isWholePackage: selectedLots.length === lots.length,
+    isAllRemaining: selectedLots.length === availableLots.length,
     batchId: scope?.batchId || null,
   };
 }
@@ -173,11 +323,14 @@ export function saveEvaluationScopeMetadata(block = {}, batch, activeBlock, allL
   if (!batchId || lotIds.length === 0) return { ...block, ...activeBlock };
   const isWholePackage = sameScope(lotIds, allLotIds);
   const scopedBlock = {
+    ...(block?.lotBatches?.[batchId] || {}),
     ...activeBlock,
     batchId,
+    sequenceNo: batchSequence(batch, Object.keys(block?.lotBatches || {}).length + 1),
     lotIds,
     lotCodes: unique(batch?.lotCodes),
     isWholePackage,
+    status: "ACTIVE",
   };
   return {
     ...block,
@@ -188,6 +341,25 @@ export function saveEvaluationScopeMetadata(block = {}, batch, activeBlock, allL
       [batchId]: scopedBlock,
     },
     activeLotBatchId: batchId,
+  };
+}
+
+export function finalizeEvaluationScopeMetadata(block = {}, batchId, result = {}) {
+  const normalizedBatchId = String(batchId || "").trim();
+  const batch = block?.lotBatches?.[normalizedBatchId];
+  if (!normalizedBatchId || !batch) return block;
+  return {
+    ...block,
+    activeLotBatchId: block.activeLotBatchId === normalizedBatchId ? "" : block.activeLotBatchId,
+    lotBatches: {
+      ...(block.lotBatches || {}),
+      [normalizedBatchId]: {
+        ...batch,
+        status: "FINAL",
+        finalizedAt: result.finalizedAt || new Date().toISOString(),
+        result: { ...(batch.result || {}), ...result, saved: true },
+      },
+    },
   };
 }
 
@@ -226,7 +398,7 @@ export async function ensureEvaluationLotBatch({
   packageId,
   lotIds,
   fetcher,
-  approvalMode = "CONSOLIDATED_APPROVAL",
+  approvalMode = "STAGED_APPROVAL",
 }) {
   const selectedIds = unique(lotIds);
   if (!packageId || selectedIds.length === 0) {
@@ -254,7 +426,6 @@ export async function ensureEvaluationLotBatch({
     body: JSON.stringify({
       lotIds: selectedIds,
       approvalMode,
-      stagedApprovalAuthorized: false,
     }),
   });
   const created = await responseBody(createResponse);
@@ -268,6 +439,31 @@ export async function ensureEvaluationLotBatch({
     lotIds: lotIdsOfBatch(created?.batch).length ? lotIdsOfBatch(created.batch) : selectedIds,
     reused: false,
   };
+}
+
+export async function finalizeEvaluationLotBatch({
+  packageId,
+  batchId,
+  outcomes,
+  fetcher,
+}) {
+  const normalizedBatchId = String(batchId || "").trim();
+  if (!packageId || !normalizedBatchId || typeof fetcher !== "function") {
+    throw new Error("Không thể xác nhận kết quả chính thức của đợt phần lô.");
+  }
+  const response = await fetcher(
+    `/api/packages/${encodeURIComponent(packageId)}/lot-batches/${encodeURIComponent(normalizedBatchId)}/finalize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcomes: outcomes || {} }),
+    },
+  );
+  const body = await responseBody(response);
+  if (!response?.ok) {
+    throw new Error(body?.error || "Không thể xác nhận kết quả chính thức của đợt phần lô.");
+  }
+  return body;
 }
 
 export const EVALUATION_LOT_SCOPE_MODE = Object.freeze({

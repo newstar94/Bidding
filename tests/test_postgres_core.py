@@ -42,7 +42,7 @@ from backend.sync.websocket import (
     _release_cluster_lease,
 )
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME, vietnam_now
-from backend.lot_lifecycle_service import create_batch, query_lifecycle
+from backend.lot_lifecycle_service import create_batch, finalize_batch, query_lifecycle
 from backend.lot_selection_lifecycle import LotLifecyclePolicyError
 
 
@@ -171,6 +171,36 @@ def test_lot_batch_command_claims_scope_atomically(
                 approval_mode='CONSOLIDATED_APPROVAL',
                 actor_user_id=user_id,
             )
+
+        first_result = finalize_batch(
+            cursor,
+            organization_id,
+            'lot-test-package',
+            batch['id'],
+            {'lot-test-a': 'AWARDED'},
+            actor_user_id=user_id,
+        )
+        assert first_result['packageStatus'] == 'PARTIALLY_COMPLETED'
+        assert first_result['counts']['completedLots'] == 1
+
+        second_batch = create_batch(
+            cursor,
+            organization_id,
+            'lot-test-package',
+            ['lot-test-b'],
+            approval_mode='STAGED_APPROVAL',
+            actor_user_id=user_id,
+        )
+        final_result = finalize_batch(
+            cursor,
+            organization_id,
+            'lot-test-package',
+            second_batch['id'],
+            {'lot-test-b': 'NO_RESPONSIVE_BID'},
+            actor_user_id=user_id,
+        )
+        assert final_result['packageStatus'] == 'COMPLETED'
+        assert final_result['counts']['completedLots'] == 2
     finally:
         connection.rollback()
         connection.close()

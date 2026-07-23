@@ -58,6 +58,30 @@ def _plan_root_id(cursor, organization_id, plan_id, incoming_records_by_table=No
     return clean_id(row[0]) if row else None
 
 
+def _contractor_root_id(
+    cursor, organization_id, contractor_id, incoming_records_by_table=None
+):
+    if not contractor_id:
+        return None
+    incoming = _incoming_record(
+        incoming_records_by_table, "nha_thau", contractor_id
+    )
+    if incoming:
+        return clean_id(
+            incoming.get("rootId")
+            or incoming.get("idGoc")
+            or incoming.get("id")
+        )
+    row = cursor.execute(
+        """SELECT COALESCE(NULLIF(id_goc, ''), id)
+           FROM nha_thau
+           WHERE organization_id = ? AND id = ? AND archived_at IS NULL
+           LIMIT 1""",
+        (organization_id, contractor_id),
+    ).fetchone()
+    return clean_id(row[0]) if row else clean_id(contractor_id)
+
+
 def validate_owner_scoped_references(
     cursor,
     organization_id,
@@ -157,23 +181,68 @@ def validate_owner_scoped_references(
             "Lựa chọn nhà thầu trong trường hợp đặc biệt",
         }
         if package_id and winner_id and requires_opening:
-            incoming_opening = next((
-                opening
-                for opening in (incoming_records_by_table or {}).get("thong_tin_mo_thau", {}).values()
-                if clean_id(get_payload_value("thong_tin_mo_thau", opening, "goi_thau_id")) == package_id
-                and clean_id(get_payload_value("thong_tin_mo_thau", opening, "nha_thau_id")) == winner_id
-            ), None)
+            winner_root_id = None
+            incoming_opening = None
+            for opening in (incoming_records_by_table or {}).get(
+                "thong_tin_mo_thau", {}
+            ).values():
+                opening_package_id = clean_id(
+                    get_payload_value("thong_tin_mo_thau", opening, "goi_thau_id")
+                )
+                if opening_package_id != package_id:
+                    continue
+                opening_contractor_id = clean_id(
+                    get_payload_value("thong_tin_mo_thau", opening, "nha_thau_id")
+                )
+                same_contractor = opening_contractor_id == winner_id
+                if opening_contractor_id and not same_contractor:
+                    winner_root_id = winner_root_id or _contractor_root_id(
+                        cursor,
+                        organization_id,
+                        winner_id,
+                        incoming_records_by_table,
+                    )
+                    opening_root_id = _contractor_root_id(
+                        cursor,
+                        organization_id,
+                        opening_contractor_id,
+                        incoming_records_by_table,
+                    )
+                    same_contractor = bool(
+                        winner_root_id and winner_root_id == opening_root_id
+                    )
+                if same_contractor:
+                    incoming_opening = opening
+                    break
+            incoming_winner = _incoming_record(
+                incoming_records_by_table, "nha_thau", winner_id
+            )
+            winner_root_hint = clean_id(
+                (incoming_winner or {}).get("rootId")
+                or (incoming_winner or {}).get("idGoc")
+                or winner_id
+            )
             stored_opening = cursor.execute(
                 """SELECT mt.id, kq.danh_gia_ket_luan
                    FROM thong_tin_mo_thau mt
+                   INNER JOIN nha_thau opening_contractor
+                     ON opening_contractor.organization_id = mt.organization_id
+                    AND opening_contractor.id = mt.nha_thau_id
+                    AND opening_contractor.archived_at IS NULL
+                   LEFT JOIN nha_thau winner_contractor
+                     ON winner_contractor.organization_id = mt.organization_id
+                    AND winner_contractor.id = ?
+                    AND winner_contractor.archived_at IS NULL
                    LEFT JOIN ket_qua_danh_gia_nha_thau kq
                      ON kq.organization_id = mt.organization_id
                     AND kq.thong_tin_mo_thau_id = mt.id
                     AND kq.goi_thau_id = mt.goi_thau_id
                    WHERE mt.organization_id = ? AND mt.goi_thau_id = ?
-                     AND mt.nha_thau_id = ? AND mt.archived_at IS NULL
+                     AND COALESCE(NULLIF(opening_contractor.id_goc, ''), opening_contractor.id)
+                         = COALESCE(NULLIF(winner_contractor.id_goc, ''), winner_contractor.id, ?)
+                     AND mt.archived_at IS NULL
                    LIMIT 1""",
-                (organization_id, package_id, winner_id),
+                (winner_id, organization_id, package_id, winner_root_hint),
             ).fetchone()
             if not incoming_opening and not stored_opening:
                 errors.append("Nhà thầu trúng thầu phải thuộc danh sách hồ sơ đã mở thầu của gói.")

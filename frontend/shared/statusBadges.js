@@ -5,6 +5,7 @@ const PACKAGE_STATUS_PRESENTATION = Object.freeze({
   "Đang mời thầu": ["badge-info", "megaphone"],
   "Đã mở thầu": ["badge-opened", "folder-open"],
   "Đang chấm thầu": ["badge-warning", "award"],
+  "Đã có kết quả một phần": ["badge-partial-result", "list-checks"],
   "Đã có kết quả": ["badge-success", "check-circle"],
   "Hủy thầu": ["badge-danger", "x-circle"],
 });

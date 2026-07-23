@@ -1,4 +1,8 @@
-import { resolveActiveSavedEvaluationScope } from "../lotEvaluationScope.js";
+import {
+  getOfficialEvaluationLotState,
+  isBidWithinEvaluationLotDetails,
+  resolveActiveSavedEvaluationScope,
+} from "../lotEvaluationScope.js";
 
 export function checkBidQualified(bid) {
   if (!bid) return false;
@@ -24,18 +28,33 @@ function parseMetadata(value) {
 export function getPackageWorkflowState(pkg, bids = []) {
   const metadata = parseMetadata(pkg?.danhGiaHsdtMetadata);
   const isTwoEnvelope = pkg?.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
-  const qualifiedBids = bids.filter(checkBidQualified);
   const activeSavedEvaluationScope = !isTwoEnvelope
     ? resolveActiveSavedEvaluationScope(pkg, metadata)
     : null;
+  const activeTechnicalScope = isTwoEnvelope
+    ? resolveActiveSavedEvaluationScope(pkg, metadata.technical || {})
+    : null;
+  const activeFinancialScope = isTwoEnvelope
+    ? resolveActiveSavedEvaluationScope(pkg, metadata.financial || {})
+    : null;
+  const officialLotState = getOfficialEvaluationLotState(
+    pkg,
+    isTwoEnvelope ? metadata.technical || {} : metadata,
+  );
+  const qualifiedBids = bids
+    .filter((bid) => !activeTechnicalScope || isBidWithinEvaluationLotDetails(bid, activeTechnicalScope))
+    .filter(checkBidQualified);
   return {
     isTwoEnvelope,
-    isTechEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && metadata.technical?.saved) : false,
-    isFinEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && metadata.financial?.saved) : false,
+    isTechEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && (metadata.technical?.saved || activeTechnicalScope)) : false,
+    isFinEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && (metadata.financial?.saved || activeFinancialScope)) : false,
     isSingleEnvelopeEvalSaved: !isTwoEnvelope && Boolean(metadata.saved),
     isSingleEnvelopeScopedEvalSaved: Boolean(activeSavedEvaluationScope),
+    hasOfficialLotResults: officialLotState.history.length > 0,
     activeSavedEvaluationScope,
-    isQualifiedSaved: Boolean(isTwoEnvelope && metadata.is1G2T && metadata.technical?.qualifiedSaved),
+    isQualifiedSaved: Boolean(isTwoEnvelope && metadata.is1G2T && (
+      metadata.technical?.qualifiedSaved || activeTechnicalScope?.batch?.qualifiedSaved
+    )),
     qualifiedBids,
     isFinOpeningSaved: qualifiedBids.some((bid) => Number(bid.giaDuThau) > 0),
     hasCancelDetails: Boolean(metadata.cancelDetails?.soQuyetDinhHuyThau || metadata.cancelDetails?.lyDoHuyThau)
@@ -67,13 +86,15 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     const resultWithoutQualified = state.isTechEvalSaved && !hasQualifiedBidders;
     const resultNormal = state.isTechEvalSaved && state.isQualifiedSaved && hasQualifiedBidders && state.isFinOpeningSaved
       && (state.isFinEvalSaved || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && pkg.soQuyetDinhKetQua));
-    if (resultWithoutQualified || resultNormal) tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
+    if (resultWithoutQualified || resultNormal || state.hasOfficialLotResults) {
+      tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
+    }
   } else {
     tabs.push({ id: "opening", label: pkg.trangThai === "Đang mời thầu" ? "Thông tin mời thầu" : "Biên bản mở thầu" });
     if (pkg.trangThai !== "Đang mời thầu" && pkg.trangThai !== "Đã mở thầu" && (pkg.trangThai !== "Hủy thầu" || state.isSingleEnvelopeEvalSaved)) {
       tabs.push({ id: "eval_tech", label: "Báo cáo đánh giá E-HSDT" });
     }
-    if (state.isSingleEnvelopeEvalSaved || state.isSingleEnvelopeScopedEvalSaved || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && state.isSingleEnvelopeEvalSaved && pkg.soQuyetDinhKetQua)) {
+    if (state.isSingleEnvelopeEvalSaved || state.isSingleEnvelopeScopedEvalSaved || state.hasOfficialLotResults || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && state.isSingleEnvelopeEvalSaved && pkg.soQuyetDinhKetQua)) {
       tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
     }
   }

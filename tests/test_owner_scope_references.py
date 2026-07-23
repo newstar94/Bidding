@@ -251,6 +251,66 @@ def test_winner_requires_opened_bid_with_passing_conclusion() -> None:
     assert errors
 
 
+def test_winner_accepts_opened_bid_from_same_contractor_version_family() -> None:
+    item = {
+        "id": "package",
+        "nhaThauTrungThauId": "winner-v2",
+        "trangThai": PACKAGE_STATUS_LABELS["AWARDED"],
+        "hinhThucLuaChon": "Đấu thầu rộng rãi",
+    }
+    incoming_records = {
+        "nha_thau": {
+            "winner-v1": {
+                "id": "winner-v1",
+                "rootId": "winner-root",
+            },
+            "winner-v2": {
+                "id": "winner-v2",
+                "rootId": "winner-root",
+            },
+        },
+        "thong_tin_mo_thau": {
+            "opening": {
+                "id": "opening",
+                "goiThauId": "package",
+                "nhaThauId": "winner-v1",
+                "danhGiaKetLuan": "Đạt yêu cầu",
+            }
+        },
+    }
+
+    errors = ownership.validate_owner_scoped_references(
+        _Cursor([None]),
+        "org",
+        "goi_thau",
+        item,
+        incoming_ids_by_table={"nha_thau": {"winner-v1", "winner-v2"}},
+        incoming_records_by_table=incoming_records,
+    )
+
+    assert errors == []
+
+    stored_cursor = _Cursor([("opening", "Đạt")])
+    stored_errors = ownership.validate_owner_scoped_references(
+        stored_cursor,
+        "org",
+        "goi_thau",
+        item,
+        incoming_ids_by_table={"nha_thau": {"winner-v2"}},
+    )
+
+    assert stored_errors == []
+    stored_opening_query, stored_opening_parameters = stored_cursor.calls[-1]
+    assert "opening_contractor.id_goc" in stored_opening_query
+    assert "winner_contractor.id_goc" in stored_opening_query
+    assert stored_opening_parameters == (
+        "winner-v2",
+        "org",
+        "package",
+        "winner-v2",
+    )
+
+
 def _contract_item(**overrides):
     item = {
         "keHoachId": "plan",

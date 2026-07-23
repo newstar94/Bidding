@@ -15,6 +15,7 @@ from backend.lot_selection_lifecycle import (
     PackageLifecycleContext,
     ProcedureKind,
     assess_batch_start,
+    assess_partial_result_publication,
     project_package_status,
 )
 
@@ -56,32 +57,43 @@ def _package_row(cursor, organization_id, package_id, *, for_update=False):
 
 def _lot_progress(cursor, organization_id, package_id):
     rows = cursor.execute(
-        """SELECT lot.id, lot.ma_phan_lo, lot.ten_phan_lo, lot.sort_order,
-                  detail.batch_id AS active_batch_id,
-                  detail.current_stage, detail.outcome,
-                  detail.lifecycle_revision
-           FROM goi_thau_phan_lo AS lot
-           LEFT JOIN dot_xu_ly_phan_lo_chi_tiet AS detail
-             ON detail.organization_id = lot.organization_id
-            AND detail.lot_id = lot.id
-            AND detail.is_active = 1
-           WHERE lot.organization_id = ? AND lot.goi_thau_id = ?
-             AND lot.archived_at IS NULL
-           ORDER BY lot.sort_order, lot.id""",
+        """SELECT id, ma_phan_lo, ten_phan_lo, sort_order
+           FROM goi_thau_phan_lo
+           WHERE organization_id = ? AND goi_thau_id = ?
+             AND archived_at IS NULL
+           ORDER BY sort_order, id""",
         (organization_id, package_id),
     ).fetchall()
+    latest_details = {}
+    detail_rows = cursor.execute(
+        """SELECT detail.lot_id, detail.batch_id, detail.current_stage,
+                  detail.outcome, detail.lifecycle_revision, detail.is_active,
+                  batch.sequence_no
+           FROM dot_xu_ly_phan_lo_chi_tiet AS detail
+           JOIN dot_xu_ly_phan_lo AS batch
+             ON batch.organization_id = detail.organization_id
+            AND batch.id = detail.batch_id
+           WHERE detail.organization_id = ? AND batch.goi_thau_id = ?
+           ORDER BY detail.lot_id, batch.sequence_no DESC""",
+        (organization_id, package_id),
+    ).fetchall()
+    for raw in detail_rows:
+        item = dict(raw)
+        latest_details.setdefault(item["lot_id"], item)
     result = {}
     display = {}
     for raw in rows:
         row = dict(raw)
-        stage = LotStage(row.get("current_stage") or LotStage.NOT_STARTED.value)
-        outcome_value = row.get("outcome")
+        detail = latest_details.get(row["id"], {})
+        stage = LotStage(detail.get("current_stage") or LotStage.NOT_STARTED.value)
+        outcome_value = detail.get("outcome")
         result[row["id"]] = LotProgress(
             lot_id=row["id"],
             stage=stage,
             outcome=LotOutcome(outcome_value) if outcome_value else None,
-            active_batch_id=row.get("active_batch_id"),
+            active_batch_id=detail.get("batch_id") if detail.get("is_active") else None,
         )
+        row["lifecycle_revision"] = detail.get("lifecycle_revision") or 0
         display[row["id"]] = row
     return result, display
 
@@ -286,3 +298,93 @@ def create_batch(
         "policyVersion": POLICY_VERSION,
     }
 
+
+def finalize_batch(
+    cursor,
+    organization_id,
+    package_id,
+    batch_id,
+    outcomes,
+    *,
+    actor_user_id=None,
+):
+    """Close one official evaluation round and project the package state."""
+
+    _package_row(cursor, organization_id, package_id, for_update=True)
+    batch_row = cursor.execute(
+        """SELECT id, approval_mode, status
+           FROM dot_xu_ly_phan_lo
+           WHERE organization_id = ? AND goi_thau_id = ? AND id = ?""",
+        (organization_id, package_id, batch_id),
+    ).fetchone()
+    if not batch_row:
+        raise LotLifecycleNotFoundError("Không tìm thấy đợt đánh giá phần lô.")
+    batch = dict(batch_row)
+    if batch["status"] == "CLOSED":
+        return query_lifecycle(cursor, organization_id, package_id)
+    if batch["status"] != "ACTIVE":
+        raise LotLifecycleInputError("Chỉ có thể phê duyệt kết quả của đợt đang xử lý.")
+
+    detail_rows = [
+        dict(row)
+        for row in cursor.execute(
+            """SELECT lot_id
+               FROM dot_xu_ly_phan_lo_chi_tiet
+               WHERE organization_id = ? AND batch_id = ? AND is_active = 1
+               ORDER BY lot_id""",
+            (organization_id, batch_id),
+        ).fetchall()
+    ]
+    batch_lot_ids = [row["lot_id"] for row in detail_rows]
+    if not batch_lot_ids:
+        raise LotLifecycleInputError("Đợt đánh giá không có phần lô đang xử lý.")
+    if set(outcomes or {}) != set(batch_lot_ids):
+        raise LotLifecycleInputError(
+            "Kết quả chính thức phải xác định kết quả cho từng phần lô trong đợt."
+        )
+
+    mode = ApprovalMode(batch["approval_mode"])
+    context, _display = _context(cursor, organization_id, package_id, mode)
+    publication = assess_partial_result_publication(
+        context,
+        batch_lot_ids,
+        current_batch_id=batch_id,
+    )
+    publication.require_allowed()
+
+    normalized_outcomes = {}
+    for lot_id in batch_lot_ids:
+        try:
+            normalized_outcomes[lot_id] = LotOutcome(outcomes[lot_id])
+        except (KeyError, ValueError) as exc:
+            raise LotLifecycleInputError(
+                f"Kết quả của phần lô {lot_id} không hợp lệ."
+            ) from exc
+
+    for lot_id, outcome in normalized_outcomes.items():
+        cursor.execute(
+            """UPDATE dot_xu_ly_phan_lo_chi_tiet
+               SET current_stage = ?, outcome = ?, is_active = 0,
+                   lifecycle_revision = lifecycle_revision + 1,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE organization_id = ? AND batch_id = ? AND lot_id = ?
+                 AND is_active = 1""",
+            (
+                LotStage.RESULT_APPROVED.value,
+                outcome.value,
+                organization_id,
+                batch_id,
+                lot_id,
+            ),
+        )
+    cursor.execute(
+        """UPDATE dot_xu_ly_phan_lo
+           SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE organization_id = ? AND goi_thau_id = ? AND id = ?""",
+        (organization_id, package_id, batch_id),
+    )
+    lifecycle = query_lifecycle(cursor, organization_id, package_id)
+    lifecycle["finalizedBatchId"] = batch_id
+    lifecycle["finalizedById"] = actor_user_id
+    return lifecycle

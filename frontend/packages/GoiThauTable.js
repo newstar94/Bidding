@@ -8,6 +8,21 @@ import { setJvData } from "./jvDataStore.js";
 import { resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { getLotWinnersStore } from "../shared/runtimeState.js";
+import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
+import { showLotWinnersModal } from "./lotWinnersModal.js";
+
+function bindLotWinnerActions(tableBody, view) {
+  tableBody?.querySelectorAll('[data-bf-action="show-lot-winners"]').forEach((action) => {
+    if (action.dataset.lotWinnerBound === "true") return;
+    action.dataset.lotWinnerBound = "true";
+    action.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showLotWinnersModal({ model: view.model, view }, action.dataset.id);
+    });
+  });
+}
+
 export async function renderGoiThauTable() {
   const tableBody = document.getElementById("goithau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-goithau").value.toLowerCase();
@@ -53,7 +68,7 @@ export async function renderGoiThauTable() {
     const latestPackages = this.model.getFilteredGoiThau();
     const filtered = latestPackages.filter((gt) => {
       const matchesSearch = gt.maGoiThau.toLowerCase().includes(searchVal) || gt.tenGoiThau.toLowerCase().includes(searchVal);
-      const matchesTrangThai = !filterTrangThai || gt.trangThai === filterTrangThai;
+      const matchesTrangThai = !filterTrangThai || resolvePackageResultStatus(gt) === filterTrangThai;
       const matchesHinhThuc = !filterHinhThuc || gt.hinhThucLuaChon === filterHinhThuc;
       return matchesSearch && matchesTrangThai && matchesHinhThuc
         && matchesYearMonth(gt.ngayQuyetDinh, filterNam, filterThang);
@@ -93,6 +108,7 @@ export async function renderGoiThauTable() {
       }
       const selectedId = this.model.state.selectedPackageVersion[root] || uniqueVersions[0]?.id || gt.id;
       const displayedGt = this.model.state.goithau.find((g) => g.id === selectedId) || gt;
+      const displayedStatus = resolvePackageResultStatus(displayedGt);
       const kh = this.model.getLatestPlan(displayedGt.keHoachId);
       const nt = displayedGt.nhaThauTrungThauId ? this.model.state.nhathau.find((n) => n.id === displayedGt.nhaThauTrungThauId) : null;
       const matchBid = displayedGt.nhaThauTrungThauId ? this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(displayedGt.nhaThauTrungThauId)) : null;
@@ -113,12 +129,12 @@ export async function renderGoiThauTable() {
         });
         ntLink = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
       } else if (nt) {
-        ntLink = `<a href="#" data-bf-action="show-contractor" data-id="${esc(nt.id)}" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
+        ntLink = `<a href="#" data-bf-action="show-contractor-modal" data-id="${esc(nt.id)}" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
       } else {
         ntLink = `<span class="fw-bold text-success">${esc(ntDisplayName)}</span>`;
       }
       let winnerInfoHtml = "--";
-      if (displayedGt.trangThai === "Đã có kết quả") {
+      if (["Đã có kết quả một phần", "Đã có kết quả"].includes(displayedStatus)) {
         if (displayedGt.phanLo === "Có") {
           const plList = typeof displayedGt.phanLoList === "string" ? JSON.parse(displayedGt.phanLoList || "[]") : displayedGt.phanLoList || [];
           const winningLots = plList.filter((pl) => pl.nhaThauTrungThauId);
@@ -154,7 +170,7 @@ export async function renderGoiThauTable() {
               };
             });
             const totalGiaTrung = this.model.sumVND(winningLots.map((pl) => pl.giaTrungThau));
-            winnerInfoHtml = `<a href="#" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+            winnerInfoHtml = `<button type="button" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" aria-controls="modal-lot-winners" class="lot-winners-link text-blue fw-bold link-hover" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</button><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
           } else if (uniqueWinnerIds.length === 1) {
             const singleWinnerId = uniqueWinnerIds[0];
             const singleWinnerNt = this.model.state.nhathau.find((n) => String(n.id) === String(singleWinnerId));
@@ -176,7 +192,7 @@ export async function renderGoiThauTable() {
               });
               link = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
             } else if (singleWinnerNt) {
-              link = `<a href="#" data-bf-action="show-contractor" data-id="${esc(singleWinnerNt.id)}" class="text-blue fw-bold link-hover">${esc(name)}</a>`;
+              link = `<a href="#" data-bf-action="show-contractor-modal" data-id="${esc(singleWinnerNt.id)}" class="text-blue fw-bold link-hover">${esc(name)}</a>`;
             } else {
               link = `<span class="fw-bold text-success">${esc(name)}</span>`;
             }
@@ -200,8 +216,8 @@ export async function renderGoiThauTable() {
                     ${optionsHtml}
                 </select>
             `;
-      const isCanceledPackage = displayedGt.trangThai === "Hủy thầu";
-      const isCompletedPackage = displayedGt.trangThai === "Đã có kết quả";
+      const isCanceledPackage = displayedStatus === "Hủy thầu";
+      const isCompletedPackage = ["Đã có kết quả một phần", "Đã có kết quả"].includes(displayedStatus);
       const allowDelete = this.model.state.activerole !== "employee";
       let packageActions;
       if (displayedGt.id !== gt.id) {
@@ -237,14 +253,21 @@ export async function renderGoiThauTable() {
                 <td class="text-wrap bf-s-861d2aedee">${kh ? '<a href="#" data-bf-action="show-plan" data-id="' + esc(kh.id) + '" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + "</a>" : '<span class="text-danger">Không liên kết</span>'}</td>
                 <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
                 <td>${esc(displayedGt.hinhThucLuaChon || "--")}</td>
-                <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
+                <td>${this.getStatusBadge(displayedStatus)}</td>
                 <td class="text-wrap bf-s-0569d2208a">${winnerInfoHtml}</td>
                 <td class="text-right">
                     ${actionHtml}
                 </td>
             </tr>
             `;
-    }, { colSpan: 8, rowHeight: 88, onRender: () => lucide.createIcons({ root: tableBody }) });
+    }, {
+      colSpan: 8,
+      rowHeight: 88,
+      onRender: () => {
+        bindLotWinnerActions(tableBody, this);
+        lucide.createIcons({ root: tableBody });
+      },
+    });
     executeAppCommand("renderTablePagination", "goithau-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });

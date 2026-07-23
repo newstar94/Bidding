@@ -7,7 +7,6 @@ import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDe
 import { persistAndSync } from "../shared/MutationService.js";
 import {
   ensureEvaluationLotBatch,
-  ensureWholePackageEvaluationAvailable,
   getEvaluationLotScopeDetails,
   getPackageEvaluationLots,
   initializeEvaluationLotScope,
@@ -32,9 +31,6 @@ export function resolvePostEvaluationTargetTab({
   qualifiedBidCount = 0
 } = {}) {
   if (!isTwoEnvelope) return "result";
-  if (savedPartialScope) {
-    return currentEvaluationTab === "financial" ? "eval_fin" : "eval_tech";
-  }
   if (currentEvaluationTab === "financial") return "result";
   return qualifiedBidCount > 0 ? "qualified" : "result";
 }
@@ -196,7 +192,7 @@ export async function saveDanhGiaHsdt() {
   if (packageLots.length > 0) {
     const parsedMetadata = parseEvaluationMetadata(gt.danhGiaHsdtMetadata);
     const scopeBlock = is1G2T
-      ? (this.currentDanhGiaTab === "financial" ? parsedMetadata.financial || {} : parsedMetadata.technical || {})
+      ? parsedMetadata.technical || {}
       : parsedMetadata;
     const scopeKey = `${String(gtId)}:${String(this.currentDanhGiaTab || "technical")}`;
     this._evaluationLotScopes = this._evaluationLotScopes || {};
@@ -213,36 +209,22 @@ export async function saveDanhGiaHsdt() {
       );
       return;
     }
-    if (isPartialEvaluationLotScope(evaluationLotDetails)) {
-      try {
-        evaluationBatch = await ensureEvaluationLotBatch({
-          packageId: gtId,
-          lotIds: evaluationLotDetails.lotIds,
-          fetcher: apiFetch
-        });
-        evaluationBatch.lotCodes = evaluationLotDetails.lotCodes;
-        evaluationLotScope.batchId = evaluationBatch.id;
-      } catch (error) {
-        await this.view.customAlert(
-          "Không thể tạo đợt đánh giá",
-          error?.message || "Không thể xác lập phạm vi phần lô. Vui lòng thử lại.",
-          "alert-triangle",
-          this.view.getActiveElement("danhgiahsdt-scope-container")
-        );
-        return;
-      }
-    } else {
-      try {
-        await ensureWholePackageEvaluationAvailable({ packageId: gtId, fetcher: apiFetch });
-      } catch (error) {
-        await this.view.customAlert(
-          "Không thể đổi phạm vi đánh giá",
-          error?.message || "Gói thầu đang có đợt đánh giá phần lô chưa hoàn tất.",
-          "alert-triangle",
-          this.view.getActiveElement("danhgiahsdt-scope-container")
-        );
-        return;
-      }
+    try {
+      evaluationBatch = await ensureEvaluationLotBatch({
+        packageId: gtId,
+        lotIds: evaluationLotDetails.lotIds,
+        fetcher: apiFetch
+      });
+      evaluationBatch.lotCodes = evaluationLotDetails.lotCodes;
+      evaluationLotScope.batchId = evaluationBatch.id;
+    } catch (error) {
+      await this.view.customAlert(
+        "Không thể tạo đợt đánh giá",
+        error?.message || "Không thể xác lập phạm vi phần lô. Vui lòng thử lại.",
+        "alert-triangle",
+        this.view.getActiveElement("danhgiahsdt-scope-container")
+      );
+      return;
     }
   }
   const collectLetters = (containerId) => {
@@ -456,7 +438,7 @@ export async function saveDanhGiaHsdt() {
       savedPartialScope,
       qualifiedBidCount
     });
-    this.view._currentResultLotBatchId = savedPartialScope && !is1G2T
+    this.view._currentResultLotBatchId = evaluationBatch
       ? evaluationBatch?.id || evaluationLotScope?.batchId || ""
       : "";
     const detailPackageId = selectPackageDetailTab(this.view, targetTab, gt, this.model);
@@ -466,9 +448,9 @@ export async function saveDanhGiaHsdt() {
     ? ` cho ${evaluationLotDetails.lotCodes.join(", ")}`
     : "";
   await this.view.customAlert(
-    savedPartialScope ? "Đã lưu nháp đợt phần lô" : "Lưu thành công",
+    evaluationBatch ? "Đã lưu báo cáo đánh giá của đợt" : "Lưu thành công",
     savedPartialScope
-      ? `Đã lưu nháp báo cáo đánh giá${scopeMessage}. Các lô ngoài phạm vi không bị thay đổi.`
+      ? `Đã lưu chính thức báo cáo đánh giá${scopeMessage}. Hãy tiếp tục các bước nghiệp vụ và phê duyệt kết quả của đợt này.`
       : `Đã lưu thông tin báo cáo đánh giá${scopeMessage} của gói thầu "${gt.tenGoiThau}" thành công!`,
     "check-circle"
   );

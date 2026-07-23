@@ -1,4 +1,5 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
+import { apiFetch } from "../../shared/apiClient.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { authFetchDownload, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
@@ -9,16 +10,21 @@ import { clearCompetitiveQuotationAppraisal } from "../packageAppraisal.js";
 import { checkBidQualified } from "./PackageTabs.js";
 import { renderBidContractorLink } from "./BidderTable.js";
 import { bindAwardResultPanel, renderAwardedResultPanel } from "./AwardResultPanel.js";
-import { commitPackageAwardDecision } from "../packageEvaluationProgress.js";
-import { reopenPackageAwardResult } from "../packageAwardResult.js";
+import { commitPackageAwardDecision, commitPackageResultEditState } from "../packageEvaluationProgress.js";
 import { executeAppCommand } from "../../app/commandBus.js";
 import { getLotWinnersStore } from "../../shared/runtimeState.js";
 import { generateRecordId, generateUUID } from "../../shared/idUtils.js";
 import { appendExportSnapshotVersion } from "../../shared/exportSnapshot.js";
 import { buildAwardResultApprovalMarkup } from "./AwardResultApprovalMarkup.js";
 import {
+  clearPackageResultEditState,
+  finalizeEvaluationLotBatch,
+  finalizeEvaluationScopeMetadata,
+  getOfficialEvaluationLotState,
   isBidWithinEvaluationLotDetails,
-  resolveActiveSavedEvaluationScope
+  resolveActiveSavedEvaluationScope,
+  resolvePackageResultStatus,
+  setPackageResultEditState
 } from "../lotEvaluationScope.js";
 import { mergeScopedAwardLotResults } from "../lotAwardResultScope.js";
 import { selectPackageDetailTab } from "./PackageDetailState.js";
@@ -29,6 +35,86 @@ function isLeadJointVentureMember(member) {
 
 function normalizeContractorCode(value) {
   return String(value || "").trim().toLocaleLowerCase("vi-VN");
+}
+
+export function beginOfficialResultBatchEdit(view, pkg, batchId, rerender) {
+  const normalizedBatchId = String(batchId || "").trim();
+  if (!view || !pkg || !normalizedBatchId) return false;
+  if (!setPackageResultEditState(pkg, { type: "batch", batchId: normalizedBatchId })) return false;
+  view._editingOfficialResultLotBatchId = normalizedBatchId;
+  view._currentResultLotBatchId = normalizedBatchId;
+  rerender?.();
+  return true;
+}
+
+export function beginWholePackageResultEdit(view, pkg, rerender) {
+  if (!view || !pkg) return false;
+  if (!setPackageResultEditState(pkg, { type: "whole" })) return false;
+  view._editingWholePackageResult = true;
+  view._editingWholePackageResultPackageId = String(pkg.id || "");
+  rerender?.();
+  return true;
+}
+
+export function buildOfficialResultHistoryMarkup(view, gt, state, metadata = {}, options = {}) {
+  if (!state?.history?.length) return "";
+  const isEditable = options?.isEditable === true;
+  const packageBids = view.model.state.thongtinmothau.filter(
+    (bid) => String(bid.goiThauId) === String(gt.id),
+  );
+  return `<div class="official-result-history">
+    ${state.history.map((batch) => {
+      const isTwoEnvelope = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
+      const technicalBatch = isTwoEnvelope ? metadata.technical?.lotBatches?.[batch.batchId] || batch : batch;
+      const financialBatch = isTwoEnvelope ? metadata.financial?.lotBatches?.[batch.batchId] || {} : {};
+      const result = technicalBatch.result || financialBatch.result || batch.result || {};
+      const scopedBids = packageBids.filter((bid) => isBidWithinEvaluationLotDetails(bid, batch));
+      const rows = scopedBids.map((bid) => {
+        const lot = (typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [])
+          .find((item) => String(item.id || "") === String(bid.lotId || bid.lot_id || "")
+            || String(item.maPhanLo || "") === String(bid.maPhanLo || ""));
+        const isWinner = lot?.nhaThauTrungThauId
+          && String(lot.nhaThauTrungThauId) === String(bid.nhaThauId || bid.id || "");
+        return `<tr><td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenNhaThau || "--")}</td>
+          <td><span class="badge ${isWinner ? "badge-success" : "badge-danger"}">${isWinner ? "Trúng thầu" : "Trượt thầu"}</span></td>
+          <td>${escapeHtml(isWinner ? view.model.formatCurrency(lot?.giaTrungThau || 0) : bid.lyDoTruot || "--")}</td></tr>`;
+      }).join("");
+      return `<article class="evaluation-round-card official-result-round">
+        <header class="evaluation-round-card-header"><div><span class="evaluation-round-index">Lần ${batch.sequenceNo}</span>
+          <h4>Kết quả ${escapeHtml((batch.lotCodes || []).join(", ") || "các phần lô")}</h4></div>
+          <div class="evaluation-round-card-actions">
+            <span class="evaluation-round-status"><i data-lucide="badge-check"></i> Chính thức</span>
+          </div></header>
+        <div class="evaluation-round-fields">
+          ${isTwoEnvelope ? `
+          <div><span>BC đánh giá kỹ thuật</span><strong>${escapeHtml(technicalBatch.soBaoCao || "--")}</strong></div>
+          <div><span>BCTĐ kỹ thuật</span><strong>${escapeHtml(technicalBatch.soBctdKt || "--")}</strong></div>
+          <div><span>QĐ đạt kỹ thuật</span><strong>${escapeHtml(technicalBatch.soQdPheDuyetKt || "--")}</strong></div>
+          <div><span>Mở E-HSĐXTC</span><strong>${escapeHtml(technicalBatch.financialOpening?.openingTime ? view.model.formatDateWithTime(technicalBatch.financialOpening.openingTime) : "--")}</strong></div>
+          <div><span>BC đánh giá tài chính</span><strong>${escapeHtml(financialBatch.soBaoCao || "--")}</strong></div>` : `
+          <div><span>Số báo cáo đánh giá</span><strong>${escapeHtml(batch.soBaoCao || "--")}</strong></div>`}
+          <div><span>Số BCTĐ kết quả</span><strong>${escapeHtml(result.soBctdKetQua || "--")}</strong></div>
+          <div><span>Ngày BCTĐ kết quả</span><strong>${escapeHtml(result.ngayBctdKetQua ? view.model.formatDate(result.ngayBctdKetQua) : "--")}</strong></div>
+          <div><span>Số QĐ phê duyệt</span><strong>${escapeHtml(result.soQuyetDinhKetQua || "--")}</strong></div>
+          <div><span>Ngày QĐ phê duyệt</span><strong>${escapeHtml(result.ngayQuyetDinhKetQua ? view.model.formatDate(result.ngayQuyetDinhKetQua) : "--")}</strong></div>
+          <div><span>Phạm vi</span><strong>${escapeHtml((batch.lotCodes || []).join(", ") || "--")}</strong></div>
+        </div>
+        <div class="table-container package-table-frame evaluation-round-table"><table class="data-table"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết quả</th><th>Giá/Lý do</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" class="text-muted">Không có hồ sơ trong đợt.</td></tr>'}</tbody></table></div>
+        ${isEditable ? `<div class="workflow-action-row evaluation-round-action-row">
+          <button type="button" class="btn btn-primary action-strong evaluation-round-edit-button" data-edit-official-result-batch="${safeAttr(batch.batchId)}" aria-label="Chỉnh sửa kết quả Lần ${batch.sequenceNo}">
+            <i data-lucide="edit-3"></i> Chỉnh sửa
+          </button>
+        </div>` : ""}
+      </article>`;
+    }).join("")}
+    ${state.pendingLots.length ? `<div class="evaluation-round-continuation"><div><strong>Còn ${state.pendingLots.length} phần lô chưa có kết quả</strong><p>${escapeHtml(state.pendingLots.map((lot) => lot.code).join(", "))}. Hãy sang tab báo cáo đánh giá để tiếp tục.</p></div></div>` : ""}
+  </div>`;
+}
+
+export function shouldFinalizeOfficialResultLifecycle(batch, isEditingOfficialResult) {
+  if (!isEditingOfficialResult) return true;
+  return !String(batch?.status || "").trim();
 }
 
 export function buildAwardJointVentureViewData(model, bid = {}) {
@@ -75,15 +161,101 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           console.error(e);
         }
       }
-      const isAwarded = gt.trangThai === "Đã có kết quả";
-      const preferredResultBatchId = String(view._currentResultLotBatchId || "");
-      const activeScopedEvaluation = !is1G2T2 && !isAwarded
-        ? resolveActiveSavedEvaluationScope(gt, metadata, preferredResultBatchId)
-          || resolveActiveSavedEvaluationScope(gt, metadata)
+      const persistedResultEdit = metadata?.resultEdit || metadata?.technical?.resultEdit || {};
+      if (isEditable && persistedResultEdit.type === "batch" && persistedResultEdit.batchId) {
+        view._editingOfficialResultLotBatchId = String(persistedResultEdit.batchId);
+        view._currentResultLotBatchId = String(persistedResultEdit.batchId);
+      } else if (isEditable && persistedResultEdit.type === "whole") {
+        view._editingWholePackageResult = true;
+        view._editingWholePackageResultPackageId = String(gt.id || "");
+      }
+      const isAwarded = resolvePackageResultStatus(gt) === "Đã có kết quả";
+      const lifecycleMetadata = is1G2T2 ? metadata.technical || {} : metadata;
+      const officialLotState = getOfficialEvaluationLotState(gt, lifecycleMetadata);
+      const editingOfficialBatchId = isEditable
+        ? String(view._editingOfficialResultLotBatchId || "").trim()
+        : "";
+      const editingOfficialBatch = officialLotState.history.find(
+        (batch) => String(batch.batchId) === editingOfficialBatchId,
+      ) || null;
+      const editingOfficialScope = editingOfficialBatch
+        ? {
+          batchId: editingOfficialBatch.batchId,
+          lotIds: editingOfficialBatch.lotIds || [],
+          lotCodes: editingOfficialBatch.lotCodes || [],
+          isWholePackage: editingOfficialBatch.isWholePackage === true,
+          batch: editingOfficialBatch,
+        }
         : null;
+      const isEditingOfficialResult = Boolean(editingOfficialScope);
+      const isEditingWholePackageResult = isEditable
+        && view._editingWholePackageResult === true
+        && (!view._editingWholePackageResultPackageId
+          || String(view._editingWholePackageResultPackageId) === String(gt.id));
+      const resultHistoryMarkup = buildOfficialResultHistoryMarkup(
+        view,
+        gt,
+        officialLotState,
+        metadata,
+        { isEditable },
+      );
+      const preferredResultBatchId = String(view._currentResultLotBatchId || "");
+      const activeScopedEvaluation = editingOfficialScope || (!isAwarded
+        ? resolveActiveSavedEvaluationScope(gt, lifecycleMetadata, preferredResultBatchId)
+          || resolveActiveSavedEvaluationScope(gt, lifecycleMetadata)
+        : null);
       if (activeScopedEvaluation) {
         view._currentResultLotBatchId = activeScopedEvaluation.batchId;
       }
+      const rerenderResultPanel = () => {
+        const statusBadge = document.getElementById("detail-workflow-status-badge");
+        if (statusBadge && typeof view.getStatusBadge === "function") {
+          const editingStatus = resolvePackageResultStatus(gt, {
+            editingBatchId: view._editingOfficialResultLotBatchId,
+            editingWholePackage: view._editingWholePackageResult === true
+              && (!view._editingWholePackageResultPackageId
+                || String(view._editingWholePackageResultPackageId) === String(gt.id)),
+          });
+          statusBadge.innerHTML = trustedHTML(view.getStatusBadge(editingStatus));
+        }
+        renderAwardResultDetailsPanel(view, {
+          contentWrapper,
+          gt,
+          id,
+          isEditable,
+          appController,
+        });
+      };
+      const persistResultEditState = async () => {
+        try {
+          const syncResult = await commitPackageResultEditState(appController || view, {
+            packageRecord: gt,
+            afterPersist: () => view.renderGoiThauTable?.(),
+          });
+          if (syncResult?.ok === false) return false;
+          return true;
+        } catch (error) {
+          await view.customAlert?.(
+            "Không thể cập nhật trạng thái",
+            error?.message || "Không thể đồng bộ trạng thái chỉnh sửa kết quả với máy chủ.",
+            "alert-triangle",
+          );
+          return false;
+        }
+      };
+      const bindOfficialResultEditActions = () => {
+        contentWrapper.querySelectorAll("[data-edit-official-result-batch]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const didBeginEdit = beginOfficialResultBatchEdit(
+              view,
+              gt,
+              button.getAttribute("data-edit-official-result-batch"),
+              rerenderResultPanel,
+            );
+            if (didBeginEdit) await persistResultEditState();
+          });
+        });
+      };
       const resultMetadata = activeScopedEvaluation
         ? activeScopedEvaluation.batch?.result || {}
         : metadata.result;
@@ -111,7 +283,13 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
         ? packageBidsForResult.filter((bid) => isBidWithinEvaluationLotDetails(bid, activeScopedEvaluation))
         : packageBidsForResult;
       const allBidsForResult = scopedBidsForResult.filter(checkBidQualified).map(bindResultVersion);
-      if (isAwarded) {
+      if (!isAwarded && !activeScopedEvaluation && officialLotState.history.length > 0) {
+        contentWrapper.innerHTML = trustedHTML(resultHistoryMarkup);
+        bindOfficialResultEditActions();
+        if (window.lucide) window.lucide.createIcons({ root: contentWrapper });
+        return;
+      }
+      if (isAwarded && !isEditingOfficialResult && !isEditingWholePackageResult) {
         if (!gt.nhaThauTrungThauId && allBidsForResult.length === 1) {
           gt.nhaThauTrungThauId = allBidsForResult[0].nhaThauId || allBidsForResult[0].id;
         }
@@ -171,7 +349,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               const winnerMst = winnerNt ? winnerNt.maSoThue || winnerNt.maNhaThau : currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau;
               winnerDisplayHtml = `
                                 <h5 class="bf-s-f3bfd10216">
-                                    <a href="#" data-bf-action="show-contractor" data-id="${currentWinnerBid.nhaThauId}" class="link-hover bf-s-b0e08465c2">${resolveBidContractorName(view.model, currentWinnerBid)}</a>
+                                    <a href="#" data-bf-action="show-contractor-modal" data-id="${currentWinnerBid.nhaThauId}" class="link-hover bf-s-b0e08465c2">${resolveBidContractorName(view.model, currentWinnerBid)}</a>
                                 </h5>
                                 <div class="bf-s-dfd82ca088">
                                     MST: <strong>${escapeHtml(formatPartnerIdentityCode(winnerMst, "Chưa có"))}</strong>
@@ -328,6 +506,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           winnerHtml: winnerDisplayHtml,
           bidderRowsHtml: allBiddersHtml,
           tableHeaderHtml,
+          resultHistoryHtml: resultHistoryMarkup,
           appraisalNumber: soBctdResult,
           appraisalDate: ngayBctdResult,
           isEditable,
@@ -335,10 +514,11 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           formatCurrency: (value) => view.model.formatCurrency(value),
           formatDate: (value) => view.model.formatDate(value)
         });
+        bindOfficialResultEditActions();
         bindAwardResultPanel(contentWrapper, {
           onEdit: async () => {
-            await reopenPackageAwardResult(appController || view, gt);
-            view.showPackageDetails(id);
+            const didBeginEdit = beginWholePackageResultEdit(view, gt, rerenderResultPanel);
+            if (didBeginEdit) await persistResultEditState();
           },
           onExport: async () => {
             const snapshotVersion = appController?.prepareExportSnapshot
@@ -369,11 +549,32 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           bids: scopedBidsForResult,
           scopedDraft: activeScopedEvaluation ? {
             label: `đợt ${activeScopedEvaluation.lotCodes.join(", ")}`,
-            lotCodes: activeScopedEvaluation.lotCodes
+            lotCodes: activeScopedEvaluation.lotCodes,
+            sequenceNo: activeScopedEvaluation.batch?.sequenceNo || "",
+            isEditingOfficialResult
+          } : isEditingWholePackageResult ? {
+            isEditingOfficialResult: true,
+            isWholePackage: true,
+            lotCodes: []
           } : null
         });
         const { allBids, isDirectOrSpecial } = approvalPanel;
         contentWrapper.innerHTML = trustedHTML(approvalPanel.html);
+        if (resultHistoryMarkup && !isEditingOfficialResult) {
+          contentWrapper.innerHTML = trustedHTML(resultHistoryMarkup + contentWrapper.innerHTML);
+        }
+        if (window.lucide) window.lucide.createIcons({ root: contentWrapper });
+        bindOfficialResultEditActions();
+        const cancelOfficialEditButton = contentWrapper.querySelector("#btn-cancel-official-result-edit");
+        cancelOfficialEditButton?.addEventListener("click", async () => {
+          clearPackageResultEditState(gt);
+          view._editingOfficialResultLotBatchId = "";
+          view._currentResultLotBatchId = "";
+          view._editingWholePackageResult = false;
+          view._editingWholePackageResultPackageId = "";
+          rerenderResultPanel();
+          await persistResultEditState();
+        });
         const rads = contentWrapper.querySelectorAll('input[name="result-danh-gia-nang-luc"]');
         const dgContainer = contentWrapper.querySelector("#container-date-bao-cao-danh-gia");
         rads.forEach((rad) => {
@@ -948,7 +1149,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             }
             let resultMetadataTarget;
             if (activeScopedEvaluation) {
-              const scopedBatch = meta.lotBatches?.[activeScopedEvaluation.batchId];
+              const scopedBatchStore = is1G2T2 ? meta.technical : meta;
+              const scopedBatch = scopedBatchStore?.lotBatches?.[activeScopedEvaluation.batchId];
               if (!scopedBatch) {
                 await view.customAlert(
                   "Không thể lưu kết quả",
@@ -966,6 +1168,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               if (!meta.result) meta.result = {};
               resultMetadataTarget = meta.result;
             }
+            resultMetadataTarget.soQuyetDinhKetQua = decNo;
+            resultMetadataTarget.ngayQuyetDinhKetQua = decDate;
             resultMetadataTarget.soBctdKetQua = soBctdResultVal;
             resultMetadataTarget.ngayBctdKetQua = ngayBctdResultVal;
             resultMetadataTarget.contractorBindings = winnerRows.map((row) => {
@@ -979,22 +1183,104 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               };
             });
             if (activeScopedEvaluation) {
+              const winnerCodes = new Set(winnerRows.map((row) => row.cells[0]?.textContent.trim() || ""));
+              const outcomes = {};
+              activeScopedEvaluation.lotIds.forEach((lotId, index) => {
+                const lotCode = activeScopedEvaluation.lotCodes[index] || "";
+                outcomes[lotId] = winnerCodes.has(lotCode) ? "AWARDED" : "NO_RESPONSIVE_BID";
+              });
+              let lifecycle = null;
+              const shouldFinalizeLifecycle = shouldFinalizeOfficialResultLifecycle(
+                activeScopedEvaluation.batch,
+                isEditingOfficialResult,
+              );
+              if (shouldFinalizeLifecycle) {
+                try {
+                  lifecycle = await finalizeEvaluationLotBatch({
+                    packageId: gt.id,
+                    batchId: activeScopedEvaluation.batchId,
+                    outcomes,
+                    fetcher: apiFetch
+                  });
+                } catch (error) {
+                  await view.customAlert(
+                    isEditingOfficialResult ? "Không thể cập nhật kết quả đợt" : "Không thể phê duyệt kết quả đợt",
+                    error?.message || (isEditingOfficialResult
+                      ? "Không thể đồng bộ trạng thái của đợt kết quả cũ."
+                      : "Không thể đóng đợt đánh giá chính thức."),
+                    "alert-triangle"
+                  );
+                  return;
+                }
+              }
+              const officialResult = {
+                ...resultMetadataTarget,
+                soQuyetDinhKetQua: decNo,
+                ngayQuyetDinhKetQua: decDate
+              };
+              if (is1G2T2) {
+                meta.technical = finalizeEvaluationScopeMetadata(
+                  meta.technical || {},
+                  activeScopedEvaluation.batchId,
+                  officialResult
+                );
+                if (meta.financial?.lotBatches?.[activeScopedEvaluation.batchId]) {
+                  meta.financial = finalizeEvaluationScopeMetadata(
+                    meta.financial,
+                    activeScopedEvaluation.batchId,
+                    officialResult
+                  );
+                }
+              } else {
+                meta = finalizeEvaluationScopeMetadata(meta, activeScopedEvaluation.batchId, officialResult);
+              }
+              const isPackageCompleted = isEditingOfficialResult
+                ? officialLotState.isComplete
+                : lifecycle?.packageStatus === "COMPLETED";
+              if (!isEditingOfficialResult) {
+                gt.trangThai = isPackageCompleted ? "Đã có kết quả" : "Đã có kết quả một phần";
+              } else if (gt.trangThai !== "Hủy thầu") {
+                gt.trangThai = isPackageCompleted ? "Đã có kết quả" : "Đã có kết quả một phần";
+              }
+              if (isPackageCompleted && !isEditingOfficialResult) {
+                gt.soQuyetDinhKetQua = decNo;
+                gt.ngayQuyetDinhKetQua = decDate;
+              }
+              delete meta.resultEdit;
+              if (meta.technical && typeof meta.technical === "object") {
+                delete meta.technical.resultEdit;
+              }
               gt.danhGiaHsdtMetadata = JSON.stringify(meta);
               const syncResult = await commitPackageAwardDecision(appController || view, {
+                packageRecord: gt,
                 afterPersist: () => view.renderGoiThauTable()
               });
               if (!syncResult?.ok) return;
-              await view.customAlert(
-                "Đã lưu nháp kết quả đợt phần lô",
-                `Đã lưu kết quả cho ${activeScopedEvaluation.lotCodes.join(", ")}. Các phần lô ngoài phạm vi được giữ nguyên.`,
-                "check-circle"
-              );
+              view._continueOfficialLotEvaluation = view._continueOfficialLotEvaluation || {};
+              view._continueOfficialLotEvaluation[gt.id] = false;
+              view._editingOfficialResultLotBatchId = "";
+              view._currentResultLotBatchId = "";
               const detailPackageId = selectPackageDetailTab(view, "result", gt, view.model);
               await view.showPackageDetails(detailPackageId);
+              await view.customAlert(
+                isEditingOfficialResult
+                  ? `Đã cập nhật kết quả Lần ${activeScopedEvaluation.batch?.sequenceNo || ""}`.trim()
+                  : `Đã phê duyệt kết quả Lần ${activeScopedEvaluation.batch?.sequenceNo || ""}`.trim(),
+                isEditingOfficialResult
+                  ? `Kết quả chính thức của ${activeScopedEvaluation.lotCodes.join(", ")} đã được cập nhật. Các đợt khác được giữ nguyên.`
+                  : isPackageCompleted
+                    ? `Đã có kết quả chính thức cho ${activeScopedEvaluation.lotCodes.join(", ")}. Toàn bộ phần lô của gói thầu đã hoàn tất.`
+                    : `Đã có kết quả chính thức cho ${activeScopedEvaluation.lotCodes.join(", ")}. Còn ${lifecycle?.counts?.pendingLots ?? "các"} phần lô chưa đánh giá.`,
+                "check-circle"
+              );
               return;
             }
             const hasActualWinner = gt.phanLo === "Có" ? (typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || []).some((pl) => pl.nhaThauTrungThauId) : winnerIdStr !== "none" && !!gt.nhaThauTrungThauId;
             if (!hasActualWinner) {
+              delete meta.resultEdit;
+              if (meta.technical && typeof meta.technical === "object") {
+                delete meta.technical.resultEdit;
+              }
               if (!meta.cancelDetails) meta.cancelDetails = {};
               meta.cancelDetails.soQuyetDinhHuyThau = decNo;
               meta.cancelDetails.ngayQuyetDinhHuyThau = decDate;
@@ -1004,13 +1290,19 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               gt.soQuyetDinhKetQua = decNo;
               gt.ngayQuyetDinhKetQua = decDate;
               const syncResult = await commitPackageAwardDecision(appController || view, {
+                packageRecord: gt,
                 afterPersist: () => view.renderGoiThauTable()
               });
               if (!syncResult?.ok) return;
-              await view.customAlert("Không có nhà thầu trúng thầu", "Không có nhà thầu nào đạt yêu cầu. Hệ thống đã tự động điền các thông tin hủy thầu tương ứng và chuyển bạn sang tab Hủy thầu để xem lại hoặc điều chỉnh trước khi xác nhận hủy thầu chính thức.", "info");
               const detailPackageId = selectPackageDetailTab(view, "cancel", gt, view.model);
               await view.showPackageDetails(detailPackageId);
+              await view.customAlert("Không có nhà thầu trúng thầu", "Không có nhà thầu nào đạt yêu cầu. Hệ thống đã tự động điền các thông tin hủy thầu tương ứng và chuyển bạn sang tab Hủy thầu để xem lại hoặc điều chỉnh trước khi xác nhận hủy thầu chính thức.", "info");
               return;
+            }
+            resultMetadataTarget.saved = true;
+            delete meta.resultEdit;
+            if (meta.technical && typeof meta.technical === "object") {
+              delete meta.technical.resultEdit;
             }
             gt.danhGiaHsdtMetadata = JSON.stringify(meta);
             clearCompetitiveQuotationAppraisal(gt);
@@ -1018,12 +1310,15 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             gt.ngayQuyetDinhKetQua = decDate;
             gt.trangThai = "Đã có kết quả";
             const syncResult = await commitPackageAwardDecision(appController || view, {
+              packageRecord: gt,
               afterPersist: () => view.renderGoiThauTable()
             });
             if (!syncResult?.ok) return;
-            await view.customAlert("Chúc mừng", `Đã phê duyệt kết quả trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`, "check-circle");
+            view._editingWholePackageResult = false;
+            view._editingWholePackageResultPackageId = "";
             const detailPackageId = selectPackageDetailTab(view, "result", gt, view.model);
             await view.showPackageDetails(detailPackageId);
+            await view.customAlert("Chúc mừng", `Đã phê duyệt kết quả trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`, "check-circle");
           };
         }
       }
