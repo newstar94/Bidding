@@ -50,6 +50,32 @@ def test_sidebar_has_compact_tablet_mode_and_reachable_mobile_drawer():
     assert ".sidebar.active" in base
 
 
+def test_mobile_sidebar_trigger_uses_brand_icon_and_drawer_stays_above_scrim():
+    header = _source("views/components/header.html")
+    base = _source("views/css/base.css")
+    redesign = _source("views/css/ui-redesign.css")
+
+    trigger = header[
+        header.index('class="menu-toggle-btn"'):
+        header.index("</button>", header.index('class="menu-toggle-btn"'))
+    ]
+    assert 'class="mobile-brand-icon"' in trigger
+    assert 'data-lucide="layers"' in trigger
+    assert 'data-lucide="menu"' not in trigger
+
+    mobile_rule = base[base.index("@media (max-width: 768px)"):]
+    assert ".sidebar.active {" in mobile_rule
+    assert "z-index: 201;" in mobile_rule
+    scrim_rule = mobile_rule[
+        mobile_rule.index(".app-container:has(.sidebar.active)::after {"):
+        mobile_rule.index("}", mobile_rule.index(".app-container:has(.sidebar.active)::after {"))
+    ]
+    assert "left: min(var(--sidebar-width), calc(100vw - 32px));" in scrim_rule
+    assert "pointer-events: auto;" in scrim_rule
+
+    mobile_redesign = redesign[redesign.index("@media (max-width: 768px)"):]
+    assert ".menu-toggle-btn .mobile-brand-icon" in mobile_redesign
+
 def test_background_sync_does_not_reenter_router_for_list_tabs():
     source = _source("frontend/app/BiddingControllerSync.js")
     render_block = source[source.index("function renderChangedState"):source.index("export function buildSyncErrorDetailLines")]
@@ -212,7 +238,7 @@ def test_notification_actions_and_rows_use_the_compact_panel_pattern():
     assert 'data-lucide="check"' in template
     assert 'data-lucide="check-check"' not in template
     assert '<span>Đánh dấu tất cả đã đọc</span>' in template
-    assert '/css/ui-redesign.css?v=1.3.26' in index
+    assert '/css/ui-redesign.css?v=2.0' in index
     assert "border: 0;" in read_all_rule
     assert "background: transparent;" in read_all_rule
     assert "display: block;" in icon_rule

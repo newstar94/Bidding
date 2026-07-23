@@ -263,14 +263,17 @@ a:hover {
     box-shadow: var(--shadow-lg);
   }
   .sidebar.active {
+    z-index: 201;
     transform: translateX(0);
   }
   .app-container:has(.sidebar.active)::after {
     position: fixed;
     z-index: 150;
     inset: 0;
+    left: min(var(--sidebar-width), calc(100vw - 32px));
     background: var(--color-scrim);
     content: "";
+    pointer-events: auto;
   }
   .main-content {
     width: 100%;

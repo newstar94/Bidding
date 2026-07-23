@@ -1961,12 +1961,26 @@ button:disabled {
     align-items: center;
     justify-content: center;
     flex: 0 0 var(--touch-target-min);
-    background: var(--surface);
+    padding: 4px;
+    border: 0;
+    background: transparent;
   }
 
-  .menu-toggle-btn :is(i, svg) {
-    width: 20px;
-    height: 20px;
+  .menu-toggle-btn .mobile-brand-icon {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    color: #fff;
+    background: linear-gradient(145deg, var(--brand) 10%, var(--aqua) 115%);
+    box-shadow: 0 4px 10px rgba(49, 87, 232, 0.22);
+  }
+
+  .menu-toggle-btn .mobile-brand-icon :is(i, svg) {
+    width: 21px;
+    height: 21px;
   }
 
   .content-viewport {
