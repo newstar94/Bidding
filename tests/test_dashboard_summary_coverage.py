@@ -70,8 +70,8 @@ class _DashboardCursor:
                 ("hd-no-date", "HD-4", "Không ngày", "", "10 ngày", "ACTIVE", "", ""),
                 ("hd-done", "HD-5", "Đủ hồ sơ", "2026-07-01", "10 ngày", "COMPLETED", "2026-07-10", "Hóa đơn đã xuất"),
             ]
-        elif "SELECT COUNT(*), COUNT(*)" in self.sql:
-            self.rows = [(2, 2)]
+        elif "COUNT(*) FILTER" in self.sql:
+            self.rows = [(2, 1)]
         else:
             self.rows = []
         return self
@@ -207,7 +207,7 @@ def test_dashboard_summary_projects_manager_and_employee_paths(monkeypatch, mana
     assert result["totalContractValue"] == "200"
     assert result["totalContractValueAll"] == "200"
     assert result["counts"]["assignedHopdong"] == 2
-    assert result["counts"]["activeAssignedHopdong"] == 2
+    assert result["counts"]["activeAssignedHopdong"] == 1
     assert result["alertCounts"]["planPublishingOverdue"] == 1
     assert result["alertCounts"]["planPublishingWarning"] == 1
     assert result["alertCounts"]["contractExpired"] == 1

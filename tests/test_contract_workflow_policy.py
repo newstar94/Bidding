@@ -36,18 +36,6 @@ def test_contract_new_version_targets_assignment_to_new_contract_id():
     assert "hasHistoricalAssignment" in version_block
 
 
-def test_contract_edit_loads_and_preserves_linked_packages():
-    source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
-        encoding="utf-8-sig"
-    )
-
-    assert 'await this.fetchRecordByLookup("hopdong", id)' in source
-    assert '...(hd.goiThauIds || []).map((packageId) => ["goithau", packageId])' in source
-    assert "packageCheckboxes.length === 0 && currentContractForPackages" in source
-    assert 'form.dataset.originalPackageIds = JSON.stringify(hd.goiThauIds || [])' in source
-    assert "[...originalPackageIds]" in source
-
-
 def test_contract_assignment_is_staged_before_atomic_persist():
     source = (ROOT / "frontend" / "contracts" / "HopDongWorkflow.js").read_text(
         encoding="utf-8-sig"

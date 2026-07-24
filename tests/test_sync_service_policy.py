@@ -669,6 +669,18 @@ def test_sync_idempotency_rechecks_inside_write_transaction(monkeypatch, stored)
     assert _body(response)["status"] == ("tx-cached" if "tx-cached" in stored else "success")
     assert tx.commits == 1
     assert tx.closed == 1
+    statements = [sql for sql, _params in tx._cursor.calls]
+    lock_index = next(
+        index
+        for index, sql in enumerate(statements)
+        if "pg_advisory_xact_lock" in sql
+    )
+    replay_index = next(
+        index
+        for index, sql in enumerate(statements)
+        if "FROM sync_mutations" in sql
+    )
+    assert lock_index < replay_index
 
 
 def test_sync_serializes_typed_values_and_owns_managed_images(monkeypatch):
@@ -847,17 +859,45 @@ def test_sync_contract_links_existing_packages_and_replaces_opening_children(mon
     auth = _Connection(_Cursor())
     tx = _Connection(_Cursor(handler))
     _install_core_defaults(monkeypatch, [auth, tx])
+
+    def save_children(cursor, table_name, item, organization_id, *_args):
+        if table_name == "thong_tin_mo_thau":
+            cursor.execute(
+                "DELETE FROM nha_thau_tham_du_mo_thau "
+                "WHERE organization_id = ? AND thong_tin_mo_thau_id = ?",
+                (organization_id, item["id"]),
+            )
+
+    monkeypatch.setattr(service, "save_child_payloads", save_children)
     response = service._process_sync_request_blocking(
         _Request(),
         {
             "hopdong": [{"id": "hd-1", "goiThauIds": ["gt-1", ""]}],
-            "thongtinmothau": [{"id": "opening-1"}, {"id": ""}],
+            "thongtinmothau": [{"id": "opening-1"}],
         },
     )
     assert response.status_code == 200
-    sql_text = "\n".join(sql for sql, _ in tx._cursor.calls)
+    statements = [sql for sql, _ in tx._cursor.calls]
+    sql_text = "\n".join(statements)
     assert "DELETE FROM nha_thau_tham_du_mo_thau" in sql_text
     assert "INSERT INTO hop_dong_goi_thau" in sql_text
+    registry_delete_indexes = [
+        index
+        for index, sql in enumerate(statements)
+        if sql.startswith("DELETE FROM nha_thau_tham_du_mo_thau")
+    ]
+    assert len(registry_delete_indexes) == 1
+    savepoint_index = max(
+        index
+        for index, sql in enumerate(statements[: registry_delete_indexes[0]])
+        if sql == "SAVEPOINT sync_item"
+    )
+    release_index = next(
+        index
+        for index, sql in enumerate(statements[registry_delete_indexes[0] :], registry_delete_indexes[0])
+        if sql == "RELEASE SAVEPOINT sync_item"
+    )
+    assert savepoint_index < registry_delete_indexes[0] < release_index
 
 
 def test_sync_post_commit_image_cleanup_failure_does_not_change_success(monkeypatch):

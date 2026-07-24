@@ -445,10 +445,17 @@ export async function finalizeEvaluationLotBatch({
   packageId,
   batchId,
   outcomes,
+  packageAward,
   fetcher,
 }) {
   const normalizedBatchId = String(batchId || "").trim();
-  if (!packageId || !normalizedBatchId || typeof fetcher !== "function") {
+  if (
+    !packageId
+    || !normalizedBatchId
+    || !packageAward
+    || typeof packageAward !== "object"
+    || typeof fetcher !== "function"
+  ) {
     throw new Error("Không thể xác nhận kết quả chính thức của đợt phần lô.");
   }
   const response = await fetcher(
@@ -456,7 +463,10 @@ export async function finalizeEvaluationLotBatch({
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outcomes: outcomes || {} }),
+      body: JSON.stringify({
+        outcomes: outcomes || {},
+        packageAward,
+      }),
     },
   );
   const body = await responseBody(response);

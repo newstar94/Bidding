@@ -6,7 +6,7 @@ from backend.lot_lifecycle_service import (
     LotLifecycleInputError,
     LotLifecycleNotFoundError,
     create_batch,
-    finalize_batch,
+    finalize_batch_award,
     query_lifecycle,
 )
 from backend.lot_selection_lifecycle import LotLifecyclePolicyError
@@ -16,35 +16,44 @@ from backend.shared.access_policy import (
     is_organization_manager,
     is_personal_workspace_owner,
 )
-from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
+from backend.shared.helpers import (
+    OrgPermissionError,
+    database,
+    get_active_org,
+    log_audit,
+    verify_session,
+)
+from backend.sync.api import broadcast_websocket_event
 from backend.shared.logging_utils import log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 
 
 async def get_lot_lifecycle_api(request):
-    connection = None
     try:
         valid, session = verify_session(request)
         if not valid:
             return JSONResponse({"error": session}, status_code=403)
         package_id = str(request.path_params.get("package_id") or "").strip()
         organization_id = get_active_org(request, session.user_id)
-        connection = database.get_connection()
-        cursor = connection.cursor()
-        if not can_read_record(
-            cursor,
-            session,
-            session.user_id,
-            organization_id,
-            "goithau",
-            "goi_thau",
-            package_id,
-        ):
-            return JSONResponse({"error": "Không có quyền xem gói thầu."}, status_code=403)
-        return JSONResponse(
-            query_lifecycle(cursor, organization_id, package_id),
-            headers={"Cache-Control": "private, no-store"},
-        )
+        with database.get_connection() as connection:
+            cursor = connection.cursor()
+            if not can_read_record(
+                cursor,
+                session,
+                session.user_id,
+                organization_id,
+                "goithau",
+                "goi_thau",
+                package_id,
+            ):
+                return JSONResponse(
+                    {"error": "Không có quyền xem gói thầu."},
+                    status_code=403,
+                )
+            return JSONResponse(
+                query_lifecycle(cursor, organization_id, package_id),
+                headers={"Cache-Control": "private, no-store"},
+            )
     except LotLifecycleNotFoundError as exc:
         return JSONResponse({"error": str(exc), "code": "PACKAGE_NOT_FOUND"}, status_code=404)
     except LotLifecycleInputError as exc:
@@ -59,9 +68,6 @@ async def get_lot_lifecycle_api(request):
             "LOT_LIFECYCLE_QUERY_FAILED",
             "Không thể tải trạng thái xử lý phần lô.",
         )
-    finally:
-        if connection:
-            connection.close()
 
 
 async def create_lot_batch_api(request):
@@ -186,6 +192,15 @@ async def finalize_lot_batch_api(request):
                 {"error": "Phải xác định kết quả của từng phần lô.", "code": "INVALID_LOT_OUTCOMES"},
                 status_code=400,
             )
+        package_award = data.get("packageAward")
+        if not isinstance(package_award, dict):
+            return JSONResponse(
+                {
+                    "error": "Thiếu dữ liệu kết quả chính thức của gói thầu.",
+                    "code": "INVALID_PACKAGE_AWARD",
+                },
+                status_code=400,
+            )
         package_id = str(request.path_params.get("package_id") or "").strip()
         batch_id = str(request.path_params.get("batch_id") or "").strip()
         organization_id = get_active_org(request, session.user_id)
@@ -204,15 +219,32 @@ async def finalize_lot_batch_api(request):
         if not write_decision.allowed:
             connection.rollback()
             return JSONResponse({"error": write_decision.reason}, status_code=403)
-        lifecycle = finalize_batch(
+        lifecycle = finalize_batch_award(
             cursor,
             organization_id,
             package_id,
             batch_id,
             {str(key): str(value) for key, value in outcomes.items()},
+            package_award,
             actor_user_id=session.user_id,
         )
+        log_audit(
+            "lot_batch.result_finalized",
+            actor_user_id=session.user_id,
+            organization_id=organization_id,
+            target_type="lot_batch",
+            target_id=batch_id,
+            request=request,
+            metadata={
+                "packageId": package_id,
+                "outcomes": outcomes,
+                "packageResult": lifecycle.get("packageResult"),
+            },
+            cursor=cursor,
+            required=True,
+        )
         connection.commit()
+        broadcast_websocket_event(organization_id, {"event": "db_changed"})
         return JSONResponse({"success": True, **lifecycle})
     except LotLifecyclePolicyError as exc:
         if connection:

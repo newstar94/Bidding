@@ -6,6 +6,10 @@ import { renderChuyenGiaTable, showChuyenGiaDetails } from "../experts/ChuyenGia
 import { renderHopDongTable, showHopDongDetails, renderContractVersionDetails } from "../contracts/HopDongComponent.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
+import {
+  getWordColumnLabel,
+  getWordSourceTableLabel,
+} from "../documents/wordVariableManifest.js";
 export {
   renderChuDauTuTable,
   showChuDauTuDetails,
@@ -57,52 +61,7 @@ export function renderDictionary(group) {
     global: [],
     custom_lists: []
   };
-  const getTableLabel = (tbl) => {
-    const labels = {
-      "chu_dau_tu": "Chủ đầu tư",
-      "ke_hoach_lcnt": "Kế hoạch LCNT",
-      "goi_thau": "Gói thầu",
-      "nha_thau": "Nhà thầu",
-      "hop_dong": "Hợp đồng",
-      "chuyen_gia": "Chuyên gia",
-      "thong_tin_mo_thau": "Thông tin mở thầu",
-      "tai_khoan": "Tài khoản cá nhân",
-      "to_chuc": "Tổ chức / Doanh nghiệp",
-      "goi_dich_vu": "Gói dịch vụ",
-      "yeu_cau_lam_ro": "Yêu cầu làm rõ",
-      "yeu_cau_lam_ro_list": "Yêu cầu làm rõ",
-      "tra_loi_lam_ro": "Trả lời làm rõ",
-      "tra_loi_lam_ro_list": "Trả lời làm rõ",
-      "ds_phan_lo": "Tất cả phần lô",
-      "ds_nha_thau_tham_du": "Nhà thầu tham dự",
-      "ds_nha_thau_trung_thau": "Nhà thầu trúng thầu",
-      "ds_nha_thau_truot_thau": "Nhà thầu trượt thầu",
-      "ds_nha_thau_khong_dat": "Nhà thầu không đạt",
-      "ds_nha_thau_dat_khong_xep_hang_1": "Nhà thầu đạt nhưng không xếp hạng 1",
-      "ds_nha_thau_khong_duoc_danh_gia": "Nhà thầu không được đánh giá",
-      "ds_nha_thau_trung_theo_phan_lo": "Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
-      "phan_lo": "Phần lô",
-      "phan_lo_list": "Phần lô",
-      "ds_phan_lo_co_nha_thau_tham_du": "Phần lô có nhà thầu tham dự",
-      "ds_phan_lo_khong_co_nha_thau_tham_du": "Phần lô không có nhà thầu tham dự",
-      "ds_phan_lo_co_nha_thau_tham_du_khong_trung": "Phần lô tham dự nhưng không có nhà thầu trúng",
-      "ds_phan_lo_co_nha_thau_trung": "Phần lô có nhà thầu trúng thầu",
-      "__context__": "Thực thể động",
-      "tuy_chon_mua_them": "Tùy chọn mua thêm",
-      "tuy_chon_mua_them_list": "Tùy chọn mua thêm",
-      "gia_han": "Gia hạn",
-      "gia_han_list": "Gia hạn",
-      "thanh_vien_lien_danh": "Thành viên liên danh",
-      "cv_da_thuc_hien": "Công việc đã thực hiện",
-      "cv_khong_ap_dung": "Công việc không áp dụng LCNT",
-      "cv_chua_du_dieu_kien": "Công việc chưa đủ điều kiện LCNT",
-      "awarded_phan_lo_list": "Phần lô trúng thầu",
-      "goi_thau_ids": "Gói thầu liên kết",
-      "to_chuyen_gia": "Tổ chuyên gia",
-      "to_tham_dinh": "Tổ thẩm định"
-    };
-    return labels[tbl] || tbl;
-  };
+  const getTableLabel = (tbl) => getWordSourceTableLabel(tbl);
   const getColumnLabel = (tbl, col) => {
     if (!col || col === "*") return "Toàn bộ bảng (Biến danh sách)";
     let normTbl = tbl || "";
@@ -118,6 +77,8 @@ export function renderDictionary(group) {
     if (normTbl === "user") {
       normTbl = "tai_khoan";
     }
+    const manifestLabel = getWordColumnLabel(normTbl, col);
+    if (manifestLabel !== col) return manifestLabel;
     const cols = {
       "chu_dau_tu": {
         "ten_chu_dau_tu": "Tên chủ đầu tư",

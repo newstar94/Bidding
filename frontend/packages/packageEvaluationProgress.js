@@ -39,6 +39,18 @@ export async function commitPackageAwardDecision(controller, { afterPersist, pac
   return syncResult;
 }
 
+export async function commitPackageAwardDependencies(controller) {
+  const activeController = typeof controller?.autoSync === "function"
+    ? controller
+    : getAppController();
+  if (!activeController?.model || typeof activeController.autoSync !== "function") {
+    throw new Error("Không thể đồng bộ dữ liệu nhà thầu với máy chủ.");
+  }
+  const tables = ["nhathau", "thongtinmothau"]
+    .filter((table) => Array.isArray(activeController.model.state[table]));
+  return persistAndSync(activeController, tables);
+}
+
 export async function commitPackageResultEditState(controller, { afterPersist, packageRecord } = {}) {
   const activeController = typeof controller?.autoSync === "function"
     ? controller

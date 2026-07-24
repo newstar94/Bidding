@@ -7,7 +7,7 @@ import unicodedata
 
 from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.sync.mapper import map_db_to_json
-from backend.shared.domain_enums import enum_label
+from backend.shared.domain_enums import CONTRACT_STATUS_LABELS, enum_label
 from backend.documents.docx_formula_service import (
     _add_working_days,
     _diff_working_days,
@@ -601,8 +601,12 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
                 "alertDetail": " · ".join(missing_steps),
             })
 
+        active_contract_code = "ACTIVE"
         cursor.execute(f"""
-            SELECT COUNT(*), COUNT(*)
+            SELECT COUNT(*),
+                   COUNT(*) FILTER (
+                       WHERE hd.trang_thai_hop_dong IN (?, ?)
+                   )
             FROM ({latest_contracts_sql}) hd
             WHERE EXISTS (
                 SELECT 1 FROM phan_cong_nhan_su pc
@@ -611,7 +615,12 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
                   AND pc.id_muc_tieu = hd.id
                   AND pc.loai_doi_tuong = 'hopdong'
             )
-        """, (organization_id, user_id))
+        """, (
+            active_contract_code,
+            CONTRACT_STATUS_LABELS[active_contract_code],
+            organization_id,
+            user_id,
+        ))
         assigned_row = cursor.fetchone()
         counts["assignedHopdong"] = int(assigned_row[0] or 0)
         counts["activeAssignedHopdong"] = int(assigned_row[1] or 0)

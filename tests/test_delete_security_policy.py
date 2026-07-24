@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from backend.db.db_helper import IntegrityError
+from backend.db.db_helper import DatabaseError, IntegrityError
 from backend.sync import delete_policy, deletion_service
 from backend.shared.access_policy import AccessDecision
 
@@ -412,6 +412,53 @@ def test_deletion_reports_database_reference_race(
     )
     assert result["errors"][0]["code"] == "DELETE_REFERENCED"
     assert result["impacts"] == []
+
+
+def test_deletion_reference_race_rolls_back_savepoint_before_next_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TransactionAwareCursor(_DeletionCursor):
+        def __init__(self, record):
+            super().__init__(record)
+            self.aborted = False
+            self.failed_once = False
+
+        def execute(self, sql, parameters=()):
+            normalized = " ".join(sql.split())
+            self.calls.append((sql, parameters))
+            if normalized.startswith("ROLLBACK TO SAVEPOINT"):
+                self.aborted = False
+                return _Result(rowcount=1)
+            if self.aborted:
+                raise DatabaseError("current transaction is aborted")
+            if normalized.startswith("SELECT *"):
+                return _Result({**self.record, "id": parameters[1]})
+            if normalized.startswith("DELETE FROM") and not self.failed_once:
+                self.failed_once = True
+                self.aborted = True
+                raise IntegrityError("referenced")
+            return _Result(rowcount=1)
+
+    record = {"id": "expert-1", "row_version": 1}
+    _DeletionHarness(monkeypatch, record).install()
+    cursor = TransactionAwareCursor(record)
+
+    result = _apply(
+        cursor,
+        [
+            {"table": "chuyengia", "id": "expert-1", "expectedVersion": 1},
+            {"table": "chuyengia", "id": "expert-2", "expectedVersion": 1},
+        ],
+    )
+
+    assert result["errors"][0]["code"] == "DELETE_REFERENCED"
+    assert len(result["impacts"]) == 1
+    assert result["impacts"][0]["table"] == "chuyengia"
+    assert result["impacts"][0]["id"] == "expert-2"
+    assert result["impacts"][0]["action"] == "deleted"
+    statements = [" ".join(sql.split()) for sql, _params in cursor.calls]
+    assert "ROLLBACK TO SAVEPOINT sync_delete_item" in statements
+    assert "RELEASE SAVEPOINT sync_delete_item" in statements
 
 
 def test_nonarchivable_reference_is_rejected(

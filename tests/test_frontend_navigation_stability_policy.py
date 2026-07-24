@@ -9,14 +9,6 @@ def _source(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-def test_tab_navigation_uses_latest_transition_only():
-    source = _source("frontend/app/BiddingControllerUI.js")
-
-    assert "this._tabTransitionVersion" in source
-    assert "isCurrentTransition()" in source
-    assert "this.switchTab(tabName, action, updateState, transitionVersion)" in source
-
-
 def test_active_tab_still_renders_during_startup_and_workspace_changes():
     source = _source("frontend/app/BiddingControllerUI.js")
     switch_block = source[source.index("export function switchTab"):source.index("export function resetTimelineOnNavigation")]

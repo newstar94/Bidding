@@ -465,6 +465,20 @@ export async function editHopDong(id) {
     console.error("editHopDong error:", err);
   }
 }
+export function resolveContractPackageIds(
+  packageCheckboxes,
+  currentContract,
+  originalPackageIds,
+) {
+  const checkboxes = Array.from(packageCheckboxes || []);
+  if (checkboxes.length === 0 && currentContract) {
+    return [...(originalPackageIds || [])];
+  }
+  return checkboxes
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => checkbox.value);
+}
+
 export async function handleHopDongSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-hopdong");
@@ -529,9 +543,6 @@ export async function handleHopDongSubmit(e) {
     }
   }
   const packageCheckboxes = document.querySelectorAll('input[name="hd-goithau-checkbox"]');
-  const checkedPackageIds = Array.from(packageCheckboxes)
-    .filter((checkbox) => checkbox.checked)
-    .map((checkbox) => checkbox.value);
   const currentContractForPackages = id
     ? this.model.state.hopdong.find((contract) => contract.id === id)
     : null;
@@ -542,9 +553,11 @@ export async function handleHopDongSubmit(e) {
   } catch (error) {
     originalPackageIds = currentContractForPackages?.goiThauIds || [];
   }
-  const goiThauIds = packageCheckboxes.length === 0 && currentContractForPackages
-    ? [...originalPackageIds]
-    : checkedPackageIds;
+  const goiThauIds = resolveContractPackageIds(
+    packageCheckboxes,
+    currentContractForPackages,
+    originalPackageIds,
+  );
   if (!Array.isArray(this.model.state.hopdong)) {
     this.model.state.hopdong = [];
   }

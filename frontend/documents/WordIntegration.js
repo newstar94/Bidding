@@ -3,7 +3,10 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { DEFAULT_WORD_VARIABLES } from "./wordVariableManifest.js";
+import {
+  DEFAULT_WORD_VARIABLES,
+  getWordSourceTableLabel,
+} from "./wordVariableManifest.js";
 import { apiFetch } from "../shared/apiClient.js";
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
@@ -689,50 +692,7 @@ export function setupWordTemplatesEvents() {
       if (!tenBien || !sourceTable || !sourceColumn) return;
       const duplicate = (this.model.state.wordMappings || []).find((m) => m.tenBien.toLowerCase() === tenBien.toLowerCase() && m.id !== id);
       if (duplicate) {
-        const tableNames = {
-          "chu_dau_tu": "Chủ đầu tư",
-          "ke_hoach_lcnt": "Kế hoạch LCNT",
-          "goi_thau": "Gói thầu",
-          "nha_thau": "Nhà thầu",
-          "hop_dong": "Hợp đồng",
-          "chuyen_gia": "Chuyên gia",
-          "thong_tin_mo_thau": "Thông tin mở thầu",
-          "tai_khoan": "Tài khoản cá nhân",
-          "to_chuc": "Tổ chức / Doanh nghiệp",
-          "goi_dich_vu": "Gói dịch vụ",
-          "yeu_cau_lam_ro": "Yêu cầu làm rõ",
-          "yeu_cau_lam_ro_list": "Yêu cầu làm rõ",
-          "tra_loi_lam_ro": "Trả lời làm rõ",
-          "tra_loi_lam_ro_list": "Trả lời làm rõ",
-          "ds_phan_lo": "Tất cả phần lô",
-          "ds_nha_thau_tham_du": "Nhà thầu tham dự",
-          "ds_nha_thau_trung_thau": "Nhà thầu trúng thầu",
-          "ds_nha_thau_truot_thau": "Nhà thầu trượt thầu",
-          "ds_nha_thau_khong_dat": "Nhà thầu không đạt",
-          "ds_nha_thau_dat_khong_xep_hang_1": "Nhà thầu đạt nhưng không xếp hạng 1",
-          "ds_nha_thau_khong_duoc_danh_gia": "Nhà thầu không được đánh giá",
-          "ds_nha_thau_trung_theo_phan_lo": "Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
-          "ds_phan_lo_co_nha_thau_tham_du": "Phần lô có nhà thầu tham dự",
-          "ds_phan_lo_khong_co_nha_thau_tham_du": "Phần lô không có nhà thầu tham dự",
-          "ds_phan_lo_co_nha_thau_tham_du_khong_trung": "Phần lô tham dự nhưng không có nhà thầu trúng",
-          "ds_phan_lo_co_nha_thau_trung": "Phần lô có nhà thầu trúng thầu",
-          "__context__": "Thực thể động",
-          "phan_lo": "Phần lô",
-          "phan_lo_list": "Phần lô",
-          "tuy_chon_mua_them": "Tùy chọn mua thêm",
-          "tuy_chon_mua_them_list": "Tùy chọn mua thêm",
-          "gia_han": "Gia hạn",
-          "gia_han_list": "Gia hạn",
-          "thanh_vien_lien_danh": "Thành viên liên danh",
-          "cv_da_thuc_hien": "Công việc đã thực hiện",
-          "cv_khong_ap_dung": "Công việc không áp dụng LCNT",
-          "cv_chua_du_dieu_kien": "Công việc chưa đủ điều kiện LCNT",
-          "awarded_phan_lo_list": "Phần lô trúng thầu",
-          "goi_thau_ids": "Gói thầu liên kết",
-          "to_chuyen_gia": "Tổ chuyên gia",
-          "to_tham_dinh": "Tổ thẩm định"
-        };
-        const labelTable = tableNames[duplicate.sourceTable] || duplicate.sourceTable;
+        const labelTable = getWordSourceTableLabel(duplicate.sourceTable);
         const isList = !duplicate.sourceColumn || duplicate.sourceColumn === "*";
         const labelColumn = isList ? "Biến danh sách (Vòng lặp)" : duplicate.sourceColumn;
         await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, "alert-triangle", document.getElementById("wm-ten-bien"));
@@ -771,50 +731,7 @@ export function setupWordTemplatesEvents() {
       if (!tenBien || !sourceTable) return;
       const duplicate = (this.model.state.wordMappings || []).find((m) => m.tenBien.toLowerCase() === tenBien.toLowerCase() && m.id !== id);
       if (duplicate) {
-        const tableNames = {
-          "chu_dau_tu": "Chủ đầu tư",
-          "ke_hoach_lcnt": "Kế hoạch LCNT",
-          "goi_thau": "Gói thầu",
-          "nha_thau": "Nhà thầu",
-          "hop_dong": "Hợp đồng",
-          "chuyen_gia": "Chuyên gia",
-          "thong_tin_mo_thau": "Thông tin mở thầu",
-          "tai_khoan": "Tài khoản cá nhân",
-          "to_chuc": "Tổ chức / Doanh nghiệp",
-          "goi_dich_vu": "Gói dịch vụ",
-          "yeu_cau_lam_ro": "Yêu cầu làm rõ",
-          "yeu_cau_lam_ro_list": "Yêu cầu làm rõ",
-          "tra_loi_lam_ro": "Trả lời làm rõ",
-          "tra_loi_lam_ro_list": "Trả lời làm rõ",
-          "ds_phan_lo": "Tất cả phần lô",
-          "ds_nha_thau_tham_du": "Nhà thầu tham dự",
-          "ds_nha_thau_trung_thau": "Nhà thầu trúng thầu",
-          "ds_nha_thau_truot_thau": "Nhà thầu trượt thầu",
-          "ds_nha_thau_khong_dat": "Nhà thầu không đạt",
-          "ds_nha_thau_dat_khong_xep_hang_1": "Nhà thầu đạt nhưng không xếp hạng 1",
-          "ds_nha_thau_khong_duoc_danh_gia": "Nhà thầu không được đánh giá",
-          "ds_nha_thau_trung_theo_phan_lo": "Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
-          "ds_phan_lo_co_nha_thau_tham_du": "Phần lô có nhà thầu tham dự",
-          "ds_phan_lo_khong_co_nha_thau_tham_du": "Phần lô không có nhà thầu tham dự",
-          "ds_phan_lo_co_nha_thau_tham_du_khong_trung": "Phần lô tham dự nhưng không có nhà thầu trúng",
-          "ds_phan_lo_co_nha_thau_trung": "Phần lô có nhà thầu trúng thầu",
-          "__context__": "Thực thể động",
-          "phan_lo": "Phần lô",
-          "phan_lo_list": "Phần lô",
-          "tuy_chon_mua_them": "Tùy chọn mua thêm",
-          "tuy_chon_mua_them_list": "Tùy chọn mua thêm",
-          "gia_han": "Gia hạn",
-          "gia_han_list": "Gia hạn",
-          "thanh_vien_lien_danh": "Thành viên liên danh",
-          "cv_da_thuc_hien": "Công việc đã thực hiện",
-          "cv_khong_ap_dung": "Công việc không áp dụng LCNT",
-          "cv_chua_du_dieu_kien": "Công việc chưa đủ điều kiện LCNT",
-          "awarded_phan_lo_list": "Phần lô trúng thầu",
-          "goi_thau_ids": "Gói thầu liên kết",
-          "to_chuyen_gia": "Tổ chuyên gia",
-          "to_tham_dinh": "Tổ thẩm định"
-        };
-        const labelTable = tableNames[duplicate.sourceTable] || duplicate.sourceTable;
+        const labelTable = getWordSourceTableLabel(duplicate.sourceTable);
         const isList = !duplicate.sourceColumn || duplicate.sourceColumn === "*";
         const labelColumn = isList ? "Biến danh sách (Vòng lặp)" : duplicate.sourceColumn;
         await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{#${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, "alert-triangle", document.getElementById("wml-ten-bien"));

@@ -96,7 +96,7 @@ def _read_sync_data_blocking(request):
         # Pin every table, manifest and dashboard aggregate in this response to
         # one PostgreSQL read snapshot. Without an explicit transaction, concurrent
         # writes could make the cards disagree with the returned lists/cursor.
-        cursor.execute("BEGIN")
+        cursor.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
         current_time = vietnam_now_sql()
 
 

@@ -1,12 +1,5 @@
 import { escapeHtml, safeAttr } from "./view_helpers.js";
-
-export function getVersionFamily(records, record) {
-  if (!record) return [];
-  const rootId = record.rootId || record.id;
-  return (records || [])
-    .filter((item) => String(item.rootId || item.id) === String(rootId))
-    .sort((a, b) => (Number.parseInt(b.phienBan || "0", 10) || 0) - (Number.parseInt(a.phienBan || "0", 10) || 0));
-}
+import { getVersionFamily } from "./VersionedEntityService.js";
 
 export function resolveSelectedVersion(records, record, selectedVersions = {}) {
   if (!record) return null;
@@ -35,7 +28,12 @@ export function renderVersionSelector({
 
 export function resolveVersionedRow(records, row, selectedVersions = {}) {
   const rootId = row?.rootId || row?.id;
-  const versions = row?.allVersions || getVersionFamily(records, row);
+  const versions = [...(row?.allVersions || getVersionFamily(records, row))]
+    .sort(
+      (a, b) =>
+        (Number.parseInt(b.phienBan || "0", 10) || 0)
+        - (Number.parseInt(a.phienBan || "0", 10) || 0),
+    );
   const displayed = resolveSelectedVersion(records, row, selectedVersions);
   return { rootId, versions, displayed };
 }

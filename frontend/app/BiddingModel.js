@@ -975,12 +975,6 @@ export class BiddingModel {
       }, candidates[0]);
     }).filter(Boolean);
   }
-  formatCurrency(value) {
-    if (value === null || value === void 0 || value === "") return "--";
-    const num = Number(value);
-    if (isNaN(num)) return value;
-    return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(num);
-  }
   getLatestChuDauTu() {
     const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
     const latestMap = {};

@@ -151,13 +151,18 @@ def apply_sync_deletions(
             })
             continue
         else:
-            delete_assignment_dependents(cursor, organization_id, table_name, record_id)
+            cursor.execute("SAVEPOINT sync_delete_item")
             try:
+                delete_assignment_dependents(
+                    cursor, organization_id, table_name, record_id
+                )
                 cursor.execute(
                     f"DELETE FROM {table_name} WHERE organization_id = ? AND id = ?",
                     (organization_id, record_id),
                 )
             except IntegrityError:
+                cursor.execute("ROLLBACK TO SAVEPOINT sync_delete_item")
+                cursor.execute("RELEASE SAVEPOINT sync_delete_item")
                 result["errors"].append({
                     "table": table_name,
                     "id": record_id,
@@ -165,6 +170,11 @@ def apply_sync_deletions(
                     "message": "Không thể xóa vì bản ghi đang được tham chiếu.",
                 })
                 continue
+            except Exception:
+                cursor.execute("ROLLBACK TO SAVEPOINT sync_delete_item")
+                cursor.execute("RELEASE SAVEPOINT sync_delete_item")
+                raise
+            cursor.execute("RELEASE SAVEPOINT sync_delete_item")
         cursor.execute(
             DELETED_RECORD_UPSERT_SQL,
             (table_name, record_id, organization_id, current_time, sync_version),

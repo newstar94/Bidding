@@ -21,6 +21,7 @@ from backend.shared.helpers import (
     save_base64_image,
     verify_session,
 )
+from backend.shared.idempotency import acquire_idempotency_lock
 from backend.shared.access_policy import OWNERSHIP_SCOPED_TABLES, authorize_record_write
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
@@ -272,6 +273,13 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         owner_type = get_owner_type(cursor, org_name)
         current_time = vietnam_now_sql()
         if client_mutation_id:
+            acquire_idempotency_lock(
+                cursor,
+                "sync",
+                org_name,
+                user_id,
+                client_mutation_id,
+            )
             cursor.execute(
                 "SELECT response_json FROM sync_mutations WHERE organization_id = ? AND actor_user_id = ? AND client_mutation_id = ?",
                 (org_name, user_id, client_mutation_id)
@@ -639,20 +647,6 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 payload,
                 status_code=409 if has_row_conflict else 400,
                 headers=dict(response.headers),
-            )
-
-        incoming_opening_ids = [
-            get_clean_id("thong_tin_mo_thau", item.get("id"))
-            for item in data.get("thongtinmothau", [])
-            if isinstance(item, dict) and item.get("id")
-        ]
-        incoming_opening_ids = [value for value in incoming_opening_ids if value]
-        if incoming_opening_ids:
-            placeholders = ", ".join("?" for _ in incoming_opening_ids)
-            cursor.execute(
-                f"""DELETE FROM nha_thau_tham_du_mo_thau
-                    WHERE organization_id = ? AND thong_tin_mo_thau_id IN ({placeholders})""",
-                (org_name, *incoming_opening_ids),
             )
 
         for payload_key, table_name, items in iter_sync_table_payloads(data):

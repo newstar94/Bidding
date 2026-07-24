@@ -227,8 +227,19 @@ def _foreign_key_name(table_name: str, index: int, definition: str) -> str:
     return f"fk_{table_name}_{index}_{digest}"[:63]
 
 
-def _create_foreign_keys(cursor) -> None:
-    for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
+def _create_foreign_keys(
+    cursor,
+    table_names=None,
+    *,
+    if_not_exists=False,
+) -> None:
+    selected_tables = (
+        tuple(SCHEMA_DINH_NGHIA)
+        if table_names is None
+        else tuple(table_names)
+    )
+    for table_name in selected_tables:
+        table_spec = SCHEMA_DINH_NGHIA[table_name]
         foreign_keys = [
             constraint
             for constraint in table_spec.get("foreign_keys", ())
@@ -236,9 +247,24 @@ def _create_foreign_keys(cursor) -> None:
         ]
         for index, definition in enumerate(foreign_keys, 1):
             name = _foreign_key_name(table_name, index, definition)
-            cursor.execute(
-                f"ALTER TABLE {table_name} ADD CONSTRAINT {name} {definition}"
-            )
+            if if_not_exists:
+                cursor.execute(
+                    f"""DO $$
+                        BEGIN
+                          IF NOT EXISTS (
+                              SELECT 1 FROM pg_constraint
+                              WHERE conrelid = '{table_name}'::regclass
+                                AND conname = '{name}'
+                          ) THEN
+                            ALTER TABLE {table_name}
+                                ADD CONSTRAINT {name} {definition};
+                          END IF;
+                        END $$"""
+                )
+            else:
+                cursor.execute(
+                    f"ALTER TABLE {table_name} ADD CONSTRAINT {name} {definition}"
+                )
 
 
 def _create_extensions(cursor) -> None:
@@ -702,6 +728,10 @@ def _create_triggers(cursor) -> None:
     )
     for table_name in owner_tables:
         cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_workspace_owner "
+            f"ON {table_name}"
+        )
+        cursor.execute(
             f"CREATE TRIGGER trg_{table_name}_workspace_owner "
             f"BEFORE INSERT OR UPDATE ON {table_name} "
             "FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()"
@@ -714,6 +744,9 @@ def _create_triggers(cursor) -> None:
         "chuyen_gia",
         "hop_dong",
     ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_lineage ON {table_name}"
+        )
         cursor.execute(
             f"CREATE TRIGGER trg_{table_name}_lineage "
             f"BEFORE INSERT OR UPDATE ON {table_name} "
@@ -732,6 +765,12 @@ def _create_triggers(cursor) -> None:
         "ma_tran_phan_quyen",
     ):
         cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_updated_at ON {table_name}"
+        )
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_deleted_log ON {table_name}"
+        )
+        cursor.execute(
             f"CREATE TRIGGER trg_{table_name}_updated_at "
             f"BEFORE UPDATE ON {table_name} FOR EACH ROW "
             "EXECUTE FUNCTION bf_touch_synced_row()"
@@ -742,14 +781,26 @@ def _create_triggers(cursor) -> None:
             "EXECUTE FUNCTION bf_log_synced_delete()"
         )
     cursor.execute(
+        """DROP TRIGGER IF EXISTS trg_record_edit_ownership_workspace
+           ON record_edit_ownership"""
+    )
+    cursor.execute(
         """CREATE TRIGGER trg_record_edit_ownership_workspace
            BEFORE INSERT OR UPDATE ON record_edit_ownership
            FOR EACH ROW EXECUTE FUNCTION bf_validate_record_edit_owner()"""
     )
     cursor.execute(
+        """DROP TRIGGER IF EXISTS trg_tai_khoan_verified_email_update
+           ON tai_khoan"""
+    )
+    cursor.execute(
         """CREATE TRIGGER trg_tai_khoan_verified_email_update
            BEFORE UPDATE OF email, email_norm ON tai_khoan
            FOR EACH ROW EXECUTE FUNCTION bf_validate_verified_email_change()"""
+    )
+    cursor.execute(
+        """DROP TRIGGER IF EXISTS trg_phan_cong_tenant
+           ON phan_cong_nhan_su"""
     )
     cursor.execute(
         """CREATE TRIGGER trg_phan_cong_tenant
@@ -758,14 +809,24 @@ def _create_triggers(cursor) -> None:
     )
     for table_name in ("vong_danh_gia", "ket_qua_danh_gia_nha_thau"):
         cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_actor ON {table_name}"
+        )
+        cursor.execute(
             f"CREATE TRIGGER trg_{table_name}_actor "
             f"BEFORE INSERT OR UPDATE ON {table_name} "
             "FOR EACH ROW EXECUTE FUNCTION bf_validate_evaluation_actor()"
         )
     cursor.execute(
+        """DROP TRIGGER IF EXISTS trg_hop_dong_goi_thau_business
+           ON hop_dong_goi_thau"""
+    )
+    cursor.execute(
         """CREATE TRIGGER trg_hop_dong_goi_thau_business
            BEFORE INSERT OR UPDATE ON hop_dong_goi_thau
            FOR EACH ROW EXECUTE FUNCTION bf_validate_contract_package()"""
+    )
+    cursor.execute(
+        "DROP TRIGGER IF EXISTS trg_audit_log_immutable ON audit_log"
     )
     cursor.execute(
         """CREATE TRIGGER trg_audit_log_immutable
@@ -818,6 +879,47 @@ def assert_schema_contract(cursor) -> None:
             raise RuntimeError(
                 f"Schema drift in {table_name}: missing={missing_columns}, extra={extra_columns}"
             )
+    actual_foreign_keys = {
+        (str(row[0]), str(row[1]))
+        for row in cursor.execute(
+            """SELECT conrelid::regclass::text, conname
+               FROM pg_constraint
+               WHERE contype = 'f'
+                 AND connamespace = current_schema()::regnamespace"""
+        ).fetchall()
+    }
+    required_canonical_fk_tables = {
+        "dot_xu_ly_phan_lo",
+        "dot_xu_ly_phan_lo_chi_tiet",
+        "nhom_phu_thuoc_phan_lo",
+        "nhom_phu_thuoc_phan_lo_thanh_vien",
+        "ho_so_nghiep_vu_lcnt",
+        "ho_so_nghiep_vu_lcnt_phan_lo",
+    }
+    expected_foreign_keys = set()
+    for table_name in required_canonical_fk_tables:
+        table_spec = SCHEMA_DINH_NGHIA[table_name]
+        definitions = [
+            constraint
+            for constraint in table_spec.get("foreign_keys", ())
+            if constraint.lstrip().upper().startswith("FOREIGN KEY")
+        ]
+        expected_foreign_keys.update(
+            (
+                table_name,
+                _foreign_key_name(table_name, index, definition),
+            )
+            for index, definition in enumerate(definitions, 1)
+        )
+    missing_foreign_keys = sorted(
+        expected_foreign_keys - actual_foreign_keys
+    )
+    if missing_foreign_keys:
+        sample = ", ".join(
+            f"{table_name}.{constraint_name}"
+            for table_name, constraint_name in missing_foreign_keys[:10]
+        )
+        raise RuntimeError(f"Schema drift: missing foreign keys: {sample}")
     required_indexes = {
         "idx_goi_thau_moc_tien_do_package",
         "idx_goi_thau_moc_tien_do_status",
@@ -957,6 +1059,7 @@ def initialize_postgres_database(database) -> int:
             build_create_table_sql=build_create_table_sql,
             create_indexes_and_triggers=create_indexes_and_triggers,
             assert_foreign_key_integrity=assert_foreign_key_integrity,
+            create_foreign_keys=_create_foreign_keys,
         )
         installed_version = read_database_version(cursor)
         if installed_version is None:

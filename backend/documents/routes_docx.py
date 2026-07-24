@@ -840,9 +840,15 @@ async def save_word_mapping_api(request):
 
 
             if row_by_data and row_by_data[0] != id_param:
-                cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ?", (row_by_data[0],))
+                cursor.execute(
+                    "DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?",
+                    (row_by_data[0], org_name),
+                )
             if row_by_name and row_by_name[0] != id_param:
-                cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ?", (row_by_name[0],))
+                cursor.execute(
+                    "DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?",
+                    (row_by_name[0], org_name),
+                )
 
             cursor.execute("""
                 UPDATE cau_hinh_bien_word
@@ -858,16 +864,16 @@ async def save_word_mapping_api(request):
                 cursor.execute("""
                     UPDATE cau_hinh_bien_word
                     SET ten_bien = ?, mo_ta = ?
-                    WHERE id = ?
-                """, (ten_bien, mo_ta, mapping_id))
+                    WHERE id = ? AND organization_id = ?
+                """, (ten_bien, mo_ta, mapping_id, org_name))
             elif row_by_name:
 
                 mapping_id = row_by_name[0]
                 cursor.execute("""
                     UPDATE cau_hinh_bien_word
                     SET source_table = ?, source_column = ?, mo_ta = ?
-                    WHERE id = ?
-                """, (source_table, source_column, mo_ta, mapping_id))
+                    WHERE id = ? AND organization_id = ?
+                """, (source_table, source_column, mo_ta, mapping_id, org_name))
             else:
 
                 mapping_id = generate_record_id("cau_hinh_bien_word")

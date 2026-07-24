@@ -28,6 +28,7 @@ data/tools/
 data/templates/images/
 data/templates/words/config.json
 data/templates/words/*/
+agent
 
 # OS files
 .DS_Store
@@ -36,6 +37,9 @@ Desktop.ini
 
 # Local editor metadata
 .vscode/
+.claude/
+.agents
+data/skills/
 
 # Scratch files
 scratch/

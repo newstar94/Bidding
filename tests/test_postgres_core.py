@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 import pytest
 from cryptography.fernet import Fernet
+from psycopg import sql
 
 from backend.db.db_helper import PostgresDatabase, _convert_qmark_parameters
 from backend.db.postgres_schema import (
@@ -22,6 +23,7 @@ from backend.db.postgres_schema import (
 )
 from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.db.db_utils import recalculate_is_latest
 from backend.auth import auth_service
 from backend.auth import email_delivery_service
 from backend.auth.session_store import (
@@ -42,7 +44,11 @@ from backend.sync.websocket import (
     _release_cluster_lease,
 )
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME, vietnam_now
-from backend.lot_lifecycle_service import create_batch, finalize_batch, query_lifecycle
+from backend.lot_lifecycle_service import (
+    create_batch,
+    finalize_batch_award,
+    query_lifecycle,
+)
 from backend.lot_selection_lifecycle import LotLifecyclePolicyError
 
 
@@ -85,6 +91,89 @@ def test_fresh_schema_contract(postgres_database: PostgresDatabase) -> None:
         assert cursor.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
         ).fetchone()[0] == DB_SCHEMA_VERSION
+
+
+def test_v13_database_is_reconciled_to_fresh_schema(
+    postgres_database: PostgresDatabase,
+) -> None:
+    lifecycle_tables = (
+        "dot_xu_ly_phan_lo",
+        "dot_xu_ly_phan_lo_chi_tiet",
+        "nhom_phu_thuoc_phan_lo",
+        "nhom_phu_thuoc_phan_lo_thanh_vien",
+        "ho_so_nghiep_vu_lcnt",
+        "ho_so_nghiep_vu_lcnt_phan_lo",
+    )
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        foreign_keys = cursor.execute(
+            """SELECT conrelid::regclass::text, conname
+               FROM pg_constraint
+               WHERE contype = 'f'
+                 AND conrelid::regclass::text = ANY(?)""",
+            (list(lifecycle_tables),),
+        ).fetchall()
+        for table_name, constraint_name in foreign_keys:
+            cursor.execute(
+                sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
+                    sql.Identifier(table_name),
+                    sql.Identifier(constraint_name),
+                )
+            )
+        primary_key_name = cursor.execute(
+            """SELECT conname FROM pg_constraint
+               WHERE conrelid = 'danh_muc_trang_thai_hop_dong'::regclass
+                 AND contype = 'p'"""
+        ).fetchone()[0]
+        cursor.execute(
+            sql.SQL(
+                "ALTER TABLE danh_muc_trang_thai_hop_dong DROP CONSTRAINT {}"
+            ).format(sql.Identifier(primary_key_name))
+        )
+        cursor.execute(
+            """ALTER TABLE danh_muc_trang_thai_hop_dong
+               ADD CONSTRAINT danh_muc_trang_thai_hop_dong_pkey
+               PRIMARY KEY (id)"""
+        )
+        cursor.execute(
+            """DROP TRIGGER IF EXISTS
+                   trg_danh_muc_trang_thai_hop_dong_workspace_owner
+               ON danh_muc_trang_thai_hop_dong"""
+        )
+        cursor.execute(
+            "UPDATE database_metadata SET schema_version = 13 WHERE id = 1"
+        )
+
+    assert initialize_postgres_database(postgres_database) == 14
+
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        assert cursor.execute(
+            """SELECT count(*) FROM pg_constraint
+               WHERE contype = 'f'
+                 AND conrelid::regclass::text = ANY(?)""",
+            (list(lifecycle_tables),),
+        ).fetchone()[0] == len(foreign_keys)
+        primary_key_columns = cursor.execute(
+            """SELECT array_agg(attribute.attname ORDER BY keys.ordinality)
+               FROM pg_constraint constraint_row
+               CROSS JOIN LATERAL
+                    unnest(constraint_row.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
+               JOIN pg_attribute attribute
+                 ON attribute.attrelid = constraint_row.conrelid
+                AND attribute.attnum = keys.attnum
+               WHERE constraint_row.conrelid =
+                     'danh_muc_trang_thai_hop_dong'::regclass
+                 AND constraint_row.contype = 'p'"""
+        ).fetchone()[0]
+        assert primary_key_columns == ["organization_id", "id"]
+        assert cursor.execute(
+            """SELECT count(*) FROM pg_trigger
+               WHERE tgrelid = 'danh_muc_trang_thai_hop_dong'::regclass
+                 AND tgname =
+                     'trg_danh_muc_trang_thai_hop_dong_workspace_owner'
+                 AND NOT tgisinternal"""
+        ).fetchone()[0] == 1
 
 
 def test_lot_batch_command_claims_scope_atomically(
@@ -172,16 +261,32 @@ def test_lot_batch_command_claims_scope_atomically(
                 actor_user_id=user_id,
             )
 
-        first_result = finalize_batch(
+        first_result = finalize_batch_award(
             cursor,
             organization_id,
             'lot-test-package',
             batch['id'],
-            {'lot-test-a': 'AWARDED'},
+            {'lot-test-a': 'NO_RESPONSIVE_BID'},
+            {
+                "expectedVersion": 1,
+                "decisionNumber": "QĐ-KQ-1",
+                "decisionDate": "2026-07-23",
+                "metadata": {"result": {"saved": True}},
+                "lotResults": [
+                    {
+                        "lotId": "lot-test-a",
+                        "winnerId": "",
+                        "awardPrice": 0,
+                        "packageDuration": "",
+                        "contractDuration": "",
+                    }
+                ],
+            },
             actor_user_id=user_id,
         )
         assert first_result['packageStatus'] == 'PARTIALLY_COMPLETED'
         assert first_result['counts']['completedLots'] == 1
+        assert first_result["packageRowVersion"] == 2
 
         second_batch = create_batch(
             cursor,
@@ -191,16 +296,54 @@ def test_lot_batch_command_claims_scope_atomically(
             approval_mode='STAGED_APPROVAL',
             actor_user_id=user_id,
         )
-        final_result = finalize_batch(
+        final_result = finalize_batch_award(
             cursor,
             organization_id,
             'lot-test-package',
             second_batch['id'],
             {'lot-test-b': 'NO_RESPONSIVE_BID'},
+            {
+                "expectedVersion": 2,
+                "decisionNumber": "QĐ-KQ-2",
+                "decisionDate": "2026-07-24",
+                "metadata": {"result": {"saved": True}},
+                "lotResults": [
+                    {
+                        "lotId": "lot-test-b",
+                        "winnerId": "",
+                        "awardPrice": 0,
+                        "packageDuration": "",
+                        "contractDuration": "",
+                    }
+                ],
+            },
             actor_user_id=user_id,
         )
         assert final_result['packageStatus'] == 'COMPLETED'
         assert final_result['counts']['completedLots'] == 2
+        package_result = cursor.execute(
+            """SELECT trang_thai, nha_thau_trung_thau_id, gia_trung_thau,
+                      so_quyet_dinh_ket_qua, row_version
+               FROM goi_thau
+               WHERE organization_id = ? AND id = 'lot-test-package'""",
+            (organization_id,),
+        ).fetchone()
+        assert tuple(package_result) == (
+            "AWARDED",
+            None,
+            0,
+            "QĐ-KQ-2",
+            3,
+        )
+        artifacts = cursor.execute(
+            """SELECT count(*) FROM ho_so_nghiep_vu_lcnt
+               WHERE organization_id = ?
+                 AND batch_id IN (?, ?)
+                 AND artifact_type = 'RESULT_APPROVAL_DECISION'
+                 AND status = 'FINAL'""",
+            (organization_id, batch["id"], second_batch["id"]),
+        ).fetchone()[0]
+        assert artifacts == 2
     finally:
         connection.rollback()
         connection.close()
@@ -713,6 +856,57 @@ def test_sql_and_api_timestamps_use_vietnam_timezone(
         assert raw_connection.execute("SHOW TIME ZONE").fetchone()[0] == VIETNAM_TIMEZONE_NAME
 
     assert vietnam_now().utcoffset().total_seconds() == 7 * 60 * 60
+
+
+def test_recalculate_is_latest_never_updates_same_id_in_another_tenant(
+    postgres_database: PostgresDatabase,
+) -> None:
+    shared_id = "tenant-recalculate-shared"
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        cursor.executemany(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            [
+                ("tenant-recalculate-a", "Tenant Recalculate A"),
+                ("tenant-recalculate-b", "Tenant Recalculate B"),
+            ],
+        )
+        cursor.executemany(
+            """INSERT INTO chu_dau_tu
+               (organization_id, id, owner_type, ten_chu_dau_tu, is_latest)
+               VALUES (?, ?, 'organization', ?, ?)""",
+            [
+                ("tenant-recalculate-a", shared_id, "Tenant A", 0),
+                ("tenant-recalculate-b", shared_id, "Tenant B", 0),
+            ],
+        )
+
+        recalculate_is_latest(
+            cursor,
+            "chu_dau_tu",
+            "tenant-recalculate-a",
+            affected_families=[shared_id],
+        )
+
+        rows = cursor.execute(
+            """SELECT organization_id, is_latest
+               FROM chu_dau_tu
+               WHERE id = ?
+               ORDER BY organization_id""",
+            (shared_id,),
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("tenant-recalculate-a", 1),
+            ("tenant-recalculate-b", 0),
+        ]
+        cursor.execute(
+            "DELETE FROM chu_dau_tu WHERE id = ?",
+            (shared_id,),
+        )
+        cursor.execute(
+            "DELETE FROM to_chuc WHERE id IN (?, ?)",
+            ("tenant-recalculate-a", "tenant-recalculate-b"),
+        )
 
 
 def test_initialization_is_idempotent(postgres_database: PostgresDatabase) -> None:

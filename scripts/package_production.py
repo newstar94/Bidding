@@ -20,6 +20,9 @@ import psycopg
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = PROJECT_ROOT / "release" / "biddingflow-production.zip"
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.env_utils import load_env
 
 RUNTIME_DIRECTORIES = {
     "backend": lambda path: path.suffix == ".py",
@@ -61,17 +64,6 @@ REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 HASHED_ASSET_PATH = re.compile(
     r"^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$"
 )
-
-
-def _load_env() -> None:
-    path = PROJECT_ROOT / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def _relative(path: Path) -> Path:
@@ -297,7 +289,7 @@ assert session.status_code == 200 and session.json().get('valid') is False
 
 
 def main() -> int:
-    _load_env()
+    load_env(PROJECT_ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(

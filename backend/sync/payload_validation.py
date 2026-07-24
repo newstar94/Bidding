@@ -776,8 +776,6 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                         lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id")
                     )
                 ]
-            if not awarded_lots:
-                errors.append("Gói phân lô đã có kết quả phải có kết quả trúng thầu từng phần lô.")
             known_codes = {
                 str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
                 for lot in phan_lo_list if isinstance(lot, dict)

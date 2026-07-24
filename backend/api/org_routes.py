@@ -24,6 +24,7 @@ from backend.shared.access_policy import (
     resolve_document_export_capabilities,
 )
 from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.idempotency import acquire_idempotency_lock
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import vietnam_date_from_epoch, vietnam_now_sql
 from backend.notifications.service import (
@@ -36,9 +37,10 @@ from backend.notifications.service import (
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
-def _subscription_payload(cursor, organization_id):
+def _subscription_payload(cursor, organization_id, *, for_update=False):
+    lock_clause = " FOR UPDATE OF sub" if for_update else ""
     row = cursor.execute(
-        """
+        f"""
         SELECT sub.organization_id, sub.package_id, sub.status, sub.starts_at,
                sub.expires_at, sub.member_quota, sub.revision,
                (SELECT count(*) FROM thanh_vien_to_chuc members
@@ -46,6 +48,7 @@ def _subscription_payload(cursor, organization_id):
                   AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
         FROM organization_subscriptions sub
         WHERE sub.organization_id = ?
+        {lock_clause}
         """,
         (organization_id,),
     ).fetchone()
@@ -94,6 +97,14 @@ async def update_organization_subscription_api(request):
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        acquire_idempotency_lock(
+            cursor,
+            "organization_subscription",
+            organization_id,
+            role_or_err.user_id,
+            action,
+            idempotency_key,
+        )
         replay = cursor.execute(
             """
             SELECT response_json FROM api_idempotency
@@ -105,7 +116,9 @@ async def update_organization_subscription_api(request):
             conn.commit()
             return JSONResponse(json.loads(replay[0]))
 
-        current = _subscription_payload(cursor, organization_id)
+        current = _subscription_payload(
+            cursor, organization_id, for_update=True
+        )
         if not current:
             conn.rollback()
             return JSONResponse(
@@ -645,7 +658,10 @@ async def remove_user_from_org_api(request):
                     (org_id, successor, assignment['id_muc_tieu'], assignment['loai_doi_tuong']),
                 ).fetchone()
                 if existing:
-                    cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id = ?", (assignment['id'],))
+                    cursor.execute(
+                        "DELETE FROM phan_cong_nhan_su WHERE id = ? AND organization_id = ?",
+                        (assignment["id"], org_id),
+                    )
                 else:
                     cursor.execute(
                         """UPDATE phan_cong_nhan_su SET id_nhan_vien = ?, row_version = row_version + 1,
@@ -653,7 +669,10 @@ async def remove_user_from_org_api(request):
                         (successor, sync_version, current_time, assignment['id'], org_id),
                     )
             else:
-                cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id = ?", (assignment['id'],))
+                cursor.execute(
+                    "DELETE FROM phan_cong_nhan_su WHERE id = ? AND organization_id = ?",
+                    (assignment["id"], org_id),
+                )
 
         cursor.execute(
             """UPDATE thanh_vien_to_chuc SET trang_thai_thanh_vien = 'left', left_at = ?, left_by = ?,
@@ -665,7 +684,10 @@ async def remove_user_from_org_api(request):
         pq_rows = cursor.fetchall()
         for row in pq_rows:
             pq_id = row['id']
-            cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE id = ?", (pq_id,))
+            cursor.execute(
+                "DELETE FROM ma_tran_phan_quyen WHERE id = ? AND organization_id = ?",
+                (pq_id, org_id),
+            )
             cursor.execute(
                 DELETED_RECORD_UPSERT_SQL,
                 ("ma_tran_phan_quyen", pq_id, org_id, current_time, sync_version)

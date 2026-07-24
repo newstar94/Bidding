@@ -166,6 +166,17 @@ def test_read_sync_full_bootstrap_returns_manifests_references_and_closes_once(m
     assert connection.closed == 1
 
 
+def test_read_sync_pins_every_response_to_one_repeatable_read_snapshot(monkeypatch):
+    cursor = _SyncCursor()
+    connection = _Connection(cursor)
+    _install_read_defaults(monkeypatch, connection)
+
+    response = read_service._read_sync_data_blocking(_Request())
+
+    assert response.status_code == 200
+    assert cursor.calls[0][0] == "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+
+
 @pytest.mark.parametrize(
     "query, expected_partial",
     [

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import random
 import statistics
+import sys
 import time
 from uuid import uuid4
 
@@ -17,17 +18,8 @@ import httpx
 
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _load_env() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+sys.path.insert(0, str(ROOT))
+from scripts.env_utils import load_env
 
 
 def _percentile(values: list[float], percentile: float) -> float:
@@ -271,7 +263,7 @@ async def run_benchmark(base_url: str, concurrency: int, duration: float) -> dic
 
 
 def main() -> int:
-    _load_env()
+    load_env(ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:18083")
     parser.add_argument("--concurrency", type=int, default=32)

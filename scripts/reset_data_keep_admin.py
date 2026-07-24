@@ -22,21 +22,11 @@ from psycopg import sql
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-
-
-def _load_env() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+from scripts.env_utils import load_env
 
 
 def main() -> int:
-    _load_env()
+    load_env(ROOT)
     from backend.db.schema import SCHEMA_DINH_NGHIA
 
     parser = argparse.ArgumentParser(description=__doc__)

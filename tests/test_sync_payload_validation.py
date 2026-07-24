@@ -815,8 +815,30 @@ def test_lotted_package_allows_different_winners_and_derives_package_projection(
     normalized, errors, _ = validation.validate_sync_item("goi_thau", item)
 
     assert errors == []
-    assert normalized["nhaThauTrungThauId"] is None
+    assert normalized.get("nhaThauTrungThauId") is None
     assert normalized["giaTrungThau"] == "90"
+
+
+def test_lotted_package_allows_official_result_with_no_winning_lot() -> None:
+    item = _minimal_package(
+        trangThai=PACKAGE_STATUS_LABELS["AWARDED"],
+        hinhThucLuaChon="Chỉ định thầu rút gọn",
+        phanLo="Có",
+        soQuyetDinhKetQua="QĐ-03",
+        ngayQuyetDinhKetQua="2026-07-24",
+        giaTrungThau="0",
+        phanLoList=[
+            {"maPhanLo": "A", "giaTriPhanLo": "40"},
+            {"maPhanLo": "B", "giaTriPhanLo": "60"},
+        ],
+        awardedPhanLoList=[],
+    )
+
+    normalized, errors, _ = validation.validate_sync_item("goi_thau", item)
+
+    assert errors == []
+    assert normalized.get("nhaThauTrungThauId") is None
+    assert normalized["giaTrungThau"] == "0"
 
 
 def test_lotted_package_projects_single_common_winner_for_legacy_consumers() -> None:

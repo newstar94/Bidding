@@ -333,12 +333,23 @@ export function shouldAutoOpenCreateModal(state, tabName) {
   return state?.activetab === tabName && state?.activeaction === "taomoi";
 }
 
-export function switchTab(tabName, action = null, updateState = true, transitionVersion = null) {
-  if (transitionVersion == null) {
-    this._tabTransitionVersion = Number(this._tabTransitionVersion || 0) + 1;
-    transitionVersion = this._tabTransitionVersion;
+export function beginTabTransition(controller, transitionVersion = null) {
+  let version = transitionVersion;
+  if (version == null) {
+    controller._tabTransitionVersion =
+      Number(controller._tabTransitionVersion || 0) + 1;
+    version = controller._tabTransitionVersion;
   }
-  const isCurrentTransition = () => transitionVersion === this._tabTransitionVersion;
+  return {
+    version,
+    isCurrent: () => version === controller._tabTransitionVersion,
+  };
+}
+
+export function switchTab(tabName, action = null, updateState = true, transitionVersion = null) {
+  const transition = beginTabTransition(this, transitionVersion);
+  transitionVersion = transition.version;
+  const isCurrentTransition = transition.isCurrent;
   if (!isCurrentTransition()) return;
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;

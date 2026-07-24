@@ -19,11 +19,11 @@ from psycopg.rows import dict_row
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.load_test import _load_env
+from scripts.env_utils import load_env
 
 
 def _database_url(env_name: str) -> str:
-    _load_env()
+    load_env(ROOT)
     value = str(os.environ.get(env_name, "")).strip()
     if not value:
         raise RuntimeError(f"{env_name} is required")

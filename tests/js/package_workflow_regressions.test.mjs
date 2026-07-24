@@ -8,6 +8,7 @@ import { resolvePostEvaluationTargetTab } from "../../frontend/packages/bidEvalu
 import { saveThongTinMoThau } from "../../frontend/packages/BidProcessWorkflow.js";
 import {
   commitPackageAwardDecision,
+  commitPackageAwardDependencies,
   commitPackageResultEditState,
 } from "../../frontend/packages/packageEvaluationProgress.js";
 import { collectOpeningBidsFromRows } from "../../frontend/packages/bidProcessOpeningData.js";
@@ -155,6 +156,23 @@ test("award approval refreshes the result only after the successful sync", async
     "sync",
     "refresh",
   ]);
+});
+
+test("lot finalization prepares contractor dependencies without syncing the package", async () => {
+  const persisted = [];
+  const applicationController = {
+    model: {
+      useServerSidePagination: false,
+      state: { nhathau: [{}], thongtinmothau: [{}], goithau: [{}] },
+      persistData: async (table) => persisted.push(table),
+    },
+    autoSync: async () => ({ ok: true }),
+  };
+
+  const result = await commitPackageAwardDependencies(applicationController);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(persisted, ["nhathau", "thongtinmothau"]);
 });
 
 test("starting or cancelling result editing persists the package status and refreshes dashboard data", async () => {

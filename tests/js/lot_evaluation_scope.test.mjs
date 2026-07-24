@@ -290,6 +290,13 @@ test("finalizing an official batch calls the lifecycle endpoint with an outcome 
     packageId: "pkg-1",
     batchId: "batch-1",
     outcomes: { "lot-1": "AWARDED", "lot-2": "NO_RESPONSIVE_BID" },
+    packageAward: {
+      expectedVersion: 3,
+      decisionNumber: "01/QĐ",
+      decisionDate: "2026-07-24",
+      metadata: { result: { saved: true } },
+      lotResults: [],
+    },
     fetcher: async (url, options) => {
       calls.push({ url, options });
       return {
@@ -303,6 +310,13 @@ test("finalizing an official batch calls the lifecycle endpoint with an outcome 
   assert.equal(calls[0].url, "/api/packages/pkg-1/lot-batches/batch-1/finalize");
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     outcomes: { "lot-1": "AWARDED", "lot-2": "NO_RESPONSIVE_BID" },
+    packageAward: {
+      expectedVersion: 3,
+      decisionNumber: "01/QĐ",
+      decisionDate: "2026-07-24",
+      metadata: { result: { saved: true } },
+      lotResults: [],
+    },
   });
 });
 

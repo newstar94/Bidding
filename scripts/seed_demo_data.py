@@ -30,17 +30,7 @@ sys.path.insert(0, str(ROOT))
 from backend.shared.audit_chain import _entry_hash
 from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
 from backend.shared.domain_enums import CONTRACT_STATUS_LABELS
-
-
-def _load_env() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+from scripts.env_utils import load_env
 
 
 def _insert(cursor, table: str, values: dict) -> None:
@@ -904,7 +894,7 @@ def seed(cursor, *, demo_password: str) -> dict[str, int]:
 
 
 def main() -> int:
-    _load_env()
+    load_env(ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-demo", action="store_true", help="Required because this writes synthetic data.")
     parser.add_argument("--password", default="DemoUser123!", help="Password assigned to demo users.")

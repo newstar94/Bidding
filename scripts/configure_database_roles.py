@@ -14,17 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME
-
-
-def _load_env() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+from scripts.env_utils import load_env
 
 
 def _role_name(name: str, default: str) -> str:
@@ -55,7 +45,7 @@ def _ensure_login_role(cursor, role: str, password: str) -> None:
 
 
 def main() -> int:
-    _load_env()
+    load_env(ROOT)
     admin_url = os.environ.get("DATABASE_ADMIN_URL") or os.environ.get("DATABASE_URL", "")
     runtime_role = _role_name("DATABASE_RUNTIME_ROLE", "biddingflow_app")
     migrator_role = _role_name("DATABASE_MIGRATOR_ROLE", "biddingflow_migrator")

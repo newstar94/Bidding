@@ -13,11 +13,11 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.load_test import _load_env
+from scripts.env_utils import load_env
 
 
 def main() -> int:
-    _load_env()
+    load_env(ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url-env", default="PERFORMANCE_DATABASE_URL")
     parser.add_argument("--rows", type=int, default=100_000)

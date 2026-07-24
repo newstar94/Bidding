@@ -20,7 +20,8 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.load_test import _load_env, run_benchmark
+from scripts.env_utils import load_env
+from scripts.load_test import run_benchmark
 from scripts.process_utils import popen_group_options, terminate_process_tree
 
 
@@ -266,7 +267,7 @@ class _PostgresSampler:
 
 
 def main() -> int:
-    _load_env()
+    load_env(ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=18083)
     parser.add_argument("--workers", type=int, default=4)

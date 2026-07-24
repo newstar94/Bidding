@@ -99,13 +99,14 @@ def recalculate_is_latest(
             f"""
             WITH {affected_cte}
             scoped_rows AS (
-                SELECT business.id
+                SELECT business.organization_id, business.id
                 FROM {table_name} AS business
                 {scope_join}
                 {scope_filter}
             ),
             ranked AS (
-                SELECT business.id,
+                SELECT business.organization_id,
+                       business.id,
                        ROW_NUMBER() OVER (
                            PARTITION BY {partition_expr}
                            ORDER BY business.phien_ban DESC,
@@ -116,17 +117,25 @@ def recalculate_is_latest(
                 {scope_join}
                 {ranked_filter}
             ),
-            winners AS (SELECT id FROM ranked WHERE rn = 1),
+            winners AS (
+                SELECT organization_id, id
+                FROM ranked
+                WHERE rn = 1
+            ),
             desired AS (
-                SELECT scoped_rows.id,
+                SELECT scoped_rows.organization_id,
+                       scoped_rows.id,
                        CASE WHEN winners.id IS NULL THEN 0 ELSE 1 END AS desired_is_latest
                 FROM scoped_rows
-                LEFT JOIN winners ON winners.id = scoped_rows.id
+                LEFT JOIN winners
+                  ON winners.organization_id = scoped_rows.organization_id
+                 AND winners.id = scoped_rows.id
             )
             UPDATE {table_name} AS target
             SET is_latest = desired.desired_is_latest
             FROM desired
-            WHERE desired.id = target.id
+            WHERE desired.organization_id = target.organization_id
+              AND desired.id = target.id
               AND target.is_latest IS DISTINCT FROM desired.desired_is_latest
             """,
             tuple(params),

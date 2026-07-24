@@ -40,6 +40,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.shared.paths import DATA_DIR, resolve_runtime_path
+from scripts.env_utils import load_env
 
 
 _SNAPSHOT_PREFIX = "biddingflow-backup"
@@ -48,17 +49,6 @@ _MAX_MANIFEST_FILES = 500_000
 _SNAPSHOT_NAME_PATTERN = re.compile(
     rf"^{re.escape(_SNAPSHOT_PREFIX)}-(\d{{8}}T\d{{6}}Z)$"
 )
-
-
-def _load_env() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def _postgres_binary(name: str) -> str:
@@ -114,6 +104,40 @@ def _require_env(name: str) -> str:
         print(f"ERROR: Environment variable {name} is required.", file=sys.stderr)
         sys.exit(1)
     return value
+
+
+def _assert_distinct_database_targets(
+    primary_url: str,
+    drill_url: str,
+    *,
+    connect=None,
+) -> None:
+    """Fail closed unless the two URLs resolve to different PostgreSQL databases."""
+
+    if connect is None:
+        import psycopg
+
+        connect = psycopg.connect
+
+    identities = []
+    for database_url in (primary_url, drill_url):
+        with connect(database_url) as connection:
+            identity = connection.execute(
+                """SELECT COALESCE(inet_server_addr()::text, ''),
+                          COALESCE(inet_server_port(), 0),
+                          oid::bigint
+                   FROM pg_database
+                   WHERE datname = current_database()"""
+            ).fetchone()
+        if not identity or len(identity) != 3:
+            raise RuntimeError("Cannot verify PostgreSQL database identity.")
+        identities.append(
+            (str(identity[0] or ""), int(identity[1] or 0), int(identity[2]))
+        )
+    if identities[0] == identities[1]:
+        raise RuntimeError(
+            "Restore drill target resolves to the same PostgreSQL database as primary."
+        )
 
 
 def _sha256(path: pathlib.Path) -> str:
@@ -183,6 +207,120 @@ def _copy_directory(source: pathlib.Path, target_root_name: str, staging: pathli
             "sha256": digest,
         })
     return entries
+
+
+def _directory_matches_snapshot(
+    source: pathlib.Path,
+    target_root_name: str,
+    entries: list[dict],
+) -> bool:
+    """Return whether the live tree still matches its staged copy."""
+
+    prefix = f"{target_root_name}/"
+    expected = {
+        entry["relativePath"][len(prefix):]: (
+            int(entry["sizeBytes"]),
+            str(entry["sha256"]),
+        )
+        for entry in entries
+        if str(entry.get("relativePath") or "").startswith(prefix)
+    }
+    actual_paths = (
+        {
+            path.relative_to(source).as_posix(): path
+            for path in source.rglob("*")
+            if path.is_file()
+        }
+        if source.is_dir()
+        else {}
+    )
+    if set(actual_paths) != set(expected):
+        return False
+    return all(
+        path.stat().st_size == expected[relative_path][0]
+        and hmac.compare_digest(
+            _sha256(path),
+            expected[relative_path][1],
+        )
+        for relative_path, path in actual_paths.items()
+    )
+
+
+def _stage_restore_assets(
+    snapshot_dir: pathlib.Path,
+    manifest: dict,
+    destinations: dict[str, pathlib.Path],
+) -> dict[pathlib.Path, pathlib.Path]:
+    staged = {}
+    try:
+        for prefix, destination in destinations.items():
+            entries = [
+                entry
+                for entry in manifest.get("files", [])
+                if str(entry.get("relativePath") or "").startswith(
+                    f"{prefix}/"
+                )
+            ]
+            if not entries:
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            stage = destination.parent / (
+                f".{destination.name}.restore-stage-{uuid4().hex}"
+            )
+            stage.mkdir(mode=0o700)
+            staged[destination] = stage
+            for entry in entries:
+                relative = entry["relativePath"][len(prefix) + 1:]
+                source = snapshot_dir / entry["relativePath"]
+                target = stage / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+        return staged
+    except Exception:
+        for stage in staged.values():
+            shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+
+def _activate_staged_assets(
+    staged: dict[pathlib.Path, pathlib.Path],
+) -> list[tuple[pathlib.Path, pathlib.Path | None]]:
+    activated = []
+    try:
+        for destination, stage in staged.items():
+            previous = None
+            if destination.exists():
+                previous = destination.parent / (
+                    f".{destination.name}.restore-previous-{uuid4().hex}"
+                )
+                destination.replace(previous)
+            activated.append((destination, previous))
+            stage.replace(destination)
+        return activated
+    except Exception:
+        _rollback_asset_swaps(activated)
+        for stage in staged.values():
+            if stage.exists():
+                shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+
+def _rollback_asset_swaps(
+    activated: list[tuple[pathlib.Path, pathlib.Path | None]],
+) -> None:
+    for destination, previous in reversed(activated):
+        if destination.exists():
+            shutil.rmtree(destination)
+        if previous is not None and previous.exists():
+            previous.replace(destination)
+
+
+def _finalize_asset_swaps(
+    activated: list[tuple[pathlib.Path, pathlib.Path | None]],
+) -> None:
+    for _destination, previous in activated:
+        if previous is not None and previous.exists():
+            shutil.rmtree(previous)
 
 
 def _write_manifest(staging: pathlib.Path, database_entry: dict, file_entries: list[dict], timestamp: datetime) -> None:
@@ -277,12 +415,20 @@ def cmd_create(args) -> int:
 
     try:
         print(f"Creating backup: {final_path}")
-        db_entry = _backup_database(database_url, staging_path)
         file_entries = []
         print(f"  Copying uploads from {upload_dir} ...")
         file_entries += _copy_directory(upload_dir, "uploads", staging_path)
         print(f"  Copying word-templates from {word_template_dir} ...")
         file_entries += _copy_directory(word_template_dir, "word-templates", staging_path)
+        db_entry = _backup_database(database_url, staging_path)
+        if not _directory_matches_snapshot(
+            upload_dir, "uploads", file_entries
+        ) or not _directory_matches_snapshot(
+            word_template_dir, "word-templates", file_entries
+        ):
+            raise RuntimeError(
+                "Assets changed while pg_dump was running; retry the backup."
+            )
         _write_manifest(staging_path, db_entry, file_entries, timestamp)
         staging_path.rename(final_path)
         removed_snapshots = _prune_local_snapshots(backup_dir)
@@ -320,39 +466,57 @@ def cmd_restore(args) -> int:
 
     dump_rel = manifest["database"]["relativePath"]
     dump_file = snapshot_dir / dump_rel
+    upload_dir = pathlib.Path(
+        os.environ.get("BIDDING_UPLOAD_DIR")
+        or str(resolve_runtime_path("BIDDING_UPLOAD_DIR"))
+    ).resolve()
+    word_template_dir = pathlib.Path(
+        os.environ.get("BIDDING_WORD_TEMPLATE_DIR")
+        or str(resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR"))
+    ).resolve()
+    staged_assets = {}
+    activated_assets = []
 
-    print(f"Restoring database from {dump_file} ...")
-    environment, database_name = _postgres_process(database_url)
-    result = subprocess.run(
-        [_postgres_binary("pg_restore"), "--clean", "--if-exists", "--no-owner",
-         "--dbname", database_name, str(dump_file)],
-        capture_output=True, text=True, env=environment,
-    )
+    try:
+        staged_assets = _stage_restore_assets(
+            snapshot_dir,
+            manifest,
+            {
+                "uploads": upload_dir,
+                "word-templates": word_template_dir,
+            },
+        )
+        activated_assets = _activate_staged_assets(staged_assets)
+        print(f"Restoring database from {dump_file} ...")
+        environment, database_name = _postgres_process(database_url)
+        result = subprocess.run(
+            [
+                _postgres_binary("pg_restore"),
+                "--clean",
+                "--if-exists",
+                "--no-owner",
+                "--single-transaction",
+                "--exit-on-error",
+                "--dbname",
+                database_name,
+                str(dump_file),
+            ],
+            capture_output=True, text=True, env=environment,
+        )
+    except Exception as exc:
+        _rollback_asset_swaps(activated_assets)
+        for stage in staged_assets.values():
+            if stage.exists():
+                shutil.rmtree(stage, ignore_errors=True)
+        print(f"ERROR: Restore failed: {exc}", file=sys.stderr)
+        return 1
     if result.returncode != 0:
+        _rollback_asset_swaps(activated_assets)
         print("ERROR: pg_restore failed:", file=sys.stderr)
         print(result.stderr, file=sys.stderr)
         return 1
+    _finalize_asset_swaps(activated_assets)
     print("  Database restored successfully.")
-
-    upload_dir = pathlib.Path(
-        os.environ.get("BIDDING_UPLOAD_DIR") or str(resolve_runtime_path("BIDDING_UPLOAD_DIR"))
-    ).resolve()
-    word_template_dir = pathlib.Path(
-        os.environ.get("BIDDING_WORD_TEMPLATE_DIR") or str(resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR"))
-    ).resolve()
-
-    for entry in manifest.get("files", []):
-        if entry["kind"] == "pg_dump":
-            continue
-        src = snapshot_dir / entry["relativePath"]
-        if entry["relativePath"].startswith("uploads/"):
-            dst = upload_dir / entry["relativePath"][len("uploads/"):]
-        elif entry["relativePath"].startswith("word-templates/"):
-            dst = word_template_dir / entry["relativePath"][len("word-templates/"):]
-        else:
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
 
     print("Restore complete.")
     return 0
@@ -421,14 +585,10 @@ def cmd_drill(args) -> int:
         return 1
     drill_url = _require_env("RESTORE_DRILL_DATABASE_URL")
     primary_url = _require_env("DATABASE_URL")
-    primary = urlparse(primary_url)
-    drill = urlparse(drill_url)
-    if (primary.hostname, primary.port or 5432, primary.path) == (
-        drill.hostname,
-        drill.port or 5432,
-        drill.path,
-    ):
-        print("ERROR: Restore drill database must be isolated from production.", file=sys.stderr)
+    try:
+        _assert_distinct_database_targets(primary_url, drill_url, connect=psycopg.connect)
+    except Exception as exc:
+        print(f"ERROR: Restore drill database isolation check failed: {exc}", file=sys.stderr)
         return 1
     environment, database_name = _postgres_process(drill_url)
     dump_file = snapshot / manifest["database"]["relativePath"]
@@ -438,6 +598,8 @@ def cmd_drill(args) -> int:
             "--clean",
             "--if-exists",
             "--no-owner",
+            "--single-transaction",
+            "--exit-on-error",
             "--dbname",
             database_name,
             str(dump_file),
@@ -610,7 +772,7 @@ def _build_parser():
 
 
 def main(argv=None) -> int:
-    _load_env()
+    load_env(ROOT)
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command == "create":

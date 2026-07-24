@@ -27,6 +27,7 @@ class DatabaseUpgradeContext:
     build_create_table_sql: object
     create_indexes_and_triggers: object
     assert_foreign_key_integrity: object
+    create_foreign_keys: object = None
 
 
 def _upgrade_to_v2_remove_mfa(cursor, context):
@@ -444,6 +445,88 @@ def _upgrade_to_v13_add_partial_package_result_status(cursor, context):
     )
 
 
+def _upgrade_to_v14_reconcile_canonical_schema(cursor, context):
+    """Bring databases upgraded through v11/v12 in line with a fresh schema."""
+
+    lifecycle_tables = (
+        "dot_xu_ly_phan_lo",
+        "dot_xu_ly_phan_lo_chi_tiet",
+        "nhom_phu_thuoc_phan_lo",
+        "nhom_phu_thuoc_phan_lo_thanh_vien",
+        "ho_so_nghiep_vu_lcnt",
+        "ho_so_nghiep_vu_lcnt_phan_lo",
+    )
+    if not callable(context.create_foreign_keys):
+        raise RuntimeError(
+            "Database upgrade v14 requires the canonical foreign-key builder."
+        )
+    if not callable(context.create_indexes_and_triggers):
+        raise RuntimeError(
+            "Database upgrade v14 requires the canonical schema-object builder."
+        )
+
+    cursor.execute(
+        """UPDATE danh_muc_trang_thai_hop_dong
+           SET owner_type = CASE
+               WHEN organization_id LIKE 'personal:%'
+               THEN 'personal' ELSE 'organization'
+           END
+           WHERE owner_type IS DISTINCT FROM CASE
+               WHEN organization_id LIKE 'personal:%'
+               THEN 'personal' ELSE 'organization'
+           END"""
+    )
+    cursor.execute(
+        """DO $$
+           DECLARE primary_key_name TEXT;
+           BEGIN
+             SELECT conname INTO primary_key_name
+             FROM pg_constraint
+             WHERE conrelid = 'danh_muc_trang_thai_hop_dong'::regclass
+               AND contype = 'p';
+             IF primary_key_name IS NULL
+                OR pg_get_constraintdef(
+                    (SELECT oid FROM pg_constraint
+                     WHERE conrelid = 'danh_muc_trang_thai_hop_dong'::regclass
+                       AND conname = primary_key_name)
+                ) <> 'PRIMARY KEY (organization_id, id)'
+             THEN
+               IF primary_key_name IS NOT NULL THEN
+                 EXECUTE format(
+                     'ALTER TABLE danh_muc_trang_thai_hop_dong DROP CONSTRAINT %I',
+                     primary_key_name
+                 );
+               END IF;
+               ALTER TABLE danh_muc_trang_thai_hop_dong
+                   ADD CONSTRAINT danh_muc_trang_thai_hop_dong_pkey
+                   PRIMARY KEY (organization_id, id);
+             END IF;
+           END $$"""
+    )
+    cursor.execute(
+        """ALTER TABLE danh_muc_trang_thai_hop_dong
+           DROP CONSTRAINT IF EXISTS
+               danh_muc_trang_thai_hop_dong_owner_scope_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE danh_muc_trang_thai_hop_dong
+           ADD CONSTRAINT danh_muc_trang_thai_hop_dong_owner_scope_check
+           CHECK (
+               (owner_type = 'personal' AND organization_id LIKE 'personal:%')
+               OR
+               (owner_type = 'organization'
+                AND organization_id NOT LIKE 'personal:%')
+           )"""
+    )
+    context.create_foreign_keys(
+        cursor,
+        lifecycle_tables,
+        if_not_exists=True,
+    )
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -500,6 +583,11 @@ UPGRADES = (
         13,
         "add_partial_package_result_status",
         _upgrade_to_v13_add_partial_package_result_status,
+    ),
+    DatabaseUpgrade(
+        14,
+        "reconcile_canonical_schema",
+        _upgrade_to_v14_reconcile_canonical_schema,
     ),
 )
 
