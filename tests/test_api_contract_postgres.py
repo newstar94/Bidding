@@ -60,6 +60,7 @@ def api_server(api_database_url: str):
     environment.update(
         {
             "DATABASE_URL": api_database_url,
+            "DATABASE_AUTO_MIGRATE": "true",
             "APP_ENV": "test",
             "APP_DEBUG": "False",
             "APP_SECURE_COOKIES": "False",

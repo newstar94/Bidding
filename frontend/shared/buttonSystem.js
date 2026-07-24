@@ -39,6 +39,9 @@ export function inferButtonIcon({ id = "", text = "", title = "" } = {}) {
   const signature = normalizeActionText(`${id} ${text} ${title}`);
   if (!signature) return "";
   const normalizedText = normalizeActionText(text);
+  if (/^(hoat dong|active)$/.test(normalizedText)) {
+    return "circle-check";
+  }
   if (
     /^(huy|cancel)(\s|$)/.test(normalizedText)
     && !/^(huy thau|cancel package)(\s|$)/.test(normalizedText)

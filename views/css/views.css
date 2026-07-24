@@ -1743,6 +1743,18 @@ table th {
 }
 .package-action-btn-group {
   margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.package-action-btn-group .btn {
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .package-action-btn-group {
+    grid-template-columns: 1fr;
+  }
 }
 .pricing-card.silver-card {
   border: 1px solid var(--border-color);

@@ -214,6 +214,8 @@ export function renderSuperAdminPanel() {
       const isLocked = pkg.isLocked || false;
       const lockBtnText = isLocked ? "Đã khóa" : "Hoạt động";
       const lockBtnClass = isLocked ? "btn-danger" : "btn-emerald";
+      const lockBtnIcon = isLocked ? "lock" : "circle-check";
+      const lockBtnTitle = isLocked ? "Mở khóa gói" : "Khóa gói";
       const editArgsKey = registerCommandArgs([String(pkg.id || "")]);
       const lockArgsKey = registerCommandArgs([String(pkg.id || "")]);
       return `
@@ -229,10 +231,15 @@ export function renderSuperAdminPanel() {
                         <li><i data-lucide="check"></i> Nhập dữ liệu thầu từ Excel</li>
                     </ul>
                     <div class="package-action-btn-group">
-                        <button class="btn btn-outline btn-full-width mb-2"
-                            data-bf-action="call" data-fn="editSystemPackage" data-arg-key="${editArgsKey}">Chỉnh sửa Gói</button>
-                        <button class="btn ${lockBtnClass} btn-full-width" id="btn-lock-${safeAttr(pkg.id)}"
-                            data-bf-action="call" data-fn="togglePackageLock" data-arg-key="${lockArgsKey}">${lockBtnText}</button>
+                        <button class="btn btn-outline"
+                            data-bf-action="call" data-fn="editSystemPackage" data-arg-key="${editArgsKey}">
+                            <i data-lucide="pencil" aria-hidden="true"></i>Chỉnh sửa Gói
+                        </button>
+                        <button class="btn ${lockBtnClass}" id="btn-lock-${safeAttr(pkg.id)}"
+                            title="${lockBtnTitle}" aria-label="${lockBtnTitle}: ${escapeHTML(pkg.name)}"
+                            data-bf-action="call" data-fn="togglePackageLock" data-arg-key="${lockArgsKey}">
+                            <i data-lucide="${lockBtnIcon}" aria-hidden="true"></i>${lockBtnText}
+                        </button>
                     </div>
                 </div>
             `;

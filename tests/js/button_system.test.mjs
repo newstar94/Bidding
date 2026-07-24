@@ -14,6 +14,7 @@ test("button icons follow the shared action vocabulary", () => {
   assert.equal(inferButtonIcon({ text: "Nhập từ Excel" }), "upload");
   assert.equal(inferButtonIcon({ text: "Chỉnh sửa kết quả" }), "pencil");
   assert.equal(inferButtonIcon({ text: "Xóa phần lô" }), "trash-2");
+  assert.equal(inferButtonIcon({ text: "Hoạt động" }), "circle-check");
 });
 
 test("button id can supply an icon when the label is generic", () => {

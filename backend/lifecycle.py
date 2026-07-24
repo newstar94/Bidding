@@ -35,6 +35,17 @@ from backend.startup import (
 )
 
 
+def database_auto_migration_enabled(environ=None):
+    """Return true only when schema mutation was explicitly opted into."""
+
+    environment = os.environ if environ is None else environ
+    return str(environment.get("DATABASE_AUTO_MIGRATE", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 async def _monitor_event_loop(application):
     try:
         interval = float(os.environ.get("EVENT_LOOP_LAG_INTERVAL_SECONDS", "1"))
@@ -212,12 +223,7 @@ async def application_lifespan(
             cleanup_stale_document_jobs()
         if is_production:
             build_index_response()
-        auto_migrate = str(
-            os.environ.get(
-                "DATABASE_AUTO_MIGRATE", "false" if is_production else "true"
-            )
-        ).strip().lower() in {"1", "true", "yes"}
-        if auto_migrate:
+        if database_auto_migration_enabled():
             initialize_database()
         verify_database_readiness(database, schema_version)
         if is_production:

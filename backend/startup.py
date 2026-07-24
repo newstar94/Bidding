@@ -524,8 +524,21 @@ def verify_database_readiness(database, expected_schema_version):
             raise StartupValidationError("Database schema metadata is missing.")
         actual_version = int(version_row[0])
         if actual_version != int(expected_schema_version):
+            expected_version = int(expected_schema_version)
+            if actual_version < expected_version:
+                guidance = (
+                    "Run `python scripts/manage_database.py` before starting "
+                    "the application."
+                )
+            else:
+                guidance = (
+                    "Deploy application code that supports this schema. "
+                    "Do not lower schema metadata or edit an applied migration."
+                )
             raise StartupValidationError(
-                f"Unexpected database schema version: {actual_version}."
+                "Database schema version mismatch: "
+                f"installed={actual_version}, required={expected_version}. "
+                f"{guidance}"
             )
 
         existing_tables = {
