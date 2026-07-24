@@ -89,7 +89,7 @@ export function setupWordTemplatesEvents() {
       { value: "ma_du_an", label: "Mã dự án đầu tư" },
       { value: "ten_ke_hoach", label: "Tên kế hoạch lựa chọn nhà thầu (LCNT)" },
       { value: "ten_du_an_du_toan", label: "Tên dự án / Dự toán mua sắm" },
-      { value: "loai_hinh_mua_sam", label: "Loại hình mua sắm (ví dụ: Xây lắp, Hàng hóa, Phi tư vấn...)" },
+      { value: "loai_hinh_mua_sam", label: "Loại kế hoạch (Dự án / Dự toán mua sắm)" },
       { value: "don_vi_trinh_cdt", label: "Đơn vị trình của chủ đầu tư" },
       { value: "ten_viet_tat_don_vi_trinh", label: "Tên viết tắt đơn vị trình của chủ đầu tư" },
       { value: "tong_muc_dau_tu", label: "Tổng mức đầu tư dự án / Tổng dự toán" },
@@ -114,9 +114,12 @@ export function setupWordTemplatesEvents() {
       { value: "phien_ban", label: "Phiên bản dữ liệu" }
     ],
     "goi_thau": [
+      { value: "qua_mang", label: "Hình thức thực hiện qua mạng" },
+      { value: "trong_nuoc_quoc_te", label: "Phạm vi trong nước / quốc tế" },
+      { value: "is_rebid", label: "Gói thầu tổ chức lại" },
       { value: "ma_goi_thau", label: "Mã gói thầu (Mã TBMT)" },
       { value: "ten_goi_thau", label: "Tên gói thầu" },
-      { value: "gia_goi_thau", label: "Giá dự toán gói thầu" },
+      { value: "gia_goi_thau", label: "Giá gói thầu" },
       { value: "hinh_thuc_lua_chon", label: "Hình thức lựa chọn nhà thầu" },
       { value: "phuong_thuc_lua_chon", label: "Phương thức lựa chọn nhà thầu" },
       { value: "loai_hop_dong", label: "Loại hợp đồng gói thầu" },
@@ -176,6 +179,7 @@ export function setupWordTemplatesEvents() {
       { value: "phien_ban", label: "Phiên bản dữ liệu" }
     ],
     "hop_dong": [
+      { value: "phien_ban", label: "Phiên bản dữ liệu" },
       { value: "ten_hop_dong", label: "Tên hợp đồng" },
       { value: "so_hop_dong", label: "Số hợp đồng" },
       { value: "ngay_ky", label: "Ngày ký hợp đồng" },
@@ -190,6 +194,7 @@ export function setupWordTemplatesEvents() {
       { value: "ngay_qd_chi_dinh", label: "Ngày quyết định chỉ định thầu" }
     ],
     "chuyen_gia": [
+      { value: "phien_ban", label: "Phiên bản dữ liệu" },
       { value: "ho_ten", label: "Họ tên chuyên gia" },
       { value: "so_cccd", label: "Số CCCD chuyên gia" },
       { value: "ngay_cap_cccd", label: "Ngày cấp CCCD chuyên gia" },
@@ -232,8 +237,6 @@ export function setupWordTemplatesEvents() {
       { value: "ho_ten", label: "Họ tên tài khoản" },
       { value: "vai_tro", label: "Vai trò tài khoản" },
       { value: "email", label: "Email tài khoản" },
-      { value: "ngay_bat_dau_goi", label: "Ngày bắt đầu gói dịch vụ" },
-      { value: "ngay_het_han_goi", label: "Ngày hết hạn gói dịch vụ" },
       { value: "da_xac_minh", label: "Đã xác minh tài khoản (0/1)" }
     ],
     "to_chuc": [

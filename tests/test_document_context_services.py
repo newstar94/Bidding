@@ -325,3 +325,53 @@ def test_custom_mapping_service_maps_lists_fields_fallbacks_and_identity_codes()
     mappings.lowercase_partner_identity_codes(context, rows)
     assert context["nha_thau"][0]["ma_nha_thau"] == "abc"
     assert context["mapped_code"] == "abc"
+
+
+def test_custom_mapping_service_keeps_package_and_version_lists_distinct():
+    context = {
+        "ke_hoach": {"ten_ke_hoach": "Hiện tại"},
+        "ke_hoach_versions": [
+            {"phien_ban": 0, "ten_ke_hoach": "Bản 0"},
+            {"phien_ban": 1, "ten_ke_hoach": "Bản 1"},
+        ],
+        "goi_thau": {"ten_goi_thau": "Gói hiện tại"},
+        "goi_thau_trong_ke_hoach": [{"ten_goi_thau": "Gói trong kế hoạch"}],
+        "goi_thau_versions": [
+            {"phien_ban": 0, "ten_goi_thau": "Gói bản 0"},
+            {"phien_ban": 1, "ten_goi_thau": "Gói bản 1"},
+        ],
+    }
+    rows = [
+        ("plan_versions", "ke_hoach_versions", ""),
+        ("packages", "goi_thau_trong_ke_hoach", ""),
+        ("package_versions", "goi_thau_versions", ""),
+        ("mapped_plan_name", "ke_hoach_lcnt", "ten_ke_hoach"),
+        ("mapped_package_name", "goi_thau", "ten_goi_thau"),
+    ]
+
+    mappings.apply_custom_mappings(context, rows)
+
+    assert len(context["plan_versions"]) == 2
+    assert [item["ten_goi_thau"] for item in context["packages"]] == ["Gói trong kế hoạch"]
+    assert len(context["package_versions"]) == 2
+    assert all("mapped_plan_name" in item for item in context["plan_versions"])
+    assert all("mapped_package_name" in item for item in context["package_versions"])
+
+
+def test_opening_information_list_uses_the_report_bid_collection():
+    context = {
+        "nha_thau": [
+            {"ma_dinh_danh": "NT-1"},
+            {"ma_dinh_danh": "NT-2"},
+        ]
+    }
+
+    mappings.apply_custom_mappings(
+        context,
+        [("opening_rows", "thong_tin_mo_thau", "")],
+    )
+
+    assert [item["ma_dinh_danh"] for item in context["opening_rows"]] == [
+        "NT-1",
+        "NT-2",
+    ]

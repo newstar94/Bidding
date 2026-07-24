@@ -1,15 +1,16 @@
 import hashlib
 
-from .field_manifest import build_field_manifest
+from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
 from backend.shared.workspace_scope import personal_scope_owner_id
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 8
+WORD_DEFAULT_MAPPINGS_VERSION = 12
 
 
 WORD_SINGLE_SOURCES = {
     "chu_dau_tu": [
+        "phien_ban",
         "ma_chu_dau_tu",
         "ten_chu_dau_tu",
         "ngay_ap_dung",
@@ -37,7 +38,6 @@ WORD_SINGLE_SOURCES = {
         "don_vi_trinh_cdt",
         "ten_viet_tat_don_vi_trinh",
         "tong_muc_dau_tu",
-        "is_tong_muc_tu_dong",
         "ngay_phe_duyet",
         "quyet_dinh_phe_duyet",
         "thoi_gian_dang_tai",
@@ -96,8 +96,14 @@ WORD_SINGLE_SOURCES = {
         "ngay_bao_cao_tham_dinh_hsmt",
         "so_to_trinh_hsmt",
         "ngay_trinh_hsmt",
+        "ngay_moi_doi_chieu",
+        "ngay_doi_chieu",
+        "qua_mang",
+        "trong_nuoc_quoc_te",
+        "is_rebid",
     ],
     "nha_thau": [
+        "phien_ban",
         "ma_nha_thau",
         "ten_nha_thau",
         "ngay_ap_dung",
@@ -144,6 +150,7 @@ WORD_SINGLE_SOURCES = {
         "nguyen_nhan_khong_dat_ky_thuat",
     ],
     "chuyen_gia": [
+        "phien_ban",
         "ho_ten",
         "so_chung_chi",
         "ngay_cap_chung_chi",
@@ -155,8 +162,11 @@ WORD_SINGLE_SOURCES = {
         "ten_anh_chung_chi",
         "anh_chu_ky",
         "ten_anh_chu_ky",
+        "chuc_vu",
+        "cong_viec",
     ],
     "hop_dong": [
+        "phien_ban",
         "ten_hop_dong",
         "so_hop_dong",
         "ngay_ky",
@@ -176,9 +186,6 @@ WORD_SINGLE_SOURCES = {
         "vai_tro",
         "email",
         "anh_dai_dien",
-        "goi_dich_vu_id",
-        "ngay_bat_dau_goi",
-        "ngay_het_han_goi",
         "da_xac_minh",
     ],
     "to_chuc": [
@@ -227,11 +234,10 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("ke_hoach_lcnt", "ten_ke_hoach"): "ten_kh",
     ("ke_hoach_lcnt", "ma_du_an"): "ma_du_an",
     ("ke_hoach_lcnt", "ten_du_an_du_toan"): "ten_du_an_du_toan",
-    ("ke_hoach_lcnt", "loai_hinh_mua_sam"): "loai_mua_sam",
+    ("ke_hoach_lcnt", "loai_hinh_mua_sam"): "loai_ke_hoach",
     ("ke_hoach_lcnt", "don_vi_trinh_cdt"): "don_vi_trinh_cdt",
     ("ke_hoach_lcnt", "ten_viet_tat_don_vi_trinh"): "ten_tat_dv_trinh",
-    ("ke_hoach_lcnt", "tong_muc_dau_tu"): "tong_muc_dau_tu",
-    ("ke_hoach_lcnt", "is_tong_muc_tu_dong"): "tong_muc_tu_dong",
+    ("ke_hoach_lcnt", "tong_muc_dau_tu"): "tong_muc_dau_tu_du_toan",
     ("ke_hoach_lcnt", "ngay_phe_duyet"): "ngay_phe_duyet_kh",
     ("ke_hoach_lcnt", "quyet_dinh_phe_duyet"): "qd_phe_duyet_kh",
     ("ke_hoach_lcnt", "thoi_gian_dang_tai"): "tg_dang_tai_kh",
@@ -282,6 +288,8 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("goi_thau", "ngay_bao_cao_tham_dinh_hsmt"): "ngay_bc_tham_dinh_hsmt",
     ("goi_thau", "so_to_trinh_hsmt"): "so_ttr_hsmt",
     ("goi_thau", "ngay_trinh_hsmt"): "ngay_trinh_hsmt",
+    ("goi_thau", "ngay_moi_doi_chieu"): "ngay_moi_doi_chieu",
+    ("goi_thau", "ngay_doi_chieu"): "ngay_doi_chieu",
 
     ("nha_thau", "ma_nha_thau"): "ma_nt",
     ("nha_thau", "ten_nha_thau"): "ten_nt",
@@ -338,6 +346,8 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("chuyen_gia", "ten_anh_chung_chi"): "ten_anh_chung_chi_cg",
     ("chuyen_gia", "anh_chu_ky"): "anh_chu_ky_cg",
     ("chuyen_gia", "ten_anh_chu_ky"): "ten_anh_chu_ky_cg",
+    ("chuyen_gia", "chuc_vu"): "chuc_vu_cg",
+    ("chuyen_gia", "cong_viec"): "cong_viec_cg",
 
     ("hop_dong", "ten_hop_dong"): "ten_hd",
     ("hop_dong", "so_hop_dong"): "so_hd",
@@ -354,9 +364,6 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("tai_khoan", "ho_ten"): "tk_ho_ten",
     ("tai_khoan", "vai_tro"): "tk_vai_tro",
     ("tai_khoan", "anh_dai_dien"): "tk_anh_dai_dien",
-    ("tai_khoan", "goi_dich_vu_id"): "tk_goi_dich_vu",
-    ("tai_khoan", "ngay_bat_dau_goi"): "tk_ngay_bat_dau_goi",
-    ("tai_khoan", "ngay_het_han_goi"): "tk_ngay_het_han_goi",
     ("tai_khoan", "da_xac_minh"): "tk_da_xac_minh",
 
     ("to_chuc", "ten_to_chuc"): "ten_to_chuc",
@@ -368,11 +375,13 @@ WORD_SINGLE_NAME_OVERRIDES = {
 
 
 WORD_LIST_MAPPINGS = [
-    ("ds_gt", "goi_thau", "Danh sach goi thau cua ke hoach"),
+    ("ds_gt", "goi_thau_trong_ke_hoach", "Danh sach goi thau cua ke hoach"),
+    ("ds_phien_ban_gt", "goi_thau_versions", "Danh sach phien ban cua goi thau"),
+    ("ds_phien_ban_kh", "ke_hoach_versions", "Danh sach phien ban cua ke hoach LCNT"),
     ("ds_to_chuyen_gia", "to_chuyen_gia", "To chuyen gia cua goi thau"),
     ("ds_to_tham_dinh", "to_tham_dinh", "To tham dinh cua goi thau"),
     ("ds_mo_thau", "thong_tin_mo_thau", "Danh sach thong tin mo thau"),
-    ("ds_phan_lo", "ds_phan_lo", "Danh sach phan lo tong hop"),
+    ("ds_tat_ca_phan_lo", "ds_phan_lo", "Danh sach phan lo tong hop"),
     ("ds_lo_co_nt", "ds_phan_lo_co_nha_thau_tham_du", "Phan lo co nha thau tham du"),
     ("ds_lo_khong_nt", "ds_phan_lo_khong_co_nha_thau_tham_du", "Phan lo khong co nha thau tham du"),
     ("ds_lo_co_nt_trung", "ds_phan_lo_co_nha_thau_trung", "Phan lo co nha thau trung thau"),
@@ -428,7 +437,10 @@ def build_default_word_mappings():
         for column in columns:
             field = field_manifest["tables"].get(source_table, {}).get("fields", {}).get(column)
             if not field:
-                continue
+                field = {
+                    "format": field_format(column),
+                    "label": field_label(column),
+                }
             mappings.append({
                 "ten_bien": _default_single_name(source_table, column),
                 "source_table": source_table,
@@ -480,6 +492,25 @@ def ensure_default_word_mappings(cursor, organization_id):
     )
     seed_row = cursor.fetchone()
     marker_exists = bool(seed_row and int(seed_row[0]) >= WORD_DEFAULT_MAPPINGS_VERSION)
+
+    if not marker_exists:
+        cursor.execute(
+            """DELETE FROM cau_hinh_bien_word
+               WHERE organization_id = ?
+                 AND ten_bien = 'ds_kh'
+                 AND source_table = 'ke_hoach_lcnt'
+                 AND source_column = ''
+                 AND mo_ta LIKE ?""",
+            (organization_id, "Danh sach mac dinh tu schema he thong:%"),
+        )
+        cursor.execute(
+            """DELETE FROM cau_hinh_bien_word
+               WHERE organization_id = ?
+                 AND source_table = 'ke_hoach_lcnt'
+                 AND source_column = 'is_tong_muc_tu_dong'
+                 AND mo_ta LIKE ?""",
+            (organization_id, "Bien don mac dinh tu schema he thong:%"),
+        )
 
     inserted = 0
     for mapping in build_default_word_mappings():

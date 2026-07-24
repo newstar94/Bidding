@@ -313,10 +313,12 @@ _REPORT_LOT_ROOTS = {
 
 PLAN_ROOT_SPECS = {
     "ke_hoach": "plan",
+    "ke_hoach_versions": "plan_list",
     "user": "user",
     "to_chuc": "organization",
     "goi_dich_vu": "service_package",
     "goi_thau": "package_list",
+    "goi_thau_trong_ke_hoach": "package_list",
     "chu_dau_tu": "investor",
     **{key: "scalar" for key in _COMMON_SCALAR_ROOTS},
 }
@@ -324,6 +326,7 @@ REPORT_ROOT_SPECS = {
     "goi_thau": "package",
     "goi_thau_versions": "package_list",
     "ke_hoach": "plan",
+    "ke_hoach_versions": "plan_list",
     "user": "user",
     "to_chuc": "organization",
     "goi_dich_vu": "service_package",
@@ -396,6 +399,9 @@ _SOURCE_FIELDS = {
     "cv_chua_du_dieu_kien_list": _PLAN_WORK_FIELDS,
 }
 _LIST_ONLY_SOURCES = {
+    "ke_hoach_versions",
+    "goi_thau_trong_ke_hoach",
+    "goi_thau_versions",
     "ds_nha_thau_tham_du",
     "ds_nha_thau_trung_thau",
     "ds_nha_thau_truot_thau",
@@ -412,7 +418,9 @@ _LIST_ONLY_SOURCES = {
 _CONTEXT_SOURCE_FIELDS = _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS
 _PLAN_MAPPING_SOURCES = {
     "ke_hoach_lcnt",
+    "ke_hoach_versions",
     "goi_thau",
+    "goi_thau_trong_ke_hoach",
     "chu_dau_tu",
     "tai_khoan",
     "to_chuc",
@@ -427,7 +435,10 @@ _PLAN_MAPPING_SOURCES = {
 
 _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "ke_hoach_lcnt": "plan",
+    "ke_hoach_versions": "plan",
     "goi_thau": "package",
+    "goi_thau_trong_ke_hoach": "package",
+    "goi_thau_versions": "package",
     "nha_thau": "bid",
     "thong_tin_mo_thau": "bid",
     "chuyen_gia": "expert",
@@ -619,6 +630,10 @@ def validate_mapping_definition(
         if column:
             raise ValueError("Nguồn danh sách Word không hỗ trợ cột trực tiếp.")
         return
+    if table == "ke_hoach_lcnt" and not column:
+        raise ValueError(
+            "Kế hoạch LCNT hiện tại là thực thể đơn, không phải danh sách."
+        )
     allowed_fields = _SOURCE_FIELDS.get(table)
     if allowed_fields is None:
         raise ValueError("Bảng nguồn Word không được phép.")

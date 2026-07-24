@@ -103,7 +103,7 @@ export function renderDictionary(group) {
         "ma_ke_hoach": "Mã kế hoạch lựa chọn nhà thầu (LCNT)",
         "ma_du_an": "Mã dự án đầu tư",
         "ten_du_an_du_toan": "Tên dự án / Dự toán mua sắm",
-        "loai_hinh_mua_sam": "Loại hình mua sắm (ví dụ: Xây lắp, Hàng hóa, Phi tư vấn...)",
+        "loai_hinh_mua_sam": "Loại kế hoạch (Dự án / Dự toán mua sắm)",
         "don_vi_trinh_cdt": "Đơn vị trình của chủ đầu tư",
         "ten_viet_tat_don_vi_trinh": "Tên viết tắt đơn vị trình của chủ đầu tư",
         "tong_muc_dau_tu": "Tổng mức đầu tư dự án / Tổng dự toán",
@@ -130,7 +130,7 @@ export function renderDictionary(group) {
       "goi_thau": {
         "ten_goi_thau": "Tên gói thầu",
         "ma_goi_thau": "Mã gói thầu (Mã TBMT)",
-        "gia_goi_thau": "Giá dự toán gói thầu",
+        "gia_goi_thau": "Giá gói thầu",
         "hinh_thuc_lua_chon": "Hình thức lựa chọn nhà thầu",
         "phuong_thuc_lua_chon": "Phương thức lựa chọn nhà thầu",
         "loai_hop_dong": "Loại hợp đồng gói thầu",
@@ -247,11 +247,7 @@ export function renderDictionary(group) {
         "ten_dang_nhap": "Tên đăng nhập hệ thống",
         "ho_ten": "Họ tên tài khoản",
         "email": "Email tài khoản",
-        "so_dien_thoai": "Số điện thoại tài khoản",
-        "chuc_vu": "Chức vụ",
         "vai_tro": "Vai trò tài khoản",
-        "ngay_bat_dau_goi": "Ngày bắt đầu gói dịch vụ",
-        "ngay_het_han_goi": "Ngày hết hạn gói dịch vụ",
         "da_xac_minh": "Đã xác minh tài khoản (0/1)"
       },
       "to_chuc": {

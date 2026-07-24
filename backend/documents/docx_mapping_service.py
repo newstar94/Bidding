@@ -40,7 +40,11 @@ def lowercase_partner_identity_codes(context, mappings_rows=()):
 def apply_custom_mappings(context, mappings_rows):
     table_to_context = {
         'ke_hoach_lcnt': ['ke_hoach'],
-        'goi_thau': ['goi_thau', 'goi_thau_versions', 'goi_thau'],
+        'ke_hoach_versions': ['ke_hoach_versions'],
+        'goi_thau': ['goi_thau'],
+        'goi_thau_trong_ke_hoach': ['goi_thau_trong_ke_hoach'],
+        'goi_thau_versions': ['goi_thau_versions'],
+        'thong_tin_mo_thau': ['nha_thau'],
         'nha_thau': ['nha_thau'],
         'chu_dau_tu': ['chu_dau_tu'],
         'hop_dong': ['hop_dong'],
@@ -155,8 +159,11 @@ def apply_custom_mappings(context, mappings_rows):
 
 
             entity_keys = {
-                'ke_hoach_lcnt': ['ke_hoach'],
+                'ke_hoach_lcnt': ['ke_hoach', 'ke_hoach_versions'],
+                'ke_hoach_versions': ['ke_hoach_versions'],
                 'goi_thau': ['goi_thau', 'goi_thau_versions'],
+                'goi_thau_trong_ke_hoach': ['goi_thau_trong_ke_hoach'],
+                'goi_thau_versions': ['goi_thau_versions'],
                 'nha_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids'],
                 'thong_tin_mo_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids'],
                 'ds_nha_thau_tham_du': ['ds_nha_thau_tham_du'],
@@ -228,6 +235,9 @@ def apply_custom_mappings(context, mappings_rows):
                 if not l_col or l_col == '*' or l_col == '':
                     is_match = (
                         (l_table == src_table)
+                        or (src_table == 'ke_hoach_lcnt' and l_table == 'ke_hoach_versions')
+                        or (src_table == 'goi_thau' and l_table == 'goi_thau_versions')
+                        or (src_table == 'goi_thau' and l_table == 'goi_thau_trong_ke_hoach')
                         or (src_table in ('nha_thau', 'thong_tin_mo_thau') and l_table in ('nha_thau', 'thong_tin_mo_thau'))
                         or (src_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh') and l_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'))
                         or (src_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list') and l_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list'))

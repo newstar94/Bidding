@@ -767,23 +767,14 @@ export const FIELD_METADATA_BY_TABLE = {
       "label": "Don vi trinh cdt",
       "wordVariable": "don_vi_trinh_cdt"
     },
-    "is_tong_muc_tu_dong": {
-      "column": "is_tong_muc_tu_dong",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "isTongMucTuDong",
-      "label": "Is tong muc tu \u0111\u00f3ng",
-      "wordVariable": "tong_muc_tu_dong"
-    },
     "loai_hinh_mua_sam": {
       "column": "loai_hinh_mua_sam",
       "dataType": "string",
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "loaiHinhMuaSam",
-      "label": "Loai hinh mua sam",
-      "wordVariable": "loai_mua_sam"
+      "label": "Loại kế hoạch (Dự án / Dự toán mua sắm)",
+      "wordVariable": "loai_ke_hoach"
     },
     "ma_du_an": {
       "column": "ma_du_an",
@@ -989,8 +980,8 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "currency",
       "jsonKey": "tongMucDauTu",
-      "label": "Tong muc \u0111\u1ea5u tu",
-      "wordVariable": "tong_muc_dau_tu"
+      "label": "Tổng mức đầu tư dự án / Tổng dự toán",
+      "wordVariable": "tong_muc_dau_tu_du_toan"
     }
   },
   "nha_thau": {
@@ -1328,6 +1319,9 @@ export const FIELD_METADATA_BY_TABLE = {
 };
 
 export const WORD_SOURCE_TABLE_LABELS = Object.freeze({
+  ke_hoach_versions: "Danh sách phiên bản của kế hoạch LCNT",
+  goi_thau_trong_ke_hoach: "Danh sách gói thầu trong kế hoạch",
+  goi_thau_versions: "Danh sách phiên bản của gói thầu",
   chu_dau_tu: "Chủ đầu tư",
   ke_hoach_lcnt: "Kế hoạch LCNT",
   goi_thau: "Gói thầu",
@@ -1382,168 +1376,98 @@ export function getWordColumnLabel(tableName, columnName) {
 export const DEFAULT_WORD_VARIABLES = [
   {
     "format": "text",
-    "label": "T\u00ean g\u00f3i",
-    "name": "ten_goi_dv",
-    "sourceColumn": "ten_goi",
-    "sourceTable": "goi_dich_vu"
-  },
-  {
-    "format": "currency",
-    "label": "Gi\u00e1 ca",
-    "name": "gia_goi_dv",
-    "sourceColumn": "gia_ca",
-    "sourceTable": "goi_dich_vu"
-  },
-  {
-    "format": "text",
-    "label": "Han muc nhan su",
-    "name": "han_muc_nhan_su_dv",
-    "sourceColumn": "han_muc_nhan_su",
-    "sourceTable": "goi_dich_vu"
-  },
-  {
-    "format": "text",
-    "label": "M\u1edf ta",
-    "name": "mo_ta_goi_dv",
-    "sourceColumn": "mo_ta",
-    "sourceTable": "goi_dich_vu"
-  },
-  {
-    "format": "text",
-    "label": "T\u00ean \u0111\u0103ng nhap",
-    "name": "tk_ten_dang_nhap",
-    "sourceColumn": "ten_dang_nhap",
-    "sourceTable": "tai_khoan"
-  },
-  {
-    "format": "text",
-    "label": "Ho t\u00ean",
-    "name": "tk_ho_ten",
-    "sourceColumn": "ho_ten",
-    "sourceTable": "tai_khoan"
-  },
-  {
-    "format": "text",
-    "label": "Vai tro",
-    "name": "tk_vai_tro",
-    "sourceColumn": "vai_tro",
-    "sourceTable": "tai_khoan"
-  },
-  {
-    "format": "text",
-    "label": "Email",
-    "name": "tk_email",
-    "sourceColumn": "email",
-    "sourceTable": "tai_khoan"
-  },
-  {
-    "format": "text",
-    "label": "\u1ea2nh \u0111\u1ea1i \u0111i\u1ec7n",
-    "name": "tk_anh_dai_dien",
-    "sourceColumn": "anh_dai_dien",
-    "sourceTable": "tai_khoan"
-  },
-  {
-    "format": "text",
-    "label": "Da xac minh",
-    "name": "tk_da_xac_minh",
-    "sourceColumn": "da_xac_minh",
-    "sourceTable": "tai_khoan"
-  },
-  {
-    "format": "text",
-    "label": "Số tờ trình dự toán",
-    "name": "so_ttr_du_toan",
-    "sourceColumn": "so_to_trinh_du_toan",
-    "sourceTable": "ke_hoach_lcnt"
-  },
-  {
-    "format": "date",
-    "label": "Ng\u00e0y ap dung",
-    "name": "ngay_ap_dung_cdt",
-    "sourceColumn": "ngay_ap_dung",
+    "label": "Phien ban",
+    "name": "cdt_phien_ban",
+    "sourceColumn": "phien_ban",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "M\u00e3 chu \u0111\u1ea5u tu",
+    "label": "Mã chu đấu tu",
     "name": "ma_cdt",
     "sourceColumn": "ma_chu_dau_tu",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "T\u00ean chu \u0111\u1ea5u tu",
+    "label": "Tên chu đấu tu",
     "name": "ten_cdt",
     "sourceColumn": "ten_chu_dau_tu",
     "sourceTable": "chu_dau_tu"
   },
   {
+    "format": "date",
+    "label": "Ngày ap dung",
+    "name": "ngay_ap_dung_cdt",
+    "sourceColumn": "ngay_ap_dung",
+    "sourceTable": "chu_dau_tu"
+  },
+  {
     "format": "text",
-    "label": "T\u00ean viet tat",
+    "label": "Tên viet tat",
     "name": "ten_tat_cdt",
     "sourceColumn": "ten_viet_tat",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "M\u00e3 s\u1ed1 thue",
+    "label": "Mã số thue",
     "name": "mst_cdt",
     "sourceColumn": "ma_so_thue",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Ch\u1ee9c vu ng\u01b0\u1eddi dung \u0111\u1ea5u",
+    "label": "Chức vu người dung đấu",
     "name": "chuc_vu_nguoi_dung_dau_cdt",
     "sourceColumn": "chuc_vu_nguoi_dung_dau",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "\u0110\u1ea1i \u0111i\u1ec7n cdt",
+    "label": "Đại điện cdt",
     "name": "dai_dien_cdt",
     "sourceColumn": "dai_dien_cdt",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Ch\u1ee9c vu \u0111\u1ea1i \u0111i\u1ec7n",
+    "label": "Chức vu đại điện",
     "name": "chuc_vu_dai_dien_cdt",
     "sourceColumn": "chuc_vu_dai_dien",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Danh x\u01b0ng",
+    "label": "Danh xưng",
     "name": "danh_xung_cdt",
     "sourceColumn": "danh_xung",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "\u0110\u1ecba ch\u1ec9",
+    "label": "Địa chỉ",
     "name": "dia_chi_cdt",
     "sourceColumn": "dia_chi",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 \u0111i\u1ec7n thoai",
+    "label": "Số điện thoai",
     "name": "sdt_cdt",
     "sourceColumn": "so_dien_thoai",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 t\u00e0i khoan",
+    "label": "Số tài khoan",
     "name": "stk_cdt",
     "sourceColumn": "so_tai_khoan",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Noi m\u1edf t\u00e0i khoan",
+    "label": "Noi mở tài khoan",
     "name": "noi_mo_tk_cdt",
     "sourceColumn": "noi_mo_tai_khoan",
     "sourceTable": "chu_dau_tu"
@@ -1557,7 +1481,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "M\u00e3 qhns",
+    "label": "Mã qhns",
     "name": "cdt_ma_qhns",
     "sourceColumn": "ma_qhns",
     "sourceTable": "chu_dau_tu"
@@ -1571,14 +1495,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "M\u00e3 k\u1ebf hoach",
+    "label": "Mã kế hoach",
     "name": "ma_kh",
     "sourceColumn": "ma_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "M\u00e3 d\u1ef1 an",
+    "label": "Mã dự an",
     "name": "ma_du_an",
     "sourceColumn": "ma_du_an",
     "sourceTable": "ke_hoach_lcnt"
@@ -1592,22 +1516,22 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "T\u00ean k\u1ebf hoach",
+    "label": "Tên kế hoach",
     "name": "ten_kh",
     "sourceColumn": "ten_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "T\u00ean d\u1ef1 an d\u1ef1 toan",
+    "label": "Tên dự an dự toan",
     "name": "ten_du_an_du_toan",
     "sourceColumn": "ten_du_an_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Loai hinh mua sam",
-    "name": "loai_mua_sam",
+    "label": "Loại kế hoạch (Dự án / Dự toán mua sắm)",
+    "name": "loai_ke_hoach",
     "sourceColumn": "loai_hinh_mua_sam",
     "sourceTable": "ke_hoach_lcnt"
   },
@@ -1620,56 +1544,35 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "T\u00ean viet tat don vi trinh",
+    "label": "Tên viet tat don vi trinh",
     "name": "ten_tat_dv_trinh",
     "sourceColumn": "ten_viet_tat_don_vi_trinh",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "currency",
-    "label": "Tong muc \u0111\u1ea5u tu",
-    "name": "tong_muc_dau_tu",
+    "label": "Tổng mức đầu tư dự án / Tổng dự toán",
+    "name": "tong_muc_dau_tu_du_toan",
     "sourceColumn": "tong_muc_dau_tu",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
-    "format": "text",
-    "label": "Is tong muc tu \u0111\u00f3ng",
-    "name": "tong_muc_tu_dong",
-    "sourceColumn": "is_tong_muc_tu_dong",
-    "sourceTable": "ke_hoach_lcnt"
-  },
-  {
-    "format": "text",
-    "label": "Số tờ trình kế hoạch",
-    "name": "so_ttr_ke_hoach",
-    "sourceColumn": "so_to_trinh_ke_hoach",
-    "sourceTable": "ke_hoach_lcnt"
-  },
-  {
-    "format": "text",
-    "label": "Số tờ trình dự toán và kế hoạch",
-    "name": "so_ttr_du_toan_ke_hoach",
-    "sourceColumn": "so_to_trinh_du_toan_ke_hoach",
-    "sourceTable": "ke_hoach_lcnt"
-  },
-  {
     "format": "date",
-    "label": "Ng\u00e0y ph\u00ea duyet",
+    "label": "Ngày phê duyet",
     "name": "ngay_phe_duyet_kh",
     "sourceColumn": "ngay_phe_duyet",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Quy\u1ebft dinh ph\u00ea duyet",
+    "label": "Quyết dinh phê duyet",
     "name": "qd_phe_duyet_kh",
     "sourceColumn": "quyet_dinh_phe_duyet",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "datetime",
-    "label": "Th\u1eddi gian \u0111\u0103ng t\u00e0i",
+    "label": "Thời gian đăng tài",
     "name": "tg_dang_tai_kh",
     "sourceColumn": "thoi_gian_dang_tai",
     "sourceTable": "ke_hoach_lcnt"
@@ -1683,14 +1586,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian d\u1ef1 an",
+    "label": "Thời gian dự an",
     "name": "tg_du_an",
     "sourceColumn": "thoi_gian_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "\u0110\u1ecba diem quy m\u1edf",
+    "label": "Địa diem quy mở",
     "name": "dia_diem_quy_mo",
     "sourceColumn": "dia_diem_quy_mo",
     "sourceTable": "ke_hoach_lcnt"
@@ -1704,182 +1607,84 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 an",
+    "label": "Số qd phê duyet dự an",
     "name": "so_qd_du_an",
     "sourceColumn": "so_qd_phe_duyet_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y qd ph\u00ea duyet d\u1ef1 an",
+    "label": "Ngày qd phê duyet dự an",
     "name": "ngay_qd_du_an",
     "sourceColumn": "ngay_qd_phe_duyet_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Co quan ph\u00ea duyet d\u1ef1 an",
+    "label": "Co quan phê duyet dự an",
     "name": "cq_phe_duyet_du_an",
     "sourceColumn": "co_quan_phe_duyet_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Ph\u00ea duyet",
+    "label": "Phê duyet",
     "name": "nguoi_phe_duyet_kh",
     "sourceColumn": "phe_duyet",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
+    "format": "text",
+    "label": "Số to trinh dự toan",
+    "name": "so_ttr_du_toan",
+    "sourceColumn": "so_to_trinh_du_toan",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
     "format": "date",
-    "label": "Ng\u00e0y trinh d\u1ef1 toan",
+    "label": "Ngày trinh dự toan",
     "name": "ngay_trinh_du_toan",
     "sourceColumn": "ngay_trinh_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y ph\u00ea duyet d\u1ef1 toan",
+    "label": "Ngày phê duyet dự toan",
     "name": "ngay_phe_duyet_du_toan",
     "sourceColumn": "ngay_phe_duyet_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 toan",
+    "label": "Số qd phê duyet dự toan",
     "name": "so_qd_du_toan",
     "sourceColumn": "so_qd_phe_duyet_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
+    "format": "text",
+    "label": "Số to trinh kế hoach",
+    "name": "so_ttr_ke_hoach",
+    "sourceColumn": "so_to_trinh_ke_hoach",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
+    "format": "text",
+    "label": "Số to trinh dự toan kế hoach",
+    "name": "so_ttr_du_toan_ke_hoach",
+    "sourceColumn": "so_to_trinh_du_toan_ke_hoach",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
     "format": "date",
-    "label": "Ng\u00e0y trinh k\u1ebf hoach",
+    "label": "Ngày trinh kế hoach",
     "name": "ngay_trinh_kh",
     "sourceColumn": "ngay_trinh_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
-    "format": "date",
-    "label": "Ng\u00e0y ap dung",
-    "name": "ngay_ap_dung_nt",
-    "sourceColumn": "ngay_ap_dung",
-    "sourceTable": "nha_thau"
-  },
-  {
     "format": "text",
-    "label": "M\u00e3 nh\u00e0 th\u1ea7u",
-    "name": "ma_nt",
-    "sourceColumn": "ma_nha_thau",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "T\u00ean nh\u00e0 th\u1ea7u",
-    "name": "ten_nt",
-    "sourceColumn": "ten_nha_thau",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "T\u00ean viet tat",
-    "name": "ten_tat_nt",
-    "sourceColumn": "ten_viet_tat",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "Loai nh\u00e0 th\u1ea7u",
-    "name": "loai_nt",
-    "sourceColumn": "loai_nha_thau",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "M\u00e3 s\u1ed1 thue",
-    "name": "mst_nt",
-    "sourceColumn": "ma_so_thue",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "Ng\u01b0\u1eddi \u0111\u1ea1i \u0111i\u1ec7n",
-    "name": "dai_dien_nt",
-    "sourceColumn": "nguoi_dai_dien",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "Ch\u1ee9c vu \u0111\u1ea1i \u0111i\u1ec7n",
-    "name": "chuc_vu_dai_dien_nt",
-    "sourceColumn": "chuc_vu_dai_dien",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "Danh x\u01b0ng",
-    "name": "danh_xung_nt",
-    "sourceColumn": "danh_xung",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "S\u1ed1 \u0111i\u1ec7n thoai",
-    "name": "sdt_nt",
-    "sourceColumn": "so_dien_thoai",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "Email",
-    "name": "email_nt",
-    "sourceColumn": "email",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "\u0110\u1ecba ch\u1ec9",
-    "name": "dia_chi_nt",
-    "sourceColumn": "dia_chi",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "S\u1ed1 t\u00e0i khoan",
-    "name": "stk_nt",
-    "sourceColumn": "so_tai_khoan",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "Noi m\u1edf t\u00e0i khoan",
-    "name": "noi_mo_tk_nt",
-    "sourceColumn": "noi_mo_tai_khoan",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "M\u00e3 ngan hang",
-    "name": "ma_ngan_hang_nt",
-    "sourceColumn": "ma_ngan_hang",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "\u1ea2nh \u0111\u1ea5u",
-    "name": "anh_dau_nt",
-    "sourceColumn": "anh_dau",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "T\u00ean \u1ea3nh \u0111\u1ea5u",
-    "name": "ten_anh_dau_nt",
-    "sourceColumn": "ten_anh_dau",
-    "sourceTable": "nha_thau"
-  },
-  {
-    "format": "text",
-    "label": "M\u00e3 g\u00f3i th\u1ea7u",
+    "label": "Mã gói thầu",
     "name": "ma_gt",
     "sourceColumn": "ma_goi_thau",
     "sourceTable": "goi_thau"
@@ -1893,42 +1698,42 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "T\u00ean g\u00f3i th\u1ea7u",
+    "label": "Tên gói thầu",
     "name": "ten_gt",
     "sourceColumn": "ten_goi_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "currency",
-    "label": "Gi\u00e1 g\u00f3i th\u1ea7u",
+    "label": "Giá gói thầu",
     "name": "gia_gt",
     "sourceColumn": "gia_goi_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Loai h\u1ee3p \u0111\u00f3ng",
+    "label": "Loai hợp đóng",
     "name": "loai_hd_gt",
     "sourceColumn": "loai_hop_dong",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Hinh th\u1ef1c l\u1ef1a chon",
+    "label": "Hinh thực lựa chon",
     "name": "hinh_thuc_lcnt",
     "sourceColumn": "hinh_thuc_lua_chon",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phuong th\u1ef1c l\u1ef1a chon",
+    "label": "Phuong thực lựa chon",
     "name": "phuong_thuc_lcnt",
     "sourceColumn": "phuong_thuc_lua_chon",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian th\u1ef1c hien",
+    "label": "Thời gian thực hien",
     "name": "tg_thuc_hien_gt",
     "sourceColumn": "thoi_gian_thuc_hien",
     "sourceTable": "goi_thau"
@@ -1942,7 +1747,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "currency",
-    "label": "Gi\u00e1 trung th\u1ea7u",
+    "label": "Giá trung thầu",
     "name": "gia_trung_thau",
     "sourceColumn": "gia_trung_thau",
     "sourceTable": "goi_thau"
@@ -1963,14 +1768,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian to ch\u1ee9c",
+    "label": "Thời gian to chức",
     "name": "tg_to_chuc_lcnt",
     "sourceColumn": "thoi_gian_to_chuc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian bat \u0111\u1ea5u to ch\u1ee9c",
+    "label": "Thời gian bat đấu to chức",
     "name": "tg_bat_dau_lcnt",
     "sourceColumn": "thoi_gian_bat_dau_to_chuc",
     "sourceTable": "goi_thau"
@@ -1984,77 +1789,77 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "datetime",
-    "label": "Th\u1eddi gian \u0111\u0103ng t\u00e0i",
+    "label": "Thời gian đăng tài",
     "name": "tg_dang_tai_tbmt",
     "sourceColumn": "thoi_gian_dang_tai",
     "sourceTable": "goi_thau"
   },
   {
     "format": "datetime",
-    "label": "Th\u1eddi gian \u0111\u00f3ng th\u1ea7u",
+    "label": "Thời gian đóng thầu",
     "name": "tg_dong_thau",
     "sourceColumn": "thoi_gian_dong_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "datetime",
-    "label": "Th\u1eddi gian m\u1edf th\u1ea7u",
+    "label": "Thời gian mở thầu",
     "name": "tg_mo_thau",
     "sourceColumn": "thoi_gian_mo_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "datetime",
-    "label": "Th\u1eddi gian m\u1edf ehsdxtc",
+    "label": "Thời gian mở ehsdxtc",
     "name": "tg_mo_ehsdxtc",
     "sourceColumn": "thoi_gian_mo_ehsdxtc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 quy\u1ebft dinh",
+    "label": "Số quyết dinh",
     "name": "so_qd_hsmt",
     "sourceColumn": "so_quyet_dinh",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y quy\u1ebft dinh",
+    "label": "Ngày quyết dinh",
     "name": "ngay_qd_hsmt",
     "sourceColumn": "ngay_quyet_dinh",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 quy\u1ebft dinh ket qua",
+    "label": "Số quyết dinh ket qua",
     "name": "so_qd_kq",
     "sourceColumn": "so_quyet_dinh_ket_qua",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y quy\u1ebft dinh ket qua",
+    "label": "Ngày quyết dinh ket qua",
     "name": "ngay_qd_kq",
     "sourceColumn": "ngay_quyet_dinh_ket_qua",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian g\u00f3i th\u1ea7u",
+    "label": "Thời gian gói thầu",
     "name": "tg_goi_thau",
     "sourceColumn": "thoi_gian_goi_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian h\u1ee3p \u0111\u00f3ng",
+    "label": "Thời gian hợp đóng",
     "name": "tg_hop_dong",
     "sourceColumn": "thoi_gian_hop_dong",
     "sourceTable": "goi_thau"
   },
   {
     "format": "currency",
-    "label": "Gi\u00e1 tr\u1ecb dam b\u1ea3o d\u1ef1 th\u1ea7u",
+    "label": "Giá trị dam bảo dự thầu",
     "name": "gia_tri_bddt",
     "sourceColumn": "gia_tri_dam_bao_du_thau",
     "sourceTable": "goi_thau"
@@ -2068,28 +1873,28 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Hieu luc dam b\u1ea3o d\u1ef1 th\u1ea7u",
+    "label": "Hieu luc dam bảo dự thầu",
     "name": "hieu_luc_bddt",
     "sourceColumn": "hieu_luc_dam_bao_du_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phuong phap danh gi\u00e1",
+    "label": "Phuong phap danh giá",
     "name": "pp_danh_gia",
     "sourceColumn": "phuong_phap_danh_gia",
     "sourceTable": "goi_thau"
   },
   {
     "format": "percent",
-    "label": "Trong s\u1ed1 k\u00fd thuat",
+    "label": "Trong số ký thuat",
     "name": "trong_so_ky_thuat",
     "sourceColumn": "trong_so_ky_thuat",
     "sourceTable": "goi_thau"
   },
   {
     "format": "percent",
-    "label": "Ty le b\u1ea3o dam h\u1ee3p \u0111\u00f3ng",
+    "label": "Ty le bảo dam hợp đóng",
     "name": "ty_le_bdhdt",
     "sourceColumn": "ty_le_bao_dam_hop_dong",
     "sourceTable": "goi_thau"
@@ -2103,7 +1908,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Tr\u1ea1ng thai",
+    "label": "Trạng thai",
     "name": "gt_trang_thai",
     "sourceColumn": "trang_thai",
     "sourceTable": "goi_thau"
@@ -2117,231 +1922,231 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "S\u1ed1 b\u1ea3o c\u00e1o tham dinh hsmt",
+    "label": "Số bảo cáo tham dinh hsmt",
     "name": "so_bc_tham_dinh_hsmt",
     "sourceColumn": "so_bao_cao_tham_dinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y b\u1ea3o c\u00e1o tham dinh hsmt",
+    "label": "Ngày bảo cáo tham dinh hsmt",
     "name": "ngay_bc_tham_dinh_hsmt",
     "sourceColumn": "ngay_bao_cao_tham_dinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 to trinh hsmt",
+    "label": "Số to trinh hsmt",
     "name": "so_ttr_hsmt",
     "sourceColumn": "so_to_trinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y trinh hsmt",
+    "label": "Ngày trinh hsmt",
     "name": "ngay_trinh_hsmt",
     "sourceColumn": "ngay_trinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Ho t\u00ean",
-    "name": "ten_cg",
-    "sourceColumn": "ho_ten",
-    "sourceTable": "chuyen_gia"
+    "label": "Ngày mời đối chiếu tài liệu / thương thảo",
+    "name": "ngay_moi_doi_chieu",
+    "sourceColumn": "ngay_moi_doi_chieu",
+    "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 chung ch\u1ec9",
-    "name": "so_chung_chi_cg",
-    "sourceColumn": "so_chung_chi",
-    "sourceTable": "chuyen_gia"
+    "label": "Ngày đối chiếu tài liệu / thương thảo",
+    "name": "ngay_doi_chieu",
+    "sourceColumn": "ngay_doi_chieu",
+    "sourceTable": "goi_thau"
+  },
+  {
+    "format": "text",
+    "label": "Qua mang",
+    "name": "gt_qua_mang",
+    "sourceColumn": "qua_mang",
+    "sourceTable": "goi_thau"
+  },
+  {
+    "format": "text",
+    "label": "Trong nuoc quoc te",
+    "name": "gt_trong_nuoc_quoc_te",
+    "sourceColumn": "trong_nuoc_quoc_te",
+    "sourceTable": "goi_thau"
+  },
+  {
+    "format": "text",
+    "label": "Is rebid",
+    "name": "gt_is_rebid",
+    "sourceColumn": "is_rebid",
+    "sourceTable": "goi_thau"
+  },
+  {
+    "format": "text",
+    "label": "Phien ban",
+    "name": "nt_phien_ban",
+    "sourceColumn": "phien_ban",
+    "sourceTable": "nha_thau"
+  },
+  {
+    "format": "text",
+    "label": "Mã nhà thầu",
+    "name": "ma_nt",
+    "sourceColumn": "ma_nha_thau",
+    "sourceTable": "nha_thau"
+  },
+  {
+    "format": "text",
+    "label": "Tên nhà thầu",
+    "name": "ten_nt",
+    "sourceColumn": "ten_nha_thau",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "date",
-    "label": "Ng\u00e0y c\u1ea5p chung ch\u1ec9",
-    "name": "ngay_cap_chung_chi_cg",
-    "sourceColumn": "ngay_cap_chung_chi",
-    "sourceTable": "chuyen_gia"
+    "label": "Ngày ap dung",
+    "name": "ngay_ap_dung_nt",
+    "sourceColumn": "ngay_ap_dung",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Don vi c\u1ea5p chung ch\u1ec9",
-    "name": "dv_cap_chung_chi_cg",
-    "sourceColumn": "don_vi_cap_chung_chi",
-    "sourceTable": "chuyen_gia"
+    "label": "Tên viet tat",
+    "name": "ten_tat_nt",
+    "sourceColumn": "ten_viet_tat",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 cccd",
-    "name": "cccd_cg",
-    "sourceColumn": "so_cccd",
-    "sourceTable": "chuyen_gia"
-  },
-  {
-    "format": "date",
-    "label": "Ng\u00e0y c\u1ea5p cccd",
-    "name": "ngay_cap_cccd_cg",
-    "sourceColumn": "ngay_cap_cccd",
-    "sourceTable": "chuyen_gia"
+    "label": "Loai nhà thầu",
+    "name": "loai_nt",
+    "sourceColumn": "loai_nha_thau",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Noi c\u1ea5p cccd",
-    "name": "noi_cap_cccd_cg",
-    "sourceColumn": "noi_cap_cccd",
-    "sourceTable": "chuyen_gia"
+    "label": "Mã số thue",
+    "name": "mst_nt",
+    "sourceColumn": "ma_so_thue",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "\u1ea2nh chung ch\u1ec9",
-    "name": "anh_chung_chi_cg",
-    "sourceColumn": "anh_chung_chi",
-    "sourceTable": "chuyen_gia"
+    "label": "Người đại điện",
+    "name": "dai_dien_nt",
+    "sourceColumn": "nguoi_dai_dien",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "T\u00ean \u1ea3nh chung ch\u1ec9",
-    "name": "ten_anh_chung_chi_cg",
-    "sourceColumn": "ten_anh_chung_chi",
-    "sourceTable": "chuyen_gia"
+    "label": "Chức vu đại điện",
+    "name": "chuc_vu_dai_dien_nt",
+    "sourceColumn": "chuc_vu_dai_dien",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "\u1ea2nh chu k\u00fd",
-    "name": "anh_chu_ky_cg",
-    "sourceColumn": "anh_chu_ky",
-    "sourceTable": "chuyen_gia"
+    "label": "Danh xưng",
+    "name": "danh_xung_nt",
+    "sourceColumn": "danh_xung",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "T\u00ean \u1ea3nh chu k\u00fd",
-    "name": "ten_anh_chu_ky_cg",
-    "sourceColumn": "ten_anh_chu_ky",
-    "sourceTable": "chuyen_gia"
+    "label": "Số điện thoai",
+    "name": "sdt_nt",
+    "sourceColumn": "so_dien_thoai",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "T\u00ean h\u1ee3p \u0111\u00f3ng",
-    "name": "ten_hd",
-    "sourceColumn": "ten_hop_dong",
-    "sourceTable": "hop_dong"
+    "label": "Email",
+    "name": "email_nt",
+    "sourceColumn": "email",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 h\u1ee3p \u0111\u00f3ng",
-    "name": "so_hd",
-    "sourceColumn": "so_hop_dong",
-    "sourceTable": "hop_dong"
-  },
-  {
-    "format": "date",
-    "label": "Ng\u00e0y k\u00fd",
-    "name": "ngay_ky_hd",
-    "sourceColumn": "ngay_ky",
-    "sourceTable": "hop_dong"
-  },
-  {
-    "format": "date",
-    "label": "Ng\u00e0y thanh ly",
-    "name": "ngay_thanh_ly_hd",
-    "sourceColumn": "ngay_thanh_ly",
-    "sourceTable": "hop_dong"
-  },
-  {
-    "format": "currency",
-    "label": "Gi\u00e1 tr\u1ecb",
-    "name": "hd_gia_tri",
-    "sourceColumn": "gia_tri",
-    "sourceTable": "hop_dong"
+    "label": "Địa chỉ",
+    "name": "dia_chi_nt",
+    "sourceColumn": "dia_chi",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Loai h\u1ee3p \u0111\u00f3ng",
-    "name": "loai_hd",
-    "sourceColumn": "loai_hop_dong",
-    "sourceTable": "hop_dong"
+    "label": "Số tài khoan",
+    "name": "stk_nt",
+    "sourceColumn": "so_tai_khoan",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian th\u1ef1c hien",
-    "name": "tg_thuc_hien_hd",
-    "sourceColumn": "thoi_gian_thuc_hien",
-    "sourceTable": "hop_dong"
+    "label": "Noi mở tài khoan",
+    "name": "noi_mo_tk_nt",
+    "sourceColumn": "noi_mo_tai_khoan",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Tr\u1ea1ng th\u00e1i h\u1ee3p \u0111\u1ed3ng",
-    "name": "trang_thai_hd",
-    "sourceColumn": "trang_thai_hop_dong",
-    "sourceTable": "hop_dong"
+    "label": "Mã ngan hang",
+    "name": "ma_ngan_hang_nt",
+    "sourceColumn": "ma_ngan_hang",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Phan loai",
-    "name": "hd_phan_loai",
-    "sourceColumn": "phan_loai",
-    "sourceTable": "hop_dong"
+    "label": "Ảnh đấu",
+    "name": "anh_dau_nt",
+    "sourceColumn": "anh_dau",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Co qd ch\u1ec9 dinh",
-    "name": "co_qd_chi_dinh",
-    "sourceColumn": "co_qd_chi_dinh",
-    "sourceTable": "hop_dong"
+    "label": "Tên ảnh đấu",
+    "name": "ten_anh_dau_nt",
+    "sourceColumn": "ten_anh_dau",
+    "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "S\u1ed1 qd ch\u1ec9 dinh",
-    "name": "so_qd_chi_dinh",
-    "sourceColumn": "so_qd_chi_dinh",
-    "sourceTable": "hop_dong"
-  },
-  {
-    "format": "date",
-    "label": "Ng\u00e0y qd ch\u1ec9 dinh",
-    "name": "ngay_qd_chi_dinh",
-    "sourceColumn": "ngay_qd_chi_dinh",
-    "sourceTable": "hop_dong"
-  },
-  {
-    "format": "text",
-    "label": "M\u00e3 phan lo",
+    "label": "Mã phan lo",
     "name": "mt_ma_phan_lo",
     "sourceColumn": "ma_phan_lo",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "T\u00ean phan lo",
+    "label": "Tên phan lo",
     "name": "mt_ten_phan_lo",
     "sourceColumn": "ten_phan_lo",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "M\u00e3 dinh danh",
+    "label": "Mã dinh danh",
     "name": "mt_ma_dinh_danh",
     "sourceColumn": "ma_dinh_danh",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "currency",
-    "label": "Gi\u00e1 d\u1ef1 th\u1ea7u",
+    "label": "Giá dự thầu",
     "name": "mt_gia_du_thau",
     "sourceColumn": "gia_du_thau",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "percent",
-    "label": "Ty le giam gi\u00e1",
+    "label": "Ty le giam giá",
     "name": "mt_ty_le_giam_gia",
     "sourceColumn": "ty_le_giam_gia",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "currency",
-    "label": "Gi\u00e1 sau giam gi\u00e1",
+    "label": "Giá sau giam giá",
     "name": "mt_gia_sau_giam_gia",
     "sourceColumn": "gia_sau_giam_gia",
     "sourceTable": "thong_tin_mo_thau"
@@ -2355,44 +2160,653 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "currency",
-    "label": "Gi\u00e1 tr\u1ecb dam b\u1ea3o",
+    "label": "Giá trị dam bảo",
     "name": "mt_gia_tri_dam_bao",
     "sourceColumn": "gia_tri_dam_bao",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Hieu luc b\u1ea3o dam ng\u00e0y",
+    "label": "Hieu luc bảo dam ngày",
     "name": "mt_hieu_luc_bao_dam_ngay",
     "sourceColumn": "hieu_luc_bao_dam_ngay",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Th\u1eddi gian th\u1ef1c hien",
+    "label": "Thời gian thực hien",
     "name": "mt_tg_thuc_hien",
     "sourceColumn": "thoi_gian_thuc_hien",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "T\u00ean nh\u00e0 th\u1ea7u",
+    "label": "Tên nhà thầu",
     "name": "mt_ten_nt",
     "sourceColumn": "ten_nha_thau",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Loai nh\u00e0 th\u1ea7u",
+    "label": "Loai nhà thầu",
     "name": "mt_loai_nt",
     "sourceColumn": "loai_nha_thau",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "T\u00ean to ch\u1ee9c",
+    "label": "Danh giá hợp le",
+    "name": "mt_dg_hop_le",
+    "sourceColumn": "danh_gia_hop_le",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh giá nang luc",
+    "name": "mt_dg_nang_luc",
+    "sourceColumn": "danh_gia_nang_luc",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh giá ký thuat",
+    "name": "mt_dg_ky_thuat",
+    "sourceColumn": "danh_gia_ky_thuat",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh giá tài chinh",
+    "name": "mt_dg_tai_chinh",
+    "sourceColumn": "danh_gia_tai_chinh",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh giá ket luan",
+    "name": "mt_dg_ket_luan",
+    "sourceColumn": "danh_gia_ket_luan",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Ly do truot",
+    "name": "mt_ly_do_truot",
+    "sourceColumn": "ly_do_truot",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Lam ro hợp le",
+    "name": "mt_lam_ro_hop_le",
+    "sourceColumn": "lam_ro_hop_le",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Lam ro nang luc",
+    "name": "mt_lam_ro_nang_luc",
+    "sourceColumn": "lam_ro_nang_luc",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Lam ro ký thuat",
+    "name": "mt_lam_ro_ky_thuat",
+    "sourceColumn": "lam_ro_ky_thuat",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Lam ro tài chinh",
+    "name": "mt_lam_ro_tai_chinh",
+    "sourceColumn": "lam_ro_tai_chinh",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Nguyen nhan khong dat hợp le",
+    "name": "mt_nn_khong_dat_hop_le",
+    "sourceColumn": "nguyen_nhan_khong_dat_hop_le",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Nguyen nhan khong dat nang luc",
+    "name": "mt_nn_khong_dat_nang_luc",
+    "sourceColumn": "nguyen_nhan_khong_dat_nang_luc",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Nguyen nhan khong dat ký thuat",
+    "name": "mt_nn_khong_dat_ky_thuat",
+    "sourceColumn": "nguyen_nhan_khong_dat_ky_thuat",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Phien ban",
+    "name": "cg_phien_ban",
+    "sourceColumn": "phien_ban",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Ho tên",
+    "name": "ten_cg",
+    "sourceColumn": "ho_ten",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Số chung chỉ",
+    "name": "so_chung_chi_cg",
+    "sourceColumn": "so_chung_chi",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "date",
+    "label": "Ngày cấp chung chỉ",
+    "name": "ngay_cap_chung_chi_cg",
+    "sourceColumn": "ngay_cap_chung_chi",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Don vi cấp chung chỉ",
+    "name": "dv_cap_chung_chi_cg",
+    "sourceColumn": "don_vi_cap_chung_chi",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Số cccd",
+    "name": "cccd_cg",
+    "sourceColumn": "so_cccd",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "date",
+    "label": "Ngày cấp cccd",
+    "name": "ngay_cap_cccd_cg",
+    "sourceColumn": "ngay_cap_cccd",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Noi cấp cccd",
+    "name": "noi_cap_cccd_cg",
+    "sourceColumn": "noi_cap_cccd",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Ảnh chung chỉ",
+    "name": "anh_chung_chi_cg",
+    "sourceColumn": "anh_chung_chi",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Tên ảnh chung chỉ",
+    "name": "ten_anh_chung_chi_cg",
+    "sourceColumn": "ten_anh_chung_chi",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Ảnh chu ký",
+    "name": "anh_chu_ky_cg",
+    "sourceColumn": "anh_chu_ky",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Tên ảnh chu ký",
+    "name": "ten_anh_chu_ky_cg",
+    "sourceColumn": "ten_anh_chu_ky",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Chức vụ trong tổ chuyên gia / tổ thẩm định",
+    "name": "chuc_vu_cg",
+    "sourceColumn": "chuc_vu",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Công việc được phân công",
+    "name": "cong_viec_cg",
+    "sourceColumn": "cong_viec",
+    "sourceTable": "chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Phien ban",
+    "name": "hd_phien_ban",
+    "sourceColumn": "phien_ban",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Tên hợp đóng",
+    "name": "ten_hd",
+    "sourceColumn": "ten_hop_dong",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Số hợp đóng",
+    "name": "so_hd",
+    "sourceColumn": "so_hop_dong",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "date",
+    "label": "Ngày ký",
+    "name": "ngay_ky_hd",
+    "sourceColumn": "ngay_ky",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "date",
+    "label": "Ngày thanh ly",
+    "name": "ngay_thanh_ly_hd",
+    "sourceColumn": "ngay_thanh_ly",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "currency",
+    "label": "Giá trị",
+    "name": "hd_gia_tri",
+    "sourceColumn": "gia_tri",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Loai hợp đóng",
+    "name": "loai_hd",
+    "sourceColumn": "loai_hop_dong",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Thời gian thực hien",
+    "name": "tg_thuc_hien_hd",
+    "sourceColumn": "thoi_gian_thuc_hien",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Trạng thai hợp đóng",
+    "name": "trang_thai_hd",
+    "sourceColumn": "trang_thai_hop_dong",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Phan loai",
+    "name": "hd_phan_loai",
+    "sourceColumn": "phan_loai",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Co qd chỉ dinh",
+    "name": "co_qd_chi_dinh",
+    "sourceColumn": "co_qd_chi_dinh",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Số qd chỉ dinh",
+    "name": "so_qd_chi_dinh",
+    "sourceColumn": "so_qd_chi_dinh",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "date",
+    "label": "Ngày qd chỉ dinh",
+    "name": "ngay_qd_chi_dinh",
+    "sourceColumn": "ngay_qd_chi_dinh",
+    "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Tên đăng nhap",
+    "name": "tk_ten_dang_nhap",
+    "sourceColumn": "ten_dang_nhap",
+    "sourceTable": "tai_khoan"
+  },
+  {
+    "format": "text",
+    "label": "Ho tên",
+    "name": "tk_ho_ten",
+    "sourceColumn": "ho_ten",
+    "sourceTable": "tai_khoan"
+  },
+  {
+    "format": "text",
+    "label": "Vai tro",
+    "name": "tk_vai_tro",
+    "sourceColumn": "vai_tro",
+    "sourceTable": "tai_khoan"
+  },
+  {
+    "format": "text",
+    "label": "Email",
+    "name": "tk_email",
+    "sourceColumn": "email",
+    "sourceTable": "tai_khoan"
+  },
+  {
+    "format": "text",
+    "label": "Ảnh đại điện",
+    "name": "tk_anh_dai_dien",
+    "sourceColumn": "anh_dai_dien",
+    "sourceTable": "tai_khoan"
+  },
+  {
+    "format": "text",
+    "label": "Da xac minh",
+    "name": "tk_da_xac_minh",
+    "sourceColumn": "da_xac_minh",
+    "sourceTable": "tai_khoan"
+  },
+  {
+    "format": "text",
+    "label": "Tên to chức",
     "name": "ten_to_chuc",
     "sourceColumn": "ten_to_chuc",
     "sourceTable": "to_chuc"
+  },
+  {
+    "format": "text",
+    "label": "Tên gói",
+    "name": "ten_goi_dv",
+    "sourceColumn": "ten_goi",
+    "sourceTable": "goi_dich_vu"
+  },
+  {
+    "format": "currency",
+    "label": "Giá ca",
+    "name": "gia_goi_dv",
+    "sourceColumn": "gia_ca",
+    "sourceTable": "goi_dich_vu"
+  },
+  {
+    "format": "text",
+    "label": "Han muc nhan su",
+    "name": "han_muc_nhan_su_dv",
+    "sourceColumn": "han_muc_nhan_su",
+    "sourceTable": "goi_dich_vu"
+  },
+  {
+    "format": "text",
+    "label": "Mở ta",
+    "name": "mo_ta_goi_dv",
+    "sourceColumn": "mo_ta",
+    "sourceTable": "goi_dich_vu"
+  },
+  {
+    "format": "text",
+    "label": "Tong số phan lo",
+    "name": "tong_so_lo",
+    "sourceColumn": "tong_so_phan_lo",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số phan lo co nhà thầu tham dự",
+    "name": "so_lo_co_nt",
+    "sourceColumn": "so_phan_lo_co_nha_thau_tham_du",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số phan lo khong co nhà thầu tham dự",
+    "name": "so_lo_khong_nt",
+    "sourceColumn": "so_phan_lo_khong_co_nha_thau_tham_du",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số phan lo tham dự khong trung",
+    "name": "so_lo_co_nt_khong_trung",
+    "sourceColumn": "so_phan_lo_tham_du_khong_trung",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số phan lo co nhà thầu trung",
+    "name": "so_lo_co_nt_trung",
+    "sourceColumn": "so_phan_lo_co_nha_thau_trung",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tong số nhà thầu tham dự",
+    "name": "tong_so_nt_tham_du",
+    "sourceColumn": "tong_so_nha_thau_tham_du",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số nhà thầu trung thầu",
+    "name": "so_nt_trung",
+    "sourceColumn": "so_nha_thau_trung_thau",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số nhà thầu truot thầu",
+    "name": "so_nt_truot",
+    "sourceColumn": "so_nha_thau_truot_thau",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số nhà thầu khong dat",
+    "name": "so_nt_khong_dat",
+    "sourceColumn": "so_nha_thau_khong_dat",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số nhà thầu dat khong xep hang 1",
+    "name": "so_nt_dat_khong_hang_1",
+    "sourceColumn": "so_nha_thau_dat_khong_xep_hang_1",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số nhà thầu khong duoc danh giá",
+    "name": "so_nt_khong_danh_gia",
+    "sourceColumn": "so_nha_thau_khong_duoc_danh_gia",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach goi thau cua ke hoach",
+    "name": "ds_gt",
+    "sourceColumn": "",
+    "sourceTable": "goi_thau_trong_ke_hoach"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach phien ban cua goi thau",
+    "name": "ds_phien_ban_gt",
+    "sourceColumn": "",
+    "sourceTable": "goi_thau_versions"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach phien ban cua ke hoach LCNT",
+    "name": "ds_phien_ban_kh",
+    "sourceColumn": "",
+    "sourceTable": "ke_hoach_versions"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: To chuyen gia cua goi thau",
+    "name": "ds_to_chuyen_gia",
+    "sourceColumn": "",
+    "sourceTable": "to_chuyen_gia"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: To tham dinh cua goi thau",
+    "name": "ds_to_tham_dinh",
+    "sourceColumn": "",
+    "sourceTable": "to_tham_dinh"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach thong tin mo thau",
+    "name": "ds_mo_thau",
+    "sourceColumn": "",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach phan lo tong hop",
+    "name": "ds_tat_ca_phan_lo",
+    "sourceColumn": "",
+    "sourceTable": "ds_phan_lo"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Phan lo co nha thau tham du",
+    "name": "ds_lo_co_nt",
+    "sourceColumn": "",
+    "sourceTable": "ds_phan_lo_co_nha_thau_tham_du"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Phan lo khong co nha thau tham du",
+    "name": "ds_lo_khong_nt",
+    "sourceColumn": "",
+    "sourceTable": "ds_phan_lo_khong_co_nha_thau_tham_du"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Phan lo co nha thau trung thau",
+    "name": "ds_lo_co_nt_trung",
+    "sourceColumn": "",
+    "sourceTable": "ds_phan_lo_co_nha_thau_trung"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Phan lo co nha thau tham du nhung khong co nha thau trung",
+    "name": "ds_lo_co_nt_khong_trung",
+    "sourceColumn": "",
+    "sourceTable": "ds_phan_lo_co_nha_thau_tham_du_khong_trung"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau tham du",
+    "name": "ds_nt_tham_du",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_tham_du"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau trung thau",
+    "name": "ds_nt_trung",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_trung_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau truot thau",
+    "name": "ds_nt_truot",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_truot_thau"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau khong dat",
+    "name": "ds_nt_khong_dat",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_khong_dat"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Nhà thầu đạt nhưng không xếp hạng 1",
+    "name": "ds_nt_dat_khong_hang_1",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_dat_khong_xep_hang_1"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Nhà thầu không được đánh giá",
+    "name": "ds_nt_khong_danh_gia",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_khong_duoc_danh_gia"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
+    "name": "ds_nt_trung_kem_lo",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_trung_theo_phan_lo"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach tuy chon mua them",
+    "name": "ds_mua_them",
+    "sourceColumn": "",
+    "sourceTable": "tuy_chon_mua_them_list"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach gia han",
+    "name": "ds_gia_han",
+    "sourceColumn": "",
+    "sourceTable": "gia_han_list"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach yeu cau lam ro",
+    "name": "ds_yc_lam_ro",
+    "sourceColumn": "",
+    "sourceTable": "yeu_cau_lam_ro_list"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach tra loi lam ro",
+    "name": "ds_tl_lam_ro",
+    "sourceColumn": "",
+    "sourceTable": "tra_loi_lam_ro_list"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach thanh vien lien danh",
+    "name": "ds_tv_lien_danh",
+    "sourceColumn": "",
+    "sourceTable": "thanh_vien_lien_danh"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach cong viec da thuc hien",
+    "name": "ds_cv_da_thuc_hien",
+    "sourceColumn": "",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach cong viec khong ap dung LCNT",
+    "name": "ds_cv_khong_ap_dung",
+    "sourceColumn": "",
+    "sourceTable": "cv_khong_ap_dung"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Danh sach cong viec chua du dieu kien LCNT",
+    "name": "ds_cv_chua_du_dk",
+    "sourceColumn": "",
+    "sourceTable": "cv_chua_du_dieu_kien"
   }
 ];

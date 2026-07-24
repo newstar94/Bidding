@@ -153,6 +153,28 @@ def clear_competitive_quotation_appraisal(pkg):
         pkg[metadata_key] = json.dumps(metadata, ensure_ascii=False) if isinstance(raw_metadata, str) else metadata
     return pkg
 
+
+def load_plan_versions(cursor, plan, organization_id):
+    """Load every persisted version in the current plan lineage."""
+    if not isinstance(plan, dict) or not plan.get("id"):
+        return []
+    root_id = str(plan.get("id_goc") or plan["id"]).strip()
+    cursor.execute(
+        """SELECT * FROM ke_hoach_lcnt
+           WHERE organization_id = ? AND (id_goc = ? OR id = ?)
+           ORDER BY CAST(phien_ban AS INTEGER) ASC""",
+        (organization_id, root_id, root_id),
+    )
+    versions = [parse_json_fields(dict(row)) for row in cursor.fetchall()]
+    attach_child_rows_to_items(
+        cursor,
+        "ke_hoach_lcnt",
+        versions,
+        organization_id=organization_id,
+        naming="snake",
+    )
+    return versions
+
 def build_plan_context(plan_id, user_id, org_name, capabilities=None):
     """Truy vấn CSDL để xây dựng ngữ cảnh đầy đủ phục vụ xuất file Word Kế hoạch LCNT."""
     conn = database.get_connection()
@@ -165,6 +187,7 @@ def build_plan_context(plan_id, user_id, org_name, capabilities=None):
         raise ValueError(f"Plan with id {plan_id} not found")
     plan = parse_json_fields(dict(row_plan))
     attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
+    plan_versions = load_plan_versions(cursor, plan, org_name)
 
     investor_name = '--'
     investor_address = ''
@@ -222,10 +245,12 @@ def build_plan_context(plan_id, user_id, org_name, capabilities=None):
     now = vietnam_now()
     unified_context = {
         'ke_hoach': plan,
+        'ke_hoach_versions': plan_versions,
         'user': user_data,
         'to_chuc': org_data,
         'goi_dich_vu': gdv_data,
         'goi_thau': goi_thau_list,
+        'goi_thau_trong_ke_hoach': goi_thau_list,
         'investor_name': investor_name,
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,
@@ -258,6 +283,7 @@ def build_report_context(
     clear_competitive_quotation_appraisal(pkg)
 
     plan = {}
+    plan_versions = []
     investor_name = '--'
     investor_address = ''
     inv_data = {}
@@ -270,6 +296,7 @@ def build_report_context(
         if row_plan:
             plan = parse_json_fields(dict(row_plan))
             attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
+            plan_versions = load_plan_versions(cursor, plan, org_name)
             if plan.get('chu_dau_tu_id'):
                 cursor.execute(
                     "SELECT * FROM chu_dau_tu WHERE id = ? AND organization_id = ? AND archived_at IS NULL",
@@ -407,6 +434,7 @@ def build_report_context(
         'goi_thau': pkg,
         'goi_thau_versions': goi_thau_versions,
         'ke_hoach': plan,
+        'ke_hoach_versions': plan_versions if plan else [],
         'user': user_data,
         'to_chuc': org_data,
         'goi_dich_vu': gdv_data,
