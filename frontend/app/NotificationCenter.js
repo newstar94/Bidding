@@ -22,7 +22,7 @@ const NOTIFICATION_UNAVAILABLE = `
     <button type="button" class="notification-retry" data-notification-retry>Thử lại</button>
   </div>`;
 
-function formatMoment(value) {
+export function formatMoment(value) {
   const numeric = Number(value);
   const date = Number.isFinite(numeric) && numeric > 0
     ? new Date(numeric * 1000)
@@ -33,7 +33,7 @@ function formatMoment(value) {
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
-  }).format(date);
+  }).format(date).replace(/[-–—]/g, "/");
 }
 
 function activityIcon(kind) {
