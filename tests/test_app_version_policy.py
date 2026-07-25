@@ -26,7 +26,10 @@ def test_biddingflow_product_version_is_2_0_everywhere():
 
 def test_internal_asset_cache_versions_are_2_0():
     index = _read("views/index.html")
-    versioned_assets = re.findall(r'(?:src|href)="([^"]+)\?v=([^"]+)"', index)
+    versioned_assets = re.findall(
+        r'(?:src|href)="([^"]+)\?v=([^"&]+)(?:&amp;[^"]*)?"',
+        index,
+    )
     app_owned_vendor_assets = {
         "/vendor/route-shell.js",
         "/vendor/initial-route.js",

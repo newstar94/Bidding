@@ -1708,14 +1708,112 @@ button:disabled {
 .dashboard-count-badge,
 .dashboard-package-cell small,
 .dashboard-action-detail,
-.dashboard-deadline,
-.dashboard-object-type {
+.dashboard-deadline {
   font-size: max(0.72rem, 12px);
 }
 
 .dashboard-count-badge {
   border: 1px solid #dce5ff;
   border-radius: 6px;
+}
+
+.dashboard-action-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.dashboard-action-table .dashboard-action-object-column {
+  width: 40%;
+}
+
+.dashboard-action-table .dashboard-action-content-column {
+  width: 36%;
+}
+
+.dashboard-action-table .dashboard-action-deadline-column {
+  width: 24%;
+}
+
+.dashboard-action-table td {
+  vertical-align: middle;
+}
+
+.dashboard-package-cell {
+  display: grid;
+  min-width: 0;
+  min-height: var(--control-height);
+  align-content: center;
+  gap: var(--space-1);
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-input);
+  color: var(--color-ink);
+  text-decoration: none;
+  transition:
+    color var(--dur-short) var(--ease-out),
+    background-color var(--dur-short) var(--ease-out),
+    transform 100ms var(--ease-out);
+}
+
+.dashboard-object-code {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-package-cell small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-muted);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dashboard-package-cell:hover {
+    color: var(--color-accent-strong);
+    background: var(--color-accent-soft);
+  }
+}
+
+.dashboard-package-cell:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.dashboard-package-cell:active {
+  transform: translateY(1px);
+}
+
+.dashboard-package-cell[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.dashboard-package-cell[aria-busy="true"] {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.dashboard-package-cell[data-state="error"] {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.dashboard-package-cell[data-state="success"] .dashboard-object-code {
+  color: var(--color-success);
 }
 
 .dashboard-operations .data-table th {
@@ -2129,6 +2227,58 @@ button:disabled {
     max-height: min(420px, 60dvh);
   }
 
+  .dashboard-action-table,
+  .dashboard-action-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .dashboard-action-table colgroup {
+    display: none;
+  }
+
+  .dashboard-action-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .dashboard-action-table .dashboard-task-row {
+    display: grid;
+    grid-template-areas:
+      "object deadline"
+      "content content";
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .dashboard-action-table .dashboard-task-row td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .dashboard-task-object-cell {
+    grid-area: object;
+  }
+
+  .dashboard-task-content-cell {
+    grid-area: content;
+  }
+
+  .dashboard-task-deadline-cell {
+    grid-area: deadline;
+    align-self: center;
+    justify-self: end;
+  }
+
   .dashboard-alert-copy em {
     white-space: normal;
   }
@@ -2178,6 +2328,18 @@ button:disabled {
     top: 68px;
     right: 8px;
     width: min(410px, calc(100vw - 16px));
+  }
+
+  .dashboard-action-table .dashboard-task-row {
+    grid-template-areas:
+      "object"
+      "content"
+      "deadline";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-task-deadline-cell {
+    justify-self: start;
   }
 
   .dashboard-section-heading p {

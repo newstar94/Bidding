@@ -3668,6 +3668,13 @@ table th {
   min-width: 0;
 }
 
+.package-document-action-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .package-document-card-header {
   display: flex;
   align-items: center;
@@ -3778,10 +3785,15 @@ table th {
   font-weight: 700;
 }
 
+.package-document-action-heading {
+  text-align: center;
+}
+
 .package-document-actions {
   display: flex;
+  width: 100%;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -3811,12 +3823,15 @@ table th {
 }
 
 .package-document-live-status {
-  min-height: 18px;
-  margin: 6px 0 -6px;
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  min-height: 0;
+  margin: 0;
   color: var(--brand);
   font-size: 0.7rem;
   font-weight: 650;
-  text-align: right;
+  text-align: center;
 }
 
 .package-document-cell-label {
@@ -3932,7 +3947,15 @@ table th {
     justify-content: flex-start;
   }
 
+  .package-document-action-cell {
+    position: static;
+    display: block;
+  }
+
   .package-document-live-status {
+    position: static;
+    min-height: 18px;
+    margin: 6px 0 -6px;
     text-align: left;
   }
 }

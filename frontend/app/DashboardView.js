@@ -501,23 +501,23 @@ function renderDashboardAlerts(alerts) {
   const tbody = document.getElementById("dashboard-action-items");
   if (!tbody) return;
   if (!items.length) {
-    tbody.innerHTML = trustedHTML(renderEmptyRow(4, "Không có công việc khẩn cấp", "circle-check-big"));
+    tbody.innerHTML = trustedHTML(renderEmptyRow(3, "Không có công việc khẩn cấp", "circle-check-big"));
     return;
   }
   tbody.innerHTML = trustedHTML(items.map((item) => {
     const meta = ALERT_META[item.alertKey] || ALERT_META.closingSoon;
     const targetType = item.targetType === "plan" ? "plan" : item.targetType === "contract" ? "contract" : "package";
     const targetMeta = {
-      plan: { action: "show-plan", label: "Kế hoạch", code: item.maKeHoach, name: item.tenKeHoach || "Kế hoạch LCNT" },
-      contract: { action: "show-contract", label: "Hợp đồng", code: item.soHopDong, name: item.tenHopDong || "Hợp đồng" },
-      package: { action: "show-package", label: "Gói thầu", code: item.maGoiThau, name: item.tenGoiThau || "Gói thầu" }
+      plan: { action: "show-plan", label: "Kế hoạch", code: item.maKeHoach, fallbackCode: "Chưa có mã kế hoạch", name: item.tenKeHoach || "Kế hoạch LCNT" },
+      contract: { action: "show-contract", label: "Hợp đồng", code: item.soHopDong, fallbackCode: "Chưa có số hợp đồng", name: item.tenHopDong || "Hợp đồng" },
+      package: { action: "show-package", label: "Gói thầu", code: item.maGoiThau, fallbackCode: "Chưa có mã gói thầu", name: item.tenGoiThau || "Gói thầu" }
     }[targetType];
+    const targetIdentity = targetMeta.code || targetMeta.fallbackCode;
     return `
-      <tr>
-        <td><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell"><span class="dashboard-object-type type-${targetType}">${escapeHtml(targetMeta.label)}</span><span class="detail-code">${escapeHtml(targetMeta.code || "Chưa có mã")}</span><small>${escapeHtml(targetMeta.name)}</small></a></td>
-        <td><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(item.alertDetail || meta.detail)}</small></td>
-        <td><span class="dashboard-deadline deadline-${meta.tone}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
-        <td><button type="button" class="btn btn-outline btn-sm" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" aria-label="Xử lý ${safeAttr(targetMeta.label)} ${safeAttr(targetMeta.code || targetMeta.name)}">Xử lý</button></td>
+      <tr class="dashboard-task-row">
+        <td class="dashboard-task-object-cell"><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell" aria-label="Mở ${safeAttr(targetMeta.label)} ${safeAttr(targetIdentity)}"><span class="dashboard-object-code">${escapeHtml(targetIdentity)}</span><small title="${safeAttr(targetMeta.name)}">${escapeHtml(targetMeta.name)}</small></a></td>
+        <td class="dashboard-task-content-cell"><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(item.alertDetail || meta.detail)}</small></td>
+        <td class="dashboard-task-deadline-cell"><span class="dashboard-deadline deadline-${meta.tone}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
       </tr>
     `;
   }).join(""));

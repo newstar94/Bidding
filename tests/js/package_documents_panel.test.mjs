@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
@@ -6,6 +7,20 @@ import {
   buildPackageDocumentsMarkup,
   formatPackageDocumentBytes,
 } from "../../frontend/packages/detail/PackageDocumentsPanel.js";
+
+const packageDocumentsCss = readFileSync(
+  new URL("../../views/css/views.css", import.meta.url),
+  "utf8",
+);
+
+function desktopRule(selector, occurrence = 0) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches = [...packageDocumentsCss.matchAll(
+    new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, "g"),
+  )];
+  assert.ok(matches[occurrence], `Missing desktop CSS rule for ${selector}`);
+  return matches[occurrence][1];
+}
 
 
 test("package detail always exposes the documents tab", () => {
@@ -74,4 +89,38 @@ test("read-only document slot omits mutation controls", () => {
   assert.match(markup, /data-document-download="HSMT"/);
   assert.doesNotMatch(markup, /data-document-upload="HSMT"/);
   assert.doesNotMatch(markup, /data-document-delete="HSMT"/);
+});
+
+
+test("document action heading and controls share the centered desktop axis", () => {
+  const markup = buildPackageDocumentsMarkup({
+    slots: [{
+      type: "HSMT",
+      label: "Hồ sơ mời thầu/E-Hồ sơ mời thầu",
+      canUpload: true,
+      canDelete: false,
+      document: null,
+    }],
+  });
+
+  assert.match(
+    markup,
+    /class="package-document-action-heading" role="columnheader">Thao tác/,
+  );
+  assert.match(
+    desktopRule(".package-document-action-heading"),
+    /text-align:\s*center\s*;/,
+  );
+  assert.match(
+    desktopRule(".package-document-actions"),
+    /justify-content:\s*center\s*;/,
+  );
+  assert.match(
+    desktopRule(".package-document-action-cell", 1),
+    /display:\s*flex\s*;[\s\S]*align-items:\s*center\s*;/,
+  );
+  assert.match(
+    desktopRule(".package-document-live-status"),
+    /position:\s*absolute\s*;/,
+  );
 });

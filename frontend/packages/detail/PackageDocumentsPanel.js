@@ -86,7 +86,7 @@ export function buildPackageDocumentsMarkup(data) {
           <div class="package-documents-table-header" role="row">
             <span role="columnheader">Loại tài liệu</span>
             <span role="columnheader">Tài liệu</span>
-            <span role="columnheader">Thao tác</span>
+            <span class="package-document-action-heading" role="columnheader">Thao tác</span>
           </div>
         </div>
         <div class="package-documents-table-body" role="rowgroup">

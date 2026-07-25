@@ -230,7 +230,7 @@ def test_notification_actions_and_rows_use_the_compact_panel_pattern():
     assert 'data-lucide="check"' in template
     assert 'data-lucide="check-check"' not in template
     assert '<span>Đánh dấu tất cả đã đọc</span>' in template
-    assert '/css/ui-redesign.css?v=2.0' in index
+    assert '/css/ui-redesign.css?v=2.0&amp;rev=dashboard-priority-columns-20260725' in index
     assert "border: 0;" in read_all_rule
     assert "background: transparent;" in read_all_rule
     assert "display: block;" in icon_rule
@@ -264,6 +264,33 @@ def test_dashboard_recent_packages_fit_without_horizontal_scrolling():
         stylesheet.index("#recent-packages-table .dashboard-recent-code {")
     ]
     assert "text-decoration: none;" in recent_link_hover
+
+
+def test_dashboard_priority_tasks_use_the_object_link_as_the_only_action():
+    template = _source("views/tabs/tab_dashboard.html")
+    script = _source("frontend/app/DashboardView.js")
+    stylesheet = _source("views/css/ui-redesign.css")
+    alert_renderer = script[
+        script.index("function renderDashboardAlerts"):
+        script.index("function renderRecentPackages")
+    ]
+
+    assert 'class="dashboard-action-object-column"' in template
+    assert 'class="dashboard-action-content-column"' in template
+    assert 'class="dashboard-action-deadline-column"' in template
+    assert ".dashboard-action-object-column" in stylesheet
+    assert "width: 40%;" in stylesheet
+    assert "width: 36%;" in stylesheet
+    assert "<th>Thao tác</th>" not in template
+    assert "renderEmptyRow(3," in alert_renderer
+    assert alert_renderer.count('data-bf-action="${targetMeta.action}"') == 1
+    assert 'class="dashboard-object-code"' in alert_renderer
+    assert "dashboard-object-type" not in alert_renderer
+    assert "<button" not in alert_renderer
+    assert ".dashboard-action-table {" in stylesheet
+    assert "table-layout: fixed;" in stylesheet
+    assert ".dashboard-package-cell:focus-visible" in stylesheet
+    assert "@media (max-width: 768px)" in stylesheet
 
 
 def test_focus_indicators_share_one_compact_width_token():

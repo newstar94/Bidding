@@ -41,12 +41,16 @@
             </div>
             <div class="card-body overflow-x dashboard-table-body">
                 <table class="data-table dashboard-action-table" data-density="comfortable">
+                    <colgroup>
+                        <col class="dashboard-action-object-column">
+                        <col class="dashboard-action-content-column">
+                        <col class="dashboard-action-deadline-column">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th>Đối tượng</th>
                             <th>Nội dung cần xử lý</th>
                             <th>Hạn/mốc</th>
-                            <th>Thao tác</th>
                         </tr>
                     </thead>
                     <tbody id="dashboard-action-items"></tbody>
