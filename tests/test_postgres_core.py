@@ -144,7 +144,7 @@ def test_v13_database_is_reconciled_to_fresh_schema(
             "UPDATE database_metadata SET schema_version = 13 WHERE id = 1"
         )
 
-    assert initialize_postgres_database(postgres_database) == 14
+    assert initialize_postgres_database(postgres_database) == DB_SCHEMA_VERSION
 
     with postgres_database.get_connection() as connection:
         cursor = connection.cursor()

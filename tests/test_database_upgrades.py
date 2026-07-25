@@ -70,7 +70,7 @@ def test_mfa_removal_upgrades_drop_legacy_objects_and_advance_version():
     assert any("idx_lot_batch_detail_one_active" in statement for statement in statements)
     assert any("goi_thau_awarded_result_check" in statement for statement in statements)
     assert any("PARTIALLY_AWARDED" in statement for statement in statements)
-    assert version == upgrades.DB_SCHEMA_VERSION == 14
+    assert version == upgrades.DB_SCHEMA_VERSION == 15
 
 
 def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
@@ -89,7 +89,7 @@ def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
         in statements
     )
     assert any("ROW_NUMBER() OVER" in statement for statement in statements)
-    assert version == upgrades.DB_SCHEMA_VERSION == 14
+    assert version == upgrades.DB_SCHEMA_VERSION == 15
 
 
 def test_v3_installation_enforces_one_active_session_in_v4():
@@ -108,7 +108,7 @@ def test_v3_installation_enforces_one_active_session_in_v4():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 14
+    assert version == upgrades.DB_SCHEMA_VERSION == 15
 
 
 def test_v4_installation_adds_package_expert_updated_at_in_v5():
@@ -126,15 +126,17 @@ def test_v4_installation_adds_package_expert_updated_at_in_v5():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 14
+    assert version == upgrades.DB_SCHEMA_VERSION == 15
 
 
-def test_v14_reconciles_lifecycle_foreign_keys_and_schema_objects():
+def test_v14_reconciles_lifecycle_then_v15_adds_package_documents():
     cursor = _Cursor()
     foreign_key_calls = []
     schema_object_calls = []
     context = upgrades.DatabaseUpgradeContext(
-        build_create_table_sql=lambda *_args: "",
+        build_create_table_sql=lambda table_name, _spec: (
+            f"CREATE TABLE {table_name} (id TEXT)"
+        ),
         create_indexes_and_triggers=lambda current_cursor: schema_object_calls.append(
             current_cursor
         ),
@@ -146,7 +148,7 @@ def test_v14_reconciles_lifecycle_foreign_keys_and_schema_objects():
 
     version = upgrades.apply_database_upgrades(cursor, 13, context)
 
-    assert version == 14
+    assert version == 15
     assert foreign_key_calls == [
         (
             cursor,
@@ -159,9 +161,49 @@ def test_v14_reconciles_lifecycle_foreign_keys_and_schema_objects():
                 "ho_so_nghiep_vu_lcnt_phan_lo",
             ),
             {"if_not_exists": True},
-        )
+        ),
+        (
+            cursor,
+            ("tai_lieu_goi_thau",),
+            {"if_not_exists": True},
+        ),
     ]
-    assert schema_object_calls == [cursor]
+    assert schema_object_calls == [cursor, cursor]
     statements = [statement for statement, _params in cursor.calls]
     assert any("PRIMARY KEY (organization_id, id)" in sql for sql in statements)
     assert any("organization_id LIKE 'personal:%'" in sql for sql in statements)
+    assert any("tai_lieu_goi_thau" in sql for sql in statements)
+
+
+def test_v15_adds_only_package_document_table_and_foreign_keys():
+    cursor = _Cursor()
+    foreign_key_calls = []
+    schema_object_calls = []
+    context = upgrades.DatabaseUpgradeContext(
+        build_create_table_sql=lambda table_name, _spec: (
+            f"CREATE TABLE {table_name} (id TEXT)"
+        ),
+        create_indexes_and_triggers=lambda current_cursor: schema_object_calls.append(
+            current_cursor
+        ),
+        assert_foreign_key_integrity=lambda _cursor: None,
+        create_foreign_keys=lambda current_cursor, table_names, **kwargs: (
+            foreign_key_calls.append((current_cursor, tuple(table_names), kwargs))
+        ),
+    )
+
+    version = upgrades.apply_database_upgrades(cursor, 14, context)
+
+    assert version == upgrades.DB_SCHEMA_VERSION == 15
+    assert any(
+        "CREATE TABLE IF NOT EXISTS tai_lieu_goi_thau" in statement
+        for statement, _params in cursor.calls
+    )
+    assert foreign_key_calls == [
+        (
+            cursor,
+            ("tai_lieu_goi_thau",),
+            {"if_not_exists": True},
+        )
+    ]
+    assert schema_object_calls == [cursor]

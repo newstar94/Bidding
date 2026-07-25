@@ -507,6 +507,31 @@ SCHEMA_DINH_NGHIA = {
             "ngay_trinh_hsmt": "ngayTrinhHsmt"
         }
     },
+    "tai_lieu_goi_thau": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "document_type": "TEXT NOT NULL CHECK(document_type IN ('HSMT', 'HSMT_APPRAISAL_REPORT', 'BID_EVALUATION_REPORT', 'TECHNICAL_EVALUATION_REPORT', 'TECHNICAL_APPRAISAL_REPORT', 'FINANCIAL_EVALUATION_REPORT', 'RESULT_APPRAISAL_REPORT'))",
+            "original_filename": "TEXT NOT NULL CHECK(trim(original_filename) != '')",
+            "storage_key": "TEXT NOT NULL CHECK(trim(storage_key) != '')",
+            "content_type": "TEXT NOT NULL CHECK(trim(content_type) != '')",
+            "size_bytes": "INTEGER NOT NULL CHECK(typeof(size_bytes) = 'integer' AND size_bytes > 0)",
+            "sha256": "TEXT NOT NULL CHECK(length(sha256) = 64)",
+            "uploaded_by_id": "TEXT",
+            "uploaded_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (uploaded_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, goi_thau_id, document_type)"
+        ]
+    },
     "goi_thau_phan_lo": {
         "columns": {
             "id": "TEXT PRIMARY KEY",

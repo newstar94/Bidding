@@ -527,6 +527,35 @@ def _upgrade_to_v14_reconcile_canonical_schema(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v15_add_package_documents(cursor, context):
+    """Add one current uploaded file per package document type."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v15 requires the canonical table builder.")
+    if not callable(context.create_foreign_keys):
+        raise RuntimeError("Database upgrade v15 requires the canonical foreign-key builder.")
+    create_sql = context.build_create_table_sql(
+        "tai_lieu_goi_thau",
+        SCHEMA_DINH_NGHIA["tai_lieu_goi_thau"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace(
+            "CREATE TABLE",
+            "CREATE TABLE IF NOT EXISTS",
+            1,
+        )
+    cursor.execute(create_sql)
+    context.create_foreign_keys(
+        cursor,
+        ("tai_lieu_goi_thau",),
+        if_not_exists=True,
+    )
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -588,6 +617,11 @@ UPGRADES = (
         14,
         "reconcile_canonical_schema",
         _upgrade_to_v14_reconcile_canonical_schema,
+    ),
+    DatabaseUpgrade(
+        15,
+        "add_package_documents",
+        _upgrade_to_v15_add_package_documents,
     ),
 )
 

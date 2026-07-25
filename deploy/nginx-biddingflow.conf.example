@@ -178,6 +178,21 @@ server {
         proxy_send_timeout 120s;
     }
 
+    location ~ ^/api/packages/[^/]+/documents/[^/]+$ {
+        client_max_body_size 26m;
+        limit_req zone=biddingflow_upload burst=2 nodelay;
+        proxy_pass http://biddingflow_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $server_name;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Forwarded "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
     location = /api/import-excel {
         client_max_body_size 11m;
         limit_req zone=biddingflow_upload burst=2 nodelay;

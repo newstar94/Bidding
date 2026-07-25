@@ -212,6 +212,15 @@ class BodySizeLimitMiddleware:
     def _limit_for_path(cls, path):
         if path == "/api/sync":
             return cls._configured_limit("REQUEST_MAX_SYNC_BYTES", 10 * 1024 * 1024)
+        if (
+            path.startswith("/api/packages/")
+            and "/documents/" in path
+            and not path.endswith("/download")
+        ):
+            return cls._configured_limit(
+                "REQUEST_MAX_PACKAGE_DOCUMENT_BYTES",
+                26 * 1024 * 1024,
+            )
         if path in cls.DOCUMENT_PATHS:
             return cls._configured_limit("REQUEST_MAX_DOCUMENT_BYTES", 11 * 1024 * 1024)
         return cls._configured_limit("REQUEST_MAX_JSON_BYTES", 1024 * 1024)

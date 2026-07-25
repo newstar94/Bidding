@@ -36,6 +36,7 @@ RECORD_ID_PREFIXES = {
     "nhom_phu_thuoc_phan_lo_thanh_vien": "npttv-",
     "ho_so_nghiep_vu_lcnt": "hslcnt-",
     "ho_so_nghiep_vu_lcnt_phan_lo": "hslcntpl-",
+    "tai_lieu_goi_thau": "tlgt-",
     "goi_thau_tuy_chon_mua_them": "tcmt-",
     "option": "tcmt-",
     "goi_thau_gia_han": "gh-",

@@ -412,6 +412,12 @@ from backend.documents.export_routes import (
     export_tuychonmuathem_excel_api,
     export_opening_fin_template_api
 )
+from backend.documents.package_document_routes import (
+    delete_package_document_api,
+    download_package_document_api,
+    list_package_documents_api,
+    upload_package_document_api,
+)
 from backend.partners.address_routes import (
     get_provinces_api,
     get_wards_api,
@@ -660,6 +666,10 @@ routes = [
     Route("/api/packages/{package_id}/lot-lifecycle", get_lot_lifecycle_api, methods=["GET"]),
     Route("/api/packages/{package_id}/lot-batches", create_lot_batch_api, methods=["POST"]),
     Route("/api/packages/{package_id}/lot-batches/{batch_id}/finalize", finalize_lot_batch_api, methods=["POST"]),
+    Route("/api/packages/{package_id}/documents", list_package_documents_api, methods=["GET"]),
+    Route("/api/packages/{package_id}/documents/{document_type}", upload_package_document_api, methods=["PUT"]),
+    Route("/api/packages/{package_id}/documents/{document_type}", delete_package_document_api, methods=["DELETE"]),
+    Route("/api/packages/{package_id}/documents/{document_type}/download", download_package_document_api, methods=["GET"]),
     Route("/api/notifications", list_notifications_api, methods=["GET"]),
     Route("/api/notifications/read-all", mark_all_notifications_read_api, methods=["POST"]),
     Route("/api/notifications/{notification_id}/read", mark_notification_read_api, methods=["POST"]),

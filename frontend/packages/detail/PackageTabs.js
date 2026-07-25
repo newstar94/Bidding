@@ -102,5 +102,6 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
   if (pkg.trangThai === "Hủy thầu" || currentTab === "cancel" || state.hasCancelDetails) {
     tabs.push({ id: "cancel", label: "Hủy thầu" });
   }
+  tabs.push({ id: "documents", label: "Tài liệu" });
   return { tabs, ...state };
 }

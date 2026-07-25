@@ -422,6 +422,8 @@ def _create_indexes(cursor) -> None:
     statements = (
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (organization_id, ke_hoach_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (organization_id, nha_thau_trung_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_package_documents_package ON tai_lieu_goi_thau (organization_id, goi_thau_id, document_type)",
+        "CREATE INDEX IF NOT EXISTS idx_package_documents_uploader ON tai_lieu_goi_thau (uploaded_by_id, uploaded_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_active_code ON goi_thau_phan_lo (organization_id, goi_thau_id, lower(trim(ma_phan_lo))) WHERE archived_at IS NULL AND ma_phan_lo IS NOT NULL AND trim(ma_phan_lo) <> ''",

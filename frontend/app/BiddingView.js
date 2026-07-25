@@ -19,6 +19,39 @@ export function toastDeduplicationKey(title, message, type) {
 const DANGER_DIALOG_ICONS = new Set(["x-circle", "trash-2", "user-x", "log-out", "shield-alert", "lock"]);
 const WARNING_DIALOG_ICONS = new Set(["alert-triangle", "alert-circle"]);
 const SUCCESS_DIALOG_ICONS = new Set(["check", "check-circle"]);
+const MODAL_STACK_LEVEL_CLASSES = Object.freeze([
+  "modal-stack-level-1",
+  "modal-stack-level-2",
+  "modal-stack-level-3",
+  "modal-stack-level-4",
+]);
+
+function modalStackLevel(modal) {
+  const index = MODAL_STACK_LEVEL_CLASSES.findIndex((className) => (
+    modal?.classList?.contains(className)
+  ));
+  return index + 1;
+}
+
+function clearModalStackLevel(modal) {
+  modal?.classList?.remove(...MODAL_STACK_LEVEL_CLASSES);
+}
+
+function placeModalAboveActiveModals(modal) {
+  const activeModals = Array.from(
+    document.querySelectorAll(".modal-overlay.active"),
+  ).filter((candidate) => (
+    candidate !== modal && candidate.id !== "modal-custom-dialog"
+  ));
+  clearModalStackLevel(modal);
+  if (!activeModals.length || modal.id === "modal-custom-dialog") return;
+  const highestLevel = Math.max(0, ...activeModals.map(modalStackLevel));
+  const nextLevel = Math.min(
+    highestLevel + 1,
+    MODAL_STACK_LEVEL_CLASSES.length,
+  );
+  modal.classList.add(MODAL_STACK_LEVEL_CLASSES[nextLevel - 1]);
+}
 
 function applyDialogTone(modal, iconName) {
   if (!modal) return "primary";
@@ -415,6 +448,7 @@ export class BiddingView {
   openModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
+      placeModalAboveActiveModals(modal);
       modal.classList.add("active");
       this.enhanceVisibleContent(modal);
       this.createIconsScoped(modal);
@@ -648,6 +682,7 @@ export class BiddingView {
     const modal = document.getElementById(modalId);
     if (modal) {
       modal.classList.remove("active");
+      clearModalStackLevel(modal);
     }
   }
   customConfirm(title, message, iconName = "help-circle") {

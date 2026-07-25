@@ -42,6 +42,7 @@ const SUCCESS_ACTIONS = Object.freeze([
 ]);
 
 const DELETE_ENTITIES = Object.freeze([
+  { pattern: /xóa (?:file )?tài liệu/u, message: "Xóa tài liệu thành công." },
   { pattern: /xóa (?:toàn bộ )?(?:các )?phiên bản .*hợp đồng/u, message: "Xóa hợp đồng thành công." },
   { pattern: /xóa .*kế hoạch/u, message: "Xóa kế hoạch thành công." },
   { pattern: /xóa .*gói thầu/u, message: "Xóa gói thầu thành công." },
@@ -55,6 +56,7 @@ const DELETE_ENTITIES = Object.freeze([
 ]);
 
 const TOAST_ENTITIES = Object.freeze([
+  { pattern: /(?:file )?tài liệu/u, label: "tài liệu" },
   { pattern: /báo cáo đánh giá/u, label: "báo cáo đánh giá" },
   { pattern: /phê duyệt.*(?:danh sách nhà thầu|kết quả)/u, label: "kết quả gói thầu" },
   { pattern: /kết quả (?:lựa chọn nhà thầu|trúng thầu)/u, label: "kết quả gói thầu" },
@@ -136,13 +138,13 @@ function normalizeSuccessMessage(message) {
     if (/(?:nhập|import|xử lý).*?(?:dòng|dữ liệu|excel)/u.test(comparable)) return `Nhập ${entity} thành công.`;
     if (/(?:thêm lại|khôi phục)/u.test(comparable)) return `Khôi phục ${entity} thành công.`;
     if (/(?:thêm|tạo)(?: mới)?/u.test(comparable)) return `Thêm ${entity} thành công.`;
-    if (/(?:cập nhật|thay đổi|chỉnh sửa|ghi đè|áp dụng|đồng bộ)/u.test(comparable)) {
+    if (/(?:cập nhật|thay đổi|thay (?:file|tài liệu)|chỉnh sửa|ghi đè|áp dụng|đồng bộ)/u.test(comparable)) {
       return `Cập nhật ${entity} thành công.`;
     }
     if (/(?:mở thầu|tiến hành mở thầu)/u.test(comparable)) return `Mở thầu ${entity} thành công.`;
     if (/(?:phê duyệt|duyệt)/u.test(comparable)) return `Phê duyệt ${entity} thành công.`;
     if (/(?:phát hành)/u.test(comparable)) return `Phát hành ${entity} thành công.`;
-    if (/(?:tải lên|upload)/u.test(comparable)) return `Tải lên ${entity} thành công.`;
+    if (/(?:tải lên|tải (?:file )?tài liệu lên|upload)/u.test(comparable)) return `Tải lên ${entity} thành công.`;
     if (/(?:tải xuống|download)/u.test(comparable)) return `Tải xuống ${entity} thành công.`;
     if (/(?:xuất|export)/u.test(comparable)) return `Xuất ${entity} thành công.`;
     if (/(?:sao chép|copy)/u.test(comparable)) return `Sao chép ${entity} thành công.`;

@@ -28,6 +28,7 @@ import { renderPackageTabHeaders } from "./detail/PackageDetailCoordinator.js";
 import { renderPackageSummary } from "./detail/PackageSummary.js";
 import { renderBidContractorLink } from "./detail/BidderTable.js";
 import { renderWorkflowActions } from "./detail/WorkflowActions.js";
+import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
 import {
   isBidWithinEvaluationLotDetails,
@@ -805,6 +806,12 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
       });
       break;
     }
+    case "documents":
+      await renderPackageDocumentsPanel(this, {
+        contentWrapper,
+        packageId: gt.id,
+      });
+      break;
   }
   lucide.createIcons();
   if (appController?.setupExcelImportEvents) {

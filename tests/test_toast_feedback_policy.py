@@ -152,6 +152,16 @@ def test_toast_feedback_includes_entity_for_create_update_and_workflow_actions()
         assert _normalize(source, "success")["message"] == expected
 
 
+def test_document_toasts_identify_the_completed_action():
+    cases = {
+        "Đã tải tài liệu lên.": "Tải lên tài liệu thành công.",
+        "Đã thay file tài liệu.": "Cập nhật tài liệu thành công.",
+        "Đã xóa tài liệu.": "Xóa tài liệu thành công.",
+    }
+    for source, expected in cases.items():
+        assert _normalize(source, "success")["message"] == expected
+
+
 def test_bidding_view_normalizes_every_toast_before_rendering():
     source = (ROOT / "frontend" / "app" / "BiddingView.js").read_text(encoding="utf-8")
     normalize_call = "({ title, message, type } = normalizeToastFeedback(message, type));"
