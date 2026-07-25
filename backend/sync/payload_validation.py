@@ -75,7 +75,9 @@ SYNC_CHILD_FIELDS = {
         "timelineItems",
     },
     "nha_thau": {"thanhVienLienDanh"},
-    "thong_tin_mo_thau": {"thanhVienLienDanh"},
+    "thong_tin_mo_thau": {
+        "thanhVienLienDanh", "baoCaoDanhGiaChiTietList",
+    },
     "hop_dong": {"goiThauIds"},
 }
 SYNC_VIRTUAL_FIELDS = {
@@ -191,6 +193,44 @@ def _validate_timeline_items(items, item_path, errors):
         template_version = child.get("templateVersion", 1)
         if isinstance(template_version, bool) or not isinstance(template_version, int) or template_version < 1:
             errors.append(_field_error(f"{child_path}.templateVersion", "INVALID_TEMPLATE_VERSION", "Phiên bản checklist không hợp lệ."))
+
+
+def _validate_detailed_evaluation_reports(reports, item_path, errors):
+    for report_index, report in enumerate(reports):
+        report_path = f"{item_path}[{report_index}]"
+        if not isinstance(report, dict):
+            errors.append(_field_error(
+                report_path,
+                "TYPE_OBJECT_REQUIRED",
+                "Báo cáo đánh giá chi tiết phải là object.",
+            ))
+            continue
+        detail_key = "chiTietList" if "chiTietList" in report else "chi_tiet_list"
+        if detail_key not in report:
+            continue
+        details = report[detail_key]
+        detail_path = f"{report_path}.{detail_key}"
+        if not isinstance(details, list):
+            errors.append(_field_error(
+                detail_path,
+                "TYPE_ARRAY_REQUIRED",
+                "Danh sách chi tiết đánh giá phải là mảng.",
+            ))
+            continue
+        if len(details) > MAX_SYNC_CHILD_ITEMS:
+            errors.append(_field_error(
+                detail_path,
+                "INVALID_CHILD_LIST",
+                "Danh sách chi tiết đánh giá không hợp lệ hoặc quá dài.",
+            ))
+            continue
+        for detail_index, detail in enumerate(details):
+            if not isinstance(detail, dict):
+                errors.append(_field_error(
+                    f"{detail_path}[{detail_index}]",
+                    "TYPE_OBJECT_REQUIRED",
+                    "Dòng chi tiết đánh giá phải là object.",
+                ))
 
 
 def _is_blank(value):
@@ -459,6 +499,12 @@ def validate_sync_payload_shape(payload):
                     elif key == "goiThauIds":
                         if any(not isinstance(child, str) or not child.strip() for child in child_value):
                             errors.append(_field_error(f"{item_path}.{key}", "INVALID_ID_LIST", "Danh sách ID gói thầu không hợp lệ."))
+                    elif key == "baoCaoDanhGiaChiTietList":
+                        _validate_detailed_evaluation_reports(
+                            child_value,
+                            f"{item_path}.{key}",
+                            errors,
+                        )
                     elif key == "timelineItems":
                         _validate_timeline_items(child_value, item_path, errors)
                     else:

@@ -178,6 +178,29 @@ def test_child_lists_validate_type_size_ids_and_objects(
     }.issubset(_codes(errors))
 
 
+def test_detailed_evaluation_reports_are_validated_as_child_arrays() -> None:
+    errors = validation.validate_sync_payload_shape(
+        {
+            "thongtinmothau": [
+                {"baoCaoDanhGiaChiTietList": "not-an-array"},
+                {
+                    "baoCaoDanhGiaChiTietList": [
+                        "not-an-object",
+                        {"chiTietList": "not-an-array"},
+                    ]
+                },
+            ]
+        }
+    )
+    paths = {error["field"] for error in errors if isinstance(error, dict)}
+    codes = _codes(errors)
+    assert "thongtinmothau[0].baoCaoDanhGiaChiTietList" in paths
+    assert "thongtinmothau[1].baoCaoDanhGiaChiTietList[0]" in paths
+    assert "thongtinmothau[1].baoCaoDanhGiaChiTietList[1].chiTietList" in paths
+    assert "TYPE_ARRAY_REQUIRED" in codes
+    assert "TYPE_OBJECT_REQUIRED" in codes
+
+
 def test_child_numeric_fields_reject_invalid_money_numbers_and_ranges() -> None:
     errors = validation.validate_sync_payload_shape(
         {

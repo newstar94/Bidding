@@ -1174,13 +1174,73 @@ SCHEMA_DINH_NGHIA = {
             "ten_tieu_chi": "TEXT NOT NULL",
             "diem_toi_da": "REAL CHECK(diem_toi_da IS NULL OR (diem_toi_da >= 0 AND diem_toi_da = round(diem_toi_da, 4)))",
             "trong_so": "REAL CHECK(trong_so IS NULL OR (trong_so >= 0 AND trong_so <= 100 AND trong_so = round(trong_so, 4)))",
+            "nhom_danh_gia": "TEXT NOT NULL DEFAULT 'technical' CHECK(nhom_danh_gia IN ('validity', 'capacity', 'technical', 'financial'))",
+            "loai_ket_qua": "TEXT NOT NULL DEFAULT 'pass_fail' CHECK(loai_ket_qua IN ('pass_fail', 'score', 'text', 'number'))",
+            "bat_buoc": "INTEGER NOT NULL DEFAULT 1 CHECK(bat_buoc IN (0,1))",
+            "tieu_chi_cha_id": "TEXT",
             "thu_tu": "INTEGER NOT NULL DEFAULT 0 CHECK(thu_tu >= 0)",
             "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
-        "foreign_keys": ["FOREIGN KEY (vong_danh_gia_id) REFERENCES vong_danh_gia(id) ON DELETE CASCADE"],
+        "foreign_keys": [
+            "FOREIGN KEY (vong_danh_gia_id) REFERENCES vong_danh_gia(id) ON DELETE CASCADE",
+            "FOREIGN KEY (tieu_chi_cha_id) REFERENCES tieu_chi_danh_gia(id) ON DELETE SET NULL",
+        ],
         "unique_constraints": ["UNIQUE(organization_id, vong_danh_gia_id, ma_tieu_chi)"]
+    },
+    "bao_cao_danh_gia_nha_thau": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "vong_danh_gia_id": "TEXT NOT NULL",
+            "thong_tin_mo_thau_id": "TEXT NOT NULL",
+            "trang_thai": "TEXT NOT NULL DEFAULT 'draft' CHECK(trang_thai IN ('draft', 'completed'))",
+            "ket_luan": "TEXT",
+            "nguoi_cham_id": "TEXT",
+            "hoan_thanh_luc": "TEXT",
+            "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (vong_danh_gia_id) REFERENCES vong_danh_gia(id) ON DELETE CASCADE",
+            "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, vong_danh_gia_id, thong_tin_mo_thau_id)"
+        ],
+    },
+    "chi_tiet_danh_gia_nha_thau": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "bao_cao_danh_gia_nha_thau_id": "TEXT NOT NULL",
+            "tieu_chi_danh_gia_id": "TEXT NOT NULL",
+            "ket_qua": "TEXT NOT NULL DEFAULT 'pending' CHECK(ket_qua IN ('pending', 'pass', 'fail', 'not_applicable'))",
+            "diem": "REAL CHECK(diem IS NULL OR (diem >= 0 AND diem = round(diem, 4)))",
+            "noi_dung_hsdt": "TEXT",
+            "nhan_xet": "TEXT",
+            "ly_do_khong_dat": "TEXT",
+            "yeu_cau_lam_ro": "TEXT",
+            "ket_qua_lam_ro": "TEXT",
+            "tai_lieu_tham_chieu": "TEXT",
+            "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (bao_cao_danh_gia_nha_thau_id) REFERENCES bao_cao_danh_gia_nha_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (tieu_chi_danh_gia_id) REFERENCES tieu_chi_danh_gia(id) ON DELETE CASCADE",
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, bao_cao_danh_gia_nha_thau_id, tieu_chi_danh_gia_id)"
+        ],
     },
     "ket_qua_danh_gia_nha_thau": {
         "columns": {

@@ -3613,6 +3613,277 @@ table th {
     font-weight: 750;
 }
 
+.detailed-evaluation-panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.detailed-evaluation-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.detailed-evaluation-hero {
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--brand);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--bg-card), var(--primary-soft));
+}
+
+.detailed-evaluation-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detailed-evaluation-hero h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  line-height: 1.35;
+}
+
+.detailed-evaluation-hero p {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 0.83rem;
+  line-height: 1.55;
+}
+
+.detailed-evaluation-overview {
+  display: grid;
+  grid-template-columns: minmax(320px, 2fr) minmax(150px, 0.55fr) minmax(210px, 0.7fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.detailed-evaluation-bid-field,
+.detailed-evaluation-metric {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.detailed-evaluation-bid-field select {
+  background-color: var(--bg-card);
+}
+
+.detailed-evaluation-metric {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 7px;
+}
+
+.detailed-evaluation-metric-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.detailed-evaluation-metric .badge {
+  justify-self: start;
+}
+
+.detailed-evaluation-progress {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--neutral-soft);
+  color: var(--brand);
+  accent-color: var(--brand);
+}
+
+.detailed-evaluation-progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--neutral-soft);
+}
+
+.detailed-evaluation-progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--brand);
+}
+
+.detailed-evaluation-progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--brand);
+}
+
+.detailed-evaluation-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.detailed-evaluation-tabs {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  border-bottom: 2px solid var(--border-color);
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.detailed-evaluation-tabs .package-workflow-tab {
+  min-height: 44px;
+}
+
+.detailed-evaluation-tab-panel,
+.detailed-evaluation-table-frame {
+  min-width: 0;
+}
+
+.detailed-evaluation-table-frame {
+  margin-bottom: 0 !important;
+}
+
+.detailed-evaluation-table {
+  width: 100%;
+  min-width: 1320px;
+  table-layout: fixed;
+}
+
+.detailed-evaluation-table .detailed-evaluation-col-stt { width: 6%; }
+.detailed-evaluation-table .detailed-evaluation-col-criterion { width: 18%; }
+.detailed-evaluation-table .detailed-evaluation-col-content { width: 16%; }
+.detailed-evaluation-table .detailed-evaluation-col-result { width: 13%; }
+.detailed-evaluation-table .detailed-evaluation-col-score { width: 7%; }
+.detailed-evaluation-table .detailed-evaluation-col-comment { width: 17%; }
+.detailed-evaluation-table .detailed-evaluation-col-clarification { width: 17%; }
+
+.detailed-evaluation-table th,
+.detailed-evaluation-table td {
+  min-width: 0;
+  padding-inline: 12px;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.detailed-evaluation-table th {
+  vertical-align: middle;
+}
+
+.detailed-evaluation-table .detailed-evaluation-header-group th,
+.detailed-evaluation-table .detailed-evaluation-header-subgroup th {
+  border: 1px solid var(--border-color);
+  background: #eef3fb;
+  color: #1e293b;
+  font-family: inherit;
+  font-weight: 700;
+  text-align: center;
+}
+
+.detailed-evaluation-stt {
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.detailed-evaluation-code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--primary);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.detailed-evaluation-field-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detailed-evaluation-field-stack > *,
+.detailed-evaluation-table .form-control {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.detailed-evaluation-table textarea.form-control {
+  height: 68px !important;
+  min-height: 68px;
+  resize: vertical;
+  white-space: normal;
+}
+
+.detailed-evaluation-result-stack select.form-control,
+.detailed-evaluation-result-stack input.form-control {
+  height: 42px !important;
+}
+
+.detailed-evaluation-score {
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailed-evaluation-actions {
+  flex-wrap: wrap;
+  margin-top: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .detailed-evaluation-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailed-evaluation-bid-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .detailed-evaluation-panel {
+    gap: 14px;
+  }
+
+  .detailed-evaluation-hero {
+    padding: 15px 16px;
+  }
+
+  .detailed-evaluation-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detailed-evaluation-bid-field {
+    grid-column: auto;
+  }
+
+  .detailed-evaluation-navigation,
+  .detailed-evaluation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .detailed-evaluation-navigation .btn,
+  .detailed-evaluation-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .detailed-evaluation-tabs .package-workflow-tab {
+    padding-inline: 13px;
+  }
+}
+
 .package-documents-panel {
   min-width: 0;
 }

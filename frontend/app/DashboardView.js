@@ -574,9 +574,22 @@ export function renderDashboard() {
   renderDashboardSnapshot(this, data);
   this.createIconsScoped(document.getElementById("tab-dashboard"));
 }
-export function renderSuperAdminDashboard() {
-  apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
-    const summary = summarizeSuperAdminOrganizations(users, this.model.state.systempackages);
+export async function renderSuperAdminDashboard() {
+  const cachedPackages = Array.isArray(this.model.state.systempackages)
+    ? this.model.state.systempackages
+    : [];
+  const [usersResponse, packagesResponse] = await Promise.all([
+    apiFetch("/api/auth/users"),
+    apiFetch("/api/system-packages"),
+  ]);
+  const users = usersResponse.ok ? await usersResponse.json() : [];
+  let systemPackages = cachedPackages;
+  if (packagesResponse?.ok) {
+    systemPackages = await packagesResponse.json();
+    this.model.state.systempackages = systemPackages;
+    await this.model.persistData?.("systempackages", { trackMutation: false });
+  }
+  const summary = summarizeSuperAdminOrganizations(users, systemPackages);
     const saStatOrgs = document.getElementById("sad-stat-orgs");
     if (saStatOrgs) saStatOrgs.textContent = `${summary.organizations.length} Đơn vị`;
     const saStatUsers = document.getElementById("sad-stat-users");
@@ -621,8 +634,7 @@ export function renderSuperAdminDashboard() {
         }).join(""));
       }
     }
-    this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));
-  });
+  this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));
 }
 
 export function summarizeSuperAdminOrganizations(users = [], systemPackages = []) {

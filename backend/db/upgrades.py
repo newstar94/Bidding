@@ -556,6 +556,97 @@ def _upgrade_to_v15_add_package_documents(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v16_extend_evaluation_criteria(cursor, context):
+    """Restore the released additive criterion contract recorded by schema v16."""
+
+    if not callable(context.create_foreign_keys):
+        raise RuntimeError("Database upgrade v16 requires the canonical foreign-key builder.")
+    cursor.execute(
+        """ALTER TABLE tieu_chi_danh_gia
+           ADD COLUMN IF NOT EXISTS nhom_danh_gia TEXT NOT NULL DEFAULT 'technical'"""
+    )
+    cursor.execute(
+        """ALTER TABLE tieu_chi_danh_gia
+           ADD COLUMN IF NOT EXISTS loai_ket_qua TEXT NOT NULL DEFAULT 'pass_fail'"""
+    )
+    cursor.execute(
+        """ALTER TABLE tieu_chi_danh_gia
+           ADD COLUMN IF NOT EXISTS bat_buoc BIGINT NOT NULL DEFAULT 1"""
+    )
+    cursor.execute(
+        """ALTER TABLE tieu_chi_danh_gia
+           ADD COLUMN IF NOT EXISTS tieu_chi_cha_id TEXT"""
+    )
+    for constraint_name, definition in (
+        (
+            "tieu_chi_danh_gia_nhom_danh_gia_check",
+            "nhom_danh_gia IN ('validity', 'capacity', 'technical', 'financial')",
+        ),
+        (
+            "tieu_chi_danh_gia_loai_ket_qua_check",
+            "loai_ket_qua IN ('pass_fail', 'score', 'text', 'number')",
+        ),
+        ("tieu_chi_danh_gia_bat_buoc_check", "bat_buoc IN (0,1)"),
+    ):
+        cursor.execute(
+            f"ALTER TABLE tieu_chi_danh_gia DROP CONSTRAINT IF EXISTS {constraint_name}"
+        )
+        cursor.execute(
+            f"ALTER TABLE tieu_chi_danh_gia ADD CONSTRAINT {constraint_name} CHECK({definition})"
+        )
+    context.create_foreign_keys(
+        cursor,
+        ("tieu_chi_danh_gia",),
+        if_not_exists=True,
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_tieu_chi_danh_gia_parent
+           ON tieu_chi_danh_gia (organization_id, tieu_chi_cha_id)"""
+    )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v17_add_detailed_bid_evaluations(cursor, context):
+    """Add normalized per-round, per-opening detailed evaluation reports."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v17 requires the canonical table builder.")
+    if not callable(context.create_foreign_keys):
+        raise RuntimeError("Database upgrade v17 requires the canonical foreign-key builder.")
+    tables = (
+        "bao_cao_danh_gia_nha_thau",
+        "chi_tiet_danh_gia_nha_thau",
+    )
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name,
+            SCHEMA_DINH_NGHIA[table_name],
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+        cursor.execute(create_sql)
+    context.create_foreign_keys(cursor, tables, if_not_exists=True)
+    for statement in (
+        """CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_report_round
+           ON bao_cao_danh_gia_nha_thau (organization_id, vong_danh_gia_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_report_opening
+           ON bao_cao_danh_gia_nha_thau (organization_id, thong_tin_mo_thau_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_report_grader
+           ON bao_cao_danh_gia_nha_thau (nguoi_cham_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_row_report
+           ON chi_tiet_danh_gia_nha_thau
+              (organization_id, bao_cao_danh_gia_nha_thau_id)""",
+        """CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_row_criterion
+           ON chi_tiet_danh_gia_nha_thau
+              (organization_id, tieu_chi_danh_gia_id)""",
+    ):
+        cursor.execute(statement)
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -622,6 +713,16 @@ UPGRADES = (
         15,
         "add_package_documents",
         _upgrade_to_v15_add_package_documents,
+    ),
+    DatabaseUpgrade(
+        16,
+        "extend_evaluation_criteria",
+        _upgrade_to_v16_extend_evaluation_criteria,
+    ),
+    DatabaseUpgrade(
+        17,
+        "add_detailed_bid_evaluations",
+        _upgrade_to_v17_add_detailed_bid_evaluations,
     ),
 )
 

@@ -38,6 +38,7 @@ from backend.documents import document_worker
 from backend.shared.audit_chain import insert_audit_row, inspect_audit_chain
 from backend.shared.audit_monitor import _inspect_database
 from backend.sync.repository import next_sync_version
+from backend.sync import mapper
 from backend.sync.websocket import (
     _acquire_cluster_ip_lease,
     _attach_cluster_user_lease,
@@ -91,6 +92,320 @@ def test_fresh_schema_contract(postgres_database: PostgresDatabase) -> None:
         assert cursor.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
         ).fetchone()[0] == DB_SCHEMA_VERSION
+
+
+def test_detailed_evaluation_round_trip_tenant_isolation_and_cascade(
+    postgres_database: PostgresDatabase,
+) -> None:
+    connection = postgres_database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id = cursor.execute(
+            "SELECT id FROM to_chuc ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        reviewer_id = cursor.execute(
+            "SELECT id FROM tai_khoan ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        suffix = "detailed-evaluation-integration"
+        investor_id = f"investor-{suffix}"
+        plan_id = f"plan-{suffix}"
+        package_id = f"package-{suffix}"
+        contractor_id = f"contractor-{suffix}"
+        opening_id = f"opening-{suffix}"
+        technical_round_id = f"evaluation-round:{package_id}:technical"
+        financial_round_id = f"evaluation-round:{package_id}:financial"
+        technical_criterion_id = f"criterion-technical-{suffix}"
+        financial_criterion_id = f"criterion-financial-{suffix}"
+
+        cursor.execute(
+            """INSERT INTO chu_dau_tu (
+                   organization_id, id, owner_type, ten_chu_dau_tu
+               ) VALUES (?, ?, 'organization', ?)""",
+            (organization_id, investor_id, "Integration investor"),
+        )
+        cursor.execute(
+            """INSERT INTO ke_hoach_lcnt (
+                   organization_id, id, owner_type, ten_ke_hoach,
+                   ten_du_an_du_toan, loai_hinh_mua_sam, chu_dau_tu_id,
+                   ngay_phe_duyet, quyet_dinh_phe_duyet
+               ) VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?)""",
+            (
+                organization_id,
+                plan_id,
+                "Integration plan",
+                "Integration project",
+                "Khác",
+                investor_id,
+                "2026-07-25",
+                "QD-INT",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO goi_thau (
+                   organization_id, id, owner_type, ke_hoach_id,
+                   ten_goi_thau, gia_goi_thau, thoi_gian_thuc_hien,
+                   nguon_von, thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc,
+                   phuong_thuc_lua_chon
+               ) VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                organization_id,
+                package_id,
+                plan_id,
+                "Integration package",
+                1000000,
+                "30 ngày",
+                "Ngân sách",
+                "Q3/2026",
+                "2026-07-25",
+                "Một giai đoạn hai túi hồ sơ",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO nha_thau (
+                   organization_id, id, owner_type, ten_nha_thau
+               ) VALUES (?, ?, 'organization', ?)""",
+            (organization_id, contractor_id, "Integration contractor"),
+        )
+        cursor.execute(
+            """INSERT INTO thong_tin_mo_thau (
+                   organization_id, id, owner_type, goi_thau_id, nha_thau_id
+               ) VALUES (?, ?, 'organization', ?, ?)""",
+            (organization_id, opening_id, package_id, contractor_id),
+        )
+        cursor.execute(
+            """INSERT INTO vong_danh_gia (
+                   organization_id, id, owner_type, goi_thau_id,
+                   loai_vong, thu_tu
+               ) VALUES (?, ?, 'organization', ?, ?, ?)""",
+            (organization_id, technical_round_id, package_id, "technical", 0),
+        )
+        cursor.execute(
+            """INSERT INTO vong_danh_gia (
+                   organization_id, id, owner_type, goi_thau_id,
+                   loai_vong, thu_tu
+               ) VALUES (?, ?, 'organization', ?, ?, ?)""",
+            (organization_id, financial_round_id, package_id, "financial", 1),
+        )
+        cursor.execute(
+            """INSERT INTO tieu_chi_danh_gia (
+                   organization_id, id, owner_type, vong_danh_gia_id,
+                   ma_tieu_chi, ten_tieu_chi, nhom_danh_gia,
+                   loai_ket_qua, bat_buoc, thu_tu
+               ) VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                organization_id,
+                technical_criterion_id,
+                technical_round_id,
+                "TECH-1",
+                "Technical criterion",
+                "technical",
+                "pass_fail",
+                1,
+                1,
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO tieu_chi_danh_gia (
+                   organization_id, id, owner_type, vong_danh_gia_id,
+                   ma_tieu_chi, ten_tieu_chi, nhom_danh_gia,
+                   loai_ket_qua, bat_buoc, thu_tu
+               ) VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                organization_id,
+                financial_criterion_id,
+                financial_round_id,
+                "FIN-1",
+                "Financial criterion",
+                "financial",
+                "pass_fail",
+                1,
+                1,
+            ),
+        )
+
+        mapper.save_child_payloads(
+            cursor,
+            "thong_tin_mo_thau",
+            {
+                "id": opening_id,
+                "goiThauId": package_id,
+                "baoCaoDanhGiaChiTietList": [
+                    {
+                        "id": "report-technical-client",
+                        "vongDanhGiaId": technical_round_id,
+                        "loaiVong": "technical",
+                        "trangThai": "completed",
+                        "ketLuan": "Đạt",
+                        "extension": {"projectionPending": True},
+                        "chiTietList": [{
+                            "id": "detail-technical-client",
+                            "tieuChiDanhGiaId": technical_criterion_id,
+                            "ketQua": "pass",
+                        }],
+                    }
+                ],
+            },
+            organization_id,
+            "organization",
+            1,
+            "2026-07-25",
+            actor_user_id=reviewer_id,
+        )
+
+        loaded = {"id": opening_id}
+        mapper.attach_child_rows(
+            cursor,
+            "thong_tin_mo_thau",
+            loaded,
+            organization_id=organization_id,
+        )
+        assert [report["loaiVong"] for report in loaded["baoCaoDanhGiaChiTietList"]] == [
+            "technical"
+        ]
+        assert loaded["baoCaoDanhGiaChiTietList"][0]["extension"] == {
+            "projectionPending": True
+        }
+        assert loaded["baoCaoDanhGiaChiTietList"][0]["chiTietList"][0][
+            "tieuChiDanhGiaId"
+        ] == technical_criterion_id
+
+        mapper.save_child_payloads(
+            cursor,
+            "goi_thau",
+            {
+                "id": package_id,
+                "danhGiaHsdtMetadata": {
+                    "is1G2T": True,
+                    "technical": {
+                        "criteria": [{
+                            "id": technical_criterion_id,
+                            "code": "TECH-1",
+                            "name": "Technical criterion",
+                            "group": "technical",
+                            "resultType": "pass_fail",
+                            "required": True,
+                        }],
+                    },
+                    "financial": {
+                        "criteria": [{
+                            "id": financial_criterion_id,
+                            "code": "FIN-1",
+                            "name": "Financial criterion",
+                            "group": "financial",
+                            "resultType": "pass_fail",
+                            "required": True,
+                        }],
+                    },
+                },
+            },
+            organization_id,
+            "organization",
+            2,
+            "2026-07-25",
+            actor_user_id=reviewer_id,
+        )
+        assert cursor.execute(
+            "SELECT count(*) FROM chi_tiet_danh_gia_nha_thau WHERE organization_id = ?",
+            (organization_id,),
+        ).fetchone()[0] == 1
+
+        mapper.save_child_payloads(
+            cursor,
+            "thong_tin_mo_thau",
+            {
+                "id": opening_id,
+                "goiThauId": package_id,
+                "baoCaoDanhGiaChiTietList": [
+                    {
+                        "id": "report-technical-new-client-id",
+                        "vongDanhGiaId": technical_round_id,
+                        "loaiVong": "technical",
+                        "trangThai": "completed",
+                        "chiTietList": [{
+                            "id": "detail-technical-new-client-id",
+                            "tieuChiDanhGiaId": technical_criterion_id,
+                            "ketQua": "pass",
+                        }],
+                    },
+                    {
+                        "id": "report-financial",
+                        "vongDanhGiaId": financial_round_id,
+                        "loaiVong": "financial",
+                        "trangThai": "completed",
+                        "chiTietList": [{
+                            "id": "detail-financial",
+                            "tieuChiDanhGiaId": financial_criterion_id,
+                            "ketQua": "pass",
+                        }],
+                    },
+                ],
+            },
+            organization_id,
+            "organization",
+            2,
+            "2026-07-25",
+            actor_user_id=reviewer_id,
+        )
+        assert cursor.execute(
+            "SELECT count(*) FROM bao_cao_danh_gia_nha_thau WHERE organization_id = ? AND thong_tin_mo_thau_id = ?",
+            (organization_id, opening_id),
+        ).fetchone()[0] == 2
+        assert cursor.execute(
+            "SELECT count(*) FROM chi_tiet_danh_gia_nha_thau WHERE organization_id = ?",
+            (organization_id,),
+        ).fetchone()[0] == 2
+
+        other_organization_id = f"org-detailed-isolation-{suffix}"
+        cursor.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            (other_organization_id, "Other integration organization"),
+        )
+        with pytest.raises(ValueError, match="khong thuoc owner hien tai"):
+            mapper.save_child_payloads(
+                cursor,
+                "thong_tin_mo_thau",
+                {
+                    "id": opening_id,
+                    "goiThauId": package_id,
+                    "baoCaoDanhGiaChiTietList": [{
+                        "vongDanhGiaId": technical_round_id,
+                        "loaiVong": "technical",
+                        "chiTietList": [],
+                    }],
+                },
+                other_organization_id,
+                "organization",
+                3,
+                "2026-07-25",
+                actor_user_id=reviewer_id,
+            )
+
+        # Package deletion intentionally protects referenced opening bids with
+        # RESTRICT. Exercise both new descendant cascade edges directly without
+        # changing that legacy archive/delete policy.
+        cursor.execute(
+            "DELETE FROM thong_tin_mo_thau WHERE organization_id = ? AND id = ?",
+            (organization_id, opening_id),
+        )
+        assert cursor.execute(
+            "SELECT count(*) FROM bao_cao_danh_gia_nha_thau WHERE organization_id = ?",
+            (organization_id,),
+        ).fetchone()[0] == 0
+        assert cursor.execute(
+            "SELECT count(*) FROM chi_tiet_danh_gia_nha_thau WHERE organization_id = ?",
+            (organization_id,),
+        ).fetchone()[0] == 0
+        cursor.execute(
+            "DELETE FROM goi_thau WHERE organization_id = ? AND id = ?",
+            (organization_id, package_id),
+        )
+        assert cursor.execute(
+            "SELECT count(*) FROM vong_danh_gia WHERE organization_id = ? AND goi_thau_id = ?",
+            (organization_id, package_id),
+        ).fetchone()[0] == 0
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 def test_v13_database_is_reconciled_to_fresh_schema(

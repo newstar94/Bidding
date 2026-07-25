@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 
 from backend.lifecycle import database_auto_migration_enabled
-from backend.startup import StartupValidationError, verify_database_readiness
+from backend.startup import (
+    REQUIRED_APPLICATION_TABLES,
+    StartupValidationError,
+    verify_database_readiness,
+    verify_database_responsive,
+)
 
 
 class _Connection:
@@ -13,11 +18,19 @@ class _Connection:
         self.rolled_back = False
 
     def execute(self, statement, parameters=()):
-        del statement, parameters
+        del parameters
+        self.statement = statement
         return self
 
     def fetchone(self):
+        if "FROM tai_khoan" in self.statement:
+            return (1,)
         return (self.version,)
+
+    def fetchall(self):
+        if "information_schema.tables" in self.statement:
+            return [(table_name,) for table_name in REQUIRED_APPLICATION_TABLES]
+        return []
 
     def rollback(self):
         self.rolled_back = True
@@ -59,13 +72,27 @@ def test_older_schema_error_points_to_explicit_migration_command():
     assert database.connection.closed is True
 
 
-def test_newer_schema_error_forbids_lowering_metadata():
-    database = _Database(version=15)
+def test_newer_schema_is_accepted_as_backward_compatible():
+    database = _Database(version=16)
 
-    with pytest.raises(StartupValidationError) as error:
-        verify_database_readiness(database, expected_schema_version=14)
+    verify_database_readiness(database, expected_schema_version=15)
 
-    assert "installed=15, required=14" in str(error.value)
-    assert "Do not lower schema metadata" in str(error.value)
     assert database.connection.rolled_back is True
+    assert database.connection.closed is True
+
+
+def test_readiness_probe_accepts_newer_schema_version():
+    database = _Database(version=16)
+
+    verify_database_responsive(database, expected_schema_version=15)
+
+    assert database.connection.closed is True
+
+
+def test_readiness_probe_rejects_older_schema_version():
+    database = _Database(version=14)
+
+    with pytest.raises(StartupValidationError, match="older than the application"):
+        verify_database_responsive(database, expected_schema_version=15)
+
     assert database.connection.closed is True

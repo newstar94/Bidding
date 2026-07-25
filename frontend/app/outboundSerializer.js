@@ -36,7 +36,7 @@ const CHILD_FIELDS_BY_TABLE = {
     "timelineItems"
   ],
   nha_thau: ["thanhVienLienDanh"],
-  thong_tin_mo_thau: ["thanhVienLienDanh"],
+  thong_tin_mo_thau: ["thanhVienLienDanh", "baoCaoDanhGiaChiTietList"],
   hop_dong: ["goiThauIds"]
 };
 

@@ -39,6 +39,18 @@ class RecordingCursor:
     def fetchone(self):
         if "FROM chuyen_gia" in self.last_sql:
             return (1,) if self.expert_exists else None
+        if "SELECT id FROM chi_tiet_danh_gia_nha_thau" in self.last_sql:
+            return self.datasets.get("detail_lookup")
+        if "FROM vong_danh_gia" in self.last_sql:
+            round_lookups = self.datasets.get("round_lookups")
+            if isinstance(round_lookups, dict):
+                return round_lookups.get(self.last_params[-1])
+            return self.datasets.get("round_lookup")
+        if "FROM tieu_chi_danh_gia" in self.last_sql:
+            criterion_lookups = self.datasets.get("criterion_lookups")
+            if isinstance(criterion_lookups, dict):
+                return criterion_lookups.get(self.last_params[-1])
+            return self.datasets.get("criterion_lookup")
         if "FROM thong_tin_mo_thau" in self.last_sql:
             return self.stored_bid
         if "FROM information_schema.tables" in self.last_sql:
@@ -300,6 +312,10 @@ def test_save_plan_and_complete_package_children():
                         "name": "Kỹ thuật",
                         "maxScore": "100",
                         "weight": "0.7",
+                        "group": "technical",
+                        "resultType": "score",
+                        "required": True,
+                        "parentCriterionId": None,
                         "extension": "kept",
                     },
                 ],
@@ -336,7 +352,29 @@ def test_save_plan_and_complete_package_children():
     assert all(params[8] is None for params in evaluation_round_params)
     technical_round = next(params for params in evaluation_round_params if params[4] == "technical")
     assert json.loads(technical_round[12])["resultEdit"] == {"type": "whole"}
-    assert any("INSERT INTO tieu_chi_danh_gia" in sql for sql, _ in cursor.calls)
+    criterion_params = next(
+        params
+        for sql, params in cursor.calls
+        if "INSERT INTO tieu_chi_danh_gia" in sql
+    )
+    assert criterion_params[8:12] == ("technical", "score", 1, None)
+
+
+def _save_detailed_report(cursor, report, *, organization_id="org-1"):
+    mapper.save_child_payloads(
+        cursor,
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-1",
+            "goiThauId": "package-1",
+            "baoCaoDanhGiaChiTietList": [report],
+        },
+        organization_id,
+        "organization",
+        5,
+        "2026-07-25",
+        actor_user_id="reviewer-1",
+    )
 
 
 def test_save_lots_preserves_existing_identity_and_archives_removed_rows():
@@ -568,6 +606,10 @@ def test_attach_plan_package_and_evaluation_children_in_both_namings():
                 "ten_tieu_chi": "Kỹ thuật",
                 "diem_toi_da": 100,
                 "trong_so": 1,
+                "nhom_danh_gia": "technical",
+                "loai_ket_qua": "score",
+                "bat_buoc": 1,
+                "tieu_chi_cha_id": None,
             }
         ],
     }
@@ -588,6 +630,9 @@ def test_attach_plan_package_and_evaluation_children_in_both_namings():
     metadata = json.loads(package["danhGiaHsdtMetadata"])
     assert metadata["is1G2T"] is True
     assert metadata["technical"]["criteria"][0]["code"] == "TC-1"
+    assert metadata["technical"]["criteria"][0]["group"] == "technical"
+    assert metadata["technical"]["criteria"][0]["resultType"] == "score"
+    assert metadata["technical"]["criteria"][0]["required"] is True
     assert metadata["resultEdit"] == {"type": "whole"}
     assert metadata["financial"]["schemaVersion"] == 1
 
@@ -660,6 +705,525 @@ def test_attach_opening_members_evaluation_and_versioned_contractor_details():
     assert mapper.attach_child_rows_to_items(
         cursor, "nha_thau", [], organization_id="org-1"
     ) == []
+
+
+def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
+    datasets = {
+        "bao_cao_danh_gia_nha_thau": [
+            {
+                "id": "report-technical",
+                "thong_tin_mo_thau_id": "opening-1",
+                "vong_danh_gia_id": "round-technical",
+                "loai_vong": "technical",
+                "trang_thai": "draft",
+                "ket_luan": "",
+                "nguoi_cham_id": None,
+                "hoan_thanh_luc": None,
+                "extension_json": '{"schemaVersion":1,"projectionPending":true}',
+            }
+        ],
+        "chi_tiet_danh_gia_nha_thau": [
+            {
+                "id": "detail-1",
+                "bao_cao_danh_gia_nha_thau_id": "report-technical",
+                "tieu_chi_danh_gia_id": "criterion-1",
+                "ket_qua": "pass",
+                "diem": None,
+                "noi_dung_hsdt": "HSDT",
+                "nhan_xet": "Meets the requirement",
+                "ly_do_khong_dat": "",
+                "yeu_cau_lam_ro": "",
+                "ket_qua_lam_ro": "",
+                "tai_lieu_tham_chieu": "M1",
+                "thu_tu": 0,
+            }
+        ],
+    }
+    cursor = RecordingCursor(
+        datasets,
+        stored_bid=("package-1", "contractor-1", "", "independent"),
+    )
+    opening = {"id": "opening-1", "nhaThauId": "contractor-1"}
+
+    mapper.attach_child_rows(
+        cursor,
+        "thong_tin_mo_thau",
+        opening,
+        organization_id="org-1",
+    )
+
+    assert opening["baoCaoDanhGiaChiTietList"] == [
+        {
+            "id": "report-technical",
+            "vongDanhGiaId": "round-technical",
+            "loaiVong": "technical",
+            "trangThai": "draft",
+            "ketLuan": "",
+            "nguoiChamId": None,
+            "hoanThanhLuc": None,
+            "extension": {"projectionPending": True},
+            "chiTietList": [
+                {
+                    "id": "detail-1",
+                    "tieuChiDanhGiaId": "criterion-1",
+                    "ketQua": "pass",
+                    "diem": None,
+                    "noiDungHsdt": "HSDT",
+                    "nhanXet": "Meets the requirement",
+                    "lyDoKhongDat": "",
+                    "yeuCauLamRo": "",
+                    "ketQuaLamRo": "",
+                    "taiLieuThamChieu": "M1",
+                }
+            ],
+        }
+    ]
+
+    empty_opening = {"id": "opening-2"}
+    mapper.attach_child_rows(
+        RecordingCursor(stored_bid=None),
+        "thong_tin_mo_thau",
+        empty_opening,
+        organization_id="org-1",
+    )
+    assert empty_opening["baoCaoDanhGiaChiTietList"] == []
+
+
+def test_attach_detailed_rows_uses_criterion_order_not_row_identity():
+    datasets = {
+        "bao_cao_danh_gia_nha_thau": [
+            {
+                "id": "report-technical",
+                "thong_tin_mo_thau_id": "opening-1",
+                "vong_danh_gia_id": "round-technical",
+                "loai_vong": "technical",
+                "trang_thai": "draft",
+            }
+        ],
+        "vong_danh_gia": [
+            {"id": "round-technical", "loai_vong": "technical"},
+        ],
+        "tieu_chi_danh_gia": [
+            {"id": "criterion-first", "thu_tu": 1},
+            {"id": "criterion-second", "thu_tu": 2},
+        ],
+        "chi_tiet_danh_gia_nha_thau": [
+            {
+                "id": "a-row",
+                "bao_cao_danh_gia_nha_thau_id": "report-technical",
+                "tieu_chi_danh_gia_id": "criterion-second",
+                "ket_qua": "pass",
+            },
+            {
+                "id": "z-row",
+                "bao_cao_danh_gia_nha_thau_id": "report-technical",
+                "tieu_chi_danh_gia_id": "criterion-first",
+                "ket_qua": "pass",
+            },
+        ],
+    }
+    cursor = RecordingCursor(datasets, stored_bid=("package-1", "contractor-1", "", "independent"))
+    opening = {"id": "opening-1"}
+
+    mapper.attach_child_rows(
+        cursor,
+        "thong_tin_mo_thau",
+        opening,
+        organization_id="org-1",
+    )
+
+    assert [
+        row["tieuChiDanhGiaId"] for row in opening["baoCaoDanhGiaChiTietList"][0]["chiTietList"]
+    ] == ["criterion-first", "criterion-second"]
+
+
+def test_save_detailed_evaluation_reports_obeys_presence_and_upsert_contract():
+    untouched = RecordingCursor()
+    mapper.save_child_payloads(
+        untouched,
+        "thong_tin_mo_thau",
+        {"id": "opening-1", "goiThauId": "package-1"},
+        "org-1",
+        "organization",
+        4,
+        "2026-07-25",
+        actor_user_id="reviewer-1",
+    )
+    assert not any(
+        "bao_cao_danh_gia_nha_thau" in sql
+        or "chi_tiet_danh_gia_nha_thau" in sql
+        for sql, _params in untouched.calls
+    )
+
+    cleared = RecordingCursor()
+    mapper.save_child_payloads(
+        cleared,
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-1",
+            "goiThauId": "package-1",
+            "baoCaoDanhGiaChiTietList": [],
+        },
+        "org-1",
+        "organization",
+        4,
+        "2026-07-25",
+        actor_user_id="reviewer-1",
+    )
+    assert any(
+        sql.startswith("DELETE FROM bao_cao_danh_gia_nha_thau")
+        and params == ("org-1", "opening-1")
+        for sql, params in cleared.calls
+    )
+
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "criterion_lookup": ("round-technical", 100),
+        }
+    )
+    mapper.save_child_payloads(
+        cursor,
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-1",
+            "goiThauId": "package-1",
+            "baoCaoDanhGiaChiTietList": [
+                {
+                    "id": "report-1",
+                    "vongDanhGiaId": "round-technical",
+                    "loaiVong": "technical",
+                    "trangThai": "completed",
+                    "ketLuan": "Đạt",
+                    "chiTietList": [
+                        {
+                            "id": "detail-1",
+                            "tieuChiDanhGiaId": "criterion-1",
+                            "ketQua": "pass",
+                            "diem": 95,
+                            "nhanXet": "Đáp ứng",
+                        }
+                    ],
+                }
+            ],
+        },
+        "org-1",
+        "organization",
+        4,
+        "2026-07-25",
+        actor_user_id="reviewer-1",
+    )
+
+    report_sql, report_params = next(
+        (sql, params)
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
+    )
+    detail_sql, detail_params = next(
+        (sql, params)
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
+    )
+    assert "ON CONFLICT(organization_id, vong_danh_gia_id, thong_tin_mo_thau_id)" in report_sql
+    assert report_params[0:7] == (
+        "report-1",
+        "org-1",
+        "organization",
+        "round-technical",
+        "opening-1",
+        "completed",
+        "Đạt",
+    )
+    assert "ON CONFLICT(organization_id, bao_cao_danh_gia_nha_thau_id, tieu_chi_danh_gia_id)" in detail_sql
+    assert detail_params[0:7] == (
+        "detail-1",
+        "org-1",
+        "organization",
+        "report-1",
+        "criterion-1",
+        "pass",
+        95.0,
+    )
+
+
+def test_save_single_detailed_evaluation_report():
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "single"),
+            "criterion_lookup": ("round-single", None, 1),
+            "tieu_chi_danh_gia": [("criterion-single", "pass", "")],
+        }
+    )
+
+    _save_detailed_report(
+        cursor,
+        {
+            "id": "report-single",
+            "vongDanhGiaId": "round-single",
+            "loaiVong": "single",
+            "trangThai": "completed",
+            "chiTietList": [{
+                "id": "detail-single",
+                "tieuChiDanhGiaId": "criterion-single",
+                "ketQua": "pass",
+            }],
+        },
+    )
+
+    report_params = next(
+        params
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
+    )
+    detail_params = next(
+        params
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
+    )
+    assert report_params[0:8] == (
+        "report-single",
+        "org-1",
+        "organization",
+        "round-single",
+        "opening-1",
+        "completed",
+        "",
+        "reviewer-1",
+    )
+    assert detail_params[3:6] == (
+        "report-single",
+        "criterion-single",
+        "pass",
+    )
+
+
+@pytest.mark.parametrize("include_empty_details", [False, True])
+def test_completed_detailed_evaluation_requires_every_required_criterion(
+    include_empty_details,
+):
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "single"),
+            "tieu_chi_danh_gia": [("criterion-required", "pending", "")],
+        }
+    )
+    report = {
+        "id": "report-single",
+        "vongDanhGiaId": "round-single",
+        "loaiVong": "single",
+        "trangThai": "completed",
+    }
+    if include_empty_details:
+        report["chiTietList"] = []
+
+    with pytest.raises(ValueError, match="bat buoc chua duoc danh gia"):
+        _save_detailed_report(cursor, report)
+
+
+def test_save_detailed_evaluation_reuses_existing_detail_identity():
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "criterion_lookup": ("round-technical", 100, 1),
+            "detail_lookup": ("detail-stable",),
+        }
+    )
+
+    mapper.save_child_payloads(
+        cursor,
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-1",
+            "goiThauId": "package-1",
+            "baoCaoDanhGiaChiTietList": [
+                {
+                    "id": "report-1",
+                    "vongDanhGiaId": "round-technical",
+                    "loaiVong": "technical",
+                    "trangThai": "draft",
+                    "chiTietList": [
+                        {
+                            "id": "detail-client-temp",
+                            "tieuChiDanhGiaId": "criterion-1",
+                            "ketQua": "pass",
+                        }
+                    ],
+                }
+            ],
+        },
+        "org-1",
+        "organization",
+        5,
+        "2026-07-25",
+        actor_user_id="reviewer-1",
+    )
+
+    detail_params = next(
+        params
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
+    )
+    assert detail_params[0] == "detail-stable"
+    cleanup_params = next(
+        params
+        for sql, params in cursor.calls
+        if sql.startswith("DELETE FROM chi_tiet_danh_gia_nha_thau")
+    )
+    assert cleanup_params[-1] == "detail-stable"
+
+
+def test_save_detailed_evaluation_rejects_criterion_from_another_round():
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "criterion_lookup": ("round-financial", 100, 1),
+        }
+    )
+
+    with pytest.raises(ValueError, match="khong thuoc vong bao cao"):
+        _save_detailed_report(
+            cursor,
+            {
+                "vongDanhGiaId": "round-technical",
+                "loaiVong": "technical",
+                "chiTietList": [
+                    {
+                        "tieuChiDanhGiaId": "criterion-financial",
+                        "ketQua": "pass",
+                    }
+                ],
+            },
+        )
+
+
+def test_save_detailed_evaluation_rejects_opening_from_another_package():
+    cursor = RecordingCursor(
+        {"round_lookup": ("package-1", "technical")},
+        stored_bid=("package-other", "contractor-1", "", "independent"),
+    )
+
+    with pytest.raises(ValueError, match="khong thuoc goi thau cua ho so"):
+        _save_detailed_report(
+            cursor,
+            {
+                "vongDanhGiaId": "round-technical",
+                "loaiVong": "technical",
+                "chiTietList": [],
+            },
+        )
+
+
+def test_save_detailed_evaluation_rejects_cross_organization_round():
+    cursor = RecordingCursor({"round_lookup": None})
+
+    with pytest.raises(ValueError, match="khong thuoc owner hien tai"):
+        _save_detailed_report(
+            cursor,
+            {
+                "vongDanhGiaId": "round-other-organization",
+                "loaiVong": "technical",
+                "chiTietList": [],
+            },
+        )
+
+
+def test_save_detailed_evaluation_rejects_score_above_criterion_maximum():
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "criterion_lookup": ("round-technical", 10, 1),
+        }
+    )
+
+    with pytest.raises(ValueError, match="ngoai pham vi"):
+        _save_detailed_report(
+            cursor,
+            {
+                "vongDanhGiaId": "round-technical",
+                "loaiVong": "technical",
+                "chiTietList": [
+                    {
+                        "tieuChiDanhGiaId": "criterion-1",
+                        "ketQua": "pass",
+                        "diem": 10.01,
+                    }
+                ],
+            },
+        )
+
+
+def test_save_detailed_evaluation_keeps_technical_and_financial_reports_separate():
+    cursor = RecordingCursor(
+        {
+            "round_lookups": {
+                "round-technical": ("package-1", "technical"),
+                "round-financial": ("package-1", "financial"),
+            },
+            "criterion_lookups": {
+                "criterion-technical": ("round-technical", None, 1),
+                "criterion-financial": ("round-financial", None, 1),
+            },
+        }
+    )
+
+    mapper.save_child_payloads(
+        cursor,
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-1",
+            "goiThauId": "package-1",
+            "baoCaoDanhGiaChiTietList": [
+                {
+                    "id": "report-technical",
+                    "vongDanhGiaId": "round-technical",
+                    "loaiVong": "technical",
+                    "chiTietList": [
+                        {
+                            "id": "detail-technical",
+                            "tieuChiDanhGiaId": "criterion-technical",
+                            "ketQua": "pass",
+                        }
+                    ],
+                },
+                {
+                    "id": "report-financial",
+                    "vongDanhGiaId": "round-financial",
+                    "loaiVong": "financial",
+                    "chiTietList": [
+                        {
+                            "id": "detail-financial",
+                            "tieuChiDanhGiaId": "criterion-financial",
+                            "ketQua": "pass",
+                        }
+                    ],
+                },
+            ],
+        },
+        "org-1",
+        "organization",
+        5,
+        "2026-07-25",
+        actor_user_id="reviewer-1",
+    )
+
+    report_params = [
+        params
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
+    ]
+    detail_params = [
+        params
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
+    ]
+    assert [(params[0], params[3]) for params in report_params] == [
+        ("report-technical", "round-technical"),
+        ("report-financial", "round-financial"),
+    ]
+    assert [(params[0], params[3]) for params in detail_params] == [
+        ("detail-technical", "report-technical"),
+        ("detail-financial", "report-financial"),
+    ]
 
 
 def test_select_fetch_and_format_helpers_are_owner_scoped():

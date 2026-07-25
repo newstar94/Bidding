@@ -26,6 +26,7 @@ export function renderEvaluationPanel(container, pkg, {
     </div>
   ` : "";
   container.innerHTML = trustedHTML(`
+    <div id="danhgiahsdt-summary-view">
     <select id="danhgiahsdt-goithau-select" class="bf-s-6aa34d7432"><option value="${packageId}" selected>${packageName}</option></select>
     <div id="danhgiahsdt-goithau-summary" class="bf-s-6aa34d7432"></div>
     <div id="danhgiahsdt-container" class="bf-s-6aa34d7432">
@@ -80,6 +81,7 @@ export function renderEvaluationPanel(container, pkg, {
       <div class="package-section-header">
         <h4 id="danhgiahsdt-table-title" class="package-section-title is-neutral">Đánh giá chi tiết các HSDT nộp</h4>
         <div class="compact-action-group">
+          <button type="button" class="btn btn-secondary" id="btn-danhgiahsdt-detail"><i data-lucide="clipboard-list"></i> Báo cáo đánh giá chi tiết</button>
           <button class="btn-excel-action btn-download-excel-template-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
           <button class="btn-excel-action btn-import-excel-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
         </div>
@@ -93,5 +95,7 @@ export function renderEvaluationPanel(container, pkg, {
       </section>
     </div>
     <div id="danhgiahsdt-empty-state" class="bf-s-6aa34d7432"></div>
+    </div>
+    <div id="danhgiahsdt-detail-view" class="is-hidden"></div>
   `);
 }

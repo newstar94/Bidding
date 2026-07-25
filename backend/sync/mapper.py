@@ -204,6 +204,16 @@ def save_child_payloads(cursor, table_name, item, organization_id, owner_type, s
         _save_member_children(cursor, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
         _save_opening_participant_registry(cursor, parent_id, item, organization_id, owner_type)
         _save_bid_evaluation_result(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id)
+        _save_bid_detailed_evaluation_reports(
+            cursor,
+            parent_id,
+            item,
+            organization_id,
+            owner_type,
+            sync_version,
+            updated_at,
+            actor_user_id,
+        )
 
 
 def _save_evaluation_rounds(cursor, package_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id):
@@ -253,35 +263,101 @@ def _save_evaluation_rounds(cursor, package_id, item, organization_id, owner_typ
                 dump_evaluation_metadata(extension), sync_version, updated_at,
             ),
         )
-        cursor.execute(
-            "DELETE FROM tieu_chi_danh_gia WHERE organization_id = ? AND vong_danh_gia_id = ?",
+        criteria_payload = block.get("criteria")
+        if not isinstance(criteria_payload, list):
+            # Legacy package metadata may not carry criteria at all. Keep the
+            # normalized criteria (and their detailed child rows) untouched.
+            continue
+        existing_criteria = cursor.execute(
+            """SELECT id, ma_tieu_chi FROM tieu_chi_danh_gia
+               WHERE organization_id = ? AND vong_danh_gia_id = ?""",
             (organization_id, round_id),
-        )
-        for criterion_order, criterion in enumerate(block.get("criteria") or []):
+        ).fetchall()
+        existing_ids_by_code = {
+            str(row.get("ma_tieu_chi") or "").strip(): clean_id(row.get("id"))
+            for row in existing_criteria
+            if row.get("ma_tieu_chi") and row.get("id")
+        }
+        retained_criterion_ids = []
+        for criterion_order, criterion in enumerate(criteria_payload):
             if not isinstance(criterion, dict):
                 continue
             code = str(criterion.get("code") or criterion.get("maTieuChi") or "").strip()
             name = str(criterion.get("name") or criterion.get("tenTieuChi") or "").strip()
             if not code or not name:
                 continue
+            criterion_id = (
+                existing_ids_by_code.get(code)
+                or clean_id(criterion.get("id"))
+                or f"evaluation-criterion:{round_id}:{code}"
+            )
+            retained_criterion_ids.append(criterion_id)
             criterion_extension = {
                 key: value for key, value in criterion.items()
-                if key not in {"id", "code", "maTieuChi", "name", "tenTieuChi", "maxScore", "diemToiDa", "weight", "trongSo"}
+                if key not in {
+                    "id", "code", "maTieuChi", "name", "tenTieuChi",
+                    "maxScore", "diemToiDa", "weight", "trongSo",
+                    "group", "nhomDanhGia", "resultType", "loaiKetQua",
+                    "required", "batBuoc", "parentCriterionId", "tieuChiChaId",
+                }
             }
             criterion_extension["schemaVersion"] = 1
+            group = str(
+                criterion.get("group")
+                or criterion.get("nhomDanhGia")
+                or "technical"
+            )
+            result_type = str(
+                criterion.get("resultType")
+                or criterion.get("loaiKetQua")
+                or "pass_fail"
+            )
+            required = criterion.get("required", criterion.get("batBuoc", True))
             cursor.execute(
                 """INSERT INTO tieu_chi_danh_gia (
                     id, organization_id, owner_type, vong_danh_gia_id, ma_tieu_chi,
-                    ten_tieu_chi, diem_toi_da, trong_so, thu_tu, extension_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ten_tieu_chi, diem_toi_da, trong_so, nhom_danh_gia,
+                    loai_ket_qua, bat_buoc, tieu_chi_cha_id, thu_tu,
+                    extension_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(organization_id, vong_danh_gia_id, ma_tieu_chi)
+                DO UPDATE SET owner_type=excluded.owner_type,
+                    ten_tieu_chi=excluded.ten_tieu_chi,
+                    diem_toi_da=excluded.diem_toi_da,
+                    trong_so=excluded.trong_so,
+                    nhom_danh_gia=excluded.nhom_danh_gia,
+                    loai_ket_qua=excluded.loai_ket_qua,
+                    bat_buoc=excluded.bat_buoc,
+                    tieu_chi_cha_id=excluded.tieu_chi_cha_id,
+                    thu_tu=excluded.thu_tu,
+                    extension_json=excluded.extension_json,
+                    updated_at=excluded.updated_at""",
                 (
-                    clean_id(criterion.get("id")) or f"evaluation-criterion:{round_id}:{code}",
+                    criterion_id,
                     organization_id, owner_type, round_id, code, name,
                     safe_float(criterion.get("maxScore", criterion.get("diemToiDa"))),
                     safe_float(criterion.get("weight", criterion.get("trongSo"))),
+                    group,
+                    result_type,
+                    1 if required not in (False, 0, "0") else 0,
+                    clean_id(
+                        criterion.get("parentCriterionId")
+                        or criterion.get("tieuChiChaId")
+                    ),
                     criterion_order, dump_evaluation_metadata(criterion_extension), updated_at,
                 ),
             )
+        delete_criteria_sql = (
+            "DELETE FROM tieu_chi_danh_gia "
+            "WHERE organization_id = ? AND vong_danh_gia_id = ?"
+        )
+        delete_criteria_params = [organization_id, round_id]
+        if retained_criterion_ids:
+            delete_criteria_sql += " AND id NOT IN ({})".format(
+                ", ".join("?" for _ in retained_criterion_ids)
+            )
+            delete_criteria_params.extend(retained_criterion_ids)
+        cursor.execute(delete_criteria_sql, tuple(delete_criteria_params))
 
 
 def _save_bid_evaluation_result(cursor, opening_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id):
@@ -835,6 +911,13 @@ def attach_child_rows_to_items(cursor, table_name, items, organization_id=None, 
     elif table_name == "thong_tin_mo_thau":
         _attach_members(cursor, by_id, parent_ids, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", organization_id, naming)
         _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, naming)
+        _attach_bid_detailed_evaluation_reports(
+            cursor,
+            by_id,
+            parent_ids,
+            organization_id,
+            naming,
+        )
         _enrich_opening_bid_contractor_versions(cursor, by_id, organization_id, naming)
     return items
 
@@ -970,6 +1053,10 @@ def _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming
                 "name": criterion["ten_tieu_chi"],
                 "maxScore": criterion["diem_toi_da"],
                 "weight": criterion["trong_so"],
+                "group": criterion.get("nhom_danh_gia") or "technical",
+                "resultType": criterion.get("loai_ket_qua") or "pass_fail",
+                "required": bool(criterion.get("bat_buoc", 1)),
+                "parentCriterionId": criterion.get("tieu_chi_cha_id"),
             })
     rounds_by_package = {}
     for row in rounds:
@@ -1030,6 +1117,458 @@ def _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, n
             continue
         for snake_key, camel_key in field_pairs:
             item[camel_key if naming == "camel" else snake_key] = row.get(snake_key)
+
+
+def _db_row_value(row, index, key, default=None):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return row[index] if len(row) > index else default
+
+
+def _validate_completed_detailed_evaluation_report(
+    cursor,
+    organization_id,
+    round_id,
+    report_id,
+):
+    required_rows = cursor.execute(
+        """SELECT criterion.id,
+                  COALESCE(detail.ket_qua, 'pending') AS ket_qua,
+                  COALESCE(detail.ly_do_khong_dat, '') AS ly_do_khong_dat
+           FROM tieu_chi_danh_gia AS criterion
+           LEFT JOIN chi_tiet_danh_gia_nha_thau AS detail
+             ON detail.organization_id = criterion.organization_id
+            AND detail.bao_cao_danh_gia_nha_thau_id = ?
+            AND detail.tieu_chi_danh_gia_id = criterion.id
+           WHERE criterion.organization_id = ?
+             AND criterion.vong_danh_gia_id = ?
+             AND criterion.bat_buoc = 1""",
+        (report_id, organization_id, round_id),
+    ).fetchall()
+    for row in required_rows:
+        result = str(_db_row_value(row, 1, "ket_qua", "pending") or "pending")
+        if result == "pending":
+            raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
+        failure_reason = str(
+            _db_row_value(row, 2, "ly_do_khong_dat", "") or ""
+        ).strip()
+        if result == "fail" and not failure_reason:
+            raise ValueError("Tieu chi khong dat phai co ly do.")
+
+
+def _save_bid_detailed_evaluation_reports(
+    cursor,
+    opening_id,
+    item,
+    organization_id,
+    owner_type,
+    sync_version,
+    updated_at,
+    actor_user_id,
+):
+    payload_key = "baoCaoDanhGiaChiTietList"
+    if payload_key not in item:
+        return
+    reports = _parse_child_list(item.get(payload_key))
+    if not reports:
+        cursor.execute(
+            """DELETE FROM bao_cao_danh_gia_nha_thau
+               WHERE organization_id = ? AND thong_tin_mo_thau_id = ?""",
+            (organization_id, opening_id),
+        )
+        return
+
+    opening = cursor.execute(
+        """SELECT goi_thau_id FROM thong_tin_mo_thau
+           WHERE organization_id = ? AND id = ?""",
+        (organization_id, opening_id),
+    ).fetchone()
+    if not opening:
+        raise ValueError("Ho so du thau khong thuoc owner hien tai.")
+    package_id = clean_id(_db_row_value(opening, 0, "goi_thau_id"))
+    retained_report_ids = []
+    for raw_report in reports:
+        round_id = clean_id(_first_value(raw_report, "vongDanhGiaId", "vong_danh_gia_id"))
+        if not round_id:
+            raise ValueError("Bao cao chi tiet thieu vong danh gia.")
+        evaluation_round = cursor.execute(
+            """SELECT goi_thau_id, loai_vong FROM vong_danh_gia
+               WHERE organization_id = ? AND id = ?""",
+            (organization_id, round_id),
+        ).fetchone()
+        if not evaluation_round:
+            raise ValueError("Vong danh gia khong thuoc owner hien tai.")
+        round_package_id = clean_id(_db_row_value(evaluation_round, 0, "goi_thau_id"))
+        round_type = str(_db_row_value(evaluation_round, 1, "loai_vong", "") or "")
+        payload_round_type = str(
+            _first_value(raw_report, "loaiVong", "loai_vong", default="") or ""
+        )
+        if round_package_id != package_id:
+            raise ValueError("Vong danh gia khong thuoc goi thau cua ho so.")
+        if payload_round_type and payload_round_type != round_type:
+            raise ValueError("Loai vong danh gia khong khop bao cao chi tiet.")
+
+        existing = cursor.execute(
+            """SELECT id FROM bao_cao_danh_gia_nha_thau
+               WHERE organization_id = ? AND vong_danh_gia_id = ?
+                 AND thong_tin_mo_thau_id = ?""",
+            (organization_id, round_id, opening_id),
+        ).fetchone()
+        report_id = (
+            clean_id(_db_row_value(existing, 0, "id"))
+            or clean_id(raw_report.get("id"))
+            or f"detailed-evaluation:{opening_id}:{round_id}"
+        )
+        retained_report_ids.append(report_id)
+        status = str(
+            _first_value(raw_report, "trangThai", "trang_thai", default="draft")
+            or "draft"
+        )
+        if status not in {"draft", "completed"}:
+            raise ValueError("Trang thai bao cao chi tiet khong hop le.")
+        completed_at = (
+            _first_value(raw_report, "hoanThanhLuc", "hoan_thanh_luc")
+            or (updated_at if status == "completed" else None)
+        )
+        reviewer_id = clean_id(
+            _first_value(raw_report, "nguoiChamId", "nguoi_cham_id")
+        ) or actor_user_id
+        extension = raw_report.get("extension")
+        extension = dict(extension) if isinstance(extension, dict) else {}
+        extension["schemaVersion"] = 1
+        cursor.execute(
+            """INSERT INTO bao_cao_danh_gia_nha_thau (
+                id, organization_id, owner_type, vong_danh_gia_id,
+                thong_tin_mo_thau_id, trang_thai, ket_luan, nguoi_cham_id,
+                hoan_thanh_luc, extension_json, sync_version, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(organization_id, vong_danh_gia_id, thong_tin_mo_thau_id)
+            DO UPDATE SET owner_type=excluded.owner_type,
+                trang_thai=excluded.trang_thai, ket_luan=excluded.ket_luan,
+                nguoi_cham_id=excluded.nguoi_cham_id,
+                hoan_thanh_luc=excluded.hoan_thanh_luc,
+                extension_json=excluded.extension_json,
+                sync_version=excluded.sync_version, updated_at=excluded.updated_at""",
+            (
+                report_id,
+                organization_id,
+                owner_type,
+                round_id,
+                opening_id,
+                status,
+                str(_first_value(raw_report, "ketLuan", "ket_luan", default="") or ""),
+                reviewer_id,
+                completed_at,
+                dump_evaluation_metadata(extension),
+                sync_version,
+                updated_at,
+            ),
+        )
+
+        detail_key = "chiTietList" if "chiTietList" in raw_report else "chi_tiet_list"
+        if detail_key not in raw_report:
+            if status == "completed":
+                _validate_completed_detailed_evaluation_report(
+                    cursor,
+                    organization_id,
+                    round_id,
+                    report_id,
+                )
+            continue
+        retained_detail_ids = []
+        seen_criteria = set()
+        for raw_detail in _parse_child_list(raw_report.get(detail_key)):
+            criterion_id = clean_id(
+                _first_value(
+                    raw_detail,
+                    "tieuChiDanhGiaId",
+                    "tieu_chi_danh_gia_id",
+                )
+            )
+            if not criterion_id or criterion_id in seen_criteria:
+                continue
+            seen_criteria.add(criterion_id)
+            criterion = cursor.execute(
+                """SELECT vong_danh_gia_id, diem_toi_da, bat_buoc
+                   FROM tieu_chi_danh_gia
+                   WHERE organization_id = ? AND id = ?""",
+                (organization_id, criterion_id),
+            ).fetchone()
+            if not criterion:
+                raise ValueError("Tieu chi danh gia khong thuoc owner hien tai.")
+            if clean_id(_db_row_value(criterion, 0, "vong_danh_gia_id")) != round_id:
+                raise ValueError("Tieu chi danh gia khong thuoc vong bao cao.")
+            result = str(
+                _first_value(raw_detail, "ketQua", "ket_qua", default="pending")
+                or "pending"
+            )
+            if result not in {"pending", "pass", "fail", "not_applicable"}:
+                raise ValueError("Ket qua tieu chi khong hop le.")
+            score_value = _first_value(raw_detail, "diem", default=None)
+            score = safe_float(score_value) if score_value not in (None, "") else None
+            maximum_score = safe_float(_db_row_value(criterion, 1, "diem_toi_da"))
+            if score is not None and (
+                score < 0 or (maximum_score is not None and score > maximum_score)
+            ):
+                raise ValueError("Diem tieu chi nam ngoai pham vi cho phep.")
+            failure_reason = str(
+                _first_value(
+                    raw_detail,
+                    "lyDoKhongDat",
+                    "ly_do_khong_dat",
+                    default="",
+                )
+                or ""
+            ).strip()
+            if result == "fail" and not failure_reason:
+                raise ValueError("Tieu chi khong dat phai co ly do.")
+            required = bool(_db_row_value(criterion, 2, "bat_buoc", 1))
+            if status == "completed" and required and result == "pending":
+                raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
+            existing_detail = cursor.execute(
+                """SELECT id FROM chi_tiet_danh_gia_nha_thau
+                   WHERE organization_id = ?
+                     AND bao_cao_danh_gia_nha_thau_id = ?
+                     AND tieu_chi_danh_gia_id = ?""",
+                (organization_id, report_id, criterion_id),
+            ).fetchone()
+            detail_id = (
+                clean_id(_db_row_value(existing_detail, 0, "id"))
+                or clean_id(raw_detail.get("id"))
+                or f"detailed-evaluation-row:{report_id}:{criterion_id}"
+            )
+            retained_detail_ids.append(detail_id)
+            detail_extension = raw_detail.get("extension")
+            detail_extension = (
+                dict(detail_extension) if isinstance(detail_extension, dict) else {}
+            )
+            detail_extension["schemaVersion"] = 1
+            cursor.execute(
+                """INSERT INTO chi_tiet_danh_gia_nha_thau (
+                    id, organization_id, owner_type,
+                    bao_cao_danh_gia_nha_thau_id, tieu_chi_danh_gia_id,
+                    ket_qua, diem, noi_dung_hsdt, nhan_xet, ly_do_khong_dat,
+                    yeu_cau_lam_ro, ket_qua_lam_ro, tai_lieu_tham_chieu,
+                    extension_json, sync_version, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(organization_id, bao_cao_danh_gia_nha_thau_id, tieu_chi_danh_gia_id)
+                DO UPDATE SET owner_type=excluded.owner_type,
+                    ket_qua=excluded.ket_qua, diem=excluded.diem,
+                    noi_dung_hsdt=excluded.noi_dung_hsdt,
+                    nhan_xet=excluded.nhan_xet,
+                    ly_do_khong_dat=excluded.ly_do_khong_dat,
+                    yeu_cau_lam_ro=excluded.yeu_cau_lam_ro,
+                    ket_qua_lam_ro=excluded.ket_qua_lam_ro,
+                    tai_lieu_tham_chieu=excluded.tai_lieu_tham_chieu,
+                    extension_json=excluded.extension_json,
+                    sync_version=excluded.sync_version,
+                    updated_at=excluded.updated_at""",
+                (
+                    detail_id,
+                    organization_id,
+                    owner_type,
+                    report_id,
+                    criterion_id,
+                    result,
+                    score,
+                    str(_first_value(raw_detail, "noiDungHsdt", "noi_dung_hsdt", default="") or ""),
+                    str(_first_value(raw_detail, "nhanXet", "nhan_xet", default="") or ""),
+                    failure_reason,
+                    str(_first_value(raw_detail, "yeuCauLamRo", "yeu_cau_lam_ro", default="") or ""),
+                    str(_first_value(raw_detail, "ketQuaLamRo", "ket_qua_lam_ro", default="") or ""),
+                    str(_first_value(raw_detail, "taiLieuThamChieu", "tai_lieu_tham_chieu", default="") or ""),
+                    dump_evaluation_metadata(detail_extension),
+                    sync_version,
+                    updated_at,
+                ),
+            )
+        delete_details_sql = (
+            "DELETE FROM chi_tiet_danh_gia_nha_thau "
+            "WHERE organization_id = ? AND bao_cao_danh_gia_nha_thau_id = ?"
+        )
+        delete_details_params = [organization_id, report_id]
+        if retained_detail_ids:
+            delete_details_sql += " AND id NOT IN ({})".format(
+                ", ".join("?" for _ in retained_detail_ids)
+            )
+            delete_details_params.extend(retained_detail_ids)
+        cursor.execute(delete_details_sql, tuple(delete_details_params))
+        if status == "completed":
+            _validate_completed_detailed_evaluation_report(
+                cursor,
+                organization_id,
+                round_id,
+                report_id,
+            )
+
+    delete_reports_sql = (
+        "DELETE FROM bao_cao_danh_gia_nha_thau "
+        "WHERE organization_id = ? AND thong_tin_mo_thau_id = ?"
+    )
+    delete_reports_params = [organization_id, opening_id]
+    if retained_report_ids:
+        delete_reports_sql += " AND id NOT IN ({})".format(
+            ", ".join("?" for _ in retained_report_ids)
+        )
+        delete_reports_params.extend(retained_report_ids)
+    cursor.execute(delete_reports_sql, tuple(delete_reports_params))
+
+
+def _attach_bid_detailed_evaluation_reports(
+    cursor,
+    by_id,
+    parent_ids,
+    organization_id,
+    naming,
+):
+    list_key = (
+        "baoCaoDanhGiaChiTietList"
+        if naming == "camel"
+        else "bao_cao_danh_gia_chi_tiet_list"
+    )
+    for item in by_id.values():
+        item[list_key] = []
+    reports = _select_children(
+        cursor,
+        "bao_cao_danh_gia_nha_thau",
+        "thong_tin_mo_thau_id",
+        parent_ids,
+        organization_id,
+        extra_order="vong_danh_gia_id, id",
+    )
+    if not reports:
+        return
+    round_ids = list(dict.fromkeys(row["vong_danh_gia_id"] for row in reports))
+    round_types = {
+        row["id"]: row.get("loai_vong")
+        for row in _select_children(
+            cursor,
+            "vong_danh_gia",
+            "id",
+            round_ids,
+            organization_id,
+            extra_order="thu_tu, id",
+        )
+    }
+    report_ids = [row["id"] for row in reports]
+    details_by_report = {}
+    for row in _select_children(
+        cursor,
+        "chi_tiet_danh_gia_nha_thau",
+        "bao_cao_danh_gia_nha_thau_id",
+        report_ids,
+        organization_id,
+        extra_order="tieu_chi_danh_gia_id, id",
+    ):
+        details_by_report.setdefault(
+            row["bao_cao_danh_gia_nha_thau_id"], []
+        ).append(row)
+    criterion_order = {}
+    criterion_ids = list(dict.fromkeys(
+        row.get("tieu_chi_danh_gia_id")
+        for rows in details_by_report.values()
+        for row in rows
+        if row.get("tieu_chi_danh_gia_id")
+    ))
+    if criterion_ids:
+        placeholders = ", ".join("?" for _ in criterion_ids)
+        criterion_params = list(criterion_ids)
+        criterion_owner_filter = ""
+        if organization_id is not None:
+            criterion_owner_filter = " AND organization_id = ?"
+            criterion_params.append(organization_id)
+        criterion_rows = cursor.execute(
+            f"""SELECT id, thu_tu FROM tieu_chi_danh_gia
+                WHERE id IN ({placeholders}){criterion_owner_filter}""",
+            criterion_params,
+        ).fetchall()
+        criterion_order = {
+            row["id"]: int(row.get("thu_tu") or 0)
+            for row in criterion_rows
+        }
+    order = {"single": 0, "technical": 1, "financial": 2}
+    reports.sort(
+        key=lambda row: (
+            order.get(round_types.get(row["vong_danh_gia_id"]) or row.get("loai_vong"), 99),
+            row["id"],
+        )
+    )
+    for row in reports:
+        item = by_id.get(row["thong_tin_mo_thau_id"])
+        if not item:
+            continue
+        details = sorted(
+            details_by_report.get(row["id"], []),
+            key=lambda detail: (
+                criterion_order.get(detail.get("tieu_chi_danh_gia_id"), 0),
+                detail["id"],
+            ),
+        )
+        try:
+            extension = parse_evaluation_metadata(
+                row.get("extension_json"),
+                require_version=True,
+            )
+        except ValueError:
+            extension = {"schemaVersion": 1}
+        extension = {
+            key: value for key, value in extension.items()
+            if key != "schemaVersion"
+        }
+        if naming == "snake":
+            item[list_key].append({
+                "id": row["id"],
+                "vong_danh_gia_id": row["vong_danh_gia_id"],
+                "loai_vong": round_types.get(row["vong_danh_gia_id"]) or row.get("loai_vong"),
+                "trang_thai": row.get("trang_thai") or "draft",
+                "ket_luan": row.get("ket_luan") or "",
+                "nguoi_cham_id": row.get("nguoi_cham_id"),
+                "hoan_thanh_luc": row.get("hoan_thanh_luc"),
+                "extension": extension,
+                "chi_tiet_list": [
+                    {
+                        "id": detail["id"],
+                        "tieu_chi_danh_gia_id": detail["tieu_chi_danh_gia_id"],
+                        "ket_qua": detail.get("ket_qua") or "pending",
+                        "diem": detail.get("diem"),
+                        "noi_dung_hsdt": detail.get("noi_dung_hsdt") or "",
+                        "nhan_xet": detail.get("nhan_xet") or "",
+                        "ly_do_khong_dat": detail.get("ly_do_khong_dat") or "",
+                        "yeu_cau_lam_ro": detail.get("yeu_cau_lam_ro") or "",
+                        "ket_qua_lam_ro": detail.get("ket_qua_lam_ro") or "",
+                        "tai_lieu_tham_chieu": detail.get("tai_lieu_tham_chieu") or "",
+                    }
+                    for detail in details
+                ],
+            })
+            continue
+        item[list_key].append({
+            "id": row["id"],
+            "vongDanhGiaId": row["vong_danh_gia_id"],
+            "loaiVong": round_types.get(row["vong_danh_gia_id"]) or row.get("loai_vong"),
+            "trangThai": row.get("trang_thai") or "draft",
+            "ketLuan": row.get("ket_luan") or "",
+            "nguoiChamId": row.get("nguoi_cham_id"),
+            "hoanThanhLuc": row.get("hoan_thanh_luc"),
+            "extension": extension,
+            "chiTietList": [
+                {
+                    "id": detail["id"],
+                    "tieuChiDanhGiaId": detail["tieu_chi_danh_gia_id"],
+                    "ketQua": detail.get("ket_qua") or "pending",
+                    "diem": detail.get("diem"),
+                    "noiDungHsdt": detail.get("noi_dung_hsdt") or "",
+                    "nhanXet": detail.get("nhan_xet") or "",
+                    "lyDoKhongDat": detail.get("ly_do_khong_dat") or "",
+                    "yeuCauLamRo": detail.get("yeu_cau_lam_ro") or "",
+                    "ketQuaLamRo": detail.get("ket_qua_lam_ro") or "",
+                    "taiLieuThamChieu": detail.get("tai_lieu_tham_chieu") or "",
+                }
+                for detail in details
+            ],
+        })
 
 
 def _attach_members(cursor, by_id, parent_ids, child_table, parent_col, organization_id, naming):

@@ -7,6 +7,7 @@ import { setVisible } from "../app/formStateUtils.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "../partners/contractorVersionBinding.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { isDetailedEvaluationSummaryOwned } from "./detailedEvaluationSelectors.js";
 import {
   EVALUATION_LOT_SCOPE_MODE,
   filterBidsByEvaluationLotScope,
@@ -199,6 +200,8 @@ function renderEvaluationLotScopeControls(controller, pkg, scope, {
 }
 
 export function renderDanhGiaHsdtPanel() {
+  this.currentEvaluationView = this.currentEvaluationView || "summary";
+  this.selectedDetailedEvaluationTab = this.selectedDetailedEvaluationTab || "validity";
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
   if (!select) return;
   const selectedVal = select.value;
@@ -963,6 +966,11 @@ export function renderDanhGiaHsdtPanel() {
         return codeA.localeCompare(codeB, "vi", { numeric: true });
       });
     }
+    const detailedReportButton = this.view.getActiveElement("btn-danhgiahsdt-detail");
+    if (detailedReportButton) {
+      setVisible(detailedReportButton, bids.length > 0, "inline-flex");
+      detailedReportButton.onclick = () => this.openDetailedEvaluation?.();
+    }
     if (bids.length === 0) {
       tbody.innerHTML = trustedHTML(`<tr><td colspan="15" class="bf-s-7fa1ce09fc"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`);
     } else {
@@ -978,6 +986,14 @@ export function renderDanhGiaHsdtPanel() {
         let maNhaThauHienThi = bid.maNhaThau || bid.maDinhDanh || "--";
         let tenNhaThauHienThi = resolveBidContractorName(this.model, bid) || "--";
         const isJVBid = bid.loaiNhaThau === "Liên danh";
+        const detailedRoundType = is1G2T
+          ? (this.currentDanhGiaTab === "financial" ? "financial" : "technical")
+          : "single";
+        const detailedProjectionReport = (bid.baoCaoDanhGiaChiTietList || []).find(
+          (report) => report.loaiVong === detailedRoundType
+            && isDetailedEvaluationSummaryOwned(report),
+        );
+        const rowReadOnly = isReadOnly || Boolean(detailedProjectionReport);
         const matchedNt = getExactContractorVersion(this.model, bid.nhaThauId) || resolveContractorVersion(this.model, bid);
         if (matchedNt) {
           maNhaThauHienThi = matchedNt.maNhaThau || maNhaThauHienThi;
@@ -998,6 +1014,9 @@ export function renderDanhGiaHsdtPanel() {
             ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorId)}" class="text-blue fw-bold link-hover">${escapeHtml(tenNhaThauHienThi)}</a>`
             : `<span class="fw-bold">${escapeHtml(tenNhaThauHienThi)}</span>`;
         }
+        if (detailedProjectionReport) {
+          contractorDisplayHtml += '<div><span class="badge badge-info">Tổng hợp từ báo cáo chi tiết</span></div>';
+        }
         let cellHtml = "";
         if (gt.phanLo === "Có") {
           cellHtml += `
@@ -1017,7 +1036,7 @@ export function renderDanhGiaHsdtPanel() {
           const valHieuLucHsdt = bid.hieuLucHsdt || "";
           const valLamRoTaiChinh = bid.lamRoTaiChinh || "";
           const valTaiChinh = bid.danhGiaTaiChinh || "";
-          if (isReadOnly) {
+          if (rowReadOnly) {
             cellHtml += `
                             <td><span>${valGiaDuThau || "--"}</span></td>
                             <td class="bf-s-5f326564a5"><span>${valTyLeGiam}</span></td>
@@ -1057,7 +1076,7 @@ export function renderDanhGiaHsdtPanel() {
           const valHieuLucHsdtRaw = bid.hieuLucHsdt || "";
           const valHieuLucHsdtDisplay = valHieuLucHsdtRaw ? String(valHieuLucHsdtRaw).includes("ngày") ? valHieuLucHsdtRaw : valHieuLucHsdtRaw + " ngày" : "--";
           const valHieuLucHsdtInput = valHieuLucHsdtRaw ? String(valHieuLucHsdtRaw).includes("ngày") ? valHieuLucHsdtRaw : valHieuLucHsdtRaw + " ngày" : "";
-          if (isReadOnly) {
+          if (rowReadOnly) {
             if (!isTechnical) {
               cellHtml += `
                                 <td><span>${bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : "--"}</span></td>
@@ -1159,8 +1178,8 @@ export function renderDanhGiaHsdtPanel() {
           }
         }
         tr.innerHTML = trustedHTML(cellHtml);
-        this.updateRowConclusion(tr, bid.danhGiaKetLuan, isReadOnly);
-        if (!isReadOnly && !is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
+        this.updateRowConclusion(tr, bid.danhGiaKetLuan, rowReadOnly);
+        if (!rowReadOnly && !is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
           const conclusionCell = tr.querySelector(".mt-ketluan-cell");
           const conclusionText = conclusionCell ? conclusionCell.textContent.trim() : "";
           const isThisFailed = conclusionText.startsWith("Không đạt");
@@ -1168,7 +1187,7 @@ export function renderDanhGiaHsdtPanel() {
             previousAllFailed = false;
           }
         }
-        if (!isReadOnly) {
+        if (!rowReadOnly) {
           const inputs = tr.querySelectorAll(".mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat");
           inputs.forEach((input) => {
             const triggerUpdate = () => {
@@ -1183,7 +1202,7 @@ export function renderDanhGiaHsdtPanel() {
             }
           });
         }
-        if (!isReadOnly && (caseType === "1G2T_TC_NO_LOT" || caseType === "1G2T_TC_WITH_LOT")) {
+        if (!rowReadOnly && (caseType === "1G2T_TC_NO_LOT" || caseType === "1G2T_TC_WITH_LOT")) {
           const inpGiaDuThau = tr.querySelector(".mt-gia-du-thau");
           const inpTyLeGiam = tr.querySelector(".mt-ty-le-giam-gia");
           const inpGiaTriDb = tr.querySelector(".mt-gia-tri-dam-bao");
@@ -1240,6 +1259,9 @@ export function renderDanhGiaHsdtPanel() {
         tbody.appendChild(tr);
       });
       updateAllRankings();
+    }
+    if (this.currentEvaluationView === "contractor-detail" && bids.length > 0) {
+      this.renderDetailedEvaluation?.();
     }
     lucide.createIcons();
     if (typeof this.unifyTableInputsHeight === "function") {
