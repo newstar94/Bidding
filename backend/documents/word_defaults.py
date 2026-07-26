@@ -5,7 +5,7 @@ from .schema_contract import json_key_for_column
 from backend.shared.workspace_scope import personal_scope_owner_id
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 12
+WORD_DEFAULT_MAPPINGS_VERSION = 13
 
 
 WORD_SINGLE_SOURCES = {
@@ -381,6 +381,12 @@ WORD_LIST_MAPPINGS = [
     ("ds_to_chuyen_gia", "to_chuyen_gia", "To chuyen gia cua goi thau"),
     ("ds_to_tham_dinh", "to_tham_dinh", "To tham dinh cua goi thau"),
     ("ds_mo_thau", "thong_tin_mo_thau", "Danh sach thong tin mo thau"),
+    ("ds_bao_cao_dgct", "detailed_evaluation_reports", "Báo cáo đánh giá chi tiết theo nhà thầu và vòng"),
+    ("ds_dgct", "detailed_evaluation_rows", "Tất cả dòng đánh giá chi tiết"),
+    ("ds_dgct_hop_le", "detailed_evaluation_validity_rows", "Đánh giá chi tiết tính hợp lệ"),
+    ("ds_dgct_nang_luc", "detailed_evaluation_capacity_rows", "Đánh giá chi tiết năng lực và kinh nghiệm"),
+    ("ds_dgct_ky_thuat", "detailed_evaluation_technical_rows", "Đánh giá chi tiết kỹ thuật"),
+    ("ds_dgct_tai_chinh", "detailed_evaluation_financial_rows", "Đánh giá chi tiết tài chính"),
     ("ds_tat_ca_phan_lo", "ds_phan_lo", "Danh sach phan lo tong hop"),
     ("ds_lo_co_nt", "ds_phan_lo_co_nha_thau_tham_du", "Phan lo co nha thau tham du"),
     ("ds_lo_khong_nt", "ds_phan_lo_khong_co_nha_thau_tham_du", "Phan lo khong co nha thau tham du"),

@@ -57,8 +57,8 @@ test("generic workbook analysis maps the active group without mutating source st
   assert.equal(analysis.report.chiTietList[0].ketQua, "pass");
   assert.equal(analysis.report.chiTietList[0].nhanXet, "Hợp lệ");
   assert.equal(
-    analysis.report.chiTietList[0].lyDoKhongDat,
-    "Dữ liệu cũ cần giữ khi Excel để trống",
+    Object.hasOwn(analysis.report.chiTietList[0], "lyDoKhongDat"),
+    false,
   );
   assert.equal(analysis.report.extension.keep, true);
   assert.equal(Object.hasOwn(analysis.report.extension, "excelBidType"), false);

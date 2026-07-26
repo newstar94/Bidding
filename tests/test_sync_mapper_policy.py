@@ -972,6 +972,22 @@ def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
         }
     ]
 
+    snake_opening = {"id": "opening-1", "nha_thau_id": "contractor-1"}
+    mapper.attach_child_rows(
+        RecordingCursor(
+            datasets,
+            stored_bid=("package-1", "contractor-1", "", "independent"),
+        ),
+        "thong_tin_mo_thau",
+        snake_opening,
+        organization_id="org-1",
+        naming="snake",
+    )
+    snake_detail = snake_opening["bao_cao_danh_gia_chi_tiet_list"][0][
+        "chi_tiet_list"
+    ][0]
+    assert "ly_do_khong_dat" not in snake_detail
+
     empty_opening = {"id": "opening-2"}
     mapper.attach_child_rows(
         RecordingCursor(stored_bid=None),

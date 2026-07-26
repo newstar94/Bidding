@@ -396,3 +396,12 @@ File này được cập nhật sau mỗi việc hoàn thành để theo dõi th
 - **Artifact:** Bidding route không còn yêu cầu chunk partner 61.590 B raw/14.071 B gzip; partner-create không còn yêu cầu chunk bidding 376.519 B raw/80.738 B gzip. Bootstrap tăng khoảng 3,2 kB raw/0,9 kB gzip; browser trace vẫn cần trước khi kết luận latency nhanh hơn.
 - **File:** `frontend/app/WorkflowModuleLoader.js`, `BiddingController.js`, `BiddingControllerUI.js`, `AuthFlowController.js`, `GoiThauDetail.js`, `tests/js/workflow_module_loader.test.mjs` và ba báo cáo refactor/hiệu năng.
 - **Kiểm tra:** Test mới đỏ trước implementation và 5/5 đạt sau fix; toàn bộ JavaScript 230/230 đạt; `npm run lint:security`, `npm run build:secure` và `git diff --check` đạt.
+
+### 42. Loại hoàn toàn lý do không đạt khỏi báo cáo đánh giá chi tiết
+
+- **Contract runtime:** Dòng đánh giá chi tiết mới, draft, report mở lại và state đã tải từ dữ liệu legacy đều không còn `lyDoKhongDat`/`ly_do_khong_dat`; normalizer tại state là seam duy nhất loại field cũ trước khi các caller sử dụng.
+- **Nhập Excel:** Không đọc cột “Lý do không đạt/Nguyên nhân không đạt/Failure reason”; merge import loại field legacy khỏi toàn bộ dòng giữ lại, không chỉ dòng vừa khớp Excel.
+- **Giao diện và tổng hợp:** Collector không tạo hoặc giữ lại field; aggregation không còn trả `failureReason`. Các trường nguyên nhân/làm rõ của báo cáo tổng quát không bị thay đổi.
+- **Backend:** Mapper bỏ đọc payload, bỏ cột khỏi INSERT/UPDATE và bỏ field khỏi cả output camelCase/snake_case; report `completed` có tiêu chí `fail` lưu được khi không có lý do.
+- **Tương thích database:** Giữ cột vật lý nullable `chi_tiet_danh_gia_nha_thau.ly_do_khong_dat`; không sửa migration đã áp dụng và không hạ schema metadata.
+- **Kiểm tra:** Test mới đỏ đúng sáu seam frontend và hai seam backend trước fix; sau fix 17/17 mapper test, 52/52 Detailed Evaluation test, PostgreSQL round-trip, toàn bộ JavaScript 231/231 và Python 1.022/1.022 đạt (1 test bỏ qua); `npm run lint:security`, `npm run build:secure` và `git diff --check` đều đạt.

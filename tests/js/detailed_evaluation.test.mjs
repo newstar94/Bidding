@@ -250,7 +250,7 @@ test("detailed evaluation Excel rows map to criteria and editable fields", () =>
   assert.equal(imported.matches[0].values.taiLieuThamChieu, "Trang 12");
   assert.equal(imported.matches[1].criterion.id, "criterion-2");
   assert.equal(imported.matches[1].values.ketQua, "fail");
-  assert.equal(imported.matches[1].values.lyDoKhongDat, "Thiếu chữ ký thành viên");
+  assert.equal(Object.hasOwn(imported.matches[1].values, "lyDoKhongDat"), false);
   assert.deepEqual(imported.unmatchedRows, []);
 });
 
@@ -690,7 +690,6 @@ test("detailed evaluation aggregation projects group and overall conclusions", (
   assert.deepEqual(passed, {
     status: "Đạt",
     score: 80,
-    failureReason: "",
     clarification: "",
   });
 
@@ -707,7 +706,6 @@ test("detailed evaluation aggregation projects group and overall conclusions", (
     {
       status: "Không đạt",
       score: null,
-      failureReason: "Không đáp ứng thông số kỹ thuật",
       clarification: "Yêu cầu làm rõ catalogue",
     },
   );
@@ -745,6 +743,7 @@ test("draft reports do not overwrite the legacy projection and completed reports
   assert.equal(draft.vongDanhGiaId, "evaluation-round:package-1:single");
   assert.equal(Object.hasOwn(draft, "nguoiChamId"), false);
   assert.deepEqual(draft.chiTietList.map((row) => row.ketQua), ["pending", "pending"]);
+  assert.equal(draft.chiTietList.some((row) => Object.hasOwn(row, "lyDoKhongDat")), false);
   assert.equal(bid.baoCaoDanhGiaChiTietList, undefined);
 
   assert.deepEqual(

@@ -2,7 +2,10 @@ import {
   applyHierarchicalDetailedEvaluationResults,
   markHierarchicalDetailedEvaluationCriteria,
 } from "./detailedEvaluationHierarchy.js";
-import { buildReopenedDetailedEvaluationReport } from "./DetailedEvaluationState.js";
+import {
+  buildReopenedDetailedEvaluationReport,
+  normalizeDetailedEvaluationRow,
+} from "./DetailedEvaluationState.js";
 
 export async function confirmDetailedEvaluationDiscard(appController) {
   if (!appController._detailedEvaluationDirty) return true;
@@ -15,13 +18,18 @@ export async function confirmDetailedEvaluationDiscard(appController) {
 
 export function collectActiveGroupRows(container, report, criteria) {
   const existing = new Map(
-    (report?.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
+    (report?.chiTietList || []).map((row) => [
+      String(row.tieuChiDanhGiaId),
+      normalizeDetailedEvaluationRow(row),
+    ]),
   );
   container.querySelectorAll("[data-detailed-criterion-id]").forEach((element) => {
     const criterionId = element.getAttribute("data-detailed-criterion-id");
     const criterion = criteria.find((item) => String(item.id) === String(criterionId));
     if (!criterion) return;
-    const previous = existing.get(String(criterionId)) || {};
+    const previous = normalizeDetailedEvaluationRow(
+      existing.get(String(criterionId)) || {},
+    );
     const hasField = (field) => Boolean(element.querySelector(`[data-detailed-field="${field}"]`));
     const value = (field) => element.querySelector(`[data-detailed-field="${field}"]`)?.value ?? "";
     const choiceValue = (field) => {
@@ -50,9 +58,6 @@ export function collectActiveGroupRows(container, report, criteria) {
       diem: scoreValue === "" ? null : Number(scoreValue),
       noiDungHsdt: value("noiDungHsdt"),
       nhanXet: value("nhanXet"),
-      lyDoKhongDat: hasField("lyDoKhongDat")
-        ? value("lyDoKhongDat")
-        : previous.lyDoKhongDat || "",
       yeuCauLamRo: hasField("yeuCauLamRo") ? value("yeuCauLamRo") : previous.yeuCauLamRo || "",
       ketQuaLamRo: hasField("ketQuaLamRo") ? value("ketQuaLamRo") : previous.ketQuaLamRo || "",
       taiLieuThamChieu: hasField("taiLieuThamChieu")

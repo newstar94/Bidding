@@ -157,6 +157,12 @@ def test_list_source_picker_only_contains_real_collections():
         "to_chuyen_gia",
         "to_tham_dinh",
         "thong_tin_mo_thau",
+        "detailed_evaluation_reports",
+        "detailed_evaluation_rows",
+        "detailed_evaluation_validity_rows",
+        "detailed_evaluation_capacity_rows",
+        "detailed_evaluation_technical_rows",
+        "detailed_evaluation_financial_rows",
     ):
         assert f'value="{collection_source}"' in list_picker
 
@@ -200,6 +206,12 @@ def test_plan_and_package_list_sources_are_explicit_and_seeded():
     assert "ds_kh" not in generated
     assert generated["ds_phien_ban_kh"]["source_table"] == "ke_hoach_versions"
     assert generated["ds_tat_ca_phan_lo"]["source_table"] == "ds_phan_lo"
+    assert generated["ds_bao_cao_dgct"]["source_table"] == "detailed_evaluation_reports"
+    assert generated["ds_dgct"]["source_table"] == "detailed_evaluation_rows"
+    assert generated["ds_dgct_hop_le"]["source_table"] == "detailed_evaluation_validity_rows"
+    assert generated["ds_dgct_nang_luc"]["source_table"] == "detailed_evaluation_capacity_rows"
+    assert generated["ds_dgct_ky_thuat"]["source_table"] == "detailed_evaluation_technical_rows"
+    assert generated["ds_dgct_tai_chinh"]["source_table"] == "detailed_evaluation_financial_rows"
     assert "ds_phan_lo" not in generated
     assert len({name for name, _source, _description in WORD_LIST_MAPPINGS}) == len(
         WORD_LIST_MAPPINGS

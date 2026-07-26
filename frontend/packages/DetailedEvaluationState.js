@@ -25,10 +25,26 @@ export function buildDetailedEvaluationRow(reportId, criterionId) {
     diem: null,
     noiDungHsdt: "",
     nhanXet: "",
-    lyDoKhongDat: "",
     yeuCauLamRo: "",
     ketQuaLamRo: "",
     taiLieuThamChieu: "",
+  };
+}
+
+export function normalizeDetailedEvaluationRow(row = {}) {
+  const {
+    lyDoKhongDat: _legacyCamelFailureReason,
+    ly_do_khong_dat: _legacySnakeFailureReason,
+    ...normalized
+  } = row;
+  return normalized;
+}
+
+export function normalizeDetailedEvaluationReport(report) {
+  if (!report || typeof report !== "object") return report;
+  return {
+    ...report,
+    chiTietList: (report.chiTietList || []).map(normalizeDetailedEvaluationRow),
   };
 }
 
@@ -55,12 +71,13 @@ export function buildDetailedEvaluationDraft({
 }
 
 export function buildReopenedDetailedEvaluationReport(report = {}) {
-  const extension = report.extension && typeof report.extension === "object"
-    ? { ...report.extension }
+  const normalizedReport = normalizeDetailedEvaluationReport(report);
+  const extension = normalizedReport.extension && typeof normalizedReport.extension === "object"
+    ? { ...normalizedReport.extension }
     : {};
   extension.projectionPending = true;
   return {
-    ...report,
+    ...normalizedReport,
     trangThai: "draft",
     hoanThanhLuc: null,
     extension,
@@ -112,7 +129,6 @@ function reportHasMeaningfulEvaluationData(report = {}) {
     || [
       "noiDungHsdt",
       "nhanXet",
-      "lyDoKhongDat",
       "yeuCauLamRo",
       "ketQuaLamRo",
       "taiLieuThamChieu",
@@ -159,9 +175,11 @@ export function resolveDetailedEvaluationState(controller) {
   const draftKey = `${pkg.id}:${bid?.id || ""}:${roundType}`;
   controller._detailedEvaluationDrafts = controller._detailedEvaluationDrafts || new Map();
   const persistedReport = bid ? getDetailedReportForRound(bid, roundType) : null;
-  let report = controller._detailedEvaluationDrafts.has(draftKey)
+  const reportSource = controller._detailedEvaluationDrafts.has(draftKey)
     ? controller._detailedEvaluationDrafts.get(draftKey)
     : persistedReport;
+  let report = normalizeDetailedEvaluationReport(reportSource);
+  if (reportSource) controller._detailedEvaluationDrafts.set(draftKey, report);
   const criteriaKey = `${pkg.id}:${roundType}`;
   controller._detailedEvaluationCriteriaOverrides = controller._detailedEvaluationCriteriaOverrides || new Map();
   const hasCriteriaOverride = controller._detailedEvaluationCriteriaOverrides.has(criteriaKey);

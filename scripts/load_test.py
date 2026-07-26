@@ -85,35 +85,43 @@ async def run_benchmark(base_url: str, concurrency: int, duration: float) -> dic
     all_ready = asyncio.Event()
     ready_lock = asyncio.Lock()
     ready_count = 0
-    login_gate = asyncio.Semaphore(2)
     warmup_gate = asyncio.Semaphore(4)
+
+    # Browser tabs share one HTTP-only session. The production security model
+    # intentionally revokes the previous session when the same account logs in
+    # again, so a benchmark must authenticate once and fan out that identity.
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        timeout=httpx.Timeout(15),
+        limits=httpx.Limits(max_connections=2, max_keepalive_connections=1),
+    ) as login_client:
+        _login_payload, shared_headers = await _login(login_client)
+        shared_cookies = dict(login_client.cookies)
 
     async def worker(worker_id: int) -> None:
         nonlocal ready_count
         request_sequence = 0
         try:
-            async with httpx.AsyncClient(
-                base_url=base_url,
-                timeout=httpx.Timeout(15),
-                limits=httpx.Limits(max_connections=2, max_keepalive_connections=1),
-            ) as login_client:
-                async with login_gate:
-                    _login_payload, headers = await _login(login_client)
-                cookies = dict(login_client.cookies)
-
             # Establish each workload connection before the timed window.
             async with httpx.AsyncClient(
                 base_url=base_url,
                 timeout=httpx.Timeout(15),
                 limits=httpx.Limits(max_connections=2, max_keepalive_connections=1),
-                cookies=cookies,
+                cookies=shared_cookies,
             ) as client:
                 warmup_started = time.perf_counter()
                 last_error = None
                 async with warmup_gate:
                     for attempt in range(8):
                         try:
-                            warmup_response = await client.get("/health/live")
+                            # Warm the exact authenticated/session/database
+                            # path used in the timed workload. A live-only
+                            # probe can succeed while another web worker or
+                            # its database pool is still cold.
+                            warmup_response = await client.get(
+                                "/api/sync-version",
+                                headers=shared_headers,
+                            )
                             warmup_response.raise_for_status()
                             break
                         except httpx.HTTPError as exc:
@@ -156,7 +164,7 @@ async def run_benchmark(base_url: str, concurrency: int, duration: float) -> dic
                     started = time.perf_counter()
                     try:
                         response = await client.request(
-                            method, path, json=body, headers=headers
+                            method, path, json=body, headers=shared_headers
                         )
                         elapsed = time.perf_counter() - started
                         latencies.append(elapsed)

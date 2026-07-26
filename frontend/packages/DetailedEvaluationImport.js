@@ -7,6 +7,7 @@ import {
   applyHierarchicalDetailedEvaluationResults,
   markHierarchicalDetailedEvaluationCriteria,
 } from "./detailedEvaluationHierarchy.js";
+import { normalizeDetailedEvaluationRow } from "./DetailedEvaluationState.js";
 
 function flattenFirstSheet(sheets) {
   const rows = sheets[0]?.rows || [];
@@ -18,10 +19,15 @@ function flattenFirstSheet(sheets) {
 
 function mergeImportedRows(report, existingRows, matches) {
   const rowsByCriterion = new Map(
-    existingRows.map((row) => [String(row.tieuChiDanhGiaId), row]),
+    existingRows.map((row) => [
+      String(row.tieuChiDanhGiaId),
+      normalizeDetailedEvaluationRow(row),
+    ]),
   );
   matches.forEach(({ criterion, values }) => {
-    const previous = rowsByCriterion.get(String(criterion.id)) || {};
+    const previous = normalizeDetailedEvaluationRow(
+      rowsByCriterion.get(String(criterion.id)) || {},
+    );
     const textValue = (field) => values[field] !== "" ? values[field] : previous[field] || "";
     rowsByCriterion.set(String(criterion.id), {
       ...previous,
@@ -31,7 +37,6 @@ function mergeImportedRows(report, existingRows, matches) {
       diem: values.diem !== null ? values.diem : previous.diem ?? null,
       noiDungHsdt: textValue("noiDungHsdt"),
       nhanXet: textValue("nhanXet"),
-      lyDoKhongDat: textValue("lyDoKhongDat"),
       yeuCauLamRo: textValue("yeuCauLamRo"),
       ketQuaLamRo: textValue("ketQuaLamRo"),
       taiLieuThamChieu: textValue("taiLieuThamChieu"),

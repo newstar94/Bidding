@@ -153,6 +153,32 @@ _WINNER_GROUP_FIELDS = frozenset(
         "ds_phan_lo",
     }
 )
+_DETAILED_EVALUATION_ROW_FIELDS = frozenset(
+    {
+        "bao_cao_id", "thong_tin_mo_thau_id", "nha_thau_id",
+        "ten_nha_thau", "loai_nha_thau", "ma_phan_lo", "ten_phan_lo",
+        "vong_danh_gia_id", "loai_vong", "ten_vong",
+        "trang_thai_bao_cao", "ket_luan_bao_cao", "hoan_thanh_luc",
+        "tieu_chi_danh_gia_id", "stt", "ma_tieu_chi", "ten_tieu_chi",
+        "yeu_cau", "nhom_danh_gia", "ten_nhom_danh_gia",
+        "loai_ket_qua", "bat_buoc", "la_muc_lon", "tieu_chi_cha_id",
+        "thu_tu", "diem_toi_da", "diem_toi_thieu", "trong_so",
+        "ket_qua_tu_dong", "ket_qua_tu_dong_hien_thi",
+        "ket_qua_tu_dong_dat", "ket_qua_tu_dong_khong_dat",
+        "ket_qua_chuyen_gia", "ket_qua_chuyen_gia_hien_thi",
+        "ket_qua_chuyen_gia_dat", "ket_qua_chuyen_gia_khong_dat",
+        "diem", "noi_dung_hsdt", "nhan_xet",
+    }
+)
+_DETAILED_EVALUATION_REPORT_FIELDS = frozenset(
+    {
+        "id", "thong_tin_mo_thau_id", "nha_thau_id", "ten_nha_thau",
+        "loai_nha_thau", "ma_phan_lo", "ten_phan_lo",
+        "vong_danh_gia_id", "loai_vong", "ten_vong", "trang_thai",
+        "ket_luan", "hoan_thanh_luc", "ds_tieu_chi", "ds_hop_le",
+        "ds_nang_luc", "ds_ky_thuat", "ds_tai_chinh",
+    }
+)
 
 _PLAN_FIELDS = frozenset(
     _word_fields("ke_hoach_lcnt")
@@ -270,6 +296,17 @@ ENTITY_SPECS = {
     "winner_group": EntitySpec(
         _WINNER_GROUP_FIELDS, {"ds_phan_lo": "lot"}
     ),
+    "detailed_evaluation_row": EntitySpec(_DETAILED_EVALUATION_ROW_FIELDS),
+    "detailed_evaluation_report": EntitySpec(
+        _DETAILED_EVALUATION_REPORT_FIELDS,
+        {
+            "ds_tieu_chi": "detailed_evaluation_row",
+            "ds_hop_le": "detailed_evaluation_row",
+            "ds_nang_luc": "detailed_evaluation_row",
+            "ds_ky_thuat": "detailed_evaluation_row",
+            "ds_tai_chinh": "detailed_evaluation_row",
+        },
+    ),
 }
 
 
@@ -309,6 +346,13 @@ _REPORT_LOT_ROOTS = {
     "ds_phan_lo_co_nha_thau_tham_du_khong_trung",
     "ds_nha_thau_trung_theo_phan_lo",
 }
+_DETAILED_EVALUATION_ROW_ROOTS = {
+    "detailed_evaluation_rows",
+    "detailed_evaluation_validity_rows",
+    "detailed_evaluation_capacity_rows",
+    "detailed_evaluation_technical_rows",
+    "detailed_evaluation_financial_rows",
+}
 
 
 PLAN_ROOT_SPECS = {
@@ -339,6 +383,11 @@ REPORT_ROOT_SPECS = {
         if key == "ds_nha_thau_trung_theo_phan_lo"
         else "lot_summary_list"
         for key in _REPORT_LOT_ROOTS
+    },
+    "detailed_evaluation_reports": "detailed_evaluation_report_list",
+    **{
+        key: "detailed_evaluation_row_list"
+        for key in _DETAILED_EVALUATION_ROW_ROOTS
     },
     **{key: "scalar" for key in _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS},
 }
@@ -414,6 +463,8 @@ _LIST_ONLY_SOURCES = {
     "ds_phan_lo_khong_co_nha_thau_tham_du",
     "ds_phan_lo_co_nha_thau_trung",
     "ds_phan_lo_co_nha_thau_tham_du_khong_trung",
+    "detailed_evaluation_reports",
+    *_DETAILED_EVALUATION_ROW_ROOTS,
 }
 _CONTEXT_SOURCE_FIELDS = _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS
 _PLAN_MAPPING_SOURCES = {
@@ -467,6 +518,11 @@ _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "cv_khong_ap_dung_list": "plan_work",
     "cv_chua_du_dieu_kien": "plan_work",
     "cv_chua_du_dieu_kien_list": "plan_work",
+    "detailed_evaluation_reports": "detailed_evaluation_report",
+    **{
+        key: "detailed_evaluation_row"
+        for key in _DETAILED_EVALUATION_ROW_ROOTS
+    },
     **{key: "bid" for key in _REPORT_BID_LIST_ROOTS},
     **{
         key: "winner_group"

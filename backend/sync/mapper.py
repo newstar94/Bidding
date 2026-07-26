@@ -1355,15 +1355,6 @@ def _save_bid_detailed_evaluation_reports(
                 score < 0 or (maximum_score is not None and score > maximum_score)
             ):
                 raise ValueError("Diem tieu chi nam ngoai pham vi cho phep.")
-            failure_reason = str(
-                _first_value(
-                    raw_detail,
-                    "lyDoKhongDat",
-                    "ly_do_khong_dat",
-                    default="",
-                )
-                or ""
-            ).strip()
             required = bool(_db_row_value(criterion, 3, "bat_buoc", 1))
             if status == "completed" and required and result == "pending":
                 raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
@@ -1389,7 +1380,6 @@ def _save_bid_detailed_evaluation_reports(
                     score,
                     str(_first_value(raw_detail, "noiDungHsdt", "noi_dung_hsdt", default="") or ""),
                     str(_first_value(raw_detail, "nhanXet", "nhan_xet", default="") or ""),
-                    failure_reason,
                     str(_first_value(raw_detail, "yeuCauLamRo", "yeu_cau_lam_ro", default="") or ""),
                     str(_first_value(raw_detail, "ketQuaLamRo", "ket_qua_lam_ro", default="") or ""),
                     str(_first_value(raw_detail, "taiLieuThamChieu", "tai_lieu_tham_chieu", default="") or ""),
@@ -1403,16 +1393,15 @@ def _save_bid_detailed_evaluation_reports(
                 """INSERT INTO chi_tiet_danh_gia_nha_thau (
                     id, organization_id, owner_type,
                     bao_cao_danh_gia_nha_thau_id, tieu_chi_danh_gia_id,
-                    ket_qua, diem, noi_dung_hsdt, nhan_xet, ly_do_khong_dat,
+                    ket_qua, diem, noi_dung_hsdt, nhan_xet,
                     yeu_cau_lam_ro, ket_qua_lam_ro, tai_lieu_tham_chieu,
                     extension_json, sync_version, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(organization_id, bao_cao_danh_gia_nha_thau_id, tieu_chi_danh_gia_id)
                 DO UPDATE SET owner_type=excluded.owner_type,
                     ket_qua=excluded.ket_qua, diem=excluded.diem,
                     noi_dung_hsdt=excluded.noi_dung_hsdt,
                     nhan_xet=excluded.nhan_xet,
-                    ly_do_khong_dat=excluded.ly_do_khong_dat,
                     yeu_cau_lam_ro=excluded.yeu_cau_lam_ro,
                     ket_qua_lam_ro=excluded.ket_qua_lam_ro,
                     tai_lieu_tham_chieu=excluded.tai_lieu_tham_chieu,
@@ -1473,7 +1462,6 @@ def _format_detailed_evaluation_row(detail, naming):
             "diem": detail.get("diem"),
             "noi_dung_hsdt": detail.get("noi_dung_hsdt") or "",
             "nhan_xet": detail.get("nhan_xet") or "",
-            "ly_do_khong_dat": detail.get("ly_do_khong_dat") or "",
             "yeu_cau_lam_ro": detail.get("yeu_cau_lam_ro") or "",
             "ket_qua_lam_ro": detail.get("ket_qua_lam_ro") or "",
             "tai_lieu_tham_chieu": detail.get("tai_lieu_tham_chieu") or "",
@@ -1486,7 +1474,6 @@ def _format_detailed_evaluation_row(detail, naming):
             "diem": detail.get("diem"),
             "noiDungHsdt": detail.get("noi_dung_hsdt") or "",
             "nhanXet": detail.get("nhan_xet") or "",
-            "lyDoKhongDat": detail.get("ly_do_khong_dat") or "",
             "yeuCauLamRo": detail.get("yeu_cau_lam_ro") or "",
             "ketQuaLamRo": detail.get("ket_qua_lam_ro") or "",
             "taiLieuThamChieu": detail.get("tai_lieu_tham_chieu") or "",

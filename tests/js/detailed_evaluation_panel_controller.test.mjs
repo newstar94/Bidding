@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bindDetailedEvaluationPanelController } from "../../frontend/packages/DetailedEvaluationPanelController.js";
+import {
+  bindDetailedEvaluationPanelController,
+  collectActiveGroupRows,
+} from "../../frontend/packages/DetailedEvaluationPanelController.js";
 
 class FakeElement {
   constructor() {
@@ -221,4 +224,23 @@ test("panel actions dispatch save, row, reopen and Excel commands", async () => 
     ["render"],
     ["import", workbook],
   ]);
+});
+
+test("row collector removes a legacy detailed failure reason", () => {
+  const criterionElement = new FakeElement();
+  criterionElement.setAttribute("data-detailed-criterion-id", "criterion-1");
+  const container = createRoot({
+    lists: { "[data-detailed-criterion-id]": [criterionElement] },
+  });
+  const rows = collectActiveGroupRows(container, {
+    id: "report-1",
+    chiTietList: [{
+      id: "row-1",
+      tieuChiDanhGiaId: "criterion-1",
+      ketQua: "fail",
+      lyDoKhongDat: "Legacy reason",
+    }],
+  }, [{ id: "criterion-1", resultType: "pass_fail", group: "validity" }]);
+
+  assert.equal(Object.hasOwn(rows[0], "lyDoKhongDat"), false);
 });

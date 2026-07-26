@@ -4,6 +4,9 @@ from backend.documents.docx_context_policy import (
     REPORT_DOCUMENT_TYPES,
     project_docx_context,
 )
+from backend.documents.detailed_evaluation_context import (
+    build_detailed_evaluation_context,
+)
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 from backend.shared.date_utils import vietnam_now
 
@@ -443,4 +446,5 @@ def build_report_context(
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
+    unified_context.update(build_detailed_evaluation_context(pkg, bids))
     return project_docx_context(type_param, unified_context, capabilities)

@@ -80,6 +80,7 @@ test("criteria override is the canonical source for a newly configured report", 
   assert.equal(state.criteria.length, 1);
   assert.equal(state.criteria[0].name, "Tiêu chí tự cấu hình");
   assert.equal(state.report.chiTietList[0].tieuChiDanhGiaId, "criterion-1");
+  assert.equal(Object.hasOwn(state.report.chiTietList[0], "lyDoKhongDat"), false);
 });
 
 test("financial round contains only technically qualified bidders", () => {

@@ -37,7 +37,6 @@ export function aggregateDetailedEvaluation({
     score: numericScores.length > 0
       ? numericScores.reduce((total, value) => total + value, 0)
       : null,
-    failureReason: uniqueText(groupRows.map((row) => row.lyDoKhongDat)),
     clarification: uniqueText(groupRows.flatMap(
       (row) => [row.yeuCauLamRo, row.ketQuaLamRo],
     )),
@@ -70,7 +69,6 @@ export function aggregateDetailedEvaluationReport({
       score: scores.length > 0
         ? scores.reduce((total, value) => total + Number(value), 0)
         : null,
-      failureReason: uniqueText(results.map((result) => result.failureReason)),
       clarification: uniqueText(results.map((result) => result.clarification)),
     },
   };

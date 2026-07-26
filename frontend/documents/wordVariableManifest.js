@@ -2671,6 +2671,48 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Báo cáo đánh giá chi tiết theo nhà thầu và vòng",
+    "name": "ds_bao_cao_dgct",
+    "sourceColumn": "",
+    "sourceTable": "detailed_evaluation_reports"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Tất cả dòng đánh giá chi tiết",
+    "name": "ds_dgct",
+    "sourceColumn": "",
+    "sourceTable": "detailed_evaluation_rows"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết tính hợp lệ",
+    "name": "ds_dgct_hop_le",
+    "sourceColumn": "",
+    "sourceTable": "detailed_evaluation_validity_rows"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết năng lực và kinh nghiệm",
+    "name": "ds_dgct_nang_luc",
+    "sourceColumn": "",
+    "sourceTable": "detailed_evaluation_capacity_rows"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết kỹ thuật",
+    "name": "ds_dgct_ky_thuat",
+    "sourceColumn": "",
+    "sourceTable": "detailed_evaluation_technical_rows"
+  },
+  {
+    "format": "text",
+    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết tài chính",
+    "name": "ds_dgct_tai_chinh",
+    "sourceColumn": "",
+    "sourceTable": "detailed_evaluation_financial_rows"
+  },
+  {
+    "format": "text",
     "label": "Danh sach mac dinh tu schema he thong: Danh sach phan lo tong hop",
     "name": "ds_tat_ca_phan_lo",
     "sourceColumn": "",

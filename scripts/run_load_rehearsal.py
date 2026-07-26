@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -52,6 +53,50 @@ _DATABASE_COUNTER_FIELDS = (
     "sessions_fatal",
     "sessions_killed",
 )
+_DISPOSABLE_DATABASE_NAME_RE = re.compile(
+    r"(?:^|[_-])(load|test|bench|benchmark|rehearsal)(?:$|[_-])",
+    re.IGNORECASE,
+)
+
+
+def _assert_port_available(host: str, port: int) -> None:
+    """Fail before database mutation when the rehearsal port is already owned."""
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((host, int(port)))
+    except OSError as exc:
+        raise RuntimeError(
+            f"Load-test port {host}:{port} is already in use."
+        ) from exc
+
+
+def _database_identity(database_url: str) -> tuple[str, str, int]:
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        row = connection.execute(
+            """
+            SELECT current_database(),
+                   COALESCE(inet_server_addr()::text, 'local'),
+                   current_setting('port')::integer
+            """
+        ).fetchone()
+    return str(row[0]), str(row[1]), int(row[2])
+
+
+def _validate_rehearsal_database_identity(
+    load_identity: tuple[str, str, int],
+    runtime_identity: tuple[str, str, int] | None,
+) -> None:
+    database_name = str(load_identity[0] or "")
+    if runtime_identity is not None and load_identity == runtime_identity:
+        raise RuntimeError(
+            "LOAD_TEST_DATABASE_URL resolves to the runtime database."
+        )
+    if not _DISPOSABLE_DATABASE_NAME_RE.search(database_name):
+        raise RuntimeError(
+            "LOAD_TEST_DATABASE_URL must resolve to a disposable database "
+            "whose name contains load, test, bench, benchmark, or rehearsal."
+        )
 
 
 def _wait_ready(process: subprocess.Popen, url: str) -> None:
@@ -277,6 +322,11 @@ def main() -> int:
     database_url = os.environ.get("LOAD_TEST_DATABASE_URL", "").strip()
     if not database_url:
         raise RuntimeError("LOAD_TEST_DATABASE_URL is required")
+    _assert_port_available("127.0.0.1", args.port)
+    load_identity = _database_identity(database_url)
+    runtime_url = os.environ.get("DATABASE_URL", "").strip()
+    runtime_identity = _database_identity(runtime_url) if runtime_url else None
+    _validate_rehearsal_database_identity(load_identity, runtime_identity)
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         connection.execute("CREATE SCHEMA public")
