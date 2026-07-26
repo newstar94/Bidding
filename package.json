@@ -11,6 +11,7 @@
     "package:production": "npm run build:secure && python scripts/package_production.py"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "esbuild": "0.28.1",
     "eslint": "10.7.0",
     "javascript-obfuscator": "5.4.3",

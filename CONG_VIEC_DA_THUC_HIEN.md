@@ -405,3 +405,25 @@ File này được cập nhật sau mỗi việc hoàn thành để theo dõi th
 - **Backend:** Mapper bỏ đọc payload, bỏ cột khỏi INSERT/UPDATE và bỏ field khỏi cả output camelCase/snake_case; report `completed` có tiêu chí `fail` lưu được khi không có lý do.
 - **Tương thích database:** Giữ cột vật lý nullable `chi_tiet_danh_gia_nha_thau.ly_do_khong_dat`; không sửa migration đã áp dụng và không hạ schema metadata.
 - **Kiểm tra:** Test mới đỏ đúng sáu seam frontend và hai seam backend trước fix; sau fix 17/17 mapper test, 52/52 Detailed Evaluation test, PostgreSQL round-trip, toàn bộ JavaScript 231/231 và Python 1.022/1.022 đạt (1 test bỏ qua); `npm run lint:security`, `npm run build:secure` và `git diff --check` đều đạt.
+
+### 43. Sửa rehearsal nhiều worker và cô lập teardown Windows
+
+- **Session:** `run_benchmark` đăng nhập đúng một lần và chia sẻ cookie/header cho toàn workload, phù hợp invariant một phiên hoạt động trên một tài khoản; không còn các login song song tự thu hồi nhau thành `SESSION_INVALID`.
+- **Warmup:** Mỗi workload connection phải gọi thành công `/api/sync-version` có session + organization + database trước start gate; không dùng `/health/live` làm tín hiệu sai về worker/pool đã sẵn sàng.
+- **Database safety:** Fail trước mutation nếu cổng rehearsal đang được dùng, database đích không có tên disposable hoặc identity PostgreSQL trùng database runtime; `biddingflow_dev` và `biddingflow_load_test` được xác minh khác nhau.
+- **Process ownership:** Windows không phát `CTRL_BREAK_EVENT` qua console vì tín hiệu này từng dừng cả PostgreSQL. Teardown chỉ nhắm PID supervisor và descendants bằng `taskkill /T /F`, có recheck trước khi dùng PID.
+- **Rehearsal thật:** 2 worker, concurrency 8, 5 giây: 2.712/2.712 request `200`, không lỗi; 527,05 req/s; p95 30,98 ms; sync-write p95 59,73 ms; quan sát đủ 2/2 worker, 0 deadlock và 0 ungranted lock.
+- **Hậu kiểm:** Cổng `18083` đóng; PostgreSQL PID `24460` và app PID `4352` giữ nguyên; health app `live=200`, `ready=200`.
+- **Kiểm tra:** Test mới đỏ trên shared-session warmup và CTRL_BREAK ownership trước fix; 11/11 policy/multiworker test và toàn bộ Python 1.031/1.031 đạt, 1 test bỏ qua; `git diff --check` đạt.
+
+### 44. Bổ sung placeholder Word cho báo cáo đánh giá chi tiết
+
+- **Deep module:** Tạo `build_detailed_evaluation_context(package, bids)` ghép metadata tiêu chí với report/dòng đã lưu thành DTO Word ổn định; hỗ trợ snake/camel legacy, STT phân cấp, liên danh/phân lô và các vòng single/technical/financial.
+- **Danh sách Word:** Thêm `ds_bao_cao_dgct` theo nhà thầu/vòng và năm danh sách phẳng `ds_dgct`, `ds_dgct_hop_le`, `ds_dgct_nang_luc`, `ds_dgct_ky_thuat`, `ds_dgct_tai_chinh`.
+- **Bảng:** Expose đúng nội dung tiêu chí/yêu cầu/HSDT, dấu `x` hệ thống và chuyên gia, điểm tối đa/tối thiểu/điểm chấm, nhận xét, nhà thầu/lô/vòng; không expose lý do không đạt hoặc làm rõ chi tiết.
+- **Security/DTO:** Thêm entity allowlist cho report + criterion row, nested group lists và mapping source; dữ liệu ngoài contract bị loại trước document worker.
+- **Cấu hình:** Nâng default Word mapping version 12 → 13; generator đồng bộ manifest frontend; sáu nguồn xuất hiện trong form cấu hình danh sách Word.
+- **Cú pháp:** Đã render qua engine ứng dụng cả vòng ngắn `{#ds_dgct_hop_le}`…`{/ds_dgct_hop_le}` và vòng lồng `{%p for bc ... %}` + `{%tr for tc in bc.ds_hop_le %}`.
+- **Hướng dẫn:** Thêm `docs/WORD_PLACEHOLDER_BAO_CAO_DANH_GIA_CHI_TIET.md` với cấu trúc bảng 14A–14D, placeholder và lưu ý font Plus Jakarta Sans.
+- **Visual QA:** DOCX output đã được đọc lại và kiểm tra cấu trúc/nội dung; không tạo artifact phát hành. Renderer PNG chuẩn không chạy do máy thiếu `pdf2image` và không có LibreOffice/Poppler, nên không tuyên bố visual render gate.
+- **Kiểm tra:** 4/4 test context/mapping/render mới, 81 test tài liệu liên quan, toàn bộ JavaScript 231/231 và Python 1.031/1.031 đạt (1 test bỏ qua); `npm run lint:security`, `npm run build:secure` và `git diff --check` đều đạt.

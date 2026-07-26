@@ -350,6 +350,17 @@ Trên staging database riêng:
 
 Không chạy seed trên production. Tag scenario/application name để tách statement stats.
 
+#### Rehearsal cục bộ nhiều worker ngày 2026-07-26
+
+- Runner đăng nhập một lần rồi chia sẻ cùng session như các tab trình duyệt; không còn tự thu hồi phiên giữa các workload worker.
+- Warmup đi qua `/api/sync-version` có session và database thay vì chỉ `/health/live`, nên cửa sổ đo không bắt đầu khi một worker/pool còn lạnh.
+- Trước khi xóa schema, runner xác minh database đích có tên disposable, khác database runtime theo identity thực và cổng rehearsal chưa bị process khác chiếm.
+- Teardown Windows không còn phát `CTRL_BREAK_EVENT` qua console; chỉ `taskkill /PID <supervisor> /T /F` trên cây process đã tạo. PostgreSQL PID `24460` và app dev PID `4352` giữ nguyên sau rehearsal; `live=200`, `ready=200`, cổng `18083` đã đóng.
+- Cấu hình đo: 2 web worker, concurrency 8, 5 giây, database riêng `biddingflow_load_test`.
+- Kết quả: 2.712/2.712 request trả `200`, `errors={}`, 527,05 request/giây; latency tổng p50 11,55 ms, p95 30,98 ms, p99 47,54 ms; sync write p95 59,73 ms.
+- Quan sát đủ 2/2 worker; tối đa 16 kết nối, 6 kết nối active, 2 kết nối chờ lock tại thời điểm sample, 0 lock chưa được cấp, 0 deadlock, 0 temp file.
+- Đây là rehearsal cục bộ ngắn để khóa correctness/session/process ownership, chưa thay thế benchmark staging dài hoặc remeasurement production.
+
 ### Import/export
 
 Thêm CLI benchmark đọc fixture và báo:
