@@ -6,6 +6,12 @@ import {
   workflowRequirementForMethod,
   workflowRequirementForRoute,
 } from "../../frontend/app/WorkflowModuleLoader.js";
+import * as BiddingWorkflows from "../../frontend/packages/BiddingWorkflows.js";
+
+test("bidding workflow group carries its searchable-select dependency", () => {
+  assert.equal(typeof BiddingWorkflows.renderDanhGiaHsdtPanel, "function");
+  assert.equal(typeof BiddingWorkflows.makeSearchableSelect, "function");
+});
 
 test("workflow routes load only the module group they use", () => {
   assert.equal(workflowRequirementForRoute("mothau"), "bidding");

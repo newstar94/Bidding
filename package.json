@@ -8,7 +8,9 @@
     "audit:vendor": "python scripts/audit_vendor_assets.py && node scripts/check_sheetjs_vendor.cjs && node scripts/check_excel_archive_guard.mjs",
     "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
-    "package:production": "npm run build:secure && python scripts/package_production.py"
+    "package:production": "npm run build:secure && python scripts/package_production.py",
+    "test:e2e": "node --env-file-if-exists=.env ./node_modules/@playwright/test/cli.js test",
+    "test:e2e:headed": "node --env-file-if-exists=.env ./node_modules/@playwright/test/cli.js test --headed"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

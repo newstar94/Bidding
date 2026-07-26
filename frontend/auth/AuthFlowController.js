@@ -15,6 +15,20 @@ import {
 } from "./authRuntimeState.js";
 import { hideAuthOverlay, reloadWithInitLoader, showGoogleSignInState } from "./AuthUi.js";
 
+export function resolveSessionRequestedRole({ previousUser, previousRole, sessionUser } = {}) {
+  const serverRole = String(sessionUser?.active_role || "").trim().toLowerCase();
+  if (serverRole) return serverRole;
+  const previousId = String(previousUser?.id || "").trim();
+  const sessionId = String(sessionUser?.id || "").trim();
+  const previousUsername = String(previousUser?.username || "").trim().toLowerCase();
+  const sessionUsername = String(sessionUser?.username || "").trim().toLowerCase();
+  const sameAccount = Boolean(
+    (previousId && sessionId && previousId === sessionId)
+    || (previousUsername && sessionUsername && previousUsername === sessionUsername)
+  );
+  return sameAccount ? previousRole || null : null;
+}
+
 export function createRegistrationPayload({ username, password, name, email }) {
   return { username, password, name, email };
 }
@@ -85,6 +99,13 @@ export function setupAuth() {
   };
   const applySessionUser = (user) => {
     if (!user) return;
+    const previousUser = this.model.state.activeuser;
+    const previousRole = this.model.state.activerole;
+    const requestedRole = resolveSessionRequestedRole({
+      previousUser,
+      previousRole,
+      sessionUser: user,
+    });
     if (user.id) {
       sessionStorage.setItem("bf_user_id", user.id);
     }
@@ -93,7 +114,6 @@ export function setupAuth() {
     }
     if (!this.model.state.activeuser) this.model.state.activeuser = {};
     applyAccessContext(this.model.state.activeuser, user);
-    const requestedRole = this.model.state.activeuser.dbRole ? this.model.state.activerole : null;
     this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(this.model.state.activeuser, requestedRole);
     this.model.state.activeuser.name = user.name || user.username || "Người dùng";
     this.model.state.activeuser.username = user.username || sessionStorage.getItem("bf_username") || "";

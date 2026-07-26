@@ -137,6 +137,23 @@ jobs:
           npm audit --audit-level=high
           pip-audit --requirement requirements.txt
 
+      - name: Install Chromium for browser end-to-end tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser end-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-e2e-diagnostics-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Validate and create production archive
         run: |
           python scripts/package_production.py --check

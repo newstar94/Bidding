@@ -427,3 +427,13 @@ File này được cập nhật sau mỗi việc hoàn thành để theo dõi th
 - **Hướng dẫn:** Thêm `docs/WORD_PLACEHOLDER_BAO_CAO_DANH_GIA_CHI_TIET.md` với cấu trúc bảng 14A–14D, placeholder và lưu ý font Plus Jakarta Sans.
 - **Visual QA:** DOCX output đã được đọc lại và kiểm tra cấu trúc/nội dung; không tạo artifact phát hành. Renderer PNG chuẩn không chạy do máy thiếu `pdf2image` và không có LibreOffice/Poppler, nên không tuyên bố visual render gate.
 - **Kiểm tra:** 4/4 test context/mapping/render mới, 81 test tài liệu liên quan, toàn bộ JavaScript 231/231 và Python 1.031/1.031 đạt (1 test bỏ qua); `npm run lint:security`, `npm run build:secure` và `git diff --check` đều đạt.
+
+### 45. Bổ sung browser E2E và cô lập dữ liệu báo cáo chi tiết
+
+- **Luồng thật:** Playwright đăng nhập Super Admin, kiểm tra doanh thu ngay lần hiển thị đầu tiên, chuyển tab rồi đối chiếu lại; sau đó chuyển vai trò Quản lý, mở Gói thầu → Báo cáo đánh giá → Báo cáo chi tiết.
+- **Regression:** Test bắt đúng hai lỗi đã sửa: role phiên mới từng bị placeholder `employee` ghi đè và bidding route từng thiếu `makeSearchableSelect`, làm renderer báo cáo chi tiết dừng giữa chừng.
+- **Fixture độc lập:** Kịch bản báo cáo chi tiết chèn một gói 1G1T và một hồ sơ dự thầu chỉ trong phản hồi trình duyệt, ép pagination trả đúng gói đó, không ghi database và không phụ thuộc dữ liệu dev.
+- **Empty state:** Xác nhận báo cáo mới chỉ có header, nút **Thêm dòng**, **Nhập từ Excel**, **Quay lại** và đúng 0 dòng tiêu chí.
+- **Quan sát lỗi:** Test thất bại khi có page error, console error, HTTP 4xx/5xx hoặc request ứng dụng bị lỗi; giữ trace, ảnh và video khi lỗi.
+- **File:** `playwright.config.mjs`, `tests/e2e/biddingflow.spec.mjs`, `tests/js/auth_session_role.test.mjs`, `tests/js/workflow_module_loader.test.mjs`, `frontend/auth/AuthFlowController.js`, `frontend/packages/BiddingWorkflows.js`.
+- **Kiểm tra:** Hai lượt trước khi cô lập và một lượt sau khi cô lập đều đạt 2/2; lượt deterministic gần nhất đạt trong 4,7 giây; `git diff --check` đạt.
