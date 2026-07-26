@@ -1047,7 +1047,19 @@ def _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming
             cursor, "tieu_chi_danh_gia", "vong_danh_gia_id", round_ids, organization_id,
             extra_order="thu_tu, id",
         ):
+            try:
+                criterion_extension = parse_evaluation_metadata(
+                    criterion.get("extension_json"),
+                    require_version=True,
+                )
+            except ValueError:
+                criterion_extension = {"schemaVersion": 1}
+            criterion_extension = {
+                key: value for key, value in criterion_extension.items()
+                if key != "schemaVersion"
+            }
             criteria_by_round.setdefault(criterion["vong_danh_gia_id"], []).append({
+                **criterion_extension,
                 "id": criterion["id"],
                 "code": criterion["ma_tieu_chi"],
                 "name": criterion["ten_tieu_chi"],
@@ -1416,6 +1428,49 @@ def _save_bid_detailed_evaluation_reports(
     cursor.execute(delete_reports_sql, tuple(delete_reports_params))
 
 
+def _format_detailed_evaluation_row(detail, naming):
+    try:
+        extension = parse_evaluation_metadata(
+            detail.get("extension_json"),
+            require_version=True,
+        )
+    except ValueError:
+        extension = {"schemaVersion": 1}
+    extension = {
+        key: value for key, value in extension.items()
+        if key != "schemaVersion"
+    }
+    if naming == "snake":
+        payload = {
+            "id": detail["id"],
+            "tieu_chi_danh_gia_id": detail["tieu_chi_danh_gia_id"],
+            "ket_qua": detail.get("ket_qua") or "pending",
+            "diem": detail.get("diem"),
+            "noi_dung_hsdt": detail.get("noi_dung_hsdt") or "",
+            "nhan_xet": detail.get("nhan_xet") or "",
+            "ly_do_khong_dat": detail.get("ly_do_khong_dat") or "",
+            "yeu_cau_lam_ro": detail.get("yeu_cau_lam_ro") or "",
+            "ket_qua_lam_ro": detail.get("ket_qua_lam_ro") or "",
+            "tai_lieu_tham_chieu": detail.get("tai_lieu_tham_chieu") or "",
+        }
+    else:
+        payload = {
+            "id": detail["id"],
+            "tieuChiDanhGiaId": detail["tieu_chi_danh_gia_id"],
+            "ketQua": detail.get("ket_qua") or "pending",
+            "diem": detail.get("diem"),
+            "noiDungHsdt": detail.get("noi_dung_hsdt") or "",
+            "nhanXet": detail.get("nhan_xet") or "",
+            "lyDoKhongDat": detail.get("ly_do_khong_dat") or "",
+            "yeuCauLamRo": detail.get("yeu_cau_lam_ro") or "",
+            "ketQuaLamRo": detail.get("ket_qua_lam_ro") or "",
+            "taiLieuThamChieu": detail.get("tai_lieu_tham_chieu") or "",
+        }
+    if extension:
+        payload["extension"] = extension
+    return payload
+
+
 def _attach_bid_detailed_evaluation_reports(
     cursor,
     by_id,
@@ -1528,18 +1583,7 @@ def _attach_bid_detailed_evaluation_reports(
                 "hoan_thanh_luc": row.get("hoan_thanh_luc"),
                 "extension": extension,
                 "chi_tiet_list": [
-                    {
-                        "id": detail["id"],
-                        "tieu_chi_danh_gia_id": detail["tieu_chi_danh_gia_id"],
-                        "ket_qua": detail.get("ket_qua") or "pending",
-                        "diem": detail.get("diem"),
-                        "noi_dung_hsdt": detail.get("noi_dung_hsdt") or "",
-                        "nhan_xet": detail.get("nhan_xet") or "",
-                        "ly_do_khong_dat": detail.get("ly_do_khong_dat") or "",
-                        "yeu_cau_lam_ro": detail.get("yeu_cau_lam_ro") or "",
-                        "ket_qua_lam_ro": detail.get("ket_qua_lam_ro") or "",
-                        "tai_lieu_tham_chieu": detail.get("tai_lieu_tham_chieu") or "",
-                    }
+                    _format_detailed_evaluation_row(detail, "snake")
                     for detail in details
                 ],
             })
@@ -1554,18 +1598,7 @@ def _attach_bid_detailed_evaluation_reports(
             "hoanThanhLuc": row.get("hoan_thanh_luc"),
             "extension": extension,
             "chiTietList": [
-                {
-                    "id": detail["id"],
-                    "tieuChiDanhGiaId": detail["tieu_chi_danh_gia_id"],
-                    "ketQua": detail.get("ket_qua") or "pending",
-                    "diem": detail.get("diem"),
-                    "noiDungHsdt": detail.get("noi_dung_hsdt") or "",
-                    "nhanXet": detail.get("nhan_xet") or "",
-                    "lyDoKhongDat": detail.get("ly_do_khong_dat") or "",
-                    "yeuCauLamRo": detail.get("yeu_cau_lam_ro") or "",
-                    "ketQuaLamRo": detail.get("ket_qua_lam_ro") or "",
-                    "taiLieuThamChieu": detail.get("tai_lieu_tham_chieu") or "",
-                }
+                _format_detailed_evaluation_row(detail, "camel")
                 for detail in details
             ],
         })

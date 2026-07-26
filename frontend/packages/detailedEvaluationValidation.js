@@ -20,13 +20,6 @@ export function validateDetailedEvaluationRow(row = {}, criterion = {}, {
       "Tiêu chí bắt buộc chưa được đánh giá.",
     ));
   }
-  if (result === "fail" && !String(row.lyDoKhongDat || "").trim()) {
-    errors.push(error(
-      criterionId,
-      "lyDoKhongDat",
-      "Vui lòng nhập lý do không đạt.",
-    ));
-  }
   if (result === "not_applicable" && !String(row.nhanXet || "").trim()) {
     errors.push(error(
       criterionId,
@@ -60,14 +53,16 @@ export function validateDetailedEvaluationGroup(rows = [], criteria = [], {
   const rowsByCriterion = new Map(
     rows.map((row) => [String(row.tieuChiDanhGiaId || ""), row]),
   );
-  const errors = criteria.flatMap((criterion) => validateDetailedEvaluationRow(
+  const errors = criteria
+    .filter((criterion) => criterion.hasChildren !== true)
+    .flatMap((criterion) => validateDetailedEvaluationRow(
     rowsByCriterion.get(String(criterion.id)) || {
       tieuChiDanhGiaId: criterion.id,
       ketQua: "pending",
     },
     criterion,
     { completing },
-  ).errors);
+    ).errors);
   return { valid: errors.length === 0, errors };
 }
 

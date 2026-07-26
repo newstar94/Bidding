@@ -2,6 +2,7 @@ export { calculateRankings } from "../shared/BiddingCalculations.js";
 export { renderDanhGiaHsdtPanel, updateRowConclusion, saveDanhGiaHsdt } from "./BidEvaluationWorkflow.js";
 export {
   closeDetailedEvaluation,
+  importDetailedEvaluationExcel,
   openDetailedEvaluation,
   renderDetailedEvaluation,
   saveDetailedEvaluation,

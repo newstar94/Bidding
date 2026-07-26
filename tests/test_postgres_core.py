@@ -4,6 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import inspect
+import json
 import os
 import ssl
 import threading
@@ -241,6 +242,7 @@ def test_detailed_evaluation_round_trip_tenant_isolation_and_cascade(
                             "id": "detail-technical-client",
                             "tieuChiDanhGiaId": technical_criterion_id,
                             "ketQua": "pass",
+                            "extension": {"ketQuaTuDong": "pass"},
                         }],
                     }
                 ],
@@ -268,6 +270,9 @@ def test_detailed_evaluation_round_trip_tenant_isolation_and_cascade(
         assert loaded["baoCaoDanhGiaChiTietList"][0]["chiTietList"][0][
             "tieuChiDanhGiaId"
         ] == technical_criterion_id
+        assert loaded["baoCaoDanhGiaChiTietList"][0]["chiTietList"][0][
+            "extension"
+        ] == {"ketQuaTuDong": "pass"}
 
         mapper.save_child_payloads(
             cursor,
@@ -284,6 +289,11 @@ def test_detailed_evaluation_round_trip_tenant_isolation_and_cascade(
                             "group": "technical",
                             "resultType": "pass_fail",
                             "required": True,
+                            "stt": "3.1",
+                            "sourceStt": "3.1",
+                            "source": "muasamcong",
+                            "isSection": True,
+                            "requirement": "Source requirement",
                         }],
                     },
                     "financial": {
@@ -304,6 +314,21 @@ def test_detailed_evaluation_round_trip_tenant_isolation_and_cascade(
             "2026-07-25",
             actor_user_id=reviewer_id,
         )
+        loaded_package = {"id": package_id, "danhGiaHsdtMetadata": "{}"}
+        mapper.attach_child_rows(
+            cursor,
+            "goi_thau",
+            loaded_package,
+            organization_id=organization_id,
+        )
+        loaded_technical_criterion = json.loads(
+            loaded_package["danhGiaHsdtMetadata"]
+        )["technical"]["criteria"][0]
+        assert loaded_technical_criterion["stt"] == "3.1"
+        assert loaded_technical_criterion["sourceStt"] == "3.1"
+        assert loaded_technical_criterion["source"] == "muasamcong"
+        assert loaded_technical_criterion["isSection"] is True
+        assert loaded_technical_criterion["requirement"] == "Source requirement"
         assert cursor.execute(
             "SELECT count(*) FROM chi_tiet_danh_gia_nha_thau WHERE organization_id = ?",
             (organization_id,),

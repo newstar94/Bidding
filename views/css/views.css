@@ -3622,40 +3622,7 @@ table th {
 .detailed-evaluation-topbar {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-}
-
-.detailed-evaluation-hero {
-  min-width: 0;
-  padding: 18px 20px;
-  border: 1px solid var(--border-color);
-  border-left: 4px solid var(--brand);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--bg-card), var(--primary-soft));
-}
-
-.detailed-evaluation-eyebrow {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--primary);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.detailed-evaluation-hero h3 {
-  margin: 0;
-  color: var(--text-main);
-  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
-  line-height: 1.35;
-}
-
-.detailed-evaluation-hero p {
-  margin: 7px 0 0;
-  color: var(--text-muted);
-  font-size: 0.83rem;
-  line-height: 1.55;
+  justify-content: flex-end;
 }
 
 .detailed-evaluation-overview {
@@ -3730,16 +3697,31 @@ table th {
   gap: 8px;
 }
 
+.detailed-evaluation-tabs-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+  border-bottom: 2px solid var(--border-color);
+}
+
 .detailed-evaluation-tabs {
   display: flex;
+  flex: 1 1 auto;
   gap: 4px;
   min-width: 0;
   margin: 0;
   padding-bottom: 2px;
   overflow-x: auto;
-  border-bottom: 2px solid var(--border-color);
   white-space: nowrap;
   scrollbar-width: thin;
+}
+
+.detailed-evaluation-tab-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding-bottom: 6px;
 }
 
 .detailed-evaluation-tabs .package-workflow-tab {
@@ -3753,6 +3735,10 @@ table th {
 
 .detailed-evaluation-table-frame {
   margin-bottom: 0 !important;
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .detailed-evaluation-table {
@@ -3762,12 +3748,37 @@ table th {
 }
 
 .detailed-evaluation-table .detailed-evaluation-col-stt { width: 6%; }
-.detailed-evaluation-table .detailed-evaluation-col-criterion { width: 18%; }
-.detailed-evaluation-table .detailed-evaluation-col-content { width: 16%; }
-.detailed-evaluation-table .detailed-evaluation-col-result { width: 13%; }
-.detailed-evaluation-table .detailed-evaluation-col-score { width: 7%; }
-.detailed-evaluation-table .detailed-evaluation-col-comment { width: 17%; }
-.detailed-evaluation-table .detailed-evaluation-col-clarification { width: 17%; }
+.detailed-evaluation-table .detailed-evaluation-col-criterion { width: 22%; }
+.detailed-evaluation-table .detailed-evaluation-col-content { width: 20%; }
+.detailed-evaluation-table .detailed-evaluation-col-result { width: 14%; }
+.detailed-evaluation-table .detailed-evaluation-col-score { width: 8%; }
+.detailed-evaluation-table .detailed-evaluation-col-comment { width: 30%; }
+
+.detailed-evaluation-table-binary {
+  min-width: 1280px;
+}
+
+.detailed-evaluation-table-financial {
+  min-width: 860px;
+}
+
+.detailed-evaluation-table-financial .detailed-evaluation-col-stt { width: 8%; }
+.detailed-evaluation-table-financial .detailed-evaluation-col-financial-content { width: 52%; }
+.detailed-evaluation-table-financial .detailed-evaluation-col-financial-value { width: 40%; }
+
+.detailed-evaluation-financial-value {
+  min-height: 72px !important;
+}
+
+.detailed-evaluation-table-binary .detailed-evaluation-col-stt { width: 6%; }
+.detailed-evaluation-table-binary .detailed-evaluation-col-mark { width: 9%; }
+.detailed-evaluation-table-binary .detailed-evaluation-col-comment { width: 20%; }
+.detailed-evaluation-table-validity .detailed-evaluation-col-criterion { width: 38%; }
+.detailed-evaluation-table-capacity .detailed-evaluation-col-stt { width: 5%; }
+.detailed-evaluation-table-capacity .detailed-evaluation-col-criterion { width: 24%; }
+.detailed-evaluation-table-capacity .detailed-evaluation-col-content { width: 18%; }
+.detailed-evaluation-table-capacity .detailed-evaluation-col-mark { width: 8%; }
+.detailed-evaluation-table-capacity .detailed-evaluation-col-comment { width: 21%; }
 
 .detailed-evaluation-table th,
 .detailed-evaluation-table td {
@@ -3781,6 +3792,31 @@ table th {
   vertical-align: middle;
 }
 
+.detailed-evaluation-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+
+.detailed-evaluation-table tbody td {
+  vertical-align: middle;
+  text-align: center;
+}
+
+.detailed-evaluation-table tbody .detailed-evaluation-field-stack {
+  align-content: center;
+}
+
+.detailed-evaluation-table tbody textarea.form-control,
+.detailed-evaluation-table tbody input.form-control,
+.detailed-evaluation-table tbody select.form-control {
+  text-align: left;
+}
+
+.detailed-evaluation-table .detailed-evaluation-mark {
+  margin-inline: auto;
+}
+
 .detailed-evaluation-table .detailed-evaluation-header-group th,
 .detailed-evaluation-table .detailed-evaluation-header-subgroup th {
   border: 1px solid var(--border-color);
@@ -3791,10 +3827,153 @@ table th {
   text-align: center;
 }
 
+.detailed-evaluation-table .detailed-evaluation-header-subgroup th,
+.detailed-evaluation-table .detailed-evaluation-header-group th[rowspan] {
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--border-color) 78%, transparent);
+}
+
 .detailed-evaluation-stt {
+  display: block;
   color: var(--text-muted, #64748b);
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+
+.detailed-evaluation-config-stt {
+  min-width: 64px;
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailed-evaluation-config-criterion {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.detailed-evaluation-config-criterion > textarea {
+  min-height: 76px;
+}
+
+.detailed-evaluation-remove-criterion {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  color: var(--danger, #dc2626);
+}
+
+.detailed-evaluation-config-requirement {
+  min-height: 58px !important;
+  margin-top: 8px;
+}
+
+.detailed-evaluation-mark-cell {
+  vertical-align: middle !important;
+  text-align: center;
+}
+
+.detailed-evaluation-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 38px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.detailed-evaluation-mark:hover {
+  border-color: var(--border-color);
+  background: var(--primary-soft);
+}
+
+.detailed-evaluation-mark input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.detailed-evaluation-mark-symbol {
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.detailed-evaluation-mark-symbol::before {
+  content: "-";
+}
+
+.detailed-evaluation-mark input:checked + .detailed-evaluation-mark-symbol::before {
+  content: "x";
+}
+
+.detailed-evaluation-mark input:checked + .detailed-evaluation-mark-symbol {
+  color: var(--text-main);
+  font-weight: 800;
+}
+
+.detailed-evaluation-mark input:focus-visible + .detailed-evaluation-mark-symbol {
+  outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline-offset: 6px;
+}
+
+.detailed-evaluation-mark:has(input:disabled) {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.detailed-evaluation-derived-mark {
+  display: inline-grid;
+  min-width: 42px;
+  min-height: 38px;
+  place-items: center;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.detailed-evaluation-derived-mark.is-marked {
+  color: var(--text-main);
+  font-weight: 800;
+}
+
+.detailed-evaluation-parent-row > td {
+  background: color-mix(in srgb, var(--bg-subtle, #f8fafc) 82%, var(--surface));
+}
+
+.detailed-evaluation-section-row > td {
+  background: var(--bg-subtle, #f8fafc);
+}
+
+.detailed-evaluation-section-row td:nth-child(2) {
+  font-weight: 700;
+}
+
+.detailed-evaluation-requirement {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+  color: var(--text-muted, #64748b);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.detailed-evaluation-score {
+  text-align: center;
+}
+
+.detailed-evaluation-score span {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .detailed-evaluation-code {
@@ -3855,10 +4034,6 @@ table th {
     gap: 14px;
   }
 
-  .detailed-evaluation-hero {
-    padding: 15px 16px;
-  }
-
   .detailed-evaluation-overview {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3881,6 +4056,16 @@ table th {
 
   .detailed-evaluation-tabs .package-workflow-tab {
     padding-inline: 13px;
+  }
+
+  .detailed-evaluation-tabs-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .detailed-evaluation-tab-actions {
+    align-self: flex-end;
+    padding-bottom: 8px;
   }
 }
 

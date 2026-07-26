@@ -75,15 +75,20 @@ export function isDetailedEvaluationSummaryOwned(report) {
     || report?.extension?.projectionPending === true;
 }
 
-export function getCriteriaForGroup(pkg, roundType, group) {
+export function getCriteriaForGroup(pkg, roundType, group, {
+  fallbackToTemplate = true,
+} = {}) {
   const metadata = parseEvaluationMetadata(pkg?.danhGiaHsdtMetadata);
   const block = roundType === "single" ? metadata : metadata?.[roundType] || {};
   const roundId = `evaluation-round:${String(pkg?.id || "pending")}:${roundType}`;
-  const criteria = Array.isArray(block?.criteria)
+  const configuredCriteria = Array.isArray(block?.criteria)
     && block.criteria.length > 0
-    && !isLegacySummaryCriteria(block.criteria)
+    && !isLegacySummaryCriteria(block.criteria);
+  const criteria = configuredCriteria
     ? block.criteria
-    : createDefaultDetailedEvaluationCriteria(roundType, { roundId, pkg });
+    : fallbackToTemplate
+      ? createDefaultDetailedEvaluationCriteria(roundType, { roundId, pkg })
+      : [];
   return criteria
     .map((criterion, index) => ({
       ...criterion,
@@ -101,18 +106,21 @@ export function getDetailedEvaluationProgress(report, criteria = []) {
   const rows = new Map(
     (report?.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
   );
-  const completed = criteria.filter((criterion) => {
+  const evaluableCriteria = criteria.filter(
+    (criterion) => criterion.isSection !== true && criterion.hasChildren !== true,
+  );
+  const completed = evaluableCriteria.filter((criterion) => {
     const row = rows.get(String(criterion.id));
     return row && row.ketQua && row.ketQua !== "pending";
   }).length;
-  const requiredCriteria = criteria.filter((criterion) => criterion.required !== false);
+  const requiredCriteria = evaluableCriteria.filter((criterion) => criterion.required !== false);
   const requiredCompleted = requiredCriteria.filter((criterion) => {
     const row = rows.get(String(criterion.id));
     return row && row.ketQua && row.ketQua !== "pending";
   }).length;
   return {
     completed,
-    total: criteria.length,
+    total: evaluableCriteria.length,
     requiredCompleted,
     requiredTotal: requiredCriteria.length,
   };

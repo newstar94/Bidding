@@ -610,6 +610,14 @@ def test_attach_plan_package_and_evaluation_children_in_both_namings():
                 "loai_ket_qua": "score",
                 "bat_buoc": 1,
                 "tieu_chi_cha_id": None,
+                "extension_json": json.dumps({
+                    "schemaVersion": 1,
+                    "stt": "3.1",
+                    "sourceStt": "3.1",
+                    "source": "muasamcong",
+                    "isSection": True,
+                    "requirement": "YÃªu cáº§u tá»« E-HSMT",
+                }),
             }
         ],
     }
@@ -633,6 +641,11 @@ def test_attach_plan_package_and_evaluation_children_in_both_namings():
     assert metadata["technical"]["criteria"][0]["group"] == "technical"
     assert metadata["technical"]["criteria"][0]["resultType"] == "score"
     assert metadata["technical"]["criteria"][0]["required"] is True
+    assert metadata["technical"]["criteria"][0]["stt"] == "3.1"
+    assert metadata["technical"]["criteria"][0]["sourceStt"] == "3.1"
+    assert metadata["technical"]["criteria"][0]["source"] == "muasamcong"
+    assert metadata["technical"]["criteria"][0]["isSection"] is True
+    assert metadata["technical"]["criteria"][0]["requirement"] == "YÃªu cáº§u tá»« E-HSMT"
     assert metadata["resultEdit"] == {"type": "whole"}
     assert metadata["financial"]["schemaVersion"] == 1
 
@@ -736,6 +749,7 @@ def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
                 "ket_qua_lam_ro": "",
                 "tai_lieu_tham_chieu": "M1",
                 "thu_tu": 0,
+                "extension_json": '{"schemaVersion":1,"ketQuaTuDong":"pass"}',
             }
         ],
     }
@@ -774,6 +788,7 @@ def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
                     "yeuCauLamRo": "",
                     "ketQuaLamRo": "",
                     "taiLieuThamChieu": "M1",
+                    "extension": {"ketQuaTuDong": "pass"},
                 }
             ],
         }
