@@ -478,7 +478,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 
 .notification-item-icon.tone-amber {
   color: var(--color-warning);
-  background: var(--color-paper-2);
+  background: var(--warning-soft);
 }
 
 .notification-item-icon.tone-violet {
@@ -1337,7 +1337,7 @@ button:disabled {
 }
 
 .badge-warning {
-  border-color: #f5dfbd;
+  border-color: #fed7aa;
 }
 
 /* Modal and long-form presentation */

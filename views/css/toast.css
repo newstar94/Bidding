@@ -117,21 +117,21 @@
   color: #991b1b;
 }
 .bf-toast.toast-warning {
-  border-left-color: #f59e0b;
-  background-color: #fffbeb;
-  border: 1px solid #fef3c7;
+  border: 1px solid #fed7aa;
+  border-left-color: #f97316;
+  background-color: var(--warning-soft);
 }
 .bf-toast.toast-warning .bf-toast-title {
-  color: #92400e;
+  color: var(--warning);
 }
 .bf-toast.toast-warning .bf-toast-desc {
-  color: #b45309;
+  color: var(--warning);
 }
 .bf-toast.toast-warning .bf-toast-icon {
-  color: #f59e0b;
+  color: #f97316;
 }
 .bf-toast.toast-warning .bf-toast-close {
-  color: #92400e;
+  color: var(--warning);
 }
 .bf-toast.toast-info {
   border-left-color: #3b82f6;

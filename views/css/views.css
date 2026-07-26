@@ -84,7 +84,7 @@
   color: #9333ea !important;
 }
 .bg-amber-soft {
-  background-color: rgba(217, 119, 6, 0.1);
+  background-color: var(--warning-soft);
 }
 .text-amber {
   color: var(--warning) !important;
@@ -2547,7 +2547,7 @@ table th {
   margin: 0 auto 20px;
   border-radius: 50%;
 }
-.package-state-icon.is-warning { background: rgba(245, 158, 11, 0.08); color: #f59e0b; }
+.package-state-icon.is-warning { background: var(--warning-soft); color: #f97316; }
 .package-state-icon.is-success { background: rgba(16, 185, 129, 0.08); color: #10b981; }
 .package-state-icon i { width: 32px; height: 32px; }
 .package-state-title { margin-bottom: 8px; font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
