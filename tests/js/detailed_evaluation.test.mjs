@@ -438,8 +438,8 @@ test("muasamcong import verifies the workbook contractor before applying data", 
 });
 
 
-test("detailed evaluation blocks a mismatched muasamcong workbook before import", async () => {
-  const alerts = [];
+test("detailed evaluation warns and continues when the user accepts a contractor mismatch", async () => {
+  const confirmations = [];
   const controller = {
     model: {
       state: {
@@ -447,7 +447,10 @@ test("detailed evaluation blocks a mismatched muasamcong workbook before import"
       },
     },
     view: {
-      customAlert: async (...args) => { alerts.push(args); },
+      customConfirm: async (...args) => {
+        confirmations.push(args);
+        return true;
+      },
     },
   };
   const verified = await verifyMuasamcongDetailedEvaluationContractor(
@@ -456,13 +459,38 @@ test("detailed evaluation blocks a mismatched muasamcong workbook before import"
     [{ name: "Mẫu số 01", rows: [["Nhà thầu: Công ty trong file khác"]] }],
   );
 
+  assert.equal(verified, true);
+  assert.equal(confirmations.length, 1);
+  assert.equal(confirmations[0][0], "Sai nhà thầu trong file Excel");
+  assert.match(confirmations[0][1], /Công ty trong file khác/);
+  assert.match(confirmations[0][1], /Công ty đang chọn/);
+  assert.equal(confirmations[0][2], "alert-triangle");
+  assert.deepEqual(confirmations[0][3], {
+    confirmLabel: "Vẫn nhập",
+    cancelLabel: "Hủy",
+  });
+});
+
+
+test("detailed evaluation cancels a mismatched import when the user declines", async () => {
+  const controller = {
+    model: {
+      state: {
+        nhathau: [{ id: "contractor-1", tenNhaThau: "Công ty đang chọn" }],
+      },
+    },
+    view: {
+      customConfirm: async () => false,
+    },
+  };
+
+  const verified = await verifyMuasamcongDetailedEvaluationContractor(
+    controller,
+    { bid: { nhaThauId: "contractor-1", loaiNhaThau: "Độc lập" } },
+    [{ name: "Mẫu số 01", rows: [["Nhà thầu: Công ty trong file khác"]] }],
+  );
+
   assert.equal(verified, false);
-  assert.equal(alerts.length, 1);
-  assert.equal(alerts[0][0], "Sai nhà thầu trong file Excel");
-  assert.match(alerts[0][1], /Công ty trong file khác/);
-  assert.match(alerts[0][1], /Công ty đang chọn/);
-  assert.match(alerts[0][1], /Dữ liệu chưa được nhập/);
-  assert.equal(alerts[0][2], "alert-triangle");
 });
 
 
@@ -715,6 +743,7 @@ test("draft reports do not overwrite the legacy projection and completed reports
     criteria,
   });
   assert.equal(draft.vongDanhGiaId, "evaluation-round:package-1:single");
+  assert.equal(Object.hasOwn(draft, "nguoiChamId"), false);
   assert.deepEqual(draft.chiTietList.map((row) => row.ketQua), ["pending", "pending"]);
   assert.equal(bid.baoCaoDanhGiaChiTietList, undefined);
 

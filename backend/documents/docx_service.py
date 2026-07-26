@@ -1,10 +1,5 @@
 import json
-from backend.shared.helpers import (
-    database,
-    clean_id,
-    _org_cache_invalidate_by_user_id
-)
-from backend.documents import custom_exporter
+from backend.shared.helpers import database
 from backend.documents.docx_context_policy import (
     REPORT_DOCUMENT_TYPES,
     project_docx_context,

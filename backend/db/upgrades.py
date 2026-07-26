@@ -647,6 +647,38 @@ def _upgrade_to_v17_add_detailed_bid_evaluations(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v18_add_sync_mutation_request_hash(cursor, context):
+    """Bind an idempotency key to the canonical request that first used it."""
+
+    del context
+    cursor.execute(
+        """ALTER TABLE sync_mutations
+           ADD COLUMN IF NOT EXISTS request_hash TEXT"""
+    )
+
+
+def _upgrade_to_v19_retire_evaluation_actor_infrastructure(cursor, context):
+    """Stop indexing and validating reviewer identities no longer written by the app."""
+
+    del context
+    for statement in (
+        "DROP TRIGGER IF EXISTS trg_vong_danh_gia_actor ON vong_danh_gia",
+        """DROP TRIGGER IF EXISTS trg_ket_qua_danh_gia_nha_thau_actor
+           ON ket_qua_danh_gia_nha_thau""",
+        """ALTER TABLE vong_danh_gia
+           DROP CONSTRAINT IF EXISTS fk_vong_danh_gia_2_cee96f5c""",
+        """ALTER TABLE bao_cao_danh_gia_nha_thau
+           DROP CONSTRAINT IF EXISTS fk_bao_cao_danh_gia_nha_thau_3_cee96f5c""",
+        """ALTER TABLE ket_qua_danh_gia_nha_thau
+           DROP CONSTRAINT IF EXISTS fk_ket_qua_danh_gia_nha_thau_4_cee96f5c""",
+        "DROP INDEX IF EXISTS idx_detailed_evaluation_report_grader",
+        "DROP INDEX IF EXISTS idx_ket_qua_nguoi_cham",
+        "DROP INDEX IF EXISTS idx_vong_danh_gia_nguoi_cham",
+        "DROP FUNCTION IF EXISTS bf_validate_evaluation_actor()",
+    ):
+        cursor.execute(statement)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -723,6 +755,16 @@ UPGRADES = (
         17,
         "add_detailed_bid_evaluations",
         _upgrade_to_v17_add_detailed_bid_evaluations,
+    ),
+    DatabaseUpgrade(
+        18,
+        "add_sync_mutation_request_hash",
+        _upgrade_to_v18_add_sync_mutation_request_hash,
+    ),
+    DatabaseUpgrade(
+        19,
+        "retire_evaluation_actor_infrastructure",
+        _upgrade_to_v19_retire_evaluation_actor_infrastructure,
     ),
 )
 

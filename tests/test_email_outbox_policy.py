@@ -448,6 +448,8 @@ def test_process_next_delivery_reports_work(monkeypatch: pytest.MonkeyPatch) -> 
 def test_worker_poll_paths_and_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("WORKER_IDLE_POLL_JITTER_RATIO", "0")
+
     async def exercise() -> None:
         sleeps = []
 
@@ -480,6 +482,35 @@ def test_worker_poll_paths_and_cancellation(
         monkeypatch.setattr(outbox, "run_blocking_io", cancelled)
         with pytest.raises(asyncio.CancelledError):
             await outbox.run_email_delivery_worker(object())
+
+    asyncio.run(exercise())
+
+
+def test_worker_idle_backoff_resets_after_a_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMAIL_OUTBOX_POLL_SECONDS", "2")
+    monkeypatch.setenv("EMAIL_OUTBOX_MAX_POLL_SECONDS", "8")
+    monkeypatch.setenv("WORKER_IDLE_POLL_JITTER_RATIO", "0")
+
+    async def exercise() -> None:
+        outcomes = iter([False, False, True, False])
+        sleeps = []
+
+        async def process(*_args, **_kwargs):
+            return next(outcomes)
+
+        async def record_sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 4:
+                raise asyncio.CancelledError
+
+        monkeypatch.setattr(outbox, "run_blocking_io", process)
+        monkeypatch.setattr(outbox.asyncio, "sleep", record_sleep)
+        with pytest.raises(asyncio.CancelledError):
+            await outbox.run_email_delivery_worker(object())
+
+        assert sleeps == [2.0, 4.0, 0.05, 2.0]
 
     asyncio.run(exercise())
 

@@ -453,7 +453,6 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_tieu_chi_danh_gia_parent ON tieu_chi_danh_gia (organization_id, tieu_chi_cha_id)",
         "CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_report_round ON bao_cao_danh_gia_nha_thau (organization_id, vong_danh_gia_id)",
         "CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_report_opening ON bao_cao_danh_gia_nha_thau (organization_id, thong_tin_mo_thau_id)",
-        "CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_report_grader ON bao_cao_danh_gia_nha_thau (nguoi_cham_id)",
         "CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_row_report ON chi_tiet_danh_gia_nha_thau (organization_id, bao_cao_danh_gia_nha_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_detailed_evaluation_row_criterion ON chi_tiet_danh_gia_nha_thau (organization_id, tieu_chi_danh_gia_id)",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_danh_gia_opening ON ket_qua_danh_gia_nha_thau (organization_id, thong_tin_mo_thau_id)",
@@ -517,13 +516,11 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_chu_dau_tu ON ke_hoach_lcnt (organization_id, chu_dau_tu_id)",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau_opening ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id, thong_tin_mo_thau_id)",
-        "CREATE INDEX IF NOT EXISTS idx_ket_qua_nguoi_cham ON ket_qua_danh_gia_nha_thau (nguoi_cham_id)",
         "CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_member ON nha_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_root ON nha_thau_tham_du_mo_thau (organization_id, nha_thau_goc_id)",
         "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_version ON nha_thau_tham_du_mo_thau (organization_id, nha_thau_phien_ban_id)",
         "CREATE INDEX IF NOT EXISTS idx_phan_cong_nhan_su_employee ON phan_cong_nhan_su (id_nhan_vien)",
         "CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_member ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",
-        "CREATE INDEX IF NOT EXISTS idx_vong_danh_gia_nguoi_cham ON vong_danh_gia (nguoi_cham_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_package ON goi_thau_moc_tien_do (organization_id, goi_thau_id, sort_order, ma_moc)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_status ON goi_thau_moc_tien_do (organization_id, trang_thai, ngay_du_kien)",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
@@ -680,21 +677,6 @@ def _create_trigger_functions(cursor) -> None:
            END $$"""
     )
     cursor.execute(
-        """CREATE OR REPLACE FUNCTION bf_validate_evaluation_actor()
-           RETURNS trigger LANGUAGE plpgsql AS $$
-           BEGIN
-             IF NEW.nguoi_cham_id IS NOT NULL AND NOT EXISTS (
-               SELECT 1 FROM thanh_vien_to_chuc
-               WHERE organization_id = NEW.organization_id
-                 AND user_id = NEW.nguoi_cham_id
-                 AND trang_thai_thanh_vien = 'active'
-             ) THEN
-               RAISE EXCEPTION 'EVALUATION_ACTOR_TENANT_MISMATCH' USING ERRCODE = '23514';
-             END IF;
-             RETURN NEW;
-           END $$"""
-    )
-    cursor.execute(
         """CREATE OR REPLACE FUNCTION bf_validate_contract_package()
            RETURNS trigger LANGUAGE plpgsql AS $$
            BEGIN
@@ -815,15 +797,6 @@ def _create_triggers(cursor) -> None:
            BEFORE INSERT OR UPDATE ON phan_cong_nhan_su
            FOR EACH ROW EXECUTE FUNCTION bf_validate_assignment_target()"""
     )
-    for table_name in ("vong_danh_gia", "ket_qua_danh_gia_nha_thau"):
-        cursor.execute(
-            f"DROP TRIGGER IF EXISTS trg_{table_name}_actor ON {table_name}"
-        )
-        cursor.execute(
-            f"CREATE TRIGGER trg_{table_name}_actor "
-            f"BEFORE INSERT OR UPDATE ON {table_name} "
-            "FOR EACH ROW EXECUTE FUNCTION bf_validate_evaluation_actor()"
-        )
     cursor.execute(
         """DROP TRIGGER IF EXISTS trg_hop_dong_goi_thau_business
            ON hop_dong_goi_thau"""

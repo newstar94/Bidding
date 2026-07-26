@@ -18,6 +18,7 @@ from backend.shared.audit_chain import (
     build_audit_checkpoint,
     inspect_audit_chain,
     inspect_audit_chain_against_checkpoint,
+    inspect_audit_chain_incremental,
     set_audit_chain_health,
     write_audit_checkpoint,
 )
@@ -104,6 +105,7 @@ def _inspect_database(
     hmac_key=None,
     export_checkpoint=False,
     checkpoint_min_age_seconds=0,
+    incremental=False,
 ):
     connection = None
     checkpoint = None
@@ -150,13 +152,30 @@ def _inspect_database(
                 # Invalid timestamp is handled by checkpoint integrity/shape
                 # verification; never use it to suppress a replacement.
                 pass
-        verification = (
-            inspect_audit_chain_against_checkpoint(
-                cursor, checkpoint, hmac_key=hmac_key
+        if checkpoint is not None and incremental and not export_checkpoint:
+            verification = inspect_audit_chain_incremental(
+                cursor,
+                checkpoint,
+                hmac_key=hmac_key,
             )
-            if checkpoint is not None
-            else inspect_audit_chain(cursor)
-        )
+            if not verification.valid:
+                # Never downgrade checkpoint protection. A full verification
+                # still validates every checkpoint anchor and remains invalid
+                # for rollback/truncation; it only recovers from an
+                # incremental-assumption mismatch.
+                verification = inspect_audit_chain_against_checkpoint(
+                    cursor,
+                    checkpoint,
+                    hmac_key=hmac_key,
+                )
+        else:
+            verification = (
+                inspect_audit_chain_against_checkpoint(
+                    cursor, checkpoint, hmac_key=hmac_key
+                )
+                if checkpoint is not None
+                else inspect_audit_chain(cursor)
+            )
         if (
             verification.valid
             and checkpoint_destination
@@ -166,6 +185,7 @@ def _inspect_database(
             pending_checkpoint = build_audit_checkpoint(
                 cursor,
                 hmac_key=hmac_key,
+                verification=verification,
             )
         connection.commit()
         checkpoint_path = None
@@ -222,6 +242,7 @@ async def monitor_audit_chain(database, application=None):
                 hmac_key or None,
                 checkpoint_due,
                 checkpoint_interval,
+                True,
                 timeout_seconds=min(60.0, max(5.0, interval / 2)),
             )
             record_audit_chain_verification(

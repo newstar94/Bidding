@@ -630,7 +630,6 @@ def seed(cursor, *, demo_password: str) -> dict[str, int]:
             "so_bao_cao": f"BC-DG-{package_id}-{round_type}",
             "ngay_bao_cao": "2026-03-05",
             "da_luu_danh_sach_dat": 1 if status in {"completed", "approved"} else 0,
-            "nguoi_cham_id": "demo-manager",
             "hoan_thanh_luc": f"{day} 10:00:00",
             "extension_json": json.dumps({"schemaVersion": 1, "demo": True}),
         })
@@ -661,7 +660,6 @@ def seed(cursor, *, demo_password: str) -> dict[str, int]:
                 "danh_gia_tai_chinh": "Đạt",
                 "danh_gia_ket_luan": "Đạt",
                 "diem": 92.5,
-                "nguoi_cham_id": "demo-manager",
                 "danh_gia_luc": f"{day} 11:00:00",
             })
 

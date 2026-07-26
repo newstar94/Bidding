@@ -1151,6 +1151,7 @@ SCHEMA_DINH_NGHIA = {
             "so_bao_cao": "TEXT",
             "ngay_bao_cao": "TEXT",
             "da_luu_danh_sach_dat": "INTEGER NOT NULL DEFAULT 0 CHECK(da_luu_danh_sach_dat IN (0,1))",
+            # Physical compatibility only: current application code never reads or writes it.
             "nguoi_cham_id": "TEXT",
             "hoan_thanh_luc": "TEXT",
             "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
@@ -1159,8 +1160,7 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
         ],
         "unique_constraints": ["UNIQUE(organization_id, goi_thau_id, loai_vong)"]
     },
@@ -1198,6 +1198,7 @@ SCHEMA_DINH_NGHIA = {
             "thong_tin_mo_thau_id": "TEXT NOT NULL",
             "trang_thai": "TEXT NOT NULL DEFAULT 'draft' CHECK(trang_thai IN ('draft', 'completed'))",
             "ket_luan": "TEXT",
+            # Physical compatibility only: current application code never reads or writes it.
             "nguoi_cham_id": "TEXT",
             "hoan_thanh_luc": "TEXT",
             "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
@@ -1208,7 +1209,6 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (vong_danh_gia_id) REFERENCES vong_danh_gia(id) ON DELETE CASCADE",
             "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
         ],
         "unique_constraints": [
             "UNIQUE(organization_id, vong_danh_gia_id, thong_tin_mo_thau_id)"
@@ -1263,6 +1263,7 @@ SCHEMA_DINH_NGHIA = {
             "nguyen_nhan_khong_dat_hop_le": "TEXT",
             "nguyen_nhan_khong_dat_nang_luc": "TEXT",
             "nguyen_nhan_khong_dat_ky_thuat": "TEXT",
+            # Physical compatibility only: current application code never reads or writes it.
             "nguoi_cham_id": "TEXT",
             "danh_gia_luc": "TEXT",
             "sync_version": "INTEGER DEFAULT 0",
@@ -1272,8 +1273,7 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
             "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (organization_id, goi_thau_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, goi_thau_id, id) ON DELETE CASCADE",
-            "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+            "FOREIGN KEY (organization_id, goi_thau_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, goi_thau_id, id) ON DELETE CASCADE"
         ],
         "unique_constraints": ["UNIQUE(organization_id, thong_tin_mo_thau_id)"]
     },
@@ -1302,6 +1302,7 @@ SCHEMA_DINH_NGHIA = {
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "actor_user_id": "TEXT NOT NULL",
             "client_mutation_id": "TEXT NOT NULL",
+            "request_hash": "TEXT",
             "response_json": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         },

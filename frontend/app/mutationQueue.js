@@ -33,14 +33,17 @@ export function buildMutationPayload({
   state,
   localDeletions = [],
   isSyncedType,
-  normalizeRecord
+  normalizeRecord,
+  snapshot = undefined
 }) {
   const payload = {
     clientMutationId: queue.clientMutationId,
     baseSyncVersion: queue.baseSyncVersion,
     deletions: []
   };
-  const snapshot = JSON.parse(JSON.stringify(queue));
+  const queueSnapshot = snapshot === undefined
+    ? JSON.parse(JSON.stringify(queue))
+    : snapshot;
   Object.keys(queue.dirtyTables || {}).forEach((type) => {
     if (!queue.dirtyTables[type] || !isSyncedType(type)) return;
     payload[type] = Array.isArray(state[type])
@@ -67,6 +70,6 @@ export function buildMutationPayload({
   payload.deletions = [...deleteMap.values()];
   const hasUpserts = Object.keys(payload).some((key) => !["clientMutationId", "baseSyncVersion", "deletions"].includes(key));
   return hasUpserts || payload.deletions.length
-    ? { payload, snapshot }
+    ? { payload, snapshot: queueSnapshot }
     : null;
 }

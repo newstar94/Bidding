@@ -14,6 +14,7 @@ from backend.partners.address_parser import compose_external_address, parse_viet
 from backend.partners.position_normalization import derive_investor_head_position
 from backend.shared.text_utils import normalize_organization_name, normalize_person_name
 from backend.shared.logging_utils import log_error, log_structured_event
+from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.observability.metrics import record_partner_upstream
 from backend.shared.safe_http import open_allowlisted_https
 
@@ -955,21 +956,40 @@ def _process_partner_enrichment_job(job):
         raise
 
 
+def _drain_partner_enrichment_jobs() -> int:
+    processed = 0
+    while True:
+        job = _claim_partner_enrichment_job()
+        if job is None:
+            return processed
+        processed += 1
+        try:
+            _process_partner_enrichment_job(job)
+        except Exception as error:
+            log_error(error, "PartnerLookup.DurableWorker")
+
+
 def run_partner_lookup_worker():
     """Claim durable jobs with SKIP LOCKED; never hold DB state over network I/O."""
 
     _worker_debug("[Partner Worker] Durable enrichment worker started.")
+    backoff = idle_poll_backoff_from_env(
+        "PARTNER_LOOKUP_POLL_SECONDS",
+        "PARTNER_LOOKUP_MAX_POLL_SECONDS",
+        default_initial=1.0,
+    )
     while True:
-        _partner_work_event.wait(timeout=5)
+        signaled = _partner_work_event.wait(timeout=backoff.next_delay())
         _partner_work_event.clear()
-        while True:
-            try:
-                job = _claim_partner_enrichment_job()
-                if job is None:
-                    break
-                _process_partner_enrichment_job(job)
-            except Exception as error:
-                log_error(error, "PartnerLookup.DurableWorker")
+        if signaled:
+            backoff.reset()
+        try:
+            processed = _drain_partner_enrichment_jobs()
+        except Exception as error:
+            log_error(error, "PartnerLookup.DurableWorker")
+            processed = 0
+        if processed:
+            backoff.reset()
 
 
 def start_partner_background_service():

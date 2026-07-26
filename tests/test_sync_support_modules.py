@@ -10,10 +10,21 @@ from starlette.responses import JSONResponse
 from backend.auth.session_utils import OrgPermissionError
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.sync import api
+from backend.sync.command import SyncActorContext, SyncMutationEnvelope
 from backend.sync import evaluation_metadata
 from backend.sync import queries
 from backend.sync import request_contract
 from backend.sync import response
+from backend.sync.idempotency import request_hash_matches, sync_request_hash
+from backend.sync.mutation_tracker import (
+    SyncMutationTracker,
+    clean_sync_record_id,
+)
+from backend.sync.payload_index import SyncPayloadIndex
+from backend.sync.record_serializer import SyncRecordSerializer
+from backend.sync.record_writer import SyncRecordWriter
+from backend.sync import record_validator
+from backend.sync.record_validator import SyncRecordValidator
 from backend.sync import serializer
 from backend.sync import version_api
 
@@ -70,6 +81,275 @@ def test_sync_api_current_version_adapter(monkeypatch):
 
     monkeypatch.setattr(version_api, "current_sync_version_api", read_version)
     assert asyncio.run(api.current_sync_version_api("request")) is marker
+
+
+def test_sync_command_types_normalize_envelope_and_actor_context():
+    payload = {
+        "clientMutationId": f"  {'x' * 140}  ",
+        "kehoach": [{"id": "plan-1"}],
+    }
+    envelope = SyncMutationEnvelope.from_payload(payload)
+    assert envelope.payload is payload
+    assert envelope.client_mutation_id == "x" * 128
+    assert envelope.request_hash == sync_request_hash(payload)
+
+    request = object()
+    context = SyncActorContext(
+        request=request,
+        role="employee",
+        user_id="user-1",
+        organization_id="org-1",
+        owner_type="organization",
+    )
+    assert context.request is request
+    assert context.organization_id == "org-1"
+
+
+def test_sync_mutation_tracker_hides_version_recalculation_bookkeeping():
+    tracker = SyncMutationTracker(clean_sync_record_id)
+    tracker.track_record(
+        "goi_thau",
+        {"id": "package-1", "rootId": "package-root", "keHoachId": "plan-1"},
+    )
+    tracker.record_row_version("goithau", "package-1", 3)
+    tracker.record_orphan("phan_cong_nhan_su", "assignment-1")
+    tracker.record_image_cleanup("images/nha_thau/old.png")
+    tracker.merge_deletion_result({
+        "impacts": [{"table": "goithau", "id": "package-2"}],
+        "affectedVersionFamilies": {"goi_thau": {("other-root", "plan-2")}},
+        "affectedPlanIds": {"plan-2"},
+        "imageCleanupCandidates": {"images/nha_thau/deleted.png"},
+    })
+    latest_calls = []
+    plan_calls = []
+    tracker.apply_recalculations(
+        "cursor",
+        "org-1",
+        recalculate_latest=lambda *args, **kwargs: latest_calls.append((args, kwargs)),
+        recalculate_plan_total=lambda *args, **kwargs: plan_calls.append((args, kwargs)),
+    )
+
+    outcome = tracker.outcome()
+    assert outcome.updated_row_versions == ({
+        "table": "goithau",
+        "id": "package-1",
+        "rowVersion": 3,
+    },)
+    assert outcome.orphaned_ids == ({
+        "table": "phan_cong_nhan_su",
+        "id": "assignment-1",
+    },)
+    assert outcome.delete_impacts == ({"table": "goithau", "id": "package-2"},)
+    assert outcome.image_cleanup_candidates == {
+        "images/nha_thau/old.png",
+        "images/nha_thau/deleted.png",
+    }
+    assert len(latest_calls) == 1
+    assert latest_calls[0][1]["affected_families"] == {
+        ("package-root", "plan-1"),
+        ("other-root", "plan-2"),
+    }
+    assert plan_calls[0][1]["plan_ids"] == {"plan-1", "plan-2"}
+
+
+def test_sync_payload_index_canonicalizes_shared_validation_state():
+    payload = {
+        "kehoach": [{"id": "plan-1", "maKeHoach": "KH-01"}],
+        "customcontractstatuses": [{"id": "status-1", "name": "Mới"}],
+    }
+    index = SyncPayloadIndex.build(payload, clean_sync_record_id)
+    assert index.incoming_ids_by_table["ke_hoach_lcnt"] == {"plan-1"}
+    assert index.incoming_records_by_table["ke_hoach_lcnt"]["plan-1"][
+        "maKeHoach"
+    ] == "KH-01"
+    assert index.allowed_contract_status_names(_Cursor([("Đang thực hiện",)]), "org-1") == {
+        "Mới",
+        "Đang thực hiện",
+    }
+
+    index.remember_stored_record("ke_hoach_lcnt", "plan-1", {"row_version": 2})
+    assert index.stored_record("ke_hoach_lcnt", "plan-1") == {"row_version": 2}
+    index.skip("phan_cong_nhan_su", "assignment-1")
+    assert index.should_skip("phan_cong_nhan_su", "assignment-1")
+
+
+def test_sync_record_serializer_exposes_one_normalized_row_interface():
+    transaction = SimpleNamespace(
+        actor=SimpleNamespace(organization_id="org-1"),
+        owner_type="organization",
+        current_time="2026-07-26 12:00:00",
+        cursor=object(),
+    )
+    tracker = SyncMutationTracker(clean_sync_record_id)
+    serializer = SyncRecordSerializer(
+        transaction,
+        sync_version=9,
+        newly_written_images=set(),
+        mutation_tracker=tracker,
+        clean_record_id=clean_sync_record_id,
+        schema_definition={
+            "ke_hoach_lcnt": {
+                "columns": {
+                    "id": "TEXT NOT NULL",
+                    "organization_id": "TEXT NOT NULL",
+                    "owner_type": "TEXT NOT NULL",
+                    "id_goc": "TEXT",
+                    "metadata_json": "TEXT",
+                    "ngay_tuy_chon": "TEXT",
+                    "gia_tri": "REAL",
+                    "thu_tu": "INTEGER",
+                    "mac_dinh": "TEXT DEFAULT 'FALLBACK'",
+                    "bat_buoc": "TEXT NOT NULL",
+                    "sync_version": "INTEGER",
+                    "updated_at": "TEXT",
+                },
+                "json_fields": ["metadata_json"],
+            }
+        },
+        money_columns=set(),
+        field_name_for_column=lambda _table, column: column,
+        payload_value_for_column=lambda _table, item, column: item.get(column),
+    )
+
+    row = serializer.serialize(
+        "ke_hoach_lcnt",
+        {
+            "id": "plan-1",
+            "metadata_json": {"source": "test"},
+            "ngay_tuy_chon": "   ",
+            "gia_tri": "1,5",
+            "thu_tu": "2",
+            "mac_dinh": None,
+            "bat_buoc": None,
+        },
+    )
+
+    assert row["organization_id"] == "org-1"
+    assert row["owner_type"] == "organization"
+    assert row["id_goc"] == "plan-1"
+    assert json.loads(row["metadata_json"]) == {"source": "test"}
+    assert row["ngay_tuy_chon"] is None
+    assert row["gia_tri"] == 1.5
+    assert row["thu_tu"] == 2
+    assert row["mac_dinh"] == "FALLBACK"
+    assert "bat_buoc" not in row
+    assert row["sync_version"] == 9
+
+
+def test_sync_record_writer_owns_insert_version_and_child_write():
+    class WriterCursor:
+        def __init__(self):
+            self.calls = []
+            self.current = None
+            self.rowcount = 1
+
+        def execute(self, sql, params=()):
+            normalized = " ".join(str(sql).split())
+            self.calls.append((normalized, tuple(params)))
+            self.current = None
+            return self
+
+        def fetchone(self):
+            return self.current
+
+    cursor = WriterCursor()
+    transaction = SimpleNamespace(
+        actor=SimpleNamespace(organization_id="org-1", user_id="user-1"),
+        owner_type="organization",
+        current_time="2026-07-26 12:00:00",
+        cursor=cursor,
+    )
+    tracker = SyncMutationTracker(clean_sync_record_id)
+    child_calls = []
+    writer = SyncRecordWriter(
+        transaction,
+        sync_version=9,
+        mutation_tracker=tracker,
+        clean_record_id=clean_sync_record_id,
+        ownership_scoped_tables=set(),
+        defer_latest_flag=lambda *_args: None,
+        map_database_record=lambda _table, row: row,
+        save_children=lambda *args: child_calls.append(args),
+    )
+    row = {
+        "id": "plan-1",
+        "organization_id": "org-1",
+        "owner_type": "organization",
+    }
+
+    result = writer.write(
+        payload_key="kehoach",
+        table_name="ke_hoach_lcnt",
+        item={"id": "plan-1"},
+        db_row_data=row,
+        previous_record=None,
+    )
+
+    assert result.conflict_error is None
+    assert row["row_version"] == 1
+    assert any(sql.startswith("INSERT INTO ke_hoach_lcnt") for sql, _ in cursor.calls)
+    assert child_calls
+    assert tracker.outcome().updated_row_versions == ({
+        "table": "kehoach",
+        "id": "plan-1",
+        "rowVersion": 1,
+    },)
+
+
+def test_sync_record_validator_returns_formatted_errors_through_its_interface(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        record_validator,
+        "authorize_record_write",
+        lambda *_args: SimpleNamespace(allowed=False, message="denied"),
+    )
+    monkeypatch.setattr(
+        record_validator,
+        "validate_sync_item",
+        lambda _table, item, _statuses: (item, ["invalid"], set()),
+    )
+    monkeypatch.setattr(
+        record_validator,
+        "validate_owner_scoped_references",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(
+        record_validator,
+        "validate_opening_participant_uniqueness",
+        lambda *_args: [],
+    )
+    cursor = _Cursor()
+    transaction = SimpleNamespace(
+        actor=SimpleNamespace(
+            organization_id="org-1",
+            user_id="user-1",
+            role="employee",
+        ),
+        owner_type="personal",
+        cursor=cursor,
+    )
+    tracker = SyncMutationTracker(clean_sync_record_id)
+    validator = SyncRecordValidator(
+        transaction,
+        {"custom": [{"id": "row-1", "name": "Row"}]},
+        SyncPayloadIndex(),
+        tracker,
+        clean_record_id=clean_sync_record_id,
+        schema_definition={"custom_table": {"columns": {"id": "TEXT"}}},
+        iter_payloads=lambda payload: [
+            ("custom", "custom_table", payload["custom"])
+        ],
+        canonicalize_item=lambda _table, item: item,
+    )
+
+    errors = validator.validate_payload()
+
+    assert [error["message"] for error in errors] == [
+        "[row-1]: denied",
+        "[row-1]: invalid",
+    ]
+    assert all(error["code"] == "SYNC_ITEM_INVALID" for error in errors)
 
 
 def test_evaluation_metadata_contract_covers_invalid_and_bounded_values(monkeypatch):
@@ -169,6 +449,7 @@ def test_commit_and_rollback_sync_responses_cover_optional_contract(monkeypatch)
         actor_role="employee",
         current_time="now",
         client_mutation_id="mutation-1",
+        request_hash="a" * 64,
         include_dashboard_summary=True,
         updated_row_versions={"row": 2},
         delete_impacts=[{"id": "x"}],
@@ -189,6 +470,7 @@ def test_commit_and_rollback_sync_responses_cover_optional_contract(monkeypatch)
         actor_role="employee",
         current_time="now",
         client_mutation_id=None,
+        request_hash=None,
         include_dashboard_summary=False,
         updated_row_versions={},
         delete_impacts=[],
@@ -209,6 +491,29 @@ def test_commit_and_rollback_sync_responses_cover_optional_contract(monkeypatch)
     )
     assert rollback_connection.rollbacks == 1
     assert rolled_back.status_code == 422
+
+
+def test_sync_request_hash_is_canonical_and_excludes_only_the_idempotency_key():
+    first = {
+        "clientMutationId": "mutation-a",
+        "baseSyncVersion": "4",
+        "kehoach": [{"id": "plan-1", "name": "A"}],
+    }
+    reordered = {
+        "kehoach": [{"name": "A", "id": "plan-1"}],
+        "baseSyncVersion": "4",
+        "clientMutationId": "mutation-b",
+    }
+    changed = {
+        **first,
+        "kehoach": [{"id": "plan-1", "name": "B"}],
+    }
+
+    assert sync_request_hash(first) == sync_request_hash(reordered)
+    assert sync_request_hash(first) != sync_request_hash(changed)
+    assert request_hash_matches(None, sync_request_hash(first))
+    assert request_hash_matches(sync_request_hash(first), sync_request_hash(first))
+    assert not request_hash_matches(sync_request_hash(first), sync_request_hash(changed))
 
 
 def test_current_sync_version_endpoint_success_and_fail_closed(monkeypatch):

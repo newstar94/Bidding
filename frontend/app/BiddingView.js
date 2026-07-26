@@ -685,7 +685,12 @@ export class BiddingView {
       clearModalStackLevel(modal);
     }
   }
-  customConfirm(title, message, iconName = "help-circle") {
+  customConfirm(
+    title,
+    message,
+    iconName = "help-circle",
+    { confirmLabel = "Xác nhận", cancelLabel = "Hủy" } = {},
+  ) {
     if (iconName === "warning") iconName = "alert-triangle";
     return new Promise((resolve) => {
       const modal = document.getElementById("modal-custom-dialog");
@@ -697,9 +702,13 @@ export class BiddingView {
       const cancelBtn = document.getElementById("btn-dialog-cancel");
       const closeBtn = document.getElementById("btn-dialog-close");
       const buttonContainer = document.getElementById("dialog-buttons");
+      const originalOkLabel = okBtn.textContent;
+      const originalCancelLabel = cancelBtn.textContent;
       buttonContainer?.classList.remove("dialog-buttons-single");
       titleEl.textContent = title;
       messageEl.textContent = message;
+      okBtn.textContent = confirmLabel;
+      cancelBtn.textContent = cancelLabel;
       setRuntimeStyle(cancelBtn, "display", "block");
       if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       iconEl.setAttribute("data-lucide", iconName);
@@ -740,6 +749,8 @@ export class BiddingView {
         okBtn.removeEventListener("click", onOk);
         cancelBtn.removeEventListener("click", onCancel);
         if (closeBtn) closeBtn.removeEventListener("click", onClose);
+        okBtn.textContent = originalOkLabel;
+        cancelBtn.textContent = originalCancelLabel;
         modal.classList.remove("active");
       };
       okBtn.addEventListener("click", onOk);

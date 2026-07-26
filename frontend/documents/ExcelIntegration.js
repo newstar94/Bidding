@@ -25,6 +25,62 @@ const IMPORT_STATE_KEY = {
   chuyengia: "chuyengia",
   hopdong: "hopdong"
 };
+const PACKAGE_SELECT_IDS_BY_IMPORT = Object.freeze({
+  mothau: ["mothau-goithau-select"],
+  opening_fin: ["mothau-goithau-select", "danhgiahsdt-goithau-select"],
+  danhgiahsdt: ["danhgiahsdt-goithau-select"],
+  ketquaqd: ["result-goithau-select", "danhgiahsdt-goithau-select", "mothau-goithau-select"],
+});
+
+function selectedImportPackageId(controller, type) {
+  for (const id of PACKAGE_SELECT_IDS_BY_IMPORT[type] || []) {
+    const value = String(document.getElementById(id)?.value || "").trim();
+    if (value) return value;
+  }
+  if (type === "ketquaqd") return String(controller._currentResultPackageId || "").trim();
+  return "";
+}
+
+export function captureExcelImportContext(controller, type) {
+  const epoch = Number(controller._excelImportEpoch || 0) + 1;
+  controller._excelImportEpoch = epoch;
+  return Object.freeze({
+    type: String(type || ""),
+    packageId: selectedImportPackageId(controller, type),
+    evaluationTab: type === "danhgiahsdt"
+      ? String(controller.currentDanhGiaTab || "technical")
+      : "",
+    workspaceToken: String(controller.model?.getWorkspaceToken?.() || ""),
+    epoch,
+  });
+}
+
+export function excelImportContextIsCurrent(controller, context) {
+  if (!context || controller._excelImportContext !== context) return false;
+  if (String(controller._excelImportType || "") !== context.type) return false;
+  if (
+    context.workspaceToken
+    && controller.model?.isWorkspaceCurrent?.(context.workspaceToken) === false
+  ) return false;
+  if (
+    context.packageId
+    && selectedImportPackageId(controller, context.type) !== context.packageId
+  ) return false;
+  if (
+    context.evaluationTab
+    && String(controller.currentDanhGiaTab || "technical") !== context.evaluationTab
+  ) return false;
+  return true;
+}
+
+async function rejectStaleExcelImport(controller) {
+  await controller.view.customAlert(
+    "Ngữ cảnh nhập Excel đã thay đổi",
+    "Gói thầu, tab đánh giá hoặc không gian làm việc đã thay đổi. Dữ liệu chưa được áp dụng; vui lòng chọn lại file Excel.",
+    "alert-triangle",
+  );
+  return false;
+}
 
 const BASIC_IMPORT_VIEW = {
   plan: { tab: "kehoach", render: "renderKeHoachTable" },
@@ -83,7 +139,7 @@ export function setupExcelImportEvents() {
     fileInput._hasExcelListener = true;
     fileInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
-      if (file) this.handleExcelUpload(file);
+      if (file) this.handleExcelUpload(file, this._excelImportContext);
     });
   }
   const dragDropZone = document.getElementById("excel-drag-drop-zone");
@@ -103,7 +159,7 @@ export function setupExcelImportEvents() {
       const file = e.dataTransfer.files[0];
       if (file) {
         fileInput.files = e.dataTransfer.files;
-        this.handleExcelUpload(file);
+        this.handleExcelUpload(file, this._excelImportContext);
       }
     });
   }
@@ -146,6 +202,10 @@ export function triggerExcelImport(type) {
     this._currentResultPackageId = select ? select.value : "";
   }
   this._excelImportType = type;
+  this._excelImportContext = captureExcelImportContext(this, type);
+  if (type === "ketquaqd") {
+    this._currentResultPackageId = this._excelImportContext.packageId;
+  }
   let fileInput = document.getElementById("excel-file-input-temp");
   if (!fileInput) {
     fileInput = document.createElement("input");
@@ -157,7 +217,7 @@ export function triggerExcelImport(type) {
     fileInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (file) {
-        this.handleExcelUpload(file);
+        this.handleExcelUpload(file, this._excelImportContext);
       }
     });
   }
@@ -180,11 +240,20 @@ export function triggerExcelTemplateDownload(type) {
   }
   triggerTemplateDownload(this, type);
 }
-async function renderClientExcelImport(controller, file, parser) {
+async function renderClientExcelImport(controller, file, parser, context) {
   try {
+    if (!excelImportContextIsCurrent(controller, context)) {
+      return await rejectStaleExcelImport(controller);
+    }
     const rows = await readExcelRows(file);
-    const parsedRows = await parser(controller, rows);
+    if (!excelImportContextIsCurrent(controller, context)) {
+      return await rejectStaleExcelImport(controller);
+    }
+    const parsedRows = await parser(controller, rows, context);
     if (!parsedRows) return;
+    if (!excelImportContextIsCurrent(controller, context)) {
+      return await rejectStaleExcelImport(controller);
+    }
     controller._excelImportData = parsedRows;
     renderExcelPreview(controller._excelImportData, controller._excelImportType);
     showExcelImportSaveButton();
@@ -193,7 +262,13 @@ async function renderClientExcelImport(controller, file, parser) {
     await controller.view.customAlert("Lỗi", "Không thể đọc tệp tin Excel này. Vui lòng kiểm tra lại!", "alert-triangle");
   }
 }
-export async function handleExcelUpload(file) {
+export async function handleExcelUpload(file, context = null) {
+  const importContext = context || this._excelImportContext
+    || captureExcelImportContext(this, this._excelImportType);
+  if (!this._excelImportContext) this._excelImportContext = importContext;
+  if (!excelImportContextIsCurrent(this, importContext)) {
+    return await rejectStaleExcelImport(this);
+  }
   const fileInfo = document.getElementById("excel-file-info");
   if (fileInfo) {
     document.getElementById("excel-filename").textContent = file.name;
@@ -201,19 +276,19 @@ export async function handleExcelUpload(file) {
     setRuntimeStyle(fileInfo, "display", "flex");
   }
   if (this._excelImportType === "opening_fin") {
-    await renderClientExcelImport(this, file, parseOpeningFinancialImport);
+    await renderClientExcelImport(this, file, parseOpeningFinancialImport, importContext);
     return;
   }
   if (this._excelImportType === "danhgiahsdt") {
-    await renderClientExcelImport(this, file, parseBidEvaluationImport);
+    await renderClientExcelImport(this, file, parseBidEvaluationImport, importContext);
     return;
   }
   if (this._excelImportType === "ketquaqd") {
-    await renderClientExcelImport(this, file, parseAwardResultImport);
+    await renderClientExcelImport(this, file, parseAwardResultImport, importContext);
     return;
   }
   if (this._excelImportType === "mothau") {
-    await renderClientExcelImport(this, file, parseOpeningImport);
+    await renderClientExcelImport(this, file, parseOpeningImport, importContext);
     return;
   }
   let apiType = this._excelImportType;
@@ -228,6 +303,9 @@ export async function handleExcelUpload(file) {
       body: formData
     });
     const data = await res.json();
+    if (!excelImportContextIsCurrent(this, importContext)) {
+      return await rejectStaleExcelImport(this);
+    }
     if (res.ok && data.success) {
       const rawRows = data.rows || data.data || [];
       const seenKeys = /* @__PURE__ */ new Set();
@@ -413,6 +491,10 @@ export async function handleExcelUpload(file) {
 export async function saveExcelImport() {
   if (!this._excelImportData || this._excelImportData.length === 0) return;
   const type = this._excelImportType;
+  const importContext = this._excelImportContext;
+  if (!excelImportContextIsCurrent(this, importContext)) {
+    return await rejectStaleExcelImport(this);
+  }
   let count = 0;
   const validRows = this._excelImportData.filter((r) => r._valid);
   if (validRows.length === 0 && isBasicExcelImportType(type)) {
@@ -428,6 +510,9 @@ export async function saveExcelImport() {
     );
     if (!proceed) return;
   }
+  if (!excelImportContextIsCurrent(this, importContext)) {
+    return await rejectStaleExcelImport(this);
+  }
   const basicImportCount = await saveBasicExcelImport(this, type, validRows);
   const isBasicImport = basicImportCount !== null;
   if (basicImportCount !== null) {
@@ -437,7 +522,12 @@ export async function saveExcelImport() {
       this.model.currentPage[stateKey] = 1;
     }
   } else {
-    const businessImportCount = await saveBusinessExcelImport(this, type, validRows);
+    const businessImportCount = await saveBusinessExcelImport(
+      this,
+      type,
+      validRows,
+      importContext,
+    );
     if (businessImportCount !== null) {
       count = businessImportCount;
     }
@@ -449,6 +539,8 @@ export async function saveExcelImport() {
   const updatedCount = validRows.filter((row) => row._operation === "update").length;
   const createdCount = count - updatedCount;
   await this.closeModal("modal-excel-preview", { restoreRoute: false });
+  this._excelImportData = null;
+  this._excelImportContext = null;
   const summary = `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`;
   if (syncResult?.ok) {
     this.view.showToast("Thành công", summary, "success");

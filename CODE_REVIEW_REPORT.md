@@ -12,16 +12,15 @@
 
 Repository có nền tảng an toàn tương đối tốt: PostgreSQL được ràng buộc theo tenant, sync có version/tombstone, tài liệu chạy qua durable queue và sandbox, coverage backend đạt 72%, 130/130 kiểm thử JavaScript đạt và secure build thành công. Tuy nhiên, chưa nên phát hành hoặc bắt đầu refactor lớn vì còn các vấn đề ưu tiên cao:
 
-1. Ứng dụng hiện chấp nhận database có schema mới hơn bất kỳ phiên bản code nào mà không có compatibility matrix. Cơ chế này có thể cho code cũ ghi vào schema không tương thích.
-2. Migration v11 xóa dữ liệu trạng thái hồ sơ giấy mà không lưu bản sao; không được sửa migration đã áp dụng, nhưng cần cơ chế bảo toàn tiến về phía trước và hướng dẫn khôi phục.
-3. Sync xóa mutation batch khi server trả lỗi rồi nạp lại dữ liệu, có thể làm mất thay đổi người dùng chưa đồng bộ.
-4. Tên file ảnh dùng `record_id` nhưng không có `organization_id`; hai tenant có cùng ID có thể ghi đè ảnh của nhau.
-5. UI báo cáo chi tiết đã bỏ “Lý do không đạt”, trong khi backend vẫn bắt buộc trường này khi kết quả là `fail`; tái hiện tối thiểu trả `ValueError: Tieu chi khong dat phai co ly do.`
-6. Một số luồng Excel cũ đọc selector gói thầu nhiều lần sau các bước bất đồng bộ, nên có thể ghi dữ liệu vào gói khác nếu người dùng đổi lựa chọn giữa chừng.
-7. Hợp đồng chỉ được kiểm tra cùng kế hoạch; chưa ràng buộc nhà thầu hợp đồng với kết quả trúng thầu và phạm vi phần lô.
-8. Ba release gate đang đỏ: một policy test CSS, security static gate cho dynamic SQL, và `npm audit` có 5 cảnh báo High.
+1. Sync xóa mutation batch khi server trả lỗi rồi nạp lại dữ liệu, có thể làm mất thay đổi người dùng chưa đồng bộ.
+2. Tên file ảnh dùng `record_id` nhưng không có `organization_id`; hai tenant có cùng ID có thể ghi đè ảnh của nhau.
+3. UI báo cáo chi tiết đã bỏ “Lý do không đạt”, trong khi backend vẫn bắt buộc trường này khi kết quả là `fail`; tái hiện tối thiểu trả `ValueError: Tieu chi khong dat phai co ly do.`
+4. Một số luồng Excel cũ đọc selector gói thầu nhiều lần sau các bước bất đồng bộ, nên có thể ghi dữ liệu vào gói khác nếu người dùng đổi lựa chọn giữa chừng.
+5. File muasamcong sai tên nhà thầu hiện bị chặn hoàn toàn, trái quyết định mới là chỉ cảnh báo và cho phép người dùng tiếp tục.
+6. Failed document job bị xóa nên không thể tra cứu/chạy lại, trái quyết định mới về retention.
+7. Ba release gate đang đỏ: một policy test CSS, security static gate cho dynamic SQL, và `npm audit` có 5 cảnh báo High.
 
-Yêu cầu mới về đối chiếu nhà thầu trong Excel **đã có triển khai cơ bản** trên HEAD: file muasamcong sai tên bị chặn trước khi dữ liệu được áp vào bản nháp, thông báo hiển thị cả tên trong file và tên đang chọn. Kiểm thử chuyên biệt 40/40 đạt. Phần này vẫn cần hardening ở PR sau: tách identity validation khỏi nhận diện biểu mẫu, đóng băng ngữ cảnh import và ưu tiên mã số thuế/mã nhà thầu khi nguồn có cung cấp.
+Đối chiếu nhà thầu trong Excel **đã nhận diện và hiển thị đúng hai tên**, nhưng hành vi chặn hoàn toàn cần đổi thành cảnh báo xác nhận có nút tiếp tục. Kiểm thử hiện tại 40/40 đạt cho hành vi cũ và phải được cập nhật theo quyết định nghiệp vụ mới.
 
 ## 2. Phạm vi và phương pháp
 
@@ -99,25 +98,19 @@ Không thực hiện:
 
 ## 6. Phát hiện correctness và an toàn dữ liệu
 
-### [HIGH] Code cũ được phép chạy với mọi schema mới hơn
+### [ACCEPTED BUSINESS RULE] Code cũ được phép chạy với schema mới hơn
 
 - **Vị trí:** `backend/startup.py:525-536`, `backend/startup.py:584-599`, `tests/test_database_startup_policy.py:75-89`.
-- **Vấn đề:** startup chỉ chặn `installed < required`; mọi `installed > required` được chấp nhận vô điều kiện. Test hiện còn đặt tên “accepted as backward compatible”.
-- **Ảnh hưởng:** một binary cũ có thể đọc/ghi schema mới đã đổi constraint, cột hoặc semantics. Đây là lỗi fail-open ở lớp bảo vệ cuối cùng của database.
-- **Bằng chứng:** `backend/db/upgrades.py:773-776` lại từ chối schema mới hơn khi chạy migration, cho thấy hai policy mâu thuẫn.
-- **Tái hiện:** gọi `verify_database_readiness(database(version=16), expected_schema_version=15)`; hiện không ném lỗi.
-- **Phương án:** không loại bỏ version. Mặc định dùng equality hoặc compatibility range được khai báo theo release (`min=max=17`); chỉ nới range khi có contract test fresh/upgrade cho từng cặp.
-- **Test cần bổ sung:** schema mới hơn bị chặn mặc định; chỉ được chạy khi nằm trong manifest tương thích; readiness và startup dùng cùng resolver.
+- **Quyết định:** hành vi này là chủ ý vận hành, không còn được phân loại là bug.
+- **Hệ quả chấp nhận:** code cũ có thể gặp lỗi runtime nếu schema mới không tương thích; không được hạ metadata hoặc sửa migration đã áp dụng.
+- **Test cần giữ:** schema mới hơn được chấp nhận; schema thấp hơn yêu cầu vẫn bị chặn và hướng dẫn chạy migration.
 
-### [HIGH] Migration v11 có thể làm mất dữ liệu trạng thái hồ sơ giấy
+### [ACCEPTED BUSINESS RULE] Trạng thái hồ sơ giấy được loại bỏ
 
 - **Vị trí:** `backend/db/upgrades.py:218-300`.
-- **Vấn đề:** v11 xóa `hop_dong.trang_thai_ho_so` tại dòng 287 và bảng `trang_thai_ho_so_giay` tại dòng 296 mà không archive/backfill các giá trị người dùng.
-- **Ảnh hưởng:** dữ liệu đã áp dụng có thể không phục hồi được nếu không còn backup.
-- **Bằng chứng:** chỉ có mapping `trang_thai_hop_dong`; không có câu lệnh sao chép hai nguồn legacy trước `DROP`.
-- **Tái hiện:** tạo database v10 có trạng thái hồ sơ giấy khác rỗng, nâng cấp lên v11, truy vấn dữ liệu cũ không còn.
-- **Phương án:** tuyệt đối không sửa v11 đã phát hành. Thêm pre-upgrade preservation hook cho DB `<11`, một migration mới để tạo vùng tương thích/nhập dữ liệu khôi phục, và runbook phục hồi từ backup cho DB đã qua v11.
-- **Test cần bổ sung:** seed dữ liệu legacy khác rỗng, upgrade đến v17/v18, kiểm tra bản sao và mapping còn đủ.
+- **Quyết định:** không cần bảo toàn/khôi phục dữ liệu “Trạng thái hồ sơ giấy” vì “Trạng thái hợp đồng” là nguồn trạng thái duy nhất.
+- **Hành động:** không sửa migration v11 và không xây recovery flow cho dữ liệu này.
+- **Test cần giữ:** fresh schema và upgrade schema chỉ sử dụng trạng thái hợp đồng.
 
 ### [HIGH] Sync có thể xóa thay đổi chưa đồng bộ
 
@@ -164,16 +157,14 @@ Không thực hiện:
 - **Phương án:** định nghĩa rõ `missing` khác `null` khác empty; dùng patch semantics hoặc đọc/merge trong transaction trước upsert.
 - **Test cần bổ sung:** missing/empty/null cho từng field, retry, concurrent update và round-trip client cũ.
 
-### [HIGH] Hợp đồng chưa ràng buộc đúng nhà thầu trúng và phần lô
+### [ACCEPTED BUSINESS RULE] Hợp đồng không bị ràng buộc bởi nhà thầu trúng
 
 - **Vị trí:** `frontend/contracts/HopDongWorkflow.js:118-131`, trigger `backend/db/postgres_schema.py:698-719`, policy test `tests/test_contract_workflow_policy.py:161-174`.
-- **Vấn đề:** UI và trigger chỉ bảo đảm hợp đồng/gói cùng kế hoạch; bảng liên kết không mang lot/result identity và test hiện chủ động yêu cầu không kiểm tra winner.
-- **Ảnh hưởng:** có thể liên kết hợp đồng với nhà thầu không trúng hoặc với sai phần lô.
-- **Căn cứ nội bộ:** `docs/research/multi-lot-evaluation-legal-research.md:90` yêu cầu hợp đồng chỉ rõ lô và nhà thầu khớp KQLCNT.
-- **Phương án:** chốt ngoại lệ chỉ định thầu/pháp chế trước; sau đó thêm link tới award/lot stable identity và DB invariant trong migration mới.
-- **Test cần bổ sung:** nhiều lô/nhiều winner, winner sai, result chưa final, direct appointment exception, tenant mismatch.
+- **Quyết định:** liên kết hợp đồng–gói thầu không bắt buộc nhà thầu hợp đồng phải là nhà thầu trúng.
+- **Hành động:** giữ policy test hiện tại; không thêm winner/lot constraint.
+- **Lưu ý thuật ngữ:** liên kết này là quan hệ quản lý, không phải bằng chứng của KQLCNT.
 
-### [MEDIUM] Failed document job bị xóa trái runbook
+### [HIGH] Failed document job bị xóa, không thể tra cứu/chạy lại
 
 - **Vị trí:** `deploy/RUNBOOK.md:28-35`; `backend/documents/document_worker.py:816-827`, `:891-904`; `tests/test_postgres_core.py:945-995`.
 - **Vấn đề:** runbook cấm xóa failed job/payload trước retry có kiểm soát, nhưng worker xóa job directory ở lần lỗi cuối và xóa database row khi consumer đọc lỗi; test đang codify hành vi này.
@@ -207,7 +198,7 @@ Không thực hiện:
 4. Import cần snapshot `bidId/packageId/lotScope/workspaceEpoch`; nếu lựa chọn thay đổi trong lúc đọc file thì abort, không tự chuyển target.
 5. Cần test “không mutation”: mismatch không thay criteria override, draft, dirty flag hoặc dữ liệu đã lưu trước đó.
 
-Quyết định đề xuất: **fail closed đối với workbook nhận diện là muasamcong**. File sai/mất/xung đột identity không được nhập; custom workbook không có identity dùng luồng template riêng với xác nhận rõ, không âm thầm giả làm muasamcong.
+Quyết định nghiệp vụ đã chốt: **không fail closed**. File sai/mất/xung đột identity phải hiện cảnh báo với bằng chứng nhận diện và cho người dùng chọn “Vẫn nhập” hoặc “Hủy”.
 
 ## 8. Data contract báo cáo đánh giá chi tiết
 
@@ -217,11 +208,11 @@ Quyết định đề xuất: **fail closed đối với workbook nhận diện 
 | Tiêu chí | criteria override + metadata | `tieu_chi_danh_gia` | STT phân cấp và bidder type phải ổn định khi save/reload |
 | Báo cáo nhà thầu | `baoCaoDanhGiaChiTietList` trên bid | `bao_cao_danh_gia_nha_thau` | Unique theo org + vòng + hồ sơ mở thầu |
 | Dòng đánh giá | `chiTietList` | `chi_tiet_danh_gia_nha_thau` | Có legacy reason/clarification fields dù UI đã bỏ |
-| Người chấm | `nguoiChamId` hoặc active user | `nguoi_cham_id` | Cần cho audit attribution; trigger `bf_validate_evaluation_actor` bảo đảm là thành viên active cùng org |
+| Người chấm | Không sử dụng | `nguoi_cham_id` chỉ còn là cột DB nullable | Code hiện tại không đọc/ghi/kiểm tra; cột vật lý giữ cho code cũ chạy với schema mới |
 | Kết quả tổng quát | projection vào bid khi report completed | `ket_qua_danh_gia_nha_thau` | Chỉ project status/score; lý do/làm rõ phải do báo cáo tổng quát sở hữu |
 | Extension | object có schemaVersion | `extension_json` | Cần schema contract/version và unknown-field compatibility rõ |
 
-`nguoi_cham_id` là định danh tài khoản đã thực hiện/chịu trách nhiệm cho lần đánh giá. Nên giữ vì phục vụ audit, phân quyền và truy vết; có thể ẩn khỏi UI, nhưng không nên xóa khỏi data model.
+Theo quyết định nghiệp vụ, `nguoi_cham_id` không cần thiết và đã bị loại khỏi runtime. Cột DB nullable không phải data contract; nó chỉ được giữ để đáp ứng yêu cầu code cũ chạy với schema mới hơn.
 
 ## 9. Technical debt, độ phức tạp và dependency
 
@@ -279,9 +270,7 @@ Frontend có 173 module JS đều reachable từ `frontend/app/app.js`; không p
 Vấn đề:
 
 - Filesystem ảnh chưa đi cùng tenant identity.
-- Contract-package trigger chưa ràng winner/lot.
 - Dynamic SQL fingerprints thay đổi ở 10 file chưa được duyệt.
-- v11 có destructive drop không bảo toàn dữ liệu.
 - Fresh schema và upgrade path cần contract test cùng một canonical snapshot; audit cũ `docs/reviews/full-stack-code-audit-2026-07-23.md` dừng ở schema v14 và không còn đại diện cho HEAD v17.
 
 Không đề xuất thêm index mới từ dataset cục bộ nhỏ. Mọi index mới phải gắn với query thật, `EXPLAIN (ANALYZE, BUFFERS)`, write cost và tenant-leading column.
@@ -308,8 +297,8 @@ Test ưu tiên bổ sung trước refactor:
 3. Detail `fail` không có lý do nhưng summary reason độc lập.
 4. Import muasamcong đúng/sai/mất/xung đột contractor identity; independent/JV và phân lô.
 5. Đổi package/tab/lot trong lúc import bất đồng bộ.
-6. Contract winner/lot invariants và ngoại lệ chỉ định thầu.
-7. Migration preservation từ v10 qua v11 đến current.
+6. Failed document job retention/retry.
+7. Warning sai nhà thầu cho phép tiếp tục import.
 8. E2E 1G1T, 1G2T kỹ thuật/tài chính, tư vấn, save/reopen/reload.
 
 ## Standards
@@ -334,44 +323,45 @@ Kết quả trục Standards: 2 vi phạm cứng, 4 nhóm smell. Nghiêm trọng
 
 1. Năm artifact bắt buộc chưa tồn tại trước lượt review này; được tạo trong lượt hiện tại.
 2. Yêu cầu E2E cho 1G1T/1G2T/import/save-reload chưa có harness.
-3. Yêu cầu không mất dữ liệu và không chỉnh applied migration chưa được bảo vệ đầy đủ: v11 drop legacy data, mutation batch có thể bị discard.
+3. Yêu cầu không mất dữ liệu chưa được bảo vệ đầy đủ: mutation batch có thể bị discard.
 4. Yêu cầu import Excel không ghi nhầm hồ sơ mới được đáp ứng chắc ở luồng báo cáo chi tiết muasamcong; các adapter Excel cũ còn race package selector.
 5. Yêu cầu dữ liệu lý do/làm rõ thuộc báo cáo tổng quát bị backend detail invariant cũ cản trở.
 6. Yêu cầu tenant isolation chưa bao phủ filesystem image namespace.
 7. Yêu cầu benchmark trước/sau: có baseline một số hạng mục, nhưng chưa có “sau” vì đúng phạm vi hiện tại chưa tối ưu code.
 
-### Hành vi ngoài/không khớp yêu cầu
+### Quyết định nghiệp vụ đã loại khỏi danh sách lỗi
 
-1. Startup chấp nhận mọi schema mới hơn để “code luôn chạy”; điều này làm yếu data-safety guard và không có compatibility proof.
-2. Contract workflow chủ động không lọc theo procurement result trong policy test, trái invariant lot/winner đã ghi trong nghiên cứu nghiệp vụ nội bộ.
+1. Startup chấp nhận schema mới hơn.
+2. Không bảo toàn trạng thái hồ sơ giấy đã được thay bằng trạng thái hợp đồng.
+3. Contract workflow không lọc theo nhà thầu trúng.
+4. Báo cáo chi tiết không cần `nguoi_cham_id`.
 
 ### Đã đáp ứng đúng đáng ghi nhận
 
 1. Detailed evaluation tự chọn mẫu 14A/14B/14C/14D theo loại gói/phương thức, giữ logic system bidder type, hierarchy/STT và kết quả hệ thống/chuyên gia.
 2. Báo cáo mới không seed sẵn criteria; người dùng thêm dòng hoặc nhập Excel.
 3. Draft chi tiết được persistence theo opening bid/lot và có test save/reload.
-4. Contractor name mismatch trong workbook muasamcong bị chặn, hiển thị hai tên, không áp dữ liệu.
+4. Contractor name mismatch được nhận diện và hiển thị hai tên; hành vi chặn cần đổi thành cảnh báo cho phép tiếp tục.
 5. Applied migration không bị sửa trong lượt review này.
 
-Kết quả trục Spec: 7 yêu cầu thiếu/một phần, 2 hành vi lệch, 5 nhóm đã đáp ứng. Nghiêm trọng nhất là data safety ở schema compatibility và sync durability.
+Sau xác nhận nghiệp vụ, các sai khác còn cần sửa tập trung ở sync durability, import target/identity, detailed-evaluation contract và failed-job retention.
 
 ## 12. Ưu tiên đề xuất
 
 ### P0 — khóa trước mọi refactor
 
-1. Khôi phục fail-closed schema compatibility hoặc compatibility manifest có test.
-2. Persistent mutation outbox và không discard trên lỗi retryable.
-3. Namespace ảnh theo tenant.
-4. Kế hoạch preservation/khôi phục migration v11 không sửa applied migration.
-5. Sửa contract backend cho detail fail không cần reason và khóa bằng test.
+1. Persistent mutation outbox và không discard trên lỗi retryable.
+2. Namespace ảnh theo tenant.
+3. Sửa contract backend cho detail fail không cần reason và khóa bằng test.
+4. Đổi mismatch nhà thầu từ chặn sang cảnh báo xác nhận.
+5. Giữ failed document job để tra cứu/chạy lại.
 
 ### P1 — correctness nghiệp vụ
 
 1. Immutable Excel import context + deep import module + identity ưu tiên MST/mã nhà thầu.
-2. Contract ↔ award ↔ lot invariant sau khi chốt ngoại lệ pháp chế.
-3. Sparse update semantics và idempotency request hash.
-4. Failed document job retention/retry thống nhất với runbook.
-5. Xử lý ba release gate đỏ.
+2. Sparse update semantics và idempotency request hash.
+3. Loại `nguoi_cham_id` khỏi data contract mới theo lộ trình tương thích.
+4. Xử lý ba release gate đỏ.
 
 ### P2 — maintainability
 
@@ -379,7 +369,7 @@ Kết quả trục Spec: 7 yêu cầu thiếu/một phần, 2 hành vi lệch, 5
 2. Tách render/rules/commands cho award result và bid evaluation.
 3. Chuẩn hóa domain status resolver, không tạo một helper nhiều nhánh.
 4. Cắt cycle metrics/logging/database I/O bằng metrics sink/event publisher seam.
-5. Bổ sung `CONTEXT.md`, ADR cho schema compatibility, sync semantics và import identity.
+5. Duy trì `CONTEXT.md` và ADR khi quyết định nghiệp vụ thay đổi.
 
 ### P3 — tối ưu sau khi đo
 

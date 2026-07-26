@@ -1,5 +1,6 @@
 ---
-status: accepted
+status: superseded
+superseded_by: 0007-retire-evaluation-reviewer-runtime-data
 ---
 
 # Báo cáo đánh giá chi tiết không cần danh tính người chấm

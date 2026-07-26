@@ -239,6 +239,35 @@ test("each editable official result round exposes its own edit action", () => {
   assert.doesNotMatch(readonlyHtml, /data-edit-official-result-batch/);
 });
 
+test("official result history tolerates malformed legacy lot data", () => {
+  const view = {
+    model: {
+      state: { thongtinmothau: [] },
+      formatCurrency: (value) => String(value || 0),
+      formatDate: (value) => String(value || ""),
+    },
+  };
+  const html = buildOfficialResultHistoryMarkup(
+    view,
+    {
+      id: "pkg-malformed",
+      phanLoList: "{",
+      phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
+    },
+    {
+      history: [{
+        batchId: "batch-legacy",
+        sequenceNo: 1,
+        lotCodes: ["PL1"],
+        result: { soQuyetDinhKetQua: "01/QĐ" },
+      }],
+    },
+  );
+
+  assert.match(html, /official-result-history/);
+  assert.match(html, /01\/QĐ/);
+});
+
 test("clicking an official result edit action selects its batch and rerenders once", () => {
   const view = {};
   const pkg = {

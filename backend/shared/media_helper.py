@@ -26,12 +26,23 @@ ALLOWED_IMAGE_MIME_TO_EXT = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
 }
+TENANT_IMAGE_SEGMENT_PATTERN = re.compile(r"t-[a-f0-9]{24}")
 
 
 def _safe_file_part(value: str, fallback: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or fallback))
     safe = safe.strip("._")
     return safe or fallback
+
+
+def managed_image_tenant_segment(tenant_id: str) -> str:
+    """Return a stable opaque filesystem segment for one tenant."""
+
+    normalized = str(tenant_id or "").strip()
+    if not normalized:
+        raise ValueError("Thiếu phạm vi tổ chức khi lưu ảnh")
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
+    return f"t-{digest}"
 
 
 def _protected_media_ttl_seconds():
@@ -66,6 +77,12 @@ def public_image_path(
     organization_id = str(organization_id or "").strip()
     if not session_token or not organization_id:
         return ""
+    if not managed_image_path_matches_tenant(
+        path,
+        organization_id,
+        allow_legacy=True,
+    ):
+        return ""
     expires_at = int(now if now is not None else time.time()) + _protected_media_ttl_seconds()
     signature = _protected_media_signature(
         session_token,
@@ -98,10 +115,17 @@ def protected_image_signature_is_valid(
         return False
     if not session_token or not organization_id or not signature:
         return False
+    normalized_path = normalize_managed_image_path(managed_path)
+    if not managed_image_path_matches_tenant(
+        normalized_path,
+        organization_id,
+        allow_legacy=True,
+    ):
+        return False
     expected = _protected_media_signature(
         session_token,
         organization_id,
-        normalize_managed_image_path(managed_path),
+        normalized_path,
         expires_at,
     )
     return hmac.compare_digest(expected, str(signature))
@@ -117,12 +141,38 @@ def normalize_managed_image_path(value: str) -> str:
         return ""
     path = urllib.parse.unquote(parsed.path).lstrip("/")
     if not re.fullmatch(
-        r"images/(?:chuyen_gia|nha_thau)/[A-Za-z0-9_.-]+\.(?:png|jpg|webp)",
+        r"images/(?:chuyen_gia|nha_thau)/(?:t-[a-f0-9]{24}/)?[A-Za-z0-9_.-]+\.(?:png|jpg|webp)",
         path,
         re.IGNORECASE,
     ):
         return ""
     return path
+
+
+def managed_image_path_matches_tenant(
+    value: str,
+    tenant_id: str,
+    *,
+    allow_legacy: bool = False,
+) -> bool:
+    """Check a managed path's opaque tenant namespace.
+
+    Legacy paths have no tenant segment and are accepted only when the caller
+    separately proves record ownership in the database.
+    """
+
+    managed_path = normalize_managed_image_path(value)
+    if not managed_path:
+        return False
+    parts = managed_path.split("/")
+    if len(parts) == 3:
+        return allow_legacy
+    if len(parts) != 4 or not TENANT_IMAGE_SEGMENT_PATTERN.fullmatch(parts[2]):
+        return False
+    try:
+        return hmac.compare_digest(parts[2], managed_image_tenant_segment(tenant_id))
+    except ValueError:
+        return False
 
 
 def _managed_image_file(value: str) -> str:
@@ -322,18 +372,26 @@ def save_base64_image(
     subfolder: str,
     filename_prefix: str,
     *,
+    tenant_id: str,
     allowed_existing_paths=(),
 ) -> str:
     if not base64_str:
         return ""
     if subfolder not in ALLOWED_IMAGE_SUBFOLDERS:
         raise ValueError("Thư mục lưu ảnh không hợp lệ")
+    tenant_segment = managed_image_tenant_segment(tenant_id)
 
     existing_path = normalize_managed_image_path(base64_str)
     if existing_path:
         expected_prefix = f"images/{subfolder}/"
         if not existing_path.startswith(expected_prefix):
             raise ValueError("Ảnh hiện tại không thuộc đúng phạm vi lưu trữ")
+        if not managed_image_path_matches_tenant(
+            existing_path,
+            tenant_id,
+            allow_legacy=True,
+        ):
+            raise ValueError("Ảnh hiện tại không thuộc tổ chức này")
         allowed = {
             normalize_managed_image_path(path)
             for path in (allowed_existing_paths or ())
@@ -346,7 +404,9 @@ def save_base64_image(
     try:
         _mime, ext, image = _decode_and_validate_image(base64_str)
         images_root = os.path.realpath(IMAGE_DIR)
-        image_dir = os.path.realpath(os.path.join(images_root, subfolder))
+        image_dir = os.path.realpath(
+            os.path.join(images_root, subfolder, tenant_segment)
+        )
         if not image_dir.startswith(images_root + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
         os.makedirs(image_dir, exist_ok=True)
@@ -374,7 +434,7 @@ def save_base64_image(
             raise ValueError("Ảnh sau xử lý vẫn vượt quá giới hạn dung lượng")
         os.replace(temporary_path, filepath)
         temporary_path = ""
-        return f"images/{subfolder}/{filename}"
+        return f"images/{subfolder}/{tenant_segment}/{filename}"
     except ValueError:
         raise
     except Exception as exc:

@@ -36,6 +36,7 @@ from backend.observability.metrics import (
     document_worker_rejected,
     document_worker_wait_started,
 )
+from backend.shared.idle_backoff import idle_poll_backoff_from_env
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
@@ -594,9 +595,9 @@ def _enqueue_durable_document_job(
         now = int(time.time())
         retention_seconds = _positive_int_env(
             "DOCUMENT_JOB_RETENTION_SECONDS",
-            3_600,
-            300,
             86_400,
+            300,
+            2_592_000,
         )
         connection = database.get_connection()
         try:
@@ -764,21 +765,14 @@ def _finish_durable_document_job(
     return status
 
 
-def _delete_terminal_document_job(
-    database,
-    job_id: str,
-    *,
-    expected_status: str,
-) -> bool:
-    """Atomically retire terminal metadata before removing its private files."""
+def _delete_consumed_completed_document_job(database, job_id: str) -> bool:
+    """Retire a successfully consumed result; failed jobs expire via retention."""
 
-    if expected_status not in {"completed", "failed"}:
-        raise ValueError("Only terminal document jobs can be deleted.")
     connection = database.get_connection()
     try:
         deleted = connection.execute(
-            "DELETE FROM document_jobs WHERE id = ? AND status = ?",
-            (job_id, expected_status),
+            "DELETE FROM document_jobs WHERE id = ? AND status = 'completed'",
+            (job_id,),
         )
         deleted_count = int(deleted.rowcount or 0)
         connection.commit()
@@ -791,6 +785,48 @@ def _delete_terminal_document_job(
         shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
         return True
     return False
+
+
+def retry_failed_durable_document_job(database, job_id: str) -> bool:
+    """Schedule one failed immutable job for another operator-approved attempt.
+
+    The conditional update is the idempotency guard: only the first caller can
+    move a given failed row back to ``retry``. The previous error remains
+    visible until the retried attempt records its own outcome.
+    """
+
+    job_dir = _document_job_dir(job_id)
+    manifest_path = job_dir / "input.json"
+    if not job_dir.is_dir() or not manifest_path.is_file():
+        raise DocumentWorkerError(
+            "Không còn dữ liệu đầu vào của tác vụ tài liệu để chạy lại."
+        )
+    operation, _payload = read_job_manifest(manifest_path, job_dir)
+    now = int(time.time())
+    retention_seconds = _positive_int_env(
+        "DOCUMENT_JOB_RETENTION_SECONDS",
+        86_400,
+        300,
+        2_592_000,
+    )
+    connection = database.get_connection()
+    try:
+        updated = connection.execute(
+            """UPDATE document_jobs
+               SET status = 'retry', attempt_count = 0, available_at = ?,
+                   locked_at = NULL, locked_by = NULL, completed_at = NULL,
+                   expires_at = ?, updated_at = ?
+               WHERE id = ? AND operation = ? AND status = 'failed'""",
+            (now, now + retention_seconds, now, job_id, operation),
+        )
+        updated_count = int(updated.rowcount or 0)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return updated_count == 1
 
 
 def _process_claimed_document_job(database, claimed) -> None:
@@ -819,12 +855,9 @@ def _process_claimed_document_job(database, claimed) -> None:
                 result_file.unlink(missing_ok=True)
             except OSError:
                 pass
-        status = _finish_durable_document_job(database, claimed, error)
-        # Retried jobs still need their immutable input sidecars. Once the
-        # final attempt fails, however, no parser output is useful and keeping
-        # attacker-controlled files until the retention sweep is unnecessary.
-        if status == "failed":
-            shutil.rmtree(job_dir, ignore_errors=True)
+        _finish_durable_document_job(database, claimed, error)
+        # Keep the immutable input and failed metadata for operator inspection
+        # and an explicit retry. The retention sweep is the only deletion path.
 
 
 def process_next_durable_document_job(database=None) -> bool:
@@ -876,17 +909,9 @@ def _consume_durable_document_result(
             except Exception:
                 # A malformed/hash-mismatched result is terminal and must not
                 # leave untrusted sidecars behind after the parent rejects it.
-                _delete_terminal_document_job(
-                    database,
-                    job_id,
-                    expected_status="completed",
-                )
+                _delete_consumed_completed_document_job(database, job_id)
                 raise
-            _delete_terminal_document_job(
-                database,
-                job_id,
-                expected_status="completed",
-            )
+            _delete_consumed_completed_document_job(database, job_id)
             return result
         if row["status"] == "failed":
             message = str(
@@ -894,11 +919,6 @@ def _consume_durable_document_result(
                 or "Tác vụ tài liệu không thành công."
             )
             error_code = str(row["last_error_code"] or "")
-            _delete_terminal_document_job(
-                database,
-                job_id,
-                expected_status="failed",
-            )
             if error_code == "DocumentWorkerInputError":
                 raise DocumentWorkerInputError(message)
             raise DocumentWorkerError(message)
@@ -911,6 +931,11 @@ def _consume_durable_document_result(
 async def run_durable_document_queue_worker(database) -> None:
     """Recover queued/orphaned document jobs after a web-worker restart."""
 
+    backoff = idle_poll_backoff_from_env(
+        "DOCUMENT_JOB_POLL_SECONDS",
+        "DOCUMENT_JOB_MAX_POLL_SECONDS",
+        default_initial=5.0,
+    )
     while True:
         try:
             processed = await asyncio.to_thread(
@@ -921,13 +946,9 @@ async def run_durable_document_queue_worker(database) -> None:
             raise
         except Exception:
             processed = False
-        idle_poll_seconds = _bounded_float_env(
-            "DOCUMENT_JOB_POLL_SECONDS",
-            5.0,
-            1.0,
-            30.0,
-        )
-        await asyncio.sleep(0.1 if processed else idle_poll_seconds)
+        if processed:
+            backoff.reset()
+        await asyncio.sleep(0.1 if processed else backoff.next_delay())
 
 
 async def run_document_job_async(

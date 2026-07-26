@@ -64,8 +64,9 @@ export function setupAuth() {
     try {
       const initialTab = this.getTabNameForPath?.(window.location.pathname) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
       await this.view.ensureViewModules(initialTab);
-      if (["mothau", "danhgiahsdt"].includes(initialTab) && !this._workflowModulesReady) {
-        await this.ensureWorkflowModules();
+      const workflowRequirement = this.getWorkflowRequirementForRoute?.(initialTab);
+      if (!this.isWorkflowRequirementReady?.(workflowRequirement)) {
+        await this.ensureWorkflowRequirement(workflowRequirement);
       }
       if (!document.getElementById(`tab-${initialTab}`) && this.lazyTabPartials?.[initialTab]) {
         await this.ensureLazyTab(initialTab);

@@ -7,7 +7,6 @@
     "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
     "audit:vendor": "python scripts/audit_vendor_assets.py && node scripts/check_sheetjs_vendor.cjs && node scripts/check_excel_archive_guard.mjs",
     "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
-    "build:plain": "vite build --mode production",
     "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "package:production": "npm run build:secure && python scripts/package_production.py"
   },
@@ -19,5 +18,8 @@
   },
   "dependencies": {
     "dompurify": "3.4.12"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8"
   }
 }

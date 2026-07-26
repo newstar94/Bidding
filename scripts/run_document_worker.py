@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
 import queue
@@ -16,22 +17,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.db.db_helper import PostgresDatabase
+from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.documents.document_sandbox import (
     validate_document_sandbox_configuration,
 )
 from backend.documents.document_worker import (
     document_worker_execution_mode,
     process_next_durable_document_job,
+    retry_failed_durable_document_job,
     validate_external_document_worker_shared_root,
 )
-
-
-def _positive_poll_seconds() -> float:
-    try:
-        value = float(os.environ.get("DOCUMENT_JOB_POLL_SECONDS", "1"))
-    except (TypeError, ValueError):
-        value = 1.0
-    return min(30.0, max(0.1, value))
 
 
 def _worker_concurrency() -> int:
@@ -296,20 +291,36 @@ def _run_worker_loop(
     stop_event: threading.Event,
     failures: queue.Queue[BaseException],
 ) -> None:
-    poll_seconds = _positive_poll_seconds()
+    backoff = idle_poll_backoff_from_env(
+        "DOCUMENT_JOB_POLL_SECONDS",
+        "DOCUMENT_JOB_MAX_POLL_SECONDS",
+        default_initial=1.0,
+    )
     try:
         while not stop_event.is_set():
             processed = process_next_durable_document_job(database)
             if not processed:
-                stop_event.wait(poll_seconds)
+                stop_event.wait(backoff.next_delay())
             else:
+                backoff.reset()
                 time.sleep(0)
     except BaseException as exc:
         failures.put(exc)
         stop_event.set()
 
 
-def main() -> int:
+def _arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--retry-failed",
+        metavar="JOB_ID",
+        help="Schedule one retained failed job for another attempt and exit.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _arguments(argv)
     _validate_service_boundary()
     database_url = os.environ.get("DOCUMENT_WORKER_DATABASE_URL", "").strip()
     if not database_url:
@@ -319,6 +330,20 @@ def main() -> int:
     database.open(wait=True)
     try:
         role = _validate_database_boundary(database)
+        if args.retry_failed:
+            retried = retry_failed_durable_document_job(database, args.retry_failed)
+            if not retried:
+                print(
+                    "Document job was not retried because it is not currently failed.",
+                    file=sys.stderr,
+                )
+                return 2
+            print(
+                f"Document job {args.retry_failed} scheduled for retry "
+                f"(database role: {role}).",
+                flush=True,
+            )
+            return 0
         stop_event = threading.Event()
 
         def request_stop(_signum, _frame) -> None:

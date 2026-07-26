@@ -13,8 +13,6 @@ from backend.lot_selection_lifecycle import LotLifecyclePolicyError
 from backend.shared.access_policy import (
     authorize_record_write,
     can_read_record,
-    is_organization_manager,
-    is_personal_workspace_owner,
 )
 from backend.shared.helpers import (
     OrgPermissionError,

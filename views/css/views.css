@@ -3921,7 +3921,7 @@ table th {
 }
 
 .detailed-evaluation-mark input:focus-visible + .detailed-evaluation-mark-symbol {
-  outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--primary) 28%, transparent);
   outline-offset: 6px;
 }
 

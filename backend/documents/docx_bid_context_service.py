@@ -1,7 +1,5 @@
 """Build bidder/result lists and lot summaries for Word contexts."""
 
-import re
-
 from backend.shared.helpers import VietnameseFloat
 
 def _ensure_list(value):
@@ -344,5 +342,4 @@ def enrich_context_with_lot_summaries(context):
     context['so_phan_lo_khong_co_nha_thau_tham_du'] = len(lots_without_participants)
     context['so_phan_lo_co_nha_thau_trung'] = len(lots_with_winner)
     context['so_phan_lo_tham_du_khong_trung'] = len(lots_participated_without_winner)
-
 

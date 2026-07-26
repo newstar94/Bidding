@@ -29,7 +29,7 @@ Mục đích của file này là giúp phân biệt:
 | NV2 | Không cần giữ “Trạng thái hồ sơ giấy”; dùng “Trạng thái hợp đồng” | **Nghiệp vụ chủ ý, không phải bug mất dữ liệu** | Không xây cơ chế khôi phục trạng thái hồ sơ giấy |
 | NV3 | Hợp đồng không bắt buộc liên kết đúng nhà thầu trúng | **Nghiệp vụ chủ ý, không phải bug** | Giữ liên kết hợp đồng–gói thầu độc lập với kết quả trúng thầu |
 | NV4 | Job lỗi phải được giữ để tra cứu và chạy lại | **Bug code B9** | Sửa cơ chế retention/retry |
-| NV5 | Không cần `nguoi_cham_id` | **Yêu cầu đơn giản hóa model, không phải bug cũ** | Ngừng yêu cầu/ghi trường này; giữ khả năng đọc dữ liệu cũ trong thời gian tương thích |
+| NV5 | Không cần `nguoi_cham_id` | **Yêu cầu đơn giản hóa model, không phải bug cũ** | Code hiện tại không đọc/ghi/kiểm tra trường này; chỉ giữ cột DB nullable để code cũ chạy với schema mới |
 | NV6 | Sai/thiếu tên nhà thầu chỉ cảnh báo, không chặn hoàn toàn | **Sai khác giữa code và nghiệp vụ — B10** | Cho phép người dùng xác nhận tiếp tục import |
 
 ## 3. Những yêu cầu của bạn đã được hiểu rõ
@@ -71,5 +71,5 @@ Phần còn cần gia cố là ưu tiên mã số thuế/mã nhà thầu nếu E
 2. B2 — bản nháp không biến mất khi sync lỗi.
 3. B4 và B10 — cố định đúng gói/nhà thầu khi import và đổi chặn thành cảnh báo xác nhận.
 4. B9 — giữ và chạy lại job tài liệu lỗi.
-5. NV5 — loại `nguoi_cham_id` theo lộ trình tương thích.
+5. NV5 — đã loại `nguoi_cham_id` khỏi runtime; cột DB nullable chỉ còn cho tương thích code cũ.
 6. Các lỗi kỹ thuật và cleanup còn lại.

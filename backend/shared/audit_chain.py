@@ -294,6 +294,206 @@ def inspect_audit_chain(cursor):
     )
 
 
+def inspect_audit_chain_incremental(cursor, checkpoint, *, hmac_key=None):
+    """Verify rows appended after a trusted checkpoint and current heads.
+
+    Previously verified rows are trusted only until the next scheduled full
+    scan. Every checkpoint head is anchored back to its exact database row so
+    truncation or rollback cannot silently replace the trusted starting point.
+    """
+
+    def failure(reason, *, row_count=0, heads=()):
+        return AuditChainVerification(
+            False,
+            row_count,
+            None,
+            None,
+            None,
+            None,
+            reason,
+            tuple(heads),
+        )
+
+    if not verify_audit_checkpoint(checkpoint, hmac_key=hmac_key):
+        return failure("checkpoint_invalid")
+    installation_row = cursor.execute(
+        "SELECT installation_id FROM database_metadata WHERE id = 1"
+    ).fetchone()
+    if (
+        not installation_row
+        or not hmac.compare_digest(
+            str(installation_row[0]),
+            str(checkpoint.get("installationId") or ""),
+        )
+    ):
+        return failure("checkpoint_installation_mismatch")
+
+    checkpoint_row_count = checkpoint.get("rowCount")
+    checkpoint_heads = checkpoint.get("heads")
+    if (
+        not isinstance(checkpoint_row_count, int)
+        or isinstance(checkpoint_row_count, bool)
+        or checkpoint_row_count < 0
+        or not isinstance(checkpoint_heads, list)
+    ):
+        return failure("checkpoint_shape_invalid")
+
+    states = {}
+    anchor_ids = []
+    for head in checkpoint_heads:
+        if not isinstance(head, dict):
+            return failure("checkpoint_shape_invalid")
+        chain_id = head.get("chainId")
+        sequence = head.get("sequence")
+        log_id = head.get("id")
+        entry_hash = head.get("entryHash")
+        if (
+            not isinstance(chain_id, str)
+            or not chain_id
+            or chain_id in states
+            or not isinstance(sequence, int)
+            or isinstance(sequence, bool)
+            or sequence <= 0
+            or not isinstance(log_id, int)
+            or isinstance(log_id, bool)
+            or log_id <= 0
+            or not isinstance(entry_hash, str)
+            or len(entry_hash) != 64
+        ):
+            return failure("checkpoint_shape_invalid")
+        states[chain_id] = {
+            "sequence": sequence,
+            "id": log_id,
+            "entryHash": entry_hash,
+        }
+        anchor_ids.append(log_id)
+
+    if checkpoint_row_count != sum(state["sequence"] for state in states.values()):
+        return failure("checkpoint_shape_invalid")
+
+    if anchor_ids:
+        anchored_rows = cursor.execute(
+            """SELECT id, chain_id, sequence, entry_hash
+               FROM audit_log WHERE id = ANY(?)""",
+            (anchor_ids,),
+        ).fetchall()
+        anchors_by_id = {int(row[0]): row for row in anchored_rows}
+        if len(anchors_by_id) != len(anchor_ids):
+            return failure("checkpoint_head_missing", row_count=checkpoint_row_count)
+        for chain_id, state in states.items():
+            row = anchors_by_id.get(state["id"])
+            if row is None:
+                return failure("checkpoint_head_missing", row_count=checkpoint_row_count)
+            if (
+                str(row[1]) != chain_id
+                or int(row[2]) != state["sequence"]
+                or not hmac.compare_digest(str(row[3]), state["entryHash"])
+            ):
+                return failure("checkpoint_head_mismatch", row_count=checkpoint_row_count)
+
+    maximum_anchor_id = max(anchor_ids, default=0)
+    tail_rows = cursor.execute(
+        """SELECT id, chain_id, sequence, actor_user_id, organization_id,
+                  action, target_type, target_id, ip_address, metadata_json,
+                  created_at, previous_hash, entry_hash
+           FROM audit_log WHERE id > ? ORDER BY chain_id, sequence""",
+        (maximum_anchor_id,),
+    )
+    tail_count = 0
+    first_id = None
+    first_previous_hash = None
+    last_id = maximum_anchor_id or None
+    for row in tail_rows:
+        tail_count += 1
+        chain_id = str(row[1])
+        sequence = int(row[2])
+        state = states.setdefault(
+            chain_id,
+            {"sequence": 0, "id": None, "entryHash": EMPTY_AUDIT_HASH},
+        )
+        stored_previous = str(row[11])
+        if first_id is None:
+            first_id = int(row[0])
+            first_previous_hash = stored_previous
+        last_id = int(row[0])
+        if sequence != state["sequence"] + 1:
+            return failure(
+                "sequence_mismatch",
+                row_count=checkpoint_row_count + tail_count,
+                heads=states.values(),
+            )
+        if not hmac.compare_digest(stored_previous, state["entryHash"]):
+            return failure(
+                "previous_hash_mismatch",
+                row_count=checkpoint_row_count + tail_count,
+                heads=states.values(),
+            )
+        event = {
+            "chain_id": chain_id,
+            "sequence": sequence,
+            "actor_user_id": row[3],
+            "organization_id": row[4],
+            "action": row[5],
+            "target_type": row[6],
+            "target_id": row[7],
+            "ip_address": row[8],
+            "metadata_json": row[9],
+            "created_at": row[10],
+        }
+        entry_hash = str(row[12])
+        if not hmac.compare_digest(
+            _entry_hash(stored_previous, event),
+            entry_hash,
+        ):
+            return failure(
+                "entry_hash_mismatch",
+                row_count=checkpoint_row_count + tail_count,
+                heads=states.values(),
+            )
+        state.update({"sequence": sequence, "id": int(row[0]), "entryHash": entry_hash})
+
+    heads = tuple(
+        {
+            "chainId": chain_id,
+            "sequence": state["sequence"],
+            "id": state["id"],
+            "entryHash": state["entryHash"],
+        }
+        for chain_id, state in sorted(states.items())
+    )
+    stored_heads = {
+        str(row[0]): (int(row[1]), row[2], str(row[3]))
+        for row in cursor.execute(
+            "SELECT chain_id, last_sequence, last_log_id, last_hash FROM audit_chain_heads"
+        ).fetchall()
+    }
+    calculated_heads = {
+        head["chainId"]: (head["sequence"], head["id"], head["entryHash"])
+        for head in heads
+    }
+    empty_heads = {
+        chain_id: values
+        for chain_id, values in stored_heads.items()
+        if values == (0, None, EMPTY_AUDIT_HASH)
+    }
+    if {**calculated_heads, **empty_heads} != stored_heads:
+        return failure(
+            "materialized_head_mismatch",
+            row_count=checkpoint_row_count + tail_count,
+            heads=heads,
+        )
+    aggregate_hash = hashlib.sha256(_checkpoint_material(heads)).hexdigest()
+    return AuditChainVerification(
+        True,
+        checkpoint_row_count + tail_count,
+        first_id,
+        first_previous_hash,
+        last_id,
+        aggregate_hash,
+        heads=heads,
+    )
+
+
 def verify_audit_chain(cursor):
     return inspect_audit_chain(cursor).valid
 
@@ -347,10 +547,10 @@ def _checkpoint_material(payload):
     ).encode("utf-8")
 
 
-def build_audit_checkpoint(cursor, *, hmac_key=None):
+def build_audit_checkpoint(cursor, *, hmac_key=None, verification=None):
     """Build a structural chain checkpoint without copying audit event data."""
 
-    verification = inspect_audit_chain(cursor)
+    verification = verification or inspect_audit_chain(cursor)
     if not verification.valid:
         raise RuntimeError(
             f"Cannot checkpoint an invalid audit chain ({verification.failure})."

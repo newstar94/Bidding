@@ -1,0 +1,362 @@
+import { executeAppCommand } from "../app/commandBus.js";
+import { bindCurrencyElement, formatPartnerIdentityCode } from "../app/domUtils.js";
+import {
+  getExactContractorVersion,
+  resolveBidContractorName,
+  resolveBidJointVentureMembers,
+  resolveContractorVersion,
+} from "../partners/contractorVersionBinding.js";
+import { trustedHTML } from "../shared/trustedTypes.js";
+import { escapeHtml } from "../shared/view_helpers.js";
+import { updateRowConclusion } from "./bidEvaluationActions.js";
+import { isDetailedEvaluationSummaryOwned } from "./detailedEvaluationSelectors.js";
+import { setJvData } from "./jvDataStore.js";
+
+const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
+const FINANCIAL_CASES = new Set(["1G2T_TC_NO_LOT", "1G2T_TC_WITH_LOT"]);
+
+function durationText(value, fallback = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  return raw.includes("ngày") ? raw : `${raw} ngày`;
+}
+
+function findDetailedProjectionReport(bid, presentation) {
+  const roundType = presentation.isTwoEnvelope
+    ? (presentation.currentTab === "financial" ? "financial" : "technical")
+    : "single";
+  return (bid.baoCaoDanhGiaChiTietList || []).find(
+    (report) => report.loaiVong === roundType && isDetailedEvaluationSummaryOwned(report),
+  ) || null;
+}
+
+function buildContractorDisplay({ pkg, bid, model, detailedProjectionReport }) {
+  let contractorCode = bid.maNhaThau || bid.maDinhDanh || "--";
+  const contractorName = resolveBidContractorName(model, bid) || "--";
+  const exactContractor = getExactContractorVersion(model, bid.nhaThauId)
+    || resolveContractorVersion(model, bid);
+  if (exactContractor) contractorCode = exactContractor.maNhaThau || contractorCode;
+
+  let html;
+  if (bid.loaiNhaThau === "Liên danh") {
+    const jvKey = `${pkg.id}_eval_bidder_${bid.id}`;
+    setJvData(jvKey, {
+      members: resolveBidJointVentureMembers(model, bid),
+      leadName: contractorName,
+      leadCode: contractorCode,
+      leadContractorVersionId: bid.nhaThauId || "",
+    });
+    html = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${escapeHtml(jvKey)}" title="Xem thành viên liên danh">👥 ${escapeHtml(contractorName)}</a>`;
+  } else {
+    const contractorId = exactContractor?.id || "";
+    html = contractorId
+      ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorId)}" class="text-blue fw-bold link-hover">${escapeHtml(contractorName)}</a>`
+      : `<span class="fw-bold">${escapeHtml(contractorName)}</span>`;
+  }
+  if (detailedProjectionReport) {
+    html += '<div><span class="badge badge-info">Tổng hợp từ báo cáo chi tiết</span></div>';
+  }
+  return { contractorCode, html };
+}
+
+function buildIdentityCells({ pkg, bid, contractor }) {
+  const lotCells = pkg.phanLo === "Có"
+    ? `
+      <td>${escapeHtml(bid.maPhanLo || "--")}</td>
+      <td>${escapeHtml(bid.tenPhanLo || "--")}</td>
+    `
+    : "";
+  return `${lotCells}
+    <td>${escapeHtml(bid.loaiNhaThau || "Độc lập")}</td>
+    <td>${escapeHtml(formatPartnerIdentityCode(contractor.contractorCode, "--"))}</td>
+    <td>${contractor.html}</td>
+  `;
+}
+
+function buildFinancialCells({ bid, model, presentation, rowReadOnly }) {
+  const bidPrice = bid.giaDuThau ? model.formatVND(bid.giaDuThau) : "";
+  const discount = bid.tyLeGiamGia !== void 0 ? model.formatVND(bid.tyLeGiamGia) : "0";
+  const discountedPrice = bid.giaSauGiamGia ? model.formatVND(bid.giaSauGiamGia) : "";
+  const bidValidity = bid.hieuLucHsdt || "";
+  const clarification = bid.lamRoTaiChinh || "";
+  const financialEvaluation = bid.danhGiaTaiChinh || "";
+  const validityCell = presentation.isConsulting
+    ? `<td><${rowReadOnly ? "span" : "input"}${rowReadOnly
+      ? `>${escapeHtml(durationText(bidValidity, "--"))}</span>`
+      : ` type="text" class="form-control mt-hieu-luc-hsdt bf-s-9eae6acf9f" value="${escapeHtml(durationText(bidValidity))}" readonly placeholder="Ví dụ: 90 ngày">`}</td>`
+    : "";
+  const combinedCells = presentation.showCombinedScore
+    ? `
+      <td><span>${escapeHtml(bid.danhGiaKyThuat || "--")}</span></td>
+      <td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>
+    `
+    : "";
+
+  if (rowReadOnly) {
+    return `
+      <td><span>${escapeHtml(bidPrice || "--")}</span></td>
+      <td class="bf-s-5f326564a5"><span>${escapeHtml(discount)}</span></td>
+      <td><span>${escapeHtml(discountedPrice || "--")}</span></td>
+      ${validityCell}
+      <td><span>${escapeHtml(clarification || "--")}</span></td>
+      ${combinedCells}
+      <td><span class="bf-s-6e8bcfac8d">${escapeHtml(financialEvaluation || "--")}</span></td>
+    `;
+  }
+  return `
+    <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${escapeHtml(bidPrice)}" readonly placeholder="Ví dụ: 1.000.000.000"></td>
+    <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${escapeHtml(discount)}" readonly placeholder="0"></td>
+    <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${escapeHtml(discountedPrice)}" readonly placeholder="......"></td>
+    ${validityCell}
+    <td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(clarification)}" placeholder="Nhập làm rõ tài chính..."></td>
+    ${combinedCells}
+    <td><input type="text" class="form-control mt-dg-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(financialEvaluation)}" placeholder="Xếp hạng..."></td>
+  `;
+}
+
+function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly }) {
+  const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
+  const bidValidity = durationText(bid.hieuLucHsdt, rowReadOnly ? "--" : "");
+  const performanceTime = escapeHtml(bid.thoiGianThucHien || pkg.thoiGianThucHien || (rowReadOnly ? "--" : ""));
+  const securityValidity = durationText(bid.hieuLucBaoDamNgay, rowReadOnly ? "--" : "");
+
+  if (!technicalLayout) {
+    if (rowReadOnly) {
+      return `
+        <td><span>${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : "--"}</span></td>
+        <td class="bf-s-5f326564a5"><span>${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}</span></td>
+        <td><span>${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : "--"}</span></td>
+        <td><span>${escapeHtml(bidValidity)}</span></td>
+        <td><span>${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : "--"}</span></td>
+        <td><span>${escapeHtml(securityValidity)}</span></td>
+        <td><span>${performanceTime}</span></td>
+      `;
+    }
+    return `
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : ""}" readonly></td>
+      <td><input type="text" class="form-control bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}" readonly></td>
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : ""}" readonly></td>
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : ""}" readonly></td>
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td>
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${performanceTime}" readonly></td>
+    `;
+  }
+  if (presentation.caseType === "TU_VAN") {
+    return rowReadOnly
+      ? `<td><span>${escapeHtml(bidValidity)}</span></td><td><span>${performanceTime}</span></td>`
+      : `<td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${performanceTime}" readonly></td>`;
+  }
+  const securityValue = bid.giaTriDamBao ? model.formatVND(bid.giaTriDamBao) : "";
+  return rowReadOnly
+    ? `<td><span>${securityValue ? escapeHtml(securityValue) : "--"}</span></td><td><span>${escapeHtml(securityValidity)}</span></td><td><span>${escapeHtml(bidValidity)}</span></td>`
+    : `<td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValue)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>`;
+}
+
+function readOnlyEvaluationCells({ bid, presentation }) {
+  const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
+  return `
+    <td>
+      <span class="mt-dg-hop-le bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaHopLe || "--")}</span>
+      ${bid.nguyenNhanKhongDatHopLe ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatHopLe)}</div>` : ""}
+    </td>
+    <td><span>${escapeHtml(bid.lamRoHopLe || "--")}</span></td>
+    <td>
+      <span class="mt-dg-nang-luc bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaNangLuc || "--")}</span>
+      ${bid.nguyenNhanKhongDatNangLuc ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatNangLuc)}</div>` : ""}
+    </td>
+    <td><span>${escapeHtml(bid.lamRoNangLuc || "--")}</span></td>
+    <td>
+      <span class="mt-dg-ky-thuat bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaKyThuat || "--")}</span>
+      ${bid.nguyenNhanKhongDatKyThuat ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatKyThuat)}</div>` : ""}
+    </td>
+    <td><span>${escapeHtml(bid.lamRoKyThuat || "--")}</span></td>
+    ${technicalLayout ? "" : `<td><span>${escapeHtml(bid.lamRoTaiChinh || "--")}</span></td>`}
+    ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
+    <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+    ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
+  `;
+}
+
+function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
+  const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
+  const disabled = forceDisabled ? " disabled" : "";
+  const waiting = forceDisabled ? "Chờ đánh giá hạng trên..." : "";
+  const technicalPlaceholder = waiting || (pkg.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá"
+    ? "Nhập điểm kỹ thuật..."
+    : "Điểm hoặc Đạt...");
+  return `
+    <td>
+      <select class="form-control mt-dg-hop-le"${disabled} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+        <option value="Đạt" ${bid.danhGiaHopLe === "Đạt" || !bid.danhGiaHopLe ? "selected" : ""}>Đạt</option>
+        <option value="Không đạt" ${bid.danhGiaHopLe === "Không đạt" ? "selected" : ""}>Không đạt</option>
+      </select>
+      <input type="text" class="form-control mt-reason-fail-hople" value="${escapeHtml(bid.nguyenNhanKhongDatHopLe || "")}" placeholder="Lý do không đạt hợp lệ..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${bid.danhGiaHopLe === "Không đạt" ? "block" : "none"};"${disabled}>
+    </td>
+    <td><input type="text" class="form-control mt-lam-ro-hop-le"${disabled} value="${escapeHtml(bid.lamRoHopLe || "")}" placeholder="${waiting || "Nhập làm rõ hợp lệ..."}"></td>
+    <td>
+      <select class="form-control mt-dg-nang-luc"${disabled} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+        <option value="Đạt" ${bid.danhGiaNangLuc === "Đạt" || !bid.danhGiaNangLuc ? "selected" : ""}>Đạt</option>
+        <option value="Không đạt" ${bid.danhGiaNangLuc === "Không đạt" ? "selected" : ""}>Không đạt</option>
+      </select>
+      <input type="text" class="form-control mt-reason-fail-nangluc" value="${escapeHtml(bid.nguyenNhanKhongDatNangLuc || "")}" placeholder="Lý do không đạt năng lực..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${bid.danhGiaNangLuc === "Không đạt" ? "block" : "none"};"${disabled}>
+    </td>
+    <td><input type="text" class="form-control mt-lam-ro-nang-luc"${disabled} value="${escapeHtml(bid.lamRoNangLuc || "")}" placeholder="${waiting || "Nhập làm rõ năng lực..."}"></td>
+    <td>
+      <input type="text" class="form-control mt-dg-ky-thuat"${disabled} value="${escapeHtml(bid.danhGiaKyThuat || "")}" placeholder="${technicalPlaceholder}">
+      <input type="text" class="form-control mt-reason-fail-kythuat bf-s-32fe8a23fe" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..."${disabled}>
+    </td>
+    <td><input type="text" class="form-control mt-lam-ro-ky-thuat"${disabled} value="${escapeHtml(bid.lamRoKyThuat || "")}" placeholder="${waiting || "Nhập làm rõ kỹ thuật..."}"></td>
+    ${technicalLayout ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh"${disabled} value="${escapeHtml(bid.lamRoTaiChinh || "")}" placeholder="${waiting || "Nhập làm rõ tài chính..."}"></td>`}
+    ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
+    <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+    ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
+  `;
+}
+
+function bindDurationInputs(row) {
+  row.querySelectorAll(".mt-hieu-luc-hsdt, .mt-hieu-luc-bao-dam-ngay").forEach((input) => {
+    input.addEventListener("focus", () => {
+      const value = input.value.trim();
+      if (!value) return;
+      const number = Number.parseInt(value.replace(/[^0-9]/g, ""), 10);
+      if (!Number.isNaN(number)) input.value = number;
+    });
+    input.addEventListener("blur", () => {
+      const value = input.value.trim();
+      if (!value) return;
+      const number = Number.parseInt(value.replace(/[^0-9]/g, ""), 10);
+      if (!Number.isNaN(number)) input.value = `${number} ngày`;
+    });
+  });
+}
+
+function bindFinancialInputs({ row, model, presentation, onRankingChange }) {
+  if (!FINANCIAL_CASES.has(presentation.caseType)) return;
+  const bidPrice = row.querySelector(".mt-gia-du-thau");
+  const discount = row.querySelector(".mt-ty-le-giam-gia");
+  const security = row.querySelector(".mt-gia-tri-dam-bao");
+  const recalculate = () => {
+    const baseValue = model.parseVND(bidPrice?.value || "");
+    const discountValue = Number.parseFloat(String(discount?.value || "0").replace(/,/g, ".")) || 0;
+    const discountedPrice = row.querySelector(".mt-gia-sau-giam-gia");
+    if (discountedPrice) {
+      discountedPrice.value = model.formatVND(baseValue * (1 - discountValue / 100)) || "";
+    }
+    onRankingChange();
+  };
+  if (bidPrice) {
+    bindCurrencyElement(bidPrice, (value) => model.formatVND(value));
+    bidPrice.addEventListener("input", recalculate);
+  }
+  if (discount) discount.addEventListener("input", recalculate);
+  if (security) bindCurrencyElement(security, (value) => model.formatVND(value));
+}
+
+function bindEvaluationInputs(row, onRankingChange) {
+  row.querySelectorAll(".mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat").forEach((input) => {
+    input.addEventListener("input", onRankingChange);
+    input.addEventListener("change", onRankingChange);
+  });
+  row.addEventListener("change", (event) => {
+    if (event.target?.classList.contains("mt-dg-ketluan")) onRankingChange();
+  });
+}
+
+function bindJointVentureLink({ row, bid, model }) {
+  const link = row.querySelector(".mt-jv-view-link");
+  if (!link) return;
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    const members = resolveBidJointVentureMembers(model, bid);
+    const subMembers = members.filter(
+      (member) => member.vaiTro !== "Đứng đầu liên danh"
+        && (member.maNhaThau || member.maSoThue) !== bid.maNhaThau,
+    );
+    const lead = members.find((member) => member.vaiTro === "Đứng đầu liên danh") || {
+      tenNhaThau: resolveBidContractorName(model, bid),
+      maNhaThau: bid.maNhaThau,
+      maSoThue: "",
+    };
+    executeAppCommand(
+      "openMoThauJVViewModal",
+      subMembers,
+      lead.tenNhaThau,
+      lead.maNhaThau || lead.maSoThue,
+      lead.thanhVienNhaThauId || "",
+    );
+  });
+}
+
+function createRowElement(root) {
+  const ownerDocument = root.ownerDocument || globalThis.document;
+  const row = ownerDocument?.createElement?.("tr");
+  if (!row) throw new TypeError("Bid evaluation row renderer requires a DOM document.");
+  return row;
+}
+
+export function renderBidEvaluationRows({
+  root,
+  pkg,
+  bids = [],
+  model,
+  presentation,
+  isReadOnly = false,
+  onRankingChange = () => {},
+} = {}) {
+  if (!root?.appendChild || !pkg || !model || !presentation?.caseType || !Array.isArray(bids)) {
+    throw new TypeError("Bid evaluation row renderer received an invalid context.");
+  }
+  if (typeof onRankingChange !== "function") {
+    throw new TypeError("Bid evaluation row renderer requires a ranking callback.");
+  }
+  root.innerHTML = trustedHTML("");
+  if (bids.length === 0) {
+    root.innerHTML = trustedHTML('<tr><td colspan="15" class="bf-s-7fa1ce09fc"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>');
+    return [];
+  }
+
+  const rows = [];
+  let previousAllFailed = true;
+  bids.forEach((bid) => {
+    const row = createRowElement(root);
+    row.setAttribute("data-bid-id", bid.id);
+    const detailedProjectionReport = findDetailedProjectionReport(bid, presentation);
+    const rowReadOnly = isReadOnly || Boolean(detailedProjectionReport);
+    const contractor = buildContractorDisplay({
+      pkg,
+      bid,
+      model,
+      detailedProjectionReport,
+    });
+    let cells = buildIdentityCells({ pkg, bid, contractor });
+    if (presentation.isTwoEnvelope && presentation.currentTab === "financial") {
+      cells += buildFinancialCells({ bid, model, presentation, rowReadOnly });
+    } else {
+      const forceDisabled = !presentation.isTwoEnvelope
+        && pkg.quyTrinhDanhGia === "quytrinh2"
+        && !previousAllFailed;
+      cells += buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly });
+      cells += rowReadOnly
+        ? readOnlyEvaluationCells({ bid, presentation })
+        : editableEvaluationCells({ pkg, bid, presentation, forceDisabled });
+    }
+    row.innerHTML = trustedHTML(cells);
+    updateRowConclusion(row, bid.danhGiaKetLuan, rowReadOnly);
+
+    if (!rowReadOnly && !presentation.isTwoEnvelope && pkg.quyTrinhDanhGia === "quytrinh2") {
+      const conclusion = row.querySelector(".mt-ketluan-cell")?.textContent.trim() || "";
+      if (!conclusion.startsWith("Không đạt")) previousAllFailed = false;
+    }
+    if (!rowReadOnly) {
+      bindEvaluationInputs(row, onRankingChange);
+      bindFinancialInputs({ row, model, presentation, onRankingChange });
+    }
+    bindDurationInputs(row);
+    bindJointVentureLink({ row, bid, model });
+    root.appendChild(row);
+    rows.push(row);
+  });
+  onRankingChange();
+  return rows;
+}

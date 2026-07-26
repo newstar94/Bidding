@@ -1,7 +1,6 @@
 import pandas as pd
 from io import BytesIO
 import re
-import hashlib
 
 from backend.shared.numeric_utils import parse_vnd_amount
 

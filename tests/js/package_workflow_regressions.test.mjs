@@ -639,16 +639,7 @@ test("award-result import never invents bid prices from the package estimate", a
 });
 
 
-test("partial-lot evaluation disables generic Excel actions and always creates an official batch", async () => {
-  const source = await readFile(
-    new URL("../../frontend/packages/BidEvaluationWorkflow.js", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(source, /isPartialEvaluationLotScope/);
-  assert.match(source, /btn-danhgiahsdt-download-excel/);
-  assert.match(source, /btn-danhgiahsdt-import-excel/);
-
+test("partial-lot evaluation always creates an official batch", async () => {
   const saveSource = await readFile(
     new URL("../../frontend/packages/bidEvaluationActions.js", import.meta.url),
     "utf8",

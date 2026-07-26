@@ -431,11 +431,12 @@ def test_media_upload_is_reencoded_and_stored_as_managed_path(tmp_path, monkeypa
     payload = _image_data_url(metadata={"Comment": "must be removed"})
 
     managed_path = media_helper.save_base64_image(
-        payload, "chuyen_gia", "expert_cert"
+        payload, "chuyen_gia", "expert_cert", tenant_id="org-1"
     )
 
-    assert managed_path == "images/chuyen_gia/expert_cert.png"
-    stored_path = tmp_path / "chuyen_gia" / "expert_cert.png"
+    tenant_segment = media_helper.managed_image_tenant_segment("org-1")
+    assert managed_path == f"images/chuyen_gia/{tenant_segment}/expert_cert.png"
+    stored_path = tmp_path / "chuyen_gia" / tenant_segment / "expert_cert.png"
     assert stored_path.is_file()
     with Image.open(stored_path) as stored:
         assert stored.format == "PNG"
@@ -457,7 +458,9 @@ def test_media_upload_rejects_invalid_content_without_persisting_payload(
     monkeypatch.setattr(media_helper, "IMAGE_DIR", str(tmp_path))
 
     with pytest.raises(ValueError):
-        media_helper.save_base64_image(payload, "chuyen_gia", "invalid")
+        media_helper.save_base64_image(
+            payload, "chuyen_gia", "invalid", tenant_id="org-1"
+        )
 
     assert not list(tmp_path.rglob("*"))
 
@@ -484,6 +487,7 @@ def test_managed_media_path_requires_explicit_record_or_tenant_ownership():
             signed_url,
             "chuyen_gia",
             "expert_cert",
+            tenant_id="org-1",
         )
 
     assert (
@@ -491,10 +495,43 @@ def test_managed_media_path_requires_explicit_record_or_tenant_ownership():
             signed_url,
             "chuyen_gia",
             "expert_cert",
+            tenant_id="org-1",
             allowed_existing_paths={"images/chuyen_gia/expert_cert.png"},
         )
         == "images/chuyen_gia/expert_cert.png"
     )
+
+
+def test_managed_media_paths_are_namespaced_by_tenant(tmp_path, monkeypatch):
+    monkeypatch.setattr(media_helper, "IMAGE_DIR", str(tmp_path))
+    first = media_helper.save_base64_image(
+        _image_data_url(color=(255, 0, 0, 255)),
+        "nha_thau",
+        "same-record_stamp",
+        tenant_id="org-1",
+    )
+    second = media_helper.save_base64_image(
+        _image_data_url(color=(0, 0, 255, 255)),
+        "nha_thau",
+        "same-record_stamp",
+        tenant_id="org-2",
+    )
+
+    assert first != second
+    assert media_helper.managed_image_path_matches_tenant(first, "org-1")
+    assert not media_helper.managed_image_path_matches_tenant(first, "org-2")
+    assert media_helper.managed_image_path_matches_tenant(
+        "images/nha_thau/legacy_stamp.png",
+        "org-2",
+        allow_legacy=True,
+    )
+    first_file = tmp_path / first.removeprefix("images/")
+    second_file = tmp_path / second.removeprefix("images/")
+    assert first_file.is_file() and second_file.is_file()
+    with Image.open(first_file) as image:
+        assert image.getpixel((0, 0))[:3] == (255, 0, 0)
+    with Image.open(second_file) as image:
+        assert image.getpixel((0, 0))[:3] == (0, 0, 255)
 
 
 def test_profile_avatar_is_reencoded_to_small_metadata_free_jpeg():

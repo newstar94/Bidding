@@ -34,6 +34,24 @@ sao lưu hợp lệ.
    cụ vận hành có kiểm tra idempotency.
 5. Xác nhận tuổi job cũ nhất và số job thất bại trở về ngưỡng bình thường.
 
+Các worker dùng exponential idle backoff với subtractive jitter. Mặc định
+`DOCUMENT_JOB_MAX_POLL_SECONDS`, `EMAIL_OUTBOX_MAX_POLL_SECONDS` và
+`PARTNER_LOOKUP_MAX_POLL_SECONDS` là 10 giây; jitter không làm vượt trần này.
+Nếu pickup latency p95 tiến sát hoặc vượt SLO 10 giây, giảm max poll tương ứng
+và theo dõi lại claim-query rate; không tăng max chỉ để làm đẹp số query.
+
+Chạy lại một job lỗi đã kiểm tra nguyên nhân:
+
+```bash
+sudo -u biddingflow-document-worker /opt/biddingflow/venv/bin/python \
+  /opt/biddingflow/scripts/run_document_worker.py --retry-failed <JOB_ID>
+```
+
+Lệnh chỉ chuyển đúng một job đang ở trạng thái `failed` sang `retry`; gọi lặp
+lại không tạo thêm lần chạy. Payload/input được giữ nguyên và job hết hạn chỉ
+được xóa bởi retention purge. Mặc định retention là 24 giờ, có thể cấu hình
+bằng `DOCUMENT_JOB_RETENTION_SECONDS` (tối đa 30 ngày).
+
 ## Tra cứu đối tác bị gián đoạn
 
 1. Xác định upstream đang timeout, trả lỗi hay bị circuit breaker ngắt.
@@ -69,4 +87,3 @@ sao lưu hợp lệ.
    `pg_restore`.
 5. Sau diễn tập, chạy kiểm tra schema, đọc có xác thực, xuất tài liệu mẫu và
    ghi lại thời gian phục hồi.
-

@@ -325,9 +325,9 @@ function ensureContractorForOpeningImport(controller, row) {
   }
   return foundNt;
 }
-async function saveOpeningImport(controller, validRows) {
-  const select = document.getElementById("mothau-goithau-select");
-  const gtId = select ? select.value : "";
+async function saveOpeningImport(controller, validRows, context = {}) {
+  const select = context.packageId ? null : document.getElementById("mothau-goithau-select");
+  const gtId = context.packageId || (select ? select.value : "");
   if (!gtId) return 0;
   const importedBids = [];
   validRows.forEach((row) => {
@@ -378,13 +378,14 @@ async function saveOpeningImport(controller, validRows) {
   }
   return validRows.length;
 }
-async function saveEvaluationImport(controller, validRows) {
-  const select = document.getElementById("danhgiahsdt-goithau-select");
-  const gtId = select ? select.value : "";
+async function saveEvaluationImport(controller, validRows, context = {}) {
+  const select = context.packageId ? null : document.getElementById("danhgiahsdt-goithau-select");
+  const gtId = context.packageId || (select ? select.value : "");
   if (!gtId) return 0;
   const pkg = controller.model.state.goithau.find((item) => String(item.id) === String(gtId));
   const activeDetails = getActiveEvaluationLotScope(controller, pkg);
-  const activeScopeKey = `${String(gtId)}:${String(controller.currentDanhGiaTab || "technical")}`;
+  const evaluationTab = context.evaluationTab || controller.currentDanhGiaTab || "technical";
+  const activeScopeKey = `${String(gtId)}:${String(evaluationTab)}`;
   const activeScope = controller._evaluationLotScopes?.[activeScopeKey];
   const allowedBidIds = isPartialEvaluationLotScope(activeDetails)
     ? new Set(filterBidsByEvaluationLotScope(
@@ -396,7 +397,7 @@ async function saveEvaluationImport(controller, validRows) {
   validRows.forEach((row) => {
     const bid = controller.model.state.thongtinmothau.find((b) => b.id === row.id);
     if (!bid || allowedBidIds && !allowedBidIds.has(String(bid.id))) return;
-    if (controller.currentDanhGiaTab === "financial") {
+    if (evaluationTab === "financial") {
       bid.giaDuThau = row.giaDuThau || 0;
       bid.tyLeGiamGia = row.tyLeGiamGia || 0;
       bid.giaSauGiamGia = row.giaSauGiamGia || 0;
@@ -424,8 +425,8 @@ async function saveEvaluationImport(controller, validRows) {
   controller.renderDanhGiaHsdtPanel();
   return validRows.length;
 }
-async function saveAwardResultImport(controller, validRows) {
-  const gtId = controller._currentResultPackageId;
+async function saveAwardResultImport(controller, validRows, context = {}) {
+  const gtId = context.packageId || controller._currentResultPackageId;
   if (!gtId) return 0;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) return 0;
@@ -486,9 +487,11 @@ async function saveAwardResultImport(controller, validRows) {
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-async function saveOpeningFinancialImport(controller, validRows) {
-  const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
-  const gtId = select ? select.value : controller._currentPackageId || "";
+async function saveOpeningFinancialImport(controller, validRows, context = {}) {
+  const select = context.packageId
+    ? null
+    : document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
+  const gtId = context.packageId || (select ? select.value : controller._currentPackageId || "");
   if (!gtId) return 0;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   const defaultDuration = goiThau ? goiThau.thoiGianThucHien || "" : "";
@@ -508,13 +511,13 @@ async function saveOpeningFinancialImport(controller, validRows) {
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-export async function saveBusinessExcelImport(controller, type, validRows) {
+export async function saveBusinessExcelImport(controller, type, validRows, context = {}) {
   if (!isBusinessExcelImportType(type)) return null;
   assertImportRecords("thongtinmothau", validRows, type === "ketquaqd" ? ["trangThai"] : []);
-  if (type === "mothau") return await saveOpeningImport(controller, validRows);
-  if (type === "danhgiahsdt") return await saveEvaluationImport(controller, validRows);
-  if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows);
-  if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows);
+  if (type === "mothau") return await saveOpeningImport(controller, validRows, context);
+  if (type === "danhgiahsdt") return await saveEvaluationImport(controller, validRows, context);
+  if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows, context);
+  if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows, context);
   return null;
 }
 import { generateRecordId, generateUUID } from "../shared/idUtils.js";

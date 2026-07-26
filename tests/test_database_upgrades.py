@@ -70,7 +70,12 @@ def test_mfa_removal_upgrades_drop_legacy_objects_and_advance_version():
     assert any("idx_lot_batch_detail_one_active" in statement for statement in statements)
     assert any("goi_thau_awarded_result_check" in statement for statement in statements)
     assert any("PARTIALLY_AWARDED" in statement for statement in statements)
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert any(
+        "ALTER TABLE sync_mutations ADD COLUMN IF NOT EXISTS request_hash TEXT"
+        in statement
+        for statement in statements
+    )
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
 
 
 def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
@@ -89,7 +94,7 @@ def test_v2_installation_reconciles_retired_mfa_schema_in_v3():
         in statements
     )
     assert any("ROW_NUMBER() OVER" in statement for statement in statements)
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
 
 
 def test_v3_installation_enforces_one_active_session_in_v4():
@@ -108,7 +113,7 @@ def test_v3_installation_enforces_one_active_session_in_v4():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
 
 
 def test_v4_installation_adds_package_expert_updated_at_in_v5():
@@ -126,7 +131,7 @@ def test_v4_installation_adds_package_expert_updated_at_in_v5():
         in statement
         for statement in statements
     )
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
 
 
 def test_v14_through_v17_reconciles_all_released_schema_additions():
@@ -148,7 +153,7 @@ def test_v14_through_v17_reconciles_all_released_schema_additions():
 
     version = upgrades.apply_database_upgrades(cursor, 13, context)
 
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
     assert foreign_key_calls == [
         (
             cursor,
@@ -207,7 +212,7 @@ def test_v15_then_released_v16_v17_add_schema_without_rewriting_v15():
 
     version = upgrades.apply_database_upgrades(cursor, 14, context)
 
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
     assert any(
         "CREATE TABLE IF NOT EXISTS tai_lieu_goi_thau" in statement
         for statement, _params in cursor.calls
@@ -235,7 +240,7 @@ def test_v15_then_released_v16_v17_add_schema_without_rewriting_v15():
     assert schema_object_calls == [cursor, cursor]
 
 
-def test_v16_to_v17_adds_normalized_detailed_evaluation_tables():
+def test_v16_to_current_adds_detailed_evaluations_and_request_hash():
     cursor = _Cursor()
     created_tables = []
     foreign_key_calls = []
@@ -253,7 +258,7 @@ def test_v16_to_v17_adds_normalized_detailed_evaluation_tables():
 
     version = upgrades.apply_database_upgrades(cursor, 16, context)
 
-    assert version == upgrades.DB_SCHEMA_VERSION == 17
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
     assert created_tables == [
         "bao_cao_danh_gia_nha_thau",
         "chi_tiet_danh_gia_nha_thau",
@@ -273,3 +278,63 @@ def test_v16_to_v17_adds_normalized_detailed_evaluation_tables():
     assert any("idx_detailed_evaluation_report_opening" in sql for sql in statements)
     assert any("idx_detailed_evaluation_report_grader" in sql for sql in statements)
     assert any("idx_detailed_evaluation_row_report" in sql for sql in statements)
+    assert any(
+        "ALTER TABLE sync_mutations ADD COLUMN IF NOT EXISTS request_hash TEXT"
+        in sql
+        for sql in statements
+    )
+
+
+def test_v17_to_current_adds_request_hash_without_rewriting_v17():
+    cursor = _Cursor()
+
+    version = upgrades.apply_database_upgrades(cursor, 17, _context())
+
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
+    statements = [statement for statement, _params in cursor.calls]
+    assert any(
+        "ALTER TABLE sync_mutations ADD COLUMN IF NOT EXISTS request_hash TEXT"
+        in statement
+        for statement in statements
+    )
+    assert not any(
+        "CREATE TABLE" in statement and "bao_cao_danh_gia_nha_thau" in statement
+        for statement in statements
+    )
+
+
+def test_v18_to_current_retires_evaluation_actor_infrastructure():
+    cursor = _Cursor()
+
+    version = upgrades.apply_database_upgrades(cursor, 18, _context())
+
+    assert version == upgrades.DB_SCHEMA_VERSION == 19
+    statements = [statement for statement, _params in cursor.calls]
+    assert "DROP INDEX IF EXISTS idx_detailed_evaluation_report_grader" in statements
+    assert "DROP INDEX IF EXISTS idx_ket_qua_nguoi_cham" in statements
+    assert "DROP INDEX IF EXISTS idx_vong_danh_gia_nguoi_cham" in statements
+    assert (
+        "DROP TRIGGER IF EXISTS trg_vong_danh_gia_actor ON vong_danh_gia"
+        in statements
+    )
+    assert (
+        "DROP TRIGGER IF EXISTS trg_ket_qua_danh_gia_nha_thau_actor "
+        "ON ket_qua_danh_gia_nha_thau"
+        in statements
+    )
+    assert (
+        "ALTER TABLE vong_danh_gia DROP CONSTRAINT IF EXISTS "
+        "fk_vong_danh_gia_2_cee96f5c"
+        in statements
+    )
+    assert (
+        "ALTER TABLE bao_cao_danh_gia_nha_thau DROP CONSTRAINT IF EXISTS "
+        "fk_bao_cao_danh_gia_nha_thau_3_cee96f5c"
+        in statements
+    )
+    assert (
+        "ALTER TABLE ket_qua_danh_gia_nha_thau DROP CONSTRAINT IF EXISTS "
+        "fk_ket_qua_danh_gia_nha_thau_4_cee96f5c"
+        in statements
+    )
+    assert "DROP FUNCTION IF EXISTS bf_validate_evaluation_actor()" in statements

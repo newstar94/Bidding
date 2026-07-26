@@ -9,7 +9,6 @@ import json
 import os
 from pathlib import Path
 import random
-import statistics
 import sys
 import time
 from uuid import uuid4

@@ -54,6 +54,8 @@ Mỗi mục dưới đây đã được AST xác nhận không có local load v�
 
 Tổng: **21 binding trên 12 file**. Chưa xóa vì yêu cầu hiện tại chỉ review và đề xuất.
 
+**Cập nhật triển khai 2026-07-26:** Đã xác minh lại trên worktree hiện tại và xóa đủ 21/21 binding trong bảng. Compile/import smoke, security static gate, các test sync/security trọng yếu và full Python suite đều đạt. Các mục `LIKELY_UNUSED`, `REQUIRES_CONFIRMATION`, `LEGACY_COMPATIBILITY` bên dưới chưa bị xóa.
+
 ## 4. Binding trông thừa nhưng đang được dùng
 
 | Loại | File/Symbol | Bằng chứng | Mức tin cậy | Hành động | Rủi ro | Test |

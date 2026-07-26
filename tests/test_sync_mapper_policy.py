@@ -1,5 +1,6 @@
 import json
 import re
+import sqlite3
 
 import pytest
 
@@ -41,6 +42,8 @@ class RecordingCursor:
             return (1,) if self.expert_exists else None
         if "SELECT id FROM chi_tiet_danh_gia_nha_thau" in self.last_sql:
             return self.datasets.get("detail_lookup")
+        if "FROM bao_cao_danh_gia_nha_thau" in self.last_sql:
+            return self.datasets.get("report_lookup")
         if "FROM vong_danh_gia" in self.last_sql:
             round_lookups = self.datasets.get("round_lookups")
             if isinstance(round_lookups, dict):
@@ -58,6 +61,17 @@ class RecordingCursor:
         return None
 
     def fetchall(self):
+        if "SELECT id, vong_danh_gia_id, diem_toi_da, bat_buoc" in self.last_sql:
+            rows = self.datasets.get("criterion_prefetch", [])
+            if isinstance(rows, dict):
+                rows = [row for group in rows.values() for row in group]
+            requested_ids = set(self.last_params[-1] or [])
+            return [row for row in rows if row[0] in requested_ids]
+        if (
+            "SELECT id, tieu_chi_danh_gia_id" in self.last_sql
+            and "FROM chi_tiet_danh_gia_nha_thau" in self.last_sql
+        ):
+            return list(self.datasets.get("detail_prefetch", []))
         if "SELECT ma_phan_lo FROM goi_thau_phan_lo" in self.last_sql:
             return [
                 (row.get("ma_phan_lo"),)
@@ -351,7 +365,7 @@ def test_save_plan_and_complete_package_children():
     assert len(evaluation_round_params) == 2
     assert all(params[8] is None for params in evaluation_round_params)
     technical_round = next(params for params in evaluation_round_params if params[4] == "technical")
-    assert json.loads(technical_round[12])["resultEdit"] == {"type": "whole"}
+    assert json.loads(technical_round[11])["resultEdit"] == {"type": "whole"}
     criterion_params = next(
         params
         for sql, params in cursor.calls
@@ -375,6 +389,132 @@ def _save_detailed_report(cursor, report, *, organization_id="org-1"):
         "2026-07-25",
         actor_user_id="reviewer-1",
     )
+
+
+def test_sparse_bid_evaluation_update_preserves_fields_missing_from_payload():
+    cursor = RecordingCursor()
+
+    mapper._save_bid_evaluation_result(
+        cursor,
+        "opening-1",
+        {
+            "goiThauId": "package-1",
+            "danhGiaKyThuat": "Đạt",
+            "lamRoTaiChinh": "",
+            "diemDanhGia": None,
+        },
+        "org-1",
+        "organization",
+        7,
+        "2026-07-26",
+    )
+
+    sql, params = next(
+        (sql, params)
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO ket_qua_danh_gia_nha_thau")
+    )
+    assert (
+        "danh_gia_hop_le=CASE WHEN ? THEN excluded.danh_gia_hop_le "
+        "ELSE ket_qua_danh_gia_nha_thau.danh_gia_hop_le END"
+    ) in sql
+    assert (
+        "danh_gia_ky_thuat=CASE WHEN ? THEN excluded.danh_gia_ky_thuat "
+        "ELSE ket_qua_danh_gia_nha_thau.danh_gia_ky_thuat END"
+    ) in sql
+    # Missing fields are false; present null/empty fields are true so callers
+    # can intentionally clear them.
+    assert params[-14:] == (
+        False,  # danhGiaHopLe missing
+        False,  # danhGiaNangLuc missing
+        True,   # danhGiaKyThuat present
+        False,  # danhGiaTaiChinh missing
+        False,  # danhGiaKetLuan missing
+        True,   # diemDanhGia present as null
+        False,  # no exclusion-reason key present
+        False,  # lamRoHopLe missing
+        False,  # lamRoNangLuc missing
+        False,  # lamRoKyThuat missing
+        True,   # lamRoTaiChinh present as empty string
+        False,  # reason validity missing
+        False,  # reason capacity missing
+        False,  # reason technical missing
+    )
+
+
+def test_sparse_bid_evaluation_update_preserves_missing_values_in_database():
+    connection = sqlite3.connect(":memory:")
+    cursor = connection.cursor()
+    cursor.execute(
+        """CREATE TABLE ket_qua_danh_gia_nha_thau (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            owner_type TEXT NOT NULL,
+            goi_thau_id TEXT NOT NULL,
+            thong_tin_mo_thau_id TEXT NOT NULL,
+            danh_gia_hop_le TEXT,
+            danh_gia_nang_luc TEXT,
+            danh_gia_ky_thuat TEXT,
+            danh_gia_tai_chinh TEXT,
+            danh_gia_ket_luan TEXT,
+            diem REAL,
+            ly_do_loai TEXT,
+            lam_ro_hop_le TEXT,
+            lam_ro_nang_luc TEXT,
+            lam_ro_ky_thuat TEXT,
+            lam_ro_tai_chinh TEXT,
+            nguyen_nhan_khong_dat_hop_le TEXT,
+            nguyen_nhan_khong_dat_nang_luc TEXT,
+            nguyen_nhan_khong_dat_ky_thuat TEXT,
+            danh_gia_luc TEXT,
+            sync_version INTEGER,
+            updated_at TEXT,
+            UNIQUE(organization_id, thong_tin_mo_thau_id)
+        )"""
+    )
+    cursor.execute(
+        """INSERT INTO ket_qua_danh_gia_nha_thau (
+            id, organization_id, owner_type, goi_thau_id,
+            thong_tin_mo_thau_id, danh_gia_hop_le, danh_gia_nang_luc,
+            danh_gia_ky_thuat, diem, ly_do_loai, lam_ro_hop_le,
+            lam_ro_tai_chinh, sync_version, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "bid-evaluation:opening-1", "org-1", "organization", "package-1",
+            "opening-1", "Đạt", "Đạt", "Chưa chấm", 88.5,
+            "Lý do cũ", "Làm rõ cũ", "Làm rõ tài chính cũ", 1, "old",
+        ),
+    )
+
+    mapper._save_bid_evaluation_result(
+        cursor,
+        "opening-1",
+        {
+            "goiThauId": "package-1",
+            "danhGiaKyThuat": "Không đạt",
+            "diemDanhGia": None,
+            "lamRoTaiChinh": "",
+        },
+        "org-1",
+        "organization",
+        2,
+        "new",
+    )
+    row = cursor.execute(
+        """SELECT danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
+                  diem, ly_do_loai, lam_ro_hop_le, lam_ro_tai_chinh
+           FROM ket_qua_danh_gia_nha_thau"""
+    ).fetchone()
+    assert row == (
+        "Đạt",
+        "Đạt",
+        "Không đạt",
+        None,
+        "Lý do cũ",
+        "Làm rõ cũ",
+        "",
+    )
+    connection.close()
 
 
 def test_save_lots_preserves_existing_identity_and_archives_removed_rows():
@@ -480,6 +620,46 @@ def test_save_members_opening_registry_and_bid_evaluation():
     )
     assert evaluation[10] == 95.5
     assert evaluation[11] == "Không có"
+
+
+def test_evaluation_sync_never_persists_reviewer_identity():
+    cursor = RecordingCursor()
+
+    mapper.save_child_payloads(
+        cursor,
+        "goi_thau",
+        {
+            "id": "package-1",
+            "danhGiaHsdtMetadata": {"saved": True},
+        },
+        "org-1",
+        "organization",
+        1,
+        "2026-07-26",
+        actor_user_id="reviewer-must-not-be-persisted",
+    )
+    mapper.save_child_payloads(
+        cursor,
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-1",
+            "goiThauId": "package-1",
+            "danhGiaHopLe": "Đạt",
+        },
+        "org-1",
+        "organization",
+        1,
+        "2026-07-26",
+        actor_user_id="reviewer-must-not-be-persisted",
+    )
+
+    evaluation_sql = "\n".join(
+        sql
+        for sql, _params in cursor.calls
+        if "INSERT INTO vong_danh_gia" in sql
+        or "INSERT INTO ket_qua_danh_gia_nha_thau" in sql
+    )
+    assert "nguoi_cham_id" not in evaluation_sql
 
 
 def test_expert_relation_and_registry_reject_invalid_or_missing_references():
@@ -773,7 +953,6 @@ def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
             "loaiVong": "technical",
             "trangThai": "draft",
             "ketLuan": "",
-            "nguoiChamId": None,
             "hoanThanhLuc": None,
             "extension": {"projectionPending": True},
             "chiTietList": [
@@ -894,7 +1073,10 @@ def test_save_detailed_evaluation_reports_obeys_presence_and_upsert_contract():
     cursor = RecordingCursor(
         {
             "round_lookup": ("package-1", "technical"),
-            "criterion_lookup": ("round-technical", 100),
+            "criterion_prefetch": [
+                ("criterion-1", "round-technical", 100, 1),
+            ],
+            "tieu_chi_danh_gia": [("criterion-1", "pass", "")],
         }
     )
     mapper.save_child_payloads(
@@ -934,11 +1116,12 @@ def test_save_detailed_evaluation_reports_obeys_presence_and_upsert_contract():
         for sql, params in cursor.calls
         if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
     )
-    detail_sql, detail_params = next(
-        (sql, params)
-        for sql, params in cursor.calls
+    detail_sql, detail_rows = next(
+        (sql, rows)
+        for sql, rows in cursor.many_calls
         if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
     )
+    detail_params = detail_rows[0]
     assert "ON CONFLICT(organization_id, vong_danh_gia_id, thong_tin_mo_thau_id)" in report_sql
     assert report_params[0:7] == (
         "report-1",
@@ -965,7 +1148,9 @@ def test_save_single_detailed_evaluation_report():
     cursor = RecordingCursor(
         {
             "round_lookup": ("package-1", "single"),
-            "criterion_lookup": ("round-single", None, 1),
+            "criterion_prefetch": [
+                ("criterion-single", "round-single", None, 1),
+            ],
             "tieu_chi_danh_gia": [("criterion-single", "pass", "")],
         }
     )
@@ -990,11 +1175,7 @@ def test_save_single_detailed_evaluation_report():
         for sql, params in cursor.calls
         if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
     )
-    detail_params = next(
-        params
-        for sql, params in cursor.calls
-        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
-    )
+    detail_params = _many_rows(cursor, "chi_tiet_danh_gia_nha_thau")[0]
     assert report_params[0:8] == (
         "report-single",
         "org-1",
@@ -1003,13 +1184,94 @@ def test_save_single_detailed_evaluation_report():
         "opening-1",
         "completed",
         "",
-        "reviewer-1",
+        "2026-07-25",
     )
     assert detail_params[3:6] == (
         "report-single",
         "criterion-single",
         "pass",
     )
+
+
+def test_save_detailed_evaluation_allows_failed_criterion_without_detail_reason():
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "criterion_prefetch": [
+                ("criterion-failed", "round-technical", None, 1),
+            ],
+        }
+    )
+
+    _save_detailed_report(
+        cursor,
+        {
+            "id": "report-technical",
+            "vongDanhGiaId": "round-technical",
+            "loaiVong": "technical",
+            "trangThai": "draft",
+            "chiTietList": [{
+                "id": "detail-failed",
+                "tieuChiDanhGiaId": "criterion-failed",
+                "ketQua": "fail",
+            }],
+        },
+    )
+
+    detail_params = _many_rows(cursor, "chi_tiet_danh_gia_nha_thau")[0]
+    assert detail_params[9] == ""
+
+
+def test_new_detailed_evaluation_does_not_store_reviewer_identity():
+    cursor = RecordingCursor({"round_lookup": ("package-1", "technical")})
+
+    _save_detailed_report(
+        cursor,
+        {
+            "id": "report-technical",
+            "vongDanhGiaId": "round-technical",
+            "loaiVong": "technical",
+            "nguoiChamId": "payload-reviewer",
+            "chiTietList": [],
+        },
+    )
+
+    report_sql, report_params = next(
+        (sql, params)
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
+    )
+    assert "nguoi_cham_id" not in report_sql
+    assert len(report_params) == 11
+
+
+def test_existing_detailed_evaluation_preserves_legacy_reviewer_identity():
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "report_lookup": ("report-existing", "legacy-reviewer"),
+        }
+    )
+
+    _save_detailed_report(
+        cursor,
+        {
+            "id": "report-client",
+            "vongDanhGiaId": "round-technical",
+            "loaiVong": "technical",
+            "nguoiChamId": "payload-reviewer",
+            "chiTietList": [],
+        },
+    )
+
+    report_sql, report_params = next(
+        (sql, params)
+        for sql, params in cursor.calls
+        if sql.startswith("INSERT INTO bao_cao_danh_gia_nha_thau")
+    )
+    assert report_params[0] == "report-existing"
+    assert "nguoi_cham_id" not in report_sql
+    assert len(report_params) == 11
 
 
 @pytest.mark.parametrize("include_empty_details", [False, True])
@@ -1039,8 +1301,10 @@ def test_save_detailed_evaluation_reuses_existing_detail_identity():
     cursor = RecordingCursor(
         {
             "round_lookup": ("package-1", "technical"),
-            "criterion_lookup": ("round-technical", 100, 1),
-            "detail_lookup": ("detail-stable",),
+            "criterion_prefetch": [
+                ("criterion-1", "round-technical", 100, 1),
+            ],
+            "detail_prefetch": [("detail-stable", "criterion-1")],
         }
     )
 
@@ -1073,11 +1337,7 @@ def test_save_detailed_evaluation_reuses_existing_detail_identity():
         actor_user_id="reviewer-1",
     )
 
-    detail_params = next(
-        params
-        for sql, params in cursor.calls
-        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
-    )
+    detail_params = _many_rows(cursor, "chi_tiet_danh_gia_nha_thau")[0]
     assert detail_params[0] == "detail-stable"
     cleanup_params = next(
         params
@@ -1091,7 +1351,9 @@ def test_save_detailed_evaluation_rejects_criterion_from_another_round():
     cursor = RecordingCursor(
         {
             "round_lookup": ("package-1", "technical"),
-            "criterion_lookup": ("round-financial", 100, 1),
+            "criterion_prefetch": [
+                ("criterion-financial", "round-financial", 100, 1),
+            ],
         }
     )
 
@@ -1146,7 +1408,9 @@ def test_save_detailed_evaluation_rejects_score_above_criterion_maximum():
     cursor = RecordingCursor(
         {
             "round_lookup": ("package-1", "technical"),
-            "criterion_lookup": ("round-technical", 10, 1),
+            "criterion_prefetch": [
+                ("criterion-1", "round-technical", 10, 1),
+            ],
         }
     )
 
@@ -1174,9 +1438,13 @@ def test_save_detailed_evaluation_keeps_technical_and_financial_reports_separate
                 "round-technical": ("package-1", "technical"),
                 "round-financial": ("package-1", "financial"),
             },
-            "criterion_lookups": {
-                "criterion-technical": ("round-technical", None, 1),
-                "criterion-financial": ("round-financial", None, 1),
+            "criterion_prefetch": {
+                "round-technical": [
+                    ("criterion-technical", "round-technical", None, 1),
+                ],
+                "round-financial": [
+                    ("criterion-financial", "round-financial", None, 1),
+                ],
             },
         }
     )
@@ -1228,8 +1496,9 @@ def test_save_detailed_evaluation_keeps_technical_and_financial_reports_separate
     ]
     detail_params = [
         params
-        for sql, params in cursor.calls
+        for sql, rows in cursor.many_calls
         if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
+        for params in rows
     ]
     assert [(params[0], params[3]) for params in report_params] == [
         ("report-technical", "round-technical"),
@@ -1239,6 +1508,61 @@ def test_save_detailed_evaluation_keeps_technical_and_financial_reports_separate
         ("detail-technical", "report-technical"),
         ("detail-financial", "report-financial"),
     ]
+
+
+@pytest.mark.parametrize("criterion_count", [10, 100, 1000])
+def test_detailed_evaluation_write_prefetches_rows_and_batches_upserts(
+    criterion_count,
+):
+    criteria = [
+        (f"criterion-{index}", "round-technical", 100, 1)
+        for index in range(criterion_count)
+    ]
+    cursor = RecordingCursor(
+        {
+            "round_lookup": ("package-1", "technical"),
+            "criterion_prefetch": criteria,
+        }
+    )
+    _save_detailed_report(
+        cursor,
+        {
+            "id": "report-technical",
+            "vongDanhGiaId": "round-technical",
+            "loaiVong": "technical",
+            "trangThai": "draft",
+            "chiTietList": [
+                {
+                    "id": f"detail-{index}",
+                    "tieuChiDanhGiaId": f"criterion-{index}",
+                    "ketQua": "pass",
+                    "diem": 90,
+                }
+                for index in range(criterion_count)
+            ],
+        },
+    )
+
+    criterion_queries = sum(
+        "SELECT id, vong_danh_gia_id, diem_toi_da, bat_buoc" in sql
+        for sql, _params in cursor.calls
+    )
+    existing_detail_queries = sum(
+        "SELECT id, tieu_chi_danh_gia_id" in sql
+        for sql, _params in cursor.calls
+    )
+    detail_deletes = sum(
+        sql.startswith("DELETE FROM chi_tiet_danh_gia_nha_thau")
+        for sql, _params in cursor.calls
+    )
+    batched_rows = _many_rows(cursor, "chi_tiet_danh_gia_nha_thau")
+
+    assert criterion_queries == 1
+    assert existing_detail_queries == 1
+    assert detail_deletes == 1
+    assert len(batched_rows) == criterion_count
+    assert criterion_queries + existing_detail_queries + detail_deletes + len(batched_rows) == criterion_count + 3
+    assert criterion_count + 3 < (3 * criterion_count) + 1
 
 
 def test_select_fetch_and_format_helpers_are_owner_scoped():

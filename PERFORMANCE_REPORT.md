@@ -2,7 +2,7 @@
 
 - Snapshot: `1fb76ad`
 - Ngày đo: 2026-07-26
-- Trạng thái: **baseline và đề xuất; chưa tối ưu code**
+- Trạng thái: **baseline kèm kết quả implementation; browser E2E/staging benchmark chưa hoàn tất**
 - Máy đo frontend: Windows 11 Pro, Python 3.14.5, Node 24.18.0, npm 11.16.0
 - PostgreSQL cục bộ: 17.10
 
@@ -28,8 +28,8 @@
 | Database query count | Chưa đo theo workflow | Chưa thực hiện | — | Reset/tag `pg_stat_statements` theo scenario |
 | Import Excel duration | Chưa đo | Chưa thực hiện | — | 6 fixture thật, 100/1.000/10.000 dòng |
 | Export Excel duration | Chưa đo | Chưa thực hiện | — | Worker metrics theo kích thước output |
-| Worker idle polling | 71.113 call, 71.112 call rỗng | Chưa thực hiện | — | Snapshot runtime role, chi tiết mục 5 |
-| Audit-chain verification | 425 full scans, 113 audit row hiện tại | Chưa thực hiện | — | Chi tiết mục 6 |
+| Worker idle polling | 71.113 call, 71.112 call rỗng | Mô phỏng: giảm 46,9–47,2% với fixed-5s; external document giảm 89,4% | Chưa đo lại runtime | Snapshot runtime role, chi tiết mục 5 |
+| Audit-chain verification | 425 full scans, 113 audit row hiện tại | Incremental: đọc checkpoint anchors + tail giữa các full scan | Chưa đo lại runtime | Chi tiết mục 6 |
 
 ## 3. Frontend bundle
 
@@ -50,27 +50,44 @@ Secure build tạo 39 JS chunk:
 ### Nhận định
 
 - Vite đã code-split theo route/module; không có bằng chứng bundle monolith.
-- `BiddingController.ensureWorkflowModules()` tại `frontend/app/BiddingController.js:283-299` tải đồng thời bidding và partner workflows. Route `mothau`/`danhgiahsdt`/`goithau-detail` gọi cả hai tại `:780-783` dù thường không cần partner workflow ngay.
+- Baseline: `BiddingController.ensureWorkflowModules()` từng tải đồng thời bidding và partner workflows; route `mothau`/`danhgiahsdt`/`goithau-detail` vì vậy kéo cả hai dù không dùng partner workflow ngay. Hành vi này đã được thay bằng route-specific loader, xem kết quả bên dưới.
 - Kích thước chunk không tự chứng minh bottleneck. Chỉ tách command group sau khi browser trace cho thấy download/parse/compile ảnh hưởng route navigation.
 - Manifest Word raw lớn nhưng gzip nhỏ; split thêm có thể làm tăng request/complexity mà lợi ích không đáng kể.
+
+### Kết quả sau deepening Package Detail (2026-07-26)
+
+- `GoiThauDetail.js` giảm 829 → 194 dòng; các module panel mới vẫn nằm trong cùng lazy chunk nên đây là cải thiện locality/testability, không phải tuyên bố giảm network bằng code splitting.
+- Secure build hiện tại tạo chunk `GoiThauDetail` 265,30 kB raw và 45,30 kB gzip, so với baseline 286.146 byte raw và 44.349 byte gzip. Raw giảm nhưng gzip tăng nhẹ; chưa có browser trace nên không kết luận navigation nhanh hơn.
+- Save biên bản mở tài chính theo đợt phần lô trước đây gọi `persistAndSync` hai lần liên tiếp (bid/package rồi package metadata). Metadata giờ được stage trước và đi cùng lần sync `thongtinmothau` + `goithau`, giảm một round-trip/sync cycle trên luồng này.
+
+### Kết quả tách workflow theo route (2026-07-26)
+
+- Thêm `WorkflowModuleLoader` sở hữu ma trận route/method, trạng thái readiness, dùng chung promise khi import đồng thời và xóa failed promise để lần sau có thể retry.
+- `mothau`, `danhgiahsdt`, `goithau-detail` và tạo kế hoạch/gói thầu chỉ import `BiddingWorkflows`; tạo chủ đầu tư/nhà thầu/chuyên gia/hợp đồng chỉ import `PartnerWorkflows`. `ensureWorkflowModules()` vẫn là interface tương thích tải cả hai.
+- Secure artifact sau thay đổi: `BiddingWorkflows` 376.519 B raw/80.738 B gzip; `PartnerWorkflows` 61.590 B raw/14.071 B gzip; `workspaceBootstrap` 209.386 B raw/52.189 B gzip. So với build ngay trước thay đổi, bootstrap tăng khoảng 3,2 kB raw/0,9 kB gzip để chứa loader và ma trận.
+- Trên route bidding, execution path không còn yêu cầu lazy chunk partner 61.590 B raw/14.071 B gzip; trên thao tác tạo partner, không còn yêu cầu lazy chunk bidding 376.519 B raw/80.738 B gzip. Đây là chênh lệch artifact/request graph, chưa phải số transferred hoặc latency đo bằng trình duyệt vì shared chunk, cache và scheduling còn ảnh hưởng kết quả thực tế.
+- Manifest secure build vẫn khai báo hai dynamic import độc lập từ bootstrap; test interface khóa ma trận route/method, tải đúng một group, promise reuse, retry sau lỗi và compatibility loader.
 
 ### Đề xuất đo
 
 1. Thêm Playwright E2E và `performance.mark/measure` cho bootstrap, first route, package detail và evaluation tab.
 2. Chạy profile với cache lạnh/ấm, CPU throttle 4x và Fast 4G.
 3. Ghi total transferred, JS parse/evaluate, LCP/INP và long task.
-4. Sau đó mới thử tách `ensureBiddingWorkflows` và `ensurePartnerWorkflows`; so sánh cùng trace.
+4. So sánh loader đã tách với baseline bằng cùng Playwright trace; chưa kết luận navigation nhanh hơn trước khi có số transferred/parse/evaluate và route timing.
 
 ## 4. Bottleneck frontend đã có bằng chứng tĩnh
 
 ### 4.1. Ranking đánh giá rescan theo mỗi lần gõ
 
+**Trạng thái triển khai 2026-07-26: Đã loại lookup O(n²); event/layout optimization còn tiếp tục.**
+
 **Evidence**
 
-- `frontend/packages/BidEvaluationWorkflow.js:794-938` lấy toàn bộ DOM row, với mỗi row lại `find` trên `model.state.thongtinmothau` hai lượt.
-- `:1191-1224` gọi `updateAllRankings()` trên từng `input` và `change` event.
+- Trước refactor, `BidEvaluationWorkflow.js:794-938` lấy toàn bộ DOM row, với mỗi row lại `find` trên `model.state.thongtinmothau` hai lượt.
+- `createBidEvaluationRankingController` hiện tạo `Map<bidId,bid>` một lần cho render cycle và dùng lại cho mọi lần update; đường lưu báo cáo dùng cùng kiểu index thay vì hai lượt `find`.
+- Event `input`/`change` vẫn gọi update cho toàn bảng; event delegation/batching chưa triển khai trong lát này.
 
-Nếu số bid trong state tăng cùng số row, chi phí lookup tiến gần O(n²) trên mỗi keystroke, chưa tính DOM query và calculate ranking.
+Chi phí lookup đã chuyển từ O(n²) xuống O(n) cho mỗi update. DOM query và calculate ranking toàn bảng vẫn còn là chi phí tuyến tính cần đo bằng browser trace.
 
 **Đề xuất**
 
@@ -81,7 +98,7 @@ Nếu số bid trong state tăng cùng số row, chi phí lookup tiến gần O(
 
 **Lợi ích dự kiến**
 
-Giảm lookup CPU và layout work; chưa định lượng trước benchmark 10/100/500 row.
+Microbenchmark cô lập lookup trên máy phát triển, gồm cả chi phí dựng `Map`, cho kết quả 100/500/1.000/5.000 row nhanh hơn tương ứng 3,00×/10,85×/21,09×/45,16×. Đây không phải benchmark toàn màn hình; DOM/layout vẫn cần Playwright trace trước khi batch bằng `requestAnimationFrame`.
 
 **Rủi ro**
 
@@ -109,6 +126,18 @@ Giảm CPU/GC theo kích thước queue và tránh clone base64/large JSON.
 
 Hash/canonicalization sai có thể bỏ mutation; bắt buộc property tests và reload tests.
 
+### 4.2.1. Kết quả sau khi deepening mutation outbox
+
+Đã tách `WorkspaceMutationOutbox` sở hữu queue và generation của từng bản ghi. `BiddingModel` không còn clone toàn queue cho mỗi lần enqueue hoặc dùng `JSON.stringify` để so record khi acknowledge; snapshot gửi server dùng receipt generation. Benchmark tổng hợp chạy bằng `node --expose-gc scripts/benchmark_mutation_outbox.mjs`, lấy trung vị 7 mẫu sau 2 lượt warm-up, payload 256 byte/bản ghi:
+
+| Số bản ghi enqueue tuần tự | Cơ chế cũ | Deep module | Nhanh hơn |
+|---:|---:|---:|---:|
+| 100 | 10,22 ms | 3,45 ms | 2,96× |
+| 500 | 250,04 ms | 75,68 ms | 3,30× |
+| 1.000 | 1.009,87 ms | 301,39 ms | 3,35× |
+
+Đây là microbenchmark thuật toán trên máy phát triển Windows, không phải SLO trình duyệt. Chi phí vẫn tăng theo kích thước queue vì mỗi mutation phải tạo durable envelope tương thích trong giai đoạn dual-write; bước tối ưu tiếp theo chỉ nên chuyển sang persistence theo record sau khi đã có migration/drain strategy cho dữ liệu outbox cũ.
+
 ### 4.3. Excel parsing có thể khóa UI
 
 **Evidence**
@@ -130,6 +159,8 @@ Chưa định lượng.
 Copy workbook/rows qua structured clone có thể tốn hơn xử lý trực tiếp với file nhỏ.
 
 ## 5. Worker polling
+
+**Trạng thái triển khai 2026-07-26: Đã thêm backoff và benchmark mô phỏng; chưa đo lại production query/pickup metrics.**
 
 Snapshot `pg_stat_statements` lúc 2026-07-26 11:33:55 +07, lọc current `DATABASE_URL` và runtime role:
 
@@ -158,7 +189,26 @@ Code tương ứng:
 2. Cân nhắc PostgreSQL `LISTEN/NOTIFY` như wake-up hint, nhưng vẫn có low-frequency poll để recovery; đây là hai adapter thật (notification + fallback poll) tại worker wake-up seam.
 3. Đo queue pickup latency p95 trước/sau; không đổi nếu backoff làm job chậm quá SLO.
 
+### Kết quả implementation
+
+- Tạo deep module `IdlePollBackoff` dùng chung cho document queue embedded/external, email outbox và partner enrichment; interface chỉ gồm `next_delay()` và `reset()`.
+- Delay tăng theo cấp số nhân đến max poll, dùng subtractive jitter để các instance không poll đồng nhịp nhưng không bao giờ vượt hard maximum. Khi xử lý được ít nhất một job, delay reset ngay về initial poll.
+- External document thread tiếp tục dùng `stop_event.wait(delay)`, nên SIGTERM/SIGINT không bị chặn bởi sleep. Partner worker giữ process-local event wake-up; lỗi claim DB thoát khỏi drain cycle để backoff thay vì retry nóng, còn lỗi xử lý một job không chặn các job kế tiếp.
+- Cấu hình mặc định mới: max poll 10 giây cho document/email/partner, common jitter 0,1; operator có thể hạ max để đổi query rate lấy pickup latency.
+- Benchmark mô phỏng tái lập: `python scripts/benchmark_idle_backoff.py`, 3.600 giây, seed `20260726`:
+
+| Worker scenario | Fixed attempts | Backoff attempts | Giảm | Pickup p95 | Max |
+|---|---:|---:|---:|---:|---:|
+| Document external (1s → max 10s) | 3.600 | 382 | 89,4% | 9,937s | 9,998s |
+| Document embedded (5s → max 10s) | 720 | 380 | 47,2% | 9,939s | 9,998s |
+| Email (5s → max 10s) | 720 | 380 | 47,2% | 9,939s | 9,998s |
+| Partner fallback (5s cũ; 1s → max 10s mới) | 720 | 382 | 46,9% | 9,937s | 9,998s |
+
+- Đây là mô phỏng claim schedule khi queue rỗng, không phải số đo PostgreSQL production. Cần đo lại `pg_stat_statements`, queue age và pickup latency sau deploy trước khi xác nhận lợi ích vận hành thực tế.
+
 ## 6. Audit-chain verification
+
+**Trạng thái triển khai 2026-07-26: Đã thêm incremental verification an toàn; chưa benchmark 10k/100k/1M hoặc đo lại production.**
 
 `inspect_audit_chain` hiện:
 
@@ -186,7 +236,18 @@ Snapshot cùng runtime:
 - Không bỏ full verification trước readiness nếu compliance yêu cầu; có thể giới hạn startup bằng checkpoint đã ký và background full scan.
 - Benchmark 10k/100k/1M row trước khi đổi.
 
+### Kết quả implementation
+
+- `inspect_audit_chain_incremental(...)` xác minh integrity/HMAC và installation identity của checkpoint, đối chiếu chính xác từng `(id, chain_id, sequence, entry_hash)` anchor, rồi chỉ đọc `audit_log WHERE id > max_anchor_id` để hash tail mới.
+- Kết quả cuối vẫn phải khớp toàn bộ `audit_chain_heads`; new chain, sequence gap, previous-hash mismatch, entry-hash mismatch và materialized-head mismatch đều fail closed.
+- Nếu incremental báo bất nhất, monitor chạy lại `inspect_audit_chain_against_checkpoint(...)`. Full fallback không bỏ checkpoint nên rollback/truncation anchor vẫn bị từ chối, không bị “chữa” thành hợp lệ bởi một chain hiện tại đã bị cắt.
+- Startup readiness luôn dùng full checkpoint-protected verification. Checkpoint export định kỳ cũng full scan; full result được tái sử dụng để build checkpoint nên không còn quét lần hai trong cùng transaction.
+- PostgreSQL integration chứng minh incremental và full scan trả cùng `row_count`, aggregate hash và heads sau khi append tail; query trace incremental không có `count(*)` hoặc ordered full-table scan. Test disable immutable trigger rồi xóa anchor xác nhận incremental trả `checkpoint_head_missing` và full-with-checkpoint cũng invalid.
+- Query-shape scale theo `H + Δ` row (`H` checkpoint heads, `Δ` tail mới) thay vì `N` toàn bộ lịch sử giữa các full scan. Đây là bằng chứng row-scan shape, chưa phải latency/WAL/CPU benchmark 10k/100k/1M.
+
 ## 7. Detailed-evaluation persistence
+
+**Trạng thái triển khai 2026-07-26: Đã tối ưu query shape; benchmark staging về thời gian/WAL/lock còn thiếu.**
 
 `backend/sync/mapper.py:1173-1428` xử lý từng report/detail:
 
@@ -209,6 +270,22 @@ Với R dòng, static lower bound xấp xỉ `3R + overhead` statement cho detai
 - 10/100/1.000 criterion, draft/completed, existing/new mix.
 - Statement count, transaction duration, WAL bytes, lock time.
 - Kết quả row-by-row và batch phải giống hệt.
+
+### Kết quả implementation
+
+- Mapper parse và dedupe criterion ID trước, prefetch criterion bằng một query `organization_id + id = ANY(...)`, đồng thời prefetch existing detail ID bằng một query `organization_id + report_id`.
+- Mọi kiểm tra owner, vòng đánh giá, kết quả, score bound và required criterion chạy trên các map đã prefetch; upsert được gửi bằng một lần gọi `executemany`.
+- Tenant predicate vẫn có trên cả hai prefetch và upsert vẫn dùng unique key `(organization_id, report_id, criterion_id)`.
+- Characterization statement logic của riêng detail path (hai lookup/prefetch + R upsert + cleanup):
+
+| Số criterion | Trước (`3R + 1`) | Sau (`R + 3`) | Giảm |
+|---:|---:|---:|---:|
+| 10 | 31 | 13 | 58,1% |
+| 100 | 301 | 103 | 65,8% |
+| 1.000 | 3.001 | 1.003 | 66,6% |
+
+- Đây là statement-count characterization và batch-call evidence, chưa phải latency benchmark. Chưa có số transaction duration, WAL bytes hoặc lock time trên staging; không tuyên bố tốc độ production trước khi đo các chỉ số này.
+- PostgreSQL integration xác nhận round-trip, tenant isolation, identity reuse và cascade; full Python suite đạt 1.007 test, 1 bỏ qua.
 
 ## 8. PostgreSQL query/index baseline
 
@@ -307,7 +384,7 @@ Budget phải được xác nhận với người dùng và dữ liệu thật t
 | P1 | Batch detailed-evaluation write | Giảm statement count/round trips | Transaction/query semantics |
 | P2 | Idle backoff + notify hint | Giảm 71k poll rỗng | Tăng pickup latency |
 | P2 | Incremental audit verification | Scale theo delta thay vì history | Compliance/checkpoint integrity |
-| P3 | Tách workflow imports | Giảm route JS nếu trace chứng minh | Thêm chunks/request |
+| P3 | Đo route-specific workflow imports đã tách | Xác nhận mức giảm transferred/parse thực tế | Cache/shared chunk có thể làm lợi ích nhỏ hơn artifact |
 | P3 | Web Worker Excel | Giảm UI blocking nếu file lớn | Clone overhead, error handling |
 
-Không có benchmark “sau tối ưu” vì chưa thay đổi code trong giai đoạn review.
+Các mục đã triển khai có characterization/microbenchmark riêng ở trên. Browser E2E, staging latency/WAL/lock và production remeasurement vẫn còn thiếu nên chưa có kết luận hiệu năng tổng thể.

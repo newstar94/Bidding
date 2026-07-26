@@ -49,7 +49,7 @@ from backend.documents.docx_context_policy import (
     sensitive_capability_groups_present,
     validate_mapping_definition,
 )
-from backend.documents.docx_formula_service import _format_formula_date, apply_computed_mappings
+from backend.documents.docx_formula_service import apply_computed_mappings
 from backend.documents.docx_mapping_service import apply_custom_mappings, lowercase_partner_identity_codes
 from backend.documents.word_defaults import ensure_default_word_mappings
 from backend.documents.timeline_context_service import build_timeline_context

@@ -8,6 +8,9 @@ from starlette.responses import JSONResponse
 from backend.db.db_helper import DatabaseError, IntegrityError
 from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.helpers import OrgPermissionError
+from backend.sync import command
+from backend.sync import record_serializer
+from backend.sync import record_validator
 from backend.sync import service
 
 
@@ -117,12 +120,12 @@ def _install_core_defaults(monkeypatch, connections, *, owner_type="personal"):
     monkeypatch.setattr(service, "_sync_batch_limit", lambda: 1000)
     monkeypatch.setattr(service, "next_sync_version", lambda *_args: 7)
     monkeypatch.setattr(service, "vietnam_now_sql", lambda: "2026-07-19 12:00:00")
-    monkeypatch.setattr(service, "authorize_record_write", lambda *_args: SimpleNamespace(allowed=True, message=""))
-    monkeypatch.setattr(service, "validate_sync_item", lambda _table, item, _statuses: (item, [], set()))
-    monkeypatch.setattr(service, "validate_package_status_transition", lambda *_args: [])
-    monkeypatch.setattr(service, "validate_package_locked_fields", lambda *_args: [])
-    monkeypatch.setattr(service, "validate_owner_scoped_references", lambda *_args: [])
-    monkeypatch.setattr(service, "validate_opening_participant_uniqueness", lambda *_args: [])
+    monkeypatch.setattr(record_validator, "authorize_record_write", lambda *_args: SimpleNamespace(allowed=True, message=""))
+    monkeypatch.setattr(record_validator, "validate_sync_item", lambda _table, item, _statuses: (item, [], set()))
+    monkeypatch.setattr(record_validator, "validate_package_status_transition", lambda *_args: [])
+    monkeypatch.setattr(record_validator, "validate_package_locked_fields", lambda *_args: [])
+    monkeypatch.setattr(record_validator, "validate_owner_scoped_references", lambda *_args: [])
+    monkeypatch.setattr(record_validator, "validate_opening_participant_uniqueness", lambda *_args: [])
     monkeypatch.setattr(service, "save_child_payloads", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(service, "defer_version_latest_flag", lambda *_args: None)
     monkeypatch.setattr(service, "apply_sync_deletions", lambda *_args, **_kwargs: _empty_deletion_result())
@@ -192,7 +195,7 @@ def test_process_sync_request_dispatches_valid_payload(monkeypatch):
         return payload, None
 
     async def write(function, passed_request, data, callback):
-        assert function is service._process_sync_request_blocking
+        assert function is service.execute_sync_mutation
         assert passed_request is request
         assert data is payload
         assert callback == "callback"
@@ -222,10 +225,10 @@ def test_persist_incoming_images_only_decodes_supported_dict_payloads(monkeypatc
     monkeypatch.setattr(
         service,
         "save_base64_image",
-        lambda value, folder, name: f"images/{folder}/{name}.png",
+        lambda value, folder, name, *, tenant_id: f"images/{folder}/{name}.png",
     )
     written = set()
-    service._persist_incoming_images(payload, written)
+    service._persist_incoming_images(payload, written, "org-1")
     assert payload["chuyengia"][1]["anh_chung_chi"] == "images/chuyen_gia/cg-1_cert.png"
     assert payload["chuyengia"][1]["anh_chu_ky"] == "existing.png"
     assert payload["nhathau"][0]["anh_dau"] == "images/nha_thau/nt-1_stamp.png"
@@ -235,7 +238,7 @@ def test_persist_incoming_images_only_decodes_supported_dict_payloads(monkeypatc
 def test_sync_rejects_invalid_session_and_workspace_ownership(monkeypatch):
     monkeypatch.setattr(service, "log_error", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(service, "verify_session", lambda _request: (False, "denied"))
-    assert service._process_sync_request_blocking(_Request(), {}).status_code == 403
+    assert service.execute_sync_mutation(_Request(), {}).status_code == 403
 
     for owner_type, personal_match, expected in [
         ("personal", False, 403),
@@ -244,7 +247,7 @@ def test_sync_rejects_invalid_session_and_workspace_ownership(monkeypatch):
         auth = _Connection(_Cursor())
         _install_core_defaults(monkeypatch, [auth], owner_type=owner_type)
         monkeypatch.setattr(service, "is_personal_scope_for_user", lambda *_args, value=personal_match: value)
-        response = service._process_sync_request_blocking(_Request(), {})
+        response = service.execute_sync_mutation(_Request(), {})
         assert response.status_code == expected
         assert auth.closed == 1
 
@@ -263,11 +266,37 @@ def test_sync_idempotency_returns_cached_authorization_result(monkeypatch, store
     data = {"clientMutationId": "x" * 200}
     if stored is None:
         monkeypatch.setattr(service, "commit_sync_response", lambda *args, **kwargs: {"status": "success"})
-    response = service._process_sync_request_blocking(_Request(), data)
+    response = service.execute_sync_mutation(_Request(), data)
     payload = _body(response)
     assert response.status_code == 200
     assert payload["status"] == ("cached" if stored and stored.startswith("{") and "cached" in stored else "success")
     assert auth.closed == 1
+
+
+def test_sync_rejects_reused_mutation_id_with_different_payload(monkeypatch):
+    def handler(sql, _params):
+        if "FROM sync_mutations" in sql:
+            return _Answer(one=('{"status":"cached"}', "stored-request-hash"))
+        return _Answer()
+
+    auth = _Connection(_Cursor(handler))
+    _install_core_defaults(monkeypatch, [auth])
+    monkeypatch.setattr(
+        command,
+        "sync_request_hash",
+        lambda _data: "different-request-hash",
+    )
+
+    response = service.execute_sync_mutation(
+        _Request(),
+        {
+            "clientMutationId": "mutation-1",
+            "kehoach": [{"id": "plan-different"}],
+        },
+    )
+
+    assert response.status_code == 409
+    assert _body(response)["code"] == "IDEMPOTENCY_KEY_REUSED"
 
 
 def test_sync_detects_scope_change_between_authorization_and_transaction(monkeypatch):
@@ -282,7 +311,7 @@ def test_sync_detects_scope_change_between_authorization_and_transaction(monkeyp
         return "org-1" if calls == 1 else "org-2"
 
     monkeypatch.setattr(service, "get_active_org", active_org)
-    response = service._process_sync_request_blocking(_Request(), {})
+    response = service.execute_sync_mutation(_Request(), {})
     assert response.status_code == 403
     assert tx.rollbacks == 1
     assert tx.closed == 1
@@ -311,7 +340,7 @@ def test_sync_transaction_revalidates_personal_and_unknown_scope(monkeypatch):
             return personal_calls == 1
 
         monkeypatch.setattr(service, "is_personal_scope_for_user", personal)
-        response = service._process_sync_request_blocking(_Request(), {})
+        response = service.execute_sync_mutation(_Request(), {})
         assert response.status_code in {400, 403}
         assert _body(response)["code"] == expected_code
         assert tx.closed == 1
@@ -345,7 +374,7 @@ def test_sync_success_inserts_all_table_types_tracks_versions_and_broadcasts(mon
     _install_core_defaults(monkeypatch, [auth, tx], owner_type="organization")
     monkeypatch.setattr(service, "canonicalize_payload_item", lambda _table, item: dict(item))
     broadcasts = []
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(),
         _all_table_payload(),
         lambda org, event: broadcasts.append((org, event)),
@@ -381,7 +410,7 @@ def test_sync_organization_auto_assigns_new_business_records_and_rechecks_batch(
         "goithau": [{"id": "gt-existing"}],
         "assignments": [],
     }
-    response = service._process_sync_request_blocking(_Request(), data)
+    response = service.execute_sync_mutation(_Request(), data)
     assert response.status_code == 200
     assert len(data["assignments"]) == 1
     assert data["assignments"][0]["targetId"] == "kh-new"
@@ -390,7 +419,7 @@ def test_sync_organization_auto_assigns_new_business_records_and_rechecks_batch(
     tx2 = _Connection(_Cursor())
     _install_core_defaults(monkeypatch, [auth2, tx2], owner_type="organization")
     monkeypatch.setattr(service, "_sync_batch_size", lambda _data: 1001)
-    response = service._process_sync_request_blocking(_Request(), {"kehoach": [{"id": "kh"}]})
+    response = service.execute_sync_mutation(_Request(), {"kehoach": [{"id": "kh"}]})
     assert response.status_code == 413
     assert tx2.rollbacks == 1
     assert tx2.closed == 1
@@ -413,12 +442,12 @@ def test_sync_validation_collects_access_version_archive_domain_and_reference_er
     auth = _Connection(_Cursor())
     tx = _Connection(_Cursor(handler))
     _install_core_defaults(monkeypatch, [auth, tx], owner_type="personal")
-    monkeypatch.setattr(service, "authorize_record_write", lambda *_args: SimpleNamespace(allowed=False, message="denied"))
-    monkeypatch.setattr(service, "validate_sync_item", lambda _table, item, _statuses: (item, ["pure error"], {"status"}))
-    monkeypatch.setattr(service, "validate_package_status_transition", lambda *_args: ["transition"])
-    monkeypatch.setattr(service, "validate_package_locked_fields", lambda *_args: ["locked"])
-    monkeypatch.setattr(service, "validate_owner_scoped_references", lambda *_args: ["reference"])
-    response = service._process_sync_request_blocking(
+    monkeypatch.setattr(record_validator, "authorize_record_write", lambda *_args: SimpleNamespace(allowed=False, message="denied"))
+    monkeypatch.setattr(record_validator, "validate_sync_item", lambda _table, item, _statuses: (item, ["pure error"], {"status"}))
+    monkeypatch.setattr(record_validator, "validate_package_status_transition", lambda *_args: ["transition"])
+    monkeypatch.setattr(record_validator, "validate_package_locked_fields", lambda *_args: ["locked"])
+    monkeypatch.setattr(record_validator, "validate_owner_scoped_references", lambda *_args: ["reference"])
+    response = service.execute_sync_mutation(
         _Request(), {"goithau": [{"id": "gt-1", "rootId": "root", "expectedVersion": 2, "maGoiThau": "GT"}]}
     )
     payload = _body(response)
@@ -451,7 +480,7 @@ def test_sync_rejects_domain_uniqueness_conflicts(monkeypatch, payload_key, item
     auth = _Connection(_Cursor())
     tx = _Connection(_Cursor(handler))
     _install_core_defaults(monkeypatch, [auth, tx])
-    response = service._process_sync_request_blocking(_Request(), {payload_key: [item]})
+    response = service.execute_sync_mutation(_Request(), {payload_key: [item]})
     assert response.status_code == 400
     assert _body(response)["errors"]
 
@@ -460,8 +489,8 @@ def test_sync_skips_orphan_assignment_reference_and_reports_it(monkeypatch):
     auth = _Connection(_Cursor())
     tx = _Connection(_Cursor())
     _install_core_defaults(monkeypatch, [auth, tx])
-    monkeypatch.setattr(service, "validate_owner_scoped_references", lambda *_args: ["missing target"])
-    response = service._process_sync_request_blocking(
+    monkeypatch.setattr(record_validator, "validate_owner_scoped_references", lambda *_args: ["missing target"])
+    response = service.execute_sync_mutation(
         _Request(), {"assignments": [{"id": "a-1", "targetId": "missing", "type": "goithau"}]}
     )
     payload = _body(response)
@@ -489,7 +518,7 @@ def test_sync_updates_existing_row_and_handles_write_time_optimistic_conflict(mo
     auth = _Connection(_Cursor())
     tx = _Connection(_Cursor(handler))
     _install_core_defaults(monkeypatch, [auth, tx])
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"chudautu": [{"id": "cdt-1", "expectedVersion": 1}]}
     )
     assert response.status_code == 200
@@ -515,7 +544,7 @@ def test_sync_updates_existing_row_and_handles_write_time_optimistic_conflict(mo
         "rollback_sync_response",
         lambda conn, errors, message, status_code: JSONResponse({"errors": errors}, status_code=status_code),
     )
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"chudautu": [{"id": "cdt-1", "expectedVersion": 1}]}
     )
     assert response.status_code == 409
@@ -535,7 +564,7 @@ def test_sync_item_errors_roll_back(monkeypatch):
     auth2 = _Connection(_Cursor())
     tx2 = _Connection(_Cursor(handler))
     _install_core_defaults(monkeypatch, [auth2, tx2])
-    response = service._process_sync_request_blocking(_Request(), {"goithau": [{"id": "gt-orphan"}]})
+    response = service.execute_sync_mutation(_Request(), {"goithau": [{"id": "gt-orphan"}]})
     assert response.status_code == 200
     assert _body(response)["orphanedIds"] == [{"table": "goi_thau", "id": "gt-orphan"}]
     orphan_sql = [sql for sql, _params in tx2._cursor.calls]
@@ -553,7 +582,7 @@ def test_sync_item_errors_roll_back(monkeypatch):
     auth3 = _Connection(_Cursor())
     tx3 = _Connection(_Cursor(cleanup_failure))
     _install_core_defaults(monkeypatch, [auth3, tx3])
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"goithau": [{"id": "gt-orphan-2"}]}
     )
     assert response.status_code == 200
@@ -576,7 +605,7 @@ def test_sync_contract_reference_violation_becomes_item_error(monkeypatch):
         "rollback_sync_response",
         lambda conn, errors, message, status_code: JSONResponse({"errors": errors}, status_code=status_code),
     )
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"hopdong": [{"id": "hd-1", "goiThauIds": ["gt-missing"]}]}
     )
     assert response.status_code == 400
@@ -605,7 +634,7 @@ def test_sync_applies_recalculations_cleanup_broadcast_and_enrichment_fail_close
     monkeypatch.setattr(service, "find_unreferenced_image_paths", lambda *_args: ["images/nha_thau/old.png"])
     monkeypatch.setattr(service, "delete_managed_image_files", lambda paths: deleted.extend(paths))
     monkeypatch.setattr(service, "log_error", lambda message, *_args, **_kwargs: logs.append(str(message)))
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"deletions": [{"table": "goithau", "id": "gt"}], "nhathau": [{"id": "nt-1"}]},
         lambda *_args: (_ for _ in ()).throw(RuntimeError("broadcast failed")),
     )
@@ -623,17 +652,17 @@ def test_sync_masks_org_and_unexpected_errors_and_cleans_new_images_after_rollba
         "get_active_org",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OrgPermissionError("denied")),
     )
-    assert service._process_sync_request_blocking(_Request(), {}).status_code == 403
+    assert service.execute_sync_mutation(_Request(), {}).status_code == 403
 
     auth2 = _Connection(_Cursor())
     tx2 = _Connection(_Cursor(lambda *_args: _Answer(error=RuntimeError("secret"))))
     cleanup = _Connection(_Cursor())
     _install_core_defaults(monkeypatch, [auth2, tx2, cleanup])
-    monkeypatch.setattr(service, "_persist_incoming_images", lambda data, written: written.add("images/nha_thau/new.png"))
+    monkeypatch.setattr(service, "_persist_incoming_images", lambda data, written, _org: written.add("images/nha_thau/new.png"))
     deleted = []
     monkeypatch.setattr(service, "find_unreferenced_image_paths", lambda *_args: ["images/nha_thau/new.png"])
     monkeypatch.setattr(service, "delete_managed_image_files", lambda paths: deleted.extend(paths))
-    response = service._process_sync_request_blocking(_Request(), {})
+    response = service.execute_sync_mutation(_Request(), {})
     assert response.status_code == 500
     assert deleted == ["images/nha_thau/new.png"]
     assert cleanup.closed == 1
@@ -644,10 +673,10 @@ def test_sync_rollback_image_cleanup_failures_are_nonfatal(monkeypatch):
     tx = _Connection(_Cursor(lambda *_args: _Answer(error=RuntimeError("boom"))))
     cleanup = _Connection(_Cursor(), close_error=False)
     _install_core_defaults(monkeypatch, [auth, tx, cleanup])
-    monkeypatch.setattr(service, "_persist_incoming_images", lambda data, written: written.add("images/nha_thau/new.png"))
+    monkeypatch.setattr(service, "_persist_incoming_images", lambda data, written, _org: written.add("images/nha_thau/new.png"))
     monkeypatch.setattr(service, "find_unreferenced_image_paths", lambda *_args: (_ for _ in ()).throw(RuntimeError("cleanup query")))
     monkeypatch.setattr(service, "delete_managed_image_files", lambda _paths: (_ for _ in ()).throw(RuntimeError("delete failed")))
-    assert service._process_sync_request_blocking(_Request(), {}).status_code == 500
+    assert service.execute_sync_mutation(_Request(), {}).status_code == 500
     assert cleanup.closed == 1
 
 
@@ -662,7 +691,7 @@ def test_sync_idempotency_rechecks_inside_write_transaction(monkeypatch, stored)
 
     tx = _Connection(_Cursor(tx_handler))
     _install_core_defaults(monkeypatch, [auth, tx])
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"clientMutationId": "mutation-1"}
     )
     assert response.status_code == 200
@@ -726,15 +755,15 @@ def test_sync_serializes_typed_values_and_owns_managed_images(monkeypatch):
     monkeypatch.setattr(service, "canonicalize_payload_item", lambda _table, item: item)
     monkeypatch.setattr(service, "json_key_for_column", lambda _table, column: column)
     monkeypatch.setattr(service, "get_payload_value", lambda _table, item, column: item.get(column))
-    monkeypatch.setattr(service, "is_datetime_column", lambda column: column == "happened_at")
-    monkeypatch.setattr(service, "normalize_date_value", lambda value: f"date:{value}")
-    monkeypatch.setattr(service, "normalize_datetime_value", lambda value: f"datetime:{value}")
-    monkeypatch.setattr(service, "parse_vnd_amount", lambda value: 1234)
-    monkeypatch.setattr(service, "safe_float", lambda value: 1.5)
-    monkeypatch.setattr(service, "safe_int", lambda value: 9)
-    monkeypatch.setattr(service, "normalize_managed_image_path", lambda value: str(value or ""))
+    monkeypatch.setattr(record_serializer, "is_datetime_column", lambda column: column == "happened_at")
+    monkeypatch.setattr(record_serializer, "normalize_date_value", lambda value: f"date:{value}")
+    monkeypatch.setattr(record_serializer, "normalize_datetime_value", lambda value: f"datetime:{value}")
+    monkeypatch.setattr(record_serializer, "parse_vnd_amount", lambda value: 1234)
+    monkeypatch.setattr(record_serializer, "safe_float", lambda value: 1.5)
+    monkeypatch.setattr(record_serializer, "safe_int", lambda value: 9)
+    monkeypatch.setattr(record_serializer, "normalize_managed_image_path", lambda value: str(value or ""))
 
-    def persist(_data, written):
+    def persist(_data, written, _org):
         written.add("images/chuyen_gia/new.png")
 
     monkeypatch.setattr(service, "_persist_incoming_images", persist)
@@ -761,7 +790,7 @@ def test_sync_serializes_typed_values_and_owns_managed_images(monkeypatch):
         "required_col": None,
         "anh_chung_chi": "images/chuyen_gia/new.png",
     }
-    response = service._process_sync_request_blocking(_Request(), {"chuyengia": [item]})
+    response = service.execute_sync_mutation(_Request(), {"chuyengia": [item]})
     assert response.status_code == 200
     sql, params = captured["insert"]
     assert "required_col" not in sql
@@ -797,7 +826,7 @@ def test_sync_binds_blank_optional_date_as_database_null(monkeypatch):
     monkeypatch.setattr(service, "json_key_for_column", lambda _table, column: column)
     monkeypatch.setattr(service, "get_payload_value", lambda _table, item, column: item.get(column))
 
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(),
         {"kehoach": [{"id": "kh-1", "ngay_tuy_chon": "   "}]},
     )
@@ -836,14 +865,14 @@ def test_sync_rejects_unprocessed_or_unowned_image_paths(monkeypatch, image_valu
     monkeypatch.setattr(service, "canonicalize_payload_item", lambda _table, item: item)
     monkeypatch.setattr(service, "json_key_for_column", lambda _table, column: column)
     monkeypatch.setattr(service, "get_payload_value", lambda _table, item, column: item.get(column))
-    monkeypatch.setattr(service, "normalize_managed_image_path", lambda value: str(value or ""))
+    monkeypatch.setattr(record_serializer, "normalize_managed_image_path", lambda value: str(value or ""))
     monkeypatch.setattr(service, "_persist_incoming_images", lambda *_args: None)
     monkeypatch.setattr(
         service,
         "rollback_sync_response",
         lambda conn, errors, message, status_code: JSONResponse({"errors": errors}, status_code=status_code),
     )
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(), {"chuyengia": [{"id": "cg-1", "anh_chung_chi": image_value}]}
     )
     assert response.status_code == 400
@@ -869,7 +898,7 @@ def test_sync_contract_links_existing_packages_and_replaces_opening_children(mon
             )
 
     monkeypatch.setattr(service, "save_child_payloads", save_children)
-    response = service._process_sync_request_blocking(
+    response = service.execute_sync_mutation(
         _Request(),
         {
             "hopdong": [{"id": "hd-1", "goiThauIds": ["gt-1", ""]}],
@@ -909,7 +938,7 @@ def test_sync_post_commit_image_cleanup_failure_does_not_change_success(monkeypa
         "find_unreferenced_image_paths",
         lambda *_args: (_ for _ in ()).throw(RuntimeError("cleanup failed")),
     )
-    response = service._process_sync_request_blocking(_Request(), {})
+    response = service.execute_sync_mutation(_Request(), {})
     assert response.status_code == 200
 
 
@@ -921,7 +950,7 @@ def test_sync_rollback_and_close_database_errors_are_contained(monkeypatch):
         close_error=True,
     )
     _install_core_defaults(monkeypatch, [auth, tx])
-    response = service._process_sync_request_blocking(_Request(), {})
+    response = service.execute_sync_mutation(_Request(), {})
     assert response.status_code == 403
     assert tx.rollbacks == 1
     assert tx.closed == 1
@@ -933,5 +962,5 @@ def test_sync_rollback_and_close_database_errors_are_contained(monkeypatch):
         close_error=True,
     )
     _install_core_defaults(monkeypatch, [auth2, tx2])
-    response = service._process_sync_request_blocking(_Request(), {})
+    response = service.execute_sync_mutation(_Request(), {})
     assert response.status_code == 500

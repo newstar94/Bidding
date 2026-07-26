@@ -8,16 +8,11 @@ import {
 } from "../documents/schemaRuntime.js";
 import { generateUUID as createUUID } from "../shared/idUtils.js";
 import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
-import { summarizeMutationQueue } from "./syncStatus.js";
 import { serializeOutboundRecord } from "./outboundSerializer.js";
 import { BrowserDB } from "./BrowserDB.js";
+import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
+import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
-import {
-  buildMutationPayload,
-  createEmptyMutationQueue,
-  mutationQueueHasChanges,
-  normalizeMutationQueue
-} from "./mutationQueue.js";
 import {
   ScopedWorkspaceStorage,
   purgeWorkspaceLocalData,
@@ -39,8 +34,6 @@ const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
   "thongtinmothau",
   "permissionmatrix"
 ]);
-const MUTATION_QUEUE_KEY = "bf_mutation_queue";
-const LOCAL_DELETIONS_KEY = "bf_local_deletions";
 const snakeToCamel = (key, type = null) => {
   if (!key || !key.includes("_")) return key;
   const tableName = type ? resolveSchemaTable(type) : null;
@@ -113,8 +106,11 @@ export class BiddingModel {
     this._suspendMutationTracking = 0;
     this._workspaceWriteLocked = false;
     this.onMutationBatchChanged = null;
-    this._mutationBatch = null;
-    this._localDeletions = [];
+    this._mutationOutbox = null;
+    this._mutationOutboxStoreRef = null;
+    this._mutationOutboxStore = null;
+    this._mutationOutboxStoreStorage = null;
+    this._mutationOutboxStoreDatabase = null;
     this._workspaceEpoch = 0;
     this.workspaceScope = null;
     this.workspaceStorage = null;
@@ -197,8 +193,11 @@ export class BiddingModel {
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
     this._allDataLoadPromise = null;
     this._remainingHydrationScheduled = false;
-    this._mutationBatch = null;
-    this._localDeletions = [];
+    this._mutationOutbox = null;
+    this._mutationOutboxStoreRef = null;
+    this._mutationOutboxStore = null;
+    this._mutationOutboxStoreStorage = null;
+    this._mutationOutboxStoreDatabase = null;
   }
 
   async deactivateWorkspace() {
@@ -293,12 +292,9 @@ export class BiddingModel {
       this.workspaceSessionStorage = new ScopedWorkspaceStorage(nextScope, sessionStorage);
       this.db = new BrowserDB(workspaceDatabaseName(nextScope));
       this._workspaceEpoch += 1;
-      // Pending-sync storage belonged to the removed offline queue feature.
-      // A mutation batch now only lives in memory until the immediate request ends.
-      this.workspaceStorage.removeItem(MUTATION_QUEUE_KEY);
-      this.workspaceStorage.removeItem(LOCAL_DELETIONS_KEY);
     }
     await this.db.init();
+    await this.hydrateMutationOutbox();
     const savedPages = this.workspaceSessionStorage.readJson("bf_current_pages", {});
     Object.keys(this.currentPage).forEach((key) => {
       this.currentPage[key] = savedPages[key] || 1;
@@ -371,191 +367,96 @@ export class BiddingModel {
   _isSyncedStateKey(type) {
     return SYNCED_STATE_KEYS.has(type);
   }
-  _emptyMutationQueue() {
-    return createEmptyMutationQueue(
-      this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
-      createUUID()
-    );
-  }
   getMutationQueue() {
-    return normalizeMutationQueue(
-      this._mutationBatch ? JSON.parse(JSON.stringify(this._mutationBatch)) : null,
-      {
-      baseSyncVersion: this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
-      createId: createUUID
-      }
-    );
+    return this._getMutationOutbox().snapshot();
   }
-  _notifyMutationQueueChanged(queue = this.getMutationQueue()) {
-    this.onMutationBatchChanged?.(summarizeMutationQueue(queue));
-  }
-  discardRejectedMutations(errors) {
-    const queue = this.getMutationQueue();
-    let localDeletions = [...this._localDeletions];
-    const rejectedByRecord = /* @__PURE__ */ new Map();
-    (errors || []).forEach((error) => {
-      const type = STATE_KEY_BY_SERVER_TABLE[error?.table] || error?.table;
-      const id = String(error?.id || "");
-      if (!type || !id) return;
-      let operation = "";
-      if (queue.upserts?.[type]?.[id]) {
-        delete queue.upserts[type][id];
-        if (Object.keys(queue.upserts[type]).length === 0) delete queue.upserts[type];
-        operation = "upsert";
-      }
-      const deleteCount = queue.deletes.length;
-      queue.deletes = queue.deletes.filter(
-        (item) => !(item.table === type && String(item.id) === id)
-      );
-      const localDeleteCount = localDeletions.length;
-      localDeletions = localDeletions.filter(
-        (item) => !(item.table === type && String(item.id) === id)
-      );
-      if (!operation && (queue.deletes.length < deleteCount || localDeletions.length < localDeleteCount)) {
-        operation = "delete";
-      }
-      if (!operation) return;
-      const key = `${type}:${id}`;
-      const existing = rejectedByRecord.get(key);
-      rejectedByRecord.set(key, {
-        type,
-        id,
-        operation: existing?.operation || operation,
-        conflictingId: String(error?.conflictingId || existing?.conflictingId || "")
+  _getMutationOutboxStore() {
+    if (
+      !this._mutationOutboxStore
+      || this._mutationOutboxStoreStorage !== this.workspaceStorage
+      || this._mutationOutboxStoreDatabase !== this.db
+    ) {
+      this._mutationOutboxStore = new WorkspaceMutationOutboxStore({
+        storage: this.workspaceStorage,
+        database: this.db
       });
-    });
-    const rejected = Array.from(rejectedByRecord.values());
-    if (rejected.length > 0) {
-      this._localDeletions = localDeletions;
-      queue.clientMutationId = createUUID();
-      this._touchMutationQueue(queue);
-      this._saveMutationQueue(queue);
+      this._mutationOutboxStoreStorage = this.workspaceStorage;
+      this._mutationOutboxStoreDatabase = this.db;
+      this._mutationOutbox = null;
+      this._mutationOutboxStoreRef = null;
     }
-    return rejected;
+    return this._mutationOutboxStore;
+  }
+  _getMutationOutbox() {
+    const store = this._getMutationOutboxStore();
+    if (!this._mutationOutbox || this._mutationOutboxStoreRef !== store) {
+      this._mutationOutbox = new WorkspaceMutationOutbox({
+        store,
+        getBaseSyncVersion: () => this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
+        createId: createUUID,
+        isSyncedType: (type) => this._isSyncedStateKey(type),
+        normalizeRecord: (record, type) => this.normalizeRecordKeys(record, type),
+        serializeRecord: (record, type) => serializeOutboundRecord(
+          record,
+          type,
+          (value, recordType) => this.normalizeRecordKeys(value, recordType)
+        ),
+        resolveServerTable: (table) => STATE_KEY_BY_SERVER_TABLE[table] || table,
+        onChange: (summary) => this.onMutationBatchChanged?.(summary)
+      });
+      this._mutationOutboxStoreRef = store;
+    }
+    return this._mutationOutbox;
+  }
+  async flushMutationOutbox() {
+    await this._getMutationOutbox().flush();
+  }
+  async hydrateMutationOutbox() {
+    return this._getMutationOutbox().hydrate();
+  }
+  discardRejectedMutations(errors, snapshot = null) {
+    return this._getMutationOutbox().reject(snapshot, errors);
   }
   acknowledgeServerDeletions(deletionsByTable = {}) {
-    const acknowledged = new Set();
-    Object.entries(deletionsByTable || {}).forEach(([type, recordIds]) => {
-      (recordIds || []).forEach((recordId) => {
-        const id = String(recordId || "");
-        if (type && id) acknowledged.add(`${type}:${id}`);
-      });
+    return this._getMutationOutbox().enqueue({
+      kind: "ack-server-deletions",
+      deletionsByTable
     });
-    if (acknowledged.size === 0) return 0;
-
-    const queue = this.getMutationQueue();
-    const before = queue.deletes.length;
-    queue.deletes = queue.deletes.filter(
-      (item) => !acknowledged.has(`${item.table}:${String(item.id)}`)
-    );
-    const removedQueueCount = before - queue.deletes.length;
-    const previousLocalDeletions = [...this._localDeletions];
-    const localDeletions = previousLocalDeletions
-      .filter((item) => !acknowledged.has(`${item.table}:${String(item.id)}`));
-    const removedLocalCount = previousLocalDeletions.length - localDeletions.length;
-    if (removedQueueCount === 0 && removedLocalCount === 0) return 0;
-
-    this._localDeletions = localDeletions;
-    queue.clientMutationId = createUUID();
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
-    return Math.max(removedQueueCount, removedLocalCount);
   }
   rebaseMutationBatch(syncVersion) {
-    if (syncVersion === void 0 || syncVersion === null || syncVersion === "") return;
-    const queue = this.getMutationQueue();
-    const hasUpserts = Object.values(queue.upserts || {}).some(
-      (records) => records && Object.keys(records).length > 0
-    );
-    const hasDeletes = Array.isArray(queue.deletes) && queue.deletes.length > 0;
-    if (!hasUpserts && !hasDeletes) return;
-    queue.baseSyncVersion = String(syncVersion);
-    queue.clientMutationId = createUUID();
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
-  }
-  _saveMutationQueue(queue) {
-    if (!mutationQueueHasChanges(queue)) {
-      this._mutationBatch = null;
-      this._notifyMutationQueueChanged(this._emptyMutationQueue());
-      return;
-    }
-    this._mutationBatch = JSON.parse(JSON.stringify(queue));
-    this._notifyMutationQueueChanged(queue);
-  }
-  _touchMutationQueue(queue) {
-    queue.revision = (Number(queue.revision) || 0) + 1;
-    queue.clientMutationId = queue.clientMutationId || createUUID();
-    if (queue.baseSyncVersion === void 0 || queue.baseSyncVersion === null || queue.baseSyncVersion === "") {
-      queue.baseSyncVersion = this.workspaceStorage?.getItem("bf_last_sync_version") || "0";
-    }
+    return this._getMutationOutbox().enqueue({ kind: "rebase", syncVersion });
   }
   markRecordDirty(type, records) {
     this._assertWorkspaceWritable();
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
-    const list = Array.isArray(records) ? records : [records];
-    const validRecords = list.filter((record) => record && record.id);
-    if (validRecords.length === 0) return;
-    const queue = this.getMutationQueue();
-    if (!queue.upserts[type]) queue.upserts[type] = {};
-    validRecords.forEach((record) => {
-      queue.upserts[type][record.id] = this.normalizeRecordKeys(record, type);
-      queue.deletes = queue.deletes.filter((item) => !(item.table === type && String(item.id) === String(record.id)));
+    return this._getMutationOutbox().enqueue({
+      kind: "upsert",
+      table: type,
+      records
     });
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
   }
   markTableDirty(type) {
     this._assertWorkspaceWritable();
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
-    const records = Array.isArray(this.state[type]) ? this.state[type].filter((record) => record && record.id).map((record) => this.normalizeRecordKeys(record, type)) : [];
-    if (records.length === 0) return;
-    const queue = this.getMutationQueue();
-    queue.dirtyTables[type] = false;
-    queue.upserts[type] = {};
-    const currentIds = /* @__PURE__ */ new Set();
-    records.forEach((record) => {
-      currentIds.add(String(record.id));
-      queue.upserts[type][record.id] = record;
+    return this._getMutationOutbox().enqueue({
+      kind: "replace-table",
+      table: type,
+      records: this.state[type]
     });
-    queue.deletes = queue.deletes.filter((item) => item.table !== type || !currentIds.has(String(item.id)));
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
   }
   markDeleted(type, recordIds) {
     this._assertWorkspaceWritable();
+    if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const values = Array.isArray(recordIds) ? recordIds : [recordIds];
     const records = values.filter(Boolean).map((value) => {
       if (typeof value === "object") return value;
       return (this.state[type] || []).find((record) => String(record.id) === String(value)) || { id: value };
     });
-    const localDeletions = [...this._localDeletions];
-    records.forEach((record) => {
-      const id = record.id;
-      const expectedVersion = Number.isInteger(record.rowVersion) ? record.rowVersion : void 0;
-      const existing = localDeletions.find((item) => item.id === id && item.table === type);
-      if (existing) {
-        if (expectedVersion) existing.expectedVersion = expectedVersion;
-      } else {
-        localDeletions.push({ table: type, id, ...(expectedVersion ? { expectedVersion } : {}) });
-      }
+    return this._getMutationOutbox().enqueue({
+      kind: "delete",
+      table: type,
+      records
     });
-    this._localDeletions = localDeletions;
-    if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
-    const queue = this.getMutationQueue();
-    records.forEach((record) => {
-      const id = record.id;
-      const expectedVersion = Number.isInteger(record.rowVersion) ? record.rowVersion : void 0;
-      if (queue.upserts[type]) {
-        delete queue.upserts[type][id];
-      }
-      const existing = queue.deletes.find((item) => item.id === id && item.table === type);
-      if (existing) {
-        if (expectedVersion) existing.expectedVersion = expectedVersion;
-      } else queue.deletes.push({ table: type, id, ...(expectedVersion ? { expectedVersion } : {}) });
-    });
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
   }
   commitLocalMutation(type, options = {}) {
     this._assertWorkspaceWritable();
@@ -570,21 +471,9 @@ export class BiddingModel {
     this.markRecordDirty(type, options.records || []);
   }
   buildMutationSyncPayload() {
-    const queue = this.getMutationQueue();
-    return buildMutationPayload({
-      queue,
-      state: this.state,
-      localDeletions: this._localDeletions,
-      isSyncedType: (type) => this._isSyncedStateKey(type),
-      normalizeRecord: (record, type) => serializeOutboundRecord(
-        record,
-        type,
-        (value, recordType) => this.normalizeRecordKeys(value, recordType)
-      )
-    });
+    return this._getMutationOutbox().snapshotForSync(this.state);
   }
   async applyCommittedRowVersions(entries = []) {
-    const queue = this.getMutationQueue();
     const writes = [];
     entries.forEach((entry) => {
       const type = entry?.table;
@@ -596,42 +485,15 @@ export class BiddingModel {
         record.rowVersion = rowVersion;
         if (this.db.stores.includes(type)) writes.push(this.db.putRecord(type, record));
       }
-      if (queue.upserts?.[type]?.[id]) queue.upserts[type][id].rowVersion = rowVersion;
     });
-    this._saveMutationQueue(queue);
+    this._getMutationOutbox().enqueue({ kind: "server-row-version", entries });
     await Promise.all(writes);
   }
   clearCommittedMutationBatch(snapshot) {
-    const current = this.getMutationQueue();
-    if (!snapshot || current.clientMutationId === snapshot.clientMutationId && current.revision === snapshot.revision) {
-      this._mutationBatch = null;
-      this._localDeletions = [];
-      this._notifyMutationQueueChanged(this._emptyMutationQueue());
-      return;
-    }
-    Object.entries(snapshot.upserts || {}).forEach(([type, recordsById]) => {
-      Object.entries(recordsById || {}).forEach(([id, record]) => {
-        const currentRecord = current.upserts?.[type]?.[id];
-        if (JSON.stringify(currentRecord) === JSON.stringify(record)) {
-          delete current.upserts[type][id];
-        }
-      });
-      if (current.upserts?.[type] && Object.keys(current.upserts[type]).length === 0) {
-        delete current.upserts[type];
-      }
-    });
-    current.deletes = (current.deletes || []).filter(
-      (item) => !(snapshot.deletes || []).some((oldItem) => oldItem.table === item.table && String(oldItem.id) === String(item.id))
-    );
-    this._saveMutationQueue(current);
-    this._localDeletions = current.deletes || [];
+    return this._getMutationOutbox().ack(snapshot);
   }
   discardMutationBatch() {
-    this._mutationBatch = null;
-    this._localDeletions = [];
-    this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
-    this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
-    this._notifyMutationQueueChanged(this._emptyMutationQueue());
+    return this._getMutationOutbox().discard();
   }
   suspendMutationTracking(callback) {
     this._suspendMutationTracking += 1;

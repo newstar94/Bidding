@@ -1,6 +1,5 @@
 from backend.db.db_helper import DatabaseError, IntegrityError
 import os
-import sys
 import json
 import uuid
 import time
@@ -8,7 +7,6 @@ import hashlib
 import urllib.parse
 import html
 from datetime import datetime, timezone
-from collections import defaultdict
 
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
@@ -38,7 +36,6 @@ from backend.auth.auth_helper import (
 )
 from backend.auth.session_store import (
     create_session,
-    hash_session_token,
     load_session_user,
     replace_user_session,
     revoke_session,
@@ -1971,7 +1968,6 @@ async def update_system_package_api(request):
         return _database_lane_unavailable_response(request, write=True)
 
 
-import re as _re
 from backend.auth.username_validator import validate_username
 
 def _set_username_sync(request, role_or_err, new_username):

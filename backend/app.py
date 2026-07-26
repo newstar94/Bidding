@@ -38,7 +38,6 @@ from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.responses import JSONResponse, HTMLResponse, Response, FileResponse
-from starlette.requests import Request
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -607,12 +606,17 @@ async def protected_image_api(request):
         allowed = cursor.fetchone() is not None
         if not allowed and rel_path.startswith('chuyen_gia/') and '_opt_' in filename:
             original_prefix = filename.split('_opt_', 1)[0]
+            managed_directory = os.path.dirname(stored_path).replace('\\', '/')
             cursor.execute(
                 """
                 SELECT 1 FROM chuyen_gia
                 WHERE organization_id = ? AND (anh_chung_chi LIKE ? OR anh_chu_ky LIKE ?)
                 """,
-                (organization_id, f'images/chuyen_gia/{original_prefix}.%', f'images/chuyen_gia/{original_prefix}.%')
+                (
+                    organization_id,
+                    f'{managed_directory}/{original_prefix}.%',
+                    f'{managed_directory}/{original_prefix}.%',
+                )
             )
             allowed = cursor.fetchone() is not None
         if not allowed:

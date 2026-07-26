@@ -16,6 +16,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from backend.auth.email_utils import gui_email
 from backend.shared.async_io import BlockingIOBusyError, run_blocking_io
+from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.logging_utils import log_error, log_structured_event
 
 
@@ -446,6 +447,11 @@ def process_next_email_delivery(database) -> bool:
 async def run_email_delivery_worker(database) -> None:
     """Continuously drain durable outbox rows across any number of web workers."""
 
+    backoff = idle_poll_backoff_from_env(
+        "EMAIL_OUTBOX_POLL_SECONDS",
+        "EMAIL_OUTBOX_MAX_POLL_SECONDS",
+        default_initial=5.0,
+    )
     while True:
         try:
             processed = await run_blocking_io(
@@ -460,17 +466,9 @@ async def run_email_delivery_worker(database) -> None:
         except Exception as exc:
             log_error(exc, "email_outbox_worker", level="WARN")
             processed = False
-        try:
-            idle_poll_seconds = max(
-                1.0,
-                min(
-                    30.0,
-                    float(os.environ.get("EMAIL_OUTBOX_POLL_SECONDS", "5")),
-                ),
-            )
-        except ValueError:
-            idle_poll_seconds = 5.0
-        await asyncio.sleep(0.05 if processed else idle_poll_seconds)
+        if processed:
+            backoff.reset()
+        await asyncio.sleep(0.05 if processed else backoff.next_delay())
 
 
 def fail_stale_email_deliveries(

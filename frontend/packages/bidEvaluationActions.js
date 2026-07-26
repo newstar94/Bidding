@@ -314,10 +314,13 @@ export async function saveDanhGiaHsdt() {
       : activeBlock);
   }
   const rows = this.view.getActiveElement("danhgiahsdt-table-tbody").querySelectorAll("tr");
+  const bidsById = new Map(
+    this.model.state.thongtinmothau.map((bid) => [String(bid.id || ""), bid]),
+  );
   const updatedBidsList = [];
   rows.forEach((tr) => {
     const bidId = tr.getAttribute("data-bid-id");
-    const bid = this.model.state.thongtinmothau.find((b) => b.id === bidId);
+    const bid = bidsById.get(String(bidId || ""));
     if (bid) {
       let giaDuThau = bid.giaDuThau;
       let tyLeGiamGia = bid.tyLeGiamGia;
@@ -365,7 +368,7 @@ export async function saveDanhGiaHsdt() {
   rows.forEach((tr) => {
     const bidId = tr.getAttribute("data-bid-id");
     if (!bidId) return;
-    const bid = this.model.state.thongtinmothau.find((b) => b.id === bidId);
+    const bid = bidsById.get(String(bidId));
     if (bid) {
       const finalRank = rankings[bid.id];
       if (is1G2T && this.currentDanhGiaTab === "financial") {

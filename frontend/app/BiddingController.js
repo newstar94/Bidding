@@ -23,6 +23,11 @@ import {
 } from "./workspaceState.js";
 import { apiFetch, configureApiClient } from "../shared/apiClient.js";
 import { showLotWinnersModal as renderLotWinnersModal } from "../packages/lotWinnersModal.js";
+import {
+  WorkflowModuleLoader,
+  workflowRequirementForMethod,
+  workflowRequirementForRoute,
+} from "./WorkflowModuleLoader.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -280,23 +285,50 @@ export class BiddingController {
   async reconcileInitialRouteData() {
     return reconcileRouteDataAtStartup(this);
   }
-  ensureWorkflowModules() {
-    if (!this._workflowModulesPromise) {
-      this._workflowModulesPromise = Promise.all([
-        import("../packages/BiddingWorkflows.js"),
-        import("../partners/PartnerWorkflows.js")
-      ]).then(([bidding, partner]) => {
-        installPrototypeModules(BiddingController, [
-          { name: "bidding-workflows", module: bidding },
-          { name: "partner-workflows", module: partner },
-        ]);
-        this._workflowModulesReady = true;
-      }).catch((err) => {
-        this._workflowModulesPromise = null;
-        throw err;
+  getWorkflowModuleLoader() {
+    if (!this._workflowModuleLoader) {
+      this._workflowModuleLoader = new WorkflowModuleLoader({
+        install: (name, module) => installPrototypeModules(BiddingController, [
+          { name, module },
+        ]),
       });
     }
-    return this._workflowModulesPromise;
+    return this._workflowModuleLoader;
+  }
+  isWorkflowRequirementReady(requirement) {
+    if (!requirement) return true;
+    if (this._workflowModulesReady) return true;
+    if (requirement === "bidding" && this._biddingWorkflowModulesReady) return true;
+    if (requirement === "partner" && this._partnerWorkflowModulesReady) return true;
+    return this.getWorkflowModuleLoader().isReady(requirement);
+  }
+  ensureWorkflowRequirement(requirement) {
+    if (!requirement) return Promise.resolve();
+    const promise = this.getWorkflowModuleLoader().ensure(requirement);
+    const promiseProperty = requirement === "all"
+      ? "_workflowModulesPromise"
+      : `_${requirement}WorkflowModulesPromise`;
+    this[promiseProperty] = promise;
+    return promise.then(() => {
+      this._biddingWorkflowModulesReady = this.getWorkflowModuleLoader().isReady("bidding");
+      this._partnerWorkflowModulesReady = this.getWorkflowModuleLoader().isReady("partner");
+      this._workflowModulesReady = this.getWorkflowModuleLoader().isReady("all");
+    }).catch((error) => {
+      this[promiseProperty] = null;
+      throw error;
+    });
+  }
+  ensureBiddingWorkflows() {
+    return this.ensureWorkflowRequirement("bidding");
+  }
+  ensurePartnerWorkflows() {
+    return this.ensureWorkflowRequirement("partner");
+  }
+  ensureWorkflowModules() {
+    return this.ensureWorkflowRequirement("all");
+  }
+  getWorkflowRequirementForRoute(tabName, action = null) {
+    return workflowRequirementForRoute(tabName, action);
   }
   getWorkflowDataKeys(methodName) {
     const dependencies = {
@@ -312,8 +344,9 @@ export class BiddingController {
     return keys ? this.model.loadStorageKeys(keys) : this.model.ensureAllDataLoaded();
   }
   ensureWorkflowReady(methodName) {
+    const requirement = workflowRequirementForMethod(methodName);
     return Promise.all([
-      this.ensureWorkflowModules(),
+      this.ensureWorkflowRequirement(requirement),
       this.ensureWorkflowData(methodName)
     ]);
   }
@@ -778,8 +811,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const initialPath = window.location.pathname;
     const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
     const routePreparationTasks = [this.view.ensureViewModules(initialTabName)];
-    if (["mothau", "danhgiahsdt", "goithau-detail"].includes(initialTabName) && !this._workflowModulesReady) {
-      routePreparationTasks.push(this.ensureWorkflowModules());
+    const initialWorkflowRequirement = this.getWorkflowRequirementForRoute(initialTabName);
+    if (!this.isWorkflowRequirementReady(initialWorkflowRequirement)) {
+      routePreparationTasks.push(this.ensureWorkflowRequirement(initialWorkflowRequirement));
     }
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
       routePreparationTasks.push(this.ensureLazyTab(initialTabName));

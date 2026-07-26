@@ -4,9 +4,11 @@
   isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
 
-function findOpeningPackage(controller) {
-  const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
-  const gtId = select ? select.value : controller._currentPackageId || "";
+function findOpeningPackage(controller, context = {}) {
+  const select = context.packageId
+    ? null
+    : document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
+  const gtId = context.packageId || (select ? select.value : controller._currentPackageId || "");
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   return { gtId, goiThau };
 }
@@ -27,12 +29,12 @@ function findEvaluationBid(controller, gtId, maNhaThau, tenNhaThau, maPhanLo, ha
     return matchNt;
   });
 }
-export async function parseOpeningFinancialImport(controller, rows) {
+export async function parseOpeningFinancialImport(controller, rows, context = {}) {
   if (!rows || rows.length === 0) {
     await controller.view.customAlert("Thất bại", "File Excel không có dữ liệu mở thầu tài chính!", "alert-triangle");
     return null;
   }
-  const { gtId, goiThau } = findOpeningPackage(controller);
+  const { gtId, goiThau } = findOpeningPackage(controller, context);
   if (!goiThau) {
     const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
     await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);
@@ -65,13 +67,13 @@ export async function parseOpeningFinancialImport(controller, rows) {
     };
   });
 }
-export async function parseBidEvaluationImport(controller, rows) {
+export async function parseBidEvaluationImport(controller, rows, context = {}) {
   if (!rows || rows.length === 0) {
     await controller.view.customAlert("Thất bại", "File Excel không có dữ liệu đánh giá HSDT!", "alert-triangle");
     return null;
   }
-  const select = document.getElementById("danhgiahsdt-goithau-select");
-  const gtId = select ? select.value : "";
+  const select = context.packageId ? null : document.getElementById("danhgiahsdt-goithau-select");
+  const gtId = context.packageId || (select ? select.value : "");
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) {
     await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);
@@ -92,7 +94,7 @@ export async function parseBidEvaluationImport(controller, rows) {
       : foundBid && !inSelectedScope
         ? "Dòng này thuộc phần lô ngoài phạm vi đợt đánh giá đang chọn."
         : "Không tìm thấy nhà thầu/lô tương ứng trong thông tin mở thầu của gói thầu này!";
-    if (controller.currentDanhGiaTab === "financial") {
+    if ((context.evaluationTab || controller.currentDanhGiaTab) === "financial") {
       const giaDuThauRaw = String(row["Giá dự thầu (VND)"] || row["Giá dự thầu (VND)"] || row["Giá dự thầu"] || row["Giá"] || "0").trim();
       const tyLeGiamRaw = String(row["Tỷ lệ %"] || row["Tỷ lệ giảm giá (%)"] || row["Tỷ lệ"] || "0").trim();
       const hieuLucHsdtRaw = String(row["Hiệu lực HSDT"] || row["Hiệu lực HSDT (ngày)"] || "").trim();
@@ -147,12 +149,12 @@ export async function parseBidEvaluationImport(controller, rows) {
     return rec;
   });
 }
-export async function parseAwardResultImport(controller, rows) {
+export async function parseAwardResultImport(controller, rows, context = {}) {
   if (!rows || rows.length === 0) {
     await controller.view.customAlert("Thất bại", "File Excel không có dữ liệu kết quả phê duyệt LCNT!", "alert-triangle");
     return null;
   }
-  const gtId = controller._currentResultPackageId;
+  const gtId = context.packageId || controller._currentResultPackageId;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) {
     const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");
@@ -209,13 +211,13 @@ export async function parseAwardResultImport(controller, rows) {
     };
   });
 }
-export async function parseOpeningImport(controller, rows) {
+export async function parseOpeningImport(controller, rows, context = {}) {
   if (!rows || rows.length === 0) {
     await controller.view.customAlert("Thất bại", "File Excel không có dữ liệu nhập mở thầu!", "alert-triangle");
     return null;
   }
-  const select = document.getElementById("mothau-goithau-select");
-  const gtId = select ? select.value : "";
+  const select = context.packageId ? null : document.getElementById("mothau-goithau-select");
+  const gtId = context.packageId || (select ? select.value : "");
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) {
     await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);

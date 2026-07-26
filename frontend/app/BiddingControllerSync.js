@@ -435,8 +435,10 @@ export function autoSync() {
       const validationErrors = getSyncValidationErrors(data);
       let rejectedRecords = [];
       if (status === 409 || data.status === "conflict") {
-        this.model?.discardMutationBatch?.();
-        this._syncConflict = null;
+        this._syncConflict = {
+          serverSyncVersion: data.currentSyncVersion ?? null,
+          message: data.message || data.error || "Server data changed before local sync."
+        };
         this.updateSyncState({ phase: "conflict" });
         console.warn("[Sync Conflict]", data.message || data.error || "Server data changed before local sync.");
         if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
@@ -449,11 +451,12 @@ export function autoSync() {
             "warning"
           );
         }
-        await this.forceSyncData(true, true);
         return { ok: false, status, data, conflict: true };
       }
       if (validationErrors.length > 0) {
-        rejectedRecords = typeof this.model?.discardRejectedMutations === "function" ? this.model.discardRejectedMutations(validationErrors) : [];
+        rejectedRecords = typeof this.model?.discardRejectedMutations === "function"
+          ? this.model.discardRejectedMutations(validationErrors, snapshot)
+          : [];
         const changedKeys = new Set();
         for (const rejected of rejectedRecords) {
           let serverRecord = null;
@@ -529,8 +532,6 @@ export function autoSync() {
         ? `${validationErrors.length} lỗi dữ liệu · Nhấn để xem`
         : data.error || data.message || "Lỗi đồng bộ";
       this.updateSyncState({ phase: "error", message: syncMessage });
-      this.model?.discardMutationBatch?.();
-      if (globalThis.navigator?.onLine !== false) await this.forceSyncData(true, true);
       return { ok: false, status, data, validation: validationErrors.length > 0 };
     }
     if (data.timestamp) {
@@ -597,7 +598,6 @@ export function autoSync() {
     return { ok: true, status, data };
   }).catch((err) => {
     console.error("Error auto sync:", err);
-    this.model?.discardMutationBatch?.();
     this.updateSyncState({ phase: "error", message: "Không thể kết nối máy chủ" });
     return { ok: false, error: err };
   });

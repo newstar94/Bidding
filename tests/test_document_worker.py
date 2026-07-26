@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
+import queue
 import shutil
 import subprocess
 import sys
+import threading
 import zipfile
 from io import BytesIO
 
@@ -41,6 +44,7 @@ from backend.documents.seccomp_policy import (
 )
 from backend.shared.paths import PROJECT_ROOT
 from scripts.run_document_worker import (
+    _run_worker_loop,
     _validate_document_worker_database_url,
     _validate_worker_secret_boundary,
 )
@@ -69,6 +73,70 @@ def _minimal_xlsx(extra_entries=None, *, content_types=None) -> bytes:
         for name, content in extra_entries or []:
             archive.writestr(name, content)
     return output.getvalue()
+
+
+def test_embedded_document_worker_backoff_resets_after_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DOCUMENT_JOB_POLL_SECONDS", "1")
+    monkeypatch.setenv("DOCUMENT_JOB_MAX_POLL_SECONDS", "8")
+    monkeypatch.setenv("WORKER_IDLE_POLL_JITTER_RATIO", "0")
+    outcomes = iter([False, False, True, False])
+    sleeps = []
+
+    async def next_outcome(*_args, **_kwargs):
+        return next(outcomes)
+
+    async def record_sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 4:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(document_worker.asyncio, "to_thread", next_outcome)
+    monkeypatch.setattr(document_worker.asyncio, "sleep", record_sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(document_worker.run_durable_document_queue_worker(object()))
+
+    assert sleeps == [1.0, 2.0, 0.1, 1.0]
+
+
+def test_external_document_worker_wait_is_stoppable_and_resets_after_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import run_document_worker as worker_script
+
+    monkeypatch.setenv("DOCUMENT_JOB_POLL_SECONDS", "1")
+    monkeypatch.setenv("DOCUMENT_JOB_MAX_POLL_SECONDS", "8")
+    monkeypatch.setenv("WORKER_IDLE_POLL_JITTER_RATIO", "0")
+    outcomes = iter([False, False, True, False])
+    waits = []
+    stop_event = threading.Event()
+
+    def process(_database):
+        return next(outcomes)
+
+    original_wait = stop_event.wait
+
+    def record_wait(seconds):
+        waits.append(seconds)
+        if len(waits) == 3:
+            stop_event.set()
+            return True
+        return original_wait(0)
+
+    monkeypatch.setattr(
+        worker_script,
+        "process_next_durable_document_job",
+        process,
+    )
+    monkeypatch.setattr(stop_event, "wait", record_wait)
+    monkeypatch.setattr(worker_script.time, "sleep", lambda _seconds: None)
+    failures: queue.Queue[BaseException] = queue.Queue()
+
+    _run_worker_loop(object(), stop_event, failures)
+
+    assert waits == [1.0, 2.0, 1.0]
+    assert failures.empty()
 
 
 def _mark_first_entry_encrypted(content: bytes) -> bytes:
@@ -207,7 +275,7 @@ def test_external_web_consumer_never_claims_or_executes_job(
     monkeypatch.setattr(document_worker, "_read_result", lambda *_args: b"result")
     monkeypatch.setattr(
         document_worker,
-        "_delete_terminal_document_job",
+        "_delete_consumed_completed_document_job",
         lambda *_args, **_kwargs: True,
     )
 

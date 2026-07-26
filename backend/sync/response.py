@@ -15,6 +15,7 @@ def commit_sync_response(
     actor_role,
     current_time,
     client_mutation_id,
+    request_hash,
     include_dashboard_summary,
     updated_row_versions,
     delete_impacts,
@@ -38,14 +39,15 @@ def commit_sync_response(
     if client_mutation_id:
         cursor.execute(
             "INSERT INTO sync_mutations "
-            "(organization_id, actor_user_id, client_mutation_id, response_json) "
-            "VALUES (?, ?, ?, ?) "
+            "(organization_id, actor_user_id, client_mutation_id, request_hash, response_json) "
+            "VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT (organization_id, actor_user_id, client_mutation_id) "
-            "DO UPDATE SET response_json = EXCLUDED.response_json, created_at = CURRENT_TIMESTAMP",
+            "DO NOTHING",
             (
                 organization_id,
                 actor_user_id,
                 client_mutation_id,
+                request_hash,
                 json.dumps(response),
             ),
         )

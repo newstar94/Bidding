@@ -28,6 +28,7 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
   if (!usesServerPagination && typeof afterPersist === "function") {
     await afterPersist();
   }
+  await controller.model?.flushMutationOutbox?.();
   const syncResult = typeof controller.autoSync === "function"
     ? await controller.autoSync()
     : { ok: true };

@@ -1,6 +1,7 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
+import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import {
   createCompactSidebarMediaQuery,
   createSidebarMediaQuery,
@@ -364,9 +365,11 @@ export function switchTab(tabName, action = null, updateState = true, transition
       this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
   }
-  const workflowTabs = ["mothau", "danhgiahsdt", "goithau-detail"];
-  if (!this._workflowModulesReady && (action === "taomoi" || workflowTabs.includes(tabName))) {
-    return this.ensureWorkflowModules().then(() => {
+  const workflowRequirement = workflowRequirementForRoute(tabName, action);
+  const workflowReady = this._workflowModulesReady
+    || this.isWorkflowRequirementReady?.(workflowRequirement);
+  if (!workflowReady) {
+    return this.ensureWorkflowRequirement(workflowRequirement).then(() => {
       if (!isCurrentTransition()) return;
       return this.switchTab(tabName, action, updateState, transitionVersion);
     }).catch((err) => {

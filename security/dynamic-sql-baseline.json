@@ -1,8 +1,12 @@
 {
   "files": {
+    "backend/api/org_routes.py": {
+      "count": 1,
+      "sha256": "89250a7085951d53edd66ea9741c9fd268d27dbfb23dfd4f68fa8aabae3319fa"
+    },
     "backend/auth/admin_user_routes.py": {
       "count": 5,
-      "sha256": "36ff0f50d2e5eac965904035c70c3a4dce0a2c694c7fa9d04af069bcbc53c3bd"
+      "sha256": "f2e015cdf7dde485b536fe40d370c42935b2f569c4c1e3250d52a1c70a2c42fa"
     },
     "backend/auth/auth_routes.py": {
       "count": 1,
@@ -10,15 +14,27 @@
     },
     "backend/db/db_utils.py": {
       "count": 2,
-      "sha256": "e80160242376f23c40dc1b4c9affff35fce900546b3ae3b2ac6e2959e7835169"
+      "sha256": "87f81004fe5564d1dc7fcbc4e781ee7534062f4db4de2e5d1841373fe0ad29be"
     },
     "backend/db/postgres_schema.py": {
-      "count": 17,
-      "sha256": "e5e32e6ff011a5c2012b3a946b4f029785009be386fd2d0fef552fc921881599"
+      "count": 21,
+      "sha256": "b69a7d2f40331b278eb09c448498eb31f74f4403b06dcab3c3027b6618d83cef"
+    },
+    "backend/db/upgrades.py": {
+      "count": 2,
+      "sha256": "857efce043a7d1b4fad4dac0b079f0c1d2dc45f624fd45a018510e6be76138c8"
     },
     "backend/documents/docx_service.py": {
       "count": 1,
       "sha256": "5210a2d364440916a6652537bdee0a515338f737526c05857af13001610ec38e"
+    },
+    "backend/lot_lifecycle_service.py": {
+      "count": 3,
+      "sha256": "b657fab8b75fab2815b54248ba80b3b7829f94cae93b8323a6668070570e3426"
+    },
+    "backend/notifications/service.py": {
+      "count": 1,
+      "sha256": "5552d9488d88b99589cc3db913347a1fd269273fb10bd9e42e4865db505c791e"
     },
     "backend/shared/access_policy.py": {
       "count": 7,
@@ -26,7 +42,7 @@
     },
     "backend/sync/dashboard_summary.py": {
       "count": 11,
-      "sha256": "8619c9bdb9dffccebea44b9727c12ff5cc4720e93cdb5f2e4c8898a8b10c24a5"
+      "sha256": "2580983ac7aed35b4ee8509d1366daade835fcc538db892dafddc247872ff6ee"
     },
     "backend/sync/delete_policy.py": {
       "count": 2,
@@ -37,8 +53,8 @@
       "sha256": "576c5b3f1f21f0d028b42616b8c7d5218ac6cdedc1ca2e2aed0e591059e5bfa0"
     },
     "backend/sync/mapper.py": {
-      "count": 5,
-      "sha256": "03b714366174e48d55004526a75103eee7e5b1a77a20479835001ed707e48974"
+      "count": 6,
+      "sha256": "c5687977b644c63bf7ff20ab2cb9f4c2bbc006463d22653ad061fca904273ae0"
     },
     "backend/sync/opening_uniqueness.py": {
       "count": 2,
@@ -60,9 +76,17 @@
       "count": 6,
       "sha256": "52c598e51456910774966d0c67635102402ccc147d49f8303f7983e89a5676d8"
     },
-    "backend/sync/service.py": {
-      "count": 10,
-      "sha256": "8c614fc7e5f2d7aa4b33f025be7eaa562f9ac65e4770a42df6efeeca33c4f2e8"
+    "backend/sync/record_serializer.py": {
+      "count": 2,
+      "sha256": "869015bc95deb16af29da45eb1d1adf9d0126416ff2bd9b8911e7b323edb9acb"
+    },
+    "backend/sync/record_validator.py": {
+      "count": 2,
+      "sha256": "1b4e203b7bf64c8213bca829aa16bb4cedd5538974e33aeabdc10c24ff061b31"
+    },
+    "backend/sync/record_writer.py": {
+      "count": 4,
+      "sha256": "521bce29b50182280a25517073a355d0fc0064688a14b954822f9ab2b84a0a1b"
     },
     "backend/sync/websocket.py": {
       "count": 1,

@@ -36,7 +36,13 @@ from backend.auth.email_utils import EmailDeliveryResult
 from backend.observability import metrics
 from backend.partners import partner_lookup_service
 from backend.documents import document_worker
-from backend.shared.audit_chain import insert_audit_row, inspect_audit_chain
+from backend.shared.audit_chain import (
+    build_audit_checkpoint,
+    insert_audit_row,
+    inspect_audit_chain,
+    inspect_audit_chain_against_checkpoint,
+    inspect_audit_chain_incremental,
+)
 from backend.shared.audit_monitor import _inspect_database
 from backend.sync.repository import next_sync_version
 from backend.sync import mapper
@@ -942,7 +948,7 @@ def test_document_job_survives_stale_worker_claim(
         ).fetchone() is None
 
 
-def test_failed_document_job_retires_private_files_after_error_is_consumed(
+def test_failed_document_job_retains_private_files_and_metadata_after_error_is_consumed(
     postgres_database: PostgresDatabase,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -975,7 +981,8 @@ def test_failed_document_job_retires_private_files_after_error_is_consumed(
         postgres_database,
         claimed,
     )
-    assert not job_dir.exists()
+    assert job_dir.is_dir()
+    assert (job_dir / "input.json").is_file()
     with postgres_database.get_connection() as connection:
         assert connection.execute(
             "SELECT status FROM document_jobs WHERE id = ?",
@@ -989,10 +996,69 @@ def test_failed_document_job_retires_private_files_after_error_is_consumed(
             timeout_seconds=5,
         )
     with postgres_database.get_connection() as connection:
-        assert connection.execute(
-            "SELECT 1 FROM document_jobs WHERE id = ?",
+        failed = connection.execute(
+            """SELECT status, last_error_code, last_error_message
+               FROM document_jobs WHERE id = ?""",
             (job_id,),
-        ).fetchone() is None
+        ).fetchone()
+    assert failed["status"] == "failed"
+    assert failed["last_error_code"] == "DocumentWorkerInputError"
+    assert failed["last_error_message"]
+    assert job_dir.is_dir()
+
+
+def test_failed_document_job_can_be_retried_once_by_an_operator(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(
+        "DOCUMENT_WORKER_TEMP_DIR",
+        str(tmp_path / "retry-document-jobs"),
+    )
+    monkeypatch.setenv("DOCUMENT_JOB_MAX_ATTEMPTS", "1")
+    job_id = document_worker._enqueue_durable_document_job(
+        "test_delay",
+        {"seconds": 0},
+        database=postgres_database,
+    )
+
+    def fail_once(*_args, **_kwargs):
+        raise document_worker.DocumentWorkerError("temporary conversion failure")
+
+    monkeypatch.setattr(document_worker, "run_document_job", fail_once)
+    claimed = document_worker._claim_durable_document_job(postgres_database, job_id)
+    assert claimed is not None
+    document_worker._process_claimed_document_job(postgres_database, claimed)
+
+    assert document_worker.retry_failed_durable_document_job(
+        postgres_database,
+        job_id,
+    ) is True
+    assert document_worker.retry_failed_durable_document_job(
+        postgres_database,
+        job_id,
+    ) is False
+    with postgres_database.get_connection() as connection:
+        retrying = connection.execute(
+            """SELECT status, attempt_count, last_error_message
+               FROM document_jobs WHERE id = ?""",
+            (job_id,),
+        ).fetchone()
+    assert retrying["status"] == "retry"
+    assert retrying["attempt_count"] == 0
+    assert retrying["last_error_message"] == "temporary conversion failure"
+
+    monkeypatch.setattr(document_worker, "run_document_job", lambda *_args, **_kwargs: True)
+    retried = document_worker._claim_durable_document_job(postgres_database, job_id)
+    assert retried is not None
+    document_worker._process_claimed_document_job(postgres_database, retried)
+    assert document_worker._consume_durable_document_result(
+        job_id,
+        database=postgres_database,
+        timeout_seconds=5,
+    ) is True
 
 
 def test_tampered_completed_document_result_is_rejected_and_cleaned(
@@ -1064,6 +1130,116 @@ def test_audit_checkpoint_export_has_one_cluster_leader(
     checkpoints = list(destination.rglob("audit-checkpoint-*.json"))
     assert len(checkpoints) == 1
     assert checkpoints[0].parent.parent == destination
+
+
+def test_incremental_audit_verification_scans_only_checkpoint_anchors_and_tail(
+    postgres_database: PostgresDatabase,
+) -> None:
+    connection = postgres_database.get_connection()
+    try:
+        cursor = connection.cursor()
+        insert_audit_row(
+            cursor,
+            organization_id="org-incremental-existing-anchor",
+            action="anchor.before_checkpoint",
+        )
+        full_before = inspect_audit_chain(cursor)
+        checkpoint = build_audit_checkpoint(
+            cursor,
+            hmac_key="test-incremental-audit-key-" + ("x" * 32),
+            verification=full_before,
+        )
+        chain_id = "org-incremental-audit-verification"
+        insert_audit_row(
+            cursor,
+            organization_id=chain_id,
+            action="incremental.first",
+            target_type="test",
+            target_id="first",
+        )
+        insert_audit_row(
+            cursor,
+            organization_id=chain_id,
+            action="incremental.second",
+            target_type="test",
+            target_id="second",
+        )
+
+        class TracingCursor:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+                self.statements = []
+
+            def execute(self, statement, parameters=()):
+                self.statements.append(" ".join(str(statement).split()))
+                return self.wrapped.execute(statement, parameters)
+
+        tracing = TracingCursor(cursor)
+        incremental = inspect_audit_chain_incremental(
+            tracing,
+            checkpoint,
+            hmac_key="test-incremental-audit-key-" + ("x" * 32),
+        )
+        full_after = inspect_audit_chain(cursor)
+
+        assert incremental.valid
+        assert incremental.row_count == full_after.row_count
+        assert incremental.last_hash == full_after.last_hash
+        assert incremental.heads == full_after.heads
+        assert any("FROM audit_log WHERE id = ANY" in sql for sql in tracing.statements)
+        assert any("FROM audit_log WHERE id >" in sql for sql in tracing.statements)
+        assert not any("SELECT count(*) FROM audit_log" in sql for sql in tracing.statements)
+        assert not any(
+            "FROM audit_log ORDER BY chain_id, sequence" in sql
+            for sql in tracing.statements
+        )
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_incremental_audit_checkpoint_cannot_hide_anchor_rollback(
+    postgres_database: PostgresDatabase,
+) -> None:
+    connection = postgres_database.get_connection()
+    try:
+        cursor = connection.cursor()
+        insert_audit_row(
+            cursor,
+            organization_id="org-incremental-anchor-rollback",
+            action="anchor.created",
+        )
+        checkpoint = build_audit_checkpoint(
+            cursor,
+            hmac_key="test-incremental-audit-key-" + ("x" * 32),
+        )
+        anchor = next(
+            head
+            for head in checkpoint["heads"]
+            if head["chainId"] == "org-incremental-anchor-rollback"
+        )
+        cursor.execute(
+            "ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable"
+        )
+        cursor.execute("DELETE FROM audit_log WHERE id = ?", (anchor["id"],))
+
+        incremental = inspect_audit_chain_incremental(
+            cursor,
+            checkpoint,
+            hmac_key="test-incremental-audit-key-" + ("x" * 32),
+        )
+        full = inspect_audit_chain_against_checkpoint(
+            cursor,
+            checkpoint,
+            hmac_key="test-incremental-audit-key-" + ("x" * 32),
+        )
+
+        assert not incremental.valid
+        assert incremental.failure == "checkpoint_head_missing"
+        assert not full.valid
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 def test_async_document_submission_uses_durable_queue(

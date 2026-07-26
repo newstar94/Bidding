@@ -30,22 +30,21 @@ Nguyên tắc bắt buộc:
 | Thứ tự | PR | Ưu tiên | Phụ thuộc |
 |---:|---|---|---|
 | 0 | Khôi phục release gate | P0 | Không |
-| 1 | Schema compatibility fail-closed | P0 | PR 0 |
-| 2 | Bảo toàn/khôi phục migration v11 | P0 | PR 1 |
 | 3A | Characterization sync failure | P0 | PR 0 |
 | 3B | Persistent mutation outbox | P0 | PR 3A |
 | 4 | Tenant-scoped media paths | P0 | PR 0 |
 | 5 | Đồng bộ data contract đánh giá chi tiết | P0/P1 | PR 0 |
 | 6A | Immutable Excel import context | P1 | PR 0 |
 | 6B | Deep module import muasamcong + contractor identity | P1 | PR 6A |
-| 7 | Contract–award–lot integrity | P1 | Quyết định nghiệp vụ/pháp chế |
 | 8A | Sparse update semantics | P1 | PR 3A |
 | 8B | Idempotency request hash | P1 | PR 8A |
-| 9 | Failed document job retention/retry | P1 | PR 0 |
+| 9 | Failed document job retention/retry | P0 | PR 0 |
 | 10 | Deepen sync transaction module | P2 | PR 3B, 8A, 8B |
-| 11 | Tách các god render và shared rules | P2 | PR 5, 6B, 7 |
+| 11 | Tách các god render và shared rules | P2 | PR 5, 6B |
 | 12 | Tối ưu theo benchmark | P3 | Baseline E2E/load hoàn chỉnh |
 | 13 | Cleanup code chết và tài liệu kiến trúc | P3 | Các PR correctness ổn định |
+
+Ba đề xuất cũ không còn là PR implementation: chặn schema mới hơn, khôi phục “Trạng thái hồ sơ giấy” và ràng buộc hợp đồng với nhà thầu trúng. Các quyết định NV1–NV3 đã được chốt là hành vi nghiệp vụ chủ ý.
 
 ## 3. PR 0 — Khôi phục release gate
 
@@ -92,97 +91,17 @@ Revert từng hunk độc lập; giữ lockfile cũ nếu audit chưa có bản 
 
 M — 2–4 ngày, tách tối thiểu 3 commit/PR nhỏ.
 
-## 4. PR 1 — Schema compatibility fail-closed
+## 4. Quyết định NV1 — Cho phép code cũ chạy với schema mới hơn
 
-**Problem**
+**Trạng thái: Đã chốt, không tạo PR chặn schema mới hơn.**
 
-Code cũ hiện chấp nhận mọi database schema mới hơn.
+Giữ hành vi startup/readiness hiện tại: schema thấp hơn phiên bản code yêu cầu vẫn bị chặn; schema bằng hoặc cao hơn được phép chạy. Không hạ schema metadata và không sửa migration đã áp dụng. Test phải khóa đúng hành vi này để tránh tái đưa cơ chế fail-closed vào sau này. Chi tiết tại `docs/adr/0001-allow-newer-database-schema.md`.
 
-**Current behavior**
+## 5. Quyết định NV2 — Không khôi phục “Trạng thái hồ sơ giấy”
 
-`verify_database_readiness` và readiness probe chỉ reject schema thấp hơn; migration runner lại reject schema cao hơn.
+**Trạng thái: Đã chốt, hủy đề xuất preservation/recovery migration v11.**
 
-**Target design**
-
-Module `SchemaCompatibilityPolicy` có interface nhỏ:
-
-`evaluate({installedVersion, applicationVersion, declaredRange}) -> {compatible, reason, guidance}`
-
-Mặc định `declaredRange=[applicationVersion, applicationVersion]`. Một release chỉ khai báo range rộng hơn sau contract test. Startup/readiness/migrator dùng cùng policy.
-
-**Files affected**
-
-`backend/startup.py`, `backend/db/upgrades.py` hoặc module policy mới, `backend/lifecycle.py`, tests startup/migration, deployment docs.
-
-**Refactor steps**
-
-1. Viết test đỏ cho installed 18 / app 17 bị reject mặc định.
-2. Tách pure policy; không đưa database adapter vào interface.
-3. Dùng policy từ readiness và startup.
-4. Giữ auto migration opt-in; error hướng dẫn deploy đúng code, tuyệt đối không hạ metadata.
-5. Ghi ADR compatibility range.
-
-**Tests required**
-
-Older/equal/newer, declared compatible range, metadata missing, readiness parity, fresh schema và upgrade schema.
-
-**Risk**
-
-Medium: rollout đang dựa vào hành vi fail-open có thể ngừng startup; đây là dừng an toàn có chủ đích.
-
-**Rollback**
-
-Rollback binary, không sửa metadata. Nếu cần zero-downtime, deploy code tương thích trước rồi migration.
-
-**Estimated complexity**
-
-S–M — 1–2 ngày.
-
-## 5. PR 2 — Bảo toàn và khôi phục migration v11
-
-**Problem**
-
-v11 drop dữ liệu trạng thái hồ sơ giấy mà không archive.
-
-**Current behavior**
-
-Database chưa qua v11 sẽ chạy destructive statements; database đã qua v11 chỉ có thể phục hồi từ backup.
-
-**Target design**
-
-- Không sửa function v11 đã áp dụng.
-- Migration runner có pre-upgrade preservation hook khi `current_version < 11`, tạo backup table/versioned export trước khi gọi v11.
-- Migration mới v18 tạo vùng tương thích/khôi phục có audit metadata.
-- Runbook chỉ dẫn extract từ backup cho database đã qua v11.
-
-**Files affected**
-
-`backend/db/upgrades.py` chỉ để đăng ký migration mới/hook mới, `scripts/manage_database.py`, tests migration, deploy runbook.
-
-**Refactor steps**
-
-1. Chụp canonical legacy fixture v10 có dữ liệu khác rỗng.
-2. Viết test đỏ chứng minh giá trị mất.
-3. Thêm preflight backup ngoài implementation v11.
-4. Thêm v18 forward migration/schema hỗ trợ import recovery.
-5. Thêm dry-run/report và backup-required check.
-6. Viết hướng dẫn đã-upgrade/chưa-upgrade riêng.
-
-**Tests required**
-
-v10→current có dữ liệu, v11→current, fresh current, retry idempotent, rollback transaction, backup restore.
-
-**Risk**
-
-High: migration và recovery data.
-
-**Rollback**
-
-Backup bắt buộc; migration mới chỉ additive; rollback ứng dụng không xóa backup table.
-
-**Estimated complexity**
-
-L — 4–7 ngày cộng diễn tập staging.
+“Trạng thái hợp đồng” là trạng thái nghiệp vụ duy nhất còn dùng. Không thêm backup table, migration khôi phục hay cơ chế đồng bộ hai trạng thái; đặc biệt không chỉnh migration v11 đã áp dụng. Chi tiết tại `docs/adr/0002-retire-paper-file-status.md`.
 
 ## 6. PR 3A — Characterization sync failure
 
@@ -350,11 +269,12 @@ Cùng invariant được chia sẻ qua contract test frontend/backend: detail c�
 2. Bỏ backend invariant detail reason, không drop column.
 3. Mô tả ownership của summary fields.
 4. Bảo toàn payload cũ và unknown extension.
-5. Xác nhận `nguoi_cham_id` luôn gắn actor hợp lệ và không cần trường UI.
+5. Ngừng yêu cầu và tự điền `nguoi_cham_id`; tiếp tục đọc payload/dữ liệu legacy có trường này trong giai đoạn tương thích.
+6. Chỉ loại cột vật lý bằng một migration mới sau khi đã xác nhận không còn consumer legacy; không sửa migration đã áp dụng.
 
 **Tests required**
 
-Fail không reason, not-applicable note, score bounds, parent aggregation, payload cũ/mới, save/reload, active reviewer tenant.
+Fail không reason, not-applicable note, score bounds, parent aggregation, payload cũ/mới có/không có `nguoi_cham_id`, save/reload.
 
 **Risk**
 
@@ -430,7 +350,7 @@ Một in-process deep module:
 
 `prepareDetailedEvaluationImport({sheets, context}) -> ImportDecision`
 
-`ImportDecision` chỉ có `accepted` hoặc `rejected`, identity evidence, criteria, rows, warnings và selected sheets. Module tự xử lý:
+`ImportDecision` có `ready`, `confirmation_required` hoặc `rejected`, kèm identity evidence, criteria, rows, warnings và selected sheets. `rejected` chỉ dùng cho file không thể đọc/diễn giải; sai, thiếu hoặc xung đột tên nhà thầu dùng `confirmation_required`. Module tự xử lý:
 
 - mẫu theo tư vấn/hàng hóa/xây lắp/hỗn hợp/phi tư vấn;
 - 1G1T, 1G2T kỹ thuật/tài chính, quy trình 1/2, phân lô;
@@ -450,13 +370,13 @@ File reader là adapter ngoài module; parser thuần không cần port giả.
 1. Chuyển 6 workbook người dùng thành sanitized fixtures hoặc fixture builders.
 2. Viết matrix test trước.
 3. Tách identity extraction không phụ thuộc sheet mapping.
-4. Fail closed cho workbook muasamcong thiếu/xung đột/sai identity.
-5. Chỉ mutate draft sau `accepted`; lưu import provenance.
+4. Với workbook thiếu/xung đột/sai identity, hiện rõ tên trong Excel và tên nhà thầu đang chọn, cho người dùng chọn “Vẫn nhập” hoặc “Hủy”.
+5. Chỉ mutate draft sau `ready` hoặc sau khi người dùng xác nhận “Vẫn nhập”; lưu import provenance và cảnh báo đã được xác nhận.
 6. Giữ custom-template path riêng, không tự suy là muasamcong.
 
 **Tests required**
 
-14A/B/C/D; hàng hóa/xây lắp/hỗn hợp/phi tư vấn/tư vấn; 1G1T/1G2T; quy trình 1/2; phân lô; independent/JV; đúng/sai/mất identity; accent/dash/case; multi-sheet conflicting name; no-mutation rejection.
+14A/B/C/D; hàng hóa/xây lắp/hỗn hợp/phi tư vấn/tư vấn; 1G1T/1G2T; quy trình 1/2; phân lô; independent/JV; đúng/sai/mất identity; accent/dash/case; multi-sheet conflicting name; “Vẫn nhập”/“Hủy”; không mutate trước xác nhận.
 
 **Risk**
 
@@ -470,53 +390,11 @@ Giữ parser hiện tại sau feature flag trong một release; compare decision
 
 XL — 7–10 ngày, chia recognition/identity và mapping/application thành hai PR.
 
-## 12. PR 7 — Contract–award–lot integrity
+## 12. Quyết định NV3 — Liên kết hợp đồng không bị ràng buộc bởi nhà thầu trúng
 
-**Problem**
+**Trạng thái: Đã chốt, hủy đề xuất Contract–award–lot integrity.**
 
-Hợp đồng không xác nhận winner/lot.
-
-**Current behavior**
-
-UI lọc theo plan; DB trigger chỉ kiểm tra same-plan lineage.
-
-**Target design**
-
-Link hợp đồng tham chiếu stable award result + lot identity. Invariant:
-
-- result final;
-- contractor hợp đồng khớp winner của từng lot;
-- package-level award dùng explicit whole-package scope;
-- direct/special selection đi qua exception type được pháp chế chấp thuận.
-
-**Files affected**
-
-Contract UI/workflow, schema canonical, PostgreSQL trigger, migration mới, mapper/sync, document context, tests/research ADR.
-
-**Refactor steps**
-
-1. Chốt câu hỏi pháp chế về direct appointment và multi-lot contract.
-2. Characterize dữ liệu contract hiện có.
-3. Thêm nullable compatibility columns/link table bằng migration mới.
-4. Backfill có báo cáo unmatched; không đoán winner.
-5. Enforce UI rồi backend rồi DB constraint/trigger.
-6. Mở hard enforcement sau staging audit.
-
-**Tests required**
-
-Whole package, multi-lot multi-winner, wrong contractor, canceled/reopened result, exception, old payload, tenant cross-link.
-
-**Risk**
-
-High: nghiệp vụ hợp đồng và migration.
-
-**Rollback**
-
-Enforcement feature flag; schema additive; giữ old links đến khi backfill xác nhận.
-
-**Estimated complexity**
-
-XL — 10–15 ngày sau quyết định nghiệp vụ.
+Liên kết hợp đồng–gói thầu là quan hệ quản lý, không phải bằng chứng kết quả lựa chọn nhà thầu. Không thêm validation hoặc constraint bắt buộc nhà thầu trên hợp đồng phải là nhà thầu trúng của gói/phần lô. Các kiểm tra tenant và tính tồn tại của liên kết vẫn phải giữ. Chi tiết tại `docs/adr/0003-contract-package-link-is-not-award-constrained.md`.
 
 ## 13. PR 8A — Sparse update semantics
 
@@ -621,7 +499,7 @@ Final failure xóa job directory; consumer xóa DB row.
 
 **Target design**
 
-Failed job metadata/input immutable được quarantine với TTL, encryption/permission hiện có, size quota và audit. Ops command retry tạo attempt mới gắn parent job; purge là thao tác riêng, idempotent và logged.
+Failed job metadata/input immutable được giữ để tra cứu và chạy lại, với TTL cấu hình được, encryption/permission hiện có, size quota và audit. Ops command retry tạo attempt mới gắn parent job; purge là thao tác riêng, idempotent và logged.
 
 **Files affected**
 
@@ -629,7 +507,7 @@ Failed job metadata/input immutable được quarantine với TTL, encryption/pe
 
 **Refactor steps**
 
-1. Chốt retention và dữ liệu nào được phép giữ.
+1. Chốt thời hạn retention, quota và dữ liệu nhạy cảm nào được phép giữ; không thay đổi yêu cầu phải giữ failed job.
 2. Sửa test đang codify deletion.
 3. Giữ failed record + sidecar hash.
 4. Tạo retry/purge commands.
@@ -652,6 +530,8 @@ Tắt retry command, giữ metadata; purge theo runbook có audit, không tự �
 L — 4–6 ngày.
 
 ## 16. PR 10 — Deepen sync transaction module
+
+**Trạng thái triển khai 2026-07-26:** Hoàn thành giai đoạn deepening đã hoạch định. HTTP adapter và toàn bộ characterization test dùng seam công khai `execute_sync_mutation`; alias private đã xóa. Typed context cùng các stage actor/idempotency, transaction recheck, post-commit/rollback, assignment augmentation, payload index, validation, uniqueness, serialization, optimistic writer và mutation tracking đã được tách. Orchestrator còn khoảng 335 dòng và không chứa dynamic SQL; transaction boundary vẫn duy nhất.
 
 **Problem**
 
@@ -709,6 +589,8 @@ XL — 3–5 PR, tổng 10–15 ngày.
 
 ## 17. PR 11 — Tách god render và shared domain rules
 
+**Trạng thái triển khai 2026-07-26:** Các lát Award Result, Bid Evaluation, Detailed Evaluation và Package Detail đã hoàn thành. `AwardResultDetailsPanel.js` giảm 1.477 → 220 dòng; `BidEvaluationWorkflow.js` giảm 1.264 → 192 dòng; `DetailedEvaluationWorkflow.js` giảm 1.004 → 192 dòng; `GoiThauDetail.js` giảm 829 → 194 dòng. Package Detail đã tách pure view-model, header/version/tab controller, opening/invitation panel, qualified approval panel và financial opening panel. Lookup Bid Evaluation O(n²) đã được thay bằng bid index, các yêu cầu ranking liên tiếp được batch theo frame và save biên bản mở tài chính theo lô chỉ còn một lượt persist/sync. Các god render ngoài danh sách file mục tiêu của PR 11 sẽ được đánh giá riêng, không mở rộng PR này.
+
 **Problem**
 
 Render function dài hơn 1.000 dòng, event/rule/mutation trộn nhau; trạng thái chuỗi lặp rộng.
@@ -755,6 +637,8 @@ XL — nhiều PR 3–5 ngày mỗi god function.
 
 ## 18. PR 12 — Tối ưu theo benchmark
 
+**Trạng thái triển khai 2026-07-26:** Lookup/ranking và outbox đã tối ưu ở các lát trước. Detailed-evaluation write đã prefetch toàn bộ criterion được yêu cầu và existing detail của report bằng hai query tenant-scoped, sau đó batch upsert qua `executemany`; characterization 10/100/1.000 dòng khóa statement logic phần detail từ `3R + 1` xuống `R + 3`. Document, email và partner worker đã dùng chung `IdlePollBackoff`; mô phỏng fixed-5-second worker giảm khoảng 46,9–47,2% claim attempt. Audit monitor đã dùng incremental checkpoint verification giữa các lần full scan: anchor + tail + materialized heads, tự fallback về checkpoint-protected full scan khi bất nhất; startup và checkpoint export vẫn full. Workflow loader đã tách bidding/partner theo route và method, giữ aggregate interface tương thích, dùng chung concurrent promise và retry được sau chunk failure. Secure artifact chứng minh route bidding không còn yêu cầu chunk partner 61.590 B raw/14.071 B gzip và thao tác tạo partner không còn yêu cầu chunk bidding 376.519 B raw/80.738 B gzip; đây chưa phải browser latency benchmark. Transaction duration/WAL/lock staging, runtime `pg_stat_statements` remeasurement và browser E2E metrics vẫn chưa hoàn tất.
+
 **Problem**
 
 Có bottleneck tĩnh nhưng chưa có đầy đủ browser/load baseline.
@@ -772,7 +656,7 @@ Chỉ áp tối ưu có metric:
 - Prefetch criteria/existing details và batch upsert.
 - Exponential backoff/jitter hoặc LISTEN/NOTIFY cho idle workers.
 - Audit chain incremental checkpoints.
-- Route-specific workflow load nếu browser trace chứng minh lợi ích.
+- Route-specific workflow load; artifact/request graph đã xác minh, browser trace còn phải đo để kết luận latency.
 
 **Files affected**
 
@@ -814,7 +698,7 @@ Import thừa, test-only exports, README nghèo và không có domain context/AD
 
 **Target design**
 
-Cleanup nhỏ, không behavior change; `CONTEXT.md` mô tả ubiquitous language và data flow; ADR ghi schema compatibility, sync outbox, import identity, contract-lot.
+Cleanup nhỏ, không behavior change; `CONTEXT.md` chỉ mô tả ubiquitous language; ADR ghi các quyết định khó đảo ngược. Sáu quyết định NV1–NV6 đã được ghi tại `docs/adr/0001-*` đến `0006-*`.
 
 **Files affected**
 
