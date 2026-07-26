@@ -924,7 +924,7 @@ def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
                 "diem": None,
                 "noi_dung_hsdt": "HSDT",
                 "nhan_xet": "Meets the requirement",
-                "ly_do_khong_dat": "",
+                "ly_do_khong_dat": "Legacy detail reason must not leave the database",
                 "yeu_cau_lam_ro": "",
                 "ket_qua_lam_ro": "",
                 "tai_lieu_tham_chieu": "M1",
@@ -963,7 +963,6 @@ def test_attach_opening_always_returns_normalized_detailed_evaluation_reports():
                     "diem": None,
                     "noiDungHsdt": "HSDT",
                     "nhanXet": "Meets the requirement",
-                    "lyDoKhongDat": "",
                     "yeuCauLamRo": "",
                     "ketQuaLamRo": "",
                     "taiLieuThamChieu": "M1",
@@ -1209,17 +1208,23 @@ def test_save_detailed_evaluation_allows_failed_criterion_without_detail_reason(
             "id": "report-technical",
             "vongDanhGiaId": "round-technical",
             "loaiVong": "technical",
-            "trangThai": "draft",
+            "trangThai": "completed",
             "chiTietList": [{
                 "id": "detail-failed",
                 "tieuChiDanhGiaId": "criterion-failed",
                 "ketQua": "fail",
+                "lyDoKhongDat": "Legacy payload reason must be ignored",
             }],
         },
     )
 
-    detail_params = _many_rows(cursor, "chi_tiet_danh_gia_nha_thau")[0]
-    assert detail_params[9] == ""
+    detail_sql, detail_rows = next(
+        (sql, rows)
+        for sql, rows in cursor.many_calls
+        if sql.startswith("INSERT INTO chi_tiet_danh_gia_nha_thau")
+    )
+    assert "ly_do_khong_dat" not in detail_sql
+    assert len(detail_rows[0]) == 15
 
 
 def test_new_detailed_evaluation_does_not_store_reviewer_identity():
