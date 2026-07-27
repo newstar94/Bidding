@@ -13,7 +13,6 @@ import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
 } from "./bidEvaluationLowPriceRules.js";
-import { isDetailedEvaluationSummaryOwned } from "./detailedEvaluationSelectors.js";
 import { setJvData } from "./jvDataStore.js";
 
 const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
@@ -25,16 +24,11 @@ function durationText(value, fallback = "") {
   return raw.includes("ngày") ? raw : `${raw} ngày`;
 }
 
-function findDetailedProjectionReport(bid, presentation) {
-  const roundType = presentation.isTwoEnvelope
-    ? (presentation.currentTab === "financial" ? "financial" : "technical")
-    : "single";
-  return (bid.baoCaoDanhGiaChiTietList || []).find(
-    (report) => report.loaiVong === roundType && isDetailedEvaluationSummaryOwned(report),
-  ) || null;
+export function resolveBidEvaluationRowReadOnly({ isReadOnly = false } = {}) {
+  return Boolean(isReadOnly);
 }
 
-function buildContractorDisplay({ pkg, bid, model, detailedProjectionReport }) {
+function buildContractorDisplay({ pkg, bid, model }) {
   let contractorCode = bid.maNhaThau || bid.maDinhDanh || "--";
   const contractorName = resolveBidContractorName(model, bid) || "--";
   const exactContractor = getExactContractorVersion(model, bid.nhaThauId)
@@ -56,9 +50,6 @@ function buildContractorDisplay({ pkg, bid, model, detailedProjectionReport }) {
     html = contractorId
       ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorId)}" class="text-blue fw-bold link-hover">${escapeHtml(contractorName)}</a>`
       : `<span class="fw-bold">${escapeHtml(contractorName)}</span>`;
-  }
-  if (detailedProjectionReport) {
-    html += '<div><span class="badge badge-info">Tổng hợp từ báo cáo chi tiết</span></div>';
   }
   return { contractorCode, html };
 }
@@ -159,10 +150,10 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
       <td><span>${escapeHtml(bidPrice || "--")}</span></td>
       <td class="bf-s-5f326564a5"><span>${escapeHtml(discount)}</span></td>
       <td><span>${escapeHtml(discountedPrice || "--")}</span></td>
+      ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
       ${validityCell}
       <td><span>${escapeHtml(clarification || "--")}</span></td>
       ${combinedCells}
-      ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
       <td><span class="bf-s-6e8bcfac8d">${escapeHtml(financialEvaluation || "--")}</span></td>
     `;
   }
@@ -170,15 +161,15 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
     <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${escapeHtml(bidPrice)}" readonly placeholder="Ví dụ: 1.000.000.000"></td>
     <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${escapeHtml(discount)}" readonly placeholder="0"></td>
     <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${escapeHtml(discountedPrice)}" readonly placeholder="......"></td>
+    ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
     ${validityCell}
     <td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(clarification)}" placeholder="Nhập làm rõ tài chính..."></td>
     ${combinedCells}
-    ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
     <td><input type="text" class="form-control mt-dg-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(financialEvaluation)}" placeholder="Xếp hạng..."></td>
   `;
 }
 
-function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly }) {
+function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly, forceDisabled = false }) {
   const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
   const bidValidity = durationText(bid.hieuLucHsdt, rowReadOnly ? "--" : "");
   const performanceTime = escapeHtml(bid.thoiGianThucHien || pkg.thoiGianThucHien || (rowReadOnly ? "--" : ""));
@@ -190,6 +181,7 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly }) {
         <td><span>${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : "--"}</span></td>
         <td class="bf-s-5f326564a5"><span>${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}</span></td>
         <td><span>${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : "--"}</span></td>
+        ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
         <td><span>${escapeHtml(bidValidity)}</span></td>
         <td><span>${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : "--"}</span></td>
         <td><span>${escapeHtml(securityValidity)}</span></td>
@@ -200,6 +192,7 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly }) {
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : ""}" readonly></td>
       <td><input type="text" class="form-control bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}" readonly></td>
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : ""}" readonly></td>
+      ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly, disabled: forceDisabled ? " disabled" : "" })}
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : ""}" readonly></td>
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td>
@@ -217,7 +210,7 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly }) {
     : `<td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValue)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>`;
 }
 
-function readOnlyEvaluationCells({ pkg, bid, model, presentation }) {
+function readOnlyEvaluationCells({ bid, presentation }) {
   const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
   return `
     <td>
@@ -238,12 +231,11 @@ function readOnlyEvaluationCells({ pkg, bid, model, presentation }) {
     ${technicalLayout ? "" : `<td><span>${escapeHtml(bid.lamRoTaiChinh || "--")}</span></td>`}
     ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
     <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
-    ${technicalLayout ? "" : buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly: true })}
     ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
   `;
 }
 
-function editableEvaluationCells({ pkg, bid, model, presentation, forceDisabled }) {
+function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
   const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
   const disabled = forceDisabled ? " disabled" : "";
   const waiting = forceDisabled ? "Chờ đánh giá hạng trên..." : "";
@@ -275,7 +267,6 @@ function editableEvaluationCells({ pkg, bid, model, presentation, forceDisabled 
     ${technicalLayout ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh"${disabled} value="${escapeHtml(bid.lamRoTaiChinh || "")}" placeholder="${waiting || "Nhập làm rõ tài chính..."}"></td>`}
     ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
     <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
-    ${technicalLayout ? "" : buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly: false, disabled })}
     ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
   `;
 }
@@ -441,13 +432,13 @@ function appendBidEvaluationRow({
 }) {
   const row = createRowElement(root);
   row.setAttribute("data-bid-id", bid.id);
-  const detailedProjectionReport = findDetailedProjectionReport(bid, presentation);
-  const rowReadOnly = isReadOnly || Boolean(detailedProjectionReport);
+  const rowReadOnly = resolveBidEvaluationRowReadOnly({
+    isReadOnly,
+  });
   const contractor = buildContractorDisplay({
     pkg,
     bid,
     model,
-    detailedProjectionReport,
   });
   let cells = buildIdentityCells({ pkg, bid, contractor });
   if (presentation.isTwoEnvelope && presentation.currentTab === "financial") {
@@ -456,10 +447,10 @@ function appendBidEvaluationRow({
     const forceDisabled = !presentation.isTwoEnvelope
       && pkg.quyTrinhDanhGia === "quytrinh2"
       && !sequence.previousAllFailed;
-    cells += buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly });
+    cells += buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly, forceDisabled });
     cells += rowReadOnly
-      ? readOnlyEvaluationCells({ pkg, bid, model, presentation })
-      : editableEvaluationCells({ pkg, bid, model, presentation, forceDisabled });
+      ? readOnlyEvaluationCells({ bid, presentation })
+      : editableEvaluationCells({ pkg, bid, presentation, forceDisabled });
   }
   row.innerHTML = trustedHTML(cells);
   updateRowConclusion(row, bid.danhGiaKetLuan, rowReadOnly);

@@ -79,7 +79,7 @@ export function renderEvaluationPanel(container, pkg, {
       </section>
       ${processOptions}
       <div class="package-section-header">
-        <h4 id="danhgiahsdt-table-title" class="package-section-title is-neutral">Đánh giá chi tiết các HSDT nộp</h4>
+        <h4 id="danhgiahsdt-table-title" class="package-section-title is-neutral">Đánh giá E-HSDT</h4>
         <div class="compact-action-group">
           <button type="button" class="btn btn-secondary" id="btn-danhgiahsdt-detail"><i data-lucide="clipboard-list"></i> Báo cáo đánh giá chi tiết</button>
           <button class="btn-excel-action btn-download-excel-template-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>

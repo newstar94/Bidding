@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { parseBidEvaluationImport } from "../../frontend/documents/excelImportAdapters.js";
 import { buildBidEvaluationTablePresentation } from "../../frontend/packages/BidEvaluationTablePresentation.js";
+import { resolveBidEvaluationRowReadOnly } from "../../frontend/packages/BidEvaluationRowRenderer.js";
 import { applyAwardResultToPackage } from "../../frontend/packages/bidProcessAwardResult.js";
 import {
   getLowPriceRejectionReason,
@@ -29,6 +30,16 @@ test("shows both price columns in 1G1T and financial 1G2T reports only", () => {
   for (const report of [single, financial]) {
     assert.match(report.headerHtml, /Giá xếp hạng/);
     assert.match(report.headerHtml, /Giá đề nghị trúng thầu/);
+    const discountedIndex = report.headerHtml.indexOf("Giá sau giảm");
+    const rankingIndex = report.headerHtml.indexOf("Giá xếp hạng");
+    const proposedIndex = report.headerHtml.indexOf("Giá đề nghị trúng thầu");
+    assert.ok(discountedIndex < rankingIndex);
+    assert.ok(rankingIndex < proposedIndex);
+    assert.equal(
+      report.headerHtml.slice(discountedIndex, proposedIndex).match(/<th/g)?.length,
+      2,
+      "the two award-price columns must immediately follow the discounted price",
+    );
   }
   assert.doesNotMatch(technical.headerHtml, /Giá xếp hạng|Giá đề nghị trúng thầu/);
 });
@@ -73,6 +84,22 @@ test("renders editable controls for both persisted prices", () => {
   assert.match(source, /class="form-control mt-gia-xep-hang"/);
   assert.match(source, /class="form-control mt-gia-de-nghi-trung-thau/);
   assert.match(source, /class="mt-low-price-acceptance"/);
+});
+
+test("a detailed evaluation report does not lock the outer summary row", () => {
+  assert.equal(resolveBidEvaluationRowReadOnly({
+    isReadOnly: false,
+    detailedProjectionReport: { id: "report-1" },
+  }), false);
+  assert.equal(resolveBidEvaluationRowReadOnly({
+    isReadOnly: true,
+    detailedProjectionReport: { id: "report-1" },
+  }), true);
+});
+
+test("does not render a detailed-report summary badge in the contractor cell", () => {
+  const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
+  assert.doesNotMatch(source, /Tổng hợp từ báo cáo chi tiết/);
 });
 
 test("warns only when the proposed award price is strictly below half of the package price", () => {

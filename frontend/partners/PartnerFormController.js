@@ -42,6 +42,7 @@ export const PARTNER_FORM_CONFIGS = {
     codeField: "maNhaThau", nameField: "tenNhaThau", representativeField: "nguoiDaiDien",
     lookup: {
       codeId: "nt-ma", taxId: "nt-mst", nameId: "nt-ten", shortNameId: "nt-tenviettat",
+      preserveEnteredCode: true,
       representativeId: "nt-nguoidaidien", representativePositionId: "nt-chucvudaidien",
       phoneId: "nt-sdt", emailId: "nt-email", bankAccountId: "nt-sotaikhoan", bankNameId: "nt-noimotaikhoan",
       extraFields: { bank_code: "nt-manganhang" },
@@ -136,7 +137,11 @@ export function createPartnerLookupHandlers({ form, config, root = document, app
   const applyLookupData = async (data) => {
     const values = mapPartnerLookupFields(data || {}, config);
     Object.entries(values).forEach(([id, value]) => {
-      if (id === config.codeId && !value) return;
+      if (id === config.codeId) {
+        if (!value) return;
+        const enteredCode = control(root, config.codeId)?.value;
+        if (config.preserveEnteredCode && String(enteredCode || "").trim()) return;
+      }
       setValue(root, id, value);
     });
     if (data?.address) {

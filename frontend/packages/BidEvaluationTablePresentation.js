@@ -73,11 +73,11 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-ae54075f01"),
       cell("Tỷ lệ %", "bf-s-415b5d64b8"),
       cell("Giá sau giảm", "bf-s-ae54075f01"),
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       ...(isConsulting ? [cell("Hiệu lực E-HSĐXTC", "bf-s-ae54075f01")] : []),
       cell("Làm rõ tài chính", "bf-s-8523765ec6"),
       ...technicalAndCombinedScore,
-      cell("Giá xếp hạng", "bf-s-ae54075f01"),
-      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G2T_TC_WITH_LOT": [
@@ -89,11 +89,11 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-3faf34a5d2"),
       cell("Tỷ lệ %", "bf-s-aed34ad439"),
       cell("Giá sau giảm", "bf-s-3faf34a5d2"),
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       ...(isConsulting ? [cell("Hiệu lực E-HSĐXTC", "bf-s-8523765ec6")] : []),
       cell("Làm rõ tài chính", "bf-s-8523765ec6"),
       ...technicalAndCombinedScore,
-      cell("Giá xếp hạng", "bf-s-ae54075f01"),
-      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G1T_NO_LOT": [
@@ -103,6 +103,8 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-8523765ec6"),
       cell("Tỷ lệ %", "bf-s-6a7768ee0d"),
       cell("Giá sau giảm", "bf-s-8523765ec6"),
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Hiệu lực E-HSDT", "bf-s-415b5d64b8"),
       cell("Giá trị ĐB", "bf-s-415b5d64b8"),
       cell("Hiệu lực ĐB", "bf-s-415b5d64b8"),
@@ -116,8 +118,6 @@ function buildHeader(caseType, {
       cell("Làm rõ tài chính", "bf-s-415b5d64b8"),
       ...(isCombinedMethod ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")] : []),
       cell("Kết luận", "bf-s-8523765ec6"),
-      cell("Giá xếp hạng", "bf-s-ae54075f01"),
-      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G1T_WITH_LOT": [
@@ -129,6 +129,8 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-b258c3e162"),
       cell("Tỷ lệ %", "bf-s-6a7768ee0d"),
       cell("Giá sau giảm", "bf-s-b258c3e162"),
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Hiệu lực E-HSDT", "bf-s-aed34ad439"),
       cell("Giá trị ĐB", "bf-s-aed34ad439"),
       cell("Hiệu lực ĐB", "bf-s-aed34ad439"),
@@ -142,8 +144,6 @@ function buildHeader(caseType, {
       cell("Làm rõ tài chính", "bf-s-aed34ad439"),
       ...(isCombinedMethod ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")] : []),
       cell("Kết luận", "bf-s-8523765ec6"),
-      cell("Giá xếp hạng", "bf-s-ae54075f01"),
-      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
   };
@@ -179,11 +179,11 @@ export function buildBidEvaluationTablePresentation({
   const showCombinedScore = isCombinedMethod
     && !(isTwoEnvelope && currentTab === "technical");
   const lotLabel = getEvaluationLotScopeDetails(pkg, lotScope)?.lotCodes?.join(", ");
-  let baseTitle = "Đánh giá chi tiết các HSDT nộp";
+  let baseTitle = "Đánh giá E-HSDT";
   if (isTwoEnvelope || isConsulting) {
     baseTitle = currentTab === "technical"
-      ? "Đánh giá chi tiết các E-HSĐXKT đã nộp"
-      : "Đánh giá chi tiết các E-HSĐXTC đã nộp";
+      ? "Đánh giá E-HSĐXKT"
+      : "Đánh giá E-HSĐXTC";
   }
   return {
     caseType,

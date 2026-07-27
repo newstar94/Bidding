@@ -4,12 +4,38 @@ import test from "node:test";
 
 import { formatPartnerIdentityCode } from "../../frontend/app/domUtils.js";
 import { saveThongTinMoThau } from "../../frontend/packages/BidProcessWorkflow.js";
+import {
+  createPartnerLookupHandlers,
+  PARTNER_FORM_CONFIGS,
+} from "../../frontend/partners/PartnerFormController.js";
 
 test("contractor codes keep their original letter casing", () => {
   assert.equal(formatPartnerIdentityCode("  VnAb-01  "), "VnAb-01");
   const workflowSource = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
   assert.match(workflowSource, /bidData\.maDinhDanh \|\| bidData\.maNhaThau/);
   assert.doesNotMatch(workflowSource, /inputMa\.value = data\.org_code/);
+});
+
+test("contractor lookup does not replace the exact code entered by the user", async () => {
+  const controls = new Map([
+    ["nt-ma", { value: "VnAb-01" }],
+  ]);
+  const root = {
+    getElementById(id) {
+      return controls.get(id) || null;
+    },
+  };
+  const form = { dataset: {} };
+  const { applyLookupData } = createPartnerLookupHandlers({
+    form,
+    config: PARTNER_FORM_CONFIGS.nhathau.lookup,
+    root,
+    applyAddress: async () => {},
+  });
+
+  await applyLookupData({ org_code: "VNAB-01", name: "Nhà thầu thử nghiệm" });
+
+  assert.equal(controls.get("nt-ma").value, "VnAb-01");
 });
 
 test("opening save always reports unexpected failures and restores the button", async () => {

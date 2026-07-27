@@ -429,6 +429,12 @@ async def index(request):
     html_content = _page_shell(html_content, request_path)
     workspace_preload = "" if request_path in {"/", "/legal"} else _workspace_preload_tag(session_bootstrap)
     html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
+    initial_route_preload = (
+        ""
+        if request_path in {"/", "/legal"}
+        else '<link rel="preload" href="/vendor/initial-route.js?v=2.0" as="script">'
+    )
+    html_content = html_content.replace("__BF_INITIAL_ROUTE_PRELOAD__", initial_route_preload)
     bootstrap_ms = (time.perf_counter() - bootstrap_started) * 1000
     return HTMLResponse(
         content=html_content,

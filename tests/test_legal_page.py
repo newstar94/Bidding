@@ -95,9 +95,23 @@ def test_anonymous_legal_response_has_route_metadata_and_no_workspace_preload(mo
     assert "<title>Điều khoản và chính sách | BiddingFlow</title>" in body
     assert '<link rel="canonical" href="https://biddingflow.example/legal">' in body
     assert "workspaceBootstrap.js" not in body
+    assert "initial-route.js" not in body
     assert 'id="terms"' in body
     assert 'id="privacy"' in body
     assert 'id="security"' in body
+
+
+def test_workspace_response_keeps_initial_route_preload(monkeypatch):
+    compiled = _compiled_shell(monkeypatch)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "_build_index_response_payload", lambda: (compiled, '"template"'))
+    monkeypatch.setattr(app_module, "build_session_bootstrap", lambda _request: {"valid": True})
+
+    response = asyncio.run(app_module.index(_request("/goi-thau")))
+    body = response.body.decode("utf-8")
+
+    assert '<link rel="preload" href="/vendor/initial-route.js?v=2.0" as="script">' in body
+    assert '<script src="/vendor/initial-route.js?v=2.0"></script>' in body
 
 
 def test_registration_and_google_onboarding_show_all_legal_links():

@@ -83,7 +83,7 @@ export function renderBidEvaluationLotScope({
     feedback.classList.toggle("is-error", !hasSelection);
   }
   if (title) {
-    title.textContent = `Đánh giá chi tiết các HSDT nộp — ${selectedLabel}`;
+    title.textContent = `Đánh giá E-HSDT — ${selectedLabel}`;
   }
   [
     view.getActiveElement("btn-danhgiahsdt-download-excel"),
