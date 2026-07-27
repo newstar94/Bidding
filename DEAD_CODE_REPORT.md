@@ -2,7 +2,7 @@
 
 - Snapshot: `1fb76ad`
 - Ngày rà soát: 2026-07-26
-- Trạng thái: **không xóa code trong giai đoạn review**
+- Trạng thái: **đã xóa 21/21 import binding an toàn; giữ nguyên candidate cần xác nhận và compatibility path**
 
 ## 1. Cách kiểm tra
 
@@ -52,9 +52,15 @@ Mỗi mục dưới đây đã được AST xác nhận không có local load v�
 | SAFE_TO_REMOVE | `backend/sync/service.py:9,42,54,78 — _assert_safe_table, db_column_for_json_key, TABLE_KEYS, parse_sync_read_window` | 0 local load; không external re-export | Cao | Xóa 4 binding trong một cleanup hunk | Trung bình do sync là critical path | Sync service/mapper/tenant/full Python suite |
 | SAFE_TO_REMOVE | `scripts/load_test.py:12 — statistics` | 0 local load | Cao | Xóa binding | Thấp | Script import/help + load rehearsal tests |
 
-Tổng: **21 binding trên 12 file**. Chưa xóa vì yêu cầu hiện tại chỉ review và đề xuất.
+Tổng tại snapshot review: **21 binding trên 12 file**; toàn bộ đã được xóa trong lượt implementation ghi ngay dưới đây.
 
 **Cập nhật triển khai 2026-07-26:** Đã xác minh lại trên worktree hiện tại và xóa đủ 21/21 binding trong bảng. Compile/import smoke, security static gate, các test sync/security trọng yếu và full Python suite đều đạt. Các mục `LIKELY_UNUSED`, `REQUIRES_CONFIRMATION`, `LEGACY_COMPATIBILITY` bên dưới chưa bị xóa.
+
+**Cập nhật dependency graph 2026-07-27:** `logging_utils` không còn import database qua facade `shared.helpers`; cạnh này vừa tạo vòng import, vừa che khuất ownership của pooled connection audit. SCC 6 module liên quan helpers/logging/media/email/schema đã biến mất. Facade vẫn được giữ cho các caller compatibility còn lại; không xóa cơ học.
+
+**Cập nhật cuối dependency graph 2026-07-27:** Partner worker không còn import broadcast qua `sync.api`; SCC partner/sync 3 module đã biến mất. Static graph hiện xác nhận toàn bộ backend không có import cycle. `shared.helpers` vẫn là compatibility facade có caller thật, không phải code chết.
+
+**Cập nhật hot-path recorder 2026-07-27:** Partner lookup service và WebSocket không còn import database qua `shared.helpers`; chúng dùng primitive do `db_helper` sở hữu. Document worker, address routes và audit monitor cũng không còn import renderer Prometheus chỉ để ghi metric. Đây là thu hẹp dependency graph, không phải bằng chứng để xóa facade: `shared.helpers` và `metrics.py` vẫn có production caller đúng trách nhiệm.
 
 ## 4. Binding trông thừa nhưng đang được dùng
 
@@ -108,7 +114,7 @@ Không có table, column, index hoặc constraint nào đủ bằng chứng đ�
 - Column lý do/làm rõ chi tiết hiện không còn UI nhưng phải giữ để đọc payload cũ; sửa invariant code trước, không drop schema.
 - `trang_thai_ho_so`/`trang_thai_ho_so_giay` đã bị v11 xóa là vấn đề mất dữ liệu, không phải ứng viên cleanup.
 
-## 9. Trình tự cleanup an toàn
+## 9. Trình tự cleanup an toàn đã áp dụng
 
 1. Tạo PR chỉ xóa 21 import binding `SAFE_TO_REMOVE`.
 2. Chạy import smoke, toàn bộ Python tests, JavaScript tests và secure build.

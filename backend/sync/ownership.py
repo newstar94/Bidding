@@ -25,6 +25,8 @@ ARCHIVABLE_REFERENCE_TABLES = {
     "chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"
 }
 
+_QUERY_CHUNK_SIZE = 500
+
 
 def get_owner_type(cursor, organization_id):
     if cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (organization_id,)).fetchone():
@@ -266,27 +268,89 @@ def validate_owner_scoped_references(
         contract_plan_root = _plan_root_id(
             cursor, organization_id, contract_plan_id, incoming_records_by_table
         )
-        for package_id in package_ids:
-            incoming_package = _incoming_record(
-                incoming_records_by_table, "goi_thau", package_id
+        incoming_packages = {
+            package_id: _incoming_record(
+                incoming_records_by_table,
+                "goi_thau",
+                package_id,
             )
+            for package_id in package_ids
+        }
+        stored_package_ids = [
+            package_id
+            for package_id in package_ids
+            if not incoming_packages[package_id]
+        ]
+        stored_package_plans = {}
+        for offset in range(0, len(stored_package_ids), _QUERY_CHUNK_SIZE):
+            chunk = stored_package_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id, ke_hoach_id
+                    FROM goi_thau
+                    WHERE organization_id = ?
+                      AND id IN ({placeholders})
+                      AND archived_at IS NULL""",
+                (organization_id, *chunk),
+            ).fetchall()
+            stored_package_plans.update(
+                (clean_id(row[0]), clean_id(row[1])) for row in rows
+            )
+
+        package_plan_ids = {
+            clean_id(get_payload_value("goi_thau", package, "ke_hoach_id"))
+            for package in incoming_packages.values()
+            if package
+        }
+        package_plan_ids.update(stored_package_plans.values())
+        package_plan_ids.discard(None)
+        stored_plan_ids = [
+            plan_id
+            for plan_id in package_plan_ids
+            if not _incoming_record(
+                incoming_records_by_table,
+                "ke_hoach_lcnt",
+                plan_id,
+            )
+        ]
+        stored_plan_roots = {}
+        for offset in range(0, len(stored_plan_ids), _QUERY_CHUNK_SIZE):
+            chunk = stored_plan_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id, COALESCE(NULLIF(id_goc, ''), id)
+                    FROM ke_hoach_lcnt
+                    WHERE organization_id = ?
+                      AND id IN ({placeholders})
+                      AND archived_at IS NULL""",
+                (organization_id, *chunk),
+            ).fetchall()
+            stored_plan_roots.update(
+                (clean_id(row[0]), clean_id(row[1])) for row in rows
+            )
+
+        for package_id in package_ids:
+            incoming_package = incoming_packages[package_id]
             if incoming_package:
                 package_plan_id = clean_id(get_payload_value("goi_thau", incoming_package, "ke_hoach_id"))
             else:
-                package_row = cursor.execute(
-                    """SELECT ke_hoach_id
-                       FROM goi_thau
-                       WHERE organization_id = ? AND id = ? AND archived_at IS NULL
-                       LIMIT 1""",
-                    (organization_id, package_id),
-                ).fetchone()
-                if not package_row:
+                package_plan_id = stored_package_plans.get(package_id)
+                if package_id not in stored_package_plans:
                     errors.append(f"Gói thầu {package_id} không tồn tại, đã lưu trữ hoặc khác tổ chức.")
                     continue
-                package_plan_id = clean_id(package_row[0])
-
-            package_plan_root = _plan_root_id(
-                cursor, organization_id, package_plan_id, incoming_records_by_table
+            incoming_plan = _incoming_record(
+                incoming_records_by_table,
+                "ke_hoach_lcnt",
+                package_plan_id,
+            )
+            package_plan_root = (
+                clean_id(
+                    incoming_plan.get("rootId")
+                    or incoming_plan.get("idGoc")
+                    or incoming_plan.get("id")
+                )
+                if incoming_plan
+                else stored_plan_roots.get(package_plan_id)
             )
             if not contract_plan_root or package_plan_root != contract_plan_root:
                 errors.append(f"Gói thầu {package_id} không thuộc kế hoạch/lineage của hợp đồng.")

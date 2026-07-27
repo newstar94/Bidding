@@ -8,6 +8,8 @@ const GROUP_LABELS = Object.freeze({
   financial: "Tài chính",
 });
 
+const LARGE_TABLE_ROW_CHUNK_SIZE = 25;
+
 function documentSection(context = {}, group) {
   const source = context.templateSource || "14A";
   const consulting = source === "14D";
@@ -172,6 +174,54 @@ function renderBinaryEvaluationRow({ criterion, row, index, activeGroup, disable
     </tr>`;
 }
 
+function scheduleNextFrame(callback) {
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(callback);
+    return;
+  }
+  setTimeout(callback, 0);
+}
+
+export function scheduleDetailedEvaluationRowBatches({
+  rowHtml,
+  startIndex = 0,
+  chunkSize = 50,
+  appendBatch,
+  scheduleFrame = scheduleNextFrame,
+  shouldContinue = () => true,
+} = {}) {
+  if (!Array.isArray(rowHtml) || typeof appendBatch !== "function") {
+    throw new TypeError("Detailed evaluation row batching requires row HTML and an append adapter.");
+  }
+  const boundedChunkSize = Math.max(1, Number(chunkSize) || 50);
+  let offset = Math.max(0, Number(startIndex) || 0);
+  return new Promise((resolve) => {
+    const appendNext = () => {
+      if (!shouldContinue()) {
+        resolve(false);
+        return;
+      }
+      const batch = rowHtml.slice(offset, offset + boundedChunkSize);
+      if (!batch.length) {
+        resolve(true);
+        return;
+      }
+      appendBatch(batch, offset);
+      offset += batch.length;
+      if (offset >= rowHtml.length) {
+        resolve(true);
+        return;
+      }
+      scheduleFrame(appendNext);
+    };
+    if (offset >= rowHtml.length) {
+      resolve(true);
+      return;
+    }
+    scheduleFrame(appendNext);
+  });
+}
+
 export function renderDetailedEvaluationPanel(container, {
   bids = [],
   selectedBidId = "",
@@ -204,7 +254,7 @@ export function renderDetailedEvaluationPanel(container, {
   }).join("");
   const binaryLayout = activeGroup === "validity" || activeGroup === "capacity";
   const financialLayout = activeGroup === "financial";
-  const criterionRows = criteria.map((criterion, index) => {
+  const criterionRowHtml = criteria.map((criterion, index) => {
     const row = rows.get(String(criterion.id)) || {
       tieuChiDanhGiaId: criterion.id,
       ketQua: "pending",
@@ -241,7 +291,11 @@ export function renderDetailedEvaluationPanel(container, {
         <td class="detailed-evaluation-score">${criterion.resultType === "score" ? `<span>Tối đa: ${escapeHtml(criterion.maxScore ?? "--")}</span>${criterion.minScore != null ? `<span>Tối thiểu: ${escapeHtml(criterion.minScore)}</span>` : ""}` : escapeHtml(row.diem ?? "--")}</td>
         ${renderNotesCells(row, attributes)}
       </tr>`;
-  }).join("");
+  });
+  const initialRowCount = criterionRowHtml.length > 100
+    ? LARGE_TABLE_ROW_CHUNK_SIZE
+    : criterionRowHtml.length;
+  const criterionRows = criterionRowHtml.slice(0, initialRowCount).join("");
   const status = report?.trangThai === "completed"
     ? "Hoàn thành"
     : report ? "Bản nháp" : "Chưa đánh giá";
@@ -370,4 +424,38 @@ export function renderDetailedEvaluationPanel(container, {
       ${actionButtons ? `<div class="workflow-action-row detailed-evaluation-actions with-divider">${actionButtons}</div>` : ""}
     </section>
   `);
+  container._detailedEvaluationRowRenderRevision = (
+    container._detailedEvaluationRowRenderRevision || 0
+  ) + 1;
+  const revision = container._detailedEvaluationRowRenderRevision;
+  if (initialRowCount < criterionRowHtml.length && container.querySelector) {
+    const tbody = container.querySelector("#detailed-evaluation-criteria-body");
+    if (!tbody) return;
+    tbody.setAttribute("aria-busy", "true");
+    const controls = [
+      "#btn-detailed-evaluation-save-draft",
+      "#btn-detailed-evaluation-complete-group",
+      "#btn-detailed-evaluation-complete-report",
+      "#btn-detailed-evaluation-import-excel",
+      "#btn-detailed-evaluation-add-row",
+    ].map((selector) => container.querySelector(selector)).filter(Boolean);
+    controls.forEach((control) => { control.disabled = true; });
+    const ownerDocument = tbody.ownerDocument || document;
+    container._detailedEvaluationRowsReady = scheduleDetailedEvaluationRowBatches({
+      rowHtml: criterionRowHtml,
+      startIndex: initialRowCount,
+      chunkSize: LARGE_TABLE_ROW_CHUNK_SIZE,
+      shouldContinue: () => container._detailedEvaluationRowRenderRevision === revision,
+      appendBatch: (batch) => {
+        const template = ownerDocument.createElement("template");
+        template.innerHTML = trustedHTML(batch.join(""));
+        tbody.appendChild(template.content);
+      },
+    }).finally(() => {
+      if (container._detailedEvaluationRowRenderRevision !== revision) return;
+      tbody.removeAttribute("aria-busy");
+      controls.forEach((control) => { control.disabled = false; });
+      container.dispatchEvent?.(new CustomEvent("detailed-evaluation-rows-ready"));
+    });
+  }
 }

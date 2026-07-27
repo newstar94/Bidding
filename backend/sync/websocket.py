@@ -9,13 +9,13 @@ import uuid
 
 from starlette.websockets import WebSocketDisconnect
 
-from backend.shared.helpers import database
+from backend.db.db_helper import database
 from backend.shared.async_io import run_blocking_io
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.origin_policy import is_websocket_origin_allowed
 from backend.shared.client_ip import get_client_ip
 from backend.auth.session_store import load_session_user, session_invalid_reason
-from backend.observability.metrics import (
+from backend.observability.recording import (
     websocket_attempted,
     websocket_authentication_failed,
     websocket_connected,

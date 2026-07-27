@@ -18,7 +18,7 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.logging_utils import error_response, log_and_error
-from backend.observability.metrics import record_database_phase
+from backend.observability.recording import record_database_phase
 from backend.sync.repository import get_current_sync_version
 
 

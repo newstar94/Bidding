@@ -627,15 +627,43 @@ async def remove_user_from_org_api(request):
             if successor_user_id
             else set(assignment_successors.values())
         )
-        for requested_successor_id in requested_successor_ids:
-            successor = cursor.execute(
-                """SELECT 1 FROM thanh_vien_to_chuc WHERE organization_id = ? AND user_id = ?
-                   AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
-                (org_id, requested_successor_id),
-            ).fetchone()
-            if not successor or requested_successor_id == str(user_id):
-                conn.rollback()
-                return JSONResponse({"error": "Người tiếp quản không hợp lệ."}, status_code=400)
+        valid_successor_ids = set()
+        if requested_successor_ids:
+            placeholders = ", ".join("?" for _ in requested_successor_ids)
+            valid_successor_ids = {
+                str(row["user_id"])
+                for row in cursor.execute(
+                    f"""SELECT user_id FROM thanh_vien_to_chuc
+                        WHERE organization_id = ?
+                          AND user_id IN ({placeholders})
+                          AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
+                    (org_id, *sorted(requested_successor_ids)),
+                ).fetchall()
+            }
+        if (
+            valid_successor_ids != requested_successor_ids
+            or str(user_id) in requested_successor_ids
+        ):
+            conn.rollback()
+            return JSONResponse({"error": "Người tiếp quản không hợp lệ."}, status_code=400)
+
+        existing_assignment_keys = set()
+        if requested_successor_ids:
+            placeholders = ", ".join("?" for _ in requested_successor_ids)
+            existing_assignment_keys = {
+                (
+                    str(row["id_nhan_vien"]),
+                    str(row["id_muc_tieu"]),
+                    str(row["loai_doi_tuong"]),
+                )
+                for row in cursor.execute(
+                    f"""SELECT id_nhan_vien, id_muc_tieu, loai_doi_tuong
+                        FROM phan_cong_nhan_su
+                        WHERE organization_id = ?
+                          AND id_nhan_vien IN ({placeholders})""",
+                    (org_id, *sorted(requested_successor_ids)),
+                ).fetchall()
+            }
 
         for assignment in assignment_rows:
             requires_transfer = str(assignment['loai_doi_tuong'] or '') in {'goithau', 'hopdong'}
@@ -652,12 +680,12 @@ async def remove_user_from_org_api(request):
                  role_or_err.user_id, successor),
             )
             if successor:
-                existing = cursor.execute(
-                    """SELECT 1 FROM phan_cong_nhan_su WHERE organization_id = ? AND id_nhan_vien = ?
-                       AND id_muc_tieu = ? AND loai_doi_tuong = ?""",
-                    (org_id, successor, assignment['id_muc_tieu'], assignment['loai_doi_tuong']),
-                ).fetchone()
-                if existing:
+                assignment_key = (
+                    str(successor),
+                    str(assignment['id_muc_tieu']),
+                    str(assignment['loai_doi_tuong']),
+                )
+                if assignment_key in existing_assignment_keys:
                     cursor.execute(
                         "DELETE FROM phan_cong_nhan_su WHERE id = ? AND organization_id = ?",
                         (assignment["id"], org_id),
@@ -668,6 +696,7 @@ async def remove_user_from_org_api(request):
                            sync_version = ?, updated_at = ? WHERE id = ? AND organization_id = ?""",
                         (successor, sync_version, current_time, assignment['id'], org_id),
                     )
+                    existing_assignment_keys.add(assignment_key)
             else:
                 cursor.execute(
                     "DELETE FROM phan_cong_nhan_su WHERE id = ? AND organization_id = ?",

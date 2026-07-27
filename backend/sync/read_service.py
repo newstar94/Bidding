@@ -38,7 +38,7 @@ from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
-from backend.observability.metrics import record_database_phase
+from backend.observability.recording import record_database_phase
 
 
 def _database_read_unavailable(request, code, message):

@@ -80,6 +80,7 @@ function unwrapSanitizedContext(source, tagName) {
 export function assertSafeScriptURL(value) {
   const source = String(value ?? "");
   if (/^\/(?:frontend|vendor)\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+$/.test(source)) return source;
+  if (/^\/service-worker\.js(?:\?[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*)?$/.test(source)) return source;
   if (source === "https://accounts.google.com/gsi/client") return source;
   throw new TypeError("Unapproved script URL rejected by the application Trusted Types policy");
 }

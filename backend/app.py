@@ -186,6 +186,7 @@ def compile_html(file_path):
             compiled
         )
         bundle_src = "/dist/assets/appbundle.js"
+        bundle_is_content_hashed = False
         manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
         if os.path.exists(manifest_path):
             try:
@@ -194,15 +195,17 @@ def compile_html(file_path):
                 bundle_file = manifest.get('frontend/app/app.js', {}).get('file')
                 if bundle_file:
                     bundle_src = f"/dist/{bundle_file}"
+                    bundle_is_content_hashed = True
             except Exception as exc:
                 log_error(exc, "frontend_manifest")
-        bundle_path = os.path.join(project_root, bundle_src.lstrip('/').replace('/', os.sep))
-        try:
-            bundle_stat = os.stat(bundle_path)
-            bundle_version = f"{bundle_stat.st_mtime_ns:x}-{bundle_stat.st_size:x}"
-            bundle_src = f"{bundle_src}?v={bundle_version}"
-        except OSError:
-            pass
+        if not bundle_is_content_hashed:
+            bundle_path = os.path.join(project_root, bundle_src.lstrip('/').replace('/', os.sep))
+            try:
+                bundle_stat = os.stat(bundle_path)
+                bundle_version = f"{bundle_stat.st_mtime_ns:x}-{bundle_stat.st_size:x}"
+                bundle_src = f"{bundle_src}?v={bundle_version}"
+            except OSError:
+                pass
         compiled = re.sub(
             r'<script\s+type="module"\s+src="/frontend/app/app\.js(?:\?v=[^"]*)?"></script>',
             f'<script type="module" src="{bundle_src}"></script>',

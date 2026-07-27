@@ -205,6 +205,66 @@ test("ranking schedule renders immediately once and batches later events per fra
   }
 });
 
+test("dirty-row scheduling does not re-read untouched rows", () => {
+  const originalElement = globalThis.Element;
+  const originalDocument = globalThis.document;
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
+  const frames = [];
+  globalThis.Element = FakeElement;
+  globalThis.document = {
+    querySelector: () => ({ sheet: { insertRule: () => {} } }),
+  };
+  globalThis.requestAnimationFrame = (callback) => {
+    frames.push(callback);
+    return frames.length;
+  };
+  globalThis.cancelAnimationFrame = () => {};
+  try {
+    const dirtyRow = evaluationRow("bid-dirty", "1000");
+    const untouchedRow = evaluationRow("bid-untouched", "2000");
+    let dirtyReads = 0;
+    let untouchedReads = 0;
+    const dirtyQuery = dirtyRow.querySelector;
+    const untouchedQuery = untouchedRow.querySelector;
+    dirtyRow.querySelector = (selector) => {
+      dirtyReads += 1;
+      return dirtyQuery(selector);
+    };
+    untouchedRow.querySelector = (selector) => {
+      untouchedReads += 1;
+      return untouchedQuery(selector);
+    };
+    const controller = createBidEvaluationRankingController({
+      root: {
+        querySelectorAll: () => [dirtyRow, untouchedRow],
+      },
+      pkg: {
+        phanLo: "Không",
+        linhVuc: "Hàng hóa",
+        phuongPhapDanhGia: "Giá thấp nhất",
+      },
+      bids: [
+        { id: "bid-dirty", giaDuThau: 1000 },
+        { id: "bid-untouched", giaDuThau: 2000 },
+      ],
+    });
+
+    controller.schedule();
+    const untouchedReadsAfterInitial = untouchedReads;
+    controller.schedule(dirtyRow);
+    frames.shift()();
+
+    assert.ok(dirtyReads > 0);
+    assert.equal(untouchedReads, untouchedReadsAfterInitial);
+  } finally {
+    globalThis.Element = originalElement;
+    globalThis.document = originalDocument;
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+  }
+});
+
 test("process-two ranking stops evaluation after the first passing bidder", () => {
   const originalElement = globalThis.Element;
   const originalDocument = globalThis.document;

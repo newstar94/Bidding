@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from backend.observability.metrics import (
+from backend.observability.recording import (
     record_database_operation,
     record_database_phase,
 )

@@ -9,7 +9,7 @@ import hashlib
 import time
 import uuid
 
-from backend.observability.metrics import record_database_phase
+from backend.observability.recording import record_database_phase
 
 
 def hash_session_token(token):

@@ -82,6 +82,40 @@ def test_packaged_operational_scripts_can_be_imported(
         env=environment,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_packaged_hashed_entry_uses_one_canonical_module_url(
+    packaging_root: Path,
+) -> None:
+    environment = os.environ.copy()
+    environment.update({
+        "APP_ENV": "test",
+        "APP_DEBUG": "False",
+        "APP_SECURE_COOKIES": "False",
+        "PYTHONPATH": str(packaging_root),
+    })
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "from backend.app import compile_html; "
+                "html = compile_html(Path('views/index.html')); "
+                "assert '<script type=\"module\" src=\"/dist/assets/app-12345678.js\"></script>' in html, html"
+            ),
+        ],
+        cwd=packaging_root,
+        env=environment,
+        capture_output=True,
+        text=True,
         timeout=30,
         check=False,
     )
@@ -137,4 +171,3 @@ def test_packager_rejects_internal_directory_even_if_allowlisted(
 
     with pytest.raises(RuntimeError, match="Forbidden production path"):
         package_production.collect_runtime_files()
-

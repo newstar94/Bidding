@@ -6,7 +6,10 @@ import { escapeHtml } from "../shared/view_helpers.js";
 import { createBidEvaluationRankingController } from "./BidEvaluationRankingController.js";
 import { renderBidEvaluationRoundHistory } from "./BidEvaluationRoundHistory.js";
 import { renderBidEvaluationLotScope } from "./BidEvaluationLotScopeController.js";
-import { renderBidEvaluationRows } from "./BidEvaluationRowRenderer.js";
+import {
+  renderBidEvaluationRows,
+  renderBidEvaluationRowsBatched,
+} from "./BidEvaluationRowRenderer.js";
 import { buildBidEvaluationPanelState, evaluationScopeKey } from "./BidEvaluationPanelState.js";
 import { bindBidEvaluationPanelController } from "./BidEvaluationPanelController.js";
 import { buildBidEvaluationTablePresentation } from "./BidEvaluationTablePresentation.js";
@@ -133,7 +136,7 @@ export function renderDanhGiaHsdtPanel() {
       isTwoEnvelope: is1G2T,
       isReadOnly,
     });
-    const updateAllRankings = () => rankingController.schedule();
+    const updateAllRankings = (dirtyRow) => rankingController.schedule(dirtyRow);
     let bids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
     if (lotScope) {
       bids = filterBidsByEvaluationLotScope(bids, gt, lotScope);
@@ -168,7 +171,7 @@ export function renderDanhGiaHsdtPanel() {
       setVisible(detailedReportButton, bids.length > 0, "inline-flex");
       detailedReportButton.onclick = () => this.openDetailedEvaluation?.();
     }
-    renderBidEvaluationRows({
+    const rowRenderContext = {
       root: tbody,
       pkg: gt,
       bids,
@@ -176,13 +179,25 @@ export function renderDanhGiaHsdtPanel() {
       presentation: tablePresentation,
       isReadOnly,
       onRankingChange: updateAllRankings,
-    });
+    };
+    const finalizeRowRender = () => {
+      lucide.createIcons();
+      if (typeof this.unifyTableInputsHeight === "function") {
+        this.unifyTableInputsHeight(document);
+      }
+    };
+    if (bids.length > 50) {
+      renderBidEvaluationRowsBatched(rowRenderContext, { chunkSize: 50 }).then((rows) => {
+        if (rows.length === bids.length) finalizeRowRender();
+      }).catch((error) => {
+        console.error("Failed to render bid evaluation rows", error);
+      });
+    } else {
+      renderBidEvaluationRows(rowRenderContext);
+      finalizeRowRender();
+    }
     if (this.currentEvaluationView === "contractor-detail" && bids.length > 0) {
       this.renderDetailedEvaluation?.();
-    }
-    lucide.createIcons();
-    if (typeof this.unifyTableInputsHeight === "function") {
-      this.unifyTableInputsHeight(document);
     }
   };
   select.onchange = handlePackageSelection;

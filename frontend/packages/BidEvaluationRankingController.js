@@ -145,17 +145,39 @@ export function createBidEvaluationRankingController({
   let hasUpdated = false;
   let scheduled = false;
   let frameId = null;
-  const update = () => {
-    hasUpdated = true;
-    const sequence = { foundPassedBidder: false, previousAllFailed: true };
-    const entries = [];
+  let cachedEntries = null;
+  let currentBidsById = new Map();
+  let previousRankings = null;
+  let previousScores = null;
+  const pendingDirtyRows = new Set();
+  let pendingFullUpdate = false;
+  const readEntries = ({ refresh = false } = {}) => {
+    if (cachedEntries && !refresh) return cachedEntries;
+    cachedEntries = [];
     root.querySelectorAll("tr[data-bid-id]").forEach((row) => {
       const bid = bidsById.get(String(row.getAttribute("data-bid-id") || ""));
-      if (!bid) return;
-      entries.push({
-        row,
-        bid,
-        currentBid: collectRowBid({
+      if (bid) cachedEntries.push({ row, bid });
+    });
+    return cachedEntries;
+  };
+  const update = (dirtyRows = null) => {
+    hasUpdated = true;
+    const isSequential = !isTwoEnvelope && pkg.quyTrinhDanhGia === "quytrinh2";
+    let entries = readEntries({ refresh: !dirtyRows });
+    const canCollectDirtyRows = dirtyRows instanceof Set
+      && dirtyRows.size > 0
+      && !isSequential
+      && currentBidsById.size === entries.length
+      && [...dirtyRows].every((row) => entries.some((entry) => entry.row === row));
+    const entriesToCollect = canCollectDirtyRows
+      ? entries.filter((entry) => dirtyRows.has(entry.row))
+      : entries;
+    if (!canCollectDirtyRows) currentBidsById = new Map();
+    const sequence = { foundPassedBidder: false, previousAllFailed: true };
+    entriesToCollect.forEach(({ row, bid }) => {
+      currentBidsById.set(
+        String(bid.id),
+        collectRowBid({
           row,
           bid,
           pkg,
@@ -163,25 +185,52 @@ export function createBidEvaluationRankingController({
           isReadOnly,
           sequence,
         }),
-      });
+      );
     });
-    const currentBids = entries.map((entry) => entry.currentBid);
+    const currentBids = entries
+      .map(({ bid }) => currentBidsById.get(String(bid.id)))
+      .filter(Boolean);
     const { rankings, scores } = calculateRankings(pkg, currentBids);
-    entries.forEach(({ row, bid }) => renderRanking(row, bid, rankings, scores));
+    entries.forEach(({ row, bid }) => {
+      const bidId = String(bid.id);
+      const rankingChanged = previousRankings === null
+        || previousRankings[bidId] !== rankings[bidId];
+      const scoreChanged = previousScores === null
+        || previousScores[bidId] !== scores[bidId];
+      if (rankingChanged || scoreChanged) {
+        renderRanking(row, bid, rankings, scores);
+      }
+    });
+    previousRankings = { ...rankings };
+    previousScores = { ...scores };
     return { currentBids, rankings, scores };
   };
   return {
     update,
-    schedule() {
+    schedule(dirtyRow = null) {
       if (disposed) return null;
-      if (!hasUpdated) return update();
+      if (dirtyRow && typeof dirtyRow.getAttribute === "function") {
+        pendingDirtyRows.add(dirtyRow);
+      } else {
+        pendingFullUpdate = true;
+      }
+      if (!hasUpdated) {
+        pendingDirtyRows.clear();
+        pendingFullUpdate = false;
+        return update();
+      }
       if (scheduled) return null;
       scheduled = true;
       const run = () => {
         scheduled = false;
         frameId = null;
         if (disposed || root.__bfBidEvaluationRankingRevision !== revision) return;
-        update();
+        const dirtyRows = pendingFullUpdate || pendingDirtyRows.size === 0
+          ? null
+          : new Set(pendingDirtyRows);
+        pendingDirtyRows.clear();
+        pendingFullUpdate = false;
+        update(dirtyRows);
       };
       if (typeof globalThis.requestAnimationFrame === "function") {
         frameId = globalThis.requestAnimationFrame(run);
@@ -197,6 +246,8 @@ export function createBidEvaluationRankingController({
       }
       scheduled = false;
       frameId = null;
+      pendingDirtyRows.clear();
+      pendingFullUpdate = false;
     },
   };
 }

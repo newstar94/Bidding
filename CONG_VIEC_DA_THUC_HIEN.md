@@ -13,7 +13,7 @@ File này được cập nhật sau mỗi việc hoàn thành để theo dõi th
 
 ### 2. Chốt và ghi nhận các quyết định nghiệp vụ NV1–NV6
 
-- **Trạng thái:** Hoàn thành phần tài liệu; chưa triển khai các thay đổi code NV4–NV6.
+- **Trạng thái:** Hoàn thành. Dòng này ban đầu chỉ ghi giai đoạn chốt tài liệu; phần code NV4–NV6 đã được triển khai và kiểm thử ở các mục 6, 7, 12, 17–20 và 27 bên dưới.
 - **Đã làm:** Phân loại lại NV1–NV3 là hành vi nghiệp vụ chủ ý; xác định NV4 và NV6 là lỗi code; xác định NV5 là yêu cầu đơn giản hóa data model.
 - **Quyết định:** Cho phép code cũ chạy với schema mới hơn; bỏ trạng thái hồ sơ giấy; không ràng buộc hợp đồng với nhà thầu trúng; giữ failed document job; không cần `nguoi_cham_id`; mismatch nhà thầu Excel chỉ cảnh báo.
 - **File:** `CONTEXT.md`, `docs/adr/0001-*` đến `docs/adr/0006-*`, `TOM_TAT_BUG_CAN_XAC_NHAN.md`, `CODE_REVIEW_REPORT.md`, `REFACTOR_PLAN.md`, `CHANGELOG_REFACTOR.md`.
@@ -437,3 +437,328 @@ File này được cập nhật sau mỗi việc hoàn thành để theo dõi th
 - **Quan sát lỗi:** Test thất bại khi có page error, console error, HTTP 4xx/5xx hoặc request ứng dụng bị lỗi; giữ trace, ảnh và video khi lỗi.
 - **File:** `playwright.config.mjs`, `tests/e2e/biddingflow.spec.mjs`, `tests/js/auth_session_role.test.mjs`, `tests/js/workflow_module_loader.test.mjs`, `frontend/auth/AuthFlowController.js`, `frontend/packages/BiddingWorkflows.js`.
 - **Kiểm tra:** Hai lượt trước khi cô lập và một lượt sau khi cô lập đều đạt 2/2; lượt deterministic gần nhất đạt trong 4,7 giây; `git diff --check` đạt.
+
+### 46. Đưa browser E2E vào CI Linux
+
+- **Workflow:** Job `test-build-audit` cài Chromium và system dependencies bằng Playwright sau bước build/audit, rồi chạy `npm run test:e2e` trên Ubuntu 24.04 với PostgreSQL disposable.
+- **Chẩn đoán:** Khi E2E hoặc bước trước đó thất bại, CI tải `playwright-report/` và `test-results/` thành artifact giữ 14 ngày; trace, ảnh và video chỉ được giữ khi lỗi.
+- **Không phụ thuộc seed:** Kịch bản báo cáo chi tiết dùng fixture route interception nên CI không cần tạo dữ liệu gói thầu thật và không ghi thay đổi vào database.
+- **File:** `.github/workflows/security-quality.yml`.
+- **Kiểm tra:** YAML parse thành công và `git diff --check` đạt. Chưa có GitHub Actions run của commit hiện tại, nên bằng chứng thực thi Ubuntu/AppArmor/Bubblewrap/Chromium vẫn chờ khi thay đổi được đẩy lên remote.
+
+### 47. Chạy cổng hồi quy đầy đủ sau browser E2E
+
+- **JavaScript:** 235/235 test đạt, gồm role phiên đăng nhập, route module loader, doanh thu lần đầu và toàn bộ báo cáo đánh giá chi tiết.
+- **Python:** 1.031/1.031 test đạt trong 42,07 giây; 1 test được bỏ qua theo điều kiện môi trường.
+- **Frontend:** `npm run lint:security` và `npm run build:secure` đạt; 200 module được build, vendor audit và các guard Excel đều đạt.
+- **Browser:** 2/2 E2E đạt trong 5,0 giây. Single-run local metrics: login → dashboard 602–606 ms; chuyển tab Super Admin 236 ms; mở danh sách gói → panel đánh giá 797 ms; mở báo cáo chi tiết 99 ms; báo cáo fixture có 0 dòng.
+- **Cleanup:** Không còn marker `[DEBUG-...]`, `E2E_AUTH` hoặc `E2E_EVALUATION`; `git diff --check` đạt.
+- **Giới hạn:** Plugin trình duyệt tích hợp vẫn không khởi tạo được vì lỗi nền tảng `windows sandbox: helper_unknown_error`; Playwright cục bộ là feedback loop đang hoạt động. Chưa coi staging benchmark hoặc Linux CI evidence là hoàn tất.
+
+### 48. Đồng bộ trạng thái các báo cáo Markdown
+
+- **Sửa trạng thái cũ:** `REFACTOR_PLAN.md` không còn ghi toàn bộ kế hoạch “chưa triển khai”; phản ánh PR 0–11 và cleanup an toàn đã hoàn thành, PR 12 còn measurement ngoài local.
+- **PR 12:** Ghi số đo browser E2E local đã có và tách rõ phần còn thiếu là scale 10/100/500 bid, staging WAL/lock/`pg_stat_statements` và production remeasurement.
+- **PR 13/dead code:** Ghi nhận 21/21 import binding an toàn đã xóa, `CONTEXT.md` và bảy ADR đã có; không xóa các public/ops candidate chưa đủ bằng chứng.
+- **Báo cáo hiệu năng:** Trạng thái đầu file phản ánh browser regression baseline đã có, không còn mâu thuẫn với phần số đo mới.
+- **Kiểm tra:** Chỉ thay đổi tài liệu, không thay đổi runtime; `git diff --check` được chạy ở cổng cuối.
+
+### 49. Đo 10/100/500 nhà thầu và giảm một lần treo dài
+
+- **Feedback loop:** Mở gói 1G1T fixture với 10, 100 và 500 nhà thầu; xác nhận đủ row và ghi navigation, DOM node, long-task, longest task, heap. Cả năm E2E không ghi database.
+- **Baseline 500:** Mở bảng 3.374 ms; 33.559 DOM node; 2 long task tổng 1.853 ms; block dài nhất 1.300 ms; heap 56,8 MB.
+- **Renderer:** Giữ render đồng bộ đến 50 dòng; trên 50 dòng dùng batch 50 theo frame, tạo mỗi batch trong `DocumentFragment`, và revision cancellation để đổi gói/tab không bị lượt cũ ghi tiếp.
+- **Sau tối ưu 500:** Mở bảng 3.817 ms; block dài nhất 693 ms (giảm 46,7%); tổng long-task 2.338 ms chia thành 10 khoảng; heap 53,5 MB. Đây là trade-off giảm freeze dài, không phải throughput nhanh hơn.
+- **Regression test:** Test đỏ trước fix vì chưa có `renderBidEvaluationRowsBatched`; sau fix khóa batch size và hủy stale render.
+- **Giới hạn:** Ranking/DOM scan cuối vẫn tạo block khoảng 693 ms; đây là bottleneck tiếp theo. Không đặt performance threshold từ single-run local.
+- **File:** `frontend/packages/BidEvaluationRowRenderer.js`, `BidEvaluationWorkflow.js`, `tests/js/bid_evaluation_row_renderer.test.mjs`, `tests/e2e/biddingflow.spec.mjs`, `PERFORMANCE_REPORT.md`, `REFACTOR_PLAN.md`.
+- **Kiểm tra:** 237/237 JavaScript test đạt; 5/5 browser E2E đạt trong 16,8 giây; security lint, vendor/Excel guards, secure build và `git diff --check` đạt.
+
+### 50. Đo và loại bỏ các truy vấn N+1 đã xác nhận
+
+- **Feedback loop:** Thêm test đếm trực tiếp số lệnh SQL khi số bản ghi tăng lên 40/80 dòng; test đỏ trước sửa với 122 câu kiểm tra tồn tại cho 122 bản ghi mới, 80 câu cho 80 phân công bị gỡ, 40 câu cho 40 gói liên kết hợp đồng và 40 câu tải row-version.
+- **Tự gán người phụ trách:** Gom ID theo kế hoạch/gói thầu/hợp đồng, đọc theo lô tối đa 500 tham số thay vì `SELECT` từng bản ghi.
+- **Kiểm tra phân công bị gỡ:** Gom theo gói thầu/hợp đồng, còn tối đa hai nhóm truy vấn cho lô nhỏ thay vì một truy vấn mỗi phân công.
+- **Đồng bộ hợp đồng:** Kiểm tra toàn bộ gói liên kết bằng `IN (...)`, sau đó ghi liên kết bằng `executemany`; không còn đọc tồn tại theo từng gói.
+- **Validation đồng bộ:** Tải trước bản ghi hiện tại theo bảng để kiểm tra `row_version` và trạng thái lưu trữ, dùng lại cùng snapshot trong toàn bộ payload.
+- **Rời tổ chức:** Kiểm tra tập người tiếp quản và các phân công đã có theo hai truy vấn gom, không truy vấn lại trong vòng lặp chuyển giao.
+- **Giữ nguyên có chủ đích:** Các vòng ghi lịch sử, optimistic locking/savepoint và ghi kết quả theo từng lô không được gắn nhãn N+1; đây là thao tác ghi có ngữ nghĩa/rollback riêng.
+- **Kiểm tra:** 65 test tập trung đạt; toàn bộ Python 1.035 test đạt, 1 bỏ qua; toàn bộ JavaScript 238/238 đạt; 5/5 browser E2E đạt; secure lint, vendor/Excel guards và build bảo mật đạt.
+
+### 51. Đóng gói, cleanup và kiểm thử trình duyệt hậu-cleanup
+
+- **Production archive:** `scripts/package_production.py` kiểm tra allowlist, giải nén smoke và tạo `release/biddingflow-production.zip` gồm 271 runtime file, 1.529.861 byte.
+- **Cleanup:** Xóa `node_modules`, cache Python/pytest, coverage, Playwright report/test result, log cũ và thư mục tạm có thể tái tạo. Giữ `dist`, source/migration/test/build config, `.agents`, `.codex`, `agent`, database PostgreSQL cục bộ, PostgreSQL tools, `.env`, template và tài liệu người dùng.
+- **Browser matrix:** Thêm và chạy 7 trường hợp Tư vấn/Hàng hóa/Xây lắp/Hỗn hợp/Phi tư vấn; 1G1T quy trình 1/2; 1G2T; phân lô/không phân lô; liên danh/độc lập; các phương pháp giá thấp nhất/kỹ thuật/kết hợp.
+- **Kết quả browser E2E:** 6/6 ca đạt, gồm doanh thu lần đầu, empty-state báo cáo chi tiết, business matrix và scale 10/100/500 nhà thầu.
+- **Browser plugin hậu-cleanup:** Ứng dụng `live=200`, `ready=200`; plugin mở landing page thành công, đúng tiêu đề và không có console error. Tab được giữ mở cho người dùng.
+- **Lỗi phát hiện:** Tạo `BUGS_KIEM_THU_TOAN_BO_2026-07-27.md`; xác nhận trạng thái trang con báo cáo chi tiết bị giữ khi chuyển sang gói khác là lỗi code, không phải quy định nghiệp vụ. Lỗi được xử lý ở mục 52.
+
+### 52. Sửa trạng thái báo cáo chi tiết bị giữ khi đổi gói thầu
+
+- **Feedback loop:** Browser matrix bắt buộc mỗi gói mới phải mở ở báo cáo tổng quát; trước sửa test đỏ tại gói thứ hai với `openedDetailedWithoutRequest=true`.
+- **Nguyên nhân:** `currentEvaluationView` thuộc application controller và chỉ được đổi về `summary` khi người dùng bấm quay lại; `showPackageDetails` tạo DOM mới nhưng tiếp tục gọi `renderDetailedEvaluation()` vì state cũ vẫn là `contractor-detail`.
+- **Sửa lỗi:** Thêm seam `resetDetailedEvaluationNavigationForPackageChange`; khi package ID thực sự thay đổi, chỉ reset trang con và cờ dirty điều hướng. Draft theo khóa package/bid vẫn được giữ; render lại cùng package không bị reset.
+- **Regression:** Unit test kiểm tra cả đổi package và cùng package; E2E kiểm tra cả 7 loại gói/phương thức đều không tự mở chi tiết.
+- **Kiểm tra:** 239/239 JavaScript, 1.035/1.035 Python (1 bỏ qua theo môi trường), secure build và 6/6 browser E2E đều đạt.
+
+### 53. Đo và giảm long task khi hiển thị 500 tiêu chí chi tiết
+
+- **Fixture hợp lệ:** Tạo 500 tiêu chí custom tối thiểu nằm dưới giới hạn metadata 64 KiB và 500 row draft tại network boundary; không ghi database.
+- **Baseline:** Mở đủ bảng trong 785 ms, 15.312 DOM node, một long task 263 ms, heap 39,6 MB.
+- **Tối ưu:** Với bảng trên 100 dòng, render 25 dòng đầu và nối batch 25 dòng theo animation frame; dùng revision cancellation; khóa tạm các action mutation; event delegation cho input/result/remove của dòng chèn sau.
+- **Đo lại:** Ba lượt có thời gian hoàn tất 960/985/1.490 ms (median 985 ms) và longest task 60/67/67 ms (median 67 ms). Long task median giảm khoảng 74,5%; throughput hoàn tất bảng tăng khoảng 25,5%, là trade-off responsiveness có chủ đích.
+- **Regression:** Unit test khóa batch boundary và event delegation cho dòng thêm muộn; browser test đếm đủ 500 dòng và ghi DOM/heap/long-task.
+- **Kiểm tra:** 241/241 JavaScript, secure build và 7/7 browser E2E đạt; toàn bộ 1.035 Python đã đạt trong cùng lượt thay đổi backend trước đó, 1 test bỏ qua theo môi trường.
+
+### 54. Khóa nhận diện sáu workbook MuaSắmCông thật
+
+- **Fixture ngoài repository:** Bài kiểm thử tùy chọn đọc trực tiếp sáu file `.xlsx` người dùng cung cấp qua `E2E_REAL_EXCEL_DIR`; không sửa, sao chép hoặc đưa dữ liệu workbook vào source/release.
+- **Chọn sheet theo nghiệp vụ:** 1G1T giá thấp nhất chọn `Mẫu số 07B`; 1G2T tài chính chọn `Mẫu số 06C`; tài chính tư vấn kết hợp kỹ thuật–giá chọn `Mẫu số 02B`; kỹ thuật tư vấn chọn `Mẫu số 02`.
+- **Phân lô:** Dùng mã lô thật trong `Bảng X`/phụ lục; năng lực–kinh nghiệm được bổ sung đúng dữ liệu lô và không còn cảnh báo không tìm thấy lô.
+- **Sheet rỗng:** Các sheet kỹ thuật 03A/03B của ba workbook hàng hóa chỉ có dòng mẫu `-`, nên không tạo tiêu chí rỗng; đây là dữ liệu nguồn, không phải lỗi nhận diện.
+- **Kiểm tra:** 6/6 workbook đạt; mỗi nhóm nhận diện có số dòng map bằng số tiêu chí, không warning, tổng thời gian validate/đọc/chọn/map khoảng 82–110 ms/file trong Chromium.
+- **File:** `tests/e2e/real_excel_import.spec.mjs`; test tự bỏ qua khi môi trường CI không có bộ workbook thật.
+
+### 55. Lấp khoảng trống coverage ở adapter đồng bộ
+
+- **Phát hiện:** 1.035 test backend đều đạt nhưng release coverage gate vẫn đỏ vì `backend/sync/api.py` và `backend/sync/repository.py` chỉ đạt 52,94%.
+- **Test adapter:** Khóa đủ năm route adapter chuyển đúng request tới sync/read/pagination/version service và truyền đúng websocket broadcaster.
+- **Test repository:** Khóa nhánh versioned/unversioned, tăng/đọc sync version và fallback `0` khi câu `RETURNING`/`SELECT` không có row.
+- **Kết quả tập trung:** Hai module đạt 100% statement + branch coverage; 3/3 test mới đạt.
+- **File:** `tests/test_sync_api_repository.py`.
+
+### 56. Chạy cổng phát hành đầy đủ sau tối ưu
+
+- **Backend:** 1.038/1.038 test đạt, 1 test bỏ qua theo điều kiện môi trường; coverage tổng đạt ngưỡng 70% và toàn bộ module quan trọng đạt tối thiểu 90%.
+- **Frontend:** 241/241 JavaScript test đạt; security lint, Trusted Types, vendor audit, SheetJS smoke, Excel archive guard và secure Vite build đều đạt.
+- **Trình duyệt:** 13/13 Playwright E2E đạt trong 43,5 giây, gồm 7 ca UI/hiệu năng/ma trận nghiệp vụ và 6 workbook MuaSắmCông thật.
+- **Production:** Allowlist check và smoke boot từ bản giải nén đạt; tạo lại `release/biddingflow-production.zip` gồm 271 runtime file, 1.530.015 byte.
+
+### 57. Dọn workspace hậu kiểm thử
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, `playwright-report`, `test-results`, `.docx-review`, coverage/HTML coverage và toàn bộ `__pycache__` trong source/test/script.
+- **Đã giữ:** source, migration, test hồi quy, cấu hình build/CI, `dist`, `release`, PostgreSQL/data, `.env`, template/tài liệu người dùng, `.agents`, `.codex`, `agent` và dữ liệu skill AI.
+- **Hậu kiểm:** Không còn cache sinh ra trong source, không còn marker debug; `git diff --check` đạt; ứng dụng sau cleanup vẫn trả `live=200`, `ready=200`.
+
+### 58. Kiểm thử plugin trình duyệt hậu-cleanup
+
+- **Landing page:** Plugin mở trực tiếp `http://127.0.0.1:8000/`; tài liệu ở trạng thái `complete`, đúng title BiddingFlow, đúng H1 và đầy đủ liên kết đăng nhập/điều hướng.
+- **Runtime health:** Song song với kiểm tra UI, backend vẫn trả `live=200`, `ready=200`; tab landing được giữ mở cho người dùng.
+- **Giới hạn plugin:** Browser provider hiện tại không khởi tạo được workspace động khi đi thẳng `/dang-nhap`: shell dừng ở loader và isolated browser context báo thiếu `fetch`/`WebSocket`. Cùng luồng đã đạt bằng Chromium Playwright 13/13 ngay trước cleanup; cleanup không đổi runtime, nên ghi nhận là giới hạn provider/browser session, không gắn nhãn lỗi code.
+
+### 59. Đo ghép cặp source và production package, sửa lỗi metrics harness
+
+- **Production seam:** `run_load_rehearsal.py` nhận `--application-root` và `--output`, fail trước khi đụng database nếu cây runtime thiếu `backend/app.py`, `dist/secure-build.json` hoặc `views`; child process dùng đúng `cwd`/`PYTHONPATH` của cây giải nén.
+- **Lỗi harness:** Một `/metrics` `ReadTimeout` từng làm lượt 4 trả lỗi dù workload đã hoàn tất. Test mô phỏng đỏ trước sửa; collector nay bỏ riêng response lỗi và tiếp tục lấy đủ worker.
+- **Đo ghép cặp:** 5 lượt source và 5 lượt `release/biddingflow-production.zip` giải nén, cùng 2 worker/concurrency 8/5 giây/database disposable. Source: 424,20 req/s, overall p95 42,38 ms, sync-write p95 84,12 ms. Production: 412,28 req/s, 39,96 ms, 76,32 ms.
+- **Correctness:** 20.842/20.842 request trả `200`, 0 workload error, đủ 2/2 worker ở 10/10 lượt, 0 deadlock và 0 temp file; tối đa 1 lock chưa được cấp tại một số sample rồi tự giải phóng.
+- **Giới hạn:** Một warmup production có timeout/retry khoảng 15,48 giây; median warmup p95 1,74 giây. Chưa có Linux/staging, WAL theo statement hoặc `pg_stat_statements` runtime.
+- **Kiểm tra tập trung:** 7/7 test load-rehearsal policy đạt.
+
+### 60. Rà soát và cập nhật baseline SQL động sau batching N+1
+
+- **Gate phát hiện:** `security_static_gate.py` chặn sáu file vì fingerprint SQL động thay đổi sau khi gom truy vấn N+1.
+- **Rà soát:** `org_routes` và các sync module chỉ tạo số lượng placeholder `?`; tên bảng đến từ tuple nội bộ/schema allowlist (`goi_thau`, `hop_dong`, `ke_hoach_lcnt`); không có giá trị người dùng được nối vào SQL.
+- **Baseline:** Cập nhật count/hash cho sáu file và ghi `lastReview` với invariant identifier/value binding vào `security/dynamic-sql-baseline.json`.
+- **Kiểm tra:** Security static gate đạt trên 157 file Python; 18/18 test load rehearsal + production packaging đạt. Full suite xác nhận 1.040 test đạt, 1 bỏ qua; ba test nhúng Node được chạy lại sau khi cài dependency khóa tạm thời vì cleanup trước đó đã xóa `node_modules`.
+
+### 61. Cleanup sau production benchmark
+
+- **Database:** Xác minh identity load-test khác runtime và có tên disposable trước khi xóa/recreate schema `public` của `biddingflow_load_test`; không đụng database ứng dụng.
+- **Artifact:** Xóa cây production giải nén, 10 JSON benchmark, log rehearsal, `node_modules` cài tạm, pytest/Python cache và coverage sinh lại.
+- **Giữ lại:** Số đo tổng hợp trong `PERFORMANCE_REPORT.md`, production ZIP gốc, source/test, database runtime, tài liệu và skill AI.
+
+### 62. Đo WAL và pg_stat_statements từ production package
+
+- **Cô lập:** Xác nhận PostgreSQL đã preload `pg_stat_statements`; extension chỉ được tạo/reset theo OID trong database disposable, không reset thống kê runtime và không đổi cấu hình server.
+- **Harness:** Ghi `clusterWalBytesUpperBound`, tổng statement calls/execution/WAL/temp blocks, top statement theo execution và WAL; câu query quan sát được tách khỏi câu ứng dụng.
+- **Kết quả:** 3 lượt production, mỗi lượt 10 giây, tổng 10.967/10.967 request `200`; median 391,80 req/s, p95 tổng 46,42 ms, sync-write p95 86,60 ms.
+- **Write profile:** Median 979.900 byte WAL ứng dụng, 260,23 byte/request, 15,81 statement call/request và 0,904 ms tổng statement execution/request; không deadlock, temp block hoặc temp file.
+- **Giới hạn:** LSN là upper bound toàn cluster; lượt 3 có background/DB-other noise rõ. Cần staging scenario/tag trước khi đặt WAL budget.
+- **Kiểm tra:** 8/8 policy test và security static gate 157 file đạt trước benchmark.
+
+### 63. Cleanup sau WAL benchmark
+
+- **Database:** Xác minh lại identity disposable rồi drop/recreate schema load-test; extension `pg_stat_statements` cục bộ và toàn bộ dữ liệu benchmark bị loại cùng schema.
+- **Filesystem:** Xóa cây production giải nén, ba JSON WAL, smoke JSON, rehearsal log, pytest/Python cache; không giữ query text hay dữ liệu thử nghiệm ngoài báo cáo tổng hợp.
+- **Runtime:** Production ZIP và database ứng dụng không bị thay đổi.
+
+### 64. Loại hai vòng O(n²) trong bootstrap identity nhà thầu
+
+- **Feedback loop:** Test 1.000 identity ghi 499.500 predicate ở `mergeReferenceRecords` và 500.500 predicate ở post-merge persistence; cả hai đỏ trước sửa.
+- **Sửa:** Dựng ID index một lần, giữ first-existing semantics, trả danh sách merged record cho `applyServerSnapshot`; không dò lại state. Full local fields, authoritative package identity, `referenceOnly` và IndexedDB payload được giữ nguyên.
+- **Microbenchmark:** 5.000 identity, 7 lượt: merge median 150,04 → 0,70 ms, p95 161,20 → 1,82 ms, khoảng 213×.
+- **Browser:** 100/1.000/5.000 identity luôn render 10 row; 5.000 giảm longest task 373 → 84 ms, tổng long task 640 → 157 ms; tab nhà thầu 267 ms, DOM khoảng 2.425 node, heap 31,2 MB.
+- **Harness:** Thêm E2E scale fixture và chờ route handler hoàn tất trước teardown, loại flake `Response has been disposed`.
+- **Kiểm tra:** 244/244 JavaScript, secure build, 16/16 browser E2E và production archive smoke đều đạt.
+- **Production:** Tạo lại ZIP 271 runtime file, 1.530.685 byte.
+
+### 65. Cleanup sau contractor-scale E2E
+
+- **Đã xóa:** `node_modules`, Playwright report/result, pytest/Python cache và coverage sinh trong lượt build/E2E/package.
+- **Đã giữ:** Regression test scale, báo cáo số đo, secure `dist`, production ZIP, source/test, database và skill AI.
+- **Hậu kiểm:** Không còn artifact tái tạo trong workspace; ứng dụng dev tiếp tục dùng runtime đang chạy.
+
+### 66. Sửa khởi tạo lặp và lỗi Trusted Types trong production package
+
+- **Feedback loop:** E2E chạy trực tiếp từ ZIP production bắt được hai `#tab-superadmin-dashboard`, hai lần tải partial và các request bootstrap lặp; test đóng gói cũng đỏ khi entry đã băm còn bị gắn `?v=`.
+- **Nguyên nhân khởi tạo lặp:** Script entry dùng `/dist/assets/app-<hash>.js?v=...`, còn graph module dùng `/dist/assets/app-<hash>.js`; trình duyệt coi là hai module khác nhau và chạy bootstrap hai lần.
+- **Sửa URL canonical:** Entry lấy từ Vite manifest được dùng nguyên URL content-hash; chỉ fallback `appbundle.js` không băm mới dùng mtime query. E2E khóa dashboard đúng một phần tử.
+- **Lỗi an toàn bị lộ sau đó:** `navigator.serviceWorker.register()` nhận chuỗi thường trong khi CSP yêu cầu `TrustedScriptURL`; URL service worker nay đi qua allowlist hẹp và policy `biddingflow-html`.
+- **Phòng ngừa:** Tắt runtime module-preload injection của Vite dưới CSP Trusted Types; security gate khóa cả cấu hình này và sink service worker.
+- **Regression:** 12/12 test production packaging đạt; route-trace production từ đỏ chuyển xanh, không còn console/page/network error.
+
+### 67. Đo graph tài nguyên production và chạy lại toàn bộ cổng phát hành
+
+- **Route graph:** Tuyến gói thầu tải 15 tài nguyên JavaScript, 831.811 byte encoded, tối đa 36,9 ms; có `BiddingWorkflows` và không có `PartnerWorkflows`. Tuyến thêm nhà thầu tải 3 tài nguyên, 114.193 byte encoded, tối đa 7,6 ms; có `PartnerWorkflows` và không tải lại `BiddingWorkflows`.
+- **WebSocket:** `403` trong lượt đầu do server kiểm thử chạy cổng 18084 nhưng thiếu `APP_PORT=18084`; cấu hình đúng thì route-trace sạch. Đây là giới hạn cấu hình test, không phải lỗi code.
+- **Backend:** 1.042 test đạt, 1 test bỏ qua theo điều kiện môi trường.
+- **Frontend:** 244/244 test JavaScript đạt; security lint, Trusted Types, vendor/Excel guards, secure build và production package smoke đều đạt.
+- **Trình duyệt:** 17/17 E2E đạt, gồm ma trận nghiệp vụ, 500 tiêu chí, 10/100/500 hồ sơ, 100/1.000/5.000 nhà thầu và 6 workbook MuaSắmCông thật.
+- **Production:** ZIP gồm 271 runtime file, 1.527.755 byte; SHA-256 `C639538B50A170BA88D9EEEC660A9880A32D65970793EEE8F0506F7C6654528C`.
+
+### 68. Cleanup cuối và hậu kiểm bằng plugin trình duyệt
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, `playwright-report`, `test-results`, `docx-review-output`, source/test/script `__pycache__` và bốn cây production route-trace trong thư mục tạm.
+- **Database:** Xác minh `current_database() = biddingflow_load_test` trước khi drop/recreate schema `public`; không đụng database ứng dụng.
+- **Đã giữ:** Source, test hồi quy, `dist`, production ZIP, PostgreSQL runtime/data, `.env`, tài liệu và các thư mục skill AI `.agents`, `.codex`, `agent`, `.hallmark`.
+- **Plugin hậu-cleanup:** Mở `http://127.0.0.1:8000/`, trang ở `readyState=complete`, đúng title/H1, đúng một module entry và không có console warning/error.
+- **Runtime:** Backend dev tiếp tục trả `live=200`, `ready=200` sau cleanup.
+
+### 69. Đóng khoảng trống đo initial load và package navigation
+
+- **Phạm vi:** Chạy lặp hai ca E2E trên source và ZIP production, tổng 20/20 ca đạt; login có 10 mẫu/runtime, các thao tác navigation có 5 mẫu/runtime.
+- **Initial load:** Login → dashboard source median/p95 734/939 ms; production 588/816 ms.
+- **Package:** Package → evaluation source median/p95 911/1.241 ms; production 824/1.040 ms.
+- **Chi tiết:** Mở báo cáo chi tiết rỗng source median/p95 106/114 ms; production 98/109 ms.
+- **Kết luận:** Không có hồi quy production để biện minh cho thay đổi code; giữ nguyên implementation và cập nhật báo cáo. Staging/network profile cùng parse/evaluate vẫn chưa có bằng chứng trên máy này.
+
+### 70. Cleanup sau navigation benchmark
+
+- **Đã xóa:** `node_modules`, JSON reporter, Playwright result và cây ZIP production giải nén dùng cho 20 ca đo.
+- **Database:** Xác minh đúng `biddingflow_load_test`, sau đó drop/recreate schema `public`; không chạm database ứng dụng.
+- **Đã giữ:** Production ZIP gốc, secure `dist`, source/test, tài liệu, PostgreSQL runtime/data và skill AI.
+
+### 71. Đo pipeline xuất Word báo cáo đánh giá chi tiết
+
+- **Benchmark tái lập:** Thêm `scripts/benchmark_document_export.py`, tạo template vòng lặp bảng, seal context theo manifest, đo direct render và đúng worker sandbox production; mở lại DOCX để xác minh đủ dòng.
+- **500 dòng:** Direct median/p95 74,71/90,56 ms; worker cô lập 594,25/612,46 ms; output 39.960 byte.
+- **Burst:** 4/4 job hoàn tất với giới hạn mặc định 2 worker trong 1.243,37 ms; p95 từng job 1.241,82 ms, không reject/timeout.
+- **Kết luận:** Không có bottleneck theo số dòng đến 500. Chi phí khoảng 0,5–0,6 giây là khởi tạo sandbox bảo mật, nên không bỏ cô lập hoặc tăng concurrency khi chưa có template staging có ảnh chứng minh cần thiết.
+- **Regression/gate:** 4 test benchmark đạt; nhóm document 36 đạt, 1 bỏ qua; security gate 158 file đạt; full backend 1.046 đạt, 1 bỏ qua.
+- **Lệnh:** `python scripts/benchmark_document_export.py --rows 10 100 500 --iterations 5 --mode both --parallel-jobs 4`.
+
+### 72. Cleanup sau benchmark xuất Word
+
+- **Đã xóa:** `node_modules`, pytest cache và toàn bộ source/test/script `__pycache__` sinh trong lượt benchmark/gate.
+- **Đã giữ:** Script benchmark và test hồi quy, production ZIP, secure `dist`, PostgreSQL runtime/data, tài liệu và skill AI.
+- **Hậu kiểm:** Benchmark dùng `TemporaryDirectory`, không để lại template hay DOCX kết quả trong workspace.
+
+### 73. Tối ưu tiến trình xuất Excel
+
+- **Feedback loop:** Benchmark 10/100/1.000/10.000 dòng cho thấy worker mất 1,1–2,35 giây vì export thuần vẫn nạp `excel_service`, kéo theo helper database và tầng ứng dụng.
+- **Sửa:** Tách dựng workbook, style, dropdown và ba hàm export thuần sang `excel_workbook_builder`; facade cũ re-export để giữ compatibility, export cần database không đổi.
+- **Regression:** Thêm test import-boundary khóa worker thuần không được nạp `excel_service` hoặc `backend.shared.helpers`, cùng benchmark tái lập cho direct/worker.
+- **Kết quả:** Worker median giảm 56,5% ở 10 dòng, 55,0% ở 100 dòng, 48,4% ở 1.000 dòng và 27,4% ở 10.000 dòng; direct path giữ ổn định.
+- **Gate:** Backend `1.050 passed, 1 skipped`; JavaScript `244/244`; security static gate `160` file; nhóm Excel/document `58 passed, 1 skipped`.
+- **Production:** ZIP gồm 272 runtime file, 1.528.607 byte; SHA-256 `79E16ECEC4D32E8A7E550ABADF8AE9A830D6693BF3290DB4184023A1467A36B2`.
+
+### 74. Cleanup cuối và kiểm thử production bằng plugin trình duyệt
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, Playwright report/result và toàn bộ `__pycache__` trong source/test/script; không còn dependency/cache kiểm thử tái tạo được trong workspace.
+- **Đã giữ:** Source và test hồi quy, secure `dist`, production ZIP, PostgreSQL runtime/data, tài liệu và các thư mục skill AI `.agents`, `.codex`, `agent`, `.hallmark`.
+- **Phân loại môi trường:** Tiến trình cũ ở cổng 8000 còn chạy `APP_DEBUG=True` nên sau cleanup không còn route DOMPurify từ `node_modules`; đây là lệch chế độ chạy hậu-cleanup, không phải lỗi production. Runtime được khởi động lại với `APP_DEBUG=False` để dùng asset content-hash trong `dist`.
+- **Plugin trình duyệt:** Đăng nhập thật, chuyển Super Admin → Chuyên viên, mở danh sách gói, gói `IB2500426517`, báo cáo đánh giá và báo cáo chi tiết; không có console warning/error.
+- **Nghiệp vụ kiểm tra trực tiếp:** Hàng hóa, 1G1T, quy trình 1, giá thấp nhất, không phân lô; dữ liệu nhà thầu độc lập và draft 18/21 tiêu chí được tải lại đúng.
+- **Bảng chi tiết:** Tab tài chính chỉ có `STT / Nội dung / Giá trị`; header `position: sticky; top: 0`, tiêu đề và ô dữ liệu căn giữa ngang/dọc, font `Plus Jakarta Sans`; không có “Lý do không đạt”, cột “Làm rõ” hoặc `nguoi_cham_id`.
+- **Hậu kiểm runtime:** `/health/live=200`, `/health/ready=200`; production dùng đúng một module content-hash `/dist/assets/app-DGIHFSm4.js`.
+
+### 75. Tách deep module ghi metric khỏi hot-path database/session
+
+- **Feedback loop đỏ:** Test import-boundary xác nhận cả 5 producer database/session/logging import `backend.observability.metrics`; fresh import database lane/session median 312,99/310,79 ms.
+- **Sửa:** Tạo `backend.observability.recording` thuần standard-library, sở hữu interface record/snapshot/reset; Prometheus renderer đọc snapshot và re-export interface cũ để giữ compatibility.
+- **Import graph:** SCC backend lớn nhất giảm 13 → 6 module; database lane import median/p95 còn 243,68/279,44 ms, session store còn 255,04/267,63 ms.
+- **Correctness:** Nội dung counter/histogram/label giữ nguyên; reset nay xóa cả phase count/sum/bucket/max vốn bị bỏ sót trước đây.
+- **Regression/gate:** 4 test recorder/renderer đạt; nhóm liên quan 123 test đạt; full backend `1.054 passed, 1 skipped`; JavaScript `244/244`; security static gate `161` file.
+- **Production:** ZIP gồm 273 runtime file, 1.529.745 byte; SHA-256 `68D5A504195E3F6F82C606B944AF01CE3F4857881E71DE9297A9FBC4B09FBB65`.
+
+### 76. Cleanup và hậu kiểm sau refactor recorder
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, report/result kiểm thử và toàn bộ source/test/script `__pycache__` sinh bởi full gate/package.
+- **Đã giữ:** Secure `dist`, production ZIP, source/test hồi quy, PostgreSQL runtime/data, tài liệu và skill AI.
+- **Runtime mới:** Backend được khởi động lại với `APP_DEBUG=False`; `/health/live=200`, `/health/ready=200`.
+- **Metrics smoke:** `/metrics=200`, payload 27.468 byte và có đủ database operation, database phase cùng runtime-log-drop series từ recorder mới.
+
+### 77. Sửa rò kết nối pooled connection trong audit độc lập
+
+- **Feedback loop đỏ:** `log_audit()` qua cả nhánh append thành công/lỗi đều cho `close_calls=0`; static boundary cũng bắt import `logging_utils → shared.helpers`.
+- **Nguyên nhân:** `append_audit_row` chỉ commit/rollback; caller lấy kết nối qua `database.get_connection()` nhưng không có `finally` trả kết nối về pool.
+- **Phạm vi:** 36 call site audit, gồm 22 transaction-bound và 14 audit độc lập có thể đi qua đường rò.
+- **Sửa:** Audit độc lập import lazy trực tiếp `db_helper.database`, append trong `try` và luôn `conn.close()` trong `finally`; audit gắn cursor giữ nguyên transaction ownership.
+- **PostgreSQL thật:** Pool `min=max=1`, 5 audit liên tiếp đều trả hash, `pool_available=1`, `requests_waiting=0` sau mỗi lượt.
+- **Import graph:** SCC 6 module biến mất; backend chỉ còn SCC partner/sync 3 module.
+- **Gate:** 4 test focused đạt; full backend `1.058 passed, 1 skipped`; JavaScript `244/244`; security static gate `161` file.
+- **Production:** ZIP gồm 273 runtime file, 1.529.765 byte; SHA-256 `C5E8C9B155997020E73ADB45AEBEDDB9AD4A5ACBCA93925F221531B20A3D8438`.
+
+### 78. Cleanup và hậu kiểm sau sửa audit pool
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, report/result kiểm thử và source/test/script `__pycache__` sinh bởi full gate/package.
+- **Đã giữ:** Secure `dist`, production ZIP, PostgreSQL runtime/data, source/test hồi quy, tài liệu và skill AI.
+- **Runtime:** Backend đã nạp mã mới với `APP_DEBUG=False`; `/health/live=200`, `/health/ready=200`.
+- **Hậu kiểm:** Không còn import `logging_utils → shared.helpers`, không còn debug instrumentation hoặc artifact tái tạo trong workspace.
+
+### 79. Loại backend import cycle partner/sync cuối cùng
+
+- **Feedback loop đỏ:** Test Tarjan trên toàn backend phát hiện SCC `partner_lookup_service`, `sync.api`, `sync.service`.
+- **Nguyên nhân:** Partner worker cần broadcast nhưng import qua HTTP route facade `sync.api`; service sau commit lại import partner enrichment, tạo cạnh quay lại.
+- **Sửa seam:** Import lazy trực tiếp `broadcast_websocket_event` từ module sở hữu `sync.websocket`; không tạo adapter/port giả và không đổi payload hay transaction ordering.
+- **Kết quả graph:** Backend từ một SCC 3 module về 0 import cycle; policy test toàn graph ngăn hồi quy.
+- **Gate:** Focused partner/sync/WebSocket `76 passed`; full backend `1.059 passed, 1 skipped`; JavaScript `244/244`; security static gate `161` file.
+- **Production:** ZIP gồm 273 runtime file, 1.529.765 byte; SHA-256 `47B5D8E86B26C1FD5C5B52DD86EB9A692286FA44B09F48C143F04B44FCD23726`.
+
+### 80. Cleanup và hậu kiểm sau khi backend đạt zero-cycle
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, report/result kiểm thử và toàn bộ source/test/script `__pycache__`.
+- **Đã giữ:** Secure `dist`, production ZIP, PostgreSQL runtime/data, source/test hồi quy, tài liệu và skill AI.
+- **Runtime:** Backend đã nạp mã zero-cycle với `APP_DEBUG=False`; `/health/live=200`, `/health/ready=200`.
+- **Hậu kiểm:** Static policy xác nhận backend 0 import cycle; không còn artifact tái tạo hoặc debug instrumentation trong workspace.
+
+### 81. Mở rộng deep recorder cho toàn bộ hot-path metric còn lại
+
+- **Đã làm:** Chuyển document worker, partner lookup/address, WebSocket và audit monitor sang `backend.observability.recording`; `metrics.py` chỉ còn render/HTTP và compatibility re-export.
+- **Dependency:** Partner lookup và WebSocket lấy database trực tiếp từ `db_helper`, không qua `shared.helpers`; chỉ `app.py` và `lifecycle.py` còn import renderer metric.
+- **Hiệu năng:** Fresh-import median giảm 24,2% cho partner service, 19,5% cho WebSocket, 39,3% cho document worker và 9,2% cho address routes; audit monitor không đổi đáng kể.
+- **Gate:** Backend `1.061 passed, 1 skipped`; JavaScript `244/244`; security static gate `161` file; focused suites đạt; backend vẫn 0 import cycle.
+- **Production:** ZIP gồm 273 runtime file, 1.530.190 byte; SHA-256 `8D58AAE4AEDA1ED2913B63D04FCE0EDF8D227C3F8324FF58B0083CC1362A854C`.
+
+### 82. Cleanup production và hậu kiểm bằng plugin trình duyệt
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, Playwright report/result, coverage cache và toàn bộ `__pycache__` dưới source/test/script; không xóa source, test hồi quy hoặc dữ liệu vận hành.
+- **Đã giữ:** Secure `dist`, ZIP production, PostgreSQL runtime/data, `.env`, tài liệu và các thư mục skill AI `.agents`, `.codex`, `agent`, `.hallmark`.
+- **Runtime:** Khởi động lại với `APP_DEBUG=False`; `/health/live`, `/health/ready`, `/metrics` đều `200` và đủ các metric series mới.
+- **Plugin:** Đăng nhập thật, chuyển sang Chuyên viên, mở gói `IB2500426517`, báo cáo tổng quát và đủ bốn tab chi tiết; xác nhận font, sticky header, cấu trúc tab tài chính và các trường đã loại bỏ.
+- **Lỗi ghi nhận tại thời điểm hậu kiểm:** Phát hiện STT trùng `2` trong tab Tính hợp lệ sau khi loại dòng liên danh; lỗi đã được sửa và đóng tại mục 83. Đây là lỗi code/draft normalization, không phải quy định cảnh báo sai tên nhà thầu.
+
+### 83. Sửa BUG-09 — STT trùng trong tab Tính hợp lệ
+
+- **Feedback loop:** Ca thuần module tái hiện đúng `1, 2, 2.1, 2.1.1, 2, 2` từ metadata có ba STT cấp cao nguồn cùng là `3`.
+- **Nguyên nhân:** STT hợp lệ được giữ nguyên mà không kiểm tra trùng; sau khi bỏ dòng liên danh số `2`, mọi số cấp cao `3` cùng bị giảm thành `2`.
+- **Sửa:** Chuẩn hóa STT duy nhất theo từng nhóm trước bước lọc; số cha lặp được cấp số anh em kế tiếp và số con được remap theo cha mới. Không đổi criterion ID/kết quả/thứ tự.
+- **Kết quả:** Chuỗi lỗi thành `1, 2, 2.1, 2.1.1, 3, 4`; ca `[1,1.1,1,1.1]` thành `[1,1.1,2,2.1]`.
+- **Gate:** JavaScript `245/245`; backend `1.061 passed, 1 skipped`; security static gate `161` file; secure build/package đạt.
+- **Production:** ZIP gồm 273 runtime file, 1.531.588 byte; SHA-256 `47AB33B7CE92EB8D1C1BF59836F4BBB84BBC8881A4828BE3854E25D0771A46B1`.
+
+### 84. Cleanup và hậu kiểm production sau BUG-09
+
+- **Đã xóa:** `node_modules`, `.pytest_cache`, report/result, coverage cache và toàn bộ `__pycache__` dưới source/test/script sau full gate/package.
+- **Đã giữ:** Secure `dist`, production ZIP, PostgreSQL runtime/data, source/test hồi quy, tài liệu và skill AI.
+- **Runtime:** Backend nạp asset production mới `app-SCWObzEl.js` với `APP_DEBUG=False`; health/ready tiếp tục đạt.
+- **Plugin:** Mở lại đúng draft từng lỗi và đủ bốn tab; không tab nào còn STT trùng. Tính hợp lệ là `1, 2, 2.1, 2.1.1, 2.1.2, 2.1.3, 2.1.4, 2.1.5, 3, 4`; Năng lực `1, 2, 3, 3.1, 3.2, 4, 5`; Kỹ thuật `1, 2, 3`; Tài chính `1–6` và chỉ có ba cột `STT / Nội dung / Giá trị`.
+
+### 85. Đồng bộ trạng thái các báo cáo Markdown sau triển khai
+
+- **Đã sửa mâu thuẫn:** Ghi rõ mục NV4–NV6 đã triển khai; BUG-09 tại mục 82 là phát hiện lịch sử và đã đóng ở mục 83.
+- **Snapshot review:** Đánh dấu `CODE_REVIEW_REPORT.md` và `TOM_TAT_BUG_CAN_XAC_NHAN.md` là tài liệu trước sửa, thêm bảng trạng thái B1–B10 hiện hành để các mô tả baseline đỏ không bị hiểu nhầm là lỗi còn mở.
+- **Kế hoạch:** Cập nhật `REFACTOR_PLAN.md` thành PR 0–20 đã triển khai cục bộ; phần còn lại chỉ là staging/Linux/GitHub Actions và xác nhận SLO bằng dữ liệu thật.
+- **Nguồn sự thật:** Danh sách bug hiện hành duy nhất là `BUGS_KIEM_THU_TOAN_BO_2026-07-27.md`; hiện không còn lỗi code mở trong phạm vi gate cục bộ.

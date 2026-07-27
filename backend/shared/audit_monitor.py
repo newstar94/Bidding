@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.observability.metrics import (
+from backend.observability.recording import (
     record_audit_chain_verification,
     record_audit_checkpoint,
 )

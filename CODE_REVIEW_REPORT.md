@@ -8,6 +8,8 @@
 - Phạm vi: toàn repository và thay đổi trên nhánh hiện tại
 - Trạng thái: **chỉ review và đề xuất; chưa sửa mã nguồn, migration hay dữ liệu**
 
+> **Cập nhật sau triển khai 2026-07-27:** Đây là snapshot trước sửa, không phải danh sách lỗi hiện hành. Toàn bộ P0/P1 trong báo cáo đã được xử lý và khóa bằng regression; trạng thái hiện tại nằm trong `BUGS_KIEM_THU_TOAN_BO_2026-07-27.md`, `CONG_VIEC_DA_THUC_HIEN.md` và `CHANGELOG_REFACTOR.md`. Gate mới nhất: backend `1.061 passed, 1 skipped`, JavaScript `245/245`, security static gate `161` file, `npm audit` 0 vulnerability, secure package và 17/17 browser E2E đạt. Giới hạn còn lại là phép đo staging/Linux/GitHub Actions, không phải lỗi code đã tái hiện trên máy cục bộ.
+
 ## 1. Kết luận điều hành
 
 Repository có nền tảng an toàn tương đối tốt: PostgreSQL được ràng buộc theo tenant, sync có version/tombstone, tài liệu chạy qua durable queue và sandbox, coverage backend đạt 72%, 130/130 kiểm thử JavaScript đạt và secure build thành công. Tuy nhiên, chưa nên phát hành hoặc bắt đầu refactor lớn vì còn các vấn đề ưu tiên cao:

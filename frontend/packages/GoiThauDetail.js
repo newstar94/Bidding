@@ -19,6 +19,23 @@ import { renderPackageOpeningPanel } from "./detail/PackageOpeningPanel.js";
 import { renderQualifiedApprovalPanel } from "./detail/QualifiedApprovalPanel.js";
 import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
 export { checkBidQualified };
+
+export function resetDetailedEvaluationNavigationForPackageChange(
+  appController,
+  currentPackageId,
+  nextPackageId,
+) {
+  if (
+    !appController
+    || String(currentPackageId || "") === String(nextPackageId || "")
+  ) {
+    return false;
+  }
+  appController.currentEvaluationView = "summary";
+  appController._detailedEvaluationDirty = false;
+  return true;
+}
+
 export async function showPackageDetails(id, isSwitchingVersion = false) {
   const appController = getAppController();
   if (
@@ -78,6 +95,11 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   if (this._currentWorkflowPackageId !== id) {
     this._inPlaceEditMode = false;
     this._biddingInfoEditMode = false;
+    resetDetailedEvaluationNavigationForPackageChange(
+      appController,
+      this._currentWorkflowPackageId,
+      id,
+    );
   }
   const gt = detail.pkg;
   const detailCard = document.getElementById("detail-workflow-card");

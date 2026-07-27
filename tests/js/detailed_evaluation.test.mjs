@@ -48,7 +48,10 @@ import {
   saveDetailedEvaluation,
   verifyMuasamcongDetailedEvaluationContractor,
 } from "../../frontend/packages/DetailedEvaluationWorkflow.js";
-import { renderDetailedEvaluationPanel } from "../../frontend/packages/detail/DetailedEvaluationPanel.js";
+import {
+  renderDetailedEvaluationPanel,
+  scheduleDetailedEvaluationRowBatches,
+} from "../../frontend/packages/detail/DetailedEvaluationPanel.js";
 import { renderEvaluationPanel } from "../../frontend/packages/detail/EvaluationPanel.js";
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
 
@@ -81,6 +84,27 @@ test("detailed evaluation context exposes the correct groups for every envelope 
   assert.deepEqual(financial.visibleGroups, ["financial"]);
   assert.deepEqual(financial.editableGroups, ["financial"]);
   assert.equal(financial.contractorFilter, "technical-qualified");
+});
+
+test("large detailed evaluation tables append rows in bounded frame batches", async () => {
+  const frames = [];
+  const batches = [];
+  const rowHtml = Array.from({ length: 120 }, (_, index) => `<tr>${index}</tr>`);
+  const completed = scheduleDetailedEvaluationRowBatches({
+    rowHtml,
+    startIndex: 20,
+    chunkSize: 50,
+    appendBatch: (batch, offset) => batches.push({ offset, size: batch.length }),
+    scheduleFrame: (callback) => frames.push(callback),
+  });
+
+  assert.equal(frames.length, 1);
+  while (frames.length) frames.shift()();
+  assert.equal(await completed, true);
+  assert.deepEqual(batches, [
+    { offset: 20, size: 50 },
+    { offset: 70, size: 50 },
+  ]);
 });
 
 test("detailed evaluation resolves the supplied 14A-14D templates", () => {

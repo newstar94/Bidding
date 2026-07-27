@@ -18,6 +18,9 @@ from backend.sync.uniqueness import validate_domain_uniqueness
 from backend.sync.validator import validate_sync_item
 
 
+_QUERY_CHUNK_SIZE = 500
+
+
 class SyncRecordValidator:
     def __init__(
         self,
@@ -53,10 +56,24 @@ class SyncRecordValidator:
             cursor,
             organization_id,
         )
+        payloads = [
+            (
+                payload_key,
+                table_name,
+                [
+                    self.canonicalize_item(table_name, raw_item)
+                    for raw_item in items
+                ],
+            )
+            for payload_key, table_name, items in self.iter_payloads(self.payload)
+        ]
+        current_records_by_table = self._load_current_records(
+            payloads,
+            organization_id,
+        )
 
-        for payload_key, table_name, items in self.iter_payloads(self.payload):
-            for raw_item in items:
-                item = self.canonicalize_item(table_name, raw_item)
+        for payload_key, table_name, items in payloads:
+            for item in items:
                 item_errors: list[Any] = []
                 current_record = None
                 access_decision = authorize_record_write(
@@ -81,13 +98,11 @@ class SyncRecordValidator:
                     and "row_version"
                     in self.schema_definition[table_name]["columns"]
                 ):
-                    current_row = cursor.execute(
-                        f"""SELECT * FROM {table_name}
-                            WHERE organization_id = ? AND id = ? LIMIT 1""",
-                        (organization_id, record_id),
-                    ).fetchone()
-                    if current_row:
-                        current_record = dict(current_row)
+                    current_record = current_records_by_table.get(
+                        table_name,
+                        {},
+                    ).get(record_id)
+                    if current_record:
                         self.payload_index.remember_stored_record(
                             table_name,
                             record_id,
@@ -116,12 +131,11 @@ class SyncRecordValidator:
                                 ),
                             })
                 if record_id and table_name in ARCHIVABLE_TABLES:
-                    archived_row = cursor.execute(
-                        f"""SELECT archived_at FROM {table_name}
-                            WHERE organization_id = ? AND id = ?""",
-                        (organization_id, record_id),
-                    ).fetchone()
-                    if archived_row and archived_row[0]:
+                    archived_record = current_records_by_table.get(
+                        table_name,
+                        {},
+                    ).get(record_id)
+                    if archived_record and archived_record.get("archived_at"):
                         item_errors.append(
                             "Bản ghi đã được lưu trữ và không thể chỉnh sửa."
                         )
@@ -173,6 +187,44 @@ class SyncRecordValidator:
                     item_errors,
                 ))
         return validation_errors
+
+    def _load_current_records(
+        self,
+        payloads,
+        organization_id: str,
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        cursor = self.transaction.cursor
+        records_by_table = {}
+        for _payload_key, table_name, items in payloads:
+            columns = self.schema_definition[table_name]["columns"]
+            if table_name not in ARCHIVABLE_TABLES and "row_version" not in columns:
+                continue
+            record_ids = list(dict.fromkeys(
+                record_id
+                for item in items
+                if (
+                    record_id := self.clean_record_id(
+                        table_name,
+                        item.get("id"),
+                    )
+                )
+            ))
+            table_records = records_by_table.setdefault(table_name, {})
+            for offset in range(0, len(record_ids), _QUERY_CHUNK_SIZE):
+                chunk = record_ids[offset:offset + _QUERY_CHUNK_SIZE]
+                placeholders = ", ".join("?" for _ in chunk)
+                rows = cursor.execute(
+                    f"""SELECT * FROM {table_name}
+                        WHERE organization_id = ?
+                          AND id IN ({placeholders})""",
+                    (organization_id, *chunk),
+                ).fetchall()
+                for raw_row in rows:
+                    row = dict(raw_row)
+                    row_id = self.clean_record_id(table_name, row.get("id"))
+                    if row_id:
+                        table_records[row_id] = row
+        return records_by_table
 
     def _assignment_errors(
         self,

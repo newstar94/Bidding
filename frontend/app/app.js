@@ -93,7 +93,9 @@ const bootstrapApplication = async () => {
   installSemanticAccessibility(document);
   if ("serviceWorker" in navigator && APP_DEBUG === false) {
     const buildId = new URL(import.meta.url).pathname.split("/").pop() || "app";
-    navigator.serviceWorker.register(`/service-worker.js?build=${encodeURIComponent(buildId)}`).catch(() => {
+    navigator.serviceWorker.register(
+      trustedScriptURL(`/service-worker.js?build=${encodeURIComponent(buildId)}`)
+    ).catch(() => {
     });
   }
   const lucideReady = loadLucideIcons().then(() => {

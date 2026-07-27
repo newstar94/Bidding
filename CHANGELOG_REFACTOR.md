@@ -306,3 +306,69 @@ Lỗi Python còn lại:
 Các lỗi P0/P1 đã liệt kê ở snapshot review này đã được xử lý. Phần còn lại là refactor deep module, cleanup code chết, tối ưu có benchmark và full verification cuối.
 
 Đối chiếu tên nhà thầu đã chuyển sang cảnh báo có hai lựa chọn “Vẫn nhập” và “Hủy”; loại nhà thầu tiếp tục lấy từ dữ liệu hệ thống.
+
+## Đo navigation source/production lặp 5 lần — 2026-07-27
+
+- Chạy 20 ca Chromium: 10 login sample và 5 sample cho mỗi thao tác navigation trên source và ZIP production; tất cả đạt.
+- Login → dashboard median/p95: source 734/939 ms, production 588/816 ms.
+- Package → evaluation median/p95: source 911/1.241 ms, production 824/1.040 ms.
+- Mở báo cáo chi tiết rỗng median/p95: source 106/114 ms, production 98/109 ms.
+- Không thay code vì production không có hồi quy so với source; số đo được ghi vào `PERFORMANCE_REPORT.md`. Staging/network profile và parse/evaluate vẫn là giới hạn còn lại.
+
+## Benchmark xuất Word chi tiết — 2026-07-27
+
+- Thêm `scripts/benchmark_document_export.py` để đo context seal, render trực tiếp, worker sandbox và burst song song trên 10/100/500 dòng.
+- 500 dòng có direct median/p95 74,71/90,56 ms; worker cô lập 594,25/612,46 ms; output 39.960 byte và đủ 500 dòng khi mở lại.
+- 4 job song song hoàn tất trong 1.243,37 ms với giới hạn mặc định 2 worker, không reject/timeout.
+- Không thay runtime worker: chi phí khoảng 0,5–0,6 giây là sandbox process boundary có chủ đích, không tăng đáng kể theo số dòng.
+
+## Tối ưu worker xuất Excel — 2026-07-27
+
+- Tách ba tác vụ dựng workbook thuần khỏi `excel_service` sang `excel_workbook_builder`, tránh nạp helper database và tầng ứng dụng trong tiến trình con.
+- Giữ nguyên API tương thích tại `excel_service`; các export cần database không thay đổi đường chạy.
+- Worker median giảm từ 1.143 xuống 497 ms ở 10 dòng, 1.119 xuống 504 ms ở 100 dòng, 1.244 xuống 642 ms ở 1.000 dòng và 2.346 xuống 1.702 ms ở 10.000 dòng.
+- Thêm benchmark tái lập và regression import-boundary; full backend `1.050 passed, 1 skipped`, frontend `244/244`, security gate và nhóm Excel/document đều đạt.
+- Production ZIP mới gồm 272 runtime file, 1.528.607 byte; SHA-256 `79E16ECEC4D32E8A7E550ABADF8AE9A830D6693BF3290DB4184023A1467A36B2`.
+
+## Tách recorder metric khỏi Prometheus renderer — 2026-07-27
+
+- Thêm deep module ghi/snapshot/reset metric thuần standard-library; database/session/logging producer không còn nạp endpoint Prometheus và dependency graph ứng dụng.
+- Giữ compatibility bằng re-export tại `metrics.py`; nội dung metric Prometheus và tên label không thay đổi.
+- SCC backend lớn nhất giảm 13 xuống 6 module; fresh import median database lane giảm 22,1%, session store giảm 17,9%.
+- Sửa `_reset_metrics_for_tests` trước đây bỏ sót database phase/max counters; thêm regression qua interface recorder và renderer.
+- Backend `1.054 passed, 1 skipped`, JavaScript `244/244`, security static gate `161` file đều đạt.
+- Production ZIP gồm 273 runtime file, 1.529.745 byte; SHA-256 `68D5A504195E3F6F82C606B944AF01CE3F4857881E71DE9297A9FBC4B09FBB65`.
+
+## Sửa rò kết nối trong audit độc lập — 2026-07-27
+
+- `log_audit()` nay luôn đóng pooled connection trong `finally` sau audit độc lập, cả khi append thành công hoặc phát sinh lỗi.
+- Test giả lập đỏ trước sửa với `close_calls=0`; sau sửa hai nhánh đều đóng đúng một lần.
+- Integration PostgreSQL pool 1 slot chạy 5 audit liên tiếp không cạn pool; `pool_available=1`, `requests_waiting=0` sau mỗi lượt.
+- Loại import logging qua `shared.helpers`, làm SCC backend 6 module biến mất; chỉ còn SCC partner/sync 3 module.
+- Full backend `1.058 passed, 1 skipped`, JavaScript `244/244`, security gate `161` file đạt.
+- Production ZIP gồm 273 runtime file, 1.529.765 byte; SHA-256 `C5E8C9B155997020E73ADB45AEBEDDB9AD4A5ACBCA93925F221531B20A3D8438`.
+
+## Loại import cycle partner/sync cuối cùng — 2026-07-27
+
+- Partner enrichment worker gọi broadcast trực tiếp qua module sở hữu `sync.websocket`, không đi vòng qua route facade `sync.api`.
+- Static import graph test đỏ với SCC 3 module trước sửa và xác nhận toàn backend 0 cycle sau sửa.
+- Không đổi WebSocket payload, post-commit ordering, partner queue hoặc transaction semantics.
+- Focused suite `76 passed`; full backend `1.059 passed, 1 skipped`; JavaScript `244/244`; security gate `161` file.
+- Production ZIP gồm 273 runtime file, 1.529.765 byte; SHA-256 `47B5D8E86B26C1FD5C5B52DD86EB9A692286FA44B09F48C143F04B44FCD23726`.
+
+## Mở rộng deep recorder cho document/partner/WebSocket/audit — 2026-07-27
+
+- Document worker, partner lookup/address, WebSocket và audit monitor ghi metric trực tiếp vào `backend.observability.recording`; renderer Prometheus không còn bị nạp trên các hot-path này.
+- `metrics.py` giữ nguyên public compatibility và chỉ phục vụ snapshot/render/HTTP; payload, label và reset semantics được khóa bằng regression test.
+- Partner lookup và WebSocket không còn import database qua `shared.helpers`.
+- Fresh-import median giảm 24,2% cho partner service, 19,5% cho WebSocket, 39,3% cho document worker và 9,2% cho address routes; audit monitor không đổi đáng kể.
+- Full backend `1.061 passed, 1 skipped`, JavaScript `244/244`, security gate `161` file và backend import graph 0 cycle đều đạt.
+- Production ZIP gồm 273 runtime file, 1.530.190 byte; SHA-256 `8D58AAE4AEDA1ED2913B63D04FCE0EDF8D227C3F8324FF58B0083CC1362A854C`.
+
+## Sửa STT trùng sau khi loại tiêu chí liên danh — 2026-07-27
+
+- Chuẩn hóa STT duy nhất theo từng nhóm trước khi điều chỉnh cho nhà thầu độc lập/liên danh; dữ liệu draft cũ và Excel có số cấp cao lặp không còn tạo nhiều dòng cùng STT.
+- Khi một số cha nguồn lặp, số anh em kế tiếp được cấp tự động và toàn bộ hậu duệ ngay sau đó được remap theo cha mới; không đổi criterion ID, kết quả hoặc thứ tự dòng.
+- Feedback loop đỏ đúng chuỗi runtime `1, 2, 2.1, 2.1.1, 2, 2`, sau sửa thành `1, 2, 2.1, 2.1.1, 3, 4`; ca cha/con lặp cũng được khóa.
+- Gate: JavaScript `245/245`; backend `1.061 passed, 1 skipped`; security static gate `161` file; secure build và production package đạt.
+- Production ZIP gồm 273 runtime file, 1.531.588 byte; SHA-256 `47AB33B7CE92EB8D1C1BF59836F4BBB84BBC8881A4828BE3854E25D0771A46B1`.

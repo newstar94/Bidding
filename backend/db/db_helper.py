@@ -38,7 +38,7 @@ def _record_postgres_timing(
     """Lazy import avoids coupling the database primitive to metrics startup."""
 
     try:
-        from backend.observability.metrics import record_database_phase
+        from backend.observability.recording import record_database_phase
 
         record_database_phase(
             "postgres",

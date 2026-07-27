@@ -93,6 +93,10 @@ export default defineConfig(({ mode }) => {
     } : {},
     build: {
       manifest: true,
+      // Vite's runtime helper assigns raw strings to modulepreload hrefs.
+      // Under require-trusted-types-for 'script', Chromium blocks those sinks.
+      // Native ESM already loads each dynamic chunk and its dependencies.
+      modulePreload: false,
       outDir: 'dist',
       emptyOutDir: true,
       cssCodeSplit: true,

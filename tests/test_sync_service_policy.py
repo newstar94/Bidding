@@ -61,6 +61,11 @@ class _Cursor:
             raise self.answer.error
         return self
 
+    def executemany(self, sql, params):
+        for item in params:
+            self.execute(sql, item)
+        return self
+
     def fetchone(self):
         return self.answer.one
 
@@ -394,10 +399,8 @@ def test_sync_success_inserts_all_table_types_tracks_versions_and_broadcasts(mon
 
 def test_sync_organization_auto_assigns_new_business_records_and_rechecks_batch(monkeypatch):
     def handler(sql, _params):
-        if sql.startswith("SELECT 1 FROM ke_hoach_lcnt"):
-            return _Answer(one=None)
-        if sql.startswith("SELECT 1 FROM goi_thau"):
-            return _Answer(one=(1,))
+        if sql.startswith("SELECT id FROM goi_thau"):
+            return _Answer(all_rows=[("gt-existing",)])
         if sql.startswith("SELECT 1 FROM phan_cong_nhan_su"):
             return _Answer(one=(1,))
         return _Answer()
@@ -430,7 +433,7 @@ def test_sync_validation_collects_access_version_archive_domain_and_reference_er
 
     def handler(sql, _params):
         if sql.startswith("SELECT * FROM goi_thau"):
-            return _Answer(one=current)
+            return _Answer(all_rows=[current])
         if sql.startswith("SELECT archived_at FROM goi_thau"):
             return _Answer(one=("2026-01-01",))
         if "lower(trim(ma_goi_thau))" in sql:
@@ -881,8 +884,8 @@ def test_sync_rejects_unprocessed_or_unowned_image_paths(monkeypatch, image_valu
 
 def test_sync_contract_links_existing_packages_and_replaces_opening_children(monkeypatch):
     def handler(sql, _params):
-        if sql.startswith("SELECT 1 FROM goi_thau"):
-            return _Answer(one=(1,))
+        if sql.startswith("SELECT id FROM goi_thau"):
+            return _Answer(all_rows=[("gt-1",)])
         return _Answer()
 
     auth = _Connection(_Cursor())

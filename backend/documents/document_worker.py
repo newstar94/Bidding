@@ -30,7 +30,7 @@ from backend.documents.document_sandbox import (
     validate_document_sandbox_configuration,
 )
 from backend.documents.seccomp_policy import seccomp_library_name
-from backend.observability.metrics import (
+from backend.observability.recording import (
     document_worker_acquired,
     document_worker_finished,
     document_worker_rejected,

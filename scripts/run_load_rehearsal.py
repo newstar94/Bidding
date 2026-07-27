@@ -99,6 +99,26 @@ def _validate_rehearsal_database_identity(
         )
 
 
+def _resolve_application_root(value: str | Path | None) -> Path:
+    application_root = Path(value or ROOT).expanduser().resolve()
+    required_paths = (
+        application_root / "backend" / "app.py",
+        application_root / "dist" / "secure-build.json",
+        application_root / "views",
+    )
+    missing = [
+        path.relative_to(application_root).as_posix()
+        for path in required_paths
+        if not path.exists()
+    ]
+    if missing:
+        raise RuntimeError(
+            "Load-test application root is not a runnable production tree "
+            f"(missing={missing})."
+        )
+    return application_root
+
+
 def _wait_ready(process: subprocess.Popen, url: str) -> None:
     deadline = time.monotonic() + 45
     while time.monotonic() < deadline:
@@ -148,9 +168,14 @@ async def _collect_worker_metrics(base_url: str, expected_workers: int) -> list[
                     headers={"Connection": "close"},
                 )
                 for _ in range(max(8, expected_workers * 8))
-            ])
+            ], return_exceptions=True)
             for response in responses:
-                response.raise_for_status()
+                if isinstance(response, BaseException):
+                    continue
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPError:
+                    continue
                 samples = _parse_samples(response.text)
                 process_id = samples.get(("biddingflow_process_id", ()))
                 process_start = samples.get(
@@ -219,6 +244,131 @@ def _database_counter_snapshot(database_url: str) -> dict[str, float]:
     return {
         field: float(row[index] or 0)
         for index, field in enumerate(_DATABASE_COUNTER_FIELDS)
+    }
+
+
+def _install_statement_statistics(database_url: str) -> dict[str, object]:
+    try:
+        with psycopg.connect(database_url, autocommit=True) as connection:
+            connection.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+        return {"enabled": True}
+    except psycopg.Error as exc:
+        return {
+            "enabled": False,
+            "reason": exc.__class__.__name__,
+            "sqlstate": exc.sqlstate,
+        }
+
+
+def _reset_statement_statistics(database_url: str, enabled: bool) -> None:
+    if not enabled:
+        return
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        database_oid = connection.execute(
+            "SELECT oid FROM pg_database WHERE datname = current_database()"
+        ).fetchone()[0]
+        connection.execute(
+            "SELECT pg_stat_statements_reset(0, %s, 0)",
+            (database_oid,),
+        )
+
+
+def _database_observability_start(database_url: str) -> dict[str, str]:
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        wal_lsn = connection.execute(
+            "SELECT pg_current_wal_lsn()::text"
+        ).fetchone()[0]
+    return {"walLsn": str(wal_lsn)}
+
+
+def _is_observability_statement(query: str) -> bool:
+    normalized = " ".join(str(query or "").casefold().split())
+    return any(token in normalized for token in (
+        "pg_stat_activity",
+        "pg_stat_database",
+        "pg_stat_statements",
+        "pg_locks",
+        "from pg_database",
+        "pg_current_wal_lsn",
+        "pg_wal_lsn_diff",
+    ))
+
+
+def _summarize_statement_rows(rows) -> dict[str, object]:
+    statements = []
+    for row in rows:
+        query = " ".join(str(row[10] or "").split())[:600]
+        statements.append({
+            "queryId": str(row[0]),
+            "calls": int(row[1] or 0),
+            "totalExecMs": round(float(row[2] or 0), 3),
+            "meanExecMs": round(float(row[3] or 0), 3),
+            "rows": int(row[4] or 0),
+            "sharedBlocksHit": int(row[5] or 0),
+            "sharedBlocksRead": int(row[6] or 0),
+            "tempBlocks": int(row[7] or 0),
+            "walRecords": int(row[8] or 0),
+            "walBytes": int(row[9] or 0),
+            "query": query,
+            "observability": _is_observability_statement(query),
+        })
+    application = [item for item in statements if not item["observability"]]
+    return {
+        "applicationStatementCount": len(application),
+        "applicationCalls": sum(item["calls"] for item in application),
+        "applicationTotalExecMs": round(
+            sum(item["totalExecMs"] for item in application),
+            3,
+        ),
+        "applicationWalBytes": sum(item["walBytes"] for item in application),
+        "applicationTempBlocks": sum(item["tempBlocks"] for item in application),
+        "topApplicationStatements": application[:15],
+        "topWalStatements": sorted(
+            application,
+            key=lambda item: (item["walBytes"], item["totalExecMs"]),
+            reverse=True,
+        )[:15],
+        "observabilityStatementCount": len(statements) - len(application),
+    }
+
+
+def _database_observability_finish(
+    database_url: str,
+    start: dict[str, str],
+    statement_stats_enabled: bool,
+) -> dict[str, object]:
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        wal_bytes = connection.execute(
+            "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), %s::pg_lsn)",
+            (start["walLsn"],),
+        ).fetchone()[0]
+        statement_summary = None
+        if statement_stats_enabled:
+            rows = connection.execute(
+                """
+                SELECT queryid::text,
+                       calls,
+                       total_exec_time,
+                       mean_exec_time,
+                       rows,
+                       shared_blks_hit,
+                       shared_blks_read,
+                       temp_blks_read + temp_blks_written,
+                       wal_records,
+                       wal_bytes,
+                       query
+                FROM pg_stat_statements
+                WHERE dbid = (
+                    SELECT oid FROM pg_database
+                    WHERE datname = current_database()
+                )
+                ORDER BY total_exec_time DESC
+                """
+            ).fetchall()
+            statement_summary = _summarize_statement_rows(rows)
+    return {
+        "clusterWalBytesUpperBound": int(wal_bytes or 0),
+        "statementStats": statement_summary,
     }
 
 
@@ -318,7 +468,19 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--concurrency", type=int, default=32)
     parser.add_argument("--duration", type=float, default=30)
+    parser.add_argument(
+        "--application-root",
+        type=Path,
+        default=ROOT,
+        help="Runnable source or extracted production tree used by Uvicorn.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Optional JSON result path; defaults to data/logs/load-rehearsal-result.json.",
+    )
     args = parser.parse_args()
+    application_root = _resolve_application_root(args.application_root)
     database_url = os.environ.get("LOAD_TEST_DATABASE_URL", "").strip()
     if not database_url:
         raise RuntimeError("LOAD_TEST_DATABASE_URL is required")
@@ -330,6 +492,7 @@ def main() -> int:
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         connection.execute("CREATE SCHEMA public")
+    statement_statistics = _install_statement_statistics(database_url)
 
     base_url = f"http://127.0.0.1:{args.port}"
     environment = os.environ.copy()
@@ -350,6 +513,7 @@ def main() -> int:
             "DATABASE_READ_QUEUE": "64",
             "DATABASE_WRITE_WORKERS": "4",
             "DATABASE_WRITE_QUEUE": "64",
+            "PYTHONPATH": str(application_root),
         }
     )
     log_directory = ROOT / "data" / "logs"
@@ -373,7 +537,7 @@ def main() -> int:
                 str(max(1, min(16, args.workers))),
                 "--no-access-log",
             ],
-            cwd=ROOT,
+            cwd=application_root,
             env=environment,
             stdout=stdout,
             stderr=stderr,
@@ -381,6 +545,11 @@ def main() -> int:
         )
         try:
             _wait_ready(process, base_url)
+            _reset_statement_statistics(
+                database_url,
+                bool(statement_statistics["enabled"]),
+            )
+            observability_start = _database_observability_start(database_url)
             database_before = _database_counter_snapshot(database_url)
             postgres_sampler = _PostgresSampler(database_url)
             postgres_sampler.start()
@@ -393,7 +562,18 @@ def main() -> int:
                 field: round(database_after[field] - database_before[field], 3)
                 for field in _DATABASE_COUNTER_FIELDS
             }
+            result["databaseObservability"] = {
+                **statement_statistics,
+                **_database_observability_finish(
+                    database_url,
+                    observability_start,
+                    bool(statement_statistics["enabled"]),
+                ),
+            }
             result["workers"] = args.workers
+            result["runtimeTree"] = (
+                "source" if application_root == ROOT.resolve() else "extracted-production"
+            )
             metric_snapshots = asyncio.run(
                 _collect_worker_metrics(
                     base_url,
@@ -404,7 +584,11 @@ def main() -> int:
             result["databasePhases"] = _summarize_database_phases(
                 metric_snapshots
             )
-            (log_directory / "load-rehearsal-result.json").write_text(
+            output_path = (
+                args.output or (log_directory / "load-rehearsal-result.json")
+            ).resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
                 json.dumps(result, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )

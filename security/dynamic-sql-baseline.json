@@ -1,8 +1,8 @@
 {
   "files": {
     "backend/api/org_routes.py": {
-      "count": 1,
-      "sha256": "89250a7085951d53edd66ea9741c9fd268d27dbfb23dfd4f68fa8aabae3319fa"
+      "count": 3,
+      "sha256": "6f4bf7c7be2e65889100a8e2a33daffd49f3e7c6fbba33d15b48e7697f275ede"
     },
     "backend/auth/admin_user_routes.py": {
       "count": 5,
@@ -34,7 +34,7 @@
     },
     "backend/notifications/service.py": {
       "count": 1,
-      "sha256": "5552d9488d88b99589cc3db913347a1fd269273fb10bd9e42e4865db505c791e"
+      "sha256": "d744685e08c39f981eba246de3989001559c3ec110ef1b61748de12e764465e8"
     },
     "backend/shared/access_policy.py": {
       "count": 7,
@@ -61,8 +61,8 @@
       "sha256": "1c57a9728e9db25e46f4c1e4dabd446d4153ef8a66f58dfab4c1f7819e76d71c"
     },
     "backend/sync/ownership.py": {
-      "count": 2,
-      "sha256": "35810670c4a911eef79332331c6c34e726c58e87f29fd7e83f18e416a746bede"
+      "count": 4,
+      "sha256": "0dc4a618201e88e03cf56e4b6527454d971ce8f0432ea404d8bf32753af6eb25"
     },
     "backend/sync/pagination.py": {
       "count": 1,
@@ -81,12 +81,12 @@
       "sha256": "869015bc95deb16af29da45eb1d1adf9d0126416ff2bd9b8911e7b323edb9acb"
     },
     "backend/sync/record_validator.py": {
-      "count": 2,
-      "sha256": "1b4e203b7bf64c8213bca829aa16bb4cedd5538974e33aeabdc10c24ff061b31"
+      "count": 1,
+      "sha256": "1d0829c04a6b4f27905fb040637b70eb6b0d47807d0f68cb4184a9bedac10cc9"
     },
     "backend/sync/record_writer.py": {
-      "count": 4,
-      "sha256": "521bce29b50182280a25517073a355d0fc0064688a14b954822f9ab2b84a0a1b"
+      "count": 5,
+      "sha256": "692114a25441b14d496024f965f38ab82c37396cec356ee3bc6fe462bfec5d8f"
     },
     "backend/sync/websocket.py": {
       "count": 1,
@@ -95,8 +95,18 @@
     "scripts/run_load_rehearsal.py": {
       "count": 1,
       "sha256": "ceca14d57f7ced1c4c8ea6a74c3ab40acee6f35cd3f0ad8b7e522671aadb5e7c"
+    },
+    "backend/sync/assignment_augmentation.py": {
+      "count": 1,
+      "sha256": "8781e676f375a41f67907871ebc4833a641770e95f2d7d2eb944c98d1b9e128f"
     }
   },
   "formatVersion": 1,
+  "lastReview": {
+    "date": "2026-07-27",
+    "decision": "approved",
+    "scope": "N+1 batching in assignment, notification, ownership, record validation and contract-package persistence",
+    "invariant": "Table identifiers come only from internal/schema allowlists; IN-list cardinality creates placeholders only; all data values remain bound parameters."
+  },
   "reviewPolicy": "Every change to string-built SQL requires review that all identifiers originate from schema-owned allowlists; values remain bound parameters."
 }

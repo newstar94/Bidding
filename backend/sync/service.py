@@ -21,7 +21,7 @@ from backend.shared.idempotency import acquire_idempotency_lock
 from backend.shared.access_policy import OWNERSHIP_SCOPED_TABLES
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
-from backend.observability.metrics import record_database_phase
+from backend.observability.recording import record_database_phase
 from backend.shared.date_utils import vietnam_now_sql
 from backend.shared.media_helper import (
     delete_managed_image_files,

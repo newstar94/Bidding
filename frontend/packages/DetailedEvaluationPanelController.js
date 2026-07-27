@@ -187,33 +187,53 @@ export function bindDetailedEvaluationPanelController({
   };
   root.querySelector("#btn-detailed-evaluation-previous")?.addEventListener("click", () => moveBid(-1));
   root.querySelector("#btn-detailed-evaluation-next")?.addEventListener("click", () => moveBid(1));
+  const markDirty = () => { appController._detailedEvaluationDirty = true; };
   root.querySelectorAll("input, select, textarea").forEach((input) => {
+    input._bfDetailedDirtyBound = true;
     input.addEventListener("input", () => { appController._detailedEvaluationDirty = true; });
     input.addEventListener("change", () => { appController._detailedEvaluationDirty = true; });
   });
-  root.querySelectorAll("[data-detailed-result-value]").forEach((input) => {
-    input.addEventListener("change", () => {
-      if (!input.checked) return;
-      const row = input.closest("[data-detailed-criterion-id]");
-      const field = input.getAttribute("data-detailed-field");
-      row?.querySelectorAll(
-        `[data-detailed-field="${field}"][data-detailed-result-value]`,
-      ).forEach((candidate) => {
-        if (candidate !== input) candidate.checked = false;
-      });
-      const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
-        collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
-      );
-      const configuredGroupCriteria = configuredCriteria.filter(
-        (criterion) => criterion.group === appController.selectedDetailedEvaluationTab,
-      );
-      const currentRows = collectActiveGroupRows(root, state.report, configuredGroupCriteria);
-      const updatedReport = applyHierarchicalDetailedEvaluationResults({
-        ...state.report,
-        chiTietList: currentRows,
-      }, configuredCriteria);
-      updateDerivedResultMarks(root, updatedReport, configuredGroupCriteria);
+  const handleResultChange = (input) => {
+    if (!input.checked) return;
+    const row = input.closest("[data-detailed-criterion-id]");
+    const field = input.getAttribute("data-detailed-field");
+    row?.querySelectorAll(
+      `[data-detailed-field="${field}"][data-detailed-result-value]`,
+    ).forEach((candidate) => {
+      if (candidate !== input) candidate.checked = false;
     });
+    const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
+      collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
+    );
+    const configuredGroupCriteria = configuredCriteria.filter(
+      (criterion) => criterion.group === appController.selectedDetailedEvaluationTab,
+    );
+    const currentRows = collectActiveGroupRows(root, state.report, configuredGroupCriteria);
+    const updatedReport = applyHierarchicalDetailedEvaluationResults({
+      ...state.report,
+      chiTietList: currentRows,
+    }, configuredCriteria);
+    updateDerivedResultMarks(root, updatedReport, configuredGroupCriteria);
+  };
+  root.querySelectorAll("[data-detailed-result-value]").forEach((input) => {
+    input._bfDetailedResultBound = true;
+    input.addEventListener("change", () => handleResultChange(input));
+  });
+  root.addEventListener?.("input", (event) => {
+    if (
+      event.target?.matches?.("input, select, textarea")
+      && !event.target._bfDetailedDirtyBound
+    ) markDirty();
+  });
+  root.addEventListener?.("change", (event) => {
+    const input = event.target;
+    if (input?.matches?.("input, select, textarea") && !input._bfDetailedDirtyBound) {
+      markDirty();
+    }
+    if (
+      input?.matches?.("[data-detailed-result-value]")
+      && !input._bfDetailedResultBound
+    ) handleResultChange(input);
   });
 
   root.querySelector("#btn-detailed-evaluation-save-draft")?.addEventListener("click", () => commands.save());
@@ -238,9 +258,15 @@ export function bindDetailedEvaluationPanelController({
   const excelButton = root.querySelector("#btn-detailed-evaluation-import-excel");
   root.querySelector("#btn-detailed-evaluation-add-row")?.addEventListener("click", commands.addCriterion);
   root.querySelectorAll("[data-detailed-remove-criterion]").forEach((button) => {
+    button._bfDetailedRemoveBound = true;
     button.addEventListener("click", () => commands.removeCriterion(
       button.getAttribute("data-detailed-remove-criterion"),
     ));
+  });
+  root.addEventListener?.("click", (event) => {
+    const button = event.target?.closest?.("[data-detailed-remove-criterion]");
+    if (!button || button._bfDetailedRemoveBound) return;
+    commands.removeCriterion(button.getAttribute("data-detailed-remove-criterion"));
   });
   excelButton?.addEventListener("click", () => excelInput?.click());
   excelInput?.addEventListener("change", async () => {

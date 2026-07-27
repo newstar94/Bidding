@@ -10,6 +10,9 @@ import uuid
 from backend.auth.email_delivery_service import create_email_delivery
 
 
+_QUERY_CHUNK_SIZE = 500
+
+
 def _organization_name(cursor, organization_id: str) -> str:
     row = cursor.execute(
         "SELECT ten_to_chuc FROM to_chuc WHERE id = ? LIMIT 1",
@@ -150,20 +153,40 @@ def find_unreplaced_assignment_removals(
 ) -> list[dict]:
     """Return active work targets whose assignee was removed without replacement."""
 
-    missing = []
+    candidates = []
+    candidates_by_type = {"goithau": [], "hopdong": []}
     for key, old in before.items():
         if key in after:
             continue
-        table_name = "goi_thau" if old["target_type"] == "goithau" else "hop_dong"
-        target_exists = cursor.execute(
-            f"""SELECT 1 FROM {table_name}
-                WHERE organization_id = ? AND id = ? AND archived_at IS NULL
-                LIMIT 1""",
-            (organization_id, old["target_id"]),
-        ).fetchone()
-        if target_exists:
-            missing.append(old)
-    return missing
+        candidates.append(old)
+        candidates_by_type[old["target_type"]].append(old)
+
+    active_ids_by_type = {"goithau": set(), "hopdong": set()}
+    for target_type, table_name in (
+        ("goithau", "goi_thau"),
+        ("hopdong", "hop_dong"),
+    ):
+        typed_candidates = candidates_by_type[target_type]
+        target_ids = list(
+            dict.fromkeys(item["target_id"] for item in typed_candidates)
+        )
+        for offset in range(0, len(target_ids), _QUERY_CHUNK_SIZE):
+            chunk = target_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id FROM {table_name}
+                    WHERE organization_id = ?
+                      AND id IN ({placeholders})
+                      AND archived_at IS NULL""",
+                (organization_id, *chunk),
+            ).fetchall()
+            active_ids_by_type[target_type].update(str(row[0]) for row in rows)
+
+    return [
+        old
+        for old in candidates
+        if str(old["target_id"]) in active_ids_by_type[old["target_type"]]
+    ]
 
 
 def _target_copy(item: dict) -> tuple[str, str, str]:

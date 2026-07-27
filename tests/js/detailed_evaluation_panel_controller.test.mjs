@@ -226,6 +226,32 @@ test("panel actions dispatch save, row, reopen and Excel commands", async () => 
   ]);
 });
 
+test("delegated events keep rows appended after initial binding editable", async () => {
+  const root = createRoot();
+  const controller = createController();
+  const commandState = createCommands();
+  bindDetailedEvaluationPanelController({
+    appController: controller,
+    root,
+    state: createState(),
+    commands: commandState.commands,
+  });
+
+  const appendedInput = new FakeElement();
+  appendedInput.matches = (selector) => selector === "input, select, textarea";
+  await root.emit("input", { target: appendedInput });
+
+  const appendedRemoveButton = new FakeElement();
+  appendedRemoveButton.setAttribute("data-detailed-remove-criterion", "criterion-late");
+  appendedRemoveButton.closest = (selector) => (
+    selector === "[data-detailed-remove-criterion]" ? appendedRemoveButton : null
+  );
+  await root.emit("click", { target: appendedRemoveButton });
+
+  assert.equal(controller._detailedEvaluationDirty, true);
+  assert.deepEqual(commandState.calls, [["remove", "criterion-late"]]);
+});
+
 test("row collector removes a legacy detailed failure reason", () => {
   const criterionElement = new FakeElement();
   criterionElement.setAttribute("data-detailed-criterion-id", "criterion-1");

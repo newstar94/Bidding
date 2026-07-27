@@ -10,6 +10,22 @@ const trustedTypesSource = readFileSync(
   fileURLToPath(new URL("../frontend/shared/trustedTypes.js", import.meta.url)),
   "utf8"
 );
+const viteConfigSource = readFileSync(
+  fileURLToPath(new URL("../vite.config.js", import.meta.url)),
+  "utf8"
+);
+const appEntrySource = readFileSync(
+  fileURLToPath(new URL("../frontend/app/app.js", import.meta.url)),
+  "utf8"
+);
+if (!/modulePreload\s*:\s*false/.test(viteConfigSource)) {
+  throw new Error(
+    "Vite runtime modulepreload injection must stay disabled under Trusted Types enforcement"
+  );
+}
+if (!/serviceWorker\.register\(\s*trustedScriptURL\(/.test(appEntrySource)) {
+  throw new Error("Service worker registration must receive a TrustedScriptURL");
+}
 if (!/createPolicy\?\.\("biddingflow-dompurify"/.test(trustedTypesSource)) {
   throw new Error(
     "DOMPurify must use the CSP-approved first-party parser policy"
@@ -60,6 +76,7 @@ for (const payload of safeHtml) {
 for (const url of [
   "/frontend/app.js",
   "/vendor/flatpickr/flatpickr.min.js?v=1.0",
+  "/service-worker.js?build=app-12345678.js",
   "https://accounts.google.com/gsi/client"
 ]) {
   if (assertSafeScriptURL(url) !== url) {

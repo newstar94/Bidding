@@ -26,11 +26,20 @@ export function mergeReferenceRecords(model, key, incoming, { preserveLocalIds =
   if (!Array.isArray(model.state[key])) {
     model.state[key] = [];
   }
+  const recordIndexById = new Map();
+  model.state[key].forEach((item, index) => {
+    const id = String(item?.id);
+    if (!recordIndexById.has(id)) recordIndexById.set(id, index);
+  });
+  const mergedRecords = [];
   incoming.forEach((item) => {
     const referenceItem = { ...item, referenceOnly: true };
-    const idx = model.state[key].findIndex((x) => String(x.id) === String(referenceItem.id));
-    if (idx === -1) {
+    const recordId = String(referenceItem.id);
+    const idx = recordIndexById.get(recordId);
+    if (idx === undefined) {
+      recordIndexById.set(recordId, model.state[key].length);
       model.state[key].push(referenceItem);
+      mergedRecords.push(referenceItem);
       return;
     }
     const existing = model.state[key][idx] || {};
@@ -42,10 +51,13 @@ export function mergeReferenceRecords(model, key, incoming, { preserveLocalIds =
     const authoritativeReference = isAuthoritativePackageReference
       ? Object.fromEntries(Object.entries(referenceItem).filter(([field]) => field !== "referenceOnly"))
       : {};
-    model.state[key][idx] = hasFullRecordFields
+    const mergedRecord = hasFullRecordFields
       ? { ...referenceItem, ...existing, ...authoritativeReference, referenceOnly: isAuthoritativePackageReference }
       : { ...existing, ...referenceItem, referenceOnly: true };
+    model.state[key][idx] = mergedRecord;
+    mergedRecords.push(mergedRecord);
   });
+  return mergedRecords;
 }
 export function applyServerSnapshot(model, dbData, options = {}) {
   const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "domainContract", "partial"]);
@@ -98,13 +110,14 @@ export function applyServerSnapshot(model, dbData, options = {}) {
     if (!Array.isArray(records) || records.length === 0) return;
     const incoming = normalizeIncomingRecords(model, key, records);
     const inFlightIds = new Set(Object.keys(mutationBatch?.upserts?.[key] || {}).map((id) => String(id)));
-    mergeReferenceRecords(model, key, incoming, { preserveLocalIds: inFlightIds });
+    const mergedRecords = mergeReferenceRecords(
+      model,
+      key,
+      incoming,
+      { preserveLocalIds: inFlightIds },
+    );
     changedKeys.add(key);
-    const recordsToPersist = incoming.map((item) => {
-      const stored = model.state[key].find((record) => String(record.id) === String(item.id));
-      return stored || item;
-    });
-    upsertsByTable[key] = [...(upsertsByTable[key] || []), ...recordsToPersist];
+    upsertsByTable[key] = [...(upsertsByTable[key] || []), ...mergedRecords];
   });
   if (typeof model.suspendMutationTracking === "function") {
     model.suspendMutationTracking(applyReferenceData);

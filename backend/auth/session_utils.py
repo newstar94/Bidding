@@ -5,7 +5,7 @@ import time
 import urllib.parse
 
 from backend.db.db_helper import database
-from backend.observability.metrics import record_database_phase
+from backend.observability.recording import record_database_phase
 from backend.shared.workspace_scope import personal_scope_id
 
 

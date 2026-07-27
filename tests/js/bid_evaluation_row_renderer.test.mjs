@@ -4,7 +4,10 @@ import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 import { setCommandExecutor } from "../../frontend/app/commandBus.js";
 import { createBidEvaluationRankingController } from "../../frontend/packages/BidEvaluationRankingController.js";
-import { renderBidEvaluationRows } from "../../frontend/packages/BidEvaluationRowRenderer.js";
+import {
+  renderBidEvaluationRows,
+  renderBidEvaluationRowsBatched,
+} from "../../frontend/packages/BidEvaluationRowRenderer.js";
 import { buildBidEvaluationTablePresentation } from "../../frontend/packages/BidEvaluationTablePresentation.js";
 import { getJvData } from "../../frontend/packages/jvDataStore.js";
 
@@ -171,14 +174,21 @@ function withDomSupport(run) {
   globalThis.document = document;
   DOMPurify.isSupported = true;
   DOMPurify.sanitize = (value) => value;
-  try {
-    return run(document);
-  } finally {
+  const cleanup = () => {
     setCommandExecutor(null);
     globalThis.Element = originalElement;
     globalThis.document = originalDocument;
     DOMPurify.isSupported = originalSupported;
     DOMPurify.sanitize = originalSanitize;
+  };
+  try {
+    const result = run(document);
+    if (result && typeof result.finally === "function") return result.finally(cleanup);
+    cleanup();
+    return result;
+  } catch (error) {
+    cleanup();
+    throw error;
   }
 }
 
@@ -379,4 +389,68 @@ test("empty bidder lists render the existing guidance row", () => withDomSupport
 
   assert.deepEqual(rows, []);
   assert.match(String(root.innerHTML), /Không tìm thấy danh sách nhà thầu mở thầu/);
+}));
+
+test("large bidder lists render in bounded frame batches", async () => withDomSupport(async (document) => {
+  const root = createRoot(document);
+  const pkg = basePackage();
+  const bids = Array.from({ length: 25 }, (_, index) => baseBid({
+    id: `bid-${index + 1}`,
+    nhaThauId: `contractor-${index + 1}`,
+  }));
+  const pendingFrames = [];
+  let rankingChanges = 0;
+
+  const rendering = renderBidEvaluationRowsBatched({
+    root,
+    pkg,
+    bids,
+    model: createModel(),
+    presentation: buildBidEvaluationTablePresentation({ pkg }),
+    onRankingChange: () => { rankingChanges += 1; },
+  }, {
+    chunkSize: 10,
+    scheduleFrame: (callback) => pendingFrames.push(callback),
+  });
+
+  assert.equal(root.children.length, 10);
+  assert.equal(pendingFrames.length, 1);
+  pendingFrames.shift()();
+  assert.equal(root.children.length, 20);
+  assert.equal(pendingFrames.length, 1);
+  pendingFrames.shift()();
+  assert.equal((await rendering).length, 25);
+  assert.equal(root.children.length, 25);
+  assert.equal(rankingChanges, 1);
+}));
+
+test("a newer row render cancels pending frame batches", async () => withDomSupport(async (document) => {
+  const root = createRoot(document);
+  const pkg = basePackage();
+  const pendingFrames = [];
+  let staleRankingChanges = 0;
+  const staleRender = renderBidEvaluationRowsBatched({
+    root,
+    pkg,
+    bids: Array.from({ length: 20 }, (_, index) => baseBid({ id: `stale-${index}` })),
+    model: createModel(),
+    presentation: buildBidEvaluationTablePresentation({ pkg }),
+    onRankingChange: () => { staleRankingChanges += 1; },
+  }, {
+    chunkSize: 5,
+    scheduleFrame: (callback) => pendingFrames.push(callback),
+  });
+
+  renderBidEvaluationRows({
+    root,
+    pkg,
+    bids: [baseBid({ id: "current" })],
+    model: createModel(),
+    presentation: buildBidEvaluationTablePresentation({ pkg }),
+  });
+  pendingFrames.shift()();
+
+  assert.deepEqual(await staleRender, []);
+  assert.deepEqual(root.children.map((row) => row.getAttribute("data-bid-id")), ["current"]);
+  assert.equal(staleRankingChanges, 0);
 }));

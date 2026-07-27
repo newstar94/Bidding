@@ -1,5 +1,22 @@
 # Tóm tắt lỗi cần xác nhận
 
+> **Cập nhật sau triển khai 2026-07-27:** File này là snapshot triage trước sửa. B1–B10 đã hoàn thành; NV1–NV6 đã được ghi thành ADR và triển khai đúng quyết định. Trạng thái lỗi hiện hành nằm tại `BUGS_KIEM_THU_TOAN_BO_2026-07-27.md` và hiện không còn bug code mở trong phạm vi kiểm thử cục bộ.
+
+## 0. Trạng thái triển khai hiện tại
+
+| Nhóm | Trạng thái đã xác minh |
+|---|---|
+| B1 | Backend cho phép tiêu chí `fail` không có lý do chi tiết; lý do thuộc báo cáo tổng quát |
+| B2 | Outbox bền vững giữ mutation qua lỗi 500/409/offline/reload và edit đồng thời |
+| B3 | Media namespace theo tenant, có test ghi/đọc/xóa chéo tổ chức |
+| B4 | Import giữ immutable package/bid/lot context và hủy commit khi context đổi |
+| B5 | Sparse update phân biệt thiếu field với yêu cầu xóa |
+| B6 | Idempotency lưu request hash và trả conflict khi cùng ID khác payload |
+| B7–B8 | Production chỉ dùng secure package; focus 3px đã dùng token 1px |
+| B9 | Failed document job được giữ có thời hạn, tra cứu và chạy lại |
+| B10 | Sai tên nhà thầu hiện cảnh báo “Vẫn nhập”/“Hủy”, không chặn cứng |
+| KT1–KT6 | Ranking/batch/backoff/deep module/21 import/security baseline/dependency audit đã xử lý hoặc có quyết định đo trước khi tối ưu thêm |
+
 Mục đích của file này là giúp phân biệt:
 
 - **BUG CODE:** hành vi kỹ thuật sai hoặc có thể làm mất/ghi nhầm dữ liệu; sửa không làm thay đổi nghiệp vụ đã nêu.
@@ -42,17 +59,17 @@ Các điểm sau **không cần xác nhận lại**:
 4. Khi mở báo cáo chi tiết mới, không tự sinh sẵn tiêu chí; người dùng chọn thêm dòng hoặc nhập Excel.
 5. File Excel sai nhà thầu phải hiện cảnh báo rõ, nhưng người dùng có quyền tiếp tục nhập.
 
-### Trạng thái kiểm tra tên nhà thầu
+### Trạng thái kiểm tra tên nhà thầu tại snapshot trước sửa
 
-Chức năng hiện đã nhận diện được sai tên, nhưng hành vi chặn hoàn toàn chưa đúng quyết định mới:
+Tại snapshot ban đầu, chức năng đã nhận diện được sai tên nhưng còn chặn hoàn toàn. Hành vi hiện tại đã đổi sang cảnh báo có hai lựa chọn “Vẫn nhập” và “Hủy”:
 
 - chuẩn hóa hoa/thường, dấu tiếng Việt và dấu gạch;
 - so tên trong file với nhà thầu đang chọn;
 - phát hiện khi sai tên, thiếu tên hoặc các sheet có nhiều tên khác nhau;
 - hiển thị cả tên trong file và tên đang chọn;
-- hiện tại không áp dữ liệu khi kiểm tra thất bại — cần đổi thành hộp cảnh báo có nút “Vẫn nhập”.
+- dữ liệu chỉ được áp khi người dùng chủ động chọn “Vẫn nhập”; chọn “Hủy” không làm thay đổi draft.
 
-Phần còn cần gia cố là ưu tiên mã số thuế/mã nhà thầu nếu Excel có cung cấp và bảo đảm import không đổi sang gói khác giữa lúc xử lý.
+Import đã cố định package/bid/lot context để không đổi gói giữa lúc xử lý. Nhận diện tên tiếp tục là kiểm tra cảnh báo theo ADR 0006, không trở thành khóa cứng dựa trên MST/mã nhà thầu.
 
 ## 4. Vấn đề kỹ thuật, chưa phải lỗi nghiệp vụ
 

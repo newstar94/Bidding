@@ -133,7 +133,7 @@ def _enqueue_structured_log(line):
         _structured_log_queue.put_nowait(line)
     except queue.Full:
         try:
-            from backend.observability.metrics import runtime_log_dropped
+            from backend.observability.recording import runtime_log_dropped
 
             runtime_log_dropped()
         except Exception:
@@ -365,13 +365,16 @@ def log_audit(
                 raise ValueError("Transactional audit writes must set required=True.")
             return insert_audit_row(cursor, **event)
 
-        from backend.shared.helpers import database as _db
+        from backend.db.db_helper import database as _db
         # Do not retry with ``time.sleep`` here: many historical callers are
         # async routes, and a synchronous backoff would freeze the ASGI event
         # loop. Security-sensitive mutations bind required audit to their own
         # transaction; best-effort standalone events get one bounded attempt.
         conn = _db.get_connection()
-        return append_audit_row(conn, **event)
+        try:
+            return append_audit_row(conn, **event)
+        finally:
+            conn.close()
     except Exception as audit_err:
         log_error(audit_err, "audit_log", level="WARN")
         if required:

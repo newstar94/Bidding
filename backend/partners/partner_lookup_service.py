@@ -9,13 +9,13 @@ import re
 import ssl
 import random
 import uuid
-from backend.shared.helpers import database
+from backend.db.db_helper import database
 from backend.partners.address_parser import compose_external_address, parse_vietnam_address_to_internal
 from backend.partners.position_normalization import derive_investor_head_position
 from backend.shared.text_utils import normalize_organization_name, normalize_person_name
 from backend.shared.logging_utils import log_error, log_structured_event
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
-from backend.observability.metrics import record_partner_upstream
+from backend.observability.recording import record_partner_upstream
 from backend.shared.safe_http import open_allowlisted_https
 
 
@@ -909,7 +909,7 @@ def _apply_partner_enrichment(job, contractor, info):
 
     if info and info.get("name"):
         try:
-            from backend.sync.api import broadcast_websocket_event
+            from backend.sync.websocket import broadcast_websocket_event
 
             broadcast_websocket_event(
                 organization_id,

@@ -243,7 +243,7 @@ function bindFinancialInputs({ row, model, presentation, onRankingChange }) {
     if (discountedPrice) {
       discountedPrice.value = model.formatVND(baseValue * (1 - discountValue / 100)) || "";
     }
-    onRankingChange();
+    onRankingChange(row);
   };
   if (bidPrice) {
     bindCurrencyElement(bidPrice, (value) => model.formatVND(value));
@@ -254,12 +254,13 @@ function bindFinancialInputs({ row, model, presentation, onRankingChange }) {
 }
 
 function bindEvaluationInputs(row, onRankingChange) {
+  const notifyRankingChange = (event) => onRankingChange(row, event);
   row.querySelectorAll(".mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat").forEach((input) => {
-    input.addEventListener("input", onRankingChange);
-    input.addEventListener("change", onRankingChange);
+    input.addEventListener("input", notifyRankingChange);
+    input.addEventListener("change", notifyRankingChange);
   });
   row.addEventListener("change", (event) => {
-    if (event.target?.classList.contains("mt-dg-ketluan")) onRankingChange();
+    if (event.target?.classList.contains("mt-dg-ketluan")) notifyRankingChange(event);
   });
 }
 
@@ -295,7 +296,7 @@ function createRowElement(root) {
   return row;
 }
 
-export function renderBidEvaluationRows({
+function validateRowRendererContext({
   root,
   pkg,
   bids = [],
@@ -310,53 +311,164 @@ export function renderBidEvaluationRows({
   if (typeof onRankingChange !== "function") {
     throw new TypeError("Bid evaluation row renderer requires a ranking callback.");
   }
+}
+
+function beginRowRender(root) {
+  const revision = Number(root.__bfBidEvaluationRowRenderRevision || 0) + 1;
+  root.__bfBidEvaluationRowRenderRevision = revision;
   root.innerHTML = trustedHTML("");
+  return revision;
+}
+
+function renderEmptyRows(root, bids) {
   if (bids.length === 0) {
     root.innerHTML = trustedHTML('<tr><td colspan="15" class="bf-s-7fa1ce09fc"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>');
-    return [];
+    return true;
   }
+  return false;
+}
+
+function appendBidEvaluationRow({
+  root,
+  pkg,
+  bid,
+  model,
+  presentation,
+  isReadOnly,
+  onRankingChange,
+  sequence,
+}) {
+  const row = createRowElement(root);
+  row.setAttribute("data-bid-id", bid.id);
+  const detailedProjectionReport = findDetailedProjectionReport(bid, presentation);
+  const rowReadOnly = isReadOnly || Boolean(detailedProjectionReport);
+  const contractor = buildContractorDisplay({
+    pkg,
+    bid,
+    model,
+    detailedProjectionReport,
+  });
+  let cells = buildIdentityCells({ pkg, bid, contractor });
+  if (presentation.isTwoEnvelope && presentation.currentTab === "financial") {
+    cells += buildFinancialCells({ bid, model, presentation, rowReadOnly });
+  } else {
+    const forceDisabled = !presentation.isTwoEnvelope
+      && pkg.quyTrinhDanhGia === "quytrinh2"
+      && !sequence.previousAllFailed;
+    cells += buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly });
+    cells += rowReadOnly
+      ? readOnlyEvaluationCells({ bid, presentation })
+      : editableEvaluationCells({ pkg, bid, presentation, forceDisabled });
+  }
+  row.innerHTML = trustedHTML(cells);
+  updateRowConclusion(row, bid.danhGiaKetLuan, rowReadOnly);
+
+  if (!rowReadOnly && !presentation.isTwoEnvelope && pkg.quyTrinhDanhGia === "quytrinh2") {
+    const conclusion = row.querySelector(".mt-ketluan-cell")?.textContent.trim() || "";
+    if (!conclusion.startsWith("Không đạt")) sequence.previousAllFailed = false;
+  }
+  if (!rowReadOnly) {
+    bindEvaluationInputs(row, onRankingChange);
+    bindFinancialInputs({ row, model, presentation, onRankingChange });
+  }
+  bindDurationInputs(row);
+  bindJointVentureLink({ row, bid, model });
+  root.appendChild(row);
+  return row;
+}
+
+export function renderBidEvaluationRows(context = {}) {
+  validateRowRendererContext(context);
+  const {
+    root,
+    pkg,
+    bids = [],
+    model,
+    presentation,
+    isReadOnly = false,
+    onRankingChange = () => {},
+  } = context;
+  beginRowRender(root);
+  if (renderEmptyRows(root, bids)) return [];
 
   const rows = [];
-  let previousAllFailed = true;
+  const sequence = { previousAllFailed: true };
   bids.forEach((bid) => {
-    const row = createRowElement(root);
-    row.setAttribute("data-bid-id", bid.id);
-    const detailedProjectionReport = findDetailedProjectionReport(bid, presentation);
-    const rowReadOnly = isReadOnly || Boolean(detailedProjectionReport);
-    const contractor = buildContractorDisplay({
+    rows.push(appendBidEvaluationRow({
+      root,
       pkg,
       bid,
       model,
-      detailedProjectionReport,
-    });
-    let cells = buildIdentityCells({ pkg, bid, contractor });
-    if (presentation.isTwoEnvelope && presentation.currentTab === "financial") {
-      cells += buildFinancialCells({ bid, model, presentation, rowReadOnly });
-    } else {
-      const forceDisabled = !presentation.isTwoEnvelope
-        && pkg.quyTrinhDanhGia === "quytrinh2"
-        && !previousAllFailed;
-      cells += buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly });
-      cells += rowReadOnly
-        ? readOnlyEvaluationCells({ bid, presentation })
-        : editableEvaluationCells({ pkg, bid, presentation, forceDisabled });
-    }
-    row.innerHTML = trustedHTML(cells);
-    updateRowConclusion(row, bid.danhGiaKetLuan, rowReadOnly);
-
-    if (!rowReadOnly && !presentation.isTwoEnvelope && pkg.quyTrinhDanhGia === "quytrinh2") {
-      const conclusion = row.querySelector(".mt-ketluan-cell")?.textContent.trim() || "";
-      if (!conclusion.startsWith("Không đạt")) previousAllFailed = false;
-    }
-    if (!rowReadOnly) {
-      bindEvaluationInputs(row, onRankingChange);
-      bindFinancialInputs({ row, model, presentation, onRankingChange });
-    }
-    bindDurationInputs(row);
-    bindJointVentureLink({ row, bid, model });
-    root.appendChild(row);
-    rows.push(row);
+      presentation,
+      isReadOnly,
+      onRankingChange,
+      sequence,
+    }));
   });
   onRankingChange();
   return rows;
+}
+
+export function renderBidEvaluationRowsBatched(context = {}, options = {}) {
+  validateRowRendererContext(context);
+  const {
+    root,
+    pkg,
+    bids = [],
+    model,
+    presentation,
+    isReadOnly = false,
+    onRankingChange = () => {},
+  } = context;
+  const chunkSize = Math.max(1, Number(options.chunkSize) || 10);
+  const scheduleFrame = typeof options.scheduleFrame === "function"
+    ? options.scheduleFrame
+    : (callback) => {
+      if (typeof globalThis.requestAnimationFrame === "function") {
+        return globalThis.requestAnimationFrame(callback);
+      }
+      return globalThis.setTimeout(callback, 0);
+    };
+  const revision = beginRowRender(root);
+  if (renderEmptyRows(root, bids)) return Promise.resolve([]);
+
+  const rows = [];
+  const sequence = { previousAllFailed: true };
+  let nextIndex = 0;
+  return new Promise((resolve, reject) => {
+    const renderChunk = () => {
+      try {
+        if (root.__bfBidEvaluationRowRenderRevision !== revision) {
+          resolve([]);
+          return;
+        }
+        const endIndex = Math.min(bids.length, nextIndex + chunkSize);
+        const ownerDocument = root.ownerDocument || globalThis.document;
+        const batchRoot = ownerDocument?.createDocumentFragment?.() || root;
+        while (nextIndex < endIndex) {
+          rows.push(appendBidEvaluationRow({
+            root: batchRoot,
+            pkg,
+            bid: bids[nextIndex],
+            model,
+            presentation,
+            isReadOnly,
+            onRankingChange,
+            sequence,
+          }));
+          nextIndex += 1;
+        }
+        if (batchRoot !== root) root.appendChild(batchRoot);
+        if (nextIndex < bids.length) {
+          scheduleFrame(renderChunk);
+          return;
+        }
+        onRankingChange();
+        resolve(rows);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    renderChunk();
+  });
 }

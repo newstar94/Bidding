@@ -13,19 +13,36 @@ _NEW_RECORD_LOOKUPS = (
     (
         "kehoach",
         "kehoach",
-        "SELECT 1 FROM ke_hoach_lcnt WHERE organization_id = ? AND id = ? LIMIT 1",
+        "ke_hoach_lcnt",
     ),
     (
         "goithau",
         "goithau",
-        "SELECT 1 FROM goi_thau WHERE organization_id = ? AND id = ? LIMIT 1",
+        "goi_thau",
     ),
     (
         "hopdong",
         "hopdong",
-        "SELECT 1 FROM hop_dong WHERE organization_id = ? AND id = ? LIMIT 1",
+        "hop_dong",
     ),
 )
+
+_QUERY_CHUNK_SIZE = 500
+
+
+def _stored_ids(cursor, table_name: str, organization_id: str, record_ids):
+    stored = set()
+    ordered_ids = list(record_ids)
+    for offset in range(0, len(ordered_ids), _QUERY_CHUNK_SIZE):
+        chunk = ordered_ids[offset:offset + _QUERY_CHUNK_SIZE]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"SELECT id FROM {table_name} "
+            f"WHERE organization_id = ? AND id IN ({placeholders})",
+            (organization_id, *chunk),
+        ).fetchall()
+        stored.update(clean_id(row[0]) for row in rows if row)
+    return stored
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,18 +73,30 @@ def augment_default_assignments(
         if isinstance(item, dict)
     }
     added = 0
-    for payload_key, target_type, exists_sql in _NEW_RECORD_LOOKUPS:
+    for payload_key, target_type, table_name in _NEW_RECORD_LOOKUPS:
+        candidate_ids = []
+        seen_candidate_ids = set()
         for item in payload.get(payload_key, []):
             if not isinstance(item, dict):
                 continue
             record_id = clean_id(item.get("id"))
-            if not record_id or (record_id, target_type) in incoming_targets:
+            if (
+                not record_id
+                or (record_id, target_type) in incoming_targets
+                or record_id in seen_candidate_ids
+            ):
                 continue
-            exists = cursor.execute(
-                exists_sql,
-                (actor.organization_id, record_id),
-            ).fetchone()
-            if exists:
+            candidate_ids.append(record_id)
+            seen_candidate_ids.add(record_id)
+
+        stored_ids = _stored_ids(
+            cursor,
+            table_name,
+            actor.organization_id,
+            candidate_ids,
+        )
+        for record_id in candidate_ids:
+            if record_id in stored_ids:
                 continue
             assignments.append({
                 "id": generate_record_id("assignments"),

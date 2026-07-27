@@ -1,8 +1,18 @@
 # Kế hoạch refactor và sửa lỗi BiddingFlow
 
+## Cập nhật 2026-07-27
+
+- Đã hoàn thành query-count feedback loop và loại bốn đường đọc N+1 đã tái hiện được trong sync/phân công/hợp đồng.
+- Đã thêm dirty-row ranking cache; tương tác 500 nhà thầu giảm 446 ms xuống 363 ms và không còn long task trong lần nhập đo được.
+- Đã profile 500 tiêu chí và batch 25 dòng/frame; longest task median giảm 263 ms xuống 67 ms, đổi lại thời gian hoàn tất bảng median khoảng 985 ms.
+- Đã đo ghép cặp 5 lượt source/production và thêm 3 lượt WAL/`pg_stat_statements` trên production package; không deadlock/temp spill. Vẫn phải xác nhận trên staging/Linux bằng dữ liệu thật.
+- Đã loại hai vòng O(n²) khi merge/persist identity bootstrap; 5.000 nhà thầu giảm longest browser task 373 → 84 ms và vẫn chỉ render 10 row nhờ server pagination.
+
 - Căn cứ: `CODE_REVIEW_REPORT.md`, `DEAD_CODE_REPORT.md`, `PERFORMANCE_REPORT.md`
 - Snapshot lập kế hoạch: `1fb76ad`
-- Trạng thái: **đề xuất; chưa triển khai**
+- Trạng thái: **PR 0–20 và cleanup an toàn đã triển khai cục bộ; chỉ còn xác nhận staging/Linux/GitHub Actions và SLO production bằng dữ liệu thật**
+
+Các mục “Problem/Current behavior/Refactor steps” bên dưới được giữ làm lịch sử thiết kế. Chúng không còn là danh sách lỗi mở nếu phần cuối file đã có mục trạng thái triển khai tương ứng; danh sách bug hiện hành duy nhất là `BUGS_KIEM_THU_TOAN_BO_2026-07-27.md`.
 
 ## 1. Nguyên tắc thiết kế
 
@@ -637,7 +647,7 @@ XL — nhiều PR 3–5 ngày mỗi god function.
 
 ## 18. PR 12 — Tối ưu theo benchmark
 
-**Trạng thái triển khai 2026-07-26:** Lookup/ranking và outbox đã tối ưu ở các lát trước. Detailed-evaluation write đã prefetch toàn bộ criterion được yêu cầu và existing detail của report bằng hai query tenant-scoped, sau đó batch upsert qua `executemany`; characterization 10/100/1.000 dòng khóa statement logic phần detail từ `3R + 1` xuống `R + 3`. Document, email và partner worker đã dùng chung `IdlePollBackoff`; mô phỏng fixed-5-second worker giảm khoảng 46,9–47,2% claim attempt. Audit monitor đã dùng incremental checkpoint verification giữa các lần full scan: anchor + tail + materialized heads, tự fallback về checkpoint-protected full scan khi bất nhất; startup và checkpoint export vẫn full. Workflow loader đã tách bidding/partner theo route và method, giữ aggregate interface tương thích, dùng chung concurrent promise và retry được sau chunk failure. Secure artifact chứng minh route bidding không còn yêu cầu chunk partner 61.590 B raw/14.071 B gzip và thao tác tạo partner không còn yêu cầu chunk bidding 376.519 B raw/80.738 B gzip; đây chưa phải browser latency benchmark. Transaction duration/WAL/lock staging, runtime `pg_stat_statements` remeasurement và browser E2E metrics vẫn chưa hoàn tất.
+**Trạng thái triển khai 2026-07-27:** Lookup/ranking và outbox đã tối ưu ở các lát trước. Detailed-evaluation write đã prefetch toàn bộ criterion được yêu cầu và existing detail của report bằng hai query tenant-scoped, sau đó batch upsert qua `executemany`; characterization 10/100/1.000 dòng khóa statement logic phần detail từ `3R + 1` xuống `R + 3`. Document, email và partner worker đã dùng chung `IdlePollBackoff`; mô phỏng fixed-5-second worker giảm khoảng 46,9–47,2% claim attempt. Audit monitor đã dùng incremental checkpoint verification giữa các lần full scan. Workflow loader đã tách bidding/partner theo route và method. Browser E2E deterministic đã đo 10/100/500 bid. Renderer trên 50 bid dùng frame batch + `DocumentFragment` + revision cancellation; dirty-row ranking loại full DOM reread cho luồng không tuần tự. Báo cáo chi tiết 500 tiêu chí dùng batch 25 dòng/frame và event delegation, giảm longest task median 263 → 67 ms nhưng tăng thời gian hoàn tất bảng lên median khoảng 985 ms. Bootstrap reference merge/persist dùng một ID index và merged-result reuse thay hai vòng O(n²); 5.000 nhà thầu giảm longest task 373 → 84 ms, bảng vẫn 10 row. Năm lượt source và năm lượt cây production giải nén cho throughput median 424,20/412,28 req/s, latency tổng p95 median 42,38/39,96 ms và sync-write p95 median 84,12/76,32 ms. Ba lượt production 10 giây ghi median 979.900 byte WAL theo statement, 260,23 byte/request, 15,81 statement call/request và không temp spill/deadlock. Route resource graph, 5 lượt navigation source/production và Word render 10/100/500 dòng đã hoàn tất; staging latency/WAL/lock/statement stats, template có ảnh, parse/evaluate profile và Linux CI cho worktree hiện tại vẫn còn thiếu.
 
 **Problem**
 
@@ -656,7 +666,7 @@ Chỉ áp tối ưu có metric:
 - Prefetch criteria/existing details và batch upsert.
 - Exponential backoff/jitter hoặc LISTEN/NOTIFY cho idle workers.
 - Audit chain incremental checkpoints.
-- Route-specific workflow load; artifact/request graph đã xác minh, browser trace còn phải đo để kết luận latency.
+- Route-specific workflow load; artifact/request graph và local navigation timing đã xác minh, còn thiếu parse/evaluate profile trên staging.
 
 **Files affected**
 
@@ -687,6 +697,8 @@ Revert optimization độc lập; giữ benchmark.
 M–L cho từng bottleneck.
 
 ## 19. PR 13 — Cleanup và tài liệu
+
+**Trạng thái triển khai 2026-07-26:** Đã xóa đủ 21/21 import binding `SAFE_TO_REMOVE`, tạo `CONTEXT.md` và bảy ADR cho các quyết định nghiệp vụ/schema. Các symbol `LIKELY_UNUSED`, `REQUIRES_CONFIRMATION` và facade tương thích được giữ nguyên vì chưa có bằng chứng owner/runtime đủ để xóa.
 
 **Problem**
 
@@ -743,3 +755,74 @@ Mỗi PR sau phải ghi:
 `Rollback plan`
 
 Không gộp hai mục P0 không liên quan vào một PR. Không đánh dấu hoàn thành chỉ vì test unit đạt; phải chạy gate tương ứng và cập nhật benchmark/changelog.
+
+## 21. PR 14 — Canonical production module URL và Trusted Types runtime
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành trên production ZIP cục bộ.
+
+- Entry Vite content-hash không còn gắn mtime query, tránh hai module identity và hai lần bootstrap.
+- Service worker URL đi qua `TrustedScriptURL`; runtime module-preload injection bị tắt để không tạo sink chuỗi ngoài policy.
+- Regression khóa một dashboard, canonical entry URL và Trusted Types build policy.
+- Production route graph xác nhận `BiddingWorkflows`/`PartnerWorkflows` chỉ tải đúng tuyến.
+- Còn thiếu staging/Linux và browser parse/evaluate profile; không dùng số đo cục bộ này để tuyên bố SLO production.
+
+## 22. PR 15 — Deep module thuần cho xuất Excel
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành và đã đóng gói production.
+
+- Tách dựng workbook thuần sang `backend/documents/excel_workbook_builder.py`; module không phụ thuộc database, application startup hay shared helper.
+- `excel_service.py` tiếp tục re-export API cũ để không làm vỡ caller; worker chỉ dùng service đầy đủ cho các export thực sự cần database.
+- Regression import-boundary ngăn tái tạo dependency graph nặng trong ba tác vụ `create_mothau_template`, `create_phanlo_excel`, `create_tuychonmuathem_excel`.
+- Worker median giảm 27,4–56,5% trên 10–10.000 dòng; direct path không hồi quy đáng kể.
+- Full backend, frontend, security, document/Excel gate và production package đều đạt. Còn thiếu Linux CI và template Excel staging có quy mô thực.
+
+## 23. PR 16 — Deep module ghi metric trên hot-path
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành cục bộ, full gate đạt.
+
+- Tạo `backend.observability.recording` với interface nhỏ `record → snapshot → reset`; implementation chỉ dùng standard library và không import database, HTTP, logging hoặc application module.
+- Database lane, session, db primitive, sync phase và structured-log queue ghi trực tiếp vào recorder; `metrics.py` chỉ render snapshot và re-export tên cũ để giữ compatibility.
+- Test import-boundary đỏ trước sửa vì 5/5 producer import Prometheus renderer; sau sửa 0/5. SCC backend lớn nhất giảm 13 → 6 module.
+- Fresh import median giảm `312,99 → 243,68 ms` cho database lane và `310,79 → 255,04 ms` cho session store; logging không đổi đáng kể vì vốn dùng lazy import.
+- Reset test utility nay xóa cả database phase/max counters, tránh metric từ test trước rò sang test sau.
+- Gate: backend `1.054 passed, 1 skipped`, JavaScript `244/244`, security static gate `161` file. Linux CI vẫn chờ môi trường ngoài máy hiện tại.
+
+## 24. PR 17 — Trả kết nối audit độc lập về pool
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành cục bộ và full gate đạt.
+
+- `log_audit` có hai đường: audit gắn cursor dùng transaction của caller; audit độc lập tự lấy kết nối từ pool. Đường độc lập trước đây commit/rollback nhưng không `close`, khiến pooled connection không được trả lại.
+- Regression giả lập khóa cả nhánh thành công và lỗi đều gọi `close()` đúng một lần. Integration PostgreSQL dùng pool tối đa 1 slot chạy 5 audit liên tiếp, mỗi lần vẫn có `pool_available=1` và không request chờ.
+- 14/36 call site hiện dùng đường audit độc lập; vì vậy lỗi có thể làm cạn pool sau nhiều thao tác đăng nhập/tài liệu/OTP dù truy vấn chính đã kết thúc.
+- Local import đổi từ mega-facade `shared.helpers` sang trực tiếp `db_helper`, giữ lazy loading nhưng loại SCC 6 module. Backend nay chỉ còn một SCC 3 module riêng ở partner/sync.
+- Gate: backend `1.058 passed, 1 skipped`, JavaScript `244/244`, security static gate `161` file.
+
+## 25. PR 18 — Loại import cycle partner/sync cuối cùng
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành cục bộ và full gate đạt.
+
+- SCC cuối gồm `partner_lookup_service → sync.api → sync.service → partner_lookup_service`. Cạnh ngược xuất phát từ partner worker import `broadcast_websocket_event` qua route facade `sync.api`.
+- Broadcast interface thực sự do `sync.websocket` sở hữu; partner worker nay import lazy trực tiếp tại seam này. Route adapter và sync post-commit giữ nguyên interface/ordering.
+- Thêm static graph test dùng Tarjan trên toàn backend; test đỏ với SCC 3 module và xanh sau sửa với 0 cycle. Test này ngăn facade import tái tạo vòng phụ thuộc.
+- Focused partner/sync/WebSocket `76 passed`; full backend `1.059 passed, 1 skipped`; JavaScript `244/244`; security gate `161` file.
+
+## 26. PR 19 — Mở rộng deep recorder cho toàn bộ metric producer nóng
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành cục bộ, full gate đạt và đã đóng gói production.
+
+- Chuyển document worker, partner lookup/address, WebSocket và audit monitor sang interface ghi metric thuần standard-library trong `backend.observability.recording`.
+- Giữ `metrics.py` làm renderer/HTTP boundary và re-export API cũ; chỉ `app.py` và `lifecycle.py` còn import module này theo đúng trách nhiệm runtime/monitor.
+- Partner lookup và WebSocket lấy database primitive trực tiếp từ `db_helper`, không đi qua mega-facade `shared.helpers`.
+- Regression khóa import boundary, snapshot/reset/renderer cho document, partner, WebSocket và audit; payload metric giữ nguyên.
+- Fresh-import median giảm 24,2% cho partner service, 19,5% cho WebSocket và 39,3% cho document worker; address routes giảm 9,2%; audit monitor không đổi đáng kể.
+- Gate: focused recorder/worker/WebSocket/audit `78 passed, 1 skipped`; focused recorder/partner/import graph `44 passed`; full backend `1.061 passed, 1 skipped`; JavaScript `244/244`; security static gate `161` file; backend 0 import cycle.
+
+## 27. PR 20 — Bảo toàn STT duy nhất cho cây tiêu chí chi tiết
+
+**Trạng thái triển khai 2026-07-27:** Hoàn thành cục bộ, full gate đạt và đã đóng gói production.
+
+- Chuẩn hóa số thứ tự theo từng nhóm trước bước loại dòng thỏa thuận liên danh; không renumber chéo tab.
+- Dùng active prefix mapping để số con đi theo số cha mới khi STT nguồn lặp do ô gộp/draft cũ.
+- Giữ nguyên criterion ID, nội dung, kết quả, thứ tự và quy tắc nhà thầu độc lập/liên danh.
+- Regression thuần module không phụ thuộc DOMPurify, chạy trong khoảng 75 ms và khóa cả lặp cấp cao lẫn lặp cha có cây con.
+- Gate: JavaScript `245/245`, backend `1.061 passed, 1 skipped`, security static gate `161` file, secure build/package đạt.

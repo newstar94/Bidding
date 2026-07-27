@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 
+_QUERY_CHUNK_SIZE = 500
+
+
 @dataclass(frozen=True, slots=True)
 class SyncRecordWriteResult:
     conflict_error: dict[str, Any] | None = None
@@ -194,32 +197,51 @@ class SyncRecordWriter:
                WHERE organization_id = ? AND hop_dong_id = ?""",
             (organization_id, contract_id),
         )
-        for raw_package_id in item.get("goiThauIds", []):
-            if not raw_package_id:
-                continue
-            package_id = self.clean_record_id("goi_thau", raw_package_id)
-            if package_id is None:
-                continue
-            exists = cursor.execute(
-                """SELECT 1 FROM goi_thau
-                   WHERE organization_id = ? AND id = ? LIMIT 1""",
-                (organization_id, package_id),
-            ).fetchone()
-            if not exists:
-                raise ValueError(
-                    f"Goi thau {package_id} khong thuoc owner hien tai."
+        package_ids = list(dict.fromkeys(
+            package_id
+            for raw_package_id in item.get("goiThauIds", [])
+            if raw_package_id
+            if (
+                package_id := self.clean_record_id(
+                    "goi_thau",
+                    raw_package_id,
                 )
-            cursor.execute(
+            ) is not None
+        ))
+        existing_ids = set()
+        for offset in range(0, len(package_ids), _QUERY_CHUNK_SIZE):
+            chunk = package_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id FROM goi_thau
+                    WHERE organization_id = ? AND id IN ({placeholders})""",
+                (organization_id, *chunk),
+            ).fetchall()
+            existing_ids.update(str(row[0]) for row in rows)
+        missing_ids = [
+            package_id
+            for package_id in package_ids
+            if str(package_id) not in existing_ids
+        ]
+        if missing_ids:
+            raise ValueError(
+                f"Goi thau {missing_ids[0]} khong thuoc owner hien tai."
+            )
+        if package_ids:
+            cursor.executemany(
                 """INSERT INTO hop_dong_goi_thau (
                        organization_id, owner_type, hop_dong_id, goi_thau_id
                    ) VALUES (?, ?, ?, ?)
                    ON CONFLICT (organization_id, hop_dong_id, goi_thau_id)
                    DO UPDATE SET owner_type = EXCLUDED.owner_type,
                                  updated_at = CURRENT_TIMESTAMP""",
-                (
-                    organization_id,
-                    self.transaction.owner_type,
-                    contract_id,
-                    package_id,
-                ),
+                [
+                    (
+                        organization_id,
+                        self.transaction.owner_type,
+                        contract_id,
+                        package_id,
+                    )
+                    for package_id in package_ids
+                ],
             )

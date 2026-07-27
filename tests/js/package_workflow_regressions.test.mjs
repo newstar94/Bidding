@@ -21,6 +21,9 @@ import {
   resolvePackageDetailState,
   selectPackageDetailTab,
 } from "../../frontend/packages/detail/PackageDetailState.js";
+import {
+  resetDetailedEvaluationNavigationForPackageChange,
+} from "../../frontend/packages/GoiThauDetail.js";
 
 
 test("workflow tab targets survive package-version canonicalization after sync", () => {
@@ -79,6 +82,38 @@ test("workflow tab targets survive package-version canonicalization after sync",
     assert.equal(selectedPackageId, latestPackageId);
     assert.equal(detailState.activeTab, targetTab);
   });
+});
+
+
+test("switching packages resets the detailed evaluation child page only", () => {
+  const controller = {
+    currentEvaluationView: "contractor-detail",
+    _detailedEvaluationDirty: true,
+    _detailedEvaluationDrafts: new Map([["package-1:bid-1:single", { id: "draft-1" }]]),
+  };
+
+  assert.equal(
+    resetDetailedEvaluationNavigationForPackageChange(
+      controller,
+      "package-1",
+      "package-2",
+    ),
+    true,
+  );
+  assert.equal(controller.currentEvaluationView, "summary");
+  assert.equal(controller._detailedEvaluationDirty, false);
+  assert.equal(controller._detailedEvaluationDrafts.has("package-1:bid-1:single"), true);
+
+  controller.currentEvaluationView = "contractor-detail";
+  assert.equal(
+    resetDetailedEvaluationNavigationForPackageChange(
+      controller,
+      "package-2",
+      "package-2",
+    ),
+    false,
+  );
+  assert.equal(controller.currentEvaluationView, "contractor-detail");
 });
 
 

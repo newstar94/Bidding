@@ -1,13 +1,19 @@
 import asyncio
 import signal
 import socket
+from pathlib import Path
 
+import httpx
 import pytest
 
 from scripts import load_test
 from scripts import process_utils
+from scripts import run_load_rehearsal
 from scripts.run_load_rehearsal import (
     _assert_port_available,
+    _collect_worker_metrics,
+    _resolve_application_root,
+    _summarize_statement_rows,
     _validate_rehearsal_database_identity,
 )
 
@@ -105,6 +111,81 @@ def test_rehearsal_refuses_to_reuse_an_existing_listener():
         port = listener.getsockname()[1]
         with pytest.raises(RuntimeError, match="already in use"):
             _assert_port_available("127.0.0.1", port)
+
+
+def test_rehearsal_requires_a_runnable_application_tree(tmp_path: Path):
+    with pytest.raises(RuntimeError, match="runnable production tree"):
+        _resolve_application_root(tmp_path)
+
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "app.py").write_text("", encoding="utf-8")
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "secure-build.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "views").mkdir()
+
+    assert _resolve_application_root(tmp_path) == tmp_path.resolve()
+
+
+def test_worker_metric_collection_tolerates_one_slow_response(monkeypatch):
+    class MetricsResponse:
+        status_code = 200
+
+        def __init__(self, process_id):
+            self.text = (
+                "# TYPE biddingflow_process_id gauge\n"
+                f"biddingflow_process_id {process_id}\n"
+            )
+
+        def raise_for_status(self):
+            return None
+
+    class FlakyMetricsClient:
+        request_count = 0
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            self.__class__.request_count += 1
+            if self.request_count == 1:
+                raise httpx.ReadTimeout("one worker is still draining")
+            return MetricsResponse(100 + (self.request_count % 2))
+
+    monkeypatch.setattr(run_load_rehearsal.httpx, "AsyncClient", FlakyMetricsClient)
+
+    snapshots = asyncio.run(_collect_worker_metrics("http://benchmark", 2))
+
+    assert len(snapshots) == 2
+
+
+def test_statement_summary_separates_observability_and_application_queries():
+    rows = [
+        (
+            "101", 4, 12.5, 3.125, 4, 20, 2, 0, 3, 640,
+            "UPDATE sync_metadata SET current_version = current_version + $1",
+        ),
+        (
+            "102", 10, 2.0, 0.2, 10, 5, 0, 0, 0, 0,
+            "SELECT * FROM pg_stat_activity WHERE datname = current_database()",
+        ),
+    ]
+
+    summary = _summarize_statement_rows(rows)
+
+    assert summary["applicationStatementCount"] == 1
+    assert summary["applicationCalls"] == 4
+    assert summary["applicationTotalExecMs"] == 12.5
+    assert summary["applicationWalBytes"] == 640
+    assert summary["applicationTempBlocks"] == 0
+    assert summary["observabilityStatementCount"] == 1
+    assert summary["topApplicationStatements"][0]["queryId"] == "101"
+    assert summary["topWalStatements"][0]["walBytes"] == 640
 
 
 def test_windows_teardown_does_not_taskkill_after_supervisor_exits(monkeypatch):

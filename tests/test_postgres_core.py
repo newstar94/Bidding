@@ -16,6 +16,7 @@ import pytest
 from cryptography.fernet import Fernet
 from psycopg import sql
 
+from backend.db import db_helper
 from backend.db.db_helper import PostgresDatabase, _convert_qmark_parameters
 from backend.db.postgres_schema import (
     assert_foreign_key_integrity,
@@ -52,6 +53,7 @@ from backend.sync.websocket import (
     _release_cluster_lease,
 )
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME, vietnam_now
+from backend.shared import logging_utils
 from backend.lot_lifecycle_service import (
     create_batch,
     finalize_batch_award,
@@ -1130,6 +1132,28 @@ def test_audit_checkpoint_export_has_one_cluster_leader(
     checkpoints = list(destination.rglob("audit-checkpoint-*.json"))
     assert len(checkpoints) == 1
     assert checkpoints[0].parent.parent == destination
+
+
+def test_standalone_audit_returns_each_connection_to_a_single_slot_pool(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_POOL_MIN_SIZE", "1")
+    monkeypatch.setenv("DATABASE_POOL_MAX_SIZE", "1")
+    isolated_database = PostgresDatabase(postgres_database.database_url)
+    isolated_database.open()
+    monkeypatch.setattr(db_helper, "database", isolated_database)
+    try:
+        for index in range(5):
+            assert logging_utils.log_audit(
+                f"test.audit.pool_release.{index}",
+                organization_id="org-audit-pool-release",
+            )
+            stats = isolated_database.pool_stats()
+            assert stats["pool_available"] == 1
+            assert stats["requests_waiting"] == 0
+    finally:
+        isolated_database.close()
 
 
 def test_incremental_audit_verification_scans_only_checkpoint_anchors_and_tail(

@@ -13,7 +13,7 @@ from backend.shared.async_io import (
 )
 from backend.shared.database_io import run_database_write
 from backend.shared.safe_http import open_allowlisted_https
-from backend.observability.metrics import record_partner_lookup
+from backend.observability.recording import record_partner_lookup
 from backend.auth.auth_service import (
     get_client_ip,
     get_rate_limit_decision,
