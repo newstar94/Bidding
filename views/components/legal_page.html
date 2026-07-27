@@ -5,7 +5,7 @@
         <div class="legal-container legal-header-inner">
             <a class="legal-brand" href="/" aria-label="BiddingFlow - Trang chủ">
                 <span class="legal-brand-mark" aria-hidden="true"><i data-lucide="layers-3"></i></span>
-                <span><strong>BiddingFlow</strong><small>Trung tâm pháp lý</small></span>
+                <span><strong>BiddingFlow</strong><small>Hệ thống quản lý đấu thầu</small></span>
             </a>
             <div class="legal-header-actions">
                 <a class="legal-home-link" href="/">Trang chủ</a>
@@ -24,22 +24,35 @@
             </div>
         </section>
 
-        <div class="legal-container legal-layout">
-            <aside class="legal-toc-panel">
-                <nav class="legal-toc" aria-label="Mục lục điều khoản và chính sách">
-                    <p>Mục lục</p>
-                    <a href="#terms"><span>01</span>Điều khoản sử dụng</a>
-                    <a href="#privacy"><span>02</span>Chính sách quyền riêng tư</a>
-                    <a href="#security"><span>03</span>Chính sách bảo mật</a>
-                </nav>
-                <p class="legal-toc-note"><i data-lucide="info" aria-hidden="true"></i>Nội dung áp dụng cho phiên bản hiện tại của BiddingFlow.</p>
-            </aside>
+        <div class="legal-tab-shell">
+            <div class="legal-container">
+                <div class="legal-tabs" role="tablist" aria-label="Chọn nội dung pháp lý">
+                    <button class="legal-tab" id="tab-terms" type="button" role="tab" aria-selected="true" aria-controls="terms" tabindex="0" data-legal-tab="terms">
+                        <span class="legal-tab-icon" aria-hidden="true"><i data-lucide="file-check-2"></i></span>
+                        <span class="legal-tab-copy"><strong>Điều khoản sử dụng</strong><small>15 nội dung</small></span>
+                        <span class="legal-tab-number" aria-hidden="true">01</span>
+                    </button>
+                    <button class="legal-tab" id="tab-privacy" type="button" role="tab" aria-selected="false" aria-controls="privacy" tabindex="-1" data-legal-tab="privacy">
+                        <span class="legal-tab-icon" aria-hidden="true"><i data-lucide="user-round-check"></i></span>
+                        <span class="legal-tab-copy"><strong>Chính sách quyền riêng tư</strong><small>20 nội dung</small></span>
+                        <span class="legal-tab-number" aria-hidden="true">02</span>
+                    </button>
+                    <button class="legal-tab" id="tab-security" type="button" role="tab" aria-selected="false" aria-controls="security" tabindex="-1" data-legal-tab="security">
+                        <span class="legal-tab-icon" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+                        <span class="legal-tab-copy"><strong>Chính sách bảo mật</strong><small>18 nội dung</small></span>
+                        <span class="legal-tab-number" aria-hidden="true">03</span>
+                    </button>
+                </div>
+            </div>
+        </div>
 
+        <div class="legal-container legal-layout">
             <article class="legal-document" aria-label="Nội dung điều khoản và chính sách">
                 <!-- INCLUDE: views/legal/terms.html -->
                 <!-- INCLUDE: views/legal/privacy.html -->
                 <!-- INCLUDE: views/legal/security.html -->
             </article>
+            <p class="legal-document-note"><i data-lucide="info" aria-hidden="true"></i>Nội dung áp dụng cho phiên bản hiện tại của BiddingFlow.</p>
         </div>
     </main>
 

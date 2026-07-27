@@ -65,9 +65,15 @@ def test_legal_shell_contains_three_independent_sections_and_valid_anchors(monke
 
     assert {"terms", "privacy", "security"}.issubset(parser.ids)
     assert "/legal#terms" not in parser.hrefs
-    assert parser.hrefs.count("#terms") >= 2
-    assert parser.hrefs.count("#privacy") >= 2
-    assert parser.hrefs.count("#security") >= 2
+    assert parser.hrefs.count("#terms") >= 1
+    assert parser.hrefs.count("#privacy") >= 1
+    assert parser.hrefs.count("#security") >= 1
+    assert legal_html.count('role="tab"') == 3
+    assert legal_html.count('role="tabpanel"') == 3
+    assert 'role="tablist"' in legal_html
+    assert 'id="tab-terms"' in legal_html
+    assert 'aria-controls="privacy"' in legal_html
+    assert 'data-legal-panel="security" hidden' in legal_html
     assert parser.headings.count("h1") == 1
     assert parser.headings.count("h2") == 3
     assert "landing-page" not in legal_html
@@ -119,3 +125,6 @@ def test_legal_bootstrap_bypasses_auth_and_workspace_shells():
     assert legal_branch < auth_import
     assert legal_branch < workspace_import
     assert 'pathname === "/legal"' in legal_source
+    assert 'event.key === "ArrowRight"' in legal_source
+    assert '"pushState"' in legal_source
+    assert 'window.addEventListener("popstate"' in legal_source
