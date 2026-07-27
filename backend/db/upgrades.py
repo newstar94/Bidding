@@ -679,6 +679,33 @@ def _upgrade_to_v19_retire_evaluation_actor_infrastructure(cursor, context):
         cursor.execute(statement)
 
 
+def _upgrade_to_v20_add_bid_evaluation_prices(cursor, context):
+    """Persist ranking and proposed award prices for each evaluated bid."""
+
+    del context
+    for statement in (
+        """ALTER TABLE ket_qua_danh_gia_nha_thau
+           ADD COLUMN IF NOT EXISTS gia_xep_hang BIGINT
+           CHECK(gia_xep_hang IS NULL OR gia_xep_hang >= 0)""",
+        """ALTER TABLE ket_qua_danh_gia_nha_thau
+           ADD COLUMN IF NOT EXISTS gia_de_nghi_trung_thau BIGINT
+           CHECK(gia_de_nghi_trung_thau IS NULL OR gia_de_nghi_trung_thau >= 0)""",
+    ):
+        cursor.execute(statement)
+
+
+def _upgrade_to_v21_add_low_proposed_award_price_acceptance(cursor, context):
+    """Persist the evaluator's decision for a proposed award price below 50%."""
+
+    del context
+    cursor.execute(
+        """ALTER TABLE ket_qua_danh_gia_nha_thau
+           ADD COLUMN IF NOT EXISTS chap_thuan_gia_de_nghi_trung_thau_duoi_50 INTEGER
+           CHECK(chap_thuan_gia_de_nghi_trung_thau_duoi_50 IS NULL
+                 OR chap_thuan_gia_de_nghi_trung_thau_duoi_50 IN (0, 1))"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -765,6 +792,16 @@ UPGRADES = (
         19,
         "retire_evaluation_actor_infrastructure",
         _upgrade_to_v19_retire_evaluation_actor_infrastructure,
+    ),
+    DatabaseUpgrade(
+        20,
+        "add_bid_evaluation_prices",
+        _upgrade_to_v20_add_bid_evaluation_prices,
+    ),
+    DatabaseUpgrade(
+        21,
+        "add_low_proposed_award_price_acceptance",
+        _upgrade_to_v21_add_low_proposed_award_price_acceptance,
     ),
 )
 

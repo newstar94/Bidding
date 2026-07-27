@@ -127,6 +127,9 @@ export function renderMoThauPanel() {
     if (importExcelBtnTop) setRuntimeStyle(importExcelBtnTop, "display", isEditable ? "" : "none");
     if (downloadExcelBtnTop) setRuntimeStyle(downloadExcelBtnTop, "display", isEditable ? "" : "none");
     if (saveBtn2) {
+      delete saveBtn2.dataset.openingSaveBusy;
+      saveBtn2.disabled = false;
+      saveBtn2.removeAttribute("aria-busy");
       if (isReadOnly) {
         if (isNextStepSaved || isLocked) {
           setRuntimeStyle(saveBtn2, "display", "none");
@@ -300,7 +303,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", bidData.id || generateRecordId("thongtinmothau"));
   tr.dataset.contractorVersionId = bidData.nhaThauId || "";
-  let ntCode = bidData.maNhaThau || "";
+  let ntCode = bidData.maDinhDanh || bidData.maNhaThau || "";
   let ntName = resolveBidContractorName(this.model, bidData) || "";
   let ntType = bidData.loaiNhaThau || "Độc lập";
   let jvMembers = resolveBidJointVentureMembers(this.model, bidData);
@@ -595,7 +598,6 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         if (data?.name) {
           const lookupData = await mapPartnerLookupToContractor(code, data);
           if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
-          inputMa.value = data.org_code || code;
           tr._leadMemberLookupData = lookupData;
           tr._leadMemberContractorId = "";
           tr.dataset.contractorVersionId = "";
@@ -742,7 +744,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     this.unifyTableInputsHeight(document);
   }
 }
-export async function saveThongTinMoThau() {
+async function performSaveThongTinMoThau() {
   const select = document.getElementById("mothau-goithau-select");
   if (!select) return;
   let gtId = select.value;
@@ -837,7 +839,14 @@ export async function saveThongTinMoThau() {
     this.view._editingState[stepKey] = false;
   }
   const syncResult = await persistAndSync(this, ["thongtinmothau", "goithau"]);
-  if (!syncResult?.ok) return;
+  if (!syncResult?.ok) {
+    await this.view.customAlert(
+      "Không thể lưu thông tin mở thầu",
+      syncResult?.message || "Dữ liệu chưa được lưu. Vui lòng kiểm tra kết nối và thử lại.",
+      "x-circle"
+    );
+    return;
+  }
   this.view.renderGoiThauTable();
   const successMsg = isDirectOrSpecial ? "Đã lưu thành công dữ liệu nhà thầu" : `Đã lưu toàn bộ thông tin mở thầu (E-HSDT / E-HSĐXKT) của gói thầu "${gt.tenGoiThau}" thành công! Trạng thái gói thầu đã được chuyển sang Đang chấm thầu.`;
   this.renderMoThauPanel();
@@ -852,6 +861,35 @@ export async function saveThongTinMoThau() {
     await this.view.showPackageDetails(detailPackageId);
   }
   await this.view.customAlert("Lưu thành công", successMsg, "check-circle");
+}
+
+export async function saveThongTinMoThau() {
+  const saveButton = document.getElementById("btn-mothau-save");
+  if (saveButton?.dataset.openingSaveBusy === "1") return;
+  const originalLabel = saveButton?.textContent?.trim() || "Lưu thông tin mở thầu";
+  if (saveButton) {
+    saveButton.dataset.openingSaveBusy = "1";
+    saveButton.disabled = true;
+    saveButton.setAttribute("aria-busy", "true");
+    saveButton.textContent = "Đang lưu...";
+  }
+  try {
+    await performSaveThongTinMoThau.call(this);
+  } catch (error) {
+    console.error("Saving bid opening information failed:", error);
+    await this.view.customAlert(
+      "Không thể lưu thông tin mở thầu",
+      "Ứng dụng gặp lỗi khi lưu dữ liệu. Vui lòng kiểm tra thông tin và thử lại.",
+      "x-circle"
+    );
+  } finally {
+    if (saveButton?.dataset.openingSaveBusy === "1") {
+      delete saveButton.dataset.openingSaveBusy;
+      saveButton.disabled = false;
+      saveButton.removeAttribute("aria-busy");
+      saveButton.textContent = originalLabel;
+    }
+  }
 }
 export async function saveKetQuaChiDinhThau(gtId) {
   const gt = this.model.state.goithau.find((g) => g.id === gtId);

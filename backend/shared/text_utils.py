@@ -2,7 +2,7 @@ import re
 import unicodedata
 
 
-def normalize_business_identifier(value, *, digits_only=False):
+def normalize_business_identifier(value, *, digits_only=False, preserve_case=False):
     """Return the canonical stored representation of a business identifier."""
     text = unicodedata.normalize("NFKC", str(value or ""))
     text = text.translate(str.maketrans({
@@ -10,7 +10,7 @@ def normalize_business_identifier(value, *, digits_only=False):
         "／": "/",
     }))
     text = re.sub(r"\s+", "", text) if digits_only else re.sub(r"\s+", " ", text).strip()
-    return text.upper()
+    return text if preserve_case else text.upper()
 
 
 def normalize_person_name(value):

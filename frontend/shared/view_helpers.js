@@ -1,6 +1,10 @@
 import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
-export { getAuthDownloadUrl, authFetchDownload } from "./workflow_helpers.js";
+export {
+  getAuthDownloadUrl,
+  authFetchDownload,
+  authFetchDownloadWithAlert,
+} from "./workflow_helpers.js";
 import { formatCurrency as formatVndCurrency, formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "./formatters.js";
 import { hasUnifiedSelectListener, markUnifiedSelectListenerRegistered } from "./runtimeState.js";
 export function escapeHtml(value) {

@@ -131,6 +131,9 @@ export function renderExcelPreview(rows, importType) {
     giaDuThau: "Giá dự thầu",
     tyLeGiamGia: "Tỷ lệ giảm (%)",
     giaSauGiamGia: "Giá sau giảm giá",
+    giaXepHang: "Giá xếp hạng",
+    giaDeNghiTrungThau: "Giá đề nghị trúng thầu",
+    chapThuanGiaDeNghiTrungThauDuoi50: "Chấp thuận giá đề nghị trúng thầu dưới 50%",
     hieuLucHsdt: "Hiệu lực E-HSDT",
     giaTriDamBao: "Giá trị đảm bảo",
     hieuLucBaoDamNgay: "Hiệu lực ĐB (ngày)",
@@ -149,7 +152,7 @@ export function renderExcelPreview(rows, importType) {
   let headerHtml = "<tr>";
   keys.forEach((k) => {
     const label = labelMap[k] || k;
-    const isNumericColumn = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao"].includes(k);
+    const isNumericColumn = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaXepHang", "giaDeNghiTrungThau", "giaTriDamBao"].includes(k);
     headerHtml += `<th class="excel-preview-column ${isNumericColumn ? "excel-preview-column--numeric" : ""}">${escapeHtml(label)}</th>`;
   });
   headerHtml += '<th class="bf-s-c84c3abe48">Thông tin kiểm tra</th></tr>';
@@ -187,7 +190,7 @@ export function renderExcelPreview(rows, importType) {
       let inputClass = "excel-preview-input";
       const dateKeys = ["ngayPheDuyet", "ngayQuyetDinh", "ngayKy", "ngayQdChiDinh", "ngayTrinhDuToan", "ngayPheDuyetDuToan", "ngayCapCCCD", "ngayCapChungChi"];
       const datetimeKeys = ["thoiGianDangMa", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau"];
-      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
+      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaXepHang", "giaDeNghiTrungThau", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
       if (numberKeys.includes(k)) {
         inputType = "number";
         align = "right";
@@ -232,7 +235,7 @@ export function renderExcelPreview(rows, importType) {
       const row = controller._excelImportData[rowIndex];
       const dateKeys = ["ngayPheDuyet", "ngayQuyetDinh", "ngayKy", "ngayQdChiDinh", "ngayTrinhDuToan", "ngayPheDuyetDuToan", "ngayCapCCCD", "ngayCapChungChi"];
       const datetimeKeys = ["thoiGianDangMa", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau"];
-      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
+      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaXepHang", "giaDeNghiTrungThau", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
       if (numberKeys.includes(key)) {
         row[key] = val !== "" ? parseFloat(val) : 0;
       } else if (dateKeys.includes(key)) {

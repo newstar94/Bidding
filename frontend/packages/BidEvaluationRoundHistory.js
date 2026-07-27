@@ -5,6 +5,7 @@ import {
   getOfficialEvaluationLotState,
   isBidWithinEvaluationLotDetails,
 } from "./lotEvaluationScope.js";
+import { normalizeLowPriceAcceptance } from "./bidEvaluationLowPriceRules.js";
 
 function formatRoundDate(model, value) {
   return value ? model.formatDate(value) : "--";
@@ -58,6 +59,11 @@ export function renderBidEvaluationRoundHistory({
         <td>${escapeHtml(bid.maPhanLo || "--")}</td>
         <td>${escapeHtml(bid.tenNhaThau || "--")}</td>
         <td>${escapeHtml(bid.danhGiaKetLuan || "--")}</td>
+        <td>${escapeHtml(bid.giaXepHang ? model.formatVND(bid.giaXepHang) : "--")}</td>
+        <td>${escapeHtml(bid.giaDeNghiTrungThau ? model.formatVND(bid.giaDeNghiTrungThau) : "--")}</td>
+        <td>${normalizeLowPriceAcceptance(bid.chapThuanGiaDeNghiTrungThauDuoi50) === null
+          ? "--"
+          : normalizeLowPriceAcceptance(bid.chapThuanGiaDeNghiTrungThauDuoi50) ? "Chấp thuận" : "Không chấp thuận"}</td>
         <td>${escapeHtml(bid.danhGiaTaiChinh || "--")}</td>
       </tr>`).join("");
     return `
@@ -74,8 +80,8 @@ export function renderBidEvaluationRoundHistory({
           <div><span>Ngày QĐ phê duyệt</span><strong>${escapeHtml(formatRoundDate(model, result.ngayQuyetDinhKetQua))}</strong></div>
         </div>
         <div class="table-container package-table-frame evaluation-round-table">
-          <table class="data-table"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết luận</th><th>Xếp hạng tài chính</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4" class="text-muted">Không có hồ sơ trong phạm vi đợt.</td></tr>'}</tbody></table>
+          <table class="data-table"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết luận</th><th>Giá xếp hạng</th><th>Giá đề nghị trúng thầu</th><th>Xử lý giá dưới 50%</th><th>Xếp hạng tài chính</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="7" class="text-muted">Không có hồ sơ trong phạm vi đợt.</td></tr>'}</tbody></table>
         </div>
       </article>`;
   }).join("");

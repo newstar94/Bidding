@@ -3,9 +3,11 @@ import {
   isBidWithinEvaluationLotDetails,
   resolveActiveSavedEvaluationScope,
 } from "../lotEvaluationScope.js";
+import { isLowPriceBidRejected } from "../bidEvaluationLowPriceRules.js";
 
-export function checkBidQualified(bid) {
+export function checkBidQualified(bid, pkg = null) {
   if (!bid) return false;
+  if (pkg && isLowPriceBidRejected(pkg, bid)) return false;
   const conclusion = String(bid.danhGiaKetLuan || "").trim().toLowerCase();
   if (conclusion) {
     return conclusion === "đạt" || conclusion.startsWith("đạt") || conclusion.includes("trúng thầu");

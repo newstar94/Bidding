@@ -1,4 +1,5 @@
 import { checkBidQualified } from "./PackageTabs.js";
+import { getLowPriceRejectionReason, isLowPriceBidRejected } from "../bidEvaluationLowPriceRules.js";
 import {
   getOfficialEvaluationLotState,
   isBidWithinEvaluationLotDetails,
@@ -96,6 +97,7 @@ function parsePackageLots(pkg) {
 
 function deriveRejectionReason(pkg, bid, isWinner) {
   if (isWinner) return "—";
+  if (isLowPriceBidRejected(pkg, bid)) return getLowPriceRejectionReason(pkg, bid);
   if (bid?.lyDoTruot) return bid.lyDoTruot;
   if (pkg?.quyTrinhDanhGia === "quytrinh2" && bid?.danhGiaKetLuan === "Không đánh giá") {
     return "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
@@ -263,7 +265,7 @@ export function buildAwardResultViewModel({
     )
     : packageBidsForResult;
   const allBidsForResult = bindFrozenContractorVersions(
-    scopedBidsForResult.filter(checkBidQualified),
+    scopedBidsForResult.filter((bid) => checkBidQualified(bid, pkg)),
     resultMetadata,
   );
   const summary = buildAwardSummary(

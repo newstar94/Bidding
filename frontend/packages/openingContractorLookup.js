@@ -5,6 +5,8 @@ import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTax
 import { getExactContractorVersion } from "../partners/contractorVersionBinding.js";
 import { resolveOpeningLookupNames } from "./bidProcessOpeningData.js";
 
+const OPENING_SAVE_LOOKUP_TIMEOUT_MS = 3000;
+
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);
 }
@@ -15,6 +17,21 @@ function findContractorByCode(list, code) {
     (n) => normalizeContractorLookupCode(n.maNhaThau) === normalizedCode || normalizeContractorLookupCode(n.maSoThue) === normalizedCode
   ) || null;
 }
+
+async function lookupPartnerInfoBeforeSave(lookupInput) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENING_SAVE_LOOKUP_TIMEOUT_MS);
+  try {
+    return await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT", signal: controller.signal });
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error("Contractor lookup before saving bid opening failed:", error);
+    }
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 export function resolveOpeningLeadContractor(model, contractors, code, boundId = "") {
   const normalizedCode = normalizeContractorLookupCode(code);
   const bound = getExactContractorVersion(model, boundId);
@@ -22,9 +39,9 @@ export function resolveOpeningLeadContractor(model, contractors, code, boundId =
   if (bound && normalizedCode && boundCode === normalizedCode) return bound;
   return findContractorByCode(contractors, code);
 }
-export async function mapPartnerLookupToContractor(code, info = {}) {
+export async function mapPartnerLookupToContractor(code, info = {}, { normalizeAddress = true } = {}) {
   const rawAddress = info.address || info.diaChiGoc || "";
-  const parsedAddress = rawAddress ? await parseVietnamAddress(rawAddress) : null;
+  const parsedAddress = normalizeAddress && rawAddress ? await parseVietnamAddress(rawAddress) : null;
   return {
     tenNhaThau: info.name || info.tenNhaThau || "",
     maNhaThau: info.org_code || info.maNhaThau || code,
@@ -33,7 +50,7 @@ export async function mapPartnerLookupToContractor(code, info = {}) {
     nguoiDaiDien: info.representative_name || info.nguoiDaiDien || "",
     chucVuDaiDien: info.representative_position || info.chucVuDaiDien || "",
     soDienThoai: info.phone || info.soDienThoai || "",
-    diaChi: parsedAddress?.formattedAddress || info.diaChi || "",
+    diaChi: parsedAddress?.formattedAddress || info.diaChi || rawAddress,
     diaChiGoc: rawAddress
   };
 }
@@ -46,7 +63,11 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
     if (!code) return;
     const existing = findContractorByCode(latestContractors, code);
     if (existing) {
-      row._leadMemberLookupData = await mapPartnerLookupToContractor(code, existing);
+      row._leadMemberLookupData = await mapPartnerLookupToContractor(
+        code,
+        existing,
+        { normalizeAddress: false },
+      );
       const names = resolveOpeningLookupNames(
         row.querySelector(".mt-loai-nha-thau")?.value,
         nameInput?.value,
@@ -61,10 +82,13 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
     if (!lookupInput) return;
     try {
       if (codeInput) setRuntimeStyle(codeInput, "opacity", "0.7");
-      const info = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
+      const info = await lookupPartnerInfoBeforeSave(lookupInput);
       if (!info?.name) return;
-      row._leadMemberLookupData = await mapPartnerLookupToContractor(code, info);
-      if (codeInput && info.org_code) codeInput.value = info.org_code;
+      row._leadMemberLookupData = await mapPartnerLookupToContractor(
+        code,
+        info,
+        { normalizeAddress: false },
+      );
       const names = resolveOpeningLookupNames(
         row.querySelector(".mt-loai-nha-thau")?.value,
         nameInput?.value,
@@ -129,4 +153,3 @@ export {
   normalizeContractorLookupCode,
   resolveLeadMemberName
 };
-

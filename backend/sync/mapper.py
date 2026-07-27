@@ -1,5 +1,6 @@
 import json
 import re
+import unicodedata
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
@@ -61,7 +62,9 @@ def canonicalize_payload_item(table_name, item):
     for field_name, digits_only in business_key_fields.get(table_name, ()):
         if field_name in normalized and normalized.get(field_name) not in (None, ""):
             normalized[field_name] = normalize_business_identifier(
-                normalized[field_name], digits_only=digits_only
+                normalized[field_name],
+                digits_only=digits_only,
+                preserve_case=(table_name == "nha_thau" and field_name == "maNhaThau"),
             )
     if table_name == "chu_dau_tu" and normalized.get("tenChuDauTu"):
         normalized["tenChuDauTu"] = normalize_organization_name(normalized["tenChuDauTu"])
@@ -186,6 +189,14 @@ def _child_number(value):
 def _child_money(value):
     parsed = parse_vnd_amount(value)
     return parsed if parsed is not None else 0
+
+
+def _optional_boolean(value):
+    if value in (True, 1, "1", "true", "True"):
+        return 1
+    if value in (False, 0, "0", "false", "False"):
+        return 0
+    return None
 
 
 def save_child_payloads(cursor, table_name, item, organization_id, owner_type, sync_version, updated_at, actor_user_id=None):
@@ -361,6 +372,7 @@ def _save_evaluation_rounds(cursor, package_id, item, organization_id, owner_typ
 def _save_bid_evaluation_result(cursor, opening_id, item, organization_id, owner_type, sync_version, updated_at):
     evaluation_keys = {
         "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
+        "giaXepHang", "giaDeNghiTrungThau", "chapThuanGiaDeNghiTrungThauDuoi50",
         "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "nguyenNhanKhongDatHopLe",
         "nguyenNhanKhongDatNangLuc", "nguyenNhanKhongDatKyThuat", "lamRoHopLe",
         "lamRoNangLuc", "lamRoKyThuat", "lamRoTaiChinh",
@@ -379,17 +391,22 @@ def _save_bid_evaluation_result(cursor, opening_id, item, organization_id, owner
         """INSERT INTO ket_qua_danh_gia_nha_thau (
             id, organization_id, owner_type, goi_thau_id, thong_tin_mo_thau_id,
             danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
-            danh_gia_tai_chinh, danh_gia_ket_luan, diem, ly_do_loai,
+            danh_gia_tai_chinh, gia_xep_hang, gia_de_nghi_trung_thau,
+            chap_thuan_gia_de_nghi_trung_thau_duoi_50,
+            danh_gia_ket_luan, diem, ly_do_loai,
             lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh,
             nguyen_nhan_khong_dat_hop_le, nguyen_nhan_khong_dat_nang_luc,
             nguyen_nhan_khong_dat_ky_thuat,
             danh_gia_luc, sync_version, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, thong_tin_mo_thau_id) DO UPDATE SET
             danh_gia_hop_le=CASE WHEN ? THEN excluded.danh_gia_hop_le ELSE ket_qua_danh_gia_nha_thau.danh_gia_hop_le END,
             danh_gia_nang_luc=CASE WHEN ? THEN excluded.danh_gia_nang_luc ELSE ket_qua_danh_gia_nha_thau.danh_gia_nang_luc END,
             danh_gia_ky_thuat=CASE WHEN ? THEN excluded.danh_gia_ky_thuat ELSE ket_qua_danh_gia_nha_thau.danh_gia_ky_thuat END,
             danh_gia_tai_chinh=CASE WHEN ? THEN excluded.danh_gia_tai_chinh ELSE ket_qua_danh_gia_nha_thau.danh_gia_tai_chinh END,
+            gia_xep_hang=CASE WHEN ? THEN excluded.gia_xep_hang ELSE ket_qua_danh_gia_nha_thau.gia_xep_hang END,
+            gia_de_nghi_trung_thau=CASE WHEN ? THEN excluded.gia_de_nghi_trung_thau ELSE ket_qua_danh_gia_nha_thau.gia_de_nghi_trung_thau END,
+            chap_thuan_gia_de_nghi_trung_thau_duoi_50=CASE WHEN ? THEN excluded.chap_thuan_gia_de_nghi_trung_thau_duoi_50 ELSE ket_qua_danh_gia_nha_thau.chap_thuan_gia_de_nghi_trung_thau_duoi_50 END,
             danh_gia_ket_luan=CASE WHEN ? THEN excluded.danh_gia_ket_luan ELSE ket_qua_danh_gia_nha_thau.danh_gia_ket_luan END,
             diem=CASE WHEN ? THEN excluded.diem ELSE ket_qua_danh_gia_nha_thau.diem END,
             ly_do_loai=CASE WHEN ? THEN excluded.ly_do_loai ELSE ket_qua_danh_gia_nha_thau.ly_do_loai END,
@@ -407,6 +424,9 @@ def _save_bid_evaluation_result(cursor, opening_id, item, organization_id, owner
             clean_id(item.get("goiThauId")), opening_id,
             item.get("danhGiaHopLe") or "", item.get("danhGiaNangLuc") or "",
             item.get("danhGiaKyThuat") or "", item.get("danhGiaTaiChinh") or "",
+            parse_vnd_amount(item.get("giaXepHang")),
+            parse_vnd_amount(item.get("giaDeNghiTrungThau")),
+            _optional_boolean(item.get("chapThuanGiaDeNghiTrungThauDuoi50")),
             item.get("danhGiaKetLuan") or "", safe_float(item.get("diemDanhGia")),
             exclusion_reason, item.get("lamRoHopLe") or "", item.get("lamRoNangLuc") or "",
             item.get("lamRoKyThuat") or "", item.get("lamRoTaiChinh") or "",
@@ -418,6 +438,9 @@ def _save_bid_evaluation_result(cursor, opening_id, item, organization_id, owner
             "danhGiaNangLuc" in item,
             "danhGiaKyThuat" in item,
             "danhGiaTaiChinh" in item,
+            "giaXepHang" in item,
+            "giaDeNghiTrungThau" in item,
+            "chapThuanGiaDeNghiTrungThauDuoi50" in item,
             "danhGiaKetLuan" in item,
             "diemDanhGia" in item,
             any(key in item for key in exclusion_reason_keys),
@@ -1127,6 +1150,9 @@ def _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, n
         ("danh_gia_nang_luc", "danhGiaNangLuc"),
         ("danh_gia_ky_thuat", "danhGiaKyThuat"),
         ("danh_gia_tai_chinh", "danhGiaTaiChinh"),
+        ("gia_xep_hang", "giaXepHang"),
+        ("gia_de_nghi_trung_thau", "giaDeNghiTrungThau"),
+        ("chap_thuan_gia_de_nghi_trung_thau_duoi_50", "chapThuanGiaDeNghiTrungThauDuoi50"),
         ("danh_gia_ket_luan", "danhGiaKetLuan"),
         ("diem", "diemDanhGia"),
         ("ly_do_loai", "lyDoTruot"),
@@ -1143,7 +1169,12 @@ def _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, n
         if not item:
             continue
         for snake_key, camel_key in field_pairs:
-            item[camel_key if naming == "camel" else snake_key] = row.get(snake_key)
+            value = row.get(snake_key)
+            if ("ket_qua_danh_gia_nha_thau", snake_key) in MONEY_COLUMNS:
+                value = money_json_value(value)
+            elif snake_key == "chap_thuan_gia_de_nghi_trung_thau_duoi_50" and value is not None:
+                value = bool(value)
+            item[camel_key if naming == "camel" else snake_key] = value
 
 
 def _db_row_value(row, index, key, default=None):
@@ -1154,6 +1185,23 @@ def _db_row_value(row, index, key, default=None):
     return row[index] if len(row) > index else default
 
 
+def _normalized_evaluation_text(value):
+    text = unicodedata.normalize("NFD", str(value or "")).casefold()
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", " ", text.replace("đ", "d")).strip()
+
+
+def _is_joint_venture_only_criterion(row):
+    code = str(_db_row_value(row, 1, "ma_tieu_chi", "") or "").upper()
+    name = _normalized_evaluation_text(
+        _db_row_value(row, 2, "ten_tieu_chi", "")
+    )
+    return code in {"JV_AGREEMENT", "MSC_VALIDITY_2"} or (
+        name.startswith("thoa thuan lien danh")
+        and "doi voi nha thau lien danh" in name
+    )
+
+
 def _validate_completed_detailed_evaluation_report(
     cursor,
     organization_id,
@@ -1161,12 +1209,20 @@ def _validate_completed_detailed_evaluation_report(
     report_id,
 ):
     required_rows = cursor.execute(
-        """SELECT criterion.id,
-                  COALESCE(detail.ket_qua, 'pending') AS ket_qua
+        """SELECT criterion.id, criterion.ma_tieu_chi, criterion.ten_tieu_chi,
+                  COALESCE(detail.ket_qua, 'pending') AS ket_qua,
+                  opening.loai_nha_thau
            FROM tieu_chi_danh_gia AS criterion
+           JOIN bao_cao_danh_gia_nha_thau AS report
+             ON report.organization_id = criterion.organization_id
+            AND report.id = ?
+            AND report.vong_danh_gia_id = criterion.vong_danh_gia_id
+           JOIN thong_tin_mo_thau AS opening
+             ON opening.organization_id = report.organization_id
+            AND opening.id = report.thong_tin_mo_thau_id
            LEFT JOIN chi_tiet_danh_gia_nha_thau AS detail
              ON detail.organization_id = criterion.organization_id
-            AND detail.bao_cao_danh_gia_nha_thau_id = ?
+            AND detail.bao_cao_danh_gia_nha_thau_id = report.id
             AND detail.tieu_chi_danh_gia_id = criterion.id
            WHERE criterion.organization_id = ?
              AND criterion.vong_danh_gia_id = ?
@@ -1174,7 +1230,16 @@ def _validate_completed_detailed_evaluation_report(
         (report_id, organization_id, round_id),
     ).fetchall()
     for row in required_rows:
-        result = str(_db_row_value(row, 1, "ket_qua", "pending") or "pending")
+        bidder_type = _normalized_evaluation_text(
+            _db_row_value(row, 4, "loai_nha_thau", "")
+        )
+        if (
+            bidder_type
+            and bidder_type != "lien danh"
+            and _is_joint_venture_only_criterion(row)
+        ):
+            continue
+        result = str(_db_row_value(row, 3, "ket_qua", "pending") or "pending")
         if result == "pending":
             raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
 
@@ -1355,9 +1420,6 @@ def _save_bid_detailed_evaluation_reports(
                 score < 0 or (maximum_score is not None and score > maximum_score)
             ):
                 raise ValueError("Diem tieu chi nam ngoai pham vi cho phep.")
-            required = bool(_db_row_value(criterion, 3, "bat_buoc", 1))
-            if status == "completed" and required and result == "pending":
-                raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
             detail_id = (
                 existing_details_by_criterion.get(criterion_id)
                 or clean_id(raw_detail.get("id"))

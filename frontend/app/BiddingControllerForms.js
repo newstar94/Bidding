@@ -6,6 +6,7 @@ import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisib
 import { setupInlineExcelControls } from "./inlineExcelControls.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { derivePackagePrice } from "../packages/packagePricing.js";
+import { EVALUATION_METHODS, getEvaluationMethods } from "../packages/evaluationMethodRules.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -312,6 +313,9 @@ export function setupActionListeners() {
   const gtPhuongPhapDanhGiaContainer = document.getElementById("gt-phuongphapdanhgia-container");
   const gtTrongSoKyThuatContainer = document.getElementById("gt-trongsokythuat-container");
   const gtTrongSoKyThuatInput = document.getElementById("gt-trongsokythuat");
+  const gtGoiThauThuocRadios = Array.from(document.querySelectorAll('input[name="gt-goithauthuoc"]'));
+  const isMedicinePackage = () => gtLinhVucSelect?.value === "Hàng hóa"
+    && gtGoiThauThuocRadios.some((radio) => radio.checked && radio.value === "1");
   const validateTrongSoKyThuat = (showEmptyError = false) => {
     if (!gtTrongSoKyThuatInput || !gtTrongSoKyThuatContainer) return true;
     const valRaw = gtTrongSoKyThuatInput.value;
@@ -341,8 +345,13 @@ export function setupActionListeners() {
         invalidFeedback("Đối với gói thầu tư vấn, trọng số kỹ thuật phải nằm trong khoảng 70% - 80%");
         return false;
       }
+    } else if (isMedicinePackage()) {
+      if (val < 30 || val > 40) {
+        invalidFeedback("Đối với gói thầu thuốc, trọng số kỹ thuật phải nằm trong khoảng 30% - 40%");
+        return false;
+      }
     } else {
-      if (phuongThucVal === "Một giai đoạn hai túi hồ sơ") {
+      if (phuongThucVal === "Một giai đoạn hai túi hồ sơ" || phuongThucVal === "Hai giai đoạn hai túi hồ sơ") {
         if (val < 10) {
           invalidFeedback("Trọng số kỹ thuật tối thiểu là 10%");
           return false;
@@ -389,43 +398,36 @@ export function setupActionListeners() {
       setVisible(gtTrongSoKyThuatContainer, false);
       return;
     }
-    setVisible(gtPhuongPhapDanhGiaContainer, true);
-    setRequired(gtPhuongPhapDanhGiaSelect, true);
     const currentVal = gtPhuongPhapDanhGiaSelect.value;
-    let optionsHtml = "";
-    if (linhVucVal === "Tư vấn") {
-      optionsHtml += `
-                <option value="Kết hợp giữa kỹ thuật và giá">Kết hợp giữa kỹ thuật và giá</option>
-                <option value="Giá thấp nhất">Giá thấp nhất</option>
-                <option value="Giá cố định">Giá cố định</option>
-                <option value="Dựa trên kỹ thuật">Dựa trên kỹ thuật</option>
-            `;
-    } else {
-      if (phuongThucVal === "Một giai đoạn hai túi hồ sơ") {
-        optionsHtml += `
-                    <option value="Giá thấp nhất">Giá thấp nhất</option>
-                    <option value="Giá đánh giá">Giá đánh giá</option>
-                    <option value="Kết hợp giữa kỹ thuật và giá">Kết hợp giữa kỹ thuật và giá</option>
-                `;
-      } else {
-        optionsHtml += `
-                    <option value="Giá thấp nhất">Giá thấp nhất</option>
-                    <option value="Giá đánh giá">Giá đánh giá</option>
-                `;
-      }
+    const methods = getEvaluationMethods({
+      linhVuc: linhVucVal,
+      hinhThucLuaChon: hinhThucVal,
+      phuongThucLuaChon: phuongThucVal,
+    });
+    setVisible(gtPhuongPhapDanhGiaContainer, true);
+    if (methods.length === 0) {
+      gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML('<option value="">Không áp dụng cho tổ hợp đã chọn</option>');
+      gtPhuongPhapDanhGiaSelect.value = "";
+      setDisabled(gtPhuongPhapDanhGiaSelect, true);
+      setRequired(gtPhuongPhapDanhGiaSelect, false);
+      updateTrongSoKyThuatVisibility();
+      initCustomSelect("gt-phuongphapdanhgia");
+      return;
     }
-    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(optionsHtml);
-    const validOptions = Array.from(gtPhuongPhapDanhGiaSelect.options).map((o) => o.value);
-    if (!forceDefault && currentVal && validOptions.includes(currentVal)) {
+    setDisabled(gtPhuongPhapDanhGiaSelect, false);
+    setRequired(gtPhuongPhapDanhGiaSelect, true);
+    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(methods
+      .map((method) => `<option value="${escapeHtml(method)}">${escapeHtml(method)}</option>`)
+      .join(""));
+    if (!forceDefault && currentVal && methods.includes(currentVal)) {
       gtPhuongPhapDanhGiaSelect.value = currentVal;
     } else {
-      if (linhVucVal === "Tư vấn") {
-        gtPhuongPhapDanhGiaSelect.value = "Kết hợp giữa kỹ thuật và giá";
-      } else {
-        gtPhuongPhapDanhGiaSelect.value = "Giá thấp nhất";
-      }
+      gtPhuongPhapDanhGiaSelect.value = linhVucVal === "Tư vấn"
+        ? EVALUATION_METHODS.COMBINED
+        : EVALUATION_METHODS.LOWEST_PRICE;
     }
     updateTrongSoKyThuatVisibility();
+    initCustomSelect("gt-phuongphapdanhgia");
   };
   if (gtPhuongPhapDanhGiaSelect) {
     gtPhuongPhapDanhGiaSelect.addEventListener("change", updateTrongSoKyThuatVisibility);
@@ -437,6 +439,9 @@ export function setupActionListeners() {
     gtTrongSoKyThuatInput.addEventListener("change", validateTrongSoKyThuat);
     this.validateTrongSoKyThuat = validateTrongSoKyThuat;
   }
+  gtGoiThauThuocRadios.forEach((radio) => {
+    radio.addEventListener("change", () => validateTrongSoKyThuat());
+  });
   if (gtPhuongThucSelect) {
     gtPhuongThucSelect.addEventListener("change", () => {
       updatePhuongPhapDanhGiaOptions();
@@ -518,13 +523,13 @@ export function setupActionListeners() {
       if (val === "Tư vấn") {
         options.forEach((opt) => {
           const optVal = opt.value;
-          if (optVal === "Đấu thầu rộng rãi" || optVal === "Chỉ định thầu" || optVal === "Chỉ định thầu rút gọn" || optVal === "" || optVal === "Tất cả hình thức") {
+          if (optVal === "Đấu thầu rộng rãi" || optVal === "Đấu thầu hạn chế" || optVal === "Chỉ định thầu" || optVal === "Chỉ định thầu rút gọn" || optVal === "" || optVal === "Tất cả hình thức") {
             setRuntimeStyle(opt, "display", "");
           } else {
             setRuntimeStyle(opt, "display", "none");
           }
         });
-        if (gtHinhThucSelect.value !== "Đấu thầu rộng rãi" && gtHinhThucSelect.value !== "Chỉ định thầu" && gtHinhThucSelect.value !== "Chỉ định thầu rút gọn") {
+        if (gtHinhThucSelect.value !== "Đấu thầu rộng rãi" && gtHinhThucSelect.value !== "Đấu thầu hạn chế" && gtHinhThucSelect.value !== "Chỉ định thầu" && gtHinhThucSelect.value !== "Chỉ định thầu rút gọn") {
           gtHinhThucSelect.value = "Đấu thầu rộng rãi";
         }
         setDisabled(gtHinhThucSelect, false);
@@ -547,7 +552,7 @@ export function setupActionListeners() {
       const gtGoiThauThuocContainer = document.getElementById("gt-goithauthuoc-container");
       if (gtGoiThauThuocContainer) {
         if (val === "Hàng hóa") {
-          setVisible(gtGoiThauThuocContainer, true, "");
+          setVisible(gtGoiThauThuocContainer, true);
         } else {
           setVisible(gtGoiThauThuocContainer, false);
           const radioNo = document.querySelector('input[name="gt-goithauthuoc"][value="0"]');
@@ -889,7 +894,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
       setVisible(gtGoiThauThuocContainer, false);
       gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach((r) => setDisabled(r, true));
     } else {
-      setVisible(gtGoiThauThuocContainer, linhVuc === "Hàng hóa", "");
+      setVisible(gtGoiThauThuocContainer, linhVuc === "Hàng hóa");
       gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach((r) => setDisabled(r, isReadOnly));
     }
   }

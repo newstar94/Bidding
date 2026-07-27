@@ -3,6 +3,7 @@
   isBidWithinEvaluationLotDetails,
   isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
+import { normalizeLowPriceAcceptance } from "../packages/bidEvaluationLowPriceRules.js";
 
 function findOpeningPackage(controller, context = {}) {
   const select = context.packageId
@@ -94,13 +95,22 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
       : foundBid && !inSelectedScope
         ? "Dòng này thuộc phần lô ngoài phạm vi đợt đánh giá đang chọn."
         : "Không tìm thấy nhà thầu/lô tương ứng trong thông tin mở thầu của gói thầu này!";
-    if ((context.evaluationTab || controller.currentDanhGiaTab) === "financial") {
+    if (["financial", "unified"].includes(context.evaluationTab || controller.currentDanhGiaTab)) {
       const giaDuThauRaw = String(row["Giá dự thầu (VND)"] || row["Giá dự thầu (VND)"] || row["Giá dự thầu"] || row["Giá"] || "0").trim();
       const tyLeGiamRaw = String(row["Tỷ lệ %"] || row["Tỷ lệ giảm giá (%)"] || row["Tỷ lệ"] || "0").trim();
       const hieuLucHsdtRaw = String(row["Hiệu lực HSDT"] || row["Hiệu lực HSDT (ngày)"] || "").trim();
       const thoiGianThucHien = String(row["Thời gian thực hiện"] || row["Thời gian thực hiện (ngày)"] || row["Thời gian TH"] || "").trim();
       const lamRoTaiChinh = String(row["Làm rõ tài chính"] || "").trim();
       const danhGiaTaiChinh = String(row["Đánh giá tài chính"] || row["Xếp hạng"] || "").trim();
+      const giaXepHang = controller.model.parseVND(row["Giá xếp hạng (VND)"] || row["Giá xếp hạng"] || "") || 0;
+      const giaDeNghiTrungThau = controller.model.parseVND(
+        row["Giá đề nghị trúng thầu (VND)"] || row["Giá đề nghị trúng thầu"] || "",
+      ) || 0;
+      const chapThuanGiaDeNghiTrungThauDuoi50 = normalizeLowPriceAcceptance(
+        row["Xử lý giá đề nghị trúng thầu dưới 50%"]
+          || row["Chấp thuận giá đề nghị trúng thầu dưới 50%"]
+          || "",
+      );
       const giaDuThau = controller.model.parseVND(giaDuThauRaw) || 0;
       const tyLeGiamGia = parseFloat(tyLeGiamRaw.replace(/,/g, ".")) || 0;
       const giaSauGiamGia = giaDuThau * (1 - tyLeGiamGia / 100);
@@ -113,6 +123,9 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
         giaDuThau,
         tyLeGiamGia,
         giaSauGiamGia,
+        giaXepHang,
+        giaDeNghiTrungThau,
+        chapThuanGiaDeNghiTrungThauDuoi50,
         hieuLucHsdt: parseInt(hieuLucHsdtRaw, 10) || 0,
         thoiGianThucHien,
         lamRoTaiChinh,

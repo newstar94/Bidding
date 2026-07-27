@@ -3,6 +3,10 @@ import { calculateRankings } from "../../shared/BiddingCalculations.js";
 import { getHolidays } from "../../shared/runtimeState.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { checkBidQualified } from "./PackageTabs.js";
+import {
+  getLowPriceRejectionReason,
+  isLowPriceBidRejected,
+} from "../bidEvaluationLowPriceRules.js";
 
 export function buildAwardResultApprovalMarkup(view, {
   gt,
@@ -81,7 +85,7 @@ export function buildAwardResultApprovalMarkup(view, {
         const { rankings, scores } = calculateRankings(gt, allBids);
         const isCombinedMethod = gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá";
         const getIsQualified = (bidItem) => {
-          return checkBidQualified(bidItem);
+          return checkBidQualified(bidItem, gt);
         };
         const lots = typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [];
         let allBiddersHtml = "";
@@ -97,8 +101,11 @@ export function buildAwardResultApprovalMarkup(view, {
         } else {
           allBiddersHtml = allBids.map((b, idx) => {
             const isQualified = getIsQualified(b);
+            const isRejectedLowPrice = isLowPriceBidRejected(gt, b);
             let defaultReason = "";
-            if (gt.quyTrinhDanhGia === "quytrinh2" && b.danhGiaKetLuan === "Không đánh giá") {
+            if (isRejectedLowPrice) {
+              defaultReason = getLowPriceRejectionReason(gt, b);
+            } else if (gt.quyTrinhDanhGia === "quytrinh2" && b.danhGiaKetLuan === "Không đánh giá") {
               defaultReason = "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
             } else if (!isQualified) {
               const hl = String(b.danhGiaHopLe || "").trim().toLowerCase();
@@ -122,8 +129,10 @@ export function buildAwardResultApprovalMarkup(view, {
               ""
             ];
             const isStaleOrEmpty = !b.lyDoTruot || standardReasons.includes(b.lyDoTruot.trim());
-            const displayReason = isStaleOrEmpty ? defaultReason : b.lyDoTruot;
-            const defaultPrice = view.model.formatVND(b.giaSauGiamGia || b.giaDuThau || "") || "";
+            const displayReason = isRejectedLowPrice
+              ? defaultReason
+              : isStaleOrEmpty ? defaultReason : b.lyDoTruot;
+            const defaultPrice = view.model.formatVND(b.giaDeNghiTrungThau || b.giaSauGiamGia || b.giaDuThau || "") || "";
             const defaultDurationPkg = b.thoiGianThucHien || gt.thoiGianThucHien || "";
             const defaultDurationCtr = b.thoiGianThucHienHopDong || (defaultDurationPkg ? defaultDurationPkg + " + Thời gian thực hiện các nghĩa vụ theo hợp đồng" : "");
             const rank = rankings[b.id];

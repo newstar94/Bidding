@@ -857,7 +857,7 @@
   }
 }
 .detail-code.partner-identity-code {
-  text-transform: lowercase;
+  text-transform: none;
 }
 .word-list-variable-control .word-list-variable-input {
   padding-left: 42px;
@@ -2665,6 +2665,14 @@ table th {
 }
 .evaluation-choice-input { accent-color: var(--primary); cursor: pointer; }
 .evaluation-warning { color: #ef4444; font-size: 0.8rem; font-weight: 600; }
+.evaluation-proposed-award-price.is-low-price-warning,
+.mt-gia-de-nghi-trung-thau.is-low-price-warning { color: var(--danger) !important; font-weight: 700; }
+.evaluation-low-price-decision { display: grid; gap: 6px; margin-top: 8px; padding: 8px; border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--danger) 7%, transparent); }
+.evaluation-low-price-decision[hidden] { display: none; }
+.evaluation-low-price-decision-title { color: var(--danger); font-size: 0.72rem; font-weight: 700; }
+.evaluation-low-price-option { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-main); font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.evaluation-low-price-option input { width: 14px; height: 14px; margin: 0; accent-color: var(--primary); flex: 0 0 auto; }
+.evaluation-low-price-option:has(input:disabled) { cursor: default; opacity: 0.75; }
 .compact-field-label { display: block; margin-bottom: 4px; font-size: 0.78rem; font-weight: 600; }
 .field-label-strong { display: block; margin-bottom: 4px; font-size: 0.85rem; font-weight: 600; }
 .form-group-compact { margin-bottom: 0; }

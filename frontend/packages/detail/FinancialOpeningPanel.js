@@ -1,7 +1,7 @@
 import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { renderBidContractorLink } from "./BidderTable.js";
-import { authFetchDownload, escapeHtml } from "../../shared/view_helpers.js";
+import { authFetchDownloadWithAlert, escapeHtml } from "../../shared/view_helpers.js";
 import { savePackageFinancialOpening, validateFinancialOpeningTime } from "../packageFinancialOpening.js";
 import {
   isBidWithinEvaluationLotDetails,
@@ -341,7 +341,8 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
         .replace(/[^a-zA-Z0-9_-]/g, "")
         .trim()
         .substring(0, 30);
-      authFetchDownload(
+      void authFetchDownloadWithAlert(
+        view,
         `/api/export-opening-fin-template?package_id=${encodeURIComponent(state.pkg.id)}&package_name=${encodeURIComponent(safeCode)}`,
         `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`,
       );

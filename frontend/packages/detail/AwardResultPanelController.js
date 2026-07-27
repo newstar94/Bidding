@@ -1,6 +1,6 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
-import { authFetchDownload, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
+import { authFetchDownloadWithAlert, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { bindCurrencyElement } from "../../app/domUtils.js";
 import { setFieldFeedback } from "../../app/formStateUtils.js";
 import {
@@ -420,12 +420,13 @@ function bindApprovalSubmit({ view, root, pkg, appController, viewModel, approva
   };
 }
 
-function bindExcelActions(root, pkg, appController) {
+function bindExcelActions(view, root, pkg, appController) {
   const exportButton = root.querySelector("#btn-result-export-excel-template");
   if (exportButton) {
     exportButton.onclick = () => {
       const safeCode = (pkg.tenGoiThau || "GoiThau").replace(/[^a-zA-Z0-9]/g, "_");
-      authFetchDownload(
+      void authFetchDownloadWithAlert(
+        view,
         `/api/export-ketquaqd-template?package_id=${pkg.id}&package_name=${encodeURIComponent(safeCode)}`,
         `KetQua_QD_${safeCode}.xlsx`,
       );
@@ -466,7 +467,7 @@ export function bindAwardResultPanelController({
   bindBidderRows(view, root, pkg, approvalPanel);
   bindDirectBidRows(view, root, pkg);
   bindApprovalSubmit({ view, root, pkg, appController, viewModel, approvalPanel });
-  bindExcelActions(root, pkg, appController);
+  bindExcelActions(view, root, pkg, appController);
   root.querySelector("#btn-result-add-bidder")?.addEventListener("click", () => {
     appendApprovalBidderRow(view, root, pkg);
   });

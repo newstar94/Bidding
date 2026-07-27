@@ -7,8 +7,12 @@ import {
   resolveContractorVersion,
 } from "../partners/contractorVersionBinding.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
-import { escapeHtml } from "../shared/view_helpers.js";
+import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
+import {
+  isProposedAwardPriceBelowHalf,
+  normalizeLowPriceAcceptance,
+} from "./bidEvaluationLowPriceRules.js";
 import { isDetailedEvaluationSummaryOwned } from "./detailedEvaluationSelectors.js";
 import { setJvData } from "./jvDataStore.js";
 
@@ -73,7 +77,65 @@ function buildIdentityCells({ pkg, bid, contractor }) {
   `;
 }
 
-function buildFinancialCells({ bid, model, presentation, rowReadOnly }) {
+function formatOptionalMoney(model, value) {
+  return value === null || value === void 0 || value === ""
+    ? ""
+    : model.formatVND(value) || "";
+}
+
+function buildLowPriceDecision({ pkg, bid, proposedAwardPrice, rowReadOnly, disabled }) {
+  const isWarning = isProposedAwardPriceBelowHalf(pkg, bid, proposedAwardPrice);
+  const decision = normalizeLowPriceAcceptance(bid.chapThuanGiaDeNghiTrungThauDuoi50);
+  const radioName = `low-price-acceptance-${String(bid.id || "bid")}`;
+  const controlDisabled = rowReadOnly || Boolean(disabled);
+  return {
+    isWarning,
+    html: `
+      <div class="evaluation-low-price-decision" role="radiogroup" aria-label="Xử lý giá đề nghị trúng thầu dưới 50%"${isWarning ? "" : " hidden"}>
+        <span class="evaluation-low-price-decision-title">Giá dưới 50%:</span>
+        <label class="evaluation-low-price-option">
+          <input type="radio" class="mt-low-price-acceptance" name="${safeAttr(radioName)}" value="true"${decision === true ? " checked" : ""}${controlDisabled ? " disabled" : ""}>
+          <span>Chấp thuận</span>
+        </label>
+        <label class="evaluation-low-price-option">
+          <input type="radio" class="mt-low-price-acceptance" name="${safeAttr(radioName)}" value="false"${decision === false ? " checked" : ""}${controlDisabled ? " disabled" : ""}>
+          <span>Không chấp thuận</span>
+        </label>
+      </div>
+    `,
+  };
+}
+
+function buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly, disabled = "" }) {
+  const rankingPrice = formatOptionalMoney(model, bid.giaXepHang);
+  const proposedAwardPrice = formatOptionalMoney(model, bid.giaDeNghiTrungThau);
+  const lowPriceDecision = buildLowPriceDecision({
+    pkg,
+    bid,
+    proposedAwardPrice: bid.giaDeNghiTrungThau,
+    rowReadOnly,
+    disabled,
+  });
+  const warningClass = lowPriceDecision.isWarning ? " is-low-price-warning" : "";
+  if (rowReadOnly) {
+    return `
+      <td><span>${escapeHtml(rankingPrice || "--")}</span></td>
+      <td>
+        <span class="evaluation-proposed-award-price${warningClass}">${escapeHtml(proposedAwardPrice || "--")}</span>
+        ${lowPriceDecision.html}
+      </td>
+    `;
+  }
+  return `
+    <td><input type="text" class="form-control mt-gia-xep-hang" value="${escapeHtml(rankingPrice)}" placeholder="Nhập giá xếp hạng..."${disabled}></td>
+    <td>
+      <input type="text" class="form-control mt-gia-de-nghi-trung-thau${warningClass}" value="${escapeHtml(proposedAwardPrice)}" placeholder="Nhập giá đề nghị..."${disabled}>
+      ${lowPriceDecision.html}
+    </td>
+  `;
+}
+
+function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
   const bidPrice = bid.giaDuThau ? model.formatVND(bid.giaDuThau) : "";
   const discount = bid.tyLeGiamGia !== void 0 ? model.formatVND(bid.tyLeGiamGia) : "0";
   const discountedPrice = bid.giaSauGiamGia ? model.formatVND(bid.giaSauGiamGia) : "";
@@ -100,6 +162,7 @@ function buildFinancialCells({ bid, model, presentation, rowReadOnly }) {
       ${validityCell}
       <td><span>${escapeHtml(clarification || "--")}</span></td>
       ${combinedCells}
+      ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
       <td><span class="bf-s-6e8bcfac8d">${escapeHtml(financialEvaluation || "--")}</span></td>
     `;
   }
@@ -110,6 +173,7 @@ function buildFinancialCells({ bid, model, presentation, rowReadOnly }) {
     ${validityCell}
     <td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(clarification)}" placeholder="Nhập làm rõ tài chính..."></td>
     ${combinedCells}
+    ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
     <td><input type="text" class="form-control mt-dg-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(financialEvaluation)}" placeholder="Xếp hạng..."></td>
   `;
 }
@@ -153,7 +217,7 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly }) {
     : `<td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValue)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>`;
 }
 
-function readOnlyEvaluationCells({ bid, presentation }) {
+function readOnlyEvaluationCells({ pkg, bid, model, presentation }) {
   const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
   return `
     <td>
@@ -174,11 +238,12 @@ function readOnlyEvaluationCells({ bid, presentation }) {
     ${technicalLayout ? "" : `<td><span>${escapeHtml(bid.lamRoTaiChinh || "--")}</span></td>`}
     ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
     <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+    ${technicalLayout ? "" : buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly: true })}
     ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
   `;
 }
 
-function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
+function editableEvaluationCells({ pkg, bid, model, presentation, forceDisabled }) {
   const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
   const disabled = forceDisabled ? " disabled" : "";
   const waiting = forceDisabled ? "Chờ đánh giá hạng trên..." : "";
@@ -210,6 +275,7 @@ function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
     ${technicalLayout ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh"${disabled} value="${escapeHtml(bid.lamRoTaiChinh || "")}" placeholder="${waiting || "Nhập làm rõ tài chính..."}"></td>`}
     ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
     <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+    ${technicalLayout ? "" : buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly: false, disabled })}
     ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
   `;
 }
@@ -251,6 +317,41 @@ function bindFinancialInputs({ row, model, presentation, onRankingChange }) {
   }
   if (discount) discount.addEventListener("input", recalculate);
   if (security) bindCurrencyElement(security, (value) => model.formatVND(value));
+}
+
+function updateLowPriceWarning({ row, pkg, bid, model }) {
+  const proposedAwardPrice = row.querySelector(".mt-gia-de-nghi-trung-thau");
+  const decision = row.querySelector(".evaluation-low-price-decision");
+  if (!proposedAwardPrice || !decision) return;
+  const parsedPrice = model.parseVND(proposedAwardPrice.value || "");
+  const isWarning = isProposedAwardPriceBelowHalf(pkg, bid, parsedPrice);
+  proposedAwardPrice.classList.toggle("is-low-price-warning", isWarning);
+  decision.hidden = !isWarning;
+  if (!isWarning) {
+    decision.querySelectorAll(".mt-low-price-acceptance").forEach((radio) => {
+      radio.checked = false;
+    });
+  }
+}
+
+function bindEvaluationPriceInputs({ row, pkg, bid, model, onRankingChange }) {
+  const rankingPrice = row.querySelector(".mt-gia-xep-hang");
+  const proposedAwardPrice = row.querySelector(".mt-gia-de-nghi-trung-thau");
+  if (rankingPrice) {
+    bindCurrencyElement(rankingPrice, (value) => model.formatVND(value));
+    rankingPrice.addEventListener("input", () => onRankingChange(row));
+  }
+  if (proposedAwardPrice) {
+    bindCurrencyElement(proposedAwardPrice, (value) => model.formatVND(value));
+    proposedAwardPrice.addEventListener("input", () => {
+      updateLowPriceWarning({ row, pkg, bid, model });
+      onRankingChange(row);
+    });
+  }
+  row.querySelectorAll(".mt-low-price-acceptance").forEach((radio) => {
+    radio.addEventListener("change", () => onRankingChange(row));
+  });
+  updateLowPriceWarning({ row, pkg, bid, model });
 }
 
 function bindEvaluationInputs(row, onRankingChange) {
@@ -350,15 +451,15 @@ function appendBidEvaluationRow({
   });
   let cells = buildIdentityCells({ pkg, bid, contractor });
   if (presentation.isTwoEnvelope && presentation.currentTab === "financial") {
-    cells += buildFinancialCells({ bid, model, presentation, rowReadOnly });
+    cells += buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly });
   } else {
     const forceDisabled = !presentation.isTwoEnvelope
       && pkg.quyTrinhDanhGia === "quytrinh2"
       && !sequence.previousAllFailed;
     cells += buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly });
     cells += rowReadOnly
-      ? readOnlyEvaluationCells({ bid, presentation })
-      : editableEvaluationCells({ pkg, bid, presentation, forceDisabled });
+      ? readOnlyEvaluationCells({ pkg, bid, model, presentation })
+      : editableEvaluationCells({ pkg, bid, model, presentation, forceDisabled });
   }
   row.innerHTML = trustedHTML(cells);
   updateRowConclusion(row, bid.danhGiaKetLuan, rowReadOnly);
@@ -370,6 +471,7 @@ function appendBidEvaluationRow({
   if (!rowReadOnly) {
     bindEvaluationInputs(row, onRankingChange);
     bindFinancialInputs({ row, model, presentation, onRankingChange });
+    bindEvaluationPriceInputs({ row, pkg, bid, model, onRankingChange });
   }
   bindDurationInputs(row);
   bindJointVentureLink({ row, bid, model });

@@ -1,3 +1,5 @@
+import { isLowPriceBidRejected } from "./bidEvaluationLowPriceRules.js";
+
 export function getWinnerRows(tbodyResult, { isDirectOrSpecial }) {
   if (!tbodyResult) return [];
   return Array.from(tbodyResult.querySelectorAll("tr")).filter((row) => {
@@ -67,9 +69,9 @@ export function applyAwardResultToPackage({ gt, bids, winnerRows, tbodyResult, m
     }
     if (winner.id) gt.nhaThauTrungThauId = normalizeId(winner.id);
     const winnerTotal = model.sumVND(winnerRows.map((row) => row.querySelector(".row-gia-trung")?.value || "0"));
-    const fallbackTotal = model.sumVND(bids.map((bid) => {
+    const fallbackTotal = model.sumVND(bids.filter((bid) => !isLowPriceBidRejected(gt, bid)).map((bid) => {
       const bidState = model.state.thongtinmothau.find((item) => item.id === bid.id);
-      return bidState?.giaSauGiamGia || bidState?.giaDuThau || 0;
+      return bidState?.giaDeNghiTrungThau || bidState?.giaSauGiamGia || bidState?.giaDuThau || 0;
     }));
     gt.giaTrungThau = winnerRows.length ? winnerTotal : fallbackTotal;
     return;
@@ -113,7 +115,7 @@ function resolveWinner({ gt, bids, winnerRows, model }) {
       durationContract: row.querySelector(".row-tg-hopdong")?.value.trim() || ""
     };
   }
-  const firstBid = bids[0];
+  const firstBid = bids.find((bid) => !isLowPriceBidRejected(gt, bid));
   if (!firstBid) {
     return { id: "", price: 0, durationPackage: "", durationContract: "" };
   }
@@ -124,17 +126,19 @@ function resolveWinner({ gt, bids, winnerRows, model }) {
   const durationPackage = foundBid.thoiGianThucHien || gt.thoiGianThucHien || "";
   return {
     id: foundBid.nhaThauId || foundBid.id,
-    price: foundBid.giaSauGiamGia || foundBid.giaDuThau || 0,
+    price: foundBid.giaDeNghiTrungThau || foundBid.giaSauGiamGia || foundBid.giaDuThau || 0,
     durationPackage,
     durationContract: durationPackage ? `${durationPackage} + Thời gian thực hiện các nghĩa vụ theo hợp đồng` : ""
   };
 }
 function applyFallbackLotWinner({ pl, bids, gt, model }) {
-  const firstLotBid = bids.find((bid) => bid.maPhanLo === pl.maPhanLo);
+  const firstLotBid = bids.find((bid) => (
+    bid.maPhanLo === pl.maPhanLo && !isLowPriceBidRejected(gt, bid)
+  ));
   if (!firstLotBid) return;
   const bidState = model.state.thongtinmothau.find((item) => item.id === firstLotBid.id);
   pl.nhaThauTrungThauId = bidState?.nhaThauId || "";
-  pl.giaTrungThau = bidState?.giaSauGiamGia || bidState?.giaDuThau || 0;
+  pl.giaTrungThau = bidState?.giaDeNghiTrungThau || bidState?.giaSauGiamGia || bidState?.giaDuThau || 0;
   pl.thoiGianGoiThau = bidState?.thoiGianThucHien || gt.thoiGianThucHien || "";
   pl.thoiGianHopDong = pl.thoiGianGoiThau ? `${pl.thoiGianGoiThau} + Thời gian thực hiện các nghĩa vụ theo hợp đồng` : "";
 }

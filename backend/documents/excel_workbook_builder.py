@@ -119,6 +119,52 @@ def _build_configured_workbook(
     return workbook
 
 
+def create_excel_from_spec(spec):
+    """Build a workbook from a JSON-compatible, data-only export contract."""
+    if not isinstance(spec, dict):
+        raise ValueError("Excel export spec must be an object.")
+    allowed_keys = {
+        "title",
+        "headers",
+        "rows",
+        "options_map",
+        "formats_map",
+        "empty_rows",
+        "validation_padding",
+    }
+    if set(spec) - allowed_keys:
+        raise ValueError("Excel export spec contains unsupported fields.")
+    title = spec.get("title")
+    headers = spec.get("headers")
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("Excel export spec requires a title.")
+    if not isinstance(headers, list) or not headers or not all(
+        isinstance(header, str) and header for header in headers
+    ):
+        raise ValueError("Excel export spec requires headers.")
+    return _build_configured_workbook(**spec)
+
+
+def create_excel_template(import_type):
+    """Create a schema-based import template without application state."""
+    from backend.documents.excel_handler import (
+        _schema_to_formats,
+        _schema_to_headers,
+        _schema_to_options,
+    )
+
+    headers = _schema_to_headers(import_type)
+    if not headers:
+        raise ValueError(f"Invalid type: {import_type}")
+    return _build_configured_workbook(
+        "Nhap Lieu",
+        headers,
+        options_map=_schema_to_options(import_type),
+        formats_map=_schema_to_formats(import_type),
+        empty_rows=50,
+    )
+
+
 OPENING_TEMPLATE_HEADERS = {
     "TU_VAN": [
         "Loại nhà thầu",

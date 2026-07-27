@@ -2,22 +2,18 @@ import { authFetchDownload } from "../shared/workflow_helpers.js";
 export function triggerExcelTemplateDownload(controller, type) {
   controller._excelImportType = type;
   if (type === "mothau") {
-    downloadOpeningTemplate(controller);
-    return;
+    return downloadOpeningTemplate(controller);
   }
   if (type === "danhgiahsdt") {
-    downloadEvaluationTemplate(controller);
-    return;
+    return downloadEvaluationTemplate(controller);
   }
   if (type === "ketquaqd") {
-    downloadAwardResultTemplate(controller);
-    return;
+    return downloadAwardResultTemplate(controller);
   }
   if (type === "opening_fin") {
-    downloadFinancialOpeningTemplate(controller);
-    return;
+    return downloadFinancialOpeningTemplate(controller);
   }
-  authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
+  return authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
 }
 function downloadOpeningTemplate(controller) {
   const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
@@ -34,7 +30,7 @@ function downloadOpeningTemplate(controller) {
   else if (is1G1T) caseType = hasPhanLo ? "1G1T_WITH_LOT" : "1G1T_NO_LOT";
   const safeCode = getSafePackageCode(gt);
   const lotCodes = (gt.phanLoList || []).map((l) => l.maPhanLo).join(",");
-  authFetchDownload(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`, `Mau_Mo_Thau_${caseType}_${safeCode}.xlsx`);
+  return authFetchDownload(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`, `Mau_Mo_Thau_${caseType}_${safeCode}.xlsx`);
 }
 function downloadEvaluationTemplate(controller) {
   const select = document.getElementById("danhgiahsdt-goithau-select");
@@ -42,7 +38,7 @@ function downloadEvaluationTemplate(controller) {
   const gt = requirePackage(controller, gtId, "Vui lòng chọn gói thầu trước khi tải file mẫu!");
   if (!gt) return;
   const safeCode = getSafePackageCode(gt);
-  authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${controller.currentDanhGiaTab || "technical"}`, `DanhGia_HSDT_${safeCode}.xlsx`);
+  return authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${controller.currentDanhGiaTab || "technical"}`, `DanhGia_HSDT_${safeCode}.xlsx`);
 }
 function downloadAwardResultTemplate(controller) {
   const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");
@@ -50,7 +46,7 @@ function downloadAwardResultTemplate(controller) {
   const gt = requirePackage(controller, gtId, "Không tìm thấy thông tin gói thầu hiện tại!");
   if (!gt) return;
   const safeCode = getSafePackageCode(gt);
-  authFetchDownload(`/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `KetQua_QD_${safeCode}.xlsx`);
+  return authFetchDownload(`/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `KetQua_QD_${safeCode}.xlsx`);
 }
 function downloadFinancialOpeningTemplate(controller) {
   const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
@@ -58,7 +54,7 @@ function downloadFinancialOpeningTemplate(controller) {
   const gt = requirePackage(controller, gtId, "Không tìm thấy thông tin gói thầu hiện tại!");
   if (!gt) return;
   const safeCode = getSafePackageCode(gt);
-  authFetchDownload(`/api/export-opening-fin-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`);
+  return authFetchDownload(`/api/export-opening-fin-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`);
 }
 function requirePackage(controller, gtId, message) {
   if (!gtId) {

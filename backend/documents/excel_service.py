@@ -11,6 +11,7 @@ from backend.documents.excel_workbook_builder import (
     OPENING_TEMPLATE_HEADERS,
     _add_dropdown_sheet,
     _build_configured_workbook,
+    create_excel_from_spec,
     create_mothau_template,
     create_phanlo_excel,
     create_tuychonmuathem_excel,
@@ -30,17 +31,21 @@ def create_excel_template(import_type):
         empty_rows=50,
     )
 
-def create_opening_fin_template(pkg_id_clean, org_name):
-    """Tạo template Excel mở đề xuất tài chính."""
+def prepare_opening_fin_template_spec(pkg_id_clean, org_name):
+    """Load qualified bids and return a data-only workbook contract."""
     conn = database.get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT ma_dinh_danh, ten_nha_thau, gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia,
-               hieu_luc_hsdt, thoi_gian_thuc_hien,
-               danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat, danh_gia_ket_luan
-        FROM thong_tin_mo_thau
-        WHERE goi_thau_id = ? AND organization_id = ?
+        SELECT m.ma_dinh_danh, m.ten_nha_thau, m.gia_du_thau, m.ty_le_giam_gia,
+               m.gia_sau_giam_gia, m.hieu_luc_hsdt, m.thoi_gian_thuc_hien,
+               k.danh_gia_hop_le, k.danh_gia_nang_luc, k.danh_gia_ky_thuat,
+               k.danh_gia_ket_luan
+        FROM thong_tin_mo_thau m
+        LEFT JOIN ket_qua_danh_gia_nha_thau k
+          ON k.organization_id = m.organization_id
+         AND k.thong_tin_mo_thau_id = m.id
+        WHERE m.goi_thau_id = ? AND m.organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
@@ -82,19 +87,26 @@ def create_opening_fin_template(pkg_id_clean, org_name):
         ]
         for bid in qualified_bids
     ]
-    return _build_configured_workbook(
-        "Mo De Xuat Tai Chinh",
-        headers,
-        rows=rows,
-        formats_map={
+    return {
+        "title": "Mo De Xuat Tai Chinh",
+        "headers": headers,
+        "rows": rows,
+        "formats_map": {
             "Giá dự thầu (VND)": "currency",
             "Giá sau giảm giá (nếu có)": "currency",
             "Giá trị ĐB DT (VND)": "currency",
         },
+    }
+
+
+def create_opening_fin_template(pkg_id_clean, org_name):
+    """Create a financial-opening workbook for non-worker callers."""
+    return create_excel_from_spec(
+        prepare_opening_fin_template_spec(pkg_id_clean, org_name)
     )
 
-def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
-    """Tạo file mẫu nhập liệu đánh giá HSDT (kỹ thuật hoặc tài chính)."""
+def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
+    """Load evaluation data and return a data-only workbook contract."""
     conn = database.get_connection()
     cursor = conn.cursor()
 
@@ -114,7 +126,9 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
                k.danh_gia_hop_le, k.danh_gia_nang_luc, k.danh_gia_ky_thuat,
                k.lam_ro_hop_le, k.lam_ro_nang_luc, k.lam_ro_ky_thuat, k.lam_ro_tai_chinh,
                k.danh_gia_tai_chinh,
-               k.nguyen_nhan_khong_dat_hop_le, k.nguyen_nhan_khong_dat_nang_luc, k.nguyen_nhan_khong_dat_ky_thuat
+               k.nguyen_nhan_khong_dat_hop_le, k.nguyen_nhan_khong_dat_nang_luc, k.nguyen_nhan_khong_dat_ky_thuat,
+               k.gia_xep_hang, k.gia_de_nghi_trung_thau,
+               k.chap_thuan_gia_de_nghi_trung_thau_duoi_50
         FROM thong_tin_mo_thau m
         LEFT JOIN ket_qua_danh_gia_nha_thau k
           ON k.organization_id = m.organization_id AND k.thong_tin_mo_thau_id = m.id
@@ -157,14 +171,21 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
             headers = [
                 'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
+                'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
+                'Xử lý giá đề nghị trúng thầu dưới 50%',
                 'Đánh giá tài chính (Điểm hoặc Xếp hạng)', 'Làm rõ tài chính (nếu có)'
             ]
         else:
             headers = [
                 'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
+                'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
+                'Xử lý giá đề nghị trúng thầu dưới 50%',
                 'Đánh giá tài chính (Điểm hoặc Xếp hạng)', 'Làm rõ tài chính (nếu có)'
             ]
+        options_map['Xử lý giá đề nghị trúng thầu dưới 50%'] = [
+            'Chấp thuận', 'Không chấp thuận'
+        ]
 
     if has_phan_lo and lot_codes:
         options_map['Mã phần lô'] = lot_codes
@@ -190,12 +211,16 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
             row_values = [
                 bid[0], bid[1], bid[2], bid[3], bid[4],
                 bid[5] or "", bid[6] or "", bid[7] or "",
+                bid[23] or "", bid[24] or "",
+                "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
                 bid[19] or "", bid[18] or "",
             ]
         else:
             row_values = [
                 bid[0], bid[3], bid[4],
                 bid[5] or "", bid[6] or "", bid[7] or "",
+                bid[23] or "", bid[24] or "",
+                "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
                 bid[19] or "", bid[18] or "",
             ]
         rows.append(row_values)
@@ -205,16 +230,23 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
         for header in headers
         if "(VND)" in header or header.startswith("Giá sau giảm")
     }
-    return _build_configured_workbook(
-        "Danh gia HSDT",
-        headers,
-        rows=rows,
-        options_map=options_map,
-        formats_map=financial_formats,
+    return {
+        "title": "Danh gia HSDT",
+        "headers": headers,
+        "rows": rows,
+        "options_map": options_map,
+        "formats_map": financial_formats,
+    }
+
+
+def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
+    """Create an evaluation workbook for non-worker callers."""
+    return create_excel_from_spec(
+        prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type)
     )
 
-def create_ketquaqd_template(pkg_id_clean, org_name):
-    """Tạo file mẫu nhập kết quả lựa chọn nhà thầu phê duyệt."""
+def prepare_ketquaqd_template_spec(pkg_id_clean, org_name):
+    """Load award-result data and return a data-only workbook contract."""
     conn = database.get_connection()
     cursor = conn.cursor()
 
@@ -227,11 +259,14 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
     nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong = gt_row
 
     cursor.execute("""
-        SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
-               gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia,
-               danh_gia_tai_chinh
-        FROM thong_tin_mo_thau
-        WHERE goi_thau_id = ? AND organization_id = ?
+        SELECT m.loai_nha_thau, m.ma_phan_lo, m.ten_phan_lo, m.ma_dinh_danh, m.ten_nha_thau,
+               m.gia_du_thau, m.ty_le_giam_gia, m.gia_sau_giam_gia,
+               k.ly_do_loai
+        FROM thong_tin_mo_thau m
+        LEFT JOIN ket_qua_danh_gia_nha_thau k
+          ON k.organization_id = m.organization_id
+         AND k.thong_tin_mo_thau_id = m.id
+        WHERE m.goi_thau_id = ? AND m.organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
@@ -259,16 +294,23 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
             bid[3],
             bid[4],
             "Trúng thầu" if is_winner else "Trượt thầu",
-            "",
+            "" if is_winner else (bid[8] or ""),
             gia_trung_thau if is_winner else "",
             thoi_gian_goi_thau if is_winner else "",
             thoi_gian_hop_dong if is_winner else "",
         ])
 
-    return _build_configured_workbook(
-        "Ket Qua LCNT",
-        headers,
-        rows=rows,
-        options_map=options_map,
-        formats_map={"Giá trúng thầu (VND)": "currency"},
+    return {
+        "title": "Ket Qua LCNT",
+        "headers": headers,
+        "rows": rows,
+        "options_map": options_map,
+        "formats_map": {"Giá trúng thầu (VND)": "currency"},
+    }
+
+
+def create_ketquaqd_template(pkg_id_clean, org_name):
+    """Create an award-result workbook for non-worker callers."""
+    return create_excel_from_spec(
+        prepare_ketquaqd_template_spec(pkg_id_clean, org_name)
     )

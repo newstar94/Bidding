@@ -33,3 +33,26 @@ export function authFetchDownload(url, filename) {
     URL.revokeObjectURL(objectUrl);
   });
 }
+
+export async function authFetchDownloadWithAlert(
+  view,
+  url,
+  filename,
+  {
+    title = "Lỗi tải mẫu",
+    messagePrefix = "Không thể tải tệp: ",
+  } = {},
+) {
+  try {
+    await authFetchDownload(url, filename);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Lỗi tải file");
+    try {
+      await view?.customAlert?.(title, messagePrefix + message, "x-circle");
+    } catch {
+      // The download failure is already handled; alert rendering must not leak it.
+    }
+    return false;
+  }
+}

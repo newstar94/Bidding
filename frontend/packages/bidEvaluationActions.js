@@ -6,6 +6,12 @@ import { apiFetch } from "../shared/apiClient.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
 import { persistAndSync } from "../shared/MutationService.js";
 import {
+  getLowPriceRejectionReason,
+  isLowPriceRejectionReason,
+  isProposedAwardPriceBelowHalf,
+  normalizeLowPriceAcceptance,
+} from "./bidEvaluationLowPriceRules.js";
+import {
   ensureEvaluationLotBatch,
   getEvaluationLotScopeDetails,
   getPackageEvaluationLots,
@@ -318,6 +324,7 @@ export async function saveDanhGiaHsdt() {
     this.model.state.thongtinmothau.map((bid) => [String(bid.id || ""), bid]),
   );
   const updatedBidsList = [];
+  const missingLowPriceDecisions = [];
   rows.forEach((tr) => {
     const bidId = tr.getAttribute("data-bid-id");
     const bid = bidsById.get(String(bidId || ""));
@@ -325,6 +332,10 @@ export async function saveDanhGiaHsdt() {
       let giaDuThau = bid.giaDuThau;
       let tyLeGiamGia = bid.tyLeGiamGia;
       let giaSauGiamGia = bid.giaSauGiamGia;
+      let giaXepHang = bid.giaXepHang;
+      let giaDeNghiTrungThau = bid.giaDeNghiTrungThau;
+      let chapThuanGiaDeNghiTrungThauDuoi50 = bid.chapThuanGiaDeNghiTrungThauDuoi50;
+      let lyDoTruot = bid.lyDoTruot || "";
       let danhGiaHopLe = bid.danhGiaHopLe;
       let danhGiaNangLuc = bid.danhGiaNangLuc;
       let danhGiaKyThuat = bid.danhGiaKyThuat;
@@ -346,6 +357,26 @@ export async function saveDanhGiaHsdt() {
           danhGiaKetLuan = cell ? cell.textContent.trim() : "";
         }
       }
+      const giaXepHangEl = tr.querySelector(".mt-gia-xep-hang");
+      if (giaXepHangEl) giaXepHang = this.model.parseVND(giaXepHangEl.value || "");
+      const giaDeNghiTrungThauEl = tr.querySelector(".mt-gia-de-nghi-trung-thau");
+      if (giaDeNghiTrungThauEl) {
+        giaDeNghiTrungThau = this.model.parseVND(giaDeNghiTrungThauEl.value || "");
+        const hasLowPriceWarning = isProposedAwardPriceBelowHalf(gt, bid, giaDeNghiTrungThau);
+        const lowPriceDecisionEl = tr.querySelector(".mt-low-price-acceptance:checked");
+        chapThuanGiaDeNghiTrungThauDuoi50 = hasLowPriceWarning
+          ? normalizeLowPriceAcceptance(lowPriceDecisionEl?.value)
+          : null;
+        if (hasLowPriceWarning && chapThuanGiaDeNghiTrungThauDuoi50 === null) {
+          missingLowPriceDecisions.push(bid.tenNhaThau || bid.maNhaThau || "Nhà thầu chưa xác định");
+        }
+        const lowPriceRejectionReason = getLowPriceRejectionReason(gt, bid, giaDeNghiTrungThau);
+        lyDoTruot = chapThuanGiaDeNghiTrungThauDuoi50 === false
+          ? lowPriceRejectionReason
+          : isLowPriceRejectionReason(bid.lyDoTruot)
+            ? ""
+            : bid.lyDoTruot || "";
+      }
       const nguyenNhanKhongDatHopLe = tr.querySelector(".mt-reason-fail-hople")?.value.trim() || "";
       const nguyenNhanKhongDatNangLuc = tr.querySelector(".mt-reason-fail-nangluc")?.value.trim() || "";
       const nguyenNhanKhongDatKyThuat = tr.querySelector(".mt-reason-fail-kythuat")?.value.trim() || "";
@@ -354,23 +385,45 @@ export async function saveDanhGiaHsdt() {
         giaDuThau,
         tyLeGiamGia,
         giaSauGiamGia,
+        giaXepHang,
+        giaDeNghiTrungThau,
+        chapThuanGiaDeNghiTrungThauDuoi50,
         danhGiaHopLe,
         danhGiaNangLuc,
         danhGiaKyThuat,
         danhGiaKetLuan,
         nguyenNhanKhongDatHopLe,
         nguyenNhanKhongDatNangLuc,
-        nguyenNhanKhongDatKyThuat
+        nguyenNhanKhongDatKyThuat,
+        lyDoTruot
       });
     }
   });
+  if (missingLowPriceDecisions.length > 0) {
+    await this.view.customAlert(
+      "Chưa xử lý giá đề nghị trúng thầu dưới 50%",
+      `Vui lòng chọn Chấp thuận hoặc Không chấp thuận cho: ${missingLowPriceDecisions.join(", ")}.`,
+      "alert-triangle"
+    );
+    return;
+  }
   const { rankings } = this.calculateRankings(gt, updatedBidsList);
+  const updatedBidsById = new Map(updatedBidsList.map((bid) => [String(bid.id), bid]));
   rows.forEach((tr) => {
     const bidId = tr.getAttribute("data-bid-id");
     if (!bidId) return;
     const bid = bidsById.get(String(bidId));
     if (bid) {
+      const preparedBid = updatedBidsById.get(String(bidId));
+      bid.chapThuanGiaDeNghiTrungThauDuoi50 = preparedBid?.chapThuanGiaDeNghiTrungThauDuoi50 ?? null;
+      bid.lyDoTruot = preparedBid?.lyDoTruot || "";
       const finalRank = rankings[bid.id];
+      const giaXepHangEl = tr.querySelector(".mt-gia-xep-hang");
+      if (giaXepHangEl) bid.giaXepHang = this.model.parseVND(giaXepHangEl.value || "");
+      const giaDeNghiTrungThauEl = tr.querySelector(".mt-gia-de-nghi-trung-thau");
+      if (giaDeNghiTrungThauEl) {
+        bid.giaDeNghiTrungThau = this.model.parseVND(giaDeNghiTrungThauEl.value || "");
+      }
       if (is1G2T && this.currentDanhGiaTab === "financial") {
         bid.giaDuThau = this.model.parseVND(tr.querySelector(".mt-gia-du-thau")?.value || "");
         const tyLeRaw = tr.querySelector(".mt-ty-le-giam-gia")?.value || "0";

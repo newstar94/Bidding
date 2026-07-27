@@ -23,6 +23,8 @@ CURRENCY_COLUMNS = {
     "gia_ca",
     "gia_du_thau",
     "gia_goi_thau",
+    "gia_xep_hang",
+    "gia_de_nghi_trung_thau",
     "gia_sau_giam_gia",
     "gia_tri",
     "gia_tri_dam_bao",

@@ -2,8 +2,12 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { calculateRankings } from "../shared/BiddingCalculations.js";
 import { parseVND } from "../shared/formatters.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
+import {
+  isProposedAwardPriceBelowHalf,
+  normalizeLowPriceAcceptance,
+} from "./bidEvaluationLowPriceRules.js";
 
-const DISABLEABLE_SELECTOR = ".mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat, .mt-lam-ro-hop-le, .mt-lam-ro-nang-luc, .mt-lam-ro-ky-thuat, .mt-lam-ro-tai-chinh, .mt-reason-fail-hople, .mt-reason-fail-nangluc, .mt-reason-fail-kythuat";
+const DISABLEABLE_SELECTOR = ".mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat, .mt-lam-ro-hop-le, .mt-lam-ro-nang-luc, .mt-lam-ro-ky-thuat, .mt-lam-ro-tai-chinh, .mt-gia-xep-hang, .mt-gia-de-nghi-trung-thau, .mt-low-price-acceptance, .mt-reason-fail-hople, .mt-reason-fail-nangluc, .mt-reason-fail-kythuat";
 const UNLOCKABLE_SELECTOR = ".mt-dg-hop-le, .mt-lam-ro-hop-le, .mt-lam-ro-nang-luc, .mt-lam-ro-ky-thuat, .mt-lam-ro-tai-chinh, .mt-reason-fail-hople, .mt-reason-fail-nangluc, .mt-reason-fail-kythuat";
 
 function controlValue(control, fallback = "") {
@@ -93,6 +97,17 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
   const discount = discountInput
     ? Number.parseFloat(String(discountInput.value || "").replace(/,/g, ".")) || 0
     : bid.tyLeGiamGia || 0;
+  const rankingPriceInput = row.querySelector(".mt-gia-xep-hang");
+  const proposedAwardPriceInput = row.querySelector(".mt-gia-de-nghi-trung-thau");
+  const proposedAwardPrice = proposedAwardPriceInput
+    ? parseVND(proposedAwardPriceInput.value) ?? 0
+    : bid.giaDeNghiTrungThau || 0;
+  const lowPriceDecisionInput = row.querySelector(".mt-low-price-acceptance:checked");
+  const lowPriceAcceptance = proposedAwardPriceInput
+    ? isProposedAwardPriceBelowHalf(pkg, bid, proposedAwardPrice)
+      ? normalizeLowPriceAcceptance(lowPriceDecisionInput?.value)
+      : null
+    : normalizeLowPriceAcceptance(bid.chapThuanGiaDeNghiTrungThauDuoi50);
   return {
     ...bid,
     danhGiaHopLe: validity,
@@ -102,6 +117,9 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
     giaDuThau: price,
     tyLeGiamGia: discount,
     giaSauGiamGia: Number(price) * (1 - discount / 100),
+    giaXepHang: rankingPriceInput ? parseVND(rankingPriceInput.value) ?? 0 : bid.giaXepHang || 0,
+    giaDeNghiTrungThau: proposedAwardPrice,
+    chapThuanGiaDeNghiTrungThauDuoi50: lowPriceAcceptance,
   };
 }
 

@@ -12,7 +12,9 @@ from backend.shared.helpers import (
 from backend.shared.access_policy import can_read_record
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
+from backend.shared.database_io import run_database_read
 
+from backend.documents import excel_service
 from backend.documents.document_worker import (
     DocumentWorkerError,
     run_document_job,
@@ -240,9 +242,12 @@ async def export_opening_fin_template_api(request):
         if not _can_export_package(role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
-        out_stream = await _export_excel(
-            "create_opening_fin_template", pkg_id_clean, org_name
+        workbook_spec = await run_database_read(
+            excel_service.prepare_opening_fin_template_spec,
+            pkg_id_clean,
+            org_name,
         )
+        out_stream = await _export_excel("create_excel_from_spec", workbook_spec)
 
         filename = f"Mau_mo_hsdet_tai_chinh_{package_name}.xlsx"
         return StreamingResponse(
@@ -275,9 +280,13 @@ async def export_danhgiahsdt_template_api(request):
         if not _can_export_package(role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
-        out_stream = await _export_excel(
-            "create_danhgiahsdt_template", pkg_id_clean, org_name, eval_type
+        workbook_spec = await run_database_read(
+            excel_service.prepare_danhgiahsdt_template_spec,
+            pkg_id_clean,
+            org_name,
+            eval_type,
         )
+        out_stream = await _export_excel("create_excel_from_spec", workbook_spec)
 
         filename = f"Mau_danh_gia_HSDT_{eval_type}_{package_name}.xlsx"
         return StreamingResponse(
@@ -311,9 +320,12 @@ async def export_ketquaqd_template_api(request):
         if not _can_export_package(role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
-        out_stream = await _export_excel(
-            "create_ketquaqd_template", pkg_id_clean, org_name
+        workbook_spec = await run_database_read(
+            excel_service.prepare_ketquaqd_template_spec,
+            pkg_id_clean,
+            org_name,
         )
+        out_stream = await _export_excel("create_excel_from_spec", workbook_spec)
 
         filename = f"Mau_ket_qua_LCNT_{package_name}.xlsx"
         return StreamingResponse(

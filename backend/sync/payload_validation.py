@@ -84,6 +84,7 @@ SYNC_VIRTUAL_FIELDS = {
     "goi_thau": {"danhGiaHsdtMetadata"},
     "thong_tin_mo_thau": {
         "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
+        "giaXepHang", "giaDeNghiTrungThau", "chapThuanGiaDeNghiTrungThauDuoi50",
         "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "lamRoHopLe",
         "lamRoNangLuc", "lamRoKyThuat", "lamRoTaiChinh",
         "nguyenNhanKhongDatHopLe", "nguyenNhanKhongDatNangLuc",
@@ -880,6 +881,15 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             if ts_val is not None and (ts_val < 0 or ts_val > 100):
                 errors.append("Trọng số kỹ thuật phải nằm trong khoảng 0-100.")
 
+        is_medicine_package = (
+            str(item.get("linhVuc") or "").strip() == "Hàng hóa"
+            and item.get("isThuoc") in (True, 1, "1", "true", "True")
+        )
+        if phuong_phap == "Kết hợp giữa kỹ thuật và giá" and is_medicine_package:
+            ts_val = safe_int(trong_so)
+            if ts_val is None or ts_val < 30 or ts_val > 40:
+                errors.append("Đối với gói thầu thuốc, trọng số kỹ thuật phải nằm trong khoảng 30% - 40%.")
+
         gia = item.get("giaGoiThau")
         if gia not in (None, ""):
             gia_val = parse_vnd_amount(gia)
@@ -976,5 +986,24 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                 errors.append("Tỷ lệ giảm giá không hợp lệ.")
         elif bid_price is not None and discount_rate in (None, ""):
             item["giaSauGiamGia"] = str(bid_price)
+
+        for field, label in (
+            ("giaXepHang", "Giá xếp hạng"),
+            ("giaDeNghiTrungThau", "Giá đề nghị trúng thầu"),
+        ):
+            raw_value = item.get(field)
+            if raw_value in (None, ""):
+                continue
+            parsed_value = parse_vnd_amount(raw_value)
+            if parsed_value is None:
+                errors.append(f"{label} không được nhỏ hơn 0.")
+            else:
+                item[field] = str(parsed_value)
+
+        low_price_acceptance = item.get("chapThuanGiaDeNghiTrungThauDuoi50")
+        if low_price_acceptance not in (None, "", True, False, 0, 1):
+            errors.append("Lựa chọn xử lý giá đề nghị trúng thầu dưới 50% không hợp lệ.")
+        elif low_price_acceptance not in (None, ""):
+            item["chapThuanGiaDeNghiTrungThauDuoi50"] = bool(low_price_acceptance)
 
     return item, errors, set()

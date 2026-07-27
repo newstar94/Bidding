@@ -517,7 +517,14 @@ def _read_single_record_blocking(request):
             return JSONResponse({"error": "Invalid record lookup"}, status_code=400)
 
         table_name = TABLE_KEYS[table_key]
-        if table_name not in {"goi_thau", "ke_hoach_lcnt", "hop_dong", "chu_dau_tu", "nha_thau"}:
+        if table_name not in {
+            "goi_thau",
+            "ke_hoach_lcnt",
+            "hop_dong",
+            "chu_dau_tu",
+            "nha_thau",
+            "thong_tin_mo_thau",
+        }:
             return JSONResponse({"error": "Record lookup is not supported for this table"}, status_code=400)
         _assert_safe_table(table_name)
 
@@ -533,33 +540,41 @@ def _read_single_record_blocking(request):
         if not can_read_table(cursor, role_str, user_id, org_name, table_key, table_name):
             return JSONResponse({"error": "Không có quyền đọc dữ liệu này."}, status_code=403)
 
-        lookup_column = {
-            "goi_thau": "ma_goi_thau",
-            "ke_hoach_lcnt": "ma_ke_hoach",
-            "hop_dong": "so_hop_dong",
-            "chu_dau_tu": "ma_chu_dau_tu",
-            "nha_thau": "ma_nha_thau",
-        }[table_name]
-        lookup_candidates = [lookup_value]
-        if "_" in lookup_value:
-            lookup_candidates.append(lookup_value.rsplit("_", 1)[0])
-        if table_name == "hop_dong":
-            lookup_candidates.extend(value.replace("-", "/") for value in list(lookup_candidates))
-        lookup_candidates = list(dict.fromkeys(value for value in lookup_candidates if value))
-        placeholders = ", ".join(["?"] * len(lookup_candidates))
-        cursor.execute(f"""
-            SELECT *
-            FROM {table_name}
-            WHERE organization_id = ?
-              AND (
-                  id IN ({placeholders})
-                  OR (archived_at IS NULL AND {lookup_column} IN ({placeholders}))
-              )
-            ORDER BY is_latest DESC,
-                     CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC,
-                     COALESCE(updated_at, created_at) DESC
-            LIMIT 1
-        """, tuple([org_name] + lookup_candidates + lookup_candidates))
+        if table_name == "thong_tin_mo_thau":
+            cursor.execute(
+                """SELECT * FROM thong_tin_mo_thau
+                   WHERE organization_id = ? AND id = ? AND archived_at IS NULL
+                   LIMIT 1""",
+                (org_name, lookup_value),
+            )
+        else:
+            lookup_column = {
+                "goi_thau": "ma_goi_thau",
+                "ke_hoach_lcnt": "ma_ke_hoach",
+                "hop_dong": "so_hop_dong",
+                "chu_dau_tu": "ma_chu_dau_tu",
+                "nha_thau": "ma_nha_thau",
+            }[table_name]
+            lookup_candidates = [lookup_value]
+            if "_" in lookup_value:
+                lookup_candidates.append(lookup_value.rsplit("_", 1)[0])
+            if table_name == "hop_dong":
+                lookup_candidates.extend(value.replace("-", "/") for value in list(lookup_candidates))
+            lookup_candidates = list(dict.fromkeys(value for value in lookup_candidates if value))
+            placeholders = ", ".join(["?"] * len(lookup_candidates))
+            cursor.execute(f"""
+                SELECT *
+                FROM {table_name}
+                WHERE organization_id = ?
+                  AND (
+                      id IN ({placeholders})
+                      OR (archived_at IS NULL AND {lookup_column} IN ({placeholders}))
+                  )
+                ORDER BY is_latest DESC,
+                         CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC,
+                         COALESCE(updated_at, created_at) DESC
+                LIMIT 1
+            """, tuple([org_name] + lookup_candidates + lookup_candidates))
         row = cursor.fetchone()
         if not row:
             return JSONResponse({"item": None}, status_code=404)
@@ -576,7 +591,12 @@ def _read_single_record_blocking(request):
             )
         item = map_db_to_json(table_name, row_dict)
         items = [item]
-        if table_name in {"ke_hoach_lcnt", "goi_thau", "nha_thau"}:
+        if table_name in {
+            "ke_hoach_lcnt",
+            "goi_thau",
+            "nha_thau",
+            "thong_tin_mo_thau",
+        }:
             attach_child_rows_to_items(cursor, table_name, items, organization_id=org_name)
         if table_name == "goi_thau":
             relations_map = _get_expert_relations_for_packages(cursor, [row_dict["id"]], org_name)

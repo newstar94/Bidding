@@ -2222,6 +2222,27 @@ export const DEFAULT_WORD_VARIABLES = [
     "sourceTable": "thong_tin_mo_thau"
   },
   {
+    "format": "currency",
+    "label": "Giá xếp hạng",
+    "name": "mt_gia_xep_hang",
+    "sourceColumn": "gia_xep_hang",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "currency",
+    "label": "Giá đề nghị trúng thầu",
+    "name": "mt_gia_de_nghi_trung_thau",
+    "sourceColumn": "gia_de_nghi_trung_thau",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
+    "format": "text",
+    "label": "Chấp thuận giá đề nghị trúng thầu dưới 50%",
+    "name": "mt_chap_thuan_gia_duoi_50",
+    "sourceColumn": "chap_thuan_gia_de_nghi_trung_thau_duoi_50",
+    "sourceTable": "thong_tin_mo_thau"
+  },
+  {
     "format": "text",
     "label": "Danh giá ket luan",
     "name": "mt_dg_ket_luan",

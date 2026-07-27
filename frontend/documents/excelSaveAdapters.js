@@ -397,10 +397,13 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
   validRows.forEach((row) => {
     const bid = controller.model.state.thongtinmothau.find((b) => b.id === row.id);
     if (!bid || allowedBidIds && !allowedBidIds.has(String(bid.id))) return;
-    if (evaluationTab === "financial") {
+    if (evaluationTab === "financial" || evaluationTab === "unified") {
       bid.giaDuThau = row.giaDuThau || 0;
       bid.tyLeGiamGia = row.tyLeGiamGia || 0;
       bid.giaSauGiamGia = row.giaSauGiamGia || 0;
+      bid.giaXepHang = row.giaXepHang || 0;
+      bid.giaDeNghiTrungThau = row.giaDeNghiTrungThau || 0;
+      bid.chapThuanGiaDeNghiTrungThauDuoi50 = row.chapThuanGiaDeNghiTrungThauDuoi50 ?? null;
       bid.hieuLucHsdt = row.hieuLucHsdt || 0;
       bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || "";
       bid.lamRoTaiChinh = row.lamRoTaiChinh || "";

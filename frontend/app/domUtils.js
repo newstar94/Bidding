@@ -85,7 +85,7 @@ export function normalizeProcurementOrgCode(value) {
 }
 export function formatPartnerIdentityCode(value, fallback = "") {
   const code = String(value ?? "").trim();
-  return code ? code.toLocaleLowerCase("vi-VN") : fallback;
+  return code || fallback;
 }
 export function normalizeTaxCodeForCompare(value) {
   return normalizeTaxCodeForLookup(value).replace(/[^0-9a-z]/gi, "").toLowerCase();

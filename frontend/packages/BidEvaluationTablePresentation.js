@@ -76,6 +76,8 @@ function buildHeader(caseType, {
       ...(isConsulting ? [cell("Hiệu lực E-HSĐXTC", "bf-s-ae54075f01")] : []),
       cell("Làm rõ tài chính", "bf-s-8523765ec6"),
       ...technicalAndCombinedScore,
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G2T_TC_WITH_LOT": [
@@ -90,6 +92,8 @@ function buildHeader(caseType, {
       ...(isConsulting ? [cell("Hiệu lực E-HSĐXTC", "bf-s-8523765ec6")] : []),
       cell("Làm rõ tài chính", "bf-s-8523765ec6"),
       ...technicalAndCombinedScore,
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G1T_NO_LOT": [
@@ -112,6 +116,8 @@ function buildHeader(caseType, {
       cell("Làm rõ tài chính", "bf-s-415b5d64b8"),
       ...(isCombinedMethod ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")] : []),
       cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G1T_WITH_LOT": [
@@ -136,6 +142,8 @@ function buildHeader(caseType, {
       cell("Làm rõ tài chính", "bf-s-aed34ad439"),
       ...(isCombinedMethod ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")] : []),
       cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Giá xếp hạng", "bf-s-ae54075f01"),
+      cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
   };

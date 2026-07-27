@@ -1,5 +1,8 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-import { authFetchDownload } from "../shared/workflow_helpers.js";
+import {
+  authFetchDownload,
+  authFetchDownloadWithAlert,
+} from "../shared/workflow_helpers.js";
 import { triggerExcelTemplateDownload as triggerTemplateDownload } from "./excelTemplateAdapter.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { readExcelRows, showExcelImportSaveButton } from "./excelFileReader.js";
@@ -173,7 +176,11 @@ export function setupExcelImportEvents() {
     downloadTemplateBtn._hasExcelListener = true;
     downloadTemplateBtn.addEventListener("click", () => {
       const type = this._excelImportType || "kehoach";
-      authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
+      void authFetchDownloadWithAlert(
+        this.view,
+        `/api/export-excel-template/${type}`,
+        `Mau_nhap_lieu_${type}.xlsx`,
+      );
     });
   }
 }
@@ -238,7 +245,13 @@ export function triggerExcelTemplateDownload(type) {
       return;
     }
   }
-  triggerTemplateDownload(this, type);
+  return Promise.resolve(triggerTemplateDownload(this, type)).catch((error) => (
+    this.view.customAlert(
+      "Lỗi tải mẫu",
+      "Không thể tải Excel mẫu: " + error.message,
+      "x-circle",
+    )
+  ));
 }
 async function renderClientExcelImport(controller, file, parser, context) {
   try {

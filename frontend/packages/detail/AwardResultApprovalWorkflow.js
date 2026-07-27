@@ -140,6 +140,8 @@ function applyBidRows(model, pkg, command, decisionDate) {
         thanhVienLienDanh: buildJointVentureMembers(row, contractor),
         giaDuThau: row.awardPrice || 0,
         giaSauGiamGia: row.awardPrice || 0,
+        giaXepHang: row.awardPrice || 0,
+        giaDeNghiTrungThau: row.awardPrice || 0,
         danhGiaHopLe: "Đạt",
         danhGiaNangLuc: "Đạt",
         danhGiaKyThuat: "Đạt",
@@ -155,6 +157,7 @@ function applyBidRows(model, pkg, command, decisionDate) {
       model.state.thongtinmothau.push(bid);
     } else if (bid) {
       bid.lyDoTruot = row.isWinner ? "" : row.rejectionReason;
+      if (row.isWinner) bid.giaDeNghiTrungThau = row.awardPrice || bid.giaDeNghiTrungThau || 0;
     }
   });
 }

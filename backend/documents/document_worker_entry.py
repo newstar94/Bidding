@@ -186,11 +186,9 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
 
     if operation == "export_excel":
         allowed_exports = {
-            "create_danhgiahsdt_template",
+            "create_excel_from_spec",
             "create_excel_template",
-            "create_ketquaqd_template",
             "create_mothau_template",
-            "create_opening_fin_template",
             "create_phanlo_excel",
             "create_tuychonmuathem_excel",
         }
@@ -198,6 +196,8 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         if function_name not in allowed_exports:
             raise ValueError("Loại xuất Excel không được hỗ trợ.")
         pure_exports = {
+            "create_excel_from_spec",
+            "create_excel_template",
             "create_mothau_template",
             "create_phanlo_excel",
             "create_tuychonmuathem_excel",

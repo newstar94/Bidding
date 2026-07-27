@@ -820,7 +820,7 @@ export async function handleGoiThauSubmit(e) {
       await this.view.customAlert("Lỗi kiểm tra", "Giá trị trọng số kỹ thuật không hợp lệ, vui lòng kiểm tra lại thông tin lỗi bên dưới trường nhập liệu!", "x-circle", inputEl);
       return;
     }
-    if (phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && linhVuc !== "Tư vấn" && phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ") {
+    if (phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && linhVuc !== "Tư vấn" && (phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ" || phuongThucLuaChon === "Hai giai đoạn hai túi hồ sơ")) {
       if (trongSoKyThuat > 30 && trongSoKyThuat <= 50) {
         await this.view.customAlert("Cảnh báo", "Cảnh báo: Trọng số kỹ thuật lớn hơn 30% (mức khuyến nghị thông thường là 10% - 30%).", "alert-triangle");
       }
