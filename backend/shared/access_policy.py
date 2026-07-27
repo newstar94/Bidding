@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from backend.auth.auth_helper import get_effective_roles
 from backend.shared.text_utils import clean_id
@@ -45,6 +45,28 @@ SHARED_REFERENCE_TABLES = frozenset({"chu_dau_tu", "nha_thau"})
 class AccessDecision:
     allowed: bool
     message: str = ""
+
+
+@dataclass(slots=True)
+class BatchWriteAuthorizationContext:
+    role_str: object
+    user_id: str
+    organization_id: str
+    organization_manager: bool
+    personal_workspace_owner: bool
+    active_membership: bool
+    inherited_specialist_access: bool
+    membership_role: str | None
+    permissions: dict[str, str] = field(default_factory=dict)
+    existing_assignment_targets: set[tuple[str, str]] = field(default_factory=set)
+    assigned_targets: set[tuple[str, str]] = field(default_factory=set)
+    lineage_root_by_item: dict[tuple[str, str], str] = field(default_factory=dict)
+    assigned_lineages: set[tuple[str, str]] = field(default_factory=set)
+    owned_lineages: set[tuple[str, str]] = field(default_factory=set)
+    opening_parent_by_id: dict[str, str] = field(default_factory=dict)
+
+
+_QUERY_CHUNK_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -302,16 +324,55 @@ def _record_owned_by(cursor, organization_id, user_id, table_name, lineage_root)
 def _assigned_for_lineage(cursor, organization_id, user_id, table_name, lineage_root):
     if not lineage_root:
         return False
-    rows = cursor.execute(
-        f"""SELECT id FROM {table_name}
-            WHERE organization_id = ?
-              AND COALESCE(NULLIF(id_goc, ''), id) = ?""",
-        (organization_id, lineage_root),
-    ).fetchall()
-    return any(
-        _assigned_for_table(cursor, organization_id, user_id, table_name, row[0])
-        for row in rows
-    )
+    target_type = ASSIGNED_TABLE_TYPES.get(table_name)
+    if not target_type:
+        return True
+    if table_name == "ke_hoach_lcnt":
+        row = cursor.execute(
+            """SELECT EXISTS (
+                   SELECT 1
+                   FROM ke_hoach_lcnt AS record
+                   WHERE record.organization_id = ?
+                     AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
+                     AND (
+                         EXISTS (
+                             SELECT 1 FROM phan_cong_nhan_su AS assignment
+                             WHERE assignment.organization_id = record.organization_id
+                               AND assignment.id_nhan_vien = ?
+                               AND assignment.id_muc_tieu = record.id
+                               AND assignment.loai_doi_tuong = 'kehoach'
+                         )
+                         OR EXISTS (
+                             SELECT 1
+                             FROM goi_thau AS package
+                             JOIN phan_cong_nhan_su AS assignment
+                               ON assignment.organization_id = package.organization_id
+                              AND assignment.id_muc_tieu = package.id
+                              AND assignment.loai_doi_tuong = 'goithau'
+                             WHERE package.organization_id = record.organization_id
+                               AND package.ke_hoach_id = record.id
+                               AND assignment.id_nhan_vien = ?
+                         )
+                     )
+               )""",
+            (organization_id, lineage_root, user_id, user_id),
+        ).fetchone()
+    else:
+        row = cursor.execute(
+            f"""SELECT EXISTS (
+                   SELECT 1
+                   FROM {table_name} AS record
+                   JOIN phan_cong_nhan_su AS assignment
+                     ON assignment.organization_id = record.organization_id
+                    AND assignment.id_muc_tieu = record.id
+                    AND assignment.loai_doi_tuong = ?
+                   WHERE record.organization_id = ?
+                     AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
+                     AND assignment.id_nhan_vien = ?
+               )""",
+            (target_type, organization_id, lineage_root, user_id),
+        ).fetchone()
+    return bool(row and row[0])
 
 
 def _opening_parent_id(cursor, organization_id, item_or_id):
@@ -363,6 +424,351 @@ def _assigned_for_table(cursor, organization_id, user_id, table_name, item_or_id
         )
         return cursor.fetchone() is not None
     return _assigned(cursor, organization_id, user_id, record_id, target_type)
+
+
+def _row_value(row, name, index):
+    try:
+        return row[name]
+    except (KeyError, TypeError):
+        return row[index]
+
+
+def _chunked(values):
+    for offset in range(0, len(values), _QUERY_CHUNK_SIZE):
+        yield values[offset:offset + _QUERY_CHUNK_SIZE]
+
+
+def _load_assigned_lineages(
+    cursor,
+    organization_id,
+    user_id,
+    table_name,
+    lineage_roots,
+):
+    assigned = set()
+    target_type = ASSIGNED_TABLE_TYPES[table_name]
+    for chunk in _chunked(lineage_roots):
+        placeholders = ", ".join("?" for _ in chunk)
+        if table_name == "ke_hoach_lcnt":
+            rows = cursor.execute(
+                f"""SELECT DISTINCT COALESCE(NULLIF(record.id_goc, ''), record.id) AS lineage_root
+                    FROM ke_hoach_lcnt AS record
+                    WHERE record.organization_id = ?
+                      AND COALESCE(NULLIF(record.id_goc, ''), record.id) IN ({placeholders})
+                      AND (
+                          EXISTS (
+                              SELECT 1 FROM phan_cong_nhan_su AS assignment
+                              WHERE assignment.organization_id = record.organization_id
+                                AND assignment.id_nhan_vien = ?
+                                AND assignment.id_muc_tieu = record.id
+                                AND assignment.loai_doi_tuong = 'kehoach'
+                          )
+                          OR EXISTS (
+                              SELECT 1
+                              FROM goi_thau AS package
+                              JOIN phan_cong_nhan_su AS assignment
+                                ON assignment.organization_id = package.organization_id
+                               AND assignment.id_muc_tieu = package.id
+                               AND assignment.loai_doi_tuong = 'goithau'
+                              WHERE package.organization_id = record.organization_id
+                                AND package.ke_hoach_id = record.id
+                                AND assignment.id_nhan_vien = ?
+                          )
+                      )""",
+                (organization_id, *chunk, user_id, user_id),
+            ).fetchall()
+        else:
+            rows = cursor.execute(
+                f"""SELECT DISTINCT COALESCE(NULLIF(record.id_goc, ''), record.id) AS lineage_root
+                    FROM {table_name} AS record
+                    JOIN phan_cong_nhan_su AS assignment
+                      ON assignment.organization_id = record.organization_id
+                     AND assignment.id_muc_tieu = record.id
+                     AND assignment.loai_doi_tuong = ?
+                    WHERE record.organization_id = ?
+                      AND assignment.id_nhan_vien = ?
+                      AND COALESCE(NULLIF(record.id_goc, ''), record.id) IN ({placeholders})""",
+                (target_type, organization_id, user_id, *chunk),
+            ).fetchall()
+        assigned.update(str(_row_value(row, "lineage_root", 0)) for row in rows)
+    return assigned
+
+
+def build_batch_write_authorization_context(
+    cursor,
+    role_str,
+    user_id,
+    organization_id,
+    records_by_table,
+):
+    """Prefetch all stable authorization inputs needed for a sync batch."""
+
+    platform_manager = is_manager_role(role_str)
+    membership_role = (
+        None
+        if platform_manager
+        else organization_membership_role(cursor, user_id, organization_id)
+    )
+    active_role = getattr(role_str, "active_role", None)
+    organization_manager = bool(
+        active_role != "employee"
+        and (platform_manager or membership_role in ORGANIZATION_MANAGER_ROLES)
+    )
+    personal_owner = is_personal_workspace_owner(cursor, user_id, organization_id)
+    active_membership = bool(platform_manager or membership_role is not None)
+    inherited_access = bool(
+        active_role == "employee"
+        and (
+            str(getattr(role_str, "platform_role", "") or "").strip().lower()
+            in PLATFORM_ADMIN_ROLES
+            or membership_role in ORGANIZATION_MANAGER_ROLES
+        )
+    )
+    context = BatchWriteAuthorizationContext(
+        role_str=role_str,
+        user_id=str(user_id),
+        organization_id=str(organization_id),
+        organization_manager=organization_manager,
+        personal_workspace_owner=personal_owner,
+        active_membership=active_membership,
+        inherited_specialist_access=inherited_access,
+        membership_role=membership_role,
+    )
+
+    modules = sorted({
+        module
+        for table_name in records_by_table
+        if (module := TABLE_TO_MODULE.get(table_name))
+        and module not in {"chudautu", "nhathau"}
+    })
+    if (
+        modules
+        and active_membership
+        and not organization_manager
+        and not personal_owner
+        and not inherited_access
+    ):
+        row = cursor.execute(
+            f"SELECT {', '.join(modules)} FROM ma_tran_phan_quyen "
+            "WHERE organization_id = ? AND emp_id = ?",
+            (organization_id, user_id),
+        ).fetchone()
+        if row:
+            context.permissions.update(
+                (module, str(_row_value(row, module, index) or "").strip().lower())
+                for index, module in enumerate(modules)
+            )
+
+    assignment_target_ids_by_table = {}
+    assignment_targets = set()
+    for item in records_by_table.get("phan_cong_nhan_su", ()):
+        target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))
+        target_type = str(item.get("type") or item.get("loai_doi_tuong") or "").strip()
+        target_table = {
+            "kehoach": "ke_hoach_lcnt",
+            "goithau": "goi_thau",
+            "hopdong": "hop_dong",
+        }.get(target_type)
+        if target_id and target_table:
+            assignment_target_ids_by_table.setdefault(target_table, set()).add(target_id)
+            assignment_targets.add((target_type, target_id))
+    for table_name, target_ids in assignment_target_ids_by_table.items():
+        for chunk in _chunked(sorted(target_ids)):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id FROM {table_name}
+                    WHERE organization_id = ? AND id IN ({placeholders})""",
+                (organization_id, *chunk),
+            ).fetchall()
+            context.existing_assignment_targets.update(
+                (ASSIGNED_TABLE_TYPES[table_name], str(_row_value(row, "id", 0)))
+                for row in rows
+            )
+
+    opening_parent_ids = set()
+    missing_opening_ids = []
+    for item in records_by_table.get("thong_tin_mo_thau", ()):
+        parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
+        record_id = clean_id(item.get("id"))
+        if parent_id:
+            opening_parent_ids.add(parent_id)
+            if record_id:
+                context.opening_parent_by_id[record_id] = parent_id
+        elif record_id:
+            missing_opening_ids.append(record_id)
+    for chunk in _chunked(list(dict.fromkeys(missing_opening_ids))):
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT id, goi_thau_id FROM thong_tin_mo_thau
+                WHERE organization_id = ? AND id IN ({placeholders})""",
+            (organization_id, *chunk),
+        ).fetchall()
+        for row in rows:
+            record_id = str(_row_value(row, "id", 0))
+            parent_id = clean_id(_row_value(row, "goi_thau_id", 1))
+            if parent_id:
+                context.opening_parent_by_id[record_id] = parent_id
+                opening_parent_ids.add(parent_id)
+
+    all_assignment_targets = assignment_targets | {
+        ("goithau", parent_id) for parent_id in opening_parent_ids
+    }
+    target_ids = sorted({target_id for _target_type, target_id in all_assignment_targets})
+    for chunk in _chunked(target_ids):
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT id_muc_tieu, loai_doi_tuong
+                FROM phan_cong_nhan_su
+                WHERE organization_id = ? AND id_nhan_vien = ?
+                  AND id_muc_tieu IN ({placeholders})""",
+            (organization_id, user_id, *chunk),
+        ).fetchall()
+        context.assigned_targets.update(
+            (
+                str(_row_value(row, "loai_doi_tuong", 1)),
+                str(_row_value(row, "id_muc_tieu", 0)),
+            )
+            for row in rows
+        )
+
+    lineage_roots_by_table = {}
+    for table_name in ASSIGNED_TABLE_TYPES:
+        candidates = set()
+        for item in records_by_table.get(table_name, ()):
+            record_id = clean_id(item.get("id"))
+            requested_root = clean_id(item.get("rootId") or item.get("id_goc"))
+            if record_id:
+                candidates.add(record_id)
+            if requested_root:
+                candidates.add(requested_root)
+        for chunk in _chunked(sorted(candidates)):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id, COALESCE(NULLIF(id_goc, ''), id) AS lineage_root
+                    FROM {table_name}
+                    WHERE organization_id = ?
+                      AND (id IN ({placeholders}) OR id_goc IN ({placeholders}))""",
+                (organization_id, *chunk, *chunk),
+            ).fetchall()
+            for row in rows:
+                record_id = str(_row_value(row, "id", 0))
+                lineage_root = str(_row_value(row, "lineage_root", 1))
+                context.lineage_root_by_item[(table_name, record_id)] = lineage_root
+                context.lineage_root_by_item[(table_name, lineage_root)] = lineage_root
+                lineage_roots_by_table.setdefault(table_name, set()).add(lineage_root)
+
+    for table_name, roots in lineage_roots_by_table.items():
+        sorted_roots = sorted(roots)
+        context.assigned_lineages.update(
+            (table_name, root)
+            for root in _load_assigned_lineages(
+                cursor,
+                organization_id,
+                user_id,
+                table_name,
+                sorted_roots,
+            )
+        )
+        if table_name in OWNERSHIP_SCOPED_TABLES:
+            for chunk in _chunked(sorted_roots):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows = cursor.execute(
+                    f"""SELECT record_id FROM record_edit_ownership
+                        WHERE organization_id = ? AND user_id = ?
+                          AND table_name = ? AND record_id IN ({placeholders})""",
+                    (organization_id, user_id, table_name, *chunk),
+                ).fetchall()
+                context.owned_lineages.update(
+                    (table_name, str(_row_value(row, "record_id", 0)))
+                    for row in rows
+                )
+    return context
+
+
+def _context_has_module_permission(context, module_name, action="view"):
+    if (
+        context.organization_manager
+        or context.personal_workspace_owner
+        or context.inherited_specialist_access
+    ):
+        return True
+    if not context.active_membership:
+        return False
+    if module_name in {"chudautu", "nhathau"}:
+        return True
+    permission = context.permissions.get(module_name, "")
+    return permission == "edit" if action == "edit" else permission in {"view", "edit"}
+
+
+def authorize_record_write_from_context(context, payload_key, table_name, item):
+    """Authorize one record using only prefetched batch context."""
+
+    if payload_key == "permissionmatrix":
+        if is_manager_role(context.role_str):
+            return AccessDecision(
+                False,
+                "Super Admin không được cấu hình quyền theo phân hệ của tổ chức.",
+            )
+        if context.membership_role not in ORGANIZATION_MANAGER_ROLES:
+            return AccessDecision(
+                False,
+                "Chỉ Quản lý của tổ chức được cấu hình quyền theo phân hệ cho chuyên viên.",
+            )
+        return AccessDecision(True)
+    if table_name == "phan_cong_nhan_su" and not context.organization_manager and not is_manager_role(context.role_str):
+        employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
+        target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))
+        target_type = str(item.get("type") or item.get("loai_doi_tuong") or "").strip()
+        if employee_id != clean_id(context.user_id):
+            return AccessDecision(False, "Chuyên viên chỉ được tự nhận bản ghi do mình tạo.")
+        if not target_id or target_type not in {"kehoach", "goithau", "hopdong"}:
+            return AccessDecision(False, "Mục tiêu phân công không hợp lệ.")
+        target = (target_type, target_id)
+        if target in context.existing_assignment_targets and target not in context.assigned_targets:
+            return AccessDecision(False, "Không được tự nhận một bản ghi đã tồn tại và chưa được phân công.")
+        return AccessDecision(True)
+    key_decision = authorize_payload_key_write(
+        context.role_str,
+        payload_key,
+        organization_manager=context.organization_manager,
+    )
+    if not key_decision.allowed:
+        return key_decision
+    if context.organization_manager or context.personal_workspace_owner:
+        return AccessDecision(True)
+    module_name = TABLE_TO_MODULE.get(table_name)
+    if table_name in SHARED_REFERENCE_TABLES and not context.active_membership:
+        return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
+    if table_name not in SHARED_REFERENCE_TABLES and not _context_has_module_permission(
+        context, module_name, "edit"
+    ):
+        return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
+    if table_name == "thong_tin_mo_thau":
+        record_id = clean_id(item.get("id"))
+        parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
+        parent_id = parent_id or context.opening_parent_by_id.get(record_id)
+        if ("goithau", parent_id) not in context.assigned_targets:
+            return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
+    elif table_name in OWNERSHIP_SCOPED_TABLES:
+        record_id = clean_id(item.get("id"))
+        requested_root = clean_id(item.get("rootId") or item.get("id_goc"))
+        lineage_root = context.lineage_root_by_item.get(
+            (table_name, record_id),
+            context.lineage_root_by_item.get((table_name, requested_root)),
+        )
+        if lineage_root and (table_name, lineage_root) not in context.owned_lineages:
+            return AccessDecision(False, "Chuyên viên chỉ được sửa dữ liệu do mình tạo.")
+    elif table_name in ASSIGNED_TABLE_TYPES:
+        record_id = clean_id(item.get("id"))
+        requested_root = clean_id(item.get("rootId") or item.get("id_goc"))
+        lineage_root = context.lineage_root_by_item.get(
+            (table_name, record_id),
+            context.lineage_root_by_item.get((table_name, requested_root)),
+        )
+        if lineage_root and (table_name, lineage_root) not in context.assigned_lineages:
+            return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
+        return AccessDecision(True)
+    return AccessDecision(True)
 
 
 def authorize_payload_key_write(role_str, payload_key, *, organization_manager=False):

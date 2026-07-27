@@ -86,6 +86,17 @@ class ResponseIntegrityMiddleware:
     def __init__(self, app):
         self.app = app
 
+    @staticmethod
+    def _has_stable_static_body(scope):
+        path = str(scope.get("path") or "")
+        return path == "/service-worker.js" or path.startswith((
+            "/dist/assets/",
+            "/vendor/",
+            "/css/",
+            "/tabs/",
+            "/modals/",
+        ))
+
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             await self.app(scope, receive, send)
@@ -100,7 +111,11 @@ class ResponseIntegrityMiddleware:
                 status_code = int(message.get("status") or 0)
                 suppress_body = suppress_body or status_code in {204, 304}
                 headers = MutableHeaders(scope=message)
-                if not suppress_body and "Content-Length" in headers:
+                if (
+                    not suppress_body
+                    and "Content-Length" in headers
+                    and not self._has_stable_static_body(scope)
+                ):
                     # Uvicorn will select chunked framing.  This avoids a stale
                     # length after any inner middleware or conditional response
                     # adapter changes the body.

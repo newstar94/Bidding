@@ -7,6 +7,9 @@ from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.date_utils import vietnam_date_from_epoch
 
 
+_QUERY_CHUNK_SIZE = 500
+
+
 def _normalized_subscription(row, *, include_quota=False):
     if not row:
         return None
@@ -45,6 +48,29 @@ def get_account_subscription(cursor, user_id):
         (user_id,),
     ).fetchone()
     return _normalized_subscription(row)
+
+
+def get_account_subscriptions_by_user_ids(cursor, user_ids):
+    """Return normalized account subscriptions keyed by user ID in bounded batches."""
+
+    unique_user_ids = list(dict.fromkeys(user_ids))
+    subscriptions = {}
+    for offset in range(0, len(unique_user_ids), _QUERY_CHUNK_SIZE):
+        chunk = unique_user_ids[offset:offset + _QUERY_CHUNK_SIZE]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT subscription.user_id, subscription.package_id,
+                       subscription.status, subscription.starts_at,
+                       subscription.expires_at, subscription.revision,
+                       package.trang_thai AS package_status
+                FROM account_subscriptions AS subscription
+                JOIN goi_dich_vu AS package ON package.id = subscription.package_id
+                WHERE subscription.user_id IN ({placeholders})""",
+            tuple(chunk),
+        ).fetchall()
+        for row in rows:
+            subscriptions[row["user_id"]] = _normalized_subscription(row)
+    return subscriptions
 
 
 def get_organization_subscription(cursor, organization_id):

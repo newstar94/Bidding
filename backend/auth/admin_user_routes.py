@@ -20,7 +20,7 @@ from backend.shared.helpers import (
 from backend.shared.logging_utils import error_response
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
-from backend.shared.subscription_policy import get_account_subscription
+from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.shared.request_validation import read_json_object
 
@@ -197,10 +197,11 @@ def _list_users_sync(request):
                     },
                 })
 
+        account_subscriptions = get_account_subscriptions_by_user_ids(cursor, user_ids)
         users = []
         for row in users_raw:
             u = dict(row)
-            account_subscription = get_account_subscription(cursor, u['id'])
+            account_subscription = account_subscriptions.get(u['id'])
             u['account_subscription'] = account_subscription
             u['organizations'] = list(orgs_by_user[u['id']])
             if str(u.get('platform_role') or '').strip().lower() != 'super_admin':

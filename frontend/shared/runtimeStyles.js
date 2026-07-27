@@ -28,7 +28,8 @@ function classForDeclaration(property, value) {
   const cached = rules.get(declaration);
   if (cached) return cached;
   const className = `bf-runtime-style-${++nextRuleId}`;
-  getRuntimeSheet().insertRule(`.${className}{${declaration}}`);
+  const sheet = getRuntimeSheet();
+  sheet.insertRule(`.${className}{${declaration}}`, sheet.cssRules.length);
   rules.set(declaration, className);
   return className;
 }

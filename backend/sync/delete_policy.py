@@ -94,6 +94,8 @@ ASSIGNMENT_TARGET_TYPES = {
     "hop_dong": "hopdong",
 }
 
+_QUERY_CHUNK_SIZE = 500
+
 
 def find_blocking_delete_references(cursor, organization_id, table_name, record_id, rules=None):
     selected_rules = PROTECTED_DELETE_REFERENCES.get(table_name, ()) if rules is None else rules
@@ -112,6 +114,42 @@ def find_blocking_delete_references(cursor, organization_id, table_name, record_
                 "count": count,
             })
     return references
+
+
+def find_blocking_delete_references_by_record_ids(
+    cursor,
+    organization_id,
+    table_name,
+    record_ids,
+    rules=None,
+):
+    """Return reference summaries keyed by record ID using one query per rule/chunk."""
+
+    selected_rules = PROTECTED_DELETE_REFERENCES.get(table_name, ()) if rules is None else rules
+    unique_record_ids = list(dict.fromkeys(str(value) for value in record_ids if value))
+    references_by_record_id = {record_id: [] for record_id in unique_record_ids}
+    for rule in selected_rules:
+        for offset in range(0, len(unique_record_ids), _QUERY_CHUNK_SIZE):
+            chunk = unique_record_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT {rule.column}, COUNT(*)
+                    FROM {rule.table}
+                    WHERE organization_id = ? AND {rule.column} IN ({placeholders})
+                    GROUP BY {rule.column}""",
+                (organization_id, *chunk),
+            ).fetchall()
+            for row in rows:
+                record_id = str(row[0])
+                count = int(row[1] or 0)
+                if record_id in references_by_record_id and count:
+                    references_by_record_id[record_id].append({
+                        "table": rule.table,
+                        "column": rule.column,
+                        "label": rule.label,
+                        "count": count,
+                    })
+    return references_by_record_id
 
 
 def delete_assignment_dependents(cursor, organization_id, table_name, record_id):
@@ -157,6 +195,56 @@ def build_delete_impact(cursor, organization_id, table_name, record_id):
         "dependents": cascade_rows,
         "assignmentCount": assignment_count,
     }
+
+
+def build_delete_impacts_by_record_ids(
+    cursor,
+    organization_id,
+    table_name,
+    record_ids,
+):
+    """Return delete-impact previews keyed by record ID with bounded queries."""
+
+    unique_record_ids = list(dict.fromkeys(str(value) for value in record_ids if value))
+    cascade_rows_by_record_id = find_blocking_delete_references_by_record_ids(
+        cursor,
+        organization_id,
+        table_name,
+        unique_record_ids,
+        rules=CASCADE_IMPACT_RULES.get(table_name, ()),
+    )
+    assignment_counts = {record_id: 0 for record_id in unique_record_ids}
+    target_type = ASSIGNMENT_TARGET_TYPES.get(table_name)
+    if target_type:
+        for offset in range(0, len(unique_record_ids), _QUERY_CHUNK_SIZE):
+            chunk = unique_record_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id_muc_tieu, COUNT(*)
+                    FROM phan_cong_nhan_su
+                    WHERE organization_id = ?
+                      AND id_muc_tieu IN ({placeholders})
+                      AND loai_doi_tuong = ?
+                    GROUP BY id_muc_tieu""",
+                (organization_id, *chunk, target_type),
+            ).fetchall()
+            for row in rows:
+                record_id = str(row[0])
+                if record_id in assignment_counts:
+                    assignment_counts[record_id] = int(row[1] or 0)
+    impacts = {}
+    for record_id in unique_record_ids:
+        cascade_rows = cascade_rows_by_record_id[record_id]
+        assignment_count = assignment_counts[record_id]
+        child_count = sum(item["count"] for item in cascade_rows) + assignment_count
+        impacts[record_id] = {
+            "rootCount": 1,
+            "dependentCount": child_count,
+            "totalCount": 1 + child_count,
+            "dependents": cascade_rows,
+            "assignmentCount": assignment_count,
+        }
+    return impacts
 
 
 def has_recent_password_reauthentication(cursor, user_id, ttl_seconds, session_id=None):

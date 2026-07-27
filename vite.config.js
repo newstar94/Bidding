@@ -105,7 +105,8 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 700,
       rolldownOptions: {
         input: {
-          app: path.resolve(__dirname, 'frontend/app/app.js')
+          app: path.resolve(__dirname, 'frontend/app/app.js'),
+          styles: path.resolve(__dirname, 'views/css/app.css')
         },
         output: {
           codeSplitting: true,

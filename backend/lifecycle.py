@@ -198,6 +198,7 @@ async def application_lifespan(
     schema_version,
     initialize_database,
     build_index_response,
+    prewarm_frontend_assets,
     is_production,
     image_dir,
     background_startup_delay_seconds,
@@ -223,6 +224,7 @@ async def application_lifespan(
             cleanup_stale_document_jobs()
         if is_production:
             build_index_response()
+        prewarm_frontend_assets()
         if database_auto_migration_enabled():
             initialize_database()
         verify_database_readiness(database, schema_version)

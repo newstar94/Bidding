@@ -187,6 +187,7 @@ def compile_html(file_path):
         )
         bundle_src = "/dist/assets/appbundle.js"
         bundle_is_content_hashed = False
+        bundled_stylesheet = None
         manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
         if os.path.exists(manifest_path):
             try:
@@ -196,6 +197,7 @@ def compile_html(file_path):
                 if bundle_file:
                     bundle_src = f"/dist/{bundle_file}"
                     bundle_is_content_hashed = True
+                bundled_stylesheet = manifest.get('views/css/app.css', {}).get('file')
             except Exception as exc:
                 log_error(exc, "frontend_manifest")
         if not bundle_is_content_hashed:
@@ -211,6 +213,17 @@ def compile_html(file_path):
             f'<script type="module" src="{bundle_src}"></script>',
             compiled
         )
+        if bundled_stylesheet:
+            compiled = re.sub(
+                r'\s*<link\s+rel="stylesheet"\s+href="/css/[^"]+"[^>]*>\s*',
+                '\n',
+                compiled,
+            )
+            compiled = compiled.replace(
+                '</head>',
+                f'    <link rel="stylesheet" href="/dist/{bundled_stylesheet}" data-runtime-styles>\n</head>',
+                1,
+            )
         compiled = compiled.replace('<meta name="bf-app-debug" content="true">', '<meta name="bf-app-debug" content="false">')
         with _compiled_html_lock:
             _compiled_html_cache = compiled
@@ -231,11 +244,61 @@ def _build_index_response_payload():
     return html_content, etag
 
 
-def _workspace_preload_tag(session_bootstrap):
-    """Preload the authenticated workspace graph while the app shell parses."""
-    if not session_bootstrap.get("valid"):
-        return ""
+def _prewarm_frontend_assets():
+    """Read the small critical graph once so the first user does not pay cold file I/O."""
     if APP_DEBUG:
+        return 0, 0
+    manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
+    dist_root = os.path.realpath(os.path.join(project_root, 'dist'))
+    roots = (
+        'frontend/app/app.js',
+        'frontend/app/workspaceBootstrap.js',
+        'frontend/admin/AdminUserController.js',
+        'views/css/app.css',
+    )
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
+            manifest = json.load(manifest_file)
+        pending = [key for key in roots if key in manifest]
+        visited = set()
+        warmed_files = 0
+        warmed_bytes = 0
+        max_total_bytes = 16 * 1024 * 1024
+        while pending and warmed_bytes < max_total_bytes:
+            manifest_key = pending.pop(0)
+            if manifest_key in visited:
+                continue
+            visited.add(manifest_key)
+            entry = manifest.get(manifest_key, {})
+            pending.extend(entry.get('imports') or [])
+            relative_file = str(entry.get('file') or '').replace('/', os.sep)
+            if not relative_file:
+                continue
+            candidate = os.path.realpath(os.path.join(dist_root, relative_file))
+            try:
+                if os.path.commonpath((dist_root, candidate)) != dist_root:
+                    continue
+                size = os.path.getsize(candidate)
+                if size > 2 * 1024 * 1024 or warmed_bytes + size > max_total_bytes:
+                    continue
+                with open(candidate, 'rb') as asset_file:
+                    while asset_file.read(256 * 1024):
+                        pass
+                warmed_files += 1
+                warmed_bytes += size
+            except (OSError, ValueError):
+                continue
+        return warmed_files, warmed_bytes
+    except Exception as exc:
+        log_error(exc, "frontend_asset_prewarm", level="WARN")
+        return 0, 0
+
+
+def _workspace_preload_tag(session_bootstrap):
+    """Preload the app entry first, then the authenticated workspace graph."""
+    if APP_DEBUG:
+        if not session_bootstrap.get("valid"):
+            return ""
         workspace_src = "/frontend/app/workspaceBootstrap.js"
         preload_sources = [workspace_src]
         try:
@@ -270,19 +333,23 @@ def _workspace_preload_tag(session_bootstrap):
             manifest = json.load(manifest_file)
         workspace_entry = 'frontend/app/workspaceBootstrap.js'
         app_entry = 'frontend/app/app.js'
-        pending = [workspace_entry if workspace_entry in manifest else app_entry]
+        preload_roots = [app_entry]
+        if session_bootstrap.get("valid") and workspace_entry in manifest:
+            preload_roots.append(workspace_entry)
         visited = set()
         preload_files = []
-        while pending:
-            manifest_key = pending.pop(0)
-            if manifest_key in visited:
-                continue
-            visited.add(manifest_key)
-            entry = manifest.get(manifest_key, {})
-            bundle_file = entry.get('file')
-            if bundle_file:
-                preload_files.append(bundle_file)
-            pending.extend(entry.get('imports') or [])
+        for preload_root in preload_roots:
+            pending = [preload_root]
+            while pending:
+                manifest_key = pending.pop(0)
+                if manifest_key in visited:
+                    continue
+                visited.add(manifest_key)
+                entry = manifest.get(manifest_key, {})
+                bundle_file = entry.get('file')
+                if bundle_file:
+                    preload_files.append(bundle_file)
+                pending.extend(entry.get('imports') or [])
         if preload_files:
             return "\n".join(
                 f'<link rel="modulepreload" href="/dist/{bundle_file}">'
@@ -911,6 +978,7 @@ async def lifespan(application):
         schema_version=DB_SCHEMA_VERSION,
         initialize_database=_initialize_database,
         build_index_response=_build_index_response_payload,
+        prewarm_frontend_assets=_prewarm_frontend_assets,
         is_production=IS_PRODUCTION,
         image_dir=IMAGE_DIR,
         background_startup_delay_seconds=BACKGROUND_STARTUP_DELAY_SECONDS,

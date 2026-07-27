@@ -67,6 +67,7 @@ export function setupAuth() {
     setRuntimeStyle(formForgot, "display", "none");
     if (formReset) setRuntimeStyle(formReset, "display", showResetForm ? "block" : "none");
     if (formVerify) setRuntimeStyle(formVerify, "display", "none");
+    scheduleGoogleIdentityLoad();
     document.getElementById("login-username").value = "";
     document.getElementById("login-password").value = "";
     hideInitLoader();
@@ -704,12 +705,14 @@ export function setupAuth() {
       document.head.appendChild(script);
     }
   };
-  // The Google script does not depend on images, fonts or other page assets.
-  // Start as soon as the DOM is ready instead of waiting for window.load,
-  // otherwise slow assets keep the sign-in button in its loading state.
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(loadGoogleIdentity, 0), { once: true });
-  } else {
-    setTimeout(loadGoogleIdentity, 0);
-  }
+  let googleIdentityLoadScheduled = false;
+  const scheduleGoogleIdentityLoad = () => {
+    if (googleIdentityLoadScheduled) return;
+    googleIdentityLoadScheduled = true;
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => setTimeout(loadGoogleIdentity, 0), { once: true });
+    } else {
+      setTimeout(loadGoogleIdentity, 0);
+    }
+  };
 }

@@ -50,12 +50,18 @@ self.addEventListener("fetch", (event) => {
     || !HASHED_ASSET.test(url.pathname)
   ) return;
 
-  event.respondWith((async () => {
+  const responseAndCacheWrite = (async () => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(request);
-    if (cached) return cached;
+    if (cached) return { response: cached, cacheWrite: Promise.resolve() };
     const response = await fetch(request);
-    if (response.ok && response.type === "basic") await cache.put(request, response.clone());
-    return response;
-  })());
+    const cacheWrite = response.ok && response.type === "basic"
+      ? cache.put(request, response.clone())
+      : Promise.resolve();
+    return { response, cacheWrite };
+  })();
+  event.respondWith(responseAndCacheWrite.then(({ response }) => response));
+  event.waitUntil(responseAndCacheWrite
+    .then(({ cacheWrite }) => cacheWrite)
+    .catch(() => undefined));
 });

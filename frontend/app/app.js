@@ -87,31 +87,30 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
   }, { once: true });
   document.head.appendChild(script);
 });
+let lucideReadyPromise;
+const loadAndRenderLucideIcons = () => {
+  if (!lucideReadyPromise) {
+    lucideReadyPromise = loadLucideIcons().then(() => {
+      window.lucide.createIcons();
+      return true;
+    }).catch((err) => {
+      console.warn("Lucide icons could not be loaded:", err);
+      return false;
+    });
+  }
+  return lucideReadyPromise;
+};
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
   installDialogAccessibility(document);
   installSemanticAccessibility(document);
-  if ("serviceWorker" in navigator && APP_DEBUG === false) {
-    const buildId = new URL(import.meta.url).pathname.split("/").pop() || "app";
-    navigator.serviceWorker.register(
-      trustedScriptURL(`/service-worker.js?build=${encodeURIComponent(buildId)}`)
-    ).catch(() => {
-    });
-  }
-  const lucideReady = loadLucideIcons().then(() => {
-    window.lucide.createIcons();
-    return true;
-  }).catch((err) => {
-    console.warn("Lucide icons could not be loaded:", err);
-    return false;
-  });
-
   if (isLandingPath()) {
     bootstrapLandingPage(readSessionBootstrap());
     requestAnimationFrame(() => {
-      lucideReady.then((loaded) => {
+      loadAndRenderLucideIcons().then((loaded) => {
         if (loaded) window.lucide.createIcons();
       });
+      scheduleServiceWorkerRegistration();
     });
     return;
   }
@@ -132,10 +131,29 @@ const bootstrapApplication = async () => {
   }
   requestAnimationFrame(() => {
     startupMark("first-app-frame");
-    lucideReady.then((loaded) => {
+    loadAndRenderLucideIcons().then((loaded) => {
       if (loaded) window.lucide.createIcons();
     });
+    scheduleServiceWorkerRegistration();
   });
+};
+const scheduleServiceWorkerRegistration = () => {
+  if (!("serviceWorker" in navigator) || APP_DEBUG !== false) return;
+  const register = () => {
+    startupMark("service-worker-register-start");
+    const buildId = new URL(import.meta.url).pathname.split("/").pop() || "app";
+    navigator.serviceWorker.register(
+      trustedScriptURL(`/service-worker.js?build=${encodeURIComponent(buildId)}`)
+    ).then(() => {
+      startupMark("service-worker-register-end");
+    }).catch(() => {
+    });
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(register, { timeout: 3000 });
+  } else {
+    window.setTimeout(register, 1000);
+  }
 };
 if (document.readyState === "loading") {
   window.addEventListener("DOMContentLoaded", bootstrapApplication, { once: true });

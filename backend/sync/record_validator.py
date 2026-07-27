@@ -4,17 +4,26 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from backend.shared.access_policy import authorize_record_write
+from backend.shared.access_policy import (
+    authorize_record_write_from_context,
+    build_batch_write_authorization_context,
+)
 from backend.shared.helpers import clean_id
 from backend.sync.delete_policy import ARCHIVABLE_TABLES
 from backend.sync.mapper import map_db_to_json
 from backend.sync.opening_uniqueness import validate_opening_participant_uniqueness
-from backend.sync.ownership import validate_owner_scoped_references
+from backend.sync.ownership import (
+    build_owner_reference_context,
+    validate_owner_scoped_references,
+)
 from backend.sync.payload_validation import (
     validate_package_locked_fields,
     validate_package_status_transition,
 )
-from backend.sync.uniqueness import validate_domain_uniqueness
+from backend.sync.uniqueness import (
+    build_domain_uniqueness_context,
+    validate_domain_uniqueness_from_context,
+)
 from backend.sync.validator import validate_sync_item
 
 
@@ -42,6 +51,7 @@ class SyncRecordValidator:
         self.schema_definition = schema_definition
         self.iter_payloads = iter_payloads
         self.canonicalize_item = canonicalize_item
+        self.existing_assignment_targets: set[tuple[str, str]] = set()
 
     def validate_payload(self) -> list[dict[str, Any]]:
         cursor = self.transaction.cursor
@@ -71,16 +81,38 @@ class SyncRecordValidator:
             payloads,
             organization_id,
         )
+        records_by_table = {}
+        for _payload_key, table_name, items in payloads:
+            records_by_table.setdefault(table_name, []).extend(items)
+        authorization_context = build_batch_write_authorization_context(
+            cursor,
+            actor.role,
+            actor.user_id,
+            organization_id,
+            records_by_table,
+        )
+        self.existing_assignment_targets = self._load_existing_assignment_targets(
+            payloads,
+            organization_id,
+        )
+        uniqueness_context = build_domain_uniqueness_context(
+            cursor,
+            organization_id,
+            records_by_table,
+        )
+        owner_reference_context = build_owner_reference_context(
+            cursor,
+            organization_id,
+            records_by_table,
+            self.payload_index.incoming_ids_by_table,
+        )
 
         for payload_key, table_name, items in payloads:
             for item in items:
                 item_errors: list[Any] = []
                 current_record = None
-                access_decision = authorize_record_write(
-                    cursor,
-                    actor.role,
-                    actor.user_id,
-                    organization_id,
+                access_decision = authorize_record_write_from_context(
+                    authorization_context,
                     payload_key,
                     table_name,
                     item,
@@ -167,15 +199,15 @@ class SyncRecordValidator:
                     item,
                     self.payload_index.incoming_ids_by_table,
                     self.payload_index.incoming_records_by_table,
+                    owner_reference_context,
                 )
                 if table_name == "phan_cong_nhan_su" and reference_errors:
                     self.payload_index.skip(table_name, record_id)
                     self.mutation_tracker.record_orphan(table_name, record_id)
                     continue
                 item_errors.extend(reference_errors)
-                item_errors.extend(validate_domain_uniqueness(
-                    cursor,
-                    organization_id,
+                item_errors.extend(validate_domain_uniqueness_from_context(
+                    uniqueness_context,
                     table_name,
                     item,
                     record_id,
@@ -255,19 +287,46 @@ class SyncRecordValidator:
             for assignment in self.payload.get("assignments", [])
             if isinstance(assignment, dict)
         )
-        has_stored = self.transaction.cursor.execute(
-            """SELECT 1 FROM phan_cong_nhan_su
-               WHERE organization_id = ? AND id_muc_tieu = ?
-                 AND loai_doi_tuong = ? LIMIT 1""",
-            (
-                self.transaction.actor.organization_id,
-                record_id,
-                target_type,
-            ),
-        ).fetchone() is not None
+        has_stored = (target_type, record_id) in self.existing_assignment_targets
         if not has_incoming and not has_stored:
             return ["Bản ghi phải có một chuyên viên phụ trách chính."]
         return []
+
+    def _load_existing_assignment_targets(
+        self,
+        payloads,
+        organization_id: str,
+    ) -> set[tuple[str, str]]:
+        target_tables = {"ke_hoach_lcnt", "goi_thau", "hop_dong"}
+        target_ids = list(dict.fromkeys(
+            record_id
+            for _payload_key, table_name, items in payloads
+            if table_name in target_tables
+            for item in items
+            if (
+                record_id := self.clean_record_id(
+                    table_name,
+                    item.get("id"),
+                )
+            )
+        ))
+        existing_targets = set()
+        for offset in range(0, len(target_ids), _QUERY_CHUNK_SIZE):
+            chunk = target_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.transaction.cursor.execute(
+                f"""SELECT id_muc_tieu, loai_doi_tuong
+                    FROM phan_cong_nhan_su
+                    WHERE organization_id = ?
+                      AND id_muc_tieu IN ({placeholders})
+                      AND loai_doi_tuong IN ('kehoach', 'goithau', 'hopdong')""",
+                (organization_id, *chunk),
+            ).fetchall()
+            existing_targets.update(
+                (str(row[1]), str(row[0]))
+                for row in rows
+            )
+        return existing_targets
 
     @staticmethod
     def _format_errors(

@@ -16,7 +16,7 @@ from backend.shared.helpers import (
     OrgPermissionError
 )
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
-from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, next_sync_version
+from backend.sync.repository import next_sync_version
 from backend.shared.access_policy import (
     is_business_organization,
     is_organization_manager,
@@ -35,6 +35,116 @@ from backend.notifications.service import (
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+_QUERY_CHUNK_SIZE = 500
+
+
+def _insert_assignment_departure_history(
+    cursor,
+    organization_id,
+    removed_user_id,
+    assignment_changes,
+    current_time,
+    ended_by,
+):
+    history_rows = [
+        (
+            organization_id,
+            assignment["id"],
+            removed_user_id,
+            assignment["id_muc_tieu"],
+            assignment["loai_doi_tuong"],
+            assignment["created_at"],
+            current_time,
+            ended_by,
+            successor,
+        )
+        for assignment, successor, _delete_assignment in assignment_changes
+    ]
+    for offset in range(0, len(history_rows), _QUERY_CHUNK_SIZE):
+        chunk = history_rows[offset:offset + _QUERY_CHUNK_SIZE]
+        value_sql = ", ".join("(" + ", ".join("?" for _ in row) + ")" for row in chunk)
+        cursor.execute(
+            f"""INSERT INTO phan_cong_nhan_su_lich_su
+                (organization_id, assignment_id, id_nhan_vien, id_muc_tieu,
+                 loai_doi_tuong, assigned_at, ended_at, ended_by, successor_user_id)
+                VALUES {value_sql}""",
+            tuple(value for row in chunk for value in row),
+        )
+
+
+def _apply_assignment_departures(
+    cursor,
+    organization_id,
+    assignment_changes,
+    sync_version,
+    current_time,
+):
+    assignment_ids_to_delete = [
+        str(assignment["id"])
+        for assignment, _successor, delete_assignment in assignment_changes
+        if delete_assignment
+    ]
+    for offset in range(0, len(assignment_ids_to_delete), _QUERY_CHUNK_SIZE):
+        chunk = assignment_ids_to_delete[offset:offset + _QUERY_CHUNK_SIZE]
+        placeholders = ", ".join("?" for _ in chunk)
+        cursor.execute(
+            f"""DELETE FROM phan_cong_nhan_su
+                WHERE organization_id = ? AND id IN ({placeholders})""",
+            (organization_id, *chunk),
+        )
+
+    transfers = [
+        (str(assignment["id"]), successor)
+        for assignment, successor, delete_assignment in assignment_changes
+        if successor and not delete_assignment
+    ]
+    for offset in range(0, len(transfers), _QUERY_CHUNK_SIZE):
+        chunk = transfers[offset:offset + _QUERY_CHUNK_SIZE]
+        value_sql = ", ".join("(?, ?)" for _ in chunk)
+        cursor.execute(
+            f"""UPDATE phan_cong_nhan_su AS assignment
+                SET id_nhan_vien = transfer.successor_user_id,
+                    row_version = assignment.row_version + 1,
+                    sync_version = ?,
+                    updated_at = ?
+                FROM (VALUES {value_sql}) AS transfer(assignment_id, successor_user_id)
+                WHERE assignment.organization_id = ?
+                  AND assignment.id = transfer.assignment_id""",
+            (
+                sync_version,
+                current_time,
+                *(value for transfer in chunk for value in transfer),
+                organization_id,
+            ),
+        )
+
+
+def _delete_member_permissions(
+    cursor,
+    user_id,
+    organization_id,
+    current_time,
+    sync_version,
+):
+    return cursor.execute(
+        """WITH deleted_permissions AS (
+               DELETE FROM ma_tran_phan_quyen
+               WHERE emp_id = ? AND organization_id = ?
+               RETURNING id
+           )
+           INSERT INTO deleted_records
+               (table_name, record_id, organization_id, deleted_at, delete_version)
+           SELECT 'ma_tran_phan_quyen', id, ?, ?, ?
+           FROM deleted_permissions
+           ON CONFLICT(organization_id, table_name, record_id) DO UPDATE SET
+               deleted_at = excluded.deleted_at,
+               delete_version = GREATEST(
+                   COALESCE(deleted_records.delete_version, 0),
+                   COALESCE(excluded.delete_version, 0)
+               )
+           RETURNING record_id AS id""",
+        (user_id, organization_id, organization_id, current_time, sync_version),
+    ).fetchall()
 
 
 def _subscription_payload(cursor, organization_id, *, for_update=False):
@@ -665,20 +775,13 @@ async def remove_user_from_org_api(request):
                 ).fetchall()
             }
 
+        assignment_changes = []
         for assignment in assignment_rows:
             requires_transfer = str(assignment['loai_doi_tuong'] or '') in {'goithau', 'hopdong'}
             successor = (
                 successor_user_id or assignment_successors.get(str(assignment['id']))
             ) if requires_transfer else None
-            cursor.execute(
-                """INSERT INTO phan_cong_nhan_su_lich_su
-                   (organization_id, assignment_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong,
-                    assigned_at, ended_at, ended_by, successor_user_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (org_id, assignment['id'], user_id, assignment['id_muc_tieu'],
-                 assignment['loai_doi_tuong'], assignment['created_at'], current_time,
-                 role_or_err.user_id, successor),
-            )
+            delete_assignment = not successor
             if successor:
                 assignment_key = (
                     str(successor),
@@ -686,22 +789,26 @@ async def remove_user_from_org_api(request):
                     str(assignment['loai_doi_tuong']),
                 )
                 if assignment_key in existing_assignment_keys:
-                    cursor.execute(
-                        "DELETE FROM phan_cong_nhan_su WHERE id = ? AND organization_id = ?",
-                        (assignment["id"], org_id),
-                    )
+                    delete_assignment = True
                 else:
-                    cursor.execute(
-                        """UPDATE phan_cong_nhan_su SET id_nhan_vien = ?, row_version = row_version + 1,
-                           sync_version = ?, updated_at = ? WHERE id = ? AND organization_id = ?""",
-                        (successor, sync_version, current_time, assignment['id'], org_id),
-                    )
                     existing_assignment_keys.add(assignment_key)
-            else:
-                cursor.execute(
-                    "DELETE FROM phan_cong_nhan_su WHERE id = ? AND organization_id = ?",
-                    (assignment["id"], org_id),
-                )
+            assignment_changes.append((assignment, successor, delete_assignment))
+
+        _insert_assignment_departure_history(
+            cursor,
+            org_id,
+            user_id,
+            assignment_changes,
+            current_time,
+            role_or_err.user_id,
+        )
+        _apply_assignment_departures(
+            cursor,
+            org_id,
+            assignment_changes,
+            sync_version,
+            current_time,
+        )
 
         cursor.execute(
             """UPDATE thanh_vien_to_chuc SET trang_thai_thanh_vien = 'left', left_at = ?, left_by = ?,
@@ -709,18 +816,13 @@ async def remove_user_from_org_api(request):
             (current_time, role_or_err.user_id, current_time, user_id, org_id),
         )
 
-        cursor.execute("SELECT id FROM ma_tran_phan_quyen WHERE emp_id = ? AND organization_id = ?", (user_id, org_id))
-        pq_rows = cursor.fetchall()
-        for row in pq_rows:
-            pq_id = row['id']
-            cursor.execute(
-                "DELETE FROM ma_tran_phan_quyen WHERE id = ? AND organization_id = ?",
-                (pq_id, org_id),
-            )
-            cursor.execute(
-                DELETED_RECORD_UPSERT_SQL,
-                ("ma_tran_phan_quyen", pq_id, org_id, current_time, sync_version)
-            )
+        pq_rows = _delete_member_permissions(
+            cursor,
+            user_id,
+            org_id,
+            current_time,
+            sync_version,
+        )
 
         impact = {
             "rootCount": 1,

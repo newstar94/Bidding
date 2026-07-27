@@ -8,9 +8,11 @@
     "audit:vendor": "python scripts/audit_vendor_assets.py && node scripts/check_sheetjs_vendor.cjs && node scripts/check_excel_archive_guard.mjs",
     "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
-    "package:production": "npm run build:secure && python scripts/package_production.py"
+    "package:production": "npm run build:secure && python scripts/package_production.py",
+    "test:performance": "node --env-file-if-exists=.env scripts/measure_startup.mjs --assert"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.0",
     "esbuild": "0.28.1",
     "eslint": "10.7.0",
     "javascript-obfuscator": "5.4.3",
