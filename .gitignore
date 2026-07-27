@@ -63,8 +63,6 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
-# Test sources are tracked in Git but excluded by the deployment packaging step.
-
 # Node.js
 node_modules/
 npm-debug.log*

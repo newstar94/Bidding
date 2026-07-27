@@ -26,27 +26,3 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["backend*"]
 namespaces = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-norecursedirs = [
-    ".git",
-    ".pytest_cache",
-    ".venv",
-    "data",
-    "dist",
-    "node_modules",
-    "release",
-]
-
-[tool.coverage.run]
-branch = true
-parallel = true
-patch = ["subprocess"]
-source = ["backend"]
-
-[tool.coverage.paths]
-source = [
-    "backend",
-    "*/backend",
-]
