@@ -30,6 +30,7 @@ import re
 import threading
 import hashlib
 import contextlib
+import html
 import json
 import time
 from urllib.parse import urlparse
@@ -360,6 +361,46 @@ def _workspace_preload_tag(session_bootstrap):
     return ""
 
 
+def _page_metadata(path):
+    if path == "/legal":
+        title = "Điều khoản và chính sách | BiddingFlow"
+        description = (
+            "Điều khoản sử dụng, Chính sách quyền riêng tư và Chính sách bảo mật "
+            "áp dụng cho BiddingFlow."
+        )
+    else:
+        title = "BiddingFlow - Hệ thống Quản lý & Lưu trữ Thông tin Gói thầu"
+        description = (
+            "Hệ thống quản lý thông tin đấu thầu, kế hoạch lựa chọn nhà thầu, "
+            "gói thầu, chủ đầu tư, nhà thầu và tổ chuyên gia chuyên nghiệp, hiện đại."
+        )
+    canonical_link = ""
+    if APP_PUBLIC_URL and path in {"/", "/legal"}:
+        canonical_url = f"{APP_PUBLIC_URL}{'' if path == '/' else path}"
+        canonical_link = f'<link rel="canonical" href="{html.escape(canonical_url, quote=True)}">'
+    return title, description, canonical_link
+
+
+def _page_shell(html_content, path):
+    shell_names = {
+        "/": "LANDING",
+        "/legal": "LEGAL",
+    }
+    selected_shell = shell_names.get(path, "WORKSPACE")
+    for shell_name in ("LANDING", "LEGAL", "WORKSPACE"):
+        start = f"<!-- BF_SHELL_{shell_name}_START -->"
+        end = f"<!-- BF_SHELL_{shell_name}_END -->"
+        pattern = re.compile(
+            f"{re.escape(start)}(.*?){re.escape(end)}",
+            re.DOTALL,
+        )
+        if shell_name == selected_shell:
+            html_content = pattern.sub(lambda match: match.group(1), html_content, count=1)
+        else:
+            html_content = pattern.sub("", html_content, count=1)
+    return html_content
+
+
 async def index(request):
     """Return the compiled application shell with browser ETag caching."""
     global _index_response_cache
@@ -375,14 +416,18 @@ async def index(request):
         log_error(exc, "index_session_bootstrap")
         session_bootstrap = {"valid": False, "reason": "bootstrap_error"}
     safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
-    response_etag = (
-        f'"{hashlib.sha256((etag + safe_bootstrap).encode("utf-8")).hexdigest()}"'
-    )
+    request_path = request.url.path
+    page_title, page_description, canonical_link = _page_metadata(request_path)
+    response_etag = f'"{hashlib.sha256((etag + safe_bootstrap + request_path).encode("utf-8")).hexdigest()}"'
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match == response_etag:
         return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})
     html_content = html_content.replace("__BF_SESSION_BOOTSTRAP__", safe_bootstrap)
-    workspace_preload = "" if request.url.path == "/" else _workspace_preload_tag(session_bootstrap)
+    html_content = html_content.replace("__BF_PAGE_TITLE__", html.escape(page_title))
+    html_content = html_content.replace("__BF_PAGE_DESCRIPTION__", html.escape(page_description, quote=True))
+    html_content = html_content.replace("__BF_CANONICAL_LINK__", canonical_link)
+    html_content = _page_shell(html_content, request_path)
+    workspace_preload = "" if request_path in {"/", "/legal"} else _workspace_preload_tag(session_bootstrap)
     html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
     bootstrap_ms = (time.perf_counter() - bootstrap_started) * 1000
     return HTMLResponse(
@@ -730,6 +775,7 @@ routes = [
     Route("/api/client-errors", client_error_api, methods=["POST"]),
     Route("/", index, methods=["GET"]),
     Route("/dang-nhap", index, methods=["GET"]),
+    Route("/legal", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
     Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),

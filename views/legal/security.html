@@ -1,0 +1,78 @@
+<section class="legal-section" id="security" aria-labelledby="security-title">
+    <span class="legal-section-number">03 / 03</span>
+    <h2 id="security-title">Chính sách bảo mật</h2>
+    <p class="legal-section-intro">BiddingFlow áp dụng các biện pháp kỹ thuật phù hợp với kiến trúc hiện tại nhằm giảm rủi ro truy cập, thay đổi hoặc tiết lộ dữ liệu trái phép. Không biện pháp nào có thể loại bỏ hoàn toàn mọi rủi ro.</p>
+
+    <section class="legal-clause">
+        <h3><span>01</span>Cam kết bảo mật</h3>
+        <p>Đơn vị vận hành có trách nhiệm duy trì các kiểm soát bảo mật tương xứng với dữ liệu và cách triển khai thực tế, xem xét sự cố, sửa lỗi trong phạm vi kiểm soát và cập nhật biện pháp khi hệ thống thay đổi. Cam kết này không phải là bảo đảm tuyệt đối rằng sự cố sẽ không bao giờ xảy ra.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>02</span>Biện pháp bảo vệ tài khoản</h3>
+        <p>Hệ thống hỗ trợ xác minh email, giới hạn số lần đăng nhập/đăng ký/khôi phục, phiên có thể thu hồi với thời hạn nhàn rỗi và thời hạn tuyệt đối, chỉ cho phép một phiên hoạt động trên mỗi tài khoản, yêu cầu xác thực lại cho thao tác quản trị nhạy cảm và có thể giới hạn mạng đối với quản trị viên tối cao.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>03</span>Bảo vệ mật khẩu</h3>
+        <p>Mật khẩu mới được băm bằng Argon2id với muối do thư viện tạo; hệ thống không lưu mật khẩu dạng rõ. Các giá trị băm PBKDF2 cũ chỉ được hỗ trợ trong giai đoạn chuyển tiếp và được băm lại bằng Argon2id sau khi xác thực thành công. Chính sách mật khẩu và luồng đặt lại giới hạn độ dài, kiểm tra token một lần và thời hạn sử dụng.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>04</span>Mã hóa dữ liệu khi truyền tải</h3>
+        <p>Cấu hình production yêu cầu URL công khai sử dụng HTTPS, cookie bảo mật và nguồn kết nối HTTPS cùng nguồn; phản hồi qua kết nối an toàn được thêm HSTS. Hiệu lực bảo vệ khi truyền tải còn phụ thuộc việc TLS và reverse proxy được triển khai đúng. <span class="legal-placeholder">[TODO: Xác nhận chứng chỉ, TLS tối thiểu và cấu hình hạ tầng production]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>05</span>Mã hóa dữ liệu khi lưu trữ</h3>
+        <p>Mật khẩu và token phiên được lưu dưới dạng băm. Nội dung nhạy cảm trong hàng đợi email được mã hóa và xác thực bằng Fernet khi khóa được cấu hình. Mã nguồn chưa xác nhận mã hóa toàn bộ cơ sở dữ liệu, file tải lên hoặc bản sao lưu ở tầng lưu trữ; không nên coi các nhóm dữ liệu này đã được mã hóa toàn phần nếu chưa kiểm tra hạ tầng. <span class="legal-placeholder">[TODO: Xác nhận mã hóa ổ đĩa, cơ sở dữ liệu, file và bản sao lưu]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>06</span>Kiểm soát quyền truy cập</h3>
+        <p>Các API nghiệp vụ xác minh phiên và phạm vi tổ chức; truy vấn dữ liệu sử dụng ràng buộc tổ chức. Tài liệu và hình ảnh được kiểm tra đường dẫn, chữ ký liên kết hoặc quyền xem bản ghi liên quan trước khi trả về. Cấu hình cơ sở dữ liệu tách vai trò runtime, migration, backup và worker tài liệu theo nguyên tắc phân nhiệm.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>07</span>Phân quyền người dùng</h3>
+        <p>Hệ thống có các vai trò nền tảng super admin, manager và employee, kết hợp vai trò trong tổ chức, quyền theo mô-đun, quyền xem/sửa và quyền xuất tài liệu. Người quản lý cần rà soát quyền định kỳ, thu hồi quyền khi thay đổi nhiệm vụ và không cấp quyền rộng hơn nhu cầu công việc.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>08</span>Bảo vệ file và tài liệu tải lên</h3>
+        <p>Yêu cầu tải lên có giới hạn kích thước; file Word/Excel và gói nén được kiểm tra định dạng, đường dẫn, tệp trùng, liên kết ngoài, nội dung mã hóa hoặc dấu hiệu “zip bomb” theo từng luồng. Tài liệu gói thầu được truy cập qua API yêu cầu phiên và quyền tổ chức. Worker xử lý tài liệu được thiết kế tách khỏi bí mật ứng dụng; mức cô lập thực tế vẫn phụ thuộc cấu hình triển khai.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>09</span>Nhật ký và giám sát hệ thống</h3>
+        <p>Hệ thống ghi nhật ký kiểm toán cho thao tác quan trọng, dùng chuỗi băm và trigger cơ sở dữ liệu để phát hiện hoặc ngăn sửa/xóa lịch sử kiểm toán. Các chỉ số vận hành theo dõi yêu cầu HTTP, giới hạn tần suất, hàng đợi, kết nối, tài nguyên, tình trạng chuỗi kiểm toán, tuổi bản sao lưu và lần diễn tập khôi phục; endpoint chỉ số có kiểm soát mạng hoặc token.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>10</span>Sao lưu và khôi phục dữ liệu</h3>
+        <p>Mã nguồn cung cấp công cụ tạo, xác minh và khôi phục bản sao lưu PostgreSQL cùng file tải lên và biểu mẫu, có kiểm tra danh sách file, kích thước và checksum, chính sách giữ số bản sao và ghi nhận diễn tập khôi phục. Việc sao lưu có thực sự chạy tự động theo lịch, lưu ngoài máy chủ và được thử khôi phục định kỳ phải được xác nhận ở môi trường vận hành: <span class="legal-placeholder">[TODO: Lịch sao lưu, vị trí, thời gian giữ và kết quả diễn tập khôi phục]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>11</span>Quản lý lỗ hổng bảo mật</h3>
+        <p>Quy trình build kiểm tra lint bảo mật, Trusted Types, tài sản bên thứ ba được ghim và kiểm toán file vendor. Ứng dụng sử dụng Content Security Policy, Trusted Types, DOMPurify, giới hạn nguồn tài nguyên, kiểm tra đầu vào và truy vấn có tham số để giảm rủi ro XSS, chèn mã và SQL injection. <span class="legal-placeholder">[TODO: Chu kỳ rà soát dependency, quét lỗ hổng và thời hạn khắc phục]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>12</span>Rate limiting và chống lạm dụng</h3>
+        <p>Giới hạn tần suất được áp dụng cho đăng nhập, đăng ký, xác minh email, gửi lại mã, quên/đặt lại mật khẩu, đăng nhập Google, xác thực lại đặc quyền, một số chức năng tra cứu, xuất tài liệu, báo lỗi phía trình duyệt và kết nối đồng bộ. Hệ thống có thể từ chối tạm thời khi vượt ngưỡng hoặc khi kho giới hạn tần suất gặp lỗi ở luồng nhạy cảm.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>13</span>Xử lý sự cố an toàn thông tin</h3>
+        <p>Nhật ký, chỉ số, mã yêu cầu, cảnh báo chuỗi kiểm toán và kiểm tra tài sản vận hành hỗ trợ phát hiện và điều tra sự cố. Quy trình phân loại, cô lập, thông báo, khắc phục và rút kinh nghiệm cần được đơn vị vận hành phê duyệt riêng: <span class="legal-placeholder">[TODO: Quy trình ứng phó sự cố, đầu mối và thời hạn thông báo]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>14</span>Trách nhiệm bảo mật của người dùng</h3>
+        <p>Người dùng cần dùng mật khẩu riêng và đủ mạnh; bảo vệ email, thiết bị và mã xác minh; không chia sẻ phiên hoặc token; chỉ tải lên file đáng tin cậy; kiểm tra người nhận trước khi xuất/chia sẻ tài liệu; tuân thủ phân quyền; và báo ngay khi thấy đăng nhập, dữ liệu hoặc hành vi bất thường.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>15</span>Cách báo cáo lỗ hổng hoặc sự cố</h3>
+        <p>Khi báo cáo, vui lòng mô tả thời điểm, chức năng bị ảnh hưởng, bước tái hiện, mức độ tác động và thông tin liên hệ; không truy cập thêm dữ liệu, làm gián đoạn dịch vụ hoặc công khai chi tiết trước khi có phương án giảm thiểu. Kênh tiếp nhận: <span class="legal-placeholder">[TODO: Email báo cáo bảo mật]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>16</span>Các giới hạn thực tế của bảo mật</h3>
+        <p>Không hệ thống nào miễn nhiễm hoàn toàn với lỗi, tấn công, mất thiết bị, cấu hình sai, sự cố nhà cung cấp hoặc hành vi nội bộ. Một số kiểm soát — như HTTPS, cookie Secure, phân tách worker, giám sát, sao lưu và mã hóa tầng lưu trữ — chỉ có hiệu lực khi môi trường production được cấu hình và vận hành đúng.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>17</span>Cập nhật chính sách bảo mật</h3>
+        <p>Chính sách được cập nhật khi có thay đổi đáng kể về kiến trúc, kiểm soát, nhà cung cấp hoặc rủi ro. Ngày cập nhật gần nhất được hiển thị ở đầu trang. <span class="legal-placeholder">[TODO: Chu kỳ rà soát chính sách bảo mật]</span>.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>18</span>Thông tin liên hệ</h3>
+        <p>Đơn vị vận hành: <span class="legal-placeholder">[TODO: Tên đơn vị vận hành]</span>. Email bảo mật: <span class="legal-placeholder">[TODO: Email báo cáo bảo mật]</span>. Đầu mối xử lý sự cố: <span class="legal-placeholder">[TODO: Bộ phận hoặc chức danh phụ trách]</span>.</p>
+    </section>
+</section>

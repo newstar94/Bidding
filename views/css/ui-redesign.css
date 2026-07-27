@@ -83,7 +83,8 @@ label[for] {
   box-shadow: 0 6px 16px rgba(49, 87, 232, 0.2);
 }
 
-.brand-text h1 {
+.brand-text h1,
+.brand-text .sidebar-brand-name {
   font-size: 1.05rem;
   letter-spacing: -0.035em;
 }
@@ -2610,7 +2611,8 @@ body {
     box-shadow: none;
   }
 
-  .brand-text h1 {
+  .brand-text h1,
+  .brand-text .sidebar-brand-name {
     color: var(--color-ink);
     font-family: var(--font-display);
     font-size: var(--text-md);

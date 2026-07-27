@@ -2116,13 +2116,32 @@ html[data-bf-shell="workspace"] .landing-page {
   text-align: center;
 }
 
-.landing-footer-inner > a:last-child {
+.landing-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.landing-footer-links a {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
   gap: 7px;
   color: #fff;
   font-size: 12px;
   font-weight: 700;
+}
+
+.landing-footer-links a:hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  opacity: 1;
+}
+
+.landing-footer-links svg {
+  width: 16px;
+  height: 16px;
 }
 
 [data-landing-reveal] {
@@ -2514,6 +2533,12 @@ html[data-bf-shell="workspace"] .landing-page {
 
   .landing-footer p {
     text-align: left;
+  }
+
+  .landing-footer-links {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
   }
 }
 

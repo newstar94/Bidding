@@ -5,6 +5,7 @@ import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
 import { retryPendingWorkspacePurges } from "./workspaceState.js";
 import { installSemanticAccessibility } from "../shared/semanticAccessibility.js";
 import { bootstrapLandingPage, isLandingPath } from "../landing/LandingPage.js";
+import { bootstrapLegalPage, isLegalPath } from "../legal/LegalPage.js";
 import { installReleaseDiagnostics } from "../shared/releaseDiagnostics.js";
 installReleaseDiagnostics();
 const startupMark = (name) => {
@@ -106,6 +107,16 @@ const bootstrapApplication = async () => {
   installSemanticAccessibility(document);
   if (isLandingPath()) {
     bootstrapLandingPage(readSessionBootstrap());
+    requestAnimationFrame(() => {
+      loadAndRenderLucideIcons().then((loaded) => {
+        if (loaded) window.lucide.createIcons();
+      });
+      scheduleServiceWorkerRegistration();
+    });
+    return;
+  }
+  if (isLegalPath()) {
+    bootstrapLegalPage();
     requestAnimationFrame(() => {
       loadAndRenderLucideIcons().then((loaded) => {
         if (loaded) window.lucide.createIcons();

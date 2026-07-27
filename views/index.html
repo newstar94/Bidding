@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BiddingFlow - Hệ thống Quản lý & Lưu trữ Thông tin Gói thầu</title>
+    <title>__BF_PAGE_TITLE__</title>
 
 
-    <meta name="description"
-        content="Hệ thống quản lý thông tin đấu thầu, kế hoạch lựa chọn nhà thầu, gói thầu, chủ đầu tư, nhà thầu và tổ chuyên gia chuyên nghiệp, hiện đại.">
+    <meta name="description" content="__BF_PAGE_DESCRIPTION__">
+    __BF_CANONICAL_LINK__
     <meta name="keywords"
         content="quản lý đấu thầu, gói thầu, nhà thầu, chủ đầu tư, chuyên gia, kế hoạch lựa chọn nhà thầu">
     <meta name="Vy Tuấn Dương" content="Vy Tuấn Dương">
@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="/css/variables.css?v=2.0">
     <link rel="stylesheet" href="/css/base.css?v=2.0">
     <link rel="stylesheet" href="/css/landing.css?v=2.0">
+    <link rel="stylesheet" href="/css/legal.css?v=2.0">
     <link rel="stylesheet" href="/css/components.css?v=2.0">
     <link rel="stylesheet" href="/css/views.css?v=2.0&amp;rev=document-actions-20260725">
     <link rel="stylesheet" href="/css/toast.css?v=2.0">
@@ -42,10 +43,16 @@
     <script id="bf-session-bootstrap" type="application/json">__BF_SESSION_BOOTSTRAP__</script>
 </head>
 
-<body class="bf-init-loading">
+    <body class="bf-init-loading">
     <a class="skip-link workspace-skip-link" href="#main-content">Bỏ qua đến nội dung chính</a>
+    <!-- BF_SHELL_LANDING_START -->
     <!-- INCLUDE: views/components/landing_page.html -->
+    <!-- BF_SHELL_LANDING_END -->
+    <!-- BF_SHELL_LEGAL_START -->
+    <!-- INCLUDE: views/components/legal_page.html -->
+    <!-- BF_SHELL_LEGAL_END -->
 
+    <!-- BF_SHELL_WORKSPACE_START -->
     <div class="app-container">
         <!-- INCLUDE: views/components/sidebar.html -->
 
@@ -97,6 +104,7 @@
     <!-- INCLUDE: views/modals/modal_custom_dialog.html -->
 
     <!-- INCLUDE: views/components/auth_overlay.html -->
+    <!-- BF_SHELL_WORKSPACE_END -->
 
 
     <script src="/vendor/lucide/lucide-shim.js?v=2.0"></script>
