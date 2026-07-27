@@ -47,8 +47,8 @@ jobs:
       ENABLE_IMAGE_CACHE_PREWARM: "false"
       ENABLE_PARTNER_LOOKUP_WORKER: "false"
       BACKGROUND_STARTUP_DELAY_SECONDS: "0"
-      STARTUP_COLD_RUNS: "10"
-      STARTUP_WARM_RUNS: "10"
+      STARTUP_COLD_RUNS: "30"
+      STARTUP_WARM_RUNS: "30"
       STARTUP_COLD_P95_MS: "800"
       STARTUP_WARM_P95_MS: "300"
       STARTUP_LONG_TASK_MS: "100"
@@ -80,7 +80,9 @@ jobs:
           cat startup-server.log
           exit 1
       - name: Enforce startup thresholds
-        run: npm run test:performance
+        run: |
+          npm run test:auth-shell
+          npm run test:performance
       - name: Upload startup measurements
         if: always()
         uses: actions/upload-artifact@v4

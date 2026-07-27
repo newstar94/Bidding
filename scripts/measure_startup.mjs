@@ -9,8 +9,11 @@ const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").repl
 const route = process.env.STARTUP_ROUTE || "/tong-quan-admin";
 const username = process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin";
 const password = process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD;
-const coldRuns = Math.max(1, Number(process.env.STARTUP_COLD_RUNS || 10));
-const warmRuns = Math.max(1, Number(process.env.STARTUP_WARM_RUNS || 10));
+// With only 10 samples, nearest-rank p95 equals the maximum and makes the gate
+// overly sensitive to one scheduler/antivirus outlier. Thirty samples keep the
+// gate quick while making p95 a useful distribution statistic.
+const coldRuns = Math.max(1, Number(process.env.STARTUP_COLD_RUNS || 30));
+const warmRuns = Math.max(1, Number(process.env.STARTUP_WARM_RUNS || 30));
 const coldP95LimitMs = Math.max(1, Number(process.env.STARTUP_COLD_P95_MS || 800));
 const warmP95LimitMs = Math.max(1, Number(process.env.STARTUP_WARM_P95_MS || 300));
 const longTaskLimitMs = Math.max(1, Number(process.env.STARTUP_LONG_TASK_MS || 100));
