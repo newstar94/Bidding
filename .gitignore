@@ -52,6 +52,8 @@ scratch/
 coverage.xml
 htmlcov/
 .nyc_output/
+.agents
+data/skills
 coverage/
 test-results/
 playwright-report/
