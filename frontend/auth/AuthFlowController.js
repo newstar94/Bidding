@@ -405,7 +405,6 @@ export function setupAuth() {
       if (data.inactivity_timeout_hours) {
         localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
       }
-      hideAuthOverlay();
       try {
         await this.forceSyncData();
       } catch (err) {
@@ -423,6 +422,8 @@ export function setupAuth() {
       } else {
         await this.switchTab("dashboard");
       }
+      this.setupProfileDropdownEvents?.();
+      hideAuthOverlay();
       this.setupRBACEvents?.();
       this.startBackgroundSessionChecker();
     } catch (err) {

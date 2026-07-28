@@ -56,24 +56,36 @@ export async function refreshRecordBeforeDelete(controller, tableKey, recordId) 
   }
 }
 
+export function stageLocalRecords(model, table, records) {
+  const staged = (Array.isArray(records) ? records : [records]).filter(
+    (record) => record?.id !== undefined && record?.id !== null && String(record.id) !== "",
+  );
+  if (!table || !staged.length || typeof model?.commitLocalMutation !== "function") return [];
+  model.commitLocalMutation(table, { records: staged });
+  return staged;
+}
+
 export function applyStateMutations(model, { upserts = {}, deletions = {}, mutate } = {}) {
   const changed = new Set();
   if (typeof mutate === "function") mutate(model.state, model);
   Object.entries(upserts).forEach(([table, records]) => {
     model.state[table] = Array.isArray(model.state[table]) ? model.state[table] : [];
-    (Array.isArray(records) ? records : [records]).filter(Boolean).forEach((record) => {
+    const staged = (Array.isArray(records) ? records : [records]).filter(Boolean).map((record) => {
       const normalized = model.normalizeRecordKeys?.(record, table) || record;
       const index = model.state[table].findIndex((item) => String(item.id) === String(normalized.id));
       if (index >= 0) model.state[table][index] = normalized;
       else model.state[table].push(normalized);
+      return normalized;
     });
+    stageLocalRecords(model, table, staged);
     changed.add(table);
   });
   Object.entries(deletions).forEach(([table, ids]) => {
     const idList = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
     const deleted = new Set(idList.map(String));
+    const deletedRecords = (model.state[table] || []).filter((record) => deleted.has(String(record.id)));
     model.state[table] = (model.state[table] || []).filter((record) => !deleted.has(String(record.id)));
-    model.markDeleted?.(table, idList);
+    model.markDeleted?.(table, deletedRecords.length ? deletedRecords : idList);
     changed.add(table);
   });
   return [...changed];

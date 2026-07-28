@@ -220,7 +220,7 @@ function bindPanel(view, contentWrapper, state, appController) {
     if (view._editingState) view._editingState.qualified = false;
     await view.customAlert("Thành công", "Đã lưu QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!", "check-circle");
     view._currentWorkflowTab = state.qualifiedBids.length ? "opening_fin" : "result";
-    view.showPackageDetails(state.pkg.id);
+    await view.showPackageDetails(state.pkg.id);
   };
 }
 

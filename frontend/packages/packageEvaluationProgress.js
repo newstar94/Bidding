@@ -1,4 +1,4 @@
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { getAppController } from "../app/controllerRef.js";
 
 async function stagePackageRecord(controller, packageRecord) {
@@ -17,9 +17,16 @@ async function stagePackageRecord(controller, packageRecord) {
 }
 
 export async function saveQualifiedApproval(controller, pkg, metadata) {
-  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  const packageId = pkg?.id;
+  const stagedPackage = {
+    ...pkg,
+    danhGiaHsdtMetadata: JSON.stringify(metadata),
+  };
+  await stagePackageRecord(controller, stagedPackage);
   await persistAndSync(controller, "goithau");
-  return pkg;
+  return controller?.model?.state?.goithau?.find(
+    (item) => String(item?.id) === String(packageId),
+  ) || stagedPackage;
 }
 
 export async function commitPackageAwardDecision(controller, { afterPersist, packageRecord } = {}) {
@@ -30,6 +37,10 @@ export async function commitPackageAwardDecision(controller, { afterPersist, pac
     throw new Error("Không thể đồng bộ quyết định kết quả với máy chủ.");
   }
   await stagePackageRecord(activeController, packageRecord);
+  const packageBids = (activeController.model.state.thongtinmothau || []).filter(
+    (bid) => String(bid?.goiThauId || "") === String(packageRecord?.id || ""),
+  );
+  stageLocalRecords(activeController.model, "thongtinmothau", packageBids);
   const tables = ["nhathau", "goithau", "thongtinmothau"]
     .filter((table) => Array.isArray(activeController.model.state[table]));
   const syncResult = await persistAndSync(activeController, tables);
@@ -39,13 +50,17 @@ export async function commitPackageAwardDecision(controller, { afterPersist, pac
   return syncResult;
 }
 
-export async function commitPackageAwardDependencies(controller) {
+export async function commitPackageAwardDependencies(controller, { packageRecord } = {}) {
   const activeController = typeof controller?.autoSync === "function"
     ? controller
     : getAppController();
   if (!activeController?.model || typeof activeController.autoSync !== "function") {
     throw new Error("Không thể đồng bộ dữ liệu nhà thầu với máy chủ.");
   }
+  const packageBids = (activeController.model.state.thongtinmothau || []).filter(
+    (bid) => String(bid?.goiThauId || "") === String(packageRecord?.id || ""),
+  );
+  stageLocalRecords(activeController.model, "thongtinmothau", packageBids);
   const tables = ["nhathau", "thongtinmothau"]
     .filter((table) => Array.isArray(activeController.model.state[table]));
   return persistAndSync(activeController, tables);

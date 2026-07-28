@@ -43,6 +43,21 @@ LOCAL_DATABASES = (
     MULTIWORKER_TEST_DATABASE,
     LOAD_TEST_DATABASE,
 )
+SAFE_RESET_ENVIRONMENTS = frozenset({"development", "dev", "test", "testing"})
+LOCAL_DATABASE_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+DATABASE_URL_KEYS = (
+    "DATABASE_URL",
+    "DATABASE_ADMIN_URL",
+    "RUNTIME_DATABASE_URL",
+    "MIGRATOR_DATABASE_URL",
+    "TEST_DATABASE_URL",
+    "API_TEST_DATABASE_URL",
+    "RESTORE_DRILL_DATABASE_URL",
+    "MULTIWORKER_TEST_DATABASE_URL",
+    "LOAD_TEST_DATABASE_URL",
+    "PERFORMANCE_DATABASE_URL",
+)
+RESET_ENVIRONMENT_KEYS = ("APP_ENV", "ENV", "NODE_ENV")
 
 
 def _read_env() -> tuple[list[str], dict[str, str]]:
@@ -90,6 +105,77 @@ def _replace_env_value(lines: list[str], key: str, value: str) -> None:
     lines.append(replacement)
 
 
+def assert_safe_reset_environment(values: dict[str, str]) -> None:
+    """Refuse destructive reset unless every configured target is disposable/local."""
+
+    environment = next(
+        (
+            values.get(key, "").strip().casefold()
+            for key in RESET_ENVIRONMENT_KEYS
+            if values.get(key, "").strip()
+        ),
+        "",
+    )
+    if environment not in SAFE_RESET_ENVIRONMENTS:
+        raise SystemExit(
+            "Database reset refused: APP_ENV/ENV/NODE_ENV must explicitly identify "
+            "a development or test environment."
+        )
+
+    for key in DATABASE_URL_KEYS:
+        configured_url = values.get(key, "").strip()
+        if not configured_url:
+            continue
+        parsed = urlparse(configured_url)
+        database_name = parsed.path.lstrip("/")
+        if (
+            parsed.hostname not in LOCAL_DATABASE_HOSTS
+            or database_name not in LOCAL_DATABASES
+        ):
+            raise SystemExit(
+                f"Database reset refused: {key} is not a repository-managed local "
+                "development/test database."
+            )
+
+
+def effective_reset_environment(
+    file_values: dict[str, str],
+    *,
+    process_environment: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Apply the same process-over-file precedence used by runtime scripts."""
+
+    process_environment = (
+        os.environ if process_environment is None else process_environment
+    )
+    effective_values = dict(file_values)
+    for key in (*RESET_ENVIRONMENT_KEYS, *DATABASE_URL_KEYS):
+        if key in process_environment:
+            effective_values[key] = process_environment[key]
+    return effective_values
+
+
+def initialize_application_schemas(
+    database_urls: tuple[str, ...],
+    *,
+    base_environment: dict[str, str] | None = None,
+) -> None:
+    """Initialize every database recreated by the local reset command."""
+
+    base_environment = dict(base_environment or os.environ)
+    for database_url in database_urls:
+        database_name = urlparse(database_url).path.lstrip("/")
+        print(f"Initializing application schema for {database_name}...", flush=True)
+        child_environment = base_environment.copy()
+        child_environment["MIGRATOR_DATABASE_URL"] = database_url
+        child_environment["DATABASE_URL"] = database_url
+        _run(
+            sys.executable,
+            str(ROOT / "scripts" / "manage_database.py"),
+            env=child_environment,
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -100,6 +186,13 @@ def main() -> None:
     args = parser.parse_args()
     print("Reading local environment...", flush=True)
     lines, values = _read_env()
+    if args.reset:
+        assert_safe_reset_environment(effective_reset_environment(values))
+        print(
+            "Reset targets on 127.0.0.1:"
+            f"{PORT}: {', '.join(LOCAL_DATABASES)}",
+            flush=True,
+        )
     cluster_exists = (DATA_DIR / "PG_VERSION").exists()
     configured_postgres_password = values.get(
         "POSTGRES_LOCAL_ADMIN_PASSWORD", ""
@@ -458,10 +551,15 @@ def main() -> None:
         sys.executable,
         str(ROOT / "scripts" / "configure_database_roles.py"),
     )
-    print("Initializing application schema...", flush=True)
-    _run(
-        sys.executable,
-        str(ROOT / "scripts" / "manage_database.py"),
+    initialize_application_schemas(
+        (
+            migrator_url,
+            test_database_url,
+            api_test_database_url,
+            restore_drill_url,
+            multiworker_test_url,
+            load_test_url,
+        )
     )
     _run(
         sys.executable,

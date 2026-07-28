@@ -24,7 +24,7 @@ import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTax
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
 import {
   enrichOpeningRowsWithPartnerInfo,
@@ -838,6 +838,8 @@ async function performSaveThongTinMoThau() {
   if (this.view._editingState) {
     this.view._editingState[stepKey] = false;
   }
+  stageLocalRecords(this.model, "thongtinmothau", tempBids);
+  stageLocalRecords(this.model, "goithau", gt);
   const syncResult = await persistAndSync(this, ["thongtinmothau", "goithau"]);
   if (!syncResult?.ok) {
     await this.view.customAlert(

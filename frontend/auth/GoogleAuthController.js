@@ -70,6 +70,7 @@ export function setupGoogleSignIn() {
       } else {
         await this.switchTab("dashboard");
       }
+      this.setupProfileDropdownEvents?.();
       this.setupRBACEvents?.();
       this.startBackgroundSessionChecker();
     } finally {

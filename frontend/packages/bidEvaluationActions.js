@@ -30,6 +30,28 @@ function parseEvaluationMetadata(value) {
   }
 }
 
+export function stageBidEvaluationMutation(model, pkg, bids = []) {
+  if (!model || !pkg?.id || typeof model.commitLocalMutation !== "function") {
+    return { pkg: null, bids: [] };
+  }
+  const canonicalPackage = (model.state?.goithau || []).find(
+    (item) => String(item?.id) === String(pkg.id),
+  ) || pkg;
+  const requestedBidIds = new Set(
+    (Array.isArray(bids) ? bids : [bids])
+      .map((bid) => String(bid?.id || ""))
+      .filter(Boolean),
+  );
+  const canonicalBids = (model.state?.thongtinmothau || []).filter(
+    (bid) => requestedBidIds.has(String(bid?.id || "")),
+  );
+  model.commitLocalMutation("goithau", { records: canonicalPackage });
+  if (canonicalBids.length) {
+    model.commitLocalMutation("thongtinmothau", { records: canonicalBids });
+  }
+  return { pkg: canonicalPackage, bids: canonicalBids };
+}
+
 export function resolvePostEvaluationTargetTab({
   isTwoEnvelope,
   currentEvaluationTab = "technical",
@@ -472,6 +494,10 @@ export async function saveDanhGiaHsdt() {
       }
     }
   });
+  const evaluatedBids = Array.from(rows).map((tr) => (
+    bidsById.get(String(tr.getAttribute("data-bid-id") || ""))
+  )).filter(Boolean);
+  stageBidEvaluationMutation(this.model, gt, evaluatedBids);
   const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau"]);
   if (!syncResult?.ok) return;
   this.view.renderGoiThauTable();

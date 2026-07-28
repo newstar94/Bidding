@@ -530,10 +530,10 @@ export function resetTimelineOnNavigation(controller, nextTab) {
 
 export function setupProfileDropdownEvents() {
   if (document.__bfProfileDropdownEventsBound) return;
-  document.__bfProfileDropdownEventsBound = true;
   const trigger = document.getElementById("header-profile-trigger");
   const dropdown = document.getElementById("profile-dropdown-menu");
   if (!trigger || !dropdown) return;
+  document.__bfProfileDropdownEventsBound = true;
   synchronizeProfileMenu(trigger, dropdown, { restoreFocus: false });
   const observer = new MutationObserver(() => synchronizeProfileMenu(trigger, dropdown));
   observer.observe(dropdown, { attributes: true, attributeFilter: ["class"] });

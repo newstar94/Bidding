@@ -1,4 +1,4 @@
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 
@@ -51,6 +51,7 @@ export async function savePackagePreparation(controller, pkg, changes, { generat
     clearCompetitiveQuotationAppraisal(pkg);
   }
 
+  stageLocalRecords(model, "goithau", savedPackage);
   await persistAndSync(controller, tables);
   return savedPackage;
 }

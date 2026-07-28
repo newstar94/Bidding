@@ -83,8 +83,8 @@ function bindEditor(view, root, pkg, lots, editable, rerender) {
     if (!editable) return;
     editor.hidden = false;
     form.reset();
-    form.elements.id.value = record?.id || "";
-    form.elements.phanLoId.value = record?.phanLoId || "";
+    form.elements.namedItem("recordId").value = record?.id || "";
+    form.elements.namedItem("phanLoId").value = record?.phanLoId || "";
     Object.keys(record || {}).forEach((key) => { if (form.elements[key]) form.elements[key].value = record[key] ?? ""; });
     form.elements.maHangHoa.focus();
   };
@@ -103,10 +103,10 @@ function bindEditor(view, root, pkg, lots, editable, rerender) {
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
-    const current = (view.model.state.goithauhanghoa || []).find((item) => String(item.id) === String(data.id));
+    const current = (view.model.state.goithauhanghoa || []).find((item) => String(item.id) === String(data.recordId));
     const record = {
       ...current,
-      id: data.id || generateRecordId("goithauhanghoa"), goiThauId: pkg.id,
+      id: data.recordId || generateRecordId("goithauhanghoa"), goiThauId: pkg.id,
       phanLoId: pkg.phanLo === "Có" ? data.phanLoId : null,
       maHangHoa: data.maHangHoa.trim(), tenHangHoa: data.tenHangHoa.trim(), nhomHangHoa: data.nhomHangHoa.trim(), donViTinh: data.donViTinh.trim(),
       soLuong: Number(data.soLuong), yeuCauKyThuat: data.yeuCauKyThuat.trim(), kyMaHieuThamChieu: data.kyMaHieuThamChieu.trim(),
@@ -166,7 +166,7 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
           <button type="button" class="btn btn-primary" id="btn-package-goods-add" ${editable ? "" : "disabled"}><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>
         </div>
       </header>
-      <div id="package-goods-editor" hidden><form id="package-goods-form" class="package-goods-form"><input type="hidden" name="id">
+      <div id="package-goods-editor" hidden><form id="package-goods-form" class="package-goods-form"><input type="hidden" name="recordId">
         ${pkg.phanLo === "Có" ? `<label>Phần lô<select name="phanLoId" required><option value="">Chọn phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}">${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : `<input type="hidden" name="phanLoId">`}
         <label>Mã hàng hóa<input name="maHangHoa" required></label><label>Tên hàng hóa<input name="tenHangHoa" required></label><label>Nhóm hàng hóa<input name="nhomHangHoa"></label><label>Đơn vị tính<input name="donViTinh" required></label><label>Số lượng<input name="soLuong" type="number" min="0.0001" step="any" required></label>
         <label>Yêu cầu kỹ thuật<textarea name="yeuCauKyThuat"></textarea></label><label>Ký mã hiệu tham chiếu<input name="kyMaHieuThamChieu"></label><label>Xuất xứ yêu cầu<input name="xuatXuYeuCau"></label><label>Địa điểm giao hàng<input name="diaDiemGiaoHang"></label><label>Thời gian giao hàng<input name="thoiGianGiaoHang"></label><label>Đơn giá dự toán<input name="donGiaDuToan" type="number" min="0" step="1"></label><label>Thành tiền dự toán<input name="thanhTienDuToan" type="number" min="0" step="1"></label><label>Ghi chú<textarea name="ghiChu"></textarea></label>

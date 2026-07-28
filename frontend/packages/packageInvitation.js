@@ -1,4 +1,4 @@
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 
 export async function savePackageInvitationInfo(controller, pkg, {
   extensions = [],
@@ -15,6 +15,7 @@ export async function savePackageInvitationInfo(controller, pkg, {
     pkg.thoiGianDongThau = closingTime;
     pkg.thoiGianMoThau = closingTime;
   }
+  stageLocalRecords(controller.model, "goithau", pkg);
   await persistAndSync(controller, "goithau");
   return pkg;
 }

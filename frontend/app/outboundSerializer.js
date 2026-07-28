@@ -63,6 +63,10 @@ const VIRTUAL_FIELDS_BY_TABLE = {
   ]
 };
 
+const BIGINT_SAFE_DECIMAL_FIELDS_BY_TABLE = {
+  thong_tin_mo_thau: new Set(["giaXepHang", "giaDeNghiTrungThau"])
+};
+
 function clonePayloadValue(value) {
   if (value === void 0) return void 0;
   if (typeof structuredClone === "function") return structuredClone(value);
@@ -76,6 +80,13 @@ function normalizeSystemVersion(field, value) {
     const numericVersion = Number(value);
     if (Number.isSafeInteger(numericVersion)) return numericVersion;
   }
+  return value;
+}
+
+function normalizeBigintSafeDecimal(tableName, field, value) {
+  if (!BIGINT_SAFE_DECIMAL_FIELDS_BY_TABLE[tableName]?.has(field) || value == null) return value;
+  if (typeof value === "bigint") return String(value);
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return value;
 }
 
@@ -118,10 +129,12 @@ export function serializeOutboundRecord(record, type, normalizeRecord = (value) 
   if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) return normalized;
 
   const serialized = {};
+  const tableName = resolveSchemaTable(type);
   const allowedFields = allowedOutboundFields(type);
   allowedFields.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
-    const value = normalizeSystemVersion(field, clonePayloadValue(normalized[field]));
+    const cloned = clonePayloadValue(normalized[field]);
+    const value = normalizeBigintSafeDecimal(tableName, field, normalizeSystemVersion(field, cloned));
     if (value !== void 0) serialized[field] = value;
   });
 

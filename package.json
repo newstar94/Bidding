@@ -9,7 +9,8 @@
     "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "package:production": "npm run build:secure && python scripts/package_production.py",
-    "test:auth-shell": "node scripts/verify_auth_shell.mjs",
+    "test:auth-shell": "node --env-file-if-exists=.env scripts/verify_auth_shell.mjs",
+    "test:lifecycle": "node --env-file-if-exists=.env scripts/verify_full_lifecycle.mjs",
     "test:performance": "node --env-file-if-exists=.env scripts/measure_startup.mjs --assert"
   },
   "devDependencies": {

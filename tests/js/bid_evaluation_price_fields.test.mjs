@@ -12,6 +12,43 @@ import {
 } from "../../frontend/packages/bidEvaluationLowPriceRules.js";
 import { checkBidQualified } from "../../frontend/packages/detail/PackageTabs.js";
 import { calculateRankings } from "../../frontend/shared/BiddingCalculations.js";
+import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.js";
+import { stageBidEvaluationMutation } from "../../frontend/packages/bidEvaluationActions.js";
+
+test("serializes bid evaluation money as bigint-safe decimal strings", () => {
+  const serialized = serializeOutboundRecord({
+    id: "bid-1",
+    giaXepHang: 1_200_000,
+    giaDeNghiTrungThau: 1_150_000,
+  }, "thongtinmothau");
+  assert.equal(serialized.giaXepHang, "1200000");
+  assert.equal(serialized.giaDeNghiTrungThau, "1150000");
+});
+
+test("stages the package and evaluated bids before evaluation sync", () => {
+  const pkg = { id: "package-1", danhGiaHsdtMetadata: "{\"technical\":{\"saved\":true}}" };
+  const evaluatedBid = { id: "bid-1", danhGiaKetLuan: "Đạt" };
+  const unrelatedBid = { id: "bid-2", danhGiaKetLuan: "" };
+  const mutations = [];
+  const model = {
+    state: {
+      goithau: [pkg],
+      thongtinmothau: [evaluatedBid, unrelatedBid],
+    },
+    commitLocalMutation(table, options) {
+      mutations.push({ table, records: options.records });
+    },
+  };
+
+  const staged = stageBidEvaluationMutation(model, { ...pkg }, [{ ...evaluatedBid }]);
+
+  assert.equal(staged.pkg, pkg);
+  assert.deepEqual(staged.bids, [evaluatedBid]);
+  assert.deepEqual(mutations, [
+    { table: "goithau", records: pkg },
+    { table: "thongtinmothau", records: [evaluatedBid] },
+  ]);
+});
 
 test("shows both price columns in 1G1T and financial 1G2T reports only", () => {
   const single = buildBidEvaluationTablePresentation({

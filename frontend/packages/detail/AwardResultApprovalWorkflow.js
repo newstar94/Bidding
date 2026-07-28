@@ -19,7 +19,7 @@ import { selectPackageDetailTab } from "./PackageDetailState.js";
 const CANCEL_REASON = "Tất cả các hồ sơ dự thầu không đáp ứng yêu cầu của hồ sơ mời thầu. Hủy thầu theo quy định tại Điểm a Khoản 1 Điều 17 Luật Đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023, sửa đổi, bổ sung tại Luật số 57/2024/QH15, Luật số 90/2025/QH15.";
 
 const productionPorts = Object.freeze({
-  commitDependencies: (controller) => commitPackageAwardDependencies(controller),
+  commitDependencies: (controller, options) => commitPackageAwardDependencies(controller, options),
   commitDecision: (controller, options) => commitPackageAwardDecision(controller, options),
   finalizeLotBatch: (input) => finalizeEvaluationLotBatch({ ...input, fetcher: apiFetch }),
 });
@@ -379,7 +379,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
         let lifecycle = null;
         if (shouldFinalize) {
           try {
-            const dependencySync = await ports.commitDependencies(controller);
+            const dependencySync = await ports.commitDependencies(controller, { packageRecord: pkg });
             if (!dependencySync?.ok) return { ok: false, kind: "sync_failed" };
             const lots = parseLots(pkg.phanLoList);
             const lotsById = new Map(lots.map((lot) => [String(lot.id || ""), lot]));

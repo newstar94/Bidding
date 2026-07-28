@@ -1,6 +1,6 @@
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { derivePackagePrice } from "./packagePricing.js";
 
 export async function moThauGoiThau(id) {
@@ -88,6 +88,7 @@ export async function moThauGoiThau(id) {
   const ymdStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
   gt.thoiGianMoThau = ymdStr;
   gt.trangThai = "Đã mở thầu";
+  stageLocalRecords(this.model, "goithau", gt);
   const syncResult = await persistAndSync(this, "goithau");
   if (!syncResult?.ok) return;
   this.view.renderGoiThauTable();
@@ -223,6 +224,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
     gt.giaGoiThau = derivePackagePrice(gt);
     gt.trangThai = "Đang mời thầu";
     this.view.closeModal("modal-phathanh-hsmt");
+    stageLocalRecords(this.model, "goithau", gt);
     const syncResult = await persistAndSync(this, "goithau");
     if (!syncResult?.ok) return;
     const targetTab = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ"

@@ -1,4 +1,4 @@
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 
 export async function restoreCanceledPackage(id) {
   const gt = this.model.state.goithau.find((g) => g.id === id);
@@ -20,6 +20,7 @@ export async function restoreCanceledPackage(id) {
   );
   if (!confirmed) return;
   gt.trangThai = previousState;
+  stageLocalRecords(this.model, "goithau", gt);
   const syncResult = await persistAndSync(this, "goithau", {
     afterPersist: () => this.view.renderGoiThauTable()
   });
@@ -146,4 +147,3 @@ export async function checkAndInheritCanceledPackage(planId) {
     this.updatePackageFieldsVisibility(false);
   }
 }
-

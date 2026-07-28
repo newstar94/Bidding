@@ -1,4 +1,4 @@
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 
 function parseStoredDateTime(value) {
   const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
@@ -42,6 +42,9 @@ export async function savePackageFinancialOpening(controller, pkg, bidUpdates, {
     if (update.hieuLucHsdt != null) bid.hieuLucHsdt = update.hieuLucHsdt;
   });
   pkg.thoiGianMoEhsdxtc = openingTime || pkg.thoiGianMoEhsdxtc || controller.model.getCurrentDateTimeString();
+  const updatedBids = (controller.model.state.thongtinmothau || []).filter((bid) => updates.has(String(bid.id)));
+  stageLocalRecords(controller.model, "thongtinmothau", updatedBids);
+  stageLocalRecords(controller.model, "goithau", pkg);
   await persistAndSync(controller, ["thongtinmothau", "goithau"]);
   return pkg;
 }

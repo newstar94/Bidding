@@ -5,7 +5,7 @@ import { captureModalReturnState, hasModalReturnState, updateModalReturnAction }
 import { escapeHtml } from "../shared/view_helpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { createInitialVersion, createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeProfile } from "../auth/accessContext.js";
@@ -997,6 +997,19 @@ export async function handleGoiThauSubmit(e) {
   if (hasModalReturnState("goithau-detail") && finalGtId) {
     updateModalReturnAction(finalGtId);
   }
+  const finalPackage = this.model.state.goithau.find((item) => String(item.id) === String(finalGtId));
+  stageLocalRecords(this.model, "goithau", finalPackage);
+  stageLocalRecords(
+    this.model,
+    "goithauhanghoa",
+    this.model.state.goithauhanghoa.filter((item) => String(item.goiThauId) === String(finalGtId)),
+  );
+  const affectedPlanIds = new Set([oldPlanId, gtData.keHoachId].filter(Boolean).map(String));
+  stageLocalRecords(
+    this.model,
+    "kehoach",
+    this.model.state.kehoach.filter((item) => affectedPlanIds.has(String(item.id))),
+  );
   const syncResult = await persistAndSync(this, ["goithau", "goithauhanghoa", "kehoach", "hopdong", "thongtinmothau"], {
     afterPersist: () => {
       this.view.renderGoiThauTable();
