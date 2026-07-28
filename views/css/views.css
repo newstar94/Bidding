@@ -2127,6 +2127,7 @@ table th {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
+  white-space: nowrap;
 }
 .auth-legal-consent a:hover,
 .auth-legal-consent a:active {
