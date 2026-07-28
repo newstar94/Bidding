@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
 import { buildPackageGoodsPreview, parsePackageGoodsRows } from "../../frontend/packages/PackageGoodsExcel.js";
 import { clonePackageGoodsForSnapshot } from "../../frontend/packages/packageGoodsVersioning.js";
+import { packageGoodsPaginationPages } from "../../frontend/packages/PackageGoodsWorkflow.js";
 import { BrowserDB } from "../../frontend/app/BrowserDB.js";
 
 const lots = [
@@ -80,6 +81,13 @@ test("new package snapshots receive independent goods and remapped lot ids", () 
 test("goods tab is visible only for goods procurement packages", () => {
   assert.ok(buildPackageTabs({ linhVuc: "Hàng hóa", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
   assert.ok(!buildPackageTabs({ linhVuc: "Tư vấn", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
+});
+
+test("goods pagination uses the same centered five-page window as other tables", () => {
+  assert.deepEqual(packageGoodsPaginationPages(1, 1), [1]);
+  assert.deepEqual(packageGoodsPaginationPages(1, 8), [1, 2, 3, 4, 5]);
+  assert.deepEqual(packageGoodsPaginationPages(4, 8), [2, 3, 4, 5, 6]);
+  assert.deepEqual(packageGoodsPaginationPages(8, 8), [4, 5, 6, 7, 8]);
 });
 
 test("IndexedDB upgrade adds the goods store without recreating existing stores", async () => {

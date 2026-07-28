@@ -36,10 +36,12 @@ from backend.startup import (
 
 
 def database_auto_migration_enabled(environ=None):
-    """Return true only when schema mutation was explicitly opted into."""
+    """Enable schema upgrades by default outside production."""
 
     environment = os.environ if environ is None else environ
-    return str(environment.get("DATABASE_AUTO_MIGRATE", "false")).strip().lower() in {
+    app_environment = str(environment.get("APP_ENV", "development")).strip().lower()
+    default = "false" if app_environment in {"prod", "production"} else "true"
+    return str(environment.get("DATABASE_AUTO_MIGRATE", default)).strip().lower() in {
         "1",
         "true",
         "yes",

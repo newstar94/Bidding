@@ -1016,8 +1016,17 @@ import contextlib
 
 
 def _initialize_database():
-    from backend.shared.helpers import khoi_tao_va_di_tru_he_thong
-    khoi_tao_va_di_tru_he_thong()
+    from backend.db.db_helper import PostgresDatabase
+    from backend.db.postgres_schema import initialize_and_log
+
+    database_url = os.environ.get("MIGRATOR_DATABASE_URL") or os.environ.get(
+        "DATABASE_URL"
+    )
+    migration_database = PostgresDatabase(database_url)
+    try:
+        initialize_and_log(migration_database)
+    finally:
+        migration_database.close()
 
 
 @contextlib.asynccontextmanager

@@ -351,6 +351,52 @@ export function getSyncValidationErrors(data) {
   if (Array.isArray(data?.fields?.errors)) return data.fields.errors;
   return [];
 }
+
+function syncConflictLabel(error) {
+  const record = error?.serverRecord || {};
+  const code = record.maKeHoach || record.maGoiThau || record.maHopDong || record.maNhaThau || record.maChuDauTu || "";
+  const name = record.tenKeHoach || record.tenGoiThau || record.tenHopDong || record.tenNhaThau || record.tenChuDauTu || "";
+  return [code, name].filter(Boolean).join(" — ") || String(error?.id || "Bản ghi không xác định");
+}
+
+async function restoreRejectedSyncRecords(controller, rejectedRecords) {
+  const changedKeys = new Set();
+  for (const rejected of rejectedRecords) {
+    let serverRecord = null;
+    try {
+      serverRecord = await controller.fetchRecordByLookup(rejected.type, rejected.conflictingId || rejected.id);
+    } catch (error) {
+      console.error("Failed to restore conflicted server record:", error);
+    }
+    if (Array.isArray(controller.model.state[rejected.type]) && (!serverRecord || String(serverRecord.id) !== rejected.id)) {
+      controller.model.state[rejected.type] = controller.model.state[rejected.type].filter(
+        (item) => String(item.id) !== rejected.id
+      );
+      await controller.model.db?.deleteRecord?.(rejected.type, rejected.id);
+    }
+    changedKeys.add(rejected.type);
+  }
+  if (changedKeys.size > 0) await renderChangedState(controller, changedKeys, { isBackground: true });
+  return changedKeys;
+}
+
+export async function resolveRowVersionConflicts(controller, { data, snapshot }) {
+  const conflictErrors = getSyncValidationErrors(data).filter(
+    (error) => error?.code === "ROW_VERSION_CONFLICT"
+  );
+  if (conflictErrors.length === 0) return { resolved: false };
+  const labels = conflictErrors.slice(0, 3).map(syncConflictLabel).join("; ");
+  const suffix = conflictErrors.length > 3 ? `; và ${conflictErrors.length - 3} bản ghi khác` : "";
+  const rejected = controller.model?.discardRejectedMutations?.(conflictErrors, snapshot) || [];
+  await restoreRejectedSyncRecords(controller, rejected);
+  controller.view?.showToast?.(
+    "Đã dùng dữ liệu server",
+    `Đã bỏ thay đổi local bị xung đột của: ${labels}${suffix}.`,
+    "info",
+  );
+  return { resolved: rejected.length === conflictErrors.length, choice: "server", automatic: true };
+}
+
 export async function fetchRecordByLookup(tableKey, lookup) {
   if (!tableKey || !lookup) return null;
   const response = await apiFetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
@@ -436,6 +482,13 @@ export function autoSync() {
       const validationErrors = getSyncValidationErrors(data);
       let rejectedRecords = [];
       if (status === 409 || data.status === "conflict") {
+        const resolution = await resolveRowVersionConflicts(this, { data, snapshot });
+        if (resolution.resolved) {
+          this._syncConflict = null;
+          this.updateSyncState({ phase: "idle", online: true, lastSyncedAt: Date.now() });
+          console.info(`[Sync Conflict] Resolved using ${resolution.choice}${resolution.automatic ? " automatically" : ""}.`);
+          return { ok: true, status, data, resolvedConflict: resolution.choice };
+        }
         this._syncConflict = {
           serverSyncVersion: data.currentSyncVersion ?? null,
           message: data.message || data.error || "Server data changed before local sync."

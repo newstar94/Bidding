@@ -24,6 +24,16 @@ function operationLabel(value) {
   return { create: "Thêm mới", update: "Cập nhật", unchanged: "Không thay đổi", invalid: "Không hợp lệ" }[value] || value;
 }
 
+export function packageGoodsPaginationPages(currentPage, totalPages, maxVisiblePages = 5) {
+  const safeTotal = Math.max(1, Number(totalPages) || 1);
+  const safeCurrent = Math.min(safeTotal, Math.max(1, Number(currentPage) || 1));
+  const visibleCount = Math.max(1, Number(maxVisiblePages) || 1);
+  let startPage = Math.max(1, safeCurrent - Math.floor(visibleCount / 2));
+  const endPage = Math.min(safeTotal, startPage + visibleCount - 1);
+  startPage = Math.max(1, endPage - visibleCount + 1);
+  return Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+}
+
 async function persistImport(model, pkg, preview, { mode, selectedLotId }) {
   if (preview.some((item) => !item._valid)) throw new Error("Không thể lưu khi còn dòng không hợp lệ.");
   const current = packageGoods(model, pkg.id);
@@ -131,38 +141,64 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   const page = Math.min(pageCount, Math.max(1, Number(view._packageGoodsPage || 1)));
   const visibleGoods = filtered.slice((page - 1) * pageSize, page * pageSize);
   const lotById = new Map(lots.map((lot) => [String(lot.id), lot]));
+  const hasLotColumn = pkg.phanLo === "Có" && !selected;
+  const columnCount = hasLotColumn ? 11 : 10;
+  const startIndex = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIndex = Math.min(page * pageSize, filtered.length);
+  const paginationPages = packageGoodsPaginationPages(page, pageCount);
   contentWrapper.innerHTML = trustedHTML(`
-    <section class="package-goods-panel">
-      <div class="package-goods-toolbar"><div><h4>Danh mục hàng hóa</h4><p>${allGoods.length} mặt hàng${editable ? "" : ` — Chỉ đọc vì gói thầu đang ở trạng thái ${escapeHtml(pkg.trangThai || "không cho phép sửa")}`}</p></div>
-      <div class="package-goods-actions">
-        <input id="package-goods-search" type="search" value="${escapeHtml(view._packageGoodsSearch || "")}" placeholder="Tìm mã hoặc tên hàng hóa">
-        ${pkg.phanLo === "Có" ? `<select id="package-goods-lot-filter"><option value="">Tất cả phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}" ${selected === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("")}</select>` : ""}
-        <button class="btn btn-outline" id="btn-package-goods-template">Tải file mẫu</button><button class="btn btn-outline" id="btn-package-goods-export">Xuất Excel</button>
-        <label class="btn btn-outline ${editable ? "" : "disabled"}">Nhập Excel<input id="package-goods-file" type="file" accept=".xlsx,.xls" hidden ${editable ? "" : "disabled"}></label>
-        <button class="btn btn-primary" id="btn-package-goods-add" ${editable ? "" : "disabled"}>Thêm hàng hóa</button>
-      </div></div>
+    <section class="package-goods-panel" aria-labelledby="package-goods-title">
+      <header class="package-goods-toolbar">
+        <div class="package-goods-heading">
+          <h4 class="package-section-title is-neutral package-goods-title" id="package-goods-title"><i data-lucide="package-open" aria-hidden="true"></i>Danh mục hàng hóa</h4>
+          <p class="package-goods-summary"><span>${allGoods.length} mặt hàng</span>${editable ? "" : `<span class="package-goods-readonly"><i data-lucide="lock" aria-hidden="true"></i>Chỉ đọc vì gói thầu đang ở trạng thái ${escapeHtml(pkg.trangThai || "không cho phép sửa")}</span>`}</p>
+        </div>
+        <div class="package-goods-actions">
+          <label class="package-goods-search" for="package-goods-search">
+            <span class="visually-hidden">Tìm hàng hóa</span><i data-lucide="search" aria-hidden="true"></i>
+            <input class="form-control" id="package-goods-search" type="search" value="${escapeHtml(view._packageGoodsSearch || "")}" placeholder="Tìm mã hoặc tên hàng hóa">
+          </label>
+          ${pkg.phanLo === "Có" ? `<label class="package-goods-filter" for="package-goods-lot-filter"><span class="visually-hidden">Lọc theo phần lô</span><select class="form-control" id="package-goods-lot-filter"><option value="">Tất cả phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}" ${selected === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : ""}
+          <button type="button" class="btn btn-outline" id="btn-package-goods-template"><i data-lucide="download" aria-hidden="true"></i>Tải file mẫu</button>
+          <button type="button" class="btn btn-outline" id="btn-package-goods-export"><i data-lucide="file-spreadsheet" aria-hidden="true"></i>Xuất Excel</button>
+          <input id="package-goods-file" type="file" accept=".xlsx,.xls" hidden ${editable ? "" : "disabled"}>
+          <button type="button" class="btn btn-outline" id="btn-package-goods-import-trigger" ${editable ? "" : "disabled"}><i data-lucide="upload" aria-hidden="true"></i>Nhập Excel</button>
+          <button type="button" class="btn btn-primary" id="btn-package-goods-add" ${editable ? "" : "disabled"}><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>
+        </div>
+      </header>
       <div id="package-goods-editor" hidden><form id="package-goods-form" class="package-goods-form"><input type="hidden" name="id">
         ${pkg.phanLo === "Có" ? `<label>Phần lô<select name="phanLoId" required><option value="">Chọn phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}">${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : `<input type="hidden" name="phanLoId">`}
         <label>Mã hàng hóa<input name="maHangHoa" required></label><label>Tên hàng hóa<input name="tenHangHoa" required></label><label>Nhóm hàng hóa<input name="nhomHangHoa"></label><label>Đơn vị tính<input name="donViTinh" required></label><label>Số lượng<input name="soLuong" type="number" min="0.0001" step="any" required></label>
         <label>Yêu cầu kỹ thuật<textarea name="yeuCauKyThuat"></textarea></label><label>Ký mã hiệu tham chiếu<input name="kyMaHieuThamChieu"></label><label>Xuất xứ yêu cầu<input name="xuatXuYeuCau"></label><label>Địa điểm giao hàng<input name="diaDiemGiaoHang"></label><label>Thời gian giao hàng<input name="thoiGianGiaoHang"></label><label>Đơn giá dự toán<input name="donGiaDuToan" type="number" min="0" step="1"></label><label>Thành tiền dự toán<input name="thanhTienDuToan" type="number" min="0" step="1"></label><label>Ghi chú<textarea name="ghiChu"></textarea></label>
         <div><button class="btn btn-outline" type="button" id="btn-package-goods-cancel">Hủy</button><button class="btn btn-primary" type="submit">Lưu</button></div>
       </form></div>
-      <div class="table-responsive"><table class="data-table" data-no-sort="true"><thead><tr>${pkg.phanLo === "Có" && !selected ? "<th>Phần lô</th>" : ""}<th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Nhóm</th><th>ĐVT</th><th>Số lượng</th><th>Yêu cầu kỹ thuật</th><th>Đơn giá dự toán</th><th>Thành tiền</th><th>Thao tác</th></tr></thead>
-      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${pkg.phanLo === "Có" && !selected ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td><td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(item.id)}" ${editable ? "" : "disabled"}>Sửa</button> <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(item.id)}" ${canDelete ? "" : "disabled"} title="${canDelete ? "Xóa hàng hóa" : "Theo chính sách hiện tại, chỉ Quản lý tổ chức được xóa dữ liệu"}">Xóa</button></td></tr>`).join("") : `<tr><td colspan="11">Chưa có hàng hóa trong phạm vi này.</td></tr>`}</tbody></table></div>
-      <div class="package-goods-pagination"><span>Trang ${page}/${pageCount} — ${filtered.length} kết quả</span><div><button class="btn btn-sm btn-outline" id="package-goods-prev" ${page <= 1 ? "disabled" : ""}>Trước</button> <button class="btn btn-sm btn-outline" id="package-goods-next" ${page >= pageCount ? "disabled" : ""}>Sau</button></div></div>
+      <div class="table-container package-goods-table"><table class="data-table" data-no-sort="true"><thead><tr>${hasLotColumn ? "<th>Phần lô</th>" : ""}<th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Nhóm</th><th>ĐVT</th><th>Số lượng</th><th>Yêu cầu kỹ thuật</th><th>Đơn giá dự toán</th><th>Thành tiền</th><th>Thao tác</th></tr></thead>
+      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${hasLotColumn ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td><td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(item.id)}" ${editable ? "" : "disabled"}>Sửa</button> <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(item.id)}" ${canDelete ? "" : "disabled"} title="${canDelete ? "Xóa hàng hóa" : "Theo chính sách hiện tại, chỉ Quản lý tổ chức được xóa dữ liệu"}">Xóa</button></td></tr>`).join("") : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`}</tbody></table></div>
+      <nav class="pagination-container package-goods-pagination" aria-label="Phân trang danh mục hàng hóa"><span class="pagination-info">Hiển thị <strong>${startIndex}-${endIndex}</strong> trên tổng số <strong>${filtered.length}</strong> bản ghi</span><div class="pagination-buttons">
+        <button type="button" class="pagination-btn" data-package-goods-page="1" title="Trang đầu" aria-label="Trang đầu" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevrons-left" aria-hidden="true"></i></button>
+        <button type="button" class="pagination-btn" data-package-goods-page="${Math.max(1, page - 1)}" title="Trang trước" aria-label="Trang trước" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+        ${paginationPages.map((pageNumber) => `<button type="button" class="pagination-btn ${pageNumber === page ? "active" : ""}" data-package-goods-page="${pageNumber}" ${pageNumber === page ? 'aria-current="page"' : ""} aria-label="Trang ${pageNumber}">${pageNumber}</button>`).join("")}
+        <button type="button" class="pagination-btn" data-package-goods-page="${Math.min(pageCount, page + 1)}" title="Trang sau" aria-label="Trang sau" ${page >= pageCount ? "disabled" : ""}><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+        <button type="button" class="pagination-btn" data-package-goods-page="${pageCount}" title="Trang cuối" aria-label="Trang cuối" ${page >= pageCount ? "disabled" : ""}><i data-lucide="chevrons-right" aria-hidden="true"></i></button>
+      </div></nav>
       <section id="package-goods-import" hidden><div class="package-goods-import-controls"><label>Chế độ<select id="package-goods-import-mode"><option value="merge">Gộp dữ liệu</option><option value="replace">Thay thế toàn bộ phạm vi</option></select></label><button class="btn btn-primary" id="btn-package-goods-import-save">Lưu dữ liệu hợp lệ</button></div><div id="package-goods-preview"></div></section>
     </section>`);
 
   const rerender = () => renderPackageGoodsPanel(view, { contentWrapper, pkg });
   contentWrapper.querySelector("#package-goods-lot-filter")?.addEventListener("change", async (event) => { view._packageGoodsLotFilter = event.target.value; view._packageGoodsPage = 1; await rerender(); });
   contentWrapper.querySelector("#package-goods-search")?.addEventListener("change", async (event) => { view._packageGoodsSearch = event.target.value; view._packageGoodsPage = 1; await rerender(); });
-  contentWrapper.querySelector("#package-goods-prev")?.addEventListener("click", async () => { view._packageGoodsPage = page - 1; await rerender(); });
-  contentWrapper.querySelector("#package-goods-next")?.addEventListener("click", async () => { view._packageGoodsPage = page + 1; await rerender(); });
+  contentWrapper.querySelectorAll("[data-package-goods-page]").forEach((button) => button.addEventListener("click", async () => {
+    const requestedPage = Number(button.dataset.packageGoodsPage);
+    if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > pageCount || requestedPage === page) return;
+    view._packageGoodsPage = requestedPage;
+    await rerender();
+  }));
   contentWrapper.querySelector("#btn-package-goods-template")?.addEventListener("click", () => downloadPackageGoodsWorkbook(pkg, [], { template: true, selectedLotId: selected }));
   contentWrapper.querySelector("#btn-package-goods-export")?.addEventListener("click", () => downloadPackageGoodsWorkbook(pkg, allGoods, { selectedLotId: selected }));
   bindEditor(view, contentWrapper, pkg, lots, editable, rerender);
 
   const fileInput = contentWrapper.querySelector("#package-goods-file");
+  contentWrapper.querySelector("#btn-package-goods-import-trigger")?.addEventListener("click", () => fileInput?.click());
   fileInput?.addEventListener("change", async () => {
     const file = fileInput.files?.[0]; if (!file) return;
     try {
