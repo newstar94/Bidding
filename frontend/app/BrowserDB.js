@@ -9,6 +9,7 @@ export class BrowserDB {
       "chuyengia",
       "kehoach",
       "goithau",
+      "goithauhanghoa",
       "hopdong",
       "systempackages",
       "organizations",
@@ -22,7 +23,7 @@ export class BrowserDB {
   }
   init() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 3);
+      const request = indexedDB.open(this.dbName, 4);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
         this.stores.forEach((storeName) => {

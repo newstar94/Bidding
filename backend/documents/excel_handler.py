@@ -172,6 +172,24 @@ ENTITY_SCHEMA = {
         {'field': 'tyLe',                 'label': 'Tỷ lệ phần trăm (%)',         'aliases': ['Tỷ lệ phần trăm (%)', 'Tỷ lệ phần trăm', 'Tỷ lệ (%)', 'Tỷ lệ', 'tyLe', 'phanTram']},
         {'field': 'giaTriUocTinh',        'label': 'Giá trị ước tính',           'aliases': ['Giá trị ước tính', 'Giá trị', 'giaTriUocTinh']},
     ],
+    'goithauhanghoa': [
+        {'field': 'stt',                  'label': 'STT',                        'aliases': ['STT', 'Số thứ tự']},
+        {'field': 'maPhanLo',             'label': 'Mã phần lô',                 'aliases': ['Mã phần lô', 'Mã phần(lô)', 'Mã lô', 'Phần lô']},
+        {'field': 'tenPhanLo',            'label': 'Tên phần lô',                'aliases': ['Tên phần lô', 'Tên lô']},
+        {'field': 'maHangHoa',            'label': 'Mã hàng hóa',                'aliases': ['Mã hàng hóa', 'Mã hạng mục', 'Mã mặt hàng']},
+        {'field': 'tenHangHoa',           'label': 'Tên hàng hóa',               'aliases': ['Tên hàng hóa', 'Tên hạng mục', 'Danh mục hàng hóa', 'Danh mục hàng hóa (1)', 'Danh mục hàng hóa(1)']},
+        {'field': 'nhomHangHoa',          'label': 'Nhóm hàng hóa',              'aliases': ['Nhóm hàng hóa', 'Nhóm hạng mục']},
+        {'field': 'donViTinh',            'label': 'Đơn vị tính',                'aliases': ['Đơn vị tính', 'ĐVT', 'Đơn vị']},
+        {'field': 'soLuong',              'label': 'Số lượng',                   'aliases': ['Số lượng', 'Khối lượng', 'Khối lượng mời thầu']},
+        {'field': 'yeuCauKyThuat',        'label': 'Yêu cầu kỹ thuật',           'aliases': ['Yêu cầu kỹ thuật', 'Thông số kỹ thuật', 'Mô tả kỹ thuật']},
+        {'field': 'kyMaHieuThamChieu',   'label': 'Ký mã hiệu tham chiếu',      'aliases': ['Ký mã hiệu tham chiếu', 'Ký mã hiệu']},
+        {'field': 'xuatXuYeuCau',         'label': 'Xuất xứ yêu cầu',            'aliases': ['Xuất xứ yêu cầu', 'Xuất xứ']},
+        {'field': 'diaDiemGiaoHang',      'label': 'Địa điểm giao hàng',         'aliases': ['Địa điểm giao hàng']},
+        {'field': 'thoiGianGiaoHang',     'label': 'Thời gian giao hàng',        'aliases': ['Thời gian giao hàng']},
+        {'field': 'donGiaDuToan',         'label': 'Đơn giá dự toán',            'aliases': ['Đơn giá dự toán', 'Đơn giá']},
+        {'field': 'thanhTienDuToan',      'label': 'Thành tiền dự toán',         'aliases': ['Thành tiền dự toán', 'Thành tiền']},
+        {'field': 'ghiChu',               'label': 'Ghi chú',                    'aliases': ['Ghi chú']},
+    ],
     'ketquaqd': [
         {'field': 'maNhaThau',            'label': 'Mã nhà thầu',                 'aliases': ['Mã nhà thầu', 'Mã định danh', 'Mã số thuế', 'Mã', 'maNhaThau']},
         {'field': 'tenNhaThau',           'label': 'Tên nhà thầu',                'aliases': ['Tên nhà thầu', 'Nhà thầu', 'tenNhaThau']},
@@ -292,8 +310,12 @@ def parse_excel(file_bytes, import_type):
             if pd.isna(val):
                 val = ""
 
-            if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao']:
-                val = clean_money(val)
+            if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao', 'donGiaDuToan', 'thanhTienDuToan']:
+                if import_type == 'goithauhanghoa':
+                    if isinstance(val, float) and val.is_integer():
+                        val = int(val)
+                else:
+                    val = clean_money(val)
             elif key in ['soLuong', 'tyLe']:
                 try:
                     val = float(str(val).strip()) if val != "" else 0.0

@@ -612,6 +612,26 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             ("thoiGianToChuc", "Thời gian tổ chức LCNT"),
             ("thoiGianBatDauToChuc", "Thời gian bắt đầu tổ chức"),
         ), errors)
+    elif table_name == "goi_thau_hang_hoa":
+        _require_fields(item, (
+            ("goiThauId", "Gói thầu"),
+            ("maHangHoa", "Mã hàng hóa"),
+            ("tenHangHoa", "Tên hàng hóa"),
+            ("donViTinh", "Đơn vị tính"),
+            ("soLuong", "Số lượng"),
+        ), errors)
+        item["maHangHoa"] = str(item.get("maHangHoa") or "").strip()
+        quantity = item.get("soLuong")
+        if isinstance(quantity, bool) or not isinstance(quantity, (int, float)) or not math.isfinite(quantity) or quantity <= 0:
+            errors.append("Số lượng hàng hóa phải là số lớn hơn 0.")
+        for key, label in (
+            ("donGiaDuToan", "Đơn giá dự toán"),
+            ("thanhTienDuToan", "Thành tiền dự toán"),
+        ):
+            value = item.get(key)
+            parsed = parse_vnd_amount(value) if value not in (None, "") else None
+            if value not in (None, "") and (parsed is None or parsed < 0):
+                errors.append(f"{label} phải là số tiền không âm.")
     elif table_name == "nha_thau":
         if not str(item.get("tenNhaThau") or "").strip():
             errors.append("Tên nhà thầu không được để trống.")

@@ -310,6 +310,7 @@ def _create_indexes(cursor) -> None:
         "phan_cong_nhan_su",
         "danh_muc_trang_thai_hop_dong",
         "thong_tin_mo_thau",
+        "goi_thau_hang_hoa",
         "ma_tran_phan_quyen",
     )
     owner_tables = tuple(
@@ -427,6 +428,9 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_active_code ON goi_thau_phan_lo (organization_id, goi_thau_id, lower(trim(ma_phan_lo))) WHERE archived_at IS NULL AND ma_phan_lo IS NOT NULL AND trim(ma_phan_lo) <> ''",
+        "CREATE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_parent ON goi_thau_hang_hoa (organization_id, goi_thau_id, phan_lo_id, sort_order, id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_code_no_lot ON goi_thau_hang_hoa (organization_id, goi_thau_id, lower(trim(ma_hang_hoa))) WHERE phan_lo_id IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_code_by_lot ON goi_thau_hang_hoa (organization_id, goi_thau_id, phan_lo_id, lower(trim(ma_hang_hoa))) WHERE phan_lo_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_lot_batch_package ON dot_xu_ly_phan_lo (organization_id, goi_thau_id, sequence_no)",
         "CREATE INDEX IF NOT EXISTS idx_lot_batch_created_by ON dot_xu_ly_phan_lo (created_by_id)",
         "CREATE INDEX IF NOT EXISTS idx_lot_batch_detail_batch ON dot_xu_ly_phan_lo_chi_tiet (organization_id, batch_id)",
@@ -752,6 +756,7 @@ def _create_triggers(cursor) -> None:
         "phan_cong_nhan_su",
         "danh_muc_trang_thai_hop_dong",
         "thong_tin_mo_thau",
+        "goi_thau_hang_hoa",
         "ma_tran_phan_quyen",
     ):
         cursor.execute(
@@ -876,6 +881,7 @@ def assert_schema_contract(cursor) -> None:
         "nhom_phu_thuoc_phan_lo_thanh_vien",
         "ho_so_nghiep_vu_lcnt",
         "ho_so_nghiep_vu_lcnt_phan_lo",
+        "goi_thau_hang_hoa",
     }
     expected_foreign_keys = set()
     for table_name in required_canonical_fk_tables:
@@ -908,6 +914,9 @@ def assert_schema_contract(cursor) -> None:
         "idx_document_export_capabilities_user",
         "idx_auth_sessions_one_active_per_user",
         "idx_audit_log_single_successor",
+        "idx_goi_thau_hang_hoa_parent",
+        "idx_goi_thau_hang_hoa_code_no_lot",
+        "idx_goi_thau_hang_hoa_code_by_lot",
     }
     actual_indexes = {
         row[0]

@@ -558,9 +558,9 @@ export class BiddingController {
       [this.routeMap.managerhosogiay]: ["CUSTOMCONTRACTSTATUSES"],
       [this.routeMap.kehoach]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
       [this.routeMap["kehoach-detail"]]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
-      [this.routeMap.goithau]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "NHATHAU", "THONGTINMOTHAU", "ASSIGNMENTS"],
+      [this.routeMap.goithau]: ["GOITHAU", "GOITHAUHANGHOA", "KEHOACH", "CHUDAUTU", "NHATHAU", "THONGTINMOTHAU", "ASSIGNMENTS"],
       [this.routeMap["goithau-timeline"]]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "HOPDONG", "THONGTINMOTHAU", "ASSIGNMENTS"],
-      [this.routeMap["goithau-detail"]]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "NHATHAU", "HOPDONG", "THONGTINMOTHAU"],
+      [this.routeMap["goithau-detail"]]: ["GOITHAU", "GOITHAUHANGHOA", "KEHOACH", "CHUDAUTU", "NHATHAU", "HOPDONG", "THONGTINMOTHAU"],
       [this.routeMap.mothau]: ["GOITHAU", "KEHOACH", "NHATHAU", "THONGTINMOTHAU"],
       [this.routeMap.danhgiahsdt]: ["GOITHAU", "KEHOACH", "NHATHAU", "THONGTINMOTHAU"],
       [this.routeMap.hopdong]: ["HOPDONG", "GOITHAU", "NHATHAU", "CHUDAUTU"],
@@ -577,7 +577,7 @@ export class BiddingController {
   getSyncTableKeysForPath(pathname = window.location.pathname) {
     return this.getStartupPriorityKeys(pathname)
       .map((key) => String(key || "").toLowerCase())
-      .filter((key) => ["chudautu", "kehoach", "goithau", "chuyengia", "nhathau", "hopdong", "assignments", "customcontractstatuses", "thongtinmothau", "permissionmatrix"].includes(key));
+      .filter((key) => ["chudautu", "kehoach", "goithau", "goithauhanghoa", "chuyengia", "nhathau", "hopdong", "assignments", "customcontractstatuses", "thongtinmothau", "permissionmatrix"].includes(key));
   }
   loadInitDataInBackground() {
     const load = async () => {

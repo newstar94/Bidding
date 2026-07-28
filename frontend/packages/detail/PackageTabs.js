@@ -66,6 +66,7 @@ export function getPackageWorkflowState(pkg, bids = []) {
 export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
   const state = getPackageWorkflowState(pkg, bids);
   const tabs = [{ id: "preparation", label: "Thông tin gói thầu" }];
+  if (pkg?.linhVuc === "Hàng hóa") tabs.push({ id: "goods", label: "Danh mục hàng hóa" });
   const isDirectOrSpecial = pkg.hinhThucLuaChon === "Chỉ định thầu rút gọn"
     || pkg.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
 

@@ -46,6 +46,7 @@ PROTECTED_DELETE_REFERENCES = {
         DeleteReferenceRule("goi_thau_gia_han", "goi_thau_id", "lịch sử gia hạn"),
         DeleteReferenceRule("goi_thau_lam_ro", "goi_thau_id", "lịch sử làm rõ"),
         DeleteReferenceRule("thong_tin_mo_thau", "goi_thau_id", "hồ sơ mở thầu"),
+        DeleteReferenceRule("goi_thau_hang_hoa", "goi_thau_id", "danh mục hàng hóa"),
     ),
     "hop_dong": (
         DeleteReferenceRule("hop_dong_goi_thau", "hop_dong_id", "gói thầu của hợp đồng"),
@@ -86,6 +87,12 @@ CASCADE_IMPACT_RULES = {
         ),
     ),
 }
+
+PROTECTED_DELETE_REFERENCES.setdefault("goi_thau_phan_lo", tuple())
+PROTECTED_DELETE_REFERENCES["goi_thau_phan_lo"] = (
+    *PROTECTED_DELETE_REFERENCES["goi_thau_phan_lo"],
+    DeleteReferenceRule("goi_thau_hang_hoa", "phan_lo_id", "danh mục hàng hóa"),
+)
 
 
 ASSIGNMENT_TARGET_TYPES = {

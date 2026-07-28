@@ -26,6 +26,7 @@ const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
   "chudautu",
   "kehoach",
   "goithau",
+  "goithauhanghoa",
   "chuyengia",
   "nhathau",
   "hopdong",
@@ -52,6 +53,7 @@ export class BiddingModel {
       CHUYENGIA: "bf_chuyengia",
       KEHOACH: "bf_kehoach",
       GOITHAU: "bf_goithau",
+      GOITHAUHANGHOA: "bf_goithau_hang_hoa",
       HOPDONG: "bf_hopdong",
       THEME: "bf_dark_mode",
       // New RBAC Storage Keys
@@ -71,6 +73,7 @@ export class BiddingModel {
       chuyengia: [],
       kehoach: [],
       goithau: [],
+      goithauhanghoa: [],
       hopdong: [],
       systempackages: [],
       selectedPlanVersion: {},
@@ -302,6 +305,7 @@ export class BiddingModel {
     const persistedDataPromise = this.db.hasAnyTableData([
       "kehoach",
       "goithau",
+      "goithauhanghoa",
       "chudautu",
       "nhathau",
       "chuyengia",

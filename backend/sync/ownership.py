@@ -21,6 +21,9 @@ OWNER_SCOPED_REFERENCES = {
         ("ke_hoach_id", "ke_hoach_lcnt"),
     ],
     "thong_tin_mo_thau": [("goi_thau_id", "goi_thau"), ("nha_thau_id", "nha_thau")],
+    "goi_thau_hang_hoa": [
+        ("goi_thau_id", "goi_thau"),
+    ],
 }
 
 ARCHIVABLE_REFERENCE_TABLES = {
@@ -39,6 +42,8 @@ class OwnerReferenceContext:
     package_plan_by_id: dict[str, str | None] = field(default_factory=dict)
     package_lotted_by_id: dict[str, bool] = field(default_factory=dict)
     package_status_by_id: dict[str, object] = field(default_factory=dict)
+    package_field_by_id: dict[str, str] = field(default_factory=dict)
+    lot_package_by_id: dict[str, str] = field(default_factory=dict)
     lot_codes_by_package_id: dict[str, set[str]] = field(default_factory=dict)
     rebid_cycle_package_ids: set[str] = field(default_factory=set)
     winner_opening_by_pair: dict[tuple[str, str], tuple[object, object]] = field(
@@ -51,6 +56,13 @@ def _row_value(row, name, index):
         return row[name]
     except (KeyError, TypeError):
         return row[index]
+
+
+def _optional_row_value(row, name, index, default=None):
+    try:
+        return _row_value(row, name, index)
+    except (KeyError, IndexError, TypeError):
+        return default
 
 
 def _chunked(values):
@@ -123,6 +135,8 @@ def build_owner_reference_context(
                 if package_id:
                     opening_package_ids.add(str(package_id))
                 remember("nha_thau", get_payload_value(table_name, item, "nha_thau_id"))
+            if table_name == "goi_thau_hang_hoa":
+                remember("goi_thau_phan_lo", get_payload_value(table_name, item, "phan_lo_id"))
             if table_name in {"nha_thau", "thong_tin_mo_thau"}:
                 for member in item.get("thanhVienLienDanh") or ():
                     if isinstance(member, dict):
@@ -156,7 +170,9 @@ def build_owner_reference_context(
         active_clause = " AND archived_at IS NULL" if table_name in ARCHIVABLE_REFERENCE_TABLES else ""
         extra_columns = ""
         if table_name == "goi_thau":
-            extra_columns = ", ke_hoach_id, phan_lo, trang_thai"
+            extra_columns = ", ke_hoach_id, phan_lo, trang_thai, linh_vuc"
+        elif table_name == "goi_thau_phan_lo":
+            extra_columns = ", goi_thau_id"
         lineage_column = ", COALESCE(NULLIF(id_goc, ''), id) AS lineage_root" if table_name in ARCHIVABLE_REFERENCE_TABLES else ""
         for chunk in _chunked(sorted(record_ids)):
             placeholders = ", ".join("?" for _ in chunk)
@@ -184,6 +200,13 @@ def build_owner_reference_context(
                         "trang_thai",
                         column_index + 2,
                     )
+                    context.package_field_by_id[record_id] = str(
+                        _optional_row_value(row, "linh_vuc", column_index + 3, "") or ""
+                    ).strip()
+                elif table_name == "goi_thau_phan_lo":
+                    context.lot_package_by_id[record_id] = str(
+                        _row_value(row, "goi_thau_id", column_index) or ""
+                    ).strip()
 
     stored_opening_package_ids = sorted(
         package_id
@@ -746,6 +769,35 @@ def validate_owner_scoped_references(
                 errors.append("Mã phần lô của hồ sơ mở thầu không tồn tại trong gói thầu.")
             if not is_lotted and lot_code:
                 errors.append("Gói không phân lô không được ghi mã phần lô trong hồ sơ mở thầu.")
+
+    if table_name == "goi_thau_hang_hoa":
+        package_id = clean_id(get_payload_value(table_name, item, "goi_thau_id"))
+        lot_id = clean_id(get_payload_value(table_name, item, "phan_lo_id"))
+        incoming_package = _incoming_record(incoming_records_by_table, "goi_thau", package_id)
+        if incoming_package:
+            is_lotted = str(get_payload_value("goi_thau", incoming_package, "phan_lo") or "").strip() == "Có"
+            package_field = str(get_payload_value("goi_thau", incoming_package, "linh_vuc") or "").strip()
+            incoming_lots = {
+                clean_id(lot.get("id")): clean_id(package_id)
+                for lot in (incoming_package.get("phanLoList") or [])
+                if isinstance(lot, dict) and clean_id(lot.get("id"))
+            }
+        else:
+            is_lotted = reference_context.package_lotted_by_id.get(str(package_id), False) if reference_context else False
+            package_field = reference_context.package_field_by_id.get(str(package_id), "") if reference_context else ""
+            incoming_lots = {}
+        if package_field != "Hàng hóa":
+            errors.append("Danh mục hàng hóa chỉ áp dụng cho gói thầu lĩnh vực Hàng hóa.")
+        if is_lotted and not lot_id:
+            errors.append("Gói thầu phân lô bắt buộc mỗi hàng hóa phải thuộc một phần lô.")
+        if not is_lotted and lot_id:
+            errors.append("Gói thầu không phân lô không được gán phần lô cho hàng hóa.")
+        if lot_id:
+            lot_package_id = incoming_lots.get(lot_id)
+            if lot_package_id is None and reference_context is not None:
+                lot_package_id = clean_id(reference_context.lot_package_by_id.get(str(lot_id)))
+            if lot_package_id != clean_id(package_id):
+                errors.append("Phần lô của hàng hóa không thuộc gói thầu hiện tại.")
 
         for member in item.get("thanhVienLienDanh") or []:
             if not isinstance(member, dict):

@@ -11,6 +11,8 @@ MONEY_COLUMNS = frozenset({
     ("goi_thau_phan_lo", "gia_tri_phan_lo"),
     ("goi_thau_phan_lo", "bao_dam_du_thau"),
     ("goi_thau_phan_lo", "gia_trung_thau"),
+    ("goi_thau_hang_hoa", "don_gia_du_toan"),
+    ("goi_thau_hang_hoa", "thanh_tien_du_toan"),
     ("goi_thau_tuy_chon_mua_them", "gia_tri_uoc_tinh"),
     ("hop_dong", "gia_tri"),
     ("thong_tin_mo_thau", "gia_du_thau"),
@@ -558,6 +560,36 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
+        ]
+    },
+    "goi_thau_hang_hoa": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL CHECK(trim(goi_thau_id) != '')",
+            "phan_lo_id": "TEXT",
+            "ma_hang_hoa": "TEXT NOT NULL CHECK(trim(ma_hang_hoa) != '')",
+            "ten_hang_hoa": "TEXT NOT NULL CHECK(trim(ten_hang_hoa) != '')",
+            "nhom_hang_hoa": "TEXT",
+            "don_vi_tinh": "TEXT NOT NULL CHECK(trim(don_vi_tinh) != '')",
+            "so_luong": "REAL NOT NULL CHECK(typeof(so_luong) IN ('integer', 'real') AND so_luong > 0)",
+            "yeu_cau_ky_thuat": "TEXT",
+            "ky_ma_hieu_tham_chieu": "TEXT",
+            "xuat_xu_yeu_cau": "TEXT",
+            "dia_diem_giao_hang": "TEXT",
+            "thoi_gian_giao_hang": "TEXT",
+            "don_gia_du_toan": "INTEGER CHECK(don_gia_du_toan IS NULL OR (typeof(don_gia_du_toan) = 'integer' AND don_gia_du_toan >= 0))",
+            "thanh_tien_du_toan": "INTEGER CHECK(thanh_tien_du_toan IS NULL OR (typeof(thanh_tien_du_toan) = 'integer' AND thanh_tien_du_toan >= 0))",
+            "ghi_chu": "TEXT",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sort_order) = 'integer' AND sort_order >= 0)",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (phan_lo_id) REFERENCES goi_thau_phan_lo(id) ON DELETE RESTRICT"
         ]
     },
     "dot_xu_ly_phan_lo": {
@@ -1464,6 +1496,7 @@ ROW_VERSION_TABLES = frozenset({
     "chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "chuyen_gia", "nha_thau",
     "hop_dong", "phan_cong_nhan_su", "danh_muc_trang_thai_hop_dong",
     "thong_tin_mo_thau", "ma_tran_phan_quyen", "goi_thau_phan_lo",
+    "goi_thau_hang_hoa",
     "dot_xu_ly_phan_lo", "dot_xu_ly_phan_lo_chi_tiet",
     "nhom_phu_thuoc_phan_lo", "ho_so_nghiep_vu_lcnt",
 })

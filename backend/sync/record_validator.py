@@ -24,6 +24,10 @@ from backend.sync.uniqueness import (
     build_domain_uniqueness_context,
     validate_domain_uniqueness_from_context,
 )
+from backend.sync.package_goods import (
+    validate_package_goods_batch,
+    validate_package_goods_configuration_change,
+)
 from backend.sync.validator import validate_sync_item
 
 
@@ -61,6 +65,11 @@ class SyncRecordValidator:
             cursor,
             organization_id,
             self.payload.get("thongtinmothau", []),
+        ))
+        validation_errors.extend(validate_package_goods_batch(
+            cursor,
+            organization_id,
+            self.payload.get("goithauhanghoa", []),
         ))
         allowed_statuses = self.payload_index.allowed_contract_status_names(
             cursor,
@@ -184,6 +193,12 @@ class SyncRecordValidator:
                         item,
                     ))
                     item_errors.extend(validate_package_locked_fields(
+                        current_record,
+                        item,
+                    ))
+                    item_errors.extend(validate_package_goods_configuration_change(
+                        cursor,
+                        organization_id,
                         current_record,
                         item,
                     ))

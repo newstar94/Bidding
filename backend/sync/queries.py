@@ -14,7 +14,8 @@ TABLE_KEYS = {
     "hopdong": "hop_dong",
     "assignments": "phan_cong_nhan_su",
     "thongtinmothau": "thong_tin_mo_thau",
-    "permissionmatrix": "ma_tran_phan_quyen"
+    "permissionmatrix": "ma_tran_phan_quyen",
+    "goithauhanghoa": "goi_thau_hang_hoa",
 }
 
 SYNCED_TABLES = set(TABLE_KEYS.values())

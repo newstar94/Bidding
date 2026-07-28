@@ -265,6 +265,11 @@ def _read_sync_data_blocking(request):
             thongtinmothau.append(map_db_to_json("thong_tin_mo_thau", dict(row)))
         attach_child_rows_to_items(cursor, "thong_tin_mo_thau", thongtinmothau, organization_id=org_name)
 
+        goithauhanghoa = [
+            map_db_to_json("goi_thau_hang_hoa", dict(row))
+            for row in query_table("goi_thau_hang_hoa")
+        ]
+
 
         permissionmatrix = []
         try:
@@ -321,6 +326,7 @@ def _read_sync_data_blocking(request):
         assignments = filter_items_for_read(cursor, role_str, user_id, org_name, "assignments", "phan_cong_nhan_su", assignments)
         customcontractstatuses = filter_items_for_read(cursor, role_str, user_id, org_name, "customcontractstatuses", "danh_muc_trang_thai_hop_dong", customcontractstatuses)
         thongtinmothau = filter_items_for_read(cursor, role_str, user_id, org_name, "thongtinmothau", "thong_tin_mo_thau", thongtinmothau)
+        goithauhanghoa = filter_items_for_read(cursor, role_str, user_id, org_name, "goithauhanghoa", "goi_thau_hang_hoa", goithauhanghoa)
         permissionmatrix = filter_items_for_read(cursor, role_str, user_id, org_name, "permissionmatrix", "ma_tran_phan_quyen", permissionmatrix)
 
         # Heavy tables are omitted from a full bootstrap response because they
@@ -424,6 +430,7 @@ def _read_sync_data_blocking(request):
             "assignments": assignments,
             "customcontractstatuses": customcontractstatuses,
             "thongtinmothau": thongtinmothau,
+            "goithauhanghoa": goithauhanghoa,
             "permissionmatrix": permissionmatrix,
             "deletions": deletions,
             "useServerSidePagination": use_server_pagination,

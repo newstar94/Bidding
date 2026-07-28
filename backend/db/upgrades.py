@@ -706,6 +706,30 @@ def _upgrade_to_v21_add_low_proposed_award_price_acceptance(cursor, context):
     )
 
 
+def _upgrade_to_v22_add_package_goods(cursor, context):
+    """Add normalized requested-goods rows for goods procurement packages."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "goi_thau_hang_hoa",
+        SCHEMA_DINH_NGHIA["goi_thau_hang_hoa"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+    cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(cursor, ("goi_thau_hang_hoa",), if_not_exists=True)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_parent ON goi_thau_hang_hoa (organization_id, goi_thau_id, phan_lo_id, sort_order, id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_code_no_lot ON goi_thau_hang_hoa (organization_id, goi_thau_id, lower(trim(ma_hang_hoa))) WHERE phan_lo_id IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_code_by_lot ON goi_thau_hang_hoa (organization_id, goi_thau_id, phan_lo_id, lower(trim(ma_hang_hoa))) WHERE phan_lo_id IS NOT NULL",
+    ):
+        cursor.execute(statement)
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -802,6 +826,11 @@ UPGRADES = (
         21,
         "add_low_proposed_award_price_acceptance",
         _upgrade_to_v21_add_low_proposed_award_price_acceptance,
+    ),
+    DatabaseUpgrade(
+        22,
+        "add_package_goods",
+        _upgrade_to_v22_add_package_goods,
     ),
 )
 

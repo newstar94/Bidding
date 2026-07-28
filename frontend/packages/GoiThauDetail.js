@@ -18,6 +18,7 @@ import { buildPackageDetailViewModel } from "./detail/PackageDetailViewModel.js"
 import { renderPackageOpeningPanel } from "./detail/PackageOpeningPanel.js";
 import { renderQualifiedApprovalPanel } from "./detail/QualifiedApprovalPanel.js";
 import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
+import { renderPackageGoodsPanel } from "./PackageGoodsWorkflow.js";
 export { checkBidQualified };
 
 export function resetDetailedEvaluationNavigationForPackageChange(
@@ -125,6 +126,9 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
     case "preparation_action":
       renderPreparationActionPanel(contentWrapper, gt);
       lucide.createIcons();
+      break;
+    case "goods":
+      await renderPackageGoodsPanel(this, { contentWrapper, pkg: gt });
       break;
     case "opening":
     case "opening_tech":

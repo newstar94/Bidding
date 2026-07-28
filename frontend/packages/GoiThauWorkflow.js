@@ -15,6 +15,7 @@ import {
   resolvePackageAssigneeId,
 } from "./packageAssignmentPolicy.js";
 import { derivePackagePrice } from "./packagePricing.js";
+import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function editGoiThau(id, isReadOnly = false) {
@@ -923,6 +924,12 @@ export async function handleGoiThauSubmit(e) {
         maGoiThau: inputCode,
         ...gtData
       }), { id: newGtId, timestamp });
+      assignNewPackageLotIds(newPackageVersion);
+      this.model.state.goithauhanghoa.push(...clonePackageGoodsForSnapshot(
+        this.model.state.goithauhanghoa,
+        oldGt,
+        newPackageVersion,
+      ));
       newPackageVersion.createdAt = oldGt.createdAt || timestamp;
       clearCompetitiveQuotationAppraisal(newPackageVersion);
       this.model.state.goithau.push(newPackageVersion);
@@ -958,6 +965,17 @@ export async function handleGoiThauSubmit(e) {
       rebidFromPackageId: rebidFrom || null,
       ...gtData
     }, { id: newGtId, timestamp });
+    assignNewPackageLotIds(newPackage);
+    if (rebidFrom) {
+      const sourcePackage = this.model.state.goithau.find((item) => String(item.id) === String(rebidFrom));
+      if (sourcePackage) {
+        this.model.state.goithauhanghoa.push(...clonePackageGoodsForSnapshot(
+          this.model.state.goithauhanghoa,
+          sourcePackage,
+          newPackage,
+        ));
+      }
+    }
     clearCompetitiveQuotationAppraisal(newPackage);
     this.model.state.goithau.push(newPackage);
     if (assignedEmpId) {
@@ -979,7 +997,7 @@ export async function handleGoiThauSubmit(e) {
   if (hasModalReturnState("goithau-detail") && finalGtId) {
     updateModalReturnAction(finalGtId);
   }
-  const syncResult = await persistAndSync(this, ["goithau", "kehoach", "hopdong", "thongtinmothau"], {
+  const syncResult = await persistAndSync(this, ["goithau", "goithauhanghoa", "kehoach", "hopdong", "thongtinmothau"], {
     afterPersist: () => {
       this.view.renderGoiThauTable();
       this.view.renderKeHoachTable();
