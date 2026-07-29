@@ -83,6 +83,19 @@ test("opening save partner lookup has a bounded timeout", () => {
   assert.match(source, /controller\.abort\(\)/);
 });
 
+test("runtime visibility rules load after the static redesign stylesheet", () => {
+  const shell = fs.readFileSync("views/index.html", "utf8");
+  const redesignIndex = shell.indexOf("/css/ui-redesign.css");
+  const runtimeIndex = shell.indexOf("/css/runtime-styles.css");
+
+  assert.ok(redesignIndex >= 0, "ui-redesign stylesheet is missing");
+  assert.ok(runtimeIndex >= 0, "runtime stylesheet is missing");
+  assert.ok(
+    redesignIndex < runtimeIndex,
+    "static button display rules currently override runtime locked-state visibility",
+  );
+});
+
 test("joint-venture member controls use one replaceable runtime display rule", () => {
   const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
   assert.doesNotMatch(

@@ -4,7 +4,11 @@ import test from "node:test";
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
 import { buildPackageGoodsPreview, parsePackageGoodsRows } from "../../frontend/packages/PackageGoodsExcel.js";
 import { clonePackageGoodsForSnapshot } from "../../frontend/packages/packageGoodsVersioning.js";
-import { packageGoodsPaginationPages } from "../../frontend/packages/PackageGoodsWorkflow.js";
+import {
+  packageGoodsPaginationPages,
+  renderPackageGoodsMutationActions,
+  renderPackageGoodsSummary,
+} from "../../frontend/packages/PackageGoodsWorkflow.js";
 import { BrowserDB } from "../../frontend/app/BrowserDB.js";
 
 const lots = [
@@ -88,6 +92,61 @@ test("goods pagination uses the same centered five-page window as other tables",
   assert.deepEqual(packageGoodsPaginationPages(1, 8), [1, 2, 3, 4, 5]);
   assert.deepEqual(packageGoodsPaginationPages(4, 8), [2, 3, 4, 5, 6]);
   assert.deepEqual(packageGoodsPaginationPages(8, 8), [4, 5, 6, 7, 8]);
+});
+
+test("goods mutation actions disappear instead of rendering disabled after the step is locked", () => {
+  assert.equal(renderPackageGoodsMutationActions(false), "");
+  const editableActions = renderPackageGoodsMutationActions(true);
+  assert.match(editableActions, /btn-package-goods-import-trigger/);
+  assert.match(editableActions, /btn-package-goods-add/);
+  assert.doesNotMatch(editableActions, /disabled/);
+});
+
+test("goods tab renders the shared package summary with plan and investor context", () => {
+  const pkg = {
+    id: "package-1",
+    keHoachId: "plan-1",
+    linhVuc: "Hàng hóa",
+    phanLo: "Không",
+    giaGoiThau: 1_000_000,
+    hinhThucLuaChon: "Đấu thầu rộng rãi",
+    phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
+    phuongPhapDanhGia: "Giá thấp nhất",
+    thoiGianDongThau: "2026-07-05T08:00:00",
+    thoiGianMoThau: "2026-07-05T08:05:00",
+  };
+  const view = {
+    model: {
+      state: {
+        chudautu: [{ id: "investor-1", tenChuDauTu: "Chủ đầu tư A" }],
+      },
+      getLatestPlan: () => ({
+        id: "plan-1",
+        chuDauTuId: "investor-1",
+        tenKeHoach: "Kế hoạch A",
+      }),
+      formatCurrency: () => "1.000.000 ₫",
+      formatDateWithTime: (value) => value.includes("08:05")
+        ? "08:05 ngày 05/07/2026"
+        : "08:00 ngày 05/07/2026",
+    },
+  };
+
+  const summary = renderPackageGoodsSummary(view, { ...pkg, trangThai: "Đang chấm thầu" }, { editable: false });
+
+  assert.match(summary, /Thông số Gói thầu/);
+  assert.match(summary, /Chủ đầu tư A/);
+  assert.match(summary, /Kế hoạch A/);
+  assert.match(summary, /Giá thấp nhất/);
+  assert.match(summary, /1\.000\.000 ₫/);
+  assert.match(summary, /08:05 ngày 05\/07\/2026/);
+  assert.match(summary, /class="bf-s-8bd3eb473c"/);
+  assert.match(summary, /class="bf-s-5d398becec"/);
+  assert.match(summary, /class="bf-s-13b5590e90"/);
+  assert.match(summary, /strong class="bf-s-fcb5ddef65"/);
+  assert.match(summary, /class="package-lock-notice" role="status"/);
+  assert.match(summary, /Chỉ đọc vì gói thầu đang ở trạng thái Đang chấm thầu/);
+  assert.ok(summary.indexOf("bf-s-13b5590e90") < summary.indexOf("package-lock-notice"));
 });
 
 test("IndexedDB upgrade adds the goods store without recreating existing stores", async () => {

@@ -424,7 +424,9 @@ def _create_indexes(cursor) -> None:
     statements = (
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (organization_id, ke_hoach_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (organization_id, nha_thau_trung_thau_id)",
-        "CREATE INDEX IF NOT EXISTS idx_package_documents_package ON tai_lieu_goi_thau (organization_id, goi_thau_id, document_type)",
+        "CREATE INDEX IF NOT EXISTS idx_package_documents_package ON tai_lieu_goi_thau (organization_id, goi_thau_id, evaluation_batch_id, document_type)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_package_documents_general_type ON tai_lieu_goi_thau (organization_id, goi_thau_id, document_type) WHERE evaluation_batch_id IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_package_documents_batch_type ON tai_lieu_goi_thau (organization_id, goi_thau_id, evaluation_batch_id, document_type) WHERE evaluation_batch_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_package_documents_uploader ON tai_lieu_goi_thau (uploaded_by_id, uploaded_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)",
@@ -886,6 +888,7 @@ def assert_schema_contract(cursor) -> None:
         "nhom_phu_thuoc_phan_lo_thanh_vien",
         "ho_so_nghiep_vu_lcnt",
         "ho_so_nghiep_vu_lcnt_phan_lo",
+        "tai_lieu_goi_thau",
         "goi_thau_hang_hoa",
         "hang_hoa_du_thau_nha_thau",
     }

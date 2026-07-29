@@ -18,7 +18,7 @@ def test_bidder_goods_schema_and_sync_contract():
     assert ("hang_hoa_du_thau_nha_thau", "don_gia_du_thau") in MONEY_COLUMNS
     assert ("hang_hoa_du_thau_nha_thau", "thanh_tien_du_thau") in MONEY_COLUMNS
     assert {"mat_hang_du_thau", "ma_hang_hoa", "phan_nhom"}.isdisjoint(columns)
-    assert DB_SCHEMA_VERSION == 23
+    assert DB_SCHEMA_VERSION == 24
 
 
 def test_bidder_goods_payload_allows_draft_but_requires_official_mapping():

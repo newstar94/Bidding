@@ -17,6 +17,7 @@ import {
   getPackageEvaluationLots,
   initializeEvaluationLotScope,
   isPartialEvaluationLotScope,
+  resolvePackageResultStatus,
   saveEvaluationScopeMetadata
 } from "./lotEvaluationScope.js";
 
@@ -190,6 +191,15 @@ export async function saveDanhGiaHsdt() {
   const gt = resolveLatestPackage(this.model, requestedPackage || gtId);
   if (!gt) return;
   gtId = gt.id;
+  const effectiveStatus = resolvePackageResultStatus(gt);
+  if (effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu") {
+    await this.view.customAlert(
+      "Báo cáo đánh giá đã được khóa",
+      `Không thể chỉnh sửa báo cáo đánh giá vì gói thầu đang ở trạng thái "${effectiveStatus}".`,
+      "lock",
+    );
+    return;
+  }
   const isPackageDetailContext = this.view.isGoiThauDetailTabActive();
   const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
   const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";

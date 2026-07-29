@@ -758,6 +758,51 @@ def _upgrade_to_v23_add_bidder_goods(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v24_scope_package_documents_by_evaluation_batch(cursor, context):
+    """Keep one document type per package scope or lot-evaluation batch."""
+
+    cursor.execute(
+        """ALTER TABLE tai_lieu_goi_thau
+           ADD COLUMN IF NOT EXISTS evaluation_batch_id TEXT"""
+    )
+    cursor.execute(
+        """DO $$
+           DECLARE item RECORD;
+           BEGIN
+             FOR item IN
+               SELECT conname
+               FROM pg_constraint
+               WHERE conrelid = 'tai_lieu_goi_thau'::regclass
+                 AND contype = 'u'
+                 AND pg_get_constraintdef(oid) ILIKE '%organization_id%'
+                 AND pg_get_constraintdef(oid) ILIKE '%goi_thau_id%'
+                 AND pg_get_constraintdef(oid) ILIKE '%document_type%'
+                 AND pg_get_constraintdef(oid) NOT ILIKE '%evaluation_batch_id%'
+             LOOP
+               EXECUTE format(
+                   'ALTER TABLE tai_lieu_goi_thau DROP CONSTRAINT IF EXISTS %I',
+                   item.conname
+               );
+             END LOOP;
+           END $$"""
+    )
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("tai_lieu_goi_thau",),
+            if_not_exists=True,
+        )
+    for statement in (
+        "DROP INDEX IF EXISTS idx_package_documents_package",
+        "CREATE INDEX idx_package_documents_package ON tai_lieu_goi_thau (organization_id, goi_thau_id, evaluation_batch_id, document_type)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_package_documents_general_type ON tai_lieu_goi_thau (organization_id, goi_thau_id, document_type) WHERE evaluation_batch_id IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_package_documents_batch_type ON tai_lieu_goi_thau (organization_id, goi_thau_id, evaluation_batch_id, document_type) WHERE evaluation_batch_id IS NOT NULL",
+    ):
+        cursor.execute(statement)
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -864,6 +909,11 @@ UPGRADES = (
         23,
         "add_bidder_goods",
         _upgrade_to_v23_add_bidder_goods,
+    ),
+    DatabaseUpgrade(
+        24,
+        "scope_package_documents_by_evaluation_batch",
+        _upgrade_to_v24_scope_package_documents_by_evaluation_batch,
     ),
 )
 

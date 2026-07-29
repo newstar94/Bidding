@@ -11,9 +11,10 @@ from backend.documents.document_worker import (
 )
 from backend.documents.package_document_policy import (
     allowed_upload_types,
+    compose_document_sections,
     document_type_definition,
+    is_evaluation_document_type,
     package_status_code,
-    visible_document_types,
 )
 from backend.documents.package_document_service import (
     MAX_PACKAGE_DOCUMENT_BYTES,
@@ -22,7 +23,9 @@ from backend.documents.package_document_service import (
     clean_original_filename,
     create_storage_key,
     delete_package_document,
+    get_evaluation_batch,
     get_package_document,
+    list_package_evaluation_batches,
     list_package_documents,
     load_package,
     media_for_filename,
@@ -76,6 +79,54 @@ def _package_write_decision(cursor, session, organization_id, package_id):
     )
 
 
+def _request_evaluation_batch_id(request):
+    return str(
+        request.query_params.get("evaluationBatchId") or ""
+    ).strip() or None
+
+
+def _validate_mutation_scope(
+    cursor,
+    organization_id,
+    package,
+    document_type,
+    evaluation_batch_id,
+):
+    is_evaluation = is_evaluation_document_type(document_type)
+    has_lots = str(package.get("phan_lo") or "").strip() == "Có"
+    if not is_evaluation:
+        if evaluation_batch_id:
+            raise PackageDocumentError(
+                "Tài liệu chung của gói thầu không được gắn với đợt đánh giá."
+            )
+        return None
+    if not has_lots:
+        if evaluation_batch_id:
+            raise PackageDocumentError(
+                "Gói thầu không phân lô không có phạm vi đợt đánh giá phần lô."
+            )
+        return None
+    if not evaluation_batch_id:
+        raise PackageDocumentError(
+            "Phải chọn đúng đợt đánh giá khi tải BCĐG hoặc BCTĐ."
+        )
+    batch = get_evaluation_batch(
+        cursor,
+        organization_id,
+        package["id"],
+        evaluation_batch_id,
+    )
+    if not batch:
+        raise PackageDocumentError(
+            "Không tìm thấy đợt đánh giá thuộc gói thầu này."
+        )
+    if str(batch.get("status") or "").upper() != "ACTIVE":
+        raise PackageDocumentError(
+            "Đợt đánh giá đã kết thúc; tài liệu của đợt được chuyển sang chỉ đọc."
+        )
+    return batch
+
+
 async def list_package_documents_api(request):
     try:
         valid, session = verify_session(request)
@@ -102,31 +153,23 @@ async def list_package_documents_api(request):
                 organization_id,
                 package_id,
             )
-            documents_by_type = {item["type"]: item for item in documents}
+            batches = list_package_evaluation_batches(
+                cursor,
+                organization_id,
+                package_id,
+            )
             write_decision = _package_write_decision(
                 cursor,
                 session,
                 organization_id,
                 package_id,
             )
-            allowed_types = set(allowed_upload_types(package))
-            slots = []
-            for document_type in visible_document_types(
+            sections = compose_document_sections(
                 package,
-                documents_by_type,
-            ):
-                definition = document_type_definition(document_type)
-                can_mutate = write_decision.allowed and document_type in allowed_types
-                slots.append(
-                    {
-                        "type": document_type,
-                        "label": definition["label"],
-                        "icon": definition["icon"],
-                        "canUpload": can_mutate,
-                        "canDelete": can_mutate,
-                        "document": documents_by_type.get(document_type),
-                    }
-                )
+                documents,
+                batches,
+                write_allowed=write_decision.allowed,
+            )
             return JSONResponse(
                 {
                     "packageId": package_id,
@@ -135,7 +178,12 @@ async def list_package_documents_api(request):
                         "trang_thai",
                         package_status_code(package),
                     ),
-                    "slots": slots,
+                    "sections": sections,
+                    "slots": [
+                        slot
+                        for section in sections
+                        for slot in section["slots"]
+                    ],
                 },
                 headers={"Cache-Control": "private, no-store"},
             )
@@ -169,6 +217,7 @@ async def upload_package_document_api(request):
         document_type = str(
             request.path_params.get("document_type") or ""
         ).strip()
+        evaluation_batch_id = _request_evaluation_batch_id(request)
         if document_type_definition(document_type) is None:
             return _document_error(
                 "Loại tài liệu không hợp lệ.",
@@ -198,6 +247,13 @@ async def upload_package_document_api(request):
                     "PACKAGE_DOCUMENT_STEP_LOCKED",
                     409,
                 )
+            _validate_mutation_scope(
+                cursor,
+                organization_id,
+                package,
+                document_type,
+                evaluation_batch_id,
+            )
 
         form = await request.form()
         upload = form.get("file")
@@ -270,6 +326,13 @@ async def upload_package_document_api(request):
             raise PackageDocumentError(
                 "Gói thầu đã chuyển bước; không thể tải loại tài liệu này."
             )
+        _validate_mutation_scope(
+            cursor,
+            organization_id,
+            package,
+            document_type,
+            evaluation_batch_id,
+        )
         document, previous = upsert_package_document(
             cursor,
             organization_id=organization_id,
@@ -281,6 +344,7 @@ async def upload_package_document_api(request):
             size_bytes=stored_size,
             sha256=checksum,
             uploaded_by_id=session.user_id,
+            evaluation_batch_id=evaluation_batch_id,
         )
         old_storage_key = previous.get("storage_key") if previous else None
         log_audit(
@@ -293,6 +357,7 @@ async def upload_package_document_api(request):
             metadata={
                 "packageId": package_id,
                 "documentType": document_type,
+                "evaluationBatchId": evaluation_batch_id,
                 "sizeBytes": stored_size,
             },
             cursor=cursor,
@@ -386,6 +451,7 @@ async def download_package_document_api(request):
         document_type = str(
             request.path_params.get("document_type") or ""
         ).strip()
+        evaluation_batch_id = _request_evaluation_batch_id(request)
         organization_id = get_active_org(request, session.user_id)
         connection = database.get_connection()
         connection.execute("BEGIN")
@@ -408,6 +474,7 @@ async def download_package_document_api(request):
             organization_id,
             package_id,
             document_type,
+            evaluation_batch_id,
         )
         if not document:
             raise PackageDocumentNotFoundError("Không tìm thấy tài liệu.")
@@ -424,6 +491,7 @@ async def download_package_document_api(request):
             metadata={
                 "packageId": package_id,
                 "documentType": document_type,
+                "evaluationBatchId": evaluation_batch_id,
                 "sizeBytes": document["size_bytes"],
             },
             cursor=cursor,
@@ -445,6 +513,10 @@ async def download_package_document_api(request):
         if connection:
             connection.rollback()
         return _document_error(str(exc), exc.code, 404)
+    except PackageDocumentError as exc:
+        if connection:
+            connection.rollback()
+        return _document_error(str(exc), exc.code, 409)
     except OrgPermissionError:
         if connection:
             connection.rollback()
@@ -479,6 +551,7 @@ async def delete_package_document_api(request):
         document_type = str(
             request.path_params.get("document_type") or ""
         ).strip()
+        evaluation_batch_id = _request_evaluation_batch_id(request)
         organization_id = get_active_org(request, session.user_id)
         connection = database.get_connection()
         connection.execute("BEGIN")
@@ -504,11 +577,19 @@ async def delete_package_document_api(request):
                 "PACKAGE_DOCUMENT_STEP_LOCKED",
                 409,
             )
+        _validate_mutation_scope(
+            cursor,
+            organization_id,
+            package,
+            document_type,
+            evaluation_batch_id,
+        )
         deleted = delete_package_document(
             cursor,
             organization_id,
             package_id,
             document_type,
+            evaluation_batch_id,
         )
         log_audit(
             "package_document.deleted",
@@ -520,6 +601,7 @@ async def delete_package_document_api(request):
             metadata={
                 "packageId": package_id,
                 "documentType": document_type,
+                "evaluationBatchId": evaluation_batch_id,
             },
             cursor=cursor,
             required=True,
@@ -541,6 +623,10 @@ async def delete_package_document_api(request):
         if connection:
             connection.rollback()
         return _document_error(str(exc), exc.code, 404)
+    except PackageDocumentError as exc:
+        if connection:
+            connection.rollback()
+        return _document_error(str(exc), exc.code, 409)
     except OrgPermissionError:
         if connection:
             connection.rollback()

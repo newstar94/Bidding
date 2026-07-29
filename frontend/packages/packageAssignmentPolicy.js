@@ -40,7 +40,7 @@ export function ensureCurrentUserAssignee(employees, currentUser = {}) {
   }
   candidates.push({
     id: currentUserId,
-    name: String(currentUser.name || currentUser.username || currentUser.email || "Người tạo").trim(),
+    name: String(currentUser.name || "").trim(),
     email: String(currentUser.email || "").trim(),
     role: String(currentUser.role || "employee").trim() || "employee",
   });

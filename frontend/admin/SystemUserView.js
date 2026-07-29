@@ -3,7 +3,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
-import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeProfile } from "../auth/accessContext.js";
+import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 
@@ -186,14 +186,8 @@ export function populateNhanVienPhuTrachDropdowns() {
       });
     }
   }
-  const roleLabelMap = {
-    super_admin: "Super Admin / Quản lý / Chuyên viên",
-    manager: "Quản lý / Chuyên viên",
-    employee: "Chuyên viên"
-  };
   const optionsHtml = employees.map((e) => {
-    const roleLabel = roleLabelMap[e.role] || e.role;
-    return `<option value="${escapeHTML(e.id)}">${escapeHTML(e.name)} — ${escapeHTML(roleLabel)}${e.email ? " (" + escapeHTML(e.email) + ")" : ""}</option>`;
+    return `<option value="${escapeHTML(e.id)}">${escapeHTML(organizationEmployeeLabel(e))}</option>`;
   }).join("");
   if (gtDropdown) {
     gtDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml);

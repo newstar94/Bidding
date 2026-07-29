@@ -519,6 +519,7 @@ SCHEMA_DINH_NGHIA = {
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
             "goi_thau_id": "TEXT NOT NULL",
+            "evaluation_batch_id": "TEXT",
             "document_type": "TEXT NOT NULL CHECK(document_type IN ('HSMT', 'HSMT_APPRAISAL_REPORT', 'BID_EVALUATION_REPORT', 'TECHNICAL_EVALUATION_REPORT', 'TECHNICAL_APPRAISAL_REPORT', 'FINANCIAL_EVALUATION_REPORT', 'RESULT_APPRAISAL_REPORT'))",
             "original_filename": "TEXT NOT NULL CHECK(trim(original_filename) != '')",
             "storage_key": "TEXT NOT NULL CHECK(trim(storage_key) != '')",
@@ -532,11 +533,10 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (evaluation_batch_id) REFERENCES dot_xu_ly_phan_lo(id) ON DELETE RESTRICT",
             "FOREIGN KEY (uploaded_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
         ],
-        "unique_constraints": [
-            "UNIQUE(organization_id, goi_thau_id, document_type)"
-        ]
+        "unique_constraints": []
     },
     "goi_thau_phan_lo": {
         "columns": {

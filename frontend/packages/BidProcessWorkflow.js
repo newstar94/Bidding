@@ -34,9 +34,46 @@ import {
   normalizeContractorLookupCode,
   resolveLeadMemberName
 } from "./openingContractorLookup.js";
+import {
+  resolveWorkflowActionMode,
+  setWorkflowActionVisibility,
+  WORKFLOW_ACTION_MODE,
+} from "./workflowActionState.js";
 export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./openingContractorLookup.js";
 
 export * from "./bidProcessTenderLifecycle.js";
+export function buildOpeningActionState({
+  pkg,
+  hasSavedOpeningData = false,
+  isEditing = false,
+  effectiveStatus = resolvePackageResultStatus(pkg),
+} = {}) {
+  const isNextStepSaved = isNextEvaluationStepSaved(pkg);
+  const isCompleted = Boolean(
+    hasSavedOpeningData
+    || (
+      pkg?.trangThai !== "Đang mời thầu"
+      && pkg?.trangThai !== "Đã mở thầu"
+      && isNextStepSaved
+    ),
+  );
+  const isFinal = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
+  const actionMode = resolveWorkflowActionMode({
+    isCompleted,
+    isEditing,
+    isNextStepSaved,
+    isFinal,
+  });
+  return {
+    actionMode,
+    isCompleted,
+    isEditable: actionMode === WORKFLOW_ACTION_MODE.SAVE,
+    isFinal,
+    isNextStepSaved,
+    isReadOnly: actionMode !== WORKFLOW_ACTION_MODE.SAVE,
+  };
+}
+
 export function renderMoThauPanel() {
   const select = document.getElementById("mothau-goithau-select");
   if (!select) return;
@@ -87,14 +124,18 @@ export function renderMoThauPanel() {
     const is1G1T = gt.phuongThucLuaChon === "Một giai đoạn một túi hồ sơ";
     const hasPhanLo = gt.phanLo === "Có";
     const stepKey = is1G2T ? "opening_tech" : "opening";
-    const isNextStepSaved = isNextEvaluationStepSaved(gt);
     const hasSavedOpeningData = this.model.state.thongtinmothau.some((b) => String(b.goiThauId) === String(gt.id));
-    const isCompleted = gt.trangThai !== "Đang mời thầu" && gt.trangThai !== "Đã mở thầu" && isNextStepSaved || hasSavedOpeningData;
-    const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
-    const lockedStatuses = ["Đã có kết quả", "Hủy thầu"];
-    const isLocked = lockedStatuses.includes(resolvePackageResultStatus(gt));
-    const isReadOnly = isCompleted && !isEditingThisStep || isLocked;
-    const isEditable = !isReadOnly;
+    const openingActionState = buildOpeningActionState({
+      pkg: gt,
+      hasSavedOpeningData,
+      isEditing: Boolean(this.view._editingState?.[stepKey]),
+    });
+    const {
+      actionMode,
+      isEditable,
+      isFinal: isLocked,
+      isReadOnly,
+    } = openingActionState;
     renderOpeningSummary({
       container: summaryContainer,
       gt,
@@ -121,30 +162,30 @@ export function renderMoThauPanel() {
     const importExcelBtnTop = document.getElementById("btn-mothau-import-excel");
     const downloadExcelBtnTop = document.getElementById("btn-mothau-download-excel");
     if (addBidBtn2) {
-      setRuntimeStyle(addBidBtn2, "display", isEditable ? "" : "none");
+      setWorkflowActionVisibility(addBidBtn2, isEditable);
       addBidBtn2.innerHTML = trustedHTML(`<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`);
     }
-    if (importExcelBtnTop) setRuntimeStyle(importExcelBtnTop, "display", isEditable ? "" : "none");
-    if (downloadExcelBtnTop) setRuntimeStyle(downloadExcelBtnTop, "display", isEditable ? "" : "none");
+    if (importExcelBtnTop) {
+      setWorkflowActionVisibility(importExcelBtnTop, isEditable);
+    }
+    if (downloadExcelBtnTop) {
+      setWorkflowActionVisibility(downloadExcelBtnTop, isEditable);
+    }
     if (saveBtn2) {
       delete saveBtn2.dataset.openingSaveBusy;
-      saveBtn2.disabled = false;
       saveBtn2.removeAttribute("aria-busy");
-      if (isReadOnly) {
-        if (isNextStepSaved || isLocked) {
-          setRuntimeStyle(saveBtn2, "display", "none");
-        } else {
-          setRuntimeStyle(saveBtn2, "display", "");
-          saveBtn2.innerHTML = trustedHTML('<i data-lucide="edit"></i> Chỉnh sửa');
-          saveBtn2.className = "btn btn-primary";
-          saveBtn2.onclick = () => {
-            this.view._editingState = this.view._editingState || {};
-            this.view._editingState[stepKey] = true;
-            this.renderMoThauPanel();
-          };
-        }
+      setWorkflowActionVisibility(saveBtn2, actionMode !== WORKFLOW_ACTION_MODE.HIDDEN);
+      if (actionMode === WORKFLOW_ACTION_MODE.HIDDEN) {
+        saveBtn2.onclick = null;
+      } else if (actionMode === WORKFLOW_ACTION_MODE.EDIT) {
+        saveBtn2.innerHTML = trustedHTML('<i data-lucide="edit"></i> Chỉnh sửa');
+        saveBtn2.className = "btn btn-primary";
+        saveBtn2.onclick = () => {
+          this.view._editingState = this.view._editingState || {};
+          this.view._editingState[stepKey] = true;
+          this.renderMoThauPanel();
+        };
       } else {
-        setRuntimeStyle(saveBtn2, "display", "");
         saveBtn2.innerHTML = trustedHTML(`<i data-lucide="save"></i> ${isDirectOrSpecial ? "Lưu thông tin" : "Lưu thông tin mở thầu"}`);
         saveBtn2.className = "btn btn-primary";
         saveBtn2.onclick = () => this.saveThongTinMoThau();
@@ -281,6 +322,7 @@ export function renderMoThauPanel() {
       const gtId = select.value;
       const gt = this.model.state.goithau.find((g) => g.id === gtId);
       if (!gt) return;
+      if (!canSaveOpeningInfo(gt)) return;
       const isTuVan = gt.linhVuc === "Tư vấn";
       const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
       const is1G1T = gt.phuongThucLuaChon === "Một giai đoạn một túi hồ sơ";

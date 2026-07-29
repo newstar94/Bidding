@@ -42,9 +42,7 @@ export function organizationEmployeeProfile(payload = {}, organizationId = getAc
   );
   if (membership?.scope_type === "organization") {
     return {
-      name: membership.employee_name || (
-        membership.role === "manager" ? String(payload?.name || "").trim() : ""
-      ),
+      name: membership.employee_name,
       phone: membership.employee_phone
     };
   }
@@ -52,6 +50,13 @@ export function organizationEmployeeProfile(payload = {}, organizationId = getAc
     name: String(payload?.name || "").trim(),
     phone: ""
   };
+}
+
+export function organizationEmployeeLabel(payload = {}, organizationId = getActiveOrganizationId()) {
+  const name = organizationEmployeeProfile(payload, organizationId).name;
+  const email = String(payload?.email || "").trim();
+  if (name && email) return `${name} - ${email}`;
+  return name || email;
 }
 
 export function selectActiveOrganization(payload = {}, storage = null) {

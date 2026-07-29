@@ -1,9 +1,17 @@
 import { apiFetch, getJson, requestJson } from "../../shared/apiClient.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { renderPackageSummary } from "./PackageSummary.js";
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["pdf", "docx", "xlsx"]);
+const BATCH_STATUS_LABELS = Object.freeze({
+  ACTIVE: "Đang đánh giá",
+  CLOSED: "Đã có kết quả",
+  DRAFT: "Bản nháp",
+  VOID: "Đã hủy",
+  LEGACY: "Tài liệu lịch sử",
+});
 
 export function formatPackageDocumentBytes(value) {
   const bytes = Math.max(0, Number(value) || 0);
@@ -21,8 +29,19 @@ function formatUploadedAt(value) {
   }).format(parsed);
 }
 
+export function packageDocumentSlotKey(slot = {}) {
+  const scope = String(slot.evaluationBatchId || "package").trim() || "package";
+  return `${scope}::${String(slot.type || "").trim()}`;
+}
+
+function documentApiUrl(packageId, slot, suffix = "") {
+  const base = `/api/packages/${encodeURIComponent(packageId)}/documents/${encodeURIComponent(slot.type)}${suffix}`;
+  const batchId = String(slot.evaluationBatchId || "").trim();
+  return batchId ? `${base}?evaluationBatchId=${encodeURIComponent(batchId)}` : base;
+}
+
 function slotMarkup(slot) {
-  const type = escapeHtml(slot?.type || "");
+  const slotKey = escapeHtml(packageDocumentSlotKey(slot));
   const label = escapeHtml(slot?.label || "Tài liệu");
   const icon = escapeHtml(slot?.icon || "file-text");
   const document = slot?.document;
@@ -46,7 +65,7 @@ function slotMarkup(slot) {
       </div>`;
   const uploadLabel = document ? "Thay file" : "Chọn file";
   return `
-    <article class="package-document-card" data-document-card="${type}" role="row">
+    <article class="package-document-card" data-document-card="${slotKey}" role="row">
       <div class="package-document-type-cell" role="cell">
         <span class="package-document-cell-label">Loại tài liệu</span>
         <div class="package-document-card-header">
@@ -64,24 +83,46 @@ function slotMarkup(slot) {
       <div class="package-document-action-cell" role="cell">
         <span class="package-document-cell-label">Thao tác</span>
         <footer class="package-document-actions">
-          ${document ? `<button type="button" class="btn btn-outline" data-document-download="${type}"><i data-lucide="download"></i> Tải xuống</button>` : ""}
+          ${document ? `<button type="button" class="btn btn-outline" data-document-download="${slotKey}"><i data-lucide="download"></i> Tải xuống</button>` : ""}
           ${canUpload ? `
-            <input class="package-document-input" type="file" id="package-document-${type}" data-document-input="${type}" accept=".pdf,.docx,.xlsx" hidden>
-            <button type="button" class="btn ${document ? "btn-outline-primary" : "btn-primary"}" data-document-upload="${type}">
+            <input class="package-document-input" type="file" id="package-document-${slotKey}" data-document-input="${slotKey}" accept=".pdf,.docx,.xlsx" hidden>
+            <button type="button" class="btn ${document ? "btn-outline-primary" : "btn-primary"}" data-document-upload="${slotKey}">
               <i data-lucide="${document ? "refresh-cw" : "upload-cloud"}"></i> ${uploadLabel}
             </button>` : ""}
-          ${document && canDelete ? `<button type="button" class="btn package-document-delete" data-document-delete="${type}" aria-label="Xóa ${label}"><i data-lucide="trash-2"></i> Xóa</button>` : ""}
+          ${document && canDelete ? `<button type="button" class="btn package-document-delete" data-document-delete="${slotKey}" aria-label="Xóa ${label}"><i data-lucide="trash-2"></i> Xóa</button>` : ""}
         </footer>
-        <p class="package-document-live-status" data-document-status="${type}" aria-live="polite"></p>
+        <p class="package-document-live-status" data-document-status="${slotKey}" aria-live="polite"></p>
       </div>
     </article>`;
 }
 
-export function buildPackageDocumentsMarkup(data) {
-  const slots = Array.isArray(data?.slots) ? data.slots : [];
-  const content = slots.length
-    ? `
-      <div class="package-documents-table" role="table" aria-label="Danh sách tài liệu gói thầu">
+function sectionMarkup(section) {
+  const slots = Array.isArray(section?.slots) ? section.slots : [];
+  const title = escapeHtml(section?.title || "Tài liệu gói thầu");
+  const description = escapeHtml(section?.description || "");
+  const sequenceNo = Number(section?.sequenceNo) || 0;
+  const lotCodes = Array.isArray(section?.lotCodes) ? section.lotCodes.filter(Boolean) : [];
+  const status = String(section?.status || "").trim().toUpperCase();
+  const statusLabel = BATCH_STATUS_LABELS[status] || status;
+  const scopeKey = escapeHtml(section?.scopeKey || "package");
+  const lotMarkup = lotCodes.length
+    ? `<p class="package-document-section-lots"><strong>Phần lô:</strong> ${escapeHtml(lotCodes.join(", "))}</p>`
+    : "";
+  return `
+    <section class="package-document-section" data-document-section="${scopeKey}" aria-label="${title}">
+      <header class="package-document-section-header">
+        <div class="package-document-section-heading">
+          <span class="package-document-section-icon" aria-hidden="true"><i data-lucide="${sequenceNo ? "layers-3" : "folder-open"}"></i></span>
+          <div>
+            ${sequenceNo ? `<span class="package-document-section-index">Lần ${sequenceNo}</span>` : ""}
+            <h3>${title}</h3>
+            ${description ? `<p>${description}</p>` : ""}
+            ${lotMarkup}
+          </div>
+        </div>
+        ${statusLabel ? `<span class="package-document-section-status is-${escapeHtml(status.toLowerCase())}">${escapeHtml(statusLabel)}</span>` : ""}
+      </header>
+      <div class="package-documents-table" role="table" aria-label="${title}">
         <div class="package-documents-table-head" role="rowgroup">
           <div class="package-documents-table-header" role="row">
             <span role="columnheader">Loại tài liệu</span>
@@ -92,7 +133,35 @@ export function buildPackageDocumentsMarkup(data) {
         <div class="package-documents-table-body" role="rowgroup">
           ${slots.map(slotMarkup).join("")}
         </div>
-      </div>`
+      </div>
+    </section>`;
+}
+
+export function renderPackageDocumentsSummary(view, pkg) {
+  if (!pkg) return "";
+  const plan = view?.model?.getLatestPlan?.(pkg.keHoachId) || null;
+  const investor = plan
+    ? (view?.model?.state?.chudautu || []).find(
+      (item) => String(item.id) === String(plan.chuDauTuId),
+    )
+    : null;
+  return renderPackageSummary({
+    pkg,
+    planName: plan?.tenKeHoach || "Không rõ",
+    investorName: investor?.tenChuDauTu || "Không rõ",
+    formatCurrency: (value) => view?.model?.formatCurrency?.(value) || "--",
+    formatDateTime: (value) => view?.model?.formatDateWithTime?.(value) || "--",
+  });
+}
+
+export function buildPackageDocumentsMarkup(data, { summaryMarkup = "" } = {}) {
+  const sections = Array.isArray(data?.sections)
+    ? data.sections.filter((section) => Array.isArray(section?.slots) && section.slots.length)
+    : (Array.isArray(data?.slots) && data.slots.length
+      ? [{ scopeKey: "package", title: "Tài liệu gói thầu", slots: data.slots }]
+      : []);
+  const content = sections.length
+    ? `<div class="package-document-sections">${sections.map(sectionMarkup).join("")}</div>`
     : `
       <div class="package-documents-empty-state">
         <span aria-hidden="true"><i data-lucide="folder-open"></i></span>
@@ -101,6 +170,7 @@ export function buildPackageDocumentsMarkup(data) {
       </div>`;
   return `
     <section class="package-documents-panel" aria-label="Tài liệu gói thầu">
+      ${summaryMarkup}
       ${content}
     </section>`;
 }
@@ -128,11 +198,12 @@ function currentPanelStillActive(view, packageId) {
 }
 
 async function downloadDocument(view, packageId, slot) {
-  const status = document.querySelector(`[data-document-status="${CSS.escape(slot.type)}"]`);
+  const slotKey = packageDocumentSlotKey(slot);
+  const status = document.querySelector(`[data-document-status="${CSS.escape(slotKey)}"]`);
   if (status) status.textContent = "Đang chuẩn bị file tải xuống...";
   try {
     const response = await apiFetch(
-      `/api/packages/${encodeURIComponent(packageId)}/documents/${encodeURIComponent(slot.type)}/download`,
+      documentApiUrl(packageId, slot, "/download"),
       { timeoutMs: 120_000, retries: 0 },
     );
     if (!response.ok) {
@@ -156,7 +227,7 @@ async function downloadDocument(view, packageId, slot) {
   }
 }
 
-async function uploadDocument(view, packageId, slot, file, contentWrapper) {
+async function uploadDocument(view, packageId, slot, file, contentWrapper, pkg) {
   const extension = String(file?.name || "").split(".").pop()?.toLowerCase();
   if (!file || !ALLOWED_EXTENSIONS.has(extension)) {
     await view.customAlert("Tệp không hợp lệ", "Chỉ hỗ trợ tệp PDF, DOCX hoặc XLSX.", "alert-triangle");
@@ -166,7 +237,8 @@ async function uploadDocument(view, packageId, slot, file, contentWrapper) {
     await view.customAlert("Tệp không hợp lệ", "Dung lượng tệp phải lớn hơn 0 và không vượt quá 25 MB.", "alert-triangle");
     return;
   }
-  const card = contentWrapper.querySelector(`[data-document-card="${CSS.escape(slot.type)}"]`);
+  const slotKey = packageDocumentSlotKey(slot);
+  const card = contentWrapper.querySelector(`[data-document-card="${CSS.escape(slotKey)}"]`);
   const status = card?.querySelector("[data-document-status]");
   const buttons = card?.querySelectorAll("button");
   buttons?.forEach((button) => { button.disabled = true; });
@@ -175,7 +247,7 @@ async function uploadDocument(view, packageId, slot, file, contentWrapper) {
     const form = new FormData();
     form.append("file", file, file.name);
     await requestJson(
-      `/api/packages/${encodeURIComponent(packageId)}/documents/${encodeURIComponent(slot.type)}`,
+      documentApiUrl(packageId, slot),
       {
         method: "PUT",
         body: form,
@@ -184,7 +256,7 @@ async function uploadDocument(view, packageId, slot, file, contentWrapper) {
       },
     );
     await view.customAlert("Thành công", slot.document ? "Đã thay file tài liệu." : "Đã tải tài liệu lên.", "check-circle");
-    await renderPackageDocumentsPanel(view, { contentWrapper, packageId });
+    await renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg });
   } catch (error) {
     buttons?.forEach((button) => { button.disabled = false; });
     if (status) status.textContent = "";
@@ -192,7 +264,7 @@ async function uploadDocument(view, packageId, slot, file, contentWrapper) {
   }
 }
 
-async function deleteDocument(view, packageId, slot, contentWrapper) {
+async function deleteDocument(view, packageId, slot, contentWrapper, pkg) {
   const confirmed = await view.customConfirm(
     "Xóa tài liệu",
     `Bạn có chắc chắn muốn xóa "${slot.label}"?`,
@@ -201,63 +273,75 @@ async function deleteDocument(view, packageId, slot, contentWrapper) {
   if (!confirmed) return;
   try {
     await requestJson(
-      `/api/packages/${encodeURIComponent(packageId)}/documents/${encodeURIComponent(slot.type)}`,
+      documentApiUrl(packageId, slot),
       { method: "DELETE", retries: 0 },
     );
     await view.customAlert("Thành công", "Đã xóa tài liệu.", "check-circle");
-    await renderPackageDocumentsPanel(view, { contentWrapper, packageId });
+    await renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg });
   } catch (error) {
     await view.customAlert("Không thể xóa", error?.message || "Vui lòng thử lại.", "circle-alert");
   }
 }
 
-function bindDocumentActions(view, packageId, data, contentWrapper) {
-  const slotsByType = new Map((data.slots || []).map((slot) => [slot.type, slot]));
+function bindDocumentActions(view, packageId, data, contentWrapper, pkg) {
+  const sourceSlots = Array.isArray(data.sections)
+    ? data.sections.flatMap((section) => section?.slots || [])
+    : (data.slots || []);
+  const slotsByKey = new Map(sourceSlots.map((slot) => [packageDocumentSlotKey(slot), slot]));
   contentWrapper.querySelectorAll("[data-document-upload]").forEach((button) => {
     button.addEventListener("click", () => {
-      const type = button.getAttribute("data-document-upload");
-      contentWrapper.querySelector(`[data-document-input="${CSS.escape(type)}"]`)?.click();
+      const slotKey = button.getAttribute("data-document-upload");
+      contentWrapper.querySelector(`[data-document-input="${CSS.escape(slotKey)}"]`)?.click();
     });
   });
   contentWrapper.querySelectorAll("[data-document-input]").forEach((input) => {
     input.addEventListener("change", async () => {
-      const type = input.getAttribute("data-document-input");
-      const slot = slotsByType.get(type);
+      const slotKey = input.getAttribute("data-document-input");
+      const slot = slotsByKey.get(slotKey);
       const file = input.files?.[0];
-      if (slot && file) await uploadDocument(view, packageId, slot, file, contentWrapper);
+      if (slot && file) await uploadDocument(view, packageId, slot, file, contentWrapper, pkg);
       input.value = "";
     });
   });
   contentWrapper.querySelectorAll("[data-document-download]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const slot = slotsByType.get(button.getAttribute("data-document-download"));
+      const slot = slotsByKey.get(button.getAttribute("data-document-download"));
       if (slot) await downloadDocument(view, packageId, slot);
     });
   });
   contentWrapper.querySelectorAll("[data-document-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const slot = slotsByType.get(button.getAttribute("data-document-delete"));
-      if (slot) await deleteDocument(view, packageId, slot, contentWrapper);
+      const slot = slotsByKey.get(button.getAttribute("data-document-delete"));
+      if (slot) await deleteDocument(view, packageId, slot, contentWrapper, pkg);
     });
   });
 }
 
-export async function renderPackageDocumentsPanel(view, { contentWrapper, packageId }) {
-  contentWrapper.innerHTML = trustedHTML(loadingMarkup());
+export async function renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg }) {
+  const summaryMarkup = renderPackageDocumentsSummary(view, pkg);
+  contentWrapper.innerHTML = trustedHTML(`
+    <section class="package-documents-panel" aria-label="Tài liệu gói thầu">
+      ${summaryMarkup}
+      ${loadingMarkup()}
+    </section>`);
   try {
     const data = await getJson(
       `/api/packages/${encodeURIComponent(packageId)}/documents`,
       { retries: 0 },
     );
     if (!currentPanelStillActive(view, packageId)) return;
-    contentWrapper.innerHTML = trustedHTML(buildPackageDocumentsMarkup(data));
-    bindDocumentActions(view, packageId, data, contentWrapper);
+    contentWrapper.innerHTML = trustedHTML(buildPackageDocumentsMarkup(data, { summaryMarkup }));
+    bindDocumentActions(view, packageId, data, contentWrapper, pkg);
     globalThis.lucide?.createIcons?.();
   } catch (error) {
     if (!currentPanelStillActive(view, packageId)) return;
-    contentWrapper.innerHTML = trustedHTML(errorMarkup(error?.message));
+    contentWrapper.innerHTML = trustedHTML(`
+      <section class="package-documents-panel" aria-label="Tài liệu gói thầu">
+        ${summaryMarkup}
+        ${errorMarkup(error?.message)}
+      </section>`);
     contentWrapper.querySelector("[data-document-retry]")?.addEventListener("click", () => {
-      renderPackageDocumentsPanel(view, { contentWrapper, packageId });
+      renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg });
     });
     globalThis.lucide?.createIcons?.();
   }

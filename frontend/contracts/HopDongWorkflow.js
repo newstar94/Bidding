@@ -6,7 +6,7 @@ import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../s
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
-import { organizationEmployeeProfile } from "../auth/accessContext.js";
+import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { ensureCurrentUserAssignee } from "../packages/packageAssignmentPolicy.js";
 export async function deleteHopDong(id) {
@@ -285,11 +285,11 @@ export async function editHopDong(id) {
       handleNtChange(e.target.value);
       rerenderPlanPackages();
     };
-    const _roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };
     const currentUserId = String(this.model.state.activeuser?.id || sessionStorage.getItem("bf_user_id") || "").trim();
+    const currentUserEmployeeProfile = organizationEmployeeProfile(this.model.state.activeuser || {});
     const currentUserCandidate = {
       id: currentUserId,
-      name: this.model.state.activeuser?.name || this.model.state.activeuser?.username || "Người tạo",
+      name: currentUserEmployeeProfile.name,
       email: this.model.state.activeuser?.email || "",
       role: this.model.state.activerole || this.model.state.activeuser?.dbRole || "employee"
     };
@@ -315,10 +315,12 @@ export async function editHopDong(id) {
       if (!empDropdown) return;
       const selectableEmployees = ensureCurrentUserAssignee(this.model.state.employees, currentUserCandidate);
       const optHtml = selectableEmployees.map((e) => {
-        const roleLabel = _roleLabelMap[e.role] || e.role;
-        const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === e.name.toLowerCase().trim());
+        const employeeProfile = organizationEmployeeProfile(e);
+        const employeeName = employeeProfile.name;
+        const employeeLabel = organizationEmployeeLabel(e);
+        const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === employeeName.toLowerCase().trim());
         const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
-        return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(e.name)} — ${escapeHtml(roleLabel)}${e.email ? ` (${escapeHtml(e.email)})` : ""}</option>`;
+        return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${employeeName} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(employeeLabel)}</option>`;
       }).join("");
       empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
       restoreHdEmpValue();

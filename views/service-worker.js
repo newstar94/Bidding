@@ -18,6 +18,10 @@ async function initialHashedAssets() {
     const item = manifest[key];
     const pathname = `/dist/${String(item.file || "").replace(/^\/+/, "")}`;
     if (HASHED_ASSET.test(pathname)) assets.push(pathname);
+    for (const asset of [...(item.css || []), ...(item.assets || [])]) {
+      const assetPathname = `/dist/${String(asset || "").replace(/^\/+/, "")}`;
+      if (HASHED_ASSET.test(assetPathname)) assets.push(assetPathname);
+    }
     pending.push(...(item.imports || []));
   }
   return [...new Set(assets)];

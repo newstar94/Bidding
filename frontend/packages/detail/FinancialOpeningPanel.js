@@ -8,6 +8,10 @@ import {
   resolveActiveSavedEvaluationScope,
 } from "../lotEvaluationScope.js";
 import { checkBidQualified } from "./PackageTabs.js";
+import {
+  resolveWorkflowActionMode,
+  WORKFLOW_ACTION_MODE,
+} from "../workflowActionState.js";
 
 const TECHNICAL_SCORE_METHODS = new Set([
   "Kết hợp giữa kỹ thuật và giá",
@@ -214,7 +218,13 @@ export function buildFinancialOpeningState({
     || qualifiedBids.some((bid) => Number(bid?.giaDuThau) > 0);
   const isEditing = Boolean(view?._editingState?.opening_fin);
   const isFinal = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
-  const isReadOnly = (isCompleted && !isEditing) || isFinal || isFinancialEvaluationSaved;
+  const actionMode = resolveWorkflowActionMode({
+    isCompleted,
+    isEditing,
+    isNextStepSaved: isFinancialEvaluationSaved,
+    isFinal,
+  });
+  const isReadOnly = actionMode !== WORKFLOW_ACTION_MODE.SAVE;
 
   return {
     pkg,
@@ -225,8 +235,9 @@ export function buildFinancialOpeningState({
     hasTechnicalScore: hasTechnicalScore(pkg, qualifiedBids),
     isCompleted,
     isFinancialEvaluationSaved,
+    actionMode,
     isReadOnly,
-    canEdit: !isFinancialEvaluationSaved && !isFinal,
+    canEdit: actionMode === WORKFLOW_ACTION_MODE.EDIT,
   };
 }
 
@@ -264,7 +275,7 @@ function renderFinancialOpeningFacts(view, state) {
           <div class="bf-s-ca978d48b2"><span>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXTC:</strong></span>${financialOpeningControl}</div>
         `}
       </div>
-      ${isReadOnly ? '<div class="bf-s-d4b8c020d5"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Biên bản mở E-HSĐXTC đã được khóa</div>' : ""}
+      ${isReadOnly ? '<div class="package-lock-notice" role="status"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Biên bản mở E-HSĐXTC đã được khóa</div>' : ""}
     </div>`;
 }
 

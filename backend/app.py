@@ -199,6 +199,9 @@ def compile_html(file_path):
                     bundle_src = f"/dist/{bundle_file}"
                     bundle_is_content_hashed = True
                 bundled_stylesheet = manifest.get('views/css/app.css', {}).get('file')
+                if not bundled_stylesheet:
+                    app_styles = manifest.get('frontend/app/app.js', {}).get('css') or []
+                    bundled_stylesheet = app_styles[0] if app_styles else None
             except Exception as exc:
                 log_error(exc, "frontend_manifest")
         if not bundle_is_content_hashed:
@@ -275,20 +278,26 @@ def _prewarm_frontend_assets():
             relative_file = str(entry.get('file') or '').replace('/', os.sep)
             if not relative_file:
                 continue
-            candidate = os.path.realpath(os.path.join(dist_root, relative_file))
-            try:
-                if os.path.commonpath((dist_root, candidate)) != dist_root:
+            entry_files = [relative_file]
+            entry_files.extend(
+                str(value).replace('/', os.sep)
+                for value in (entry.get('css') or []) + (entry.get('assets') or [])
+            )
+            for entry_file in dict.fromkeys(entry_files):
+                candidate = os.path.realpath(os.path.join(dist_root, entry_file))
+                try:
+                    if os.path.commonpath((dist_root, candidate)) != dist_root:
+                        continue
+                    size = os.path.getsize(candidate)
+                    if size > 5 * 1024 * 1024 or warmed_bytes + size > max_total_bytes:
+                        continue
+                    with open(candidate, 'rb') as asset_file:
+                        while asset_file.read(256 * 1024):
+                            pass
+                    warmed_files += 1
+                    warmed_bytes += size
+                except (OSError, ValueError):
                     continue
-                size = os.path.getsize(candidate)
-                if size > 2 * 1024 * 1024 or warmed_bytes + size > max_total_bytes:
-                    continue
-                with open(candidate, 'rb') as asset_file:
-                    while asset_file.read(256 * 1024):
-                        pass
-                warmed_files += 1
-                warmed_bytes += size
-            except (OSError, ValueError):
-                continue
         return warmed_files, warmed_bytes
     except Exception as exc:
         log_error(exc, "frontend_asset_prewarm", level="WARN")

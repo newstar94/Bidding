@@ -101,8 +101,10 @@ def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     manifest = {
-        "frontend/app/app.js": {"file": "assets/app-12345678.js"},
-        "views/css/app.css": {"file": "assets/styles-12345678.css"},
+        "frontend/app/app.js": {
+            "file": "assets/app-12345678.js",
+            "css": ["assets/styles-12345678.css"],
+        },
     }
     (manifest_directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setattr(app_module, "APP_DEBUG", False)
@@ -132,9 +134,9 @@ def test_frontend_prewarm_reads_only_manifest_assets_inside_dist(monkeypatch, tm
         "frontend/app/app.js": {
             "file": "assets/app-12345678.js",
             "imports": ["_shared.js"],
+            "css": ["assets/styles-12345678.css"],
         },
         "_shared.js": {"file": "assets/shared-12345678.js"},
-        "views/css/app.css": {"file": "assets/styles-12345678.css"},
         "frontend/app/workspaceBootstrap.js": {"file": "../outside.js"},
     }
     (manifest_directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

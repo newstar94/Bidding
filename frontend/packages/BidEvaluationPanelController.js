@@ -1,7 +1,10 @@
-import { setVisible } from "../app/formStateUtils.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { addEvaluationLetterRow } from "./bidEvaluationRender.js";
+import {
+  setWorkflowActionVisibility,
+  WORKFLOW_ACTION_MODE,
+} from "./workflowActionState.js";
 
 const ONE_ENVELOPE = "Một giai đoạn một túi hồ sơ";
 const PROCESS_FIELDS = new Set(["Hàng hóa", "Xây lắp", "Hỗn hợp", "Phi tư vấn"]);
@@ -187,7 +190,7 @@ function renderLetterRows({ appController, activeMeta, isReadOnly }) {
 }
 
 function bindReportForm({ appController, pkg, panelState }) {
-  const { activeMeta, isReadOnly, isTabLocked, lotScope, stepKey } = panelState;
+  const { actionMode, activeMeta, isReadOnly, lotScope, stepKey } = panelState;
   const get = (id) => appController.view.getActiveElement(id);
   const reportNumber = get("danhgiahsdt-so-baocao");
   const reportDate = get("danhgiahsdt-ngay-baocao");
@@ -217,12 +220,13 @@ function bindReportForm({ appController, pkg, panelState }) {
 
   const saveButton = get("btn-danhgiahsdt-save");
   if (saveButton) {
-    if (isReadOnly && isTabLocked) {
-      setVisible(saveButton, false);
+    setWorkflowActionVisibility(saveButton, actionMode !== WORKFLOW_ACTION_MODE.HIDDEN);
+    if (actionMode === WORKFLOW_ACTION_MODE.HIDDEN) {
+      saveButton.onclick = null;
     } else {
-      setVisible(saveButton, true, "");
+      setDisabled(saveButton, false);
       saveButton.className = "btn btn-primary";
-      if (isReadOnly) {
+      if (actionMode === WORKFLOW_ACTION_MODE.EDIT) {
         saveButton.innerHTML = trustedHTML('<i data-lucide="edit"></i> Chỉnh sửa');
         saveButton.onclick = () => {
           appController.view._editingState = appController.view._editingState || {};
@@ -246,7 +250,7 @@ function bindReportForm({ appController, pkg, panelState }) {
   addButtons.forEach(([buttonId, containerId]) => {
     const button = get(buttonId);
     if (!button) return;
-    setVisible(button, !isReadOnly, "block");
+    setWorkflowActionVisibility(button, actionMode === WORKFLOW_ACTION_MODE.SAVE);
     button.onclick = () => addEvaluationLetterRow({
       view: appController.view,
       model: appController.model,
@@ -255,8 +259,10 @@ function bindReportForm({ appController, pkg, panelState }) {
       readOnly: false,
     });
   });
-  setVisible(get("btn-danhgiahsdt-import-excel"), !isReadOnly, "inline-flex");
-  setVisible(get("btn-danhgiahsdt-download-excel"), !isReadOnly, "inline-flex");
+  const importButton = get("btn-danhgiahsdt-import-excel");
+  const downloadButton = get("btn-danhgiahsdt-download-excel");
+  setWorkflowActionVisibility(importButton, actionMode === WORKFLOW_ACTION_MODE.SAVE);
+  setWorkflowActionVisibility(downloadButton, actionMode === WORKFLOW_ACTION_MODE.SAVE);
   renderLetterRows({ appController, activeMeta, isReadOnly });
 }
 

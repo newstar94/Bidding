@@ -2,6 +2,7 @@ import {
   getOfficialEvaluationLotState,
   isBidWithinEvaluationLotDetails,
   resolveActiveSavedEvaluationScope,
+  resolvePackageResultStatus,
 } from "../lotEvaluationScope.js";
 import { isLowPriceBidRejected } from "../bidEvaluationLowPriceRules.js";
 
@@ -65,6 +66,9 @@ export function getPackageWorkflowState(pkg, bids = []) {
 
 export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
   const state = getPackageWorkflowState(pkg, bids);
+  const effectiveStatus = resolvePackageResultStatus(pkg);
+  const hasPersistedResultStatus = effectiveStatus === "Đã có kết quả một phần"
+    || effectiveStatus === "Đã có kết quả";
   const tabs = [{ id: "preparation", label: "Thông tin gói thầu" }];
   if (pkg?.linhVuc === "Hàng hóa") tabs.push({ id: "goods", label: "Danh mục hàng hóa" });
   const isDirectOrSpecial = pkg.hinhThucLuaChon === "Chỉ định thầu rút gọn"
@@ -72,7 +76,7 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
 
   if (isDirectOrSpecial) {
     tabs.push({ id: "opening", label: "Dữ liệu nhà thầu" });
-    if (bids.length > 0) tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
+    if (bids.length > 0 || hasPersistedResultStatus) tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
   } else if (pkg.trangThai === "Chuẩn bị") {
     tabs.push({ id: "preparation_action", label: "Phát hành E-HSMT" });
   } else if (state.isTwoEnvelope) {
@@ -89,7 +93,7 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     const resultWithoutQualified = state.isTechEvalSaved && !hasQualifiedBidders;
     const resultNormal = state.isTechEvalSaved && state.isQualifiedSaved && hasQualifiedBidders && state.isFinOpeningSaved
       && (state.isFinEvalSaved || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && pkg.soQuyetDinhKetQua));
-    if (resultWithoutQualified || resultNormal || state.hasOfficialLotResults) {
+    if (resultWithoutQualified || resultNormal || state.hasOfficialLotResults || hasPersistedResultStatus) {
       tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
     }
   } else {
@@ -97,7 +101,7 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     if (pkg.trangThai !== "Đang mời thầu" && pkg.trangThai !== "Đã mở thầu" && (pkg.trangThai !== "Hủy thầu" || state.isSingleEnvelopeEvalSaved)) {
       tabs.push({ id: "eval_tech", label: "Báo cáo đánh giá E-HSDT" });
     }
-    if (state.isSingleEnvelopeEvalSaved || state.isSingleEnvelopeScopedEvalSaved || state.hasOfficialLotResults || pkg.trangThai === "Đã có kết quả" || (pkg.trangThai === "Hủy thầu" && state.isSingleEnvelopeEvalSaved && pkg.soQuyetDinhKetQua)) {
+    if (state.isSingleEnvelopeEvalSaved || state.isSingleEnvelopeScopedEvalSaved || state.hasOfficialLotResults || hasPersistedResultStatus || (pkg.trangThai === "Hủy thầu" && state.isSingleEnvelopeEvalSaved && pkg.soQuyetDinhKetQua)) {
       tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
     }
   }

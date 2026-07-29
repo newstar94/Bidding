@@ -10,6 +10,10 @@ import {
 } from "../lotEvaluationScope.js";
 import { renderBidContractorLink } from "./BidderTable.js";
 import { checkBidQualified } from "./PackageTabs.js";
+import {
+  resolveWorkflowActionMode,
+  WORKFLOW_ACTION_MODE,
+} from "../workflowActionState.js";
 
 const TECHNICAL_SCORE_METHODS = new Set([
   "Kết hợp giữa kỹ thuật và giá",
@@ -58,7 +62,18 @@ export function buildQualifiedApprovalState({
   const isCompleted = target.qualifiedSaved === true;
   const isEditing = Boolean(view?._editingState?.qualified);
   const isFinal = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
-  const isReadOnly = (isCompleted && !isEditing) || isFinal;
+  const isNextStepSaved = Boolean(
+    pkg?.thoiGianMoEhsdxtc
+    || activeScope?.batch?.financialOpening?.saved
+    || qualifiedBids.some((bid) => Number(bid?.giaDuThau) > 0),
+  );
+  const actionMode = resolveWorkflowActionMode({
+    isCompleted,
+    isEditing,
+    isNextStepSaved,
+    isFinal,
+  });
+  const isReadOnly = actionMode !== WORKFLOW_ACTION_MODE.SAVE;
 
   return {
     pkg,
@@ -68,8 +83,10 @@ export function buildQualifiedApprovalState({
     qualifiedBids,
     hasTechnicalScore: hasTechnicalScore(pkg, qualifiedBids),
     isTechEvalSaved,
+    actionMode,
+    isNextStepSaved,
     isReadOnly,
-    canEdit: isReadOnly && isCompleted && !pkg?.thoiGianMoEhsdxtc && !isFinal,
+    canEdit: actionMode === WORKFLOW_ACTION_MODE.EDIT,
   };
 }
 
@@ -242,9 +259,9 @@ export function renderQualifiedApprovalPanel(view, {
     return state;
   }
 
-  const action = !state.isReadOnly
+  const action = state.actionMode === WORKFLOW_ACTION_MODE.SAVE
     ? '<button class="btn btn-primary bf-s-b69e3fa20a" id="btn-save-qualified-decision"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>'
-    : state.canEdit
+    : state.actionMode === WORKFLOW_ACTION_MODE.EDIT
       ? '<button class="btn btn-primary bf-s-b69e3fa20a" id="btn-edit-qualified-decision"><i data-lucide="edit-3"></i> Chỉnh sửa</button>'
       : "";
   contentWrapper.innerHTML = trustedHTML(`

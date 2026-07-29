@@ -4,6 +4,7 @@ import { getAppController } from "../app/controllerRef.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { downloadPackageGoodsWorkbook, buildPackageGoodsPreview, readPackageGoodsExcel } from "./PackageGoodsExcel.js";
 import { isPackageGoodsEditable, validatePackageGoodsItem } from "./packageGoodsValidation.js";
+import { renderPackageSummary } from "./detail/PackageSummary.js";
 
 function packageGoods(model, packageId) {
   return (model?.state?.goithauhanghoa || [])
@@ -18,6 +19,33 @@ function lotLabel(lot) {
 function money(value) {
   if (value === "" || value == null) return "";
   return new Intl.NumberFormat("vi-VN").format(Number(value) || 0);
+}
+
+export function renderPackageGoodsSummary(view, pkg, { editable = true } = {}) {
+  const plan = view?.model?.getLatestPlan?.(pkg?.keHoachId) || null;
+  const investor = plan
+    ? (view?.model?.state?.chudautu || []).find(
+      (item) => String(item.id) === String(plan.chuDauTuId),
+    )
+    : null;
+  return renderPackageSummary({
+    pkg,
+    planName: plan?.tenKeHoach || "Không rõ",
+    investorName: investor?.tenChuDauTu || "Không rõ",
+    formatCurrency: (value) => view?.model?.formatCurrency?.(value) || "--",
+    formatDateTime: (value) => view?.model?.formatDateWithTime?.(value) || "--",
+    lockedMessage: editable
+      ? ""
+      : `Chỉ đọc vì gói thầu đang ở trạng thái ${pkg?.trangThai || "không cho phép sửa"}`,
+  });
+}
+
+export function renderPackageGoodsMutationActions(editable) {
+  if (!editable) return "";
+  return `
+    <input id="package-goods-file" type="file" accept=".xlsx,.xls" hidden>
+    <button type="button" class="btn btn-outline" id="btn-package-goods-import-trigger"><i data-lucide="upload" aria-hidden="true"></i>Nhập Excel</button>
+    <button type="button" class="btn btn-primary" id="btn-package-goods-add"><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>`;
 }
 
 function operationLabel(value) {
@@ -142,18 +170,19 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   const visibleGoods = filtered.slice((page - 1) * pageSize, page * pageSize);
   const lotById = new Map(lots.map((lot) => [String(lot.id), lot]));
   const hasLotColumn = pkg.phanLo === "Có" && !selected;
-  const columnCount = hasLotColumn ? 11 : 10;
+  const columnCount = (hasLotColumn ? 10 : 9) + (editable ? 1 : 0);
   const startIndex = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, filtered.length);
   const paginationPages = packageGoodsPaginationPages(page, pageCount);
   contentWrapper.innerHTML = trustedHTML(`
     <section class="package-goods-panel" aria-labelledby="package-goods-title">
-      <header class="package-goods-toolbar">
+      ${renderPackageGoodsSummary(view, pkg, { editable })}
+      <header class="package-section-header package-goods-toolbar">
         <div class="package-goods-heading">
-          <h4 class="package-section-title is-neutral package-goods-title" id="package-goods-title"><i data-lucide="package-open" aria-hidden="true"></i>Danh mục hàng hóa</h4>
-          <p class="package-goods-summary"><span>${allGoods.length} mặt hàng</span>${editable ? "" : `<span class="package-goods-readonly"><i data-lucide="lock" aria-hidden="true"></i>Chỉ đọc vì gói thầu đang ở trạng thái ${escapeHtml(pkg.trangThai || "không cho phép sửa")}</span>`}</p>
+          <h4 class="package-section-title is-neutral package-goods-title" id="package-goods-title">Danh mục hàng hóa</h4>
+          <p class="package-goods-summary">${allGoods.length} mặt hàng</p>
         </div>
-        <div class="package-goods-actions">
+        <div class="compact-action-group package-goods-actions">
           <label class="package-goods-search" for="package-goods-search">
             <span class="visually-hidden">Tìm hàng hóa</span><i data-lucide="search" aria-hidden="true"></i>
             <input class="form-control" id="package-goods-search" type="search" value="${escapeHtml(view._packageGoodsSearch || "")}" placeholder="Tìm mã hoặc tên hàng hóa">
@@ -161,9 +190,7 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
           ${pkg.phanLo === "Có" ? `<label class="package-goods-filter" for="package-goods-lot-filter"><span class="visually-hidden">Lọc theo phần lô</span><select class="form-control" id="package-goods-lot-filter"><option value="">Tất cả phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}" ${selected === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : ""}
           <button type="button" class="btn btn-outline" id="btn-package-goods-template"><i data-lucide="download" aria-hidden="true"></i>Tải file mẫu</button>
           <button type="button" class="btn btn-outline" id="btn-package-goods-export"><i data-lucide="file-spreadsheet" aria-hidden="true"></i>Xuất Excel</button>
-          <input id="package-goods-file" type="file" accept=".xlsx,.xls" hidden ${editable ? "" : "disabled"}>
-          <button type="button" class="btn btn-outline" id="btn-package-goods-import-trigger" ${editable ? "" : "disabled"}><i data-lucide="upload" aria-hidden="true"></i>Nhập Excel</button>
-          <button type="button" class="btn btn-primary" id="btn-package-goods-add" ${editable ? "" : "disabled"}><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>
+          ${renderPackageGoodsMutationActions(editable)}
         </div>
       </header>
       <div id="package-goods-editor" hidden><form id="package-goods-form" class="package-goods-form"><input type="hidden" name="recordId">
@@ -172,8 +199,8 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
         <label>Yêu cầu kỹ thuật<textarea name="yeuCauKyThuat"></textarea></label><label>Ký mã hiệu tham chiếu<input name="kyMaHieuThamChieu"></label><label>Xuất xứ yêu cầu<input name="xuatXuYeuCau"></label><label>Địa điểm giao hàng<input name="diaDiemGiaoHang"></label><label>Thời gian giao hàng<input name="thoiGianGiaoHang"></label><label>Đơn giá dự toán<input name="donGiaDuToan" type="number" min="0" step="1"></label><label>Thành tiền dự toán<input name="thanhTienDuToan" type="number" min="0" step="1"></label><label>Ghi chú<textarea name="ghiChu"></textarea></label>
         <div><button class="btn btn-outline" type="button" id="btn-package-goods-cancel">Hủy</button><button class="btn btn-primary" type="submit">Lưu</button></div>
       </form></div>
-      <div class="table-container package-goods-table"><table class="data-table" data-no-sort="true"><thead><tr>${hasLotColumn ? "<th>Phần lô</th>" : ""}<th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Nhóm</th><th>ĐVT</th><th>Số lượng</th><th>Yêu cầu kỹ thuật</th><th>Đơn giá dự toán</th><th>Thành tiền</th><th>Thao tác</th></tr></thead>
-      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${hasLotColumn ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td><td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(item.id)}" ${editable ? "" : "disabled"}>Sửa</button> <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(item.id)}" ${canDelete ? "" : "disabled"} title="${canDelete ? "Xóa hàng hóa" : "Theo chính sách hiện tại, chỉ Quản lý tổ chức được xóa dữ liệu"}">Xóa</button></td></tr>`).join("") : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`}</tbody></table></div>
+      <div class="table-container package-goods-table"><table class="data-table" data-no-sort="true"><thead><tr>${hasLotColumn ? "<th>Phần lô</th>" : ""}<th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Nhóm</th><th>ĐVT</th><th>Số lượng</th><th>Yêu cầu kỹ thuật</th><th>Đơn giá dự toán</th><th>Thành tiền</th>${editable ? "<th>Thao tác</th>" : ""}</tr></thead>
+      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${hasLotColumn ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td>${editable ? `<td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(item.id)}">Sửa</button> <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(item.id)}" ${canDelete ? "" : "disabled"} title="${canDelete ? "Xóa hàng hóa" : "Theo chính sách hiện tại, chỉ Quản lý tổ chức được xóa dữ liệu"}">Xóa</button></td>` : ""}</tr>`).join("") : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`}</tbody></table></div>
       <nav class="pagination-container package-goods-pagination" aria-label="Phân trang danh mục hàng hóa"><span class="pagination-info">Hiển thị <strong>${startIndex}-${endIndex}</strong> trên tổng số <strong>${filtered.length}</strong> bản ghi</span><div class="pagination-buttons">
         <button type="button" class="pagination-btn" data-package-goods-page="1" title="Trang đầu" aria-label="Trang đầu" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevrons-left" aria-hidden="true"></i></button>
         <button type="button" class="pagination-btn" data-package-goods-page="${Math.max(1, page - 1)}" title="Trang trước" aria-label="Trang trước" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevron-left" aria-hidden="true"></i></button>

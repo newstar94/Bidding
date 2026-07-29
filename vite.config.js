@@ -2,6 +2,25 @@ import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
 import JavaScriptObfuscator from 'javascript-obfuscator';
 
+const appEntry = path.resolve(__dirname, 'frontend/app/app.js');
+const stylesEntry = '/views/css/app.css';
+
+function singleBundleStylesPlugin() {
+  return {
+    name: 'biddingflow-single-bundle-styles',
+    enforce: 'pre',
+    apply: 'build',
+    transform(code, id) {
+      const cleanId = id.split('?', 1)[0];
+      if (path.resolve(cleanId) !== appEntry) return null;
+      return {
+        code: `import ${JSON.stringify(stylesEntry)};\n${code}`,
+        map: null
+      };
+    }
+  };
+}
+
 function obfuscatorPlugin({ debugProtection = false, deadCodeInjection = false, releaseId = 'development' } = {}) {
   const obfuscationFingerprint = JSON.stringify({
     version: 3,
@@ -79,11 +98,14 @@ export default defineConfig(({ mode }) => {
   return {
     root: '.',
     base: '/dist/',
-    plugins: enableObfuscation ? [obfuscatorPlugin({
-      debugProtection: enableDebugProtection,
-      deadCodeInjection: enableDeadCodeInjection,
-      releaseId
-    })] : [],
+    plugins: [
+      singleBundleStylesPlugin(),
+      ...(enableObfuscation ? [obfuscatorPlugin({
+        debugProtection: enableDebugProtection,
+        deadCodeInjection: enableDeadCodeInjection,
+        releaseId
+      })] : [])
+    ],
     define: {
       __BIDDINGFLOW_RELEASE_ID__: JSON.stringify(releaseId)
     },
@@ -102,14 +124,15 @@ export default defineConfig(({ mode }) => {
       cssCodeSplit: true,
       sourcemap: false,
       minify: 'esbuild',
-      chunkSizeWarningLimit: 700,
+      // The production artifact is intentionally one JavaScript bundle so the
+      // complete module graph is obfuscated as a unit.
+      chunkSizeWarningLimit: 5000,
       rolldownOptions: {
         input: {
-          app: path.resolve(__dirname, 'frontend/app/app.js'),
-          styles: path.resolve(__dirname, 'views/css/app.css')
+          app: appEntry
         },
         output: {
-          codeSplitting: true,
+          codeSplitting: false,
           entryFileNames: 'assets/[name]-[hash].js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]'

@@ -4,6 +4,10 @@ import {
   resolveActiveSavedEvaluationScope,
   resolvePackageResultStatus,
 } from "./lotEvaluationScope.js";
+import {
+  resolveWorkflowActionMode,
+  WORKFLOW_ACTION_MODE,
+} from "./workflowActionState.js";
 
 const EMPTY_REPORT_METADATA = Object.freeze({
   soBaoCao: "",
@@ -101,10 +105,20 @@ export function buildBidEvaluationPanelState({
   const isEditing = Boolean(editingState?.[stepKey]);
   const effectiveStatus = resolvePackageResultStatus(pkg);
   const isLocked = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
-  const isTabLocked = isLocked || (isTwoEnvelope && currentTab === "technical" && isQualifiedSaved);
-  const isReadOnly = isTabLocked || (isCompleted && !isEditing);
+  const isNextStepSaved = Boolean(
+    isTwoEnvelope && currentTab === "technical" && isQualifiedSaved,
+  );
+  const actionMode = resolveWorkflowActionMode({
+    isCompleted,
+    isEditing,
+    isNextStepSaved,
+    isFinal: isLocked,
+  });
+  const isTabLocked = actionMode === WORKFLOW_ACTION_MODE.HIDDEN;
+  const isReadOnly = actionMode !== WORKFLOW_ACTION_MODE.SAVE;
 
   return {
+    actionMode,
     activeMeta,
     activeTechnicalScope,
     baseMeta,
@@ -113,6 +127,7 @@ export function buildBidEvaluationPanelState({
     hasScopedHistory,
     isCompleted,
     isLocked,
+    isNextStepSaved,
     isQualifiedSaved,
     isReadOnly,
     isTabLocked,

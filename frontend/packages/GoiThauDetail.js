@@ -195,6 +195,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
       await renderPackageDocumentsPanel(this, {
         contentWrapper,
         packageId: gt.id,
+        pkg: gt,
       });
       break;
   }

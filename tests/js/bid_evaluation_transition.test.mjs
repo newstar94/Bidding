@@ -78,3 +78,35 @@ test("waits for the paginated package refresh before opening the result step", a
   assert.equal(detailOpened, true);
   assert.equal(packageRecord.danhGiaHsdtMetadata.includes('"saved":true'), true);
 });
+
+test("awarded packages reject evaluation saves before reading report controls", async () => {
+  const pkg = {
+    id: "pkg-awarded",
+    trangThai: "Đã có kết quả",
+    phanLo: "Không",
+    phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
+  };
+  const alerts = [];
+  let activeControlReads = 0;
+  const controller = {
+    model: {
+      state: { goithau: [pkg], thongtinmothau: [] },
+    },
+    view: {
+      getActiveElement(id) {
+        activeControlReads += 1;
+        return id === "danhgiahsdt-goithau-select" ? { value: pkg.id } : null;
+      },
+      isGoiThauDetailTabActive: () => true,
+      focusInvalidControl() {},
+      async customAlert(...args) { alerts.push(args); },
+    },
+  };
+
+  await saveDanhGiaHsdt.call(controller);
+
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0][0], "Báo cáo đánh giá đã được khóa");
+  assert.equal(activeControlReads, 1, "locked save read editable report controls");
+  assert.equal(pkg.danhGiaHsdtMetadata, undefined);
+});
