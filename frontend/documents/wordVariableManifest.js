@@ -1,1319 +1,1382 @@
 /* Generated Word-variable manifest. Loaded only with Word integration. */
 export const FIELD_METADATA_BY_TABLE = {
   "chu_dau_tu": {
-    "chuc_vu_dai_dien": {
-      "column": "chuc_vu_dai_dien",
-      "dataType": "string",
-      "excelCompatible": true,
+    "phien_ban": {
+      "column": "phien_ban",
+      "jsonKey": "phienBan",
+      "dataType": "integer",
+      "label": "Phiên bản dữ liệu",
       "format": "text",
-      "jsonKey": "chucVuDaiDien",
-      "label": "Ch\u1ee9c vu \u0111\u1ea1i \u0111i\u1ec7n",
-      "wordVariable": "chuc_vu_dai_dien_cdt"
+      "wordVariable": "cdt_phien_ban",
+      "excelCompatible": true
     },
-    "chuc_vu_nguoi_dung_dau": {
-      "column": "chuc_vu_nguoi_dung_dau",
+    "ngay_ap_dung": {
+      "column": "ngay_ap_dung",
+      "jsonKey": "ngayApDung",
       "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "chucVuNguoiDungDau",
-      "label": "Ch\u1ee9c vu ng\u01b0\u1eddi dung \u0111\u1ea5u",
-      "wordVariable": "chuc_vu_nguoi_dung_dau_cdt"
-    },
-    "co_quan_chu_quan": {
-      "column": "co_quan_chu_quan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "coQuanChuQuan",
-      "label": "Cơ quan chủ quản",
-      "wordVariable": "cq_chu_quan"
-    },
-    "dai_dien_cdt": {
-      "column": "dai_dien_cdt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "daiDienCdt",
-      "label": "\u0110\u1ea1i \u0111i\u1ec7n cdt",
-      "wordVariable": "dai_dien_cdt"
-    },
-    "danh_xung": {
-      "column": "danh_xung",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "danhXung",
-      "label": "Danh x\u01b0ng",
-      "wordVariable": "danh_xung_cdt"
-    },
-    "dia_chi": {
-      "column": "dia_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "diaChi",
-      "label": "\u0110\u1ecba ch\u1ec9",
-      "wordVariable": "dia_chi_cdt"
-    },
-    "email": {
-      "column": "email",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "email",
-      "label": "Email",
-      "wordVariable": "email_cdt"
+      "label": "Ngày áp dụng",
+      "format": "date",
+      "wordVariable": "ngay_ap_dung_cdt",
+      "excelCompatible": true
     },
     "ma_chu_dau_tu": {
       "column": "ma_chu_dau_tu",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "maChuDauTu",
-      "label": "M\u00e3 chu \u0111\u1ea5u tu",
-      "wordVariable": "ma_cdt"
-    },
-    "ma_qhns": {
-      "column": "ma_qhns",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Mã chủ đầu tư",
       "format": "text",
-      "jsonKey": "maQHNS",
-      "label": "M\u00e3 qhns",
-      "wordVariable": "cdt_ma_qhns"
-    },
-    "ma_so_thue": {
-      "column": "ma_so_thue",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "maSoThue",
-      "label": "Mã số thuế",
-      "wordVariable": "mst_cdt"
-    },
-    "ngay_ap_dung": {
-      "column": "ngay_ap_dung",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayApDung",
-      "label": "Ngày áp dụng",
-      "wordVariable": "ngay_ap_dung_cdt"
-    },
-    "noi_mo_tai_khoan": {
-      "column": "noi_mo_tai_khoan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "noiMoTaiKhoan",
-      "label": "Noi m\u1edf t\u00e0i khoan",
-      "wordVariable": "noi_mo_tk_cdt"
-    },
-    "so_dien_thoai": {
-      "column": "so_dien_thoai",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soDienThoai",
-      "label": "S\u1ed1 \u0111i\u1ec7n thoai",
-      "wordVariable": "sdt_cdt"
-    },
-    "so_tai_khoan": {
-      "column": "so_tai_khoan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soTaiKhoan",
-      "label": "S\u1ed1 t\u00e0i khoan",
-      "wordVariable": "stk_cdt"
+      "wordVariable": "ma_cdt",
+      "excelCompatible": true
     },
     "ten_chu_dau_tu": {
       "column": "ten_chu_dau_tu",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "tenChuDauTu",
-      "label": "T\u00ean chu \u0111\u1ea5u tu",
-      "wordVariable": "ten_cdt"
+      "dataType": "string",
+      "label": "Tên chủ đầu tư",
+      "format": "text",
+      "wordVariable": "ten_cdt",
+      "excelCompatible": true
     },
     "ten_viet_tat": {
       "column": "ten_viet_tat",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "tenVietTat",
-      "label": "Tên viết tắt",
-      "wordVariable": "ten_tat_cdt"
-    }
-  },
-  "chuyen_gia": {
-    "anh_chu_ky": {
-      "column": "anh_chu_ky",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Tên viết tắt chủ đầu tư",
       "format": "text",
-      "jsonKey": "anhChuKy",
-      "label": "\u1ea2nh chu k\u00fd",
-      "wordVariable": "anh_chu_ky_cg"
-    },
-    "anh_chung_chi": {
-      "column": "anh_chung_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "anhChungChi",
-      "label": "\u1ea2nh chung ch\u1ec9",
-      "wordVariable": "anh_chung_chi_cg"
-    },
-    "don_vi_cap_chung_chi": {
-      "column": "don_vi_cap_chung_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "donViCapChungChi",
-      "label": "Don vi c\u1ea5p chung ch\u1ec9",
-      "wordVariable": "dv_cap_chung_chi_cg"
-    },
-    "ho_ten": {
-      "column": "ho_ten",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hoTen",
-      "label": "Ho t\u00ean",
-      "wordVariable": "ten_cg"
-    },
-    "ngay_cap_cccd": {
-      "column": "ngay_cap_cccd",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayCapCCCD",
-      "label": "Ng\u00e0y c\u1ea5p cccd",
-      "wordVariable": "ngay_cap_cccd_cg"
-    },
-    "ngay_cap_chung_chi": {
-      "column": "ngay_cap_chung_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayCapChungChi",
-      "label": "Ng\u00e0y c\u1ea5p chung ch\u1ec9",
-      "wordVariable": "ngay_cap_chung_chi_cg"
-    },
-    "noi_cap_cccd": {
-      "column": "noi_cap_cccd",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "noiCapCCCD",
-      "label": "Noi c\u1ea5p cccd",
-      "wordVariable": "noi_cap_cccd_cg"
-    },
-    "so_cccd": {
-      "column": "so_cccd",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soCCCD",
-      "label": "S\u1ed1 cccd",
-      "wordVariable": "cccd_cg"
-    },
-    "so_chung_chi": {
-      "column": "so_chung_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soChungChi",
-      "label": "S\u1ed1 chung ch\u1ec9",
-      "wordVariable": "so_chung_chi_cg"
-    },
-    "ten_anh_chu_ky": {
-      "column": "ten_anh_chu_ky",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenAnhChuKy",
-      "label": "T\u00ean \u1ea3nh chu k\u00fd",
-      "wordVariable": "ten_anh_chu_ky_cg"
-    },
-    "ten_anh_chung_chi": {
-      "column": "ten_anh_chung_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenAnhChungChi",
-      "label": "T\u00ean \u1ea3nh chung ch\u1ec9",
-      "wordVariable": "ten_anh_chung_chi_cg"
-    }
-  },
-  "goi_dich_vu": {
-    "gia_ca": {
-      "column": "gia_ca",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "giaCa",
-      "label": "Gi\u00e1 ca",
-      "wordVariable": "gia_goi_dv"
-    },
-    "han_muc_nhan_su": {
-      "column": "han_muc_nhan_su",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hanMucNhanSu",
-      "label": "Hạn mức nhân sự",
-      "wordVariable": "han_muc_nhan_su_dv"
-    },
-    "mo_ta": {
-      "column": "mo_ta",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "moTa",
-      "label": "M\u1edf ta",
-      "wordVariable": "mo_ta_goi_dv"
-    },
-    "ten_goi": {
-      "column": "ten_goi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenGoi",
-      "label": "T\u00ean g\u00f3i",
-      "wordVariable": "ten_goi_dv"
-    }
-  },
-  "goi_thau": {
-    "gia_goi_thau": {
-      "column": "gia_goi_thau",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "giaGoiThau",
-      "label": "Gi\u00e1 g\u00f3i th\u1ea7u",
-      "wordVariable": "gia_gt"
-    },
-    "gia_tri_dam_bao_du_thau": {
-      "column": "gia_tri_dam_bao_du_thau",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "giaTriDamBaoDuThau",
-      "label": "Gi\u00e1 tr\u1ecb dam b\u1ea3o d\u1ef1 th\u1ea7u",
-      "wordVariable": "gia_tri_bddt"
-    },
-    "gia_trung_thau": {
-      "column": "gia_trung_thau",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "giaTrungThau",
-      "label": "Gi\u00e1 trung th\u1ea7u",
-      "wordVariable": "gia_trung_thau"
-    },
-    "hieu_luc_dam_bao_du_thau": {
-      "column": "hieu_luc_dam_bao_du_thau",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hieuLucDamBaoDuThau",
-      "label": "Hieu luc dam b\u1ea3o d\u1ef1 th\u1ea7u",
-      "wordVariable": "hieu_luc_bddt"
-    },
-    "hieu_luc_hsdt": {
-      "column": "hieu_luc_hsdt",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hieuLucHsdt",
-      "label": "Hiệu lực HSDT",
-      "wordVariable": "hieu_luc_hsdt"
-    },
-    "hinh_thuc_lua_chon": {
-      "column": "hinh_thuc_lua_chon",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hinhThucLuaChon",
-      "label": "Hinh th\u1ef1c l\u1ef1a chon",
-      "wordVariable": "hinh_thuc_lcnt"
-    },
-    "is_thuoc": {
-      "column": "is_thuoc",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "isThuoc",
-      "label": "Is thuộc",
-      "wordVariable": "gt_is_thuoc"
-    },
-    "linh_vuc": {
-      "column": "linh_vuc",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "linhVuc",
-      "label": "Lĩnh vực",
-      "wordVariable": "gt_linh_vuc"
-    },
-    "loai_hop_dong": {
-      "column": "loai_hop_dong",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "loaiHopDong",
-      "label": "Loai h\u1ee3p \u0111\u00f3ng",
-      "wordVariable": "loai_hd_gt"
-    },
-    "ma_goi_thau": {
-      "column": "ma_goi_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "maGoiThau",
-      "label": "M\u00e3 g\u00f3i th\u1ea7u",
-      "wordVariable": "ma_gt"
-    },
-    "ngay_bao_cao_tham_dinh_hsmt": {
-      "column": "ngay_bao_cao_tham_dinh_hsmt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayBaoCaoThamDinhHsmt",
-      "label": "Ng\u00e0y b\u1ea3o c\u00e1o tham dinh hsmt",
-      "wordVariable": "ngay_bc_tham_dinh_hsmt"
-    },
-    "ngay_quyet_dinh": {
-      "column": "ngay_quyet_dinh",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayQuyetDinh",
-      "label": "Ng\u00e0y quy\u1ebft dinh",
-      "wordVariable": "ngay_qd_hsmt"
-    },
-    "ngay_quyet_dinh_ket_qua": {
-      "column": "ngay_quyet_dinh_ket_qua",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayQuyetDinhKetQua",
-      "label": "Ng\u00e0y quy\u1ebft dinh ket qua",
-      "wordVariable": "ngay_qd_kq"
-    },
-    "ngay_trinh_hsmt": {
-      "column": "ngay_trinh_hsmt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayTrinhHsmt",
-      "label": "Ng\u00e0y trinh hsmt",
-      "wordVariable": "ngay_trinh_hsmt"
-    },
-    "nguon_von": {
-      "column": "nguon_von",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "nguonVon",
-      "label": "Nguồn vốn",
-      "wordVariable": "gt_nguon_von"
-    },
-    "phan_lo": {
-      "column": "phan_lo",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "phanLo",
-      "label": "Phân lô",
-      "wordVariable": "gt_phan_lo"
-    },
-    "phien_ban": {
-      "column": "phien_ban",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "phienBan",
-      "label": "Phiên bản",
-      "wordVariable": "gt_phien_ban"
-    },
-    "phuong_phap_danh_gia": {
-      "column": "phuong_phap_danh_gia",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "phuongPhapDanhGia",
-      "label": "Phuong phap danh gi\u00e1",
-      "wordVariable": "pp_danh_gia"
-    },
-    "phuong_thuc_lua_chon": {
-      "column": "phuong_thuc_lua_chon",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "phuongThucLuaChon",
-      "label": "Phuong th\u1ef1c l\u1ef1a chon",
-      "wordVariable": "phuong_thuc_lcnt"
-    },
-    "so_bao_cao_tham_dinh_hsmt": {
-      "column": "so_bao_cao_tham_dinh_hsmt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soBaoCaoThamDinhHsmt",
-      "label": "S\u1ed1 b\u1ea3o c\u00e1o tham dinh hsmt",
-      "wordVariable": "so_bc_tham_dinh_hsmt"
-    },
-    "so_quyet_dinh": {
-      "column": "so_quyet_dinh",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soQuyetDinh",
-      "label": "S\u1ed1 quy\u1ebft dinh",
-      "wordVariable": "so_qd_hsmt"
-    },
-    "so_quyet_dinh_ket_qua": {
-      "column": "so_quyet_dinh_ket_qua",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soQuyetDinhKetQua",
-      "label": "S\u1ed1 quy\u1ebft dinh ket qua",
-      "wordVariable": "so_qd_kq"
-    },
-    "so_to_trinh_hsmt": {
-      "column": "so_to_trinh_hsmt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soToTrinhHsmt",
-      "label": "S\u1ed1 to trinh hsmt",
-      "wordVariable": "so_ttr_hsmt"
-    },
-    "ten_goi_thau": {
-      "column": "ten_goi_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenGoiThau",
-      "label": "T\u00ean g\u00f3i th\u1ea7u",
-      "wordVariable": "ten_gt"
-    },
-    "thoi_gian_bat_dau_to_chuc": {
-      "column": "thoi_gian_bat_dau_to_chuc",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thoiGianBatDauToChuc",
-      "label": "Th\u1eddi gian bat \u0111\u1ea5u to ch\u1ee9c",
-      "wordVariable": "tg_bat_dau_lcnt"
-    },
-    "thoi_gian_dang_tai": {
-      "column": "thoi_gian_dang_tai",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "datetime",
-      "jsonKey": "thoiGianDangTai",
-      "label": "Th\u1eddi gian \u0111\u0103ng t\u00e0i",
-      "wordVariable": "tg_dang_tai_tbmt"
-    },
-    "thoi_gian_dong_thau": {
-      "column": "thoi_gian_dong_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "datetime",
-      "jsonKey": "thoiGianDongThau",
-      "label": "Th\u1eddi gian \u0111\u00f3ng th\u1ea7u",
-      "wordVariable": "tg_dong_thau"
-    },
-    "thoi_gian_goi_thau": {
-      "column": "thoi_gian_goi_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thoiGianGoiThau",
-      "label": "Th\u1eddi gian g\u00f3i th\u1ea7u",
-      "wordVariable": "tg_goi_thau"
-    },
-    "thoi_gian_hop_dong": {
-      "column": "thoi_gian_hop_dong",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thoiGianHopDong",
-      "label": "Th\u1eddi gian h\u1ee3p \u0111\u00f3ng",
-      "wordVariable": "tg_hop_dong"
-    },
-    "thoi_gian_mo_ehsdxtc": {
-      "column": "thoi_gian_mo_ehsdxtc",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "datetime",
-      "jsonKey": "thoiGianMoEhsdxtc",
-      "label": "Th\u1eddi gian m\u1edf ehsdxtc",
-      "wordVariable": "tg_mo_ehsdxtc"
-    },
-    "thoi_gian_mo_thau": {
-      "column": "thoi_gian_mo_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "datetime",
-      "jsonKey": "thoiGianMoThau",
-      "label": "Th\u1eddi gian m\u1edf th\u1ea7u",
-      "wordVariable": "tg_mo_thau"
-    },
-    "thoi_gian_thuc_hien": {
-      "column": "thoi_gian_thuc_hien",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thoiGianThucHien",
-      "label": "Th\u1eddi gian th\u1ef1c hien",
-      "wordVariable": "tg_thuc_hien_gt"
-    },
-    "thoi_gian_to_chuc": {
-      "column": "thoi_gian_to_chuc",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thoiGianToChuc",
-      "label": "Th\u1eddi gian to ch\u1ee9c",
-      "wordVariable": "tg_to_chuc_lcnt"
-    },
-    "trang_thai": {
-      "column": "trang_thai",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "trangThai",
-      "label": "Tr\u1ea1ng thai",
-      "wordVariable": "gt_trang_thai"
-    },
-    "trong_so_ky_thuat": {
-      "column": "trong_so_ky_thuat",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "percent",
-      "jsonKey": "trongSoKyThuat",
-      "label": "Trong s\u1ed1 k\u00fd thuat",
-      "wordVariable": "trong_so_ky_thuat"
-    },
-    "tuy_chon_mua_them": {
-      "column": "tuy_chon_mua_them",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tuyChonMuaThem",
-      "label": "Tùy chọn mua thêm",
-      "wordVariable": "co_mua_them"
-    },
-    "ty_le_bao_dam_hop_dong": {
-      "column": "ty_le_bao_dam_hop_dong",
-      "dataType": "number",
-      "excelCompatible": true,
-      "format": "percent",
-      "jsonKey": "tyLeBaoDamHopDong",
-      "label": "Ty le b\u1ea3o dam h\u1ee3p \u0111\u00f3ng",
-      "wordVariable": "ty_le_bdhdt"
-    },
-    "yeu_cau_tham_dinh_hsmt": {
-      "column": "yeu_cau_tham_dinh_hsmt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "yeuCauThamDinhHsmt",
-      "label": "Yêu cầu thẩm định HSMT",
-      "wordVariable": "yc_tham_dinh_hsmt"
-    }
-  },
-  "hop_dong": {
-    "co_qd_chi_dinh": {
-      "column": "co_qd_chi_dinh",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "coQdChiDinh",
-      "label": "Co qd ch\u1ec9 dinh",
-      "wordVariable": "co_qd_chi_dinh"
-    },
-    "gia_tri": {
-      "column": "gia_tri",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "giaTri",
-      "label": "Gi\u00e1 tr\u1ecb",
-      "wordVariable": "hd_gia_tri"
-    },
-    "loai_hop_dong": {
-      "column": "loai_hop_dong",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "loaiHopDong",
-      "label": "Loai h\u1ee3p \u0111\u00f3ng",
-      "wordVariable": "loai_hd"
-    },
-    "ngay_ky": {
-      "column": "ngay_ky",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayKy",
-      "label": "Ng\u00e0y k\u00fd",
-      "wordVariable": "ngay_ky_hd"
-    },
-    "ngay_qd_chi_dinh": {
-      "column": "ngay_qd_chi_dinh",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayQdChiDinh",
-      "label": "Ng\u00e0y qd ch\u1ec9 dinh",
-      "wordVariable": "ngay_qd_chi_dinh"
-    },
-    "ngay_thanh_ly": {
-      "column": "ngay_thanh_ly",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayThanhLy",
-      "label": "Ng\u00e0y thanh ly",
-      "wordVariable": "ngay_thanh_ly_hd"
-    },
-    "phan_loai": {
-      "column": "phan_loai",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "phanLoai",
-      "label": "Phân loại",
-      "wordVariable": "hd_phan_loai"
-    },
-    "so_hop_dong": {
-      "column": "so_hop_dong",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soHopDong",
-      "label": "S\u1ed1 h\u1ee3p \u0111\u00f3ng",
-      "wordVariable": "so_hd"
-    },
-    "so_qd_chi_dinh": {
-      "column": "so_qd_chi_dinh",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soQdChiDinh",
-      "label": "S\u1ed1 qd ch\u1ec9 dinh",
-      "wordVariable": "so_qd_chi_dinh"
-    },
-    "ten_hop_dong": {
-      "column": "ten_hop_dong",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenHopDong",
-      "label": "T\u00ean h\u1ee3p \u0111\u00f3ng",
-      "wordVariable": "ten_hd"
-    },
-    "thoi_gian_thuc_hien": {
-      "column": "thoi_gian_thuc_hien",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soNgayThucHien",
-      "label": "Th\u1eddi gian th\u1ef1c hien",
-      "wordVariable": "tg_thuc_hien_hd"
-    },
-    "trang_thai_hop_dong": {
-      "column": "trang_thai_hop_dong",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "trangThaiHopDong",
-      "label": "Tr\u1ea1ng th\u00e1i h\u1ee3p \u0111\u1ed3ng",
-      "wordVariable": "trang_thai_hd"
-    }
-  },
-  "ke_hoach_lcnt": {
-    "co_quan_phe_duyet_du_an": {
-      "column": "co_quan_phe_duyet_du_an",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "coQuanPheDuyetDuAn",
-      "label": "Co quan ph\u00ea duyet d\u1ef1 an",
-      "wordVariable": "cq_phe_duyet_du_an"
-    },
-    "dia_diem_quy_mo": {
-      "column": "dia_diem_quy_mo",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "diaDiemQuyMo",
-      "label": "\u0110\u1ecba diem quy m\u1edf",
-      "wordVariable": "dia_diem_quy_mo"
-    },
-    "don_vi_trinh_cdt": {
-      "column": "don_vi_trinh_cdt",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "donViTrinhCdt",
-      "label": "Đơn vị trình CĐT",
-      "wordVariable": "don_vi_trinh_cdt"
-    },
-    "loai_hinh_mua_sam": {
-      "column": "loai_hinh_mua_sam",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "loaiHinhMuaSam",
-      "label": "Loại kế hoạch (Dự án / Dự toán mua sắm)",
-      "wordVariable": "loai_ke_hoach"
-    },
-    "ma_du_an": {
-      "column": "ma_du_an",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "maDuan",
-      "label": "M\u00e3 d\u1ef1 an",
-      "wordVariable": "ma_du_an"
-    },
-    "ma_ke_hoach": {
-      "column": "ma_ke_hoach",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "maKeHoach",
-      "label": "M\u00e3 k\u1ebf hoach",
-      "wordVariable": "ma_kh"
-    },
-    "ngay_phe_duyet": {
-      "column": "ngay_phe_duyet",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayPheDuyet",
-      "label": "Ng\u00e0y ph\u00ea duyet",
-      "wordVariable": "ngay_phe_duyet_kh"
-    },
-    "ngay_phe_duyet_du_toan": {
-      "column": "ngay_phe_duyet_du_toan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayPheDuyetDuToan",
-      "label": "Ng\u00e0y ph\u00ea duyet d\u1ef1 toan",
-      "wordVariable": "ngay_phe_duyet_du_toan"
-    },
-    "ngay_qd_phe_duyet_du_an": {
-      "column": "ngay_qd_phe_duyet_du_an",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayQdPheDuyetDuAn",
-      "label": "Ng\u00e0y qd ph\u00ea duyet d\u1ef1 an",
-      "wordVariable": "ngay_qd_du_an"
-    },
-    "ngay_trinh_du_toan": {
-      "column": "ngay_trinh_du_toan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayTrinhDuToan",
-      "label": "Ng\u00e0y trinh d\u1ef1 toan",
-      "wordVariable": "ngay_trinh_du_toan"
-    },
-    "ngay_trinh_ke_hoach": {
-      "column": "ngay_trinh_ke_hoach",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayTrinhKeHoach",
-      "label": "Ng\u00e0y trinh k\u1ebf hoach",
-      "wordVariable": "ngay_trinh_kh"
-    },
-    "nguon_von": {
-      "column": "nguon_von",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "nguonVon",
-      "label": "Nguồn vốn",
-      "wordVariable": "kh_nguon_von"
-    },
-    "phe_duyet": {
-      "column": "phe_duyet",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "pheDuyet",
-      "label": "Ph\u00ea duyet",
-      "wordVariable": "nguoi_phe_duyet_kh"
-    },
-    "phien_ban": {
-      "column": "phien_ban",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "phienBan",
-      "label": "Phiên bản",
-      "wordVariable": "kh_phien_ban"
-    },
-    "quyet_dinh_phe_duyet": {
-      "column": "quyet_dinh_phe_duyet",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "quyetDinhPheDuyet",
-      "label": "Quy\u1ebft dinh ph\u00ea duyet",
-      "wordVariable": "qd_phe_duyet_kh"
-    },
-    "so_qd_phe_duyet_du_an": {
-      "column": "so_qd_phe_duyet_du_an",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soQdPheDuyetDuAn",
-      "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 an",
-      "wordVariable": "so_qd_du_an"
-    },
-    "so_qd_phe_duyet_du_toan": {
-      "column": "so_qd_phe_duyet_du_toan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soQdPheDuyetDuToan",
-      "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 toan",
-      "wordVariable": "so_qd_du_toan"
-    },
-    "so_to_trinh_du_toan": {
-      "column": "so_to_trinh_du_toan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soToTrinhDuToan",
-      "label": "Số tờ trình dự toán",
-      "wordVariable": "so_ttr_du_toan"
-    },
-    "so_to_trinh_du_toan_ke_hoach": {
-      "column": "so_to_trinh_du_toan_ke_hoach",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soToTrinhDuToanKeHoach",
-      "label": "Số tờ trình dự toán và kế hoạch",
-      "wordVariable": "so_ttr_du_toan_ke_hoach"
-    },
-    "so_to_trinh_ke_hoach": {
-      "column": "so_to_trinh_ke_hoach",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "soToTrinhKeHoach",
-      "label": "Số tờ trình kế hoạch",
-      "wordVariable": "so_ttr_ke_hoach"
-    },
-    "ten_du_an_du_toan": {
-      "column": "ten_du_an_du_toan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenDuAnDuToan",
-      "label": "T\u00ean d\u1ef1 an d\u1ef1 toan",
-      "wordVariable": "ten_du_an_du_toan"
-    },
-    "ten_ke_hoach": {
-      "column": "ten_ke_hoach",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenKeHoach",
-      "label": "T\u00ean k\u1ebf hoach",
-      "wordVariable": "ten_kh"
-    },
-    "ten_viet_tat_don_vi_trinh": {
-      "column": "ten_viet_tat_don_vi_trinh",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenVietTatDonViTrinh",
-      "label": "Tên viết tắt đơn vị trình",
-      "wordVariable": "ten_tat_dv_trinh"
-    },
-    "thoi_gian_dang_tai": {
-      "column": "thoi_gian_dang_tai",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "datetime",
-      "jsonKey": "thoiGianDangMa",
-      "label": "Th\u1eddi gian \u0111\u0103ng t\u00e0i",
-      "wordVariable": "tg_dang_tai_kh"
-    },
-    "thoi_gian_du_an": {
-      "column": "thoi_gian_du_an",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thoiGianDuAn",
-      "label": "Th\u1eddi gian d\u1ef1 an",
-      "wordVariable": "tg_du_an"
-    },
-    "thong_tin_khac": {
-      "column": "thong_tin_khac",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "thongTinKhac",
-      "label": "Thông tin khác",
-      "wordVariable": "thong_tin_khac_kh"
-    },
-    "tong_muc_dau_tu": {
-      "column": "tong_muc_dau_tu",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "tongMucDauTu",
-      "label": "Tổng mức đầu tư dự án / Tổng dự toán",
-      "wordVariable": "tong_muc_dau_tu_du_toan"
-    }
-  },
-  "nha_thau": {
-    "anh_dau": {
-      "column": "anh_dau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "anhDau",
-      "label": "\u1ea2nh \u0111\u1ea5u",
-      "wordVariable": "anh_dau_nt"
-    },
-    "chuc_vu_dai_dien": {
-      "column": "chuc_vu_dai_dien",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "chucVuDaiDien",
-      "label": "Ch\u1ee9c vu \u0111\u1ea1i \u0111i\u1ec7n",
-      "wordVariable": "chuc_vu_dai_dien_nt"
-    },
-    "danh_xung": {
-      "column": "danh_xung",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "danhXung",
-      "label": "Danh x\u01b0ng",
-      "wordVariable": "danh_xung_nt"
-    },
-    "dia_chi": {
-      "column": "dia_chi",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "diaChi",
-      "label": "\u0110\u1ecba ch\u1ec9",
-      "wordVariable": "dia_chi_nt"
-    },
-    "email": {
-      "column": "email",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "email",
-      "label": "Email",
-      "wordVariable": "email_nt"
-    },
-    "loai_nha_thau": {
-      "column": "loai_nha_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "loaiNhaThau",
-      "label": "Loai nh\u00e0 th\u1ea7u",
-      "wordVariable": "loai_nt"
-    },
-    "ma_ngan_hang": {
-      "column": "ma_ngan_hang",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "maNganHang",
-      "label": "M\u00e3 ngan hang",
-      "wordVariable": "ma_ngan_hang_nt"
-    },
-    "ma_nha_thau": {
-      "column": "ma_nha_thau",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "maNhaThau",
-      "label": "M\u00e3 nh\u00e0 th\u1ea7u",
-      "wordVariable": "ma_nt"
+      "wordVariable": "ten_tat_cdt",
+      "excelCompatible": true
     },
     "ma_so_thue": {
       "column": "ma_so_thue",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "maSoThue",
-      "label": "Mã số thuế",
-      "wordVariable": "mst_nt"
-    },
-    "ngay_ap_dung": {
-      "column": "ngay_ap_dung",
       "dataType": "string",
-      "excelCompatible": true,
-      "format": "date",
-      "jsonKey": "ngayApDung",
-      "label": "Ngày áp dụng",
-      "wordVariable": "ngay_ap_dung_nt"
-    },
-    "nguoi_dai_dien": {
-      "column": "nguoi_dai_dien",
-      "dataType": "string",
-      "excelCompatible": true,
+      "label": "Mã số thuế chủ đầu tư",
       "format": "text",
-      "jsonKey": "nguoiDaiDien",
-      "label": "Ng\u01b0\u1eddi \u0111\u1ea1i \u0111i\u1ec7n",
-      "wordVariable": "dai_dien_nt"
+      "wordVariable": "mst_cdt",
+      "excelCompatible": true
     },
-    "noi_mo_tai_khoan": {
-      "column": "noi_mo_tai_khoan",
+    "chuc_vu_nguoi_dung_dau": {
+      "column": "chuc_vu_nguoi_dung_dau",
+      "jsonKey": "chucVuNguoiDungDau",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Chức vụ người đứng đầu",
       "format": "text",
-      "jsonKey": "noiMoTaiKhoan",
-      "label": "Noi m\u1edf t\u00e0i khoan",
-      "wordVariable": "noi_mo_tk_nt"
+      "wordVariable": "chuc_vu_nguoi_dung_dau_cdt",
+      "excelCompatible": true
+    },
+    "dai_dien_cdt": {
+      "column": "dai_dien_cdt",
+      "jsonKey": "daiDienCdt",
+      "dataType": "string",
+      "label": "Họ tên người đại diện chủ đầu tư",
+      "format": "text",
+      "wordVariable": "dai_dien_cdt",
+      "excelCompatible": true
+    },
+    "chuc_vu_dai_dien": {
+      "column": "chuc_vu_dai_dien",
+      "jsonKey": "chucVuDaiDien",
+      "dataType": "string",
+      "label": "Chức vụ người đại diện chủ đầu tư",
+      "format": "text",
+      "wordVariable": "chuc_vu_dai_dien_cdt",
+      "excelCompatible": true
+    },
+    "danh_xung": {
+      "column": "danh_xung",
+      "jsonKey": "danhXung",
+      "dataType": "string",
+      "label": "Danh xưng người đại diện chủ đầu tư",
+      "format": "text",
+      "wordVariable": "danh_xung_cdt",
+      "excelCompatible": true
+    },
+    "dia_chi": {
+      "column": "dia_chi",
+      "jsonKey": "diaChi",
+      "dataType": "string",
+      "label": "Địa chỉ chủ đầu tư",
+      "format": "text",
+      "wordVariable": "dia_chi_cdt",
+      "excelCompatible": true
     },
     "so_dien_thoai": {
       "column": "so_dien_thoai",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "soDienThoai",
-      "label": "S\u1ed1 \u0111i\u1ec7n thoai",
-      "wordVariable": "sdt_nt"
+      "dataType": "string",
+      "label": "Số điện thoại chủ đầu tư",
+      "format": "text",
+      "wordVariable": "sdt_cdt",
+      "excelCompatible": true
     },
     "so_tai_khoan": {
       "column": "so_tai_khoan",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "soTaiKhoan",
-      "label": "S\u1ed1 t\u00e0i khoan",
-      "wordVariable": "stk_nt"
-    },
-    "ten_anh_dau": {
-      "column": "ten_anh_dau",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Số tài khoản chủ đầu tư",
       "format": "text",
-      "jsonKey": "tenAnhDau",
-      "label": "T\u00ean \u1ea3nh \u0111\u1ea5u",
-      "wordVariable": "ten_anh_dau_nt"
+      "wordVariable": "stk_cdt",
+      "excelCompatible": true
     },
-    "ten_nha_thau": {
-      "column": "ten_nha_thau",
+    "noi_mo_tai_khoan": {
+      "column": "noi_mo_tai_khoan",
+      "jsonKey": "noiMoTaiKhoan",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Nơi mở tài khoản chủ đầu tư",
       "format": "text",
-      "jsonKey": "tenNhaThau",
-      "label": "T\u00ean nh\u00e0 th\u1ea7u",
-      "wordVariable": "ten_nt"
-    },
-    "ten_viet_tat": {
-      "column": "ten_viet_tat",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "tenVietTat",
-      "label": "Tên viết tắt",
-      "wordVariable": "ten_tat_nt"
-    }
-  },
-  "tai_khoan": {
-    "anh_dai_dien": {
-      "column": "anh_dai_dien",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "anhDaiDien",
-      "label": "\u1ea2nh \u0111\u1ea1i \u0111i\u1ec7n",
-      "wordVariable": "tk_anh_dai_dien"
-    },
-    "da_xac_minh": {
-      "column": "da_xac_minh",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "daXacMinh",
-      "label": "Đã xác minh",
-      "wordVariable": "tk_da_xac_minh"
+      "wordVariable": "noi_mo_tk_cdt",
+      "excelCompatible": true
     },
     "email": {
       "column": "email",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "email",
-      "label": "Email",
-      "wordVariable": "tk_email"
-    },
-    "ho_ten": {
-      "column": "ho_ten",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Email chủ đầu tư",
       "format": "text",
-      "jsonKey": "hoTen",
-      "label": "Ho t\u00ean",
-      "wordVariable": "tk_ho_ten"
+      "wordVariable": "email_cdt",
+      "excelCompatible": true
     },
-    "ten_dang_nhap": {
-      "column": "ten_dang_nhap",
+    "ma_qhns": {
+      "column": "ma_qhns",
+      "jsonKey": "maQHNS",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Mã QHNS của chủ đầu tư",
       "format": "text",
-      "jsonKey": "tenDangNhap",
-      "label": "T\u00ean \u0111\u0103ng nhap",
-      "wordVariable": "tk_ten_dang_nhap"
+      "wordVariable": "cdt_ma_qhns",
+      "excelCompatible": true
     },
-    "vai_tro": {
-      "column": "vai_tro",
+    "co_quan_chu_quan": {
+      "column": "co_quan_chu_quan",
+      "jsonKey": "coQuanChuQuan",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Cơ quan chủ quản của chủ đầu tư",
       "format": "text",
-      "jsonKey": "vaiTro",
-      "label": "Vai trò",
-      "wordVariable": "tk_vai_tro"
+      "wordVariable": "cq_chu_quan",
+      "excelCompatible": true
     }
   },
-  "thong_tin_mo_thau": {
-    "gia_du_thau": {
-      "column": "gia_du_thau",
+  "ke_hoach_lcnt": {
+    "ma_ke_hoach": {
+      "column": "ma_ke_hoach",
+      "jsonKey": "maKeHoach",
+      "dataType": "string",
+      "label": "Mã kế hoạch lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "ma_kh",
+      "excelCompatible": true
+    },
+    "ma_du_an": {
+      "column": "ma_du_an",
+      "jsonKey": "maDuan",
+      "dataType": "string",
+      "label": "Mã dự án đầu tư",
+      "format": "text",
+      "wordVariable": "ma_du_an",
+      "excelCompatible": true
+    },
+    "phien_ban": {
+      "column": "phien_ban",
+      "jsonKey": "phienBan",
       "dataType": "integer",
-      "excelCompatible": true,
+      "label": "Phiên bản dữ liệu",
+      "format": "text",
+      "wordVariable": "kh_phien_ban",
+      "excelCompatible": true
+    },
+    "ten_ke_hoach": {
+      "column": "ten_ke_hoach",
+      "jsonKey": "tenKeHoach",
+      "dataType": "string",
+      "label": "Tên kế hoạch lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "ten_kh",
+      "excelCompatible": true
+    },
+    "ten_du_an_du_toan": {
+      "column": "ten_du_an_du_toan",
+      "jsonKey": "tenDuAnDuToan",
+      "dataType": "string",
+      "label": "Tên dự án / Dự toán mua sắm",
+      "format": "text",
+      "wordVariable": "ten_du_an_du_toan",
+      "excelCompatible": true
+    },
+    "loai_hinh_mua_sam": {
+      "column": "loai_hinh_mua_sam",
+      "jsonKey": "loaiHinhMuaSam",
+      "dataType": "string",
+      "label": "Loại kế hoạch (Dự án / Dự toán mua sắm)",
+      "format": "text",
+      "wordVariable": "loai_ke_hoach",
+      "excelCompatible": true
+    },
+    "don_vi_trinh_cdt": {
+      "column": "don_vi_trinh_cdt",
+      "jsonKey": "donViTrinhCdt",
+      "dataType": "string",
+      "label": "Đơn vị trình của chủ đầu tư",
+      "format": "text",
+      "wordVariable": "don_vi_trinh_cdt",
+      "excelCompatible": true
+    },
+    "ten_viet_tat_don_vi_trinh": {
+      "column": "ten_viet_tat_don_vi_trinh",
+      "jsonKey": "tenVietTatDonViTrinh",
+      "dataType": "string",
+      "label": "Tên viết tắt đơn vị trình",
+      "format": "text",
+      "wordVariable": "ten_tat_dv_trinh",
+      "excelCompatible": true
+    },
+    "tong_muc_dau_tu": {
+      "column": "tong_muc_dau_tu",
+      "jsonKey": "tongMucDauTu",
+      "dataType": "integer",
+      "label": "Tổng mức đầu tư dự án / Tổng dự toán",
       "format": "currency",
-      "jsonKey": "giaDuThau",
-      "label": "Gi\u00e1 d\u1ef1 th\u1ea7u",
-      "wordVariable": "mt_gia_du_thau"
+      "wordVariable": "tong_muc_dau_tu_du_toan",
+      "excelCompatible": true
     },
-    "gia_sau_giam_gia": {
-      "column": "gia_sau_giam_gia",
+    "ngay_phe_duyet": {
+      "column": "ngay_phe_duyet",
+      "jsonKey": "ngayPheDuyet",
+      "dataType": "string",
+      "label": "Ngày phê duyệt kế hoạch lựa chọn nhà thầu",
+      "format": "date",
+      "wordVariable": "ngay_phe_duyet_kh",
+      "excelCompatible": true
+    },
+    "quyet_dinh_phe_duyet": {
+      "column": "quyet_dinh_phe_duyet",
+      "jsonKey": "quyetDinhPheDuyet",
+      "dataType": "string",
+      "label": "Số quyết định phê duyệt kế hoạch lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "qd_phe_duyet_kh",
+      "excelCompatible": true
+    },
+    "thoi_gian_dang_tai": {
+      "column": "thoi_gian_dang_tai",
+      "jsonKey": "thoiGianDangMa",
+      "dataType": "string",
+      "label": "Thời gian đăng tải kế hoạch lựa chọn nhà thầu",
+      "format": "datetime",
+      "wordVariable": "tg_dang_tai_kh",
+      "excelCompatible": true
+    },
+    "nguon_von": {
+      "column": "nguon_von",
+      "jsonKey": "nguonVon",
+      "dataType": "string",
+      "label": "Nguồn vốn",
+      "format": "text",
+      "wordVariable": "kh_nguon_von",
+      "excelCompatible": true
+    },
+    "thoi_gian_du_an": {
+      "column": "thoi_gian_du_an",
+      "jsonKey": "thoiGianDuAn",
+      "dataType": "string",
+      "label": "Thời gian thực hiện dự án",
+      "format": "text",
+      "wordVariable": "tg_du_an",
+      "excelCompatible": true
+    },
+    "dia_diem_quy_mo": {
+      "column": "dia_diem_quy_mo",
+      "jsonKey": "diaDiemQuyMo",
+      "dataType": "string",
+      "label": "Địa điểm và quy mô xây dựng/mua sắm",
+      "format": "text",
+      "wordVariable": "dia_diem_quy_mo",
+      "excelCompatible": true
+    },
+    "thong_tin_khac": {
+      "column": "thong_tin_khac",
+      "jsonKey": "thongTinKhac",
+      "dataType": "string",
+      "label": "Thông tin bổ sung khác",
+      "format": "text",
+      "wordVariable": "thong_tin_khac_kh",
+      "excelCompatible": true
+    },
+    "so_qd_phe_duyet_du_an": {
+      "column": "so_qd_phe_duyet_du_an",
+      "jsonKey": "soQdPheDuyetDuAn",
+      "dataType": "string",
+      "label": "Số quyết định phê duyệt dự án đầu tư",
+      "format": "text",
+      "wordVariable": "so_qd_du_an",
+      "excelCompatible": true
+    },
+    "ngay_qd_phe_duyet_du_an": {
+      "column": "ngay_qd_phe_duyet_du_an",
+      "jsonKey": "ngayQdPheDuyetDuAn",
+      "dataType": "string",
+      "label": "Ngày quyết định phê duyệt dự án đầu tư",
+      "format": "date",
+      "wordVariable": "ngay_qd_du_an",
+      "excelCompatible": true
+    },
+    "co_quan_phe_duyet_du_an": {
+      "column": "co_quan_phe_duyet_du_an",
+      "jsonKey": "coQuanPheDuyetDuAn",
+      "dataType": "string",
+      "label": "Cơ quan ban hành quyết định phê duyệt dự án",
+      "format": "text",
+      "wordVariable": "cq_phe_duyet_du_an",
+      "excelCompatible": true
+    },
+    "phe_duyet": {
+      "column": "phe_duyet",
+      "jsonKey": "pheDuyet",
+      "dataType": "string",
+      "label": "Họ tên người phê duyệt kế hoạch lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "nguoi_phe_duyet_kh",
+      "excelCompatible": true
+    },
+    "so_to_trinh_du_toan": {
+      "column": "so_to_trinh_du_toan",
+      "jsonKey": "soToTrinhDuToan",
+      "dataType": "string",
+      "label": "Số tờ trình dự toán",
+      "format": "text",
+      "wordVariable": "so_ttr_du_toan",
+      "excelCompatible": true
+    },
+    "ngay_trinh_du_toan": {
+      "column": "ngay_trinh_du_toan",
+      "jsonKey": "ngayTrinhDuToan",
+      "dataType": "string",
+      "label": "Ngày trình duyệt dự toán",
+      "format": "date",
+      "wordVariable": "ngay_trinh_du_toan",
+      "excelCompatible": true
+    },
+    "ngay_phe_duyet_du_toan": {
+      "column": "ngay_phe_duyet_du_toan",
+      "jsonKey": "ngayPheDuyetDuToan",
+      "dataType": "string",
+      "label": "Ngày phê duyệt dự toán",
+      "format": "date",
+      "wordVariable": "ngay_phe_duyet_du_toan",
+      "excelCompatible": true
+    },
+    "so_qd_phe_duyet_du_toan": {
+      "column": "so_qd_phe_duyet_du_toan",
+      "jsonKey": "soQdPheDuyetDuToan",
+      "dataType": "string",
+      "label": "Số quyết định phê duyệt dự toán",
+      "format": "text",
+      "wordVariable": "so_qd_du_toan",
+      "excelCompatible": true
+    },
+    "so_to_trinh_ke_hoach": {
+      "column": "so_to_trinh_ke_hoach",
+      "jsonKey": "soToTrinhKeHoach",
+      "dataType": "string",
+      "label": "Số tờ trình kế hoạch lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "so_ttr_ke_hoach",
+      "excelCompatible": true
+    },
+    "so_to_trinh_du_toan_ke_hoach": {
+      "column": "so_to_trinh_du_toan_ke_hoach",
+      "jsonKey": "soToTrinhDuToanKeHoach",
+      "dataType": "string",
+      "label": "Số tờ trình dự toán và kế hoạch lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "so_ttr_du_toan_ke_hoach",
+      "excelCompatible": true
+    },
+    "ngay_trinh_ke_hoach": {
+      "column": "ngay_trinh_ke_hoach",
+      "jsonKey": "ngayTrinhKeHoach",
+      "dataType": "string",
+      "label": "Ngày trình phê duyệt kế hoạch lựa chọn nhà thầu",
+      "format": "date",
+      "wordVariable": "ngay_trinh_kh",
+      "excelCompatible": true
+    }
+  },
+  "goi_thau": {
+    "ma_goi_thau": {
+      "column": "ma_goi_thau",
+      "jsonKey": "maGoiThau",
+      "dataType": "string",
+      "label": "Mã gói thầu (Mã TBMT)",
+      "format": "text",
+      "wordVariable": "ma_gt",
+      "excelCompatible": true
+    },
+    "phien_ban": {
+      "column": "phien_ban",
+      "jsonKey": "phienBan",
       "dataType": "integer",
-      "excelCompatible": true,
+      "label": "Phiên bản dữ liệu",
+      "format": "text",
+      "wordVariable": "gt_phien_ban",
+      "excelCompatible": true
+    },
+    "ten_goi_thau": {
+      "column": "ten_goi_thau",
+      "jsonKey": "tenGoiThau",
+      "dataType": "string",
+      "label": "Tên gói thầu",
+      "format": "text",
+      "wordVariable": "ten_gt",
+      "excelCompatible": true
+    },
+    "gia_goi_thau": {
+      "column": "gia_goi_thau",
+      "jsonKey": "giaGoiThau",
+      "dataType": "integer",
+      "label": "Giá gói thầu",
       "format": "currency",
-      "jsonKey": "giaSauGiamGia",
-      "label": "Gi\u00e1 sau giam gi\u00e1",
-      "wordVariable": "mt_gia_sau_giam_gia"
+      "wordVariable": "gia_gt",
+      "excelCompatible": true
     },
-    "gia_tri_dam_bao": {
-      "column": "gia_tri_dam_bao",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "currency",
-      "jsonKey": "giaTriDamBao",
-      "label": "Gi\u00e1 tr\u1ecb dam b\u1ea3o",
-      "wordVariable": "mt_gia_tri_dam_bao"
-    },
-    "hieu_luc_bao_dam_ngay": {
-      "column": "hieu_luc_bao_dam_ngay",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hieuLucBaoDamNgay",
-      "label": "Hieu luc b\u1ea3o dam ng\u00e0y",
-      "wordVariable": "mt_hieu_luc_bao_dam_ngay"
-    },
-    "hieu_luc_hsdt": {
-      "column": "hieu_luc_hsdt",
-      "dataType": "integer",
-      "excelCompatible": true,
-      "format": "text",
-      "jsonKey": "hieuLucHsdt",
-      "label": "Hiệu lực HSDT",
-      "wordVariable": "mt_hieu_luc_hsdt"
-    },
-    "loai_nha_thau": {
-      "column": "loai_nha_thau",
+    "loai_hop_dong": {
+      "column": "loai_hop_dong",
+      "jsonKey": "loaiHopDong",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Loại hợp đồng gói thầu",
       "format": "text",
-      "jsonKey": "loaiNhaThau",
-      "label": "Loai nh\u00e0 th\u1ea7u",
-      "wordVariable": "mt_loai_nt"
+      "wordVariable": "loai_hd_gt",
+      "excelCompatible": true
     },
-    "ma_dinh_danh": {
-      "column": "ma_dinh_danh",
+    "hinh_thuc_lua_chon": {
+      "column": "hinh_thuc_lua_chon",
+      "jsonKey": "hinhThucLuaChon",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Hình thức lựa chọn nhà thầu",
       "format": "text",
-      "jsonKey": "maDinhDanh",
-      "label": "M\u00e3 dinh danh",
-      "wordVariable": "mt_ma_dinh_danh"
+      "wordVariable": "hinh_thuc_lcnt",
+      "excelCompatible": true
     },
-    "ma_phan_lo": {
-      "column": "ma_phan_lo",
+    "phuong_thuc_lua_chon": {
+      "column": "phuong_thuc_lua_chon",
+      "jsonKey": "phuongThucLuaChon",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Phương thức lựa chọn nhà thầu",
       "format": "text",
-      "jsonKey": "maPhanLo",
-      "label": "M\u00e3 phan lo",
-      "wordVariable": "mt_ma_phan_lo"
+      "wordVariable": "phuong_thuc_lcnt",
+      "excelCompatible": true
     },
-    "ten_nha_thau": {
-      "column": "ten_nha_thau",
+    "qua_mang": {
+      "column": "qua_mang",
+      "jsonKey": "quaMang",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Hình thức thực hiện qua mạng",
       "format": "text",
-      "jsonKey": "tenNhaThau",
-      "label": "T\u00ean nh\u00e0 th\u1ea7u",
-      "wordVariable": "mt_ten_nt"
+      "wordVariable": "gt_qua_mang",
+      "excelCompatible": true
     },
-    "ten_phan_lo": {
-      "column": "ten_phan_lo",
+    "trong_nuoc_quoc_te": {
+      "column": "trong_nuoc_quoc_te",
+      "jsonKey": "trongNuocQuocTe",
       "dataType": "string",
-      "excelCompatible": true,
+      "label": "Phạm vi trong nước / quốc tế",
       "format": "text",
-      "jsonKey": "tenPhanLo",
-      "label": "T\u00ean phan lo",
-      "wordVariable": "mt_ten_phan_lo"
+      "wordVariable": "gt_trong_nuoc_quoc_te",
+      "excelCompatible": true
     },
     "thoi_gian_thuc_hien": {
       "column": "thoi_gian_thuc_hien",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "thoiGianThucHien",
-      "label": "Th\u1eddi gian th\u1ef1c hien",
-      "wordVariable": "mt_tg_thuc_hien"
+      "dataType": "string",
+      "label": "Thời gian thực hiện gói thầu",
+      "format": "text",
+      "wordVariable": "tg_thuc_hien_gt",
+      "excelCompatible": true
+    },
+    "nguon_von": {
+      "column": "nguon_von",
+      "jsonKey": "nguonVon",
+      "dataType": "string",
+      "label": "Nguồn vốn gói thầu",
+      "format": "text",
+      "wordVariable": "gt_nguon_von",
+      "excelCompatible": true
+    },
+    "gia_trung_thau": {
+      "column": "gia_trung_thau",
+      "jsonKey": "giaTrungThau",
+      "dataType": "integer",
+      "label": "Giá trúng thầu",
+      "format": "currency",
+      "wordVariable": "gia_trung_thau",
+      "excelCompatible": true
+    },
+    "linh_vuc": {
+      "column": "linh_vuc",
+      "jsonKey": "linhVuc",
+      "dataType": "string",
+      "label": "Lĩnh vực gói thầu",
+      "format": "text",
+      "wordVariable": "gt_linh_vuc",
+      "excelCompatible": true
+    },
+    "tuy_chon_mua_them": {
+      "column": "tuy_chon_mua_them",
+      "jsonKey": "tuyChonMuaThem",
+      "dataType": "string",
+      "label": "Tùy chọn mua thêm",
+      "format": "text",
+      "wordVariable": "co_mua_them",
+      "excelCompatible": true
+    },
+    "thoi_gian_to_chuc": {
+      "column": "thoi_gian_to_chuc",
+      "jsonKey": "thoiGianToChuc",
+      "dataType": "string",
+      "label": "Thời gian tổ chức lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "tg_to_chuc_lcnt",
+      "excelCompatible": true
+    },
+    "thoi_gian_bat_dau_to_chuc": {
+      "column": "thoi_gian_bat_dau_to_chuc",
+      "jsonKey": "thoiGianBatDauToChuc",
+      "dataType": "string",
+      "label": "Thời gian bắt đầu tổ chức lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "tg_bat_dau_lcnt",
+      "excelCompatible": true
+    },
+    "phan_lo": {
+      "column": "phan_lo",
+      "jsonKey": "phanLo",
+      "dataType": "string",
+      "label": "Phần lô gói thầu",
+      "format": "text",
+      "wordVariable": "gt_phan_lo",
+      "excelCompatible": true
+    },
+    "thoi_gian_dang_tai": {
+      "column": "thoi_gian_dang_tai",
+      "jsonKey": "thoiGianDangTai",
+      "dataType": "string",
+      "label": "Thời gian đăng tải thông báo mời thầu",
+      "format": "datetime",
+      "wordVariable": "tg_dang_tai_tbmt",
+      "excelCompatible": true
+    },
+    "thoi_gian_dong_thau": {
+      "column": "thoi_gian_dong_thau",
+      "jsonKey": "thoiGianDongThau",
+      "dataType": "string",
+      "label": "Thời gian đóng thầu",
+      "format": "datetime",
+      "wordVariable": "tg_dong_thau",
+      "excelCompatible": true
+    },
+    "thoi_gian_mo_thau": {
+      "column": "thoi_gian_mo_thau",
+      "jsonKey": "thoiGianMoThau",
+      "dataType": "string",
+      "label": "Thời gian mở thầu",
+      "format": "datetime",
+      "wordVariable": "tg_mo_thau",
+      "excelCompatible": true
+    },
+    "thoi_gian_mo_ehsdxtc": {
+      "column": "thoi_gian_mo_ehsdxtc",
+      "jsonKey": "thoiGianMoEhsdxtc",
+      "dataType": "string",
+      "label": "Thời gian mở E-HSĐXTC",
+      "format": "datetime",
+      "wordVariable": "tg_mo_ehsdxtc",
+      "excelCompatible": true
+    },
+    "so_quyet_dinh": {
+      "column": "so_quyet_dinh",
+      "jsonKey": "soQuyetDinh",
+      "dataType": "string",
+      "label": "Số quyết định phê duyệt HSMT / Hồ sơ yêu cầu",
+      "format": "text",
+      "wordVariable": "so_qd_hsmt",
+      "excelCompatible": true
+    },
+    "ngay_quyet_dinh": {
+      "column": "ngay_quyet_dinh",
+      "jsonKey": "ngayQuyetDinh",
+      "dataType": "string",
+      "label": "Ngày quyết định phê duyệt HSMT / Hồ sơ yêu cầu",
+      "format": "date",
+      "wordVariable": "ngay_qd_hsmt",
+      "excelCompatible": true
+    },
+    "so_quyet_dinh_ket_qua": {
+      "column": "so_quyet_dinh_ket_qua",
+      "jsonKey": "soQuyetDinhKetQua",
+      "dataType": "string",
+      "label": "Số quyết định phê duyệt kết quả lựa chọn nhà thầu",
+      "format": "text",
+      "wordVariable": "so_qd_kq",
+      "excelCompatible": true
+    },
+    "ngay_quyet_dinh_ket_qua": {
+      "column": "ngay_quyet_dinh_ket_qua",
+      "jsonKey": "ngayQuyetDinhKetQua",
+      "dataType": "string",
+      "label": "Ngày quyết định phê duyệt kết quả lựa chọn nhà thầu",
+      "format": "date",
+      "wordVariable": "ngay_qd_kq",
+      "excelCompatible": true
+    },
+    "thoi_gian_goi_thau": {
+      "column": "thoi_gian_goi_thau",
+      "jsonKey": "thoiGianGoiThau",
+      "dataType": "string",
+      "label": "Thời gian thực hiện gói thầu của nhà thầu trúng thầu",
+      "format": "text",
+      "wordVariable": "tg_goi_thau",
+      "excelCompatible": true
+    },
+    "thoi_gian_hop_dong": {
+      "column": "thoi_gian_hop_dong",
+      "jsonKey": "thoiGianHopDong",
+      "dataType": "string",
+      "label": "Thời gian thực hiện hợp đồng",
+      "format": "text",
+      "wordVariable": "tg_hop_dong",
+      "excelCompatible": true
+    },
+    "gia_tri_dam_bao_du_thau": {
+      "column": "gia_tri_dam_bao_du_thau",
+      "jsonKey": "giaTriDamBaoDuThau",
+      "dataType": "integer",
+      "label": "Giá trị bảo đảm dự thầu",
+      "format": "currency",
+      "wordVariable": "gia_tri_bddt",
+      "excelCompatible": true
+    },
+    "hieu_luc_hsdt": {
+      "column": "hieu_luc_hsdt",
+      "jsonKey": "hieuLucHsdt",
+      "dataType": "integer",
+      "label": "Hiệu lực hồ sơ dự thầu",
+      "format": "text",
+      "wordVariable": "hieu_luc_hsdt",
+      "excelCompatible": true
+    },
+    "hieu_luc_dam_bao_du_thau": {
+      "column": "hieu_luc_dam_bao_du_thau",
+      "jsonKey": "hieuLucDamBaoDuThau",
+      "dataType": "integer",
+      "label": "Hiệu lực bảo đảm dự thầu",
+      "format": "text",
+      "wordVariable": "hieu_luc_bddt",
+      "excelCompatible": true
+    },
+    "phuong_phap_danh_gia": {
+      "column": "phuong_phap_danh_gia",
+      "jsonKey": "phuongPhapDanhGia",
+      "dataType": "string",
+      "label": "Phương pháp đánh giá hồ sơ dự thầu",
+      "format": "text",
+      "wordVariable": "pp_danh_gia",
+      "excelCompatible": true
+    },
+    "trong_so_ky_thuat": {
+      "column": "trong_so_ky_thuat",
+      "jsonKey": "trongSoKyThuat",
+      "dataType": "integer",
+      "label": "Trọng số điểm kỹ thuật",
+      "format": "percent",
+      "wordVariable": "trong_so_ky_thuat",
+      "excelCompatible": true
+    },
+    "ty_le_bao_dam_hop_dong": {
+      "column": "ty_le_bao_dam_hop_dong",
+      "jsonKey": "tyLeBaoDamHopDong",
+      "dataType": "number",
+      "label": "Tỷ lệ bảo đảm thực hiện hợp đồng",
+      "format": "percent",
+      "wordVariable": "ty_le_bdhdt",
+      "excelCompatible": true
+    },
+    "is_thuoc": {
+      "column": "is_thuoc",
+      "jsonKey": "isThuoc",
+      "dataType": "integer",
+      "label": "Là gói thầu thuốc",
+      "format": "text",
+      "wordVariable": "gt_is_thuoc",
+      "excelCompatible": true
+    },
+    "is_rebid": {
+      "column": "is_rebid",
+      "jsonKey": "isRebid",
+      "dataType": "integer",
+      "label": "Gói thầu tổ chức lại",
+      "format": "text",
+      "wordVariable": "gt_is_rebid",
+      "excelCompatible": true
+    },
+    "trang_thai": {
+      "column": "trang_thai",
+      "jsonKey": "trangThai",
+      "dataType": "string",
+      "label": "Trạng thái gói thầu",
+      "format": "text",
+      "wordVariable": "gt_trang_thai",
+      "excelCompatible": true
+    },
+    "yeu_cau_tham_dinh_hsmt": {
+      "column": "yeu_cau_tham_dinh_hsmt",
+      "jsonKey": "yeuCauThamDinhHsmt",
+      "dataType": "string",
+      "label": "Yêu cầu thẩm định HSMT",
+      "format": "text",
+      "wordVariable": "yc_tham_dinh_hsmt",
+      "excelCompatible": true
+    },
+    "so_bao_cao_tham_dinh_hsmt": {
+      "column": "so_bao_cao_tham_dinh_hsmt",
+      "jsonKey": "soBaoCaoThamDinhHsmt",
+      "dataType": "string",
+      "label": "Số báo cáo thẩm định HSMT",
+      "format": "text",
+      "wordVariable": "so_bc_tham_dinh_hsmt",
+      "excelCompatible": true
+    },
+    "ngay_bao_cao_tham_dinh_hsmt": {
+      "column": "ngay_bao_cao_tham_dinh_hsmt",
+      "jsonKey": "ngayBaoCaoThamDinhHsmt",
+      "dataType": "string",
+      "label": "Ngày báo cáo thẩm định HSMT",
+      "format": "date",
+      "wordVariable": "ngay_bc_tham_dinh_hsmt",
+      "excelCompatible": true
+    },
+    "so_to_trinh_hsmt": {
+      "column": "so_to_trinh_hsmt",
+      "jsonKey": "soToTrinhHsmt",
+      "dataType": "string",
+      "label": "Số tờ trình phê duyệt HSMT",
+      "format": "text",
+      "wordVariable": "so_ttr_hsmt",
+      "excelCompatible": true
+    },
+    "ngay_trinh_hsmt": {
+      "column": "ngay_trinh_hsmt",
+      "jsonKey": "ngayTrinhHsmt",
+      "dataType": "string",
+      "label": "Ngày trình phê duyệt HSMT",
+      "format": "date",
+      "wordVariable": "ngay_trinh_hsmt",
+      "excelCompatible": true
+    }
+  },
+  "nha_thau": {
+    "phien_ban": {
+      "column": "phien_ban",
+      "jsonKey": "phienBan",
+      "dataType": "integer",
+      "label": "Phiên bản dữ liệu",
+      "format": "text",
+      "wordVariable": "nt_phien_ban",
+      "excelCompatible": true
+    },
+    "ngay_ap_dung": {
+      "column": "ngay_ap_dung",
+      "jsonKey": "ngayApDung",
+      "dataType": "string",
+      "label": "Ngày áp dụng",
+      "format": "date",
+      "wordVariable": "ngay_ap_dung_nt",
+      "excelCompatible": true
+    },
+    "ma_nha_thau": {
+      "column": "ma_nha_thau",
+      "jsonKey": "maNhaThau",
+      "dataType": "string",
+      "label": "Mã nhà thầu",
+      "format": "text",
+      "wordVariable": "ma_nt",
+      "excelCompatible": true
+    },
+    "ten_nha_thau": {
+      "column": "ten_nha_thau",
+      "jsonKey": "tenNhaThau",
+      "dataType": "string",
+      "label": "Tên nhà thầu",
+      "format": "text",
+      "wordVariable": "ten_nt",
+      "excelCompatible": true
+    },
+    "ten_viet_tat": {
+      "column": "ten_viet_tat",
+      "jsonKey": "tenVietTat",
+      "dataType": "string",
+      "label": "Tên viết tắt nhà thầu",
+      "format": "text",
+      "wordVariable": "ten_tat_nt",
+      "excelCompatible": true
+    },
+    "loai_nha_thau": {
+      "column": "loai_nha_thau",
+      "jsonKey": "loaiNhaThau",
+      "dataType": "string",
+      "label": "Loại nhà thầu",
+      "format": "text",
+      "wordVariable": "loai_nt",
+      "excelCompatible": true
+    },
+    "ma_so_thue": {
+      "column": "ma_so_thue",
+      "jsonKey": "maSoThue",
+      "dataType": "string",
+      "label": "Mã số thuế nhà thầu",
+      "format": "text",
+      "wordVariable": "mst_nt",
+      "excelCompatible": true
+    },
+    "nguoi_dai_dien": {
+      "column": "nguoi_dai_dien",
+      "jsonKey": "nguoiDaiDien",
+      "dataType": "string",
+      "label": "Người đại diện nhà thầu",
+      "format": "text",
+      "wordVariable": "dai_dien_nt",
+      "excelCompatible": true
+    },
+    "chuc_vu_dai_dien": {
+      "column": "chuc_vu_dai_dien",
+      "jsonKey": "chucVuDaiDien",
+      "dataType": "string",
+      "label": "Chức vụ người đại diện nhà thầu",
+      "format": "text",
+      "wordVariable": "chuc_vu_dai_dien_nt",
+      "excelCompatible": true
+    },
+    "danh_xung": {
+      "column": "danh_xung",
+      "jsonKey": "danhXung",
+      "dataType": "string",
+      "label": "Danh xưng người đại diện nhà thầu",
+      "format": "text",
+      "wordVariable": "danh_xung_nt",
+      "excelCompatible": true
+    },
+    "so_dien_thoai": {
+      "column": "so_dien_thoai",
+      "jsonKey": "soDienThoai",
+      "dataType": "string",
+      "label": "Số điện thoại nhà thầu",
+      "format": "text",
+      "wordVariable": "sdt_nt",
+      "excelCompatible": true
+    },
+    "email": {
+      "column": "email",
+      "jsonKey": "email",
+      "dataType": "string",
+      "label": "Email nhà thầu",
+      "format": "text",
+      "wordVariable": "email_nt",
+      "excelCompatible": true
+    },
+    "dia_chi": {
+      "column": "dia_chi",
+      "jsonKey": "diaChi",
+      "dataType": "string",
+      "label": "Địa chỉ nhà thầu",
+      "format": "text",
+      "wordVariable": "dia_chi_nt",
+      "excelCompatible": true
+    },
+    "so_tai_khoan": {
+      "column": "so_tai_khoan",
+      "jsonKey": "soTaiKhoan",
+      "dataType": "string",
+      "label": "Số tài khoản nhà thầu",
+      "format": "text",
+      "wordVariable": "stk_nt",
+      "excelCompatible": true
+    },
+    "noi_mo_tai_khoan": {
+      "column": "noi_mo_tai_khoan",
+      "jsonKey": "noiMoTaiKhoan",
+      "dataType": "string",
+      "label": "Nơi mở tài khoản nhà thầu",
+      "format": "text",
+      "wordVariable": "noi_mo_tk_nt",
+      "excelCompatible": true
+    },
+    "ma_ngan_hang": {
+      "column": "ma_ngan_hang",
+      "jsonKey": "maNganHang",
+      "dataType": "string",
+      "label": "Mã ngân hàng nhà thầu",
+      "format": "text",
+      "wordVariable": "ma_ngan_hang_nt",
+      "excelCompatible": true
+    },
+    "anh_dau": {
+      "column": "anh_dau",
+      "jsonKey": "anhDau",
+      "dataType": "string",
+      "label": "Ảnh dấu nhà thầu",
+      "format": "text",
+      "wordVariable": "anh_dau_nt",
+      "excelCompatible": true
+    },
+    "ten_anh_dau": {
+      "column": "ten_anh_dau",
+      "jsonKey": "tenAnhDau",
+      "dataType": "string",
+      "label": "Tên ảnh dấu nhà thầu",
+      "format": "text",
+      "wordVariable": "ten_anh_dau_nt",
+      "excelCompatible": true
+    }
+  },
+  "thong_tin_mo_thau": {
+    "ma_phan_lo": {
+      "column": "ma_phan_lo",
+      "jsonKey": "maPhanLo",
+      "dataType": "string",
+      "label": "Mã phần lô mở thầu",
+      "format": "text",
+      "wordVariable": "mt_ma_phan_lo",
+      "excelCompatible": true
+    },
+    "ten_phan_lo": {
+      "column": "ten_phan_lo",
+      "jsonKey": "tenPhanLo",
+      "dataType": "string",
+      "label": "Tên phần lô mở thầu",
+      "format": "text",
+      "wordVariable": "mt_ten_phan_lo",
+      "excelCompatible": true
+    },
+    "ma_dinh_danh": {
+      "column": "ma_dinh_danh",
+      "jsonKey": "maDinhDanh",
+      "dataType": "string",
+      "label": "Mã định danh mở thầu",
+      "format": "text",
+      "wordVariable": "mt_ma_dinh_danh",
+      "excelCompatible": true
+    },
+    "gia_du_thau": {
+      "column": "gia_du_thau",
+      "jsonKey": "giaDuThau",
+      "dataType": "integer",
+      "label": "Giá dự thầu mở thầu",
+      "format": "currency",
+      "wordVariable": "mt_gia_du_thau",
+      "excelCompatible": true
     },
     "ty_le_giam_gia": {
       "column": "ty_le_giam_gia",
-      "dataType": "number",
-      "excelCompatible": true,
-      "format": "percent",
       "jsonKey": "tyLeGiamGia",
-      "label": "Ty le giam gi\u00e1",
-      "wordVariable": "mt_ty_le_giam_gia"
+      "dataType": "number",
+      "label": "Tỷ lệ giảm giá mở thầu",
+      "format": "percent",
+      "wordVariable": "mt_ty_le_giam_gia",
+      "excelCompatible": true
+    },
+    "gia_sau_giam_gia": {
+      "column": "gia_sau_giam_gia",
+      "jsonKey": "giaSauGiamGia",
+      "dataType": "integer",
+      "label": "Giá sau giảm giá mở thầu",
+      "format": "currency",
+      "wordVariable": "mt_gia_sau_giam_gia",
+      "excelCompatible": true
+    },
+    "hieu_luc_hsdt": {
+      "column": "hieu_luc_hsdt",
+      "jsonKey": "hieuLucHsdt",
+      "dataType": "integer",
+      "label": "Hiệu lực hồ sơ dự thầu",
+      "format": "text",
+      "wordVariable": "mt_hieu_luc_hsdt",
+      "excelCompatible": true
+    },
+    "gia_tri_dam_bao": {
+      "column": "gia_tri_dam_bao",
+      "jsonKey": "giaTriDamBao",
+      "dataType": "integer",
+      "label": "Giá trị bảo đảm dự thầu",
+      "format": "currency",
+      "wordVariable": "mt_gia_tri_dam_bao",
+      "excelCompatible": true
+    },
+    "hieu_luc_bao_dam_ngay": {
+      "column": "hieu_luc_bao_dam_ngay",
+      "jsonKey": "hieuLucBaoDamNgay",
+      "dataType": "integer",
+      "label": "Hiệu lực bảo đảm dự thầu",
+      "format": "text",
+      "wordVariable": "mt_hieu_luc_bao_dam_ngay",
+      "excelCompatible": true
+    },
+    "thoi_gian_thuc_hien": {
+      "column": "thoi_gian_thuc_hien",
+      "jsonKey": "thoiGianThucHien",
+      "dataType": "string",
+      "label": "Thời gian thực hiện",
+      "format": "text",
+      "wordVariable": "mt_tg_thuc_hien",
+      "excelCompatible": true
+    },
+    "ten_nha_thau": {
+      "column": "ten_nha_thau",
+      "jsonKey": "tenNhaThau",
+      "dataType": "string",
+      "label": "Tên nhà thầu",
+      "format": "text",
+      "wordVariable": "mt_ten_nt",
+      "excelCompatible": true
+    },
+    "loai_nha_thau": {
+      "column": "loai_nha_thau",
+      "jsonKey": "loaiNhaThau",
+      "dataType": "string",
+      "label": "Loại nhà thầu",
+      "format": "text",
+      "wordVariable": "mt_loai_nt",
+      "excelCompatible": true
+    }
+  },
+  "chuyen_gia": {
+    "phien_ban": {
+      "column": "phien_ban",
+      "jsonKey": "phienBan",
+      "dataType": "integer",
+      "label": "Phiên bản dữ liệu",
+      "format": "text",
+      "wordVariable": "cg_phien_ban",
+      "excelCompatible": true
+    },
+    "ho_ten": {
+      "column": "ho_ten",
+      "jsonKey": "hoTen",
+      "dataType": "string",
+      "label": "Họ tên chuyên gia",
+      "format": "text",
+      "wordVariable": "ten_cg",
+      "excelCompatible": true
+    },
+    "so_chung_chi": {
+      "column": "so_chung_chi",
+      "jsonKey": "soChungChi",
+      "dataType": "string",
+      "label": "Số chứng chỉ chuyên gia",
+      "format": "text",
+      "wordVariable": "so_chung_chi_cg",
+      "excelCompatible": true
+    },
+    "ngay_cap_chung_chi": {
+      "column": "ngay_cap_chung_chi",
+      "jsonKey": "ngayCapChungChi",
+      "dataType": "string",
+      "label": "Ngày cấp chứng chỉ chuyên gia",
+      "format": "date",
+      "wordVariable": "ngay_cap_chung_chi_cg",
+      "excelCompatible": true
+    },
+    "don_vi_cap_chung_chi": {
+      "column": "don_vi_cap_chung_chi",
+      "jsonKey": "donViCapChungChi",
+      "dataType": "string",
+      "label": "Đơn vị cấp chứng chỉ chuyên gia",
+      "format": "text",
+      "wordVariable": "dv_cap_chung_chi_cg",
+      "excelCompatible": true
+    },
+    "so_cccd": {
+      "column": "so_cccd",
+      "jsonKey": "soCCCD",
+      "dataType": "string",
+      "label": "Số CCCD chuyên gia",
+      "format": "text",
+      "wordVariable": "cccd_cg",
+      "excelCompatible": true
+    },
+    "ngay_cap_cccd": {
+      "column": "ngay_cap_cccd",
+      "jsonKey": "ngayCapCCCD",
+      "dataType": "string",
+      "label": "Ngày cấp CCCD chuyên gia",
+      "format": "date",
+      "wordVariable": "ngay_cap_cccd_cg",
+      "excelCompatible": true
+    },
+    "noi_cap_cccd": {
+      "column": "noi_cap_cccd",
+      "jsonKey": "noiCapCCCD",
+      "dataType": "string",
+      "label": "Nơi cấp CCCD chuyên gia",
+      "format": "text",
+      "wordVariable": "noi_cap_cccd_cg",
+      "excelCompatible": true
+    },
+    "anh_chung_chi": {
+      "column": "anh_chung_chi",
+      "jsonKey": "anhChungChi",
+      "dataType": "string",
+      "label": "Ảnh chứng chỉ chuyên gia",
+      "format": "text",
+      "wordVariable": "anh_chung_chi_cg",
+      "excelCompatible": true
+    },
+    "ten_anh_chung_chi": {
+      "column": "ten_anh_chung_chi",
+      "jsonKey": "tenAnhChungChi",
+      "dataType": "string",
+      "label": "Tên ảnh chứng chỉ chuyên gia",
+      "format": "text",
+      "wordVariable": "ten_anh_chung_chi_cg",
+      "excelCompatible": true
+    },
+    "anh_chu_ky": {
+      "column": "anh_chu_ky",
+      "jsonKey": "anhChuKy",
+      "dataType": "string",
+      "label": "Ảnh chữ ký chuyên gia",
+      "format": "text",
+      "wordVariable": "anh_chu_ky_cg",
+      "excelCompatible": true
+    },
+    "ten_anh_chu_ky": {
+      "column": "ten_anh_chu_ky",
+      "jsonKey": "tenAnhChuKy",
+      "dataType": "string",
+      "label": "Tên ảnh chữ ký chuyên gia",
+      "format": "text",
+      "wordVariable": "ten_anh_chu_ky_cg",
+      "excelCompatible": true
+    }
+  },
+  "hop_dong": {
+    "phien_ban": {
+      "column": "phien_ban",
+      "jsonKey": "phienBan",
+      "dataType": "integer",
+      "label": "Phiên bản dữ liệu",
+      "format": "text",
+      "wordVariable": "hd_phien_ban",
+      "excelCompatible": true
+    },
+    "ten_hop_dong": {
+      "column": "ten_hop_dong",
+      "jsonKey": "tenHopDong",
+      "dataType": "string",
+      "label": "Tên hợp đồng",
+      "format": "text",
+      "wordVariable": "ten_hd",
+      "excelCompatible": true
+    },
+    "so_hop_dong": {
+      "column": "so_hop_dong",
+      "jsonKey": "soHopDong",
+      "dataType": "string",
+      "label": "Số hợp đồng",
+      "format": "text",
+      "wordVariable": "so_hd",
+      "excelCompatible": true
+    },
+    "ngay_ky": {
+      "column": "ngay_ky",
+      "jsonKey": "ngayKy",
+      "dataType": "string",
+      "label": "Ngày ký hợp đồng",
+      "format": "date",
+      "wordVariable": "ngay_ky_hd",
+      "excelCompatible": true
+    },
+    "ngay_thanh_ly": {
+      "column": "ngay_thanh_ly",
+      "jsonKey": "ngayThanhLy",
+      "dataType": "string",
+      "label": "Ngày thanh lý hợp đồng",
+      "format": "date",
+      "wordVariable": "ngay_thanh_ly_hd",
+      "excelCompatible": true
+    },
+    "gia_tri": {
+      "column": "gia_tri",
+      "jsonKey": "giaTri",
+      "dataType": "integer",
+      "label": "Giá trị hợp đồng",
+      "format": "currency",
+      "wordVariable": "hd_gia_tri",
+      "excelCompatible": true
+    },
+    "loai_hop_dong": {
+      "column": "loai_hop_dong",
+      "jsonKey": "loaiHopDong",
+      "dataType": "string",
+      "label": "Loại hợp đồng",
+      "format": "text",
+      "wordVariable": "loai_hd",
+      "excelCompatible": true
+    },
+    "thoi_gian_thuc_hien": {
+      "column": "thoi_gian_thuc_hien",
+      "jsonKey": "soNgayThucHien",
+      "dataType": "string",
+      "label": "Thời gian thực hiện hợp đồng",
+      "format": "text",
+      "wordVariable": "tg_thuc_hien_hd",
+      "excelCompatible": true
+    },
+    "trang_thai_hop_dong": {
+      "column": "trang_thai_hop_dong",
+      "jsonKey": "trangThaiHopDong",
+      "dataType": "string",
+      "label": "Trạng thái hợp đồng",
+      "format": "text",
+      "wordVariable": "trang_thai_hd",
+      "excelCompatible": true
+    },
+    "phan_loai": {
+      "column": "phan_loai",
+      "jsonKey": "phanLoai",
+      "dataType": "string",
+      "label": "Phân loại hợp đồng",
+      "format": "text",
+      "wordVariable": "hd_phan_loai",
+      "excelCompatible": true
+    },
+    "co_qd_chi_dinh": {
+      "column": "co_qd_chi_dinh",
+      "jsonKey": "coQdChiDinh",
+      "dataType": "integer",
+      "label": "Có quyết định chỉ định thầu",
+      "format": "text",
+      "wordVariable": "co_qd_chi_dinh",
+      "excelCompatible": true
+    },
+    "so_qd_chi_dinh": {
+      "column": "so_qd_chi_dinh",
+      "jsonKey": "soQdChiDinh",
+      "dataType": "string",
+      "label": "Số quyết định chỉ định thầu",
+      "format": "text",
+      "wordVariable": "so_qd_chi_dinh",
+      "excelCompatible": true
+    },
+    "ngay_qd_chi_dinh": {
+      "column": "ngay_qd_chi_dinh",
+      "jsonKey": "ngayQdChiDinh",
+      "dataType": "string",
+      "label": "Ngày quyết định chỉ định thầu",
+      "format": "date",
+      "wordVariable": "ngay_qd_chi_dinh",
+      "excelCompatible": true
+    }
+  },
+  "tai_khoan": {
+    "ten_dang_nhap": {
+      "column": "ten_dang_nhap",
+      "jsonKey": "tenDangNhap",
+      "dataType": "string",
+      "label": "Tên đăng nhập hệ thống",
+      "format": "text",
+      "wordVariable": "tk_ten_dang_nhap",
+      "excelCompatible": true
+    },
+    "ho_ten": {
+      "column": "ho_ten",
+      "jsonKey": "hoTen",
+      "dataType": "string",
+      "label": "Họ tên tài khoản",
+      "format": "text",
+      "wordVariable": "tk_ho_ten",
+      "excelCompatible": true
+    },
+    "vai_tro": {
+      "column": "vai_tro",
+      "jsonKey": "vaiTro",
+      "dataType": "string",
+      "label": "Vai trò tài khoản",
+      "format": "text",
+      "wordVariable": "tk_vai_tro",
+      "excelCompatible": true
+    },
+    "email": {
+      "column": "email",
+      "jsonKey": "email",
+      "dataType": "string",
+      "label": "Email tài khoản",
+      "format": "text",
+      "wordVariable": "tk_email",
+      "excelCompatible": true
+    },
+    "anh_dai_dien": {
+      "column": "anh_dai_dien",
+      "jsonKey": "anhDaiDien",
+      "dataType": "string",
+      "label": "Ảnh đại diện tài khoản",
+      "format": "text",
+      "wordVariable": "tk_anh_dai_dien",
+      "excelCompatible": true
+    },
+    "da_xac_minh": {
+      "column": "da_xac_minh",
+      "jsonKey": "daXacMinh",
+      "dataType": "integer",
+      "label": "Trạng thái xác minh tài khoản",
+      "format": "text",
+      "wordVariable": "tk_da_xac_minh",
+      "excelCompatible": true
     }
   },
   "to_chuc": {
     "ten_to_chuc": {
       "column": "ten_to_chuc",
-      "dataType": "string",
-      "excelCompatible": true,
-      "format": "text",
       "jsonKey": "tenToChuc",
-      "label": "T\u00ean to ch\u1ee9c",
-      "wordVariable": "ten_to_chuc"
+      "dataType": "string",
+      "label": "Tên tổ chức / Doanh nghiệp",
+      "format": "text",
+      "wordVariable": "ten_to_chuc",
+      "excelCompatible": true
+    }
+  },
+  "goi_dich_vu": {
+    "ten_goi": {
+      "column": "ten_goi",
+      "jsonKey": "tenGoi",
+      "dataType": "string",
+      "label": "Tên gói dịch vụ",
+      "format": "text",
+      "wordVariable": "ten_goi_dv",
+      "excelCompatible": true
+    },
+    "gia_ca": {
+      "column": "gia_ca",
+      "jsonKey": "giaCa",
+      "dataType": "integer",
+      "label": "Giá gói dịch vụ",
+      "format": "currency",
+      "wordVariable": "gia_goi_dv",
+      "excelCompatible": true
+    },
+    "han_muc_nhan_su": {
+      "column": "han_muc_nhan_su",
+      "jsonKey": "hanMucNhanSu",
+      "dataType": "integer",
+      "label": "Hạn mức nhân sự tối đa",
+      "format": "text",
+      "wordVariable": "han_muc_nhan_su_dv",
+      "excelCompatible": true
+    },
+    "mo_ta": {
+      "column": "mo_ta",
+      "jsonKey": "moTa",
+      "dataType": "string",
+      "label": "Mô tả chi tiết gói dịch vụ",
+      "format": "text",
+      "wordVariable": "mo_ta_goi_dv",
+      "excelCompatible": true
     }
   }
 };
@@ -1376,21 +1439,21 @@ export function getWordColumnLabel(tableName, columnName) {
 export const DEFAULT_WORD_VARIABLES = [
   {
     "format": "text",
-    "label": "Phiên bản",
+    "label": "Phiên bản dữ liệu",
     "name": "cdt_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Mã chu đấu tu",
+    "label": "Mã chủ đầu tư",
     "name": "ma_cdt",
     "sourceColumn": "ma_chu_dau_tu",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Tên chu đấu tu",
+    "label": "Tên chủ đầu tư",
     "name": "ten_cdt",
     "sourceColumn": "ten_chu_dau_tu",
     "sourceTable": "chu_dau_tu"
@@ -1404,126 +1467,126 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Tên viết tắt",
+    "label": "Tên viết tắt chủ đầu tư",
     "name": "ten_tat_cdt",
     "sourceColumn": "ten_viet_tat",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Mã số thue",
+    "label": "Mã số thuế chủ đầu tư",
     "name": "mst_cdt",
     "sourceColumn": "ma_so_thue",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Chức vu người dung đấu",
+    "label": "Chức vụ người đứng đầu",
     "name": "chuc_vu_nguoi_dung_dau_cdt",
     "sourceColumn": "chuc_vu_nguoi_dung_dau",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Đại điện cdt",
+    "label": "Họ tên người đại diện chủ đầu tư",
     "name": "dai_dien_cdt",
     "sourceColumn": "dai_dien_cdt",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Chức vu đại điện",
+    "label": "Chức vụ người đại diện chủ đầu tư",
     "name": "chuc_vu_dai_dien_cdt",
     "sourceColumn": "chuc_vu_dai_dien",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Danh xưng",
+    "label": "Danh xưng người đại diện chủ đầu tư",
     "name": "danh_xung_cdt",
     "sourceColumn": "danh_xung",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Địa chỉ",
+    "label": "Địa chỉ chủ đầu tư",
     "name": "dia_chi_cdt",
     "sourceColumn": "dia_chi",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Số điện thoai",
+    "label": "Số điện thoại chủ đầu tư",
     "name": "sdt_cdt",
     "sourceColumn": "so_dien_thoai",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Số tài khoan",
+    "label": "Số tài khoản chủ đầu tư",
     "name": "stk_cdt",
     "sourceColumn": "so_tai_khoan",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Noi mở tài khoan",
+    "label": "Nơi mở tài khoản chủ đầu tư",
     "name": "noi_mo_tk_cdt",
     "sourceColumn": "noi_mo_tai_khoan",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Email",
+    "label": "Email chủ đầu tư",
     "name": "email_cdt",
     "sourceColumn": "email",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Mã qhns",
+    "label": "Mã QHNS của chủ đầu tư",
     "name": "cdt_ma_qhns",
     "sourceColumn": "ma_qhns",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Cơ quan chủ quản",
+    "label": "Cơ quan chủ quản của chủ đầu tư",
     "name": "cq_chu_quan",
     "sourceColumn": "co_quan_chu_quan",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Mã kế hoach",
+    "label": "Mã kế hoạch lựa chọn nhà thầu",
     "name": "ma_kh",
     "sourceColumn": "ma_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Mã dự an",
+    "label": "Mã dự án đầu tư",
     "name": "ma_du_an",
     "sourceColumn": "ma_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Phiên bản",
+    "label": "Phiên bản dữ liệu",
     "name": "kh_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Tên kế hoach",
+    "label": "Tên kế hoạch lựa chọn nhà thầu",
     "name": "ten_kh",
     "sourceColumn": "ten_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Tên dự an dự toan",
+    "label": "Tên dự án / Dự toán mua sắm",
     "name": "ten_du_an_du_toan",
     "sourceColumn": "ten_du_an_du_toan",
     "sourceTable": "ke_hoach_lcnt"
@@ -1537,7 +1600,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Đơn vị trình CĐT",
+    "label": "Đơn vị trình của chủ đầu tư",
     "name": "don_vi_trinh_cdt",
     "sourceColumn": "don_vi_trinh_cdt",
     "sourceTable": "ke_hoach_lcnt"
@@ -1558,21 +1621,21 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "date",
-    "label": "Ngày phê duyet",
+    "label": "Ngày phê duyệt kế hoạch lựa chọn nhà thầu",
     "name": "ngay_phe_duyet_kh",
     "sourceColumn": "ngay_phe_duyet",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Quyết dinh phê duyet",
+    "label": "Số quyết định phê duyệt kế hoạch lựa chọn nhà thầu",
     "name": "qd_phe_duyet_kh",
     "sourceColumn": "quyet_dinh_phe_duyet",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "datetime",
-    "label": "Thời gian đăng tài",
+    "label": "Thời gian đăng tải kế hoạch lựa chọn nhà thầu",
     "name": "tg_dang_tai_kh",
     "sourceColumn": "thoi_gian_dang_tai",
     "sourceTable": "ke_hoach_lcnt"
@@ -1586,112 +1649,112 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Thời gian dự an",
+    "label": "Thời gian thực hiện dự án",
     "name": "tg_du_an",
     "sourceColumn": "thoi_gian_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Địa diem quy mở",
+    "label": "Địa điểm và quy mô xây dựng/mua sắm",
     "name": "dia_diem_quy_mo",
     "sourceColumn": "dia_diem_quy_mo",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Thông tin khác",
+    "label": "Thông tin bổ sung khác",
     "name": "thong_tin_khac_kh",
     "sourceColumn": "thong_tin_khac",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Số qd phê duyet dự an",
+    "label": "Số quyết định phê duyệt dự án đầu tư",
     "name": "so_qd_du_an",
     "sourceColumn": "so_qd_phe_duyet_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "date",
-    "label": "Ngày qd phê duyet dự an",
+    "label": "Ngày quyết định phê duyệt dự án đầu tư",
     "name": "ngay_qd_du_an",
     "sourceColumn": "ngay_qd_phe_duyet_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Co quan phê duyet dự an",
+    "label": "Cơ quan ban hành quyết định phê duyệt dự án",
     "name": "cq_phe_duyet_du_an",
     "sourceColumn": "co_quan_phe_duyet_du_an",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Phê duyet",
+    "label": "Họ tên người phê duyệt kế hoạch lựa chọn nhà thầu",
     "name": "nguoi_phe_duyet_kh",
     "sourceColumn": "phe_duyet",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Số to trinh dự toan",
+    "label": "Số tờ trình dự toán",
     "name": "so_ttr_du_toan",
     "sourceColumn": "so_to_trinh_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "date",
-    "label": "Ngày trinh dự toan",
+    "label": "Ngày trình duyệt dự toán",
     "name": "ngay_trinh_du_toan",
     "sourceColumn": "ngay_trinh_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "date",
-    "label": "Ngày phê duyet dự toan",
+    "label": "Ngày phê duyệt dự toán",
     "name": "ngay_phe_duyet_du_toan",
     "sourceColumn": "ngay_phe_duyet_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Số qd phê duyet dự toan",
+    "label": "Số quyết định phê duyệt dự toán",
     "name": "so_qd_du_toan",
     "sourceColumn": "so_qd_phe_duyet_du_toan",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Số to trinh kế hoach",
+    "label": "Số tờ trình kế hoạch lựa chọn nhà thầu",
     "name": "so_ttr_ke_hoach",
     "sourceColumn": "so_to_trinh_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Số to trinh dự toan kế hoach",
+    "label": "Số tờ trình dự toán và kế hoạch lựa chọn nhà thầu",
     "name": "so_ttr_du_toan_ke_hoach",
     "sourceColumn": "so_to_trinh_du_toan_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "date",
-    "label": "Ngày trinh kế hoach",
+    "label": "Ngày trình phê duyệt kế hoạch lựa chọn nhà thầu",
     "name": "ngay_trinh_kh",
     "sourceColumn": "ngay_trinh_ke_hoach",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Mã gói thầu",
+    "label": "Mã gói thầu (Mã TBMT)",
     "name": "ma_gt",
     "sourceColumn": "ma_goi_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phiên bản",
+    "label": "Phiên bản dữ liệu",
     "name": "gt_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "goi_thau"
@@ -1712,49 +1775,49 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Loai hợp đóng",
+    "label": "Loại hợp đồng gói thầu",
     "name": "loai_hd_gt",
     "sourceColumn": "loai_hop_dong",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Hinh thực lựa chon",
+    "label": "Hình thức lựa chọn nhà thầu",
     "name": "hinh_thuc_lcnt",
     "sourceColumn": "hinh_thuc_lua_chon",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phuong thực lựa chon",
+    "label": "Phương thức lựa chọn nhà thầu",
     "name": "phuong_thuc_lcnt",
     "sourceColumn": "phuong_thuc_lua_chon",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Thời gian thực hien",
+    "label": "Thời gian thực hiện gói thầu",
     "name": "tg_thuc_hien_gt",
     "sourceColumn": "thoi_gian_thuc_hien",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Nguồn vốn",
+    "label": "Nguồn vốn gói thầu",
     "name": "gt_nguon_von",
     "sourceColumn": "nguon_von",
     "sourceTable": "goi_thau"
   },
   {
     "format": "currency",
-    "label": "Giá trung thầu",
+    "label": "Giá trúng thầu",
     "name": "gia_trung_thau",
     "sourceColumn": "gia_trung_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Lĩnh vực",
+    "label": "Lĩnh vực gói thầu",
     "name": "gt_linh_vuc",
     "sourceColumn": "linh_vuc",
     "sourceTable": "goi_thau"
@@ -1768,28 +1831,28 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Thời gian to chức",
+    "label": "Thời gian tổ chức lựa chọn nhà thầu",
     "name": "tg_to_chuc_lcnt",
     "sourceColumn": "thoi_gian_to_chuc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Thời gian bat đấu to chức",
+    "label": "Thời gian bắt đầu tổ chức lựa chọn nhà thầu",
     "name": "tg_bat_dau_lcnt",
     "sourceColumn": "thoi_gian_bat_dau_to_chuc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phân lô",
+    "label": "Phần lô gói thầu",
     "name": "gt_phan_lo",
     "sourceColumn": "phan_lo",
     "sourceTable": "goi_thau"
   },
   {
     "format": "datetime",
-    "label": "Thời gian đăng tài",
+    "label": "Thời gian đăng tải thông báo mời thầu",
     "name": "tg_dang_tai_tbmt",
     "sourceColumn": "thoi_gian_dang_tai",
     "sourceTable": "goi_thau"
@@ -1810,105 +1873,105 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "datetime",
-    "label": "Thời gian mở ehsdxtc",
+    "label": "Thời gian mở E-HSĐXTC",
     "name": "tg_mo_ehsdxtc",
     "sourceColumn": "thoi_gian_mo_ehsdxtc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Số quyết dinh",
+    "label": "Số quyết định phê duyệt HSMT / Hồ sơ yêu cầu",
     "name": "so_qd_hsmt",
     "sourceColumn": "so_quyet_dinh",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ngày quyết dinh",
+    "label": "Ngày quyết định phê duyệt HSMT / Hồ sơ yêu cầu",
     "name": "ngay_qd_hsmt",
     "sourceColumn": "ngay_quyet_dinh",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Số quyết dinh ket qua",
+    "label": "Số quyết định phê duyệt kết quả lựa chọn nhà thầu",
     "name": "so_qd_kq",
     "sourceColumn": "so_quyet_dinh_ket_qua",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ngày quyết dinh ket qua",
+    "label": "Ngày quyết định phê duyệt kết quả lựa chọn nhà thầu",
     "name": "ngay_qd_kq",
     "sourceColumn": "ngay_quyet_dinh_ket_qua",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Thời gian gói thầu",
+    "label": "Thời gian thực hiện gói thầu của nhà thầu trúng thầu",
     "name": "tg_goi_thau",
     "sourceColumn": "thoi_gian_goi_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Thời gian hợp đóng",
+    "label": "Thời gian thực hiện hợp đồng",
     "name": "tg_hop_dong",
     "sourceColumn": "thoi_gian_hop_dong",
     "sourceTable": "goi_thau"
   },
   {
     "format": "currency",
-    "label": "Giá trị dam bảo dự thầu",
+    "label": "Giá trị bảo đảm dự thầu",
     "name": "gia_tri_bddt",
     "sourceColumn": "gia_tri_dam_bao_du_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Hiệu lực HSDT",
+    "label": "Hiệu lực hồ sơ dự thầu",
     "name": "hieu_luc_hsdt",
     "sourceColumn": "hieu_luc_hsdt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Hieu luc dam bảo dự thầu",
+    "label": "Hiệu lực bảo đảm dự thầu",
     "name": "hieu_luc_bddt",
     "sourceColumn": "hieu_luc_dam_bao_du_thau",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phuong phap danh giá",
+    "label": "Phương pháp đánh giá hồ sơ dự thầu",
     "name": "pp_danh_gia",
     "sourceColumn": "phuong_phap_danh_gia",
     "sourceTable": "goi_thau"
   },
   {
     "format": "percent",
-    "label": "Trong số ký thuat",
+    "label": "Trọng số điểm kỹ thuật",
     "name": "trong_so_ky_thuat",
     "sourceColumn": "trong_so_ky_thuat",
     "sourceTable": "goi_thau"
   },
   {
     "format": "percent",
-    "label": "Ty le bảo dam hợp đóng",
+    "label": "Tỷ lệ bảo đảm thực hiện hợp đồng",
     "name": "ty_le_bdhdt",
     "sourceColumn": "ty_le_bao_dam_hop_dong",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Is thuộc",
+    "label": "Là gói thầu thuốc",
     "name": "gt_is_thuoc",
     "sourceColumn": "is_thuoc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Trạng thai",
+    "label": "Trạng thái gói thầu",
     "name": "gt_trang_thai",
     "sourceColumn": "trang_thai",
     "sourceTable": "goi_thau"
@@ -1922,28 +1985,28 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Số bảo cáo tham dinh hsmt",
+    "label": "Số báo cáo thẩm định HSMT",
     "name": "so_bc_tham_dinh_hsmt",
     "sourceColumn": "so_bao_cao_tham_dinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ngày bảo cáo tham dinh hsmt",
+    "label": "Ngày báo cáo thẩm định HSMT",
     "name": "ngay_bc_tham_dinh_hsmt",
     "sourceColumn": "ngay_bao_cao_tham_dinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Số to trinh hsmt",
+    "label": "Số tờ trình phê duyệt HSMT",
     "name": "so_ttr_hsmt",
     "sourceColumn": "so_to_trinh_hsmt",
     "sourceTable": "goi_thau"
   },
   {
     "format": "date",
-    "label": "Ngày trinh hsmt",
+    "label": "Ngày trình phê duyệt HSMT",
     "name": "ngay_trinh_hsmt",
     "sourceColumn": "ngay_trinh_hsmt",
     "sourceTable": "goi_thau"
@@ -1964,28 +2027,28 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Qua mạng",
+    "label": "Hình thức thực hiện qua mạng",
     "name": "gt_qua_mang",
     "sourceColumn": "qua_mang",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Trong nước / quốc tế",
+    "label": "Phạm vi trong nước / quốc tế",
     "name": "gt_trong_nuoc_quoc_te",
     "sourceColumn": "trong_nuoc_quoc_te",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Is rebid",
+    "label": "Gói thầu tổ chức lại",
     "name": "gt_is_rebid",
     "sourceColumn": "is_rebid",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Phiên bản",
+    "label": "Phiên bản dữ liệu",
     "name": "nt_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "nha_thau"
@@ -2013,168 +2076,168 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Tên viết tắt",
+    "label": "Tên viết tắt nhà thầu",
     "name": "ten_tat_nt",
     "sourceColumn": "ten_viet_tat",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Loai nhà thầu",
+    "label": "Loại nhà thầu",
     "name": "loai_nt",
     "sourceColumn": "loai_nha_thau",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Mã số thue",
+    "label": "Mã số thuế nhà thầu",
     "name": "mst_nt",
     "sourceColumn": "ma_so_thue",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Người đại điện",
+    "label": "Người đại diện nhà thầu",
     "name": "dai_dien_nt",
     "sourceColumn": "nguoi_dai_dien",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Chức vu đại điện",
+    "label": "Chức vụ người đại diện nhà thầu",
     "name": "chuc_vu_dai_dien_nt",
     "sourceColumn": "chuc_vu_dai_dien",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Danh xưng",
+    "label": "Danh xưng người đại diện nhà thầu",
     "name": "danh_xung_nt",
     "sourceColumn": "danh_xung",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Số điện thoai",
+    "label": "Số điện thoại nhà thầu",
     "name": "sdt_nt",
     "sourceColumn": "so_dien_thoai",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Email",
+    "label": "Email nhà thầu",
     "name": "email_nt",
     "sourceColumn": "email",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Địa chỉ",
+    "label": "Địa chỉ nhà thầu",
     "name": "dia_chi_nt",
     "sourceColumn": "dia_chi",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Số tài khoan",
+    "label": "Số tài khoản nhà thầu",
     "name": "stk_nt",
     "sourceColumn": "so_tai_khoan",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Noi mở tài khoan",
+    "label": "Nơi mở tài khoản nhà thầu",
     "name": "noi_mo_tk_nt",
     "sourceColumn": "noi_mo_tai_khoan",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Mã ngan hang",
+    "label": "Mã ngân hàng nhà thầu",
     "name": "ma_ngan_hang_nt",
     "sourceColumn": "ma_ngan_hang",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Ảnh đấu",
+    "label": "Ảnh dấu nhà thầu",
     "name": "anh_dau_nt",
     "sourceColumn": "anh_dau",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Tên ảnh đấu",
+    "label": "Tên ảnh dấu nhà thầu",
     "name": "ten_anh_dau_nt",
     "sourceColumn": "ten_anh_dau",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Mã phan lo",
+    "label": "Mã phần lô mở thầu",
     "name": "mt_ma_phan_lo",
     "sourceColumn": "ma_phan_lo",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Tên phan lo",
+    "label": "Tên phần lô mở thầu",
     "name": "mt_ten_phan_lo",
     "sourceColumn": "ten_phan_lo",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Mã dinh danh",
+    "label": "Mã định danh mở thầu",
     "name": "mt_ma_dinh_danh",
     "sourceColumn": "ma_dinh_danh",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "currency",
-    "label": "Giá dự thầu",
+    "label": "Giá dự thầu mở thầu",
     "name": "mt_gia_du_thau",
     "sourceColumn": "gia_du_thau",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "percent",
-    "label": "Ty le giam giá",
+    "label": "Tỷ lệ giảm giá mở thầu",
     "name": "mt_ty_le_giam_gia",
     "sourceColumn": "ty_le_giam_gia",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "currency",
-    "label": "Giá sau giam giá",
+    "label": "Giá sau giảm giá mở thầu",
     "name": "mt_gia_sau_giam_gia",
     "sourceColumn": "gia_sau_giam_gia",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Hiệu lực HSDT",
+    "label": "Hiệu lực hồ sơ dự thầu",
     "name": "mt_hieu_luc_hsdt",
     "sourceColumn": "hieu_luc_hsdt",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "currency",
-    "label": "Giá trị dam bảo",
+    "label": "Giá trị bảo đảm dự thầu",
     "name": "mt_gia_tri_dam_bao",
     "sourceColumn": "gia_tri_dam_bao",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Hieu luc bảo dam ngày",
+    "label": "Hiệu lực bảo đảm dự thầu",
     "name": "mt_hieu_luc_bao_dam_ngay",
     "sourceColumn": "hieu_luc_bao_dam_ngay",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Thời gian thực hien",
+    "label": "Thời gian thực hiện",
     "name": "mt_tg_thuc_hien",
     "sourceColumn": "thoi_gian_thuc_hien",
     "sourceTable": "thong_tin_mo_thau"
@@ -2188,35 +2251,35 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Loai nhà thầu",
+    "label": "Loại nhà thầu",
     "name": "mt_loai_nt",
     "sourceColumn": "loai_nha_thau",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Danh giá hợp le",
+    "label": "Đánh giá tính hợp lệ",
     "name": "mt_dg_hop_le",
     "sourceColumn": "danh_gia_hop_le",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Danh giá nang luc",
+    "label": "Đánh giá năng lực và kinh nghiệm",
     "name": "mt_dg_nang_luc",
     "sourceColumn": "danh_gia_nang_luc",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Danh giá ký thuat",
+    "label": "Đánh giá kỹ thuật",
     "name": "mt_dg_ky_thuat",
     "sourceColumn": "danh_gia_ky_thuat",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Danh giá tài chinh",
+    "label": "Đánh giá tài chính",
     "name": "mt_dg_tai_chinh",
     "sourceColumn": "danh_gia_tai_chinh",
     "sourceTable": "thong_tin_mo_thau"
@@ -2244,147 +2307,147 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Danh giá ket luan",
+    "label": "Kết luận đánh giá",
     "name": "mt_dg_ket_luan",
     "sourceColumn": "danh_gia_ket_luan",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Lý do trượt",
+    "label": "Lý do trượt thầu",
     "name": "mt_ly_do_truot",
     "sourceColumn": "ly_do_truot",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Lam ro hợp le",
+    "label": "Làm rõ tính hợp lệ",
     "name": "mt_lam_ro_hop_le",
     "sourceColumn": "lam_ro_hop_le",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Làm rõ năng lực",
+    "label": "Làm rõ năng lực và kinh nghiệm",
     "name": "mt_lam_ro_nang_luc",
     "sourceColumn": "lam_ro_nang_luc",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Lam ro ký thuat",
+    "label": "Làm rõ kỹ thuật",
     "name": "mt_lam_ro_ky_thuat",
     "sourceColumn": "lam_ro_ky_thuat",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Lam ro tài chinh",
+    "label": "Làm rõ tài chính",
     "name": "mt_lam_ro_tai_chinh",
     "sourceColumn": "lam_ro_tai_chinh",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Nguyen nhan khong dat hợp le",
+    "label": "Nguyên nhân không đạt tính hợp lệ",
     "name": "mt_nn_khong_dat_hop_le",
     "sourceColumn": "nguyen_nhan_khong_dat_hop_le",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Nguyên nhân không đạt năng lực",
+    "label": "Nguyên nhân không đạt năng lực và kinh nghiệm",
     "name": "mt_nn_khong_dat_nang_luc",
     "sourceColumn": "nguyen_nhan_khong_dat_nang_luc",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Nguyen nhan khong dat ký thuat",
+    "label": "Nguyên nhân không đạt kỹ thuật",
     "name": "mt_nn_khong_dat_ky_thuat",
     "sourceColumn": "nguyen_nhan_khong_dat_ky_thuat",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Phiên bản",
+    "label": "Phiên bản dữ liệu",
     "name": "cg_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Ho tên",
+    "label": "Họ tên chuyên gia",
     "name": "ten_cg",
     "sourceColumn": "ho_ten",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Số chung chỉ",
+    "label": "Số chứng chỉ chuyên gia",
     "name": "so_chung_chi_cg",
     "sourceColumn": "so_chung_chi",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "date",
-    "label": "Ngày cấp chung chỉ",
+    "label": "Ngày cấp chứng chỉ chuyên gia",
     "name": "ngay_cap_chung_chi_cg",
     "sourceColumn": "ngay_cap_chung_chi",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Don vi cấp chung chỉ",
+    "label": "Đơn vị cấp chứng chỉ chuyên gia",
     "name": "dv_cap_chung_chi_cg",
     "sourceColumn": "don_vi_cap_chung_chi",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Số cccd",
+    "label": "Số CCCD chuyên gia",
     "name": "cccd_cg",
     "sourceColumn": "so_cccd",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "date",
-    "label": "Ngày cấp cccd",
+    "label": "Ngày cấp CCCD chuyên gia",
     "name": "ngay_cap_cccd_cg",
     "sourceColumn": "ngay_cap_cccd",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Noi cấp cccd",
+    "label": "Nơi cấp CCCD chuyên gia",
     "name": "noi_cap_cccd_cg",
     "sourceColumn": "noi_cap_cccd",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Ảnh chung chỉ",
+    "label": "Ảnh chứng chỉ chuyên gia",
     "name": "anh_chung_chi_cg",
     "sourceColumn": "anh_chung_chi",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Tên ảnh chung chỉ",
+    "label": "Tên ảnh chứng chỉ chuyên gia",
     "name": "ten_anh_chung_chi_cg",
     "sourceColumn": "ten_anh_chung_chi",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Ảnh chu ký",
+    "label": "Ảnh chữ ký chuyên gia",
     "name": "anh_chu_ky_cg",
     "sourceColumn": "anh_chu_ky",
     "sourceTable": "chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Tên ảnh chu ký",
+    "label": "Tên ảnh chữ ký chuyên gia",
     "name": "ten_anh_chu_ky_cg",
     "sourceColumn": "ten_anh_chu_ky",
     "sourceTable": "chuyen_gia"
@@ -2405,245 +2468,245 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phiên bản",
+    "label": "Phiên bản dữ liệu",
     "name": "hd_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Tên hợp đóng",
+    "label": "Tên hợp đồng",
     "name": "ten_hd",
     "sourceColumn": "ten_hop_dong",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Số hợp đóng",
+    "label": "Số hợp đồng",
     "name": "so_hd",
     "sourceColumn": "so_hop_dong",
     "sourceTable": "hop_dong"
   },
   {
     "format": "date",
-    "label": "Ngày ký",
+    "label": "Ngày ký hợp đồng",
     "name": "ngay_ky_hd",
     "sourceColumn": "ngay_ky",
     "sourceTable": "hop_dong"
   },
   {
     "format": "date",
-    "label": "Ngày thanh ly",
+    "label": "Ngày thanh lý hợp đồng",
     "name": "ngay_thanh_ly_hd",
     "sourceColumn": "ngay_thanh_ly",
     "sourceTable": "hop_dong"
   },
   {
     "format": "currency",
-    "label": "Giá trị",
+    "label": "Giá trị hợp đồng",
     "name": "hd_gia_tri",
     "sourceColumn": "gia_tri",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Loai hợp đóng",
+    "label": "Loại hợp đồng",
     "name": "loai_hd",
     "sourceColumn": "loai_hop_dong",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Thời gian thực hien",
+    "label": "Thời gian thực hiện hợp đồng",
     "name": "tg_thuc_hien_hd",
     "sourceColumn": "thoi_gian_thuc_hien",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Trạng thai hợp đóng",
+    "label": "Trạng thái hợp đồng",
     "name": "trang_thai_hd",
     "sourceColumn": "trang_thai_hop_dong",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Phân loại",
+    "label": "Phân loại hợp đồng",
     "name": "hd_phan_loai",
     "sourceColumn": "phan_loai",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Co qd chỉ dinh",
+    "label": "Có quyết định chỉ định thầu",
     "name": "co_qd_chi_dinh",
     "sourceColumn": "co_qd_chi_dinh",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Số qd chỉ dinh",
+    "label": "Số quyết định chỉ định thầu",
     "name": "so_qd_chi_dinh",
     "sourceColumn": "so_qd_chi_dinh",
     "sourceTable": "hop_dong"
   },
   {
     "format": "date",
-    "label": "Ngày qd chỉ dinh",
+    "label": "Ngày quyết định chỉ định thầu",
     "name": "ngay_qd_chi_dinh",
     "sourceColumn": "ngay_qd_chi_dinh",
     "sourceTable": "hop_dong"
   },
   {
     "format": "text",
-    "label": "Tên đăng nhap",
+    "label": "Tên đăng nhập hệ thống",
     "name": "tk_ten_dang_nhap",
     "sourceColumn": "ten_dang_nhap",
     "sourceTable": "tai_khoan"
   },
   {
     "format": "text",
-    "label": "Ho tên",
+    "label": "Họ tên tài khoản",
     "name": "tk_ho_ten",
     "sourceColumn": "ho_ten",
     "sourceTable": "tai_khoan"
   },
   {
     "format": "text",
-    "label": "Vai trò",
+    "label": "Vai trò tài khoản",
     "name": "tk_vai_tro",
     "sourceColumn": "vai_tro",
     "sourceTable": "tai_khoan"
   },
   {
     "format": "text",
-    "label": "Email",
+    "label": "Email tài khoản",
     "name": "tk_email",
     "sourceColumn": "email",
     "sourceTable": "tai_khoan"
   },
   {
     "format": "text",
-    "label": "Ảnh đại điện",
+    "label": "Ảnh đại diện tài khoản",
     "name": "tk_anh_dai_dien",
     "sourceColumn": "anh_dai_dien",
     "sourceTable": "tai_khoan"
   },
   {
     "format": "text",
-    "label": "Đã xác minh",
+    "label": "Trạng thái xác minh tài khoản",
     "name": "tk_da_xac_minh",
     "sourceColumn": "da_xac_minh",
     "sourceTable": "tai_khoan"
   },
   {
     "format": "text",
-    "label": "Tên to chức",
+    "label": "Tên tổ chức / Doanh nghiệp",
     "name": "ten_to_chuc",
     "sourceColumn": "ten_to_chuc",
     "sourceTable": "to_chuc"
   },
   {
     "format": "text",
-    "label": "Tên gói",
+    "label": "Tên gói dịch vụ",
     "name": "ten_goi_dv",
     "sourceColumn": "ten_goi",
     "sourceTable": "goi_dich_vu"
   },
   {
     "format": "currency",
-    "label": "Giá ca",
+    "label": "Giá gói dịch vụ",
     "name": "gia_goi_dv",
     "sourceColumn": "gia_ca",
     "sourceTable": "goi_dich_vu"
   },
   {
     "format": "text",
-    "label": "Hạn mức nhân sự",
+    "label": "Hạn mức nhân sự tối đa",
     "name": "han_muc_nhan_su_dv",
     "sourceColumn": "han_muc_nhan_su",
     "sourceTable": "goi_dich_vu"
   },
   {
     "format": "text",
-    "label": "Mở ta",
+    "label": "Mô tả chi tiết gói dịch vụ",
     "name": "mo_ta_goi_dv",
     "sourceColumn": "mo_ta",
     "sourceTable": "goi_dich_vu"
   },
   {
     "format": "text",
-    "label": "Tong số phan lo",
+    "label": "Tổng số phần lô",
     "name": "tong_so_lo",
     "sourceColumn": "tong_so_phan_lo",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số phan lo co nhà thầu tham dự",
+    "label": "Số phần lô có nhà thầu tham dự",
     "name": "so_lo_co_nt",
     "sourceColumn": "so_phan_lo_co_nha_thau_tham_du",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số phan lo khong co nhà thầu tham dự",
+    "label": "Số phần lô không có nhà thầu tham dự",
     "name": "so_lo_khong_nt",
     "sourceColumn": "so_phan_lo_khong_co_nha_thau_tham_du",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số phan lo tham dự khong trung",
+    "label": "Số phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng",
     "name": "so_lo_co_nt_khong_trung",
     "sourceColumn": "so_phan_lo_tham_du_khong_trung",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số phan lo co nhà thầu trung",
+    "label": "Số phần lô có nhà thầu trúng thầu",
     "name": "so_lo_co_nt_trung",
     "sourceColumn": "so_phan_lo_co_nha_thau_trung",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Tong số nhà thầu tham dự",
+    "label": "Tổng số nhà thầu tham dự",
     "name": "tong_so_nt_tham_du",
     "sourceColumn": "tong_so_nha_thau_tham_du",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số nhà thầu trung thầu",
+    "label": "Số nhà thầu trúng thầu",
     "name": "so_nt_trung",
     "sourceColumn": "so_nha_thau_trung_thau",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số nhà thầu truot thầu",
+    "label": "Số nhà thầu trượt thầu",
     "name": "so_nt_truot",
     "sourceColumn": "so_nha_thau_truot_thau",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số nhà thầu khong dat",
+    "label": "Số nhà thầu không đạt",
     "name": "so_nt_khong_dat",
     "sourceColumn": "so_nha_thau_khong_dat",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số nhà thầu dat khong xep hang 1",
+    "label": "Số nhà thầu đạt nhưng không xếp hạng 1",
     "name": "so_nt_dat_khong_hang_1",
     "sourceColumn": "so_nha_thau_dat_khong_xep_hang_1",
     "sourceTable": "__context__"
   },
   {
     "format": "text",
-    "label": "Số nhà thầu khong duoc danh giá",
+    "label": "Số nhà thầu không được đánh giá",
     "name": "so_nt_khong_danh_gia",
     "sourceColumn": "so_nha_thau_khong_duoc_danh_gia",
     "sourceTable": "__context__"
@@ -2818,7 +2881,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách tuỳ chọn mua thêm",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách tùy chọn mua thêm",
     "name": "ds_mua_them",
     "sourceColumn": "",
     "sourceTable": "tuy_chon_mua_them_list"

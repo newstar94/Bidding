@@ -5,7 +5,7 @@ from .schema_contract import json_key_for_column
 from backend.shared.workspace_scope import personal_scope_id, personal_scope_owner_id
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 13
+WORD_DEFAULT_MAPPINGS_VERSION = 14
 
 
 WORD_SINGLE_SOURCES = {
@@ -405,7 +405,7 @@ WORD_LIST_MAPPINGS = [
     ("ds_nt_dat_khong_hang_1", "ds_nha_thau_dat_khong_xep_hang_1", "Nhà thầu đạt nhưng không xếp hạng 1"),
     ("ds_nt_khong_danh_gia", "ds_nha_thau_khong_duoc_danh_gia", "Nhà thầu không được đánh giá"),
     ("ds_nt_trung_kem_lo", "ds_nha_thau_trung_theo_phan_lo", "Nhà thầu trúng thầu, kèm danh sách phần lô trúng"),
-    ("ds_mua_them", "tuy_chon_mua_them_list", "Danh sách tuỳ chọn mua thêm"),
+    ("ds_mua_them", "tuy_chon_mua_them_list", "Danh sách tùy chọn mua thêm"),
     ("ds_gia_han", "gia_han_list", "Danh sách gia hạn"),
     ("ds_yc_lam_ro", "yeu_cau_lam_ro_list", "Danh sách yêu cầu làm rõ"),
     ("ds_tl_lam_ro", "tra_loi_lam_ro_list", "Danh sách trả lời làm rõ"),
@@ -442,6 +442,18 @@ def _default_single_name(source_table, column):
     return WORD_SINGLE_NAME_OVERRIDES.get((source_table, column), f"{WORD_SINGLE_PREFIXES[source_table]}_{column}")
 
 
+def _is_default_mapping_description(description):
+    normalized = str(description or "").casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "mac dinh tu cau_truc_db.md",
+            "mac dinh tu schema he thong",
+            "mặc định từ schema hệ thống",
+        )
+    )
+
+
 def build_default_word_mappings():
     mappings = []
     field_manifest = build_field_manifest(json_key_for_column)
@@ -451,14 +463,14 @@ def build_default_word_mappings():
             if not field:
                 field = {
                     "format": field_format(column),
-                    "label": field_label(column),
+                    "label": field_label(column, source_table),
                 }
             mappings.append({
                 "ten_bien": _default_single_name(source_table, column),
                 "source_table": source_table,
                 "source_column": column,
                 "format": field["format"],
-                "mo_ta": f"Bien don mac dinh tu schema he thong: {source_table}.{column}",
+                "mo_ta": f"Biến đơn mặc định từ schema hệ thống: {source_table}.{column}",
             })
 
     for ten_bien, source_table, mo_ta in WORD_CONTEXT_MAPPINGS:
@@ -466,7 +478,7 @@ def build_default_word_mappings():
             "ten_bien": ten_bien,
             "source_table": "__context__",
             "source_column": source_table,
-            "mo_ta": f"Thuc the dong mac dinh tu schema he thong: {mo_ta}",
+            "mo_ta": f"Thực thể động mặc định từ schema hệ thống: {mo_ta}",
         })
 
     for ten_bien, source_table, mo_ta in WORD_LIST_MAPPINGS:
@@ -537,21 +549,19 @@ def ensure_default_word_mappings(cursor, organization_id):
         existing = cursor.fetchone()
         if existing:
             existing_id, existing_name, existing_desc = existing[0], existing[1], existing[2] or ""
-            if (
-                existing_name != mapping["ten_bien"]
-                and (
-                    "mac dinh tu cau_truc_db.md" in existing_desc
-                    or "mac dinh tu schema he thong" in existing_desc
-                )
-            ):
-                cursor.execute(
-                    "SELECT 1 FROM cau_hinh_bien_word WHERE organization_id = ? AND ten_bien = ? AND id != ?",
-                    (organization_id, mapping["ten_bien"], existing_id),
-                )
-                if not cursor.fetchone():
+            if _is_default_mapping_description(existing_desc):
+                target_name = existing_name
+                if existing_name != mapping["ten_bien"]:
+                    cursor.execute(
+                        "SELECT 1 FROM cau_hinh_bien_word WHERE organization_id = ? AND ten_bien = ? AND id != ?",
+                        (organization_id, mapping["ten_bien"], existing_id),
+                    )
+                    if not cursor.fetchone():
+                        target_name = mapping["ten_bien"]
+                if target_name != existing_name or existing_desc != mapping["mo_ta"]:
                     cursor.execute(
                         "UPDATE cau_hinh_bien_word SET ten_bien = ?, mo_ta = ? WHERE id = ?",
-                        (mapping["ten_bien"], mapping["mo_ta"], existing_id),
+                        (target_name, mapping["mo_ta"], existing_id),
                     )
             continue
 

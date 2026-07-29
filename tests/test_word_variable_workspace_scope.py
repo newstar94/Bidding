@@ -147,6 +147,33 @@ def test_switching_workspace_selects_distinct_personal_and_organization_variable
     ).fetchone()[0] == 0
 
 
+def test_default_word_variable_upgrade_rewrites_legacy_explanation_text():
+    connection = _database()
+    cursor = connection.cursor()
+    cursor.execute("INSERT INTO to_chuc (id, ten_to_chuc) VALUES ('org-a', 'Tổ chức A')")
+    cursor.execute(
+        """INSERT INTO cau_hinh_bien_word
+           (id, organization_id, owner_type, ten_bien, source_table, source_column, mo_ta)
+           VALUES ('legacy-ma-cdt', 'org-a', 'organization', 'ma_cdt',
+                   'chu_dau_tu', 'ma_chu_dau_tu',
+                   'Bien don mac dinh tu schema he thong: chu_dau_tu.ma_chu_dau_tu')"""
+    )
+    cursor.execute(
+        "INSERT INTO word_default_seeds (organization_id, mappings_version) VALUES ('org-a', 13)"
+    )
+
+    ensure_default_word_mappings(cursor, "org-a")
+
+    description = cursor.execute(
+        "SELECT mo_ta FROM cau_hinh_bien_word WHERE id = 'legacy-ma-cdt'"
+    ).fetchone()[0]
+    version = cursor.execute(
+        "SELECT mappings_version FROM word_default_seeds WHERE organization_id = 'org-a'"
+    ).fetchone()[0]
+    assert description == "Biến đơn mặc định từ schema hệ thống: chu_dau_tu.ma_chu_dau_tu"
+    assert version == 14
+
+
 def test_organization_members_can_read_but_only_manager_can_change_word_variables():
     connection = _database()
     cursor = connection.cursor()
