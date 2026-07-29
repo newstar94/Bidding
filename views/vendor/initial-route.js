@@ -96,7 +96,8 @@
     }
 
     const organizations = Array.isArray(user.organizations) ? user.organizations : [];
-    let activeOrg = String(user.active_org_id || sessionStorage.getItem("bf_active_org") || localStorage.getItem("bf_active_org") || "");
+    const savedActiveOrg = sessionStorage.getItem("bf_active_org") || localStorage.getItem("bf_active_org") || "";
+    let activeOrg = String(savedActiveOrg || user.active_org_id || "");
     let selectedOrganization = organizations.find((organization) => organization.id === activeOrg && organization.status === "active");
     if (!selectedOrganization) selectedOrganization = organizations.find((organization) => organization.status === "active") || null;
     activeOrg = selectedOrganization?.id || "";

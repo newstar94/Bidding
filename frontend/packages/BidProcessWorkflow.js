@@ -353,7 +353,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const lotNameValue = escapeHtml(bidData.tenPhanLo || "");
   let cellHtml = "";
   const jvBtnCount = tr._thanhVienLienDanh.length;
-  const jvDetailsHtml = readOnly ? ntType === "Liên danh" ? `<div class="bf-s-7dd018fd26"><a href="#" class="mt-jv-view-link bf-s-95a6b7be8c">👥 Liên danh ${jvBtnCount} thành viên</a></div>` : "" : `<div class="mt-jv-members-container" style="margin-top: 4px; display: ${ntType === "Liên danh" ? "block" : "none"};">
+  const jvDetailsHtml = readOnly ? ntType === "Liên danh" ? `<div class="bf-s-7dd018fd26"><a href="#" class="mt-jv-view-link bf-s-95a6b7be8c">👥 Liên danh ${jvBtnCount} thành viên</a></div>` : "" : `<div class="mt-jv-members-container">
             <button type="button" class="btn btn-outline btn-xs mt-btn-manage-members bf-s-32804fa5c4">
                 <i data-lucide="users" class="bf-s-38e6fd7439"></i>
                 <span class="mt-jv-btn-text">Thành viên liên danh (${jvBtnCount})</span>
@@ -572,6 +572,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const selectLoai = tr.querySelector(".mt-loai-nha-thau");
   const jvContainer = tr.querySelector(".mt-jv-members-container");
   if (selectLoai && jvContainer) {
+    setRuntimeStyle(jvContainer, "marginTop", "4px");
+    setRuntimeStyle(jvContainer, "display", ntType === "Liên danh" ? "block" : "none");
     selectLoai.addEventListener("change", () => {
       setRuntimeStyle(jvContainer, "display", selectLoai.value === "Liên danh" ? "block" : "none");
     });

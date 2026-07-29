@@ -1,6 +1,10 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 import { renderBidderGoodsPanelMarkup } from "../BidderGoodsWorkflow.js";
+import {
+  isProposedAwardPriceBelowHalf,
+  normalizeLowPriceAcceptance,
+} from "../bidEvaluationLowPriceRules.js";
 
 const GROUP_LABELS = Object.freeze({
   validity: "Tính hợp lệ",
@@ -11,6 +15,24 @@ const GROUP_LABELS = Object.freeze({
 });
 
 const LARGE_TABLE_ROW_CHUNK_SIZE = 25;
+
+export function renderDetailedEvaluationLowPriceSummary({ pkg, bid } = {}) {
+  if (!isProposedAwardPriceBelowHalf(pkg, bid)) return "";
+  const decision = normalizeLowPriceAcceptance(
+    bid?.chapThuanGiaDeNghiTrungThauDuoi50,
+  );
+  const decisionLabel = decision === true
+    ? "Chấp thuận"
+    : decision === false ? "Không chấp thuận" : "Chưa quyết định";
+  const statusClass = decision === true
+    ? "badge-success"
+    : decision === false ? "badge-danger" : "badge-warning";
+  return `
+    <div class="detailed-evaluation-metric detailed-evaluation-low-price-decision">
+      <span class="detailed-evaluation-metric-label">Xử lý giá đề nghị trúng thầu dưới 50%</span>
+      <strong class="badge ${statusClass}">${escapeHtml(decisionLabel)}</strong>
+    </div>`;
+}
 
 function documentSection(context = {}, group) {
   const source = context.templateSource || "14A";
@@ -225,6 +247,7 @@ export function scheduleDetailedEvaluationRowBatches({
 }
 
 export function renderDetailedEvaluationPanel(container, {
+  pkg = null,
   bids = [],
   selectedBidId = "",
   context,
@@ -242,6 +265,10 @@ export function renderDetailedEvaluationPanel(container, {
     (report?.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
   );
   const selectedBid = bids.find((bid) => String(bid.id) === String(selectedBidId));
+  const lowPriceDecisionSummary = renderDetailedEvaluationLowPriceSummary({
+    pkg,
+    bid: selectedBid,
+  });
   const section = documentSection(context, activeGroup);
   const tabs = (context?.visibleGroups || []).map((group) => {
     const active = group === activeGroup;
@@ -410,6 +437,7 @@ export function renderDetailedEvaluationPanel(container, {
           <strong id="detailed-evaluation-progress">${progress.completed}/${progress.total} tiêu chí</strong>
           <progress class="detailed-evaluation-progress" max="${progressTotal}" value="${progressCompleted}" aria-label="Tiến độ đánh giá"></progress>
         </div>
+        ${lowPriceDecisionSummary}
       </div>
       ${selectedBid ? bidderNavigation : '<div class="package-panel-empty">Chưa có hồ sơ dự thầu phù hợp.</div>'}
       <div class="detailed-evaluation-tabs-toolbar">

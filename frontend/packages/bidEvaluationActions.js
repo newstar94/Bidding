@@ -498,9 +498,10 @@ export async function saveDanhGiaHsdt() {
     bidsById.get(String(tr.getAttribute("data-bid-id") || ""))
   )).filter(Boolean);
   stageBidEvaluationMutation(this.model, gt, evaluatedBids);
-  const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau"]);
+  const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau"], {
+    afterPersist: () => this.view.renderGoiThauTable(),
+  });
   if (!syncResult?.ok) return;
-  this.view.renderGoiThauTable();
   const stepKey = this.currentDanhGiaTab === "financial" ? "eval_fin" : "eval_tech";
   if (this.view._editingState) {
     this.view._editingState[stepKey] = false;

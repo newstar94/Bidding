@@ -18,17 +18,57 @@ const createDOMPurifyPolicy = () => trustedTypesApi?.createPolicy?.("biddingflow
 
 const domPurifyTrustedTypesPolicy = createDOMPurifyPolicy();
 
-const UNSAFE_HTML_PATTERNS = [
-  /<\/?(?:script|iframe|object|embed|base|meta)\b/i,
-  /\s(?:on[a-z]+|srcdoc)\s*=/i,
-  /(?:href|src|action|formaction)\s*=\s*["']?\s*(?:javascript|vbscript):/i,
-  /data\s*:\s*text\/html/i
-];
+const FORBIDDEN_TAG_NAMES = new Set(["script", "iframe", "object", "embed", "base", "meta"]);
+const URL_ATTRIBUTE_NAMES = new Set(["href", "src", "action", "formaction"]);
+
+function parseTagAttributes(tag) {
+  const attributes = [];
+  let index = 1;
+  if (tag[index] === "/") index += 1;
+  while (index < tag.length && /\s/.test(tag[index])) index += 1;
+  while (index < tag.length && !/[\s/>]/.test(tag[index])) index += 1;
+  while (index < tag.length) {
+    while (index < tag.length && /[\s/]/.test(tag[index])) index += 1;
+    if (index >= tag.length || tag[index] === ">") break;
+    const nameStart = index;
+    while (index < tag.length && !/[\s=/>]/.test(tag[index])) index += 1;
+    const name = tag.slice(nameStart, index).toLowerCase();
+    while (index < tag.length && /\s/.test(tag[index])) index += 1;
+    let value = "";
+    if (tag[index] === "=") {
+      index += 1;
+      while (index < tag.length && /\s/.test(tag[index])) index += 1;
+      const quote = tag[index] === '"' || tag[index] === "'" ? tag[index++] : "";
+      const valueStart = index;
+      if (quote) {
+        while (index < tag.length && tag[index] !== quote) index += 1;
+        value = tag.slice(valueStart, index);
+        if (tag[index] === quote) index += 1;
+      } else {
+        while (index < tag.length && !/[\s>]/.test(tag[index])) index += 1;
+        value = tag.slice(valueStart, index);
+      }
+    }
+    if (name) attributes.push({ name, value });
+  }
+  return attributes;
+}
+
+function unsafeRawTag(tag) {
+  const tagName = /^<\/?\s*([^\s/>]+)/.exec(tag)?.[1]?.toLowerCase() || "";
+  if (FORBIDDEN_TAG_NAMES.has(tagName)) return true;
+  return parseTagAttributes(tag).some(({ name, value }) => {
+    if (name === "srcdoc" || /^on[a-z]+$/.test(name)) return true;
+    if (!URL_ATTRIBUTE_NAMES.has(name)) return false;
+    const normalized = value.trim().toLowerCase();
+    return /^(?:javascript|vbscript)\s*:/.test(normalized) || /^data\s*:\s*text\/html/.test(normalized);
+  });
+}
 
 export function assertSafeHTML(value) {
   const source = String(value ?? "");
-  const violation = UNSAFE_HTML_PATTERNS.find((pattern) => pattern.test(source));
-  if (violation) throw new TypeError("Unsafe HTML rejected by the application Trusted Types policy");
+  const rawTags = source.match(/<[^>]*>/g) || [];
+  if (rawTags.some(unsafeRawTag)) throw new TypeError("Unsafe HTML rejected by the application Trusted Types policy");
   return source;
 }
 

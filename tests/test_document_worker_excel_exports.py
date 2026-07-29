@@ -72,12 +72,14 @@ class _EvaluationCursor:
             self._one = ("Hàng hóa", "Một giai đoạn hai túi hồ sơ", "Không")
         elif "FROM goi_thau_phan_lo" in normalized:
             self._rows = []
+        elif "FROM thong_tin_mo_thau_lien_danh_thanh_vien" in normalized:
+            self._rows = []
         elif "FROM thong_tin_mo_thau m" in normalized:
             self._rows = [[
                 "Độc lập", "", "", "NT-01", "Nhà thầu 01",
                 1000, 0, 1000, 90, 100, 120, 30,
                 "Đạt", "Đạt", "Đạt", "", "", "", "", "", "", "", "",
-                950, 940, 0,
+                950, 940, 0, "opening-1",
             ]]
         return self
 
@@ -176,6 +178,36 @@ def test_financial_evaluation_excel_contains_ranking_and_proposed_award_prices(m
     assert spec["formats_map"]["Giá đề nghị trúng thầu (VND)"] == "currency"
 
 
+class _JointVentureEvaluationCursor(_EvaluationCursor):
+    def execute(self, sql, _params=()):
+        normalized = " ".join(str(sql).split())
+        if "FROM thong_tin_mo_thau_lien_danh_thanh_vien" in normalized:
+            self._one = None
+            self._rows = [
+                ("opening-1", "Đứng đầu liên danh", "Nhà thầu đứng đầu", "0101"),
+                ("opening-1", "Thành viên liên danh", "Nhà thầu thành viên", "0102"),
+            ]
+            return self
+        result = super().execute(sql, _params)
+        if "FROM thong_tin_mo_thau m" in normalized:
+            self._rows[0][0] = "Liên danh"
+            self._rows[0][3] = "JV-01"
+            self._rows[0][4] = "Liên danh thử nghiệm"
+        return result
+
+
+def test_evaluation_excel_preserves_joint_venture_members(monkeypatch):
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_JointVentureEvaluationCursor()),
+    )
+    spec = excel_service.prepare_danhgiahsdt_template_spec("gt-1", "org-1", "financial")
+    member_index = spec["headers"].index("Thành viên liên danh")
+    assert "Nhà thầu đứng đầu (0101)" in spec["rows"][0][member_index]
+    assert "Nhà thầu thành viên (0102)" in spec["rows"][0][member_index]
+
+
 class _OpeningFinancialCursor(_EvaluationCursor):
     def execute(self, sql, _params=()):
         normalized = " ".join(str(sql).split())
@@ -248,13 +280,15 @@ class _AwardResultCursor(_EvaluationCursor):
         self._rows = []
         if normalized.startswith("SELECT nha_thau_trung_thau_id"):
             self._one = ("NT-01", 900, 30, 60)
+        elif "FROM thong_tin_mo_thau_lien_danh_thanh_vien" in normalized:
+            self._rows = []
         elif normalized.startswith("SELECT m.loai_nha_thau"):
             assert "danh_gia_tai_chinh" not in normalized
             assert "LEFT JOIN ket_qua_danh_gia_nha_thau k" in normalized
             assert "k.ly_do_loai" in normalized
             self._rows = [[
                 "Độc lập", "", "", "NT-01", "Nhà thầu 01", 1000, 0, 1000,
-                "Nhà thầu có giá đề nghị trúng thầu nhỏ hơn 50% giá gói thầu.",
+                "Nhà thầu có giá đề nghị trúng thầu nhỏ hơn 50% giá gói thầu.", 1, "opening-1",
             ]]
         return self
 
@@ -306,4 +340,5 @@ def test_award_result_export_prefetches_database_data_before_worker(monkeypatch)
     assert response.status_code == 200
     workbook = load_workbook(BytesIO(body))
     assert workbook["Ket Qua LCNT"]["B2"].value == "NT-01"
-    assert workbook["Ket Qua LCNT"]["D2"].value == "Trúng thầu"
+    assert workbook["Ket Qua LCNT"]["E2"].value == "Trúng thầu"
+    assert workbook["Ket Qua LCNT"]["F2"].value == "Chấp thuận"

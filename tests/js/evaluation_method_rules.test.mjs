@@ -52,9 +52,19 @@ test("maps consulting packages to their four consulting methods", () => {
 });
 
 test("returns no method for combinations absent from the supplied matrix", () => {
-  assert.deepEqual(methods("Hàng hóa", "Chỉ định thầu", "Một giai đoạn một túi hồ sơ"), []);
   assert.deepEqual(methods("Tư vấn", "Chào hàng cạnh tranh", "Một giai đoạn hai túi hồ sơ"), []);
   assert.deepEqual(methods("Hàng hóa", "Chào hàng cạnh tranh", "Một giai đoạn hai túi hồ sơ"), []);
+});
+
+test("keeps direct appointment selectable through its opening and evaluation workflow", () => {
+  for (const field of ["Hàng hóa", "Xây lắp", "Phi tư vấn", "Hỗn hợp"]) {
+    assert.deepEqual(methods(field, "Chỉ định thầu", "Một giai đoạn một túi hồ sơ"), standard);
+    assert.deepEqual(methods(field, "Chỉ định thầu", "Một giai đoạn hai túi hồ sơ"), advanced);
+  }
+  assert.deepEqual(
+    methods("Tư vấn", "Chỉ định thầu", "Một giai đoạn hai túi hồ sơ"),
+    [LOWEST_PRICE, FIXED_PRICE, COMBINED, TECHNICAL],
+  );
 });
 
 test("ranks qualified non-consulting bids by technical score", () => {

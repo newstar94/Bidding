@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { saveDanhGiaHsdt } from "../../frontend/packages/bidEvaluationActions.js";
+
+test("waits for the paginated package refresh before opening the result step", async () => {
+  const packageRecord = {
+    id: "pkg-1",
+    tenGoiThau: "Gói kiểm thử",
+    giaGoiThau: 900_000_000,
+    linhVuc: "Hàng hóa",
+    phanLo: "Không",
+    phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
+    hinhThucLuaChon: "Đấu thầu rộng rãi",
+  };
+  const bid = {
+    id: "bid-1",
+    goiThauId: packageRecord.id,
+    tenNhaThau: "Nhà thầu kiểm thử",
+    giaDuThau: 780_000_000,
+  };
+  const controls = new Map([
+    ["danhgiahsdt-goithau-select", { value: packageRecord.id }],
+    ["danhgiahsdt-so-baocao", { value: "01/BC-DG" }],
+    ["danhgiahsdt-ngay-baocao", { value: "03/08/2026" }],
+    ["danhgiahsdt-ngay-moi-doichieu", { value: "" }],
+    ["danhgiahsdt-ngay-doichieu", { value: "" }],
+  ]);
+  const rowControls = new Map([
+    [".mt-dg-hop-le", { value: "Đạt" }],
+    [".mt-dg-nang-luc", { value: "Đạt" }],
+    [".mt-dg-ky-thuat", { value: "Đạt" }],
+    [".mt-ketluan-cell", { textContent: "Đạt" }],
+    [".mt-gia-xep-hang", { value: "772200000" }],
+    [".mt-gia-de-nghi-trung-thau", { value: "772200000" }],
+  ]);
+  const row = {
+    getAttribute: (name) => name === "data-bid-id" ? bid.id : null,
+    querySelector: (selector) => rowControls.get(selector) || null,
+  };
+  controls.set("danhgiahsdt-table-tbody", { querySelectorAll: () => [row] });
+
+  let packageRefreshFinished = false;
+  let detailOpened = false;
+  const model = {
+    useServerSidePagination: true,
+    state: { goithau: [packageRecord], thongtinmothau: [bid] },
+    convertDMYToYMD: (value) => value === "03/08/2026" ? "2026-08-03" : value,
+    parseVND: (value) => Number(String(value).replace(/\D/g, "")),
+    commitLocalMutation() {},
+    async persistData() {},
+    async flushMutationOutbox() {},
+  };
+  const controller = {
+    model,
+    currentDanhGiaTab: "technical",
+    calculateRankings: () => ({ rankings: { [bid.id]: 1 } }),
+    async autoSync() { return { ok: true }; },
+    view: {
+      _editingState: {},
+      getActiveElement: (id) => controls.get(id) || null,
+      isGoiThauDetailTabActive: () => true,
+      focusInvalidControl() {},
+      async renderGoiThauTable() {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        packageRefreshFinished = true;
+      },
+      async showPackageDetails() {
+        assert.equal(packageRefreshFinished, true, "detail opened before package refresh completed");
+        detailOpened = true;
+      },
+      async customAlert() {},
+    },
+  };
+
+  await saveDanhGiaHsdt.call(controller);
+
+  assert.equal(detailOpened, true);
+  assert.equal(packageRecord.danhGiaHsdtMetadata.includes('"saved":true'), true);
+});

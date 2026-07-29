@@ -2,11 +2,65 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { showInitLoader } from "./authRuntimeState.js";
 
+const AUTH_FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "a[href]",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+function setInert(element, inert) {
+  if (!element) return;
+  element.toggleAttribute("inert", inert);
+  if (inert) element.setAttribute("aria-hidden", "true");
+  else element.removeAttribute("aria-hidden");
+}
+
+export function syncAuthOverlayAccessibility() {
+  const overlay = document.getElementById("auth-overlay");
+  if (!overlay) return false;
+  const visible = !overlay.hidden && getComputedStyle(overlay).display !== "none";
+  setInert(overlay, !visible);
+  setInert(document.querySelector(".app-container"), visible);
+  setInert(document.querySelector(".workspace-skip-link"), visible);
+  return visible;
+}
+
+export function installAuthOverlayAccessibility() {
+  const overlay = document.getElementById("auth-overlay");
+  if (!overlay || typeof MutationObserver !== "function") return null;
+  syncAuthOverlayAccessibility();
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab" || !syncAuthOverlayAccessibility()) return;
+    const focusable = [...overlay.querySelectorAll(AUTH_FOCUSABLE_SELECTOR)]
+      .filter((element) => element.getClientRects().length > 0 && !element.closest("[inert]"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+      last.focus();
+      event.preventDefault();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      first.focus();
+      event.preventDefault();
+    }
+  });
+  const observer = new MutationObserver(syncAuthOverlayAccessibility);
+  observer.observe(overlay, {
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden"]
+  });
+  return observer;
+}
+
 export function hideAuthOverlay() {
   const overlay = document.getElementById("auth-overlay");
   if (overlay) setRuntimeStyle(overlay, "display", "none");
   const appContainer = document.querySelector(".app-container");
   if (appContainer) setRuntimeStyle(appContainer, "filter", "none");
+  syncAuthOverlayAccessibility();
 }
 export function reloadWithInitLoader() {
   const initLoader = showInitLoader();

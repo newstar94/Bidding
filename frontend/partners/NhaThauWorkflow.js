@@ -5,7 +5,16 @@ import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partner
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml, safeImageSrc } from "../shared/view_helpers.js";
-import { createInitialVersion, createNextVersion, getNextVersion, preserveRowVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import {
+  createInitialVersion,
+  createNextVersion,
+  getNextVersion,
+  getVersionFamily,
+  preserveRowVersion,
+  rememberSelectedVersion,
+  removeAllVersions,
+  removeLatestVersion,
+} from "../shared/VersionedEntityService.js";
 import { getCurrentDateYmd } from "../shared/formatters.js";
 import { setContractorViewOnly } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
@@ -36,7 +45,9 @@ const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {
 export async function deleteNhaThau(id) {
   const nt = await refreshRecordBeforeDelete(this, "nhathau", id);
   if (!nt) return;
-  const wonPackages = this.model.state.goithau.filter((gt) => gt.nhaThauTrungThauId === id);
+  const family = getVersionFamily(this.model.state.nhathau, nt);
+  const familyIds = new Set(family.map((item) => String(item.id)));
+  const wonPackages = this.model.state.goithau.filter((gt) => familyIds.has(String(gt.nhaThauTrungThauId)));
   if (wonPackages.length > 0) {
     const codes = wonPackages.map((gt) => gt.maGoiThau).join(", ");
     await this.view.customAlert(
@@ -64,7 +75,7 @@ export async function deleteNhaThau(id) {
     );
     return;
   }
-  const inContracts = (this.model.state.hopdong || []).filter((h) => h.nhaThauId === id);
+  const inContracts = (this.model.state.hopdong || []).filter((h) => familyIds.has(String(h.nhaThauId)));
   if (inContracts.length > 0) {
     const contractNos = inContracts.map((h) => h.soHopDong || h.tenHopDong || h.id).join(", ");
     await this.view.customAlert(
@@ -74,18 +85,27 @@ export async function deleteNhaThau(id) {
     );
     return;
   }
-  const confirmed = await this.view.customConfirm(
-    "Xác nhận xóa",
-    "Bạn có chắc chắn muốn xóa thông tin nhà thầu này?",
-    "trash-2"
-  );
-  if (confirmed) {
-    this.model.state.nhathau = this.model.state.nhathau.filter((n) => n.id !== id);
-    this.model.markDeleted("nhathau", id);
-    await persistAndSync(this, "nhathau", {
-      afterPersist: () => this.view.renderNhaThauTable()
-    });
-  }
+  const choice = family.length >= 2
+    ? await this.view.customVersionDeleteChoice(
+      "Xác nhận xóa",
+      `Nhà thầu "${nt.tenNhaThau || nt.maNhaThau || "Chưa nhập tên"}" có ${family.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+      "Xóa phiên bản gần nhất",
+      "Xóa toàn bộ",
+    )
+    : await this.view.customConfirm(
+      "Xác nhận xóa",
+      "Bạn có chắc chắn muốn xóa thông tin nhà thầu này?",
+      "trash-2",
+    ) ? 2 : null;
+  if (choice === null) return;
+  const result = choice === 1
+    ? removeLatestVersion(this.model.state.nhathau, nt)
+    : removeAllVersions(this.model.state.nhathau, nt);
+  this.model.state.nhathau = result.records;
+  this.model.markDeleted("nhathau", result.removed.map((item) => item.id));
+  await persistAndSync(this, "nhathau", {
+    afterPersist: () => this.view.renderNhaThauTable()
+  });
 }
 export async function editNhaThau(id, isReadOnly = false) {
   if (!document.getElementById("modal-nhathau")) {

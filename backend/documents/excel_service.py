@@ -18,6 +18,39 @@ from backend.documents.excel_workbook_builder import (
 )
 
 
+def _fetch_joint_venture_member_descriptions(cursor, package_id, organization_id):
+    cursor.execute(
+        """SELECT member.thong_tin_mo_thau_id, member.vai_tro,
+                  member.ten_nha_thau,
+                  COALESCE(NULLIF(member.ma_so_thue, ''), member.ma_nha_thau, '')
+             FROM thong_tin_mo_thau_lien_danh_thanh_vien AS member
+             JOIN thong_tin_mo_thau AS opening
+               ON opening.organization_id = member.organization_id
+              AND opening.id = member.thong_tin_mo_thau_id
+            WHERE opening.goi_thau_id = ?
+              AND member.organization_id = ?
+            ORDER BY member.thong_tin_mo_thau_id,
+                     CASE WHEN member.vai_tro = 'Đứng đầu liên danh' THEN 0 ELSE 1 END,
+                     member.sort_order,
+                     member.id""",
+        (package_id, organization_id),
+    )
+    descriptions = {}
+    for opening_id, role, name, code in cursor.fetchall():
+        identity = str(name or code or "").strip()
+        if not identity:
+            continue
+        code_text = str(code or "").strip()
+        label = f"{role}: {identity}"
+        if code_text and code_text != identity:
+            label += f" ({code_text})"
+        descriptions.setdefault(str(opening_id), []).append(label)
+    return {
+        opening_id: "; ".join(values)
+        for opening_id, values in descriptions.items()
+    }
+
+
 def create_excel_template(import_type):
     """Tạo file mẫu Excel nhập liệu cơ bản theo schema thực thể."""
     headers = _schema_to_headers(import_type)
@@ -128,13 +161,17 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
                k.danh_gia_tai_chinh,
                k.nguyen_nhan_khong_dat_hop_le, k.nguyen_nhan_khong_dat_nang_luc, k.nguyen_nhan_khong_dat_ky_thuat,
                k.gia_xep_hang, k.gia_de_nghi_trung_thau,
-               k.chap_thuan_gia_de_nghi_trung_thau_duoi_50
+               k.chap_thuan_gia_de_nghi_trung_thau_duoi_50,
+               m.id
         FROM thong_tin_mo_thau m
         LEFT JOIN ket_qua_danh_gia_nha_thau k
           ON k.organization_id = m.organization_id AND k.thong_tin_mo_thau_id = m.id
         WHERE m.goi_thau_id = ? AND m.organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
+    joint_venture_members = _fetch_joint_venture_member_descriptions(
+        cursor, pkg_id_clean, org_name
+    )
     conn.close()
 
     has_phan_lo = phan_lo == 'Có'
@@ -146,14 +183,14 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
 
         if has_phan_lo:
             headers = [
-                'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
+                'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Thành viên liên danh',
                 'Đánh giá tính hợp lệ', 'Làm rõ tính hợp lệ (nếu có)', 'Nguyên nhân không đạt hợp lệ (nếu có)',
                 'Đánh giá năng lực kinh nghiệm', 'Làm rõ năng lực kinh nghiệm (nếu có)', 'Nguyên nhân không đạt năng lực (nếu có)',
                 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật (nếu có)', 'Nguyên nhân không đạt kỹ thuật (nếu có)'
             ]
         else:
             headers = [
-                'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
+                'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Thành viên liên danh',
                 'Đánh giá tính hợp lệ', 'Làm rõ tính hợp lệ (nếu có)', 'Nguyên nhân không đạt hợp lệ (nếu có)',
                 'Đánh giá năng lực kinh nghiệm', 'Làm rõ năng lực kinh nghiệm (nếu có)', 'Nguyên nhân không đạt năng lực (nếu có)',
                 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật (nếu có)', 'Nguyên nhân không đạt kỹ thuật (nếu có)'
@@ -169,7 +206,7 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
 
         if has_phan_lo:
             headers = [
-                'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
+                'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Thành viên liên danh',
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
                 'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
                 'Xử lý giá đề nghị trúng thầu dưới 50%',
@@ -177,7 +214,7 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
             ]
         else:
             headers = [
-                'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
+                'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Thành viên liên danh',
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
                 'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
                 'Xử lý giá đề nghị trúng thầu dưới 50%',
@@ -192,24 +229,25 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
 
     rows = []
     for bid in bids:
+        member_description = joint_venture_members.get(str(bid[26]), "")
         if eval_type == "technical":
             if has_phan_lo:
                 row_values = [
-                    bid[0], bid[1], bid[2], bid[3], bid[4],
+                    bid[0], bid[1], bid[2], bid[3], bid[4], member_description,
                     bid[12] or "", bid[15] or "", bid[20] or "",
                     bid[13] or "", bid[16] or "", bid[21] or "",
                     bid[14] or "", bid[17] or "", bid[22] or "",
                 ]
             else:
                 row_values = [
-                    bid[0], bid[3], bid[4],
+                    bid[0], bid[3], bid[4], member_description,
                     bid[12] or "", bid[15] or "", bid[20] or "",
                     bid[13] or "", bid[16] or "", bid[21] or "",
                     bid[14] or "", bid[17] or "", bid[22] or "",
                 ]
         elif has_phan_lo:
             row_values = [
-                bid[0], bid[1], bid[2], bid[3], bid[4],
+                bid[0], bid[1], bid[2], bid[3], bid[4], member_description,
                 bid[5] or "", bid[6] or "", bid[7] or "",
                 bid[23] or "", bid[24] or "",
                 "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
@@ -217,7 +255,7 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
             ]
         else:
             row_values = [
-                bid[0], bid[3], bid[4],
+                bid[0], bid[3], bid[4], member_description,
                 bid[5] or "", bid[6] or "", bid[7] or "",
                 bid[23] or "", bid[24] or "",
                 "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
@@ -261,7 +299,9 @@ def prepare_ketquaqd_template_spec(pkg_id_clean, org_name):
     cursor.execute("""
         SELECT m.loai_nha_thau, m.ma_phan_lo, m.ten_phan_lo, m.ma_dinh_danh, m.ten_nha_thau,
                m.gia_du_thau, m.ty_le_giam_gia, m.gia_sau_giam_gia,
-               k.ly_do_loai
+               k.ly_do_loai,
+               k.chap_thuan_gia_de_nghi_trung_thau_duoi_50,
+               m.id
         FROM thong_tin_mo_thau m
         LEFT JOIN ket_qua_danh_gia_nha_thau k
           ON k.organization_id = m.organization_id
@@ -269,13 +309,18 @@ def prepare_ketquaqd_template_spec(pkg_id_clean, org_name):
         WHERE m.goi_thau_id = ? AND m.organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
+    joint_venture_members = _fetch_joint_venture_member_descriptions(
+        cursor, pkg_id_clean, org_name
+    )
     conn.close()
 
     headers = [
         'Loại nhà thầu',
         'Mã nhà thầu',
         'Tên nhà thầu (Nhập chính xác)',
+        'Thành viên liên danh',
         'Kết quả',
+        'Xử lý giá đề nghị trúng thầu dưới 50%',
         'Lý do trượt thầu (nếu có)',
         'Giá trúng thầu (VND)',
         'Thời gian thực hiện gói thầu (ngày)',
@@ -293,7 +338,9 @@ def prepare_ketquaqd_template_spec(pkg_id_clean, org_name):
             bid[0],
             bid[3],
             bid[4],
+            joint_venture_members.get(str(bid[10]), ""),
             "Trúng thầu" if is_winner else "Trượt thầu",
+            "" if bid[9] is None else ("Chấp thuận" if bid[9] else "Không chấp thuận"),
             "" if is_winner else (bid[8] or ""),
             gia_trung_thau if is_winner else "",
             thoi_gian_goi_thau if is_winner else "",

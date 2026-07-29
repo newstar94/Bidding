@@ -2,7 +2,16 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 ﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
-import { createInitialVersion, createNextVersion, getNextVersion, preserveRowVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import {
+  createInitialVersion,
+  createNextVersion,
+  getNextVersion,
+  getVersionFamily,
+  preserveRowVersion,
+  rememberSelectedVersion,
+  removeAllVersions,
+  removeLatestVersion,
+} from "../shared/VersionedEntityService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getCurrentDateYmd } from "../shared/formatters.js";
@@ -17,8 +26,11 @@ import {
 } from "./PartnerFormController.js";
 const todayYmd = getCurrentDateYmd;
 export async function deleteChuDauTu(id) {
-  await refreshRecordBeforeDelete(this, "chudautu", id);
-  const hasPlans = this.model.state.kehoach.some((k) => k.chuDauTuId === id);
+  const target = await refreshRecordBeforeDelete(this, "chudautu", id);
+  if (!target) return;
+  const family = getVersionFamily(this.model.state.chudautu, target);
+  const familyIds = new Set(family.map((item) => String(item.id)));
+  const hasPlans = this.model.state.kehoach.some((k) => familyIds.has(String(k.chuDauTuId)));
   if (hasPlans) {
     await this.view.customAlert(
       "Không thể xóa",
@@ -27,18 +39,27 @@ export async function deleteChuDauTu(id) {
     );
     return;
   }
-  const confirmed = await this.view.customConfirm(
-    "Xác nhận xóa",
-    "Bạn có chắc chắn muốn xóa chủ đầu tư này?",
-    "trash-2"
-  );
-  if (confirmed) {
-    this.model.state.chudautu = this.model.state.chudautu.filter((c) => c.id !== id);
-    this.model.markDeleted("chudautu", id);
-    await persistAndSync(this, "chudautu", {
-      afterPersist: () => this.view.renderChuDauTuTable()
-    });
-  }
+  const choice = family.length >= 2
+    ? await this.view.customVersionDeleteChoice(
+      "Xác nhận xóa",
+      `Chủ đầu tư "${target.tenChuDauTu || target.maChuDauTu || "Chưa nhập tên"}" có ${family.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+      "Xóa phiên bản gần nhất",
+      "Xóa toàn bộ",
+    )
+    : await this.view.customConfirm(
+      "Xác nhận xóa",
+      "Bạn có chắc chắn muốn xóa chủ đầu tư này?",
+      "trash-2",
+    ) ? 2 : null;
+  if (choice === null) return;
+  const result = choice === 1
+    ? removeLatestVersion(this.model.state.chudautu, target)
+    : removeAllVersions(this.model.state.chudautu, target);
+  this.model.state.chudautu = result.records;
+  this.model.markDeleted("chudautu", result.removed.map((item) => item.id));
+  await persistAndSync(this, "chudautu", {
+    afterPersist: () => this.view.renderChuDauTuTable()
+  });
 }
 export async function editChuDauTu(id) {
   if (!document.getElementById("modal-chudautu")) {

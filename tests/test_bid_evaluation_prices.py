@@ -4,7 +4,11 @@ from backend.sync.mapper import (
     _attach_bid_evaluation_results,
     _save_bid_evaluation_result,
 )
-from backend.sync.payload_validation import SYNC_VIRTUAL_FIELDS, validate_sync_item
+from backend.sync.payload_validation import (
+    SYNC_VIRTUAL_FIELDS,
+    validate_sync_item,
+    validate_sync_payload_shape,
+)
 
 
 class _CaptureCursor:
@@ -83,6 +87,16 @@ def test_sync_contract_persists_both_bid_evaluation_prices():
     assert 1150000 in cursor.params
 
 
+def test_sync_payload_shape_accepts_boolean_low_price_decision():
+    errors = validate_sync_payload_shape({
+        "thongtinmothau": [{
+            "id": "bid-1",
+            "chapThuanGiaDeNghiTrungThauDuoi50": True,
+        }],
+    })
+    assert errors == []
+
+
 def test_sync_rejects_negative_bid_evaluation_prices():
     _, errors, _ = validate_sync_item("thong_tin_mo_thau", {
         "giaXepHang": -1,
@@ -90,6 +104,24 @@ def test_sync_rejects_negative_bid_evaluation_prices():
     })
     assert "Giá xếp hạng không được nhỏ hơn 0." in errors
     assert "Giá đề nghị trúng thầu không được nhỏ hơn 0." in errors
+
+
+def test_sync_accepts_zero_bid_evaluation_prices_as_the_current_validation_rule():
+    item, errors, _ = validate_sync_item("thong_tin_mo_thau", {
+        "giaXepHang": 0,
+        "giaDeNghiTrungThau": 0,
+    })
+    assert errors == []
+    assert item["giaXepHang"] == "0"
+    assert item["giaDeNghiTrungThau"] == "0"
+
+
+def test_sync_allows_an_omitted_low_price_decision_but_validates_it_when_present():
+    item, errors, _ = validate_sync_item("thong_tin_mo_thau", {
+        "giaDeNghiTrungThau": 400,
+    })
+    assert errors == []
+    assert "chapThuanGiaDeNghiTrungThauDuoi50" not in item
 
 
 def test_sync_reads_bid_evaluation_prices_as_bigint_safe_strings():

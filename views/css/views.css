@@ -2147,6 +2147,53 @@ table th {
   align-items: center;
   justify-content: center;
 }
+.google-signin-container > div {
+  width: min(300px, 100%);
+}
+.google-signin-container [role="button"] {
+  box-sizing: border-box;
+  display: flex !important;
+  width: min(300px, 100%) !important;
+  height: 40px !important;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.google-signin-container [role="button"] svg {
+  width: 18px !important;
+  height: 18px !important;
+  flex: 0 0 18px;
+}
+.google-signin-container [role="button"] > div:last-child {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.google-signin-container [role="button"] span:not(#button-label) {
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.google-signin-container #button-label {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .google-signin-loading {
   display: flex;
   width: min(300px, 100%);

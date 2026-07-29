@@ -130,7 +130,11 @@ export function installDialogAccessibility(root = globalThis.document) {
   if (!root?.querySelectorAll || !globalThis.MutationObserver) return null;
   root.addEventListener?.("keydown", (event) => handleGlobalDialogEscape(event, root));
   const syncModal = (modal) => {
-    if (modal.classList.contains("active")) activateDialogAccessibility(modal);
+    const active = modal.classList.contains("active");
+    modal.toggleAttribute("inert", !active);
+    if (active) modal.removeAttribute("aria-hidden");
+    else modal.setAttribute("aria-hidden", "true");
+    if (active) activateDialogAccessibility(modal);
     else deactivateDialogAccessibility(modal);
   };
   root.querySelectorAll(".modal-overlay").forEach(syncModal);

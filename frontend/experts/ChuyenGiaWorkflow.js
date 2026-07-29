@@ -6,8 +6,11 @@ import {
   createInitialVersion,
   createNextVersion,
   getNextVersion,
+  getVersionFamily,
   preserveRowVersion,
-  rememberSelectedVersion
+  rememberSelectedVersion,
+  removeAllVersions,
+  removeLatestVersion,
 } from "../shared/VersionedEntityService.js";
 
 const CHUYEN_GIA_FORM_FIELDS = {
@@ -28,10 +31,13 @@ export async function deleteChuyenGia(id) {
     await this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép xóa Chuyên gia khỏi hệ thống!", "lock");
     return;
   }
-  await refreshRecordBeforeDelete(this, "chuyengia", id);
+  const target = await refreshRecordBeforeDelete(this, "chuyengia", id);
+  if (!target) return;
+  const family = getVersionFamily(this.model.state.chuyengia, target);
+  const familyIds = new Set(family.map((item) => String(item.id)));
   const assignedPackages = this.model.state.goithau.filter((gt) => {
-    const inChuyenGia = (gt.toChuyenGia || []).some((item) => item.chuyenGiaId === id);
-    const inThamDinh = (gt.toThamDinh || []).some((item) => item.chuyenGiaId === id);
+    const inChuyenGia = (gt.toChuyenGia || []).some((item) => familyIds.has(String(item.chuyenGiaId)));
+    const inThamDinh = (gt.toThamDinh || []).some((item) => familyIds.has(String(item.chuyenGiaId)));
     return inChuyenGia || inThamDinh;
   });
   if (assignedPackages.length > 0) {
@@ -48,18 +54,27 @@ export async function deleteChuyenGia(id) {
     );
     return;
   }
-  const confirmed = await this.view.customConfirm(
-    "Xác nhận xóa",
-    "Bạn có chắc muốn xóa chuyên gia đấu thầu này khỏi hệ thống?",
-    "trash-2"
-  );
-  if (confirmed) {
-    this.model.state.chuyengia = this.model.state.chuyengia.filter((cg) => cg.id !== id);
-    this.model.markDeleted("chuyengia", id);
-    await persistAndSync(this, "chuyengia", {
-      afterPersist: () => this.view.renderChuyenGiaTable()
-    });
-  }
+  const choice = family.length >= 2
+    ? await this.view.customVersionDeleteChoice(
+      "Xác nhận xóa",
+      `Chuyên gia "${target.hoTen || "Chưa nhập tên"}" có ${family.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+      "Xóa phiên bản gần nhất",
+      "Xóa toàn bộ",
+    )
+    : await this.view.customConfirm(
+      "Xác nhận xóa",
+      "Bạn có chắc muốn xóa chuyên gia đấu thầu này khỏi hệ thống?",
+      "trash-2",
+    ) ? 2 : null;
+  if (choice === null) return;
+  const result = choice === 1
+    ? removeLatestVersion(this.model.state.chuyengia, target)
+    : removeAllVersions(this.model.state.chuyengia, target);
+  this.model.state.chuyengia = result.records;
+  this.model.markDeleted("chuyengia", result.removed.map((item) => item.id));
+  await persistAndSync(this, "chuyengia", {
+    afterPersist: () => this.view.renderChuyenGiaTable()
+  });
 }
 export function editChuyenGia(id) {
   if (!document.getElementById("modal-chuyengia")) {

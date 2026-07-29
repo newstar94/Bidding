@@ -82,3 +82,17 @@ test("opening save partner lookup has a bounded timeout", () => {
   assert.match(source, /OPENING_SAVE_LOOKUP_TIMEOUT_MS = 3000/);
   assert.match(source, /controller\.abort\(\)/);
 });
+
+test("joint-venture member controls use one replaceable runtime display rule", () => {
+  const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+  assert.doesNotMatch(
+    source,
+    /mt-jv-members-container" style="[^"]*display:/,
+    "an extracted css-text display rule can override the later runtime display toggle",
+  );
+  assert.match(source, /setRuntimeStyle\(jvContainer, "marginTop", "4px"\)/);
+  assert.match(
+    source,
+    /setRuntimeStyle\(jvContainer, "display", ntType === "Liên danh" \? "block" : "none"\)/,
+  );
+});

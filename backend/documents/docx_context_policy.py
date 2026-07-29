@@ -703,7 +703,17 @@ def filter_mapping_rows(mapping_rows, document_type: str, capabilities: Any = No
     for row in mapping_rows or ():
         if len(row) < 3:
             continue
-        variable_name, source_table, source_column = row[:3]
+        if isinstance(row, Mapping) and {
+            "ten_bien", "source_table", "source_column"
+        }.issubset(row.keys()):
+            variable_name = row.get("ten_bien")
+            source_table = row.get("source_table")
+            source_column = row.get("source_column")
+        else:
+            try:
+                variable_name, source_table, source_column = row[0], row[1], row[2]
+            except (IndexError, KeyError, TypeError):
+                continue
         try:
             validate_mapping_definition(
                 variable_name,

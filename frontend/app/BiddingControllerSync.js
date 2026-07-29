@@ -50,21 +50,27 @@ export function setupSyncUx() {
   if (this._syncUxInstalled) return;
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
-  button?.addEventListener("click", () => {
+  button?.addEventListener("click", async () => {
     if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
       showSyncErrorDetails(this, this.model.syncErrors);
     } else {
-      void this.forceSyncData(false, false);
+      const pushed = await this.autoSync();
+      if (pushed?.ok) await this.forceSyncData(false, false);
     }
   });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
+    this._pendingMutationCount = Math.max(0, Number(pendingCount) || 0);
     if (!pendingCount || this._syncImmediateTimer || this._deferImmediateSync) return;
     this._syncImmediateTimer = setTimeout(() => {
       this._syncImmediateTimer = null;
       void this.autoSync();
     }, 80);
   };
-  const updateOnline = () => this.updateSyncState({ online: navigator.onLine });
+  const updateOnline = () => {
+    const online = navigator.onLine;
+    this.updateSyncState({ online });
+    if (online && this._pendingMutationCount > 0) void this.autoSync();
+  };
   window.addEventListener("online", updateOnline);
   window.addEventListener("offline", updateOnline);
   document.addEventListener("input", (event) => {

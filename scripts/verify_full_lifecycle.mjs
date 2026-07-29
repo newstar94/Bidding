@@ -1,4 +1,5 @@
 import process from "node:process";
+import { existsSync } from "node:fs";
 import { chromium } from "@playwright/test";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
@@ -10,10 +11,18 @@ const runId = `E2E-${Date.now()}`;
 const runDigits = String(Date.now()).slice(-9);
 const result = { runId, steps: [] };
 const excelFixtures = {
-  noLot: "C:\\Users\\newst\\OneDrive - 79401\\Không phân lô.xlsx",
-  oneLotOneItem: "C:\\Users\\newst\\OneDrive - 79401\\Phân lô - 1 lô 1 mặt hàng.xlsx",
-  oneLotManyItems: "C:\\Users\\newst\\OneDrive - 79401\\Phân lô - 1 lô nhiều mặt hàng.xlsx",
+  noLot: process.env.E2E_PACKAGE_GOODS_NO_LOT
+    || "C:\\Users\\newst\\OneDrive - 79401\\Không phân lô.xlsx",
+  oneLotOneItem: process.env.E2E_PACKAGE_GOODS_ONE_LOT_ONE_ITEM
+    || "C:\\Users\\newst\\OneDrive - 79401\\Phân lô - 1 lô 1 mặt hàng.xlsx",
+  oneLotManyItems: process.env.E2E_PACKAGE_GOODS_ONE_LOT_MANY_ITEMS
+    || "C:\\Users\\newst\\OneDrive - 79401\\Phân lô - 1 lô nhiều mặt hàng.xlsx",
 };
+for (const [fixtureName, fixturePath] of Object.entries(excelFixtures)) {
+  if (!existsSync(fixturePath)) {
+    throw new Error(`Missing Excel fixture ${fixtureName}: ${fixturePath}`);
+  }
+}
 const launchOptions = { headless: true };
 if (process.env.STARTUP_BROWSER_CHANNEL) launchOptions.channel = process.env.STARTUP_BROWSER_CHANNEL;
 const browser = await chromium.launch(launchOptions);

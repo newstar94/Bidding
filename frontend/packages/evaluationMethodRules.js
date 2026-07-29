@@ -26,7 +26,11 @@ const CONSULTING_METHODS = Object.freeze([
 
 const STANDARD_FIELDS = new Set(["Hàng hóa", "Xây lắp", "Phi tư vấn", "Hỗn hợp"]);
 const TWO_STAGE_FIELDS = new Set(["Hàng hóa", "Xây lắp", "Hỗn hợp"]);
-const TENDER_FORMS = new Set(["Đấu thầu rộng rãi", "Đấu thầu hạn chế"]);
+const TENDER_FORMS = new Set([
+  "Đấu thầu rộng rãi",
+  "Đấu thầu hạn chế",
+  "Chỉ định thầu",
+]);
 
 export function getEvaluationMethods({
   linhVuc = "",

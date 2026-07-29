@@ -7,6 +7,11 @@ import { installSemanticAccessibility } from "../shared/semanticAccessibility.js
 import { bootstrapLandingPage, isLandingPath } from "../landing/LandingPage.js";
 import { bootstrapLegalPage, isLegalPath } from "../legal/LegalPage.js";
 import { installReleaseDiagnostics } from "../shared/releaseDiagnostics.js";
+import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
+import {
+  embeddedSessionNeedsWorkspaceRefresh,
+  preferredWorkspaceId
+} from "../auth/sessionBootstrapPolicy.js";
 installReleaseDiagnostics();
 const startupMark = (name) => {
   try {
@@ -29,7 +34,12 @@ if (!window.lucide || typeof window.lucide.createIcons !== "function") {
 }
 const checkInitialSession = async () => {
   const embedded = readSessionBootstrap();
-  if (embedded && typeof embedded.valid === "boolean") return embedded;
+  const preferredWorkspace = preferredWorkspaceId();
+  if (
+    embedded
+    && typeof embedded.valid === "boolean"
+    && !embeddedSessionNeedsWorkspaceRefresh(embedded, preferredWorkspace)
+  ) return embedded;
   startupMark("session-check-start");
   try {
     const response = await apiFetch("/api/auth/check-session", {
@@ -104,6 +114,7 @@ const loadAndRenderLucideIcons = () => {
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
   installDialogAccessibility(document);
+  installAuthOverlayAccessibility();
   installSemanticAccessibility(document);
   if (isLandingPath()) {
     bootstrapLandingPage(readSessionBootstrap());
