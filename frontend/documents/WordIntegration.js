@@ -8,19 +8,46 @@ import {
   getWordSourceTableLabel,
 } from "./wordVariableManifest.js";
 import { apiFetch } from "../shared/apiClient.js";
+import {
+  canManageWorkspaceWordVariables,
+  canUploadWorkspaceAssets,
+} from "../auth/accessContext.js";
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
+  const canManageWordVariables = canManageWorkspaceWordVariables(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  );
+  const canUploadTemplates = canUploadWorkspaceAssets(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  );
   if (templateInput) {
+    templateInput.disabled = !canUploadTemplates;
+  }
+  if (templateInput && !templateInput.dataset.wordUploadBound) {
+    templateInput.dataset.wordUploadBound = "true";
     templateInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (file) this.handleWordTemplateUpload(file);
     });
   }
   const dragDropZone = document.getElementById("word-drag-drop-zone");
-  if (dragDropZone && templateInput) {
-    dragDropZone.addEventListener("click", () => templateInput.click());
+  if (dragDropZone) {
+    dragDropZone.classList.toggle("is-upload-disabled", !canUploadTemplates);
+    dragDropZone.setAttribute("aria-disabled", String(!canUploadTemplates));
+    dragDropZone.title = canUploadTemplates
+      ? "Tải lên biểu mẫu Word"
+      : "Chỉ Quản lý của tổ chức được tải lên biểu mẫu Word";
+  }
+  if (dragDropZone && templateInput && !dragDropZone.dataset.wordUploadBound) {
+    dragDropZone.dataset.wordUploadBound = "true";
+    dragDropZone.addEventListener("click", () => {
+      if (!templateInput.disabled) templateInput.click();
+    });
     dragDropZone.addEventListener("dragover", (e) => {
       e.preventDefault();
+      if (templateInput.disabled) return;
       dragDropZone.classList.add("dragover");
     });
     dragDropZone.addEventListener("dragleave", () => {
@@ -29,6 +56,7 @@ export function setupWordTemplatesEvents() {
     dragDropZone.addEventListener("drop", (e) => {
       e.preventDefault();
       dragDropZone.classList.remove("dragover");
+      if (templateInput.disabled) return;
       const file = e.dataTransfer.files[0];
       if (file) {
         templateInput.files = e.dataTransfer.files;
@@ -393,6 +421,15 @@ export function setupWordTemplatesEvents() {
   const formWmc = document.getElementById("form-word-computed-mapping");
   const cancelWmcBtn = document.getElementById("btn-wmc-cancel");
   const wmcInsertVarInput = document.getElementById("wmc-insert-var");
+  [formWm, formWml, formWmc].forEach((form) => {
+    if (!form) return;
+    form.hidden = !canManageWordVariables;
+    form.setAttribute("aria-hidden", String(!canManageWordVariables));
+    const card = form.closest(".dashboard-card");
+    if (card) card.hidden = !canManageWordVariables;
+  });
+  const readonlyNotice = document.getElementById("word-variable-readonly-notice");
+  if (readonlyNotice) readonlyNotice.hidden = canManageWordVariables;
   if (tableSelect) makeSearchableSelect(tableSelect, "Tìm kiếm thực thể...");
   if (columnSelect) makeSearchableSelect(columnSelect, "Chọn hoặc tìm kiếm trường thông tin...");
   if (wmlTableSelect) makeSearchableSelect(wmlTableSelect, "Tìm kiếm danh sách...");
@@ -690,6 +727,7 @@ export function setupWordTemplatesEvents() {
   if (formWm) {
     formWm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!canManageWordVariables) return;
       if (!this.view.validateForm(formWm)) return;
       const id = document.getElementById("wm-id").value;
       const tenBien = document.getElementById("wm-ten-bien").value.trim();
@@ -729,6 +767,7 @@ export function setupWordTemplatesEvents() {
   if (formWml) {
     formWml.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!canManageWordVariables) return;
       if (!this.view.validateForm(formWml)) return;
       const id = document.getElementById("wml-id").value;
       const tenBien = document.getElementById("wml-ten-bien").value.trim();
@@ -768,6 +807,7 @@ export function setupWordTemplatesEvents() {
   if (formWmc) {
     formWmc.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!canManageWordVariables) return;
       if (!this.view.validateForm(formWmc)) return;
       const id = document.getElementById("wmc-id").value;
       const tenBien = document.getElementById("wmc-ten-bien").value.trim();
@@ -817,6 +857,7 @@ export function setupWordTemplatesEvents() {
     });
   }
   const editWordMappingHandler = (id) => {
+    if (!canManageWordVariables) return;
     const m = (this.model.state.wordMappings || []).find((x) => x.id === id);
     if (!m) return;
     if (m.mappingType === "computed" || m.sourceTable === "__computed__") {
@@ -859,6 +900,7 @@ export function setupWordTemplatesEvents() {
     }
   };
   const deleteWordMappingHandler = async (id) => {
+    if (!canManageWordVariables) return;
     const confirmed = await this.view.customConfirm("Xác nhận xóa", "Bạn có chắc chắn muốn xóa biến ánh xạ này không?", "trash-2");
     if (!confirmed) return;
     try {
@@ -956,6 +998,10 @@ export async function loadWordMappings() {
   }
 }
 export function setupTemplateActivationEvents() {
+  if (!canManageWorkspaceWordVariables(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  )) return;
   document.querySelectorAll(".btn-activate-template").forEach((btn) => {
     btn.onclick = async (e) => {
       const targetEl = e.target.closest(".btn-activate-template");
@@ -977,6 +1023,17 @@ export function setupTemplateActivationEvents() {
   });
 }
 export async function handleWordTemplateUpload(file) {
+  if (!canUploadWorkspaceAssets(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  )) {
+    await this.view.customAlert(
+      "Từ chối truy cập",
+      "Chỉ Quản lý của tổ chức được tải lên biểu mẫu Word.",
+      "lock",
+    );
+    return;
+  }
   if (!file.name.endsWith(".docx")) {
     await this.view.customAlert("Lỗi định dạng", "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!", "alert-triangle");
     return;

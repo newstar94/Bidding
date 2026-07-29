@@ -1244,6 +1244,64 @@ def _validate_completed_detailed_evaluation_report(
             raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
 
 
+def _aggregate_persisted_detailed_evaluation_group(
+    cursor,
+    organization_id,
+    round_id,
+    report_id,
+    group,
+):
+    """Derive a group conclusion from persisted required leaf criteria."""
+
+    rows = cursor.execute(
+        """SELECT criterion.id, criterion.ma_tieu_chi, criterion.ten_tieu_chi,
+                  COALESCE(detail.ket_qua, 'pending') AS ket_qua,
+                  opening.loai_nha_thau
+           FROM tieu_chi_danh_gia AS criterion
+           JOIN bao_cao_danh_gia_nha_thau AS report
+             ON report.organization_id = criterion.organization_id
+            AND report.id = ?
+            AND report.vong_danh_gia_id = criterion.vong_danh_gia_id
+           JOIN thong_tin_mo_thau AS opening
+             ON opening.organization_id = report.organization_id
+            AND opening.id = report.thong_tin_mo_thau_id
+           LEFT JOIN chi_tiet_danh_gia_nha_thau AS detail
+             ON detail.organization_id = criterion.organization_id
+            AND detail.bao_cao_danh_gia_nha_thau_id = report.id
+            AND detail.tieu_chi_danh_gia_id = criterion.id
+           WHERE criterion.organization_id = ?
+             AND criterion.vong_danh_gia_id = ?
+             AND criterion.nhom_danh_gia = ?
+             AND criterion.bat_buoc = 1
+             AND NOT EXISTS (
+                 SELECT 1 FROM tieu_chi_danh_gia AS child
+                  WHERE child.organization_id = criterion.organization_id
+                    AND child.vong_danh_gia_id = criterion.vong_danh_gia_id
+                    AND child.tieu_chi_cha_id = criterion.id
+             )""",
+        (report_id, organization_id, round_id, group),
+    ).fetchall()
+    results = []
+    for row in rows:
+        bidder_type = _normalized_evaluation_text(
+            _db_row_value(row, 4, "loai_nha_thau", "")
+        )
+        if (
+            bidder_type
+            and bidder_type != "lien danh"
+            and _is_joint_venture_only_criterion(row)
+        ):
+            continue
+        results.append(str(_db_row_value(row, 3, "ket_qua", "pending") or "pending"))
+    if not results:
+        return ""
+    if "fail" in results:
+        return "Không đạt"
+    if all(result != "pending" for result in results):
+        return "Đạt"
+    return ""
+
+
 def _save_bid_detailed_evaluation_reports(
     cursor,
     opening_id,
@@ -1294,6 +1352,23 @@ def _save_bid_detailed_evaluation_reports(
             raise ValueError("Vong danh gia khong thuoc goi thau cua ho so.")
         if payload_round_type and payload_round_type != round_type:
             raise ValueError("Loai vong danh gia khong khop bao cao chi tiet.")
+        if round_type == "financial":
+            technical_result = cursor.execute(
+                """SELECT danh_gia_ky_thuat
+                     FROM ket_qua_danh_gia_nha_thau
+                    WHERE organization_id = ?
+                      AND goi_thau_id = ?
+                      AND thong_tin_mo_thau_id = ?""",
+                (organization_id, package_id, opening_id),
+            ).fetchone()
+            technical_status = str(
+                _db_row_value(technical_result, 0, "danh_gia_ky_thuat", "") or ""
+            ).strip()
+            if not technical_status.startswith("Đạt"):
+                raise ValueError(
+                    "DETAILED_EVALUATION_TECHNICAL_NOT_QUALIFIED: "
+                    "Nhà thầu chưa đạt vòng kỹ thuật."
+                )
 
         existing = cursor.execute(
             """SELECT id FROM bao_cao_danh_gia_nha_thau
@@ -1483,6 +1558,59 @@ def _save_bid_detailed_evaluation_reports(
             )
             delete_details_params.extend(retained_detail_ids)
         cursor.execute(delete_details_sql, tuple(delete_details_params))
+        if int(extension.get("workflowVersion") or 0) >= 2:
+            completed_groups = list(dict.fromkeys(extension.get("completedGroups") or []))
+            group_results = extension.get("groupResults") or {}
+            package_row = cursor.execute(
+                "SELECT linh_vuc FROM goi_thau WHERE organization_id = ? AND id = ?",
+                (organization_id, package_id),
+            ).fetchone()
+            is_goods = str(_db_row_value(package_row, 0, "linh_vuc", "") or "").strip() == "Hàng hóa"
+            configured_groups = (
+                ["validity", "capacity", "technical"] if round_type == "technical"
+                else (["bidder_goods", "financial"] if round_type == "financial" and is_goods
+                      else ["financial"] if round_type == "financial"
+                      else ["validity", "capacity", "technical", *( ["bidder_goods"] if is_goods else [] ), "financial"])
+            )
+            progress_groups = [group for group in configured_groups if group != "bidder_goods"]
+            indexes = [progress_groups.index(group) for group in completed_groups if group in progress_groups]
+            if indexes and indexes != list(range(max(indexes) + 1)):
+                raise ValueError("DETAILED_EVALUATION_PREREQUISITE: Không được hoàn thành tab khi phần trước chưa hoàn thành.")
+            for group in completed_groups:
+                if group != "bidder_goods":
+                    persisted_result = _aggregate_persisted_detailed_evaluation_group(
+                        cursor,
+                        organization_id,
+                        round_id,
+                        report_id,
+                        group,
+                    )
+                    if persisted_result not in {"Đạt", "Không đạt"}:
+                        raise ValueError(
+                            "DETAILED_EVALUATION_GROUP_RESULT_REQUIRED: "
+                            "Tab hoàn thành phải có kết luận hợp lệ."
+                        )
+                    if group_results.get(group) != persisted_result:
+                        raise ValueError(
+                            "DETAILED_EVALUATION_GROUP_RESULT_MISMATCH: "
+                            "Kết luận tab không khớp dữ liệu tiêu chí trên máy chủ."
+                        )
+                group_index = configured_groups.index(group) if group in configured_groups else -1
+                if group_index > 0:
+                    predecessor = configured_groups[group_index - 1]
+                    if predecessor == "bidder_goods":
+                        goods_ready = cursor.execute(
+                            """SELECT COUNT(*), SUM(CASE WHEN is_draft = 0 AND trang_thai_uu_dai = 'ready' THEN 1 ELSE 0 END)
+                               FROM hang_hoa_du_thau_nha_thau
+                               WHERE organization_id = ? AND thong_tin_mo_thau_id = ?""",
+                            (organization_id, opening_id),
+                        ).fetchone()
+                        if not goods_ready or int(_db_row_value(goods_ready, 0, "count", 0) or 0) == 0 or int(_db_row_value(goods_ready, 1, "ready", 0) or 0) != int(_db_row_value(goods_ready, 0, "count", 0) or 0):
+                            raise ValueError("BIDDER_GOODS_NOT_READY: Danh mục hàng hóa chưa sẵn sàng để đánh giá tài chính.")
+                    elif group_results.get(predecessor) != "Đạt":
+                        raise ValueError("DETAILED_EVALUATION_PREREQUISITE: Phần trước phải hoàn thành và Đạt.")
+            if status == "completed" and any(group not in completed_groups for group in progress_groups):
+                raise ValueError("DETAILED_EVALUATION_INCOMPLETE_SEQUENCE: Phải hoàn thành đầy đủ các tab theo thứ tự.")
         if status == "completed":
             _validate_completed_detailed_evaluation_report(
                 cursor,

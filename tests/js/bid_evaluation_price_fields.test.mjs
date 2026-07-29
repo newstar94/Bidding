@@ -81,11 +81,11 @@ test("shows both price columns in 1G1T and financial 1G2T reports only", () => {
   assert.doesNotMatch(technical.headerHtml, /Giá xếp hạng|Giá đề nghị trúng thầu/);
 });
 
-test("uses an entered ranking price when ordering qualified bids", () => {
+test("uses the authoritative post-preference price when ordering qualified goods bids", () => {
   const pkg = { linhVuc: "Hàng hóa", phanLo: "Không", phuongPhapDanhGia: "Giá thấp nhất" };
   const bids = [
-    { id: "a", danhGiaKetLuan: "Đạt", giaSauGiamGia: 90, giaXepHang: 120 },
-    { id: "b", danhGiaKetLuan: "Đạt", giaSauGiamGia: 100, giaXepHang: 110 },
+    { id: "a", danhGiaKetLuan: "Đạt", giaSauGiamGia: 90, giaXepHang: 1, giaSoSanhSauUuDai: 120, trangThaiTinhUuDai: "ready" },
+    { id: "b", danhGiaKetLuan: "Đạt", giaSauGiamGia: 100, giaXepHang: 999, giaSoSanhSauUuDai: 110, trangThaiTinhUuDai: "ready" },
   ];
   assert.deepEqual(calculateRankings(pkg, bids).rankings, { b: 1, a: 2 });
 });
@@ -175,6 +175,8 @@ test("a rejected low-price bid is excluded from ranking and award qualification"
     giaXepHang: 100,
     giaDeNghiTrungThau: 400,
     chapThuanGiaDeNghiTrungThauDuoi50: false,
+    giaSoSanhSauUuDai: 100,
+    trangThaiTinhUuDai: "ready",
   };
   const accepted = {
     id: "b",
@@ -182,6 +184,8 @@ test("a rejected low-price bid is excluded from ranking and award qualification"
     giaXepHang: 200,
     giaDeNghiTrungThau: 450,
     chapThuanGiaDeNghiTrungThauDuoi50: true,
+    giaSoSanhSauUuDai: 200,
+    trangThaiTinhUuDai: "ready",
   };
   assert.deepEqual(calculateRankings(pkg, [rejected, accepted]).rankings, { b: 1 });
   assert.equal(checkBidQualified(rejected, pkg), false);

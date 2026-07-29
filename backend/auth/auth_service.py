@@ -11,7 +11,7 @@ from backend.auth.roles import (
     normalize_platform_role,
 )
 from backend.shared.client_ip import get_client_ip
-from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
+from backend.shared.workspace_scope import personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscription
 from backend.shared.date_utils import vietnam_date_from_epoch
 
@@ -275,13 +275,8 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
     platform_role = normalize_platform_role(platform_role)
     organizations = get_user_organizations(cursor, user_id)
     if platform_role != "super_admin":
-        scope_id = personal_scope_id(user_id)
-        cursor.execute(
-            "INSERT INTO sync_metadata (organization_id, current_version) VALUES (?, 1) ON CONFLICT (organization_id) DO NOTHING",
-            (scope_id,),
-        )
-        from backend.documents.word_defaults import ensure_default_word_mappings
-        ensure_default_word_mappings(cursor, scope_id)
+        from backend.documents.word_defaults import ensure_personal_word_workspace
+        ensure_personal_word_workspace(cursor, user_id)
         organizations.append(
             personal_workspace_payload(
                 user_id,

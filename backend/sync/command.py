@@ -31,6 +31,7 @@ class SyncActorContext:
     user_id: str
     organization_id: str
     owner_type: str
+    can_upload_workspace_assets: bool
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,10 +17,23 @@ import {
   validateBidderGoodsRow,
   validateBidderGoodsSubmission,
 } from "./bidderGoodsValidation.js";
+import {
+  calculateBidderGoodsPreference,
+  INNOVATION_PREFERENCE_HELP,
+  PREFERENCE_DESCRIPTIONS,
+} from "./bidderGoodsPreference.js";
 
 const PAGE_SIZE = 20;
 
 function currency(value) {
+  const integerText = String(value ?? "").trim();
+  if (/^-?\d+$/.test(integerText)) {
+    try {
+      return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(BigInt(integerText))} đ`;
+    } catch {
+      return "--";
+    }
+  }
   const numeric = Number(value);
   return Number.isFinite(numeric)
     ? `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(numeric)} đ`
@@ -34,16 +47,34 @@ function lotForBid(pkg, bid) {
   ) || null;
 }
 
+function invalidateOpeningPreference(bid) {
+  if (!bid) return;
+  bid.trangThaiTinhUuDai = bid.trangThaiTinhUuDai === "ready"
+    ? "stale"
+    : "draft";
+}
+
 export function buildBidderGoodsPanelState(controller, detailedState) {
   const { pkg, bid } = detailedState;
   const requirements = bid ? getBidderGoodsRequirements(controller.model, pkg, bid) : [];
   const rows = bid ? getBidderGoodsForBid(controller.model, pkg, bid) : [];
+  let preferenceCalculation = null;
+  try {
+    preferenceCalculation = rows.length ? calculateBidderGoodsPreference(rows, {
+      discountRatePercent: String(bid?.tyLeGiamGia ?? 0),
+      scopeAfterDiscount: bid?.giaSauGiamGia ?? null,
+      evaluationBase: bid?.giaXepHang ?? null,
+    }) : null;
+  } catch {
+    preferenceCalculation = null;
+  }
+  const displayRows = preferenceCalculation?.lines || rows;
   const summary = summarizeBidderGoods({ rows, requirements, bidPrice: bid?.giaDuThau });
   const filter = String(controller._bidderGoodsSearch || "").trim().toLocaleLowerCase("vi");
   const filteredRows = filter
-    ? rows.filter((row) => [row.sttNguon, row.danhMucHangHoa, row.kyMaHieu, row.nhanHieu, row.maHs]
+    ? displayRows.filter((row) => [row.sttNguon, row.danhMucHangHoa, row.kyMaHieu, row.nhanHieu, row.maHs]
       .some((value) => String(value || "").toLocaleLowerCase("vi").includes(filter)))
-    : rows;
+    : displayRows;
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   controller._bidderGoodsPage = Math.min(Math.max(1, Number(controller._bidderGoodsPage) || 1), pageCount);
   const pageRows = filteredRows.slice(
@@ -56,6 +87,7 @@ export function buildBidderGoodsPanelState(controller, detailedState) {
     requirements,
     rows,
     summary,
+    preferenceCalculation,
     pageRows,
     pageCount,
     page: controller._bidderGoodsPage,
@@ -98,6 +130,15 @@ function rowMarkup(row, state) {
   const requirements = state.requirements.filter(
     (item) => String(item.phanLoId || "") === String(row.phanLoId || ""),
   );
+  const preferenceSource = row.uuDaiManualOverride
+    ? "Thủ công"
+    : row.uuDaiSourceSheet ? "15A" : "Không có 15A";
+  const preferenceTooltip = Number(row.maUuDai ?? 0) === 5
+    ? `${PREFERENCE_DESCRIPTIONS[5]}. ${INNOVATION_PREFERENCE_HELP}`
+    : PREFERENCE_DESCRIPTIONS[row.maUuDai ?? 0];
+  const preferenceControl = state.readOnly
+    ? `<span class="badge badge-info" title="${escapeHtml(preferenceTooltip)}">${row.maUuDai ?? 0}</span>`
+    : `<select class="form-control" data-bidder-goods-preference title="${escapeHtml(preferenceTooltip)}" aria-label="Mã ưu đãi cho ${escapeHtml(row.danhMucHangHoa)}">${Object.keys(PREFERENCE_DESCRIPTIONS).map((code) => `<option value="${code}" ${Number(code) === Number(row.maUuDai ?? 0) ? "selected" : ""}>${code} – ${escapeHtml(PREFERENCE_DESCRIPTIONS[code])}</option>`).join("")}</select>`;
   return `
     <tr data-bidder-goods-id="${escapeHtml(row.id)}" class="${rowErrors.length ? "has-validation-error" : ""}">
       <td class="bidder-goods-sticky-stt">${escapeHtml(row.sttNguon || "--")}</td>
@@ -113,6 +154,9 @@ function rowMarkup(row, state) {
       <td>${textValue("maHs", "Mã HS")}</td>
       <td class="numeric-cell">${numberValue("donGiaDuThau", "Đơn giá dự thầu", { money: true })}</td>
       <td class="numeric-cell">${numberValue("thanhTienDuThau", "Thành tiền", { money: true })}${rowErrors.length ? `<div class="field-error" title="${escapeHtml(rowErrors.join(" "))}">${escapeHtml(rowErrors[0])}</div>` : ""}</td>
+      <td>${preferenceControl}<small>${escapeHtml(preferenceSource)}</small>${row.preferenceWarnings?.length ? `<div class="field-error">${escapeHtml(row.preferenceWarnings[0].message)}</div>` : ""}</td>
+      <td class="numeric-cell" title="Đơn giá so sánh sau giảm giá và ưu đãi">${row.giaDuThauSauUuDai == null ? "—" : currency(row.giaDuThauSauUuDai)}</td>
+      <td class="numeric-cell">${row.thanhTienSauUuDai == null ? "—" : currency(row.thanhTienSauUuDai)}</td>
       <td>
         <select class="form-control bidder-goods-mapping-select" data-bidder-goods-mapping ${disabled} aria-label="Ghép hàng hóa yêu cầu cho ${escapeHtml(row.danhMucHangHoa)}">
           <option value="">-- Chưa ghép --</option>
@@ -126,17 +170,37 @@ function rowMarkup(row, state) {
 
 function previewMarkup(preview) {
   if (!preview) return "";
-  const errors = preview.rows.filter((row) => row.mappingStatus !== "matched" || validateBidderGoodsRow(row).length).length;
+  const errors = preview.rows.filter((row) => (
+    row.mappingStatus !== "matched"
+    || row.uuDaiMatchStatus !== "matched"
+    || row.preferenceWarnings?.length
+    || validateBidderGoodsRow(row).length
+  )).length;
+  const preferenceCounts = Array.from({ length: 6 }, (_value, code) => (
+    preview.rows.filter((row) => Number(row.maUuDai ?? 0) === code).length
+  ));
+  const confident = preview.rows.filter((row) => row.uuDaiMatchStatus === "matched").length;
+  const ambiguous = preview.rows.filter((row) => row.uuDaiMatchStatus === "ambiguous").length;
+  const conflicts = preview.rows.filter((row) => row.uuDaiMatchStatus === "conflict").length;
   return `
     <section class="bidder-goods-preview" aria-label="Xem trước nhập Excel">
       <div class="bidder-goods-preview-header">
-        <div><strong>Xem trước nhập Excel</strong><span>${escapeHtml(preview.sheetName)} · dòng tiêu đề ${preview.headerRow}</span></div>
-        <div class="bidder-goods-preview-metrics"><span>${preview.rows.length} dòng</span><span>${currency(preview.total)}</span><span class="${errors ? "text-danger" : "text-success"}">${errors} lỗi/cảnh báo</span></div>
+        <div><strong>Xem trước nhập Excel</strong><span>12.1B: ${escapeHtml(preview.sheetName)} · dòng tiêu đề ${preview.headerRow}</span></div>
+        <div class="bidder-goods-preview-metrics">
+          <span>${preview.rows.length} dòng</span>
+          <span>15A: ${escapeHtml(preview.preferenceSheetName || "Không có")}</span>
+          <span>15C: ${preview.has15C ? "Có" : "Không"}</span>
+          <span>Mã 0–5: ${preferenceCounts.join("/")}</span>
+          <span>Ghép chắc chắn/mơ hồ/mâu thuẫn: ${confident}/${ambiguous}/${conflicts}</span>
+          <span>${currency(preview.total)}</span>
+          <span class="${errors ? "text-danger" : "text-success"}">${errors} lỗi/cảnh báo</span>
+        </div>
       </div>
+      ${preview.preferenceNotice ? `<div class="alert alert-info" role="status">${escapeHtml(preview.preferenceNotice)}</div>` : ""}
       <div class="table-container package-table-frame">
         <table class="data-table bidder-goods-preview-table" data-no-sort="true">
-          <thead><tr><th>Dòng</th><th>STT</th><th>Phần lô</th><th>Danh mục hàng hóa</th><th>Thành tiền</th><th>Trạng thái ghép</th></tr></thead>
-          <tbody>${preview.rows.map((row) => `<tr><td>${row.sourceRowNumber}</td><td>${escapeHtml(row.sttNguon)}</td><td>${escapeHtml(row.maPhanLoNguon || "Không phân lô")}</td><td>${escapeHtml(row.danhMucHangHoa)}</td><td class="numeric-cell">${currency(row.thanhTienDuThau)}</td><td>${mappingBadge(row.mappingStatus)}</td></tr>`).join("")}</tbody>
+          <thead><tr><th>Dòng 12.1B</th><th>Dòng 15A</th><th>STT</th><th>Phần lô</th><th>Danh mục hàng hóa</th><th>Ưu đãi</th><th>Thành tiền</th><th>Trạng thái ghép</th></tr></thead>
+          <tbody>${preview.rows.map((row) => `<tr><td>${row.sourceRowNumber}</td><td>${row.uuDaiSourceRow || "—"}</td><td>${escapeHtml(row.sttNguon)}</td><td>${escapeHtml(row.maPhanLoNguon || "Không phân lô")}</td><td>${escapeHtml(row.danhMucHangHoa)}</td><td>${row.maUuDai ?? 0}</td><td class="numeric-cell">${currency(row.thanhTienDuThau)}</td><td>${mappingBadge(row.mappingStatus)}</td></tr>`).join("")}</tbody>
         </table>
       </div>
       <div class="workflow-action-row">
@@ -159,9 +223,9 @@ export function renderBidderGoodsPanelMarkup(state) {
   const difference = state.summary.difference;
   const differenceLabel = difference === null
     ? "Chưa có giá dự thầu"
-    : Math.abs(difference) <= 1
+    : state.summary.matchesBidPrice
       ? "Khớp giá dự thầu"
-      : `Chênh lệch ${difference > 0 ? "+" : ""}${currency(difference)}`;
+      : `Chênh lệch ${String(difference).startsWith("-") ? "" : "+"}${currency(difference)}`;
   const busyAttributes = state.busy ? 'disabled aria-disabled="true"' : "";
   const controls = state.readOnly ? "" : `
     <input id="bidder-goods-excel-input" type="file" accept=".xlsx,.xls" ${busyAttributes} hidden>
@@ -189,14 +253,18 @@ export function renderBidderGoodsPanelMarkup(state) {
       <div class="bidder-goods-summary" aria-label="Tổng hợp hàng hóa dự thầu">
         <div><span>Đã nhập</span><strong>${state.rows.length}/${state.requirements.length}</strong></div>
         <div><span>Tổng thành tiền</span><strong>${currency(state.summary.total)}</strong></div>
-        <div class="${difference !== null && Math.abs(difference) <= 1 ? "is-success" : "is-warning"}"><span>Đối chiếu</span><strong>${escapeHtml(differenceLabel)}</strong></div>
+        <div class="${state.summary.matchesBidPrice ? "is-success" : "is-warning"}"><span>Đối chiếu</span><strong>${escapeHtml(differenceLabel)}</strong></div>
         <div><span>Lỗi đối chiếu</span><strong>${state.summary.invalidRows + state.summary.missing.length + state.summary.unmatched + state.summary.duplicate}</strong></div>
+        <div><span>Hệ số ưu đãi cao nhất</span><strong>${state.preferenceCalculation ? `${state.preferenceCalculation.heSoUuDaiCaoNhatBp / 100}%` : "—"}</strong></div>
+        <div><span>Tổng khoản cộng ưu đãi</span><strong>${state.preferenceCalculation ? currency(state.preferenceCalculation.tongGiaTriCongUuDai) : "—"}</strong></div>
+        <div><span>Giá sau ưu đãi</span><strong>${state.preferenceCalculation ? currency(state.preferenceCalculation.giaSoSanhSauUuDai) : "—"}</strong></div>
+        <div><span>Trạng thái tính</span><strong>${escapeHtml(state.bid.trangThaiTinhUuDai || (state.preferenceCalculation ? "Xem trước" : "Chưa tính"))}</strong></div>
       </div>
       ${previewMarkup(state.importPreview)}
       <div class="table-container package-table-frame has-bottom-space bidder-goods-table-frame">
         <table class="data-table bidder-goods-table" data-no-sort="true" data-density="comfortable">
-          <thead><tr><th>STT</th><th>Danh mục hàng hóa</th><th>Ký mã hiệu</th><th>Nhãn hiệu</th><th>Năm sản xuất</th><th>Xuất xứ</th><th>Hãng sản xuất</th><th>Cấu hình, tính năng kỹ thuật</th><th>ĐVT</th><th>Khối lượng</th><th>Mã HS</th><th>Đơn giá dự thầu</th><th>Thành tiền</th><th>Trạng thái ghép</th><th>Thao tác</th></tr></thead>
-          <tbody>${state.pageRows.length ? state.pageRows.map((row) => rowMarkup(row, state)).join("") : '<tr><td colspan="15"><div class="package-panel-empty">Chưa có hàng hóa dự thầu trong phạm vi này.</div></td></tr>'}</tbody>
+          <thead><tr><th>STT</th><th>Danh mục hàng hóa</th><th>Ký mã hiệu</th><th>Nhãn hiệu</th><th>Năm sản xuất</th><th>Xuất xứ</th><th>Hãng sản xuất</th><th>Cấu hình, tính năng kỹ thuật</th><th>ĐVT</th><th>Khối lượng</th><th>Mã HS</th><th>Đơn giá dự thầu</th><th>Thành tiền</th><th>Ưu đãi</th><th>Giá dự thầu sau ưu đãi</th><th>Thành tiền sau ưu đãi</th><th>Trạng thái ghép</th><th>Thao tác</th></tr></thead>
+          <tbody>${state.pageRows.length ? state.pageRows.map((row) => rowMarkup(row, state)).join("") : '<tr><td colspan="18"><div class="package-panel-empty">Chưa có hàng hóa dự thầu trong phạm vi này.</div></td></tr>'}</tbody>
         </table>
       </div>
       <div class="bidder-goods-pagination" aria-label="Phân trang hàng hóa dự thầu">
@@ -242,7 +310,13 @@ export async function analyzeBidderGoodsExcel(controller, detailedState, file) {
   return {
     ...parsed,
     rows: previewRows,
-    total: previewRows.reduce((sum, row) => sum + (Number(row.thanhTienDuThau) || 0), 0),
+    total: (() => {
+      const total = previewRows.reduce(
+        (sum, row) => sum + BigInt(String(row.thanhTienDuThau || 0)),
+        0n,
+      );
+      return total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : total.toString();
+    })(),
     mode: controller.view.getActiveElement?.("bidder-goods-import-mode")?.value || "merge",
   };
 }
@@ -294,6 +368,9 @@ export async function confirmBidderGoodsImport(controller) {
     `${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`,
     row,
   ]));
+  const openingSnapshot = (controller.model.state.thongtinmothau || []).map(
+    (opening) => ({ ...opening }),
+  );
   controller.model.state.hanghoaduthaunhathau = [
     ...retained,
     ...preview.rows.map((row) => {
@@ -304,8 +381,25 @@ export async function confirmBidderGoodsImport(controller) {
   controller._bidderGoodsImportPreview = null;
   controller._bidderGoodsError = "";
   controller._detailedEvaluationDirty = true;
+  (controller.model.state.thongtinmothau || []).forEach((opening) => {
+    if (incomingScopes.has(String(opening.id))) invalidateOpeningPreference(opening);
+  });
+  if (typeof controller.model.persistData === "function") {
+    const result = await persistAndSync(
+      controller,
+      ["hanghoaduthaunhathau", "thongtinmothau"],
+    );
+    if (result?.ok === false) {
+      controller.model.state.hanghoaduthaunhathau = existing;
+      controller.model.state.thongtinmothau = openingSnapshot;
+      controller._bidderGoodsError = "Không thể lưu bản nháp nhập Excel.";
+      controller.renderDetailedEvaluation();
+      return false;
+    }
+  }
+  controller._detailedEvaluationDirty = false;
   controller.renderDetailedEvaluation();
-  await controller.view.customAlert("Đã nhập dữ liệu", "Dữ liệu đang ở bản nháp. Hãy kiểm tra đối chiếu và lưu.", "check-circle");
+  await controller.view.customAlert("Đã nhập dữ liệu", "Dữ liệu đã được lưu ở trạng thái bản nháp. Hãy kiểm tra đối chiếu trước khi lưu chính thức.", "check-circle");
   return true;
 }
 
@@ -319,16 +413,71 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
       return false;
     }
   }
+  let calculation = null;
+  if (official) {
+    try {
+      calculation = calculateBidderGoodsPreference(rows, {
+        discountRatePercent: String(detailedState.bid.tyLeGiamGia ?? 0),
+        scopeAfterDiscount: detailedState.bid.giaSauGiamGia ?? null,
+        evaluationBase: detailedState.bid.giaXepHang ?? null,
+      });
+    } catch (error) {
+      await controller.view.customAlert("Chưa thể tính ưu đãi", error.message, "alert-triangle");
+      return false;
+    }
+  }
   const scopeIds = new Set(rows.map((row) => String(row.id)));
   const snapshot = (controller.model.state.hanghoaduthaunhathau || []).map((row) => ({ ...row }));
-  controller.model.state.hanghoaduthaunhathau = snapshot.map((row) => (
-    scopeIds.has(String(row.id)) ? { ...row, isDraft: !official } : row
-  ));
+  const bidPreferenceSnapshot = Object.fromEntries([
+    "tongGiaTriCongUuDai",
+    "giaSoSanhSauUuDai",
+    "giaDanhGiaSauUuDai",
+    "trangThaiTinhUuDai",
+    "uuDaiTinhLuc",
+    "uuDaiInputHash",
+  ].map((field) => [field, detailedState.bid[field]]));
+  if (!official) invalidateOpeningPreference(detailedState.bid);
+  const calculatedById = new Map((calculation?.lines || []).map((row) => [String(row.id), row]));
+  controller.model.state.hanghoaduthaunhathau = snapshot.map((row) => {
+    if (!scopeIds.has(String(row.id))) return row;
+    return {
+      ...row,
+      ...(calculatedById.get(String(row.id)) || {}),
+      isDraft: !official,
+      trangThaiUuDai: official
+        ? "ready"
+        : (
+          ["ready", "stale"].includes(row.trangThaiUuDai)
+          || ["ready", "stale"].includes(bidPreferenceSnapshot.trangThaiTinhUuDai)
+        )
+          ? "stale"
+          : "draft",
+    };
+  });
+  if (official && calculation) {
+    Object.assign(detailedState.bid, {
+      tongGiaTriCongUuDai: calculation.tongGiaTriCongUuDai,
+      giaSoSanhSauUuDai: calculation.giaSoSanhSauUuDai,
+      giaDanhGiaSauUuDai: calculation.giaDanhGiaSauUuDai,
+      trangThaiTinhUuDai: "ready",
+      uuDaiTinhLuc: new Date().toISOString(),
+    });
+    await controller.model.markRecordDirty?.(
+      "hanghoaduthaunhathau",
+      controller.model.state.hanghoaduthaunhathau.filter(
+        (row) => scopeIds.has(String(row.id)),
+      ),
+    );
+  }
   const buttons = controller.view.getActiveElement?.("danhgiahsdt-detail-view")?.querySelectorAll?.("#btn-bidder-goods-save-draft, #btn-bidder-goods-save-official") || [];
   buttons.forEach((button) => { button.disabled = true; });
-  const result = await persistAndSync(controller, "hanghoaduthaunhathau");
+  const result = await persistAndSync(
+    controller,
+    ["hanghoaduthaunhathau", "thongtinmothau"],
+  );
   if (result?.ok === false) {
     controller.model.state.hanghoaduthaunhathau = snapshot;
+    Object.assign(detailedState.bid, bidPreferenceSnapshot);
     await controller.model.db?.putTableData?.("hanghoaduthaunhathau", snapshot);
     controller._bidderGoodsError = "Không thể đồng bộ hàng hóa dự thầu. Dữ liệu trước khi lưu đã được khôi phục.";
     buttons.forEach((button) => { button.disabled = false; });
@@ -386,6 +535,7 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
       mappingMethod: "manual", mappingStatus: "matched",
       sortOrder: state.rows.length, importBatchId: "", isDraft: true,
     });
+    invalidateOpeningPreference(state.bid);
     controller._detailedEvaluationDirty = true;
     controller.renderDetailedEvaluation();
   });
@@ -397,6 +547,57 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
         rowId,
         select.value,
       );
+      invalidateOpeningPreference(state.bid);
+      controller._detailedEvaluationDirty = true;
+      controller.renderDetailedEvaluation();
+    });
+  });
+  root.querySelectorAll("[data-bidder-goods-preference]").forEach((select) => {
+    select.addEventListener("change", async () => {
+      const rowId = select.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
+      const current = state.rows.find((row) => String(row.id) === String(rowId));
+      if (current?.uuDaiSourceSheet && !await controller.view.customConfirm(
+        "Ghi đè mã ưu đãi từ 15A",
+        "Mã ưu đãi nhập từ Mẫu 15A sẽ được thay bằng lựa chọn thủ công.",
+        "alert-triangle",
+      )) {
+        controller.renderDetailedEvaluation();
+        return;
+      }
+      const overrideReason = await controller.view.customPrompt(
+        "Lý do chỉnh mã ưu đãi",
+        "Nhập lý do xác minh hoặc điều chỉnh để lưu dấu vết kiểm toán.",
+        current?.uuDaiManualReason || "",
+        "Ví dụ: Đã đối chiếu hồ sơ bản ký số",
+        false,
+        (value) => {
+          const normalized = String(value || "").trim();
+          if (!normalized) return "Vui lòng nhập lý do điều chỉnh.";
+          if (normalized.length > 1000) return "Lý do không được vượt quá 1000 ký tự.";
+          return "";
+        },
+      );
+      if (overrideReason === null) {
+        controller.renderDetailedEvaluation();
+        return;
+      }
+      const actorId = controller.model.state.activeuser?.id || "";
+      controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.map(
+        (row) => String(row.id) === String(rowId) ? {
+          ...row,
+          maUuDai: Number(select.value),
+          uuDaiMatchMethod: "manual",
+          uuDaiMatchStatus: "matched",
+          uuDaiManualOverride: true,
+          uuDaiManualActorId: actorId,
+          uuDaiManualUpdatedAt: new Date().toISOString(),
+          uuDaiManualReason: String(overrideReason).trim(),
+          preferenceWarnings: [],
+          trangThaiUuDai: "draft",
+          isDraft: true,
+        } : row,
+      );
+      invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();
     });
@@ -406,10 +607,18 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
       const rowId = input.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
       const field = input.getAttribute("data-bidder-goods-field");
       const numeric = ["khoiLuong", "donGiaDuThau", "thanhTienDuThau"].includes(field);
-      const value = numeric ? (input.value === "" ? null : Number(input.value)) : input.value;
+      const money = ["donGiaDuThau", "thanhTienDuThau"].includes(field);
+      const numericValue = Number(input.value);
+      const value = numeric
+        ? input.value === "" ? null
+          : money && Number.isInteger(numericValue) && !Number.isSafeInteger(numericValue)
+            ? input.value
+            : numericValue
+        : input.value;
       controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.map(
         (row) => String(row.id) === String(rowId) ? { ...row, [field]: value, isDraft: true } : row,
       );
+      invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();
     });
@@ -419,6 +628,7 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
       const rowId = button.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
       if (!await controller.view.customConfirm("Xóa hàng hóa dự thầu", "Bạn có chắc muốn xóa dòng này?", "trash-2")) return;
       controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.filter((row) => String(row.id) !== String(rowId));
+      invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();
     });

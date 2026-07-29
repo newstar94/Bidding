@@ -17,6 +17,7 @@ import {
 } from "../shared/VersionedEntityService.js";
 import { getCurrentDateYmd } from "../shared/formatters.js";
 import { setContractorViewOnly } from "../shared/runtimeState.js";
+import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import {
   applyPartnerValidationErrors,
@@ -31,16 +32,25 @@ const todayYmd = getCurrentDateYmd;
 const safeStampSrc = (value) => {
   return safeImageSrc(value);
 };
-const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {
+const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "", canUpload = true) => {
   const uploadZone = document.getElementById("nt-upload-zone-dau");
   const previewContainer = document.getElementById("nt-preview-container-dau");
   const previewImg = document.getElementById("nt-anh-preview-dau");
   const removeBtn = document.getElementById("btn-nt-remove-file-dau");
+  const fileInput = document.getElementById("nt-anhdau");
   const src = safeStampSrc(value);
   if (previewImg) previewImg.src = safeImageSrc(src, cacheKey);
   if (previewContainer) setRuntimeStyle(previewContainer, "display", src ? "flex" : "none");
   if (uploadZone) setRuntimeStyle(uploadZone, "display", src || isReadOnly ? "none" : "flex");
-  if (removeBtn) setRuntimeStyle(removeBtn, "display", isReadOnly ? "none" : "");
+  if (uploadZone) {
+    uploadZone.classList.toggle("is-upload-disabled", !canUpload);
+    uploadZone.setAttribute("aria-disabled", String(!canUpload));
+    uploadZone.title = canUpload
+      ? "Tải lên ảnh dấu"
+      : "Chỉ Quản lý của tổ chức được tải lên ảnh dấu";
+  }
+  if (fileInput) fileInput.disabled = isReadOnly || !canUpload;
+  if (removeBtn) setRuntimeStyle(removeBtn, "display", isReadOnly || !canUpload ? "none" : "");
 };
 export async function deleteNhaThau(id) {
   const nt = await refreshRecordBeforeDelete(this, "nhathau", id);
@@ -115,6 +125,10 @@ export async function editNhaThau(id, isReadOnly = false) {
     const form = document.getElementById("form-nhathau");
     if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");
     clearFormValidation(form);
+    const canUploadAssets = canUploadWorkspaceAssets(
+      this.model.state.activeuser || {},
+      this.model.state.activerole,
+    );
     const inputs = form.querySelectorAll("input, select, textarea");
     inputs.forEach((inp) => {
       inp.disabled = isReadOnly;
@@ -151,7 +165,12 @@ export async function editNhaThau(id, isReadOnly = false) {
         if (document.getElementById("nt-xa")) document.getElementById("nt-xa").disabled = true;
       }
       this.tempNhaThauStampBase64 = safeStampSrc(nt.anhDau);
-      setNhaThauStampPreview(this.tempNhaThauStampBase64, isReadOnly, nt.updatedAt || nt.createdAt);
+      setNhaThauStampPreview(
+        this.tempNhaThauStampBase64,
+        isReadOnly,
+        nt.updatedAt || nt.createdAt,
+        canUploadAssets,
+      );
     } else {
       setContractorViewOnly(false);
       this.switchTab("nhathau", "taomoi", true);
@@ -162,7 +181,7 @@ export async function editNhaThau(id, isReadOnly = false) {
         initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
       });
       this.tempNhaThauStampBase64 = "";
-      setNhaThauStampPreview("", false);
+      setNhaThauStampPreview("", false, "", canUploadAssets);
     }
     const partnerCodeInput = document.getElementById("nt-ma");
     const partnerTaxInput = document.getElementById("nt-mst");
@@ -208,6 +227,20 @@ export async function handleNhaThauSubmit(e) {
   if (!applyPartnerValidationErrors(document, validationErrors, (control) => this.view.focusInvalidControl(control))) return;
   const currentNtForStamp = id ? this.model.state.nhathau.find((n) => n.id === id) : null;
   const stampValue = safeStampSrc(this.tempNhaThauStampBase64);
+  if (
+    stampValue.startsWith("data:image/")
+    && !canUploadWorkspaceAssets(
+      this.model.state.activeuser || {},
+      this.model.state.activerole,
+    )
+  ) {
+    await this.view.customAlert(
+      "Từ chối truy cập",
+      "Chỉ Quản lý của tổ chức được tải lên ảnh dấu.",
+      "lock",
+    );
+    return;
+  }
   const stampIsNewUpload = stampValue.startsWith("data:image/");
   const stampExt = stampValue ? this.model.getFileExtensionFromBase64(stampValue) : "";
   let data = {

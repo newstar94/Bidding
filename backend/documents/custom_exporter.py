@@ -403,9 +403,26 @@ def get_user_template_dir(user_id=None):
         return path
     return TEMPLATE_DIR
 
-def get_active_template(user_id=None):
-    user_dir = get_user_template_dir(user_id)
-    config_path = os.path.join(user_dir, 'config.json')
+def get_scope_template_dir(owner_type, owner_id):
+    normalized_type = str(owner_type or '').strip().lower()
+    normalized_id = str(owner_id or '').replace('..', '').replace('/', '').replace('\\', '').strip()
+    if not normalized_id:
+        raise ValueError('Phạm vi biểu mẫu Word không hợp lệ')
+    if normalized_type == 'personal':
+        return get_user_template_dir(normalized_id)
+    if normalized_type != 'organization':
+        raise ValueError('Loại phạm vi biểu mẫu Word không hợp lệ')
+    organizations_dir = os.path.realpath(os.path.join(TEMPLATE_DIR, 'organizations'))
+    os.makedirs(organizations_dir, exist_ok=True)
+    path = os.path.realpath(os.path.join(organizations_dir, normalized_id))
+    if not path.startswith(organizations_dir + os.sep):
+        raise ValueError('Phạm vi biểu mẫu Word không hợp lệ')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def get_active_template(owner_id=None, *, owner_type='personal'):
+    scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
+    config_path = os.path.join(scope_dir, 'config.json')
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -415,15 +432,15 @@ def get_active_template(user_id=None):
             pass
     return 'mau_bao_cao_dau_thau.docx'
 
-def set_active_template(filename, user_id=None):
-    user_dir = get_user_template_dir(user_id)
-    config_path = os.path.join(user_dir, 'config.json')
+def set_active_template(filename, owner_id=None, *, owner_type='personal'):
+    scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
+    config_path = os.path.join(scope_dir, 'config.json')
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump({'active_template': filename}, f, ensure_ascii=False, indent=4)
 
-def list_templates(user_id=None):
+def list_templates(owner_id=None, *, owner_type='personal'):
     templates = []
-    active_template = get_active_template(user_id)
+    active_template = get_active_template(owner_id, owner_type=owner_type)
     system_templates = (
         ('mau_bao_cao_dau_thau.docx', 'Bản báo cáo đánh giá mặc định'),
         ('mau_hop_dong_lcnt.docx', 'Mẫu hợp đồng kinh tế LCNT'),
@@ -439,9 +456,9 @@ def list_templates(user_id=None):
             'is_active': is_available and active_template == filename
         })
 
-    user_dir = get_user_template_dir(user_id)
-    if os.path.exists(user_dir):
-        for f in os.listdir(user_dir):
+    scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
+    if os.path.exists(scope_dir):
+        for f in os.listdir(scope_dir):
             if f.endswith('.docx') and f not in system_filenames:
                 templates.append({
                     'filename': f,

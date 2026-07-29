@@ -64,29 +64,56 @@ export function resolveDetailedEvaluationContext(pkg, roundType = "single") {
     ...DETAILED_EVALUATION_RULES[methodKey],
   };
   const templateGroups = new Set(template.groups);
-  const roundGroups = roundType === "technical"
+  let roundGroups = roundType === "technical"
     ? ["validity", "capacity", "technical"]
     : roundType === "financial"
       ? ["financial"]
       : template.groups;
-  const visibleGroups = roundGroups.filter((group) => templateGroups.has(group));
   const showBidderGoods = String(pkg?.linhVuc || "").trim() === "Hàng hóa"
     && ["single", "financial"].includes(roundType);
-  if (showBidderGoods) visibleGroups.push("bidder_goods");
-  const editableGroups = visibleGroups.filter((group) => rule.editableGroups.includes(group));
+  if (showBidderGoods) {
+    roundGroups = roundType === "financial"
+      ? ["bidder_goods", "financial"]
+      : roundGroups.flatMap((group) => group === "financial" ? ["bidder_goods", group] : [group]);
+  }
+  const configuredGroups = roundGroups.filter((group) => group === "bidder_goods" || templateGroups.has(group));
+  const editableGroups = configuredGroups.filter((group) => group === "bidder_goods" || rule.editableGroups.includes(group));
   return {
     methodKey,
     roundType,
-    visibleGroups,
+    configuredGroups,
+    visibleGroups: configuredGroups,
     editableGroups,
     templateId: template.id,
     templateVersion: template.version,
     templateSource: template.source,
     contractorFilter: rule.contractorFilter,
-    scoringModeByGroup: Object.fromEntries(visibleGroups.map((group) => [
+    scoringModeByGroup: Object.fromEntries(configuredGroups.map((group) => [
       group,
       template.scoreGroups?.includes(group) ? "score" : "criteria",
     ])),
     allowComplete: rule.allowComplete !== false,
   };
+}
+
+export function resolveAccessibleDetailedEvaluationGroups({
+  configuredGroups = [], report = {}, aggregationByGroup = {}, bidderGoodsReady = false,
+} = {}) {
+  const completed = new Set(report?.extension?.completedGroups || []);
+  const storedResults = report?.extension?.groupResults || {};
+  const accessible = [];
+  for (const group of configuredGroups) {
+    if (accessible.length === 0) {
+      accessible.push(group);
+      continue;
+    }
+    const predecessor = configuredGroups[configuredGroups.indexOf(group) - 1];
+    const predecessorPassed = predecessor === "bidder_goods"
+      ? bidderGoodsReady
+      : completed.has(predecessor)
+        && (storedResults[predecessor] || aggregationByGroup[predecessor]?.status) === "Đạt";
+    if (!predecessorPassed) break;
+    accessible.push(group);
+  }
+  return accessible;
 }

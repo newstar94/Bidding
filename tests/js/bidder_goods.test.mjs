@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
@@ -6,8 +8,19 @@ import {
   buildBidderGoodsTemplateRows,
   escapeSpreadsheetFormula,
   findBidderGoodsSheet,
+  findGoodsPreferenceSheet,
+  parseGoodsPreferenceBoolean,
   parseBidderGoodsWorkbookSheets,
 } from "../../frontend/packages/BidderGoodsExcel.js";
+import { calculateBidderGoodsPreference } from "../../frontend/packages/bidderGoodsPreference.js";
+import {
+  resolveAccessibleDetailedEvaluationGroups,
+  resolveDetailedEvaluationContext,
+} from "../../frontend/packages/detailedEvaluationRules.js";
+import {
+  calculateRankings,
+  goodsPreferenceRankingBlockReason,
+} from "../../frontend/shared/BiddingCalculations.js";
 import {
   applyManualBidderGoodsMapping,
   mapBidderGoodsRows,
@@ -24,6 +37,22 @@ import {
 import {
   shouldValidateBidderGoodsOnCompletion,
 } from "../../frontend/packages/DetailedEvaluationSaveWorkflow.js";
+
+const sharedPreferenceVectors = JSON.parse(
+  fs.readFileSync(
+    new URL("../fixtures/goods_preference_vectors.json", import.meta.url),
+    "utf8",
+  ),
+);
+const require = createRequire(import.meta.url);
+const sheetModule = { exports: {} };
+const sheetExports = sheetModule.exports;
+Function("module", "exports", "require", fs.readFileSync(
+  new URL("../../views/vendor/xlsx/xlsx.full.min.js", import.meta.url),
+  "utf8",
+))(sheetModule, sheetExports, require);
+const XLSX = Object.keys(sheetModule.exports).length
+  ? sheetModule.exports : sheetExports;
 
 const header = [
   "STT", "Mã phần (lô)", "Tên phần (lô)", "Danh mục hàng hóa",
@@ -130,6 +159,14 @@ test("financial validation accepts one-VND tolerance and rejects invalid amounts
   assert.ok(validateBidderGoodsRow({ ...valid, khoiLuong: 0 }).length > 0);
   assert.ok(validateBidderGoodsRow({ ...valid, donGiaDuThau: -1 }).length > 0);
   assert.ok(validateBidderGoodsRow({ ...valid, thanhTienDuThau: Number.MAX_SAFE_INTEGER + 1 }).length > 0);
+  assert.deepEqual(validateBidderGoodsRow({
+    danhMucHangHoa: "Thiết bị giá trị lớn",
+    khoiLuong: 1,
+    donGiaDuThau: "9007199254740993000",
+    thanhTienDuThau: "9007199254740993000",
+    mappingStatus: "matched",
+    maUuDai: 0,
+  }, { official: true }), []);
 });
 
 test("goods tab is limited to goods packages and financial contexts", () => {
@@ -283,4 +320,180 @@ test("persistence waits for bidder-goods mutations to enter the outbox", async (
   releaseDirty();
   await pending;
   assert.equal(completed, true);
+});
+
+test("15A parser recognizes aliases, dynamic headers, booleans and expected preference codes", () => {
+  const sheets = [{ name: "Mẫu 15C. Chi phí trong nước", rows: [] }, {
+    name: " Mẫu số 15A.  Bảng kê khai hàng hóa được hưởng ưu đãi ",
+    rows: [
+      ["Tiêu đề"],
+      ["STT", "Tên hàng hóa", "Xuất xứ", "Hàng hóa có xuất xứ Việt Nam, tỷ lệ chi phí sản xuất trong nước dưới 50%", "Từ 50% trở lên", "Cơ sở có từ 50% lao động ưu tiên", "Sản phẩm đổi mới sáng tạo"],
+      [1, "Hàng A", "Việt Nam", "Có", "Không", "Không", "Không"],
+      [2, "Hàng B", "Nhập khẩu", 0, 0, 0, false],
+      [3, "Hàng C", "Việt Nam", "X", "N", "N", "N"],
+      [4, "Hàng D", "Việt Nam", true, false, false, false],
+    ],
+  }, {
+    name: "Mẫu số 12.1B. Bảng giá dự thầu",
+    rows: [["STT", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+      [1, "Hàng A", "Cái", 1, 10, 10], [2, "Hàng B", "Cái", 1, 20, 20],
+      [3, "Hàng C", "Cái", 1, 30, 30], [4, "Hàng D", "Cái", 1, 40, 40]],
+  }];
+  assert.match(findGoodsPreferenceSheet(sheets).name, /15A/);
+  assert.equal(parseGoodsPreferenceBoolean("Có"), true);
+  assert.equal(parseGoodsPreferenceBoolean("Khong"), false);
+  assert.equal(parseGoodsPreferenceBoolean(""), null);
+  const parsed = parseBidderGoodsWorkbookSheets(sheets, { pkg: { phanLo: "Không" } });
+  assert.deepEqual(parsed.rows.map((row) => row.maUuDai), [1, 0, 1, 1]);
+  const without15A = parseBidderGoodsWorkbookSheets(sheets.filter((sheet) => !sheet.name.includes("15A")), { pkg: { phanLo: "Không" } });
+  assert.deepEqual(without15A.rows.map((row) => row.maUuDai), [0, 0, 0, 0]);
+  assert.match(without15A.preferenceNotice, /Không có Mẫu số 15A/);
+});
+
+test("generated minimal XLSX fixture round-trips expected [1,0,1,1] codes", () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["STT", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+    [1, "Hàng A", "Cái", 1, 10, 10],
+    [2, "Hàng B", "Cái", 1, 20, 20],
+    [3, "Hàng C", "Cái", 1, 30, 30],
+    [4, "Hàng D", "Cái", 1, 40, 40],
+  ]), "Mẫu số 12.1B. Bảng giá");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["STT", "Tên hàng hóa", "Xuất xứ", "Hàng hóa có xuất xứ Việt Nam, tỷ lệ chi phí sản xuất trong nước dưới 50%", "Từ 50% trở lên", "Cơ sở có từ 50% lao động ưu tiên", "Sản phẩm đổi mới sáng tạo"],
+    [1, "Hàng A", "Việt Nam", "Có", "Không", "Không", "Không"],
+    [2, "Hàng B", "Nhập khẩu", "Không", "Không", "Không", "Không"],
+    [3, "Hàng C", "Việt Nam", "X", "0", "0", "0"],
+    [4, "Hàng D", "Việt Nam", true, false, false, false],
+  ]), "Mẫu số 15A. Bảng kê khai HH");
+  const roundTrip = XLSX.read(XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  }), { type: "buffer" });
+  const sheets = roundTrip.SheetNames.map((name) => ({
+    name,
+    rows: XLSX.utils.sheet_to_json(roundTrip.Sheets[name], {
+      header: 1,
+      raw: false,
+      defval: "",
+      blankrows: true,
+    }),
+  }));
+  const parsed = parseBidderGoodsWorkbookSheets(sheets, {
+    pkg: { phanLo: "Không" },
+  });
+  assert.deepEqual(parsed.rows.map((row) => row.maUuDai), [1, 0, 1, 1]);
+});
+
+test("15A mapping does not auto-commit duplicate names across lots without lot scope", () => {
+  const sheets = [{
+    name: "Mẫu số 15A. Bảng kê khai hàng hóa được hưởng ưu đãi",
+    rows: [
+      ["Tên hàng hóa", "Dưới 50% xuất xứ Việt Nam"],
+      ["Hàng trùng", "Có"],
+      ["Hàng trùng", "Không"],
+    ],
+  }, {
+    name: "Mẫu số 12.1B. Bảng giá dự thầu",
+    rows: [
+      ["STT", "Mã phần lô", "Tên phần lô", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+      [1, "L1", "Lô 1", "Hàng trùng", "Cái", 1, 10, 10],
+      [2, "L2", "Lô 2", "Hàng trùng", "Cái", 1, 20, 20],
+    ],
+  }];
+  const parsed = parseBidderGoodsWorkbookSheets(sheets, {
+    pkg: {
+      phanLo: "Có",
+      phanLoList: [
+        { id: "lot-1", maPhanLo: "L1", tenPhanLo: "Lô 1" },
+        { id: "lot-2", maPhanLo: "L2", tenPhanLo: "Lô 2" },
+      ],
+    },
+  });
+  assert.deepEqual(parsed.rows.map((row) => row.uuDaiMatchStatus), ["ambiguous", "ambiguous"]);
+  assert.ok(parsed.rows.every((row) => row.preferenceWarnings[0].code === "PREFERENCE_MAPPING_AMBIGUOUS"));
+});
+
+test("15A parser resolves merged multi-row headers away from row 4", () => {
+  const sheets = [{
+    name: "Mẫu số 15A. Bảng kê khai hàng hóa được hưởng ưu đãi",
+    merges: [{ s: { r: 0, c: 3 }, e: { r: 0, c: 4 } }],
+    rows: [
+      ["STT", "Tên hàng hóa", "Xuất xứ", "Hàng hóa có xuất xứ Việt Nam", "", "Cơ sở có từ 50% lao động ưu tiên", "Sản phẩm đổi mới sáng tạo"],
+      ["", "", "", "Tỷ lệ trong nước dưới 50%", "Từ 50% trở lên", "", ""],
+      [1, "Thiết bị A", "Việt Nam", "Có", "Không", "Không", "Không"],
+    ],
+  }, {
+    name: "Mẫu số 12.1B. Bảng giá dự thầu",
+    rows: [
+      ["STT", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+      [1, "Thiết bị A", "Cái", 1, 10, 10],
+    ],
+  }];
+  const parsed = parseBidderGoodsWorkbookSheets(sheets, { pkg: { phanLo: "Không" } });
+  assert.equal(parsed.preferenceHeaderRow, 1);
+  assert.equal(parsed.rows[0].maUuDai, 1);
+});
+
+test("preference calculator uses rate differences, HALF_UP and stable remainder allocation", () => {
+  const result = calculateBidderGoodsPreference([
+    { id: "a", sortOrder: 0, khoiLuong: 1, thanhTienDuThau: "50", maUuDai: 0 },
+    { id: "b", sortOrder: 1, khoiLuong: 1, thanhTienDuThau: "50", maUuDai: 5 },
+  ], { scopeAfterDiscount: "99" });
+  assert.equal(result.heSoUuDaiCaoNhatBp, 1500);
+  assert.deepEqual(result.lines.map((row) => row.heSoCongUuDaiBp), [1500, 0]);
+  assert.equal(result.lines.reduce((sum, row) => sum + BigInt(row.giaTriCoSoSauGiamGia), 0n), 99n);
+  assert.equal(result.tongGiaTriCongUuDai, "8");
+  const large = calculateBidderGoodsPreference([
+    { id: "large", khoiLuong: 1, thanhTienDuThau: "9007199254740993000", maUuDai: 0 },
+    { id: "preferred", khoiLuong: 1, thanhTienDuThau: "1", maUuDai: 1 },
+  ]);
+  assert.ok(BigInt(large.giaSoSanhSauUuDai) > 9007199254740993000n);
+  const fractionalDiscount = calculateBidderGoodsPreference([
+    { id: "fractional", khoiLuong: 1, thanhTienDuThau: "10000", maUuDai: 0 },
+  ], { discountRatePercent: "7.1234" });
+  assert.equal(fractionalDiscount.tongSauGiamGia, "9288");
+});
+
+test("frontend calculator matches every shared backend preference vector", () => {
+  for (const vector of sharedPreferenceVectors) {
+    const result = calculateBidderGoodsPreference(vector.codes.map((code, index) => ({
+      id: `${vector.name}-${index}`,
+      khoiLuong: 1,
+      thanhTienDuThau: "100",
+      maUuDai: code,
+    })));
+    assert.equal(result.heSoUuDaiCaoNhatBp, vector.maximumRateBp, vector.name);
+    assert.deepEqual(
+      result.lines.map((line) => line.heSoCongUuDaiBp),
+      vector.surchargeRatesBp,
+      vector.name,
+    );
+  }
+});
+
+test("goods detailed-evaluation groups are ordered and unlocked only by persisted pass/ready state", () => {
+  const context = resolveDetailedEvaluationContext({ linhVuc: "Hàng hóa" }, "single");
+  assert.deepEqual(context.configuredGroups, ["validity", "capacity", "technical", "bidder_goods", "financial"]);
+  assert.deepEqual(resolveAccessibleDetailedEvaluationGroups({ configuredGroups: context.configuredGroups }), ["validity"]);
+  const report = { extension: { completedGroups: ["validity", "capacity", "technical"], groupResults: { validity: "Đạt", capacity: "Đạt", technical: "Đạt" } } };
+  assert.deepEqual(resolveAccessibleDetailedEvaluationGroups({ configuredGroups: context.configuredGroups, report, bidderGoodsReady: false }), ["validity", "capacity", "technical", "bidder_goods"]);
+  assert.deepEqual(resolveAccessibleDetailedEvaluationGroups({ configuredGroups: context.configuredGroups, report, bidderGoodsReady: true }), context.configuredGroups);
+  assert.deepEqual(resolveDetailedEvaluationContext({ linhVuc: "Hàng hóa" }, "financial").configuredGroups, ["bidder_goods", "financial"]);
+});
+
+test("goods rankings require ready preference data and use authoritative post-preference prices", () => {
+  const pkg = { linhVuc: "Hàng hóa", phuongPhapDanhGia: "Giá thấp nhất", phanLo: "Không" };
+  const qualified = { danhGiaKetLuan: "Đạt" };
+  const bids = [
+    { id: "a", ...qualified, giaDuThau: 90, giaSoSanhSauUuDai: 120, trangThaiTinhUuDai: "ready" },
+    { id: "b", ...qualified, giaDuThau: 100, giaSoSanhSauUuDai: 110, trangThaiTinhUuDai: "ready" },
+    { id: "draft", ...qualified, giaDuThau: 1, trangThaiTinhUuDai: "draft" },
+  ];
+  assert.deepEqual(calculateRankings(pkg, bids).rankings, { b: 1, a: 2 });
+  assert.equal(
+    goodsPreferenceRankingBlockReason(pkg, bids[2]),
+    "Chưa đủ dữ liệu ưu đãi để xếp hạng",
+  );
+  assert.equal(goodsPreferenceRankingBlockReason(pkg, bids[0]), "");
 });

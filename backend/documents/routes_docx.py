@@ -16,10 +16,13 @@ from backend.shared.helpers import (
 )
 from backend.db.id_utils import generate_record_id
 from backend.shared.access_policy import (
+    can_upload_workspace_assets,
     can_manage_word_config,
+    can_read_word_config,
     can_read_record,
     resolve_document_export_capabilities,
 )
+from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.subscription_policy import can_use_word_export
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
@@ -216,13 +219,12 @@ def _word_export_subscription_response(role_or_err, organization_id):
     )
 
 
-def _word_config_access_response(request, role_or_err):
+def _word_config_access_response(request, role_or_err, *, write=False):
     organization_id = get_active_org(request, role_or_err.user_id)
     conn = database.get_connection()
     try:
-        allowed = can_manage_word_config(
-            conn.cursor(), role_or_err, role_or_err.user_id, organization_id
-        )
+        policy = can_manage_word_config if write else can_read_word_config
+        allowed = policy(conn.cursor(), role_or_err, role_or_err.user_id, organization_id)
     finally:
         conn.close()
     if allowed:
@@ -234,6 +236,34 @@ def _word_config_access_response(request, role_or_err):
         },
         status_code=403,
     )
+
+
+def _word_template_upload_access_response(request, role_or_err, organization_id):
+    conn = database.get_connection()
+    try:
+        allowed = can_upload_workspace_assets(
+            conn.cursor(),
+            role_or_err,
+            role_or_err.user_id,
+            organization_id,
+        )
+    finally:
+        conn.close()
+    if allowed:
+        return None
+    return JSONResponse(
+        {
+            "error": "Chỉ Quản lý của tổ chức được tải lên biểu mẫu Word.",
+            "code": "WORD_TEMPLATE_UPLOAD_MANAGER_REQUIRED",
+        },
+        status_code=403,
+    )
+
+
+def _word_template_scope(user_id, organization_id):
+    if is_personal_scope_for_user(organization_id, user_id):
+        return "personal", user_id
+    return "organization", organization_id
 
 def _safe_filename(value, fallback='download.docx'):
     name = os.path.basename(str(value or fallback)).strip()
@@ -247,12 +277,14 @@ def _content_disposition(filename):
     return f"attachment; filename={safe_name}; filename*=UTF-8''{quote(safe_name)}"
 
 
-def _resolve_template_path(user_id, filename):
+def _resolve_template_path(owner_type, owner_id, filename):
     safe_name = _safe_filename(filename)
     if safe_name in SYSTEM_TEMPLATES:
         base_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
     else:
-        base_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
+        base_dir = os.path.realpath(
+            custom_exporter.get_scope_template_dir(owner_type, owner_id)
+        )
     path = os.path.realpath(os.path.join(base_dir, safe_name))
     if not path.startswith(base_dir + os.sep):
         raise ValueError('Tên mẫu không hợp lệ')
@@ -261,13 +293,19 @@ def _resolve_template_path(user_id, filename):
     return path, safe_name
 
 
-def _persist_user_template_from_path(user_id, filename, source_path):
-    user_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
-    dest_path = os.path.realpath(os.path.join(user_dir, filename))
-    if not dest_path.startswith(user_dir + os.sep):
+def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_path):
+    scope_dir = os.path.realpath(
+        custom_exporter.get_scope_template_dir(owner_type, owner_id)
+    )
+    dest_path = os.path.realpath(os.path.join(scope_dir, filename))
+    if not dest_path.startswith(scope_dir + os.sep):
         raise ValueError("Tên tệp không hợp lệ")
     shutil.copyfile(source_path, dest_path)
-    custom_exporter.set_active_template(filename, user_id)
+    custom_exporter.set_active_template(
+        filename,
+        owner_id,
+        owner_type=owner_type,
+    )
 
 
 def _validate_docx_upload(filename, content, *, deep_validation=True, total_size=None):
@@ -303,8 +341,11 @@ def _load_word_export_policy(
 ):
     conn = database.get_connection()
     try:
+        cursor = conn.cursor()
+        ensure_default_word_mappings(cursor, organization_id)
+        conn.commit()
         capabilities = resolve_document_export_capabilities(
-            conn.cursor(),
+            cursor,
             role_str,
             user_id,
             organization_id,
@@ -338,9 +379,13 @@ def _prepare_plan_render(plan_id, user_id, organization_id, role_str):
         "plan", context, mappings, capabilities
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
-    active_template = custom_exporter.get_active_template(user_id)
+    owner_type, owner_id = _word_template_scope(user_id, organization_id)
+    active_template = custom_exporter.get_active_template(
+        owner_id,
+        owner_type=owner_type,
+    )
     template_path, _ = _resolve_template_path(
-        user_id, active_template
+        owner_type, owner_id, active_template
     )
     return context, manifest, template_path, sensitive_groups
 
@@ -371,11 +416,15 @@ def _prepare_report_render(
         document_type, context, mappings, capabilities
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
-    active_template = custom_exporter.get_active_template(user_id)
+    owner_type, owner_id = _word_template_scope(user_id, organization_id)
+    active_template = custom_exporter.get_active_template(
+        owner_id,
+        owner_type=owner_type,
+    )
     if document_type in {"contract", "liquidation"}:
         active_template = "mau_hop_dong_lcnt.docx"
     template_path, _ = _resolve_template_path(
-        user_id, active_template
+        owner_type, owner_id, active_template
     )
     return context, manifest, template_path, sensitive_groups
 
@@ -579,8 +628,10 @@ async def export_timeline_api(request):
             timeout_seconds=10,
         )
         context, context_manifest = seal_docx_context("timeline", context)
+        owner_type, owner_id = _word_template_scope(user_id, org_name)
         template_path, _template_name = _resolve_template_path(
-            user_id,
+            owner_type,
+            owner_id,
             'mau_timeline_goi_thau.docx',
         )
         docx_bytes = await run_document_job_async(
@@ -631,10 +682,13 @@ async def list_templates_api(request):
         access_error = _word_config_access_response(request, role_or_err)
         if access_error is not None:
             return access_error
+        organization_id = get_active_org(request, user_id)
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
 
         templates = await run_blocking_io(
             custom_exporter.list_templates,
-            user_id,
+            owner_id,
+            owner_type=owner_type,
             timeout_seconds=5,
         )
         return JSONResponse(templates)
@@ -647,9 +701,11 @@ async def set_active_template_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err)
+        access_error = _word_config_access_response(request, role_or_err, write=True)
         if access_error is not None:
             return access_error
+        organization_id = get_active_org(request, user_id)
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
 
         data, json_error = await read_json_object(request)
         if json_error is not None:
@@ -666,14 +722,16 @@ async def set_active_template_api(request):
 
         _, safe_name = await run_blocking_io(
             _resolve_template_path,
-            user_id,
+            owner_type,
+            owner_id,
             template_name,
             timeout_seconds=5,
         )
         await run_blocking_io(
             custom_exporter.set_active_template,
             safe_name,
-            user_id,
+            owner_id,
+            owner_type=owner_type,
             timeout_seconds=5,
         )
         return JSONResponse({"success": True})
@@ -690,9 +748,18 @@ async def upload_template_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err)
+        access_error = _word_config_access_response(request, role_or_err, write=True)
         if access_error is not None:
             return access_error
+        organization_id = get_active_org(request, user_id)
+        upload_access_error = _word_template_upload_access_response(
+            request,
+            role_or_err,
+            organization_id,
+        )
+        if upload_access_error is not None:
+            return upload_access_error
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
 
         form = await request.form()
         file_obj = form.get('file')
@@ -711,7 +778,12 @@ async def upload_template_api(request):
                 return _docx_error(request, e, "upload_template_api")
 
             await run_blocking_io(
-                _persist_user_template_from_path, user_id, filename, str(upload_path), timeout_seconds=10,
+                _persist_scoped_template_from_path,
+                owner_type,
+                owner_id,
+                filename,
+                str(upload_path),
+                timeout_seconds=10,
             )
         return JSONResponse({"success": True, "filename": filename})
     except DocumentWorkerError as e:
@@ -729,8 +801,8 @@ async def list_word_mappings_api(request):
         org_name = get_active_org(request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
+        if not can_read_word_config(cursor, role_or_err, user_id, org_name):
+            return JSONResponse({"error": "Ban khong co quyen su dung cau hinh Word."}, status_code=403)
 
         ensure_default_word_mappings(cursor, org_name)
         conn.commit()

@@ -10,7 +10,7 @@ import {
 } from "../../frontend/packages/bidEvaluationLowPriceRules.js";
 
 const packageWithoutLots = {
-  linhVuc: "Hàng hóa",
+  linhVuc: "Xây lắp",
   phanLo: "Không",
   giaGoiThau: 1_000,
   phuongPhapDanhGia: "Giá thấp nhất",

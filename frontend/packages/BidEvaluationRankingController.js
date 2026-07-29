@@ -1,5 +1,8 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-import { calculateRankings } from "../shared/BiddingCalculations.js";
+import {
+  calculateRankings,
+  goodsPreferenceRankingBlockReason,
+} from "../shared/BiddingCalculations.js";
 import { parseVND } from "../shared/formatters.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
 import {
@@ -123,17 +126,20 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
   };
 }
 
-function renderRanking(row, bid, rankings, scores) {
+function renderRanking(row, bid, rankings, scores, pkg) {
   const rank = rankings[bid.id];
   const score = scores[bid.id];
   const financial = row.querySelector(".mt-dg-tai-chinh");
   if (financial) financial.value = rank ? `Xếp hạng ${rank}` : "";
   const rankCell = row.querySelector(".mt-dg-xep-hang");
   if (rankCell) {
+    const preferenceBlockReason = goodsPreferenceRankingBlockReason(pkg, bid);
     const conclusion = controlValue(row.querySelector(".mt-ketluan-cell"));
     const isFailed = conclusion.includes("Không đạt")
       || String(bid.danhGiaKetLuan || "").includes("Không đạt");
-    rankCell.textContent = rank ? `Xếp hạng ${rank}` : isFailed ? "Không xếp hạng" : "--";
+    rankCell.textContent = rank
+      ? `Xếp hạng ${rank}`
+      : preferenceBlockReason || (isFailed ? "Không xếp hạng" : "--");
   }
   const scoreCell = row.querySelector(".mt-combined-score");
   if (scoreCell) {
@@ -216,7 +222,7 @@ export function createBidEvaluationRankingController({
       const scoreChanged = previousScores === null
         || previousScores[bidId] !== scores[bidId];
       if (rankingChanged || scoreChanged) {
-        renderRanking(row, bid, rankings, scores);
+        renderRanking(row, bid, rankings, scores, pkg);
       }
     });
     previousRankings = { ...rankings };

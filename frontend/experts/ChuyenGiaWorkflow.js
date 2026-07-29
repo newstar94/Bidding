@@ -2,6 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
 import {
   createInitialVersion,
   createNextVersion,
@@ -89,6 +90,10 @@ export function editChuyenGia(id) {
   const uploadZoneChuky = document.getElementById("cg-upload-zone-chuky");
   const previewContainerChuky = document.getElementById("cg-preview-container-chuky");
   const previewImgChuky = document.getElementById("cg-anh-preview-chuky");
+  const canUploadAssets = canUploadWorkspaceAssets(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  );
   previewImg.onerror = () => {
     setRuntimeStyle(previewContainer, "display", "none");
     setRuntimeStyle(uploadZone, "display", "flex");
@@ -147,6 +152,28 @@ export function editChuyenGia(id) {
     setRuntimeStyle(previewContainerChuky, "display", "none");
     setRuntimeStyle(uploadZoneChuky, "display", "flex");
   }
+  [
+    {
+      zone: uploadZone,
+      input: document.getElementById("cg-anhchungchi"),
+      remove: document.getElementById("btn-cg-remove-file"),
+    },
+    {
+      zone: uploadZoneChuky,
+      input: document.getElementById("cg-anhchuky"),
+      remove: document.getElementById("btn-cg-remove-file-chuky"),
+    },
+  ].forEach(({ zone, input, remove }) => {
+    if (input) input.disabled = !canUploadAssets;
+    if (zone) {
+      zone.classList.toggle("is-upload-disabled", !canUploadAssets);
+      zone.setAttribute("aria-disabled", String(!canUploadAssets));
+      zone.title = canUploadAssets
+        ? "Tải lên hình ảnh"
+        : "Chỉ Quản lý của tổ chức được tải lên hình ảnh này";
+    }
+    if (remove) setRuntimeStyle(remove, "display", canUploadAssets ? "" : "none");
+  });
   this.view.openModal("modal-chuyengia");
 }
 export async function handleChuyenGiaSubmit(e) {
@@ -223,6 +250,22 @@ export async function handleChuyenGiaSubmit(e) {
   }
   const ngayCapCCCDYMD = this.model.convertDMYToYMD(formValues.ngayCapCCCD);
   const ngayCapChungChiYMD = this.model.convertDMYToYMD(formValues.ngayCapChungChi);
+  const canUploadAssets = canUploadWorkspaceAssets(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  );
+  if (
+    !canUploadAssets
+    && [this.tempChuyenGiaImageBase64, this.tempChuyenGiaSignatureBase64]
+      .some((value) => String(value || "").startsWith("data:image"))
+  ) {
+    await this.view.customAlert(
+      "Từ chối truy cập",
+      "Chỉ Quản lý của tổ chức được tải lên ảnh chứng chỉ và ảnh chữ ký.",
+      "lock",
+    );
+    return;
+  }
   const certExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaImageBase64);
   const sigExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaSignatureBase64);
   let data = {

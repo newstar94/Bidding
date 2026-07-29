@@ -15,7 +15,7 @@ export function bindImageUploadPreview(config) {
   if (fileInput.__bfImageUploadBound) return;
   fileInput.__bfImageUploadBound = true;
   const handleFile = (file) => {
-    if (!file) return;
+    if (!file || fileInput.disabled) return;
     if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) {
       alertInvalid?.();
       return;
@@ -34,9 +34,12 @@ export function bindImageUploadPreview(config) {
     };
     reader.readAsDataURL(file);
   };
-  uploadZone.addEventListener("click", () => fileInput.click());
+  uploadZone.addEventListener("click", () => {
+    if (!fileInput.disabled) fileInput.click();
+  });
   uploadZone.addEventListener("dragover", (event) => {
     event.preventDefault();
+    if (fileInput.disabled) return;
     uploadZone.classList.add("dragover");
   });
   uploadZone.addEventListener("dragleave", () => {
@@ -45,6 +48,7 @@ export function bindImageUploadPreview(config) {
   uploadZone.addEventListener("drop", (event) => {
     event.preventDefault();
     uploadZone.classList.remove("dragover");
+    if (fileInput.disabled) return;
     if (event.dataTransfer.files.length > 0) {
       handleFile(event.dataTransfer.files[0]);
     }
@@ -57,6 +61,7 @@ export function bindImageUploadPreview(config) {
   if (removeBtn) {
     removeBtn.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (fileInput.disabled) return;
       onRemove?.();
       fileInput.value = "";
       previewImg.src = "";

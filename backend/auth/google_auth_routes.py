@@ -52,6 +52,7 @@ from backend.shared.async_io import (
 )
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_write
+from backend.documents.word_defaults import ensure_personal_word_workspace
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
@@ -326,6 +327,7 @@ async def google_login_api(request):
                    VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, 0)""",
                 (new_id, random_password_hash, name, email, email, picture),
             )
+            ensure_personal_word_workspace(cursor, new_id)
             cursor.execute(
                 """
                 INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)

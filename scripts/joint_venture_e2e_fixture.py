@@ -687,6 +687,11 @@ def _cleanup(data: dict) -> dict:
                 cursor.execute("DELETE FROM tai_khoan WHERE id = %s", (str(data["account"]["id"]),))
     if data.get("account"):
         shutil.rmtree(WORD_TEMPLATE_DIR / str(data["account"]["id"]), ignore_errors=True)
+    safe_organization_id = organization_id.replace("..", "").replace("/", "").replace("\\", "").strip()
+    shutil.rmtree(
+        WORD_TEMPLATE_DIR / "organizations" / safe_organization_id,
+        ignore_errors=True,
+    )
     word_template_path = str(data.get("wordTemplatePath") or "").strip()
     if word_template_path:
         Path(word_template_path).unlink(missing_ok=True)

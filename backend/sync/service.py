@@ -18,7 +18,10 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.idempotency import acquire_idempotency_lock
-from backend.shared.access_policy import OWNERSHIP_SCOPED_TABLES
+from backend.shared.access_policy import (
+    OWNERSHIP_SCOPED_TABLES,
+    can_upload_workspace_assets,
+)
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
 from backend.observability.recording import record_database_phase
@@ -144,27 +147,59 @@ async def process_sync_request(request, broadcast_callback=None):
         return response
 
 
-def _persist_incoming_images(data, newly_written_images, organization_id):
-    """Decode/re-encode image payloads before opening the write transaction."""
+_PROTECTED_MEDIA_COLUMNS = {
+    "chuyen_gia": {
+        "anh_chung_chi": "cert",
+        "anh_chu_ky": "sig",
+    },
+    "nha_thau": {
+        "anh_dau": "stamp",
+    },
+}
 
-    image_columns = {
-        "chuyen_gia": {
-            "anh_chung_chi": "cert",
-            "anh_chu_ky": "sig",
-        },
-        "nha_thau": {
-            "anh_dau": "stamp",
-        },
-    }
+
+def validate_protected_media_upload_access(data, *, owner_type, can_upload):
+    """Return manager-only violations for new signature-related image uploads."""
+
+    if owner_type != "organization" or can_upload:
+        return []
+    errors = []
     for _payload_key, table_name, items in iter_sync_table_payloads(data):
-        if table_name not in image_columns:
+        if table_name not in _PROTECTED_MEDIA_COLUMNS:
             continue
         for original_item in items:
             if not isinstance(original_item, dict):
                 continue
             item = canonicalize_payload_item(table_name, original_item)
             record_id = clean_id(item.get("id"))
-            for column_name, suffix in image_columns[table_name].items():
+            for column_name in _PROTECTED_MEDIA_COLUMNS[table_name]:
+                value = get_payload_value(table_name, item, column_name)
+                if isinstance(value, str) and value.startswith("data:image"):
+                    errors.append({
+                        "table": table_name,
+                        "id": record_id,
+                        "field": column_name,
+                        "code": "ORG_ASSET_UPLOAD_MANAGER_REQUIRED",
+                        "message": (
+                            "Chỉ Quản lý của tổ chức được tải lên ảnh dấu, "
+                            "ảnh chữ ký và ảnh chứng chỉ."
+                        ),
+                    })
+    return errors
+
+
+def _persist_incoming_images(data, newly_written_images, organization_id):
+    """Decode/re-encode image payloads before opening the write transaction."""
+
+    for _payload_key, table_name, items in iter_sync_table_payloads(data):
+        if table_name not in _PROTECTED_MEDIA_COLUMNS:
+            continue
+        for original_item in items:
+            if not isinstance(original_item, dict):
+                continue
+            item = canonicalize_payload_item(table_name, original_item)
+            record_id = clean_id(item.get("id"))
+            for column_name, suffix in _PROTECTED_MEDIA_COLUMNS[table_name].items():
                 json_key = json_key_for_column(table_name, column_name)
                 value = get_payload_value(table_name, item, column_name)
                 if not (
@@ -212,6 +247,12 @@ def _resolve_sync_actor_context(request, envelope, log_sync_error):
             )
         if owner_type not in {"personal", "organization"}:
             raise OrgPermissionError("Không thể xác định phạm vi dữ liệu.")
+        asset_upload_allowed = owner_type == "personal" or can_upload_workspace_assets(
+            authorization_cursor,
+            role_or_err,
+            user_id,
+            organization_id,
+        )
         if envelope.client_mutation_id:
             existing_mutation = authorization_cursor.execute(
                 """
@@ -255,6 +296,7 @@ def _resolve_sync_actor_context(request, envelope, log_sync_error):
         user_id=user_id,
         organization_id=organization_id,
         owner_type=owner_type,
+        can_upload_workspace_assets=asset_upload_allowed,
     ), None
 
 
@@ -457,6 +499,20 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
         owner_type = actor_context.owner_type
         client_mutation_id = envelope.client_mutation_id
         mutation_request_hash = envelope.request_hash
+
+        protected_media_errors = validate_protected_media_upload_access(
+            data,
+            owner_type=owner_type,
+            can_upload=actor_context.can_upload_workspace_assets,
+        )
+        if protected_media_errors:
+            return error_response(
+                request,
+                "ORG_ASSET_UPLOAD_MANAGER_REQUIRED",
+                "Chỉ Quản lý của tổ chức được tải lên ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
+                status_code=403,
+                fields={"errors": protected_media_errors},
+            )
 
         _persist_incoming_images(data, newly_written_images, org_name)
 

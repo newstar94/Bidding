@@ -2,7 +2,7 @@ import hashlib
 
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
-from backend.shared.workspace_scope import personal_scope_owner_id
+from backend.shared.workspace_scope import personal_scope_id, personal_scope_owner_id
 
 
 WORD_DEFAULT_MAPPINGS_VERSION = 13
@@ -587,6 +587,28 @@ def ensure_default_word_mappings(cursor, organization_id):
             (organization_id, WORD_DEFAULT_MAPPINGS_VERSION),
         )
     return inserted
+
+
+def ensure_personal_word_workspace(cursor, user_id):
+    """Create the personal sync scope and default Word variables for an account."""
+
+    user_id = str(user_id or "").strip()
+    if not user_id:
+        return 0
+    account = cursor.execute(
+        "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'",
+        (user_id,),
+    ).fetchone()
+    if not account:
+        return 0
+    scope_id = personal_scope_id(user_id)
+    cursor.execute(
+        """INSERT INTO sync_metadata (organization_id, current_version)
+           VALUES (?, 1)
+           ON CONFLICT (organization_id) DO NOTHING""",
+        (scope_id,),
+    )
+    return ensure_default_word_mappings(cursor, scope_id)
 
 
 def ensure_default_word_mappings_for_all_orgs(cursor):

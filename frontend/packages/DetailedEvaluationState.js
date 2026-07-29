@@ -5,7 +5,10 @@ import {
   applyHierarchicalDetailedEvaluationResults,
   markHierarchicalDetailedEvaluationCriteria,
 } from "./detailedEvaluationHierarchy.js";
-import { resolveDetailedEvaluationContext } from "./detailedEvaluationRules.js";
+import {
+  resolveAccessibleDetailedEvaluationGroups,
+  resolveDetailedEvaluationContext,
+} from "./detailedEvaluationRules.js";
 import {
   getCriteriaForGroup,
   getDetailedEvaluationBidLabel,
@@ -155,7 +158,7 @@ export function resolveDetailedEvaluationState(controller) {
   const pkg = resolvePackage(controller);
   if (!pkg) return null;
   const roundType = getEvaluationRoundType(pkg, controller.currentDanhGiaTab);
-  const context = resolveDetailedEvaluationContext(pkg, roundType);
+  let context = resolveDetailedEvaluationContext(pkg, roundType);
   const rawBids = context.contractorFilter === "technical-qualified"
     ? getEligibleFinancialEvaluationBids(controller.model, pkg)
     : getPackageEvaluationBids(controller.model, pkg);
@@ -165,9 +168,6 @@ export function resolveDetailedEvaluationState(controller) {
   }));
   if (!bids.some((bid) => String(bid.id) === String(controller.selectedEvaluationBidId))) {
     controller.selectedEvaluationBidId = bids[0]?.id || null;
-  }
-  if (!context.visibleGroups.includes(controller.selectedDetailedEvaluationTab)) {
-    controller.selectedDetailedEvaluationTab = context.visibleGroups[0] || "validity";
   }
   const bid = rawBids.find(
     (item) => String(item.id) === String(controller.selectedEvaluationBidId),
@@ -214,6 +214,26 @@ export function resolveDetailedEvaluationState(controller) {
     controller._detailedEvaluationDrafts.set(draftKey, report);
   }
   if (report) report = applyHierarchicalDetailedEvaluationResults(report, criteria);
+
+  const aggregation = aggregateDetailedEvaluationReport({
+    report: report || {}, criteria, groups: context.configuredGroups,
+  });
+  const bidderGoodsRows = (controller.model.state.hanghoaduthaunhathau || []).filter(
+    (row) => String(row.thongTinMoThauId || "") === String(bid?.id || ""),
+  );
+  const bidderGoodsReady = bidderGoodsRows.length > 0 && bidderGoodsRows.every(
+    (row) => row.isDraft === false && row.trangThaiUuDai === "ready",
+  );
+  const accessibleGroups = resolveAccessibleDetailedEvaluationGroups({
+    configuredGroups: context.configuredGroups,
+    report,
+    aggregationByGroup: aggregation.byGroup,
+    bidderGoodsReady,
+  });
+  context = { ...context, accessibleGroups, visibleGroups: accessibleGroups };
+  if (!accessibleGroups.includes(controller.selectedDetailedEvaluationTab)) {
+    controller.selectedDetailedEvaluationTab = accessibleGroups.at(-1) || "validity";
+  }
 
   const workflowState = getPackageWorkflowState(pkg, rawBids);
   const effectiveStatus = resolvePackageResultStatus(pkg);

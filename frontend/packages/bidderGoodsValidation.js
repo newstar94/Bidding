@@ -1,34 +1,91 @@
+function moneyBigInt(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  try {
+    return BigInt(text);
+  } catch {
+    return null;
+  }
+}
+
+function positiveDecimalFraction(value) {
+  const match = String(value ?? "").trim().replace(",", ".").match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match) return null;
+  const fraction = match[2] || "";
+  const numerator = BigInt(`${match[1]}${fraction}`);
+  if (numerator <= 0n) return null;
+  return { numerator, denominator: 10n ** BigInt(fraction.length) };
+}
+
+function exactLineDifference(row) {
+  const quantity = positiveDecimalFraction(row?.khoiLuong);
+  const unitPrice = moneyBigInt(row?.donGiaDuThau);
+  const total = moneyBigInt(row?.thanhTienDuThau);
+  if (!quantity || unitPrice === null || total === null) return null;
+  return {
+    numerator: total * quantity.denominator - quantity.numerator * unitPrice,
+    denominator: quantity.denominator,
+  };
+}
+
 export function bidderGoodsLineDifference(row) {
-  const quantity = Number(row?.khoiLuong);
-  const unitPrice = Number(row?.donGiaDuThau);
-  const total = Number(row?.thanhTienDuThau);
-  if (![quantity, unitPrice, total].every(Number.isFinite)) return null;
-  return total - quantity * unitPrice;
+  const difference = exactLineDifference(row);
+  if (!difference) return null;
+  const numeric = Number(difference.numerator) / Number(difference.denominator);
+  return Number.isSafeInteger(Number(row?.donGiaDuThau))
+    && Number.isSafeInteger(Number(row?.thanhTienDuThau))
+    && Number.isFinite(numeric)
+    ? numeric
+    : difference.numerator;
 }
 
 export function validateBidderGoodsRow(row, { official = false } = {}) {
   const errors = [];
   if (!String(row?.danhMucHangHoa || "").trim()) errors.push("Danh mục hàng hóa không được để trống.");
-  if (!Number.isFinite(Number(row?.khoiLuong)) || Number(row.khoiLuong) <= 0) errors.push("Khối lượng phải lớn hơn 0.");
-  if (!Number.isSafeInteger(Number(row?.donGiaDuThau)) || Number(row.donGiaDuThau) < 0) errors.push("Đơn giá dự thầu phải là số tiền không âm.");
-  if (!Number.isSafeInteger(Number(row?.thanhTienDuThau)) || Number(row.thanhTienDuThau) < 0) errors.push("Thành tiền phải là số tiền không âm.");
-  const difference = bidderGoodsLineDifference(row);
-  if (difference === null || Math.abs(difference) > 1) errors.push("Thành tiền không khớp khối lượng × đơn giá (sai lệch tối đa 1 VND).");
+  if (!positiveDecimalFraction(row?.khoiLuong)) errors.push("Khối lượng phải lớn hơn 0.");
+  if (moneyBigInt(row?.donGiaDuThau) === null) errors.push("Đơn giá dự thầu phải là số tiền không âm.");
+  if (moneyBigInt(row?.thanhTienDuThau) === null) errors.push("Thành tiền phải là số tiền không âm.");
+  const difference = exactLineDifference(row);
+  if (
+    difference === null
+    || (difference.numerator < 0n ? -difference.numerator : difference.numerator)
+      > difference.denominator
+  ) errors.push("Thành tiền không khớp khối lượng × đơn giá (sai lệch tối đa 1 VND).");
   if (official && row?.mappingStatus !== "matched") errors.push("Hàng hóa chưa được ghép duy nhất với danh mục yêu cầu.");
+  if (!Number.isInteger(Number(row?.maUuDai ?? 0)) || Number(row?.maUuDai ?? 0) < 0 || Number(row?.maUuDai ?? 0) > 5) {
+    errors.push("Mã ưu đãi phải là số nguyên từ 0 đến 5.");
+  }
+  if (official && ![undefined, null, "", "matched"].includes(row?.uuDaiMatchStatus)) {
+    errors.push("Mapping hoặc khai báo Mẫu 15A còn mơ hồ/mâu thuẫn.");
+  }
+  if (official && row?.preferenceWarnings?.length) errors.push("Khai báo ưu đãi còn cảnh báo chưa xử lý.");
   return errors;
 }
 
 export function summarizeBidderGoods({ rows = [], requirements = [], bidPrice = null } = {}) {
-  const total = rows.reduce((sum, row) => sum + (Number.isFinite(Number(row.thanhTienDuThau)) ? Number(row.thanhTienDuThau) : 0), 0);
+  const totalBigInt = rows.reduce(
+    (sum, row) => sum + (moneyBigInt(row.thanhTienDuThau) ?? 0n),
+    0n,
+  );
+  const total = totalBigInt <= BigInt(Number.MAX_SAFE_INTEGER)
+    ? Number(totalBigInt) : totalBigInt.toString();
   const mappedIds = new Set(rows.filter((row) => row.mappingStatus === "matched").map((row) => String(row.goiThauHangHoaId)));
   const requiredIds = new Set(requirements.map((item) => String(item.id)));
   const missing = [...requiredIds].filter((id) => !mappedIds.has(id));
   const duplicate = rows.filter((row) => row.mappingStatus === "duplicate").length;
   const unmatched = rows.filter((row) => row.mappingStatus !== "matched" && row.mappingStatus !== "duplicate").length;
   const invalidRows = rows.filter((row) => validateBidderGoodsRow(row, { official: true }).length > 0).length;
-  const numericBidPrice = bidPrice === null || bidPrice === "" ? null : Number(bidPrice);
-  const difference = Number.isFinite(numericBidPrice) ? total - numericBidPrice : null;
-  return { total, difference, missing, duplicate, unmatched, invalidRows };
+  const parsedBidPrice = bidPrice === null || bidPrice === "" ? null : moneyBigInt(bidPrice);
+  const differenceBigInt = parsedBidPrice === null ? null : totalBigInt - parsedBidPrice;
+  const difference = differenceBigInt === null
+    ? null
+    : differenceBigInt >= BigInt(Number.MIN_SAFE_INTEGER)
+      && differenceBigInt <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(differenceBigInt)
+      : differenceBigInt.toString();
+  const matchesBidPrice = differenceBigInt !== null
+    && (differenceBigInt < 0n ? -differenceBigInt : differenceBigInt) <= 1n;
+  return { total, difference, matchesBidPrice, missing, duplicate, unmatched, invalidRows };
 }
 
 export function validateBidderGoodsSubmission(context = {}) {
@@ -40,6 +97,6 @@ export function validateBidderGoodsSubmission(context = {}) {
   if (summary.unmatched) errors.push(`Còn ${summary.unmatched} dòng chưa ghép.`);
   if (summary.duplicate) errors.push(`Có ${summary.duplicate} dòng trùng hàng hóa yêu cầu.`);
   if (summary.invalidRows) errors.push(`Có ${summary.invalidRows} dòng sai dữ liệu hoặc thành tiền.`);
-  if (summary.difference === null || Math.abs(summary.difference) > 1) errors.push("Tổng thành tiền không khớp giá dự thầu trước giảm giá.");
+  if (!summary.matchesBidPrice) errors.push("Tổng thành tiền không khớp giá dự thầu trước giảm giá.");
   return { valid: errors.length === 0, errors, summary };
 }

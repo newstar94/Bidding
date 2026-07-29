@@ -113,13 +113,15 @@ def _setup(data: dict) -> dict:
                     """INSERT INTO goi_thau (
                            id, organization_id, owner_type, id_goc, ma_goi_thau,
                            ke_hoach_id, ten_goi_thau, gia_goi_thau, linh_vuc,
-                           phuong_thuc_lua_chon, thoi_gian_thuc_hien, nguon_von,
+                           phuong_thuc_lua_chon, phuong_phap_danh_gia,
+                           thoi_gian_thuc_hien, nguon_von,
                            thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc,
                            thoi_gian_dang_tai, thoi_gian_dong_thau,
                            thoi_gian_mo_thau, phan_lo, trang_thai
                        ) VALUES (
                            %s, %s, 'organization', %s, %s, %s, %s, %s,
-                           'Hàng hóa', %s, '30 ngày', 'Nguồn vốn E2E',
+                           'Hàng hóa', %s, 'Giá thấp nhất',
+                           '30 ngày', 'Nguồn vốn E2E',
                            '30 ngày', '2026-07-01', '2026-07-01 08:00:00',
                            '2026-07-05 08:00:00', '2026-07-05 08:05:00', %s,
                            'EVALUATING'
@@ -195,6 +197,104 @@ def _setup(data: dict) -> dict:
                             f"Nhà thầu E2E {run_id}",
                         ),
                     )
+                    opening_id = opening["id"]
+                    cursor.execute(
+                        """INSERT INTO ket_qua_danh_gia_nha_thau (
+                               id, organization_id, owner_type, goi_thau_id,
+                               thong_tin_mo_thau_id, danh_gia_hop_le,
+                               danh_gia_nang_luc, danh_gia_ky_thuat,
+                               danh_gia_ket_luan
+                           ) VALUES (
+                               %s, %s, 'organization', %s, %s,
+                               'Đạt', 'Đạt', 'Đạt', 'Đạt'
+                           )""",
+                        (
+                            f"evaluation-result:{opening_id}",
+                            organization_id,
+                            package_id,
+                            opening_id,
+                        ),
+                    )
+                if not package.get("twoEnvelope"):
+                    single_round_id = f"evaluation-round:{package_id}:single"
+                    cursor.execute(
+                        """INSERT INTO vong_danh_gia (
+                               id, organization_id, owner_type, goi_thau_id,
+                               loai_vong, thu_tu, trang_thai
+                           ) VALUES (%s, %s, 'organization', %s, 'single', 0, 'draft')""",
+                        (single_round_id, organization_id, package_id),
+                    )
+                    criterion_ids = {}
+                    for order, group in enumerate(
+                        ("validity", "capacity", "technical")
+                    ):
+                        criterion_id = f"{single_round_id}:{group}"
+                        criterion_ids[group] = criterion_id
+                        cursor.execute(
+                            """INSERT INTO tieu_chi_danh_gia (
+                                   id, organization_id, owner_type,
+                                   vong_danh_gia_id, ma_tieu_chi,
+                                   ten_tieu_chi, nhom_danh_gia,
+                                   loai_ket_qua, bat_buoc, thu_tu
+                               ) VALUES (
+                                   %s, %s, 'organization', %s, %s, %s,
+                                   %s, 'pass_fail', 1, %s
+                               )""",
+                            (
+                                criterion_id,
+                                organization_id,
+                                single_round_id,
+                                f"E2E_{group.upper()}",
+                                f"Tiêu chí E2E {group}",
+                                group,
+                                order,
+                            ),
+                        )
+                    extension = json.dumps({
+                        "schemaVersion": 1,
+                        "workflowVersion": 2,
+                        "completedGroups": ["validity", "capacity", "technical"],
+                        "groupResults": {
+                            "validity": "Đạt",
+                            "capacity": "Đạt",
+                            "technical": "Đạt",
+                        },
+                    }, ensure_ascii=False)
+                    for opening in package["openings"]:
+                        opening_id = opening["id"]
+                        report_id = (
+                            f"detailed-evaluation:{opening_id}:{single_round_id}"
+                        )
+                        cursor.execute(
+                            """INSERT INTO bao_cao_danh_gia_nha_thau (
+                                   id, organization_id, owner_type,
+                                   vong_danh_gia_id, thong_tin_mo_thau_id,
+                                   trang_thai, ket_luan, extension_json
+                               ) VALUES (%s, %s, 'organization', %s, %s, 'draft', '', %s)""",
+                            (
+                                report_id,
+                                organization_id,
+                                single_round_id,
+                                opening_id,
+                                extension,
+                            ),
+                        )
+                        for group, criterion_id in criterion_ids.items():
+                            cursor.execute(
+                                """INSERT INTO chi_tiet_danh_gia_nha_thau (
+                                       id, organization_id, owner_type,
+                                       bao_cao_danh_gia_nha_thau_id,
+                                       tieu_chi_danh_gia_id, ket_qua
+                                   ) VALUES (
+                                       %s, %s, 'organization', %s, %s, 'pass'
+                                   )""",
+                                (
+                                    f"{report_id}:{group}",
+                                    organization_id,
+                                    report_id,
+                                    criterion_id,
+                                ),
+                            )
                 if package.get("twoEnvelope"):
                     technical_round_id = f"evaluation-round:{package_id}:technical"
                     cursor.execute(
@@ -213,25 +313,6 @@ def _setup(data: dict) -> dict:
                             f"{run_id}/BC-KT",
                         ),
                     )
-                    for opening in package["openings"]:
-                        opening_id = opening["id"]
-                        cursor.execute(
-                            """INSERT INTO ket_qua_danh_gia_nha_thau (
-                                   id, organization_id, owner_type, goi_thau_id,
-                                   thong_tin_mo_thau_id, danh_gia_hop_le,
-                                   danh_gia_nang_luc, danh_gia_ky_thuat,
-                                   danh_gia_ket_luan
-                               ) VALUES (
-                                   %s, %s, 'organization', %s, %s,
-                                   'Đạt', 'Đạt', 'Đạt', 'Đạt'
-                               )""",
-                            (
-                                f"evaluation-result:{opening_id}",
-                                organization_id,
-                                package_id,
-                                opening_id,
-                            ),
-                        )
 
             versioned_tables = (
                 "chu_dau_tu",
@@ -264,7 +345,11 @@ def _verify(data: dict) -> dict:
                     """SELECT count(*),
                               COALESCE(sum(goods.thanh_tien_du_thau), 0),
                               COALESCE(sum(CASE WHEN goods.is_draft = 1 THEN 1 ELSE 0 END), 0),
-                              count(DISTINCT goods.goi_thau_hang_hoa_id)
+                              count(DISTINCT goods.goi_thau_hang_hoa_id),
+                              COALESCE(sum(CASE WHEN goods.trang_thai_uu_dai = 'ready' THEN 1 ELSE 0 END), 0),
+                              COALESCE(sum(CASE WHEN goods.thanh_tien_sau_uu_dai IS NOT NULL THEN 1 ELSE 0 END), 0),
+                              min(goods.ma_uu_dai),
+                              max(goods.ma_uu_dai)
                          FROM hang_hoa_du_thau_nha_thau AS goods
                         WHERE goods.organization_id = %s
                           AND goods.goi_thau_id = %s""",
@@ -274,6 +359,10 @@ def _verify(data: dict) -> dict:
                 actual_total = int(row[1])
                 draft_count = int(row[2])
                 distinct_requirements = int(row[3])
+                ready_count = int(row[4])
+                calculated_count = int(row[5])
+                minimum_code = int(row[6])
+                maximum_code = int(row[7])
                 expected_count = int(package["expectedCount"])
                 expected_total = int(package["expectedTotal"])
                 if actual_count != expected_count:
@@ -292,25 +381,44 @@ def _verify(data: dict) -> dict:
                     raise AssertionError(
                         f"{package['code']}: duplicate or missing requirement mappings"
                     )
+                if ready_count != expected_count or calculated_count != expected_count:
+                    raise AssertionError(
+                        f"{package['code']}: preference ready/calculated "
+                        f"{ready_count}/{calculated_count}, expected {expected_count}"
+                    )
+                if not 0 <= minimum_code <= maximum_code <= 5:
+                    raise AssertionError(
+                        f"{package['code']}: invalid preference-code range "
+                        f"{minimum_code}..{maximum_code}"
+                    )
                 opening_rows = cursor.execute(
                     """SELECT opening.id, opening.gia_du_thau,
                               count(goods.id),
-                              COALESCE(sum(goods.thanh_tien_du_thau), 0)
+                              COALESCE(sum(goods.thanh_tien_du_thau), 0),
+                              opening.trang_thai_tinh_uu_dai,
+                              opening.gia_so_sanh_sau_uu_dai
                          FROM thong_tin_mo_thau AS opening
                          LEFT JOIN hang_hoa_du_thau_nha_thau AS goods
                            ON goods.organization_id = opening.organization_id
                           AND goods.thong_tin_mo_thau_id = opening.id
                         WHERE opening.organization_id = %s
                           AND opening.goi_thau_id = %s
-                        GROUP BY opening.id, opening.gia_du_thau
+                        GROUP BY opening.id, opening.gia_du_thau,
+                                 opening.trang_thai_tinh_uu_dai,
+                                 opening.gia_so_sanh_sau_uu_dai
                         ORDER BY opening.id""",
                     (organization_id, package["id"]),
                 ).fetchall()
-                for opening_id, bid_price, count, total in opening_rows:
+                for opening_id, bid_price, count, total, preference_status, comparison_price in opening_rows:
                     if int(count) <= 0 or abs(int(total) - int(bid_price)) > 1:
                         raise AssertionError(
                             f"{package['code']}/{opening_id}: "
                             f"{count} rows total {total}, bid price {bid_price}"
+                        )
+                    if preference_status != "ready" or comparison_price is None:
+                        raise AssertionError(
+                            f"{package['code']}/{opening_id}: preference aggregate "
+                            f"{preference_status}/{comparison_price}"
                         )
                 results.append(
                     {

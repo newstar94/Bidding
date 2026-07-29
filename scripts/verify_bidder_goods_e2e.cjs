@@ -414,13 +414,31 @@ async function importAndPersist(page, packageData, workflowTab) {
   await waitForApp(page);
   await page.locator(`[data-workflow-tab="${workflowTab}"]`).click();
   await openBidderGoodsDetail(page);
+  const tableHeader = await page.locator(".bidder-goods-table thead").innerText();
+  for (const expectedHeader of [
+    "Ưu đãi",
+    "Giá dự thầu sau ưu đãi",
+    "Thành tiền sau ưu đãi",
+  ]) {
+    if (!tableHeader.includes(expectedHeader)) {
+      throw new Error(`${packageData.code}: missing goods column ${expectedHeader}`);
+    }
+  }
+  await page.locator(
+    '[data-detailed-evaluation-group="financial"]',
+  ).waitFor({ state: "visible", timeout: 20_000 });
   const persistedRowsForSelectedBid = await page.locator(
     ".bidder-goods-table tbody tr[data-bidder-goods-id]",
   ).count();
   if (!persistedRowsForSelectedBid) {
     throw new Error(`${packageData.code}: no bidder goods remained after reload`);
   }
-  return { previewCount, bidScopes: bidValues.length, persistedRowsForSelectedBid };
+  return {
+    previewCount,
+    bidScopes: bidValues.length,
+    persistedRowsForSelectedBid,
+    financialUnlocked: true,
+  };
 }
 
 (async () => {

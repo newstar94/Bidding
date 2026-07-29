@@ -6,6 +6,7 @@ import { renderChuyenGiaTable, showChuyenGiaDetails } from "../experts/ChuyenGia
 import { renderHopDongTable, showHopDongDetails, renderContractVersionDetails } from "../contracts/HopDongComponent.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
+import { canManageWorkspaceWordVariables } from "../auth/accessContext.js";
 import {
   getWordColumnLabel,
   getWordSourceTableLabel,
@@ -27,6 +28,10 @@ export {
 export function renderBieumauTab(templatesList = []) {
   const tbody = document.getElementById("word-templates-tbody");
   if (!tbody) return;
+  const canManageWordVariables = canManageWorkspaceWordVariables(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  );
   if (templatesList.length === 0) {
     tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Đang tải biểu mẫu...</td></tr>`);
     return;
@@ -38,12 +43,16 @@ export function renderBieumauTab(templatesList = []) {
       ? '<span class="badge badge-neutral"><i data-lucide="file-x"></i> Chưa có tệp mẫu</span>'
       : tpl.is_active
         ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đang hoạt động</span>'
-        : `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`;
+        : canManageWordVariables
+          ? `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`
+          : '<span class="badge badge-neutral">Chỉ xem</span>';
     const actionButton = !isAvailable
       ? '<span class="text-muted">Chưa cài đặt</span>'
       : tpl.is_active
         ? '<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>'
-        : `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`;
+        : canManageWordVariables
+          ? `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`
+          : '<span class="text-muted">Do Quản lý thiết lập</span>';
     return `
             <tr>
                 <td class="fw-bold">${escapeHtml(tpl.name)}</td>
@@ -57,6 +66,10 @@ export function renderBieumauTab(templatesList = []) {
 export function renderDictionary(group) {
   const tbody = document.getElementById("dictionary-table-body");
   if (!tbody) return;
+  const canManageWordVariables = canManageWorkspaceWordVariables(
+    this.model.state.activeuser || {},
+    this.model.state.activerole,
+  );
   const DICTIONARY = {
     global: [],
     custom_lists: []
@@ -470,12 +483,14 @@ export function renderDictionary(group) {
                     <button class="btn btn-outline btn-sm btn-copy-var bf-s-53071a6020" data-copy="{#${safeVariableName}}&#10;&#10;{/${safeVariableName}}" title="Sao chép cả cặp tag">
                         <i data-lucide="copy" class="bf-s-babf71b769"></i>
                     </button>
+                    ${canManageWordVariables ? `
                     <button class="action-btn btn-edit bf-s-bdcd6b1c67" data-bf-action="call" data-fn="editWordMapping" data-arg-key="${editArgsKey}" title="Sửa ánh xạ">
                         <i data-lucide="edit-2" class="bf-s-0cfddc8ac4"></i>
                     </button>
                     <button class="action-btn btn-delete bf-s-bdcd6b1c67" data-bf-action="call" data-fn="deleteWordMapping" data-arg-key="${deleteArgsKey}" title="Xóa ánh xạ">
                         <i data-lucide="trash-2" class="bf-s-8931a7bc44"></i>
                     </button>
+                    ` : ""}
                 </div>
             `;
     } else {
@@ -486,12 +501,14 @@ export function renderDictionary(group) {
                         <button class="btn btn-outline btn-sm btn-copy-var bf-s-53071a6020" data-copy="${safeCopyCode}" title="Sao chép">
                             <i data-lucide="copy" class="bf-s-babf71b769"></i>
                         </button>
+                        ${canManageWordVariables ? `
                         <button class="action-btn btn-edit bf-s-bdcd6b1c67" data-bf-action="call" data-fn="editWordMapping" data-arg-key="${editArgsKey}" title="Sửa ánh xạ">
                             <i data-lucide="edit-2" class="bf-s-0cfddc8ac4"></i>
                         </button>
                         <button class="action-btn btn-delete bf-s-bdcd6b1c67" data-bf-action="call" data-fn="deleteWordMapping" data-arg-key="${deleteArgsKey}" title="Xóa ánh xạ">
                             <i data-lucide="trash-2" class="bf-s-8931a7bc44"></i>
                         </button>
+                        ` : ""}
                     </div>
                 `;
       } else {

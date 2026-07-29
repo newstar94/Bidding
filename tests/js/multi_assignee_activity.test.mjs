@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   applyAssignmentDelta,
   computeAssignmentDelta,
+  filterAvailableAssigneeOptions,
   normalizeAssigneeIds,
 } from "../../frontend/shared/MultiAssigneeSelect.js";
 import {
@@ -19,6 +20,24 @@ import {
 
 test("assignee ids are normalized and deduplicated", () => {
   assert.deepEqual(normalizeAssigneeIds([" a ", "b", "a", "", null]), ["a", "b"]);
+});
+
+
+test("searchable assignee dropdown excludes selected people", () => {
+  const options = [
+    { value: "a", label: "Nguyễn An", searchText: "an@example.com" },
+    { value: "b", label: "Trần Bình", searchText: "binh@example.com" },
+    { value: "c", label: "Lê Chi", searchText: "chi@example.com", disabled: true },
+  ];
+
+  assert.deepEqual(
+    filterAvailableAssigneeOptions(options, ["a"], "binh").map((option) => option.value),
+    ["b"],
+  );
+  assert.deepEqual(
+    filterAvailableAssigneeOptions(options, ["a"], "nguyen"),
+    [],
+  );
 });
 
 

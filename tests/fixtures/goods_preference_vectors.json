@@ -1,0 +1,32 @@
+[
+  {
+    "name": "max_0",
+    "codes": [0],
+    "maximumRateBp": 0,
+    "surchargeRatesBp": [0]
+  },
+  {
+    "name": "max_750",
+    "codes": [0, 1],
+    "maximumRateBp": 750,
+    "surchargeRatesBp": [750, 0]
+  },
+  {
+    "name": "max_1000",
+    "codes": [0, 1, 2, 3],
+    "maximumRateBp": 1000,
+    "surchargeRatesBp": [1000, 250, 0, 0]
+  },
+  {
+    "name": "max_1200",
+    "codes": [0, 1, 2, 3, 4],
+    "maximumRateBp": 1200,
+    "surchargeRatesBp": [1200, 450, 200, 200, 0]
+  },
+  {
+    "name": "max_1500",
+    "codes": [0, 1, 2, 3, 4, 5],
+    "maximumRateBp": 1500,
+    "surchargeRatesBp": [1500, 750, 500, 500, 300, 0]
+  }
+]

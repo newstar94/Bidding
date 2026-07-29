@@ -43,6 +43,7 @@ from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_write
 from backend.shared.database_io import run_database_read
 from backend.auth.security_notifications import build_security_notification_tasks
+from backend.documents.word_defaults import ensure_personal_word_workspace
 
 
 PASSWORD_RESET_REQUEST_MESSAGE = (
@@ -178,6 +179,7 @@ async def register_api(request):
             "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (user_uuid, username, username, password_hash, name, role, email, email, 0, code, expiry)
         )
+        ensure_personal_word_workspace(cursor, user_uuid)
         conn.commit()
 
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"

@@ -163,6 +163,14 @@ def is_organization_manager(cursor, role_str, user_id, organization_id):
     return organization_membership_role(cursor, user_id, organization_id) in ORGANIZATION_MANAGER_ROLES
 
 
+def can_upload_workspace_assets(cursor, role_str, user_id, organization_id):
+    """Allow personal owners or an active organization manager to upload assets."""
+
+    if is_personal_scope_for_user(organization_id, user_id):
+        return is_personal_workspace_owner(cursor, user_id, organization_id)
+    return is_organization_manager(cursor, role_str, user_id, organization_id)
+
+
 def has_active_organization_membership(cursor, role_str, user_id, organization_id):
     if is_manager_role(role_str):
         return True
@@ -257,8 +265,8 @@ def has_module_permission(cursor, role_str, user_id, organization_id, module_nam
     return permission in {"view", "edit"}
 
 
-def can_manage_word_config(cursor, role_str, user_id, organization_id):
-    """Allow personal owners, managers, or employees with related edit rights."""
+def can_read_word_config(cursor, role_str, user_id, organization_id):
+    """Allow members to use the Word configuration of the active workspace."""
 
     if not can_use_word_export(cursor, role_str, user_id, organization_id):
         return False
@@ -266,9 +274,19 @@ def can_manage_word_config(cursor, role_str, user_id, organization_id):
         return True
     if is_personal_workspace_owner(cursor, user_id, organization_id):
         return True
-    return any(
-        has_module_permission(cursor, role_str, user_id, organization_id, module_name, "edit")
-        for module_name in ("kehoach", "goithau", "chudautu", "nhathau", "hopdong")
+    return has_active_organization_membership(
+        cursor, role_str, user_id, organization_id
+    )
+
+
+def can_manage_word_config(cursor, role_str, user_id, organization_id):
+    """Allow only a personal owner or organization manager to change Word config."""
+
+    if not can_read_word_config(cursor, role_str, user_id, organization_id):
+        return False
+    return bool(
+        is_personal_workspace_owner(cursor, user_id, organization_id)
+        or is_organization_manager(cursor, role_str, user_id, organization_id)
     )
 
 

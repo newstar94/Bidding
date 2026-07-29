@@ -861,6 +861,52 @@ def _upgrade_to_v26_preserve_activity_actor_snapshot(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v27_add_goods_preference(cursor, context):
+    """Add auditable goods-preference inputs and authoritative results."""
+
+    bidder_goods_columns = (
+        "ma_uu_dai SMALLINT NOT NULL DEFAULT 0 CHECK(ma_uu_dai BETWEEN 0 AND 5)",
+        "he_so_uu_dai_goc_bp SMALLINT NOT NULL DEFAULT 0 CHECK(he_so_uu_dai_goc_bp BETWEEN 0 AND 1500)",
+        "he_so_cong_uu_dai_bp SMALLINT NOT NULL DEFAULT 0 CHECK(he_so_cong_uu_dai_bp BETWEEN 0 AND 1500)",
+        "gia_tri_co_so_sau_giam_gia BIGINT CHECK(gia_tri_co_so_sau_giam_gia IS NULL OR gia_tri_co_so_sau_giam_gia >= 0)",
+        "gia_tri_cong_uu_dai BIGINT CHECK(gia_tri_cong_uu_dai IS NULL OR gia_tri_cong_uu_dai >= 0)",
+        "thanh_tien_sau_uu_dai BIGINT CHECK(thanh_tien_sau_uu_dai IS NULL OR thanh_tien_sau_uu_dai >= 0)",
+        "uu_dai_source_sheet TEXT NOT NULL DEFAULT ''",
+        "uu_dai_source_row INTEGER CHECK(uu_dai_source_row IS NULL OR uu_dai_source_row > 0)",
+        "uu_dai_match_method TEXT NOT NULL DEFAULT 'no_15a'",
+        "uu_dai_match_status TEXT NOT NULL DEFAULT 'matched'",
+        "uu_dai_source_payload TEXT NOT NULL DEFAULT ''",
+        "uu_dai_manual_override BOOLEAN NOT NULL DEFAULT FALSE",
+        "uu_dai_manual_actor_id TEXT",
+        "uu_dai_manual_updated_at TIMESTAMPTZ",
+        "uu_dai_manual_reason TEXT NOT NULL DEFAULT ''",
+        "trang_thai_uu_dai TEXT NOT NULL DEFAULT 'empty'",
+    )
+    for definition in bidder_goods_columns:
+        cursor.execute(
+            f"ALTER TABLE hang_hoa_du_thau_nha_thau ADD COLUMN IF NOT EXISTS {definition}"
+        )
+    opening_columns = (
+        "tong_gia_tri_cong_uu_dai BIGINT CHECK(tong_gia_tri_cong_uu_dai IS NULL OR tong_gia_tri_cong_uu_dai >= 0)",
+        "gia_so_sanh_sau_uu_dai BIGINT CHECK(gia_so_sanh_sau_uu_dai IS NULL OR gia_so_sanh_sau_uu_dai >= 0)",
+        "gia_danh_gia_sau_uu_dai BIGINT CHECK(gia_danh_gia_sau_uu_dai IS NULL OR gia_danh_gia_sau_uu_dai >= 0)",
+        "trang_thai_tinh_uu_dai TEXT NOT NULL DEFAULT 'empty'",
+        "uu_dai_tinh_luc TIMESTAMPTZ",
+        "uu_dai_input_hash TEXT NOT NULL DEFAULT ''",
+    )
+    for definition in opening_columns:
+        cursor.execute(
+            f"ALTER TABLE thong_tin_mo_thau ADD COLUMN IF NOT EXISTS {definition}"
+        )
+    cursor.execute(
+        "UPDATE hang_hoa_du_thau_nha_thau SET ma_uu_dai = 0 WHERE ma_uu_dai IS NULL"
+    )
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(cursor, ("hang_hoa_du_thau_nha_thau",), if_not_exists=True)
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -982,6 +1028,11 @@ UPGRADES = (
         26,
         "preserve_activity_actor_snapshot",
         _upgrade_to_v26_preserve_activity_actor_snapshot,
+    ),
+    DatabaseUpgrade(
+        27,
+        "add_goods_preference",
+        _upgrade_to_v27_add_goods_preference,
     ),
 )
 

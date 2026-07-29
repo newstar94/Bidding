@@ -85,6 +85,7 @@ export async function executeDetailedEvaluationSave({
   activeGroup,
   completeGroup = false,
   completeReport = false,
+  notify = true,
   commit = persistAndSync,
 } = {}) {
   if (!appController?.view || !state?.bid || !state?.report || !root || state.readOnly) {
@@ -113,6 +114,14 @@ export async function executeDetailedEvaluationSave({
   if (typeof commit !== "function") {
     throw new TypeError("Detailed evaluation save workflow requires a commit adapter.");
   }
+  if (!state.context.visibleGroups.includes(activeGroup)) {
+    await appController.view.customAlert(
+      "Chưa đủ điều kiện",
+      "Tab đánh giá này chưa được mở theo kết quả đã lưu của phần trước.",
+      "alert-triangle",
+    );
+    return false;
+  }
   const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
     collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
   );
@@ -125,8 +134,9 @@ export async function executeDetailedEvaluationSave({
     return false;
   }
 
+  const evaluationGroups = state.context.editableGroups.filter((group) => group !== "bidder_goods");
   const groupsToCheck = completeReport
-    ? state.context.editableGroups
+    ? evaluationGroups
     : completeGroup ? [activeGroup] : [];
   const emptyGroup = groupsToCheck.find((group) => !configuredCriteria.some(
     (criterion) => criterion.group === group,
@@ -148,11 +158,45 @@ export async function executeDetailedEvaluationSave({
   }, configuredCriteria);
   report.extension = {
     ...(report.extension || {}),
+    workflowVersion: 2,
     completedGroups: [...new Set([
       ...(report.extension?.completedGroups || []),
       ...(completeGroup ? [activeGroup] : []),
     ])],
   };
+  if (completeReport) {
+    const configured = state.context.configuredGroups || [];
+    const accessible = state.context.visibleGroups || [];
+    if (configured.some((group) => !accessible.includes(group))) {
+      await appController.view.customAlert(
+        "Chưa đủ điều kiện",
+        "Hãy hoàn thành tuần tự các tab và bảo đảm Danh mục hàng hóa đã sẵn sàng.",
+        "alert-triangle",
+      );
+      return false;
+    }
+  }
+  let invalidatedBidderGoods = false;
+  if (!completeGroup && !completeReport) {
+    const configured = state.context.configuredGroups || state.context.editableGroups;
+    const activeIndex = configured.indexOf(activeGroup);
+    const invalidated = new Set(activeIndex >= 0 ? configured.slice(activeIndex) : [activeGroup]);
+    report.extension.completedGroups = report.extension.completedGroups.filter(
+      (group) => !invalidated.has(group),
+    );
+    report.extension.groupResults = Object.fromEntries(
+      Object.entries(report.extension.groupResults || {}).filter(([group]) => !invalidated.has(group)),
+    );
+    if (configured.slice(Math.max(0, activeIndex + 1)).includes("bidder_goods")) {
+      appController.model.state.hanghoaduthaunhathau = (
+        appController.model.state.hanghoaduthaunhathau || []
+      ).map((row) => String(row.thongTinMoThauId || "") === String(state.bid.id)
+        ? { ...row, trangThaiUuDai: "stale" }
+        : row);
+      state.bid.trangThaiTinhUuDai = "stale";
+      invalidatedBidderGoods = true;
+    }
+  }
   if (completeReport) delete report.extension.projectionPending;
   const validation = completeReport
     ? validateDetailedEvaluationReport(report, state.context, configuredCriteria)
@@ -174,11 +218,23 @@ export async function executeDetailedEvaluationSave({
     );
     return false;
   }
+  if (completeGroup) {
+    const groupResult = aggregateDetailedEvaluationReport({
+      report,
+      criteria: configuredCriteria,
+      groups: [activeGroup],
+    }).byGroup[activeGroup]?.status || "";
+    report.extension.groupResults = {
+      ...(report.extension.groupResults || {}),
+      [activeGroup]: groupResult,
+    };
+    report.extension.workflowVersion = 2;
+  }
   if (completeReport) {
     report.ketLuan = aggregateDetailedEvaluationReport({
       report,
       criteria: configuredCriteria,
-      groups: state.context.editableGroups,
+      groups: evaluationGroups,
     }).overall.status;
   }
 
@@ -200,24 +256,29 @@ export async function executeDetailedEvaluationSave({
         state.bid,
         report,
         configuredCriteria,
-        state.context.editableGroups,
+        evaluationGroups,
       ),
     );
   }
-  const result = await commit(appController, ["goithau", "thongtinmothau"]);
+  const result = await commit(appController, [
+    "goithau", "thongtinmothau",
+    ...(invalidatedBidderGoods ? ["hanghoaduthaunhathau"] : []),
+  ]);
   if (!result?.ok) return false;
   appController._detailedEvaluationDrafts.set(state.draftKey, report);
   appController._editingDetailedEvaluationKey = null;
   appController._detailedEvaluationDirty = false;
-  await appController.view.customAlert(
-    "Lưu thành công",
-    completeReport
-      ? "Báo cáo chi tiết đã hoàn thành và cập nhật báo cáo tổng quát."
-      : completeGroup
-        ? "Tab đánh giá đã hoàn thành."
-        : "Đã lưu bản nháp báo cáo chi tiết.",
-    "check-circle",
-  );
+  if (notify) {
+    await appController.view.customAlert(
+      "Lưu thành công",
+      completeReport
+        ? "Báo cáo chi tiết đã hoàn thành và cập nhật báo cáo tổng quát."
+        : completeGroup
+          ? "Tab đánh giá đã hoàn thành."
+          : "Đã lưu bản nháp báo cáo chi tiết.",
+      "check-circle",
+    );
+  }
   appController.renderDetailedEvaluation();
   return true;
 }

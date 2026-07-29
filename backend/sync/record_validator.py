@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from backend.shared.access_policy import (
@@ -62,10 +63,45 @@ class SyncRecordValidator:
         cursor = self.transaction.cursor
         actor = self.transaction.actor
         organization_id = actor.organization_id
-        validation_errors = list(validate_opening_participant_uniqueness(
+        bidder_goods_items = self.payload.get("hanghoaduthaunhathau", [])
+        opening_items = self.payload.get("thongtinmothau", [])
+        for item in bidder_goods_items:
+            if not isinstance(item, dict):
+                continue
+            manual_override = item.get(
+                "uuDaiManualOverride",
+                item.get("uu_dai_manual_override", False),
+            ) in (True, 1, "1", "true", "True")
+            if manual_override:
+                # Actor identity is authoritative server context, never client input.
+                item["uuDaiManualActorId"] = actor.user_id
+                item["uuDaiManualUpdatedAt"] = datetime.now(timezone.utc).isoformat()
+        opening_payload_ids = {
+            clean_id(item.get("id"))
+            for item in opening_items
+            if isinstance(item, dict)
+        }
+        missing_recompute_openings = {
+            clean_id(item.get("thongTinMoThauId") or item.get("thong_tin_mo_thau_id"))
+            for item in bidder_goods_items
+            if isinstance(item, dict)
+            and item.get("isDraft", item.get("is_draft", True))
+                in (False, 0, "0", "false", "False")
+        } - opening_payload_ids - {None}
+        validation_errors = [{
+            "table": "hang_hoa_du_thau_nha_thau",
+            "id": None,
+            "field": "thongTinMoThauId",
+            "code": "BIDDER_GOODS_OPENING_RECOMPUTE_REQUIRED",
+            "message": (
+                "Phải đồng bộ cùng bản ghi mở thầu để máy chủ lưu "
+                "tổng giá sau ưu đãi có thẩm quyền."
+            ),
+        } for _opening_id in sorted(missing_recompute_openings)]
+        validation_errors.extend(validate_opening_participant_uniqueness(
             cursor,
             organization_id,
-            self.payload.get("thongtinmothau", []),
+            opening_items,
         ))
         validation_errors.extend(validate_package_goods_batch(
             cursor,
@@ -75,7 +111,8 @@ class SyncRecordValidator:
         validation_errors.extend(validate_bidder_goods_batch(
             cursor,
             organization_id,
-            self.payload.get("hanghoaduthaunhathau", []),
+            bidder_goods_items,
+            opening_items,
         ))
         allowed_statuses = self.payload_index.allowed_contract_status_names(
             cursor,

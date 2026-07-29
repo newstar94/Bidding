@@ -6,6 +6,7 @@ import {
   buildReopenedDetailedEvaluationReport,
   normalizeDetailedEvaluationRow,
 } from "./DetailedEvaluationState.js";
+import { aggregateDetailedEvaluationReport } from "./detailedEvaluationAggregation.js";
 
 export async function confirmDetailedEvaluationDiscard(appController) {
   if (!appController._detailedEvaluationDirty) return true;
@@ -191,8 +192,55 @@ export function bindDetailedEvaluationPanelController({
   root.querySelectorAll("input:not([data-bidder-goods-filter]), select:not([data-bidder-goods-filter]), textarea:not([data-bidder-goods-filter])").forEach((input) => {
     input._bfDetailedDirtyBound = true;
     input.addEventListener("input", () => { appController._detailedEvaluationDirty = true; });
-    input.addEventListener("change", () => { appController._detailedEvaluationDirty = true; });
+    input.addEventListener("change", () => {
+      appController._detailedEvaluationDirty = true;
+      if (input.matches('select[data-detailed-field="ketQua"]')) {
+        captureResultChange();
+      }
+    });
   });
+  const applyImmediateSequentialGate = (updatedReport, configuredCriteria) => {
+    const activeGroup = appController.selectedDetailedEvaluationTab;
+    const completed = new Set(updatedReport.extension?.completedGroups || []);
+    if (!completed.has(activeGroup)) return false;
+    const currentResult = aggregateDetailedEvaluationReport({
+      report: updatedReport,
+      criteria: configuredCriteria,
+      groups: [activeGroup],
+    }).byGroup[activeGroup]?.status || "";
+    const storedResult = updatedReport.extension?.groupResults?.[activeGroup] || "";
+    if (currentResult === storedResult) return false;
+    const configuredGroups = state.context.configuredGroups || state.context.editableGroups || [];
+    const activeIndex = configuredGroups.indexOf(activeGroup);
+    const invalidated = new Set(
+      activeIndex >= 0 ? configuredGroups.slice(activeIndex) : [activeGroup],
+    );
+    updatedReport.extension = {
+      ...(updatedReport.extension || {}),
+      completedGroups: [...completed].filter((group) => !invalidated.has(group)),
+      groupResults: Object.fromEntries(
+        Object.entries(updatedReport.extension?.groupResults || {})
+          .filter(([group]) => !invalidated.has(group)),
+      ),
+    };
+    appController._detailedEvaluationDrafts.set(state.draftKey, updatedReport);
+    commands.render();
+    return true;
+  };
+  const captureResultChange = () => {
+    const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
+      collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
+    );
+    const configuredGroupCriteria = configuredCriteria.filter(
+      (criterion) => criterion.group === appController.selectedDetailedEvaluationTab,
+    );
+    const updatedReport = applyHierarchicalDetailedEvaluationResults({
+      ...state.report,
+      chiTietList: collectActiveGroupRows(root, state.report, configuredGroupCriteria),
+    }, configuredCriteria);
+    updateDerivedResultMarks(root, updatedReport, configuredGroupCriteria);
+    applyImmediateSequentialGate(updatedReport, configuredCriteria);
+  };
   const handleResultChange = (input) => {
     if (!input.checked) return;
     const row = input.closest("[data-detailed-criterion-id]");
@@ -202,18 +250,7 @@ export function bindDetailedEvaluationPanelController({
     ).forEach((candidate) => {
       if (candidate !== input) candidate.checked = false;
     });
-    const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
-      collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
-    );
-    const configuredGroupCriteria = configuredCriteria.filter(
-      (criterion) => criterion.group === appController.selectedDetailedEvaluationTab,
-    );
-    const currentRows = collectActiveGroupRows(root, state.report, configuredGroupCriteria);
-    const updatedReport = applyHierarchicalDetailedEvaluationResults({
-      ...state.report,
-      chiTietList: currentRows,
-    }, configuredCriteria);
-    updateDerivedResultMarks(root, updatedReport, configuredGroupCriteria);
+    captureResultChange();
   };
   root.querySelectorAll("[data-detailed-result-value]").forEach((input) => {
     input._bfDetailedResultBound = true;

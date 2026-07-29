@@ -59,6 +59,30 @@ export function organizationEmployeeLabel(payload = {}, organizationId = getActi
   return name || email;
 }
 
+export function canUploadWorkspaceAssets(
+  payload = {},
+  activeRole = payload?.activeRole || payload?.active_role || payload?.membershipRole || payload?.membership_role,
+  organizationId = payload?.activeOrganizationId || payload?.active_org_id || getActiveOrganizationId(),
+) {
+  const workspace = normalizeOrganizations(payload).find(
+    (organization) => organization.id === String(organizationId || ""),
+  );
+  if (workspace?.scope_type === "personal") return true;
+  return Boolean(
+    workspace?.scope_type === "organization"
+    && workspace.role === "manager"
+    && String(activeRole || "").trim().toLowerCase() !== "employee"
+  );
+}
+
+export function canManageWorkspaceWordVariables(
+  payload = {},
+  activeRole = payload?.activeRole || payload?.active_role || payload?.membershipRole || payload?.membership_role,
+  organizationId = payload?.activeOrganizationId || payload?.active_org_id || getActiveOrganizationId(),
+) {
+  return canUploadWorkspaceAssets(payload, activeRole, organizationId);
+}
+
 export function selectActiveOrganization(payload = {}, storage = null) {
   const organizations = normalizeOrganizations(payload);
   const accessible = organizations.filter((organization) => organization.status === "active");
@@ -88,7 +112,9 @@ export function applyAccessContext(target, payload = {}, storage = null) {
   target.dbRole = target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "employee";
   target.organizations = organizations;
   target.activeOrganizationId = selected?.id || null;
-  target.entitlements = { ...(selected?.entitlements || payload.entitlements || {}) };
+  target.entitlements = target.platformRole === "super_admin"
+    ? { ...(selected?.entitlements || {}), ...(payload.entitlements || {}) }
+    : { ...(selected?.entitlements || payload.entitlements || {}) };
   target.wordExportEnabled = Boolean(target.entitlements.word_export);
   const wordNavigation = globalThis.document?.getElementById?.("btn-tab-bieumau");
   if (wordNavigation) {

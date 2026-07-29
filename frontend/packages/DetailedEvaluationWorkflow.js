@@ -141,10 +141,12 @@ export async function importDetailedEvaluationExcel(file) {
     this._detailedEvaluationDrafts.set(state.draftKey, analysis.report);
     this._detailedEvaluationDirty = true;
     this.renderDetailedEvaluation();
+    const persisted = await saveDetailedEvaluation.call(this, { notify: false });
+    if (!persisted) return false;
     const { matched, skipped, warnings: warningCount, sheetNames } = analysis.stats;
     await this.view.customAlert(
       "Đã nhập dữ liệu Excel",
-      `Đã tự điền ${matched} tiêu chí${sheetNames ? ` từ các sheet: ${sheetNames}` : " trong tab hiện tại"}.${skipped ? ` Bỏ qua ${skipped} dòng không khớp.` : ""}${warningCount ? ` Có ${warningCount} kết quả cần kiểm tra lại.` : ""} Dữ liệu chưa được lưu.`,
+      `Đã tự điền và lưu nháp ${matched} tiêu chí${sheetNames ? ` từ các sheet: ${sheetNames}` : " trong tab hiện tại"}.${skipped ? ` Bỏ qua ${skipped} dòng không khớp.` : ""}${warningCount ? ` Có ${warningCount} kết quả cần kiểm tra lại.` : ""}`,
       warningCount || skipped ? "alert-triangle" : "check-circle",
     );
     return true;
@@ -190,6 +192,7 @@ export async function verifyMuasamcongDetailedEvaluationContractor(
 export async function saveDetailedEvaluation({
   completeGroup = false,
   completeReport = false,
+  notify = true,
 } = {}) {
   const state = resolveDetailedEvaluationState(this);
   const detail = this.view.getActiveElement("danhgiahsdt-detail-view");
@@ -200,5 +203,6 @@ export async function saveDetailedEvaluation({
     activeGroup: this.selectedDetailedEvaluationTab,
     completeGroup,
     completeReport,
+    notify,
   });
 }
