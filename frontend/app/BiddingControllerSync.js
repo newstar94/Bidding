@@ -102,6 +102,7 @@ const DELETE_ENTITY_LABELS = Object.freeze({
   kehoach: "kế hoạch",
   goithau: "gói thầu",
   goithauhanghoa: "danh mục hàng hóa",
+  hanghoaduthaunhathau: "hàng hóa dự thầu",
   chudautu: "chủ đầu tư",
   nhathau: "nhà thầu",
   chuyengia: "chuyên gia",
@@ -226,7 +227,7 @@ function renderChangedState(controller, changedKeys, { isBackground = false } = 
   };
   renderIfChanged(["dashboardSummary", "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments", "thongtinmothau"], controller.view.renderDashboard, "tab-dashboard");
   renderIfChanged(["kehoach", "chudautu", "goithau"], controller.view.renderKeHoachTable, "tab-kehoach");
-  renderIfChanged(["goithau", "goithauhanghoa", "kehoach", "chudautu", "nhathau", "thongtinmothau", "assignments"], controller.view.renderGoiThauTable, "tab-goithau");
+  renderIfChanged(["goithau", "goithauhanghoa", "hanghoaduthaunhathau", "kehoach", "chudautu", "nhathau", "thongtinmothau", "assignments"], controller.view.renderGoiThauTable, "tab-goithau");
   renderIfChanged(["goithau", "kehoach", "hopdong", "thongtinmothau"], controller.view.renderPackageTimeline, "tab-goithau-timeline");
   renderIfChanged(["chudautu", "kehoach"], controller.view.renderChuDauTuTable, "tab-chudautu");
   renderIfChanged(["nhathau", "goithau", "hopdong", "thongtinmothau"], controller.view.renderNhaThauTable, "tab-nhathau");

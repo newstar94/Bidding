@@ -95,6 +95,7 @@ MAX_SYNC_TEXT_LENGTH = 100_000
 MAX_SYNC_CHILD_ITEMS = 500
 BOOLEAN_COLUMNS = {
     "is_latest", "is_tong_muc_tu_dong", "is_thuoc", "is_rebid", "co_qd_chi_dinh",
+    "is_draft",
 }
 TABLE_KEYS_FOR_VALIDATION = TABLE_KEYS
 CHILD_MONEY_FIELDS = {
@@ -632,6 +633,49 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             parsed = parse_vnd_amount(value) if value not in (None, "") else None
             if value not in (None, "") and (parsed is None or parsed < 0):
                 errors.append(f"{label} phải là số tiền không âm.")
+    elif table_name == "hang_hoa_du_thau_nha_thau":
+        _require_fields(item, (
+            ("goiThauId", "Gói thầu"),
+            ("thongTinMoThauId", "Hồ sơ mở thầu"),
+            ("danhMucHangHoa", "Danh mục hàng hóa"),
+        ), errors)
+        for key in (
+            "sttNguon", "maPhanLoNguon", "tenPhanLoNguon", "danhMucHangHoa",
+            "kyMaHieu", "nhanHieu", "namSanXuat", "xuatXu", "hangSanXuat",
+            "cauHinhTinhNangKyThuat", "donViTinh", "maHs",
+        ):
+            if key in item and item[key] is not None:
+                item[key] = str(item[key]).strip()
+        quantity = item.get("khoiLuong")
+        if quantity not in (None, "") and (
+            isinstance(quantity, bool)
+            or not isinstance(quantity, (int, float))
+            or not math.isfinite(quantity)
+            or quantity <= 0
+        ):
+            errors.append("Khối lượng hàng hóa dự thầu phải là số lớn hơn 0.")
+        for key, label in (
+            ("donGiaDuThau", "Đơn giá dự thầu"),
+            ("thanhTienDuThau", "Thành tiền dự thầu"),
+        ):
+            value = item.get(key)
+            parsed = parse_vnd_amount(value) if value not in (None, "") else None
+            if value not in (None, "") and parsed is None:
+                errors.append(f"{label} phải là số tiền không âm.")
+            elif parsed is not None:
+                item[key] = str(parsed)
+        is_draft = item.get("isDraft", True) in (True, 1, "1", "true", "True")
+        item["isDraft"] = is_draft
+        if not is_draft:
+            _require_fields(item, (
+                ("goiThauHangHoaId", "Hàng hóa yêu cầu được ghép"),
+                ("donViTinh", "Đơn vị tính"),
+                ("khoiLuong", "Khối lượng"),
+                ("donGiaDuThau", "Đơn giá dự thầu"),
+                ("thanhTienDuThau", "Thành tiền dự thầu"),
+            ), errors)
+            if str(item.get("mappingStatus") or "") != "matched":
+                errors.append("Trạng thái ghép phải hợp lệ trước khi lưu chính thức.")
     elif table_name == "nha_thau":
         if not str(item.get("tenNhaThau") or "").strip():
             errors.append("Tên nhà thầu không được để trống.")

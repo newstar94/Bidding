@@ -10,6 +10,7 @@ CLIENT_TABLE_MAP = {
     "nhathau": "nha_thau",
     "goithau": "goi_thau",
     "goithauhanghoa": "goi_thau_hang_hoa",
+    "hanghoaduthaunhathau": "hang_hoa_du_thau_nha_thau",
     "chuyengia": "chuyen_gia",
     "hopdong": "hop_dong",
     "assignments": "phan_cong_nhan_su",

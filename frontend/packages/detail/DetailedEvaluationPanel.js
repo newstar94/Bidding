@@ -1,11 +1,13 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { renderBidderGoodsPanelMarkup } from "../BidderGoodsWorkflow.js";
 
 const GROUP_LABELS = Object.freeze({
   validity: "Tính hợp lệ",
   capacity: "Năng lực và kinh nghiệm",
   technical: "Kỹ thuật",
   financial: "Tài chính",
+  bidder_goods: "Danh mục hàng hóa dự thầu",
 });
 
 const LARGE_TABLE_ROW_CHUNK_SIZE = 25;
@@ -233,6 +235,7 @@ export function renderDetailedEvaluationPanel(container, {
   readOnly = false,
   canReopen = false,
   warning = "",
+  bidderGoodsState = null,
 } = {}) {
   if (!container) return;
   const rows = new Map(
@@ -254,6 +257,7 @@ export function renderDetailedEvaluationPanel(container, {
   }).join("");
   const binaryLayout = activeGroup === "validity" || activeGroup === "capacity";
   const financialLayout = activeGroup === "financial";
+  const bidderGoodsLayout = activeGroup === "bidder_goods";
   const criterionRowHtml = criteria.map((criterion, index) => {
     const row = rows.get(String(criterion.id)) || {
       tieuChiDanhGiaId: criterion.id,
@@ -313,14 +317,14 @@ export function renderDetailedEvaluationPanel(container, {
       </button>
     </div>
   ` : "";
-  const actionButtons = !selectedBid
+  const actionButtons = bidderGoodsLayout ? "" : !selectedBid
     ? ""
     : readOnly
       ? report?.trangThai === "completed" && canReopen
         ? '<button type="button" class="btn btn-primary" id="btn-detailed-evaluation-reopen">Chỉnh sửa báo cáo chi tiết</button>'
         : ""
       : '<button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-save-draft">Lưu bản nháp</button><button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-complete-group">Hoàn thành tab</button><button type="button" class="btn btn-primary" id="btn-detailed-evaluation-complete-report">Hoàn thành đánh giá nhà thầu</button>';
-  const excelImportControl = selectedBid && !readOnly
+  const excelImportControl = !bidderGoodsLayout && selectedBid && !readOnly
     ? '<div class="detailed-evaluation-tab-actions"><button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-add-row"><i data-lucide="plus" aria-hidden="true"></i> Thêm dòng</button><input type="file" id="detailed-evaluation-excel-input" accept=".xlsx,.xls" hidden><button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-import-excel"><i data-lucide="upload" aria-hidden="true"></i> Nhập từ Excel</button></div>'
     : "";
   const binaryColgroup = `
@@ -413,6 +417,7 @@ export function renderDetailedEvaluationPanel(container, {
         ${excelImportControl}
       </div>
       <div id="detailed-evaluation-tab-panel" class="detailed-evaluation-tab-panel" role="tabpanel" aria-labelledby="detailed-evaluation-tab-${escapeHtml(activeGroup)}">
+        ${bidderGoodsLayout ? renderBidderGoodsPanelMarkup(bidderGoodsState || {}) : `
         <div class="table-container package-table-frame has-bottom-space detailed-evaluation-table-frame">
         <table class="data-table detailed-evaluation-table ${binaryLayout ? `detailed-evaluation-table-binary detailed-evaluation-table-${activeGroup}` : financialLayout ? "detailed-evaluation-table-financial" : ""}" data-no-sort="true" data-density="comfortable">
           ${binaryLayout ? binaryColgroup : financialLayout ? financialColgroup : standardColgroup}
@@ -420,6 +425,7 @@ export function renderDetailedEvaluationPanel(container, {
           <tbody id="detailed-evaluation-criteria-body">${criterionRows}</tbody>
         </table>
         </div>
+        `}
       </div>
       ${actionButtons ? `<div class="workflow-action-row detailed-evaluation-actions with-divider">${actionButtons}</div>` : ""}
     </section>
@@ -428,7 +434,7 @@ export function renderDetailedEvaluationPanel(container, {
     container._detailedEvaluationRowRenderRevision || 0
   ) + 1;
   const revision = container._detailedEvaluationRowRenderRevision;
-  if (initialRowCount < criterionRowHtml.length && container.querySelector) {
+  if (!bidderGoodsLayout && initialRowCount < criterionRowHtml.length && container.querySelector) {
     const tbody = container.querySelector("#detailed-evaluation-criteria-body");
     if (!tbody) return;
     tbody.setAttribute("aria-busy", "true");

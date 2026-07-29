@@ -70,6 +70,9 @@ export function resolveDetailedEvaluationContext(pkg, roundType = "single") {
       ? ["financial"]
       : template.groups;
   const visibleGroups = roundGroups.filter((group) => templateGroups.has(group));
+  const showBidderGoods = String(pkg?.linhVuc || "").trim() === "Hàng hóa"
+    && ["single", "financial"].includes(roundType);
+  if (showBidderGoods) visibleGroups.push("bidder_goods");
   const editableGroups = visibleGroups.filter((group) => rule.editableGroups.includes(group));
   return {
     methodKey,

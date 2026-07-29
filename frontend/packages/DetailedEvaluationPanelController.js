@@ -188,7 +188,7 @@ export function bindDetailedEvaluationPanelController({
   root.querySelector("#btn-detailed-evaluation-previous")?.addEventListener("click", () => moveBid(-1));
   root.querySelector("#btn-detailed-evaluation-next")?.addEventListener("click", () => moveBid(1));
   const markDirty = () => { appController._detailedEvaluationDirty = true; };
-  root.querySelectorAll("input, select, textarea").forEach((input) => {
+  root.querySelectorAll("input:not([data-bidder-goods-filter]), select:not([data-bidder-goods-filter]), textarea:not([data-bidder-goods-filter])").forEach((input) => {
     input._bfDetailedDirtyBound = true;
     input.addEventListener("input", () => { appController._detailedEvaluationDirty = true; });
     input.addEventListener("change", () => { appController._detailedEvaluationDirty = true; });

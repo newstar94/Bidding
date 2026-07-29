@@ -730,6 +730,34 @@ def _upgrade_to_v22_add_package_goods(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v23_add_bidder_goods(cursor, context):
+    """Add normalized goods offered by each opened bid."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "hang_hoa_du_thau_nha_thau",
+        SCHEMA_DINH_NGHIA["hang_hoa_du_thau_nha_thau"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+    cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("hang_hoa_du_thau_nha_thau",),
+            if_not_exists=True,
+        )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_bidder_goods_scope ON hang_hoa_du_thau_nha_thau (organization_id, goi_thau_id, thong_tin_mo_thau_id, phan_lo_id, sort_order, id)",
+        "CREATE INDEX IF NOT EXISTS idx_bidder_goods_import_batch ON hang_hoa_du_thau_nha_thau (organization_id, import_batch_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bidder_goods_requirement ON hang_hoa_du_thau_nha_thau (organization_id, thong_tin_mo_thau_id, goi_thau_hang_hoa_id) WHERE goi_thau_hang_hoa_id IS NOT NULL",
+    ):
+        cursor.execute(statement)
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -831,6 +859,11 @@ UPGRADES = (
         22,
         "add_package_goods",
         _upgrade_to_v22_add_package_goods,
+    ),
+    DatabaseUpgrade(
+        23,
+        "add_bidder_goods",
+        _upgrade_to_v23_add_bidder_goods,
     ),
 )
 

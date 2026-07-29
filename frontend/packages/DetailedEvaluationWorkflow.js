@@ -27,6 +27,11 @@ import {
   buildReopenedDetailedEvaluationReport,
   resolveDetailedEvaluationState,
 } from "./DetailedEvaluationState.js";
+import {
+  bindBidderGoodsPanel,
+  buildBidderGoodsPanelState,
+} from "./BidderGoodsWorkflow.js";
+import { BIDDER_GOODS_TAB } from "./bidderGoodsSelectors.js";
 
 
 export {
@@ -78,12 +83,16 @@ export async function renderDetailedEvaluation() {
     && isDetailedEvaluationSummaryOwned(state.report)
     ? "Báo cáo chi tiết đang được chỉnh sửa. Kết quả tổng hợp chưa được cập nhật."
     : "";
+  const bidderGoodsState = this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB
+    ? buildBidderGoodsPanelState(this, state)
+    : null;
   renderDetailedEvaluationPanel(detail, {
     ...state,
     activeGroup: this.selectedDetailedEvaluationTab,
     criteria: groupCriteria,
     progress,
     warning,
+    bidderGoodsState,
   });
   bindDetailedEvaluationPanelController({
     appController: this,
@@ -98,6 +107,9 @@ export async function renderDetailedEvaluation() {
       removeCriterion: (criterionId) => removeDetailedEvaluationCriterion(this, criterionId),
     },
   });
+  if (this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB) {
+    bindBidderGoodsPanel(this, state, detail);
+  }
 }
 
 export async function importDetailedEvaluationExcel(file) {

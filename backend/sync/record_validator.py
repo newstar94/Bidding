@@ -28,6 +28,7 @@ from backend.sync.package_goods import (
     validate_package_goods_batch,
     validate_package_goods_configuration_change,
 )
+from backend.sync.bidder_goods import validate_bidder_goods_batch
 from backend.sync.validator import validate_sync_item
 
 
@@ -70,6 +71,11 @@ class SyncRecordValidator:
             cursor,
             organization_id,
             self.payload.get("goithauhanghoa", []),
+        ))
+        validation_errors.extend(validate_bidder_goods_batch(
+            cursor,
+            organization_id,
+            self.payload.get("hanghoaduthaunhathau", []),
         ))
         allowed_statuses = self.payload_index.allowed_contract_status_names(
             cursor,

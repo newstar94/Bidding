@@ -19,7 +19,8 @@ export async function readExcelWorkbookSheets(file) {
       header: 1,
       defval: "",
       raw: false,
-      blankrows: false,
+      // Preserve physical row numbers for import previews and validation.
+      blankrows: true,
     }),
   }));
 }

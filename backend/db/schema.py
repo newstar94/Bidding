@@ -13,6 +13,8 @@ MONEY_COLUMNS = frozenset({
     ("goi_thau_phan_lo", "gia_trung_thau"),
     ("goi_thau_hang_hoa", "don_gia_du_toan"),
     ("goi_thau_hang_hoa", "thanh_tien_du_toan"),
+    ("hang_hoa_du_thau_nha_thau", "don_gia_du_thau"),
+    ("hang_hoa_du_thau_nha_thau", "thanh_tien_du_thau"),
     ("goi_thau_tuy_chon_mua_them", "gia_tri_uoc_tinh"),
     ("hop_dong", "gia_tri"),
     ("thong_tin_mo_thau", "gia_du_thau"),
@@ -590,6 +592,50 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
             "FOREIGN KEY (phan_lo_id) REFERENCES goi_thau_phan_lo(id) ON DELETE RESTRICT"
+        ]
+    },
+    "hang_hoa_du_thau_nha_thau": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL CHECK(trim(goi_thau_id) != '')",
+            "thong_tin_mo_thau_id": "TEXT NOT NULL CHECK(trim(thong_tin_mo_thau_id) != '')",
+            "phan_lo_id": "TEXT",
+            "goi_thau_hang_hoa_id": "TEXT",
+            "stt_nguon": "TEXT NOT NULL DEFAULT '' CHECK(length(stt_nguon) <= 80)",
+            "ma_phan_lo_nguon": "TEXT NOT NULL DEFAULT '' CHECK(length(ma_phan_lo_nguon) <= 200)",
+            "ten_phan_lo_nguon": "TEXT NOT NULL DEFAULT '' CHECK(length(ten_phan_lo_nguon) <= 1000)",
+            "danh_muc_hang_hoa": "TEXT NOT NULL CHECK(length(trim(danh_muc_hang_hoa)) BETWEEN 1 AND 4000)",
+            "ky_ma_hieu": "TEXT NOT NULL DEFAULT '' CHECK(length(ky_ma_hieu) <= 10000)",
+            "nhan_hieu": "TEXT NOT NULL DEFAULT '' CHECK(length(nhan_hieu) <= 4000)",
+            "nam_san_xuat": "TEXT NOT NULL DEFAULT '' CHECK(length(nam_san_xuat) <= 500)",
+            "xuat_xu": "TEXT NOT NULL DEFAULT '' CHECK(length(xuat_xu) <= 2000)",
+            "hang_san_xuat": "TEXT NOT NULL DEFAULT '' CHECK(length(hang_san_xuat) <= 2000)",
+            "cau_hinh_tinh_nang_ky_thuat": "TEXT NOT NULL DEFAULT '' CHECK(length(cau_hinh_tinh_nang_ky_thuat) <= 100000)",
+            "don_vi_tinh": "TEXT NOT NULL DEFAULT '' CHECK(length(don_vi_tinh) <= 200)",
+            "khoi_luong": "REAL CHECK(khoi_luong IS NULL OR (typeof(khoi_luong) IN ('integer', 'real') AND khoi_luong > 0))",
+            "ma_hs": "TEXT NOT NULL DEFAULT '' CHECK(length(ma_hs) <= 2000)",
+            "don_gia_du_thau": "INTEGER CHECK(don_gia_du_thau IS NULL OR (typeof(don_gia_du_thau) = 'integer' AND don_gia_du_thau >= 0))",
+            "thanh_tien_du_thau": "INTEGER CHECK(thanh_tien_du_thau IS NULL OR (typeof(thanh_tien_du_thau) = 'integer' AND thanh_tien_du_thau >= 0))",
+            "mapping_method": "TEXT NOT NULL DEFAULT 'unmatched' CHECK(mapping_method IN ('unmatched', 'auto', 'manual'))",
+            "mapping_status": "TEXT NOT NULL DEFAULT 'unmatched' CHECK(mapping_status IN ('matched', 'unmatched', 'duplicate', 'wrong_lot', 'lot_not_found'))",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sort_order) = 'integer' AND sort_order >= 0)",
+            "import_batch_id": "TEXT NOT NULL DEFAULT '' CHECK(length(import_batch_id) <= 160)",
+            "is_draft": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_draft) = 'integer' AND is_draft IN (0, 1))",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (phan_lo_id) REFERENCES goi_thau_phan_lo(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (goi_thau_hang_hoa_id) REFERENCES goi_thau_hang_hoa(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, goi_thau_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, goi_thau_id, id) ON DELETE CASCADE"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, thong_tin_mo_thau_id, goi_thau_hang_hoa_id)"
         ]
     },
     "dot_xu_ly_phan_lo": {
@@ -1497,6 +1543,7 @@ ROW_VERSION_TABLES = frozenset({
     "hop_dong", "phan_cong_nhan_su", "danh_muc_trang_thai_hop_dong",
     "thong_tin_mo_thau", "ma_tran_phan_quyen", "goi_thau_phan_lo",
     "goi_thau_hang_hoa",
+    "hang_hoa_du_thau_nha_thau",
     "dot_xu_ly_phan_lo", "dot_xu_ly_phan_lo_chi_tiet",
     "nhom_phu_thuoc_phan_lo", "ho_so_nghiep_vu_lcnt",
 })

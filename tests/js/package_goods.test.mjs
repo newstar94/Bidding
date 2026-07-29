@@ -115,7 +115,8 @@ test("IndexedDB upgrade adds the goods store without recreating existing stores"
   } finally {
     globalThis.indexedDB = originalIndexedDb;
   }
-  assert.equal(requestedVersion, 4);
+  assert.equal(requestedVersion, 5);
   assert.ok(created.includes("goithauhanghoa"));
+  assert.ok(created.includes("hanghoaduthaunhathau"));
   assert.ok(!created.includes("goithau"));
 });

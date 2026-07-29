@@ -28,6 +28,7 @@ TABLE_TO_MODULE = {
     # Opening records are children of a package and inherit its module grant.
     "thong_tin_mo_thau": "goithau",
     "goi_thau_hang_hoa": "goithau",
+    "hang_hoa_du_thau_nha_thau": "goithau",
     "danh_muc_trang_thai_hop_dong": "hopdong",
 }
 
@@ -40,6 +41,15 @@ ASSIGNED_TABLE_TYPES = {
 OWNERSHIP_SCOPED_TABLES = set()
 
 SHARED_REFERENCE_TABLES = frozenset({"chu_dau_tu", "nha_thau"})
+
+BIDDER_GOODS_EDITABLE_PACKAGE_STATUSES = frozenset({
+    "OPENED",
+    "EVALUATING",
+    "PARTIALLY_AWARDED",
+    "Đã mở thầu",
+    "Đang chấm thầu",
+    "Đã có kết quả một phần",
+})
 
 
 @dataclass(frozen=True)
@@ -66,6 +76,7 @@ class BatchWriteAuthorizationContext:
     owned_lineages: set[tuple[str, str]] = field(default_factory=set)
     opening_parent_by_id: dict[str, str] = field(default_factory=dict)
     goods_parent_by_id: dict[str, str] = field(default_factory=dict)
+    bidder_goods_parent_by_id: dict[str, str] = field(default_factory=dict)
     package_status_by_id: dict[str, str] = field(default_factory=dict)
 
 
@@ -638,7 +649,32 @@ def build_batch_write_authorization_context(
                 context.goods_parent_by_id[record_id] = parent_id
                 goods_parent_ids.add(parent_id)
 
-    package_parent_ids = sorted(opening_parent_ids | goods_parent_ids)
+    bidder_goods_parent_ids = set()
+    missing_bidder_goods_ids = []
+    for item in records_by_table.get("hang_hoa_du_thau_nha_thau", ()):
+        parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
+        record_id = clean_id(item.get("id"))
+        if parent_id:
+            bidder_goods_parent_ids.add(parent_id)
+            if record_id:
+                context.bidder_goods_parent_by_id[record_id] = parent_id
+        elif record_id:
+            missing_bidder_goods_ids.append(record_id)
+    for chunk in _chunked(list(dict.fromkeys(missing_bidder_goods_ids))):
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT id, goi_thau_id FROM hang_hoa_du_thau_nha_thau
+                WHERE organization_id = ? AND id IN ({placeholders})""",
+            (organization_id, *chunk),
+        ).fetchall()
+        for row in rows:
+            record_id = str(_row_value(row, "id", 0))
+            parent_id = clean_id(_row_value(row, "goi_thau_id", 1))
+            if parent_id:
+                context.bidder_goods_parent_by_id[record_id] = parent_id
+                bidder_goods_parent_ids.add(parent_id)
+
+    package_parent_ids = sorted(opening_parent_ids | goods_parent_ids | bidder_goods_parent_ids)
     for chunk in _chunked(package_parent_ids):
         placeholders = ", ".join("?" for _ in chunk)
         rows = cursor.execute(
@@ -660,6 +696,9 @@ def build_batch_write_authorization_context(
     all_assignment_targets = assignment_targets | {
         ("goithau", parent_id) for parent_id in opening_parent_ids
     } | {("goithau", parent_id) for parent_id in goods_parent_ids}
+    all_assignment_targets |= {
+        ("goithau", parent_id) for parent_id in bidder_goods_parent_ids
+    }
     target_ids = sorted({target_id for _target_type, target_id in all_assignment_targets})
     for chunk in _chunked(target_ids):
         placeholders = ", ".join("?" for _ in chunk)
@@ -788,6 +827,16 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
         goods_parent_id = goods_parent_id or context.goods_parent_by_id.get(record_id)
         if context.package_status_by_id.get(goods_parent_id) not in {"PREPARING", "Chuẩn bị"}:
             return AccessDecision(False, "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái Chuẩn bị.")
+    bidder_goods_parent_id = None
+    if table_name == "hang_hoa_du_thau_nha_thau":
+        record_id = clean_id(item.get("id"))
+        bidder_goods_parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
+        bidder_goods_parent_id = bidder_goods_parent_id or context.bidder_goods_parent_by_id.get(record_id)
+        if (
+            context.package_status_by_id.get(bidder_goods_parent_id)
+            not in BIDDER_GOODS_EDITABLE_PACKAGE_STATUSES
+        ):
+            return AccessDecision(False, "Hàng hóa dự thầu chỉ được sửa trong giai đoạn đánh giá.")
     if context.organization_manager or context.personal_workspace_owner:
         return AccessDecision(True)
     module_name = TABLE_TO_MODULE.get(table_name)
@@ -805,6 +854,9 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
     elif table_name == "goi_thau_hang_hoa":
         if ("goithau", goods_parent_id) not in context.assigned_targets:
+            return AccessDecision(False, "Không có quyền sửa gói thầu chưa được phân công.")
+    elif table_name == "hang_hoa_du_thau_nha_thau":
+        if ("goithau", bidder_goods_parent_id) not in context.assigned_targets:
             return AccessDecision(False, "Không có quyền sửa gói thầu chưa được phân công.")
     elif table_name in OWNERSHIP_SCOPED_TABLES:
         record_id = clean_id(item.get("id"))
@@ -895,6 +947,25 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
             goods_status = str(row[0] or "") if row else ""
         if goods_status not in {"PREPARING", "Chuẩn bị"}:
             return AccessDecision(False, "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái Chuẩn bị.")
+    bidder_goods_parent_id = None
+    if table_name == "hang_hoa_du_thau_nha_thau":
+        bidder_goods_parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
+        if not bidder_goods_parent_id:
+            record_id = clean_id(item.get("id"))
+            row = cursor.execute(
+                "SELECT goods.goi_thau_id, package.trang_thai FROM hang_hoa_du_thau_nha_thau AS goods JOIN goi_thau AS package ON package.organization_id = goods.organization_id AND package.id = goods.goi_thau_id WHERE goods.organization_id = ? AND goods.id = ?",
+                (organization_id, record_id),
+            ).fetchone()
+            bidder_goods_parent_id = clean_id(row[0]) if row else None
+            bidder_goods_status = str(row[1] or "") if row else ""
+        else:
+            row = cursor.execute(
+                "SELECT trang_thai FROM goi_thau WHERE organization_id = ? AND id = ?",
+                (organization_id, bidder_goods_parent_id),
+            ).fetchone()
+            bidder_goods_status = str(row[0] or "") if row else ""
+        if bidder_goods_status not in BIDDER_GOODS_EDITABLE_PACKAGE_STATUSES:
+            return AccessDecision(False, "Hàng hóa dự thầu chỉ được sửa trong giai đoạn đánh giá.")
     if organization_manager:
         return AccessDecision(True)
     if is_personal_workspace_owner(cursor, user_id, organization_id):
@@ -918,6 +989,9 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
 
     if table_name == "goi_thau_hang_hoa":
         if not _assigned(cursor, organization_id, user_id, goods_parent_id, "goithau"):
+            return AccessDecision(False, "Không có quyền sửa gói thầu chưa được phân công.")
+    elif table_name == "hang_hoa_du_thau_nha_thau":
+        if not _assigned(cursor, organization_id, user_id, bidder_goods_parent_id, "goithau"):
             return AccessDecision(False, "Không có quyền sửa gói thầu chưa được phân công.")
     elif table_name == "thong_tin_mo_thau":
         if not _assigned_for_table(cursor, organization_id, user_id, table_name, item):
@@ -960,7 +1034,7 @@ def can_read_record(cursor, role_str, user_id, organization_id, payload_key, tab
         return payload_key not in WRITE_PROTECTED_KEYS
     if not can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name):
         return False
-    if table_name not in ASSIGNED_TABLE_TYPES and table_name not in {"thong_tin_mo_thau", "goi_thau_hang_hoa"}:
+    if table_name not in ASSIGNED_TABLE_TYPES and table_name not in {"thong_tin_mo_thau", "goi_thau_hang_hoa", "hang_hoa_du_thau_nha_thau"}:
         return True
     if table_name == "goi_thau_hang_hoa":
         record_id = clean_id(item_or_id.get("id") if isinstance(item_or_id, dict) else item_or_id)
@@ -968,6 +1042,16 @@ def can_read_record(cursor, role_str, user_id, organization_id, payload_key, tab
         if not parent_id and record_id:
             row = cursor.execute(
                 "SELECT goi_thau_id FROM goi_thau_hang_hoa WHERE organization_id = ? AND id = ?",
+                (organization_id, record_id),
+            ).fetchone()
+            parent_id = clean_id(row[0]) if row else None
+        return _assigned(cursor, organization_id, user_id, parent_id, "goithau")
+    if table_name == "hang_hoa_du_thau_nha_thau":
+        record_id = clean_id(item_or_id.get("id") if isinstance(item_or_id, dict) else item_or_id)
+        parent_id = clean_id(item_or_id.get("goiThauId") or item_or_id.get("goi_thau_id")) if isinstance(item_or_id, dict) else None
+        if not parent_id and record_id:
+            row = cursor.execute(
+                "SELECT goi_thau_id FROM hang_hoa_du_thau_nha_thau WHERE organization_id = ? AND id = ?",
                 (organization_id, record_id),
             ).fetchone()
             parent_id = clean_id(row[0]) if row else None
@@ -988,7 +1072,7 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
         return [item for item in source_items if str(item.get("empId") or "") == str(user_id)]
     if not can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name):
         return []
-    if table_name not in ASSIGNED_TABLE_TYPES and table_name not in {"thong_tin_mo_thau", "goi_thau_hang_hoa"}:
+    if table_name not in ASSIGNED_TABLE_TYPES and table_name not in {"thong_tin_mo_thau", "goi_thau_hang_hoa", "hang_hoa_du_thau_nha_thau"}:
         return source_items
     record_ids = [
         clean_id(item.get("id") if isinstance(item, dict) else item)
@@ -1020,6 +1104,18 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
         rows = cursor.execute(
             f"""SELECT goods.id
                 FROM goi_thau_hang_hoa AS goods
+                JOIN phan_cong_nhan_su AS pc
+                  ON pc.organization_id = goods.organization_id
+                 AND pc.id_muc_tieu = goods.goi_thau_id
+                 AND pc.loai_doi_tuong = 'goithau'
+                WHERE goods.organization_id = ? AND pc.id_nhan_vien = ?
+                  AND goods.id IN ({placeholders})""",
+            (organization_id, user_id, *record_ids),
+        ).fetchall()
+    elif table_name == "hang_hoa_du_thau_nha_thau":
+        rows = cursor.execute(
+            f"""SELECT goods.id
+                FROM hang_hoa_du_thau_nha_thau AS goods
                 JOIN phan_cong_nhan_su AS pc
                   ON pc.organization_id = goods.organization_id
                  AND pc.id_muc_tieu = goods.goi_thau_id

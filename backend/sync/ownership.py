@@ -24,6 +24,12 @@ OWNER_SCOPED_REFERENCES = {
     "goi_thau_hang_hoa": [
         ("goi_thau_id", "goi_thau"),
     ],
+    "hang_hoa_du_thau_nha_thau": [
+        ("goi_thau_id", "goi_thau"),
+        ("thong_tin_mo_thau_id", "thong_tin_mo_thau"),
+        ("phan_lo_id", "goi_thau_phan_lo"),
+        ("goi_thau_hang_hoa_id", "goi_thau_hang_hoa"),
+    ],
 }
 
 ARCHIVABLE_REFERENCE_TABLES = {

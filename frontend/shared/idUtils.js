@@ -7,6 +7,7 @@ const RECORD_ID_PREFIXES = {
   goithau: "gt-", goi_thau: "gt-",
   hopdong: "hd-", hop_dong: "hd-",
   thongtinmothau: "mt-", thong_tin_mo_thau: "mt-",
+  hanghoaduthaunhathau: "hhdt-", hang_hoa_du_thau_nha_thau: "hhdt-",
   assignments: "asg-", phan_cong_nhan_su: "asg-",
   customcontractstatuses: "tthd-", danh_muc_trang_thai_hop_dong: "tthd-",
   permissionmatrix: "perm-", ma_tran_phan_quyen: "perm-",

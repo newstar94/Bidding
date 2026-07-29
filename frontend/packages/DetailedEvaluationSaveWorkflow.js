@@ -17,6 +17,14 @@ import {
   validateDetailedEvaluationGroup,
   validateDetailedEvaluationReport,
 } from "./detailedEvaluationValidation.js";
+import { getBidderGoodsForBid, getBidderGoodsRequirements } from "./bidderGoodsSelectors.js";
+import { validateBidderGoodsSubmission } from "./bidderGoodsValidation.js";
+
+export function shouldValidateBidderGoodsOnCompletion(state, completeReport) {
+  return Boolean(completeReport)
+    && String(state?.pkg?.linhVuc || "").trim() === "Hàng hóa"
+    && ["single", "financial"].includes(state?.roundType);
+}
 
 function persistCriteriaOnSave(pkg, roundType, criteria, context = {}) {
   const metadata = parseDetailedEvaluationMetadata(pkg.danhGiaHsdtMetadata);
@@ -81,6 +89,26 @@ export async function executeDetailedEvaluationSave({
 } = {}) {
   if (!appController?.view || !state?.bid || !state?.report || !root || state.readOnly) {
     return false;
+  }
+  if (shouldValidateBidderGoodsOnCompletion(state, completeReport)) {
+    const bidderGoodsRows = getBidderGoodsForBid(appController.model, state.pkg, state.bid);
+    const bidderGoodsRequirements = getBidderGoodsRequirements(appController.model, state.pkg, state.bid);
+    const bidderGoodsValidation = validateBidderGoodsSubmission({
+      rows: bidderGoodsRows,
+      requirements: bidderGoodsRequirements,
+      bidPrice: state.bid?.giaDuThau,
+    });
+    const hasDraftRows = bidderGoodsRows.some((row) => row.isDraft !== false);
+    if (!bidderGoodsValidation.valid || hasDraftRows) {
+      await appController.view.customAlert(
+        "Chưa thể hoàn thành đánh giá",
+        hasDraftRows
+          ? "Hàng hóa dự thầu phải được lưu chính thức và đồng bộ trước khi hoàn thành đánh giá."
+          : bidderGoodsValidation.errors[0],
+        "alert-triangle",
+      );
+      return false;
+    }
   }
   if (typeof commit !== "function") {
     throw new TypeError("Detailed evaluation save workflow requires a commit adapter.");

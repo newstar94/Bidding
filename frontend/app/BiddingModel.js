@@ -27,6 +27,7 @@ const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
   "kehoach",
   "goithau",
   "goithauhanghoa",
+  "hanghoaduthaunhathau",
   "chuyengia",
   "nhathau",
   "hopdong",
@@ -54,6 +55,7 @@ export class BiddingModel {
       KEHOACH: "bf_kehoach",
       GOITHAU: "bf_goithau",
       GOITHAUHANGHOA: "bf_goithau_hang_hoa",
+      HANGHOADUTHAUNHATHAU: "bf_hang_hoa_du_thau_nha_thau",
       HOPDONG: "bf_hopdong",
       THEME: "bf_dark_mode",
       // New RBAC Storage Keys
@@ -74,6 +76,7 @@ export class BiddingModel {
       kehoach: [],
       goithau: [],
       goithauhanghoa: [],
+      hanghoaduthaunhathau: [],
       hopdong: [],
       systempackages: [],
       selectedPlanVersion: {},
@@ -306,6 +309,7 @@ export class BiddingModel {
       "kehoach",
       "goithau",
       "goithauhanghoa",
+      "hanghoaduthaunhathau",
       "chudautu",
       "nhathau",
       "chuyengia",
@@ -357,11 +361,11 @@ export class BiddingModel {
           const previous = oldById.get(String(record.id));
           return !previous || JSON.stringify(previous) !== JSON.stringify(record);
         });
-        if (changedRecords.length > 0) this.markRecordDirty(type, changedRecords);
+        if (changedRecords.length > 0) await this.markRecordDirty(type, changedRecords);
         const newIds = new Set(this.state[type].map((x) => x.id).filter(Boolean));
         const deletedRecords = oldData.filter((record) => record?.id && !newIds.has(record.id));
         if (deletedRecords.length > 0) {
-          this.markDeleted(type, deletedRecords);
+          await this.markDeleted(type, deletedRecords);
         }
       }
     } catch (e) {

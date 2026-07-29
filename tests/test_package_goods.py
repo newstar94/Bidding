@@ -20,7 +20,7 @@ def test_package_goods_schema_and_sync_registration():
     assert ("goi_thau_hang_hoa", "don_gia_du_toan") in MONEY_COLUMNS
     assert any("REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE" in fk for fk in spec["foreign_keys"])
     assert any("REFERENCES goi_thau_phan_lo(organization_id, id) ON DELETE RESTRICT" in fk for fk in spec["foreign_keys"])
-    assert DB_SCHEMA_VERSION == 22
+    assert DB_SCHEMA_VERSION == 23
 
 
 def test_package_goods_required_values_and_positive_quantity():

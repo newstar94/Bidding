@@ -16,6 +16,7 @@ TABLE_KEYS = {
     "thongtinmothau": "thong_tin_mo_thau",
     "permissionmatrix": "ma_tran_phan_quyen",
     "goithauhanghoa": "goi_thau_hang_hoa",
+    "hanghoaduthaunhathau": "hang_hoa_du_thau_nha_thau",
 }
 
 SYNCED_TABLES = set(TABLE_KEYS.values())
