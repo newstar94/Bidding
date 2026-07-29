@@ -381,53 +381,53 @@ WORD_SINGLE_NAME_OVERRIDES = {
 
 
 WORD_LIST_MAPPINGS = [
-    ("ds_gt", "goi_thau_trong_ke_hoach", "Danh sach goi thau cua ke hoach"),
-    ("ds_phien_ban_gt", "goi_thau_versions", "Danh sach phien ban cua goi thau"),
-    ("ds_phien_ban_kh", "ke_hoach_versions", "Danh sach phien ban cua ke hoach LCNT"),
-    ("ds_to_chuyen_gia", "to_chuyen_gia", "To chuyen gia cua goi thau"),
-    ("ds_to_tham_dinh", "to_tham_dinh", "To tham dinh cua goi thau"),
-    ("ds_mo_thau", "thong_tin_mo_thau", "Danh sach thong tin mo thau"),
+    ("ds_gt", "goi_thau_trong_ke_hoach", "Danh sách gói thầu của kế hoạch"),
+    ("ds_phien_ban_gt", "goi_thau_versions", "Danh sách phiên bản của gói thầu"),
+    ("ds_phien_ban_kh", "ke_hoach_versions", "Danh sách phiên bản của kế hoạch LCNT"),
+    ("ds_to_chuyen_gia", "to_chuyen_gia", "Tổ chuyên gia của gói thầu"),
+    ("ds_to_tham_dinh", "to_tham_dinh", "Tổ thẩm định của gói thầu"),
+    ("ds_mo_thau", "thong_tin_mo_thau", "Danh sách thông tin mở thầu"),
     ("ds_bao_cao_dgct", "detailed_evaluation_reports", "Báo cáo đánh giá chi tiết theo nhà thầu và vòng"),
     ("ds_dgct", "detailed_evaluation_rows", "Tất cả dòng đánh giá chi tiết"),
     ("ds_dgct_hop_le", "detailed_evaluation_validity_rows", "Đánh giá chi tiết tính hợp lệ"),
     ("ds_dgct_nang_luc", "detailed_evaluation_capacity_rows", "Đánh giá chi tiết năng lực và kinh nghiệm"),
     ("ds_dgct_ky_thuat", "detailed_evaluation_technical_rows", "Đánh giá chi tiết kỹ thuật"),
     ("ds_dgct_tai_chinh", "detailed_evaluation_financial_rows", "Đánh giá chi tiết tài chính"),
-    ("ds_tat_ca_phan_lo", "ds_phan_lo", "Danh sach phan lo tong hop"),
-    ("ds_lo_co_nt", "ds_phan_lo_co_nha_thau_tham_du", "Phan lo co nha thau tham du"),
-    ("ds_lo_khong_nt", "ds_phan_lo_khong_co_nha_thau_tham_du", "Phan lo khong co nha thau tham du"),
-    ("ds_lo_co_nt_trung", "ds_phan_lo_co_nha_thau_trung", "Phan lo co nha thau trung thau"),
-    ("ds_lo_co_nt_khong_trung", "ds_phan_lo_co_nha_thau_tham_du_khong_trung", "Phan lo co nha thau tham du nhung khong co nha thau trung"),
-    ("ds_nt_tham_du", "ds_nha_thau_tham_du", "Danh sach nha thau tham du"),
-    ("ds_nt_trung", "ds_nha_thau_trung_thau", "Danh sach nha thau trung thau"),
-    ("ds_nt_truot", "ds_nha_thau_truot_thau", "Danh sach nha thau truot thau"),
-    ("ds_nt_khong_dat", "ds_nha_thau_khong_dat", "Danh sach nha thau khong dat"),
+    ("ds_tat_ca_phan_lo", "ds_phan_lo", "Danh sách phần lô tổng hợp"),
+    ("ds_lo_co_nt", "ds_phan_lo_co_nha_thau_tham_du", "Phần lô có nhà thầu tham dự"),
+    ("ds_lo_khong_nt", "ds_phan_lo_khong_co_nha_thau_tham_du", "Phần lô không có nhà thầu tham dự"),
+    ("ds_lo_co_nt_trung", "ds_phan_lo_co_nha_thau_trung", "Phần lô có nhà thầu trúng thầu"),
+    ("ds_lo_co_nt_khong_trung", "ds_phan_lo_co_nha_thau_tham_du_khong_trung", "Phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng"),
+    ("ds_nt_tham_du", "ds_nha_thau_tham_du", "Danh sách nhà thầu tham dự"),
+    ("ds_nt_trung", "ds_nha_thau_trung_thau", "Danh sách nhà thầu trúng thầu"),
+    ("ds_nt_truot", "ds_nha_thau_truot_thau", "Danh sách nhà thầu trượt thầu"),
+    ("ds_nt_khong_dat", "ds_nha_thau_khong_dat", "Danh sách nhà thầu không đạt"),
     ("ds_nt_dat_khong_hang_1", "ds_nha_thau_dat_khong_xep_hang_1", "Nhà thầu đạt nhưng không xếp hạng 1"),
     ("ds_nt_khong_danh_gia", "ds_nha_thau_khong_duoc_danh_gia", "Nhà thầu không được đánh giá"),
     ("ds_nt_trung_kem_lo", "ds_nha_thau_trung_theo_phan_lo", "Nhà thầu trúng thầu, kèm danh sách phần lô trúng"),
-    ("ds_mua_them", "tuy_chon_mua_them_list", "Danh sach tuy chon mua them"),
-    ("ds_gia_han", "gia_han_list", "Danh sach gia han"),
-    ("ds_yc_lam_ro", "yeu_cau_lam_ro_list", "Danh sach yeu cau lam ro"),
-    ("ds_tl_lam_ro", "tra_loi_lam_ro_list", "Danh sach tra loi lam ro"),
-    ("ds_tv_lien_danh", "thanh_vien_lien_danh", "Danh sach thanh vien lien danh"),
-    ("ds_cv_da_thuc_hien", "cv_da_thuc_hien", "Danh sach cong viec da thuc hien"),
-    ("ds_cv_khong_ap_dung", "cv_khong_ap_dung", "Danh sach cong viec khong ap dung LCNT"),
-    ("ds_cv_chua_du_dk", "cv_chua_du_dieu_kien", "Danh sach cong viec chua du dieu kien LCNT"),
+    ("ds_mua_them", "tuy_chon_mua_them_list", "Danh sách tuỳ chọn mua thêm"),
+    ("ds_gia_han", "gia_han_list", "Danh sách gia hạn"),
+    ("ds_yc_lam_ro", "yeu_cau_lam_ro_list", "Danh sách yêu cầu làm rõ"),
+    ("ds_tl_lam_ro", "tra_loi_lam_ro_list", "Danh sách trả lời làm rõ"),
+    ("ds_tv_lien_danh", "thanh_vien_lien_danh", "Danh sách thành viên liên danh"),
+    ("ds_cv_da_thuc_hien", "cv_da_thuc_hien", "Danh sách công việc đã thực hiện"),
+    ("ds_cv_khong_ap_dung", "cv_khong_ap_dung", "Danh sách công việc không áp dụng LCNT"),
+    ("ds_cv_chua_du_dk", "cv_chua_du_dieu_kien", "Danh sách công việc chưa đủ điều kiện LCNT"),
 ]
 
 
 WORD_CONTEXT_MAPPINGS = [
-    ("tong_so_lo", "tong_so_phan_lo", "Tong so phan lo"),
-    ("so_lo_co_nt", "so_phan_lo_co_nha_thau_tham_du", "So phan lo co nha thau tham du"),
-    ("so_lo_khong_nt", "so_phan_lo_khong_co_nha_thau_tham_du", "So phan lo khong co nha thau tham du"),
-    ("so_lo_co_nt_khong_trung", "so_phan_lo_tham_du_khong_trung", "So phan lo co nha thau tham du nhung khong co nha thau trung"),
-    ("so_lo_co_nt_trung", "so_phan_lo_co_nha_thau_trung", "So phan lo co nha thau trung thau"),
-    ("tong_so_nt_tham_du", "tong_so_nha_thau_tham_du", "Tong so nha thau tham du"),
-    ("so_nt_trung", "so_nha_thau_trung_thau", "So nha thau trung thau"),
-    ("so_nt_truot", "so_nha_thau_truot_thau", "So nha thau truot thau"),
-    ("so_nt_khong_dat", "so_nha_thau_khong_dat", "So nha thau khong dat"),
-    ("so_nt_dat_khong_hang_1", "so_nha_thau_dat_khong_xep_hang_1", "So nha thau dat nhung khong xep hang 1"),
-    ("so_nt_khong_danh_gia", "so_nha_thau_khong_duoc_danh_gia", "So nha thau khong duoc danh gia"),
+    ("tong_so_lo", "tong_so_phan_lo", "Tổng số phần lô"),
+    ("so_lo_co_nt", "so_phan_lo_co_nha_thau_tham_du", "Số phần lô có nhà thầu tham dự"),
+    ("so_lo_khong_nt", "so_phan_lo_khong_co_nha_thau_tham_du", "Số phần lô không có nhà thầu tham dự"),
+    ("so_lo_co_nt_khong_trung", "so_phan_lo_tham_du_khong_trung", "Số phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng"),
+    ("so_lo_co_nt_trung", "so_phan_lo_co_nha_thau_trung", "Số phần lô có nhà thầu trúng thầu"),
+    ("tong_so_nt_tham_du", "tong_so_nha_thau_tham_du", "Tổng số nhà thầu tham dự"),
+    ("so_nt_trung", "so_nha_thau_trung_thau", "Số nhà thầu trúng thầu"),
+    ("so_nt_truot", "so_nha_thau_truot_thau", "Số nhà thầu trượt thầu"),
+    ("so_nt_khong_dat", "so_nha_thau_khong_dat", "Số nhà thầu không đạt"),
+    ("so_nt_dat_khong_hang_1", "so_nha_thau_dat_khong_xep_hang_1", "Số nhà thầu đạt nhưng không xếp hạng 1"),
+    ("so_nt_khong_danh_gia", "so_nha_thau_khong_duoc_danh_gia", "Số nhà thầu không được đánh giá"),
 ]
 
 
@@ -474,7 +474,7 @@ def build_default_word_mappings():
             "ten_bien": ten_bien,
             "source_table": source_table,
             "source_column": "",
-            "mo_ta": f"Danh sach mac dinh tu schema he thong: {mo_ta}",
+            "mo_ta": f"Danh sách mặc định từ schema hệ thống: {mo_ta}",
         })
 
     return mappings
@@ -513,7 +513,7 @@ def ensure_default_word_mappings(cursor, organization_id):
                  AND source_table = 'ke_hoach_lcnt'
                  AND source_column = ''
                  AND mo_ta LIKE ?""",
-            (organization_id, "Danh sach mac dinh tu schema he thong:%"),
+            (organization_id, "Danh sách mặc định từ schema hệ thống:%"),
         )
         cursor.execute(
             """DELETE FROM cau_hinh_bien_word

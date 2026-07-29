@@ -25,7 +25,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "coQuanChuQuan",
-      "label": "Co quan chu quan",
+      "label": "Cơ quan chủ quản",
       "wordVariable": "cq_chu_quan"
     },
     "dai_dien_cdt": {
@@ -97,7 +97,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "date",
       "jsonKey": "ngayApDung",
-      "label": "Ng\u00e0y ap dung",
+      "label": "Ngày áp dụng",
       "wordVariable": "ngay_ap_dung_cdt"
     },
     "noi_mo_tai_khoan": {
@@ -142,7 +142,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "tenVietTat",
-      "label": "T\u00ean viet tat",
+      "label": "Tên viết tắt",
       "wordVariable": "ten_tat_cdt"
     }
   },
@@ -263,7 +263,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "hanMucNhanSu",
-      "label": "Han muc nhan su",
+      "label": "Hạn mức nhân sự",
       "wordVariable": "han_muc_nhan_su_dv"
     },
     "mo_ta": {
@@ -328,7 +328,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "hieuLucHsdt",
-      "label": "Hieu luc hsdt",
+      "label": "Hiệu lực HSDT",
       "wordVariable": "hieu_luc_hsdt"
     },
     "hinh_thuc_lua_chon": {
@@ -346,7 +346,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "isThuoc",
-      "label": "Is thuoc",
+      "label": "Is thuộc",
       "wordVariable": "gt_is_thuoc"
     },
     "linh_vuc": {
@@ -355,7 +355,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "linhVuc",
-      "label": "Linh vuc",
+      "label": "Lĩnh vực",
       "wordVariable": "gt_linh_vuc"
     },
     "loai_hop_dong": {
@@ -418,7 +418,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "nguonVon",
-      "label": "Nguon von",
+      "label": "Nguồn vốn",
       "wordVariable": "gt_nguon_von"
     },
     "phan_lo": {
@@ -427,7 +427,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "phanLo",
-      "label": "Phan lo",
+      "label": "Phân lô",
       "wordVariable": "gt_phan_lo"
     },
     "phien_ban": {
@@ -436,7 +436,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "phienBan",
-      "label": "Phien ban",
+      "label": "Phiên bản",
       "wordVariable": "gt_phien_ban"
     },
     "phuong_phap_danh_gia": {
@@ -607,7 +607,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "tuyChonMuaThem",
-      "label": "Tuy chon mua them",
+      "label": "Tùy chọn mua thêm",
       "wordVariable": "co_mua_them"
     },
     "ty_le_bao_dam_hop_dong": {
@@ -625,7 +625,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "yeuCauThamDinhHsmt",
-      "label": "Yeu cau tham dinh hsmt",
+      "label": "Yêu cầu thẩm định HSMT",
       "wordVariable": "yc_tham_dinh_hsmt"
     }
   },
@@ -690,7 +690,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "phanLoai",
-      "label": "Phan loai",
+      "label": "Phân loại",
       "wordVariable": "hd_phan_loai"
     },
     "so_hop_dong": {
@@ -764,7 +764,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "donViTrinhCdt",
-      "label": "Don vi trinh cdt",
+      "label": "Đơn vị trình CĐT",
       "wordVariable": "don_vi_trinh_cdt"
     },
     "loai_hinh_mua_sam": {
@@ -845,7 +845,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "nguonVon",
-      "label": "Nguon von",
+      "label": "Nguồn vốn",
       "wordVariable": "kh_nguon_von"
     },
     "phe_duyet": {
@@ -863,7 +863,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "phienBan",
-      "label": "Phien ban",
+      "label": "Phiên bản",
       "wordVariable": "kh_phien_ban"
     },
     "quyet_dinh_phe_duyet": {
@@ -944,7 +944,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "tenVietTatDonViTrinh",
-      "label": "T\u00ean viet tat don vi trinh",
+      "label": "Tên viết tắt đơn vị trình",
       "wordVariable": "ten_tat_dv_trinh"
     },
     "thoi_gian_dang_tai": {
@@ -971,7 +971,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "thongTinKhac",
-      "label": "Thong tin khac",
+      "label": "Thông tin khác",
       "wordVariable": "thong_tin_khac_kh"
     },
     "tong_muc_dau_tu": {
@@ -1072,7 +1072,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "date",
       "jsonKey": "ngayApDung",
-      "label": "Ng\u00e0y ap dung",
+      "label": "Ngày áp dụng",
       "wordVariable": "ngay_ap_dung_nt"
     },
     "nguoi_dai_dien": {
@@ -1135,7 +1135,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "tenVietTat",
-      "label": "T\u00ean viet tat",
+      "label": "Tên viết tắt",
       "wordVariable": "ten_tat_nt"
     }
   },
@@ -1155,7 +1155,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "daXacMinh",
-      "label": "Da xac minh",
+      "label": "Đã xác minh",
       "wordVariable": "tk_da_xac_minh"
     },
     "email": {
@@ -1191,7 +1191,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "vaiTro",
-      "label": "Vai tro",
+      "label": "Vai trò",
       "wordVariable": "tk_vai_tro"
     }
   },
@@ -1238,7 +1238,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "hieuLucHsdt",
-      "label": "Hieu luc hsdt",
+      "label": "Hiệu lực HSDT",
       "wordVariable": "mt_hieu_luc_hsdt"
     },
     "loai_nha_thau": {
@@ -1376,7 +1376,7 @@ export function getWordColumnLabel(tableName, columnName) {
 export const DEFAULT_WORD_VARIABLES = [
   {
     "format": "text",
-    "label": "Phien ban",
+    "label": "Phiên bản",
     "name": "cdt_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "chu_dau_tu"
@@ -1397,14 +1397,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "date",
-    "label": "Ngày ap dung",
+    "label": "Ngày áp dụng",
     "name": "ngay_ap_dung_cdt",
     "sourceColumn": "ngay_ap_dung",
     "sourceTable": "chu_dau_tu"
   },
   {
     "format": "text",
-    "label": "Tên viet tat",
+    "label": "Tên viết tắt",
     "name": "ten_tat_cdt",
     "sourceColumn": "ten_viet_tat",
     "sourceTable": "chu_dau_tu"
@@ -1488,7 +1488,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Co quan chu quan",
+    "label": "Cơ quan chủ quản",
     "name": "cq_chu_quan",
     "sourceColumn": "co_quan_chu_quan",
     "sourceTable": "chu_dau_tu"
@@ -1509,7 +1509,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phien ban",
+    "label": "Phiên bản",
     "name": "kh_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "ke_hoach_lcnt"
@@ -1537,14 +1537,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Don vi trinh cdt",
+    "label": "Đơn vị trình CĐT",
     "name": "don_vi_trinh_cdt",
     "sourceColumn": "don_vi_trinh_cdt",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
     "format": "text",
-    "label": "Tên viet tat don vi trinh",
+    "label": "Tên viết tắt đơn vị trình",
     "name": "ten_tat_dv_trinh",
     "sourceColumn": "ten_viet_tat_don_vi_trinh",
     "sourceTable": "ke_hoach_lcnt"
@@ -1579,7 +1579,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Nguon von",
+    "label": "Nguồn vốn",
     "name": "kh_nguon_von",
     "sourceColumn": "nguon_von",
     "sourceTable": "ke_hoach_lcnt"
@@ -1600,7 +1600,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Thong tin khac",
+    "label": "Thông tin khác",
     "name": "thong_tin_khac_kh",
     "sourceColumn": "thong_tin_khac",
     "sourceTable": "ke_hoach_lcnt"
@@ -1691,7 +1691,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phien ban",
+    "label": "Phiên bản",
     "name": "gt_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "goi_thau"
@@ -1740,7 +1740,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Nguon von",
+    "label": "Nguồn vốn",
     "name": "gt_nguon_von",
     "sourceColumn": "nguon_von",
     "sourceTable": "goi_thau"
@@ -1754,14 +1754,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Linh vuc",
+    "label": "Lĩnh vực",
     "name": "gt_linh_vuc",
     "sourceColumn": "linh_vuc",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Tuy chon mua them",
+    "label": "Tùy chọn mua thêm",
     "name": "co_mua_them",
     "sourceColumn": "tuy_chon_mua_them",
     "sourceTable": "goi_thau"
@@ -1782,7 +1782,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phan lo",
+    "label": "Phân lô",
     "name": "gt_phan_lo",
     "sourceColumn": "phan_lo",
     "sourceTable": "goi_thau"
@@ -1866,7 +1866,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Hieu luc hsdt",
+    "label": "Hiệu lực HSDT",
     "name": "hieu_luc_hsdt",
     "sourceColumn": "hieu_luc_hsdt",
     "sourceTable": "goi_thau"
@@ -1901,7 +1901,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Is thuoc",
+    "label": "Is thuộc",
     "name": "gt_is_thuoc",
     "sourceColumn": "is_thuoc",
     "sourceTable": "goi_thau"
@@ -1915,7 +1915,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Yeu cau tham dinh hsmt",
+    "label": "Yêu cầu thẩm định HSMT",
     "name": "yc_tham_dinh_hsmt",
     "sourceColumn": "yeu_cau_tham_dinh_hsmt",
     "sourceTable": "goi_thau"
@@ -1964,14 +1964,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Qua mang",
+    "label": "Qua mạng",
     "name": "gt_qua_mang",
     "sourceColumn": "qua_mang",
     "sourceTable": "goi_thau"
   },
   {
     "format": "text",
-    "label": "Trong nuoc quoc te",
+    "label": "Trong nước / quốc tế",
     "name": "gt_trong_nuoc_quoc_te",
     "sourceColumn": "trong_nuoc_quoc_te",
     "sourceTable": "goi_thau"
@@ -1985,7 +1985,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phien ban",
+    "label": "Phiên bản",
     "name": "nt_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "nha_thau"
@@ -2006,14 +2006,14 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "date",
-    "label": "Ngày ap dung",
+    "label": "Ngày áp dụng",
     "name": "ngay_ap_dung_nt",
     "sourceColumn": "ngay_ap_dung",
     "sourceTable": "nha_thau"
   },
   {
     "format": "text",
-    "label": "Tên viet tat",
+    "label": "Tên viết tắt",
     "name": "ten_tat_nt",
     "sourceColumn": "ten_viet_tat",
     "sourceTable": "nha_thau"
@@ -2153,7 +2153,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Hieu luc hsdt",
+    "label": "Hiệu lực HSDT",
     "name": "mt_hieu_luc_hsdt",
     "sourceColumn": "hieu_luc_hsdt",
     "sourceTable": "thong_tin_mo_thau"
@@ -2251,7 +2251,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Ly do truot",
+    "label": "Lý do trượt",
     "name": "mt_ly_do_truot",
     "sourceColumn": "ly_do_truot",
     "sourceTable": "thong_tin_mo_thau"
@@ -2265,7 +2265,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Lam ro nang luc",
+    "label": "Làm rõ năng lực",
     "name": "mt_lam_ro_nang_luc",
     "sourceColumn": "lam_ro_nang_luc",
     "sourceTable": "thong_tin_mo_thau"
@@ -2293,7 +2293,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Nguyen nhan khong dat nang luc",
+    "label": "Nguyên nhân không đạt năng lực",
     "name": "mt_nn_khong_dat_nang_luc",
     "sourceColumn": "nguyen_nhan_khong_dat_nang_luc",
     "sourceTable": "thong_tin_mo_thau"
@@ -2307,7 +2307,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phien ban",
+    "label": "Phiên bản",
     "name": "cg_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "chuyen_gia"
@@ -2405,7 +2405,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phien ban",
+    "label": "Phiên bản",
     "name": "hd_phien_ban",
     "sourceColumn": "phien_ban",
     "sourceTable": "hop_dong"
@@ -2468,7 +2468,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Phan loai",
+    "label": "Phân loại",
     "name": "hd_phan_loai",
     "sourceColumn": "phan_loai",
     "sourceTable": "hop_dong"
@@ -2510,7 +2510,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Vai tro",
+    "label": "Vai trò",
     "name": "tk_vai_tro",
     "sourceColumn": "vai_tro",
     "sourceTable": "tai_khoan"
@@ -2531,7 +2531,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Da xac minh",
+    "label": "Đã xác minh",
     "name": "tk_da_xac_minh",
     "sourceColumn": "da_xac_minh",
     "sourceTable": "tai_khoan"
@@ -2559,7 +2559,7 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Han muc nhan su",
+    "label": "Hạn mức nhân sự",
     "name": "han_muc_nhan_su_dv",
     "sourceColumn": "han_muc_nhan_su",
     "sourceTable": "goi_dich_vu"
@@ -2650,224 +2650,224 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach goi thau cua ke hoach",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách gói thầu của kế hoạch",
     "name": "ds_gt",
     "sourceColumn": "",
     "sourceTable": "goi_thau_trong_ke_hoach"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach phien ban cua goi thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách phiên bản của gói thầu",
     "name": "ds_phien_ban_gt",
     "sourceColumn": "",
     "sourceTable": "goi_thau_versions"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach phien ban cua ke hoach LCNT",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách phiên bản của kế hoạch LCNT",
     "name": "ds_phien_ban_kh",
     "sourceColumn": "",
     "sourceTable": "ke_hoach_versions"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: To chuyen gia cua goi thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Tổ chuyên gia của gói thầu",
     "name": "ds_to_chuyen_gia",
     "sourceColumn": "",
     "sourceTable": "to_chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: To tham dinh cua goi thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Tổ thẩm định của gói thầu",
     "name": "ds_to_tham_dinh",
     "sourceColumn": "",
     "sourceTable": "to_tham_dinh"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach thong tin mo thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách thông tin mở thầu",
     "name": "ds_mo_thau",
     "sourceColumn": "",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Báo cáo đánh giá chi tiết theo nhà thầu và vòng",
+    "label": "Danh sách mặc định từ schema hệ thống: Báo cáo đánh giá chi tiết theo nhà thầu và vòng",
     "name": "ds_bao_cao_dgct",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_reports"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Tất cả dòng đánh giá chi tiết",
+    "label": "Danh sách mặc định từ schema hệ thống: Tất cả dòng đánh giá chi tiết",
     "name": "ds_dgct",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_rows"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết tính hợp lệ",
+    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết tính hợp lệ",
     "name": "ds_dgct_hop_le",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_validity_rows"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết năng lực và kinh nghiệm",
+    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết năng lực và kinh nghiệm",
     "name": "ds_dgct_nang_luc",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_capacity_rows"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết kỹ thuật",
+    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết kỹ thuật",
     "name": "ds_dgct_ky_thuat",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_technical_rows"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Đánh giá chi tiết tài chính",
+    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết tài chính",
     "name": "ds_dgct_tai_chinh",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_financial_rows"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach phan lo tong hop",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách phần lô tổng hợp",
     "name": "ds_tat_ca_phan_lo",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Phan lo co nha thau tham du",
+    "label": "Danh sách mặc định từ schema hệ thống: Phần lô có nhà thầu tham dự",
     "name": "ds_lo_co_nt",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_co_nha_thau_tham_du"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Phan lo khong co nha thau tham du",
+    "label": "Danh sách mặc định từ schema hệ thống: Phần lô không có nhà thầu tham dự",
     "name": "ds_lo_khong_nt",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_khong_co_nha_thau_tham_du"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Phan lo co nha thau trung thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Phần lô có nhà thầu trúng thầu",
     "name": "ds_lo_co_nt_trung",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_co_nha_thau_trung"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Phan lo co nha thau tham du nhung khong co nha thau trung",
+    "label": "Danh sách mặc định từ schema hệ thống: Phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng",
     "name": "ds_lo_co_nt_khong_trung",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_co_nha_thau_tham_du_khong_trung"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau tham du",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu tham dự",
     "name": "ds_nt_tham_du",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_tham_du"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau trung thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu trúng thầu",
     "name": "ds_nt_trung",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_trung_thau"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau truot thau",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu trượt thầu",
     "name": "ds_nt_truot",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_truot_thau"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach nha thau khong dat",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu không đạt",
     "name": "ds_nt_khong_dat",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_khong_dat"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Nhà thầu đạt nhưng không xếp hạng 1",
+    "label": "Danh sách mặc định từ schema hệ thống: Nhà thầu đạt nhưng không xếp hạng 1",
     "name": "ds_nt_dat_khong_hang_1",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_dat_khong_xep_hang_1"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Nhà thầu không được đánh giá",
+    "label": "Danh sách mặc định từ schema hệ thống: Nhà thầu không được đánh giá",
     "name": "ds_nt_khong_danh_gia",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_khong_duoc_danh_gia"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
+    "label": "Danh sách mặc định từ schema hệ thống: Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
     "name": "ds_nt_trung_kem_lo",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_trung_theo_phan_lo"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach tuy chon mua them",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách tuỳ chọn mua thêm",
     "name": "ds_mua_them",
     "sourceColumn": "",
     "sourceTable": "tuy_chon_mua_them_list"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach gia han",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách gia hạn",
     "name": "ds_gia_han",
     "sourceColumn": "",
     "sourceTable": "gia_han_list"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach yeu cau lam ro",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách yêu cầu làm rõ",
     "name": "ds_yc_lam_ro",
     "sourceColumn": "",
     "sourceTable": "yeu_cau_lam_ro_list"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach tra loi lam ro",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách trả lời làm rõ",
     "name": "ds_tl_lam_ro",
     "sourceColumn": "",
     "sourceTable": "tra_loi_lam_ro_list"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach thanh vien lien danh",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách thành viên liên danh",
     "name": "ds_tv_lien_danh",
     "sourceColumn": "",
     "sourceTable": "thanh_vien_lien_danh"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach cong viec da thuc hien",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách công việc đã thực hiện",
     "name": "ds_cv_da_thuc_hien",
     "sourceColumn": "",
     "sourceTable": "cv_da_thuc_hien"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach cong viec khong ap dung LCNT",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách công việc không áp dụng LCNT",
     "name": "ds_cv_khong_ap_dung",
     "sourceColumn": "",
     "sourceTable": "cv_khong_ap_dung"
   },
   {
     "format": "text",
-    "label": "Danh sach mac dinh tu schema he thong: Danh sach cong viec chua du dieu kien LCNT",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách công việc chưa đủ điều kiện LCNT",
     "name": "ds_cv_chua_du_dk",
     "sourceColumn": "",
     "sourceTable": "cv_chua_du_dieu_kien"
