@@ -110,5 +110,6 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     tabs.push({ id: "cancel", label: "Hủy thầu" });
   }
   tabs.push({ id: "documents", label: "Tài liệu" });
+  tabs.push({ id: "activity", label: "Lịch sử thực hiện" });
   return { tabs, ...state };
 }

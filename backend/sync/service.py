@@ -80,6 +80,11 @@ from backend.notifications.service import (
     queue_assignment_state_changes,
     snapshot_assignment_state,
 )
+from backend.activity.service import (
+    build_assignment_activity_events,
+    insert_activity_events,
+    insert_assignment_removal_history,
+)
 
 
 async def process_sync_request(request, broadcast_callback=None):
@@ -501,7 +506,10 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
 
         batch_sync_version = next_sync_version(cursor, org_name)
         get_clean_id = clean_sync_record_id
-        mutation_tracker = SyncMutationTracker(get_clean_id)
+        mutation_tracker = SyncMutationTracker(
+            get_clean_id,
+            client_mutation_id=client_mutation_id,
+        )
         record_serializer = SyncRecordSerializer(
             transaction_context,
             sync_version=batch_sync_version,
@@ -696,12 +704,34 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             )
 
         if owner_type == "organization":
+            insert_assignment_removal_history(
+                cursor,
+                organization_id=org_name,
+                actor_user_id=user_id,
+                occurred_at=current_time,
+                before=assignment_state_before,
+                after=assignment_state_after,
+            )
+            mutation_tracker.extend_activity(build_assignment_activity_events(
+                assignment_state_before,
+                assignment_state_after,
+                client_mutation_id=client_mutation_id,
+            ))
             queue_assignment_state_changes(
                 cursor,
                 organization_id=org_name,
                 before=assignment_state_before,
                 after=assignment_state_after,
             )
+
+        insert_activity_events(
+            cursor,
+            organization_id=org_name,
+            owner_type=owner_type,
+            actor_user_id=user_id,
+            occurred_at=current_time,
+            events=mutation_tracker.activity_events,
+        )
 
         mutation_outcome = mutation_tracker.outcome()
         response_data = commit_sync_response(

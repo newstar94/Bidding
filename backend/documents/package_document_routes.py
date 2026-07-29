@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import re
+import time
+
 from starlette.responses import FileResponse, JSONResponse
 
 from backend.documents.document_worker import (
@@ -48,11 +52,103 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.logging_utils import log_and_error
+from backend.shared.logging_utils import get_request_id
+from backend.shared.date_utils import vietnam_now_sql
+from backend.shared.idempotency import acquire_idempotency_lock
+from backend.activity.service import (
+    document_activity_event,
+    insert_activity_events,
+)
 from backend.sync.api import broadcast_websocket_event
+
+
+_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
 def _document_error(message, code, status_code):
     return JSONResponse({"error": message, "code": code}, status_code=status_code)
+
+
+def _document_idempotency_key(request):
+    key = str(request.headers.get("Idempotency-Key") or "").strip()
+    if key and not _IDEMPOTENCY_KEY_RE.fullmatch(key):
+        return None, _document_error(
+            "Idempotency-Key không hợp lệ.",
+            "INVALID_IDEMPOTENCY_KEY",
+            400,
+        )
+    return key or None, None
+
+
+def _document_operation(
+    organization_id,
+    package_id,
+    document_type,
+    evaluation_batch_id,
+    action,
+):
+    return ":".join((
+        "package_document",
+        str(organization_id),
+        str(package_id),
+        str(document_type),
+        str(evaluation_batch_id or "general"),
+        str(action),
+    ))
+
+
+def _document_idempotency_replay(
+    cursor,
+    *,
+    actor_user_id,
+    operation,
+    idempotency_key,
+):
+    if not idempotency_key:
+        return None
+    acquire_idempotency_lock(
+        cursor,
+        "package_document",
+        actor_user_id,
+        operation,
+        idempotency_key,
+    )
+    row = cursor.execute(
+        """SELECT response_json FROM api_idempotency
+           WHERE actor_user_id = ? AND operation = ? AND idempotency_key = ?""",
+        (actor_user_id, operation, idempotency_key),
+    ).fetchone()
+    if not row:
+        return None
+    payload = json.loads(row[0] or "{}")
+    status_code = int(payload.pop("_statusCode", 200))
+    return payload, status_code
+
+
+def _store_document_idempotency(
+    cursor,
+    *,
+    actor_user_id,
+    operation,
+    idempotency_key,
+    payload,
+    status_code,
+):
+    if not idempotency_key:
+        return
+    stored_payload = {**payload, "_statusCode": int(status_code)}
+    cursor.execute(
+        """INSERT INTO api_idempotency (
+               actor_user_id, operation, idempotency_key, response_json, created_at
+           ) VALUES (?, ?, ?, ?, ?)""",
+        (
+            actor_user_id,
+            operation,
+            idempotency_key,
+            json.dumps(stored_payload, ensure_ascii=False),
+            int(time.time()),
+        ),
+    )
 
 
 def _package_read_allowed(cursor, session, organization_id, package_id):
@@ -218,6 +314,9 @@ async def upload_package_document_api(request):
             request.path_params.get("document_type") or ""
         ).strip()
         evaluation_batch_id = _request_evaluation_batch_id(request)
+        idempotency_key, idempotency_error = _document_idempotency_key(request)
+        if idempotency_error:
+            return idempotency_error
         if document_type_definition(document_type) is None:
             return _document_error(
                 "Loại tài liệu không hợp lệ.",
@@ -225,6 +324,13 @@ async def upload_package_document_api(request):
                 400,
             )
         organization_id = get_active_org(request, session.user_id)
+        operation = _document_operation(
+            organization_id,
+            package_id,
+            document_type,
+            evaluation_batch_id,
+            "upload",
+        )
 
         with database.get_connection() as read_connection:
             cursor = read_connection.cursor()
@@ -322,6 +428,27 @@ async def upload_package_document_api(request):
             raise PackageDocumentError(
                 decision.message or "Không còn quyền sửa gói thầu."
             )
+        replay = _document_idempotency_replay(
+            cursor,
+            actor_user_id=session.user_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+        )
+        if replay:
+            connection.commit()
+            connection.close()
+            connection = None
+            if new_storage_key:
+                try:
+                    await run_blocking_io(
+                        remove_storage_key,
+                        new_storage_key,
+                        timeout_seconds=5,
+                    )
+                finally:
+                    new_storage_key = None
+            replay_payload, replay_status = replay
+            return JSONResponse(replay_payload, status_code=replay_status)
         if document_type not in allowed_upload_types(package):
             raise PackageDocumentError(
                 "Gói thầu đã chuyển bước; không thể tải loại tài liệu này."
@@ -347,6 +474,26 @@ async def upload_package_document_api(request):
             evaluation_batch_id=evaluation_batch_id,
         )
         old_storage_key = previous.get("storage_key") if previous else None
+        insert_activity_events(
+            cursor,
+            organization_id=organization_id,
+            owner_type=package["owner_type"],
+            actor_user_id=session.user_id,
+            occurred_at=vietnam_now_sql(),
+            events=[document_activity_event(
+                action=(
+                    "package_document.replaced"
+                    if previous else "package_document.uploaded"
+                ),
+                package=package,
+                document_id=document["id"],
+                filename=document["originalFilename"],
+                document_type=document_type,
+                size_bytes=stored_size,
+                client_mutation_id=idempotency_key,
+                request_id=get_request_id(request),
+            )],
+        )
         log_audit(
             "package_document.replaced" if previous else "package_document.uploaded",
             actor_user_id=session.user_id,
@@ -363,6 +510,16 @@ async def upload_package_document_api(request):
             cursor=cursor,
             required=True,
         )
+        response_payload = {"success": True, "document": document}
+        response_status = 200 if previous else 201
+        _store_document_idempotency(
+            cursor,
+            actor_user_id=session.user_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            payload=response_payload,
+            status_code=response_status,
+        )
         connection.commit()
         connection.close()
         connection = None
@@ -377,10 +534,7 @@ async def upload_package_document_api(request):
             except Exception as cleanup_error:
                 log_error(cleanup_error, "package_document_old_file_cleanup")
         broadcast_websocket_event(organization_id, {"event": "db_changed"})
-        return JSONResponse(
-            {"success": True, "document": document},
-            status_code=200 if previous else 201,
-        )
+        return JSONResponse(response_payload, status_code=response_status)
     except (PackageDocumentError, DocumentWorkerInputError) as exc:
         if connection:
             connection.rollback()
@@ -552,7 +706,17 @@ async def delete_package_document_api(request):
             request.path_params.get("document_type") or ""
         ).strip()
         evaluation_batch_id = _request_evaluation_batch_id(request)
+        idempotency_key, idempotency_error = _document_idempotency_key(request)
+        if idempotency_error:
+            return idempotency_error
         organization_id = get_active_org(request, session.user_id)
+        operation = _document_operation(
+            organization_id,
+            package_id,
+            document_type,
+            evaluation_batch_id,
+            "delete",
+        )
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
@@ -570,6 +734,18 @@ async def delete_package_document_api(request):
                 "PACKAGE_DOCUMENT_ACCESS_DENIED",
                 403,
             )
+        replay = _document_idempotency_replay(
+            cursor,
+            actor_user_id=session.user_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+        )
+        if replay:
+            connection.commit()
+            connection.close()
+            connection = None
+            replay_payload, replay_status = replay
+            return JSONResponse(replay_payload, status_code=replay_status)
         if document_type not in allowed_upload_types(package):
             connection.rollback()
             return _document_error(
@@ -591,6 +767,23 @@ async def delete_package_document_api(request):
             document_type,
             evaluation_batch_id,
         )
+        insert_activity_events(
+            cursor,
+            organization_id=organization_id,
+            owner_type=package["owner_type"],
+            actor_user_id=session.user_id,
+            occurred_at=vietnam_now_sql(),
+            events=[document_activity_event(
+                action="package_document.deleted",
+                package=package,
+                document_id=deleted["id"],
+                filename=deleted["original_filename"],
+                document_type=document_type,
+                size_bytes=None,
+                client_mutation_id=idempotency_key,
+                request_id=get_request_id(request),
+            )],
+        )
         log_audit(
             "package_document.deleted",
             actor_user_id=session.user_id,
@@ -606,6 +799,15 @@ async def delete_package_document_api(request):
             cursor=cursor,
             required=True,
         )
+        response_payload = {"success": True}
+        _store_document_idempotency(
+            cursor,
+            actor_user_id=session.user_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            payload=response_payload,
+            status_code=200,
+        )
         connection.commit()
         connection.close()
         connection = None
@@ -618,7 +820,7 @@ async def delete_package_document_api(request):
         except Exception as cleanup_error:
             log_error(cleanup_error, "package_document_deleted_file_cleanup")
         broadcast_websocket_event(organization_id, {"event": "db_changed"})
-        return JSONResponse({"success": True})
+        return JSONResponse(response_payload)
     except PackageDocumentNotFoundError as exc:
         if connection:
             connection.rollback()

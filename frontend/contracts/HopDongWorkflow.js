@@ -9,6 +9,12 @@ import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { ensureCurrentUserAssignee } from "../packages/packageAssignmentPolicy.js";
+import {
+  applyAssignmentDelta,
+  initializeMultiAssigneeSelect,
+  normalizeAssigneeIds,
+  selectedAssigneeIds,
+} from "../shared/MultiAssigneeSelect.js";
 export async function deleteHopDong(id) {
   const targetHd = await refreshRecordBeforeDelete(this, "hopdong", id);
   if (!targetHd) return;
@@ -296,24 +302,28 @@ export async function editHopDong(id) {
     const restoreHdEmpValue = () => {
       const empSelect = document.getElementById("hd-nhanvienphutrach");
       if (empSelect) {
-        if (id) {
-          const assignment = this.model.state.assignments.find((a) => a.targetId === id && a.type === "hopdong");
-          empSelect.value = assignment ? assignment.empId : "";
-        } else {
-          empSelect.value = currentUserId;
-        }
-        if (this.model.state.activerole === "employee") {
-          empSelect.disabled = true;
-        } else {
-          empSelect.disabled = false;
-        }
-        this.makeSearchableSelect(empSelect, "Tìm kiếm Chuyên viên phụ trách...");
+        const assignedEmpIds = id
+          ? this.model.state.assignments
+            .filter((a) => String(a.targetId) === String(id) && a.type === "hopdong")
+            .map((assignment) => assignment.empId)
+          : [currentUserId];
+        initializeMultiAssigneeSelect(empSelect, {
+          selectedIds: assignedEmpIds,
+          disabled: this.model.state.activerole === "employee",
+        });
       }
     };
     const _populateHdEmpDropdown = () => {
       const empDropdown = document.getElementById("hd-nhanvienphutrach");
       if (!empDropdown) return;
       const selectableEmployees = ensureCurrentUserAssignee(this.model.state.employees, currentUserCandidate);
+      const knownEmployeeIds = new Set(selectableEmployees.map((employee) => String(employee.id)));
+      const inactiveAssignedIds = id
+        ? (this.model.state.assignments || [])
+          .filter((assignment) => String(assignment.targetId) === String(id) && assignment.type === "hopdong")
+          .map((assignment) => String(assignment.empId))
+          .filter((employeeId) => !knownEmployeeIds.has(employeeId))
+        : [];
       const optHtml = selectableEmployees.map((e) => {
         const employeeProfile = organizationEmployeeProfile(e);
         const employeeName = employeeProfile.name;
@@ -321,8 +331,10 @@ export async function editHopDong(id) {
         const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === employeeName.toLowerCase().trim());
         const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
         return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${employeeName} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(employeeLabel)}</option>`;
-      }).join("");
-      empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
+      }).join("") + inactiveAssignedIds.map((employeeId) => (
+        `<option value="${escapeHtml(employeeId)}" data-inactive="true" disabled>${escapeHtml(employeeId)} (không còn hoạt động)</option>`
+      )).join("");
+      empDropdown.innerHTML = trustedHTML('<option value="" disabled>-- Chọn một hoặc nhiều Chuyên viên phụ trách --</option>' + optHtml);
       restoreHdEmpValue();
     };
     const loadAndPopulateHdEmpDropdown = () => {
@@ -565,11 +577,17 @@ export async function handleHopDongSubmit(e) {
   }
   let finalHdId = id;
   const assignedEmpSelect = document.getElementById("hd-nhanvienphutrach");
-  const currentContractAssignment = id
-    ? (this.model.state.assignments || []).find((assignment) => assignment.targetId === id && assignment.type === "hopdong")
-    : null;
-  const assignedEmpId = String(assignedEmpSelect?.value || currentContractAssignment?.empId || "").trim();
-  if (!assignedEmpId) {
+  const currentContractAssigneeIds = id
+    ? (this.model.state.assignments || [])
+      .filter((assignment) => String(assignment.targetId) === String(id) && assignment.type === "hopdong")
+      .map((assignment) => assignment.empId)
+    : [];
+  const assignedEmpIds = normalizeAssigneeIds(
+    selectedAssigneeIds(assignedEmpSelect).length
+      ? selectedAssigneeIds(assignedEmpSelect)
+      : (currentContractAssigneeIds.length ? currentContractAssigneeIds : this.model.state.activeuser?.id),
+  );
+  if (!assignedEmpIds.length) {
     await this.view.customAlert(
       "Dữ liệu không hợp lệ",
       "Vui lòng chọn chuyên viên phụ trách hợp đồng.",
@@ -643,39 +661,12 @@ export async function handleHopDongSubmit(e) {
     this.model.state.hopdong.push(data);
     finalHdId = newId;
   }
-  if (id && finalHdId && finalHdId !== id) {
-    const hasHistoricalAssignment = (this.model.state.assignments || [])
-      .some((assignment) => assignment.targetId === id && assignment.type === "hopdong");
-    if (!hasHistoricalAssignment) {
-      this.model.state.assignments = this.model.state.assignments || [];
-      this.model.state.assignments.push({
-        id: generateRecordId("assignments"),
-        empId: assignedEmpId,
-        targetId: id,
-        type: "hopdong"
-      });
-    }
-  }
   if (finalHdId) {
-    const oldAssignments = (this.model.state.assignments || []).filter((a) => a.targetId === finalHdId && a.type === "hopdong");
-    const retainedAssignment = assignedEmpId
-      ? oldAssignments.find((assignment) => assignment.empId === assignedEmpId)
-      : null;
-    const assignmentIdsToRemove = new Set(
-      oldAssignments
-        .filter((assignment) => assignment !== retainedAssignment)
-        .map((assignment) => String(assignment.id))
-    );
-    this.model.state.assignments = (this.model.state.assignments || [])
-      .filter((assignment) => !assignmentIdsToRemove.has(String(assignment.id)));
-    if (assignedEmpId && !retainedAssignment) {
-      this.model.state.assignments.push({
-        id: generateRecordId("assignments"),
-        empId: assignedEmpId,
-        targetId: finalHdId,
-        type: "hopdong"
-      });
-    }
+    await applyAssignmentDelta(this.model, {
+      targetId: finalHdId,
+      type: "hopdong",
+      selectedIds: assignedEmpIds,
+    });
   }
   if (hasModalReturnState("hopdong-detail") && finalHdId) {
     updateModalReturnAction(finalHdId);

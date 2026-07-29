@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from backend.shared.helpers import clean_id
 from backend.sync.repository import VERSIONED_TABLES
+from backend.activity.service import ActivityEvent, build_record_activity_event
 
 
 def clean_sync_record_id(table_name: str, raw_id: Any) -> str | None:
@@ -26,7 +27,12 @@ class SyncMutationOutcome:
 
 
 class SyncMutationTracker:
-    def __init__(self, clean_record_id: Callable[[str, Any], str | None]):
+    def __init__(
+        self,
+        clean_record_id: Callable[[str, Any], str | None],
+        *,
+        client_mutation_id: str | None = None,
+    ):
         self.clean_record_id = clean_record_id
         self._affected_version_families: dict[str, set[Any]] = {}
         self._affected_plan_ids: set[str] = set()
@@ -34,6 +40,30 @@ class SyncMutationTracker:
         self._orphaned_ids: list[dict[str, Any]] = []
         self._delete_impacts: list[dict[str, Any]] = []
         self._image_cleanup_candidates: set[str] = set()
+        self._activity_events: list[ActivityEvent] = []
+        self.client_mutation_id = str(client_mutation_id or "").strip() or None
+
+    def track_activity(
+        self,
+        table_name: str,
+        previous_record: dict[str, Any] | None,
+        current_record: dict[str, Any],
+    ) -> None:
+        event = build_record_activity_event(
+            table_name,
+            previous_record,
+            current_record,
+            client_mutation_id=self.client_mutation_id,
+        )
+        if event:
+            self._activity_events.append(event)
+
+    def extend_activity(self, events) -> None:
+        self._activity_events.extend(events or ())
+
+    @property
+    def activity_events(self) -> tuple[ActivityEvent, ...]:
+        return tuple(self._activity_events)
 
     def track_record(self, table_name: str, record: Any) -> None:
         if not isinstance(record, dict):

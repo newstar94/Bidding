@@ -5,6 +5,15 @@ import { renderPackageSummary } from "./PackageSummary.js";
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["pdf", "docx", "xlsx"]);
+const documentMutationKeys = new Map();
+
+function documentMutationKey(packageId, slot, action) {
+  const identity = `${packageId}:${packageDocumentSlotKey(slot)}:${action}`;
+  if (!documentMutationKeys.has(identity)) {
+    documentMutationKeys.set(identity, globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+  }
+  return { identity, value: documentMutationKeys.get(identity) };
+}
 const BATCH_STATUS_LABELS = Object.freeze({
   ACTIVE: "Đang đánh giá",
   CLOSED: "Đã có kết quả",
@@ -246,6 +255,7 @@ async function uploadDocument(view, packageId, slot, file, contentWrapper, pkg) 
   try {
     const form = new FormData();
     form.append("file", file, file.name);
+    const mutation = documentMutationKey(packageId, slot, "upload");
     await requestJson(
       documentApiUrl(packageId, slot),
       {
@@ -253,8 +263,10 @@ async function uploadDocument(view, packageId, slot, file, contentWrapper, pkg) 
         body: form,
         retries: 0,
         timeoutMs: 120_000,
+        headers: { "Idempotency-Key": mutation.value },
       },
     );
+    documentMutationKeys.delete(mutation.identity);
     await view.customAlert("Thành công", slot.document ? "Đã thay file tài liệu." : "Đã tải tài liệu lên.", "check-circle");
     await renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg });
   } catch (error) {
@@ -272,10 +284,16 @@ async function deleteDocument(view, packageId, slot, contentWrapper, pkg) {
   );
   if (!confirmed) return;
   try {
+    const mutation = documentMutationKey(packageId, slot, "delete");
     await requestJson(
       documentApiUrl(packageId, slot),
-      { method: "DELETE", retries: 0 },
+      {
+        method: "DELETE",
+        retries: 0,
+        headers: { "Idempotency-Key": mutation.value },
+      },
     );
+    documentMutationKeys.delete(mutation.identity);
     await view.customAlert("Thành công", "Đã xóa tài liệu.", "check-circle");
     await renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg });
   } catch (error) {

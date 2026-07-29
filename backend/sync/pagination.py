@@ -302,14 +302,41 @@ def _paginate_records_blocking(request):
                 expression = " || ' ' || ".join(
                     f"COALESCE({column}, '')" for column in columns
                 )
-                query_parts.append(
+                base_search = (
                     f"bf_unaccent(lower({expression})) LIKE bf_unaccent(lower(?))"
                 )
+                if table_name in {"goi_thau", "hop_dong"}:
+                    target_type = (
+                        "goithau" if table_name == "goi_thau" else "hopdong"
+                    )
+                    base_search = f"""(
+                        {base_search}
+                        OR EXISTS (
+                            SELECT 1
+                            FROM phan_cong_nhan_su AS assignment_search
+                            JOIN tai_khoan AS account_search
+                              ON account_search.id = assignment_search.id_nhan_vien
+                            LEFT JOIN thanh_vien_to_chuc AS member_search
+                              ON member_search.organization_id = assignment_search.organization_id
+                             AND member_search.user_id = assignment_search.id_nhan_vien
+                            WHERE assignment_search.organization_id = {table_name}.organization_id
+                              AND assignment_search.id_muc_tieu = {table_name}.id
+                              AND assignment_search.loai_doi_tuong = '{target_type}'
+                              AND bf_unaccent(lower(
+                                  COALESCE(member_search.ten_nhan_su, '') || ' ' ||
+                                  COALESCE(account_search.ho_ten, '') || ' ' ||
+                                  COALESCE(account_search.email, '')
+                              )) LIKE bf_unaccent(lower(?))
+                        )
+                    )"""
+                query_parts.append(base_search)
                 # Keep wildcard characters in the bound value. Literal `%`
                 # characters in the SQL text are interpreted by psycopg as
                 # placeholder prefixes after the qmark adapter translates `?`
                 # to `%s`, which made every non-empty search return HTTP 500.
                 query_params.append(f"%{search}%")
+                if table_name in {"goi_thau", "hop_dong"}:
+                    query_params.append(f"%{search}%")
 
 
         if search:

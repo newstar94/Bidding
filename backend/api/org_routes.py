@@ -32,6 +32,10 @@ from backend.notifications.service import (
     queue_membership_notification,
     snapshot_assignment_state,
 )
+from backend.activity.service import (
+    build_assignment_activity_events,
+    insert_activity_events,
+)
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -118,6 +122,52 @@ def _apply_assignment_departures(
             ),
         )
 
+
+def _assignments_requiring_successor(
+    cursor,
+    organization_id,
+    removed_user_id,
+    assignment_rows,
+):
+    """Only singleton package/contract memberships require a handover."""
+
+    candidates = [
+        row for row in assignment_rows
+        if str(row["loai_doi_tuong"] or "") in {"goithau", "hopdong"}
+    ]
+    target_pairs = list(dict.fromkeys(
+        (str(row["loai_doi_tuong"]), str(row["id_muc_tieu"]))
+        for row in candidates
+    ))
+    if not target_pairs:
+        return []
+    value_sql = ", ".join("(?, ?)" for _ in target_pairs)
+    remaining_pairs = {
+        (str(row[0]), str(row[1]))
+        for row in cursor.execute(
+            f"""SELECT DISTINCT assignment.loai_doi_tuong, assignment.id_muc_tieu
+                FROM phan_cong_nhan_su AS assignment
+                JOIN (VALUES {value_sql}) AS target(loai_doi_tuong, id_muc_tieu)
+                  ON target.loai_doi_tuong = assignment.loai_doi_tuong
+                 AND target.id_muc_tieu = assignment.id_muc_tieu
+                JOIN thanh_vien_to_chuc AS membership
+                  ON membership.organization_id = assignment.organization_id
+                 AND membership.user_id = assignment.id_nhan_vien
+                 AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
+                WHERE assignment.organization_id = ?
+                  AND assignment.id_nhan_vien != ?""",
+            (
+                *(value for pair in target_pairs for value in pair),
+                organization_id,
+                removed_user_id,
+            ),
+        ).fetchall()
+    }
+    return [
+        row for row in candidates
+        if (str(row["loai_doi_tuong"]), str(row["id_muc_tieu"]))
+        not in remaining_pairs
+    ]
 
 def _delete_member_permissions(
     cursor,
@@ -690,10 +740,12 @@ async def remove_user_from_org_api(request):
                WHERE pc.id_nhan_vien = ? AND pc.organization_id = ?""",
             (user_id, org_id),
         ).fetchall()
-        transfer_required_assignments = [
-            row for row in assignment_rows
-            if str(row['loai_doi_tuong'] or '') in {'goithau', 'hopdong'}
-        ]
+        transfer_required_assignments = _assignments_requiring_successor(
+            cursor,
+            org_id,
+            user_id,
+            assignment_rows,
+        )
         if transfer_required_assignments and not successor_user_id and not assignment_successors:
             candidates = cursor.execute(
                 """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ho_ten, tk.ten_dang_nhap) AS name
@@ -777,7 +829,7 @@ async def remove_user_from_org_api(request):
 
         assignment_changes = []
         for assignment in assignment_rows:
-            requires_transfer = str(assignment['loai_doi_tuong'] or '') in {'goithau', 'hopdong'}
+            requires_transfer = str(assignment['id']) in required_assignment_ids
             successor = (
                 successor_user_id or assignment_successors.get(str(assignment['id']))
             ) if requires_transfer else None
@@ -850,6 +902,20 @@ async def remove_user_from_org_api(request):
             required=True,
         )
         assignment_state_after = snapshot_assignment_state(cursor, org_id)
+        insert_activity_events(
+            cursor,
+            organization_id=org_id,
+            owner_type="organization",
+            actor_user_id=role_or_err.user_id,
+            occurred_at=current_time,
+            events=build_assignment_activity_events(
+                assignment_state_before,
+                assignment_state_after,
+                client_mutation_id=str(
+                    getattr(request, "headers", {}).get("Idempotency-Key") or ""
+                ).strip()[:128] or None,
+            ),
+        )
         queue_assignment_state_changes(
             cursor,
             organization_id=org_id,

@@ -15,6 +15,7 @@ import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
+import { applyAssignmentDelta } from "../shared/MultiAssigneeSelect.js";
 export async function deleteKeHoach(id) {
   const targetPlan = await refreshRecordBeforeDelete(this, "kehoach", id);
   if (!targetPlan) return;
@@ -814,17 +815,14 @@ export async function savePlanBreakdown() {
         });
         nextPackage.createdAt = gt.createdAt || timestamp;
         this.model.state.goithau.push(nextPackage);
-        const previousPackageAssignment = this.model.state.assignments.find(
-          (assignment) => assignment.targetId === gt.id && assignment.type === "goithau"
-        );
-        if (previousPackageAssignment?.empId) {
-          await this.model.addRecord("assignments", {
-            id: generateRecordId("assignments"),
-            empId: previousPackageAssignment.empId,
-            targetId: newGtId,
-            type: "goithau"
-          });
-        }
+        const previousPackageAssigneeIds = this.model.state.assignments
+          .filter((assignment) => assignment.targetId === gt.id && assignment.type === "goithau")
+          .map((assignment) => assignment.empId);
+        await applyAssignmentDelta(this.model, {
+          targetId: newGtId,
+          type: "goithau",
+          selectedIds: previousPackageAssigneeIds,
+        });
       }
     } else {
       const currentKh = this.model.state.kehoach.find((k) => k.id === planId);

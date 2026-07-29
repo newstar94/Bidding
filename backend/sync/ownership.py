@@ -162,6 +162,7 @@ def build_owner_reference_context(
                 LEFT JOIN thanh_vien_to_chuc AS membership
                   ON membership.user_id = account.id
                  AND membership.organization_id = ?
+                 AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
                 WHERE account.id IN ({placeholders})""",
             (organization_id, *chunk),
         ).fetchall()

@@ -12,8 +12,13 @@ import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/
 import {
   derivePackageAssigneeControlState,
   ensureCurrentUserAssignee,
-  resolvePackageAssigneeId,
+  resolvePackageAssigneeIds,
 } from "./packageAssignmentPolicy.js";
+import {
+  applyAssignmentDelta,
+  initializeMultiAssigneeSelect,
+  selectedAssigneeIds,
+} from "../shared/MultiAssigneeSelect.js";
 import { derivePackagePrice } from "./packagePricing.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
@@ -53,25 +58,34 @@ export async function editGoiThau(id, isReadOnly = false) {
   const restoreEmpValue = () => {
     const empSelect = document.getElementById("gt-nhanvienphutrach");
     if (empSelect) {
-      const assignment = id
-        ? this.model.state.assignments.find((a) => a.targetId === gt.id && a.type === "goithau")
-        : null;
+      const assignedEmpIds = id
+        ? this.model.state.assignments
+          .filter((a) => String(a.targetId) === String(gt.id) && a.type === "goithau")
+          .map((assignment) => assignment.empId)
+        : [];
       const controlState = derivePackageAssigneeControlState({
         activeRole: this.model.state.activerole,
         packageId: id,
-        assignedEmpId: assignment?.empId,
+        assignedEmpIds,
         creatorId: currentUserId,
       });
-      empSelect.value = controlState.value;
-      empSelect.disabled = controlState.disabled;
-      this.makeSearchableSelect(empSelect, "Tìm kiếm Chuyên viên phụ trách...");
-      empSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      initializeMultiAssigneeSelect(empSelect, {
+        selectedIds: controlState.values,
+        disabled: controlState.disabled || isReadOnly,
+      });
     }
   };
   const _populateEmpDropdown = () => {
     const empDropdown = document.getElementById("gt-nhanvienphutrach");
     if (!empDropdown) return;
     const employees = ensureCurrentUserAssignee(this.model.state.employees, currentUserCandidate);
+    const knownEmployeeIds = new Set(employees.map((employee) => String(employee.id)));
+    const inactiveAssignedIds = id
+      ? this.model.state.assignments
+        .filter((assignment) => String(assignment.targetId) === String(gt.id) && assignment.type === "goithau")
+        .map((assignment) => String(assignment.empId))
+        .filter((employeeId) => !knownEmployeeIds.has(employeeId))
+      : [];
     const optHtml = employees.map((e) => {
       const employeeProfile = organizationEmployeeProfile(e);
       const employeeName = employeeProfile.name;
@@ -79,8 +93,10 @@ export async function editGoiThau(id, isReadOnly = false) {
       const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === employeeName.toLowerCase().trim());
       const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
       return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${employeeName} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(employeeLabel)}</option>`;
-    }).join("");
-    empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
+    }).join("") + inactiveAssignedIds.map((employeeId) => (
+      `<option value="${escapeHtml(employeeId)}" data-inactive="true" disabled>${escapeHtml(employeeId)} (không còn hoạt động)</option>`
+    )).join("");
+    empDropdown.innerHTML = trustedHTML('<option value="" disabled>-- Chọn một hoặc nhiều Chuyên viên phụ trách --</option>' + optHtml);
     restoreEmpValue();
   };
   const loadAndPopulateEmpDropdown = () => {
@@ -553,11 +569,11 @@ export async function handleGoiThauSubmit(e) {
   const isNewPackage = !String(document.getElementById("form-goithau-id")?.value || "").trim();
   const currentUserId = String(this.model.state.activeuser?.id || globalThis.sessionStorage?.getItem("bf_user_id") || "").trim();
   const creatorFallbackId = isNewPackage ? currentUserId : "";
-  const assignedEmpId = resolvePackageAssigneeId(assignedEmpSelect?.value, creatorFallbackId);
-  if (assignedEmpSelect && assignedEmpId && !assignedEmpSelect.value) {
-    assignedEmpSelect.value = assignedEmpId;
-  }
-  if (!assignedEmpId) {
+  const assignedEmpIds = resolvePackageAssigneeIds(
+    selectedAssigneeIds(assignedEmpSelect),
+    creatorFallbackId,
+  );
+  if (!assignedEmpIds.length) {
     await this.view.customAlert(
       "Chưa chọn người tiếp quản",
       "Gói thầu bắt buộc phải có chuyên viên phụ trách. Muốn thay đổi phân công, hãy chọn một nhân sự khác tiếp quản.",
@@ -936,24 +952,21 @@ export async function handleGoiThauSubmit(e) {
       clearCompetitiveQuotationAppraisal(newPackageVersion);
       this.model.state.goithau.push(newPackageVersion);
       rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
-      if (assignedEmpId) {
-        await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
-      }
+      await applyAssignmentDelta(this.model, {
+        targetId: newGtId,
+        type: "goithau",
+        selectedIds: assignedEmpIds,
+      });
     } else {
       oldGt.maGoiThau = inputCode;
       Object.assign(oldGt, gtData);
       clearCompetitiveQuotationAppraisal(oldGt);
       oldGt.updatedAt = this.model.getCurrentDateTimeString();
-      const oldAssignments = this.model.state.assignments.filter((a) => a.targetId === id && a.type === "goithau");
-      const retainedAssignment = assignedEmpId
-        ? oldAssignments.find((assignment) => assignment.empId === assignedEmpId)
-        : null;
-      for (const oldA of oldAssignments.filter((assignment) => assignment !== retainedAssignment)) {
-        await this.model.deleteRecord("assignments", oldA.id);
-      }
-      if (assignedEmpId && !retainedAssignment) {
-        await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: id, type: "goithau" });
-      }
+      await applyAssignmentDelta(this.model, {
+        targetId: id,
+        type: "goithau",
+        selectedIds: assignedEmpIds,
+      });
     }
   } else {
     const newGtId = generateRecordId("goithau");
@@ -980,9 +993,11 @@ export async function handleGoiThauSubmit(e) {
     }
     clearCompetitiveQuotationAppraisal(newPackage);
     this.model.state.goithau.push(newPackage);
-    if (assignedEmpId) {
-      await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
-    }
+    await applyAssignmentDelta(this.model, {
+      targetId: newGtId,
+      type: "goithau",
+      selectedIds: assignedEmpIds,
+    });
   }
   if (oldPlanId) {
     this.recalculatePlanTotal(oldPlanId);

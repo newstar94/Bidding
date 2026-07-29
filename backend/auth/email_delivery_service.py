@@ -107,6 +107,37 @@ def create_email_delivery(
 ) -> str:
     """Insert the outbox row in the caller's account-creation transaction."""
 
+    delivery_id, parameters = _build_email_delivery_row(
+        user_id=user_id,
+        purpose=purpose,
+        recipient=recipient,
+        subject=subject,
+        html_body=html_body,
+        sensitive_content=sensitive_content,
+        now=now,
+    )
+    cursor.execute(_EMAIL_DELIVERY_INSERT_SQL, parameters)
+    return delivery_id
+
+
+_EMAIL_DELIVERY_INSERT_SQL = """INSERT INTO email_delivery_status (
+       id, user_id, purpose, recipient_hash,
+       recipient_ciphertext, subject_ciphertext, body_ciphertext,
+       sensitive_content, status, attempt_count, next_attempt_at,
+       created_at, updated_at
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)"""
+
+
+def _build_email_delivery_row(
+    *,
+    user_id: str,
+    purpose: str,
+    recipient: str,
+    subject: str | None,
+    html_body: str | None,
+    sensitive_content: bool,
+    now=None,
+) -> tuple[str, tuple]:
     if (subject is None) != (html_body is None):
         raise ValueError("Email subject and body must be supplied together.")
     current_time = int(time.time() if now is None else now)
@@ -116,26 +147,41 @@ def create_email_delivery(
         if subject is not None
         else (None, None, None)
     )
-    cursor.execute(
-        """INSERT INTO email_delivery_status (
-               id, user_id, purpose, recipient_hash,
-               recipient_ciphertext, subject_ciphertext, body_ciphertext,
-               sensitive_content, status, attempt_count, next_attempt_at,
-               created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)""",
-        (
-            delivery_id,
-            user_id,
-            purpose,
-            _recipient_hash(recipient),
-            *payload,
-            1 if sensitive_content else 0,
-            current_time,
-            current_time,
-            current_time,
-        ),
+    return delivery_id, (
+        delivery_id,
+        user_id,
+        purpose,
+        _recipient_hash(recipient),
+        *payload,
+        1 if sensitive_content else 0,
+        current_time,
+        current_time,
+        current_time,
     )
-    return delivery_id
+
+
+def create_email_deliveries(cursor, deliveries) -> list[str]:
+    """Insert encrypted outbox rows without database calls in a loop."""
+
+    rows = [
+        _build_email_delivery_row(
+            user_id=item["user_id"],
+            purpose=item["purpose"],
+            recipient=item["recipient"],
+            subject=item.get("subject"),
+            html_body=item.get("html_body"),
+            sensitive_content=bool(item.get("sensitive_content", True)),
+            now=item.get("now"),
+        )
+        for item in deliveries
+    ]
+    if not rows:
+        return []
+    cursor.executemany(
+        _EMAIL_DELIVERY_INSERT_SQL,
+        [parameters for _delivery_id, parameters in rows],
+    )
+    return [delivery_id for delivery_id, _parameters in rows]
 
 
 def _safe_error_code(value) -> str:

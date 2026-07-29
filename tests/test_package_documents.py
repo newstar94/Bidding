@@ -4,6 +4,10 @@ from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.documents.package_document_policy import compose_document_sections
 from backend.documents.package_document_service import upsert_package_document
+from backend.documents.package_document_routes import (
+    _document_idempotency_replay,
+    _store_document_idempotency,
+)
 
 
 def _document(document_type, *, batch_id=None, filename=None):
@@ -19,7 +23,7 @@ def _document(document_type, *, batch_id=None, filename=None):
 def test_package_document_schema_supports_batch_scopes():
     spec = SCHEMA_DINH_NGHIA["tai_lieu_goi_thau"]
 
-    assert DB_SCHEMA_VERSION == 24
+    assert DB_SCHEMA_VERSION == 26
     assert "evaluation_batch_id" in spec["columns"]
     assert any(
         "evaluation_batch_id) REFERENCES dot_xu_ly_phan_lo(organization_id, id)"
@@ -255,3 +259,44 @@ def test_upsert_replaces_only_the_same_batch_document_slot():
         ("batch-1", "bcdg-1-moi.pdf"),
         ("batch-2", "bcdg-2.pdf"),
     ]
+
+
+class _IdempotencyCursor:
+    def __init__(self):
+        self.stored = None
+        self.current = None
+
+    def execute(self, sql, params=()):
+        normalized = " ".join(str(sql).split())
+        if normalized.startswith("INSERT INTO api_idempotency"):
+            self.stored = tuple(params)
+            self.current = None
+        elif normalized.startswith("SELECT response_json"):
+            self.current = (self.stored[3],) if self.stored else None
+        else:
+            self.current = (None,)
+        return self
+
+    def fetchone(self):
+        return self.current
+
+
+def test_document_mutation_idempotency_replays_original_response():
+    cursor = _IdempotencyCursor()
+    arguments = {
+        "actor_user_id": "user-1",
+        "operation": "package_document:org-1:package-1:HSMT:general:upload",
+        "idempotency_key": "mutation-12345678",
+    }
+    assert _document_idempotency_replay(cursor, **arguments) is None
+    _store_document_idempotency(
+        cursor,
+        **arguments,
+        payload={"success": True, "document": {"id": "document-1"}},
+        status_code=201,
+    )
+
+    payload, status_code = _document_idempotency_replay(cursor, **arguments)
+
+    assert status_code == 201
+    assert payload == {"success": True, "document": {"id": "document-1"}}

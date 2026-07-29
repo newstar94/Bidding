@@ -1478,6 +1478,26 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (user_id, organization_id) REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
         ]
     },
+    "nhat_ky_thuc_hien": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "target_type": "TEXT NOT NULL CHECK(target_type IN ('goithau', 'hopdong'))",
+            "target_id": "TEXT NOT NULL CHECK(target_id != '')",
+            "target_root_id": "TEXT NOT NULL CHECK(target_root_id != '')",
+            "action": "TEXT NOT NULL CHECK(action IN ('goithau.created', 'goithau.updated', 'hopdong.created', 'hopdong.updated', 'package_document.uploaded', 'package_document.replaced', 'package_document.deleted', 'assignment.added', 'assignment.removed'))",
+            "actor_user_id": "TEXT",
+            "actor_name_snapshot": "TEXT NOT NULL DEFAULT 'Không xác định'",
+            "occurred_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "related_document_id": "TEXT",
+            "related_assignment_id": "TEXT",
+            "client_mutation_id": "TEXT",
+            "request_id": "TEXT",
+            "metadata_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(metadata_json) <= 32768)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        }
+    },
     "phan_cong_nhan_su_lich_su": {
         "columns": {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",

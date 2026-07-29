@@ -803,6 +803,64 @@ def _upgrade_to_v24_scope_package_documents_by_evaluation_batch(cursor, context)
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v25_add_multi_assignee_activity_log(cursor, context):
+    """Allow assignment sets and add an immutable user-facing activity log."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    cursor.execute("DROP INDEX IF EXISTS idx_phan_cong_owner_target")
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target
+           ON phan_cong_nhan_su
+           (organization_id, id_muc_tieu, loai_doi_tuong, id_nhan_vien)"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_assignee
+           ON phan_cong_nhan_su
+           (organization_id, id_nhan_vien, loai_doi_tuong, id_muc_tieu)"""
+    )
+    create_sql = context.build_create_table_sql(
+        "nhat_ky_thuc_hien",
+        SCHEMA_DINH_NGHIA["nhat_ky_thuc_hien"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+    cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("nhat_ky_thuc_hien",),
+            if_not_exists=True,
+        )
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v26_preserve_activity_actor_snapshot(cursor, context):
+    """Keep immutable activity rows readable after an account is deleted."""
+
+    cursor.execute(
+        """DO $$
+           DECLARE item RECORD;
+           BEGIN
+             FOR item IN
+               SELECT conname
+               FROM pg_constraint
+               WHERE conrelid = 'nhat_ky_thuc_hien'::regclass
+                 AND contype = 'f'
+                 AND pg_get_constraintdef(oid) ILIKE '%actor_user_id%'
+             LOOP
+               EXECUTE format(
+                   'ALTER TABLE nhat_ky_thuc_hien DROP CONSTRAINT IF EXISTS %I',
+                   item.conname
+               );
+             END LOOP;
+           END $$"""
+    )
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -914,6 +972,16 @@ UPGRADES = (
         24,
         "scope_package_documents_by_evaluation_batch",
         _upgrade_to_v24_scope_package_documents_by_evaluation_batch,
+    ),
+    DatabaseUpgrade(
+        25,
+        "add_multi_assignee_activity_log",
+        _upgrade_to_v25_add_multi_assignee_activity_log,
+    ),
+    DatabaseUpgrade(
+        26,
+        "preserve_activity_actor_snapshot",
+        _upgrade_to_v26_preserve_activity_actor_snapshot,
     ),
 )
 

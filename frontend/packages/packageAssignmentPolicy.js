@@ -1,31 +1,34 @@
+import { normalizeAssigneeIds } from "../shared/MultiAssigneeSelect.js";
+
 function normalizeId(value) {
   return String(value || "").trim();
 }
 
-export function resolvePackageAssigneeId(selectedAssigneeId, creatorId) {
-  return normalizeId(selectedAssigneeId) || normalizeId(creatorId);
+export function resolvePackageAssigneeIds(selectedAssigneeIds, creatorId) {
+  const selected = normalizeAssigneeIds(selectedAssigneeIds);
+  return selected.length ? selected : normalizeAssigneeIds(creatorId);
 }
 
-export function resolveInitialPackageAssigneeId({
+export function resolveInitialPackageAssigneeIds({
   packageId,
-  assignedEmpId,
+  assignedEmpIds,
   creatorId,
 } = {}) {
   return normalizeId(packageId)
-    ? normalizeId(assignedEmpId)
-    : normalizeId(creatorId);
+    ? normalizeAssigneeIds(assignedEmpIds)
+    : normalizeAssigneeIds(creatorId);
 }
 
 export function derivePackageAssigneeControlState({
   activeRole,
   packageId,
-  assignedEmpId,
+  assignedEmpIds,
   creatorId,
 } = {}) {
   return {
-    value: resolveInitialPackageAssigneeId({
+    values: resolveInitialPackageAssigneeIds({
       packageId,
-      assignedEmpId,
+      assignedEmpIds,
       creatorId,
     }),
     disabled: String(activeRole || "").trim().toLowerCase() === "employee",

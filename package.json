@@ -13,6 +13,7 @@
     "test:auth-roles-e2e": "node --env-file-if-exists=.env scripts/verify_auth_roles_e2e.mjs",
     "test:bidder-goods-e2e": "node --env-file-if-exists=.env scripts/verify_bidder_goods_e2e.cjs",
     "test:crud-modules-e2e": "node --env-file-if-exists=.env scripts/verify_crud_modules_e2e.mjs",
+    "test:multi-assignee-e2e": "node --env-file-if-exists=.env scripts/verify_multi_assignee_activity_e2e.mjs",
     "test:joint-venture-e2e": "node --env-file-if-exists=.env scripts/verify_joint_venture_e2e.mjs",
     "test:low-price-conflict-e2e": "node --env-file-if-exists=.env scripts/verify_low_price_conflict_e2e.mjs",
     "test:offline-sync-e2e": "node --env-file-if-exists=.env scripts/verify_offline_sync_e2e.mjs",

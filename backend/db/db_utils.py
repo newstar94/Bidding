@@ -92,10 +92,8 @@ def recalculate_is_latest(
             if scope_filter
             else "WHERE business.archived_at IS NULL"
         )
-        params.extend(scoped_params)
-        params.extend(scoped_params)
-
-        result = cursor.execute(
+        family_params = list(params)
+        demoted = cursor.execute(
             f"""
             WITH {affected_cte}
             scoped_rows AS (
@@ -103,7 +101,21 @@ def recalculate_is_latest(
                 FROM {table_name} AS business
                 {scope_join}
                 {scope_filter}
-            ),
+            )
+            UPDATE {table_name} AS target
+            SET is_latest = 0
+            FROM scoped_rows
+            WHERE scoped_rows.organization_id = target.organization_id
+              AND scoped_rows.id = target.id
+              AND target.is_latest IS DISTINCT FROM 0
+            """,
+            tuple(family_params + scoped_params),
+        )
+        changed_rows += max(0, int(demoted.rowcount or 0))
+
+        promoted = cursor.execute(
+            f"""
+            WITH {affected_cte}
             ranked AS (
                 SELECT business.organization_id,
                        business.id,
@@ -121,26 +133,17 @@ def recalculate_is_latest(
                 SELECT organization_id, id
                 FROM ranked
                 WHERE rn = 1
-            ),
-            desired AS (
-                SELECT scoped_rows.organization_id,
-                       scoped_rows.id,
-                       CASE WHEN winners.id IS NULL THEN 0 ELSE 1 END AS desired_is_latest
-                FROM scoped_rows
-                LEFT JOIN winners
-                  ON winners.organization_id = scoped_rows.organization_id
-                 AND winners.id = scoped_rows.id
             )
             UPDATE {table_name} AS target
-            SET is_latest = desired.desired_is_latest
-            FROM desired
-            WHERE desired.organization_id = target.organization_id
-              AND desired.id = target.id
-              AND target.is_latest IS DISTINCT FROM desired.desired_is_latest
+            SET is_latest = 1
+            FROM winners
+            WHERE winners.organization_id = target.organization_id
+              AND winners.id = target.id
+              AND target.is_latest IS DISTINCT FROM 1
             """,
-            tuple(params),
+            tuple(family_params + scoped_params),
         )
-        changed_rows += max(0, int(result.rowcount or 0))
+        changed_rows += max(0, int(promoted.rowcount or 0))
     return changed_rows
 
 

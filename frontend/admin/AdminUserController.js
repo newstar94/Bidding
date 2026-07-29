@@ -982,11 +982,13 @@ export async function deleteEmployee(id) {
   if (assignmentsCount > 0) {
     warningText += `
 
-⚠️ CHÚ Ý: Nhân sự này đang phụ trách ${assignmentsCount} gói thầu/hợp đồng. Bạn bắt buộc phải chọn một nhân sự khác tiếp quản trước khi cho họ rời tổ chức.`;
+⚠️ CHÚ Ý: Nhân sự này đang phụ trách ${assignmentsCount} gói thầu/hợp đồng. Công việc vẫn còn người phụ trách khác sẽ được giữ nguyên; chỉ công việc mà họ là người phụ trách cuối cùng mới yêu cầu chọn người tiếp quản.`;
   }
-  const confirmed = assignmentsCount > 0
-    ? true
-    : await this.view.customConfirm("Xác nhận gỡ nhân sự", warningText, "trash-2");
+  const confirmed = await this.view.customConfirm(
+    "Xác nhận gỡ nhân sự",
+    warningText,
+    "trash-2",
+  );
   if (confirmed) {
     try {
       const submitOffboarding = ({ successorUserId = "", assignmentSuccessors = [] } = {}) => {

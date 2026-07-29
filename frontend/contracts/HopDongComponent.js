@@ -10,6 +10,8 @@ import { renderEntityActions, standardEditDeleteActions } from "../shared/Entity
 import { executeAppCommand } from "../app/commandBus.js";
 import { renderCustomStatusBadge } from "../shared/statusBadges.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+import { assigneeLabelsForTarget } from "../shared/MultiAssigneeSelect.js";
+import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
@@ -49,7 +51,10 @@ export async function renderHopDongTable() {
   } else {
     const latestHopDong = this.model.getLatestHopDong();
     const filtered = latestHopDong.filter((h) => {
-      const matchesSearch = (h.soHopDong || "").toLowerCase().includes(searchVal) || (h.tenHopDong || "").toLowerCase().includes(searchVal);
+      const assigneeSearch = assigneeLabelsForTarget(this.model, h.id, "hopdong").join(" ").toLowerCase();
+      const matchesSearch = (h.soHopDong || "").toLowerCase().includes(searchVal)
+        || (h.tenHopDong || "").toLowerCase().includes(searchVal)
+        || assigneeSearch.includes(searchVal);
       return matchesSearch && matchesYearMonth(h.ngayKy, filterNam, filterThang);
     });
     sortRecords(filtered, sortBy, sortOrder);
@@ -108,6 +113,7 @@ export async function renderHopDongTable() {
         allowDelete: this.model.state.activerole !== "employee"
       }));
       const actionHtml = renderEntityActions(contractActions, { visible: displayedHd.id === h.id });
+      const assigneeLabels = assigneeLabelsForTarget(this.model, displayedHd.id, "hopdong");
       return `
                 <tr>
                     <td>
@@ -117,7 +123,7 @@ export async function renderHopDongTable() {
                             ${dropdownHtml}
                         </div>
                     </td>
-                    <td class="fw-bold text-wrap bf-s-0569d2208a">${escapeHtml(displayedHd.tenHopDong)}</td>
+                    <td class="fw-bold text-wrap bf-s-0569d2208a">${escapeHtml(displayedHd.tenHopDong)}<small class="assignee-summary">${escapeHtml(assigneeLabels.join(", ") || "Chưa phân công")}</small></td>
                     <td>${displayedHd.ngayKy ? formatDate(displayedHd.ngayKy) : "--"}</td>
                     <td class="text-wrap bf-s-3ce088a59b">${escapeHtml(cdtName)}</td>
                     <td class="text-wrap bf-s-3ce088a59b">${ntNameHtml}</td>
@@ -194,6 +200,7 @@ export function renderContractVersionDetails(versionId) {
     }
   });
   const allVersions = Object.values(verMap);
+  const assigneeLabels = assigneeLabelsForTarget(this.model, hd.id, "hopdong");
   allVersions.sort((a, b) => {
     const valA = parseInt(a.phienBan || 0);
     const valB = parseInt(b.phienBan || 0);
@@ -253,6 +260,10 @@ export function renderContractVersionDetails(versionId) {
                 <div class="detail-item">
                     <div class="detail-label">Thời gian thực hiện</div>
                     <div class="detail-value">${escapeHtml(hd.soNgayThucHien ? isNaN(hd.soNgayThucHien) ? hd.soNgayThucHien : `${hd.soNgayThucHien} ngày` : "--")}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Người phụ trách</div>
+                    <div class="detail-value">${escapeHtml(assigneeLabels.join(", ") || "Chưa phân công")}</div>
                 </div>
             </div>
 
@@ -334,6 +345,10 @@ export function renderContractVersionDetails(versionId) {
                     `).join("") : '<div class="text-muted"><small>Hợp đồng này chưa có gói thầu trực tiếp liên kết.</small></div>'}
                 </div>
             </div>
+            <section class="detail-sub-section activity-panel" aria-label="Lịch sử thực hiện">
+                <h5 class="detail-sub-title">Lịch sử thực hiện</h5>
+                <div data-contract-activity></div>
+            </section>
         </div>
     `;
   const contentEl = document.getElementById("fullpage-hopdong-content");
@@ -347,5 +362,10 @@ export function renderContractVersionDetails(versionId) {
       initCustomSelect("fullpage-hd-version-select");
     }
     lucide.createIcons();
+    renderActivityTimeline(contentEl.querySelector("[data-contract-activity]"), {
+      targetType: "hopdong",
+      targetId: hd.id,
+      isCurrent: () => document.getElementById("fullpage-hd-version-select")?.value === hd.id,
+    });
   }
 }

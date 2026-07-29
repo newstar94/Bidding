@@ -31,6 +31,7 @@ _SYSTEM_TIMESTAMP_COLUMNS = frozenset(
         "closed_at",
         "finalized_at",
         "voided_at",
+        "occurred_at",
     }
 )
 
@@ -476,7 +477,11 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_goi_thau ON thong_tin_mo_thau (organization_id, goi_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_nha_thau ON thong_tin_mo_thau (organization_id, nha_thau_id)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_active_business_key ON thong_tin_mo_thau (organization_id, goi_thau_id, nha_thau_id, ma_phan_lo) WHERE archived_at IS NULL",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)",
+        "CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong, id_nhan_vien)",
+        "CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_assignee ON phan_cong_nhan_su (organization_id, id_nhan_vien, loai_doi_tuong, id_muc_tieu)",
+        "CREATE INDEX IF NOT EXISTS idx_activity_target_timeline ON nhat_ky_thuc_hien (organization_id, target_type, target_root_id, occurred_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_activity_actor_timeline ON nhat_ky_thuc_hien (organization_id, actor_user_id, occurred_at DESC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_mutation_dedupe ON nhat_ky_thuc_hien (organization_id, actor_user_id, client_mutation_id, action, target_id, COALESCE(related_document_id, ''), COALESCE(related_assignment_id, '')) WHERE client_mutation_id IS NOT NULL AND client_mutation_id <> ''",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_id, revoked_at, absolute_expires_at)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_one_active_per_user ON auth_sessions (user_id) WHERE revoked_at IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions (idle_expires_at, absolute_expires_at, revoked_at)",
@@ -826,6 +831,14 @@ def _create_triggers(cursor) -> None:
            BEFORE UPDATE OR DELETE ON audit_log
            FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"""
     )
+    cursor.execute(
+        "DROP TRIGGER IF EXISTS trg_nhat_ky_thuc_hien_immutable ON nhat_ky_thuc_hien"
+    )
+    cursor.execute(
+        """CREATE TRIGGER trg_nhat_ky_thuc_hien_immutable
+           BEFORE UPDATE OR DELETE ON nhat_ky_thuc_hien
+           FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"""
+    )
 
 
 def create_indexes_and_triggers(cursor) -> None:
@@ -929,6 +942,11 @@ def assert_schema_contract(cursor) -> None:
         "idx_bidder_goods_scope",
         "idx_bidder_goods_import_batch",
         "idx_bidder_goods_requirement",
+        "idx_phan_cong_owner_target",
+        "idx_phan_cong_owner_assignee",
+        "idx_activity_target_timeline",
+        "idx_activity_actor_timeline",
+        "idx_activity_mutation_dedupe",
     }
     actual_indexes = {
         row[0]

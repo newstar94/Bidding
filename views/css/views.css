@@ -3819,6 +3819,106 @@ table th {
   min-height: 44px;
 }
 
+.multi-assignee-tools {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.multi-assignee-search {
+  width: 100%;
+}
+
+.multi-assignee-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 1.75rem;
+}
+
+.multi-assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: var(--primary-light, #eef2ff);
+  color: var(--primary-dark, #334155);
+  font-size: 0.82rem;
+}
+
+.multi-assignee-chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.multi-assignee-chip button:focus-visible,
+.multi-assignee-search:focus-visible {
+  outline: 2px solid var(--primary-color, #4356d8);
+  outline-offset: 2px;
+}
+
+.activity-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.activity-timeline-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-timeline-item {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.activity-avatar {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--primary-light, #eef2ff);
+  color: var(--primary-color, #4356d8);
+  font-weight: 700;
+}
+
+.activity-copy p {
+  margin: 0;
+}
+
+.activity-copy time,
+.activity-detail {
+  color: var(--text-muted, #64748b);
+  font-size: 0.83rem;
+}
+
+.activity-loading,
+.activity-empty,
+.activity-error {
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.assignee-summary {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
+}
+
 .bidder-goods-panel {
   display: grid;
   gap: var(--space-4, 16px);

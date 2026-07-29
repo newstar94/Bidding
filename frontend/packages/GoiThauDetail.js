@@ -19,6 +19,7 @@ import { renderPackageOpeningPanel } from "./detail/PackageOpeningPanel.js";
 import { renderQualifiedApprovalPanel } from "./detail/QualifiedApprovalPanel.js";
 import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
 import { renderPackageGoodsPanel } from "./PackageGoodsWorkflow.js";
+import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 export { checkBidQualified };
 
 export function resetDetailedEvaluationNavigationForPackageChange(
@@ -196,6 +197,15 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         contentWrapper,
         packageId: gt.id,
         pkg: gt,
+      });
+      break;
+    case "activity":
+      contentWrapper.innerHTML = trustedHTML('<section class="activity-panel" aria-label="Lịch sử thực hiện"><h3>Lịch sử thực hiện</h3><div data-activity-timeline></div></section>');
+      await renderActivityTimeline(contentWrapper.querySelector("[data-activity-timeline]"), {
+        targetType: "goithau",
+        targetId: gt.id,
+        isCurrent: () => String(this._currentWorkflowPackageId) === String(gt.id)
+          && this._currentWorkflowTab === "activity",
       });
       break;
   }

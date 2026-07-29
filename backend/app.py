@@ -557,6 +557,7 @@ from backend.notifications.routes import (
     mark_all_notifications_read_api,
     mark_notification_read_api,
 )
+from backend.activity.routes import list_activity_timeline_api
 from backend.lot_lifecycle_routes import (
     create_lot_batch_api,
     finalize_lot_batch_api,
@@ -808,6 +809,7 @@ routes = [
     Route("/api/notifications", list_notifications_api, methods=["GET"]),
     Route("/api/notifications/read-all", mark_all_notifications_read_api, methods=["POST"]),
     Route("/api/notifications/{notification_id}/read", mark_notification_read_api, methods=["POST"]),
+    Route("/api/activities/{target_type}/{target_id}", list_activity_timeline_api, methods=["GET"]),
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
     Route("/api/export-timeline/{package_id}", export_timeline_api, methods=["GET"]),

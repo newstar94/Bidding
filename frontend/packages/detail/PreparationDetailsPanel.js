@@ -2,6 +2,7 @@ import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { savePackagePreparation } from "../packagePreparation.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
+import { assigneeLabelsForTarget } from "../../shared/MultiAssigneeSelect.js";
 
 export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, isEditable, appController }) {
       if (true) {
@@ -9,6 +10,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
         const cdtObj = khObj ? view.model.state.chudautu.find((c) => c.id === khObj.chuDauTuId) : null;
         const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : "Không rõ";
         const tenKhStr = khObj ? khObj.tenKeHoach : "Không rõ";
+        const assigneeLabels = assigneeLabelsForTarget(view.model, gt.id, "goithau");
         contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-95f6f7a8cf">
                         <!-- Cột 1: Thông tin chung -->
@@ -41,6 +43,10 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                     <div class="package-info-row">
                                         <span class="package-info-label">Giá gói thầu</span>
                                         <span class="bf-s-a1e9afc7db">${view.model.formatCurrency(gt.giaGoiThau) || "--"}</span>
+                                    </div>
+                                    <div class="package-info-row">
+                                        <span class="package-info-label">Người phụ trách</span>
+                                        <span class="package-info-value">${escapeHtml(assigneeLabels.join(", ") || "Chưa phân công")}</span>
                                     </div>
                                     <div class="bf-s-6111467ecf">
                                         <span class="package-info-label">Nguồn vốn</span>

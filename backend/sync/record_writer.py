@@ -149,6 +149,7 @@ class SyncRecordWriter:
         self._replace_contract_packages(table_name, item)
         self.mutation_tracker.track_record(table_name, previous_record)
         self.mutation_tracker.track_record(table_name, db_row_data)
+        self.mutation_tracker.track_activity(table_name, previous_record, db_row_data)
         return SyncRecordWriteResult()
 
     def _replace_singleton_rows(
@@ -157,21 +158,7 @@ class SyncRecordWriter:
         db_row_data: dict[str, Any],
     ) -> None:
         cursor = self.transaction.cursor
-        if table_name == "phan_cong_nhan_su":
-            cursor.execute(
-                """DELETE FROM phan_cong_nhan_su
-                   WHERE organization_id = ?
-                     AND id_muc_tieu = ?
-                     AND loai_doi_tuong = ?
-                     AND id != ?""",
-                (
-                    db_row_data.get("organization_id"),
-                    db_row_data.get("id_muc_tieu"),
-                    db_row_data.get("loai_doi_tuong"),
-                    db_row_data.get("id"),
-                ),
-            )
-        elif table_name == "ma_tran_phan_quyen":
+        if table_name == "ma_tran_phan_quyen":
             cursor.execute(
                 """DELETE FROM ma_tran_phan_quyen
                    WHERE organization_id = ? AND emp_id = ? AND id != ?""",
