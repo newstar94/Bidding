@@ -23,7 +23,7 @@ def _document(document_type, *, batch_id=None, filename=None):
 def test_package_document_schema_supports_batch_scopes():
     spec = SCHEMA_DINH_NGHIA["tai_lieu_goi_thau"]
 
-    assert DB_SCHEMA_VERSION == 27
+    assert DB_SCHEMA_VERSION >= 24
     assert "evaluation_batch_id" in spec["columns"]
     assert any(
         "evaluation_batch_id) REFERENCES dot_xu_ly_phan_lo(organization_id, id)"

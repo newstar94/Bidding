@@ -273,6 +273,35 @@ test("merge and replace imports preserve IDs and only replace incoming bid scope
   );
 });
 
+
+test("failed bidder-goods persistence restores the pre-import snapshot", async () => {
+  const original = [
+    { id: "old-a", thongTinMoThauId: "opening-1", goiThauHangHoaId: "required-1" },
+  ];
+  const controller = {
+    _bidderGoodsImportPreview: {
+      mode: "merge",
+      rows: [
+        { id: "new-a", thongTinMoThauId: "opening-1", goiThauHangHoaId: "required-2" },
+      ],
+    },
+    model: {
+      state: {
+        hanghoaduthaunhathau: original.map((row) => ({ ...row })),
+        thongtinmothau: [{ id: "opening-1", trangThaiTinhUuDai: "ready" }],
+      },
+      async persistData() {},
+    },
+    async autoSync() { return { ok: false }; },
+    view: { customAlert: async () => {} },
+    renderDetailedEvaluation() {},
+  };
+
+  assert.equal(await confirmBidderGoodsImport(controller), false);
+  assert.deepEqual(controller.model.state.hanghoaduthaunhathau, original);
+  assert.equal(controller.model.state.thongtinmothau[0].trangThaiTinhUuDai, "ready");
+});
+
 test("Excel exports neutralize formula injection", () => {
   assert.equal(escapeSpreadsheetFormula("=1+1"), "'=1+1");
   assert.equal(escapeSpreadsheetFormula("@SUM(A1:A2)"), "'@SUM(A1:A2)");

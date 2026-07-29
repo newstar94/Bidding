@@ -1,7 +1,6 @@
 import hashlib
 import os
 import secrets
-import threading
 import time
 from backend.db.db_helper import database
 from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
@@ -98,48 +97,22 @@ def password_needs_rehash(stored_password: str) -> bool:
 
 
 
-_session_cache = {}
-_session_cache_lock = threading.Lock()
-SESSION_CACHE_TTL = 60
+def _load_request_session_user(request, token):
+    """Load one persistent session snapshot per request, never across requests."""
 
-def _session_cache_get(token: str):
-    with _session_cache_lock:
-        entry = _session_cache.get(token)
-        if entry and time.time() < entry[1]:
-            return entry[0]
-        if entry:
-            del _session_cache[token]
-    return None
+    state = getattr(request, "state", None)
+    if (
+        state is not None
+        and getattr(state, "auth_session_token", None) == token
+        and hasattr(state, "auth_session_user")
+    ):
+        return state.auth_session_user
 
-def _session_cache_set(token: str, user_dict: dict):
-    with _session_cache_lock:
-        _session_cache[token] = (user_dict, time.time() + SESSION_CACHE_TTL)
-
-def _session_cache_invalidate(token: str):
-    with _session_cache_lock:
-        _session_cache.pop(token, None)
-
-def _session_cache_invalidate_by_user_id(user_id: str):
-    """
-    Xoá cache của tất cả session thuộc về user_id.
-    Gọi khi vai trò hoặc gói dịch vụ của user bị thay đổi,
-    để hiệu lực ngay lập tức thay vì chờ TTL 60 giây hết hạn.
-    """
-    with _session_cache_lock:
-        to_delete = [
-            token for token, (user_dict, _) in _session_cache.items()
-            if user_dict.get('id') == user_id
-        ]
-        for token in to_delete:
-            del _session_cache[token]
-
-def _session_cache_cleanup():
-    """Dọn dẹp các session hết hạn khỏi cache. Gọi định kỳ mỗi 5 phút."""
-    now = time.time()
-    with _session_cache_lock:
-        expired_keys = [k for k, (_, exp) in _session_cache.items() if now > exp]
-        for k in expired_keys:
-            del _session_cache[k]
+    user = load_session_user(database, token)
+    if state is not None:
+        state.auth_session_token = token
+        state.auth_session_user = user
+    return user
 
 class SessionRole(str):
     def __new__(
@@ -194,9 +167,9 @@ def verify_session(request, required_role=None):
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
-    # Read persistent state on every authorization decision so a revocation made
-    # by another worker takes effect immediately instead of waiting for cache TTL.
-    user = load_session_user(database, token)
+    # The snapshot lives only on this request. A new request always reloads
+    # PostgreSQL, so revocation by another worker takes effect immediately.
+    user = _load_request_session_user(request, token)
     now = int(time.time())
     if (
         user
@@ -213,7 +186,6 @@ def verify_session(request, required_role=None):
         return False, "Phiên làm việc đã hết hạn hoặc không hợp lệ!"
     invalid_reason = session_invalid_reason(user)
     if invalid_reason:
-        _session_cache_invalidate(token)
         return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
 
     platform_role = normalize_platform_role(user['vai_tro'])
@@ -246,7 +218,6 @@ def verify_session(request, required_role=None):
         request.state.auth_user_id = str(user['id'])
     except (AttributeError, TypeError, KeyError):
         pass
-    _session_cache_set(token, user)
     return True, SessionRole(
         effective_role,
         user['id'],

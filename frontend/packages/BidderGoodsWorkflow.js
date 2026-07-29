@@ -354,6 +354,9 @@ export async function confirmBidderGoodsImport(controller) {
     if (!accepted) return false;
   }
   const incomingScopes = new Set(preview.rows.map((row) => String(row.thongTinMoThauId)));
+  const goodsSnapshot = (controller.model.state.hanghoaduthaunhathau || []).map(
+    (row) => ({ ...row }),
+  );
   const incomingByKey = new Map(preview.rows.map((row) => [
     `${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`,
     row,
@@ -390,7 +393,7 @@ export async function confirmBidderGoodsImport(controller) {
       ["hanghoaduthaunhathau", "thongtinmothau"],
     );
     if (result?.ok === false) {
-      controller.model.state.hanghoaduthaunhathau = existing;
+      controller.model.state.hanghoaduthaunhathau = goodsSnapshot;
       controller.model.state.thongtinmothau = openingSnapshot;
       controller._bidderGoodsError = "Không thể lưu bản nháp nhập Excel.";
       controller.renderDetailedEvaluation();

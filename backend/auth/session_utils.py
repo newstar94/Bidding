@@ -145,16 +145,3 @@ def get_active_org(request, user_id, *, cursor=None):
             time.perf_counter() - started_at,
             outcome=outcome,
         )
-
-
-def _org_cache_cleanup():
-    """Compatibility hook; authorization contexts are no longer cached."""
-
-    return None
-
-
-def _org_cache_invalidate_by_user_id(user_id):
-    """Compatibility hook; every authorization decision reads PostgreSQL."""
-
-    del user_id
-    return None

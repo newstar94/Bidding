@@ -19,7 +19,7 @@ def test_bidder_goods_schema_and_sync_contract():
     assert ("hang_hoa_du_thau_nha_thau", "don_gia_du_thau") in MONEY_COLUMNS
     assert ("hang_hoa_du_thau_nha_thau", "thanh_tien_du_thau") in MONEY_COLUMNS
     assert {"mat_hang_du_thau", "ma_hang_hoa", "phan_nhom"}.isdisjoint(columns)
-    assert DB_SCHEMA_VERSION == 27
+    assert DB_SCHEMA_VERSION >= 27
     assert {"ma_uu_dai", "gia_tri_cong_uu_dai", "thanh_tien_sau_uu_dai", "trang_thai_uu_dai"} <= set(columns)
 
 

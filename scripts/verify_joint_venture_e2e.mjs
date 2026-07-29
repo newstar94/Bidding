@@ -17,7 +17,7 @@ const account = {
   name: `Quản lý JV ${runId}`,
   email: `${runId}@example.invalid`,
 };
-const artifactDirectory = resolve("data", "e2e-artifacts");
+const artifactDirectory = resolve("test-results", "e2e-artifacts");
 mkdirSync(artifactDirectory, { recursive: true });
 const wordTemplatePath = resolve(artifactDirectory, `jv_result_template_${runId}.docx`);
 const wordExportPath = resolve(artifactDirectory, `jv_result_export_${runId}.docx`);

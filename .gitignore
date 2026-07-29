@@ -74,6 +74,7 @@ pnpm-debug.log*
 .vite/
 dist/
 release/
+data/e2e-artifacts/
 .pw-bidding-profile/
 
 # Temporary and local-only files
@@ -85,6 +86,7 @@ release/
 *.pid
 *.pid.lock
 *.local
+*.egg-info/
 .idea/
 .codex
 .hallmark

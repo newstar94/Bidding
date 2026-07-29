@@ -1260,8 +1260,6 @@ SCHEMA_DINH_NGHIA = {
             "so_bao_cao": "TEXT",
             "ngay_bao_cao": "TEXT",
             "da_luu_danh_sach_dat": "INTEGER NOT NULL DEFAULT 0 CHECK(da_luu_danh_sach_dat IN (0,1))",
-            # Physical compatibility only: current application code never reads or writes it.
-            "nguoi_cham_id": "TEXT",
             "hoan_thanh_luc": "TEXT",
             "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
             "sync_version": "INTEGER DEFAULT 0",
@@ -1307,8 +1305,6 @@ SCHEMA_DINH_NGHIA = {
             "thong_tin_mo_thau_id": "TEXT NOT NULL",
             "trang_thai": "TEXT NOT NULL DEFAULT 'draft' CHECK(trang_thai IN ('draft', 'completed'))",
             "ket_luan": "TEXT",
-            # Physical compatibility only: current application code never reads or writes it.
-            "nguoi_cham_id": "TEXT",
             "hoan_thanh_luc": "TEXT",
             "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
             "sync_version": "INTEGER DEFAULT 0",
@@ -1375,8 +1371,6 @@ SCHEMA_DINH_NGHIA = {
             "nguyen_nhan_khong_dat_hop_le": "TEXT",
             "nguyen_nhan_khong_dat_nang_luc": "TEXT",
             "nguyen_nhan_khong_dat_ky_thuat": "TEXT",
-            # Physical compatibility only: current application code never reads or writes it.
-            "nguoi_cham_id": "TEXT",
             "danh_gia_luc": "TEXT",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",

@@ -23,7 +23,7 @@ const crudCodes = {
   package: `${runId}-GT`,
   contract: `${runId}/HD`,
 };
-const documentFixtureDirectory = resolve("data", "e2e-artifacts", `documents-${runId}`);
+const documentFixtureDirectory = resolve("test-results", "e2e-artifacts", `documents-${runId}`);
 const fixturePayload = {
   runId, organizationId, password, account, crudCodes, documentFixtureDirectory,
 };

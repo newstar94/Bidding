@@ -7,7 +7,6 @@ import threading
 import time
 from contextlib import asynccontextmanager
 
-from backend.auth.auth_helper import _session_cache_cleanup
 from backend.auth.email_delivery_service import (
     fail_stale_email_deliveries,
     run_email_delivery_worker,
@@ -26,7 +25,6 @@ from backend.shared.audit_monitor import (
     monitor_audit_chain,
     verify_audit_chain_before_ready,
 )
-from backend.shared.helpers import _org_cache_cleanup
 from backend.shared.logging_utils import log_error
 from backend.startup import (
     validate_startup_configuration,
@@ -177,19 +175,11 @@ def _purge_derived_images(image_dir):
         log_error(exc, "derived_image_cleanup", level="WARN")
 
 
-def _run_cache_cleanup(database, image_dir):
-    cleanup_cycle = 0
+def _run_retention_cleanup(database, image_dir):
     while True:
-        time.sleep(300)
-        cleanup_cycle += 1
-        try:
-            _session_cache_cleanup()
-            _org_cache_cleanup()
-        except Exception as exc:
-            log_error(exc, "memory_cache_cleanup", level="WARN")
-        if cleanup_cycle % 6 == 0:
-            _purge_retained_rows(database)
-            _purge_derived_images(image_dir)
+        time.sleep(1800)
+        _purge_retained_rows(database)
+        _purge_derived_images(image_dir)
 
 
 @asynccontextmanager
@@ -280,7 +270,7 @@ async def application_lifespan(
         name="optional-background-startup",
     ).start()
     threading.Thread(
-        target=_run_cache_cleanup,
+        target=_run_retention_cleanup,
         args=(database, image_dir),
         daemon=True,
         name="cache-retention-cleanup",

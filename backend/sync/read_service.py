@@ -457,6 +457,16 @@ def _read_sync_data_blocking(request):
             response_payload["deletions"] = [
                 item for item in response_payload["deletions"] if item.get("table") in requested_keys
             ]
+        # Mapping and authorization above require the consistent read snapshot.
+        # JSON encoding does not: return the connection to the pool before the
+        # potentially expensive payload serialization phase.
+        conn.close()
+        conn = None
+        record_database_phase(
+            "sync",
+            "snapshot_checkout",
+            time.perf_counter() - started_at,
+        )
         json_started_at = time.perf_counter()
         try:
             response = JSONResponse(response_payload)

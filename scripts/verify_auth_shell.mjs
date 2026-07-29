@@ -34,14 +34,18 @@ try {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => {
-    const overlay = document.getElementById("auth-overlay");
-    const loader = document.getElementById("system-init-loader");
-    return overlay
-      && getComputedStyle(overlay).display === "none"
-      && loader?.getAttribute("aria-busy") === "false"
-      && getComputedStyle(loader).visibility === "hidden";
-  }, null, { timeout: 15_000 });
+  try {
+    await page.waitForFunction(() => {
+      const overlay = document.getElementById("auth-overlay");
+      const loader = document.getElementById("system-init-loader");
+      return overlay
+        && getComputedStyle(overlay).display === "none"
+        && loader?.getAttribute("aria-busy") === "false"
+        && getComputedStyle(loader).visibility === "hidden";
+    }, null, { timeout: 15_000 });
+  } catch (error) {
+    throw new Error(`Authenticated shell did not initialize: ${pageErrors.join(" | ") || error.message}`);
+  }
   const profileTrigger = page.locator("#header-profile-trigger");
   await profileTrigger.click();
   const interactiveState = await page.evaluate(() => {

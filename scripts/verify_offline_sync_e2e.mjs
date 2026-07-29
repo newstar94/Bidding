@@ -145,12 +145,31 @@ try {
     await route.continue();
   });
   await page.locator("#form-chuyengia button[type='submit']").click();
-  await page.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset?.syncState === "error", null, { timeout: 15_000 });
   await page.waitForFunction(async () => {
     const { getAppController } = await import("/frontend/app/controllerRef.js");
     const controller = getAppController();
-    return !controller?._autoSyncPromise && Boolean(controller?.model?.buildMutationSyncPayload?.());
-  }, null, { timeout: 10_000 });
+    const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
+    return !controller?._autoSyncPromise
+      && !controller?._syncImmediateTimer
+      && ["error", "offline"].includes(syncState)
+      && Boolean(controller?.model?.buildMutationSyncPayload?.());
+  }, null, { timeout: 15_000 });
+  // A submit can coalesce one scheduled mutation flush behind the direct flush.
+  // Wait past that 80 ms hand-off and assert the final, stable pending state.
+  await page.waitForTimeout(250);
+  await page.waitForFunction(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
+    return !controller?._autoSyncPromise
+      && !controller?._syncImmediateTimer
+      && ["error", "offline"].includes(syncState)
+      && Boolean(controller?.model?.buildMutationSyncPayload?.());
+  }, null, { timeout: 15_000 });
+  const interruptedSyncState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
+  if (!["error", "offline"].includes(interruptedSyncState || "")) {
+    throw new Error(`Interrupted sync exposed an invalid UI state: ${interruptedSyncState || "missing"}`);
+  }
   if (abortedSyncCount < 1 || await page.locator("#modal-chuyengia.active").isHidden()) {
     throw new Error("Interrupted save did not remain pending for an explicit retry");
   }

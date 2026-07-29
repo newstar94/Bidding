@@ -101,7 +101,11 @@ async function csrfHeaders(context, extra = {}) {
     token = (await context.cookies(baseURL)).find((cookie) => cookie.name === "csrf_token")?.value;
   }
   assert(token, "Server did not issue a CSRF token");
-  return { ...extra, "X-CSRF-Token": token };
+  return {
+    Origin: new URL(baseURL).origin,
+    ...extra,
+    "X-CSRF-Token": token,
+  };
 }
 
 async function loadAll(context, activeOrg = organizationId) {
@@ -339,13 +343,20 @@ try {
   mark("manager-role-profile-and-cross-workspace");
 
   response = await managerContext.request.post(`${baseURL}/api/sync`, {
-    headers: { "X-Active-Org": encodeURIComponent(organizationId) },
+    headers: {
+      "X-Active-Org": encodeURIComponent(organizationId),
+      Origin: new URL(baseURL).origin,
+    },
     data: {},
   });
   let securityBody = await response.json().catch(() => ({}));
   assert(response.status() === 403 && securityBody.code === "CSRF_TOKEN_INVALID", "Sync without CSRF token was accepted");
   response = await managerContext.request.post(`${baseURL}/api/sync`, {
-    headers: { "X-Active-Org": encodeURIComponent(organizationId), "X-CSRF-Token": "invalid-token" },
+    headers: {
+      "X-Active-Org": encodeURIComponent(organizationId),
+      "X-CSRF-Token": "invalid-token",
+      Origin: new URL(baseURL).origin,
+    },
     data: {},
   });
   securityBody = await response.json().catch(() => ({}));
