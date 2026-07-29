@@ -12,6 +12,28 @@ import {
   canManageWorkspaceWordVariables,
   canUploadWorkspaceAssets,
 } from "../auth/accessContext.js";
+
+export function applyWordVariableFormAccess(forms, canManageWordVariables) {
+  const isReadonly = !canManageWordVariables;
+  forms.forEach((form) => {
+    if (!form) return;
+    form.hidden = false;
+    form.setAttribute("aria-hidden", "false");
+    form.setAttribute("aria-readonly", String(isReadonly));
+    form.classList.toggle("is-readonly", isReadonly);
+    const card = form.closest(".dashboard-card");
+    if (card) card.hidden = false;
+    form.querySelectorAll('input:not([type="hidden"]), textarea, button').forEach((control) => {
+      control.disabled = isReadonly;
+      if (isReadonly) {
+        control.setAttribute("aria-disabled", "true");
+      } else {
+        control.removeAttribute("aria-disabled");
+      }
+    });
+  });
+}
+
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
   const canManageWordVariables = canManageWorkspaceWordVariables(
@@ -421,13 +443,10 @@ export function setupWordTemplatesEvents() {
   const formWmc = document.getElementById("form-word-computed-mapping");
   const cancelWmcBtn = document.getElementById("btn-wmc-cancel");
   const wmcInsertVarInput = document.getElementById("wmc-insert-var");
-  [formWm, formWml, formWmc].forEach((form) => {
-    if (!form) return;
-    form.hidden = !canManageWordVariables;
-    form.setAttribute("aria-hidden", String(!canManageWordVariables));
-    const card = form.closest(".dashboard-card");
-    if (card) card.hidden = !canManageWordVariables;
-  });
+  applyWordVariableFormAccess(
+    [formWm, formWml, formWmc],
+    canManageWordVariables,
+  );
   const readonlyNotice = document.getElementById("word-variable-readonly-notice");
   if (readonlyNotice) readonlyNotice.hidden = canManageWordVariables;
   if (tableSelect) makeSearchableSelect(tableSelect, "Tìm kiếm thực thể...");
