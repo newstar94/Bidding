@@ -4,11 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
+    "test": "python -m pytest -q --cov=backend --cov-report=term --cov-fail-under=28 && node --test tests/js/*.test.mjs",
+    "lint:security": "eslint frontend --max-warnings 68 && node scripts/check_trusted_types_policy.mjs",
+    "lint:python": "python scripts/check_python_quality.py",
+    "audit:dependencies": "npm audit --omit=dev && pip-audit -r requirements.txt",
+    "sbom": "python scripts/generate_sbom.py",
     "audit:vendor": "python scripts/audit_vendor_assets.py && node scripts/check_sheetjs_vendor.cjs && node scripts/check_excel_archive_guard.mjs",
     "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "package:production": "npm run build:secure && python scripts/package_production.py",
+    "check:quality": "python -m compileall -q backend scripts tests && npm run lint:python && npm run lint:security && npm test",
+    "check": "npm run check:quality && npm run build:secure && python scripts/audit_fk_indexes.py && python scripts/package_production.py --check && npm run sbom",
     "test:auth-shell": "node --env-file-if-exists=.env scripts/verify_auth_shell.mjs",
     "test:auth-roles-e2e": "node --env-file-if-exists=.env scripts/verify_auth_roles_e2e.mjs",
     "test:bidder-goods-e2e": "node --env-file-if-exists=.env scripts/verify_bidder_goods_e2e.cjs",
@@ -26,7 +32,6 @@
     "@playwright/test": "1.62.0",
     "esbuild": "0.28.1",
     "eslint": "10.7.0",
-    "javascript-obfuscator": "5.4.3",
     "vite": "8.1.4"
   },
   "dependencies": {

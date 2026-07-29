@@ -17,7 +17,6 @@ from backend.shared.helpers import (
     database,
     log_error,
     log_audit,
-    _session_cache_invalidate_by_user_id,
 )
 from backend.sync.api import disconnect_user_websockets
 from backend.auth.auth_service import (
@@ -397,7 +396,6 @@ async def google_login_api(request):
         )
         clear_rate_limit_buckets(cursor, rate_key)
         conn.commit()
-        _session_cache_invalidate_by_user_id(user["id"])
         disconnect_user_websockets(user["id"])
 
         if created_new_account and temporary_password and temporary_password_delivery_id:

@@ -187,6 +187,7 @@ def inspect_audit_chain(cursor):
     first_id = None
     first_previous_hash = None
     last_id = None
+    last_chain_id = None
     current_chain = None
     previous_hash = None
     expected_sequence = 0

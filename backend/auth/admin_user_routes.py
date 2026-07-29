@@ -8,8 +8,6 @@ from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.date_utils import vietnam_date_from_epoch
 from backend.shared.helpers import (
     OrgPermissionError,
-    _org_cache_invalidate_by_user_id,
-    _session_cache_invalidate_by_user_id,
     database,
     get_active_org,
     get_effective_roles,
@@ -343,7 +341,6 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 (user_id, account_package_id, starts_at, expires_at),
             )
 
-        affected_org_members = []
         if organization_id:
             membership = cursor.execute(
                 """SELECT lower(trim(vai_tro_trong_to_chuc))
@@ -445,13 +442,6 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                         *(normalized_capabilities[field] for field in _DOCUMENT_CAPABILITY_FIELDS),
                     ),
                 )
-            affected_org_members = [
-                row[0] for row in cursor.execute(
-                    "SELECT user_id FROM thanh_vien_to_chuc WHERE organization_id = ?",
-                    (organization_id,),
-                ).fetchall()
-            ]
-
         log_audit(
             "admin.user_access_settings_updated",
             actor_user_id=actor_user_id,
@@ -474,11 +464,6 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         )
         conn.commit()
 
-        invalidated_users = set(affected_org_members)
-        invalidated_users.add(user_id)
-        for affected_user_id in invalidated_users:
-            _session_cache_invalidate_by_user_id(affected_user_id)
-            _org_cache_invalidate_by_user_id(affected_user_id)
         disconnect_user_websockets(user_id)
         if organization_id:
             broadcast_websocket_event(
@@ -632,8 +617,6 @@ def _delete_user_sync(request):
         )
         conn.commit()
 
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
         return JSONResponse({
             "success": True,

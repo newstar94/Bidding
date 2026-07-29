@@ -97,7 +97,21 @@ export default [
         HTMLElement: "readonly",
         HTMLInputElement: "readonly",
         AbortController: "readonly",
+        BroadcastChannel: "readonly",
+        DOMException: "readonly",
+        Element: "readonly",
+        FormData: "readonly",
+        Headers: "readonly",
+        IntersectionObserver: "readonly",
+        TextDecoder: "readonly",
+        TextEncoder: "readonly",
+        URLSearchParams: "readonly",
+        WebSocket: "readonly",
         crypto: "readonly",
+        getComputedStyle: "readonly",
+        history: "readonly",
+        indexedDB: "readonly",
+        queueMicrotask: "readonly",
         structuredClone: "readonly",
         performance: "readonly",
         atob: "readonly",
@@ -116,7 +130,15 @@ export default [
       "no-implied-eval": "error",
       "no-new-func": "error",
       "no-script-url": "error",
-      "no-dupe-keys": "error"
+      "no-dupe-keys": "error",
+      "no-undef": "error",
+      "no-unreachable": "error",
+      "no-unused-vars": ["warn", {
+        argsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        varsIgnorePattern: "^_"
+      }],
+      "complexity": ["warn", 80]
     }
   }
 ];

@@ -14,7 +14,6 @@ from backend.shared.helpers import (
     gui_email,
     log_error,
     log_audit,
-    _session_cache_invalidate_by_user_id,
 )
 from backend.auth.auth_service import (
     get_client_ip,
@@ -495,7 +494,6 @@ async def reset_password_api(request):
         except BlockingIOBusyError:
             return _database_write_unavailable_response()
 
-        _session_cache_invalidate_by_user_id(user_id)
         from backend.sync.websocket import disconnect_user_websockets
         disconnect_user_websockets(user_id)
         log_audit(

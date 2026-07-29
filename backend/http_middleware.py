@@ -10,7 +10,10 @@ from starlette.responses import JSONResponse, Response
 
 from backend.shared.client_ip import is_request_secure, is_trusted_proxy_peer
 from backend.shared.logging_utils import error_response
-from backend.shared.origin_policy import get_allowed_websocket_origins
+from backend.shared.origin_policy import (
+    get_allowed_websocket_origins,
+    is_http_origin_allowed,
+)
 
 
 def _websocket_source(origin):
@@ -346,21 +349,13 @@ class CSRFMiddleware:
         csrf_cookie = request.cookies.get("csrf_token")
         csrf_token = csrf_cookie or secrets.token_urlsafe(32)
         if request.method in self.MUTATING_METHODS:
-            host = request.headers.get("host")
-
-            def same_host(value):
-                try:
-                    return urlparse(value).netloc == host
-                except Exception:
-                    return False
-
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
-            if origin and not same_host(origin):
+            if origin and not is_http_origin_allowed(origin):
                 response = JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
                 await response(scope, receive, send)
                 return
-            if referer and not same_host(referer):
+            if referer and not is_http_origin_allowed(referer, allow_path=True):
                 response = JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
                 await response(scope, receive, send)
                 return
@@ -370,6 +365,16 @@ class CSRFMiddleware:
                 and bool(request.cookies.get("session_token"))
             )
             if requires_token:
+                if not origin and not referer:
+                    response = JSONResponse(
+                        {
+                            "error": "Yêu cầu bị từ chối do thiếu Origin/Referer.",
+                            "code": "CSRF_ORIGIN_REQUIRED",
+                        },
+                        status_code=403,
+                    )
+                    await response(scope, receive, send)
+                    return
                 header_token = request.headers.get("x-csrf-token", "")
                 if not csrf_cookie or not header_token or not secrets.compare_digest(csrf_cookie, header_token):
                     response = JSONResponse({"error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!", "code": "CSRF_TOKEN_INVALID"}, status_code=403)

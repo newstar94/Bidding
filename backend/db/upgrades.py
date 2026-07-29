@@ -907,6 +907,60 @@ def _upgrade_to_v27_add_goods_preference(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v28_drop_retired_evaluation_actor_columns(cursor, context):
+    """Drop reviewer columns retired by v19 after a loss-prevention preflight."""
+
+    retired_columns = (
+        ("vong_danh_gia", "nguoi_cham_id"),
+        ("bao_cao_danh_gia_nha_thau", "nguoi_cham_id"),
+        ("ket_qua_danh_gia_nha_thau", "nguoi_cham_id"),
+    )
+    for table_name, column_name in retired_columns:
+        populated = cursor.execute(
+            f"SELECT COUNT(*) FROM {table_name} WHERE {column_name} IS NOT NULL"
+        ).fetchone()
+        if populated and int(populated[0] or 0) > 0:
+            raise RuntimeError(
+                f"Cannot drop retired column {table_name}.{column_name}: "
+                f"{int(populated[0])} rows still contain legacy reviewer data. "
+                "Export or clear those values after taking a verified backup, then retry."
+            )
+
+    for table_name, column_name in retired_columns:
+        # Deliberately omit CASCADE. An unexpected dependency must stop the
+        # migration instead of silently removing another production object.
+        cursor.execute(
+            f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS {column_name}"
+        )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_lot_fk
+           ON goi_thau_hang_hoa (organization_id, phan_lo_id)
+           WHERE phan_lo_id IS NOT NULL"""
+    )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v29_cover_remaining_foreign_keys(cursor, context):
+    """Add child-side indexes for every FK that lacked a usable left prefix."""
+
+    for statement in (
+        """CREATE INDEX IF NOT EXISTS idx_bidder_goods_lot_fk
+           ON hang_hoa_du_thau_nha_thau (organization_id, phan_lo_id)
+           WHERE phan_lo_id IS NOT NULL""",
+        """CREATE INDEX IF NOT EXISTS idx_bidder_goods_requirement_fk
+           ON hang_hoa_du_thau_nha_thau (organization_id, goi_thau_hang_hoa_id)
+           WHERE goi_thau_hang_hoa_id IS NOT NULL""",
+        """CREATE INDEX IF NOT EXISTS idx_bidder_goods_manual_actor_fk
+           ON hang_hoa_du_thau_nha_thau (uu_dai_manual_actor_id)
+           WHERE uu_dai_manual_actor_id IS NOT NULL""",
+        """CREATE INDEX IF NOT EXISTS idx_package_documents_batch_fk
+           ON tai_lieu_goi_thau (organization_id, evaluation_batch_id)
+           WHERE evaluation_batch_id IS NOT NULL""",
+    ):
+        cursor.execute(statement)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1033,6 +1087,16 @@ UPGRADES = (
         27,
         "add_goods_preference",
         _upgrade_to_v27_add_goods_preference,
+    ),
+    DatabaseUpgrade(
+        28,
+        "drop_retired_evaluation_actor_columns",
+        _upgrade_to_v28_drop_retired_evaluation_actor_columns,
+    ),
+    DatabaseUpgrade(
+        29,
+        "cover_remaining_foreign_keys",
+        _upgrade_to_v29_cover_remaining_foreign_keys,
     ),
 )
 

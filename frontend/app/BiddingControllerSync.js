@@ -33,6 +33,24 @@ function hideOfflineBanner() {
   if (banner) banner.hidden = true;
 }
 
+export function finalizePulledSyncState(controller, timestamp = Date.now()) {
+  const localMutationsPending = Boolean(
+    controller?.model?.buildMutationSyncPayload?.(),
+  );
+  controller?.updateSyncState?.(localMutationsPending
+    ? {
+        phase: "error",
+        online: true,
+        message: "CÃ³ thay Ä‘á»•i chÆ°a Ä‘á»“ng bá»™",
+      }
+    : {
+        phase: "idle",
+        online: true,
+        lastSyncedAt: timestamp,
+      });
+  return localMutationsPending;
+}
+
 export function updateSyncState(patch = {}) {
   const storedTimestamp = Number(currentWorkspaceStorage(this)?.getItem("bf_last_fetch_time") || 0) || null;
   this._syncUxState = {
@@ -780,7 +798,6 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
         this.model?.rebaseMutationBatch?.(committedCursor.syncVersion);
       }
       await renderChangedState(this, changedKeys, { isBackground });
-      this.updateSyncStatusDisplay(Date.now());
       if (!isBackground) {
         const cleanPath = window.location.pathname.startsWith("/") ? window.location.pathname.substring(1) : window.location.pathname;
         const parts = cleanPath.split("/").filter(Boolean);
@@ -798,8 +815,8 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
         this.scheduleBackgroundSync(900);
       }
       hideOfflineBanner();
-      this.updateSyncState({ phase: "idle", online: true, lastSyncedAt: Date.now() });
-      return { ok: true, data: dbData };
+      const localMutationsPending = finalizePulledSyncState(this);
+      return { ok: true, data: dbData, localMutationsPending };
     }
   } catch (err) {
     if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };

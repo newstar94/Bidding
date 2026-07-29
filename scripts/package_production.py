@@ -212,6 +212,22 @@ def build_archive(output: Path) -> tuple[int, int]:
     return len(files), output.stat().st_size
 
 
+def _isolated_smoke_environment(database_url: str) -> dict[str, str]:
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if (
+            key == "DATABASE_URL"
+            or key.endswith("_DATABASE_URL")
+            or (key.startswith("DATABASE_") and key.endswith("_URL"))
+        ):
+            environment.pop(key, None)
+    environment.update({
+        "DATABASE_URL": database_url,
+        "MIGRATOR_DATABASE_URL": database_url,
+    })
+    return environment
+
+
 def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     """Boot the application from extracted bytes, not from the source tree."""
     extraction_root = extraction_root.resolve()
@@ -265,12 +281,14 @@ def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         connection.execute("CREATE SCHEMA public")
-    environment = os.environ.copy()
+    environment = _isolated_smoke_environment(database_url)
+    # The parent process loads the developer .env so the packager can discover
+    # API_TEST_DATABASE_URL. Never let a privileged/dev URL win over the
+    # isolated smoke database inside the extracted child process.
     environment.update({
         "APP_ENV": "test",
         "APP_DEBUG": "False",
         "ADMIN_PASSWORD": "Production-smoke-only-123!",  # pragma: allowlist secret
-        "DATABASE_URL": database_url,
         "DATABASE_AUTO_MIGRATE": "true",
         "APP_SECURE_COOKIES": "False",
         "AUDIT_CHECKPOINT_DIR": "",

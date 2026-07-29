@@ -11,11 +11,14 @@ export async function reconcileRouteDataAtStartup(controller) {
       }
       return false;
     }
+    let pullResult = { ok: true, skipped: true, localMutationsPending: false };
     if (typeof controller?.forceSyncData === "function") {
-      await controller.forceSyncData(true, true, true);
+      pullResult = await controller.forceSyncData(true, true, true);
     }
-    if (typeof controller?.autoSync === "function") {
-      await controller.autoSync();
+    if (!pullResult?.ok) return false;
+    if (pullResult?.localMutationsPending && typeof controller?.autoSync === "function") {
+      const replay = await controller.autoSync();
+      if (!replay?.ok) return false;
     }
     return true;
   } catch (error) {

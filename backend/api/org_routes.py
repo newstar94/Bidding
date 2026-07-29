@@ -10,8 +10,6 @@ from backend.shared.helpers import (
     verify_session,
     get_effective_roles,
     get_active_org,
-    _session_cache_invalidate_by_user_id,
-    _org_cache_invalidate_by_user_id,
     log_audit,
     OrgPermissionError
 )
@@ -404,8 +402,6 @@ async def update_organization_subscription_api(request):
         conn.commit()
 
         for user_id in member_ids:
-            _session_cache_invalidate_by_user_id(user_id)
-            _org_cache_invalidate_by_user_id(user_id)
             if action == 'lock':
                 disconnect_user_websockets(user_id)
         broadcast_websocket_event(organization_id, {"event": "organization_subscription_changed"})
@@ -598,8 +594,6 @@ async def add_user_to_org_api(request):
             added=True,
         )
         conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
         broadcast_websocket_event(org_id, {
             "event": "organization_member_changed",
             "userId": user_id,
@@ -932,8 +926,6 @@ async def remove_user_from_org_api(request):
         conn.close()
         conn = None
 
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
         broadcast_websocket_event(org_id, {"event": "db_changed"})
 

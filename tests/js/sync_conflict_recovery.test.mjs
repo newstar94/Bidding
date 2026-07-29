@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { reconcileRouteDataAtStartup } from "../../frontend/app/startupReconciliation.js";
-import { resolveRowVersionConflicts } from "../../frontend/app/BiddingControllerSync.js";
+import {
+  finalizePulledSyncState,
+  resolveRowVersionConflicts,
+} from "../../frontend/app/BiddingControllerSync.js";
 
 
 test("startup does not submit the same mutation again after a conflict", async () => {
@@ -23,6 +26,91 @@ test("startup does not submit the same mutation again after a conflict", async (
 
   assert.equal(result, false);
   assert.deepEqual(calls, ["push", "pull"]);
+});
+
+
+test("startup flushes once, pulls once, and skips an empty replay", async () => {
+  const calls = [];
+  const controller = {
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: true, skipped: calls.length === 1 };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: false };
+    },
+  };
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.deepEqual(calls, ["push", "pull"]);
+});
+
+
+test("startup replays only mutations produced while reconciling the pull", async () => {
+  const calls = [];
+  const controller = {
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: true };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: true };
+    },
+  };
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.deepEqual(calls, ["push", "pull", "push"]);
+});
+
+
+test("startup keeps the local snapshot when the pull is offline", async () => {
+  const calls = [];
+  const controller = {
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: false, error: new Error("offline") };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: false, error: new Error("offline") };
+    },
+  };
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), false);
+  assert.deepEqual(calls, ["push", "pull"]);
+});
+
+
+test("a successful pull cannot report synced while the outbox is pending", () => {
+  const patches = [];
+  const controller = {
+    model: { buildMutationSyncPayload: () => ({ clientMutationId: "pending-1" }) },
+    updateSyncState(patch) { patches.push(patch); },
+  };
+
+  assert.equal(finalizePulledSyncState(controller, 123), true);
+  assert.deepEqual(patches, [{
+    phase: "error",
+    online: true,
+    message: "CÃ³ thay Ä‘á»•i chÆ°a Ä‘á»“ng bá»™",
+  }]);
+});
+
+
+test("a successful pull reports synced after the outbox is empty", () => {
+  const patches = [];
+  const controller = {
+    model: { buildMutationSyncPayload: () => null },
+    updateSyncState(patch) { patches.push(patch); },
+  };
+
+  assert.equal(finalizePulledSyncState(controller, 123), false);
+  assert.deepEqual(patches, [{ phase: "idle", online: true, lastSyncedAt: 123 }]);
 });
 
 

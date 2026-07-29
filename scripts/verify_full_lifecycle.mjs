@@ -450,7 +450,7 @@ try {
     await page.locator("#search-goithau").fill(packageTitle);
     await page.getByText(packageTitle, { exact: true }).click();
     await page.locator('button[data-workflow-tab="goods"]').click();
-    const previousCount = Number.parseInt((await page.locator(".package-goods-summary span").first().innerText()).replace(/\D/g, ""), 10) || 0;
+    const previousCount = Number.parseInt((await page.locator(".package-goods-summary").innerText()).replace(/\D/g, ""), 10) || 0;
     const fileInput = page.locator("#package-goods-file");
     await fileInput.setInputFiles(filePath);
     const previewRows = page.locator("#package-goods-preview tbody tr");
@@ -470,14 +470,14 @@ try {
     }
     await page.locator("#btn-package-goods-import-save").click();
     await page.waitForFunction((before) => {
-      const text = document.querySelector(".package-goods-summary span")?.textContent || "";
+      const text = document.querySelector(".package-goods-summary")?.textContent || "";
       return Number.parseInt(text.replace(/\D/g, ""), 10) > before;
     }, previousCount, { timeout: 20_000 });
-    const savedCount = Number.parseInt((await page.locator(".package-goods-summary span").first().innerText()).replace(/\D/g, ""), 10);
+    const savedCount = Number.parseInt((await page.locator(".package-goods-summary").innerText()).replace(/\D/g, ""), 10);
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitForApp(page);
     await page.locator('button[data-workflow-tab="goods"]').click();
-    const persistedCount = Number.parseInt((await page.locator(".package-goods-summary span").first().innerText()).replace(/\D/g, ""), 10);
+    const persistedCount = Number.parseInt((await page.locator(".package-goods-summary").innerText()).replace(/\D/g, ""), 10);
     if (persistedCount !== savedCount) throw new Error(`Goods count changed after reload: ${savedCount} -> ${persistedCount}`);
     return { previewCount: preview.length, persistedCount };
   };

@@ -53,6 +53,7 @@ async function csrfHeaders(context) {
   }
   assert(token, "Missing CSRF token");
   return {
+    Origin: new URL(baseURL).origin,
     "X-CSRF-Token": token,
     "X-Active-Org": encodeURIComponent(organizationId),
   };

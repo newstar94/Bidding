@@ -20,14 +20,10 @@ from backend.shared.helpers import (
     get_effective_roles,
     log_error,
     log_audit,
-    _session_cache_invalidate,
-    _session_cache_invalidate_by_user_id,
     get_active_org,
-    _org_cache_invalidate_by_user_id,
     OrgPermissionError,
     gui_email,
 )
-from backend.auth.auth_helper import _session_cache_set
 from backend.auth.auth_helper import (
     PRIVILEGED_REAUTH_TTL_SECONDS,
     SESSION_ACTIVITY_TOUCH_SECONDS,
@@ -232,7 +228,6 @@ def _commit_successful_login(
         )
         clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
-        _session_cache_invalidate_by_user_id(user["id"])
         return access_payload
     except Exception:
         conn.rollback()
@@ -516,7 +511,6 @@ def build_session_bootstrap(request):
 
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
     access_payload = _get_access_for_session(user, request)
-    _session_cache_set(session_token, user)
     return {
         "valid": True,
         "device_info": user.get('device_info'),
@@ -572,7 +566,6 @@ def _check_session_sync(request, data, started_at):
             return JSONResponse({"valid": False, "reason": invalid_reason})
 
         _extend_session_if_needed(user)
-        _session_cache_set(session_token, user)
         response = _session_response(user, request)
         response.headers["Server-Timing"] = f"session-check;dur={(time.perf_counter() - started_at) * 1000:.1f}"
         return response
@@ -653,8 +646,6 @@ def _set_active_role_sync(request, active_role):
             required=True,
         )
         conn.commit()
-        token = (request.cookies.get("session_token") or "").strip()
-        _session_cache_invalidate(token)
         return JSONResponse({"success": True, "activeRole": active_role})
     except Exception:
         conn.rollback()
@@ -942,8 +933,6 @@ async def update_profile_api(request):
                 required=True,
             )
         conn.commit()
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
-
         payload = {
             "success": True,
             "message": "Cập nhật thông tin tài khoản thành công!",
@@ -1227,7 +1216,6 @@ async def verify_email_change_api(request):
         )
         conn.commit()
 
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
         disconnect_user_websockets(role_or_err.user_id)
         for organization_id in affected_organization_ids:
             broadcast_websocket_event(
@@ -1318,7 +1306,6 @@ async def change_password_api(request):
         if not old_password_verified:
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
 
-        old_token = request.cookies.get('session_token')
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         conn.execute("BEGIN")
@@ -1346,8 +1333,6 @@ async def change_password_api(request):
             required=True,
         )
         conn.commit()
-        if old_token:
-            _session_cache_invalidate(old_token)
         disconnect_user_websockets(user['id'])
         response = JSONResponse(
             {
@@ -1378,8 +1363,6 @@ async def logout_api(request):
     user_id = None
     try:
         token = request.cookies.get('session_token')
-        if token:
-            _session_cache_invalidate(token)
         if token:
             conn = database.get_connection()
             cursor = conn.cursor()
@@ -1502,7 +1485,6 @@ async def privileged_reauth_api(request):
         )
         clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
         return JSONResponse({"success": True, "expires_in": PRIVILEGED_REAUTH_TTL_SECONDS})
     except Exception as exc:
         if conn:
@@ -1674,8 +1656,6 @@ async def update_user_role_api(request):
             required=True,
         )
         conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
         return JSONResponse(
             {"success": True, "message": "Cập nhật vai trò thành công!"}
@@ -1729,8 +1709,6 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
             required=True,
         )
         conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật thông tin thành công!"})
     except IntegrityError as e:
         if conn:
@@ -2019,8 +1997,6 @@ def _set_username_sync(request, role_or_err, new_username):
             required=True,
         )
         conn.commit()
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
-
         return JSONResponse({"success": True, "username": new_username})
 
     except IntegrityError as e:

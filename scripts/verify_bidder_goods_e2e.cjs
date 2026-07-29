@@ -404,6 +404,21 @@ async function importAndPersist(page, packageData, workflowTab) {
       await openBidderGoodsDetail(page);
     }
     const currentSelect = page.locator("#detailed-evaluation-bid-select");
+    const selectState = await currentSelect.evaluate((select, targetValue) => ({
+      disabled: select.disabled,
+      value: select.value,
+      options: [...select.options].map((option) => ({
+        value: option.value,
+        disabled: option.disabled,
+        selected: option.selected,
+      })),
+      targetValue,
+    }), bidValue);
+    if (selectState.disabled || selectState.options.find(
+      (option) => option.value === bidValue,
+    )?.disabled) {
+      throw new Error(`${packageData.code}: bid selector is unexpectedly disabled ${JSON.stringify(selectState)}`);
+    }
     await currentSelect.selectOption(bidValue, { force: true });
     await acceptPendingDialog(page);
     await page.locator(".bidder-goods-panel").waitFor({ state: "visible", timeout: 20_000 });

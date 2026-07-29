@@ -19,8 +19,6 @@ from backend.auth.auth_helper import (
     password_needs_rehash,
     SessionRole,
     verify_session,
-    _session_cache_invalidate,
-    _session_cache_invalidate_by_user_id
 )
 
 
@@ -48,8 +46,6 @@ from backend.auth.email_utils import (
 
 from backend.auth.session_utils import (
     get_active_org,
-    _org_cache_cleanup,
-    _org_cache_invalidate_by_user_id,
     OrgPermissionError
 )
 

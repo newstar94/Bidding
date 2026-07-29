@@ -146,7 +146,7 @@ def _setup(data: dict) -> dict:
                        hieu_luc_dam_bao_du_thau, phan_lo, trang_thai
                    ) VALUES (
                        %s, %s, 'organization', %s, %s, %s, %s, %s,
-                       'Hàng hóa', 'Đấu thầu rộng rãi',
+                       'Xây lắp', 'Đấu thầu rộng rãi',
                        'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất',
                        '90 ngày', 'Nguồn vốn E2E', '30 ngày', '2026-07-01',
                        '2026-07-01 08:00:00', '2026-07-05 08:00:00',
@@ -183,7 +183,7 @@ def _setup(data: dict) -> dict:
                            hieu_luc_hsdt, hieu_luc_dam_bao_du_thau, phan_lo, trang_thai
                        ) VALUES (
                            %s, %s, 'organization', %s, %s, %s, %s, %s,
-                           'Hàng hóa', 'Đấu thầu rộng rãi',
+                           'Xây lắp', 'Đấu thầu rộng rãi',
                            'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất',
                            '90 ngày', 'Nguồn vốn E2E', '30 ngày', '2026-07-01',
                            '2026-07-01 08:00:00', '2026-07-05 08:00:00',
@@ -227,7 +227,7 @@ def _setup(data: dict) -> dict:
                            hieu_luc_dam_bao_du_thau, phan_lo, trang_thai
                        ) VALUES (
                            %s, %s, 'organization', %s, %s, %s, %s, %s,
-                           'Hàng hóa', 'Đấu thầu rộng rãi',
+                           'Xây lắp', 'Đấu thầu rộng rãi',
                            'Một giai đoạn hai túi hồ sơ', 'Giá thấp nhất',
                            '90 ngày', 'Nguồn vốn E2E', '30 ngày', '2026-07-01',
                            '2026-07-01 08:00:00', '2026-07-05 08:00:00',

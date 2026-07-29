@@ -33,6 +33,7 @@ const CSRF_EXEMPT_PATHS = new Set([
 ]);
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const MAX_AUTO_RETRY_AFTER_MS = 60_000;
 const defaultActiveOrganization = () => {
   try {
     return String(
@@ -125,18 +126,35 @@ function parseRetryAfter(response) {
 }
 
 function retryDelay(attempt, response) {
-  const serverDelay = parseRetryAfter(response);
-  if (serverDelay !== null) return Math.min(serverDelay, 5_000);
-  return 250 * (2 ** attempt) + Math.floor(Math.random() * 100);
+  if (response?.status === 429) {
+    const serverDelay = parseRetryAfter(response);
+    if (serverDelay !== null) return serverDelay;
+  }
+  const exponentialDelay = Math.min(30_000, 250 * (2 ** attempt));
+  return exponentialDelay + Math.floor(Math.random() * 100);
 }
 
 function wait(ms, signal) {
   return new Promise((resolve, reject) => {
-    const timer = globalThis.setTimeout(resolve, ms);
-    signal?.addEventListener?.("abort", () => {
-      globalThis.clearTimeout(timer);
-      reject(signal.reason || new DOMException("Aborted", "AbortError"));
-    }, { once: true });
+    let settled = false;
+    let timer = null;
+    const cleanup = () => {
+      if (timer !== null) globalThis.clearTimeout(timer);
+      signal?.removeEventListener?.("abort", onAbort);
+    };
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback(value);
+    };
+    const onAbort = () => finish(
+      reject,
+      signal.reason || new DOMException("Aborted", "AbortError"),
+    );
+    timer = globalThis.setTimeout(() => finish(resolve), ms);
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener?.("abort", onAbort, { once: true });
   });
 }
 
@@ -240,7 +258,13 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
     }
     abort.cleanup();
 
-    if (RETRYABLE_STATUSES.has(response.status) && attempt < maxRetries) {
+    const retryAfter = response.status === 429 ? parseRetryAfter(response) : null;
+    const retryAfterIsTooLong = retryAfter !== null && retryAfter > MAX_AUTO_RETRY_AFTER_MS;
+    if (
+      RETRYABLE_STATUSES.has(response.status)
+      && attempt < maxRetries
+      && !retryAfterIsTooLong
+    ) {
       await wait(retryDelay(attempt, response), requestOptions.signal);
       attempt += 1;
       continue;
