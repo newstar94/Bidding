@@ -22,14 +22,17 @@ function createForm() {
   const classes = new Set();
   const card = { hidden: true };
   const browseSelect = createControl();
-  const mutableControls = [createControl(), createControl()];
+  const mutableInputs = [createControl(), createControl()];
+  const actionGroup = createControl();
+  actionGroup.hidden = false;
   return {
+    actionGroup,
     attributes,
     browseSelect,
     card,
     classes,
     hidden: true,
-    mutableControls,
+    mutableInputs,
     classList: {
       toggle(name, enabled) {
         if (enabled) classes.add(name);
@@ -40,8 +43,9 @@ function createForm() {
       return selector === ".dashboard-card" ? card : null;
     },
     querySelectorAll(selector) {
-      assert.equal(selector, 'input:not([type="hidden"]), textarea, button');
-      return mutableControls;
+      if (selector === 'input:not([type="hidden"]), textarea') return mutableInputs;
+      if (selector === ".word-config-actions") return [actionGroup];
+      assert.fail(`Unexpected selector: ${selector}`);
     },
     setAttribute(name, value) {
       attributes.set(name, value);
@@ -60,7 +64,9 @@ test("read-only Word dictionary keeps manager layout while locking mutations", (
   assert.equal(form.attributes.get("aria-readonly"), "true");
   assert.equal(form.classes.has("is-readonly"), true);
   assert.equal(form.browseSelect.disabled, false);
-  form.mutableControls.forEach((control) => {
+  assert.equal(form.actionGroup.hidden, true);
+  assert.equal(form.actionGroup.attributes.get("aria-hidden"), "true");
+  form.mutableInputs.forEach((control) => {
     assert.equal(control.disabled, true);
     assert.equal(control.attributes.get("aria-disabled"), "true");
   });
@@ -74,7 +80,9 @@ test("manager Word dictionary restores mutation controls", () => {
 
   assert.equal(form.classes.has("is-readonly"), false);
   assert.equal(form.attributes.get("aria-readonly"), "false");
-  form.mutableControls.forEach((control) => {
+  assert.equal(form.actionGroup.hidden, false);
+  assert.equal(form.actionGroup.attributes.get("aria-hidden"), "false");
+  form.mutableInputs.forEach((control) => {
     assert.equal(control.disabled, false);
     assert.equal(control.attributes.has("aria-disabled"), false);
   });

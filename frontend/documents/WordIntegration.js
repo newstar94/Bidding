@@ -23,13 +23,17 @@ export function applyWordVariableFormAccess(forms, canManageWordVariables) {
     form.classList.toggle("is-readonly", isReadonly);
     const card = form.closest(".dashboard-card");
     if (card) card.hidden = false;
-    form.querySelectorAll('input:not([type="hidden"]), textarea, button').forEach((control) => {
+    form.querySelectorAll('input:not([type="hidden"]), textarea').forEach((control) => {
       control.disabled = isReadonly;
       if (isReadonly) {
         control.setAttribute("aria-disabled", "true");
       } else {
         control.removeAttribute("aria-disabled");
       }
+    });
+    form.querySelectorAll(".word-config-actions").forEach((actions) => {
+      actions.hidden = isReadonly;
+      actions.setAttribute("aria-hidden", String(isReadonly));
     });
   });
 }
