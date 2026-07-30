@@ -16,7 +16,7 @@ export function authFetchDownload(url, filename) {
           const text = await res.text();
           errMsg = text || `${res.status} ${res.statusText}`;
         }
-      } catch (e) {
+      } catch {
         errMsg = `${res.status} ${res.statusText}`;
       }
       throw new Error(errMsg);

@@ -553,7 +553,7 @@ export function renderDictionary(group) {
   }).join(""));
   lucide.createIcons({ root: tbody });
 }
-export function renderWordMappingsTable(mappingsList = []) {
+export function renderWordMappingsTable() {
   const dictionarySelect = document.getElementById("dictionary-group-select");
   const group = dictionarySelect ? dictionarySelect.value : "global";
   renderDictionary.call(this, group);

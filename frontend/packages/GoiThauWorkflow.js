@@ -23,11 +23,11 @@ import { derivePackagePrice } from "./packagePricing.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
+// eslint-disable-next-line complexity -- Legacy package form orchestration is isolated for a dedicated refactor.
 export async function editGoiThau(id, isReadOnly = false) {
   if (!document.getElementById("modal-goithau")) {
     await this.ensureLazyModal?.("modal-goithau");
   }
-  const modal = document.getElementById("modal-goithau");
   const form = document.getElementById("form-goithau");
   const gt = id ? this.model.state.goithau.find((g) => String(g.id) === String(id)) : null;
   resetPackageFormEditableState(form);
@@ -177,7 +177,7 @@ export async function editGoiThau(id, isReadOnly = false) {
           }
         });
       }
-      cb.addEventListener("change", (e) => {
+      cb.addEventListener("change", () => {
         const newChecked = cb.checked;
         const expertId = cb.value;
         const roleSelect2 = row.querySelector(`select[name="${roleName}"]`);
@@ -562,6 +562,7 @@ export async function editGoiThau(id, isReadOnly = false) {
   }
   this.view.openModal("modal-goithau");
 }
+// eslint-disable-next-line complexity -- Legacy package persistence orchestration is isolated for a dedicated refactor.
 export async function handleGoiThauSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-goithau");
@@ -601,7 +602,6 @@ export async function handleGoiThauSubmit(e) {
     await this.view.customAlert("Dữ liệu không hợp lệ", extensionValidation.error, "alert-triangle", extensionInput);
     return;
   }
-  const ghRows = extensionValidation.rows;
   const id = formVals.id;
   let finalGtId = id;
   let oldPlanId = null;
@@ -611,8 +611,6 @@ export async function handleGoiThauSubmit(e) {
       oldPlanId = oldGt.keHoachId;
     }
   }
-  const now = /* @__PURE__ */ new Date();
-  const formattedTime = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0") + " " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + ":" + String(now.getSeconds()).padStart(2, "0");
   let inputCode = document.getElementById("gt-ma").value.trim();
   if (inputCode) {
     let isDuplicate = false;
@@ -908,7 +906,6 @@ export async function handleGoiThauSubmit(e) {
   }
   if (id) {
     const oldGt = this.model.state.goithau.find((g) => g.id === id);
-    const newTen = gtData.tenGoiThau;
     const oldTimeDang = oldGt && oldGt.thoiGianDangTai ? String(oldGt.thoiGianDangTai).trim() : "";
     const newTimeDang = String(gtData.thoiGianDangTai || "").trim();
     const oldTimeDong = oldGt && oldGt.thoiGianDongThau ? String(oldGt.thoiGianDongThau).trim() : "";

@@ -10,7 +10,7 @@ export async function restoreCanceledPackage(id) {
       if (parsed.cancelDetails && parsed.cancelDetails.trangThaiTruocHuy) {
         previousState = parsed.cancelDetails.trangThaiTruocHuy;
       }
-    } catch (e) {
+    } catch {
     }
   }
   const confirmed = await this.view.customConfirm(

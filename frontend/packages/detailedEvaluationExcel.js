@@ -285,7 +285,7 @@ function detectBidTypeFromSheet(sheet) {
 function parseValiditySheet(sheet, roundId, bid = {}) {
   const criteria = [];
   const rows = [];
-  (sheet.rows || []).forEach((row, rowIndex) => {
+  (sheet.rows || []).forEach((row) => {
     if (!isNumberedRow(row) || !rowValue(row, 1)) return;
     const criterion = makeCriterion({
       group: "validity",

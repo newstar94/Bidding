@@ -155,7 +155,7 @@ export class BiddingModel {
       const pages = this.workspaceSessionStorage?.readJson("bf_current_pages", {}) || {};
       pages[table] = this.currentPage[table] || 1;
       this.workspaceSessionStorage?.writeJson("bf_current_pages", pages);
-    } catch (e) {
+    } catch {
     }
   }
 
@@ -256,7 +256,7 @@ export class BiddingModel {
             await this.db.set(this.STORAGE_KEYS[key], []);
           }
         }
-      } catch (e) {
+      } catch {
         this.state[lowKey] = [];
       } finally {
         this._loadedStorageKeys.add(key);
@@ -336,18 +336,18 @@ export class BiddingModel {
       try {
         storedRole = storedRole || await this.db.get(this.STORAGE_KEYS.ACTIVEROLE);
         storedUser = storedUser || await this.db.get(this.STORAGE_KEYS.ACTIVEUSER);
-      } catch (e) {
+      } catch {
       }
     }
     try {
       this.state.activerole = BiddingModel.resolveAllowedActiveRole(storedUser, storedRole);
-    } catch (e) {
+    } catch {
       this.state.activerole = "employee";
     }
     try {
       this.state.activeuser = storedUser || { name: "Khách", title: "Chuyên viên", id: "" };
       this.state.activeuser.title = BiddingModel.getRoleTitle(this.state.activerole);
-    } catch (e) {
+    } catch {
       this.state.activeuser = { name: "Khách", title: "Chuyên viên", id: "" };
     }
   }
@@ -910,7 +910,6 @@ export class BiddingModel {
   }
   getLatestHopDong() {
     const latestPkgs = this.getLatestPackages();
-    const latestPkgIds = latestPkgs.map((g) => g.id);
     const allContracts = this.getFilteredHopDong();
     const validContracts = allContracts.filter((hd) => {
       let linkedIds = [];
@@ -928,7 +927,7 @@ export class BiddingModel {
             } else {
               linkedIds.push(hd.goiThauIds);
             }
-          } catch (e) {
+          } catch {
             linkedIds.push(...hd.goiThauIds.split(",").map((s) => s.trim()));
           }
         }

@@ -1,3 +1,4 @@
+// eslint-disable-next-line complexity -- Legacy import validation is isolated for a dedicated refactor.
 export function getExcelPreviewFieldError(type, key, val) {
   let apiType = type;
   if (apiType === "plan") apiType = "kehoach";

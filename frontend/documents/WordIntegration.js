@@ -1,6 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import {

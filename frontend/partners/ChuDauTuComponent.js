@@ -99,7 +99,7 @@ export async function renderChuDauTuTable() {
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("chudautu-table", "chudautu");
 }
-export function showChuDauTuDetails(id, isSwitchingVersion = false) {
+export function showChuDauTuDetails(id) {
   const detailPane = document.getElementById("tab-chudautu-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
     executeAppCommand("switchTab", "chudautu-detail", id);

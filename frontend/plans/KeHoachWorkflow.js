@@ -100,7 +100,6 @@ export async function editKeHoach(id) {
   if (!document.getElementById("modal-kehoach")) {
     await this.ensureLazyModal?.("modal-kehoach");
   }
-  const modal = document.getElementById("modal-kehoach");
   const form = document.getElementById("form-kehoach");
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
@@ -375,8 +374,6 @@ export async function handleKeHoachSubmit(e) {
   if (!this.view.validateForm(form)) return;
   const id = document.getElementById("form-kehoach-id").value;
   let targetPlanId = id;
-  const now = /* @__PURE__ */ new Date();
-  const formattedTime = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0") + " " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + ":" + String(now.getSeconds()).padStart(2, "0");
   let inputCode = document.getElementById("kh-ma").value.trim();
   if (inputCode) {
     let isDuplicate = false;
@@ -677,7 +674,7 @@ export function addBreakdownRow(type, data = null) {
   tbody.appendChild(row);
   lucide.createIcons({ root: row });
 }
-export function removeBreakdownRow(btn, type) {
+export function removeBreakdownRow(btn) {
   const planId = document.getElementById("breakdown-plan-id").value;
   const row = btn.closest("tr");
   if (row) {

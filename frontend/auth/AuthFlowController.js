@@ -246,7 +246,7 @@ export function setupAuth() {
     setRuntimeStyle(showPane, "display", "block");
   };
   let countdownInterval;
-  const startOtpCountdown = (username) => {
+  const startOtpCountdown = () => {
     const btnResend2 = document.getElementById("btn-resend-otp");
     const timerSpan = document.getElementById("otp-timer");
     const countdownSpan = document.getElementById("otp-countdown");

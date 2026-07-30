@@ -8,6 +8,7 @@ import {
   isLowPriceBidRejected,
 } from "../bidEvaluationLowPriceRules.js";
 
+// eslint-disable-next-line complexity -- Legacy approval markup is isolated for a dedicated refactor.
 export function buildAwardResultApprovalMarkup(view, {
   gt,
   metadata,
@@ -99,7 +100,7 @@ export function buildAwardResultApprovalMarkup(view, {
                         </tr>
                     `;
         } else {
-          allBiddersHtml = allBids.map((b, idx) => {
+          allBiddersHtml = allBids.map((b) => {
             const isQualified = getIsQualified(b);
             const isRejectedLowPrice = isLowPriceBidRejected(gt, b);
             let defaultReason = "";

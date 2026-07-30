@@ -133,12 +133,12 @@ export default [
       "no-dupe-keys": "error",
       "no-undef": "error",
       "no-unreachable": "error",
-      "no-unused-vars": ["warn", {
+      "no-unused-vars": ["error", {
         argsIgnorePattern: "^_",
         caughtErrorsIgnorePattern: "^_",
         varsIgnorePattern: "^_"
       }],
-      "complexity": ["warn", 80]
+      "complexity": ["error", 80]
     }
   }
 ];

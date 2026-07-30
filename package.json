@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "test": "python -m pytest -q --cov=backend --cov-report=term --cov-fail-under=28 && node --test tests/js/*.test.mjs",
-    "lint:security": "eslint frontend --max-warnings 68 && node scripts/check_trusted_types_policy.mjs",
+    "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
     "lint:python": "python scripts/check_python_quality.py",
     "audit:dependencies": "npm audit --omit=dev && pip-audit -r requirements.txt",
     "sbom": "python scripts/generate_sbom.py",
     "audit:vendor": "python scripts/audit_vendor_assets.py && node scripts/check_sheetjs_vendor.cjs && node scripts/check_excel_archive_guard.mjs",
-    "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
-    "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
+    "build": "npm run build:secure",
+    "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure && node scripts/check_secure_build_artifacts.mjs",
     "package:production": "npm run build:secure && python scripts/package_production.py",
     "check:quality": "python -m compileall -q backend scripts tests && npm run lint:python && npm run lint:security && npm test",
     "check": "npm run check:quality && npm run build:secure && python scripts/audit_fk_indexes.py && python scripts/package_production.py --check && npm run sbom",
@@ -32,6 +32,7 @@
     "@playwright/test": "1.62.0",
     "esbuild": "0.28.1",
     "eslint": "10.7.0",
+    "javascript-obfuscator": "5.4.3",
     "vite": "8.1.4"
   },
   "dependencies": {

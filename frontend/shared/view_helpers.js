@@ -1,4 +1,3 @@
-import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
 export {
   getAuthDownloadUrl,

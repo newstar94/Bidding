@@ -218,7 +218,6 @@ export function resolveActiveSavedEvaluationScope(pkg, metadataBlock, preferredB
 }
 
 export function initializeEvaluationLotScope(pkg, block = {}, previous = null) {
-  const lots = getPackageEvaluationLots(pkg);
   const officialState = getOfficialEvaluationLotState(pkg, block);
   const pendingLotIds = officialState.pendingLots.map((lot) => lot.id);
   const activeIds = unique(officialState.activeBatch?.lotIds).filter((id) => pendingLotIds.includes(id));

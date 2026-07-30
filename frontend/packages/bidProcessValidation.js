@@ -7,7 +7,7 @@ export function isNextEvaluationStepSaved(gt) {
   try {
     const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
     return is1G2T ? !!(parsed.is1G2T && parsed.technical && parsed.technical.saved) : !!parsed.saved;
-  } catch (e) {
+  } catch {
     return false;
   }
 }

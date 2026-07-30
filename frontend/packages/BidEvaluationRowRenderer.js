@@ -394,7 +394,6 @@ function validateRowRendererContext({
   bids = [],
   model,
   presentation,
-  isReadOnly = false,
   onRankingChange = () => {},
 } = {}) {
   if (!root?.appendChild || !pkg || !model || !presentation?.caseType || !Array.isArray(bids)) {

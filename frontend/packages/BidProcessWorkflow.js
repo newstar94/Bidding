@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { bindCurrencyElement, debounce, formatPartnerIdentityCode } from "../app/domUtils.js";
+import { bindCurrencyElement, debounce } from "../app/domUtils.js";
 import { setFieldFeedback } from "../app/formStateUtils.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import {
@@ -339,6 +339,7 @@ export function renderMoThauPanel() {
   }
 }
 export * from "./bidProcessJointVenture.js";
+// eslint-disable-next-line complexity -- Legacy row orchestration is isolated for a dedicated refactor.
 export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tbody = document.getElementById("mothau-table-tbody");
   if (!tbody) return;

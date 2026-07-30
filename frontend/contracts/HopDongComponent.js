@@ -85,12 +85,6 @@ export async function renderHopDongTable() {
       const ntNameHtml = nt?.id
         ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(nt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu">${escapeHtml(ntName)}</a>`
         : escapeHtml(ntName);
-      const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
-      const linkedPkgs = (displayedHd.goiThauIds || []).map((gtId) => {
-        const gt = goithauList.find((g) => g.id === gtId);
-        if (!gt) return "";
-        return `<a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="${safeAttr(gt.tenGoiThau || "")}" class="bf-s-1ab2d5a4d0"><span class="detail-code link-hover">${escapeHtml(gt.maGoiThau || "Gói")}</span></a>`;
-      }).filter(Boolean).join(" ");
       const contractStatusBadge = renderCustomStatusBadge(
         displayedHd.trangThaiHopDong || "Đang thực hiện",
         this.model.state.customcontractstatuses

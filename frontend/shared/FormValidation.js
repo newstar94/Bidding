@@ -44,7 +44,7 @@ export function setValidationError(control, message = "") {
   }
 }
 
-function bindClearOnChange(control, group) {
+function bindClearOnChange(control) {
   control.__bfValidationCleanup?.();
   const clear = () => {
     setValidationError(control, "");

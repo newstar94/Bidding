@@ -552,7 +552,7 @@ async function saveTimeline(view) {
     const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
     view.showToast("Thành công", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
     updateLiveStatus("Timeline đã được lưu.");
-  } catch (error) {
+  } catch {
     view.showToast("Thất bại", "Không thể lưu timeline. Vui lòng thử lại.", "error");
   } finally {
     setActionAvailability(state);
@@ -576,7 +576,7 @@ async function exportTimeline(view) {
     const code = String(state.package.maGoiThau || "LCNT").replace(/[^A-Za-z0-9_-]+/g, "_");
     await authFetchDownload(url, `Timeline_goi_thau_${code}.docx`);
     view.showToast("Thành công", "Đã tải xuống checklist timeline.", "success");
-  } catch (error) {
+  } catch {
     view.showToast("Thất bại", "Không thể xuất tệp Word. Vui lòng thử lại.", "error");
   } finally {
     setActionAvailability(state);

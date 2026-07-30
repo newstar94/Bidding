@@ -21,7 +21,7 @@ export function applyAutoPassedEvaluation({ gt, bids, model }) {
   let existingMeta = {};
   try {
     existingMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-  } catch (e) {
+  } catch {
     existingMeta = {};
   }
   if (!existingMeta.saved) {
@@ -85,7 +85,7 @@ export function applyAwardMetadata({ gt, isDirectOrSpecial, soBctdVal, ngayBctdV
   let metaFinal = {};
   try {
     metaFinal = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-  } catch (e) {
+  } catch {
     metaFinal = {};
   }
   if (!metaFinal.result) metaFinal.result = {};

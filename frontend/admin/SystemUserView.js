@@ -3,7 +3,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
-import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
+import { normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 

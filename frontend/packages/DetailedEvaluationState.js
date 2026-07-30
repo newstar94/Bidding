@@ -1,4 +1,3 @@
-import { resolveBidContractorName } from "../partners/contractorVersionBinding.js";
 import { aggregateDetailedEvaluationReport } from "./detailedEvaluationAggregation.js";
 import { adaptDetailedEvaluationCriteriaForBid } from "./detailedEvaluationCriteria.js";
 import {

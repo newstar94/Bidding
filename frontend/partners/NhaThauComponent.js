@@ -132,7 +132,7 @@ export async function renderNhaThauTable() {
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("nhathau-table", "nhathau");
 }
-export function showNhaThauDetails(id, isSwitchingVersion = false) {
+export function showNhaThauDetails(id) {
   const detailPane = document.getElementById("tab-nhathau-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
     executeAppCommand("switchTab", "nhathau-detail", id);

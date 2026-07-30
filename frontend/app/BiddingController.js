@@ -208,7 +208,7 @@ export class BiddingController {
       if (window.performance?.mark) {
         window.performance.mark(`bf:${label}`);
       }
-    } catch (e) {
+    } catch {
     }
   }
   measureStartup(name, startLabel, endLabel) {
@@ -230,7 +230,7 @@ export class BiddingController {
       const entries = window.performance.getEntriesByName(measureName);
       const entry = entries[entries.length - 1];
       return entry ? { name, duration: Math.round(entry.duration) } : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   }
@@ -254,7 +254,7 @@ export class BiddingController {
         start: 0,
         end: "bf:loader:hidden"
       });
-    } catch (e) {
+    } catch {
     }
     const perfDebugEnabled = APP_DEBUG
       || localStorage.getItem("bf_perf_debug") === "true"
@@ -805,7 +805,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     this.renderWorkspaceSwitcher?.();
     this.setupRBACEvents();
     this.markStartup("ui:critical");
-    window.addEventListener("popstate", (e) => {
+    window.addEventListener("popstate", () => {
       this.handlePathRouting(window.location.pathname, false);
     });
     const initialPath = window.location.pathname;
@@ -1220,7 +1220,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
             if (!target.dataset.argKey) {
               try {
                 args = JSON.parse(target.dataset.args || "[]");
-              } catch (e) {
+              } catch {
                 args = [];
               }
             }

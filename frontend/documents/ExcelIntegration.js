@@ -1,6 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import {
-  authFetchDownload,
   authFetchDownloadWithAlert,
 } from "../shared/workflow_helpers.js";
 import { triggerExcelTemplateDownload as triggerTemplateDownload } from "./excelTemplateAdapter.js";

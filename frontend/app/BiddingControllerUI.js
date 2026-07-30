@@ -151,6 +151,7 @@ export function setupTabs() {
     });
   }
 }
+// eslint-disable-next-line complexity -- Legacy route orchestration is isolated for a dedicated refactor.
 export function handlePathRouting(pathname, updateState = true, isInit = false) {
   const cleanPath = pathname.startsWith("/") ? pathname.substring(1) : pathname;
   const parts = cleanPath.split("/").filter(Boolean);

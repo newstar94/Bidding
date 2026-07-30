@@ -52,7 +52,7 @@ export async function deleteHopDong(id) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
-    } catch (e) {
+    } catch {
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
   } else if (deleteChoice === 2 || deleteConfirmed) {
@@ -67,7 +67,7 @@ export async function deleteHopDong(id) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
-    } catch (e) {
+    } catch {
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
   }
@@ -564,7 +564,7 @@ export async function handleHopDongSubmit(e) {
   try {
     const parsedPackageIds = JSON.parse(form.dataset.originalPackageIds || "[]");
     originalPackageIds = Array.isArray(parsedPackageIds) ? parsedPackageIds : [];
-  } catch (error) {
+  } catch {
     originalPackageIds = currentContractForPackages?.goiThauIds || [];
   }
   const goiThauIds = resolveContractPackageIds(

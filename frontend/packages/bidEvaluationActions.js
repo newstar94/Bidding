@@ -56,7 +56,6 @@ export function stageBidEvaluationMutation(model, pkg, bids = []) {
 export function resolvePostEvaluationTargetTab({
   isTwoEnvelope,
   currentEvaluationTab = "technical",
-  savedPartialScope = false,
   qualifiedBidCount = 0
 } = {}) {
   if (!isTwoEnvelope) return "result";
@@ -72,7 +71,6 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
   const inpKyThuat = tr.querySelector(".mt-dg-ky-thuat");
   const valHopLe = (inpHopLe?.value || inpHopLe?.textContent || "").trim();
   const valNangLuc = (inpNangLuc?.value || inpNangLuc?.textContent || "").trim();
-  const valKyThuat = (inpKyThuat?.value || inpKyThuat?.textContent || "").trim();
   if (!isReadOnly) {
     if (inpNangLuc) {
       if (valHopLe.toLowerCase() === "đạt") {

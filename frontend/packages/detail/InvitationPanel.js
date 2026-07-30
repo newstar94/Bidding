@@ -1,5 +1,4 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
-import { escapeHtml } from "../../shared/view_helpers.js";
 import { registerCommandArgs } from "../../shared/commandArgs.js";
 
 const HEADER_CLASS_BY_STYLE = Object.freeze({

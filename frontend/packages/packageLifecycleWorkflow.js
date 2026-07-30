@@ -96,7 +96,7 @@ export async function deleteGoiThau(id) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
-    } catch (e) {
+    } catch {
       await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
       return;
     }
@@ -124,7 +124,7 @@ export async function deleteGoiThau(id) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
-    } catch (e) {
+    } catch {
       await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
       return;
     }

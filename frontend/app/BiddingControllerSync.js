@@ -713,7 +713,6 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
   const storage = currentWorkspaceStorage(this);
-  const syncBtn = document.getElementById("btn-force-sync");
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
   this.updateSyncState({ phase: "syncing" });
@@ -746,7 +745,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       let resyncPayload = null;
       try {
         resyncPayload = await response.clone().json();
-      } catch (e) {
+      } catch {
         resyncPayload = null;
       }
       if (resyncPayload?.code === "FULL_SYNC_REQUIRED" || resyncPayload?.requiresFullSync) {
@@ -760,7 +759,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       try {
         const data = await response.clone().json();
         errorMsg = data?.error || "";
-      } catch (e) {
+      } catch {
         errorMsg = "";
       }
       const normalizedMsg = errorMsg.toLowerCase();
@@ -776,10 +775,10 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       try {
         const errorPayload = await response.clone().json();
         errorDetail = errorPayload?.error || errorPayload?.message || "";
-      } catch (e) {
+      } catch {
         try {
           errorDetail = (await response.clone().text()).trim();
-        } catch (textError) {
+        } catch {
           errorDetail = "";
         }
       }

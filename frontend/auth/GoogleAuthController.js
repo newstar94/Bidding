@@ -241,7 +241,6 @@ export function setupGoogleSignIn() {
           async () => {
             const submitBtn = document.getElementById("btn-set-username-submit");
             const btnSpan = submitBtn ? submitBtn.querySelector("span") : null;
-            const originalText = btnSpan ? btnSpan.textContent : "Xác nhận tên đăng nhập";
             if (btnSpan) btnSpan.textContent = "Đang khởi tạo thiết lập...";
             try {
               if (this._workspaceDeferredUntilReload) {

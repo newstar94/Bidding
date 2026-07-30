@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { getRuntimeStyle, setRuntimeStyle } from "../shared/runtimeStyles.js";
 import * as SystemUser from "../admin/SystemUserView.js";
-import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from "../shared/view_helpers.js";
+import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { ensureFlatpickrLoaded } from "../shared/externalAssets.js";
 import { focusInvalidControl } from "./formStateUtils.js";
 import { validateForm as validateConfiguredForm } from "../shared/FormValidation.js";
@@ -152,7 +152,7 @@ export class BiddingView {
     if (!hasPendingIcon) return;
     try {
       iconLibrary.createIcons({ root });
-    } catch (error) {
+    } catch {
       iconLibrary.createIcons();
     }
   }

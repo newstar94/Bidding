@@ -4,6 +4,7 @@ import { savePackagePreparation } from "../packagePreparation.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { assigneeLabelsForTarget } from "../../shared/MultiAssigneeSelect.js";
 
+// eslint-disable-next-line complexity -- Legacy preparation markup is isolated for a dedicated refactor.
 export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, isEditable, appController }) {
       if (true) {
         const khObj = view.model.getLatestPlan(gt.keHoachId);

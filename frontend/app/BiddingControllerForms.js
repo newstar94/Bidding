@@ -668,7 +668,6 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   }
   const fieldPolicy = this.model?.domainContract?.packageFieldPolicy || {};
   const statusOrder = Array.isArray(fieldPolicy.statusOrder) ? fieldPolicy.statusOrder : [];
-  const currentIdx = statusOrder.indexOf(trangThai);
   const originalIdx = statusOrder.indexOf(originalStatus);
   const statusSelect = document.getElementById("gt-trangthai");
   if (statusSelect) {
@@ -829,7 +828,6 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   this.recalculateTotalLotPrice();
   const mainBaoDamInput = document.getElementById("gt-giatribaomothau");
   const hieulucHsdtInput = document.getElementById("gt-hieuluchsdt");
-  const hieulucBaoDamInput = document.getElementById("gt-hieuluchbaomothau");
   const containerBaoDam = document.getElementById("gt-giatribaomothau-container");
   const containerHsdt = document.getElementById("gt-hieuluchsdt-container");
   const containerHlBaoDam = document.getElementById("gt-hieuluchbaomothau-container");
