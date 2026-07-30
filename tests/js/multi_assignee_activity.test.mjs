@@ -13,6 +13,7 @@ import {
 } from "../../frontend/packages/packageAssignmentPolicy.js";
 import {
   ACTIVITY_LABELS,
+  activityChangedFieldLabels,
   buildActivityTimelineMarkup,
   formatActivityTime,
 } from "../../frontend/shared/ActivityTimeline.js";
@@ -106,4 +107,43 @@ test("timeline maps stable action keys and absolute timestamps", () => {
   assert.match(markup, /Nguyễn A/);
   assert.match(markup, /Trần B/);
   assert.match(markup, /datetime=/);
+});
+
+
+test("timeline describes changed fields with business labels instead of database columns", () => {
+  const item = {
+    actorName: "Administrator",
+    action: "goithau.updated",
+    occurredAt: "2026-07-30T15:07:43+07:00",
+    metadata: {
+      changedFields: ["thoi_gian_mo_thau", "trang_thai"],
+    },
+  };
+
+  assert.deepEqual(activityChangedFieldLabels(item), [
+    "Thời gian mở thầu",
+    "Trạng thái gói thầu",
+  ]);
+
+  const markup = buildActivityTimelineMarkup([item]);
+  assert.match(markup, /Nội dung đã thay đổi/);
+  assert.match(markup, /Thời gian mở thầu/);
+  assert.match(markup, /Trạng thái gói thầu/);
+  assert.match(markup, /activity-card/);
+  assert.match(markup, /activity-change-list/);
+  assert.doesNotMatch(markup, /Trường thay đổi/);
+  assert.doesNotMatch(markup, /thoi_gian_mo_thau|trang_thai/);
+});
+
+
+test("timeline never exposes an unknown technical column name", () => {
+  const markup = buildActivityTimelineMarkup([{
+    actorName: "Administrator",
+    action: "goithau.updated",
+    occurredAt: "2026-07-30T15:07:43+07:00",
+    metadata: { changedFields: ["future_internal_column"] },
+  }]);
+
+  assert.match(markup, /1 thông tin khác/);
+  assert.doesNotMatch(markup, /future_internal_column/);
 });
