@@ -38,6 +38,27 @@ test("contractor lookup does not replace the exact code entered by the user", as
   assert.equal(controls.get("nt-ma").value, "VnAb-01");
 });
 
+test("investor lookup does not replace the exact code entered by the user", async () => {
+  const controls = new Map([
+    ["cdt-ma", { value: "vn123456789" }],
+  ]);
+  const root = {
+    getElementById(id) {
+      return controls.get(id) || null;
+    },
+  };
+  const { applyLookupData } = createPartnerLookupHandlers({
+    form: { dataset: {} },
+    config: PARTNER_FORM_CONFIGS.chudautu.lookup,
+    root,
+    applyAddress: async () => {},
+  });
+
+  await applyLookupData({ org_code: "VN123456789", name: "Chủ đầu tư thử nghiệm" });
+
+  assert.equal(controls.get("cdt-ma").value, "vn123456789");
+});
+
 test("opening save always reports unexpected failures and restores the button", async () => {
   const originalDocument = globalThis.document;
   const originalLucide = globalThis.lucide;

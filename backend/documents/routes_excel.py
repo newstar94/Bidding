@@ -270,6 +270,11 @@ async def export_danhgiahsdt_template_api(request):
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
         eval_type = request.query_params.get('eval_type', 'technical')
+        lot_codes = [
+            value.strip()
+            for value in request.query_params.get('lot_codes', '').split(',')
+            if value.strip()
+        ]
 
         if not package_id:
             return JSONResponse({"error": "Missing package_id parameter"}, status_code=400)
@@ -285,6 +290,7 @@ async def export_danhgiahsdt_template_api(request):
             pkg_id_clean,
             org_name,
             eval_type,
+            lot_codes,
         )
         out_stream = await _export_excel("create_excel_from_spec", workbook_spec)
 

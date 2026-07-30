@@ -70,3 +70,73 @@ test("goods toolbar keeps all desktop and tablet actions on one aligned row", as
     await browser.close();
   }
 });
+
+test("goods hierarchy table fits its container without horizontal scrolling", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <div class="table-container package-goods-table">
+        <table class="data-table package-goods-hierarchy-table">
+          <colgroup>
+            <col class="package-goods-col-sequence">
+            <col class="package-goods-col-lot-code">
+            <col class="package-goods-col-lot-name">
+            <col class="package-goods-col-name">
+            <col class="package-goods-col-unit">
+            <col class="package-goods-col-quantity">
+            <col class="package-goods-col-actions">
+          </colgroup>
+          <thead><tr><th>STT</th><th>Mã phần (lô)</th><th>Tên phần lô</th><th>Danh mục hàng hóa</th><th class="package-goods-unit">Đơn vị tính</th><th class="package-goods-quantity">Khối lượng</th><th>Thao tác</th></tr></thead>
+          <tbody>
+            <tr class="package-goods-lot-row"><td>1</td><td>PL1</td><td>Lô 1</td><td colspan="4"></td></tr>
+            <tr class="package-goods-item-row"><td class="package-goods-sequence">1.1</td><td></td><td></td><td class="package-goods-name">Hóa chất xét nghiệm định lượng C-reactive protein dùng cho máy xét nghiệm sinh hóa</td><td class="package-goods-unit">Hộp</td><td class="package-goods-quantity">18</td><td class="package-goods-actions-cell"><div class="action-btn-group"><button class="action-btn btn-edit" aria-label="Sửa">${icon}</button><button class="action-btn btn-delete" aria-label="Xóa">${icon}</button></div></td></tr>
+            <tr class="package-goods-item-row package-goods-item-row--editing package-goods-item-row--creating"><td class="package-goods-sequence">1.2</td><td colspan="2"><select class="bf-combobox-native" hidden><option>Lô 1</option></select><div class="bf-combobox is-searchable open"><input class="bf-combobox-input" value="PL1 — Lô 1"><button class="bf-combobox-toggle"><span class="bf-combobox-chevron"></span></button><ul class="bf-combobox-list"><li class="bf-combobox-option selected">PL1 — Lô 1</li><li class="bf-combobox-option">PL2 — Lô 2</li></ul></div></td><td><textarea class="form-control package-goods-inline-control package-goods-inline-name"></textarea></td><td><input class="form-control package-goods-inline-control package-goods-inline-unit"></td><td><input class="form-control package-goods-inline-control package-goods-inline-number" type="number"></td><td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button class="btn btn-sm btn-primary">${icon}Lưu</button><button class="btn btn-sm btn-outline">Hủy</button></div></td></tr>
+          </tbody>
+        </table>
+      </div>`);
+    for (const path of stylesheetPaths) await page.addStyleTag({ path });
+
+    const alignment = await page.evaluate(() => ({
+      unitHeader: getComputedStyle(document.querySelector("thead .package-goods-unit")).textAlign,
+      unitCell: getComputedStyle(document.querySelector("tbody .package-goods-unit")).textAlign,
+      quantityHeader: getComputedStyle(document.querySelector("thead .package-goods-quantity")).textAlign,
+      quantityCell: getComputedStyle(document.querySelector("tbody .package-goods-quantity")).textAlign,
+    }));
+    assert.deepEqual(alignment, {
+      unitHeader: "center",
+      unitCell: "center",
+      quantityHeader: "right",
+      quantityCell: "right",
+    });
+    const comboboxStyle = await page.locator(".package-goods-table .bf-combobox-input").evaluate((input) => ({
+      height: getComputedStyle(input).height,
+      listDisplay: getComputedStyle(input.closest(".bf-combobox").querySelector(".bf-combobox-list")).display,
+      listPosition: getComputedStyle(input.closest(".bf-combobox").querySelector(".bf-combobox-list")).position,
+    }));
+    assert.deepEqual(comboboxStyle, { height: "38px", listDisplay: "block", listPosition: "absolute" });
+
+    for (const width of [1440, 1200, 1024, 768, 600]) {
+      await page.setViewportSize({ width, height: 600 });
+      const metrics = await page.locator(".package-goods-table").evaluate((container) => ({
+        clientWidth: container.clientWidth,
+        scrollWidth: container.scrollWidth,
+        scrollLeft: container.scrollLeft,
+        actionCell: (() => {
+          const rect = container.querySelector(".package-goods-actions-cell").getBoundingClientRect();
+          return { left: rect.left, right: rect.right };
+        })(),
+        actionGroup: (() => {
+          const rect = container.querySelector(".package-goods-actions-cell .action-btn-group").getBoundingClientRect();
+          return { left: rect.left, right: rect.right };
+        })(),
+      }));
+      assert.equal(metrics.scrollWidth, metrics.clientWidth, `table overflows at ${width}px`);
+      assert.equal(metrics.scrollLeft, 0);
+      assert.ok(metrics.actionGroup.left >= metrics.actionCell.left - 0.5, `actions overflow left at ${width}px`);
+      assert.ok(metrics.actionGroup.right <= metrics.actionCell.right + 0.5, `actions overflow right at ${width}px`);
+    }
+  } finally {
+    await browser.close();
+  }
+});

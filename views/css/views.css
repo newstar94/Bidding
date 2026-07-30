@@ -3698,6 +3698,10 @@ table th {
 }
 .package-workflow-tab {
     position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     flex: 0 0 auto;
     padding: 10px 17px 13px;
     border: 1px solid transparent;
@@ -3709,6 +3713,13 @@ table th {
     font-weight: 650;
     cursor: pointer;
     transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.package-workflow-tab svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    stroke-width: 2;
 }
 
 .package-workflow-tab:hover {
@@ -4242,13 +4253,14 @@ table th {
   margin-bottom: 0 !important;
   max-height: min(72vh, 760px);
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   scrollbar-gutter: stable;
 }
 
 .detailed-evaluation-table {
   width: 100%;
-  min-width: 1320px;
+  min-width: 100%;
   table-layout: fixed;
 }
 
@@ -4260,11 +4272,11 @@ table th {
 .detailed-evaluation-table .detailed-evaluation-col-comment { width: 30%; }
 
 .detailed-evaluation-table-binary {
-  min-width: 1280px;
+  min-width: 100%;
 }
 
 .detailed-evaluation-table-financial {
-  min-width: 860px;
+  min-width: 100%;
 }
 
 .detailed-evaluation-table-financial .detailed-evaluation-col-stt { width: 8%; }
@@ -4284,6 +4296,17 @@ table th {
 .detailed-evaluation-table-capacity .detailed-evaluation-col-content { width: 18%; }
 .detailed-evaluation-table-capacity .detailed-evaluation-col-mark { width: 8%; }
 .detailed-evaluation-table-capacity .detailed-evaluation-col-comment { width: 21%; }
+
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-stt,
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-stt { width: 6%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-criterion { width: 40%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-mark { width: 10%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-comment { width: 24%; }
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-criterion { width: 34%; }
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-score-max,
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-score-min,
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-score { width: 12%; }
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-comment { width: 24%; }
 
 .detailed-evaluation-table th,
 .detailed-evaluation-table td {
@@ -4305,7 +4328,7 @@ table th {
 
 .detailed-evaluation-table tbody td {
   vertical-align: middle;
-  text-align: center;
+  text-align: left;
 }
 
 .detailed-evaluation-table tbody .detailed-evaluation-field-stack {
@@ -4335,6 +4358,37 @@ table th {
 .detailed-evaluation-table .detailed-evaluation-header-subgroup th,
 .detailed-evaluation-table .detailed-evaluation-header-group th[rowspan] {
   box-shadow: 0 2px 0 color-mix(in srgb, var(--border-color) 78%, transparent);
+}
+
+.detailed-evaluation-conclusion-row > th,
+.detailed-evaluation-conclusion-row > td {
+  padding-block: 16px;
+  border-top: 2px solid color-mix(in srgb, var(--primary) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-soft) 48%, var(--surface));
+  vertical-align: middle;
+}
+
+.detailed-evaluation-conclusion-row > th {
+  color: var(--text-main);
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.detailed-evaluation-conclusion-summary {
+  text-align: left;
+}
+
+.detailed-evaluation-conclusion-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detailed-evaluation-conclusion-score {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .detailed-evaluation-stt {
@@ -4373,9 +4427,77 @@ table th {
   margin-top: 8px;
 }
 
-.detailed-evaluation-mark-cell {
+.detailed-evaluation-table tbody td.detailed-evaluation-mark-cell,
+.detailed-evaluation-table tfoot td.detailed-evaluation-mark-cell {
   vertical-align: middle !important;
   text-align: center;
+}
+
+.detailed-evaluation-score-limit,
+.detailed-evaluation-score-input {
+  min-width: 0;
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailed-technical-method-selector {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border-color));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary-soft) 42%, var(--surface));
+}
+
+.detailed-technical-method-selector legend {
+  padding-inline: 6px;
+  color: var(--text-main);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.detailed-technical-method-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detailed-technical-method-options .radio-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-main);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.detailed-technical-method-options .radio-option:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.detailed-technical-method-options .radio-option-input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+#detailed-technical-method-help {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.detailed-technical-method-empty {
+  min-height: 160px;
 }
 
 .detailed-evaluation-mark {

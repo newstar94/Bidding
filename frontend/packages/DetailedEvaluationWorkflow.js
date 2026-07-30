@@ -32,6 +32,10 @@ import {
   buildBidderGoodsPanelState,
 } from "./BidderGoodsWorkflow.js";
 import { BIDDER_GOODS_TAB } from "./bidderGoodsSelectors.js";
+import {
+  getForcedTechnicalEvaluationMethod,
+  normalizeTechnicalEvaluationMethod,
+} from "./technicalEvaluationMethod.js";
 
 
 export {
@@ -44,6 +48,25 @@ export { collectActiveGroupRows, collectConfiguredDetailedEvaluationCriteria };
 
 export async function addDetailedEvaluationCriterion() {
   return addDetailedEvaluationCriterionWithController(this);
+}
+
+export async function setDetailedTechnicalEvaluationMethod(method) {
+  const state = resolveDetailedEvaluationState(this);
+  const normalizedMethod = normalizeTechnicalEvaluationMethod(method);
+  if (!state?.report || state.readOnly || this.selectedDetailedEvaluationTab !== "technical"
+    || !normalizedMethod || getForcedTechnicalEvaluationMethod(state.pkg)) return false;
+  this._technicalEvaluationMethodDrafts = this._technicalEvaluationMethodDrafts || new Map();
+  this._technicalEvaluationMethodDrafts.set(state.criteriaKey, normalizedMethod);
+  this._detailedEvaluationDrafts.set(state.draftKey, {
+    ...state.report,
+    extension: {
+      ...(state.report.extension || {}),
+      technicalEvaluationMethod: normalizedMethod,
+    },
+  });
+  this._detailedEvaluationDirty = true;
+  await this.renderDetailedEvaluation();
+  return true;
 }
 
 export async function openDetailedEvaluation() {
@@ -105,6 +128,7 @@ export async function renderDetailedEvaluation() {
       importExcel: (file) => importDetailedEvaluationExcel.call(this, file),
       addCriterion: () => addDetailedEvaluationCriterion.call(this),
       removeCriterion: (criterionId) => removeDetailedEvaluationCriterion(this, criterionId),
+      setTechnicalMethod: (method) => setDetailedTechnicalEvaluationMethod.call(this, method),
     },
   });
   if (this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB) {

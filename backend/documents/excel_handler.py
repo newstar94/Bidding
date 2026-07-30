@@ -177,7 +177,7 @@ ENTITY_SCHEMA = {
         {'field': 'maPhanLo',             'label': 'Mã phần lô',                 'aliases': ['Mã phần lô', 'Mã phần(lô)', 'Mã lô', 'Phần lô']},
         {'field': 'tenPhanLo',            'label': 'Tên phần lô',                'aliases': ['Tên phần lô', 'Tên lô']},
         {'field': 'maHangHoa',            'label': 'Mã hàng hóa',                'aliases': ['Mã hàng hóa', 'Mã hạng mục', 'Mã mặt hàng']},
-        {'field': 'tenHangHoa',           'label': 'Tên hàng hóa',               'aliases': ['Tên hàng hóa', 'Tên hạng mục', 'Danh mục hàng hóa', 'Danh mục hàng hóa (1)', 'Danh mục hàng hóa(1)']},
+        {'field': 'tenHangHoa',           'label': 'Tên hàng hóa',               'aliases': ['Tên hàng hóa', 'Tên hạng mục', 'Danh mục hàng hóa', 'Danh mục hàng hóa', 'Danh mục hàng hóa(1)']},
         {'field': 'nhomHangHoa',          'label': 'Nhóm hàng hóa',              'aliases': ['Nhóm hàng hóa', 'Nhóm hạng mục']},
         {'field': 'donViTinh',            'label': 'Đơn vị tính',                'aliases': ['Đơn vị tính', 'ĐVT', 'Đơn vị']},
         {'field': 'soLuong',              'label': 'Số lượng',                   'aliases': ['Số lượng', 'Khối lượng', 'Khối lượng mời thầu']},

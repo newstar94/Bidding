@@ -21,6 +21,7 @@ export const PARTNER_FORM_CONFIGS = {
     codeField: "maChuDauTu", nameField: "tenChuDauTu", representativeField: "daiDienCdt",
     lookup: {
       codeId: "cdt-ma", taxId: "cdt-mst", nameId: "cdt-ten", shortNameId: "cdt-tenviettat",
+      preserveEnteredCode: true,
       representativeId: "cdt-daidiencdt", representativePositionId: "cdt-chucvudaidien",
       phoneId: "cdt-sdt", emailId: "cdt-email", bankAccountId: "cdt-sotaikhoan", bankNameId: "cdt-noimotaikhoan",
       extraFields: { head_position: "cdt-chucvunguoidungdau", budget_code: "cdt-maqhns", parent_agency: "cdt-coquanchuquan" },

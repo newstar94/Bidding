@@ -16,9 +16,12 @@ function normalizedStt(value, fallback) {
 function isJointVentureCriterion(criterion = {}) {
   const code = String(criterion.code || criterion.maTieuChi || "").toUpperCase();
   const name = normalizeText(criterion.name || criterion.tenTieuChi);
-  return code === "JV_AGREEMENT" || code === "MSC_VALIDITY_2"
-    || (name.startsWith("thoa thuan lien danh")
-      && name.includes("doi voi nha thau lien danh"));
+  const source = String(criterion.source || "").trim().toLowerCase();
+  const hasJointVentureName = name.startsWith("thoa thuan lien danh")
+    && name.includes("doi voi nha thau lien danh");
+  return code === "JV_AGREEMENT"
+    || (code === "MSC_VALIDITY_2" && source !== "muasamcong")
+    || hasJointVentureName;
 }
 
 function incrementAvailableSibling(parts, used) {

@@ -1,2 +1,8 @@
 /* Dynamic rules are inserted into this same-origin stylesheet through CSSOM. */
 @keyframes bf-spin { to { transform: rotate(360deg); } }
+
+/* Keep headers and data consistently centered within every table row. */
+table th,
+table td {
+  vertical-align: middle !important;
+}

@@ -65,7 +65,10 @@ export function analyzeDetailedEvaluationWorkbook({
   const muasamcongImports = state.context.editableGroups.map((group) => (
     parseMuasamcongDetailedEvaluationWorkbook(sheets, {
       group,
-      pkg: state.pkg,
+      pkg: {
+        ...state.pkg,
+        technicalEvaluationMethod: state.context.technicalEvaluationMethod || "",
+      },
       bid: state.bid,
       roundId,
     })

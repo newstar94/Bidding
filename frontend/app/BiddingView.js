@@ -473,9 +473,9 @@ export class BiddingView {
     const setupPlugins = (instance) => {
       const footer = document.createElement("div");
       footer.className = "flatpickr-footer";
-      setRuntimeStyle(footer, "display", "flex");
-      setRuntimeStyle(footer, "justifyContent", "flex-end");
-      setRuntimeStyle(footer, "gap", "8px");
+      setRuntimeStyle(footer, "display", "grid");
+      setRuntimeStyle(footer, "gridTemplateColumns", "repeat(2,minmax(0,1fr))");
+      setRuntimeStyle(footer, "gap", "12px");
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
       cancelBtn.className = "btn btn-outline";

@@ -1,4 +1,4 @@
-const RESULT_VALUES = new Set(["pending", "pass", "fail", "not_applicable"]);
+const RESULT_VALUES = new Set(["pending", "pass", "acceptable", "fail", "not_applicable"]);
 
 function error(criterionId, field, message) {
   return { criterionId: String(criterionId || ""), field, message };
@@ -26,6 +26,36 @@ export function validateDetailedEvaluationRow(row = {}, criterion = {}, {
       "nhanXet",
       "Vui lòng ghi chú lý do không áp dụng.",
     ));
+  }
+  if (criterion.resultType === "score") {
+    const maximumMissing = criterion.maxScore === ""
+      || criterion.maxScore === null
+      || criterion.maxScore === undefined;
+    const minimumMissing = criterion.minScore === ""
+      || criterion.minScore === null
+      || criterion.minScore === undefined;
+    const maximum = maximumMissing ? Number.NaN : Number(criterion.maxScore);
+    const minimum = minimumMissing ? Number.NaN : Number(criterion.minScore);
+    if (completing && (!Number.isFinite(maximum) || maximum <= 0)) {
+      errors.push(error(
+        criterionId,
+        "maxScore",
+        "Điểm tối đa phải là số lớn hơn 0.",
+      ));
+    }
+    if (completing && (!Number.isFinite(minimum) || minimum < 0)) {
+      errors.push(error(
+        criterionId,
+        "minScore",
+        "Điểm tối thiểu phải là số không âm.",
+      ));
+    } else if (Number.isFinite(maximum) && Number.isFinite(minimum) && minimum > maximum) {
+      errors.push(error(
+        criterionId,
+        "minScore",
+        "Điểm tối thiểu không được lớn hơn điểm tối đa.",
+      ));
+    }
   }
   if (criterion.resultType === "score" && result !== "pending") {
     const score = row.diem === "" || row.diem === null || row.diem === undefined

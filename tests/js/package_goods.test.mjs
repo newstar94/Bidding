@@ -2,12 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
-import { buildPackageGoodsPreview, parsePackageGoodsRows } from "../../frontend/packages/PackageGoodsExcel.js";
+import { buildPackageGoodsPreview, packageGoodsHeaders, parsePackageGoodsRows } from "../../frontend/packages/PackageGoodsExcel.js";
 import { clonePackageGoodsForSnapshot } from "../../frontend/packages/packageGoodsVersioning.js";
 import { supportsGoodsWorkflow } from "../../frontend/packages/goodsWorkflowSupport.js";
 import { isPackageGoodsEditable } from "../../frontend/packages/packageGoodsValidation.js";
 import {
+  bindPackageGoodsLiveSearch,
+  buildPackageGoodsDisplayRows,
+  formatPackageGoodsQuantity,
+  nextPackageGoodsSequence,
   packageGoodsPaginationPages,
+  refreshPackageGoodsIcons,
+  renderPackageGoodsInlineCreateRow,
+  renderPackageGoodsInlineEditRow,
   renderPackageGoodsMutationActions,
   renderPackageGoodsRowActions,
   renderPackageGoodsSummary,
@@ -23,7 +30,7 @@ test("imports the supplied no-lot layout and uses STT as a stable fallback code"
   const pkg = { id: "package-1", linhVuc: "Hàng hóa", phanLo: "Không" };
   const rows = parsePackageGoodsRows([{
     STT: 1,
-    "Danh mục hàng hóa (1)": "Dây truyền dịch",
+    "Danh mục hàng hóa": "Dây truyền dịch",
     "Đơn vị tính": "Cái",
     "Khối lượng mời thầu": 5569,
   }], { pkg });
@@ -92,8 +99,70 @@ test("goods workflow supports trimmed goods and mixed fields only", () => {
   assert.equal(supportsGoodsWorkflow("Xây lắp"), false);
 });
 
+test("goods display mirrors spreadsheet lot headings and nested item numbering", () => {
+  const rows = [
+    { id: "goods-1", phanLoId: "lot-1", maHangHoa: "HH-CRP", tenHangHoa: "Hóa chất CRP", donViTinh: "Hộp", soLuong: 18 },
+    { id: "goods-2", phanLoId: "lot-1", maHangHoa: "HH-HC", tenHangHoa: "Chất hiệu chuẩn", donViTinh: "Hộp", soLuong: 2 },
+    { id: "goods-3", phanLoId: "lot-2", maHangHoa: "HH-ON", tenHangHoa: "Ống nghiệm", donViTinh: "Thùng", soLuong: 40 },
+  ];
+
+  const displayRows = buildPackageGoodsDisplayRows(rows, lots, { hasLots: true });
+
+  assert.deepEqual(displayRows.map((row) => ({
+    kind: row.kind,
+    sequence: row.sequence,
+    lotCode: row.lotCode,
+    lotName: row.lotName,
+    itemId: row.item?.id,
+  })), [
+    { kind: "lot", sequence: "1", lotCode: "PP01", lotName: "Phần 1", itemId: undefined },
+    { kind: "item", sequence: "1.1", lotCode: undefined, lotName: undefined, itemId: "goods-1" },
+    { kind: "item", sequence: "1.2", lotCode: undefined, lotName: undefined, itemId: "goods-2" },
+    { kind: "lot", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: undefined },
+    { kind: "item", sequence: "2.1", lotCode: undefined, lotName: undefined, itemId: "goods-3" },
+  ]);
+  assert.equal(formatPackageGoodsQuantity(18), "18");
+  assert.equal(formatPackageGoodsQuantity(1_000), "1.000");
+  assert.equal(formatPackageGoodsQuantity(1_234.5), "1.234,5");
+  assert.equal(formatPackageGoodsQuantity(1_234.5678), "1.234,5678");
+});
+
+test("goods sequence is generated from row order instead of the editable goods code", () => {
+  const displayRows = buildPackageGoodsDisplayRows([
+    { id: "goods-a", maHangHoa: "HH-Z", tenHangHoa: "Hàng Z" },
+    { id: "goods-b", maHangHoa: "HH-A", tenHangHoa: "Hàng A" },
+  ], [], { hasLots: false });
+
+  assert.deepEqual(displayRows.map((row) => row.sequence), ["1", "2"]);
+  assert.equal(nextPackageGoodsSequence(displayRows.map((row) => row.item), [], { hasLots: false }), "3");
+  assert.equal(nextPackageGoodsSequence([
+    { phanLoId: "lot-1" },
+    { phanLoId: "lot-1" },
+    { phanLoId: "lot-2" },
+  ], lots, { hasLots: true, lotId: "lot-1" }), "1.3");
+});
+
+test("package requirement template omits winning-goods-only pricing and technical columns", () => {
+  const headers = packageGoodsHeaders(true);
+  assert.deepEqual(headers.slice(0, 6), [
+    "Mã phần lô", "Tên phần lô", "Mã hàng hóa", "Tên hàng hóa", "Đơn vị tính", "Số lượng",
+  ]);
+  for (const unnecessary of ["Nhóm hàng hóa", "Yêu cầu kỹ thuật", "Đơn giá dự toán", "Thành tiền dự toán"]) {
+    assert.equal(headers.includes(unnecessary), false);
+  }
+});
+
 test("goods tab and editing support goods and mixed procurement packages", () => {
-  assert.ok(buildPackageTabs({ linhVuc: "Hàng hóa", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
+  const preparationTabs = buildPackageTabs({ linhVuc: "Hàng hóa", trangThai: "Chuẩn bị" }).tabs;
+  assert.ok(preparationTabs.some((tab) => tab.id === "goods"));
+  assert.deepEqual(preparationTabs.map(({ id, icon }) => ({ id, icon })), [
+    { id: "preparation", icon: "info" },
+    { id: "goods", icon: "package" },
+    { id: "preparation_action", icon: "send" },
+    { id: "documents", icon: "folder-open" },
+    { id: "activity", icon: "history" },
+  ]);
+  assert.ok(preparationTabs.every((tab) => Boolean(tab.icon)));
   assert.ok(buildPackageTabs({ linhVuc: " Hỗn hợp ", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
   assert.ok(!buildPackageTabs({ linhVuc: "Tư vấn", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
   assert.ok(!buildPackageTabs({ linhVuc: "Xây lắp", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
@@ -119,10 +188,101 @@ test("goods mutation actions disappear instead of rendering disabled after the s
 test("employee goods row omits unavailable actions instead of showing dimmed buttons", () => {
   assert.equal(renderPackageGoodsRowActions({ id: "goods-1", editable: false, canDelete: false }), "");
   const employeeActions = renderPackageGoodsRowActions({ id: "goods-1", editable: true, canDelete: false });
-  assert.match(employeeActions, /data-edit-goods/);
+  assert.match(employeeActions, /class="action-btn btn-edit"[^>]*data-edit-goods/);
+  assert.match(employeeActions, /data-lucide="pencil"/);
+  assert.match(employeeActions, /aria-label="Sửa hàng hóa"/);
   assert.doesNotMatch(employeeActions, /data-delete-goods|disabled/);
   const managerActions = renderPackageGoodsRowActions({ id: "goods-1", editable: true, canDelete: true });
-  assert.match(managerActions, /data-delete-goods/);
+  assert.match(managerActions, /class="action-btn btn-delete"[^>]*data-delete-goods/);
+  assert.match(managerActions, /data-lucide="trash-2"/);
+  assert.match(managerActions, /aria-label="Xóa hàng hóa"/);
+  assert.doesNotMatch(managerActions, />\s*(?:Sửa|Xóa)\s*</);
+});
+
+test("goods editing renders controls inside the current table row", () => {
+  const markup = renderPackageGoodsInlineEditRow({
+    id: "goods-1",
+    phanLoId: "lot-1",
+    maHangHoa: "1.1",
+    tenHangHoa: "Hóa chất CRP",
+    donViTinh: "Hộp",
+    soLuong: 18,
+  }, lots, { hasLotColumns: true, sequence: "1.1" });
+
+  assert.match(markup, /data-inline-edit-row="goods-1"/);
+  assert.match(markup, /aria-label="Số thứ tự 1\.1">1\.1<\/td>/);
+  assert.doesNotMatch(markup, /name="maHangHoa"/);
+  assert.match(markup, /id="package-goods-lot-edit-goods-1"[^>]*name="phanLoId"[^>]*data-no-custom="true"/);
+  assert.match(markup, /name="tenHangHoa"/);
+  assert.match(markup, /name="donViTinh" value="Hộp"/);
+  assert.match(markup, /name="soLuong"[^>]*value="18"/);
+  assert.match(markup, /data-save-goods="goods-1"/);
+  assert.match(markup, /data-cancel-goods="goods-1"/);
+  assert.doesNotMatch(markup, /package-goods-editor/);
+});
+
+test("adding goods renders a blank editable row instead of a separate panel", () => {
+  const markup = renderPackageGoodsInlineCreateRow(lots, {
+    hasLotColumns: true,
+    selectedLotId: "lot-1",
+    sequence: "1.3",
+  });
+
+  assert.match(markup, /data-inline-create-row/);
+  assert.match(markup, /data-create-sequence[^>]*>1\.3<\/td>/);
+  assert.match(markup, /id="package-goods-lot-create"[^>]*name="phanLoId"[^>]*data-create-lot/);
+  assert.match(markup, /name="tenHangHoa"/);
+  assert.match(markup, /name="donViTinh"/);
+  assert.match(markup, /name="soLuong"/);
+  assert.match(markup, /data-save-new-goods/);
+  assert.match(markup, /data-cancel-new-goods/);
+  assert.doesNotMatch(markup, /package-goods-editor|name="maHangHoa"/);
+});
+
+test("goods panel rehydrates every icon after dynamic rendering", () => {
+  let hydratedRoot = null;
+  const contentWrapper = {};
+  const view = {
+    createIconsScoped(root) {
+      hydratedRoot = root;
+    },
+  };
+
+  refreshPackageGoodsIcons(view, contentWrapper);
+
+  assert.equal(hydratedRoot, contentWrapper);
+});
+
+test("goods search filters while typing and preserves focus after rendering", async () => {
+  const listeners = new Map();
+  const currentInput = {
+    value: "hóa chất",
+    selectionStart: 8,
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    matches: (selector) => selector === ":focus",
+  };
+  let focused = false;
+  let restoredSelection = null;
+  const nextInput = {
+    value: "hóa chất",
+    focus() { focused = true; },
+    setSelectionRange(start, end) { restoredSelection = [start, end]; },
+  };
+  let rendered = false;
+  const contentWrapper = {
+    querySelector() { return rendered ? nextInput : currentInput; },
+  };
+  const view = { _packageGoodsPage: 4 };
+
+  bindPackageGoodsLiveSearch(view, contentWrapper, async () => { rendered = true; }, { delay: 0 });
+  listeners.get("input")({ isComposing: false });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(view._packageGoodsSearch, "hóa chất");
+  assert.equal(view._packageGoodsPage, 1);
+  assert.equal(rendered, true);
+  assert.equal(focused, true);
+  assert.deepEqual(restoredSelection, [8, 8]);
 });
 
 test("goods tab renders the shared package summary with plan and investor context", () => {

@@ -101,6 +101,40 @@ class _Connection:
         pass
 
 
+class _LottedEvaluationCursor(_EvaluationCursor):
+    def execute(self, sql, params=()):
+        normalized = " ".join(str(sql).split())
+        super().execute(sql, params)
+        if normalized.startswith("SELECT linh_vuc"):
+            self._one = ("Hàng hóa", "Một giai đoạn hai túi hồ sơ", "Có")
+        elif "FROM goi_thau_phan_lo" in normalized:
+            self._rows = [("PL1",), ("PL2",)]
+        elif "FROM thong_tin_mo_thau m" in normalized:
+            first = list(self._rows[0])
+            second = list(first)
+            first[1:5] = ["PL1", "Lô 1", "NT-01", "Nhà thầu 01"]
+            first[26] = "opening-1"
+            second[1:5] = ["PL2", "Lô 2", "NT-02", "Nhà thầu 02"]
+            second[26] = "opening-2"
+            self._rows = [first, second]
+        return self
+
+
+def test_evaluation_excel_template_is_limited_to_selected_lot_codes(monkeypatch):
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_LottedEvaluationCursor()),
+    )
+
+    spec = excel_service.prepare_danhgiahsdt_template_spec(
+        "gt-1", "org-1", "technical", ["PL1"]
+    )
+
+    assert spec["options_map"]["Mã phần lô"] == ["PL1"]
+    assert [row[1] for row in spec["rows"]] == ["PL1"]
+
+
 def test_1g2t_evaluation_export_prefetches_database_data_before_worker(monkeypatch):
     monkeypatch.setattr(
         routes_excel,

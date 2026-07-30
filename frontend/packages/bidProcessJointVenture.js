@@ -6,6 +6,7 @@ import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
 import { resolveContractorVersion } from "../partners/contractorVersionBinding.js";
+import { setValidationError } from "../shared/FormValidation.js";
 import {
   renderJointVentureModalBody,
   renderJointVentureModalFooter,
@@ -20,6 +21,10 @@ import {
   resolveLeadMemberName,
   resolveOpeningLeadContractor
 } from "./openingContractorLookup.js";
+
+export function resolveJvMemberNameAfterLookup(currentName, apiInfo) {
+  return apiInfo?.tenNhaThau || currentName;
+}
 
 export function openMoThauJVManager(tr) {
   const leadCode = (tr.querySelector(".mt-ma-nha-thau") || tr.querySelector(".row-ma-nha-thau"))?.value.trim() || "";
@@ -72,6 +77,7 @@ export function openMoThauJVManager(tr) {
                 <div class="form-group bf-s-4bbf3df076">
                     <label class="bf-s-7a5db2128e">Tên thành viên đứng đầu</label>
                     <input type="text" id="jv-input-lead-name" class="form-control bf-s-810c9fe5d1" required placeholder="Tên thành viên đứng đầu" value="${escapeHtml(leadName)}">
+                    <span id="jv-input-lead-name-error" class="error-text"></span>
                 </div>
             </div>
         </div>
@@ -79,7 +85,7 @@ export function openMoThauJVManager(tr) {
         <div class="bf-s-48e4421941">
             <h4 class="bf-s-76334239c2">Danh sách Thành viên liên danh</h4>
             <button type="button" class="btn btn-primary btn-sm bf-s-186f022dc5" id="btn-add-mothau-jv-member">
-                + Thêm thành viên
+                <i data-lucide="plus" aria-hidden="true"></i> Thêm thành viên
             </button>
         </div>
 
@@ -100,6 +106,7 @@ export function openMoThauJVManager(tr) {
   document.body.appendChild(modal);
   const listContainer = document.getElementById("mothau-jv-members-list");
   const leadNameInput = document.getElementById("jv-input-lead-name");
+  leadNameInput?.addEventListener("input", () => setValidationError(leadNameInput, ""));
   const lookupInfoByTaxCode = async (code, inputToDim) => {
     const lookupInput = getPartnerLookupInput(code);
     if (!lookupInput) return null;
@@ -125,6 +132,7 @@ export function openMoThauJVManager(tr) {
     const localName = resolveLeadMemberName(localContractor, leadCode);
     if (localName) {
       leadNameInput.value = localName;
+      setValidationError(leadNameInput, "");
       leadNameInput.dataset.autofilled = "1";
       tr._leadMemberName = localName;
       tr._leadMemberLookupData = {
@@ -145,6 +153,7 @@ export function openMoThauJVManager(tr) {
     if (apiInfo?.tenNhaThau) {
       if (!leadNameInput.value.trim() || leadNameInput.dataset.autofilled !== "0") {
         leadNameInput.value = apiInfo.tenNhaThau;
+        setValidationError(leadNameInput, "");
       }
       tr._leadMemberName = apiInfo.tenNhaThau;
       tr._leadMemberLookupData = apiInfo;
@@ -153,7 +162,9 @@ export function openMoThauJVManager(tr) {
       tr._leadMemberCode = normalizeContractorLookupCode(leadCode);
     }
   };
+  let memberRowSequence = 0;
   const addMemberRow = (member = { tenNhaThau: "", maSoThue: "" }) => {
+    const rowSequence = ++memberRowSequence;
     const rowDiv = document.createElement("div");
     rowDiv.className = "mothau-jv-member-row";
     setRuntimeStyle(rowDiv, "display", "grid");
@@ -166,10 +177,12 @@ export function openMoThauJVManager(tr) {
     setRuntimeStyle(rowDiv, "background", "var(--bg-nested, rgba(0,0,0,0.02))");
     rowDiv.innerHTML = trustedHTML(`
             <div class="form-group bf-s-4bbf3df076">
-                <input type="text" class="jv-input-mst bf-s-810c9fe5d1" required placeholder="Mã số thuế / Mã nhà thầu" value="${escapeHtml(member.maNhaThau || member.maSoThue || "")}">
+                <input type="text" id="jv-member-${rowSequence}-mst" class="jv-input-mst bf-s-810c9fe5d1" required placeholder="Mã số thuế / Mã nhà thầu" value="${escapeHtml(member.maNhaThau || member.maSoThue || "")}">
+                <span id="jv-member-${rowSequence}-mst-error" class="error-text"></span>
             </div>
             <div class="form-group bf-s-4bbf3df076">
-                <input type="text" class="jv-input-ten bf-s-810c9fe5d1" required placeholder="Tên nhà thầu thành viên" value="${escapeHtml(member.tenNhaThau || "")}">
+                <input type="text" id="jv-member-${rowSequence}-name" class="jv-input-ten bf-s-810c9fe5d1" required placeholder="Tên nhà thầu thành viên" value="${escapeHtml(member.tenNhaThau || "")}">
+                <span id="jv-member-${rowSequence}-name-error" class="error-text"></span>
             </div>
             <button type="button" class="action-btn btn-delete btn-remove-jv-row bf-s-f499e07949" aria-label="Xóa thành viên liên danh"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button>
         `);
@@ -178,6 +191,8 @@ export function openMoThauJVManager(tr) {
     };
     const mstInput = rowDiv.querySelector(".jv-input-mst");
     const tenInput = rowDiv.querySelector(".jv-input-ten");
+    mstInput.addEventListener("input", () => setValidationError(mstInput, ""));
+    tenInput.addEventListener("input", () => setValidationError(tenInput, ""));
     rowDiv._lookupData = member;
     let lastResolvedMemberCode = normalizeContractorLookupCode(mstInput.value);
     const fillMemberNameFromCode = async (allowOnlineLookup = false) => {
@@ -185,6 +200,7 @@ export function openMoThauJVManager(tr) {
       const normalizedCode = normalizeContractorLookupCode(code);
       if (!normalizedCode) {
         tenInput.value = "";
+        setValidationError(tenInput, "");
         tenInput.dataset.autofilled = "1";
         rowDiv._lookupData = {};
         lastResolvedMemberCode = "";
@@ -199,6 +215,7 @@ export function openMoThauJVManager(tr) {
       const found = findContractorByCode(latestNhaThauListJV, code);
       if (found) {
         tenInput.value = found.tenNhaThau || "";
+        setValidationError(tenInput, "");
         tenInput.dataset.autofilled = "1";
         rowDiv._lookupData = {
           ...found,
@@ -210,7 +227,8 @@ export function openMoThauJVManager(tr) {
       }
       if (allowOnlineLookup) {
         const apiInfo = await lookupInfoByTaxCode(code, mstInput);
-        tenInput.value = apiInfo?.tenNhaThau || "";
+        tenInput.value = resolveJvMemberNameAfterLookup(tenInput.value, apiInfo);
+        if (tenInput.value) setValidationError(tenInput, "");
         tenInput.dataset.autofilled = "1";
         rowDiv._lookupData = apiInfo || {};
       }
@@ -246,12 +264,18 @@ export function openMoThauJVManager(tr) {
   document.getElementById("btn-save-mothau-jv").onclick = async () => {
     await fillLeadNameFromCode();
     await Promise.all(Array.from(listContainer.querySelectorAll(".mothau-jv-member-row")).map((row) => row._resolveLookup?.()));
-    const leadNameInput2 = document.getElementById("jv-input-lead-name").value.trim();
+    const rows = listContainer.querySelectorAll(".mothau-jv-member-row");
+    const rowInputs = Array.from(rows).flatMap((row) => [
+      row.querySelector(".jv-input-mst"),
+      row.querySelector(".jv-input-ten")
+    ]).filter(Boolean);
+    [leadNameInput, ...rowInputs].forEach((input) => setValidationError(input, ""));
+    const leadNameInput2 = leadNameInput.value.trim();
     if (!leadNameInput2) {
-      controller?.view?.customAlert?.("Thiếu thông tin", "Vui lòng nhập tên thành viên đứng đầu liên danh!", "alert-triangle", "#jv-input-lead-name");
+      setValidationError(leadNameInput, "Vui lòng nhập tên thành viên đứng đầu liên danh.");
+      controller?.view?.focusInvalidControl?.(leadNameInput);
       return;
     }
-    const rows = listContainer.querySelectorAll(".mothau-jv-member-row");
     const updatedMembers = [];
     const invalidInputs = [];
     let valid = true;
@@ -270,12 +294,18 @@ export function openMoThauJVManager(tr) {
         });
       } else if (ten || mst) {
         valid = false;
-        if (!ten && inputTen) invalidInputs.push(inputTen);
-        if (!mst && inputMst) invalidInputs.push(inputMst);
+        if (!ten && inputTen) {
+          setValidationError(inputTen, "Vui lòng nhập tên nhà thầu thành viên.");
+          invalidInputs.push(inputTen);
+        }
+        if (!mst && inputMst) {
+          setValidationError(inputMst, "Vui lòng nhập mã số thuế hoặc mã nhà thầu.");
+          invalidInputs.push(inputMst);
+        }
       }
     });
     if (!valid) {
-      controller?.view?.customAlert?.("Thiếu thông tin", "Vui lòng điền đầy đủ cả Tên nhà thầu và Mã số thuế của Thành viên liên danh!", "alert-triangle", invalidInputs);
+      controller?.view?.focusInvalidControl?.(invalidInputs[0]);
       return;
     }
     const duplicateInputs = findDuplicateJvMemberCodes({
@@ -285,12 +315,9 @@ export function openMoThauJVManager(tr) {
     });
     if (duplicateInputs.length > 0) {
       duplicateInputs.forEach((input) => {
-        setRuntimeStyle(input, "border", "1px solid var(--danger)");
-        input.addEventListener("input", () => {
-          setRuntimeStyle(input, "border", "");
-        }, { once: true });
+        setValidationError(input, "Mã số thuế hoặc mã nhà thầu bị trùng trong liên danh.");
       });
-      controller?.view?.customAlert?.("Trùng mã số thuế", "Các thành viên liên danh không được trùng mã số thuế hoặc mã nhà thầu. Vui lòng kiểm tra lại!", "alert-triangle", duplicateInputs);
+      controller?.view?.focusInvalidControl?.(duplicateInputs[0]);
       return;
     }
     tr._leadMemberName = leadNameInput2;

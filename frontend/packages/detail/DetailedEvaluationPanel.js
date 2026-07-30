@@ -5,6 +5,10 @@ import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
 } from "../bidEvaluationLowPriceRules.js";
+import {
+  aggregateDetailedEvaluation,
+  aggregateDetailedEvaluationAutomatic,
+} from "../detailedEvaluationAggregation.js";
 
 const GROUP_LABELS = Object.freeze({
   validity: "Tính hợp lệ",
@@ -113,6 +117,60 @@ function renderDerivedBinaryMark({ field, value, selected, label }) {
     title="Kết quả tự tính từ các tiêu chí con">${marked ? "x" : "-"}</span>`;
 }
 
+function conclusionBadge(status) {
+  const label = status || "Chưa kết luận";
+  const tone = status === "Đạt"
+    ? "badge-success"
+    : status === "Không đạt" ? "badge-danger" : "badge-warning";
+  return `<span class="badge ${tone}" data-detailed-conclusion-badge>${escapeHtml(label)}</span>`;
+}
+
+export function renderDetailedEvaluationConclusionFooter({
+  activeGroup = "validity",
+  criteria = [],
+  report = null,
+} = {}) {
+  if (activeGroup === "financial") return "";
+  const binaryLayout = activeGroup === "validity" || activeGroup === "capacity";
+  const expert = aggregateDetailedEvaluation({ report: report || {}, criteria, group: activeGroup });
+  const expertStatus = expert.status
+    || report?.extension?.groupResults?.[activeGroup]
+    || "";
+  if (binaryLayout) {
+    const automaticStatus = aggregateDetailedEvaluationAutomatic({
+      report: report || {},
+      criteria,
+      group: activeGroup,
+    });
+    const automaticResult = automaticStatus === "Đạt" ? "pass" : automaticStatus === "Không đạt" ? "fail" : "pending";
+    const expertResult = expertStatus === "Đạt" ? "pass" : expertStatus === "Không đạt" ? "fail" : "pending";
+    const leadingColumns = activeGroup === "capacity" ? 3 : 2;
+    return `
+      <tfoot>
+        <tr class="detailed-evaluation-conclusion-row" data-detailed-conclusion-row>
+          <th scope="row" colspan="${leadingColumns}">Kết luận</th>
+          <td class="detailed-evaluation-mark-cell">${renderDerivedBinaryMark({ field: "ketQuaTuDong", value: "pass", selected: automaticResult, label: "Kết luận tự động: Đạt" })}</td>
+          <td class="detailed-evaluation-mark-cell">${renderDerivedBinaryMark({ field: "ketQuaTuDong", value: "fail", selected: automaticResult, label: "Kết luận tự động: Không đạt" })}</td>
+          <td class="detailed-evaluation-mark-cell">${renderDerivedBinaryMark({ field: "ketQua", value: "pass", selected: expertResult, label: "Kết luận chuyên gia: Đạt" })}</td>
+          <td class="detailed-evaluation-mark-cell">${renderDerivedBinaryMark({ field: "ketQua", value: "fail", selected: expertResult, label: "Kết luận chuyên gia: Không đạt" })}</td>
+          <td class="detailed-evaluation-conclusion-summary">${conclusionBadge(expertStatus)}</td>
+        </tr>
+      </tfoot>`;
+  }
+  const score = expert.score !== null
+    ? `<span class="detailed-evaluation-conclusion-score">Tổng điểm: ${escapeHtml(expert.score)}</span>`
+    : "";
+  return `
+    <tfoot>
+      <tr class="detailed-evaluation-conclusion-row" data-detailed-conclusion-row>
+        <th scope="row" colspan="2">Kết luận</th>
+        <td colspan="4">
+          <div class="detailed-evaluation-conclusion-value">${conclusionBadge(expertStatus)}${score}</div>
+        </td>
+      </tr>
+    </tfoot>`;
+}
+
 function renderNotesCells(row, attributes) {
   return `
     <td>
@@ -196,6 +254,115 @@ function renderBinaryEvaluationRow({ criterion, row, index, activeGroup, disable
       ${expertCells}
       ${notes}
     </tr>`;
+}
+
+export function renderTechnicalPassFailRow({ criterion, row, index, disabled }) {
+  const selected = row.ketQua || "pending";
+  const structural = criterion.isSection === true;
+  const derived = criterion.hasChildren === true;
+  const controlDisabled = disabled || structural;
+  const resultCells = derived
+    ? ["pass", "acceptable", "fail"].map((value) => (
+      `<td class="detailed-evaluation-mark-cell">${renderDerivedBinaryMark({
+        field: "ketQua",
+        value,
+        selected,
+        label: `Chuyên gia tự tính ${value === "pass" ? "Đạt" : value === "acceptable" ? "Chấp nhận được" : "Không đạt"}: ${criterion.name}`,
+      })}</td>`
+    )).join("")
+    : structural
+      ? '<td class="detailed-evaluation-mark-cell"></td>'.repeat(3)
+      : [
+        ["pass", "Đạt"],
+        ["acceptable", "Chấp nhận được"],
+        ["fail", "Không đạt"],
+      ].map(([value, label]) => (
+        `<td class="detailed-evaluation-mark-cell">${renderBinaryChoice({
+          field: "ketQua",
+          value,
+          selected,
+          label: `${label}: ${criterion.name}`,
+          disabled: controlDisabled,
+        })}</td>`
+      )).join("");
+  return `
+    <tr class="${structural ? "detailed-evaluation-section-row" : ""} ${derived ? "detailed-evaluation-parent-row" : ""}" data-detailed-criterion-id="${escapeHtml(criterion.id)}">
+      <td>${renderCriterionStt(criterion, index, disabled)}</td>
+      <td class="text-wrap">${renderCriterionName(criterion, disabled)}</td>
+      ${resultCells}
+      ${structural ? "<td></td>" : renderNotesCells(row, disabled ? "disabled" : "")}
+    </tr>`;
+}
+
+function renderScoreLimitInput(criterion, field, label, disabled) {
+  const value = criterion[field];
+  return `<input type="number" min="0" step="any" inputmode="decimal" class="form-control detailed-evaluation-score-limit"
+    data-detailed-config-field="${field}"
+    aria-label="${escapeHtml(`${label}: ${criterion.name || criterion.code || "tiêu chí"}`)}"
+    value="${escapeHtml(value ?? "")}" ${disabled ? "disabled" : ""} placeholder="0">`;
+}
+
+export function renderTechnicalScoreRow({ criterion, row, index, disabled }) {
+  const attributes = disabled ? "disabled" : "";
+  return `
+    <tr data-detailed-criterion-id="${escapeHtml(criterion.id)}">
+      <td>${renderCriterionStt(criterion, index, disabled)}</td>
+      <td class="text-wrap">${renderCriterionName(criterion, disabled)}</td>
+      <td>${renderScoreLimitInput(criterion, "maxScore", "Điểm tối đa", disabled)}</td>
+      <td>${renderScoreLimitInput(criterion, "minScore", "Điểm tối thiểu", disabled)}</td>
+      <td><input type="number" min="0" step="any" inputmode="decimal" ${criterion.maxScore != null ? `max="${escapeHtml(criterion.maxScore)}"` : ""}
+        class="form-control detailed-evaluation-score-input" data-detailed-field="diem"
+        aria-label="Điểm đánh giá: ${escapeHtml(criterion.name || criterion.code || "tiêu chí") }"
+        value="${escapeHtml(row.diem ?? "")}" ${attributes} placeholder="Điểm"></td>
+      ${renderNotesCells(row, attributes)}
+    </tr>`;
+}
+
+export function renderTechnicalEvaluationHeader(method) {
+  if (method === "pass_fail") {
+    return `
+      <thead>
+        <tr class="detailed-evaluation-header-group">
+          <th rowspan="2">STT</th>
+          <th rowspan="2">Nội dung đánh giá</th>
+          <th colspan="3">Kết quả đánh giá của chuyên gia</th>
+          <th rowspan="2">Nhận xét của chuyên gia</th>
+        </tr>
+        <tr class="detailed-evaluation-header-subgroup">
+          <th>Đạt</th><th>Chấp nhận được</th><th>Không đạt</th>
+        </tr>
+      </thead>`;
+  }
+  if (method === "score") {
+    return `
+      <thead>
+        <tr class="detailed-evaluation-header-group">
+          <th rowspan="2">STT</th>
+          <th rowspan="2">Nội dung đánh giá</th>
+          <th colspan="2">Mức điểm quy định trong E-HSMT</th>
+          <th colspan="2">Kết quả đánh giá của chuyên gia</th>
+        </tr>
+        <tr class="detailed-evaluation-header-subgroup">
+          <th>Điểm tối đa</th><th>Điểm tối thiểu</th><th>Điểm đánh giá</th><th>Nhận xét của chuyên gia</th>
+        </tr>
+      </thead>`;
+  }
+  return "";
+}
+
+export function renderTechnicalEvaluationMethodSelector({ method = "", readOnly = false } = {}) {
+  if (method) return "";
+  if (readOnly) {
+    return '<div class="alert alert-warning" role="status">Chưa xác định phương pháp đánh giá kỹ thuật.</div>';
+  }
+  return `<fieldset class="detailed-technical-method-selector" aria-describedby="detailed-technical-method-help">
+    <legend>Phương pháp đánh giá kỹ thuật</legend>
+    <div class="detailed-technical-method-options">
+      <label class="radio-option"><input type="radio" name="detailed-technical-evaluation-method" value="pass_fail" class="radio-option-input"> Đạt/Không đạt</label>
+      <label class="radio-option"><input type="radio" name="detailed-technical-evaluation-method" value="score" class="radio-option-input"> Chấm điểm</label>
+    </div>
+    <p id="detailed-technical-method-help">Chọn phương pháp quy định trong E-HSMT. Lựa chọn sẽ áp dụng cho toàn bộ nhà thầu trong vòng đánh giá này.</p>
+  </fieldset>`;
 }
 
 function scheduleNextFrame(callback) {
@@ -285,6 +452,10 @@ export function renderDetailedEvaluationPanel(container, {
   const binaryLayout = activeGroup === "validity" || activeGroup === "capacity";
   const financialLayout = activeGroup === "financial";
   const bidderGoodsLayout = activeGroup === "bidder_goods";
+  const technicalMethod = context?.technicalEvaluationMethod || "";
+  const technicalMethodRequired = activeGroup === "technical" && !technicalMethod;
+  const technicalPassFailLayout = activeGroup === "technical" && technicalMethod === "pass_fail";
+  const technicalScoreLayout = activeGroup === "technical" && technicalMethod === "score";
   const criterionRowHtml = criteria.map((criterion, index) => {
     const row = rows.get(String(criterion.id)) || {
       tieuChiDanhGiaId: criterion.id,
@@ -299,6 +470,12 @@ export function renderDetailedEvaluationPanel(container, {
         activeGroup,
         disabled,
       });
+    }
+    if (technicalPassFailLayout) {
+      return renderTechnicalPassFailRow({ criterion, row, index, disabled });
+    }
+    if (technicalScoreLayout) {
+      return renderTechnicalScoreRow({ criterion, row, index, disabled });
     }
     if (financialLayout) {
       const attributes = disabled ? "disabled" : "";
@@ -344,15 +521,15 @@ export function renderDetailedEvaluationPanel(container, {
       </button>
     </div>
   ` : "";
-  const actionButtons = bidderGoodsLayout ? "" : !selectedBid
+  const actionButtons = bidderGoodsLayout || technicalMethodRequired ? "" : !selectedBid
     ? ""
     : readOnly
       ? report?.trangThai === "completed" && canReopen
         ? '<button type="button" class="btn btn-primary" id="btn-detailed-evaluation-reopen">Chỉnh sửa báo cáo chi tiết</button>'
         : ""
-      : '<button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-save-draft">Lưu bản nháp</button><button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-complete-group">Hoàn thành tab</button><button type="button" class="btn btn-primary" id="btn-detailed-evaluation-complete-report">Hoàn thành đánh giá nhà thầu</button>';
+      : '<button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-save-draft" data-no-icon>Lưu bản nháp</button><button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-complete-group" data-no-icon>Hoàn thành tab</button><button type="button" class="btn btn-primary" id="btn-detailed-evaluation-complete-report" data-no-icon>Hoàn thành đánh giá nhà thầu</button>';
   const excelImportControl = !bidderGoodsLayout && selectedBid && !readOnly
-    ? '<div class="detailed-evaluation-tab-actions"><button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-add-row"><i data-lucide="plus" aria-hidden="true"></i> Thêm dòng</button><input type="file" id="detailed-evaluation-excel-input" accept=".xlsx,.xls" hidden><button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-import-excel"><i data-lucide="upload" aria-hidden="true"></i> Nhập từ Excel</button></div>'
+    ? `<div class="detailed-evaluation-tab-actions">${technicalMethodRequired ? "" : '<button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-add-row"><i data-lucide="plus" aria-hidden="true"></i> Thêm dòng</button>'}<input type="file" id="detailed-evaluation-excel-input" accept=".xlsx,.xls" hidden><button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-import-excel"><i data-lucide="upload" aria-hidden="true"></i> Nhập từ Excel</button></div>`
     : "";
   const binaryColgroup = `
     <colgroup>
@@ -379,6 +556,20 @@ export function renderDetailedEvaluationPanel(container, {
       <col class="detailed-evaluation-col-stt">
       <col class="detailed-evaluation-col-financial-content">
       <col class="detailed-evaluation-col-financial-value">
+    </colgroup>`;
+  const technicalPassFailColgroup = `
+    <colgroup>
+      <col class="detailed-evaluation-col-stt">
+      <col class="detailed-evaluation-col-criterion">
+      <col class="detailed-evaluation-col-mark"><col class="detailed-evaluation-col-mark"><col class="detailed-evaluation-col-mark">
+      <col class="detailed-evaluation-col-comment">
+    </colgroup>`;
+  const technicalScoreColgroup = `
+    <colgroup>
+      <col class="detailed-evaluation-col-stt">
+      <col class="detailed-evaluation-col-criterion">
+      <col class="detailed-evaluation-col-score-max"><col class="detailed-evaluation-col-score-min">
+      <col class="detailed-evaluation-col-score"><col class="detailed-evaluation-col-comment">
     </colgroup>`;
   const binaryHeader = `
     <thead>
@@ -415,6 +606,15 @@ export function renderDetailedEvaluationPanel(container, {
         <th>${escapeHtml(section.columns[2])}</th>
       </tr>
     </thead>`;
+  const technicalHeader = renderTechnicalEvaluationHeader(technicalMethod);
+  const technicalMethodSelector = activeGroup === "technical"
+    ? renderTechnicalEvaluationMethodSelector({ method: technicalMethod, readOnly })
+    : "";
+  const conclusionFooter = renderDetailedEvaluationConclusionFooter({
+    activeGroup,
+    criteria,
+    report,
+  });
   container.innerHTML = trustedHTML(`
     <section class="detailed-evaluation-panel" aria-label="Báo cáo đánh giá chi tiết">
       <div class="detailed-evaluation-topbar">
@@ -445,14 +645,18 @@ export function renderDetailedEvaluationPanel(container, {
         ${excelImportControl}
       </div>
       <div id="detailed-evaluation-tab-panel" class="detailed-evaluation-tab-panel" role="tabpanel" aria-labelledby="detailed-evaluation-tab-${escapeHtml(activeGroup)}">
+        ${technicalMethodSelector}
         ${bidderGoodsLayout ? renderBidderGoodsPanelMarkup(bidderGoodsState || {}) : `
+        ${technicalMethodRequired ? '<div class="package-panel-empty detailed-technical-method-empty">Chọn phương pháp đánh giá kỹ thuật hoặc nhập file Excel để tiếp tục.</div>' : `
         <div class="table-container package-table-frame has-bottom-space detailed-evaluation-table-frame">
-        <table class="data-table detailed-evaluation-table ${binaryLayout ? `detailed-evaluation-table-binary detailed-evaluation-table-${activeGroup}` : financialLayout ? "detailed-evaluation-table-financial" : ""}" data-no-sort="true" data-density="comfortable">
-          ${binaryLayout ? binaryColgroup : financialLayout ? financialColgroup : standardColgroup}
-          ${binaryLayout ? binaryHeader : financialLayout ? financialHeader : standardHeader}
+        <table class="data-table detailed-evaluation-table ${binaryLayout ? `detailed-evaluation-table-binary detailed-evaluation-table-${activeGroup}` : financialLayout ? "detailed-evaluation-table-financial" : technicalPassFailLayout ? "detailed-evaluation-table-technical-pass-fail" : technicalScoreLayout ? "detailed-evaluation-table-technical-score" : ""}" data-no-sort="true" data-density="comfortable">
+          ${binaryLayout ? binaryColgroup : financialLayout ? financialColgroup : technicalPassFailLayout ? technicalPassFailColgroup : technicalScoreLayout ? technicalScoreColgroup : standardColgroup}
+          ${binaryLayout ? binaryHeader : financialLayout ? financialHeader : technicalPassFailLayout || technicalScoreLayout ? technicalHeader : standardHeader}
           <tbody id="detailed-evaluation-criteria-body">${criterionRows}</tbody>
+          ${conclusionFooter}
         </table>
         </div>
+        `}
         `}
       </div>
       ${actionButtons ? `<div class="workflow-action-row detailed-evaluation-actions with-divider">${actionButtons}</div>` : ""}

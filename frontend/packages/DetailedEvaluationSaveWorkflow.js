@@ -27,6 +27,17 @@ export function shouldValidateBidderGoodsOnCompletion(state, completeReport) {
     && ["single", "financial"].includes(state?.roundType);
 }
 
+export function getNextDetailedEvaluationTabAfterCompletion({
+  configuredGroups = [],
+  activeGroup = "",
+  groupResult = "",
+  completeGroup = false,
+} = {}) {
+  if (!completeGroup || groupResult !== "Đạt") return "";
+  const activeIndex = configuredGroups.indexOf(activeGroup);
+  return activeIndex >= 0 ? configuredGroups[activeIndex + 1] || "" : "";
+}
+
 function persistCriteriaOnSave(pkg, roundType, criteria, context = {}) {
   const metadata = parseDetailedEvaluationMetadata(pkg.danhGiaHsdtMetadata);
   const templateInfo = {
@@ -37,6 +48,9 @@ function persistCriteriaOnSave(pkg, roundType, criteria, context = {}) {
   };
   if (roundType === "single") {
     metadata.criteria = criteria;
+    if (context.configuredGroups?.includes("technical") && context.technicalEvaluationMethod) {
+      metadata.technicalEvaluationMethod = context.technicalEvaluationMethod;
+    }
     if (templateInfo.templateId && !metadata.templateId) metadata.templateId = templateInfo.templateId;
     if (templateInfo.templateVersion && !metadata.templateVersion) {
       metadata.templateVersion = templateInfo.templateVersion;
@@ -47,6 +61,9 @@ function persistCriteriaOnSave(pkg, roundType, criteria, context = {}) {
       ? metadata[roundType]
       : {};
     metadata[roundType].criteria = criteria;
+    if (context.configuredGroups?.includes("technical") && context.technicalEvaluationMethod) {
+      metadata[roundType].technicalEvaluationMethod = context.technicalEvaluationMethod;
+    }
     if (templateInfo.templateId && !metadata[roundType].templateId) {
       metadata[roundType].templateId = templateInfo.templateId;
     }
@@ -160,6 +177,9 @@ export async function executeDetailedEvaluationSave({
   report.extension = {
     ...(report.extension || {}),
     workflowVersion: 2,
+    ...(state.context.technicalEvaluationMethod
+      ? { technicalEvaluationMethod: state.context.technicalEvaluationMethod }
+      : {}),
     completedGroups: [...new Set([
       ...(report.extension?.completedGroups || []),
       ...(completeGroup ? [activeGroup] : []),
@@ -209,7 +229,8 @@ export async function executeDetailedEvaluationSave({
   if (!validation.valid) {
     const first = validation.errors[0];
     const row = root.querySelector(`[data-detailed-criterion-id="${first.criterionId}"]`);
-    const field = row?.querySelector(`[data-detailed-field="${first.field}"]`);
+    const field = row?.querySelector(`[data-detailed-field="${first.field}"]`)
+      || row?.querySelector(`[data-detailed-config-field="${first.field}"]`);
     field?.focus?.();
     await appController.view.customAlert(
       "Dữ liệu chưa hợp lệ",
@@ -219,15 +240,16 @@ export async function executeDetailedEvaluationSave({
     );
     return false;
   }
+  let completedGroupResult = "";
   if (completeGroup) {
-    const groupResult = aggregateDetailedEvaluationReport({
+    completedGroupResult = aggregateDetailedEvaluationReport({
       report,
       criteria: configuredCriteria,
       groups: [activeGroup],
     }).byGroup[activeGroup]?.status || "";
     report.extension.groupResults = {
       ...(report.extension.groupResults || {}),
-      [activeGroup]: groupResult,
+      [activeGroup]: completedGroupResult,
     };
     report.extension.workflowVersion = 2;
   }
@@ -269,17 +291,26 @@ export async function executeDetailedEvaluationSave({
   appController._detailedEvaluationDrafts.set(state.draftKey, report);
   appController._editingDetailedEvaluationKey = null;
   appController._detailedEvaluationDirty = false;
+  const nextTab = getNextDetailedEvaluationTabAfterCompletion({
+    configuredGroups: state.context.configuredGroups || [],
+    activeGroup,
+    groupResult: completedGroupResult,
+    completeGroup,
+  });
+  if (nextTab) appController.selectedDetailedEvaluationTab = nextTab;
+  await appController.renderDetailedEvaluation();
   if (notify) {
     await appController.view.customAlert(
       "Lưu thành công",
       completeReport
         ? "Báo cáo chi tiết đã hoàn thành và cập nhật báo cáo tổng quát."
         : completeGroup
-          ? "Tab đánh giá đã hoàn thành."
+          ? nextTab
+            ? "Tab đánh giá đã hoàn thành. Hệ thống đã chuyển sang tab tiếp theo."
+            : "Tab đánh giá đã hoàn thành."
           : "Đã lưu bản nháp báo cáo chi tiết.",
       "check-circle",
     );
   }
-  appController.renderDetailedEvaluation();
   return true;
 }

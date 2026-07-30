@@ -1,4 +1,5 @@
 import { authFetchDownload } from "../shared/workflow_helpers.js";
+import { getActiveEvaluationLotScope } from "../packages/lotEvaluationScope.js";
 export function triggerExcelTemplateDownload(controller, type) {
   controller._excelImportType = type;
   if (type === "mothau") {
@@ -38,7 +39,13 @@ function downloadEvaluationTemplate(controller) {
   const gt = requirePackage(controller, gtId, "Vui lòng chọn gói thầu trước khi tải file mẫu!");
   if (!gt) return;
   const safeCode = getSafePackageCode(gt);
-  return authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${controller.currentDanhGiaTab || "technical"}`, `DanhGia_HSDT_${safeCode}.xlsx`);
+  const lotScope = getActiveEvaluationLotScope(controller, gt);
+  const lotCodes = lotScope?.lotCodes || [];
+  const scopeQuery = lotCodes.length
+    ? `&lot_codes=${encodeURIComponent(lotCodes.join(","))}`
+    : "";
+  const scopeSuffix = lotCodes.length ? `_${lotCodes.join("_")}` : "";
+  return authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${controller.currentDanhGiaTab || "technical"}${scopeQuery}`, `DanhGia_HSDT_${safeCode}${scopeSuffix}.xlsx`);
 }
 function downloadAwardResultTemplate(controller) {
   const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");

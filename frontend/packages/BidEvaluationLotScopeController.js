@@ -78,7 +78,7 @@ export function renderBidEvaluationLotScope({
   if (feedback) {
     const hasSelection = Boolean(details?.lotIds?.length);
     feedback.textContent = hasSelection
-      ? `${details.lotIds.length}/${lots.length} phần lô còn lại sẽ được đưa vào báo cáo chính thức của đợt này.${isPartialScope ? " Nhập/xuất Excel sẽ được mở sau khi có tệp phạm vi theo đợt." : ""}`
+      ? `${details.lotIds.length}/${lots.length} phần lô còn lại sẽ được đưa vào báo cáo chính thức của đợt này.${isPartialScope ? " Nhập/xuất Excel chỉ áp dụng cho các phần lô đang chọn." : ""}`
       : "Vui lòng chọn ít nhất một phần lô trước khi lưu đánh giá.";
     feedback.classList.toggle("is-error", !hasSelection);
   }
@@ -89,11 +89,10 @@ export function renderBidEvaluationLotScope({
     view.getActiveElement("btn-danhgiahsdt-download-excel"),
     view.getActiveElement("btn-danhgiahsdt-import-excel"),
   ].filter(Boolean).forEach((button) => {
-    button.disabled = isPartialScope;
-    button.setAttribute("aria-disabled", isPartialScope ? "true" : "false");
-    button.title = isPartialScope
-      ? "Chưa hỗ trợ Excel cho phạm vi một phần lô vì tệp hiện tại không có dấu phạm vi đợt."
-      : "";
+    const disabled = !details?.lotIds?.length;
+    button.disabled = disabled;
+    button.setAttribute("aria-disabled", disabled ? "true" : "false");
+    button.title = disabled ? "Vui lòng chọn ít nhất một phần lô." : "";
   });
 
   const applyMode = (mode) => {

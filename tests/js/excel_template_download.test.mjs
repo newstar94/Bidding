@@ -44,6 +44,63 @@ test("evaluation template download returns its promise to the UI caller", async 
   }
 });
 
+test("evaluation template download sends the selected lot scope", async () => {
+  const previousDocument = globalThis.document;
+  const previousFetch = globalThis.fetch;
+  const previousCreateObjectURL = globalThis.URL.createObjectURL;
+  const previousRevokeObjectURL = globalThis.URL.revokeObjectURL;
+  let requestedUrl = "";
+  globalThis.document = {
+    getElementById(id) {
+      return id === "danhgiahsdt-goithau-select" ? { value: "gt-1" } : null;
+    },
+    createElement() {
+      return { click() {}, remove() {} };
+    },
+    body: { appendChild() {} },
+  };
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return new Response(new Blob(["xlsx"]), { status: 200 });
+  };
+  globalThis.URL.createObjectURL = () => "blob:test";
+  globalThis.URL.revokeObjectURL = () => {};
+  const controller = {
+    currentDanhGiaTab: "technical",
+    _evaluationLotScopes: {
+      "gt-1:technical": {
+        mode: "selected",
+        selectedLotIds: ["lot-1"],
+        availableLotIds: ["lot-1", "lot-2"],
+      },
+    },
+    model: {
+      state: {
+        goithau: [{
+          id: "gt-1",
+          maGoiThau: "IB-1",
+          phanLo: "Có",
+          phanLoList: [
+            { id: "lot-1", maPhanLo: "PL1" },
+            { id: "lot-2", maPhanLo: "PL2" },
+          ],
+        }],
+      },
+    },
+  };
+
+  try {
+    await triggerExcelTemplateDownload(controller, "danhgiahsdt");
+    assert.match(requestedUrl, /(?:\?|&)lot_codes=PL1(?:&|$)/);
+    assert.doesNotMatch(requestedUrl, /PL2/);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.fetch = previousFetch;
+    globalThis.URL.createObjectURL = previousCreateObjectURL;
+    globalThis.URL.revokeObjectURL = previousRevokeObjectURL;
+  }
+});
+
 
 test("download workflow reports server errors instead of leaking a rejection", async () => {
   const previousDocument = globalThis.document;

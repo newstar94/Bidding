@@ -35,7 +35,7 @@ function activityDetail(item) {
 
 export function buildActivityTimelineMarkup(items, { hasMore = false } = {}) {
   if (!items?.length) {
-    return `<div class="activity-empty"><i data-lucide="history" aria-hidden="true"></i><p>Chưa có lịch sử thực hiện.</p></div>`;
+    return `<div class="activity-empty"><i data-lucide="history" aria-hidden="true"></i><p>Chưa có lịch sử chỉnh sửa.</p></div>`;
   }
   return `<ol class="activity-timeline-list">
     ${items.map((item) => `<li class="activity-timeline-item">
@@ -64,7 +64,7 @@ export async function renderActivityTimeline(container, {
 
   const load = async ({ append = false } = {}) => {
     if (!append) {
-      container.innerHTML = trustedHTML('<div class="activity-loading" role="status"><span class="loading-spinner" aria-hidden="true"></span> Đang tải lịch sử thực hiện...</div>');
+      container.innerHTML = trustedHTML('<div class="activity-loading" role="status"><span class="loading-spinner" aria-hidden="true"></span> Đang tải lịch sử chỉnh sửa...</div>');
     }
     const query = new URLSearchParams({ limit: "30" });
     if (cursor?.beforeOccurredAt && cursor?.beforeId) {
@@ -84,11 +84,10 @@ export async function renderActivityTimeline(container, {
       globalThis.lucide?.createIcons?.({ root: container });
     } catch (error) {
       if (requestVersions.get(container) !== requestVersion || !isCurrent()) return;
-      container.innerHTML = trustedHTML(`<div class="activity-error" role="alert"><p>${escapeHtml(error?.message || "Không tải được lịch sử thực hiện.")}</p><button type="button" class="btn btn-outline" data-activity-retry>Thử lại</button></div>`);
+      container.innerHTML = trustedHTML(`<div class="activity-error" role="alert"><p>${escapeHtml(error?.message || "Không tải được lịch sử chỉnh sửa.")}</p><button type="button" class="btn btn-outline" data-activity-retry>Thử lại</button></div>`);
       container.querySelector("[data-activity-retry]")?.addEventListener("click", () => load());
     }
   };
 
   await load();
 }
-

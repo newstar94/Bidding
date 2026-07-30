@@ -18,6 +18,10 @@ import {
 } from "./detailedEvaluationSelectors.js";
 import { getPackageWorkflowState } from "./detail/PackageTabs.js";
 import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
+import {
+  applyTechnicalEvaluationMethod,
+  resolveTechnicalEvaluationMethod,
+} from "./technicalEvaluationMethod.js";
 
 export function buildDetailedEvaluationRow(reportId, criterionId) {
   return {
@@ -181,6 +185,7 @@ export function resolveDetailedEvaluationState(controller) {
   if (reportSource) controller._detailedEvaluationDrafts.set(draftKey, report);
   const criteriaKey = `${pkg.id}:${roundType}`;
   controller._detailedEvaluationCriteriaOverrides = controller._detailedEvaluationCriteriaOverrides || new Map();
+  controller._technicalEvaluationMethodDrafts = controller._technicalEvaluationMethodDrafts || new Map();
   const hasCriteriaOverride = controller._detailedEvaluationCriteriaOverrides.has(criteriaKey);
   let baseCriteria = hasCriteriaOverride
     ? controller._detailedEvaluationCriteriaOverrides.get(criteriaKey)
@@ -205,8 +210,18 @@ export function resolveDetailedEvaluationState(controller) {
       controller._detailedEvaluationDrafts.set(draftKey, report);
     }
   }
+  const technicalEvaluationMethod = resolveTechnicalEvaluationMethod({
+    pkg,
+    roundType,
+    report,
+    criteria: baseCriteria,
+    draftMethod: controller._technicalEvaluationMethodDrafts.get(criteriaKey),
+  });
   const criteria = markHierarchicalDetailedEvaluationCriteria(
-    adaptDetailedEvaluationCriteriaForBid(baseCriteria, bid || {}),
+    adaptDetailedEvaluationCriteriaForBid(
+      applyTechnicalEvaluationMethod(baseCriteria, technicalEvaluationMethod),
+      bid || {},
+    ),
   );
   if (bid && !report) {
     report = buildDetailedEvaluationDraft({ pkg, bid, roundType, criteria });
@@ -229,7 +244,13 @@ export function resolveDetailedEvaluationState(controller) {
     aggregationByGroup: aggregation.byGroup,
     bidderGoodsReady,
   });
-  context = { ...context, accessibleGroups, visibleGroups: accessibleGroups };
+  context = {
+    ...context,
+    accessibleGroups,
+    visibleGroups: accessibleGroups,
+    technicalEvaluationMethod,
+    technicalEvaluationMethodRequired: !technicalEvaluationMethod,
+  };
   if (!accessibleGroups.includes(controller.selectedDetailedEvaluationTab)) {
     controller.selectedDetailedEvaluationTab = accessibleGroups.at(-1) || "validity";
   }

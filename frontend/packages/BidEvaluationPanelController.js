@@ -235,8 +235,8 @@ function bindReportForm({ appController, pkg, panelState }) {
         };
       } else {
         saveButton.innerHTML = trustedHTML(lotScope
-          ? '<i data-lucide="save"></i> Lưu báo cáo đánh giá đợt'
-          : '<i data-lucide="save"></i> Lưu thông tin đánh giá');
+          ? '<i data-lucide="save"></i> Lưu báo cáo đánh giá'
+          : '<i data-lucide="save"></i> Lưu báo cáo đánh giá');
         saveButton.onclick = () => appController.saveDanhGiaHsdt();
       }
     }

@@ -43,6 +43,27 @@ export function aggregateDetailedEvaluation({
   };
 }
 
+export function aggregateDetailedEvaluationAutomatic({
+  report = {},
+  criteria = [],
+  group,
+} = {}) {
+  const rows = new Map(
+    (report.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
+  );
+  const results = criteria
+    .filter((criterion) => criterion.group === group && criterion.required !== false)
+    .map((criterion) => {
+      const row = rows.get(String(criterion.id)) || {};
+      return row.extension?.ketQuaTuDong || row.ketQuaTuDong || "pending";
+    });
+  if (results.some((result) => result === "fail")) return "Không đạt";
+  if (results.length > 0 && results.every(
+    (result) => result === "pass" || result === "not_applicable",
+  )) return "Đạt";
+  return "";
+}
+
 export function aggregateDetailedEvaluationReport({
   report = {},
   criteria = [],

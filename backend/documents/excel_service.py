@@ -138,7 +138,9 @@ def create_opening_fin_template(pkg_id_clean, org_name):
         prepare_opening_fin_template_spec(pkg_id_clean, org_name)
     )
 
-def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
+def prepare_danhgiahsdt_template_spec(
+    pkg_id_clean, org_name, eval_type, selected_lot_codes=None
+):
     """Load evaluation data and return a data-only workbook contract."""
     conn = database.get_connection()
     cursor = conn.cursor()
@@ -151,6 +153,20 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
 
     _linh_vuc, _phuong_thuc_lua_chon, phan_lo = gt_row
     lot_codes = fetch_package_lot_codes(cursor, pkg_id_clean, org_name)
+    known_lot_codes = {str(code).strip().casefold(): code for code in lot_codes}
+    requested_lot_codes = [
+        str(code).strip() for code in (selected_lot_codes or []) if str(code).strip()
+    ]
+    unknown_lot_codes = [
+        code for code in requested_lot_codes if code.casefold() not in known_lot_codes
+    ]
+    if unknown_lot_codes:
+        conn.close()
+        raise ValueError("Selected evaluation lot code does not belong to the package")
+    scoped_lot_codes = [
+        known_lot_codes[code.casefold()] for code in requested_lot_codes
+    ] if requested_lot_codes else lot_codes
+    scoped_lot_code_keys = {str(code).strip().casefold() for code in scoped_lot_codes}
 
     cursor.execute("""
         SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
@@ -169,6 +185,11 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
         WHERE m.goi_thau_id = ? AND m.organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
+    if requested_lot_codes:
+        bids = [
+            bid for bid in bids
+            if str(bid[1] or "").strip().casefold() in scoped_lot_code_keys
+        ]
     joint_venture_members = _fetch_joint_venture_member_descriptions(
         cursor, pkg_id_clean, org_name
     )
@@ -224,8 +245,8 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
             'Chấp thuận', 'Không chấp thuận'
         ]
 
-    if has_phan_lo and lot_codes:
-        options_map['Mã phần lô'] = lot_codes
+    if has_phan_lo and scoped_lot_codes:
+        options_map['Mã phần lô'] = scoped_lot_codes
 
     rows = []
     for bid in bids:
@@ -277,10 +298,14 @@ def prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type):
     }
 
 
-def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
+def create_danhgiahsdt_template(
+    pkg_id_clean, org_name, eval_type, selected_lot_codes=None
+):
     """Create an evaluation workbook for non-worker callers."""
     return create_excel_from_spec(
-        prepare_danhgiahsdt_template_spec(pkg_id_clean, org_name, eval_type)
+        prepare_danhgiahsdt_template_spec(
+            pkg_id_clean, org_name, eval_type, selected_lot_codes
+        )
     )
 
 def prepare_ketquaqd_template_spec(pkg_id_clean, org_name):

@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import { getAppController } from "../app/controllerRef.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { downloadPackageGoodsWorkbook, buildPackageGoodsPreview, readPackageGoodsExcel } from "./PackageGoodsExcel.js";
@@ -16,9 +17,115 @@ function lotLabel(lot) {
   return [lot?.maPhanLo, lot?.tenPhanLo].filter(Boolean).join(" — ") || "Phần lô";
 }
 
-function money(value) {
-  if (value === "" || value == null) return "";
-  return new Intl.NumberFormat("vi-VN").format(Number(value) || 0);
+export function formatPackageGoodsQuantity(value) {
+  if (value === "" || value == null || !Number.isFinite(Number(value))) return "";
+  return new Intl.NumberFormat("vi-VN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  }).format(Number(value));
+}
+
+export function refreshPackageGoodsIcons(view, root) {
+  view?.createIconsScoped?.(root);
+}
+
+export function bindPackageGoodsLiveSearch(view, contentWrapper, rerender, { delay = 120 } = {}) {
+  const searchInput = contentWrapper.querySelector("#package-goods-search");
+  if (!searchInput) return;
+  let composing = false;
+  const scheduleSearch = () => {
+    const value = searchInput.value;
+    const cursorPosition = searchInput.selectionStart ?? value.length;
+    view._packageGoodsSearch = value;
+    view._packageGoodsPage = 1;
+    clearTimeout(view._packageGoodsSearchTimer);
+    view._packageGoodsSearchTimer = setTimeout(async () => {
+      view._packageGoodsSearchTimer = null;
+      if (searchInput.isConnected === false) return;
+      const shouldRestoreFocus = searchInput.matches?.(":focus") === true;
+      await rerender();
+      if (!shouldRestoreFocus) return;
+      const nextInput = contentWrapper.querySelector("#package-goods-search");
+      nextInput?.focus?.({ preventScroll: true });
+      const nextPosition = Math.min(cursorPosition, nextInput?.value?.length ?? 0);
+      nextInput?.setSelectionRange?.(nextPosition, nextPosition);
+    }, delay);
+  };
+  searchInput.addEventListener("compositionstart", () => { composing = true; });
+  searchInput.addEventListener("compositionend", () => {
+    composing = false;
+    scheduleSearch();
+  });
+  searchInput.addEventListener("input", (event) => {
+    if (composing || event.isComposing) return;
+    scheduleSearch();
+  });
+}
+
+export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true } = {}) {
+  const items = Array.isArray(goods) ? goods : [];
+  const lotList = Array.isArray(lots) ? lots : [];
+  if (!hasLots) {
+    return items.map((item, index) => ({
+      kind: "item",
+      sequence: String(index + 1),
+      item,
+    }));
+  }
+
+  const lotById = new Map(lotList.map((lot) => [String(lot.id), lot]));
+  const lotPosition = new Map(lotList.map((lot, index) => [String(lot.id), index + 1]));
+  const grouped = new Map();
+  items.forEach((item) => {
+    const key = String(item.phanLoId || "");
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(item);
+  });
+  const orderedKeys = [
+    ...lotList.map((lot) => String(lot.id)).filter((key) => grouped.has(key)),
+    ...[...grouped.keys()].filter((key) => !lotById.has(key)),
+  ];
+
+  return orderedKeys.flatMap((key, groupIndex) => {
+    const lot = lotById.get(key);
+    const sequence = String(lotPosition.get(key) || groupIndex + 1);
+    const groupItems = grouped.get(key) || [];
+    return [
+      {
+        kind: "lot",
+        sequence,
+        lotCode: String(lot?.maPhanLo || groupItems[0]?._lotCode || "").trim(),
+        lotName: String(lot?.tenPhanLo || "Phần lô chưa xác định").trim(),
+        lotId: key,
+      },
+      ...groupItems.map((item, itemIndex) => ({
+        kind: "item",
+        sequence: `${sequence}.${itemIndex + 1}`,
+        item,
+      })),
+    ];
+  });
+}
+
+export function nextPackageGoodsSequence(goods, lots, { hasLots = true, lotId = "" } = {}) {
+  const items = Array.isArray(goods) ? goods : [];
+  if (!hasLots) return String(items.length + 1);
+  const lotList = Array.isArray(lots) ? lots : [];
+  const lotIndex = lotList.findIndex((lot) => String(lot.id) === String(lotId));
+  if (lotIndex < 0) return "";
+  const itemCount = items.filter((item) => String(item.phanLoId || "") === String(lotId)).length;
+  return `${lotIndex + 1}.${itemCount + 1}`;
+}
+
+function nextPackageGoodsCode(goods, lotId, preferredCode) {
+  const usedCodes = new Set((goods || [])
+    .filter((item) => String(item.phanLoId || "") === String(lotId || ""))
+    .map((item) => String(item.maHangHoa || "").trim().toLocaleLowerCase("vi")));
+  const base = String(preferredCode || "1").trim();
+  if (!usedCodes.has(base.toLocaleLowerCase("vi"))) return base;
+  let suffix = 2;
+  while (usedCodes.has(`${base}-${suffix}`.toLocaleLowerCase("vi"))) suffix += 1;
+  return `${base}-${suffix}`;
 }
 
 export function renderPackageGoodsSummary(view, pkg, { editable = true } = {}) {
@@ -40,17 +147,41 @@ export function renderPackageGoodsSummary(view, pkg, { editable = true } = {}) {
   });
 }
 
-export function renderPackageGoodsMutationActions(editable) {
+export function renderPackageGoodsMutationActions(editable, { creating = false } = {}) {
   if (!editable) return "";
   return `
     <input id="package-goods-file" type="file" accept=".xlsx,.xls" hidden>
     <button type="button" class="btn btn-outline" id="btn-package-goods-import-trigger"><i data-lucide="upload" aria-hidden="true"></i>Nhập Excel</button>
-    <button type="button" class="btn btn-primary" id="btn-package-goods-add"><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>`;
+    <button type="button" class="btn btn-primary" id="btn-package-goods-add" aria-controls="package-goods-table-body" aria-expanded="${creating}"><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>`;
 }
 
 export function renderPackageGoodsRowActions({ id, editable, canDelete }) {
   if (!editable) return "";
-  return `<td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(id)}">Sửa</button>${canDelete ? ` <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(id)}" title="Xóa hàng hóa">Xóa</button>` : ""}</td>`;
+  return `<td class="package-goods-actions-cell"><div class="action-btn-group"><button type="button" class="action-btn btn-edit" data-edit-goods="${escapeHtml(id)}" title="Sửa hàng hóa" aria-label="Sửa hàng hóa"><i data-lucide="pencil" aria-hidden="true"></i></button>${canDelete ? `<button type="button" class="action-btn btn-delete" data-delete-goods="${escapeHtml(id)}" title="Xóa hàng hóa" aria-label="Xóa hàng hóa"><i data-lucide="trash-2" aria-hidden="true"></i></button>` : ""}</div></td>`;
+}
+
+export function renderPackageGoodsInlineEditRow(item, lots, { hasLotColumns = true, sequence = "" } = {}) {
+  const lotOptions = (lots || []).map((lot) => `<option value="${escapeHtml(lot.id)}" ${String(item.phanLoId || "") === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("");
+  return `<tr class="package-goods-item-row package-goods-item-row--editing" data-inline-edit-row="${escapeHtml(item.id)}" aria-label="Chỉnh sửa hàng hóa ${escapeHtml(item.maHangHoa || "")}">
+    <td class="package-goods-sequence" aria-label="Số thứ tự ${escapeHtml(sequence)}">${escapeHtml(sequence)}</td>
+    ${hasLotColumns ? `<td colspan="2"><select id="package-goods-lot-edit-${escapeHtml(item.id)}" class="form-control package-goods-inline-control" name="phanLoId" data-no-custom="true" aria-label="Phần lô" required><option value="">Chọn phần lô</option>${lotOptions}</select></td>` : ""}
+    <td><textarea class="form-control package-goods-inline-control package-goods-inline-name" name="tenHangHoa" aria-label="Danh mục hàng hóa" rows="2" required>${escapeHtml(item.tenHangHoa || "")}</textarea></td>
+    <td class="package-goods-unit"><input class="form-control package-goods-inline-control package-goods-inline-unit" name="donViTinh" value="${escapeHtml(item.donViTinh || "")}" aria-label="Đơn vị tính" required></td>
+    <td><input class="form-control package-goods-inline-control package-goods-inline-number" name="soLuong" type="number" min="0.0001" step="any" value="${escapeHtml(item.soLuong ?? "")}" aria-label="Khối lượng" required></td>
+    <td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button type="button" class="btn btn-sm btn-primary" data-save-goods="${escapeHtml(item.id)}"><i data-lucide="save" aria-hidden="true"></i>Lưu</button><button type="button" class="btn btn-sm btn-outline" data-cancel-goods="${escapeHtml(item.id)}">Hủy</button></div></td>
+  </tr>`;
+}
+
+export function renderPackageGoodsInlineCreateRow(lots, { hasLotColumns = true, selectedLotId = "", sequence = "" } = {}) {
+  const lotOptions = (lots || []).map((lot) => `<option value="${escapeHtml(lot.id)}" ${String(selectedLotId) === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("");
+  return `<tr class="package-goods-item-row package-goods-item-row--editing package-goods-item-row--creating" data-inline-create-row aria-label="Thêm hàng hóa">
+    <td class="package-goods-sequence" data-create-sequence aria-label="Số thứ tự ${escapeHtml(sequence)}">${escapeHtml(sequence)}</td>
+    ${hasLotColumns ? `<td colspan="2"><select id="package-goods-lot-create" class="form-control package-goods-inline-control" name="phanLoId" data-no-custom="true" data-create-lot aria-label="Phần lô" required><option value="">Chọn phần lô</option>${lotOptions}</select></td>` : ""}
+    <td><textarea class="form-control package-goods-inline-control package-goods-inline-name" name="tenHangHoa" aria-label="Danh mục hàng hóa" rows="2" required></textarea></td>
+    <td class="package-goods-unit"><input class="form-control package-goods-inline-control package-goods-inline-unit" name="donViTinh" aria-label="Đơn vị tính" required></td>
+    <td><input class="form-control package-goods-inline-control package-goods-inline-number" name="soLuong" type="number" min="0.0001" step="any" aria-label="Khối lượng" required></td>
+    <td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button type="button" class="btn btn-sm btn-primary" data-save-new-goods><i data-lucide="save" aria-hidden="true"></i>Lưu</button><button type="button" class="btn btn-sm btn-outline" data-cancel-new-goods>Hủy</button></div></td>
+  </tr>`;
 }
 
 function operationLabel(value) {
@@ -97,35 +228,139 @@ async function persistImport(model, pkg, preview, { mode, selectedLotId }) {
 }
 
 function renderPreview(container, rows, lots) {
-  const lotById = new Map(lots.map((lot) => [String(lot.id), lot]));
+  const hasLots = Array.isArray(lots) && lots.length > 0;
+  const displayRows = buildPackageGoodsDisplayRows(rows, lots, { hasLots });
+  const columnCount = (hasLots ? 6 : 4) + 4;
   container.innerHTML = trustedHTML(`
-    <div class="table-responsive"><table class="data-table" data-no-sort="true">
-      <thead><tr><th>Dòng</th><th>Phần lô</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Đơn vị tính</th><th>Số lượng</th><th>Thao tác dự kiến</th><th>Trạng thái</th><th>Chi tiết lỗi</th></tr></thead>
-      <tbody>${rows.map((row) => `<tr>
-        <td>${row._rowNumber || ""}</td><td>${escapeHtml(lotLabel(lotById.get(String(row.phanLoId || ""))))}</td>
-        <td>${escapeHtml(row.maHangHoa)}</td><td>${escapeHtml(row.tenHangHoa)}</td><td>${escapeHtml(row.donViTinh)}</td><td>${escapeHtml(String(row.soLuong ?? ""))}</td>
-        <td>${escapeHtml(operationLabel(row._operation))}</td><td>${row._valid ? "Hợp lệ" : "Lỗi"}</td><td>${escapeHtml(row._comment || "")}</td>
+    <div class="table-responsive"><table class="data-table package-goods-hierarchy-table package-goods-preview-table" data-no-sort="true">
+      <thead><tr><th>STT</th>${hasLots ? "<th>Mã phần (lô)</th><th>Tên phần lô</th>" : ""}<th>Danh mục hàng hóa</th><th class="package-goods-unit">Đơn vị tính</th><th class="package-goods-quantity">Khối lượng</th><th>Dòng Excel</th><th>Thao tác dự kiến</th><th>Trạng thái</th><th>Chi tiết lỗi</th></tr></thead>
+      <tbody>${displayRows.map((displayRow) => displayRow.kind === "lot" ? `<tr class="package-goods-lot-row">
+        <td>${escapeHtml(displayRow.sequence)}</td><td>${escapeHtml(displayRow.lotCode)}</td><td>${escapeHtml(displayRow.lotName)}</td><td colspan="${columnCount - 3}"></td>
+      </tr>` : `<tr class="package-goods-item-row">
+        <td class="package-goods-sequence">${escapeHtml(displayRow.sequence)}</td>${hasLots ? "<td></td><td></td>" : ""}
+        <td>${escapeHtml(displayRow.item.tenHangHoa)}</td><td class="package-goods-unit">${escapeHtml(displayRow.item.donViTinh)}</td><td class="package-goods-quantity">${escapeHtml(formatPackageGoodsQuantity(displayRow.item.soLuong))}</td>
+        <td>${displayRow.item._rowNumber || ""}</td><td>${escapeHtml(operationLabel(displayRow.item._operation))}</td><td>${displayRow.item._valid ? "Hợp lệ" : "Lỗi"}</td><td>${escapeHtml(displayRow.item._comment || "")}</td>
       </tr>`).join("")}</tbody>
     </table></div>`);
 }
 
 function bindEditor(view, root, pkg, lots, editable, rerender) {
-  const form = root.querySelector("#package-goods-form");
-  const editor = root.querySelector("#package-goods-editor");
-  const openEditor = (record = null) => {
+  const addButton = root.querySelector("#btn-package-goods-add");
+  addButton?.addEventListener("click", async () => {
     if (!editable) return;
-    editor.hidden = false;
-    form.reset();
-    form.elements.namedItem("recordId").value = record?.id || "";
-    form.elements.namedItem("phanLoId").value = record?.phanLoId || "";
-    Object.keys(record || {}).forEach((key) => { if (form.elements[key]) form.elements[key].value = record[key] ?? ""; });
-    form.elements.maHangHoa.focus();
-  };
-  root.querySelector("#btn-package-goods-add")?.addEventListener("click", () => openEditor());
-  root.querySelector("#btn-package-goods-cancel")?.addEventListener("click", () => { editor.hidden = true; });
-  root.querySelectorAll("[data-edit-goods]").forEach((button) => button.addEventListener("click", () => {
-    openEditor((view.model.state.goithauhanghoa || []).find((item) => String(item.id) === button.dataset.editGoods));
+    view._packageGoodsEditingId = null;
+    view._packageGoodsCreating = true;
+    if (pkg.phanLo === "Có") {
+      view._packageGoodsCreateLotId = view._packageGoodsLotFilter || view._packageGoodsCreateLotId || lots[0]?.id || "";
+    }
+    await rerender();
+  });
+  root.querySelectorAll("[data-edit-goods]").forEach((button) => button.addEventListener("click", async () => {
+    view._packageGoodsCreating = false;
+    view._packageGoodsEditingId = button.dataset.editGoods;
+    await rerender();
   }));
+  root.querySelectorAll("[data-cancel-goods]").forEach((button) => button.addEventListener("click", async () => {
+    const recordId = button.dataset.cancelGoods;
+    view._packageGoodsEditingId = null;
+    await rerender();
+    root.querySelector(`[data-edit-goods="${CSS.escape(recordId)}"]`)?.focus();
+  }));
+  root.querySelector("[data-cancel-new-goods]")?.addEventListener("click", async () => {
+    view._packageGoodsCreating = false;
+    await rerender();
+    root.querySelector("#btn-package-goods-add")?.focus();
+  });
+  root.querySelectorAll("[data-save-goods]").forEach((button) => button.addEventListener("click", async () => {
+    const recordId = button.dataset.saveGoods;
+    const row = button.closest("[data-inline-edit-row]");
+    const current = (view.model.state.goithauhanghoa || []).find((item) => String(item.id) === String(recordId));
+    if (!row || !current) return;
+    const fieldValue = (name) => String(row.querySelector(`[name="${name}"]`)?.value ?? "").trim();
+    const record = {
+      ...current,
+      phanLoId: pkg.phanLo === "Có" ? fieldValue("phanLoId") : null,
+      tenHangHoa: fieldValue("tenHangHoa"),
+      donViTinh: fieldValue("donViTinh"),
+      soLuong: Number(fieldValue("soLuong")),
+    };
+    const errors = validatePackageGoodsItem(record, { pkg, lots });
+    const duplicate = packageGoods(view.model, pkg.id).find((item) => item.id !== record.id && item.phanLoId === record.phanLoId && String(item.maHangHoa).trim().toLocaleLowerCase("vi") === record.maHangHoa.toLocaleLowerCase("vi"));
+    if (duplicate) errors.push("Mã hàng hóa đã tồn tại trong cùng phạm vi.");
+    if (errors.length) return view.customAlert("Dữ liệu không hợp lệ", errors.join(" "), "alert-triangle");
+    await view.model.updateRecord("goithauhanghoa", record);
+    const result = await getAppController()?.autoSync?.();
+    if (!result?.ok) return view.customAlert("Lỗi đồng bộ", "Dữ liệu đã lưu cục bộ nhưng máy chủ chưa xác nhận. Hãy xử lý lỗi đồng bộ trước khi tiếp tục.", "alert-triangle");
+    view._packageGoodsEditingId = null;
+    await rerender();
+    root.querySelector(`[data-edit-goods="${CSS.escape(recordId)}"]`)?.focus();
+  }));
+  const createRow = root.querySelector("[data-inline-create-row]");
+  createRow?.querySelector("[data-create-lot]")?.addEventListener("change", (event) => {
+    view._packageGoodsCreateLotId = event.target.value;
+    const sequence = nextPackageGoodsSequence(packageGoods(view.model, pkg.id), lots, {
+      hasLots: true,
+      lotId: event.target.value,
+    });
+    const sequenceCell = createRow.querySelector("[data-create-sequence]");
+    if (sequenceCell) {
+      sequenceCell.textContent = sequence;
+      sequenceCell.setAttribute("aria-label", `Số thứ tự ${sequence}`);
+    }
+  });
+  createRow?.querySelector("[data-save-new-goods]")?.addEventListener("click", async () => {
+    const fieldValue = (name) => String(createRow.querySelector(`[name="${name}"]`)?.value ?? "").trim();
+    const allGoods = packageGoods(view.model, pkg.id);
+    const phanLoId = pkg.phanLo === "Có" ? fieldValue("phanLoId") : null;
+    const sequence = nextPackageGoodsSequence(allGoods, lots, { hasLots: pkg.phanLo === "Có", lotId: phanLoId });
+    const record = {
+      id: generateRecordId("goithauhanghoa"),
+      goiThauId: pkg.id,
+      phanLoId,
+      maHangHoa: nextPackageGoodsCode(allGoods, phanLoId, sequence),
+      tenHangHoa: fieldValue("tenHangHoa"),
+      nhomHangHoa: "",
+      donViTinh: fieldValue("donViTinh"),
+      soLuong: Number(fieldValue("soLuong")),
+      yeuCauKyThuat: "",
+      kyMaHieuThamChieu: "",
+      xuatXuYeuCau: "",
+      diaDiemGiaoHang: "",
+      thoiGianGiaoHang: "",
+      donGiaDuToan: null,
+      thanhTienDuToan: null,
+      ghiChu: "",
+      sortOrder: allGoods.length,
+    };
+    const errors = validatePackageGoodsItem(record, { pkg, lots });
+    if (errors.length) return view.customAlert("Dữ liệu không hợp lệ", errors.join(" "), "alert-triangle");
+    await view.model.addRecord("goithauhanghoa", record);
+    const result = await getAppController()?.autoSync?.();
+    if (!result?.ok) return view.customAlert("Lỗi đồng bộ", "Dữ liệu đã lưu cục bộ nhưng máy chủ chưa xác nhận. Hãy xử lý lỗi đồng bộ trước khi tiếp tục.", "alert-triangle");
+    view._packageGoodsCreating = false;
+    await rerender();
+    root.querySelector("#btn-package-goods-add")?.focus();
+  });
+  const inlineRow = root.querySelector("[data-inline-edit-row], [data-inline-create-row]");
+  const inlineLotSelect = inlineRow?.querySelector('[name="phanLoId"]');
+  if (inlineLotSelect) {
+    view._packageGoodsLotCombobox = initAccessibleCombobox(inlineLotSelect, {
+      searchable: true,
+      placeholder: "Tìm mã hoặc tên phần lô",
+      noResultsText: "Không tìm thấy phần lô phù hợp",
+    });
+  }
+  inlineRow?.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      inlineRow.querySelector("[data-cancel-goods], [data-cancel-new-goods]")?.click();
+    } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      inlineRow.querySelector("[data-save-goods], [data-save-new-goods]")?.click();
+    }
+  });
+  inlineRow?.querySelector(pkg.phanLo === "Có" ? ".bf-combobox-input" : '[name="tenHangHoa"]')?.focus();
   root.querySelectorAll("[data-delete-goods]").forEach((button) => button.addEventListener("click", async () => {
     if (!editable || !await view.customConfirm("Xóa hàng hóa", "Bạn có chắc muốn xóa hàng hóa này?", "trash-2")) return;
     await view.model.deleteRecord("goithauhanghoa", button.dataset.deleteGoods);
@@ -133,33 +368,11 @@ function bindEditor(view, root, pkg, lots, editable, rerender) {
     if (!result?.ok) await view.customAlert("Lỗi đồng bộ", "Hàng hóa đang chờ đồng bộ; máy chủ chưa xác nhận thao tác xóa.", "alert-triangle");
     await rerender();
   }));
-  form?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = Object.fromEntries(new FormData(form).entries());
-    const current = (view.model.state.goithauhanghoa || []).find((item) => String(item.id) === String(data.recordId));
-    const record = {
-      ...current,
-      id: data.recordId || generateRecordId("goithauhanghoa"), goiThauId: pkg.id,
-      phanLoId: pkg.phanLo === "Có" ? data.phanLoId : null,
-      maHangHoa: data.maHangHoa.trim(), tenHangHoa: data.tenHangHoa.trim(), nhomHangHoa: data.nhomHangHoa.trim(), donViTinh: data.donViTinh.trim(),
-      soLuong: Number(data.soLuong), yeuCauKyThuat: data.yeuCauKyThuat.trim(), kyMaHieuThamChieu: data.kyMaHieuThamChieu.trim(),
-      xuatXuYeuCau: data.xuatXuYeuCau.trim(), diaDiemGiaoHang: data.diaDiemGiaoHang.trim(), thoiGianGiaoHang: data.thoiGianGiaoHang.trim(),
-      donGiaDuToan: data.donGiaDuToan === "" ? null : Number(data.donGiaDuToan), thanhTienDuToan: data.thanhTienDuToan === "" ? null : Number(data.thanhTienDuToan),
-      ghiChu: data.ghiChu.trim(), sortOrder: current?.sortOrder ?? packageGoods(view.model, pkg.id).length,
-    };
-    const errors = validatePackageGoodsItem(record, { pkg, lots });
-    const duplicate = packageGoods(view.model, pkg.id).find((item) => item.id !== record.id && item.phanLoId === record.phanLoId && String(item.maHangHoa).trim().toLocaleLowerCase("vi") === record.maHangHoa.toLocaleLowerCase("vi"));
-    if (duplicate) errors.push("Mã hàng hóa đã tồn tại trong cùng phạm vi.");
-    if (errors.length) return view.customAlert("Dữ liệu không hợp lệ", errors.join(" "), "alert-triangle");
-    if (current) await view.model.updateRecord("goithauhanghoa", record); else await view.model.addRecord("goithauhanghoa", record);
-    const result = await getAppController()?.autoSync?.();
-    if (!result?.ok) return view.customAlert("Lỗi đồng bộ", "Dữ liệu đã lưu cục bộ nhưng máy chủ chưa xác nhận. Hãy xử lý lỗi đồng bộ trước khi tiếp tục.", "alert-triangle");
-    editor.hidden = true;
-    await rerender();
-  });
 }
 
 export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
+  view._packageGoodsLotCombobox?.destroy?.();
+  view._packageGoodsLotCombobox = null;
   const lots = Array.isArray(pkg.phanLoList) ? pkg.phanLoList : [];
   const allGoods = packageGoods(view.model, pkg.id);
   const editable = isPackageGoodsEditable(pkg) && view.model.hasPermission?.(view.model.state.activeuser?.id, "goithau", "edit") !== false;
@@ -173,12 +386,46 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const page = Math.min(pageCount, Math.max(1, Number(view._packageGoodsPage || 1)));
   const visibleGoods = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const lotById = new Map(lots.map((lot) => [String(lot.id), lot]));
-  const hasLotColumn = pkg.phanLo === "Có" && !selected;
-  const columnCount = (hasLotColumn ? 10 : 9) + (editable ? 1 : 0);
+  const hasLotColumns = pkg.phanLo === "Có";
+  const displayRows = buildPackageGoodsDisplayRows(visibleGoods, lots, { hasLots: hasLotColumns });
+  const editingId = editable ? String(view._packageGoodsEditingId || "") : "";
+  const columnCount = (hasLotColumns ? 6 : 4) + (editable ? 1 : 0);
   const startIndex = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, filtered.length);
   const paginationPages = packageGoodsPaginationPages(page, pageCount);
+  const creating = editable && Boolean(view._packageGoodsCreating);
+  const createLotId = hasLotColumns
+    ? String(view._packageGoodsCreateLotId || selected || lots[0]?.id || "")
+    : "";
+  const createSequence = nextPackageGoodsSequence(allGoods, lots, {
+    hasLots: hasLotColumns,
+    lotId: createLotId,
+  });
+  const tableRows = displayRows.map((displayRow) => ({
+    displayRow,
+    markup: displayRow.kind === "lot"
+      ? `<tr class="package-goods-lot-row"><td>${escapeHtml(displayRow.sequence)}</td><td>${escapeHtml(displayRow.lotCode)}</td><td>${escapeHtml(displayRow.lotName)}</td><td colspan="${columnCount - 3}"></td></tr>`
+      : String(displayRow.item.id) === editingId
+        ? renderPackageGoodsInlineEditRow(displayRow.item, lots, { hasLotColumns, sequence: displayRow.sequence })
+        : `<tr class="package-goods-item-row"><td class="package-goods-sequence">${escapeHtml(displayRow.sequence)}</td>${hasLotColumns ? "<td></td><td></td>" : ""}<td class="package-goods-name">${escapeHtml(displayRow.item.tenHangHoa)}</td><td class="package-goods-unit">${escapeHtml(displayRow.item.donViTinh)}</td><td class="package-goods-quantity">${escapeHtml(formatPackageGoodsQuantity(displayRow.item.soLuong))}</td>${renderPackageGoodsRowActions({ id: displayRow.item.id, editable, canDelete })}</tr>`,
+  }));
+  if (creating) {
+    const createMarkup = renderPackageGoodsInlineCreateRow(lots, {
+      hasLotColumns,
+      selectedLotId: createLotId,
+      sequence: createSequence,
+    });
+    let insertionIndex = tableRows.length;
+    if (hasLotColumns && createLotId) {
+      const lastItemIndex = tableRows.findLastIndex(({ displayRow }) => displayRow.kind === "item" && String(displayRow.item.phanLoId || "") === createLotId);
+      const lotHeadingIndex = tableRows.findIndex(({ displayRow }) => displayRow.kind === "lot" && String(displayRow.lotId || "") === createLotId);
+      insertionIndex = lastItemIndex >= 0 ? lastItemIndex + 1 : lotHeadingIndex >= 0 ? lotHeadingIndex + 1 : tableRows.length;
+    }
+    tableRows.splice(insertionIndex, 0, { displayRow: null, markup: createMarkup });
+  }
+  const tableBodyMarkup = tableRows.length
+    ? tableRows.map(({ markup }) => markup).join("")
+    : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`;
   contentWrapper.innerHTML = trustedHTML(`
     <section class="package-goods-panel" aria-labelledby="package-goods-title">
       ${renderPackageGoodsSummary(view, pkg, { editable })}
@@ -192,20 +439,14 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
             <span class="visually-hidden">Tìm hàng hóa</span><i data-lucide="search" aria-hidden="true"></i>
             <input class="form-control" id="package-goods-search" type="search" value="${escapeHtml(view._packageGoodsSearch || "")}" placeholder="Tìm mã hoặc tên hàng hóa">
           </label>
-          ${pkg.phanLo === "Có" ? `<label class="package-goods-filter" for="package-goods-lot-filter"><span class="visually-hidden">Lọc theo phần lô</span><select class="form-control" id="package-goods-lot-filter"><option value="">Tất cả phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}" ${selected === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : ""}
+          ${pkg.phanLo === "Có" ? `<label class="package-goods-filter" for="package-goods-lot-filter"><span class="visually-hidden">Lọc theo phần lô</span><select class="form-control" id="package-goods-lot-filter" data-dropdown-inline="true"><option value="">Tất cả phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}" ${selected === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : ""}
           <button type="button" class="btn btn-outline" id="btn-package-goods-template"><i data-lucide="download" aria-hidden="true"></i>Tải file mẫu</button>
           <button type="button" class="btn btn-outline" id="btn-package-goods-export"><i data-lucide="file-spreadsheet" aria-hidden="true"></i>Xuất Excel</button>
-          ${renderPackageGoodsMutationActions(editable)}
+          ${renderPackageGoodsMutationActions(editable, { creating })}
         </div>
       </header>
-      <div id="package-goods-editor" hidden><form id="package-goods-form" class="package-goods-form"><input type="hidden" name="recordId">
-        ${pkg.phanLo === "Có" ? `<label>Phần lô<select name="phanLoId" required><option value="">Chọn phần lô</option>${lots.map((lot) => `<option value="${escapeHtml(lot.id)}">${escapeHtml(lotLabel(lot))}</option>`).join("")}</select></label>` : `<input type="hidden" name="phanLoId">`}
-        <label>Mã hàng hóa<input name="maHangHoa" required></label><label>Tên hàng hóa<input name="tenHangHoa" required></label><label>Nhóm hàng hóa<input name="nhomHangHoa"></label><label>Đơn vị tính<input name="donViTinh" required></label><label>Số lượng<input name="soLuong" type="number" min="0.0001" step="any" required></label>
-        <label>Yêu cầu kỹ thuật<textarea name="yeuCauKyThuat"></textarea></label><label>Ký mã hiệu tham chiếu<input name="kyMaHieuThamChieu"></label><label>Xuất xứ yêu cầu<input name="xuatXuYeuCau"></label><label>Địa điểm giao hàng<input name="diaDiemGiaoHang"></label><label>Thời gian giao hàng<input name="thoiGianGiaoHang"></label><label>Đơn giá dự toán<input name="donGiaDuToan" type="number" min="0" step="1"></label><label>Thành tiền dự toán<input name="thanhTienDuToan" type="number" min="0" step="1"></label><label>Ghi chú<textarea name="ghiChu"></textarea></label>
-        <div><button class="btn btn-outline" type="button" id="btn-package-goods-cancel">Hủy</button><button class="btn btn-primary" type="submit">Lưu</button></div>
-      </form></div>
-      <div class="table-container package-goods-table"><table class="data-table" data-no-sort="true"><thead><tr>${hasLotColumn ? "<th>Phần lô</th>" : ""}<th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Nhóm</th><th>ĐVT</th><th>Số lượng</th><th>Yêu cầu kỹ thuật</th><th>Đơn giá dự toán</th><th>Thành tiền</th>${editable ? "<th>Thao tác</th>" : ""}</tr></thead>
-      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${hasLotColumn ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td>${renderPackageGoodsRowActions({ id: item.id, editable, canDelete })}</tr>`).join("") : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`}</tbody></table></div>
+      <div class="table-container package-goods-table"><table class="data-table package-goods-hierarchy-table" data-no-sort="true"><colgroup><col class="package-goods-col-sequence">${hasLotColumns ? '<col class="package-goods-col-lot-code"><col class="package-goods-col-lot-name">' : ""}<col class="package-goods-col-name"><col class="package-goods-col-unit"><col class="package-goods-col-quantity">${editable ? '<col class="package-goods-col-actions">' : ""}</colgroup><thead><tr><th>STT</th>${hasLotColumns ? "<th>Mã phần (lô)</th><th>Tên phần lô</th>" : ""}<th>Danh mục hàng hóa</th><th class="package-goods-unit">Đơn vị tính</th><th class="package-goods-quantity">Khối lượng</th>${editable ? "<th>Thao tác</th>" : ""}</tr></thead>
+      <tbody id="package-goods-table-body">${tableBodyMarkup}</tbody></table></div>
       <nav class="pagination-container package-goods-pagination" aria-label="Phân trang danh mục hàng hóa"><span class="pagination-info">Hiển thị <strong>${startIndex}-${endIndex}</strong> trên tổng số <strong>${filtered.length}</strong> bản ghi</span><div class="pagination-buttons">
         <button type="button" class="pagination-btn" data-package-goods-page="1" title="Trang đầu" aria-label="Trang đầu" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevrons-left" aria-hidden="true"></i></button>
         <button type="button" class="pagination-btn" data-package-goods-page="${Math.max(1, page - 1)}" title="Trang trước" aria-label="Trang trước" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevron-left" aria-hidden="true"></i></button>
@@ -213,12 +454,14 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
         <button type="button" class="pagination-btn" data-package-goods-page="${Math.min(pageCount, page + 1)}" title="Trang sau" aria-label="Trang sau" ${page >= pageCount ? "disabled" : ""}><i data-lucide="chevron-right" aria-hidden="true"></i></button>
         <button type="button" class="pagination-btn" data-package-goods-page="${pageCount}" title="Trang cuối" aria-label="Trang cuối" ${page >= pageCount ? "disabled" : ""}><i data-lucide="chevrons-right" aria-hidden="true"></i></button>
       </div></nav>
-      <section id="package-goods-import" hidden><div class="package-goods-import-controls"><label>Chế độ<select id="package-goods-import-mode"><option value="merge">Gộp dữ liệu</option><option value="replace">Thay thế toàn bộ phạm vi</option></select></label><button class="btn btn-primary" id="btn-package-goods-import-save">Lưu dữ liệu hợp lệ</button></div><div id="package-goods-preview"></div></section>
+      <section id="package-goods-import" hidden><div class="package-goods-import-controls"><label>Chế độ<select class="form-control" id="package-goods-import-mode"><option value="merge">Gộp dữ liệu</option><option value="replace">Thay thế toàn bộ phạm vi</option></select></label><button class="btn btn-primary" id="btn-package-goods-import-save">Lưu dữ liệu hợp lệ</button></div><div id="package-goods-preview"></div></section>
     </section>`);
+
+  refreshPackageGoodsIcons(view, contentWrapper);
 
   const rerender = () => renderPackageGoodsPanel(view, { contentWrapper, pkg });
   contentWrapper.querySelector("#package-goods-lot-filter")?.addEventListener("change", async (event) => { view._packageGoodsLotFilter = event.target.value; view._packageGoodsPage = 1; await rerender(); });
-  contentWrapper.querySelector("#package-goods-search")?.addEventListener("change", async (event) => { view._packageGoodsSearch = event.target.value; view._packageGoodsPage = 1; await rerender(); });
+  bindPackageGoodsLiveSearch(view, contentWrapper, rerender);
   contentWrapper.querySelectorAll("[data-package-goods-page]").forEach((button) => button.addEventListener("click", async () => {
     const requestedPage = Number(button.dataset.packageGoodsPage);
     if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > pageCount || requestedPage === page) return;

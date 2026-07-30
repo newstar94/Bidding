@@ -17,7 +17,7 @@ function directChildren(criteria, parent) {
 function aggregateChildResults(results) {
   if (results.some((result) => result === "fail")) return "fail";
   if (results.length > 0
-    && results.every((result) => result === "pass" || result === "not_applicable")) {
+    && results.every((result) => ["pass", "acceptable", "not_applicable"].includes(result))) {
     return "pass";
   }
   return "pending";

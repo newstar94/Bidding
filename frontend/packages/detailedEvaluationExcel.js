@@ -198,7 +198,7 @@ function isNumberedRow(row) {
 function markedResult(row, passIndex, failIndex, acceptableIndex = -1) {
   if (failIndex >= 0 && isMarked(rowValue(row, failIndex))) return "fail";
   if (passIndex >= 0 && isMarked(rowValue(row, passIndex))) return "pass";
-  if (acceptableIndex >= 0 && isMarked(rowValue(row, acceptableIndex))) return "pass";
+  if (acceptableIndex >= 0 && isMarked(rowValue(row, acceptableIndex))) return "acceptable";
   return "pending";
 }
 
@@ -535,7 +535,9 @@ function chooseTechnicalSheet(candidates, pkg = {}) {
   })).sort((left, right) => right.count - left.count);
   if (ranked[0].count > ranked[1].count) return ranked[0].sheet;
   const method = normalize(pkg.phuongPhapDanhGia);
-  if (method.includes("cham diem") || method.includes("ket hop") || normalize(pkg.linhVuc) === "tu van") {
+  const technicalMethod = normalize(pkg.technicalEvaluationMethod || pkg.phuongPhapDanhGiaKyThuat);
+  if (technicalMethod.includes("score") || technicalMethod.includes("cham diem")
+    || method.includes("cham diem") || method.includes("ket hop") || normalize(pkg.linhVuc) === "tu van") {
     return candidates.find((sheet) => normalize(sheet.name).endsWith("a")) || candidates[0];
   }
   return candidates.find((sheet) => normalize(sheet.name).endsWith("b")) || candidates.at(-1);

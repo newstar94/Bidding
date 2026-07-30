@@ -339,8 +339,8 @@ export function renderContractVersionDetails(versionId) {
                     `).join("") : '<div class="text-muted"><small>Hợp đồng này chưa có gói thầu trực tiếp liên kết.</small></div>'}
                 </div>
             </div>
-            <section class="detail-sub-section activity-panel" aria-label="Lịch sử thực hiện">
-                <h5 class="detail-sub-title">Lịch sử thực hiện</h5>
+            <section class="detail-sub-section activity-panel" aria-label="Lịch sử chỉnh sửa">
+                <h5 class="detail-sub-title">Lịch sử chỉnh sửa</h5>
                 <div data-contract-activity></div>
             </section>
         </div>

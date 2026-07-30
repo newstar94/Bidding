@@ -95,7 +95,10 @@ export function enhanceButtonSystem(root = document) {
       return;
     }
     if (button.hasAttribute("data-no-icon") || button.classList.contains("btn-no-icon")) return;
-    if (hasVisualIcon(button)) return;
+    if (hasVisualIcon(button)) {
+      renderLucideIcon(button);
+      return;
+    }
     const iconName = inferButtonIcon({
       id: button.id,
       text: button.textContent,

@@ -1734,13 +1734,20 @@ textarea[disabled] {
   color: #ffffff !important;
 }
 .flatpickr-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   border-top: 1px solid var(--border-color);
   background: var(--bg-app);
-  padding: 8px 12px;
+  padding: 12px;
   border-bottom-left-radius: var(--radius-md);
   border-bottom-right-radius: var(--radius-md);
 }
 .flatpickr-footer button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  justify-content: center;
   cursor: pointer;
   font-weight: 600;
   transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
@@ -2136,39 +2143,306 @@ textarea[disabled] {
   min-height: var(--button-height);
 }
 
-.package-goods-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: var(--space-3);
-  margin: var(--space-4) 0;
-  padding: var(--space-4);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-subtle);
+.package-goods-filter .custom-select-container {
+  z-index: 30;
 }
 
-.package-goods-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: var(--ink-muted);
-  font-size: 0.78rem;
-  font-weight: 700;
+.package-goods-filter .custom-select-options {
+  width: 100%;
+  min-width: 100%;
+  box-sizing: border-box;
 }
 
-.package-goods-form textarea {
-  min-height: 72px;
-}
-
-.package-goods-form > div {
-  display: flex;
-  align-items: end;
-  gap: var(--space-2);
+.package-goods-filter .custom-select-options li {
+  white-space: normal;
 }
 
 .package-goods-table {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: none;
+  overflow-x: hidden;
+}
+
+.package-goods-hierarchy-table {
+  min-width: 900px;
+}
+
+.package-goods-preview-table {
+  min-width: 1400px;
+}
+
+.package-goods-table .package-goods-hierarchy-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.package-goods-table .package-goods-hierarchy-table th,
+.package-goods-table .package-goods-hierarchy-table td {
+  padding-right: 10px;
+  padding-left: 10px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.package-goods-col-sequence {
+  width: 6%;
+}
+
+.package-goods-col-lot-code {
+  width: 9%;
+}
+
+.package-goods-col-lot-name {
+  width: 10%;
+}
+
+.package-goods-col-unit {
+  width: 9%;
+}
+
+.package-goods-col-quantity {
+  width: 10%;
+}
+
+.package-goods-col-actions {
+  width: 96px;
+}
+
+.package-goods-hierarchy-table th:first-child,
+.package-goods-hierarchy-table td:first-child {
+  width: 76px;
+}
+
+.package-goods-hierarchy-table .package-goods-lot-row td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-top: 2px solid color-mix(in srgb, var(--primary) 18%, var(--border-color));
+  background: var(--primary-soft);
+  color: var(--text-main);
+  font-weight: 800;
+}
+
+.package-goods-hierarchy-table .package-goods-item-row td {
+  vertical-align: top;
+}
+
+.package-goods-sequence {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.package-goods-name {
+  white-space: normal;
+}
+
+.package-goods-hierarchy-table .package-goods-unit {
+  text-align: center !important;
+}
+
+.package-goods-hierarchy-table .package-goods-quantity {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.package-goods-actions-cell {
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+.package-goods-actions-cell .action-btn-group {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.package-goods-actions-cell .btn {
+  padding-right: 9px;
+  padding-left: 9px;
+}
+
+.package-goods-table .package-goods-item-row--editing td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--primary-soft) 58%, var(--bg-card));
+}
+
+.package-goods-inline-control {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 7px 9px;
+  box-sizing: border-box;
+  font-size: 0.8rem;
+}
+
+.package-goods-table .bf-combobox-native {
+  display: none !important;
+}
+
+.package-goods-table .bf-combobox {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  z-index: 5;
+}
+
+.package-goods-table .bf-combobox.open {
+  z-index: 80;
+}
+
+.package-goods-table:has(.bf-combobox.open) {
+  overflow: visible;
+}
+
+.package-goods-table .package-goods-item-row--editing:has(.bf-combobox.open) {
+  position: relative;
+  z-index: 40;
+}
+
+.package-goods-table .bf-combobox-input {
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  padding: 7px 38px 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  background: var(--bg-card);
+  font-family: var(--font-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.package-goods-table .bf-combobox-input::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+
+.package-goods-table .bf-combobox-input:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+
+.package-goods-table .bf-combobox-input:focus {
+  border-color: var(--brand);
+  outline: none !important;
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+}
+
+.package-goods-table .bf-combobox-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  color: var(--ink-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.package-goods-table .bf-combobox-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--transition-fast);
+}
+
+.package-goods-table .bf-combobox.open .bf-combobox-chevron {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.package-goods-table .bf-combobox-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  max-height: 240px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  color: var(--text-main);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+  list-style: none;
+  z-index: 80;
+}
+
+.package-goods-table .bf-combobox-list[hidden] {
+  display: none;
+}
+
+.package-goods-table .bf-combobox-option,
+.package-goods-table .bf-combobox-empty {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.package-goods-table .bf-combobox-option {
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.package-goods-table .bf-combobox-option:hover,
+.package-goods-table .bf-combobox-option.highlighted {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.package-goods-table .bf-combobox-option.selected {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary-soft) 82%, var(--bg-card));
+  font-weight: 700;
+}
+
+.package-goods-table .bf-combobox-empty {
+  color: var(--ink-muted);
+  text-align: left;
+}
+
+.package-goods-inline-name {
+  min-height: 54px;
+  height: 54px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.package-goods-inline-unit {
+  text-align: center;
+}
+
+.package-goods-inline-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.package-goods-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.package-goods-inline-actions .btn {
+  min-width: 0;
 }
 
 .package-goods-empty-row:hover {
@@ -2272,6 +2546,7 @@ textarea[disabled] {
     justify-content: flex-end;
     overflow-x: auto;
   }
+
 }
 
 @media (max-width: 440px) {
@@ -2283,4 +2558,5 @@ textarea[disabled] {
   .package-goods-filter {
     grid-column: auto;
   }
+
 }

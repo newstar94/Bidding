@@ -202,6 +202,7 @@ export function initCustomSelect(selectId) {
     triggerText = "Th" + coreText;
   }
   const isVersionSelect = select.classList.contains("page-version-select") || select.classList.contains("version-select") || select.classList.contains("phienban-select") || select.classList.contains("modal-version-select") || select.classList.contains("version-droplist");
+  const keepDropdownInline = select.dataset.dropdownInline === "true";
   if (!wrapper) {
     document.querySelectorAll(`body > .custom-select-options[data-parent="${selectId}"]`).forEach((stale) => stale.remove());
     wrapper = document.createElement("div");
@@ -247,6 +248,7 @@ export function initCustomSelect(selectId) {
       wrapper.classList.add("disabled");
     }
     trigger.addEventListener("click", (e) => {
+      e.preventDefault();
       e.stopPropagation();
       if (select.disabled || wrapper.classList.contains("disabled")) return;
       const wasOpen = wrapper.classList.contains("open");
@@ -254,8 +256,12 @@ export function initCustomSelect(selectId) {
       document.dispatchEvent(new Event("click"));
       if (!wasOpen && optionsList) {
         wrapper.classList.add("open");
-        document.body.appendChild(optionsList);
         setRuntimeStyle(optionsList, "display", "block");
+        if (keepDropdownInline) {
+          if (optionsList.parentElement !== wrapper) wrapper.appendChild(optionsList);
+          return;
+        }
+        document.body.appendChild(optionsList);
         const rect = trigger.getBoundingClientRect();
         const scrollX = window.scrollX || window.pageXOffset;
         const scrollY = window.scrollY || window.pageYOffset;
@@ -269,7 +275,7 @@ export function initCustomSelect(selectId) {
           setRuntimeStyle(optionsList, "top", rect.top + scrollY - dropdownHeight - 4 + "px");
         } else {
           wrapper.classList.remove("drop-up");
-          setRuntimeStyle(optionsList, "top", rect.bottom + scrollY + 4 + "px");
+        setRuntimeStyle(optionsList, "top", rect.bottom + scrollY + 4 + "px");
         }
       }
     });

@@ -37,3 +37,16 @@ test("imported public-procurement criterion code is recognized without relying o
 
   assert.deepEqual(adapted.map((criterion) => criterion.code), ["MSC_VALIDITY_1"]);
 });
+
+
+test("Mua sắm công only removes MSC_VALIDITY_2 when its content is a joint-venture agreement", () => {
+  const ordinary = adaptDetailedEvaluationCriteriaForBid([
+    { code: "MSC_VALIDITY_2", name: "Tư cách hợp lệ theo quy định", group: "validity", stt: "2", source: "muasamcong" },
+  ], { loaiNhaThau: "Độc lập" });
+  const jointVentureAgreement = adaptDetailedEvaluationCriteriaForBid([
+    { code: "MSC_VALIDITY_2", name: "Thỏa thuận liên danh (đối với nhà thầu liên danh)", group: "validity", stt: "2", source: "muasamcong" },
+  ], { loaiNhaThau: "Độc lập" });
+
+  assert.equal(ordinary.length, 1);
+  assert.equal(jointVentureAgreement.length, 0);
+});

@@ -6,7 +6,10 @@ import {
   buildReopenedDetailedEvaluationReport,
   normalizeDetailedEvaluationRow,
 } from "./DetailedEvaluationState.js";
-import { aggregateDetailedEvaluationReport } from "./detailedEvaluationAggregation.js";
+import {
+  aggregateDetailedEvaluationAutomatic,
+  aggregateDetailedEvaluationReport,
+} from "./detailedEvaluationAggregation.js";
 
 export async function confirmDetailedEvaluationDiscard(appController) {
   if (!appController._detailedEvaluationDirty) return true;
@@ -49,6 +52,15 @@ export function collectActiveGroupRows(container, report, criteria) {
     let result = choiceValue("ketQua") || value("ketQua") || "pending";
     if (criterion.resultType === "text") result = value("nhanXet").trim() ? "pass" : "pending";
     if (criterion.resultType === "number") result = scoreValue !== "" ? "pass" : "pending";
+    if (criterion.resultType === "score") {
+      const score = scoreValue === "" ? null : Number(scoreValue);
+      const minimum = criterion.minScore === null || criterion.minScore === undefined
+        ? null
+        : Number(criterion.minScore);
+      result = score === null || !Number.isFinite(score)
+        ? "pending"
+        : minimum !== null && Number.isFinite(minimum) && score < minimum ? "fail" : "pass";
+    }
     if (criterion.group === "financial") result = value("noiDungHsdt").trim() ? "pass" : "pending";
     const automaticResult = choiceValue("ketQuaTuDong");
     existing.set(String(criterionId), {
@@ -77,18 +89,24 @@ export function collectConfiguredDetailedEvaluationCriteria(container, criteria 
   const criteriaById = new Map(criteria.map((criterion) => [String(criterion.id), criterion]));
   container.querySelectorAll("[data-detailed-criterion-id]").forEach((element) => {
     const criterionId = String(element.getAttribute("data-detailed-criterion-id") || "");
-    if (criteriaById.get(criterionId)?.isCustom !== true) return;
+    const criterion = criteriaById.get(criterionId);
+    if (!criterion) return;
     const value = (field) => element.querySelector(
       `[data-detailed-config-field="${field}"]`,
     )?.value;
-    const name = value("name");
-    const stt = value("stt");
-    const requirement = value("requirement");
-    if (name === undefined && stt === undefined && requirement === undefined) return;
+    const name = criterion.isCustom === true ? value("name") : undefined;
+    const stt = criterion.isCustom === true ? value("stt") : undefined;
+    const requirement = criterion.isCustom === true ? value("requirement") : undefined;
+    const maxScore = value("maxScore");
+    const minScore = value("minScore");
+    if (name === undefined && stt === undefined && requirement === undefined
+      && maxScore === undefined && minScore === undefined) return;
     updates.set(criterionId, {
       ...(name === undefined ? {} : { name: String(name).trim() }),
       ...(stt === undefined ? {} : { stt: String(stt).trim().replace(/\.$/, "") }),
       ...(requirement === undefined ? {} : { requirement: String(requirement).trim() }),
+      ...(maxScore === undefined ? {} : { maxScore: maxScore === "" ? null : Number(maxScore) }),
+      ...(minScore === undefined ? {} : { minScore: minScore === "" ? null : Number(minScore) }),
     });
   });
   return criteria.map((criterion) => ({
@@ -124,8 +142,59 @@ function updateDerivedResultMarks(container, report, criteria) {
   });
 }
 
+export function updateDetailedEvaluationConclusion(
+  container,
+  report,
+  criteria,
+  activeGroup,
+) {
+  const conclusionRow = container?.querySelector?.("[data-detailed-conclusion-row]");
+  if (!conclusionRow) return false;
+  const expertAggregation = aggregateDetailedEvaluationReport({
+    report: report || {},
+    criteria,
+    groups: [activeGroup],
+  }).byGroup[activeGroup] || {};
+  const expertStatus = expertAggregation.status || "";
+  const automaticStatus = aggregateDetailedEvaluationAutomatic({
+    report: report || {},
+    criteria,
+    group: activeGroup,
+  });
+  const resultByField = {
+    ketQua: expertStatus === "Đạt" ? "pass" : expertStatus === "Không đạt" ? "fail" : "pending",
+    ketQuaTuDong: automaticStatus === "Đạt" ? "pass" : automaticStatus === "Không đạt" ? "fail" : "pending",
+  };
+  conclusionRow.querySelectorAll("[data-detailed-derived-field]").forEach((mark) => {
+    const field = mark.getAttribute("data-detailed-derived-field");
+    const value = mark.getAttribute("data-detailed-derived-value");
+    const marked = resultByField[field] === value;
+    mark.textContent = marked ? "x" : "-";
+    mark.classList.toggle("is-marked", marked);
+    mark.setAttribute(
+      "aria-label",
+      `${mark.getAttribute("data-detailed-derived-label") || "Kết luận"}: ${marked ? "có" : "không"}`,
+    );
+  });
+  const badge = conclusionRow.querySelector("[data-detailed-conclusion-badge]");
+  if (badge) {
+    const label = expertStatus || "Chưa kết luận";
+    const tone = expertStatus === "Đạt"
+      ? "badge-success"
+      : expertStatus === "Không đạt" ? "badge-danger" : "badge-warning";
+    badge.textContent = label;
+    badge.classList.remove("badge-success", "badge-danger", "badge-warning");
+    badge.classList.add(tone);
+  }
+  const score = conclusionRow.querySelector(".detailed-evaluation-conclusion-score");
+  if (score) score.textContent = expertAggregation.score === null || expertAggregation.score === undefined
+    ? ""
+    : `Tổng điểm: ${expertAggregation.score}`;
+  return true;
+}
+
 function assertCommands(commands) {
-  const required = ["close", "render", "save", "importExcel", "addCriterion", "removeCriterion"];
+  const required = ["close", "render", "save", "importExcel", "addCriterion", "removeCriterion", "setTechnicalMethod"];
   if (required.some((name) => typeof commands?.[name] !== "function")) {
     throw new TypeError("Detailed evaluation panel controller requires all command adapters.");
   }
@@ -191,7 +260,12 @@ export function bindDetailedEvaluationPanelController({
   const markDirty = () => { appController._detailedEvaluationDirty = true; };
   root.querySelectorAll("input:not([data-bidder-goods-filter]), select:not([data-bidder-goods-filter]), textarea:not([data-bidder-goods-filter])").forEach((input) => {
     input._bfDetailedDirtyBound = true;
-    input.addEventListener("input", () => { appController._detailedEvaluationDirty = true; });
+    input.addEventListener("input", () => {
+      appController._detailedEvaluationDirty = true;
+      if (input.matches('[data-detailed-field="diem"], [data-detailed-config-field="maxScore"], [data-detailed-config-field="minScore"]')) {
+        captureResultChange();
+      }
+    });
     input.addEventListener("change", () => {
       appController._detailedEvaluationDirty = true;
       if (input.matches('select[data-detailed-field="ketQua"]')) {
@@ -239,22 +313,34 @@ export function bindDetailedEvaluationPanelController({
       chiTietList: collectActiveGroupRows(root, state.report, configuredGroupCriteria),
     }, configuredCriteria);
     updateDerivedResultMarks(root, updatedReport, configuredGroupCriteria);
+    updateDetailedEvaluationConclusion(
+      root,
+      updatedReport,
+      configuredGroupCriteria,
+      appController.selectedDetailedEvaluationTab,
+    );
     applyImmediateSequentialGate(updatedReport, configuredCriteria);
   };
   const handleResultChange = (input) => {
-    if (!input.checked) return;
     const row = input.closest("[data-detailed-criterion-id]");
     const field = input.getAttribute("data-detailed-field");
-    row?.querySelectorAll(
-      `[data-detailed-field="${field}"][data-detailed-result-value]`,
-    ).forEach((candidate) => {
-      if (candidate !== input) candidate.checked = false;
-    });
+    if (input.checked) {
+      row?.querySelectorAll(
+        `[data-detailed-field="${field}"][data-detailed-result-value]`,
+      ).forEach((candidate) => {
+        if (candidate !== input) candidate.checked = false;
+      });
+    }
     captureResultChange();
   };
   root.querySelectorAll("[data-detailed-result-value]").forEach((input) => {
     input._bfDetailedResultBound = true;
     input.addEventListener("change", () => handleResultChange(input));
+  });
+  root.querySelectorAll('input[name="detailed-technical-evaluation-method"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) commands.setTechnicalMethod(input.value);
+    });
   });
   root.addEventListener?.("input", (event) => {
     if (

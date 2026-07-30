@@ -22,6 +22,9 @@ export function mergeConfiguredCriteria(baseCriteria, configuredCriteria) {
       stt: visible.stt,
       sourceStt: visible.stt,
       requirement: visible.requirement || "",
+      resultType: visible.resultType || criterion.resultType,
+      maxScore: visible.maxScore ?? null,
+      minScore: visible.minScore ?? null,
     };
   });
 }
@@ -66,7 +69,9 @@ export async function addDetailedEvaluationCriterion(appController) {
     code: `CUSTOM_${appController._detailedEvaluationCriterionSequence}`,
     name: "",
     group: activeGroup,
-    resultType: "pass_fail",
+    resultType: activeGroup === "technical" && state.context.technicalEvaluationMethod === "score"
+      ? "score"
+      : "pass_fail",
     required: true,
     maxScore: null,
     minScore: null,

@@ -200,7 +200,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
       });
       break;
     case "activity":
-      contentWrapper.innerHTML = trustedHTML('<section class="activity-panel" aria-label="Lịch sử thực hiện"><h3>Lịch sử thực hiện</h3><div data-activity-timeline></div></section>');
+      contentWrapper.innerHTML = trustedHTML('<section class="activity-panel" aria-label="Lịch sử chỉnh sửa"><h3>Lịch sử chỉnh sửa</h3><div data-activity-timeline></div></section>');
       await renderActivityTimeline(contentWrapper.querySelector("[data-activity-timeline]"), {
         targetType: "goithau",
         targetId: gt.id,

@@ -121,10 +121,9 @@ export async function readPackageGoodsExcel(file, context) {
 export function packageGoodsHeaders(includeLots = false) {
   return [
     ...(includeLots ? ["Mã phần lô", "Tên phần lô"] : []),
-    "Mã hàng hóa", "Tên hàng hóa", "Nhóm hàng hóa", "Đơn vị tính", "Số lượng",
-    "Yêu cầu kỹ thuật", "Ký mã hiệu tham chiếu", "Xuất xứ yêu cầu",
-    "Địa điểm giao hàng", "Thời gian giao hàng", "Đơn giá dự toán",
-    "Thành tiền dự toán", "Ghi chú",
+    "Mã hàng hóa", "Tên hàng hóa", "Đơn vị tính", "Số lượng",
+    "Ký mã hiệu tham chiếu", "Xuất xứ yêu cầu",
+    "Địa điểm giao hàng", "Thời gian giao hàng", "Ghi chú",
   ];
 }
 
@@ -139,10 +138,9 @@ export async function downloadPackageGoodsWorkbook(pkg, goods, { template = fals
     const lot = lotById.get(String(item.phanLoId || ""));
     return [
       ...(includeLots ? [lot?.maPhanLo || "", lot?.tenPhanLo || ""] : []),
-      item.maHangHoa || "", item.tenHangHoa || "", item.nhomHangHoa || "", item.donViTinh || "", Number(item.soLuong) || 0,
-      item.yeuCauKyThuat || "", item.kyMaHieuThamChieu || "", item.xuatXuYeuCau || "",
-      item.diaDiemGiaoHang || "", item.thoiGianGiaoHang || "", item.donGiaDuToan === "" ? "" : Number(item.donGiaDuToan || 0),
-      item.thanhTienDuToan === "" ? "" : Number(item.thanhTienDuToan || 0), item.ghiChu || "",
+      item.maHangHoa || "", item.tenHangHoa || "", item.donViTinh || "", Number(item.soLuong) || 0,
+      item.kyMaHieuThamChieu || "", item.xuatXuYeuCau || "",
+      item.diaDiemGiaoHang || "", item.thoiGianGiaoHang || "", item.ghiChu || "",
     ];
   });
   const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);

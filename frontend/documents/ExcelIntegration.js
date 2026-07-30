@@ -15,7 +15,6 @@ import { isBasicExcelImportType, saveBasicExcelImport, saveBusinessExcelImport }
 import { renderExcelPreview } from "../packages/GoiThauModals.js";
 import {
   getActiveEvaluationLotScope,
-  isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
 const IMPORT_STATE_KEY = {
   plan: "kehoach",
@@ -46,12 +45,18 @@ function selectedImportPackageId(controller, type) {
 export function captureExcelImportContext(controller, type) {
   const epoch = Number(controller._excelImportEpoch || 0) + 1;
   controller._excelImportEpoch = epoch;
+  const packageId = selectedImportPackageId(controller, type);
+  const pkg = type === "danhgiahsdt"
+    ? controller.model?.state?.goithau?.find((item) => String(item.id) === packageId)
+    : null;
+  const lotScope = pkg ? getActiveEvaluationLotScope(controller, pkg) : null;
   return Object.freeze({
     type: String(type || ""),
-    packageId: selectedImportPackageId(controller, type),
+    packageId,
     evaluationTab: type === "danhgiahsdt"
       ? String(controller.currentDanhGiaTab || "technical")
       : "",
+    evaluationLotIds: Object.freeze([...(lotScope?.lotIds || [])].map(String).sort()),
     workspaceToken: String(controller.model?.getWorkspaceToken?.() || ""),
     epoch,
   });
@@ -72,6 +77,17 @@ export function excelImportContextIsCurrent(controller, context) {
     context.evaluationTab
     && String(controller.currentDanhGiaTab || "technical") !== context.evaluationTab
   ) return false;
+  if (context.type === "danhgiahsdt") {
+    const pkg = controller.model?.state?.goithau?.find(
+      (item) => String(item.id) === String(context.packageId || ""),
+    );
+    const currentLotIds = [...(getActiveEvaluationLotScope(controller, pkg)?.lotIds || [])]
+      .map(String)
+      .sort();
+    if (currentLotIds.join("\u0000") !== (context.evaluationLotIds || []).join("\u0000")) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -190,18 +206,6 @@ export function triggerExcelImport(type) {
       this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu trước khi nhập file Excel!", "alert-triangle", select);
       return;
     }
-    if (type === "danhgiahsdt") {
-      const pkg = this.model.state.goithau.find((item) => String(item.id) === String(select.value));
-      if (isPartialEvaluationLotScope(getActiveEvaluationLotScope(this, pkg))) {
-        this.view.customAlert(
-          "Chưa hỗ trợ Excel theo đợt lô",
-          "Tệp Excel hiện tại chưa có dấu phạm vi đợt. Vui lòng nhập trực tiếp để bảo đảm không cập nhật nhầm lô ngoài phạm vi.",
-          "alert-triangle",
-          select
-        );
-        return;
-      }
-    }
   }
   if (type === "ketquaqd") {
     const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");
@@ -231,19 +235,6 @@ export function triggerExcelImport(type) {
   fileInput.click();
 }
 export function triggerExcelTemplateDownload(type) {
-  if (type === "danhgiahsdt") {
-    const select = document.getElementById("danhgiahsdt-goithau-select");
-    const pkg = this.model.state.goithau.find((item) => String(item.id) === String(select?.value || ""));
-    if (isPartialEvaluationLotScope(getActiveEvaluationLotScope(this, pkg))) {
-      this.view.customAlert(
-        "Chưa hỗ trợ Excel theo đợt lô",
-        "Chỉ xuất mẫu Excel khi đánh giá toàn bộ phần lô; mẫu theo đợt sẽ được mở khi có manifest phạm vi.",
-        "alert-triangle",
-        select
-      );
-      return;
-    }
-  }
   return Promise.resolve(triggerTemplateDownload(this, type)).catch((error) => (
     this.view.customAlert(
       "Lỗi tải mẫu",

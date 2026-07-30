@@ -65,7 +65,10 @@ def canonicalize_payload_item(table_name, item):
             normalized[field_name] = normalize_business_identifier(
                 normalized[field_name],
                 digits_only=digits_only,
-                preserve_case=(table_name == "nha_thau" and field_name == "maNhaThau"),
+                preserve_case=(table_name, field_name) in {
+                    ("chu_dau_tu", "maChuDauTu"),
+                    ("nha_thau", "maNhaThau"),
+                },
             )
     if table_name == "chu_dau_tu" and normalized.get("tenChuDauTu"):
         normalized["tenChuDauTu"] = normalize_organization_name(normalized["tenChuDauTu"])

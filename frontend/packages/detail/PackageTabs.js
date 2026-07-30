@@ -7,6 +7,22 @@ import {
 import { isLowPriceBidRejected } from "../bidEvaluationLowPriceRules.js";
 import { supportsGoodsWorkflow } from "../goodsWorkflowSupport.js";
 
+const PACKAGE_TAB_ICONS = Object.freeze({
+  preparation: "info",
+  goods: "package",
+  preparation_action: "send",
+  opening: "clipboard-signature",
+  opening_tech: "clipboard-signature",
+  eval_tech: "clipboard-check",
+  qualified: "shield-check",
+  opening_fin: "clipboard-signature",
+  eval_fin: "clipboard-check",
+  result: "trophy",
+  cancel: "circle-x",
+  documents: "folder-open",
+  activity: "history",
+});
+
 export function checkBidQualified(bid, pkg = null) {
   if (!bid) return false;
   if (pkg && isLowPriceBidRejected(pkg, bid)) return false;
@@ -76,12 +92,16 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     || pkg.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
 
   if (isDirectOrSpecial) {
-    tabs.push({ id: "opening", label: "Dữ liệu nhà thầu" });
+    tabs.push({ id: "opening", label: "Dữ liệu nhà thầu", icon: "users" });
     if (bids.length > 0 || hasPersistedResultStatus) tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
   } else if (pkg.trangThai === "Chuẩn bị") {
     tabs.push({ id: "preparation_action", label: "Phát hành E-HSMT" });
   } else if (state.isTwoEnvelope) {
-    tabs.push({ id: "opening_tech", label: pkg.trangThai === "Đang mời thầu" ? "Thông tin mời thầu" : "Biên bản mở E-HSĐXKT" });
+    tabs.push({
+      id: "opening_tech",
+      label: pkg.trangThai === "Đang mời thầu" ? "Thông tin mời thầu" : "Biên bản mở E-HSĐXKT",
+      ...(pkg.trangThai === "Đang mời thầu" ? { icon: "megaphone" } : {}),
+    });
     if (pkg.trangThai !== "Đang mời thầu" && pkg.trangThai !== "Đã mở thầu" && (pkg.trangThai !== "Hủy thầu" || state.isTechEvalSaved)) {
       tabs.push({ id: "eval_tech", label: "Báo cáo đánh giá E-HSĐXKT" });
     }
@@ -98,7 +118,11 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
       tabs.push({ id: "result", label: "Kết quả lựa chọn nhà thầu" });
     }
   } else {
-    tabs.push({ id: "opening", label: pkg.trangThai === "Đang mời thầu" ? "Thông tin mời thầu" : "Biên bản mở thầu" });
+    tabs.push({
+      id: "opening",
+      label: pkg.trangThai === "Đang mời thầu" ? "Thông tin mời thầu" : "Biên bản mở thầu",
+      ...(pkg.trangThai === "Đang mời thầu" ? { icon: "megaphone" } : {}),
+    });
     if (pkg.trangThai !== "Đang mời thầu" && pkg.trangThai !== "Đã mở thầu" && (pkg.trangThai !== "Hủy thầu" || state.isSingleEnvelopeEvalSaved)) {
       tabs.push({ id: "eval_tech", label: "Báo cáo đánh giá E-HSDT" });
     }
@@ -111,6 +135,9 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
     tabs.push({ id: "cancel", label: "Hủy thầu" });
   }
   tabs.push({ id: "documents", label: "Tài liệu" });
-  tabs.push({ id: "activity", label: "Lịch sử thực hiện" });
-  return { tabs, ...state };
+  tabs.push({ id: "activity", label: "Lịch sử chỉnh sửa" });
+  return {
+    tabs: tabs.map((tab) => ({ ...tab, icon: tab.icon || PACKAGE_TAB_ICONS[tab.id] || "circle-dot" })),
+    ...state,
+  };
 }
