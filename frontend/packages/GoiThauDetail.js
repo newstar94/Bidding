@@ -20,6 +20,7 @@ import { renderQualifiedApprovalPanel } from "./detail/QualifiedApprovalPanel.js
 import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
 import { renderPackageGoodsPanel } from "./PackageGoodsWorkflow.js";
 import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
+import { restoreDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
 export { checkBidQualified };
 
 export function resetDetailedEvaluationNavigationForPackageChange(
@@ -70,6 +71,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
     });
     return;
   }
+  restoreDetailedEvaluationNavigation(appController, id);
   const detail = buildPackageDetailViewModel({
     model: this.model,
     packageId: id,

@@ -265,20 +265,6 @@ def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=No
             preference_status = str(item.get("uuDaiMatchStatus", item.get("uu_dai_match_status", "matched")) or "matched")
             if preference_status != "matched":
                 errors.append(_error(item, "uuDaiMatchStatus", "BIDDER_GOODS_PREFERENCE_UNRESOLVED", "Khai báo hoặc mapping Mẫu 15A còn mơ hồ/mâu thuẫn."))
-            manual_override = item.get(
-                "uuDaiManualOverride",
-                item.get("uu_dai_manual_override", False),
-            ) in (True, 1, "1", "true", "True")
-            if manual_override and not str(
-                item.get("uuDaiManualReason", item.get("uu_dai_manual_reason", ""))
-                or ""
-            ).strip():
-                errors.append(_error(
-                    item,
-                    "uuDaiManualReason",
-                    "BIDDER_GOODS_PREFERENCE_OVERRIDE_REASON_REQUIRED",
-                    "Phải nhập lý do khi chỉnh mã ưu đãi thủ công.",
-                ))
             if not requirement_id or str(item.get("mappingStatus") or item.get("mapping_status") or "") != "matched":
                 errors.append(_error(item, "goiThauHangHoaId", "BIDDER_GOODS_UNMATCHED", "Không thể lưu chính thức khi còn hàng hóa chưa ghép."))
             quantity = item.get("khoiLuong", item.get("khoi_luong"))

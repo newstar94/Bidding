@@ -324,8 +324,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         finalUrlAction = encodeURIComponent(nt.maNhaThau) + (isUnique ? "" : "_" + nt.id.substring(0, 8));
       }
     }
-    const path = "/" + finalUrlTab + (finalUrlAction ? "/" + finalUrlAction : "");
-    if (window.location.pathname !== path) {
+    const path = "/" + finalUrlTab + (finalUrlAction ? "/" + finalUrlAction : "")
+      + window.location.search + window.location.hash;
+    const currentPath = window.location.pathname + window.location.search + window.location.hash;
+    if (currentPath !== path) {
       history.replaceState({ tab: tabName, action }, "", path);
     }
   }

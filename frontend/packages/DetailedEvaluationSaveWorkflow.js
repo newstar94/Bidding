@@ -191,7 +191,7 @@ export async function executeDetailedEvaluationSave({
     if (configured.some((group) => !accessible.includes(group))) {
       await appController.view.customAlert(
         "Chưa đủ điều kiện",
-        "Hãy hoàn thành tuần tự các tab và bảo đảm Danh mục hàng hóa đã sẵn sàng.",
+        "Hãy hoàn thành tuần tự các tab và bảo đảm Danh mục hàng hóa dự thầu đã sẵn sàng.",
         "alert-triangle",
       );
       return false;

@@ -1,3 +1,5 @@
+import { deriveBidderGoodsLineTotal } from "./bidderGoodsFinancials.js";
+
 export const PREFERENCE_RATE_BP = Object.freeze({ 0: 0, 1: 750, 2: 1000, 3: 1000, 4: 1200, 5: 1500 });
 
 export const PREFERENCE_DESCRIPTIONS = Object.freeze({
@@ -66,27 +68,12 @@ export function divideMoneyByQuantity(totalValue, quantityValue, precision = 6) 
   return result;
 }
 
-function allocate(amounts, target, keys) {
-  const total = amounts.reduce((sum, value) => sum + value, 0n);
-  if (total === 0n) {
-    if (target !== 0n) throw new RangeError("Không thể phân bổ giá sau giảm giá khi tổng dòng bằng 0.");
-    return amounts.map(() => 0n);
-  }
-  const bases = amounts.map((value) => value * target / total);
-  let remainder = target - bases.reduce((sum, value) => sum + value, 0n);
-  const order = amounts.map((value, index) => ({
-    index,
-    fraction: value * target % total,
-    key: keys[index],
-  })).sort((left, right) => (
-    left.fraction === right.fraction
-      ? left.key.localeCompare(right.key)
-      : left.fraction > right.fraction ? -1 : 1
-  ));
-  for (let cursor = 0; remainder > 0n; cursor += 1, remainder -= 1n) {
-    bases[order[cursor].index] += 1n;
-  }
-  return bases;
+function moneyByRatio(value, numerator, denominator, precision = 6) {
+  const scale = 10n ** BigInt(precision);
+  const scaled = divideHalfUp(value * numerator * scale, denominator);
+  const whole = scaled / scale;
+  const decimals = (scaled % scale).toString().padStart(precision, "0").replace(/0+$/, "");
+  return decimals ? `${whole}.${decimals}` : whole.toString();
 }
 
 export function calculateBidderGoodsPreference(lines, {
@@ -96,39 +83,54 @@ export function calculateBidderGoodsPreference(lines, {
   evaluationBase = null,
 } = {}) {
   if (!Array.isArray(lines) || lines.length === 0) throw new RangeError("Chưa có hàng hóa để tính ưu đãi.");
-  const normalized = lines.map((line, index) => ({
-    line,
-    amount: money(line.thanhTienDuThau, "Thành tiền dự thầu"),
-    code: Number(line.maUuDai ?? 0),
-    intrinsic: preferenceRateBp(line.maUuDai ?? 0),
-    key: `${String(line.sortOrder ?? index).padStart(12, "0")}::${line.id || ""}`,
-  }));
+  const normalized = lines.map((line) => {
+    const derivedTotal = deriveBidderGoodsLineTotal(line);
+    const normalizedLine = derivedTotal === null
+      ? line
+      : { ...line, thanhTienDuThau: derivedTotal };
+    return {
+      line: normalizedLine,
+      amount: money(normalizedLine.thanhTienDuThau, "Thành tiền dự thầu"),
+      code: Number(normalizedLine.maUuDai ?? 0),
+      intrinsic: preferenceRateBp(normalizedLine.maUuDai ?? 0),
+    };
+  });
   const before = normalized.reduce((sum, item) => sum + item.amount, 0n);
-  let after;
-  if (scopeAfterDiscount != null) {
-    after = money(scopeAfterDiscount, "Giá sau giảm giá");
-  } else if (discountRatePercent != null) {
+  let remainingRate;
+  let discountDenominator;
+  if (discountRatePercent != null) {
     const text = String(discountRatePercent).trim().replace(",", ".");
     const match = text.match(/^(\d+)(?:\.(\d{1,4}))?$/);
     if (!match) throw new RangeError("Tỷ lệ giảm giá phải từ 0 đến 100% và tối đa 4 chữ số thập phân.");
     const fraction = (match[2] || "").padEnd(4, "0");
     const discountUnits = BigInt(match[1]) * 10000n + BigInt(fraction || "0");
     if (discountUnits > 1000000n) throw new RangeError("Tỷ lệ giảm giá phải từ 0 đến 100%.");
-    after = divideHalfUp(before * (1000000n - discountUnits), 1000000n);
+    remainingRate = 1000000n - discountUnits;
+    discountDenominator = 1000000n;
   } else {
     const discount = Number(discountRateBp || 0);
     if (!Number.isInteger(discount) || discount < 0 || discount > 10000) {
       throw new RangeError("Tỷ lệ giảm giá basis point phải từ 0 đến 10000.");
     }
-    after = divideHalfUp(before * BigInt(10000 - discount), 10000n);
+    remainingRate = BigInt(10000 - discount);
+    discountDenominator = 10000n;
   }
-  const bases = allocate(normalized.map((item) => item.amount), after, normalized.map((item) => item.key));
+  const bases = normalized.map((item) => divideHalfUp(
+    item.amount * remainingRate,
+    discountDenominator,
+  ));
+  const calculatedAfter = bases.reduce((sum, amount) => sum + amount, 0n);
+  const scopeTotal = scopeAfterDiscount == null
+    ? calculatedAfter
+    : money(scopeAfterDiscount, "Giá sau giảm giá");
   const maximum = Math.max(...normalized.map((item) => item.intrinsic));
   let totalSurcharge = 0n;
   const calculatedLines = normalized.map((item, index) => {
     const surchargeRate = Math.max(0, maximum - item.intrinsic);
     const surcharge = divideHalfUp(bases[index] * BigInt(surchargeRate), 10000n);
     const total = bases[index] + surcharge;
+    const offeredUnitText = String(item.line.donGiaDuThau ?? "").trim();
+    const offeredUnit = /^\d+$/.test(offeredUnitText) ? BigInt(offeredUnitText) : null;
     totalSurcharge += surcharge;
     return {
       ...item.line,
@@ -138,14 +140,20 @@ export function calculateBidderGoodsPreference(lines, {
       giaTriCoSoSauGiamGia: bases[index].toString(),
       giaTriCongUuDai: surcharge.toString(),
       thanhTienSauUuDai: total.toString(),
-      giaDuThauSauUuDai: derivedUnitPrice(total, item.line.khoiLuong),
+      giaDuThauSauUuDai: offeredUnit === null
+        ? derivedUnitPrice(total, item.line.khoiLuong)
+        : moneyByRatio(
+          offeredUnit,
+          remainingRate * BigInt(10000 + surchargeRate),
+          discountDenominator * 10000n,
+        ),
     };
   });
-  const comparison = after + totalSurcharge;
+  const comparison = scopeTotal + totalSurcharge;
   return {
     lines: calculatedLines,
     tongTruocGiamGia: before.toString(),
-    tongSauGiamGia: after.toString(),
+    tongSauGiamGia: scopeTotal.toString(),
     heSoUuDaiCaoNhatBp: maximum,
     tongGiaTriCongUuDai: totalSurcharge.toString(),
     giaSoSanhSauUuDai: comparison.toString(),

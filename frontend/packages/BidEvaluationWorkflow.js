@@ -17,6 +17,7 @@ import {
   filterBidsByEvaluationLotScope,
   resolvePackageResultStatus
 } from "./lotEvaluationScope.js";
+import { syncDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
 
 function getEvaluationScopeStore(controller) {
   if (!controller._evaluationLotScopes) controller._evaluationLotScopes = {};
@@ -111,6 +112,7 @@ export function renderDanhGiaHsdtPanel() {
       isLocked,
       onChange: (nextScope) => {
         scopeStore[evaluationScopeKey(gtId, this.currentDanhGiaTab)] = nextScope;
+        syncDetailedEvaluationNavigation(this, gtId);
         handlePackageSelection();
       }
     });

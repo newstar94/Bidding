@@ -8,7 +8,7 @@ from backend.shared.access_policy import (
     authorize_record_write_from_context,
 )
 from backend.sync.bidder_goods import validate_bidder_goods_batch
-from backend.sync.payload_validation import validate_sync_item
+from backend.sync.payload_validation import validate_sync_item, validate_sync_payload_shape
 from backend.sync.queries import TABLE_KEYS
 
 
@@ -21,6 +21,17 @@ def test_bidder_goods_schema_and_sync_contract():
     assert {"mat_hang_du_thau", "ma_hang_hoa", "phan_nhom"}.isdisjoint(columns)
     assert DB_SCHEMA_VERSION >= 27
     assert {"ma_uu_dai", "gia_tri_cong_uu_dai", "thanh_tien_sau_uu_dai", "trang_thai_uu_dai"} <= set(columns)
+
+
+def test_sync_payload_accepts_bidder_goods_manual_override_as_boolean():
+    errors = validate_sync_payload_shape({
+        "hanghoaduthaunhathau": [{"uuDaiManualOverride": True}],
+    })
+
+    assert not any(
+        error["field"] == "hanghoaduthaunhathau[0].uuDaiManualOverride"
+        for error in errors
+    )
 
 
 def test_v27_migration_is_idempotent_and_backfills_legacy_preference_code():
@@ -69,6 +80,20 @@ def test_bidder_goods_payload_allows_draft_but_requires_official_mapping():
         },
     )
     assert any("ghép" in error.lower() for error in errors)
+
+
+def test_backend_rejects_negative_bidder_goods_unit_price():
+    _item, errors, _ = validate_sync_item(
+        "hang_hoa_du_thau_nha_thau",
+        {
+            "goiThauId": "package-1",
+            "thongTinMoThauId": "opening-1",
+            "danhMucHangHoa": "Hàng A",
+            "donGiaDuThau": "-1",
+            "isDraft": True,
+        },
+    )
+    assert any("Đơn giá dự thầu" in error and "không âm" in error for error in errors)
 
 
 def _connection():
@@ -225,7 +250,7 @@ def test_backend_rejects_wrong_lot_duplicates_incomplete_rows_and_bad_totals():
     )
 
 
-def test_backend_requires_reason_for_manual_preference_override():
+def test_backend_allows_manual_preference_override_without_reason():
     connection = _connection()
     item = {
         "id": "offered-1",
@@ -241,7 +266,7 @@ def test_backend_requires_reason_for_manual_preference_override():
         "isDraft": False,
     }
     errors = validate_bidder_goods_batch(connection.cursor(), "org-1", [item])
-    assert any(
+    assert not any(
         error["code"] == "BIDDER_GOODS_PREFERENCE_OVERRIDE_REASON_REQUIRED"
         for error in errors
     )

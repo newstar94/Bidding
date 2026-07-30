@@ -95,7 +95,7 @@ MAX_SYNC_TEXT_LENGTH = 100_000
 MAX_SYNC_CHILD_ITEMS = 500
 BOOLEAN_COLUMNS = {
     "is_latest", "is_tong_muc_tu_dong", "is_thuoc", "is_rebid", "co_qd_chi_dinh",
-    "is_draft",
+    "is_draft", "uu_dai_manual_override",
 }
 TABLE_KEYS_FOR_VALIDATION = TABLE_KEYS
 CHILD_MONEY_FIELDS = {

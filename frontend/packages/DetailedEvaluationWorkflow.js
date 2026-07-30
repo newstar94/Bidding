@@ -30,12 +30,17 @@ import {
 import {
   bindBidderGoodsPanel,
   buildBidderGoodsPanelState,
+  initializeBidderGoodsFromRequirements,
 } from "./BidderGoodsWorkflow.js";
 import { BIDDER_GOODS_TAB } from "./bidderGoodsSelectors.js";
 import {
   getForcedTechnicalEvaluationMethod,
   normalizeTechnicalEvaluationMethod,
 } from "./technicalEvaluationMethod.js";
+import {
+  clearDetailedEvaluationNavigation,
+  syncDetailedEvaluationNavigation,
+} from "./detailedEvaluationNavigation.js";
 
 
 export {
@@ -80,6 +85,7 @@ export async function closeDetailedEvaluation() {
   if (!await confirmDetailedEvaluationDiscard(this)) return false;
   this.currentEvaluationView = "summary";
   this._detailedEvaluationDirty = false;
+  clearDetailedEvaluationNavigation();
   const summary = this.view.getActiveElement("danhgiahsdt-summary-view");
   const detail = this.view.getActiveElement("danhgiahsdt-detail-view");
   summary?.classList.remove("is-hidden");
@@ -106,9 +112,11 @@ export async function renderDetailedEvaluation() {
     && isDetailedEvaluationSummaryOwned(state.report)
     ? "Báo cáo chi tiết đang được chỉnh sửa. Kết quả tổng hợp chưa được cập nhật."
     : "";
-  const bidderGoodsState = this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB
-    ? buildBidderGoodsPanelState(this, state)
-    : null;
+  let bidderGoodsState = null;
+  if (this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB) {
+    initializeBidderGoodsFromRequirements(this, state);
+    bidderGoodsState = buildBidderGoodsPanelState(this, state);
+  }
   renderDetailedEvaluationPanel(detail, {
     ...state,
     activeGroup: this.selectedDetailedEvaluationTab,
@@ -134,6 +142,7 @@ export async function renderDetailedEvaluation() {
   if (this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB) {
     bindBidderGoodsPanel(this, state, detail);
   }
+  syncDetailedEvaluationNavigation(this, state.pkg.id);
 }
 
 export async function importDetailedEvaluationExcel(file) {

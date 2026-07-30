@@ -15,6 +15,9 @@ export function getBidderGoodsRequirements(model, pkg, bid) {
   return (model?.state?.goithauhanghoa || []).filter((item) => (
     String(item.goiThauId || "") === String(pkg?.id || "")
     && String(item.phanLoId || "") === String(lot?.id || "")
+  )).sort((left, right) => (
+    Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+    || String(left.id || "").localeCompare(String(right.id || ""))
   ));
 }
 

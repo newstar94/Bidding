@@ -6,7 +6,7 @@ calculation is deterministic and does not use binary floating point.
 
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
 
 
 PREFERENCE_RATE_BP = {0: 0, 1: 750, 2: 1000, 3: 1000, 4: 1200, 5: 1500}
@@ -32,25 +32,6 @@ def _integer(value, label):
     return int(parsed)
 
 
-def _allocate_proportionally(amounts, target, stable_keys):
-    """Largest-remainder allocation with stable sort-order/id tie breaking."""
-    total = sum(amounts)
-    if total == 0:
-        if target != 0:
-            raise ValueError("Không thể phân bổ giá sau giảm giá khi tổng dòng bằng 0.")
-        return [0] * len(amounts)
-    exact = [Decimal(value) * Decimal(target) / Decimal(total) for value in amounts]
-    allocated = [int(value.to_integral_value(rounding=ROUND_FLOOR)) for value in exact]
-    remainder = target - sum(allocated)
-    order = sorted(
-        range(len(amounts)),
-        key=lambda index: (-(exact[index] - allocated[index]), stable_keys[index]),
-    )
-    for index in order[:remainder]:
-        allocated[index] += 1
-    return allocated
-
-
 def calculate_goods_preference(lines, *, discount_rate=0, scope_after_discount=None,
                                evaluation_base=None):
     """Return authoritative per-line and scope preference breakdown."""
@@ -70,19 +51,20 @@ def calculate_goods_preference(lines, *, discount_rate=0, scope_after_discount=N
         raise ValueError("Chưa có hàng hóa để tính ưu đãi.")
 
     before_discount = sum(item[1] for item in normalized)
-    if scope_after_discount is None:
-        rate = Decimal(str(discount_rate or 0))
-        if not rate.is_finite() or rate < 0 or rate > 100:
-            raise ValueError("Tỷ lệ giảm giá phải từ 0 đến 100%.")
-        scope_after_discount = int(
-            (Decimal(before_discount) * (Decimal(100) - rate) / Decimal(100))
-            .quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    rate = Decimal(str(discount_rate or 0))
+    if not rate.is_finite() or rate < 0 or rate > 100:
+        raise ValueError("Tỷ lệ giảm giá phải từ 0 đến 100%.")
+    remaining_rate = (Decimal(100) - rate) / Decimal(100)
+    bases = [int(
+        (Decimal(item[1]) * remaining_rate).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP,
         )
-    else:
-        scope_after_discount = _integer(scope_after_discount, "Giá sau giảm giá")
-    bases = _allocate_proportionally(
-        [item[1] for item in normalized], scope_after_discount,
-        [item[4] for item in normalized],
+    ) for item in normalized]
+    calculated_scope_after_discount = sum(bases)
+    scope_after_discount = (
+        calculated_scope_after_discount
+        if scope_after_discount is None
+        else _integer(scope_after_discount, "Giá sau giảm giá")
     )
     maximum = max(item[3] for item in normalized)
     results = []
@@ -94,11 +76,19 @@ def calculate_goods_preference(lines, *, discount_rate=0, scope_after_discount=N
             .quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         )
         total_surcharge += surcharge
+        raw_unit_price = line.get("donGiaDuThau", line.get("don_gia_du_thau"))
         quantity = Decimal(str(line.get("khoiLuong", line.get("khoi_luong", 0)) or 0))
-        unit_after = (
-            str((Decimal(base + surcharge) / quantity).normalize())
-            if quantity.is_finite() and quantity > 0 else None
-        )
+        if raw_unit_price not in (None, ""):
+            unit_price = Decimal(str(raw_unit_price))
+            unit_after = str((
+                unit_price * remaining_rate
+                * (Decimal(10000 + surcharge_rate) / Decimal(10000))
+            ).normalize()) if unit_price.is_finite() and unit_price >= 0 else None
+        else:
+            unit_after = (
+                str((Decimal(base + surcharge) / quantity).normalize())
+                if quantity.is_finite() and quantity > 0 else None
+            )
         results.append({
             "id": line.get("id"),
             "maUuDai": code,

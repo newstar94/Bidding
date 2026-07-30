@@ -3,6 +3,8 @@ import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect } from "../../shared/view_helpers.js";
 import { selectPackageDetailTab } from "./PackageDetailState.js";
 import { renderWorkflowActions } from "./WorkflowActions.js";
+import { getAppController } from "../../app/controllerRef.js";
+import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigation.js";
 
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
   if (!container) return;
@@ -65,6 +67,12 @@ export function bindPackageDetailChrome(view, detail) {
     detail.tabs,
     detail.activeTab,
     async (tabId) => {
+      const appController = getAppController();
+      if (appController?.currentEvaluationView === "contractor-detail") {
+        appController.currentEvaluationView = "summary";
+        appController._detailedEvaluationDirty = false;
+        clearDetailedEvaluationNavigation();
+      }
       view._inPlaceEditMode = false;
       view._biddingInfoEditMode = false;
       const packageId = selectPackageDetailTab(view, tabId, detail.pkg, view.model);

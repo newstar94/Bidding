@@ -1,6 +1,7 @@
 import { readExcelWorkbookSheets } from "../documents/excelFileReader.js";
 import { generateRecordId, generateUUID } from "../shared/idUtils.js";
 import { persistAndSync } from "../shared/MutationService.js";
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import {
   downloadBidderGoodsTemplate,
@@ -9,10 +10,14 @@ import {
 } from "./BidderGoodsExcel.js";
 import { mapBidderGoodsRows, applyManualBidderGoodsMapping } from "./bidderGoodsMapping.js";
 import {
+  withDerivedBidderGoodsFinancials,
+} from "./bidderGoodsFinancials.js";
+import {
   getBidderGoodsForBid,
   getBidderGoodsRequirements,
 } from "./bidderGoodsSelectors.js";
 import {
+  bidderGoodsRowFieldErrors,
   summarizeBidderGoods,
   validateBidderGoodsRow,
   validateBidderGoodsSubmission,
@@ -24,6 +29,26 @@ import {
 } from "./bidderGoodsPreference.js";
 
 const PAGE_SIZE = 20;
+const BIDDER_GOODS_EDITABLE_FIELDS = new Set([
+  "kyMaHieu",
+  "nhanHieu",
+  "namSanXuat",
+  "xuatXu",
+  "hangSanXuat",
+  "cauHinhTinhNangKyThuat",
+  "maHs",
+  "donGiaDuThau",
+]);
+
+function bidderGoodsPaginationPages(currentPage, totalPages, maxVisiblePages = 5) {
+  const safeTotal = Math.max(1, Number(totalPages) || 1);
+  const safeCurrent = Math.min(safeTotal, Math.max(1, Number(currentPage) || 1));
+  const visibleCount = Math.max(1, Number(maxVisiblePages) || 1);
+  let startPage = Math.max(1, safeCurrent - Math.floor(visibleCount / 2));
+  const endPage = Math.min(safeTotal, startPage + visibleCount - 1);
+  startPage = Math.max(1, endPage - visibleCount + 1);
+  return Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+}
 
 function currency(value) {
   const integerText = String(value ?? "").trim();
@@ -40,11 +65,31 @@ function currency(value) {
     : "--";
 }
 
+function quantity(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric)
+    ? new Intl.NumberFormat("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 4 }).format(numeric)
+    : "—";
+}
+
+export function sanitizeBidderGoodsMoneyInput(value) {
+  const text = String(value ?? "");
+  return /^\d*$/.test(text) ? text : "";
+}
+
 function lotForBid(pkg, bid) {
   const code = String(bid?.maPhanLo || "").trim().toLocaleLowerCase("vi");
   return (pkg?.phanLoList || []).find(
     (item) => String(item.maPhanLo || "").trim().toLocaleLowerCase("vi") === code,
   ) || null;
+}
+
+function requirementSequence(pkg, lot, index) {
+  if (String(pkg?.phanLo || "") !== "Có") return String(index + 1);
+  const lotIndex = (pkg?.phanLoList || []).findIndex(
+    (item) => String(item.id || "") === String(lot?.id || ""),
+  );
+  return `${lotIndex >= 0 ? lotIndex + 1 : 1}.${index + 1}`;
 }
 
 function invalidateOpeningPreference(bid) {
@@ -54,10 +99,110 @@ function invalidateOpeningPreference(bid) {
     : "draft";
 }
 
+export function initializeBidderGoodsFromRequirements(controller, detailedState) {
+  if (!controller?.model?.state || !detailedState?.bid || detailedState.readOnly) return 0;
+  const requirements = getBidderGoodsRequirements(
+    controller.model,
+    detailedState.pkg,
+    detailedState.bid,
+  );
+  if (!requirements.length) return 0;
+  const lot = lotForBid(detailedState.pkg, detailedState.bid);
+  const requirementById = new Map(requirements.map((item, index) => [
+    String(item.id),
+    { item, index },
+  ]));
+  let changed = false;
+  const allRows = controller.model.state.hanghoaduthaunhathau || [];
+  const hydratedRows = allRows.map((row) => {
+    if (String(row.goiThauId || "") !== String(detailedState.pkg.id || "")
+      || String(row.thongTinMoThauId || "") !== String(detailedState.bid.id || "")) return row;
+    const matched = requirementById.get(String(row.goiThauHangHoaId || ""));
+    if (!matched) return row;
+    const { item, index } = matched;
+    const next = {
+      ...row,
+      phanLoId: row.phanLoId || item.phanLoId || null,
+      sttNguon: row.sttNguon || requirementSequence(detailedState.pkg, lot, index),
+      maPhanLoNguon: row.maPhanLoNguon || lot?.maPhanLo || "",
+      tenPhanLoNguon: row.tenPhanLoNguon || lot?.tenPhanLo || "",
+      danhMucHangHoa: String(row.danhMucHangHoa || "").trim() ? row.danhMucHangHoa : item.tenHangHoa || "",
+      donViTinh: String(row.donViTinh || "").trim() ? row.donViTinh : item.donViTinh || "",
+      khoiLuong: row.khoiLuong === null || row.khoiLuong === undefined || row.khoiLuong === ""
+        ? item.soLuong ?? null
+        : row.khoiLuong,
+    };
+    if (["phanLoId", "sttNguon", "maPhanLoNguon", "tenPhanLoNguon", "danhMucHangHoa", "donViTinh", "khoiLuong"]
+      .some((field) => String(next[field] ?? "") !== String(row[field] ?? ""))) changed = true;
+    return next;
+  });
+  const coveredRequirementIds = new Set(hydratedRows.filter((row) => (
+    String(row.goiThauId || "") === String(detailedState.pkg.id || "")
+    && String(row.thongTinMoThauId || "") === String(detailedState.bid.id || "")
+  )).map((row) => String(row.goiThauHangHoaId || "")).filter(Boolean));
+  const additions = requirements.flatMap((item, index) => {
+    if (coveredRequirementIds.has(String(item.id))) return [];
+    return [{
+      id: generateRecordId("hanghoaduthaunhathau"),
+      goiThauId: detailedState.pkg.id,
+      thongTinMoThauId: detailedState.bid.id,
+      phanLoId: item.phanLoId || null,
+      goiThauHangHoaId: item.id,
+      sttNguon: requirementSequence(detailedState.pkg, lot, index),
+      maPhanLoNguon: lot?.maPhanLo || "",
+      tenPhanLoNguon: lot?.tenPhanLo || "",
+      danhMucHangHoa: item.tenHangHoa || "",
+      kyMaHieu: "",
+      nhanHieu: "",
+      namSanXuat: "",
+      xuatXu: "",
+      hangSanXuat: "",
+      cauHinhTinhNangKyThuat: "",
+      donViTinh: item.donViTinh || "",
+      khoiLuong: item.soLuong ?? null,
+      maHs: "",
+      donGiaDuThau: null,
+      thanhTienDuThau: null,
+      maUuDai: 0,
+      mappingMethod: "requirement_seed",
+      mappingStatus: "matched",
+      sortOrder: Number(item.sortOrder ?? index),
+      importBatchId: "",
+      isDraft: true,
+      trangThaiUuDai: "draft",
+    }];
+  });
+  if (!changed && !additions.length) return 0;
+  controller.model.state.hanghoaduthaunhathau = [...hydratedRows, ...additions];
+  invalidateOpeningPreference(detailedState.bid);
+  return additions.length;
+}
+
+export function updateBidderGoodsPreferenceCode(rows, rowId, code, {
+  actorId = "",
+  updatedAt = new Date().toISOString(),
+} = {}) {
+  return (rows || []).map((row) => String(row.id) === String(rowId) ? {
+    ...row,
+    maUuDai: Number(code),
+    uuDaiMatchMethod: "manual",
+    uuDaiMatchStatus: "matched",
+    uuDaiManualOverride: true,
+    uuDaiManualActorId: actorId,
+    uuDaiManualUpdatedAt: updatedAt,
+    uuDaiManualReason: "",
+    preferenceWarnings: [],
+    trangThaiUuDai: "draft",
+    isDraft: true,
+  } : row);
+}
+
 export function buildBidderGoodsPanelState(controller, detailedState) {
   const { pkg, bid } = detailedState;
   const requirements = bid ? getBidderGoodsRequirements(controller.model, pkg, bid) : [];
-  const rows = bid ? getBidderGoodsForBid(controller.model, pkg, bid) : [];
+  const rows = bid
+    ? getBidderGoodsForBid(controller.model, pkg, bid).map(withDerivedBidderGoodsFinancials)
+    : [];
   let preferenceCalculation = null;
   try {
     preferenceCalculation = rows.length ? calculateBidderGoodsPreference(rows, {
@@ -70,10 +215,11 @@ export function buildBidderGoodsPanelState(controller, detailedState) {
   }
   const displayRows = preferenceCalculation?.lines || rows;
   const summary = summarizeBidderGoods({ rows, requirements, bidPrice: bid?.giaDuThau });
-  const filter = String(controller._bidderGoodsSearch || "").trim().toLocaleLowerCase("vi");
-  const filteredRows = filter
+  const filter = String(controller._bidderGoodsSearch || "");
+  const normalizedFilter = filter.trim().toLocaleLowerCase("vi");
+  const filteredRows = normalizedFilter
     ? displayRows.filter((row) => [row.sttNguon, row.danhMucHangHoa, row.kyMaHieu, row.nhanHieu, row.maHs]
-      .some((value) => String(value || "").toLocaleLowerCase("vi").includes(filter)))
+      .some((value) => String(value || "").toLocaleLowerCase("vi").includes(normalizedFilter)))
     : displayRows;
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   controller._bidderGoodsPage = Math.min(Math.max(1, Number(controller._bidderGoodsPage) || 1), pageCount);
@@ -89,9 +235,14 @@ export function buildBidderGoodsPanelState(controller, detailedState) {
     summary,
     preferenceCalculation,
     pageRows,
+    filteredCount: filteredRows.length,
     pageCount,
     page: controller._bidderGoodsPage,
     filter,
+    editingId: detailedState.readOnly ? "" : String(controller._bidderGoodsEditingId || ""),
+    validationAttempted: controller._bidderGoodsValidationScopeId === String(bid?.id || ""),
+    validationOfficial: controller._bidderGoodsValidationScopeId === String(bid?.id || "")
+      && controller._bidderGoodsValidationOfficial === true,
     importPreview: controller._bidderGoodsImportPreview || null,
     busy: controller._bidderGoodsBusy || "",
     error: controller._bidderGoodsError || "",
@@ -113,59 +264,164 @@ function mappingBadge(status) {
   return `<span class="badge ${className}">${mappingLabel(status)}</span>`;
 }
 
-function rowMarkup(row, state) {
-  const disabled = state.readOnly ? "disabled" : "";
-  const rowErrors = validateBidderGoodsRow(row, { official: false });
+function preferenceStatus(status, hasCalculation) {
+  const normalized = String(status || "").trim().toLocaleLowerCase("vi");
+  const labels = {
+    draft: ["Bản nháp", "badge-warning"],
+    stale: ["Cần tính lại", "badge-warning"],
+    ready: ["Đã tính", "badge-success"],
+  };
+  return labels[normalized]
+    || (hasCalculation ? ["Xem trước", "badge-info"] : ["Chưa tính", "badge-warning"]);
+}
+
+function rowMarkup(row, state, { hasLotColumns = false } = {}) {
+  const isEditing = !state.readOnly && String(state.editingId || "") === String(row.id || "");
+  const fieldErrors = state.validationAttempted
+    ? bidderGoodsRowFieldErrors(row, { official: state.validationOfficial })
+    : {};
+  const rowErrors = Object.values(fieldErrors).flat();
+  const fieldError = (field) => fieldErrors[field]?.[0] || "";
+  const errorId = (field) => `bidder-goods-error-${String(row.id || "row").replace(/[^a-zA-Z0-9_-]/g, "-")}-${field}`;
+  const validationAttributes = (field) => fieldError(field)
+    ? ` aria-invalid="true" aria-describedby="${errorId(field)}"`
+    : ' aria-invalid="false"';
+  const validationMessage = (field) => fieldError(field)
+    ? `<div id="${errorId(field)}" class="field-error field-error-sm bidder-goods-field-error" role="alert">${escapeHtml(fieldError(field))}</div>`
+    : "";
+  const displayValue = (field, { money = false, multiline = false } = {}) => {
+    const rawValue = row[field];
+    const value = money
+      ? rawValue === null || rawValue === undefined || rawValue === "" ? "—" : currency(rawValue)
+      : escapeHtml(rawValue ?? "") || "—";
+    const className = `bidder-goods-readonly-value bidder-goods-offered-value ${fieldError(field) ? "is-invalid" : ""}`;
+    const content = multiline
+      ? `<div class="${className} bidder-goods-technical-copy">${value}</div>`
+      : `<span class="${className}">${value}</span>`;
+    return `${content}${validationMessage(field)}`;
+  };
   const textValue = (field, label, { multiline = false } = {}) => {
     const value = escapeHtml(row[field] ?? "");
-    if (state.readOnly) return value || "--";
+    if (!isEditing) return displayValue(field, { multiline });
     return multiline
-      ? `<textarea class="form-control" data-bidder-goods-field="${field}" aria-label="${escapeHtml(label)}">${value}</textarea>`
-      : `<input class="form-control" data-bidder-goods-field="${field}" aria-label="${escapeHtml(label)}" value="${value}">`;
+      ? `<textarea class="form-control ${fieldError(field) ? "is-invalid" : ""}" data-bidder-goods-field="${field}" aria-label="${escapeHtml(label)}"${validationAttributes(field)}>${value}</textarea>${validationMessage(field)}`
+      : `<input class="form-control ${fieldError(field) ? "is-invalid" : ""}" data-bidder-goods-field="${field}" aria-label="${escapeHtml(label)}" value="${value}"${validationAttributes(field)}>${validationMessage(field)}`;
   };
   const numberValue = (field, label, { money = false } = {}) => {
-    if (state.readOnly) return money ? currency(row[field]) : escapeHtml(row[field] ?? "--");
-    return `<input class="form-control numeric-input" type="number" min="0" ${money ? "step=\"1\"" : "step=\"any\""} data-bidder-goods-field="${field}" aria-label="${escapeHtml(label)}" value="${escapeHtml(row[field] ?? "")}">`;
+    if (!isEditing) return displayValue(field, { money });
+    const moneyAttributes = money
+      ? 'step="1" inputmode="numeric" pattern="[0-9]*" data-bidder-goods-nonnegative-money'
+      : 'step="any"';
+    return `<input class="form-control numeric-input ${fieldError(field) ? "is-invalid" : ""}" type="number" min="0" ${moneyAttributes} data-bidder-goods-field="${field}" aria-label="${escapeHtml(label)}" value="${escapeHtml(row[field] ?? "")}"${validationAttributes(field)}>${validationMessage(field)}`;
   };
-  const requirements = state.requirements.filter(
-    (item) => String(item.phanLoId || "") === String(row.phanLoId || ""),
-  );
-  const preferenceSource = row.uuDaiManualOverride
-    ? "Thủ công"
-    : row.uuDaiSourceSheet ? "15A" : "Không có 15A";
+  const needsMapping = row.mappingStatus !== "matched";
   const preferenceTooltip = Number(row.maUuDai ?? 0) === 5
     ? `${PREFERENCE_DESCRIPTIONS[5]}. ${INNOVATION_PREFERENCE_HELP}`
     : PREFERENCE_DESCRIPTIONS[row.maUuDai ?? 0];
-  const preferenceControl = state.readOnly
-    ? `<span class="badge badge-info" title="${escapeHtml(preferenceTooltip)}">${row.maUuDai ?? 0}</span>`
-    : `<select class="form-control" data-bidder-goods-preference title="${escapeHtml(preferenceTooltip)}" aria-label="Mã ưu đãi cho ${escapeHtml(row.danhMucHangHoa)}">${Object.keys(PREFERENCE_DESCRIPTIONS).map((code) => `<option value="${code}" ${Number(code) === Number(row.maUuDai ?? 0) ? "selected" : ""}>${code} – ${escapeHtml(PREFERENCE_DESCRIPTIONS[code])}</option>`).join("")}</select>`;
+  const preferenceControl = !isEditing
+    ? `<span class="bidder-goods-readonly-value bidder-goods-offered-value" title="${escapeHtml(preferenceTooltip)}">${row.maUuDai ?? 0} – ${escapeHtml(PREFERENCE_DESCRIPTIONS[row.maUuDai ?? 0] || "Chưa xác định")}</span>${validationMessage("maUuDai")}`
+    : `<select class="form-control ${fieldError("maUuDai") ? "is-invalid" : ""}" data-bidder-goods-preference title="${escapeHtml(preferenceTooltip)}" aria-label="Mã ưu đãi cho ${escapeHtml(row.danhMucHangHoa)}"${validationAttributes("maUuDai")}>${Object.keys(PREFERENCE_DESCRIPTIONS).map((code) => `<option value="${code}" ${Number(code) === Number(row.maUuDai ?? 0) ? "selected" : ""}>${code} – ${escapeHtml(PREFERENCE_DESCRIPTIONS[code])}</option>`).join("")}</select>${validationMessage("maUuDai")}`;
   return `
-    <tr data-bidder-goods-id="${escapeHtml(row.id)}" class="${rowErrors.length ? "has-validation-error" : ""}">
-      <td class="bidder-goods-sticky-stt">${escapeHtml(row.sttNguon || "--")}</td>
-      <td class="bidder-goods-sticky-name"><strong>${escapeHtml(row.danhMucHangHoa || "--")}</strong></td>
+    <tr data-bidder-goods-id="${escapeHtml(row.id)}" class="bidder-goods-item-row ${rowErrors.length ? "has-validation-error" : ""}">
+      <td class="bidder-goods-sticky-stt"><strong>${escapeHtml(row.sttNguon || "—")}</strong></td>
+      ${hasLotColumns ? '<td class="bidder-goods-lot-spacer" aria-label="Thuộc phần lô ở dòng phía trên"></td><td class="bidder-goods-lot-spacer" aria-label="Thuộc phần lô ở dòng phía trên"></td>' : ""}
+      <td class="bidder-goods-sticky-name">
+        <strong>${escapeHtml(row.danhMucHangHoa || "—")}</strong>
+        ${needsMapping && !state.readOnly ? `<button type="button" class="btn btn-sm btn-outline bidder-goods-mapping-trigger ${fieldError("goiThauHangHoaId") ? "is-invalid" : ""}" data-bidder-goods-open-mapping title="Chọn danh mục yêu cầu tương ứng"${validationAttributes("goiThauHangHoaId")}><i data-lucide="link-2" aria-hidden="true"></i> Chọn đối chiếu</button>` : ""}
+        ${validationMessage("danhMucHangHoa")}
+        ${validationMessage("goiThauHangHoaId")}
+      </td>
       <td>${textValue("kyMaHieu", "Ký mã hiệu")}</td>
       <td>${textValue("nhanHieu", "Nhãn hiệu")}</td>
       <td>${textValue("namSanXuat", "Năm sản xuất")}</td>
       <td>${textValue("xuatXu", "Xuất xứ")}</td>
       <td>${textValue("hangSanXuat", "Hãng sản xuất")}</td>
-      <td>${state.readOnly ? `<details class="bidder-goods-technical"><summary>Xem thông số</summary><div>${escapeHtml(row.cauHinhTinhNangKyThuat || "Chưa có thông số")}</div></details>` : textValue("cauHinhTinhNangKyThuat", "Cấu hình, tính năng kỹ thuật", { multiline: true })}</td>
-      <td>${textValue("donViTinh", "Đơn vị tính")}</td>
-      <td class="numeric-cell">${numberValue("khoiLuong", "Khối lượng")}</td>
+      <td class="bidder-goods-item-technical">${textValue("cauHinhTinhNangKyThuat", "Cấu hình, tính năng kỹ thuật", { multiline: true })}</td>
+      <td class="bidder-goods-item-unit"><span class="bidder-goods-readonly-value bidder-goods-prefilled-value" title="Tự điền từ danh mục hàng hóa của gói thầu">${escapeHtml(row.donViTinh || "—")}</span></td>
+      <td class="bidder-goods-item-quantity numeric-cell"><span class="bidder-goods-readonly-value bidder-goods-prefilled-value" title="Tự điền từ danh mục hàng hóa của gói thầu">${quantity(row.khoiLuong)}</span>${validationMessage("khoiLuong")}</td>
       <td>${textValue("maHs", "Mã HS")}</td>
       <td class="numeric-cell">${numberValue("donGiaDuThau", "Đơn giá dự thầu", { money: true })}</td>
-      <td class="numeric-cell">${numberValue("thanhTienDuThau", "Thành tiền", { money: true })}${rowErrors.length ? `<div class="field-error" title="${escapeHtml(rowErrors.join(" "))}">${escapeHtml(rowErrors[0])}</div>` : ""}</td>
-      <td>${preferenceControl}<small>${escapeHtml(preferenceSource)}</small>${row.preferenceWarnings?.length ? `<div class="field-error">${escapeHtml(row.preferenceWarnings[0].message)}</div>` : ""}</td>
-      <td class="numeric-cell" title="Đơn giá so sánh sau giảm giá và ưu đãi">${row.giaDuThauSauUuDai == null ? "—" : currency(row.giaDuThauSauUuDai)}</td>
-      <td class="numeric-cell">${row.thanhTienSauUuDai == null ? "—" : currency(row.thanhTienSauUuDai)}</td>
-      <td>
-        <select class="form-control bidder-goods-mapping-select" data-bidder-goods-mapping ${disabled} aria-label="Ghép hàng hóa yêu cầu cho ${escapeHtml(row.danhMucHangHoa)}">
-          <option value="">-- Chưa ghép --</option>
-          ${requirements.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(row.goiThauHangHoaId || "") ? "selected" : ""}>${escapeHtml(`${item.maHangHoa || ""} – ${item.tenHangHoa || ""}`)}</option>`).join("")}
-        </select>
-        ${mappingBadge(row.mappingStatus)}
-      </td>
-      <td>${state.readOnly ? "" : `<button type="button" class="btn btn-text compact-action" data-bidder-goods-delete aria-label="Xóa ${escapeHtml(row.danhMucHangHoa)}"><i data-lucide="trash-2" aria-hidden="true"></i></button>`}</td>
+      <td class="numeric-cell"><span class="bidder-goods-calculated-value" data-bidder-goods-derived="thanhTienDuThau" title="Tự tính bằng khối lượng × đơn giá">${row.thanhTienDuThau == null ? "—" : currency(row.thanhTienDuThau)}</span>${fieldError("donGiaDuThau") ? "" : validationMessage("thanhTienDuThau")}</td>
+      <td class="bidder-goods-preference-cell">${preferenceControl}</td>
+      <td class="numeric-cell"><span class="bidder-goods-calculated-value" data-bidder-goods-derived="giaDuThauSauUuDai" title="Tự tính từ đơn giá dự thầu của mặt hàng và hệ số ưu đãi">${row.giaDuThauSauUuDai == null ? "—" : currency(row.giaDuThauSauUuDai)}</span></td>
+      <td class="numeric-cell"><span class="bidder-goods-calculated-value" data-bidder-goods-derived="thanhTienSauUuDai" title="Hệ thống tự tính theo kết quả ưu đãi">${row.thanhTienSauUuDai == null ? "—" : currency(row.thanhTienSauUuDai)}</span></td>
+      <td class="bidder-goods-item-actions">${state.readOnly ? "" : `<button type="button" class="action-btn btn-edit ${isEditing ? "is-active" : ""}" data-bidder-goods-edit="${escapeHtml(row.id)}" aria-label="Sửa ${escapeHtml(row.danhMucHangHoa)}" title="${isEditing ? "Đang chỉnh sửa" : "Sửa hàng hóa"}" aria-pressed="${isEditing}"><i data-lucide="pencil" aria-hidden="true"></i></button>`}</td>
     </tr>`;
+}
+
+export function buildBidderGoodsMappingModalMarkup(row, requirements = []) {
+  return `
+    <div class="modal-card bidder-goods-mapping-modal">
+      <div class="modal-header">
+        <div><h3>Đối chiếu danh mục yêu cầu</h3><p>Chỉ cần chọn khi hệ thống không thể tự ghép chính xác.</p></div>
+        <button type="button" class="modal-close" data-bidder-goods-mapping-close aria-label="Đóng"><i data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="bidder-goods-mapping-subject"><span>Hàng hóa dự thầu</span><strong>${escapeHtml(row.danhMucHangHoa || "—")}</strong><small>${escapeHtml([row.kyMaHieu, row.nhanHieu].filter(Boolean).join(" · ") || "Chưa có ký mã hiệu, nhãn hiệu")}</small></div>
+        ${requirements.length ? `
+          <div class="form-group">
+            <label for="bidder-goods-mapping-choice">Danh mục hàng hóa trong E-HSMT</label>
+            <select id="bidder-goods-mapping-choice" class="form-control">
+              <option value="">— Chọn danh mục tương ứng —</option>
+              ${requirements.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(row.goiThauHangHoaId || "") ? "selected" : ""}>${escapeHtml(`${item.maHangHoa ? `${item.maHangHoa} – ` : ""}${item.tenHangHoa || "Chưa có tên"}`)}</option>`).join("")}
+            </select>
+            <small class="form-hint">Danh sách đã được giới hạn theo phần lô đang đánh giá.</small>
+          </div>`
+          : '<div class="alert alert-warning" role="alert">Không có danh mục yêu cầu phù hợp trong phần lô đang đánh giá.</div>'}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-bidder-goods-mapping-close>Hủy</button>
+        <button type="button" class="btn btn-primary" id="btn-bidder-goods-mapping-confirm" ${requirements.length ? "" : "disabled"}>Xác nhận đối chiếu</button>
+      </div>
+    </div>`;
+}
+
+function openBidderGoodsMappingModal(controller, state, row) {
+  if (typeof document === "undefined") return false;
+  const modalId = "modal-bidder-goods-mapping";
+  const returnFocus = document.activeElement;
+  document.getElementById(modalId)?.remove();
+  const modal = document.createElement("div");
+  modal.id = modalId;
+  modal.className = "modal-overlay";
+  modal.innerHTML = trustedHTML(buildBidderGoodsMappingModalMarkup(row, state.requirements));
+  document.body.appendChild(modal);
+  const select = modal.querySelector("#bidder-goods-mapping-choice");
+  const confirm = modal.querySelector("#btn-bidder-goods-mapping-confirm");
+  const close = () => {
+    controller.view.closeModal?.(modalId);
+    modal.remove();
+    if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
+  };
+  const syncConfirm = () => { if (confirm) confirm.disabled = !select?.value; };
+  select?.addEventListener("change", syncConfirm);
+  syncConfirm();
+  modal.querySelectorAll("[data-bidder-goods-mapping-close]").forEach((button) => button.addEventListener("click", close));
+  modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+  modal.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+  confirm?.addEventListener("click", () => {
+    const requirementId = select?.value || "";
+    if (!requirementId) return;
+    const requirement = state.requirements.find((item) => String(item.id) === String(requirementId));
+    controller.model.state.hanghoaduthaunhathau = applyManualBidderGoodsMapping(
+      controller.model.state.hanghoaduthaunhathau.map((item) => (
+        String(item.id) === String(row.id)
+          ? { ...item, phanLoId: requirement?.phanLoId || item.phanLoId || null }
+          : item
+      )),
+      row.id,
+      requirementId,
+    );
+    invalidateOpeningPreference(state.bid);
+    controller._detailedEvaluationDirty = true;
+    close();
+    controller.renderDetailedEvaluation();
+  });
+  controller.view.openModal?.(modalId);
+  if (!modal.classList.contains("active")) modal.classList.add("active");
+  controller.makeSearchableSelect?.(select, "Tìm danh mục hàng hóa...");
+  controller.view.createIconsScoped?.(modal);
+  return true;
 }
 
 function previewMarkup(preview) {
@@ -221,58 +477,124 @@ export function renderBidderGoodsPanelMarkup(state) {
       </div>`;
   }
   const difference = state.summary.difference;
-  const differenceLabel = difference === null
-    ? "Chưa có giá dự thầu"
-    : state.summary.matchesBidPrice
-      ? "Khớp giá dự thầu"
-      : `Chênh lệch ${String(difference).startsWith("-") ? "" : "+"}${currency(difference)}`;
+  const priceComparisonReady = state.rows.length > 0
+    && state.summary.invalidRows === 0
+    && typeof state.summary.matchesBidPrice === "boolean";
+  const differenceLabel = !priceComparisonReady
+    ? "Chưa đủ dữ liệu để đối chiếu"
+    : difference === null
+      ? "Chưa có giá dự thầu"
+      : state.summary.matchesBidPrice
+        ? "Khớp giá dự thầu"
+        : `Chênh lệch ${String(difference).startsWith("-") ? "" : "+"}${currency(difference)}`;
+  const comparisonClass = !priceComparisonReady
+    ? ""
+    : state.summary.matchesBidPrice ? "text-success" : "text-warning";
+  const detectedIssueCount = state.summary.invalidRows
+    + state.summary.missing.length
+    + state.summary.unmatched
+    + state.summary.duplicate;
+  const issueCount = state.validationAttempted ? detectedIssueCount : 0;
+  const [calculationStatus, calculationStatusClass] = preferenceStatus(
+    state.bid.trangThaiTinhUuDai,
+    Boolean(state.preferenceCalculation),
+  );
   const busyAttributes = state.busy ? 'disabled aria-disabled="true"' : "";
-  const controls = state.readOnly ? "" : `
-    <input id="bidder-goods-excel-input" type="file" accept=".xlsx,.xls" ${busyAttributes} hidden>
-    <button type="button" class="btn btn-primary" id="btn-bidder-goods-import" ${busyAttributes}><i data-lucide="upload" aria-hidden="true"></i> Chọn file Excel</button>
-    <button type="button" class="btn btn-outline" id="btn-bidder-goods-add" ${busyAttributes}><i data-lucide="plus" aria-hidden="true"></i> Thêm thủ công</button>
-    <label class="bidder-goods-mode"><span>Chế độ nhập</span><select id="bidder-goods-import-mode" class="form-control" ${busyAttributes}><option value="merge">Gộp dữ liệu</option><option value="replace">Thay thế phạm vi</option></select></label>`;
+  const filteredCount = Number.isFinite(state.filteredCount) ? state.filteredCount : state.rows.length;
+  const pageStart = filteredCount ? (state.page - 1) * PAGE_SIZE + 1 : 0;
+  const pageEnd = Math.min(state.page * PAGE_SIZE, filteredCount);
+  const paginationPages = bidderGoodsPaginationPages(state.page, state.pageCount);
+  const hasLotColumns = String(state.pkg?.phanLo || "") === "Có";
+  const tableColumnCount = hasLotColumns ? 19 : 17;
+  const firstVisibleRow = state.pageRows[0] || state.rows[0] || null;
+  const visibleLot = state.lot || (firstVisibleRow ? {
+    id: firstVisibleRow.phanLoId,
+    maPhanLo: firstVisibleRow.maPhanLoNguon,
+    tenPhanLo: firstVisibleRow.tenPhanLoNguon,
+  } : null);
+  const lotIndex = (state.pkg?.phanLoList || []).findIndex((item) => (
+    String(item.id || "") === String(visibleLot?.id || "")
+    || String(item.maPhanLo || "").trim().toLocaleLowerCase("vi") === String(visibleLot?.maPhanLo || "").trim().toLocaleLowerCase("vi")
+  ));
+  const lotSequence = lotIndex >= 0
+    ? String(lotIndex + 1)
+    : String(firstVisibleRow?.sttNguon || "").split(".")[0] || "—";
+  const lotHeadingMarkup = hasLotColumns && state.pageRows.length ? `
+    <tr class="bidder-goods-lot-row">
+      <td>${escapeHtml(lotSequence)}</td>
+      <td>${escapeHtml(visibleLot?.maPhanLo || firstVisibleRow?.maPhanLoNguon || "—")}</td>
+      <td>${escapeHtml(visibleLot?.tenPhanLo || firstVisibleRow?.tenPhanLoNguon || "—")}</td>
+      <td colspan="${tableColumnCount - 3}"></td>
+    </tr>` : "";
+  const exportMenu = `
+    <details class="bidder-goods-export-menu">
+      <summary class="btn btn-outline" id="btn-bidder-goods-export-menu"><i data-lucide="file-spreadsheet" aria-hidden="true"></i><span>Xuất Excel</span><i class="bidder-goods-export-chevron" data-lucide="chevron-down" aria-hidden="true"></i></summary>
+      <div class="bidder-goods-export-popover" aria-label="Tùy chọn xuất Excel">
+        <button type="button" class="bidder-goods-export-option" id="btn-bidder-goods-template"><i data-lucide="download" aria-hidden="true"></i><span><strong>Tải file mẫu</strong><small>File trống theo đúng cấu trúc nhập liệu</small></span></button>
+        <button type="button" class="bidder-goods-export-option" id="btn-bidder-goods-export"><i data-lucide="file-spreadsheet" aria-hidden="true"></i><span><strong>Xuất dữ liệu hiện tại</strong><small>Xuất hàng hóa trong phạm vi đang chọn</small></span></button>
+      </div>
+    </details>`;
+  const mutationControls = state.readOnly ? "" : `
+    <input id="bidder-goods-excel-input" type="file" accept=".xlsx,.xls" ${busyAttributes} hidden>`;
+  const addControl = state.readOnly ? "" : `<button type="button" class="btn btn-primary" id="btn-bidder-goods-add" ${busyAttributes}><i data-lucide="plus" aria-hidden="true"></i> Thêm hàng hóa</button>`;
+  const fileActions = `<div class="bidder-goods-file-actions">${state.readOnly ? "" : `<button type="button" class="btn btn-outline" id="btn-bidder-goods-import" ${busyAttributes}><i data-lucide="upload" aria-hidden="true"></i> Nhập Excel</button>`}${exportMenu}${addControl}</div>`;
   return `
     <div class="bidder-goods-panel">
-      <div class="bidder-goods-context" role="status">
-        <span><strong>Gói thầu:</strong> ${escapeHtml(state.pkg.tenGoiThau || state.pkg.maGoiThau || "--")}</span>
-        ${state.lot ? `<span><strong>Phần lô:</strong> ${escapeHtml(`${state.lot.maPhanLo || ""} – ${state.lot.tenPhanLo || ""}`)}</span>` : ""}
-        <span><strong>Phương thức:</strong> ${escapeHtml(state.roundType === "financial" ? "1G2T – Tài chính" : "1G1T")}</span>
-      </div>
-      <div class="bidder-goods-toolbar">
-        <div class="bidder-goods-primary-actions">${controls}</div>
-        <div class="bidder-goods-secondary-actions">
-          <label class="visually-hidden" for="bidder-goods-search">Tìm kiếm hàng hóa dự thầu</label>
-          <input id="bidder-goods-search" data-bidder-goods-filter class="form-control" type="search" value="${escapeHtml(state.filter)}" placeholder="Tìm hàng hóa, ký mã hiệu, mã HS…">
-          <button type="button" class="btn btn-outline" id="btn-bidder-goods-template"><i data-lucide="file-spreadsheet" aria-hidden="true"></i> Tải file mẫu</button>
-          <button type="button" class="btn btn-outline" id="btn-bidder-goods-export"><i data-lucide="download" aria-hidden="true"></i> Xuất Excel</button>
+      <header class="bidder-goods-context" role="status">
+        <div class="bidder-goods-context-main">
+          <span class="bidder-goods-context-label">Danh mục hàng hóa dự thầu</span>
+          <strong>${escapeHtml(state.pkg.tenGoiThau || state.pkg.maGoiThau || "—")}</strong>
         </div>
-      </div>
+        <dl class="bidder-goods-context-meta">
+          ${state.lot ? `<div><dt>Phần lô</dt><dd>${escapeHtml(`${state.lot.maPhanLo || ""} – ${state.lot.tenPhanLo || ""}`)}</dd></div>` : ""}
+          <div><dt>Phương thức</dt><dd>${escapeHtml(state.roundType === "financial" ? "1G2T – Tài chính" : "1G1T")}</dd></div>
+        </dl>
+      </header>
+      <section class="bidder-goods-commandbar" aria-label="Công cụ danh mục hàng hóa">
+        <div class="bidder-goods-command-main">${mutationControls}
+          <label class="bidder-goods-search" for="bidder-goods-search"><i data-lucide="search" aria-hidden="true"></i><span class="visually-hidden">Tìm kiếm hàng hóa dự thầu</span><input id="bidder-goods-search" data-bidder-goods-filter class="form-control" type="search" value="${escapeHtml(state.filter)}" placeholder="Tìm tên, ký mã hiệu, mã HS…" autocomplete="off"></label>
+        </div>
+        <div class="bidder-goods-command-tools">${fileActions}</div>
+      </section>
       ${state.busy ? '<div class="alert alert-info bidder-goods-operation-state" role="status" aria-live="polite" aria-busy="true"><span class="loading-spinner" aria-hidden="true"></span> Đang đọc và kiểm tra file Excel…</div>' : ""}
       ${state.error ? `<div class="alert alert-danger bidder-goods-operation-state" role="alert">${escapeHtml(state.error)}</div>` : ""}
-      <div class="bidder-goods-summary" aria-label="Tổng hợp hàng hóa dự thầu">
-        <div><span>Đã nhập</span><strong>${state.rows.length}/${state.requirements.length}</strong></div>
-        <div><span>Tổng thành tiền</span><strong>${currency(state.summary.total)}</strong></div>
-        <div class="${state.summary.matchesBidPrice ? "is-success" : "is-warning"}"><span>Đối chiếu</span><strong>${escapeHtml(differenceLabel)}</strong></div>
-        <div><span>Lỗi đối chiếu</span><strong>${state.summary.invalidRows + state.summary.missing.length + state.summary.unmatched + state.summary.duplicate}</strong></div>
-        <div><span>Hệ số ưu đãi cao nhất</span><strong>${state.preferenceCalculation ? `${state.preferenceCalculation.heSoUuDaiCaoNhatBp / 100}%` : "—"}</strong></div>
-        <div><span>Tổng khoản cộng ưu đãi</span><strong>${state.preferenceCalculation ? currency(state.preferenceCalculation.tongGiaTriCongUuDai) : "—"}</strong></div>
-        <div><span>Giá sau ưu đãi</span><strong>${state.preferenceCalculation ? currency(state.preferenceCalculation.giaSoSanhSauUuDai) : "—"}</strong></div>
-        <div><span>Trạng thái tính</span><strong>${escapeHtml(state.bid.trangThaiTinhUuDai || (state.preferenceCalculation ? "Xem trước" : "Chưa tính"))}</strong></div>
-      </div>
+      <section class="bidder-goods-summary" aria-label="Tổng hợp hàng hóa dự thầu">
+        <div class="bidder-goods-summary-primary">
+          <div><strong class="bidder-goods-summary-label">Danh mục</strong><span class="bidder-goods-summary-value">${state.rows.length}/${state.requirements.length} mặt hàng</span></div>
+          <div><strong class="bidder-goods-summary-label">Tổng thành tiền</strong><span class="bidder-goods-summary-value">${currency(state.summary.total)}</span></div>
+          <div><strong class="bidder-goods-summary-label">Đối chiếu giá dự thầu</strong><span class="bidder-goods-summary-value ${comparisonClass}">${escapeHtml(differenceLabel)}</span></div>
+          <div><strong class="bidder-goods-summary-label">Lỗi cần xử lý</strong><span class="bidder-goods-summary-value ${issueCount ? "text-danger" : "text-success"}">${issueCount}</span></div>
+        </div>
+        <div class="bidder-goods-summary-preference ${state.preferenceCalculation ? "has-calculation" : "is-empty"}">
+          <div class="bidder-goods-summary-preference-title"><strong>Ưu đãi</strong><span class="badge ${calculationStatusClass}">${escapeHtml(calculationStatus)}</span></div>
+          ${state.preferenceCalculation ? `
+            <dl>
+              <div><dt>Hệ số cao nhất</dt><dd>${state.preferenceCalculation.heSoUuDaiCaoNhatBp / 100}%</dd></div>
+              <div><dt>Tổng khoản cộng</dt><dd>${currency(state.preferenceCalculation.tongGiaTriCongUuDai)}</dd></div>
+              <div><dt>Giá sau ưu đãi</dt><dd>${currency(state.preferenceCalculation.giaSoSanhSauUuDai)}</dd></div>
+            </dl>` : '<p>Hoàn thiện đơn giá và mã ưu đãi để hệ thống tính giá so sánh.</p>'}
+        </div>
+      </section>
       ${previewMarkup(state.importPreview)}
       <div class="table-container package-table-frame has-bottom-space bidder-goods-table-frame">
-        <table class="data-table bidder-goods-table" data-no-sort="true" data-density="comfortable">
-          <thead><tr><th>STT</th><th>Danh mục hàng hóa</th><th>Ký mã hiệu</th><th>Nhãn hiệu</th><th>Năm sản xuất</th><th>Xuất xứ</th><th>Hãng sản xuất</th><th>Cấu hình, tính năng kỹ thuật</th><th>ĐVT</th><th>Khối lượng</th><th>Mã HS</th><th>Đơn giá dự thầu</th><th>Thành tiền</th><th>Ưu đãi</th><th>Giá dự thầu sau ưu đãi</th><th>Thành tiền sau ưu đãi</th><th>Trạng thái ghép</th><th>Thao tác</th></tr></thead>
-          <tbody>${state.pageRows.length ? state.pageRows.map((row) => rowMarkup(row, state)).join("") : '<tr><td colspan="18"><div class="package-panel-empty">Chưa có hàng hóa dự thầu trong phạm vi này.</div></td></tr>'}</tbody>
+        <table class="data-table bidder-goods-table ${hasLotColumns ? "has-lot-columns" : ""}" data-no-sort="true" data-density="comfortable" aria-label="Danh mục hàng hóa dự thầu">
+          <thead><tr><th>STT</th>${hasLotColumns ? "<th>Mã phần (lô)</th><th>Tên phần lô</th>" : ""}<th>Danh mục hàng hóa</th><th>Ký mã hiệu</th><th>Nhãn hiệu</th><th>Năm sản xuất</th><th>Xuất xứ</th><th>Hãng sản xuất</th><th>Cấu hình, tính năng kỹ thuật</th><th>Đơn vị tính</th><th>Khối lượng</th><th>Mã HS</th><th>Đơn giá dự thầu</th><th>Thành tiền</th><th>Ưu đãi</th><th>Đơn giá sau ưu đãi</th><th>Thành tiền sau ưu đãi</th><th>Thao tác</th></tr></thead>
+          <tbody>${state.pageRows.length ? `${lotHeadingMarkup}${state.pageRows.map((row) => rowMarkup(row, state, { hasLotColumns })).join("")}` : `<tr><td colspan="${tableColumnCount}"><div class="package-panel-empty">Chưa có hàng hóa dự thầu trong phạm vi này.</div></td></tr>`}</tbody>
         </table>
       </div>
-      <div class="bidder-goods-pagination" aria-label="Phân trang hàng hóa dự thầu">
-        <button type="button" class="btn btn-outline compact-action" id="btn-bidder-goods-prev" ${state.page <= 1 ? "disabled" : ""}>Trang trước</button>
-        <span>Trang ${state.page}/${state.pageCount}</span>
-        <button type="button" class="btn btn-outline compact-action" id="btn-bidder-goods-next" ${state.page >= state.pageCount ? "disabled" : ""}>Trang sau</button>
-      </div>
-      ${state.readOnly ? '<div class="alert alert-info" role="status">Dữ liệu đang ở chế độ chỉ đọc.</div>' : `<div class="workflow-action-row bidder-goods-save-actions with-divider"><button type="button" class="btn btn-secondary" id="btn-bidder-goods-save-draft">Lưu nháp</button><button type="button" class="btn btn-primary" id="btn-bidder-goods-save-official">Lưu chính thức</button></div>`}
+      <footer class="bidder-goods-footer">
+        <span class="pagination-info bidder-goods-pagination-info">Hiển thị <strong>${pageStart}-${pageEnd}</strong> trên tổng số <strong>${filteredCount}</strong> bản ghi</span>
+        <nav class="pagination-container bidder-goods-pagination" aria-label="Phân trang hàng hóa dự thầu">
+          <div class="pagination-buttons">
+            <button type="button" class="pagination-btn" data-bidder-goods-page="1" title="Trang đầu" aria-label="Trang đầu" ${state.page <= 1 ? "disabled" : ""}><i data-lucide="chevrons-left" aria-hidden="true"></i></button>
+            <button type="button" class="pagination-btn" data-bidder-goods-page="${Math.max(1, state.page - 1)}" title="Trang trước" aria-label="Trang trước" ${state.page <= 1 ? "disabled" : ""}><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+            ${paginationPages.map((pageNumber) => `<button type="button" class="pagination-btn ${pageNumber === state.page ? "active" : ""}" data-bidder-goods-page="${pageNumber}" ${pageNumber === state.page ? 'aria-current="page"' : ""} aria-label="Trang ${pageNumber}">${pageNumber}</button>`).join("")}
+            <button type="button" class="pagination-btn" data-bidder-goods-page="${Math.min(state.pageCount, state.page + 1)}" title="Trang sau" aria-label="Trang sau" ${state.page >= state.pageCount ? "disabled" : ""}><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+            <button type="button" class="pagination-btn" data-bidder-goods-page="${state.pageCount}" title="Trang cuối" aria-label="Trang cuối" ${state.page >= state.pageCount ? "disabled" : ""}><i data-lucide="chevrons-right" aria-hidden="true"></i></button>
+          </div>
+        </nav>
+        ${state.readOnly ? '<div class="bidder-goods-readonly-notice" role="status"><i data-lucide="lock" aria-hidden="true"></i> Dữ liệu đang ở chế độ chỉ đọc.</div>' : `<div class="workflow-action-row bidder-goods-save-actions"><button type="button" class="btn btn-outline" id="btn-bidder-goods-save-draft"><i data-lucide="save" aria-hidden="true"></i>Lưu nháp</button><button type="button" class="btn btn-primary" id="btn-bidder-goods-save-official"><i data-lucide="save" aria-hidden="true"></i>Lưu chính thức</button></div>`}
+      </footer>
     </div>`;
 }
 
@@ -298,14 +620,14 @@ export async function analyzeBidderGoodsExcel(controller, detailedState, file) {
     const requirements = getBidderGoodsRequirements(controller.model, detailedState.pkg, group.bid);
     const existing = getBidderGoodsForBid(controller.model, detailedState.pkg, group.bid);
     const mapped = mapBidderGoodsRows(group.rows, requirements, { existing });
-    mapped.forEach((row) => previewRows.push({
+    mapped.forEach((row) => previewRows.push(withDerivedBidderGoodsFinancials({
       ...row,
       id: generateRecordId("hanghoaduthaunhathau"),
       goiThauId: detailedState.pkg.id,
       thongTinMoThauId: group.bid.id,
       importBatchId: batchId,
       isDraft: true,
-    }));
+    })));
   }
   return {
     ...parsed,
@@ -317,7 +639,7 @@ export async function analyzeBidderGoodsExcel(controller, detailedState, file) {
       );
       return total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : total.toString();
     })(),
-    mode: controller.view.getActiveElement?.("bidder-goods-import-mode")?.value || "merge",
+    mode: "replace",
   };
 }
 
@@ -345,27 +667,13 @@ export async function importBidderGoodsExcel(controller, detailedState, file) {
 export async function confirmBidderGoodsImport(controller) {
   const preview = controller._bidderGoodsImportPreview;
   if (!preview) return false;
-  if (preview.mode === "replace") {
-    const accepted = await controller.view.customConfirm(
-      "Thay thế hàng hóa dự thầu",
-      `Thao tác sẽ thay thế ${preview.rows.length} dòng trong phạm vi nhà thầu/phần lô có trong file. Bạn có muốn tiếp tục?`,
-      "alert-triangle",
-    );
-    if (!accepted) return false;
-  }
   const incomingScopes = new Set(preview.rows.map((row) => String(row.thongTinMoThauId)));
   const goodsSnapshot = (controller.model.state.hanghoaduthaunhathau || []).map(
     (row) => ({ ...row }),
   );
-  const incomingByKey = new Map(preview.rows.map((row) => [
-    `${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`,
-    row,
-  ]));
   const retained = (controller.model.state.hanghoaduthaunhathau || []).filter((row) => {
     if (!incomingScopes.has(String(row.thongTinMoThauId))) return true;
-    if (preview.mode === "replace") return false;
-    const key = `${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`;
-    return !incomingByKey.has(key);
+    return false;
   });
   const existingByKey = new Map((controller.model.state.hanghoaduthaunhathau || []).map((row) => [
     `${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`,
@@ -382,6 +690,7 @@ export async function confirmBidderGoodsImport(controller) {
     }),
   ];
   controller._bidderGoodsImportPreview = null;
+  controller._bidderGoodsEditingId = "";
   controller._bidderGoodsError = "";
   controller._detailedEvaluationDirty = true;
   (controller.model.state.thongtinmothau || []).forEach((opening) => {
@@ -407,8 +716,27 @@ export async function confirmBidderGoodsImport(controller) {
 }
 
 export async function saveBidderGoods(controller, detailedState, { official = false } = {}) {
-  const rows = getBidderGoodsForBid(controller.model, detailedState.pkg, detailedState.bid);
+  const rows = getBidderGoodsForBid(controller.model, detailedState.pkg, detailedState.bid)
+    .map(withDerivedBidderGoodsFinancials);
   const requirements = getBidderGoodsRequirements(controller.model, detailedState.pkg, detailedState.bid);
+  const invalidRowIndex = rows.findIndex((row) => validateBidderGoodsRow(row, { official }).length > 0);
+  if (invalidRowIndex >= 0) {
+    controller._bidderGoodsValidationScopeId = String(detailedState.bid.id || "");
+    controller._bidderGoodsValidationOfficial = official;
+    controller._bidderGoodsPage = Math.floor(invalidRowIndex / PAGE_SIZE) + 1;
+    controller._bidderGoodsEditingId = String(rows[invalidRowIndex].id || "");
+    await controller.renderDetailedEvaluation();
+    const validationRoot = controller.view.getActiveElement?.("danhgiahsdt-detail-view");
+    const firstInvalidControl = validationRoot?.querySelector?.('[aria-invalid="true"]');
+    if (firstInvalidControl) {
+      if (typeof controller.view.focusInvalidControl === "function") {
+        controller.view.focusInvalidControl(firstInvalidControl);
+      } else {
+        firstInvalidControl.focus?.();
+      }
+    }
+    return false;
+  }
   if (official) {
     const validation = validateBidderGoodsSubmission({ rows, requirements, bidPrice: detailedState.bid.giaDuThau });
     if (!validation.valid) {
@@ -440,11 +768,18 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
     "uuDaiInputHash",
   ].map((field) => [field, detailedState.bid[field]]));
   if (!official) invalidateOpeningPreference(detailedState.bid);
+  const derivedById = new Map(rows.map((row) => [String(row.id), row]));
   const calculatedById = new Map((calculation?.lines || []).map((row) => [String(row.id), row]));
   controller.model.state.hanghoaduthaunhathau = snapshot.map((row) => {
     if (!scopeIds.has(String(row.id))) return row;
+    const derivedRow = derivedById.get(String(row.id));
     return {
       ...row,
+      ...(derivedRow ? {
+        thanhTienDuThau: derivedRow.thanhTienDuThau,
+        giaDuThauSauUuDai: derivedRow.giaDuThauSauUuDai,
+        thanhTienSauUuDai: derivedRow.thanhTienSauUuDai,
+      } : {}),
       ...(calculatedById.get(String(row.id)) || {}),
       isDraft: !official,
       trangThaiUuDai: official
@@ -489,6 +824,9 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
   }
   controller._bidderGoodsError = "";
   controller._detailedEvaluationDirty = false;
+  controller._bidderGoodsValidationScopeId = "";
+  controller._bidderGoodsValidationOfficial = false;
+  controller._bidderGoodsEditingId = "";
   await controller.view.customAlert(
     "Lưu thành công",
     official ? "Hàng hóa dự thầu đã được lưu chính thức." : "Đã lưu bản nháp hàng hóa dự thầu.",
@@ -513,16 +851,32 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
     controller._detailedEvaluationDirty = false;
     controller.renderDetailedEvaluation();
   });
-  root.querySelector("#btn-bidder-goods-template")?.addEventListener("click", () => (
-    downloadBidderGoodsTemplate(state.pkg, state.requirements)
-  ));
-  root.querySelector("#btn-bidder-goods-export")?.addEventListener("click", () => downloadBidderGoodsWorkbook(state.pkg, state.rows));
+  const exportMenu = root.querySelector(".bidder-goods-export-menu");
+  root.querySelector("#btn-bidder-goods-template")?.addEventListener("click", () => {
+    exportMenu?.removeAttribute("open");
+    downloadBidderGoodsTemplate(state.pkg, state.requirements);
+  });
+  root.querySelector("#btn-bidder-goods-export")?.addEventListener("click", () => {
+    exportMenu?.removeAttribute("open");
+    downloadBidderGoodsWorkbook(state.pkg, state.rows);
+  });
+  exportMenu?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    exportMenu.removeAttribute("open");
+    exportMenu.querySelector("summary")?.focus();
+  });
+  root.addEventListener?.("click", (event) => {
+    if (exportMenu?.open && !exportMenu.contains(event.target)) {
+      exportMenu.removeAttribute("open");
+    }
+  });
   root.querySelector("#btn-bidder-goods-add")?.addEventListener("click", () => {
     const used = new Set(state.rows.map((row) => String(row.goiThauHangHoaId || "")));
     const requirement = state.requirements.find((item) => !used.has(String(item.id))) || state.requirements[0];
     if (!requirement) return;
+    const rowId = generateRecordId("hanghoaduthaunhathau");
     controller.model.state.hanghoaduthaunhathau.push({
-      id: generateRecordId("hanghoaduthaunhathau"),
+      id: rowId,
       goiThauId: state.pkg.id,
       thongTinMoThauId: state.bid.id,
       phanLoId: requirement.phanLoId || null,
@@ -539,78 +893,63 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
       sortOrder: state.rows.length, importBatchId: "", isDraft: true,
     });
     invalidateOpeningPreference(state.bid);
+    controller._bidderGoodsEditingId = rowId;
     controller._detailedEvaluationDirty = true;
     controller.renderDetailedEvaluation();
   });
-  root.querySelectorAll("[data-bidder-goods-mapping]").forEach((select) => {
+  root.querySelectorAll("[data-bidder-goods-open-mapping]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const rowId = button.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
+      const row = state.rows.find((item) => String(item.id) === String(rowId));
+      if (row) openBidderGoodsMappingModal(controller, state, row);
+    });
+  });
+  root.querySelectorAll("[data-bidder-goods-edit]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const rowId = button.getAttribute("data-bidder-goods-edit") || "";
+      if (!rowId || String(controller._bidderGoodsEditingId || "") === rowId) return;
+      controller._bidderGoodsEditingId = rowId;
+      await controller.renderDetailedEvaluation();
+      const nextRoot = controller.view.getActiveElement?.("danhgiahsdt-detail-view");
+      const editingRow = Array.from(nextRoot?.querySelectorAll?.("[data-bidder-goods-id]") || [])
+        .find((candidate) => String(candidate.getAttribute("data-bidder-goods-id") || "") === rowId);
+      editingRow?.querySelector?.("[data-bidder-goods-field]")?.focus?.();
+    });
+  });
+  root.querySelectorAll("[data-bidder-goods-preference]").forEach((select) => {
     select.addEventListener("change", () => {
       const rowId = select.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
-      controller.model.state.hanghoaduthaunhathau = applyManualBidderGoodsMapping(
+      const actorId = controller.model.state.activeuser?.id || "";
+      controller.model.state.hanghoaduthaunhathau = updateBidderGoodsPreferenceCode(
         controller.model.state.hanghoaduthaunhathau,
         rowId,
         select.value,
+        { actorId },
       );
       invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();
     });
   });
-  root.querySelectorAll("[data-bidder-goods-preference]").forEach((select) => {
-    select.addEventListener("change", async () => {
-      const rowId = select.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
-      const current = state.rows.find((row) => String(row.id) === String(rowId));
-      if (current?.uuDaiSourceSheet && !await controller.view.customConfirm(
-        "Ghi đè mã ưu đãi từ 15A",
-        "Mã ưu đãi nhập từ Mẫu 15A sẽ được thay bằng lựa chọn thủ công.",
-        "alert-triangle",
-      )) {
-        controller.renderDetailedEvaluation();
-        return;
-      }
-      const overrideReason = await controller.view.customPrompt(
-        "Lý do chỉnh mã ưu đãi",
-        "Nhập lý do xác minh hoặc điều chỉnh để lưu dấu vết kiểm toán.",
-        current?.uuDaiManualReason || "",
-        "Ví dụ: Đã đối chiếu hồ sơ bản ký số",
-        false,
-        (value) => {
-          const normalized = String(value || "").trim();
-          if (!normalized) return "Vui lòng nhập lý do điều chỉnh.";
-          if (normalized.length > 1000) return "Lý do không được vượt quá 1000 ký tự.";
-          return "";
-        },
-      );
-      if (overrideReason === null) {
-        controller.renderDetailedEvaluation();
-        return;
-      }
-      const actorId = controller.model.state.activeuser?.id || "";
-      controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.map(
-        (row) => String(row.id) === String(rowId) ? {
-          ...row,
-          maUuDai: Number(select.value),
-          uuDaiMatchMethod: "manual",
-          uuDaiMatchStatus: "matched",
-          uuDaiManualOverride: true,
-          uuDaiManualActorId: actorId,
-          uuDaiManualUpdatedAt: new Date().toISOString(),
-          uuDaiManualReason: String(overrideReason).trim(),
-          preferenceWarnings: [],
-          trangThaiUuDai: "draft",
-          isDraft: true,
-        } : row,
-      );
-      invalidateOpeningPreference(state.bid);
-      controller._detailedEvaluationDirty = true;
-      controller.renderDetailedEvaluation();
+  root.querySelectorAll("[data-bidder-goods-nonnegative-money]").forEach((input) => {
+    input.addEventListener("beforeinput", (event) => {
+      if (event.data && /[^0-9]/.test(event.data)) event.preventDefault();
+    });
+    input.addEventListener("keydown", (event) => {
+      if (["-", "+", "e", "E", ".", ","].includes(event.key)) event.preventDefault();
+    });
+    input.addEventListener("input", () => {
+      const sanitized = sanitizeBidderGoodsMoneyInput(input.value);
+      if (input.value !== sanitized) input.value = sanitized;
     });
   });
   root.querySelectorAll("[data-bidder-goods-field]").forEach((input) => {
     input.addEventListener("change", () => {
       const rowId = input.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
       const field = input.getAttribute("data-bidder-goods-field");
-      const numeric = ["khoiLuong", "donGiaDuThau", "thanhTienDuThau"].includes(field);
-      const money = ["donGiaDuThau", "thanhTienDuThau"].includes(field);
+      if (!BIDDER_GOODS_EDITABLE_FIELDS.has(field)) return;
+      const numeric = ["khoiLuong", "donGiaDuThau"].includes(field);
+      const money = field === "donGiaDuThau";
       const numericValue = Number(input.value);
       const value = numeric
         ? input.value === "" ? null
@@ -619,32 +958,43 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
             : numericValue
         : input.value;
       controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.map(
-        (row) => String(row.id) === String(rowId) ? { ...row, [field]: value, isDraft: true } : row,
+        (row) => {
+          if (String(row.id) !== String(rowId)) return row;
+          const updated = { ...row, [field]: value, isDraft: true };
+          return ["khoiLuong", "donGiaDuThau"].includes(field)
+            ? withDerivedBidderGoodsFinancials(updated)
+            : updated;
+        },
       );
       invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();
     });
   });
-  root.querySelectorAll("[data-bidder-goods-delete]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const rowId = button.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
-      if (!await controller.view.customConfirm("Xóa hàng hóa dự thầu", "Bạn có chắc muốn xóa dòng này?", "trash-2")) return;
-      controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.filter((row) => String(row.id) !== String(rowId));
-      invalidateOpeningPreference(state.bid);
-      controller._detailedEvaluationDirty = true;
-      controller.renderDetailedEvaluation();
-    });
-  });
   const search = root.querySelector("#bidder-goods-search");
-  search?.addEventListener("change", () => {
+  const applySearch = async () => {
+    if (search.value === String(controller._bidderGoodsSearch || "")) return;
     controller._bidderGoodsSearch = search.value;
     controller._bidderGoodsPage = 1;
     controller._detailedEvaluationDirty = false;
-    controller.renderDetailedEvaluation();
+    const cursorPosition = search.selectionStart ?? search.value.length;
+    await controller.renderDetailedEvaluation();
+    const nextSearch = controller.view.getActiveElement?.("danhgiahsdt-detail-view")
+      ?.querySelector?.("#bidder-goods-search");
+    nextSearch?.focus?.({ preventScroll: true });
+    nextSearch?.setSelectionRange?.(cursorPosition, cursorPosition);
+  };
+  search?.addEventListener("input", (event) => {
+    if (event.isComposing) return;
+    void applySearch();
   });
-  root.querySelector("#btn-bidder-goods-prev")?.addEventListener("click", () => { controller._bidderGoodsPage = Math.max(1, state.page - 1); controller.renderDetailedEvaluation(); });
-  root.querySelector("#btn-bidder-goods-next")?.addEventListener("click", () => { controller._bidderGoodsPage = Math.min(state.pageCount, state.page + 1); controller.renderDetailedEvaluation(); });
+  search?.addEventListener("compositionend", () => { void applySearch(); });
+  root.querySelectorAll("[data-bidder-goods-page]").forEach((button) => button.addEventListener("click", () => {
+    const requestedPage = Number(button.dataset.bidderGoodsPage);
+    if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > state.pageCount || requestedPage === state.page) return;
+    controller._bidderGoodsPage = requestedPage;
+    controller.renderDetailedEvaluation();
+  }));
   root.querySelector("#btn-bidder-goods-save-draft")?.addEventListener("click", () => saveBidderGoods(controller, detailedState));
   root.querySelector("#btn-bidder-goods-save-official")?.addEventListener("click", () => saveBidderGoods(controller, detailedState, { official: true }));
   controller.view.createIconsScoped?.(root);

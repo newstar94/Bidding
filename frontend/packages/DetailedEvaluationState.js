@@ -16,8 +16,12 @@ import {
   getEvaluationRoundType,
   getPackageEvaluationBids,
 } from "./detailedEvaluationSelectors.js";
+import { buildBidEvaluationPanelState } from "./BidEvaluationPanelState.js";
 import { getPackageWorkflowState } from "./detail/PackageTabs.js";
-import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
+import {
+  filterBidsByEvaluationLotScope,
+  resolvePackageResultStatus,
+} from "./lotEvaluationScope.js";
 import {
   applyTechnicalEvaluationMethod,
   resolveTechnicalEvaluationMethod,
@@ -162,9 +166,19 @@ export function resolveDetailedEvaluationState(controller) {
   if (!pkg) return null;
   const roundType = getEvaluationRoundType(pkg, controller.currentDanhGiaTab);
   let context = resolveDetailedEvaluationContext(pkg, roundType);
-  const rawBids = context.contractorFilter === "technical-qualified"
+  const evaluationPanelState = buildBidEvaluationPanelState({
+    pkg,
+    requestedTab: controller.currentDanhGiaTab,
+    editingState: controller.view._editingState,
+    cachedScopes: controller._evaluationLotScopes,
+  });
+  const lotScope = evaluationPanelState.lotScope;
+  const packageBids = context.contractorFilter === "technical-qualified"
     ? getEligibleFinancialEvaluationBids(controller.model, pkg)
     : getPackageEvaluationBids(controller.model, pkg);
+  const rawBids = lotScope
+    ? filterBidsByEvaluationLotScope(packageBids, pkg, lotScope)
+    : packageBids;
   const bids = rawBids.map((bid) => ({
     ...bid,
     label: getDetailedEvaluationBidLabel(controller.model, bid),
@@ -278,6 +292,7 @@ export function resolveDetailedEvaluationState(controller) {
     context,
     bids,
     rawBids,
+    lotScope,
     bid,
     selectedBidId: controller.selectedEvaluationBidId,
     roundType,

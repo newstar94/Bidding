@@ -39,27 +39,35 @@ export function bidderGoodsLineDifference(row) {
     : difference.numerator;
 }
 
-export function validateBidderGoodsRow(row, { official = false } = {}) {
-  const errors = [];
-  if (!String(row?.danhMucHangHoa || "").trim()) errors.push("Danh mục hàng hóa không được để trống.");
-  if (!positiveDecimalFraction(row?.khoiLuong)) errors.push("Khối lượng phải lớn hơn 0.");
-  if (moneyBigInt(row?.donGiaDuThau) === null) errors.push("Đơn giá dự thầu phải là số tiền không âm.");
-  if (moneyBigInt(row?.thanhTienDuThau) === null) errors.push("Thành tiền phải là số tiền không âm.");
+export function bidderGoodsRowFieldErrors(row, { official = false } = {}) {
+  const errors = {};
+  const add = (field, message) => {
+    if (!errors[field]) errors[field] = [];
+    errors[field].push(message);
+  };
+  if (!String(row?.danhMucHangHoa || "").trim()) add("danhMucHangHoa", "Danh mục hàng hóa không được để trống.");
+  if (!positiveDecimalFraction(row?.khoiLuong)) add("khoiLuong", "Khối lượng phải lớn hơn 0.");
+  if (moneyBigInt(row?.donGiaDuThau) === null) add("donGiaDuThau", "Vui lòng nhập đơn giá dự thầu hợp lệ.");
+  if (moneyBigInt(row?.thanhTienDuThau) === null) add("thanhTienDuThau", "Thành tiền phải là số tiền không âm.");
   const difference = exactLineDifference(row);
   if (
     difference === null
     || (difference.numerator < 0n ? -difference.numerator : difference.numerator)
       > difference.denominator
-  ) errors.push("Thành tiền không khớp khối lượng × đơn giá (sai lệch tối đa 1 VND).");
-  if (official && row?.mappingStatus !== "matched") errors.push("Hàng hóa chưa được ghép duy nhất với danh mục yêu cầu.");
+  ) add("thanhTienDuThau", "Thành tiền không khớp khối lượng × đơn giá (sai lệch tối đa 1 VND).");
+  if (official && row?.mappingStatus !== "matched") add("goiThauHangHoaId", "Hàng hóa chưa được ghép duy nhất với danh mục yêu cầu.");
   if (!Number.isInteger(Number(row?.maUuDai ?? 0)) || Number(row?.maUuDai ?? 0) < 0 || Number(row?.maUuDai ?? 0) > 5) {
-    errors.push("Mã ưu đãi phải là số nguyên từ 0 đến 5.");
+    add("maUuDai", "Mã ưu đãi phải là số nguyên từ 0 đến 5.");
   }
   if (official && ![undefined, null, "", "matched"].includes(row?.uuDaiMatchStatus)) {
-    errors.push("Mapping hoặc khai báo Mẫu 15A còn mơ hồ/mâu thuẫn.");
+    add("maUuDai", "Mapping hoặc khai báo Mẫu 15A còn mơ hồ/mâu thuẫn.");
   }
-  if (official && row?.preferenceWarnings?.length) errors.push("Khai báo ưu đãi còn cảnh báo chưa xử lý.");
+  if (official && row?.preferenceWarnings?.length) add("maUuDai", "Khai báo ưu đãi còn cảnh báo chưa xử lý.");
   return errors;
+}
+
+export function validateBidderGoodsRow(row, options = {}) {
+  return Object.values(bidderGoodsRowFieldErrors(row, options)).flat();
 }
 
 export function summarizeBidderGoods({ rows = [], requirements = [], bidPrice = null } = {}) {

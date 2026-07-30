@@ -15,7 +15,7 @@ const GROUP_LABELS = Object.freeze({
   capacity: "Năng lực và kinh nghiệm",
   technical: "Kỹ thuật",
   financial: "Tài chính",
-  bidder_goods: "Danh mục hàng hóa",
+  bidder_goods: "Danh mục hàng hóa dự thầu",
 });
 
 const LARGE_TABLE_ROW_CHUNK_SIZE = 25;

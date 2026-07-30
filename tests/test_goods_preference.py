@@ -40,12 +40,12 @@ def test_backend_calculator_matches_every_shared_frontend_preference_vector():
         ] == vector["surchargeRatesBp"], vector["name"]
 
 
-def test_discount_allocation_half_up_and_large_integer_money():
+def test_item_price_discount_half_up_and_large_integer_money():
     result = calculate_goods_preference([
         {"id": "a", "sortOrder": 0, "khoiLuong": 1, "thanhTienDuThau": 50, "maUuDai": 0},
         {"id": "b", "sortOrder": 1, "khoiLuong": 1, "thanhTienDuThau": 50, "maUuDai": 5},
     ], scope_after_discount=99)
-    assert sum(line["giaTriCoSoSauGiamGia"] for line in result["lines"]) == 99
+    assert sum(line["giaTriCoSoSauGiamGia"] for line in result["lines"]) == 100
     assert result["lines"][0]["giaTriCongUuDai"] == 8
     assert result["tongGiaTriCongUuDai"] == sum(
         line["giaTriCongUuDai"] for line in result["lines"]
@@ -59,6 +59,22 @@ def test_discount_allocation_half_up_and_large_integer_money():
         {"id": "fractional", "khoiLuong": 1, "thanhTienDuThau": 10_000, "maUuDai": 0},
     ], discount_rate="7.1234")
     assert fractional_discount["tongSauGiamGia"] == 9_288
+
+
+def test_line_preference_price_uses_its_item_amount_not_the_opening_scope_total():
+    result = calculate_goods_preference([
+        {
+            "id": "item-1",
+            "khoiLuong": 18,
+            "donGiaDuThau": 1,
+            "thanhTienDuThau": 18,
+            "maUuDai": 0,
+        },
+    ], scope_after_discount=200_000_000)
+
+    assert result["lines"][0]["giaDuThauSauUuDai"] == "1"
+    assert result["lines"][0]["thanhTienSauUuDai"] == 18
+    assert result["giaSoSanhSauUuDai"] == 200_000_000
 
 
 def test_each_lot_scope_is_calculated_independently_by_call():
