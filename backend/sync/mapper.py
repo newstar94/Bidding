@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
+from backend.domain.goods_workflow import supports_goods_workflow
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.shared.domain_enums import enum_label
 from backend.shared.date_utils import normalize_date_value, normalize_datetime_value
@@ -1565,7 +1566,9 @@ def _save_bid_detailed_evaluation_reports(
                 "SELECT linh_vuc FROM goi_thau WHERE organization_id = ? AND id = ?",
                 (organization_id, package_id),
             ).fetchone()
-            is_goods = str(_db_row_value(package_row, 0, "linh_vuc", "") or "").strip() == "Hàng hóa"
+            is_goods = supports_goods_workflow(
+                _db_row_value(package_row, 0, "linh_vuc", "")
+            )
             configured_groups = (
                 ["validity", "capacity", "technical"] if round_type == "technical"
                 else (["bidder_goods", "financial"] if round_type == "financial" and is_goods

@@ -1,7 +1,9 @@
+import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
+
 export const BIDDER_GOODS_TAB = "bidder_goods";
 
 export function shouldShowBidderGoodsTab(pkg, roundType, bid = null) {
-  if (String(pkg?.linhVuc || "").trim() !== "Hàng hóa") return false;
+  if (!supportsGoodsWorkflow(pkg)) return false;
   if (roundType === "technical") return false;
   if (roundType === "financial") return Boolean(bid);
   return roundType === "single";

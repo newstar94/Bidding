@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.domain.goods_workflow import supports_goods_workflow
 from backend.shared.text_utils import clean_id
 
 
@@ -72,8 +73,11 @@ def validate_package_goods_configuration_change(cursor, organization_id, current
     if not has_goods:
         return []
     errors = []
-    if old_field == "Hàng hóa" and new_field != "Hàng hóa":
-        errors.append("Không thể đổi lĩnh vực khi gói thầu còn danh mục hàng hóa; hãy xử lý danh mục trước.")
+    if supports_goods_workflow(old_field) and not supports_goods_workflow(new_field):
+        errors.append(
+            "Không thể đổi sang lĩnh vực không hỗ trợ hàng hóa khi gói thầu còn "
+            "danh mục hàng hóa; dữ liệu này chỉ áp dụng cho gói Hàng hóa hoặc Hỗn hợp."
+        )
     if old_lotted == "Có" and new_lotted != "Có":
         errors.append("Không thể tắt phân lô khi còn hàng hóa đang gắn với phần lô.")
     if "phanLoList" in item:

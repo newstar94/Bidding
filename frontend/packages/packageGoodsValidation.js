@@ -1,3 +1,5 @@
+import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
+
 export const GOODS_FIELD_LABELS = Object.freeze({
   maHangHoa: "Mã hàng hóa",
   tenHangHoa: "Tên hàng hóa",
@@ -53,5 +55,5 @@ export function findDuplicateGoodsCodes(items) {
 }
 
 export function isPackageGoodsEditable(pkg) {
-  return pkg?.linhVuc === "Hàng hóa" && pkg?.trangThai === "Chuẩn bị";
+  return supportsGoodsWorkflow(pkg) && pkg?.trangThai === "Chuẩn bị";
 }

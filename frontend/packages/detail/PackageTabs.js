@@ -5,6 +5,7 @@ import {
   resolvePackageResultStatus,
 } from "../lotEvaluationScope.js";
 import { isLowPriceBidRejected } from "../bidEvaluationLowPriceRules.js";
+import { supportsGoodsWorkflow } from "../goodsWorkflowSupport.js";
 
 export function checkBidQualified(bid, pkg = null) {
   if (!bid) return false;
@@ -70,7 +71,7 @@ export function buildPackageTabs(pkg, bids = [], { currentTab = "" } = {}) {
   const hasPersistedResultStatus = effectiveStatus === "Đã có kết quả một phần"
     || effectiveStatus === "Đã có kết quả";
   const tabs = [{ id: "preparation", label: "Thông tin gói thầu" }];
-  if (pkg?.linhVuc === "Hàng hóa") tabs.push({ id: "goods", label: "Danh mục hàng hóa" });
+  if (supportsGoodsWorkflow(pkg)) tabs.push({ id: "goods", label: "Danh mục hàng hóa" });
   const isDirectOrSpecial = pkg.hinhThucLuaChon === "Chỉ định thầu rút gọn"
     || pkg.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
 

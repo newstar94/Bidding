@@ -1,4 +1,5 @@
 import { resolveDetailedEvaluationTemplate } from "./detailedEvaluationTemplates.js";
+import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
 
 const ALL_GROUPS = Object.freeze([
   "validity",
@@ -69,7 +70,7 @@ export function resolveDetailedEvaluationContext(pkg, roundType = "single") {
     : roundType === "financial"
       ? ["financial"]
       : template.groups;
-  const showBidderGoods = String(pkg?.linhVuc || "").trim() === "Hàng hóa"
+  const showBidderGoods = supportsGoodsWorkflow(pkg)
     && ["single", "financial"].includes(roundType);
   if (showBidderGoods) {
     roundGroups = roundType === "financial"

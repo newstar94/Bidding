@@ -6,7 +6,11 @@ from backend.shared.access_policy import (
     BatchWriteAuthorizationContext,
     authorize_record_write_from_context,
 )
-from backend.sync.package_goods import validate_package_goods_batch
+from backend.domain.goods_workflow import supports_goods_workflow
+from backend.sync.package_goods import (
+    validate_package_goods_batch,
+    validate_package_goods_configuration_change,
+)
 from backend.sync.ownership import OwnerReferenceContext, validate_owner_scoped_references
 from backend.sync.payload_validation import validate_sync_item
 from backend.sync.queries import TABLE_KEYS
@@ -34,6 +38,13 @@ def test_package_goods_required_values_and_positive_quantity():
     assert "Tên hàng hóa" in message
     assert "Đơn vị tính" in message
     assert "lớn hơn 0" in message
+
+
+def test_goods_workflow_supports_trimmed_goods_and_mixed_fields_only():
+    assert supports_goods_workflow(" Hàng hóa ")
+    assert supports_goods_workflow(" Hỗn hợp ")
+    assert not supports_goods_workflow("Tư vấn")
+    assert not supports_goods_workflow("Xây lắp")
 
 
 class _GoodsCursor:
@@ -107,3 +118,52 @@ def test_new_snapshot_goods_can_reference_a_new_lot_from_the_same_package_payloa
         OwnerReferenceContext(),
     )
     assert errors == []
+
+
+def test_mixed_package_goods_pass_ownership_validation():
+    package = {
+        "id": "package-mixed",
+        "linhVuc": " Hỗn hợp ",
+        "phanLo": "Không",
+        "phanLoList": [],
+    }
+    errors = validate_owner_scoped_references(
+        None,
+        "org-1",
+        "goi_thau_hang_hoa",
+        {"id": "goods-mixed", "goiThauId": "package-mixed", "phanLoId": None},
+        {"goi_thau": {"package-mixed"}},
+        {"goi_thau": {"package-mixed": package}},
+        OwnerReferenceContext(),
+    )
+    assert errors == []
+
+
+def test_goods_configuration_can_switch_between_goods_and_mixed_only():
+    import sqlite3
+
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE goi_thau_hang_hoa "
+        "(id TEXT, organization_id TEXT, goi_thau_id TEXT, phan_lo_id TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO goi_thau_hang_hoa VALUES ('goods-1', 'org-1', 'package-1', NULL)"
+    )
+    current_goods = {
+        "id": "package-1",
+        "linh_vuc": "Hàng hóa",
+        "phan_lo": "Không",
+    }
+    current_mixed = {**current_goods, "linh_vuc": "Hỗn hợp"}
+    assert validate_package_goods_configuration_change(
+        connection.cursor(), "org-1", current_goods, {"linhVuc": "Hỗn hợp"}
+    ) == []
+    assert validate_package_goods_configuration_change(
+        connection.cursor(), "org-1", current_mixed, {"linhVuc": "Hàng hóa"}
+    ) == []
+    errors = validate_package_goods_configuration_change(
+        connection.cursor(), "org-1", current_mixed, {"linhVuc": "Xây lắp"}
+    )
+    assert len(errors) == 1
+    assert "Hàng hóa hoặc Hỗn hợp" in errors[0]

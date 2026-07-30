@@ -8,9 +8,10 @@ from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 
+from backend.domain.goods_preference import calculate_goods_preference, preference_rate_bp
+from backend.domain.goods_workflow import supports_goods_workflow
 from backend.shared.numeric_utils import parse_vnd_amount
 from backend.shared.text_utils import clean_id
-from backend.domain.goods_preference import calculate_goods_preference, preference_rate_bp
 
 
 def _value(row, name, index):
@@ -214,8 +215,8 @@ def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=No
         lot = lots.get(str(lot_id)) if lot_id else None
         requirement = requirements.get(str(requirement_id)) if requirement_id else None
 
-        if not package or str(package.get("linh_vuc") or "").strip() != "Hàng hóa":
-            errors.append(_error(item, "goiThauId", "BIDDER_GOODS_PACKAGE_INVALID", "Hàng hóa dự thầu chỉ áp dụng cho gói thầu lĩnh vực Hàng hóa trong tổ chức hiện tại."))
+        if not package or not supports_goods_workflow(package.get("linh_vuc")):
+            errors.append(_error(item, "goiThauId", "BIDDER_GOODS_PACKAGE_INVALID", "Hàng hóa dự thầu chỉ áp dụng cho gói thầu lĩnh vực Hàng hóa hoặc Hỗn hợp trong tổ chức hiện tại."))
             continue
         if not opening or opening.get("archived_at") or clean_id(opening.get("goi_thau_id")) != package_id:
             errors.append(_error(item, "thongTinMoThauId", "BIDDER_GOODS_OPENING_INVALID", "Hồ sơ mở thầu không thuộc gói thầu hiện tại."))

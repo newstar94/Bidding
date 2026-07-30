@@ -19,10 +19,11 @@ import {
 } from "./detailedEvaluationValidation.js";
 import { getBidderGoodsForBid, getBidderGoodsRequirements } from "./bidderGoodsSelectors.js";
 import { validateBidderGoodsSubmission } from "./bidderGoodsValidation.js";
+import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
 
 export function shouldValidateBidderGoodsOnCompletion(state, completeReport) {
   return Boolean(completeReport)
-    && String(state?.pkg?.linhVuc || "").trim() === "Hàng hóa"
+    && supportsGoodsWorkflow(state?.pkg)
     && ["single", "financial"].includes(state?.roundType);
 }
 

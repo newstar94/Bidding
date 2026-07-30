@@ -21,6 +21,11 @@ import {
   resolvePackageResultStatus,
   setPackageResultEditState
 } from "../lotEvaluationScope.js";
+import {
+  hasWinningGoodsExportScope,
+  selectWinningGoodsForExport,
+} from "../winningGoodsSelectors.js";
+import { downloadWinningGoodsWorkbook } from "../WinningGoodsExcel.js";
 
 
 export function beginOfficialResultBatchEdit(view, pkg, batchId, rerender) {
@@ -157,6 +162,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           appraisalDate: ngayBctdResult,
           isEditable,
           wordExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
+          winningGoodsExportEnabled: hasWinningGoodsExportScope(gt),
           formatCurrency: (value) => view.model.formatCurrency(value),
           formatDate: (value) => view.model.formatDate(value)
         });
@@ -175,7 +181,21 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               `Bao_cao_ket_qua_danh_gia_ho_so_du_thau_${gt.maGoiThau}.docx`
             );
           },
+          onExportWinningGoods: async () => {
+            const exportModel = selectWinningGoodsForExport({
+              pkg: gt,
+              openings: view.model.state.thongtinmothau || [],
+              goods: view.model.state.hanghoaduthaunhathau || [],
+              model: view.model,
+            });
+            await downloadWinningGoodsWorkbook(exportModel);
+          },
           onExportError: (error) => view.customAlert("Lỗi", "Lỗi xuất báo cáo: " + error.message, "x-circle"),
+          onWinningGoodsExportError: (error) => view.customAlert(
+            "Không thể xuất hàng hóa trúng thầu",
+            error.message,
+            "alert-triangle",
+          ),
           refreshIcons: () => lucide.createIcons()
         });
       } else {

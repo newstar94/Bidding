@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from backend.domain.goods_workflow import supports_goods_workflow
 from backend.shared.helpers import clean_id
 from backend.sync.mapper import get_payload_value
 from backend.shared.domain_enums import enum_label
@@ -793,8 +794,8 @@ def validate_owner_scoped_references(
             is_lotted = reference_context.package_lotted_by_id.get(str(package_id), False) if reference_context else False
             package_field = reference_context.package_field_by_id.get(str(package_id), "") if reference_context else ""
             incoming_lots = {}
-        if package_field != "Hàng hóa":
-            errors.append("Danh mục hàng hóa chỉ áp dụng cho gói thầu lĩnh vực Hàng hóa.")
+        if not supports_goods_workflow(package_field):
+            errors.append("Danh mục hàng hóa chỉ áp dụng cho gói thầu lĩnh vực Hàng hóa hoặc Hỗn hợp.")
         if is_lotted and not lot_id:
             errors.append("Gói thầu phân lô bắt buộc mỗi hàng hóa phải thuộc một phần lô.")
         if not is_lotted and lot_id:

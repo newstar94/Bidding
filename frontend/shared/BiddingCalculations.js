@@ -1,5 +1,6 @@
 import { parseVND } from "./formatters.js";
 import { isLowPriceBidRejected } from "../packages/bidEvaluationLowPriceRules.js";
+import { supportsGoodsWorkflow } from "../packages/goodsWorkflowSupport.js";
 
 function moneyBigInt(value) {
   const parsed = parseVND(value);
@@ -13,7 +14,7 @@ function compareMoney(left, right) {
 export function goodsPreferenceRankingBlockReason(pkg = {}, bid = {}) {
   const method = String(pkg.phuongPhapDanhGia || "");
   if (
-    pkg.linhVuc === "Hàng hóa"
+    supportsGoodsWorkflow(pkg)
     && ["Giá thấp nhất", "Giá đánh giá"].includes(method)
     && (
       bid.trangThaiTinhUuDai !== "ready"
@@ -32,7 +33,7 @@ export function calculateRankings(gt, bids) {
   const scores = {};
   const isTuVan = gt.linhVuc === "Tư vấn";
   const method = gt.phuongPhapDanhGia || "";
-  const requiresGoodsPreference = gt.linhVuc === "Hàng hóa"
+  const requiresGoodsPreference = supportsGoodsWorkflow(gt)
     && ["Giá thấp nhất", "Giá đánh giá"].includes(method);
   const hasLots = gt.phanLo === "Có";
   const groups = {};

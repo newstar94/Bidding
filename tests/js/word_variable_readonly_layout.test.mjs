@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { applyWordVariableFormAccess } from "../../frontend/documents/WordIntegration.js";
+import {
+  applyWordTemplateUploadAccess,
+  applyWordVariableFormAccess,
+} from "../../frontend/documents/WordIntegration.js";
 
 function createControl() {
   const attributes = new Map();
@@ -86,4 +89,41 @@ test("manager Word dictionary restores mutation controls", () => {
     assert.equal(control.disabled, false);
     assert.equal(control.attributes.has("aria-disabled"), false);
   });
+});
+
+test("employee view removes the unavailable template-upload control instead of dimming it", () => {
+  const input = createControl();
+  const zone = createControl();
+  zone.hidden = false;
+  zone.title = "";
+  zone.classList = {
+    remove(name) { zone.removedClass = name; },
+  };
+  const validation = { hidden: false };
+
+  applyWordTemplateUploadAccess({ input, zone, validation }, false);
+
+  assert.equal(input.disabled, true);
+  assert.equal(zone.hidden, true);
+  assert.equal(zone.attributes.get("aria-hidden"), "true");
+  assert.equal(zone.attributes.has("aria-disabled"), false);
+  assert.equal(zone.removedClass, "is-upload-disabled");
+  assert.equal(validation.hidden, true);
+});
+
+test("manager view restores the template-upload control", () => {
+  const input = createControl();
+  const zone = createControl();
+  zone.hidden = true;
+  zone.title = "";
+  zone.classList = { remove() {} };
+  const validation = { hidden: true };
+
+  applyWordTemplateUploadAccess({ input, zone, validation }, true);
+
+  assert.equal(input.disabled, false);
+  assert.equal(zone.hidden, false);
+  assert.equal(zone.attributes.get("aria-hidden"), "false");
+  assert.equal(zone.title, "Tải lên biểu mẫu Word");
+  assert.equal(validation.hidden, false);
 });

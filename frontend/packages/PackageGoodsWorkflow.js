@@ -48,6 +48,11 @@ export function renderPackageGoodsMutationActions(editable) {
     <button type="button" class="btn btn-primary" id="btn-package-goods-add"><i data-lucide="plus" aria-hidden="true"></i>Thêm hàng hóa</button>`;
 }
 
+export function renderPackageGoodsRowActions({ id, editable, canDelete }) {
+  if (!editable) return "";
+  return `<td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(id)}">Sửa</button>${canDelete ? ` <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(id)}" title="Xóa hàng hóa">Xóa</button>` : ""}</td>`;
+}
+
 function operationLabel(value) {
   return { create: "Thêm mới", update: "Cập nhật", unchanged: "Không thay đổi", invalid: "Không hợp lệ" }[value] || value;
 }
@@ -200,7 +205,7 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
         <div><button class="btn btn-outline" type="button" id="btn-package-goods-cancel">Hủy</button><button class="btn btn-primary" type="submit">Lưu</button></div>
       </form></div>
       <div class="table-container package-goods-table"><table class="data-table" data-no-sort="true"><thead><tr>${hasLotColumn ? "<th>Phần lô</th>" : ""}<th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Nhóm</th><th>ĐVT</th><th>Số lượng</th><th>Yêu cầu kỹ thuật</th><th>Đơn giá dự toán</th><th>Thành tiền</th>${editable ? "<th>Thao tác</th>" : ""}</tr></thead>
-      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${hasLotColumn ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td>${editable ? `<td><button class="btn btn-sm btn-outline" data-edit-goods="${escapeHtml(item.id)}">Sửa</button> <button class="btn btn-sm btn-danger" data-delete-goods="${escapeHtml(item.id)}" ${canDelete ? "" : "disabled"} title="${canDelete ? "Xóa hàng hóa" : "Theo chính sách hiện tại, chỉ Quản lý tổ chức được xóa dữ liệu"}">Xóa</button></td>` : ""}</tr>`).join("") : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`}</tbody></table></div>
+      <tbody>${visibleGoods.length ? visibleGoods.map((item, index) => `<tr>${hasLotColumn ? `<td>${escapeHtml(lotLabel(lotById.get(String(item.phanLoId))))}</td>` : ""}<td>${(page - 1) * pageSize + index + 1}</td><td>${escapeHtml(item.maHangHoa)}</td><td>${escapeHtml(item.tenHangHoa)}</td><td>${escapeHtml(item.nhomHangHoa || "")}</td><td>${escapeHtml(item.donViTinh)}</td><td>${escapeHtml(String(item.soLuong))}</td><td>${escapeHtml(item.yeuCauKyThuat || "")}</td><td>${money(item.donGiaDuToan)}</td><td>${money(item.thanhTienDuToan)}</td>${renderPackageGoodsRowActions({ id: item.id, editable, canDelete })}</tr>`).join("") : `<tr class="package-goods-empty-row"><td colspan="${columnCount}"><div class="package-goods-empty"><i data-lucide="package-search" aria-hidden="true"></i><span>Chưa có hàng hóa trong phạm vi này.</span></div></td></tr>`}</tbody></table></div>
       <nav class="pagination-container package-goods-pagination" aria-label="Phân trang danh mục hàng hóa"><span class="pagination-info">Hiển thị <strong>${startIndex}-${endIndex}</strong> trên tổng số <strong>${filtered.length}</strong> bản ghi</span><div class="pagination-buttons">
         <button type="button" class="pagination-btn" data-package-goods-page="1" title="Trang đầu" aria-label="Trang đầu" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevrons-left" aria-hidden="true"></i></button>
         <button type="button" class="pagination-btn" data-package-goods-page="${Math.max(1, page - 1)}" title="Trang trước" aria-label="Trang trước" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevron-left" aria-hidden="true"></i></button>

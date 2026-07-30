@@ -57,6 +57,15 @@ function derivedUnitPrice(total, quantityValue, precision = 6) {
   return decimals ? `${whole}.${decimals}` : whole.toString();
 }
 
+export function divideMoneyByQuantity(totalValue, quantityValue, precision = 6) {
+  const total = money(totalValue, "Giá trị sau giảm giá");
+  const result = derivedUnitPrice(total, quantityValue, precision);
+  if (result === null) {
+    throw new RangeError("Khối lượng phải là số lớn hơn 0 để xác định đơn giá.");
+  }
+  return result;
+}
+
 function allocate(amounts, target, keys) {
   const total = amounts.reduce((sum, value) => sum + value, 0n);
   if (total === 0n) {

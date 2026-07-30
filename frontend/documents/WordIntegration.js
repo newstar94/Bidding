@@ -38,6 +38,18 @@ export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   });
 }
 
+export function applyWordTemplateUploadAccess({ input, zone, validation }, canUploadTemplates) {
+  if (input) input.disabled = !canUploadTemplates;
+  if (zone) {
+    zone.hidden = !canUploadTemplates;
+    zone.setAttribute("aria-hidden", String(!canUploadTemplates));
+    zone.classList.remove("is-upload-disabled");
+    zone.removeAttribute("aria-disabled");
+    zone.title = canUploadTemplates ? "Tải lên biểu mẫu Word" : "";
+  }
+  if (validation) validation.hidden = !canUploadTemplates;
+}
+
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
   const canManageWordVariables = canManageWorkspaceWordVariables(
@@ -48,23 +60,19 @@ export function setupWordTemplatesEvents() {
     this.model.state.activeuser || {},
     this.model.state.activerole,
   );
-  if (templateInput) {
-    templateInput.disabled = !canUploadTemplates;
-  }
+  const dragDropZone = document.getElementById("word-drag-drop-zone");
+  const validationResult = document.getElementById("word-validation-result");
+  applyWordTemplateUploadAccess({
+    input: templateInput,
+    zone: dragDropZone,
+    validation: validationResult,
+  }, canUploadTemplates);
   if (templateInput && !templateInput.dataset.wordUploadBound) {
     templateInput.dataset.wordUploadBound = "true";
     templateInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (file) this.handleWordTemplateUpload(file);
     });
-  }
-  const dragDropZone = document.getElementById("word-drag-drop-zone");
-  if (dragDropZone) {
-    dragDropZone.classList.toggle("is-upload-disabled", !canUploadTemplates);
-    dragDropZone.setAttribute("aria-disabled", String(!canUploadTemplates));
-    dragDropZone.title = canUploadTemplates
-      ? "Tải lên biểu mẫu Word"
-      : "Chỉ Quản lý của tổ chức được tải lên biểu mẫu Word";
   }
   if (dragDropZone && templateInput && !dragDropZone.dataset.wordUploadBound) {
     dragDropZone.dataset.wordUploadBound = "true";

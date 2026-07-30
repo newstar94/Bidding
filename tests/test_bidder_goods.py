@@ -127,11 +127,38 @@ def test_backend_accepts_consistent_official_batch_and_rejects_cross_package_map
     assert any(error["code"] == "BIDDER_GOODS_REQUIREMENT_INVALID" for error in errors)
 
 
+def test_backend_accepts_mixed_package_and_rejects_non_goods_field():
+    connection = _connection()
+    valid = {
+        "id": "offered-1",
+        "goiThauId": "package-1",
+        "thongTinMoThauId": "opening-1",
+        "goiThauHangHoaId": "required-1",
+        "phanLoId": None,
+        "khoiLuong": 2,
+        "donGiaDuThau": "50",
+        "thanhTienDuThau": "100",
+        "mappingStatus": "matched",
+        "maUuDai": 0,
+        "isDraft": False,
+    }
+    connection.execute(
+        "UPDATE goi_thau SET linh_vuc = ' Hỗn hợp ' WHERE id = 'package-1'"
+    )
+    assert validate_bidder_goods_batch(connection.cursor(), "org-1", [valid]) == []
+    connection.execute(
+        "UPDATE goi_thau SET linh_vuc = 'Xây lắp' WHERE id = 'package-1'"
+    )
+    errors = validate_bidder_goods_batch(connection.cursor(), "org-1", [valid])
+    assert any(error["code"] == "BIDDER_GOODS_PACKAGE_INVALID" for error in errors)
+    assert any("Hàng hóa hoặc Hỗn hợp" in error["message"] for error in errors)
+
+
 def test_backend_rejects_wrong_lot_duplicates_incomplete_rows_and_bad_totals():
     connection = _connection()
     connection.executescript(
         """
-        INSERT INTO goi_thau VALUES ('package-lot', 'org-1', 'Hàng hóa', 'Có', 'EVALUATING', 'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất');
+        INSERT INTO goi_thau VALUES ('package-lot', 'org-1', 'Hỗn hợp', 'Có', 'EVALUATING', 'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất');
         INSERT INTO thong_tin_mo_thau VALUES ('opening-lot', 'org-1', 'package-lot', 'L01', 100, NULL, 0, 100);
         INSERT INTO ket_qua_danh_gia_nha_thau VALUES ('opening-lot', 'org-1', 'Đạt');
         INSERT INTO vong_danh_gia VALUES ('round-lot', 'org-1', 'package-lot', 'single');

@@ -171,9 +171,13 @@ test("financial validation accepts one-VND tolerance and rejects invalid amounts
 
 test("goods tab is limited to goods packages and financial contexts", () => {
   const goods = { linhVuc: "Hàng hóa" };
+  const mixed = { linhVuc: " Hỗn hợp " };
   assert.equal(shouldShowBidderGoodsTab(goods, "single"), true);
   assert.equal(shouldShowBidderGoodsTab(goods, "financial", { id: "bid-1" }), true);
   assert.equal(shouldShowBidderGoodsTab(goods, "technical", { id: "bid-1" }), false);
+  assert.equal(shouldShowBidderGoodsTab(mixed, "single"), true);
+  assert.equal(shouldShowBidderGoodsTab(mixed, "financial", { id: "bid-1" }), true);
+  assert.equal(shouldShowBidderGoodsTab(mixed, "technical", { id: "bid-1" }), false);
   assert.equal(shouldShowBidderGoodsTab({ linhVuc: "Xây lắp" }, "single"), false);
 });
 
@@ -184,6 +188,8 @@ test("bidder goods gate applies to 1G1T and 1G2T financial completion only", () 
   assert.equal(shouldValidateBidderGoodsOnCompletion({ ...goods, roundType: "technical" }, true), false);
   assert.equal(shouldValidateBidderGoodsOnCompletion({ ...goods, roundType: "financial" }, false), false);
   assert.equal(shouldValidateBidderGoodsOnCompletion({ pkg: { linhVuc: "Xây lắp" }, roundType: "single" }, true), false);
+  assert.equal(shouldValidateBidderGoodsOnCompletion({ pkg: { linhVuc: "Hỗn hợp" }, roundType: "single" }, true), true);
+  assert.equal(shouldValidateBidderGoodsOnCompletion({ pkg: { linhVuc: "Hỗn hợp" }, roundType: "financial" }, true), true);
 });
 
 test("read-only panel hides mutation actions and exposes loading and error states", () => {
@@ -509,6 +515,9 @@ test("goods detailed-evaluation groups are ordered and unlocked only by persiste
   assert.deepEqual(resolveAccessibleDetailedEvaluationGroups({ configuredGroups: context.configuredGroups, report, bidderGoodsReady: false }), ["validity", "capacity", "technical", "bidder_goods"]);
   assert.deepEqual(resolveAccessibleDetailedEvaluationGroups({ configuredGroups: context.configuredGroups, report, bidderGoodsReady: true }), context.configuredGroups);
   assert.deepEqual(resolveDetailedEvaluationContext({ linhVuc: "Hàng hóa" }, "financial").configuredGroups, ["bidder_goods", "financial"]);
+  assert.deepEqual(resolveDetailedEvaluationContext({ linhVuc: "Hỗn hợp" }, "single").configuredGroups, ["validity", "capacity", "technical", "bidder_goods", "financial"]);
+  assert.deepEqual(resolveDetailedEvaluationContext({ linhVuc: "Hỗn hợp" }, "financial").configuredGroups, ["bidder_goods", "financial"]);
+  assert.equal(resolveDetailedEvaluationContext({ linhVuc: "Hỗn hợp" }, "technical").configuredGroups.includes("bidder_goods"), false);
 });
 
 test("goods rankings require ready preference data and use authoritative post-preference prices", () => {
@@ -525,4 +534,7 @@ test("goods rankings require ready preference data and use authoritative post-pr
     "Chưa đủ dữ liệu ưu đãi để xếp hạng",
   );
   assert.equal(goodsPreferenceRankingBlockReason(pkg, bids[0]), "");
+  const mixed = { ...pkg, linhVuc: "Hỗn hợp" };
+  assert.deepEqual(calculateRankings(mixed, bids).rankings, { b: 1, a: 2 });
+  assert.equal(goodsPreferenceRankingBlockReason(mixed, bids[2]), "Chưa đủ dữ liệu ưu đãi để xếp hạng");
 });

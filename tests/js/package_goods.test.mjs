@@ -4,9 +4,12 @@ import test from "node:test";
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
 import { buildPackageGoodsPreview, parsePackageGoodsRows } from "../../frontend/packages/PackageGoodsExcel.js";
 import { clonePackageGoodsForSnapshot } from "../../frontend/packages/packageGoodsVersioning.js";
+import { supportsGoodsWorkflow } from "../../frontend/packages/goodsWorkflowSupport.js";
+import { isPackageGoodsEditable } from "../../frontend/packages/packageGoodsValidation.js";
 import {
   packageGoodsPaginationPages,
   renderPackageGoodsMutationActions,
+  renderPackageGoodsRowActions,
   renderPackageGoodsSummary,
 } from "../../frontend/packages/PackageGoodsWorkflow.js";
 import { BrowserDB } from "../../frontend/app/BrowserDB.js";
@@ -82,9 +85,20 @@ test("new package snapshots receive independent goods and remapped lot ids", () 
   assert.equal(copy.rowVersion, undefined);
 });
 
-test("goods tab is visible only for goods procurement packages", () => {
+test("goods workflow supports trimmed goods and mixed fields only", () => {
+  assert.equal(supportsGoodsWorkflow(" Hàng hóa "), true);
+  assert.equal(supportsGoodsWorkflow({ linhVuc: " Hỗn hợp " }), true);
+  assert.equal(supportsGoodsWorkflow("Tư vấn"), false);
+  assert.equal(supportsGoodsWorkflow("Xây lắp"), false);
+});
+
+test("goods tab and editing support goods and mixed procurement packages", () => {
   assert.ok(buildPackageTabs({ linhVuc: "Hàng hóa", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
+  assert.ok(buildPackageTabs({ linhVuc: " Hỗn hợp ", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
   assert.ok(!buildPackageTabs({ linhVuc: "Tư vấn", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
+  assert.ok(!buildPackageTabs({ linhVuc: "Xây lắp", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
+  assert.equal(isPackageGoodsEditable({ linhVuc: "Hỗn hợp", trangThai: "Chuẩn bị" }), true);
+  assert.equal(isPackageGoodsEditable({ linhVuc: "Hỗn hợp", trangThai: "Đang chấm thầu" }), false);
 });
 
 test("goods pagination uses the same centered five-page window as other tables", () => {
@@ -100,6 +114,15 @@ test("goods mutation actions disappear instead of rendering disabled after the s
   assert.match(editableActions, /btn-package-goods-import-trigger/);
   assert.match(editableActions, /btn-package-goods-add/);
   assert.doesNotMatch(editableActions, /disabled/);
+});
+
+test("employee goods row omits unavailable actions instead of showing dimmed buttons", () => {
+  assert.equal(renderPackageGoodsRowActions({ id: "goods-1", editable: false, canDelete: false }), "");
+  const employeeActions = renderPackageGoodsRowActions({ id: "goods-1", editable: true, canDelete: false });
+  assert.match(employeeActions, /data-edit-goods/);
+  assert.doesNotMatch(employeeActions, /data-delete-goods|disabled/);
+  const managerActions = renderPackageGoodsRowActions({ id: "goods-1", editable: true, canDelete: true });
+  assert.match(managerActions, /data-delete-goods/);
 });
 
 test("goods tab renders the shared package summary with plan and investor context", () => {
