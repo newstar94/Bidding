@@ -32,6 +32,8 @@ npm run build:secure
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
+`setup_local_postgres.py` chỉ cần chạy một lần để tạo cụm PostgreSQL cục bộ. Ở các lần mở ứng dụng sau, lifecycle development tự khởi động cụm `data/postgresql17-data` trước khi kết nối và migration; không cần chạy lại lệnh setup. Có thể tắt bằng `DATABASE_AUTO_START_LOCAL=false`. Production và database từ xa không bao giờ được tự khởi động theo cơ chế này.
+
 Không dùng secret mẫu ở production. Điền `APP_PUBLIC_URL`, `ALLOWED_HOSTS`, `CORS_ORIGINS`, `ALLOWED_WS_ORIGINS`, SMTP/OAuth và các URL PostgreSQL bằng secret manager. `DATABASE_AUTO_MIGRATE=false` là bắt buộc ở production; migration chạy bằng credential migrator trước khi chuyển traffic.
 
 Tạo Super Admin bằng cơ chế bootstrap do `scripts/manage_database.py` thực hiện từ `ADMIN_PASSWORD`; không commit `.env` hoặc in password ra log.

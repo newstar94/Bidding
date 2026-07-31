@@ -58,6 +58,7 @@ DATABASE_URL_KEYS = (
     "PERFORMANCE_DATABASE_URL",
 )
 RESET_ENVIRONMENT_KEYS = ("APP_ENV", "ENV", "NODE_ENV")
+TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 def _read_env() -> tuple[list[str], dict[str, str]]:
@@ -155,6 +156,79 @@ def effective_reset_environment(
     return effective_values
 
 
+def should_auto_start_local_postgres(
+    environ: dict[str, str] | None = None,
+    *,
+    pg_root: Path = PG_ROOT,
+    data_dir: Path = DATA_DIR,
+) -> bool:
+    """Return whether app startup owns this repository-managed local cluster."""
+
+    environ = os.environ if environ is None else environ
+    environment = str(environ.get("APP_ENV", "development")).strip().casefold()
+    configured = str(environ.get("DATABASE_AUTO_START_LOCAL", "")).strip().casefold()
+    enabled = configured in TRUE_VALUES if configured else environment in {"development", "dev"}
+    if not enabled or environment not in {"development", "dev"}:
+        return False
+    parsed = urlparse(str(environ.get("DATABASE_URL", "")).strip())
+    try:
+        database_port = parsed.port or 5432
+    except ValueError:
+        return False
+    if (
+        parsed.scheme not in {"postgres", "postgresql"}
+        or parsed.hostname not in LOCAL_DATABASE_HOSTS
+        or database_port != PORT
+        or parsed.path.lstrip("/") != DATABASE
+    ):
+        return False
+    return (
+        (Path(pg_root) / "bin" / "pg_ctl.exe").is_file()
+        and (Path(data_dir) / "PG_VERSION").is_file()
+    )
+
+
+def ensure_local_postgres_running(
+    *,
+    pg_root: Path = PG_ROOT,
+    data_dir: Path = DATA_DIR,
+    port: int = PORT,
+) -> bool:
+    """Start the initialized repository-managed PostgreSQL cluster if stopped."""
+
+    pg_root = Path(pg_root)
+    data_dir = Path(data_dir)
+    pg_ctl = pg_root / "bin" / "pg_ctl.exe"
+    if not pg_ctl.is_file():
+        raise RuntimeError(f"PostgreSQL binaries are missing: {pg_ctl}")
+    if not (data_dir / "PG_VERSION").is_file():
+        raise RuntimeError(
+            "Local PostgreSQL has not been initialized. Run "
+            "python scripts/setup_local_postgres.py once."
+        )
+    status = subprocess.run(
+        [str(pg_ctl), "-D", str(data_dir), "status"],
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        timeout=15,
+    )
+    if status.returncode == 0:
+        return False
+    print("Starting local PostgreSQL...", flush=True)
+    _run_pg_ctl(
+        str(pg_ctl),
+        "-D",
+        str(data_dir),
+        "-l",
+        str(data_dir / "postgres.log"),
+        "-o",
+        f"-p {port} -h 127.0.0.1",
+        "start",
+    )
+    return True
+
+
 def initialize_application_schemas(
     database_urls: tuple[str, ...],
     *,
@@ -244,22 +318,7 @@ def main() -> None:
         finally:
             password_path.unlink(missing_ok=True)
 
-    status = subprocess.run(
-        [str(bin_dir / "pg_ctl.exe"), "-D", str(DATA_DIR), "status"],
-        capture_output=True,
-    )
-    if status.returncode != 0:
-        print("Starting PostgreSQL...", flush=True)
-        _run_pg_ctl(
-            str(bin_dir / "pg_ctl.exe"),
-            "-D",
-            str(DATA_DIR),
-            "-l",
-            str(DATA_DIR / "postgres.log"),
-            "-o",
-            f"-p {PORT} -h 127.0.0.1",
-            "start",
-        )
+    ensure_local_postgres_running()
 
     child_env = os.environ.copy()
     child_env["PGPASSWORD"] = password

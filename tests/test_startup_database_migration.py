@@ -80,3 +80,18 @@ def test_startup_migration_closes_connection_after_failure(monkeypatch):
         ("initialize", None),
         ("close", None),
     ]
+
+
+def test_application_startup_auto_starts_managed_local_postgres(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "scripts.setup_local_postgres.should_auto_start_local_postgres",
+        lambda _environment: True,
+    )
+    monkeypatch.setattr(
+        "scripts.setup_local_postgres.ensure_local_postgres_running",
+        lambda: events.append("postgres-started"),
+    )
+
+    assert app_module._start_local_database_if_managed() is True
+    assert events == ["postgres-started"]

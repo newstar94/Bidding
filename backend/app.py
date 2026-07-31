@@ -1049,10 +1049,25 @@ def _initialize_database():
         migration_database.close()
 
 
+def _start_local_database_if_managed():
+    """Start the repository-managed PostgreSQL cluster for local development."""
+
+    from scripts.setup_local_postgres import (
+        ensure_local_postgres_running,
+        should_auto_start_local_postgres,
+    )
+
+    if not should_auto_start_local_postgres(os.environ):
+        return False
+    ensure_local_postgres_running()
+    return True
+
+
 @contextlib.asynccontextmanager
 async def lifespan(application):
     from backend.lifecycle import application_lifespan
 
+    _start_local_database_if_managed()
     async with application_lifespan(
         application,
         database=database,

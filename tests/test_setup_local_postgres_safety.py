@@ -3,7 +3,9 @@ import pytest
 from scripts.setup_local_postgres import (
     assert_safe_reset_environment,
     effective_reset_environment,
+    ensure_local_postgres_running,
     initialize_application_schemas,
+    should_auto_start_local_postgres,
 )
 
 
@@ -92,3 +94,54 @@ def test_reset_initializes_every_recreated_local_database(monkeypatch):
         database_urls
     )
     assert [call[1]["DATABASE_URL"] for call in calls] == list(database_urls)
+
+
+def test_local_postgres_auto_start_only_targets_managed_development_cluster(tmp_path):
+    pg_root = tmp_path / "pgsql"
+    data_dir = tmp_path / "data"
+    (pg_root / "bin").mkdir(parents=True)
+    (pg_root / "bin" / "pg_ctl.exe").touch()
+    data_dir.mkdir()
+    (data_dir / "PG_VERSION").write_text("17", encoding="ascii")
+    local = {
+        "APP_ENV": "development",
+        "DATABASE_URL": "postgresql://app:secret@127.0.0.1:55432/biddingflow_dev",
+    }
+
+    assert should_auto_start_local_postgres(local, pg_root=pg_root, data_dir=data_dir)
+    assert not should_auto_start_local_postgres(
+        {**local, "APP_ENV": "production"}, pg_root=pg_root, data_dir=data_dir
+    )
+    assert not should_auto_start_local_postgres(
+        {**local, "DATABASE_URL": "postgresql://app:secret@db.example.com:5432/biddingflow"},
+        pg_root=pg_root,
+        data_dir=data_dir,
+    )
+    assert not should_auto_start_local_postgres(
+        {**local, "DATABASE_AUTO_START_LOCAL": "false"},
+        pg_root=pg_root,
+        data_dir=data_dir,
+    )
+
+
+def test_ensure_local_postgres_running_starts_stopped_cluster(monkeypatch, tmp_path):
+    pg_root = tmp_path / "pgsql"
+    data_dir = tmp_path / "data"
+    (pg_root / "bin").mkdir(parents=True)
+    pg_ctl = pg_root / "bin" / "pg_ctl.exe"
+    pg_ctl.touch()
+    data_dir.mkdir()
+    (data_dir / "PG_VERSION").write_text("17", encoding="ascii")
+    starts = []
+
+    class Status:
+        returncode = 3
+
+    monkeypatch.setattr("scripts.setup_local_postgres.subprocess.run", lambda *args, **kwargs: Status())
+    monkeypatch.setattr("scripts.setup_local_postgres._run_pg_ctl", lambda *args: starts.append(args))
+
+    assert ensure_local_postgres_running(pg_root=pg_root, data_dir=data_dir, port=55432)
+    assert starts == [(
+        str(pg_ctl), "-D", str(data_dir), "-l", str(data_dir / "postgres.log"),
+        "-o", "-p 55432 -h 127.0.0.1", "start",
+    )]
