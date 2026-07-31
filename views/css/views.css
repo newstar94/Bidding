@@ -5194,12 +5194,23 @@ table th {
   min-width: 0;
 }
 
+.table-container,
+.table-responsive,
+.phanlo-table-wrap,
+.package-table-frame,
+.bidder-goods-table-frame,
+.timeline-table-wrap,
+.dashboard-table-body,
+.detailed-evaluation-table-frame,
+.virtual-table-container {
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+}
+
 .detailed-evaluation-table-frame {
   margin-bottom: 0 !important;
   max-height: min(72vh, 760px);
   overflow: auto;
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
   scrollbar-gutter: stable;
 }
 

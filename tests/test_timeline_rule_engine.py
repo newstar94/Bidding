@@ -20,6 +20,7 @@ def _projection(row):
     return {
         "milestoneKey": row["milestone_key"],
         "instanceKey": row["instance_key"],
+        "displayGroupCode": row["display_group_code"],
         "displayCode": row["display_code"],
         "title": row["title"],
         "applicability": row["applicability"],
@@ -111,6 +112,108 @@ def test_appraisal_conflict_is_visible_without_overwriting_user_choice():
     appraisal = next(row for row in rows if row["milestone_key"] == "E_HSMT_APPRAISAL_REPORT")
     assert appraisal["applicability"] == "CONDITIONAL"
     assert appraisal["applicability_reason"] == "CONFLICT_E_HSMT_APPRAISAL_DATA"
+
+
+def test_contract_negotiation_scope_matches_frontend_business_rule():
+    def applicability(**package_overrides):
+        package_data = {
+            "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+            "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+            **package_overrides,
+        }
+        rows = build_effective_timeline(
+            package_data,
+            {"plan": {"phe_duyet": "Kế hoạch"}},
+            [],
+            include_not_applicable=True,
+        )
+        return next(
+            row["applicability"]
+            for row in rows
+            if row["milestone_key"] == "CONTRACT_NEGOTIATION"
+        )
+
+    assert applicability() == "NOT_APPLICABLE"
+    assert applicability(hinh_thuc_lua_chon="Chỉ định thầu") == "NOT_APPLICABLE"
+    assert applicability(hinh_thuc_lua_chon="Chỉ định thầu rút gọn") == "CONDITIONAL"
+    assert applicability(phuong_thuc_lua_chon="Một giai đoạn hai túi hồ sơ") == "CONDITIONAL"
+    assert applicability(linh_vuc="Tư vấn") == "CONDITIONAL"
+
+
+def test_consultant_appointments_and_visible_section_numbers_follow_contracts():
+    package = {
+        "hinh_thuc_lua_chon": "Chào hàng cạnh tranh",
+        "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+        "yeu_cau_tham_dinh_hsmt_code": "NOT_REQUIRED",
+    }
+    preparation_contract = {
+        "phan_loai": "Tư vấn",
+        "co_qd_chi_dinh": 1,
+        "so_qd_chi_dinh": "01/QĐ-TVL",
+        "ngay_qd_chi_dinh": "2026-07-01",
+    }
+    rows = build_effective_timeline(
+        package,
+        {
+            "plan": {"phe_duyet": "Kế hoạch"},
+            "contracts": [preparation_contract],
+        },
+        [],
+        include_not_applicable=True,
+    )
+    preparation_appointments = [
+        row for row in rows
+        if row["milestone_key"] in {
+            "PREPARATION_CONSULTANT_APPOINTMENT_SUBMISSION",
+            "PREPARATION_CONSULTANT_APPOINTMENT",
+        }
+    ]
+    assert [row["applicability"] for row in preparation_appointments] == [
+        "APPLICABLE", "APPLICABLE",
+    ]
+    assert preparation_appointments[1]["so_van_ban"] == "01/QĐ-TVL"
+
+    appraisal_appointments = [
+        row for row in rows
+        if row["milestone_key"] in {
+            "APPRAISAL_CONSULTANT_APPOINTMENT_SUBMISSION",
+            "APPRAISAL_CONSULTANT_APPOINTMENT",
+        }
+    ]
+    assert [row["applicability"] for row in appraisal_appointments] == [
+        "NOT_APPLICABLE", "NOT_APPLICABLE",
+    ]
+
+    visible = [row for row in rows if row["applicability"] != "NOT_APPLICABLE"]
+    ehsmt = next(row for row in visible if row["milestone_key"] == "E_HSMT_SUBMISSION")
+    result = next(row for row in visible if row["milestone_key"] == "BID_OPENING_MINUTES")
+    assert (ehsmt["display_group_code"], ehsmt["display_code"]) == ("III", "3.1")
+    assert (result["display_group_code"], result["display_code"]) == ("IV", "4.1")
+
+    appraisal_rows = build_effective_timeline(
+        {
+            **package,
+            "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+        },
+        {
+            "plan": {"phe_duyet": "Kế hoạch"},
+            "contracts": [{
+                "phan_loai": "Thẩm định",
+                "co_qd_chi_dinh": 1,
+                "so_qd_chi_dinh": "02/QĐ-TVT",
+                "ngay_qd_chi_dinh": "2026-07-02",
+            }],
+        },
+        [],
+        include_not_applicable=True,
+    )
+    assert [
+        row["applicability"] for row in appraisal_rows
+        if row["milestone_key"] in {
+            "APPRAISAL_CONSULTANT_APPOINTMENT_SUBMISSION",
+            "APPRAISAL_CONSULTANT_APPOINTMENT",
+        }
+    ] == ["APPLICABLE", "APPLICABLE"]
 
 
 def test_sync_contract_accepts_stable_timeline_keys_and_adjustments():

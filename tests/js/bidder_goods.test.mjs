@@ -21,10 +21,7 @@ import {
   resolveAccessibleDetailedEvaluationGroups,
   resolveDetailedEvaluationContext,
 } from "../../frontend/packages/detailedEvaluationRules.js";
-import {
-  calculateRankings,
-  goodsPreferenceRankingBlockReason,
-} from "../../frontend/shared/BiddingCalculations.js";
+import { calculateRankings } from "../../frontend/shared/BiddingCalculations.js";
 import {
   applyManualBidderGoodsMapping,
   mapBidderGoodsRows,
@@ -1184,21 +1181,14 @@ test("goods detailed-evaluation groups are ordered and unlocked only by persiste
   assert.equal(resolveDetailedEvaluationContext({ linhVuc: "Hỗn hợp" }, "technical").configuredGroups.includes("bidder_goods"), false);
 });
 
-test("goods rankings require ready preference data and use authoritative post-preference prices", () => {
-  const pkg = { linhVuc: "Hàng hóa", phuongPhapDanhGia: "Giá thấp nhất", phanLo: "Không" };
+test("goods rankings are not blocked by preference readiness", () => {
   const qualified = { danhGiaKetLuan: "Đạt" };
   const bids = [
-    { id: "a", ...qualified, giaDuThau: 90, giaSoSanhSauUuDai: 120, trangThaiTinhUuDai: "ready" },
-    { id: "b", ...qualified, giaDuThau: 100, giaSoSanhSauUuDai: 110, trangThaiTinhUuDai: "ready" },
-    { id: "draft", ...qualified, giaDuThau: 1, trangThaiTinhUuDai: "draft" },
+    { id: "a", ...qualified, giaXepHang: 120, giaSoSanhSauUuDai: 90, trangThaiTinhUuDai: "draft" },
+    { id: "b", ...qualified, giaXepHang: 110, giaSoSanhSauUuDai: 100, trangThaiTinhUuDai: "draft" },
   ];
-  assert.deepEqual(calculateRankings(pkg, bids).rankings, { b: 1, a: 2 });
-  assert.equal(
-    goodsPreferenceRankingBlockReason(pkg, bids[2]),
-    "Chưa đủ dữ liệu ưu đãi để xếp hạng",
-  );
-  assert.equal(goodsPreferenceRankingBlockReason(pkg, bids[0]), "");
-  const mixed = { ...pkg, linhVuc: "Hỗn hợp" };
-  assert.deepEqual(calculateRankings(mixed, bids).rankings, { b: 1, a: 2 });
-  assert.equal(goodsPreferenceRankingBlockReason(mixed, bids[2]), "Chưa đủ dữ liệu ưu đãi để xếp hạng");
+  for (const linhVuc of ["Hàng hóa", "Hỗn hợp"]) {
+    const pkg = { linhVuc, phuongPhapDanhGia: "Giá thấp nhất", phanLo: "Không" };
+    assert.deepEqual(calculateRankings(pkg, bids).rankings, { b: 1, a: 2 });
+  }
 });

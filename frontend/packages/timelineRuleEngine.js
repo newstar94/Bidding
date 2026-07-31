@@ -74,9 +74,15 @@ function parseMetadata(raw) {
 
 function contractKind(contract) {
   const label = normalized(firstValue(contract, ["phanLoai", "phan_loai"]));
-  if (label.includes("tvl") || label.includes("tư vấn lập")) return "preparation";
-  if (label.includes("tvt") || label.includes("tư vấn thẩm")) return "appraisal";
+  if (["tư vấn", "tu van", "consulting"].includes(label) || label.includes("tvl") || label.includes("tư vấn lập")) return "preparation";
+  if (["thẩm định", "tham dinh", "appraisal"].includes(label) || label.includes("tvt") || label.includes("tư vấn thẩm")) return "appraisal";
   return "";
+}
+
+function hasAppointmentDecision(contract = {}) {
+  const flag = firstValue(contract, ["coQdChiDinh", "co_qd_chi_dinh"]);
+  if (flag !== "") return flag === true || flag === 1 || ["1", "true", "có", "co"].includes(normalized(flag));
+  return Boolean(firstValue(contract, ["soQdChiDinh", "so_qd_chi_dinh", "ngayQdChiDinh", "ngay_qd_chi_dinh"]));
 }
 
 function activeRecords(items) {
@@ -178,10 +184,31 @@ function hasAppraisalEvidence(packageData, related) {
   );
 }
 
+function isConsultingPackage(facts) {
+  return ["tư vấn", "tu van", "consulting", "tu_van"].includes(normalized(facts.packageField));
+}
+
 function ruleResult(definition, context) {
   const { facts, packageData, related, saved, source } = context;
   const tags = new Set(definition.tags || []);
   const hasData = hasMeaningfulSavedData(saved) || Boolean(source.number || source.date);
+
+  if (definition.applicabilityRule === "CONSULTANT_PREPARATION_APPOINTMENT") {
+    if (String(related.preparationConsultantMode || "").toUpperCase() === "INTERNAL") {
+      return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"];
+    }
+    return hasAppointmentDecision(related.preparationContract)
+      ? ["APPLICABLE", "INCLUDED_BY_PREPARATION_APPOINTMENT_DECISION"]
+      : ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_APPOINTMENT_DECISION"];
+  }
+  if (definition.applicabilityRule === "CONSULTANT_APPRAISAL_APPOINTMENT") {
+    if (String(related.appraisalConsultantMode || "").toUpperCase() === "INTERNAL") {
+      return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"];
+    }
+    return hasAppointmentDecision(related.appraisalContract)
+      ? ["APPLICABLE", "INCLUDED_BY_APPRAISAL_APPOINTMENT_DECISION"]
+      : ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_APPOINTMENT_DECISION"];
+  }
 
   if (facts.selectionMethod === "COMPETITIVE_OFFERING" && tags.has("APPRAISAL")) {
     return ["NOT_APPLICABLE", "EXCLUDED_BY_COMPETITIVE_OFFERING"];
@@ -194,6 +221,15 @@ function ruleResult(definition, context) {
   }
   if (facts.selectionMethod === "DIRECT_APPOINTMENT_SIMPLIFIED" && tags.has("APPRAISAL")) {
     return ["NOT_APPLICABLE", "EXCLUDED_BY_SIMPLIFIED_DIRECT_APPOINTMENT"];
+  }
+  if (definition.applicabilityRule === "CONTRACT_NEGOTIATION") {
+    const isEligible = facts.selectionMethod === "DIRECT_APPOINTMENT_SIMPLIFIED"
+      || facts.selectionProcedure === "ONE_STAGE_TWO_ENVELOPES"
+      || isConsultingPackage(facts);
+    if (!isEligible) return ["NOT_APPLICABLE", "EXCLUDED_BY_CONTRACT_NEGOTIATION_SCOPE"];
+    return hasData
+      ? ["APPLICABLE", "INCLUDED_BY_CONTRACT_NEGOTIATION_DATA"]
+      : ["CONDITIONAL", "WAITING_FOR_CONTRACT_NEGOTIATION_DATA"];
   }
   if (facts.selectionMethod === "DIRECT_APPOINTMENT_SIMPLIFIED" && tags.has("OPTIONAL") && !hasData) {
     return ["NOT_APPLICABLE", "EXCLUDED_BY_SIMPLIFIED_DIRECT_APPOINTMENT"];
@@ -232,14 +268,14 @@ function ruleResult(definition, context) {
   if (definition.applicabilityRule === "CONSULTANT_PREPARATION") {
     const mode = String(related.preparationConsultantMode || "").toUpperCase();
     if (mode === "INTERNAL") return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"];
-    if (Object.keys(related.preparationContract || {}).length || hasData) return ["APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_DATA"];
-    return ["CONDITIONAL", "WAITING_FOR_PREPARATION_CONSULTANT_DECISION"];
+    if (Object.keys(related.preparationContract || {}).length) return ["APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_DATA"];
+    return ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_CONSULTANT_CONTRACT"];
   }
   if (definition.applicabilityRule === "CONSULTANT_APPRAISAL") {
     const mode = String(related.appraisalConsultantMode || "").toUpperCase();
     if (mode === "INTERNAL") return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"];
-    if (Object.keys(related.appraisalContract || {}).length || hasData) return ["APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_DATA"];
-    return ["CONDITIONAL", "WAITING_FOR_APPRAISAL_CONSULTANT_DECISION"];
+    if (Object.keys(related.appraisalContract || {}).length) return ["APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_DATA"];
+    return ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"];
   }
   if (definition.applicabilityRule === "EXPERT_TEAM") {
     return (related.expertTeam || []).length || hasData
@@ -247,6 +283,9 @@ function ruleResult(definition, context) {
       : ["CONDITIONAL", "WAITING_FOR_EXPERT_TEAM_DATA"];
   }
   if (definition.applicabilityRule === "APPRAISAL_TEAM") {
+    if (!Object.keys(related.appraisalContract || {}).length && !(related.appraisalTeam || []).length && !hasData) {
+      return ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"];
+    }
     return (related.appraisalTeam || []).length || hasData
       ? ["APPLICABLE", "INCLUDED_BY_APPRAISAL_TEAM_DATA"]
       : ["CONDITIONAL", "WAITING_FOR_APPRAISAL_TEAM_DATA"];
@@ -320,6 +359,7 @@ function createRow(definition, entity, ordinal, packageData, planData, related, 
     milestoneKey: definition.milestoneKey,
     instanceKey,
     displayCode: "",
+    displayGroupCode: "",
     title,
     sectionKey: definition.sectionKey,
     applicability,
@@ -350,14 +390,33 @@ function createRow(definition, entity, ordinal, packageData, planData, related, 
   return row;
 }
 
+function romanNumeral(value) {
+  const pairs = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  let remaining = Number(value) || 0;
+  let result = "";
+  for (const [amount, symbol] of pairs) {
+    while (remaining >= amount) {
+      result += symbol;
+      remaining -= amount;
+    }
+  }
+  return result;
+}
+
 function assignDisplayCodes(rows) {
   const counters = new Map();
+  const visibleSections = new Set(rows.filter((row) => row.applicability !== "NOT_APPLICABLE").map((row) => row.sectionKey));
+  const sectionNumbers = new Map(
+    timelineCatalog.sections
+      .filter((section) => visibleSections.has(section.sectionKey))
+      .map((section, index) => [section.sectionKey, index + 1])
+  );
   return rows.map((row) => {
-    if (row.applicability === "NOT_APPLICABLE") return { ...row, displayCode: "" };
-    const section = SECTION_BY_KEY.get(row.sectionKey);
+    if (row.applicability === "NOT_APPLICABLE") return { ...row, displayCode: "", displayGroupCode: "" };
+    const sectionNumber = sectionNumbers.get(row.sectionKey);
     const next = (counters.get(row.sectionKey) || 0) + 1;
     counters.set(row.sectionKey, next);
-    return { ...row, displayCode: `${section.displayPrefix}.${next}` };
+    return { ...row, displayCode: `${sectionNumber}.${next}`, displayGroupCode: romanNumeral(sectionNumber) };
   });
 }
 

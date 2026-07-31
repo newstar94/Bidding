@@ -384,9 +384,9 @@ function renderTimelineTable(view) {
   let activeGroup = "";
   const html = [];
   filteredRows(state).forEach((row) => {
-    if (row.maNhom !== activeGroup) {
-      activeGroup = row.maNhom;
-      html.push(`<tr class="timeline-group-row"><th scope="rowgroup">${escapeHtml(row.maNhom)}</th><th colspan="6">${escapeHtml(row.tenNhom)}</th></tr>`);
+    if (row.sectionKey !== activeGroup) {
+      activeGroup = row.sectionKey;
+      html.push(`<tr class="timeline-group-row"><th scope="rowgroup">${escapeHtml(row.displayGroupCode || row.maNhom)}</th><th colspan="6">${escapeHtml(row.tenNhom)}</th></tr>`);
     }
     const overdue = timelineIsOverdue(row);
     const sourceLabel = row.sourceMode === "AUTO" ? "Tự động" : "Thủ công";

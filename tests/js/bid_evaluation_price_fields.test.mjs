@@ -81,13 +81,13 @@ test("shows both price columns in 1G1T and financial 1G2T reports only", () => {
   assert.doesNotMatch(technical.headerHtml, /Giá xếp hạng|Giá đề nghị trúng thầu/);
 });
 
-test("uses the authoritative post-preference price when ordering qualified goods bids", () => {
+test("uses the explicit ranking price when ordering qualified goods bids", () => {
   const pkg = { linhVuc: "Hàng hóa", phanLo: "Không", phuongPhapDanhGia: "Giá thấp nhất" };
   const bids = [
     { id: "a", danhGiaKetLuan: "Đạt", giaSauGiamGia: 90, giaXepHang: 1, giaSoSanhSauUuDai: 120, trangThaiTinhUuDai: "ready" },
     { id: "b", danhGiaKetLuan: "Đạt", giaSauGiamGia: 100, giaXepHang: 999, giaSoSanhSauUuDai: 110, trangThaiTinhUuDai: "ready" },
   ];
-  assert.deepEqual(calculateRankings(pkg, bids).rankings, { b: 1, a: 2 });
+  assert.deepEqual(calculateRankings(pkg, bids).rankings, { a: 1, b: 2 });
 });
 
 test("imports both price columns from a unified 1G1T evaluation workbook", async () => {

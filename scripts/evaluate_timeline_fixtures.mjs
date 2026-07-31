@@ -8,6 +8,7 @@ const projected = fixtures.map((fixture) => ({
   rows: buildEffectiveTimeline(fixture.package, fixture.related, fixture.savedEntries).map((row) => ({
     milestoneKey: row.milestoneKey,
     instanceKey: row.instanceKey,
+    displayGroupCode: row.displayGroupCode,
     displayCode: row.displayCode,
     title: row.title,
     applicability: row.applicability,

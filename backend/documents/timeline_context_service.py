@@ -16,6 +16,7 @@ from backend.shared.helpers import database
 from backend.timeline.effective_timeline import (
     CATALOG,
     TIMELINE_TEMPLATE_VERSION,
+    assign_timeline_display_codes,
     build_effective_timeline,
 )
 
@@ -180,12 +181,7 @@ def build_timeline_context(package_id, user_id, organization_id):
         item for item in build_effective_timeline(package, related, saved_rows)
         if item["applicability"] == "APPLICABLE"
     ]
-    export_counters = {}
-    for item in items:
-        section_key = item["section_key"]
-        export_counters[section_key] = export_counters.get(section_key, 0) + 1
-        section = next(section for section in CATALOG["sections"] if section["sectionKey"] == section_key)
-        item["display_code"] = f"{section['displayPrefix']}.{export_counters[section_key]}"
+    assign_timeline_display_codes(items)
     sections = []
     section_order = []
     for item in items:
@@ -194,8 +190,9 @@ def build_timeline_context(package_id, user_id, organization_id):
             section_order.append(section)
     for section_key in section_order:
         section = next(item for item in CATALOG["sections"] if item["sectionKey"] == section_key)
-        section_items = [_project_item(item) for item in items if item["section_key"] == section_key]
-        sections.append({"code": section["legacyCode"], "title": section["title"], "items": section_items})
+        raw_section_items = [item for item in items if item["section_key"] == section_key]
+        section_items = [_project_item(item) for item in raw_section_items]
+        sections.append({"code": raw_section_items[0]["display_group_code"], "title": section["title"], "items": section_items})
 
     context = {
         "goi_thau": package,

@@ -22,8 +22,10 @@ Migration v33 backfill khóa mốc cũ và thêm `goi_thau_dieu_chinh_hsmt`; mig
 - Thẩm định E-HSMT ba trạng thái, evidence tự nhận diện và cảnh báo xung đột khi người dùng chọn `NOT_REQUIRED` nhưng dữ liệu đã phát sinh.
 - Chào hàng cạnh tranh loại toàn bộ tag `APPRAISAL`.
 - Kế hoạch riêng/gộp và phương thức 1G1T/1G2T dùng predicate tập trung.
+- `Thương thảo hợp đồng` chỉ thuộc phạm vi Chỉ định thầu rút gọn, 1G2T hoặc gói Tư vấn; ngoài ba phạm vi này mốc là `NOT_APPLICABLE`.
+- Các mốc Tờ trình/QĐ chỉ định TVL và TVT chỉ áp dụng khi hợp đồng liên kết với gói có `coQdChiDinh = 1`; khi xóa hợp đồng tư vấn, nhóm tương ứng bị loại và mã nhóm/STT hiển thị được đánh lại theo các nhóm còn lại.
 - Chỉ định thầu, chỉ định rút gọn và lựa chọn đặc biệt có nhánh loại/conditional riêng, không tái sử dụng nguyên timeline cạnh tranh.
-- Tư vấn lập/thẩm và tổ chuyên gia/tổ thẩm định dựa trên contract/team entity; thiếu dữ liệu là `CONDITIONAL`.
+- Tư vấn lập/thẩm và tổ chuyên gia/tổ thẩm định dựa trên contract/team entity; có hợp đồng nhưng thiếu dữ liệu là `CONDITIONAL`, không có hợp đồng liên kết là `NOT_APPLICABLE`.
 - Điều chỉnh E-HSMT, làm rõ và gia hạn sinh instance lặp theo entity; instance có khóa ổn định và idempotent.
 - Khi tạo phiên bản gói thầu (`phienBan > 00`), hệ thống tự bảo đảm entity `QĐ phê duyệt điều chỉnh E-HSMT` với khóa `package-version:<packageId>`. `sequence` lấy từ `phienBan`, số/ngày quyết định lấy từ phiên bản mới; dữ liệu phiên bản cũ không có entity vẫn được evaluator suy luận tương thích ngược.
 - `effectiveClosingTime` luôn là giá trị lớn nhất giữa `thoiGianDongThau` của phiên bản và mọi mốc `giaHanList` đang hoạt động; dùng chung cho giao diện, cảnh báo quá hạn và xuất Word.

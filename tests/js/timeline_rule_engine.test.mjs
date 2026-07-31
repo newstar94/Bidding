@@ -48,6 +48,90 @@ test("plan approval and envelope rules are exclusive", () => {
   assert.equal(oneEnvelope.some((row) => row.tags.includes("TWO_ENVELOPE_ONLY")), false);
 });
 
+test("contract negotiation is limited to simplified appointment, 1G2T, or consulting packages", () => {
+  const negotiation = (packageData) => buildEffectiveTimeline(
+    { ...base, ...packageData },
+    { plan: { pheDuyet: "Kế hoạch" } },
+    [],
+    { includeNotApplicable: true }
+  ).find((row) => row.milestoneKey === "CONTRACT_NEGOTIATION");
+
+  assert.equal(negotiation({}).applicability, "NOT_APPLICABLE");
+  assert.equal(negotiation({ hinhThucLuaChon: "Chỉ định thầu" }).applicability, "NOT_APPLICABLE");
+  assert.equal(negotiation({ hinhThucLuaChon: "Chỉ định thầu rút gọn" }).applicability, "CONDITIONAL");
+  assert.equal(negotiation({ phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ" }).applicability, "CONDITIONAL");
+  assert.equal(negotiation({ linhVuc: "Tư vấn" }).applicability, "CONDITIONAL");
+});
+
+test("consultant appointment rows follow the linked contract appointment decision", () => {
+  const appointmentRows = (contract) => buildEffectiveTimeline(
+    base,
+    { plan: { pheDuyet: "Kế hoạch" }, contracts: [contract] },
+    [],
+    { includeNotApplicable: true }
+  ).filter((row) => row.milestoneKey.includes("CONSULTANT_APPOINTMENT"));
+
+  const preparationWithoutDecision = appointmentRows({ phanLoai: "Tư vấn", coQdChiDinh: 0 });
+  assert.deepEqual(
+    preparationWithoutDecision.filter((row) => row.milestoneKey.startsWith("PREPARATION_")).map((row) => row.applicability),
+    ["NOT_APPLICABLE", "NOT_APPLICABLE"]
+  );
+  const preparationWithDecision = appointmentRows({
+    phanLoai: "Tư vấn",
+    coQdChiDinh: 1,
+    soQdChiDinh: "01/QĐ-TVL",
+    ngayQdChiDinh: "2026-07-01"
+  });
+  assert.deepEqual(
+    preparationWithDecision.filter((row) => row.milestoneKey.startsWith("PREPARATION_")).map((row) => row.applicability),
+    ["APPLICABLE", "APPLICABLE"]
+  );
+  assert.equal(
+    preparationWithDecision.find((row) => row.milestoneKey === "PREPARATION_CONSULTANT_APPOINTMENT").soVanBan,
+    "01/QĐ-TVL"
+  );
+
+  const appraisalWithoutDecision = appointmentRows({ phanLoai: "Thẩm định", coQdChiDinh: 0 });
+  assert.deepEqual(
+    appraisalWithoutDecision.filter((row) => row.milestoneKey.startsWith("APPRAISAL_")).map((row) => row.applicability),
+    ["NOT_APPLICABLE", "NOT_APPLICABLE"]
+  );
+  const appraisalWithDecision = appointmentRows({
+    phanLoai: "Thẩm định",
+    coQdChiDinh: 1,
+    soQdChiDinh: "02/QĐ-TVT",
+    ngayQdChiDinh: "2026-07-02"
+  });
+  assert.deepEqual(
+    appraisalWithDecision.filter((row) => row.milestoneKey.startsWith("APPRAISAL_")).map((row) => row.applicability),
+    ["APPLICABLE", "APPLICABLE"]
+  );
+});
+
+test("visible timeline sections and row codes are renumbered after TVT is removed", () => {
+  const rows = buildEffectiveTimeline({
+    ...base,
+    hinhThucLuaChon: "Đấu thầu rộng rãi",
+    yeuCauThamDinhHsmtCode: "NOT_REQUIRED"
+  }, {
+    plan: { pheDuyet: "Kế hoạch" },
+    contracts: [{ phanLoai: "Tư vấn", coQdChiDinh: 0 }]
+  }, []);
+  const visibleSections = [...new Set(rows.map((row) => row.sectionKey))];
+  assert.deepEqual(visibleSections, [
+    "PLAN_AND_ESTIMATE",
+    "PREPARATION_CONSULTANT",
+    "E_HSMT",
+    "SELECTION_RESULT"
+  ]);
+  const ehsmt = rows.find((row) => row.milestoneKey === "E_HSMT_SUBMISSION");
+  const result = rows.find((row) => row.milestoneKey === "BID_OPENING_MINUTES");
+  assert.equal(ehsmt.displayGroupCode, "III");
+  assert.equal(ehsmt.displayCode, "3.1");
+  assert.equal(result.displayGroupCode, "IV");
+  assert.equal(result.displayCode, "4.1");
+});
+
 test("repeatable adjustment instances are stable, ordered and idempotent", () => {
   const related = {
     plan: { pheDuyet: "Kế hoạch" },

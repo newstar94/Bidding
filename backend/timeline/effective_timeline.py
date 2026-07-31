@@ -98,11 +98,20 @@ def _parse_metadata(raw):
 
 def _contract_kind(contract):
     label = _normalized(_first(contract, ("phanLoai", "phan_loai")))
-    if "tvl" in label or "tư vấn lập" in label:
+    if label in {"tư vấn", "tu van", "consulting"} or "tvl" in label or "tư vấn lập" in label:
         return "preparation"
-    if "tvt" in label or "tư vấn thẩm" in label:
+    if label in {"thẩm định", "tham dinh", "appraisal"} or "tvt" in label or "tư vấn thẩm" in label:
         return "appraisal"
     return ""
+
+
+def _has_appointment_decision(contract):
+    flag = _first(contract, ("coQdChiDinh", "co_qd_chi_dinh"))
+    if flag != "":
+        return flag is True or flag == 1 or _normalized(flag) in {"1", "true", "có", "co"}
+    return bool(_first(contract, (
+        "soQdChiDinh", "so_qd_chi_dinh", "ngayQdChiDinh", "ngay_qd_chi_dinh",
+    )))
 
 
 def _active(items):
@@ -257,10 +266,28 @@ def _has_appraisal_evidence(package_data, related):
     )
 
 
+def _is_consulting_package(facts):
+    return _normalized(facts.get("packageField")) in {
+        "tư vấn", "tu van", "consulting", "tu_van",
+    }
+
+
 def _rule_result(definition, *, facts, package_data, related, saved, source):
     tags = set(definition.get("tags", ()))
     rule = definition["applicabilityRule"]
     has_data = _has_saved_data(saved) or bool(source["number"] or source["date"])
+    if rule == "CONSULTANT_PREPARATION_APPOINTMENT":
+        if str(related.get("preparationConsultantMode") or "").upper() == "INTERNAL":
+            return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"
+        if _has_appointment_decision(related.get("preparationContract")):
+            return "APPLICABLE", "INCLUDED_BY_PREPARATION_APPOINTMENT_DECISION"
+        return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_APPOINTMENT_DECISION"
+    if rule == "CONSULTANT_APPRAISAL_APPOINTMENT":
+        if str(related.get("appraisalConsultantMode") or "").upper() == "INTERNAL":
+            return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"
+        if _has_appointment_decision(related.get("appraisalContract")):
+            return "APPLICABLE", "INCLUDED_BY_APPRAISAL_APPOINTMENT_DECISION"
+        return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_APPOINTMENT_DECISION"
     if facts["selectionMethod"] == "COMPETITIVE_OFFERING" and "APPRAISAL" in tags:
         return "NOT_APPLICABLE", "EXCLUDED_BY_COMPETITIVE_OFFERING"
     if facts["selectionProcedure"] == "ONE_STAGE_ONE_ENVELOPE" and "TWO_ENVELOPE_ONLY" in tags:
@@ -269,6 +296,19 @@ def _rule_result(definition, *, facts, package_data, related, saved, source):
         return "NOT_APPLICABLE", "EXCLUDED_BY_DIRECT_APPOINTMENT"
     if facts["selectionMethod"] == "DIRECT_APPOINTMENT_SIMPLIFIED" and "APPRAISAL" in tags:
         return "NOT_APPLICABLE", "EXCLUDED_BY_SIMPLIFIED_DIRECT_APPOINTMENT"
+    if rule == "CONTRACT_NEGOTIATION":
+        is_eligible = (
+            facts["selectionMethod"] == "DIRECT_APPOINTMENT_SIMPLIFIED"
+            or facts["selectionProcedure"] == "ONE_STAGE_TWO_ENVELOPES"
+            or _is_consulting_package(facts)
+        )
+        if not is_eligible:
+            return "NOT_APPLICABLE", "EXCLUDED_BY_CONTRACT_NEGOTIATION_SCOPE"
+        return (
+            ("APPLICABLE", "INCLUDED_BY_CONTRACT_NEGOTIATION_DATA")
+            if has_data
+            else ("CONDITIONAL", "WAITING_FOR_CONTRACT_NEGOTIATION_DATA")
+        )
     if facts["selectionMethod"] == "DIRECT_APPOINTMENT_SIMPLIFIED" and "OPTIONAL" in tags and not has_data:
         return "NOT_APPLICABLE", "EXCLUDED_BY_SIMPLIFIED_DIRECT_APPOINTMENT"
     if rule == "PLAN_SEPARATE":
@@ -308,18 +348,20 @@ def _rule_result(definition, *, facts, package_data, related, saved, source):
     if rule == "CONSULTANT_PREPARATION":
         if str(related.get("preparationConsultantMode") or "").upper() == "INTERNAL":
             return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"
-        if related.get("preparationContract") or has_data:
+        if related.get("preparationContract"):
             return "APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_DATA"
-        return "CONDITIONAL", "WAITING_FOR_PREPARATION_CONSULTANT_DECISION"
+        return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_CONSULTANT_CONTRACT"
     if rule == "CONSULTANT_APPRAISAL":
         if str(related.get("appraisalConsultantMode") or "").upper() == "INTERNAL":
             return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"
-        if related.get("appraisalContract") or has_data:
+        if related.get("appraisalContract"):
             return "APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_DATA"
-        return "CONDITIONAL", "WAITING_FOR_APPRAISAL_CONSULTANT_DECISION"
+        return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"
     if rule == "EXPERT_TEAM":
         return ("APPLICABLE", "INCLUDED_BY_EXPERT_TEAM_DATA") if related.get("expertTeam") or has_data else ("CONDITIONAL", "WAITING_FOR_EXPERT_TEAM_DATA")
     if rule == "APPRAISAL_TEAM":
+        if not related.get("appraisalContract") and not related.get("appraisalTeam") and not has_data:
+            return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"
         return ("APPLICABLE", "INCLUDED_BY_APPRAISAL_TEAM_DATA") if related.get("appraisalTeam") or has_data else ("CONDITIONAL", "WAITING_FOR_APPRAISAL_TEAM_DATA")
     if rule in {"OPTIONAL_WHEN_DATA", "OPTIONAL_APPRAISAL"}:
         return ("APPLICABLE", "INCLUDED_BY_BUSINESS_DATA") if has_data else ("CONDITIONAL", "WAITING_FOR_OPTIONAL_BUSINESS_DATA")
@@ -387,6 +429,7 @@ def _make_row(definition, entity, ordinal, package_data, plan_data, related, ind
         "milestone_key": definition["milestoneKey"],
         "instance_key": instance_key,
         "display_code": "",
+        "display_group_code": "",
         "title": title,
         "section_key": definition["sectionKey"],
         "applicability": applicability,
@@ -414,6 +457,47 @@ def _make_row(definition, entity, ordinal, package_data, plan_data, related, ind
         "is_optional": "OPTIONAL" in definition.get("tags", ()),
         "trang_thai": status,
     }
+
+
+def _roman_numeral(value):
+    pairs = (
+        (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+        (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+        (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+    )
+    remaining = int(value or 0)
+    result = []
+    for amount, symbol in pairs:
+        while remaining >= amount:
+            result.append(symbol)
+            remaining -= amount
+    return "".join(result)
+
+
+def assign_timeline_display_codes(rows):
+    visible_sections = {
+        row["section_key"] for row in rows
+        if row["applicability"] != "NOT_APPLICABLE"
+    }
+    section_numbers = {
+        section["sectionKey"]: index
+        for index, section in enumerate(
+            (section for section in CATALOG["sections"] if section["sectionKey"] in visible_sections),
+            start=1,
+        )
+    }
+    counters = {}
+    for row in rows:
+        if row["applicability"] == "NOT_APPLICABLE":
+            row["display_code"] = ""
+            row["display_group_code"] = ""
+            continue
+        section_key = row["section_key"]
+        counters[section_key] = counters.get(section_key, 0) + 1
+        section_number = section_numbers[section_key]
+        row["display_code"] = f"{section_number}.{counters[section_key]}"
+        row["display_group_code"] = _roman_numeral(section_number)
+    return rows
 
 
 def build_effective_timeline(
@@ -449,13 +533,7 @@ def build_effective_timeline(
         else:
             rows.append(_make_row(definition, None, 0, package_copy, plan_data, related, indexes))
     rows.sort(key=lambda row: (row["sort_order"], row["milestone_key"], row["instance_key"]))
-    counters = {}
-    for row in rows:
-        if row["applicability"] == "NOT_APPLICABLE":
-            row["display_code"] = ""
-            continue
-        counters[row["section_key"]] = counters.get(row["section_key"], 0) + 1
-        row["display_code"] = f"{SECTION_BY_KEY[row['section_key']]['displayPrefix']}.{counters[row['section_key']]}"
+    assign_timeline_display_codes(rows)
     return rows if include_not_applicable else [row for row in rows if row["applicability"] != "NOT_APPLICABLE"]
 
 
