@@ -59,8 +59,9 @@ test("custom select inside a label stays open and allows choosing an option", as
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  const browser = await chromium.launch({ headless: true });
+  let browser;
   try {
+    browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     await page.setViewportSize({ width: 2048, height: 600 });
     await page.goto(`http://127.0.0.1:${address.port}/`);
@@ -95,7 +96,7 @@ test("custom select inside a label stays open and allows choosing an option", as
     await page.locator('.custom-select-options[data-parent="lot-select"] [data-value="lot-1"]').click();
     assert.equal(await page.locator("#lot-select").inputValue(), "lot-1");
   } finally {
-    await browser.close();
+    await browser?.close();
     await new Promise((resolve) => server.close(resolve));
   }
 });

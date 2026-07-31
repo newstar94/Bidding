@@ -17,3 +17,14 @@ def test_starlette_test_client_dependency_is_explicitly_pinned():
     assert not any(
         re.match(r"httpx(?:==|$)", dependency) for dependency in test_dependencies
     )
+
+
+def test_full_ci_installs_chromium_before_running_browser_tests():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    install = "npx playwright install --with-deps chromium"
+    quality_gate = "run: npm run check"
+    assert install in workflow
+    assert workflow.index(install) < workflow.index(quality_gate)

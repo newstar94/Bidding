@@ -53,6 +53,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -e ".[test]"
           npm ci
+          npx playwright install --with-deps chromium
       - name: Initialize fresh PostgreSQL schema
         run: python scripts/manage_database.py
       - name: Full quality, test, build, FK-index and package gate
