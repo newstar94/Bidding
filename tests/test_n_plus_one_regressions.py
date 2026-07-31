@@ -101,7 +101,7 @@ def _measure_admin_user_queries(monkeypatch, user_count):
     monkeypatch.setattr(
         admin_user_routes,
         "verify_session",
-        lambda _request: (True, SimpleNamespace(user_id="admin")),
+        lambda _request, required_role=None: (True, SimpleNamespace(user_id="admin")),
     )
     monkeypatch.setattr(
         admin_user_routes,

@@ -58,8 +58,19 @@ def _list_users_sync(request):
         if not requester:
             return JSONResponse({"error": "Không tìm thấy thông tin tài khoản yêu cầu!"}, status_code=404)
 
-        req_role = requester['vai_tro']
+        req_role = str(role_or_err)
         effective_roles = get_effective_roles(req_role)
+        if 'super_admin' in effective_roles:
+            controls_valid, elevated_role_or_err = verify_session(
+                request,
+                required_role='super_admin',
+            )
+            if not controls_valid:
+                return JSONResponse(
+                    {"error": elevated_role_or_err},
+                    status_code=403,
+                )
+            role_or_err = elevated_role_or_err
 
         sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar FROM tai_khoan"
 

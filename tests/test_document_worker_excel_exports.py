@@ -37,6 +37,36 @@ def test_document_worker_builds_excel_from_data_only_spec(monkeypatch):
     assert sheet["B2"].value == "Dat"
 
 
+@pytest.mark.parametrize("formula", ["=1+1", "+1+1", "-1+1", "@SUM(A1:A2)"])
+def test_document_worker_neutralizes_formula_prefixed_text(monkeypatch, formula):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DOCUMENT_WORKER_DATABASE_URL", raising=False)
+
+    content = run_document_job(
+        "export_excel",
+        {
+            "function": "create_excel_from_spec",
+            "args": [
+                {
+                    "title": "Export",
+                    "headers": ["Contractor"],
+                    "rows": [[formula]],
+                    "options_map": {"Contractor": [formula]},
+                }
+            ],
+        },
+        timeout_seconds=15,
+    )
+
+    workbook = load_workbook(BytesIO(content))
+    row_cell = workbook["Export"]["A2"]
+    dropdown_cell = workbook["Dropdowns"]["A1"]
+    assert row_cell.value == f"'{formula}"
+    assert row_cell.data_type == "s"
+    assert dropdown_cell.value == f"'{formula}"
+    assert dropdown_cell.data_type == "s"
+
+
 @pytest.mark.parametrize(
     ("function_name", "args"),
     [

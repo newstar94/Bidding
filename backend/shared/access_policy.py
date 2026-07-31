@@ -611,17 +611,15 @@ def build_batch_write_authorization_context(
             )
 
     opening_parent_ids = set()
-    missing_opening_ids = []
+    opening_record_ids = []
     for item in records_by_table.get("thong_tin_mo_thau", ()):
         parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
         record_id = clean_id(item.get("id"))
         if parent_id:
             opening_parent_ids.add(parent_id)
-            if record_id:
-                context.opening_parent_by_id[record_id] = parent_id
-        elif record_id:
-            missing_opening_ids.append(record_id)
-    for chunk in _chunked(list(dict.fromkeys(missing_opening_ids))):
+        if record_id:
+            opening_record_ids.append(record_id)
+    for chunk in _chunked(list(dict.fromkeys(opening_record_ids))):
         placeholders = ", ".join("?" for _ in chunk)
         rows = cursor.execute(
             f"""SELECT id, goi_thau_id FROM thong_tin_mo_thau
@@ -636,17 +634,15 @@ def build_batch_write_authorization_context(
                 opening_parent_ids.add(parent_id)
 
     goods_parent_ids = set()
-    missing_goods_ids = []
+    goods_record_ids = []
     for item in records_by_table.get("goi_thau_hang_hoa", ()):
         parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
         record_id = clean_id(item.get("id"))
         if parent_id:
             goods_parent_ids.add(parent_id)
-            if record_id:
-                context.goods_parent_by_id[record_id] = parent_id
-        elif record_id:
-            missing_goods_ids.append(record_id)
-    for chunk in _chunked(list(dict.fromkeys(missing_goods_ids))):
+        if record_id:
+            goods_record_ids.append(record_id)
+    for chunk in _chunked(list(dict.fromkeys(goods_record_ids))):
         placeholders = ", ".join("?" for _ in chunk)
         rows = cursor.execute(
             f"""SELECT id, goi_thau_id FROM goi_thau_hang_hoa
@@ -661,17 +657,15 @@ def build_batch_write_authorization_context(
                 goods_parent_ids.add(parent_id)
 
     bidder_goods_parent_ids = set()
-    missing_bidder_goods_ids = []
+    bidder_goods_record_ids = []
     for item in records_by_table.get("hang_hoa_du_thau_nha_thau", ()):
         parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
         record_id = clean_id(item.get("id"))
         if parent_id:
             bidder_goods_parent_ids.add(parent_id)
-            if record_id:
-                context.bidder_goods_parent_by_id[record_id] = parent_id
-        elif record_id:
-            missing_bidder_goods_ids.append(record_id)
-    for chunk in _chunked(list(dict.fromkeys(missing_bidder_goods_ids))):
+        if record_id:
+            bidder_goods_record_ids.append(record_id)
+    for chunk in _chunked(list(dict.fromkeys(bidder_goods_record_ids))):
         placeholders = ", ".join("?" for _ in chunk)
         rows = cursor.execute(
             f"""SELECT id, goi_thau_id FROM hang_hoa_du_thau_nha_thau
@@ -797,6 +791,18 @@ def _context_has_module_permission(context, module_name, action="view"):
     return permission == "edit" if action == "edit" else permission in {"view", "edit"}
 
 
+def _resolve_child_parent(parent_by_record_id, item):
+    record_id = clean_id(item.get("id"))
+    requested_parent = clean_id(
+        item.get("goiThauId") or item.get("goi_thau_id")
+    )
+    stored_parent = parent_by_record_id.get(record_id)
+    parent_changed = bool(
+        stored_parent and requested_parent and stored_parent != requested_parent
+    )
+    return stored_parent or requested_parent, parent_changed
+
+
 def authorize_record_write_from_context(context, payload_key, table_name, item):
     """Authorize one record using only prefetched batch context."""
 
@@ -831,18 +837,30 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     )
     if not key_decision.allowed:
         return key_decision
+    child_parent_id = None
+    child_parent_maps = {
+        "thong_tin_mo_thau": context.opening_parent_by_id,
+        "goi_thau_hang_hoa": context.goods_parent_by_id,
+        "hang_hoa_du_thau_nha_thau": context.bidder_goods_parent_by_id,
+    }
+    if table_name in child_parent_maps:
+        child_parent_id, parent_changed = _resolve_child_parent(
+            child_parent_maps[table_name],
+            item,
+        )
+        if parent_changed:
+            return AccessDecision(
+                False,
+                "Kh\u00f4ng \u0111\u01b0\u1ee3c thay \u0111\u1ed5i g\u00f3i th\u1ea7u cha c\u1ee7a b\u1ea3n ghi \u0111\u00e3 t\u1ed3n t\u1ea1i.",
+            )
     goods_parent_id = None
     if table_name == "goi_thau_hang_hoa":
-        record_id = clean_id(item.get("id"))
-        goods_parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
-        goods_parent_id = goods_parent_id or context.goods_parent_by_id.get(record_id)
+        goods_parent_id = child_parent_id
         if context.package_status_by_id.get(goods_parent_id) not in {"PREPARING", "Chuẩn bị"}:
             return AccessDecision(False, "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái Chuẩn bị.")
     bidder_goods_parent_id = None
     if table_name == "hang_hoa_du_thau_nha_thau":
-        record_id = clean_id(item.get("id"))
-        bidder_goods_parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
-        bidder_goods_parent_id = bidder_goods_parent_id or context.bidder_goods_parent_by_id.get(record_id)
+        bidder_goods_parent_id = child_parent_id
         if (
             context.package_status_by_id.get(bidder_goods_parent_id)
             not in BIDDER_GOODS_EDITABLE_PACKAGE_STATUSES
@@ -858,9 +876,7 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
     if table_name == "thong_tin_mo_thau":
-        record_id = clean_id(item.get("id"))
-        parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))
-        parent_id = parent_id or context.opening_parent_by_id.get(record_id)
+        parent_id = child_parent_id
         if ("goithau", parent_id) not in context.assigned_targets:
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
     elif table_name == "goi_thau_hang_hoa":

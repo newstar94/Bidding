@@ -246,6 +246,27 @@ def _directory_matches_snapshot(
     )
 
 
+def _manifest_relative_path(value):
+    raw = str(value or "")
+    components = raw.split("/")
+    if (
+        not raw
+        or "\\" in raw
+        or any(
+            not component
+            or component in {".", ".."}
+            or ":" in component
+            or any(ord(character) < 32 for character in component)
+            for component in components
+        )
+    ):
+        raise RuntimeError("unsafe backup path")
+    relative = pathlib.PurePosixPath(raw)
+    if relative.is_absolute():
+        raise RuntimeError("unsafe backup path")
+    return pathlib.Path(*relative.parts)
+
+
 def _stage_restore_assets(
     snapshot_dir: pathlib.Path,
     manifest: dict,
@@ -254,13 +275,13 @@ def _stage_restore_assets(
     staged = {}
     try:
         for prefix, destination in destinations.items():
-            entries = [
-                entry
-                for entry in manifest.get("files", [])
-                if str(entry.get("relativePath") or "").startswith(
-                    f"{prefix}/"
+            entries = []
+            for entry in manifest.get("files", []):
+                relative_path = _manifest_relative_path(
+                    entry.get("relativePath")
                 )
-            ]
+                if relative_path.parts[0] == prefix:
+                    entries.append((entry, relative_path))
             if not entries:
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -269,10 +290,17 @@ def _stage_restore_assets(
             )
             stage.mkdir(mode=0o700)
             staged[destination] = stage
-            for entry in entries:
-                relative = entry["relativePath"][len(prefix) + 1:]
-                source = snapshot_dir / entry["relativePath"]
-                target = stage / relative
+            stage_root = stage.resolve()
+            snapshot_root = snapshot_dir.resolve()
+            for _entry, manifest_relative in entries:
+                relative = pathlib.Path(*manifest_relative.parts[1:])
+                source = (snapshot_root / manifest_relative).resolve()
+                target = (stage_root / relative).resolve()
+                if (
+                    snapshot_root not in source.parents
+                    or stage_root not in target.parents
+                ):
+                    raise RuntimeError("unsafe backup path")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
         return staged
@@ -464,7 +492,7 @@ def cmd_restore(args) -> int:
         print(f"ERROR: Backup verification failed: {exc}", file=sys.stderr)
         return 1
 
-    dump_rel = manifest["database"]["relativePath"]
+    dump_rel = _manifest_relative_path(manifest["database"]["relativePath"])
     dump_file = snapshot_dir / dump_rel
     upload_dir = pathlib.Path(
         os.environ.get("BIDDING_UPLOAD_DIR")
@@ -536,18 +564,35 @@ def _verify_snapshot(snapshot_dir: pathlib.Path) -> dict:
     if len(files) != int(manifest.get("fileCount", -1)):
         raise RuntimeError("backup file count mismatch")
     seen = set()
+    verified_entries = {}
     for item in files:
-        relative = pathlib.Path(str(item.get("relativePath") or ""))
+        relative = _manifest_relative_path(item.get("relativePath"))
         candidate = (snapshot_dir / relative).resolve()
         if candidate in seen or snapshot_dir not in candidate.parents:
             raise RuntimeError("unsafe or duplicate backup path")
         seen.add(candidate)
         if not candidate.is_file():
             raise RuntimeError(f"backup file is missing: {relative.as_posix()}")
-        if candidate.stat().st_size != int(item.get("sizeBytes", -1)):
+        size = int(item.get("sizeBytes", -1))
+        digest = str(item.get("sha256") or "")
+        if candidate.stat().st_size != size:
             raise RuntimeError(f"backup size mismatch: {relative.as_posix()}")
-        if not hmac.compare_digest(_sha256(candidate), str(item.get("sha256") or "")):
+        if not hmac.compare_digest(_sha256(candidate), digest):
             raise RuntimeError(f"backup checksum mismatch: {relative.as_posix()}")
+        verified_entries[relative.as_posix()] = (size, digest)
+
+    database_entry = manifest.get("database")
+    if not isinstance(database_entry, dict):
+        raise RuntimeError("invalid backup database entry")
+    database_relative = _manifest_relative_path(
+        database_entry.get("relativePath")
+    )
+    database_metadata = (
+        int(database_entry.get("sizeBytes", -1)),
+        str(database_entry.get("sha256") or ""),
+    )
+    if verified_entries.get(database_relative.as_posix()) != database_metadata:
+        raise RuntimeError("backup database entry is not verified")
     return manifest
 
 
@@ -591,7 +636,7 @@ def cmd_drill(args) -> int:
         print(f"ERROR: Restore drill database isolation check failed: {exc}", file=sys.stderr)
         return 1
     environment, database_name = _postgres_process(drill_url)
-    dump_file = snapshot / manifest["database"]["relativePath"]
+    dump_file = snapshot / _manifest_relative_path(manifest["database"]["relativePath"])
     result = subprocess.run(
         [
             _postgres_binary("pg_restore"),

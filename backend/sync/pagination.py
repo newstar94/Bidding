@@ -261,6 +261,17 @@ def _paginate_records_blocking(request):
                     )
                 """)
                 query_params.extend([org_name, user_id])
+            elif table_name in {
+                "goi_thau_hang_hoa",
+                "hang_hoa_du_thau_nha_thau",
+            }:
+                query_parts.append("""
+                    goi_thau_id IN (
+                        SELECT id_muc_tieu FROM phan_cong_nhan_su
+                        WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'goithau'
+                    )
+                """)
+                query_params.extend([org_name, user_id])
 
 
 

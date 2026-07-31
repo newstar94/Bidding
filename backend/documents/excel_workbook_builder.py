@@ -23,6 +23,13 @@ THIN_BORDER = Border(
     bottom=BORDER_SIDE,
 )
 
+def _safe_spreadsheet_text(value):
+    if isinstance(value, str) and value.startswith(
+        ("=", "+", "-", "@", "\t", "\r", "\n")
+    ):
+        return f"'{value}"
+    return value
+
 
 def _add_dropdown_sheet(workbook, options_map):
     ranges = {}
@@ -33,7 +40,7 @@ def _add_dropdown_sheet(workbook, options_map):
     for option_index, (header, values) in enumerate(options_map.items(), start=1):
         column_letter = get_column_letter(option_index)
         for value_index, value in enumerate(values, start=1):
-            sheet.cell(row=value_index, column=option_index, value=value)
+            sheet.cell(row=value_index, column=option_index, value=_safe_spreadsheet_text(value))
         ranges[header] = (
             f"Dropdowns!${column_letter}$1:${column_letter}${len(values)}"
         )
@@ -93,7 +100,11 @@ def _build_configured_workbook(
                 if column_index - 1 < len(values)
                 else None
             )
-            cell = sheet.cell(row=row_index, column=column_index, value=value)
+            cell = sheet.cell(
+                row=row_index,
+                column=column_index,
+                value=_safe_spreadsheet_text(value),
+            )
             cell.border = THIN_BORDER
             _format_cell(cell, formats_map.get(header))
 
