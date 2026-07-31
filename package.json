@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=28 && python scripts/check_critical_coverage.py coverage.json && node --test tests/js/*.test.mjs",
+    "test": "python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=28 && python scripts/check_critical_coverage.py coverage.json && npm run test:js",
+    "test:js": "node --test --test-concurrency=1 --test-timeout=60000 tests/js/*.test.mjs",
     "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
     "lint:python": "python scripts/check_python_quality.py",
     "lint:debt": "python scripts/check_frontend_debt.py",
