@@ -595,6 +595,31 @@ async def upload_package_document_api(request):
             connection.close()
 
 
+def package_document_routes(Route):
+    return [
+        Route(
+            "/api/packages/{package_id}/documents",
+            list_package_documents_api,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/packages/{package_id}/documents/{document_type}",
+            upload_package_document_api,
+            methods=["PUT"],
+        ),
+        Route(
+            "/api/packages/{package_id}/documents/{document_type}",
+            delete_package_document_api,
+            methods=["DELETE"],
+        ),
+        Route(
+            "/api/packages/{package_id}/documents/{document_type}/download",
+            download_package_document_api,
+            methods=["GET"],
+        ),
+    ]
+
+
 async def download_package_document_api(request):
     connection = None
     try:

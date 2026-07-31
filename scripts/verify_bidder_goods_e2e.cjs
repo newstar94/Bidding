@@ -353,8 +353,18 @@ async function openBidderGoodsDetail(page) {
 async function saveCurrentScopeOfficial(page) {
   const saveButton = page.locator("#btn-bidder-goods-save-official");
   await saveButton.waitFor({ state: "visible", timeout: 20_000 });
+  const syncResponsePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/api/sync"
+  ), { timeout: 20_000 });
   await saveButton.click();
-  await waitForSuccessToast(page, "Lưu thành công");
+  const syncResponse = await syncResponsePromise;
+  if (!syncResponse.ok()) {
+    throw new Error(`Official bidder-goods sync failed: ${syncResponse.status()} ${await syncResponse.text()}`);
+  }
+  const savedState = page.locator(".bidder-goods-operation-state.text-success")
+    .filter({ hasText: "Đã lưu lúc" });
+  await savedState.waitFor({ state: "visible", timeout: 20_000 });
 }
 
 async function acceptPendingDialog(page) {
@@ -432,16 +442,49 @@ async function importAndPersist(page, packageData, workflowTab) {
   const tableHeader = await page.locator(".bidder-goods-table thead").innerText();
   for (const expectedHeader of [
     "Ưu đãi",
-    "Giá dự thầu sau ưu đãi",
+    "Đơn giá sau ưu đãi",
     "Thành tiền sau ưu đãi",
   ]) {
     if (!tableHeader.includes(expectedHeader)) {
       throw new Error(`${packageData.code}: missing goods column ${expectedHeader}`);
     }
   }
-  await page.locator(
-    '[data-detailed-evaluation-group="financial"]',
-  ).waitFor({ state: "visible", timeout: 20_000 });
+  try {
+    await page.locator(
+      '[data-detailed-evaluation-group="financial"]',
+    ).waitFor({ state: "visible", timeout: 20_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(async () => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const controller = getAppController();
+      const currentBidId = String(
+        document.querySelector("#detailed-evaluation-bid-select")?.value || "",
+      );
+      return {
+        currentBidId,
+        selectedGroup: controller?.selectedDetailedEvaluationTab || "",
+        tabs: [...document.querySelectorAll("[data-detailed-evaluation-group]")]
+          .map((tab) => ({ group: tab.dataset.detailedEvaluationGroup, hidden: tab.hidden })),
+        openings: (controller?.model?.state?.thongtinmothau || [])
+          .filter((item) => !currentBidId || String(item.id) === currentBidId)
+          .map((item) => ({
+            id: item.id,
+            lot: item.maPhanLo,
+            preferenceStatus: item.trangThaiTinhUuDai,
+            comparisonPrice: item.giaSoSanhSauUuDai,
+          })),
+        goods: (controller?.model?.state?.hanghoaduthaunhathau || [])
+          .filter((item) => !currentBidId || String(item.thongTinMoThauId) === currentBidId)
+          .map((item) => ({
+            id: item.id,
+            openingId: item.thongTinMoThauId,
+            isDraft: item.isDraft,
+            preferenceStatus: item.trangThaiUuDai,
+          })),
+      };
+    });
+    throw new Error(`${packageData.code}: financial group stayed locked after reload: ${JSON.stringify(diagnostics)}; ${error.message}`);
+  }
   const persistedRowsForSelectedBid = await page.locator(
     ".bidder-goods-table tbody tr[data-bidder-goods-id]",
   ).count();
@@ -560,11 +603,49 @@ async function importAndPersist(page, packageData, workflowTab) {
         `${syncPackage.code}: second browser context loaded ${secondContextRows}, expected ${syncPackage.expectedCount}`,
       );
     }
-    await secondContext.close();
     mark("second-browser-context-synced", {
       code: syncPackage.code,
       rows: secondContextRows,
     });
+    const realtimeRow = secondPage.locator(
+      ".bidder-goods-table tbody tr[data-bidder-goods-id]",
+    ).first();
+    await realtimeRow.locator("[data-bidder-goods-edit]").click();
+    const unitPriceInput = realtimeRow.locator(
+      '[data-bidder-goods-field="donGiaDuThau"]',
+    );
+    await unitPriceInput.fill("");
+    const realtimeSnapshots = [];
+    for (const digit of "11111") {
+      await unitPriceInput.press(digit);
+      realtimeSnapshots.push(await realtimeRow.evaluate((row) => ({
+        unitPrice: row.querySelector('[data-bidder-goods-field="donGiaDuThau"]')?.value || "",
+        total: row.querySelector('[data-bidder-goods-derived="thanhTienDuThau"]')?.textContent?.trim() || "",
+        preferredUnitPrice: row.querySelector('[data-bidder-goods-derived="giaDuThauSauUuDai"]')?.textContent?.trim() || "",
+        preferredTotal: row.querySelector('[data-bidder-goods-derived="thanhTienSauUuDai"]')?.textContent?.trim() || "",
+        summaryTotal: [...document.querySelectorAll(".bidder-goods-summary-primary > div")]
+          .find((item) => item.textContent?.includes("Tổng thành tiền"))?.textContent?.trim() || "",
+        summaryComparison: [...document.querySelectorAll(".bidder-goods-summary-primary > div")]
+          .find((item) => item.textContent?.includes("Đối chiếu giá dự thầu"))?.textContent?.trim() || "",
+      })));
+    }
+    const expectedFormattedPrices = ["1", "11", "111", "1.111", "11.111"];
+    if (JSON.stringify(realtimeSnapshots.map((item) => item.unitPrice)) !== JSON.stringify(expectedFormattedPrices)) {
+      throw new Error(`Realtime unit-price formatting failed: ${JSON.stringify(realtimeSnapshots)}`);
+    }
+    for (const field of [
+      "total", "preferredUnitPrice", "preferredTotal", "summaryTotal", "summaryComparison",
+    ]) {
+      const values = realtimeSnapshots.map((item) => item[field]);
+      if (values.some((value) => !value || value.includes("—")) || new Set(values).size !== values.length) {
+        throw new Error(`Realtime ${field} calculation failed: ${JSON.stringify(realtimeSnapshots)}`);
+      }
+    }
+    mark("realtime-unit-price-preview", {
+      code: syncPackage.code,
+      snapshots: realtimeSnapshots,
+    });
+    await secondContext.close();
     if (pageErrors.length) throw new Error(`Page errors: ${pageErrors.join(" | ")}`);
     if (httpErrors.length) throw new Error(`HTTP errors: ${httpErrors.join(" | ")}`);
     result.singleResults = singleResults;

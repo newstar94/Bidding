@@ -124,24 +124,29 @@ Thứ tự bắt buộc:
 
 Regression test phải có trước các sửa đổi P0/P1 có rủi ro cao.
 
-### DEC-02 — Dữ liệu nhạy cảm default-deny
+### DEC-02 — Người có quyền truy cập hồ sơ được xem đầy đủ dữ liệu nghiệp vụ
 
-Dữ liệu thuộc nhóm sau mặc định bị ẩn và từ chối truy cập:
+Đây là quyết định bắt buộc của chủ sản phẩm và thay thế mọi diễn giải `default-deny` theo từng nhóm field trước đây.
 
-- `identity`;
-- `financial`;
-- `signature`, con dấu và media tương đương.
+Người dùng đã được phép truy cập một gói thầu, hợp đồng hoặc hồ sơ nghiệp vụ phải xem được đầy đủ thông tin cần thiết để lập, kiểm tra và hoàn thiện hồ sơ, bao gồm:
 
-Chỉ người dùng có capability riêng tương ứng mới được xem. Áp dụng nhất quán cho:
+- thông tin định danh, căn cước, giấy tờ pháp lý;
+- số tài khoản, ngân hàng và dữ liệu tài chính;
+- chữ ký, con dấu, ảnh scan và media liên quan;
+- dữ liệu tương ứng trong API, đồng bộ, conflict response, protected media, Word/Excel/PDF export và lịch sử nghiệp vụ khi chức năng đó cần hiển thị.
 
-- API response;
-- sync/conflict response;
-- protected media/image download;
-- document/Word/Excel export;
-- activity/history projection;
-- WebSocket hoặc notification payload nếu có dữ liệu nhạy cảm.
+Không yêu cầu capability riêng `identity`, `financial` hoặc `signature` đối với người đã có quyền truy cập hồ sơ. Không được che, redact hoặc loại bỏ các field này chỉ vì người dùng là `employee`.
 
-Mọi lượt cấp/revoke capability và mọi lượt tải/xuất dữ liệu nhạy cảm phải có audit phù hợp.
+Biên bảo mật phải đặt ở cấp hồ sơ và tổ chức:
+
+- chặn truy cập chéo tenant/tổ chức;
+- chặn người không có quyền module, không được phân công hoặc không thuộc phạm vi hồ sơ;
+- kiểm tra quyền nhất quán trên API, sync/conflict, media download, export, activity/history và notification/WebSocket;
+- không để bất kỳ kênh nào trở thành đường vòng để người không có quyền đọc hồ sơ lấy dữ liệu.
+
+Các trường hệ thống như password, token, secret, hash nội bộ hoặc dữ liệu không phục vụ nghiệp vụ vẫn không được trả ra. Việc tải/xuất tài liệu nhạy cảm và thay đổi quyền truy cập hồ sơ phải có audit phù hợp.
+
+Nếu mã nguồn hiện có capability `identity`/`financial`/`signature`, Codex phải kiểm kê cách sử dụng và loại bỏ vai trò của chúng như field-level deny gate đối với người đã được phép truy cập hồ sơ. Không xóa schema/migration một cách phá vỡ tương thích; deprecate hoặc migrate an toàn nếu cần.
 
 ### DEC-03 — Không phục sinh dữ liệu đã xóa từ stale client
 
@@ -221,15 +226,15 @@ Tìm mọi đường đi có thể:
 - Authorize trước mọi fetch/compare có dữ liệu được phản chiếu ra client.
 - Phân biệt rõ:
   - `can_write_record`;
-  - `can_read_record`;
-  - quyền xem field nhạy cảm.
+  - `can_read_record`.
+- Khi `can_read_record` hợp lệ, trả đầy đủ dữ liệu nghiệp vụ của record, kể cả identity/financial/signature cần cho hồ sơ; không thêm field-level deny gate.
 - Khi không có quyền write:
   - fail fast;
   - response không cho phép record enumeration;
   - không trả current version, server record, before/after, field list nhạy cảm hay metadata có thể suy ra sự tồn tại của record ngoài error contract hữu hạn.
 - Chỉ trả `serverRecord` nếu:
   1. người gọi có quyền đọc record;
-  2. record đã được project/redact theo capability nhạy cảm;
+  2. record thuộc đúng tenant và người gọi có quyền truy cập hồ sơ; chỉ loại bỏ secret/token/hash nội bộ không thuộc dữ liệu nghiệp vụ;
   3. contract thực sự cần record để resolve conflict.
 - Không serialize raw database model làm conflict DTO mặc định.
 - Tạo typed/bounded conflict DTO riêng.
@@ -240,10 +245,10 @@ Viết test trước khi sửa, tối thiểu:
 
 1. Upsert, cùng organization, biết ID, không có permission, `expectedVersion` sai.
 2. Delete, cùng organization, biết ID, không có permission, `expectedVersion` sai.
-3. Có quyền write nhưng không có quyền xem `financial`.
-4. Có quyền đọc record nhưng không có quyền xem `identity`/`signature`.
+3. Employee được phân công/có quyền hồ sơ nhận đầy đủ `identity`, `financial`, `signature` cần thiết.
+4. Người không được phân công/không có quyền hồ sơ không nhận bất kỳ record data nào.
 5. Cross-tenant ID.
-6. Authorized conflict trả đúng DTO đã redact.
+6. Authorized conflict trả DTO đầy đủ dữ liệu nghiệp vụ nhưng không chứa secret/token/hash nội bộ.
 
 Acceptance:
 
@@ -410,7 +415,7 @@ Yêu cầu:
 - immutable audit trong cùng transaction;
 - idempotent;
 - không cho client chỉnh sửa stale payload rồi tự phục hồi ngầm;
-- projection response theo sensitive policy.
+- response tuân theo record-level authorization; người có quyền hồ sơ được nhận đầy đủ dữ liệu nghiệp vụ.
 
 ### 8.5. Migration
 
@@ -437,21 +442,21 @@ Nếu cần thêm schema/index/constraint:
 
 ---
 
-## 9. BF-SEC-02 — Capability cho identity/financial/signature
+## 9. BF-SEC-02 — Quyền xem đầy đủ dữ liệu theo phạm vi hồ sơ
 
 ### 9.1. Mô hình quyền
 
-Tạo hoặc hoàn thiện policy tập trung với interface rõ ràng:
+Tạo hoặc hoàn thiện policy tập trung với interface cấp record/aggregate rõ ràng:
 
 ```text
 can_view_record(context, record)
-can_view_identity(context, record)
-can_view_financial(context, record)
-can_view_signature(context, record)
+can_edit_record(context, record)
+can_download_record_media(context, record)
+can_export_record(context, record)
 project_record(context, record, purpose)
 ```
 
-Không dựa chỉ vào module `view`.
+Quyền được xác định theo tenant/tổ chức, role, module permission, assignment và phạm vi gói thầu/hợp đồng. Không tạo field-level deny gate riêng cho `identity`, `financial` hoặc `signature` đối với người đã có `can_view_record`.
 
 ### 9.2. Phạm vi áp dụng
 
@@ -468,40 +473,46 @@ Quét toàn bộ call site và áp dụng nhất quán cho:
 - activity feed/audit viewer;
 - admin preview nếu có.
 
-### 9.3. Redaction/projection
+### 9.3. Projection và chống bypass
 
-- Default deny.
-- Module view chỉ trả reference data tối thiểu cần cho UX.
-- Không trả field rồi chỉ ẩn bằng frontend.
-- Redaction phải ổn định và có schema/DTO rõ ràng.
-- Không để cache, offline store hoặc service worker lưu field người dùng không có quyền.
-- Khi quyền bị revoke, lần sync/refresh tiếp theo phải loại dữ liệu không còn được phép; thiết kế cache invalidation phù hợp.
+- Người có quyền truy cập hồ sơ được nhận đầy đủ dữ liệu nghiệp vụ cần cho công việc, không che căn cước, số tài khoản, tài chính, chữ ký hay con dấu chỉ vì vai trò là employee.
+- Người không có quyền hồ sơ không được nhận record, version, media, export hoặc metadata cho phép suy ra nội dung/sự tồn tại ngoài error contract hữu hạn.
+- Không trả password, session token, secret, private key, hash nội bộ hoặc dữ liệu kỹ thuật không thuộc hồ sơ.
+- Không chỉ ẩn field bằng frontend; authorization phải thực hiện phía server.
+- API, offline cache, sync, conflict, media và export phải dùng cùng record-level policy để không có đường vòng.
+- Khi assignment/quyền hồ sơ bị thu hồi, lần refresh/sync tiếp theo phải loại dữ liệu hồ sơ không còn được phép truy cập khỏi local cache theo cơ chế an toàn.
+- Nếu capability `identity`/`financial`/`signature` đang tồn tại, không dùng chúng để từ chối người đã có quyền hồ sơ; lập kế hoạch deprecate/migrate tương thích.
 
-### 9.4. Audit quyền nhạy cảm
+### 9.4. Audit truy cập quan trọng
 
 Ghi audit cho:
 
-- grant/revoke capability;
-- protected media download;
-- export chứa dữ liệu nhạy cảm;
+- thay đổi role/module permission/assignment liên quan hồ sơ;
+- protected media download khi chính sách audit yêu cầu;
+- export chứa giấy tờ, tài chính, chữ ký hoặc con dấu;
 - restore hoặc privileged access đặc biệt.
 
-Không ghi raw secret/PII không cần thiết vào audit.
+Không ghi raw password, token, secret hoặc binary chữ ký/con dấu vào audit.
 
 ### 9.5. Test matrix
 
-Tạo matrix theo role × module permission × capability × endpoint/purpose:
+Tạo matrix theo role × module permission × assignment × endpoint/purpose:
 
 - super admin;
 - manager;
 - employee;
 - assigned/unassigned;
-- identity allow/deny;
-- financial allow/deny;
-- signature allow/deny;
-- API/media/export/conflict/offline.
+- cùng tenant/cross-tenant;
+- API/media/export/conflict/offline/history.
 
-Mỗi protected surface phải có test allow và deny.
+Test bắt buộc:
+
+- employee được phân công và có quyền module xem đầy đủ căn cước, số tài khoản, dữ liệu tài chính, chữ ký/con dấu cần cho hồ sơ;
+- manager/super admin xem theo phạm vi quyền hiện hành;
+- employee không được phân công hoặc không có quyền module bị từ chối toàn bộ record;
+- cross-tenant luôn bị từ chối;
+- API, sync/conflict, protected media và export cho kết quả quyền nhất quán;
+- capability legacy không được làm mất dữ liệu của người đã có quyền hồ sơ.
 
 ---
 
@@ -549,7 +560,7 @@ Bao phủ tối thiểu:
 - nhà thầu/liên danh;
 - chuyên gia/nhân sự;
 - assignment;
-- quyền/capability liên quan hồ sơ;
+- quyền, role, module permission và assignment liên quan hồ sơ;
 - tài liệu/upload/delete;
 - restore;
 - award/lifecycle material transitions.
@@ -569,9 +580,9 @@ Mặc định hiển thị:
 
 Old/new value:
 
-- chỉ hiển thị với field không nhạy cảm;
-- người xem phải có quyền tương ứng;
-- identity/financial/signature luôn project/redact theo capability;
+- người xem phải có quyền truy cập hồ sơ;
+- có thể hiển thị identity/financial/signature khi cần phục vụ nghiệp vụ và tranh chấp;
+- không đưa password, token, secret, binary chữ ký/con dấu hoặc hash nội bộ vào timeline;
 - không render technical ID nếu có label an toàn.
 
 ### 10.5. Test
@@ -579,7 +590,7 @@ Old/new value:
 - transaction rollback không để audit orphan;
 - business commit không thiếu audit;
 - retry idempotent không tạo audit duplicate;
-- redaction đúng theo capability;
+- authorized viewer thấy đủ dữ liệu nghiệp vụ; unauthorized viewer không nhận dữ liệu hồ sơ;
 - audit-chain verification vẫn hoạt động;
 - create/update/delete/restore matrix pass.
 
@@ -1060,7 +1071,7 @@ Test crash point:
 - cancel/retry semantics;
 - expiry/cleanup;
 - permission được kiểm tra cả lúc tạo job và lúc download;
-- sensitive projection/capability được snapshot hoặc re-evaluate theo policy đã chọn và được tài liệu hóa.
+- record-level permission được kiểm tra khi tạo job và kiểm tra lại khi download; người còn quyền hồ sơ được nhận đầy đủ dữ liệu nghiệp vụ.
 
 Giữ synchronous fast path chỉ cho export nhỏ với deadline ngắn.
 
@@ -1070,7 +1081,7 @@ Test:
 
 - create/status/download;
 - owner/non-owner;
-- capability revoke;
+- assignment/record permission revoke;
 - retry;
 - cancel;
 - worker failure;
@@ -1168,13 +1179,13 @@ Tài liệu phải phản ánh implementation cuối cùng, không chỉ chép a
 
 ### 31.1. Bảo mật và dữ liệu
 
-- 100% conflict response qua read authorization và sensitive projection.
+- 100% conflict response qua record-level read authorization.
 - Denied conflict không trả record/current version.
 - 100% stale update trên tombstoned record trả conflict/full-sync, không insert ngầm.
 - Restore chỉ qua command riêng, có quyền, reason, mutation ID và audit.
 - Mọi mutation có `clientMutationId` bắt buộc và idempotent.
-- 100% protected API/media/export có capability allow/deny test.
-- Không cache offline dữ liệu người dùng không có quyền xem.
+- 100% protected API/media/export có record-level allow/deny test; người được phép xem hồ sơ nhận đầy đủ identity/financial/signature cần thiết.
+- Không cache offline hồ sơ người dùng không có quyền truy cập; người có quyền hồ sơ được cache đầy đủ dữ liệu nghiệp vụ theo cơ chế hiện hành.
 - 100% bảng vật chất trong audit coverage matrix có create/update/delete/restore evidence hoặc lý do loại trừ.
 
 ### 31.2. Readiness và audit
@@ -1274,7 +1285,7 @@ Không ghi “pass” cho test không chạy. Với test không thể chạy do 
 2. readiness + quick accessibility/raw ID;
 3. legal readiness gate;
 4. tombstone/mutation ID/restore;
-5. sensitive capability + projections;
+5. record-level access + full operational data projections;
 6. immutable audit coverage;
 7. warning/coverage gates;
 8. RouteRegistry/PackageWorkspaceState/Tabs;

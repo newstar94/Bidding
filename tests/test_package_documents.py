@@ -259,6 +259,7 @@ def test_upsert_replaces_only_the_same_batch_document_slot():
         ("batch-1", "bcdg-1-moi.pdf"),
         ("batch-2", "bcdg-2.pdf"),
     ]
+    connection.close()
 
 
 class _IdempotencyCursor:

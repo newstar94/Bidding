@@ -167,3 +167,4 @@ def test_goods_configuration_can_switch_between_goods_and_mixed_only():
     )
     assert len(errors) == 1
     assert "Hàng hóa hoặc Hỗn hợp" in errors[0]
+    connection.close()

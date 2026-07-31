@@ -60,4 +60,24 @@
   --shell-sidebar-width: 15.5rem;
   --shell-header-height: 4rem;
   --control-height: 2.75rem;
+
+  /* Component tokens */
+  --button-bg: var(--color-accent);
+  --button-fg: var(--color-accent-ink);
+  --button-hover-bg: var(--color-accent-strong);
+  --button-radius: var(--radius-input);
+  --input-bg: var(--color-surface);
+  --input-border: var(--color-rule);
+  --input-focus-ring: var(--color-focus);
+  --card-bg: var(--color-surface);
+  --card-border: var(--color-rule);
+  --card-radius: var(--radius-card);
+
+  /* Finite overlay scale */
+  --z-base: 0;
+  --z-sticky: 100;
+  --z-dropdown: 300;
+  --z-overlay: 600;
+  --z-modal: 800;
+  --z-toast: 900;
 }

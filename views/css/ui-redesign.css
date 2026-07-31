@@ -136,8 +136,9 @@ label[for] {
 /* The selected item already has its own border. Keep keyboard focus visible
    without stacking a second ring. */
 .nav-btn:focus-visible {
-  outline: var(--focus-ring-width) solid var(--brand) !important;
-  outline-offset: 2px !important;
+  outline: var(--focus-ring-width) solid var(--focus-ring) !important;
+  outline-offset: var(--focus-ring-offset) !important;
+  box-shadow: none !important;
 }
 
 .nav-btn.active {
@@ -171,7 +172,7 @@ body[data-active-role="employee"] .sidebar .nav-btn.active:hover {
 
 body[data-active-role="manager"] .sidebar .nav-btn:focus-visible,
 body[data-active-role="employee"] .sidebar .nav-btn:focus-visible {
-  outline-color: var(--active-role-accent) !important;
+  outline-color: var(--focus-ring) !important;
 }
 
 /* The child rule matches the legacy !important contract so icons and labels
@@ -389,8 +390,9 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .notification-read-all:focus-visible {
-  outline: var(--focus-ring-width) solid var(--brand);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .notification-read-all:disabled {
@@ -448,8 +450,9 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .notification-item:focus-visible {
-  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--brand) 28%, transparent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .notification-item-icon {
@@ -798,8 +801,9 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .assignment-transfer-mode input:focus-visible {
-  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--brand) 30%, transparent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .assignment-transfer-mode span,
@@ -887,11 +891,6 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .assignment-transfer-item.is-preview {
   grid-template-columns: 34px minmax(0, 1fr);
   min-height: 52px;
-}
-
-.assignment-transfer-item:focus-within {
-  border-color: color-mix(in srgb, var(--brand) 48%, var(--line));
-  box-shadow: 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
 .assignment-transfer-icon {
@@ -1128,15 +1127,15 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   }
 }
 
-.search-box input:focus,
-.select-wrapper select:focus,
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus,
-.form-control:focus {
-  outline: none !important;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+.search-box input:focus-visible,
+.select-wrapper select:focus-visible,
+.form-group input:focus-visible,
+.form-group select:focus-visible,
+.form-group textarea:focus-visible,
+.form-control:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .form-group label {
@@ -1179,8 +1178,9 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .form-group .radio-options .radio-option-input:focus-visible {
-  outline: var(--focus-ring-width) solid var(--brand) !important;
-  outline-offset: 2px !important;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .form-group .error-text {
@@ -1789,8 +1789,9 @@ button:disabled {
 }
 
 .dashboard-package-cell:focus-visible {
-  outline: var(--focus-ring-width) solid var(--color-focus);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .dashboard-package-cell:active {
@@ -2451,9 +2452,9 @@ button:disabled {
 }
 
 .assignment-transfer-dialog .bf-combobox-input:focus {
-  border-color: var(--brand);
-  outline: none !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .assignment-transfer-dialog .bf-combobox-input:disabled {
@@ -2861,8 +2862,7 @@ body {
   text-align: center;
 }
 
-.btn.btn-cancel:hover:not(:disabled),
-.btn.btn-cancel:focus-visible {
+.btn.btn-cancel:hover:not(:disabled) {
   border-color: var(--danger);
   color: var(--danger);
   background: var(--danger-soft);
@@ -2934,9 +2934,9 @@ body {
 }
 
 :is(.btn, .btn-excel-action, .btn-add-row, .btn-text):focus-visible {
-  outline: var(--focus-ring-width) solid var(--brand) !important;
-  outline-offset: 2px !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 :is(.btn, .btn-excel-action, .btn-add-row, .btn-text):disabled,
@@ -3024,9 +3024,9 @@ body {
 }
 
 :is(.action-btn, .btn-remove-file, .btn-del-row):focus-visible {
-  outline: var(--focus-ring-width) solid var(--brand) !important;
-  outline-offset: 2px !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .modal-close {

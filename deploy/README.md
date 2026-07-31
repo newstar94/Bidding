@@ -1,5 +1,11 @@
 # Production deployment and rollback
 
+Public production packaging is blocked until every fact in
+`docs/legal-fact-sheet.md` is approved and the corresponding placeholder in
+`views/legal/` is replaced with reviewed copy. Verify this explicitly with
+`npm run check:legal:production`; local development uses the warning-only
+`npm run check:legal` command.
+
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.
 
 ## Preflight

@@ -13,7 +13,9 @@ import { renderTechnicalEvaluationPanel } from "./detail/TechnicalEvaluationPane
 import { renderFinancialEvaluationPanel } from "./detail/FinancialEvaluationPanel.js";
 import { renderFinancialOpeningPanel } from "./detail/FinancialOpeningPanel.js";
 import { savePackageCancellation } from "./packageCancellation.js";
-import { bindPackageDetailChrome } from "./detail/PackageDetailCoordinator.js";
+import { PackageDetailModule } from "./detail/PackageDetailModule.js";
+import { packageWorkspaceFor } from "./detail/PackageWorkspaceState.js";
+import * as lifecyclePolicy from "./LifecyclePolicy.js";
 import { buildPackageDetailViewModel } from "./detail/PackageDetailViewModel.js";
 import { renderPackageOpeningPanel } from "./detail/PackageOpeningPanel.js";
 import { renderQualifiedApprovalPanel } from "./detail/QualifiedApprovalPanel.js";
@@ -118,7 +120,15 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   } = detail;
   this._currentWorkflowTab = activeTab;
   this._currentWorkflowPackageId = detail.packageId;
-  bindPackageDetailChrome(this, detail);
+  this._packageDetailModule ||= new PackageDetailModule({ view: this });
+  this._packageDetailModule.mount(detailCard || detailPane, {
+    route: packageWorkspaceFor(this).snapshot(),
+    store: this.model,
+    lifecyclePolicy,
+    detail,
+    onNavigate: (route) => this.showPackageDetails(route.packageId || detail.packageId),
+    onSave: (command) => command?.execute?.(),
+  });
   const contentWrapper = document.getElementById("detail-workflow-content-wrapper");
   if (!contentWrapper) return;
   contentWrapper.innerHTML = trustedHTML("");

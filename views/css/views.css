@@ -501,8 +501,9 @@
   transform: translateY(-2px);
 }
 .dashboard-alert-card:focus-visible {
-  outline: var(--focus-ring-width) solid rgba(49, 87, 232, 0.28);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 .dashboard-alert-icon {
   display: grid;
@@ -730,8 +731,9 @@
 .dashboard-partner-link:focus-visible {
   position: relative;
   z-index: 1;
-  outline: var(--focus-ring-width) solid var(--primary);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 .dashboard-partner-link:active {
   background: var(--bg-app);
@@ -1476,10 +1478,10 @@ table th {
 
 #modal-excel-preview .excel-preview-input:focus,
 #modal-excel-preview .excel-preview-input:focus-visible {
-  border-color: var(--brand);
   background: var(--surface);
-  outline: none !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 #modal-excel-preview .excel-preview-input--numeric {
@@ -1501,8 +1503,9 @@ table th {
 
 #modal-excel-preview .excel-preview-input.is-invalid:focus,
 #modal-excel-preview .excel-preview-input[aria-invalid="true"]:focus {
-  outline: none !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--danger) 20%, transparent);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 #modal-excel-preview .excel-preview-input:disabled,
@@ -1610,9 +1613,7 @@ table th {
   min-width: 120px;
 }
 .phanlo-table td input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
   background: var(--bg-card);
 }
 .phanlo-table td input.input-gia {
@@ -1668,7 +1669,7 @@ table th {
   padding: 0 24px 0 0 !important;
   height: auto !important;
   box-shadow: none !important;
-  outline: none !important;
+  outline: none;
   appearance: none !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
   background-repeat: no-repeat !important;
@@ -2079,9 +2080,7 @@ table th {
   transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
 }
 .auth-input-wrapper input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
   background: var(--bg-card);
 }
 .auth-input-wrapper .toggle-password {
@@ -2492,8 +2491,7 @@ table th {
   box-shadow: var(--shadow-sm);
 }
 #mothau-goithau-select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 #btn-mothau-add-bid,
 #btn-result-add-bidder {
@@ -3171,12 +3169,13 @@ table th {
 .lot-winner-contractor-button:focus-visible {
   color: var(--primary-hover);
   background: var(--primary-soft);
-  outline: none;
   text-decoration: none;
 }
 
 .lot-winner-contractor-button:focus-visible {
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .lot-winner-jv-badge {
@@ -3358,9 +3357,9 @@ table th {
 }
 
 .timeline-page .bf-combobox-input:focus {
-  border-color: var(--brand);
-  outline: none !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .timeline-page .bf-combobox-input:disabled {
@@ -3481,10 +3480,9 @@ table th {
 .timeline-table select:focus,
 .timeline-source-badge:focus,
 .timeline-restore-source:focus {
-  border-color: var(--brand);
-  outline: none !important;
-  outline-offset: 0 !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .timeline-actionbar {
@@ -3904,9 +3902,9 @@ table th {
 }
 
 .multi-assignee-search:focus {
-  border-color: var(--primary-color, #4356d8);
-  outline: none !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color, #4356d8) 18%, transparent);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .multi-assignee-search:disabled {
@@ -4039,8 +4037,9 @@ table th {
 
 .multi-assignee-chip button:focus-visible,
 .multi-assignee-toggle:focus-visible {
-  outline: 2px solid var(--primary-color, #4356d8);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4343,6 +4342,20 @@ table th {
   font-weight: 500;
 }
 
+.assignee-summary-compact {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .assignee-summary-full {
+    display: none;
+  }
+
+  .assignee-summary-compact {
+    display: inline;
+  }
+}
+
 /* Hallmark · genre: modern-minimal · macrostructure: Catalogue · theme: Cobalt
  * tone: utilitarian · enrichment: none · audience: procurement evaluators
  * pre-emit critique: P5 H5 E5 S5 R5 V4 · contrast: pass (40–41)
@@ -4498,8 +4511,9 @@ table th {
 }
 
 .bidder-goods-export-option:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .bidder-goods-export-option > svg {
@@ -4544,6 +4558,15 @@ table th {
   width: 100%;
   min-width: 0;
   padding-inline-start: var(--space-10);
+}
+
+.bidder-goods-search .form-control:focus {
+  box-shadow: none;
+}
+
+.bidder-goods-search .form-control:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring) !important;
+  outline-offset: var(--focus-ring-offset) !important;
 }
 
 .bidder-goods-summary {
@@ -4932,9 +4955,9 @@ table th {
 
 .bidder-goods-table .form-control.is-invalid:focus,
 .bidder-goods-table .form-control[aria-invalid="true"]:focus {
-  border-color: var(--danger);
-  outline: none !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent) !important;
+  outline: var(--focus-ring-width) solid var(--focus-ring) !important;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none !important;
 }
 
 .bidder-goods-mapping-trigger.is-invalid,
@@ -5451,8 +5474,9 @@ table th {
 }
 
 .detailed-evaluation-mark input:focus-visible + .detailed-evaluation-mark-symbol {
-  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--primary) 28%, transparent);
-  outline-offset: 6px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .detailed-evaluation-mark:has(input:disabled) {

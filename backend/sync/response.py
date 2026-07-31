@@ -4,6 +4,7 @@ import json
 
 from backend.sync.queries import build_dashboard_summary
 from backend.sync.repository import get_current_sync_version
+from backend.sync.websocket import enqueue_websocket_event
 
 
 def commit_sync_response(
@@ -51,5 +52,11 @@ def commit_sync_response(
                 json.dumps(response),
             ),
         )
+    enqueue_websocket_event(
+        cursor,
+        "broadcast",
+        organization_id=organization_id,
+        payload={"event": "db_changed"},
+    )
     conn.commit()
     return response

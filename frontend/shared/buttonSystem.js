@@ -78,6 +78,12 @@ function renderLucideIcon(button) {
 
 export function enhanceButtonSystem(root = document) {
   getButtons(root).forEach((button) => {
+    const inventory = globalThis.__BIDDINGFLOW_LEGACY_UI__ ||= { customSelect: {}, inferredButtons: {} };
+    const inventoryKey = button.id || button.getAttribute("data-action") || "anonymous";
+    inventory.inferredButtons[inventoryKey] = (inventory.inferredButtons[inventoryKey] || 0) + 1;
+    if (inventory.inferredButtons[inventoryKey] === 1 && globalThis.location?.hostname === "localhost") {
+      console.warn(`[BiddingFlow legacy UI] inferred button action: ${inventoryKey}`);
+    }
     const variant = inferButtonVariant(button.textContent);
     if (variant === "danger" && button.classList.contains("btn")) {
       button.classList.remove("btn-primary", "btn-emerald", "btn-purple", "btn-outline", "btn-secondary", "btn-outline-secondary");

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from backend.sync.conflict_projection import project_conflict_record
+
 
 _QUERY_CHUNK_SIZE = 500
 
@@ -95,7 +97,9 @@ class SyncRecordWriter:
                         else None
                     ),
                     "serverRecord": (
-                        self.map_database_record(table_name, latest_record)
+                        project_conflict_record(
+                            self.map_database_record(table_name, latest_record)
+                        )
                         if latest_record
                         else None
                     ),
@@ -150,6 +154,7 @@ class SyncRecordWriter:
         self.mutation_tracker.track_record(table_name, previous_record)
         self.mutation_tracker.track_record(table_name, db_row_data)
         self.mutation_tracker.track_activity(table_name, previous_record, db_row_data)
+        self.mutation_tracker.track_audit(table_name, previous_record, db_row_data)
         return SyncRecordWriteResult()
 
     def _replace_singleton_rows(

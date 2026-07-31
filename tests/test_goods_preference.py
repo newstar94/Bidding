@@ -138,3 +138,4 @@ def test_backend_derives_group_result_from_persisted_required_leaf_rows():
     assert _aggregate_persisted_detailed_evaluation_group(
         cursor, "org-1", "round-1", "report-1", "validity"
     ) == ""
+    connection.close()

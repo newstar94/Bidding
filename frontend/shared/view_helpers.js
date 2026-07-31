@@ -160,6 +160,11 @@ function bindCustomSelectOptions(optionsList) {
 }
 
 export function initCustomSelect(selectId) {
+  const inventory = globalThis.__BIDDINGFLOW_LEGACY_UI__ ||= { customSelect: {}, inferredButtons: {} };
+  inventory.customSelect[selectId] = (inventory.customSelect[selectId] || 0) + 1;
+  if (inventory.customSelect[selectId] === 1 && globalThis.location?.hostname === "localhost") {
+    console.warn(`[BiddingFlow legacy UI] initCustomSelect(${selectId})`);
+  }
   const select = document.getElementById(selectId);
   if (!select) return;
   setRuntimeStyle(select, "display", "none");

@@ -1,8 +1,10 @@
+import asyncio
+
+import httpx
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
-from starlette.testclient import TestClient
 
 from backend.http_middleware import CSRFMiddleware
 from backend.shared.origin_policy import (
@@ -21,7 +23,7 @@ def _client(monkeypatch, public_url="https://biddingflow.example"):
         routes=[Route("/api/data", _mutate, methods=["POST"])],
         middleware=[Middleware(CSRFMiddleware)],
     )
-    return TestClient(app)
+    return app
 
 
 def _request(client, *, origin=None, referer=None, host="biddingflow.example"):
@@ -30,11 +32,18 @@ def _request(client, *, origin=None, referer=None, host="biddingflow.example"):
         headers["Origin"] = origin
     if referer is not None:
         headers["Referer"] = referer
-    return client.post(
-        "/api/data",
-        headers=headers,
-        cookies={"session_token": "session", "csrf_token": "csrf-value"},
-    )
+    async def send():
+        transport = httpx.ASGITransport(app=client)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="https://biddingflow.example",
+        ) as http_client:
+            http_client.cookies.update(
+                {"session_token": "session", "csrf_token": "csrf-value"}
+            )
+            return await http_client.post("/api/data", headers=headers)
+
+    return asyncio.run(send())
 
 
 def test_canonical_origin_handles_default_ports_and_ipv6():
@@ -57,35 +66,36 @@ def test_origin_policy_rejects_malformed_null_and_credentials():
 
 
 def test_authenticated_mutation_uses_configured_origin_not_spoofed_host(monkeypatch):
-    with _client(monkeypatch) as client:
-        response = _request(
-            client,
-            origin="https://biddingflow.example",
-            host="attacker.example",
-        )
+    client = _client(monkeypatch)
+    response = _request(
+        client,
+        origin="https://biddingflow.example",
+        host="attacker.example",
+    )
     assert response.status_code == 200
 
 
 def test_origin_rejects_scheme_subdomain_suffix_and_port_mismatch(monkeypatch):
-    with _client(monkeypatch) as client:
-        candidates = (
-            "http://biddingflow.example",
-            "https://sub.biddingflow.example",
-            "https://biddingflow.example.attacker.test",
-            "https://biddingflow.example:444",
-        )
-        for candidate in candidates:
-            assert _request(client, origin=candidate).status_code == 403
+    client = _client(monkeypatch)
+    candidates = (
+        "http://biddingflow.example",
+        "https://sub.biddingflow.example",
+        "https://biddingflow.example.attacker.test",
+        "https://biddingflow.example:444",
+    )
+    for candidate in candidates:
+        assert _request(client, origin=candidate).status_code == 403
 
 
 def test_authenticated_mutation_requires_origin_or_referer(monkeypatch):
-    with _client(monkeypatch) as client:
-        response = _request(client)
+    response = _request(_client(monkeypatch))
     assert response.status_code == 403
     assert response.json()["code"] == "CSRF_ORIGIN_REQUIRED"
 
 
 def test_exact_referer_origin_is_accepted(monkeypatch):
-    with _client(monkeypatch) as client:
-        response = _request(client, referer="https://biddingflow.example/package/1?tab=goods")
+    response = _request(
+        _client(monkeypatch),
+        referer="https://biddingflow.example/package/1?tab=goods",
+    )
     assert response.status_code == 200

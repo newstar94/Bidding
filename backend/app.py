@@ -472,11 +472,12 @@ from backend.shared.cpu_io import get_cpu_io_stats
 from backend.observability.metrics import ObservabilityMiddleware, metrics_api
 from backend.observability.client_errors import client_error_api
 from backend.shared.access_policy import (
-    has_module_permission,
+    can_read_record,
 )
 from backend.shared.media_helper import protected_image_signature_is_valid
 from backend.db.db_utils import DB_SCHEMA_VERSION
 from backend.startup import validate_startup_configuration, verify_database_responsive
+from backend.lifecycle_policy_routes import lifecycle_policy_routes
 
 from backend.auth.otp_routes import (
     register_api,
@@ -516,11 +517,7 @@ from backend.auth.auth_routes import build_session_bootstrap
 from backend.auth.google_auth_routes import google_login_api
 from backend.sync.api import (
     sync_websocket_endpoint,
-    sync_api,
-    current_sync_version_api,
-    get_all_data_api,
-    record_api,
-    paginate_api
+    sync_http_routes,
 )
 from backend.documents.export_routes import (
     export_plan_api,
@@ -542,10 +539,7 @@ from backend.documents.export_routes import (
     export_opening_fin_template_api
 )
 from backend.documents.package_document_routes import (
-    delete_package_document_api,
-    download_package_document_api,
-    list_package_documents_api,
-    upload_package_document_api,
+    package_document_routes,
 )
 from backend.partners.address_routes import (
     get_provinces_api,
@@ -557,6 +551,7 @@ from backend.notifications.routes import (
     mark_all_notifications_read_api,
     mark_notification_read_api,
 )
+from backend.documents.document_job_routes import document_job_routes
 from backend.activity.routes import list_activity_timeline_api
 from backend.lot_lifecycle_routes import (
     create_lot_batch_api,
@@ -609,7 +604,20 @@ async def health_ready_api(request):
     """Traffic readiness; fail closed when startup or the DB is unhealthy."""
     if not getattr(request.app.state, "startup_complete", False):
         return JSONResponse(
-            {"status": "not_ready"},
+            {"status": "not_ready", "reason": "STARTUP_INCOMPLETE"},
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
+    if not getattr(request.app.state, "ready", False):
+        reason = getattr(request.app.state, "readiness_reason", None)
+        if reason not in {
+            "AUDIT_CHAIN_INVALID",
+            "AUDIT_VERIFIER_ERROR",
+            "APPLICATION_UNAVAILABLE",
+        }:
+            reason = "APPLICATION_UNAVAILABLE"
+        return JSONResponse(
+            {"status": "not_ready", "reason": reason},
             status_code=503,
             headers={"Cache-Control": "no-store"},
         )
@@ -623,7 +631,7 @@ async def health_ready_api(request):
     except Exception as readiness_error:
         log_error(readiness_error, "readiness_database_check")
         return JSONResponse(
-            {"status": "not_ready"},
+            {"status": "not_ready", "reason": "DATABASE_UNAVAILABLE"},
             status_code=503,
             headers={"Cache-Control": "no-store"},
         )
@@ -703,44 +711,37 @@ async def protected_image_api(request):
             return JSONResponse({"error": "Liên kết ảnh không hợp lệ hoặc đã hết hạn"}, status_code=403)
         images_root = os.path.realpath(IMAGE_DIR)
         file_path = os.path.realpath(os.path.join(images_root, rel_path))
-        if not file_path.startswith(images_root + os.sep) or not os.path.isfile(file_path):
-            return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
+        if not file_path.startswith(images_root + os.sep):
+            return JSONResponse({"error": "Đường dẫn không hợp lệ"}, status_code=400)
         filename = os.path.basename(rel_path)
         conn = database.get_connection()
         cursor = conn.cursor()
-        # Business media follows the same workspace-scoped view permission as
-        # the record that owns it. Signed URLs and record ownership remain
-        # mandatory below.
-        required_module = "nhathau" if rel_path.startswith('nha_thau/') else "chuyengia"
-        if not has_module_permission(
-            cursor,
-            role_or_err,
-            role_or_err.user_id,
-            organization_id,
-            required_module,
-            "view",
-        ):
-            return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
+        owner_record_id = None
         if rel_path.startswith('nha_thau/'):
-            cursor.execute(
-                "SELECT 1 FROM nha_thau WHERE organization_id = ? AND anh_dau = ?",
+            row = cursor.execute(
+                "SELECT id FROM nha_thau WHERE organization_id = ? AND anh_dau = ?",
                 (organization_id, stored_path)
-            )
+            ).fetchone()
+            owner_record_id = row[0] if row else None
+            payload_key = "nhathau"
+            table_name = "nha_thau"
         else:
-            cursor.execute(
+            row = cursor.execute(
                 """
-                SELECT 1 FROM chuyen_gia
+                SELECT id FROM chuyen_gia
                 WHERE organization_id = ? AND (anh_chung_chi = ? OR anh_chu_ky = ?)
                 """,
                 (organization_id, stored_path, stored_path)
-            )
-        allowed = cursor.fetchone() is not None
-        if not allowed and rel_path.startswith('chuyen_gia/') and '_opt_' in filename:
+            ).fetchone()
+            owner_record_id = row[0] if row else None
+            payload_key = "chuyengia"
+            table_name = "chuyen_gia"
+        if not owner_record_id and rel_path.startswith('chuyen_gia/') and '_opt_' in filename:
             original_prefix = filename.split('_opt_', 1)[0]
             managed_directory = os.path.dirname(stored_path).replace('\\', '/')
-            cursor.execute(
+            row = cursor.execute(
                 """
-                SELECT 1 FROM chuyen_gia
+                SELECT id FROM chuyen_gia
                 WHERE organization_id = ? AND (anh_chung_chi LIKE ? OR anh_chu_ky LIKE ?)
                 """,
                 (
@@ -748,10 +749,20 @@ async def protected_image_api(request):
                     f'{managed_directory}/{original_prefix}.%',
                     f'{managed_directory}/{original_prefix}.%',
                 )
-            )
-            allowed = cursor.fetchone() is not None
-        if not allowed:
+            ).fetchone()
+            owner_record_id = row[0] if row else None
+        if not owner_record_id or not can_read_record(
+            cursor,
+            role_or_err,
+            role_or_err.user_id,
+            organization_id,
+            payload_key,
+            table_name,
+            owner_record_id,
+        ):
             return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
+        if not os.path.isfile(file_path):
+            return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
     except OrgPermissionError as e:
         return error_response(
             request,
@@ -794,18 +805,12 @@ routes = [
     Route("/legal", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
     Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
-    Route("/api/sync", sync_api, methods=["POST"]),
-    Route("/api/sync-version", current_sync_version_api, methods=["GET"]),
-    Route("/api/paginate", paginate_api, methods=["GET"]),
-    Route("/api/record", record_api, methods=["GET"]),
-    Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
+    *sync_http_routes(Route),
+    *lifecycle_policy_routes(Route),
     Route("/api/packages/{package_id}/lot-lifecycle", get_lot_lifecycle_api, methods=["GET"]),
     Route("/api/packages/{package_id}/lot-batches", create_lot_batch_api, methods=["POST"]),
     Route("/api/packages/{package_id}/lot-batches/{batch_id}/finalize", finalize_lot_batch_api, methods=["POST"]),
-    Route("/api/packages/{package_id}/documents", list_package_documents_api, methods=["GET"]),
-    Route("/api/packages/{package_id}/documents/{document_type}", upload_package_document_api, methods=["PUT"]),
-    Route("/api/packages/{package_id}/documents/{document_type}", delete_package_document_api, methods=["DELETE"]),
-    Route("/api/packages/{package_id}/documents/{document_type}/download", download_package_document_api, methods=["GET"]),
+    *package_document_routes(Route),
     Route("/api/notifications", list_notifications_api, methods=["GET"]),
     Route("/api/notifications/read-all", mark_all_notifications_read_api, methods=["POST"]),
     Route("/api/notifications/{notification_id}/read", mark_notification_read_api, methods=["POST"]),
@@ -813,6 +818,7 @@ routes = [
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
     Route("/api/export-timeline/{package_id}", export_timeline_api, methods=["GET"]),
+    *document_job_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),

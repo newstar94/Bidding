@@ -38,7 +38,16 @@ export function resolveLatestPackage(model, packageRef) {
 export function selectPackageDetailTab(target, tabId, packageRef, model = null) {
   const latestPackage = resolveLatestPackage(model, packageRef);
   const packageId = latestPackage?.id || (typeof packageRef === "object" ? packageRef?.id : packageRef);
+  const workspace = packageWorkspaceFor(target);
+  const currentPackageId = String(target._currentWorkflowPackageId || "");
+  if (currentPackageId !== String(packageId || "")) {
+    workspace.load({ packageId, workflowTab: tabId });
+  } else {
+    workspace.transition({ type: "SELECT_TAB", tab: tabId });
+  }
+  // Compatibility mirror for panels not yet migrated to the module interface.
   target._currentWorkflowTab = tabId;
   target._currentWorkflowPackageId = packageId;
   return packageId;
 }
+import { packageWorkspaceFor } from "./PackageWorkspaceState.js";

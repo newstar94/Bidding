@@ -42,6 +42,15 @@ export function assignmentRowsFor(assignments, targetId, type) {
   ));
 }
 
+const INACTIVE_ASSIGNEE_LABEL = "Nhân sự không còn hoạt động";
+
+export function formatAssigneeSummary(labels, { compact = false } = {}) {
+  const safeLabels = (labels || []).map((label) => String(label || "").trim()).filter(Boolean);
+  if (!safeLabels.length) return "Chưa phân công";
+  if (!compact || safeLabels.length === 1) return safeLabels.join(", ");
+  return `${safeLabels[0]} +${safeLabels.length - 1}`;
+}
+
 export function assigneeLabelsForTarget(model, targetId, type) {
   const employees = [
     ...(model?.state?.employees || []),
@@ -54,12 +63,11 @@ export function assigneeLabelsForTarget(model, targetId, type) {
       || employee?.tenNhanSu
       || employee?.organizationProfile?.name
       || employee?.email
-      || employee?.id
-      || "Không xác định",
+      || INACTIVE_ASSIGNEE_LABEL,
     ).trim(),
   ]));
   return assignmentRowsFor(model?.state?.assignments, targetId, type)
-    .map((assignment) => byId.get(String(assignment.empId)) || String(assignment.empId))
+    .map((assignment) => byId.get(String(assignment.empId)) || INACTIVE_ASSIGNEE_LABEL)
     .filter(Boolean);
 }
 

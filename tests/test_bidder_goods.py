@@ -26,6 +26,7 @@ def test_bidder_goods_schema_and_sync_contract():
 def test_sync_payload_accepts_bidder_goods_manual_override_as_boolean():
     errors = validate_sync_payload_shape({
         "hanghoaduthaunhathau": [{"uuDaiManualOverride": True}],
+        "clientMutationId": "bidder-goods-shape-test",
     })
 
     assert not any(
@@ -150,6 +151,7 @@ def test_backend_accepts_consistent_official_batch_and_rejects_cross_package_map
         [{**valid, "goiThauHangHoaId": "required-other"}],
     )
     assert any(error["code"] == "BIDDER_GOODS_REQUIREMENT_INVALID" for error in errors)
+    connection.close()
 
 
 def test_backend_accepts_mixed_package_and_rejects_non_goods_field():
@@ -177,6 +179,7 @@ def test_backend_accepts_mixed_package_and_rejects_non_goods_field():
     errors = validate_bidder_goods_batch(connection.cursor(), "org-1", [valid])
     assert any(error["code"] == "BIDDER_GOODS_PACKAGE_INVALID" for error in errors)
     assert any("Hàng hóa hoặc Hỗn hợp" in error["message"] for error in errors)
+    connection.close()
 
 
 def test_backend_rejects_wrong_lot_duplicates_incomplete_rows_and_bad_totals():
@@ -248,6 +251,7 @@ def test_backend_rejects_wrong_lot_duplicates_incomplete_rows_and_bad_totals():
         error["code"] == "BIDDER_GOODS_SCOPE_RECOMPUTE_REQUIRED"
         for error in partial_scope
     )
+    connection.close()
 
 
 def test_backend_allows_manual_preference_override_without_reason():
@@ -270,6 +274,7 @@ def test_backend_allows_manual_preference_override_without_reason():
         error["code"] == "BIDDER_GOODS_PREFERENCE_OVERRIDE_REASON_REQUIRED"
         for error in errors
     )
+    connection.close()
 
 
 def test_backend_rejects_goods_ready_when_persisted_technical_progress_is_stale():
@@ -297,6 +302,7 @@ def test_backend_rejects_goods_ready_when_persisted_technical_progress_is_stale(
         error["code"] == "BIDDER_GOODS_TECHNICAL_PREREQUISITE"
         for error in errors
     )
+    connection.close()
 
 
 def test_manager_cannot_edit_bidder_goods_after_evaluation_closes():

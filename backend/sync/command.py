@@ -50,3 +50,4 @@ class SyncPostCommitContext:
     response_data: dict[str, Any]
     image_cleanup_candidates: frozenset[str]
     newly_written_images: frozenset[str]
+    staged_assets: tuple[dict[str, Any], ...] = ()

@@ -325,13 +325,14 @@ try {
   await memberRow.locator(".jv-input-mst").fill(contractors[0].code);
   await memberRow.locator(".jv-input-ten").fill(contractors[0].name);
   await modal.locator("#btn-save-mothau-jv").click();
-  await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
-  const duplicateMessage = (await page.locator("#dialog-message").innerText()).trim();
-  if (!/không được trùng/i.test(duplicateMessage)) {
-    throw new Error(`JV duplicate validation message missing: ${duplicateMessage}`);
+  await memberRow.locator('.jv-input-mst[aria-invalid="true"]').waitFor({ state: "visible", timeout: 10_000 });
+  const duplicateMessage = (await memberRow.locator(".error-text").first().innerText()).trim();
+  if (!/bị trùng trong liên danh/i.test(duplicateMessage)) {
+    throw new Error(`JV inline duplicate validation message missing: ${duplicateMessage}`);
   }
-  await page.locator("#btn-dialog-ok").click();
-  await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden" });
+  if (await page.locator("#modal-custom-dialog.active").count()) {
+    throw new Error("JV duplicate validation unexpectedly opened a modal alert");
+  }
   await memberRow.locator(".jv-input-mst").fill(contractors[1].code);
   await memberRow.locator(".jv-input-ten").fill(contractors[1].name);
   await modal.locator("#btn-add-mothau-jv-member").click();

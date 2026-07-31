@@ -256,6 +256,9 @@ async def monitor_audit_chain(database, application=None):
                     verification.valid
                     and getattr(application.state, "startup_complete", False)
                 )
+                application.state.readiness_reason = (
+                    None if verification.valid else "AUDIT_CHAIN_INVALID"
+                )
             if checkpoint_path is not None:
                 last_checkpoint_at = time.time()
                 record_audit_checkpoint("success")
@@ -275,6 +278,7 @@ async def monitor_audit_chain(database, application=None):
             set_audit_chain_health("error")
             if application is not None:
                 application.state.ready = False
+                application.state.readiness_reason = "AUDIT_VERIFIER_ERROR"
             record_audit_chain_verification(
                 "error", time.perf_counter() - started, 0
             )

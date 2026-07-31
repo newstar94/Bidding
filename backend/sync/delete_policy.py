@@ -4,6 +4,7 @@ import json
 import time
 
 from backend.shared.audit_chain import insert_audit_row
+from backend.sync.mutation_audit import business_record_hash
 from dataclasses import dataclass
 
 from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
@@ -302,6 +303,8 @@ def insert_delete_audit(
     action,
     impact,
     ip_address=None,
+    client_mutation_id=None,
+    record=None,
 ):
     insert_audit_row(
         cursor,
@@ -311,5 +314,22 @@ def insert_delete_audit(
         target_type=table_name,
         target_id=record_id,
         ip_address=ip_address,
-        metadata_json=json.dumps({"impact": impact}, ensure_ascii=False, default=str),
+        metadata_json=json.dumps(
+            {
+                "impact": impact,
+                "clientMutationId": client_mutation_id or None,
+                "changedFields": sorted(
+                    key for key in (record or {})
+                    if key not in {
+                        "organization_id", "owner_type", "sync_version",
+                        "row_version", "created_at", "updated_at", "is_latest",
+                    }
+                ),
+                "beforeHash": business_record_hash(record),
+                "afterHash": None,
+                "redactionClassification": "business-hash-only",
+            },
+            ensure_ascii=False,
+            default=str,
+        ),
     )

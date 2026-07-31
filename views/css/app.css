@@ -1,12 +1,14 @@
-@import "./tokens.css";
-@import "./variables.css";
-@import "./base.css";
-@import "./landing.css";
-@import "./legal.css";
-@import "./components.css";
-@import "./views.css";
-@import "./toast.css";
-@import "./initial-route.css";
-@import "./generated-static-styles.css";
-@import "./runtime-styles.css";
-@import "./ui-redesign.css";
+@layer tokens, base, components, features, utilities, legacy;
+
+@import "./tokens.css" layer(tokens);
+@import "./variables.css" layer(tokens);
+@import "./base.css" layer(base);
+@import "./landing.css" layer(features);
+@import "./legal.css" layer(features);
+@import "./components.css" layer(components);
+@import "./views.css" layer(features);
+@import "./toast.css" layer(components);
+@import "./initial-route.css" layer(base);
+@import "./generated-static-styles.css" layer(utilities);
+@import "./runtime-styles.css" layer(legacy);
+@import "./ui-redesign.css" layer(legacy);

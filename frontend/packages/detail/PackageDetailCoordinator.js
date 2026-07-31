@@ -1,26 +1,21 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
-import { escapeHtml, initCustomSelect } from "../../shared/view_helpers.js";
+import { escapeHtml } from "../../shared/view_helpers.js";
+import { renderAccessibleTabs } from "../../shared/AccessibleTabs.js";
 import { selectPackageDetailTab } from "./PackageDetailState.js";
 import { renderWorkflowActions } from "./WorkflowActions.js";
 import { getAppController } from "../../app/controllerRef.js";
 import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigation.js";
 
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
-  if (!container) return;
+  if (!container) return () => {};
   setRuntimeStyle(container, "display", "flex");
-  container.innerHTML = trustedHTML((tabs || []).map((tab) => {
-    const active = activeTab === tab.id;
-    return `<button type="button" role="tab" aria-selected="${active ? "true" : "false"}" class="btn package-workflow-tab ${active ? "active" : ""}" data-workflow-tab="${escapeHtml(tab.id)}"><i data-lucide="${escapeHtml(tab.icon || "circle-dot")}" aria-hidden="true"></i><span>${escapeHtml(tab.label)}</span></button>`;
-  }).join(""));
-  container.querySelectorAll("[data-workflow-tab]").forEach((button) => {
-    button.addEventListener("click", () => onSelect?.(button.getAttribute("data-workflow-tab")));
-  });
+  return renderAccessibleTabs(container, tabs, activeTab, onSelect);
 }
 
 function renderVersionSelector(view, detail) {
   const verSelect = document.getElementById("detail-workflow-version-select");
-  if (!verSelect) return;
+  if (!verSelect) return () => {};
 
   verSelect.parentElement
     ?.querySelector('.custom-select-container[data-target="detail-workflow-version-select"]')
@@ -38,10 +33,13 @@ function renderVersionSelector(view, detail) {
   if (separator) setRuntimeStyle(separator, "display", "inline-block");
   setRuntimeStyle(verSelect, "display", "inline-block");
   verSelect.disabled = detail.versions.length < 2;
+  verSelect.dataset.noCustom = "true";
   verSelect.onchange = verSelect.disabled
     ? null
     : (event) => view.showPackageDetails(event.target.value, true);
-  initCustomSelect("detail-workflow-version-select");
+  return () => {
+    verSelect.onchange = null;
+  };
 }
 
 export function bindPackageDetailChrome(view, detail) {
@@ -60,9 +58,9 @@ export function bindPackageDetailChrome(view, detail) {
       view.showPackageDetails(detail.packageId);
     },
   });
-  renderVersionSelector(view, detail);
+  const disposeVersionSelector = renderVersionSelector(view, detail);
 
-  renderPackageTabHeaders(
+  const disposeTabs = renderPackageTabHeaders(
     document.getElementById("detail-workflow-tabs-header"),
     detail.tabs,
     detail.activeTab,
@@ -79,4 +77,8 @@ export function bindPackageDetailChrome(view, detail) {
       await view.showPackageDetails(packageId);
     },
   );
+  return () => {
+    disposeTabs();
+    disposeVersionSelector();
+  };
 }

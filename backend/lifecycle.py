@@ -26,6 +26,7 @@ from backend.shared.audit_monitor import (
     verify_audit_chain_before_ready,
 )
 from backend.shared.logging_utils import log_error
+from backend.shared.media_helper import reconcile_asset_journal
 from backend.startup import (
     validate_startup_configuration,
     verify_database_readiness,
@@ -154,6 +155,7 @@ def _purge_retained_rows(database):
         conn.commit()
         fail_stale_email_deliveries(database)
         purge_expired_durable_document_jobs(database)
+        reconcile_asset_journal(database)
     except Exception as exc:
         log_error(exc, "retention_cleanup", level="WARN")
     finally:
@@ -200,6 +202,7 @@ async def application_lifespan(
 ):
     application.state.ready = False
     application.state.startup_complete = False
+    application.state.readiness_reason = "STARTUP_INCOMPLETE"
     application.state.event_loop_lag_ms = 0.0
     monitor_task = None
     audit_monitor_task = None
@@ -220,6 +223,7 @@ async def application_lifespan(
         if database_auto_migration_enabled():
             initialize_database()
         verify_database_readiness(database, schema_version)
+        reconcile_asset_journal(database)
         if is_production:
             verify_database_runtime_role(
                 database,
@@ -234,6 +238,7 @@ async def application_lifespan(
 
     application.state.startup_complete = True
     application.state.ready = True
+    application.state.readiness_reason = None
     monitor_task = asyncio.create_task(_monitor_event_loop(application))
     audit_monitor_task = asyncio.create_task(
         monitor_audit_chain(database, application=application)
@@ -245,8 +250,8 @@ async def application_lifespan(
             run_durable_document_queue_worker(database)
         )
     try:
-        from backend.sync.websocket import _latest_broker_event_id, run_websocket_event_broker
-        broker_cursor = await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
+        from backend.sync.websocket import _pending_broker_start_id, run_websocket_event_broker
+        broker_cursor = await run_blocking_io(_pending_broker_start_id, timeout_seconds=5.0)
         broker_task = asyncio.create_task(run_websocket_event_broker(start_after_id=broker_cursor))
     except Exception:
         for task in (

@@ -107,6 +107,7 @@ def test_new_account_bootstrap_creates_personal_word_variables_immediately():
         "SELECT count(*) FROM cau_hinh_bien_word WHERE organization_id = ? AND owner_type = 'personal'",
         (scope_id,),
     ).fetchone()[0] > 0
+    connection.close()
 
 
 def test_switching_workspace_selects_distinct_personal_and_organization_variables():
@@ -145,6 +146,7 @@ def test_switching_workspace_selects_distinct_personal_and_organization_variable
         "SELECT count(*) FROM cau_hinh_bien_word WHERE organization_id = ? AND ten_bien = 'bien_ca_nhan'",
         (organization_scope,),
     ).fetchone()[0] == 0
+    connection.close()
 
 
 def test_default_word_variable_upgrade_rewrites_legacy_explanation_text():
@@ -172,6 +174,7 @@ def test_default_word_variable_upgrade_rewrites_legacy_explanation_text():
     ).fetchone()[0]
     assert description == "Biến đơn mặc định từ schema hệ thống: chu_dau_tu.ma_chu_dau_tu"
     assert version == 14
+    connection.close()
 
 
 def test_organization_members_can_read_but_only_manager_can_change_word_variables():
@@ -201,6 +204,7 @@ def test_organization_members_can_read_but_only_manager_can_change_word_variable
     assert can_manage_word_config(cursor, manager, "manager-a", "org-a")
     assert can_read_word_config(cursor, employee, "employee-a", "org-a")
     assert not can_manage_word_config(cursor, employee, "employee-a", "org-a")
+    connection.close()
 
 
 def test_email_registration_bootstraps_word_variables_before_commit(monkeypatch):

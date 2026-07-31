@@ -191,7 +191,12 @@ def has_inherited_specialist_access(cursor, role_str, user_id, organization_id):
 
 
 def resolve_document_export_capabilities(cursor, role_str, user_id, organization_id):
-    """Resolve sensitive Word fields after the scope subscription is authorized."""
+    """Expose complete business fields after workspace/record authorization.
+
+    The legacy capability rows remain in the schema for compatibility, but no
+    longer act as field-level deny gates.  Document routes must authorize the
+    target record before calling this workspace projection policy.
+    """
 
     if not can_use_word_export(cursor, role_str, user_id, organization_id):
         return DocumentExportCapabilities()
@@ -200,19 +205,7 @@ def resolve_document_export_capabilities(cursor, role_str, user_id, organization
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return DocumentExportCapabilities.allow_all()
     if has_active_organization_membership(cursor, role_str, user_id, organization_id):
-        row = cursor.execute(
-            """SELECT financial, identity, signature
-               FROM document_export_capabilities
-               WHERE organization_id = ? AND user_id = ?
-               LIMIT 1""",
-            (organization_id, user_id),
-        ).fetchone()
-        if row:
-            return DocumentExportCapabilities(
-                financial=bool(row[0]),
-                identity=bool(row[1]),
-                signature=bool(row[2]),
-            )
+        return DocumentExportCapabilities.allow_all()
     return DocumentExportCapabilities()
 
 

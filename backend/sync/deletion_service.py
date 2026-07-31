@@ -1,5 +1,7 @@
 """Execute synchronized deletions/archives as one authorization-aware use case."""
 
+import json
+
 from backend.db.db_helper import IntegrityError
 
 
@@ -7,6 +9,7 @@ from backend.shared.helpers import clean_id
 from backend.shared.access_policy import (
     authorize_record_write_from_context,
     build_batch_write_authorization_context,
+    can_read_record,
 )
 from backend.shared.media_helper import normalize_managed_image_path
 from backend.sync.delete_policy import (
@@ -23,6 +26,7 @@ from backend.sync.delete_policy import (
     insert_delete_audit,
 )
 from backend.sync.mapper import map_db_to_json
+from backend.sync.conflict_projection import project_conflict_record
 from backend.sync.queries import TABLE_KEYS
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, VERSIONED_TABLES
 
@@ -135,6 +139,7 @@ def apply_sync_deletions(
     sync_version,
     clean_record_id,
     ip_address,
+    client_mutation_id=None,
 ):
     result = {
         "errors": [],
@@ -190,16 +195,14 @@ def apply_sync_deletions(
             table_name,
             record_ids,
         )
-    if not any(records_by_table.values()):
-        return result
     authorization_context = build_batch_write_authorization_context(
         cursor,
         actor_role,
         actor_user_id,
         organization_id,
         {
-            table_name: [{"id": record_id} for record_id in table_records]
-            for table_name, table_records in records_by_table.items()
+            table_name: [{"id": record_id} for record_id in record_ids]
+            for table_name, record_ids in record_ids_by_table.items()
         },
     )
 
@@ -213,12 +216,44 @@ def apply_sync_deletions(
         record_id = clean_record_id(table_name, deletion.get("id"))
         if not record_id:
             continue
+        access = authorize_record_write_from_context(
+            authorization_context,
+            table_key,
+            table_name,
+            {"id": record_id},
+        )
+        if not access.allowed:
+            result["errors"].append({
+                "table": table_name,
+                "id": record_id,
+                "field": "$record",
+                "code": "RECORD_ACCESS_DENIED",
+                "message": "Không có quyền thực hiện thay đổi này.",
+            })
+            continue
         record = records_by_table.get(table_name, {}).get(str(record_id))
         if not record:
             continue
         expected_version = deletion.get("expectedVersion")
         current_version = int(record.get("row_version") or 1)
         if expected_version != current_version:
+            if not can_read_record(
+                cursor,
+                actor_role,
+                actor_user_id,
+                organization_id,
+                table_key,
+                table_name,
+                record,
+            ):
+                result["errors"].append({
+                    "table": table_name,
+                    "id": record_id,
+                    "field": "$record",
+                    "code": "RECORD_ACCESS_DENIED",
+                    "message": "Không có quyền thực hiện thay đổi này.",
+                })
+                continue
             result["errors"].append({
                 "table": table_name,
                 "id": record_id,
@@ -227,7 +262,9 @@ def apply_sync_deletions(
                 "message": "Bản ghi cần xóa đã được thay đổi bởi một phiên làm việc khác.",
                 "expectedVersion": expected_version,
                 "currentVersion": current_version,
-                "serverRecord": map_db_to_json(table_name, record),
+                "serverRecord": project_conflict_record(
+                    map_db_to_json(table_name, record)
+                ),
             })
             continue
         if table_name in ARCHIVABLE_TABLES and record.get("archived_at"):
@@ -240,18 +277,7 @@ def apply_sync_deletions(
             if path:
                 result["imageCleanupCandidates"].add(path)
 
-        access = authorize_record_write_from_context(
-            authorization_context,
-            table_key,
-            table_name,
-            {"id": record_id},
-        )
         organization_manager = authorization_context.organization_manager
-        if not access.allowed:
-            result["errors"].append({
-                "table": table_name, "id": record_id, "message": access.message,
-            })
-            continue
         # Employees may create data and edit assigned work, but deletion in an
         # organization is always reserved for an organization manager. This is
         # enforced here so direct API calls cannot bypass the UI.
@@ -346,6 +372,20 @@ def apply_sync_deletions(
             DELETED_RECORD_UPSERT_SQL,
             (table_name, record_id, organization_id, current_time, sync_version),
         )
+        cursor.execute(
+            """UPDATE deleted_records
+               SET record_snapshot_json = ?, delete_actor_user_id = ?,
+                   delete_mutation_id = ?
+               WHERE organization_id = ? AND table_name = ? AND record_id = ?""",
+            (
+                json.dumps(record, ensure_ascii=False, default=str),
+                actor_user_id,
+                str(client_mutation_id or "").strip() or None,
+                organization_id,
+                table_name,
+                record_id,
+            ),
+        )
         impact_result = {"table": table_key, "id": record_id, "action": action, **impact}
         result["impacts"].append(impact_result)
         insert_delete_audit(
@@ -357,6 +397,8 @@ def apply_sync_deletions(
             action=f"sync.record_{action}",
             impact=impact_result,
             ip_address=ip_address,
+            client_mutation_id=client_mutation_id,
+            record=record,
         )
         if table_name in VERSIONED_TABLES:
             result["updatedVersionedTables"].add(table_name)

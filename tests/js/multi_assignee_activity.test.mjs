@@ -5,7 +5,9 @@ import {
   applyAssignmentDelta,
   computeAssignmentDelta,
   filterAvailableAssigneeOptions,
+  formatAssigneeSummary,
   normalizeAssigneeIds,
+  assigneeLabelsForTarget,
 } from "../../frontend/shared/MultiAssigneeSelect.js";
 import {
   derivePackageAssigneeControlState,
@@ -39,6 +41,36 @@ test("searchable assignee dropdown excludes selected people", () => {
     filterAvailableAssigneeOptions(options, ["a"], "nguyen"),
     [],
   );
+});
+
+
+test("missing or delayed assignee hydration never exposes a technical id", () => {
+  const model = {
+    state: {
+      assignments: [{ empId: "user-550e8400-e29b-41d4-a716-446655440000", targetId: "p1", type: "goithau" }],
+      employees: [],
+    },
+  };
+
+  assert.deepEqual(
+    assigneeLabelsForTarget(model, "p1", "goithau"),
+    ["Nhân sự không còn hoạt động"],
+  );
+  model.state.employees = [{
+    id: "user-550e8400-e29b-41d4-a716-446655440000",
+    name: "Nguyễn An",
+  }];
+  assert.deepEqual(assigneeLabelsForTarget(model, "p1", "goithau"), ["Nguyễn An"]);
+});
+
+
+test("compact assignee summary renders the first name and remaining count", () => {
+  assert.equal(formatAssigneeSummary(["Nguyễn An", "Trần Bình", "Lê Chi"]), "Nguyễn An, Trần Bình, Lê Chi");
+  assert.equal(
+    formatAssigneeSummary(["Nguyễn An", "Trần Bình", "Lê Chi"], { compact: true }),
+    "Nguyễn An +2",
+  );
+  assert.equal(formatAssigneeSummary([], { compact: true }), "Chưa phân công");
 });
 
 

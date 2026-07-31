@@ -10,7 +10,10 @@ import { executeAppCommand } from "../app/commandBus.js";
 import { getLotWinnersStore } from "../shared/runtimeState.js";
 import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
 import { showLotWinnersModal } from "./lotWinnersModal.js";
-import { assigneeLabelsForTarget } from "../shared/MultiAssigneeSelect.js";
+import {
+  assigneeLabelsForTarget,
+  formatAssigneeSummary,
+} from "../shared/MultiAssigneeSelect.js";
 
 function bindLotWinnerActions(tableBody, view) {
   tableBody?.querySelectorAll('[data-bf-action="show-lot-winners"]').forEach((action) => {
@@ -254,7 +257,7 @@ export async function renderGoiThauTable() {
                         ${dropdownHtml}
                     </div>
                 </td>
-                <td class="text-wrap bf-s-861d2aedee"><a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a><small class="assignee-summary">${esc(assigneeLabels.join(", ") || "Chưa phân công")}</small></td>
+                <td class="text-wrap bf-s-861d2aedee"><a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a><small class="assignee-summary"><span class="assignee-summary-full">${esc(formatAssigneeSummary(assigneeLabels))}</span><span class="assignee-summary-compact">${esc(formatAssigneeSummary(assigneeLabels, { compact: true }))}</span></small></td>
                 <td class="text-wrap bf-s-861d2aedee">${kh ? '<a href="#" data-bf-action="show-plan" data-id="' + esc(kh.id) + '" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + "</a>" : '<span class="text-danger">Không liên kết</span>'}</td>
                 <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
                 <td>${esc(displayedGt.hinhThucLuaChon || "--")}</td>

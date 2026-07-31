@@ -10,7 +10,11 @@ import {
 } from "./workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { renderSyncStatus } from "./syncStatus.js";
-import { commitSyncCursor, readSyncCursor } from "./syncCursor.js";
+import {
+  commitSyncCursor,
+  fetchDeltaSnapshot,
+  readSyncCursor,
+} from "./syncCursor.js";
 
 function currentWorkspaceStorage(controller) {
   return controller.model?.workspaceStorage || getWorkspaceStorage();
@@ -736,11 +740,23 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       if (routeTables.length > 0) queryParams.set("tables", routeTables.join(","));
     }
     const syncQuery = queryParams.toString();
-    const response = await apiFetch("/api/get-all-data?" + syncQuery, {
-      headers: {
-        "X-Active-Org": encodeURIComponent(workspace.organizationId)
-      }
-    });
+    const requestHeaders = {
+      "X-Active-Org": encodeURIComponent(workspace.organizationId)
+    };
+    let dbData = null;
+    let response;
+    if (useVersionDelta && !routeOnly) {
+      const delta = await fetchDeltaSnapshot(apiFetch, {
+        afterVersion: query.after_version,
+        headers: requestHeaders,
+      });
+      response = delta.response;
+      dbData = delta.snapshot;
+    } else {
+      response = await apiFetch("/api/get-all-data?" + syncQuery, {
+        headers: requestHeaders,
+      });
+    }
     if (response.status === 409 && !forceFull) {
       let resyncPayload = null;
       try {
@@ -786,7 +802,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       throw new Error(`Không thể đồng bộ dữ liệu: HTTP ${response.status}${detailSuffix}`);
     }
     if (response.ok) {
-      const dbData = await response.json();
+      dbData ||= await response.json();
       if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
       const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(this.model, dbData, { useVersionDelta, since });
       await persistencePromise;

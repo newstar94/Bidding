@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
+    UPGRADES,
     _upgrade_to_v29_cover_remaining_foreign_keys,
 )
 
@@ -36,4 +37,5 @@ def test_v29_creates_all_fk_indexes_and_rechecks_integrity():
     assert "idx_bidder_goods_manual_actor_fk" in sql
     assert "idx_package_documents_batch_fk" in sql
     assert checks == [cursor]
-    assert DB_SCHEMA_VERSION == 29
+    assert DB_SCHEMA_VERSION >= 29
+    assert any(upgrade.version == 29 for upgrade in UPGRADES)

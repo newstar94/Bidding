@@ -8,10 +8,12 @@ from typing import Any, Callable
 from backend.shared.access_policy import (
     authorize_record_write_from_context,
     build_batch_write_authorization_context,
+    can_read_record,
 )
 from backend.shared.helpers import clean_id
 from backend.sync.delete_policy import ARCHIVABLE_TABLES
 from backend.sync.mapper import map_db_to_json
+from backend.sync.conflict_projection import project_conflict_record
 from backend.sync.opening_uniqueness import validate_opening_participant_uniqueness
 from backend.sync.ownership import (
     build_owner_reference_context,
@@ -133,6 +135,16 @@ class SyncRecordValidator:
             payloads,
             organization_id,
         )
+        tombstones_by_table = self._load_tombstones(
+            payloads,
+            organization_id,
+        )
+        retention_row = cursor.execute(
+            "SELECT min_available_version FROM sync_metadata WHERE organization_id = ?",
+            (organization_id,),
+        ).fetchone()
+        min_available_version = int(retention_row[0] or 0) if retention_row else 0
+        base_sync_version = int(self.payload.get("baseSyncVersion") or 0)
         records_by_table = {}
         for _payload_key, table_name, items in payloads:
             records_by_table.setdefault(table_name, []).extend(items)
@@ -170,7 +182,14 @@ class SyncRecordValidator:
                     item,
                 )
                 if not access_decision.allowed:
-                    item_errors.append(access_decision.message)
+                    validation_errors.append({
+                        "table": table_name,
+                        "id": item.get("id"),
+                        "field": "$record",
+                        "code": "RECORD_ACCESS_DENIED",
+                        "message": "Không có quyền thực hiện thay đổi này.",
+                    })
+                    continue
 
                 record_id = self.clean_record_id(table_name, item.get("id"))
                 root_id = (
@@ -200,6 +219,23 @@ class SyncRecordValidator:
                             current_record.get("row_version") or 1
                         )
                         if expected_version != current_version:
+                            if not can_read_record(
+                                cursor,
+                                actor.role,
+                                actor.user_id,
+                                organization_id,
+                                payload_key,
+                                table_name,
+                                current_record,
+                            ):
+                                validation_errors.append({
+                                    "table": table_name,
+                                    "id": item.get("id"),
+                                    "field": "$record",
+                                    "code": "RECORD_ACCESS_DENIED",
+                                    "message": "Không có quyền thực hiện thay đổi này.",
+                                })
+                                continue
                             item_errors.append({
                                 "field": "expectedVersion",
                                 "code": "ROW_VERSION_CONFLICT",
@@ -209,11 +245,39 @@ class SyncRecordValidator:
                                 ),
                                 "expectedVersion": expected_version,
                                 "currentVersion": current_version,
-                                "serverRecord": map_db_to_json(
-                                    table_name,
-                                    current_record,
+                                "serverRecord": project_conflict_record(
+                                    map_db_to_json(table_name, current_record)
                                 ),
                             })
+                    else:
+                        tombstone = tombstones_by_table.get(table_name, {}).get(record_id)
+                        expected_version = item.get(
+                            "expectedVersion",
+                            item.get("rowVersion"),
+                        )
+                        if tombstone or expected_version is not None:
+                            if base_sync_version < min_available_version:
+                                code = "FULL_SYNC_REQUIRED"
+                                message = "Con trỏ đồng bộ đã quá cũ; cần tải lại dữ liệu đầy đủ."
+                            elif tombstone:
+                                code = "RECORD_DELETED"
+                                message = "Bản ghi đã bị xóa trên máy chủ."
+                            else:
+                                code = "RECORD_NOT_FOUND"
+                                message = "Bản ghi cần cập nhật không còn tồn tại."
+                            validation_errors.append({
+                                "table": table_name,
+                                "id": item.get("id"),
+                                "field": "$record",
+                                "code": code,
+                                "message": message,
+                                **(
+                                    {"requiresFullSync": True}
+                                    if code == "FULL_SYNC_REQUIRED"
+                                    else {}
+                                ),
+                            })
+                            continue
                 if record_id and table_name in ARCHIVABLE_TABLES:
                     archived_record = current_records_by_table.get(
                         table_name,
@@ -277,6 +341,36 @@ class SyncRecordValidator:
                     item_errors,
                 ))
         return validation_errors
+
+    def _load_tombstones(
+        self,
+        payloads,
+        organization_id: str,
+    ) -> dict[str, dict[str, int]]:
+        cursor = self.transaction.cursor
+        tombstones_by_table: dict[str, dict[str, int]] = {}
+        for _payload_key, table_name, items in payloads:
+            record_ids = list(dict.fromkeys(
+                record_id
+                for item in items
+                if (
+                    record_id := self.clean_record_id(table_name, item.get("id"))
+                )
+            ))
+            table_tombstones = tombstones_by_table.setdefault(table_name, {})
+            for offset in range(0, len(record_ids), _QUERY_CHUNK_SIZE):
+                chunk = record_ids[offset:offset + _QUERY_CHUNK_SIZE]
+                placeholders = ", ".join("?" for _ in chunk)
+                tombstone_sql = f"SELECT record_id, delete_version FROM deleted_records WHERE organization_id = ? AND table_name = ? AND record_id IN ({placeholders})"  # noqa: S608 - generated placeholders only
+                rows = cursor.execute(
+                    tombstone_sql,
+                    (organization_id, table_name, *chunk),
+                ).fetchall()
+                table_tombstones.update(
+                    (str(row[0]), int(row[1] or 0))
+                    for row in rows
+                )
+        return tombstones_by_table
 
     def _load_current_records(
         self,

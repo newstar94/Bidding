@@ -157,6 +157,53 @@ test("full bidder-goods table stays inside its scroll frame and keeps toolbar al
   }
 });
 
+test("bidder-goods search uses one compact focus ring without shifting layout", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<meta charset="utf-8"><main>${renderBidderGoodsPanelMarkup(panelState())}</main>`);
+    for (const path of stylesheetPaths) await page.addStyleTag({ path });
+
+    const search = page.locator("#bidder-goods-search");
+    const before = await search.evaluate((control) => {
+      const rect = control.getBoundingClientRect();
+      const computed = getComputedStyle(control);
+      return {
+        width: rect.width,
+        height: rect.height,
+        borderWidth: computed.borderWidth,
+      };
+    });
+
+    await search.focus();
+    const focused = await search.evaluate((control) => {
+      const rect = control.getBoundingClientRect();
+      const computed = getComputedStyle(control);
+      return {
+        width: rect.width,
+        height: rect.height,
+        borderWidth: computed.borderWidth,
+        outlineStyle: computed.outlineStyle,
+        outlineWidth: computed.outlineWidth,
+        outlineOffset: computed.outlineOffset,
+        boxShadow: computed.boxShadow,
+      };
+    });
+
+    assert.deepEqual(
+      { width: focused.width, height: focused.height, borderWidth: focused.borderWidth },
+      before,
+      "focus must not resize the search control",
+    );
+    assert.equal(focused.outlineStyle, "solid");
+    assert.equal(focused.outlineWidth, "2px");
+    assert.equal(focused.outlineOffset, "2px");
+    assert.equal(focused.boxShadow, "none", "focus must not stack a box shadow beneath the outline");
+  } finally {
+    await browser.close();
+  }
+});
+
 test("bidder-goods validation stays hidden until save and then marks the exact field", async () => {
   const browser = await chromium.launch({ headless: true });
   try {

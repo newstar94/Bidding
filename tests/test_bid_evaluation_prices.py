@@ -93,6 +93,7 @@ def test_sync_payload_shape_accepts_boolean_low_price_decision():
             "id": "bid-1",
             "chapThuanGiaDeNghiTrungThauDuoi50": True,
         }],
+        "clientMutationId": "bid-evaluation-shape-test",
     })
     assert errors == []
 

@@ -163,7 +163,8 @@
   position: relative;
   overflow: visible;
 }
-.app-container.sidebar-collapsed .nav-btn[data-tooltip]:hover::before {
+.app-container.sidebar-collapsed .nav-btn[data-tooltip]:hover::before,
+.app-container.sidebar-collapsed .nav-btn[data-tooltip]:focus-visible::before {
   content: attr(data-tooltip);
   position: absolute;
   left: calc(100% + 8px);
@@ -233,11 +234,9 @@
   position: relative;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
-.app-container.sidebar-collapsed .brand-icon:hover,
-.app-container.sidebar-collapsed .brand-icon:focus-visible {
+.app-container.sidebar-collapsed .brand-icon:hover {
   transform: scale(1.1);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
-  outline: none;
 }
 .app-container.sidebar-collapsed .brand-icon:hover::after,
 .app-container.sidebar-collapsed .brand-icon:focus-visible::after {
@@ -412,9 +411,7 @@
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 .search-box input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 .select-wrapper select {
   padding: 10px 24px 10px 16px;
@@ -435,8 +432,7 @@
   background-size: 14px;
 }
 .select-wrapper select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 .table-container {
   background-color: var(--bg-card);
@@ -924,8 +920,9 @@
 #modal-custom-dialog[data-dialog-tone="danger"] { --dialog-tone-color: var(--danger); }
 
 #modal-custom-dialog[data-dialog-tone] #btn-dialog-ok:focus-visible {
-  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--dialog-tone-color) 32%, transparent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 #dialog-buttons.dialog-buttons-single {
@@ -1117,7 +1114,7 @@
   border: none !important;
   background: none !important;
   box-shadow: none !important;
-  outline: none !important;
+  outline: none;
 }
 .form-group input[type=checkbox] {
   width: 18px;
@@ -1159,9 +1156,8 @@
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
-  border-color: var(--primary);
   background-color: var(--bg-card);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 .form-group.invalid input,
 .form-group.invalid select {
@@ -1238,8 +1234,7 @@
   appearance: none;
 }
 .form-control:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 .form-control:read-only {
   background-color: var(--neutral-soft);
@@ -1255,8 +1250,7 @@ select.form-control {
   cursor: pointer;
 }
 select.form-control:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 .form-group input:not([readonly]):not([disabled]),
 .form-group select:not([readonly]):not([disabled]),
@@ -1324,8 +1318,7 @@ textarea[disabled] {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .custom-select-search:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 .custom-select-search:disabled {
   background-color: var(--neutral-soft);
@@ -1443,9 +1436,10 @@ textarea[disabled] {
   cursor: not-allowed !important;
 }
 .custom-select-container.open .custom-select-trigger {
-  border-color: var(--primary, #3b82f6);
   background-color: var(--bg-card, #ffffff);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 .custom-select-trigger span {
   white-space: nowrap;
@@ -2042,8 +2036,7 @@ textarea[disabled] {
   line-height: 1.35;
 }
 .access-checkbox-grid .checkbox-item:has(input:focus-visible) {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-soft);
+  box-shadow: none;
 }
 @media (max-width: 760px) {
   #modal-detail-system-user .access-settings-modal {
@@ -2331,9 +2324,9 @@ textarea[disabled] {
 }
 
 .package-goods-table .bf-combobox-input:focus {
-  border-color: var(--brand);
-  outline: none !important;
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 .package-goods-table .bf-combobox-toggle {

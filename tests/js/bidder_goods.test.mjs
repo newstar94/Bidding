@@ -39,6 +39,10 @@ import {
   buildBidderGoodsPanelState,
   buildBidderGoodsMappingModalMarkup,
   confirmBidderGoodsImport,
+  applyBidderGoodsUnitPriceInput,
+  bidderGoodsSummaryPresentation,
+  formatBidderGoodsMoneyEdit,
+  formatBidderGoodsMoneyInput,
   initializeBidderGoodsFromRequirements,
   renderBidderGoodsPanelMarkup,
   saveBidderGoods,
@@ -184,10 +188,130 @@ test("financial validation accepts one-VND tolerance and rejects invalid amounts
 
 test("manual bidder unit-price input accepts digits only", () => {
   assert.equal(sanitizeBidderGoodsMoneyInput("1250000"), "1250000");
+  assert.equal(sanitizeBidderGoodsMoneyInput("1.250.000"), "1250000");
   assert.equal(sanitizeBidderGoodsMoneyInput(""), "");
   assert.equal(sanitizeBidderGoodsMoneyInput("-1"), "");
   assert.equal(sanitizeBidderGoodsMoneyInput("1e3"), "");
   assert.equal(sanitizeBidderGoodsMoneyInput("12.5"), "");
+});
+
+test("bidder unit price formats Vietnamese thousands and preserves the typing caret", () => {
+  assert.equal(formatBidderGoodsMoneyInput("1250000"), "1.250.000");
+  assert.deepEqual(formatBidderGoodsMoneyEdit("1111", 4), {
+    digits: "1111",
+    formatted: "1.111",
+    caret: 5,
+  });
+  assert.deepEqual(formatBidderGoodsMoneyEdit("1.1111", 6), {
+    digits: "11111",
+    formatted: "11.111",
+    caret: 6,
+  });
+  assert.deepEqual(formatBidderGoodsMoneyEdit("11.1111", 7), {
+    digits: "111111",
+    formatted: "111.111",
+    caret: 7,
+  });
+});
+
+test("each bidder unit-price keystroke recalculates all four money columns without rendering", () => {
+  const pkg = { id: "package-1", phanLo: "Không", phanLoList: [] };
+  const bid = { id: "opening-1", giaDuThau: 199998, tyLeGiamGia: 0 };
+  const requirement = { id: "required-1", goiThauId: pkg.id, phanLoId: null };
+  const row = {
+    id: "offered-1",
+    goiThauId: pkg.id,
+    thongTinMoThauId: bid.id,
+    goiThauHangHoaId: requirement.id,
+    danhMucHangHoa: "Hóa chất A",
+    khoiLuong: 18,
+    donGiaDuThau: null,
+    thanhTienDuThau: null,
+    mappingStatus: "matched",
+    maUuDai: 1,
+  };
+  let renderCount = 0;
+  const controller = {
+    model: {
+      state: {
+        goithauhanghoa: [requirement],
+        hanghoaduthaunhathau: [row],
+      },
+    },
+    renderDetailedEvaluation() { renderCount += 1; },
+  };
+
+  for (const [digits, expectedTotal] of [
+    ["1", "18"],
+    ["11", "198"],
+    ["111", "1998"],
+    ["1111", "19998"],
+    ["11111", "199998"],
+  ]) {
+    const realtime = applyBidderGoodsUnitPriceInput(
+      controller, { pkg, bid }, row.id, digits,
+    );
+    const preview = realtime.row;
+    assert.equal(String(preview.donGiaDuThau), digits);
+    assert.equal(preview.thanhTienDuThau, expectedTotal);
+    assert.equal(preview.giaDuThauSauUuDai, digits);
+    assert.equal(preview.thanhTienSauUuDai, expectedTotal);
+  }
+  assert.equal(renderCount, 0);
+  assert.equal(controller._detailedEvaluationDirty, true);
+  assert.equal(bid.trangThaiTinhUuDai, "draft");
+});
+
+test("realtime preference preview remains available while another scope row is incomplete", () => {
+  const pkg = { id: "package-1", phanLo: "Không", phanLoList: [] };
+  const bid = { id: "opening-1", giaDuThau: 18, tyLeGiamGia: 0 };
+  const requirements = [
+    { id: "required-1", goiThauId: pkg.id, phanLoId: null },
+    { id: "required-2", goiThauId: pkg.id, phanLoId: null },
+  ];
+  const controller = {
+    model: {
+      state: {
+        goithauhanghoa: requirements,
+        hanghoaduthaunhathau: [
+          {
+            id: "offered-1", goiThauId: pkg.id, thongTinMoThauId: bid.id,
+            goiThauHangHoaId: "required-1", danhMucHangHoa: "A",
+            khoiLuong: 18, donGiaDuThau: null, mappingStatus: "matched", maUuDai: 1,
+          },
+          {
+            id: "offered-2", goiThauId: pkg.id, thongTinMoThauId: bid.id,
+            goiThauHangHoaId: "required-2", danhMucHangHoa: "B",
+            khoiLuong: 1, donGiaDuThau: null, mappingStatus: "matched", maUuDai: 5,
+          },
+        ],
+      },
+    },
+  };
+
+  const realtime = applyBidderGoodsUnitPriceInput(
+    controller, { pkg, bid }, "offered-1", "1",
+  );
+  const preview = realtime.row;
+  assert.equal(preview.thanhTienDuThau, "18");
+  assert.equal(preview.giaDuThauSauUuDai, "1.075");
+  assert.equal(preview.thanhTienSauUuDai, "19");
+});
+
+test("bidder-goods summary presentation recalculates total and bid-price difference", () => {
+  assert.deepEqual(bidderGoodsSummaryPresentation({
+    rows: [{ id: "offered-1" }],
+    summary: {
+      total: 200000016,
+      difference: 16,
+      invalidRows: 0,
+      matchesBidPrice: false,
+    },
+  }), {
+    totalLabel: "200.000.016 đ",
+    differenceLabel: "Chênh lệch +16 đ",
+    comparisonClass: "text-warning",
+  });
 });
 
 test("preference code changes immediately without confirmation or reason dialog", () => {
@@ -289,6 +413,15 @@ test("bidder goods panel derives totals and preference values without editable r
   for (const sourceField of ["sttNguon", "phanLoId", "danhMucHangHoa", "donViTinh", "khoiLuong"]) {
     assert.doesNotMatch(editingMarkup, new RegExp(`data-bidder-goods-field="${sourceField}"`));
   }
+  const formattedMoneyMarkup = renderBidderGoodsPanelMarkup({
+    ...state,
+    editingId: row.id,
+    pageRows: [{ ...calculated, donGiaDuThau: 1_250_000 }],
+  });
+  assert.match(
+    formattedMoneyMarkup,
+    /type="text" inputmode="numeric"[^>]*data-bidder-goods-field="donGiaDuThau"[^>]*value="1\.250\.000"/,
+  );
 });
 
 test("bidder goods panel defers aggregate price warnings and orders toolbar actions consistently", () => {
@@ -386,6 +519,52 @@ test("official bidder-goods save shows a popup when the aggregate total differs"
   assert.equal(alerts[0][2], "alert-triangle");
 });
 
+test("official bidder-goods save stages goods and their opening in one sync batch", async () => {
+  const pkg = { id: "package-1", phanLo: "KhÃ´ng", phanLoList: [] };
+  const bid = { id: "opening-1", giaDuThau: 100, tyLeGiamGia: 0 };
+  const requirement = { id: "required-1", goiThauId: pkg.id, phanLoId: null };
+  const row = {
+    id: "offered-1",
+    goiThauId: pkg.id,
+    thongTinMoThauId: bid.id,
+    goiThauHangHoaId: requirement.id,
+    danhMucHangHoa: "HÃ³a cháº¥t A",
+    khoiLuong: 2,
+    donGiaDuThau: 50,
+    thanhTienDuThau: 100,
+    mappingStatus: "matched",
+    maUuDai: 0,
+  };
+  const dirty = [];
+  const persisted = [];
+  const controller = {
+    model: {
+      state: {
+        goithauhanghoa: [requirement],
+        hanghoaduthaunhathau: [row],
+        thongtinmothau: [bid],
+      },
+      markRecordDirty: async (table, records) => dirty.push([table, records]),
+      persistData: async (table) => persisted.push(table),
+      flushMutationOutbox: async () => {},
+    },
+    view: { getActiveElement: () => null, customAlert: async () => {} },
+    autoSync: async () => ({ ok: true }),
+    renderDetailedEvaluation() {},
+  };
+
+  assert.equal(await saveBidderGoods(controller, { pkg, bid }, { official: true }), true);
+  assert.deepEqual(dirty.map(([table]) => table), [
+    "hanghoaduthaunhathau",
+    "thongtinmothau",
+  ]);
+  assert.equal(dirty[0][1][0].isDraft, false);
+  assert.equal(dirty[1][1], bid);
+  assert.equal(bid.trangThaiTinhUuDai, "ready");
+  assert.deepEqual(persisted, ["hanghoaduthaunhathau", "thongtinmothau"]);
+  assert.match(controller._bidderGoodsSavedAt, /^\d{2}:\d{2}$/);
+});
+
 test("post-preference unit price is derived from the offered item unit price, not the opening total", () => {
   const pkg = { id: "package-1", tenGoiThau: "Gói thử", phanLo: "Không", phanLoList: [] };
   const bid = {
@@ -444,6 +623,10 @@ test("opening bidder goods seeds requirement basics once and leaves contractor f
   assert.equal(initializeBidderGoodsFromRequirements(controller, detailedState), 2);
   assert.equal(initializeBidderGoodsFromRequirements(controller, detailedState), 0);
   assert.equal(controller.model.state.hanghoaduthaunhathau.length, 2);
+  assert.deepEqual(
+    controller.model.state.hanghoaduthaunhathau.map((row) => row.mappingMethod),
+    ["auto", "auto"],
+  );
   assert.deepEqual(
     controller.model.state.hanghoaduthaunhathau.map((row) => ({
       stt: row.sttNguon,

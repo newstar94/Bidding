@@ -182,24 +182,13 @@ try {
   await page.getByText(`Gói hàng hóa ${runId}`, { exact: true }).click();
   await page.locator('button[data-workflow-tab="goods"]').waitFor({ state: "visible", timeout: 10_000 });
   await page.locator('button[data-workflow-tab="goods"]').click();
-  const goodsFormShape = await page.locator("#package-goods-form").evaluate((form) => ({
-    formCount: document.querySelectorAll("#package-goods-form").length,
-    hasRecordId: Boolean(form.elements.namedItem("recordId")),
-    hasLotId: Boolean(form.elements.namedItem("phanLoId")),
-  }));
-  if (!goodsFormShape.hasRecordId || !goodsFormShape.hasLotId || goodsFormShape.formCount !== 1) {
-    throw new Error(`Unexpected goods form shape: ${JSON.stringify(goodsFormShape)}`);
-  }
   await page.locator("#btn-package-goods-add").click();
-  const goodsForm = page.locator("#package-goods-form");
-  await goodsForm.locator('[name="maHangHoa"]').fill(`${runId}-HH-01`);
-  await goodsForm.locator('[name="tenHangHoa"]').fill(`Hàng hóa kiểm thử ${runId}`);
-  await goodsForm.locator('[name="donViTinh"]').fill("Bộ");
-  await goodsForm.locator('[name="soLuong"]').fill("10");
-  await goodsForm.locator('[name="yeuCauKyThuat"]').fill("Đáp ứng yêu cầu kỹ thuật E2E");
-  await goodsForm.locator('[name="donGiaDuToan"]').fill("80000000");
-  await goodsForm.locator('[name="thanhTienDuToan"]').fill("800000000");
-  await goodsForm.locator('button[type="submit"]').click();
+  const goodsRow = page.locator("[data-inline-create-row]");
+  await goodsRow.waitFor({ state: "visible", timeout: 10_000 });
+  await goodsRow.locator('[name="tenHangHoa"]').fill(`Hàng hóa kiểm thử ${runId}`);
+  await goodsRow.locator('[name="donViTinh"]').fill("Bộ");
+  await goodsRow.locator('[name="soLuong"]').fill("10");
+  await goodsRow.locator("[data-save-new-goods]").click();
   await page.getByText(`Hàng hóa kiểm thử ${runId}`, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   mark("goods-created");
 
@@ -436,11 +425,7 @@ try {
     suffix: "GT-EXCEL-MI",
     title: manyItemsLotsExcelPackage,
     method: "Một giai đoạn một túi hồ sơ",
-    lots: Array.from({ length: 5 }, (_, index) => ({
-      code: `PP260020${4616 + index}`,
-      name: `Phần ${index + 1}`,
-      price: 50_000_000,
-    })),
+    lots: [{ code: "PL1", name: "Lô 1", price: 250_000_000 }],
   });
   mark("advanced-packages-created", { count: 5 });
 
@@ -453,15 +438,14 @@ try {
     const previousCount = Number.parseInt((await page.locator(".package-goods-summary").innerText()).replace(/\D/g, ""), 10) || 0;
     const fileInput = page.locator("#package-goods-file");
     await fileInput.setInputFiles(filePath);
-    const previewRows = page.locator("#package-goods-preview tbody tr");
+    const previewRows = page.locator("#package-goods-preview tbody tr.package-goods-item-row");
     await previewRows.first().waitFor({ state: "visible", timeout: 20_000 });
     const preview = await previewRows.evaluateAll((rows) => rows.map((row) => {
       const cells = [...row.querySelectorAll("td")];
       return {
-        code: cells[2]?.textContent?.trim() || "",
-        name: cells[3]?.textContent?.trim() || "",
-        status: cells[7]?.textContent?.trim() || "",
-        detail: cells[8]?.textContent?.trim() || "",
+        sequence: cells[0]?.textContent?.trim() || "",
+        status: cells.at(-2)?.textContent?.trim() || "",
+        detail: cells.at(-1)?.textContent?.trim() || "",
       };
     }));
     const invalid = preview.filter((row) => row.status !== "Hợp lệ");

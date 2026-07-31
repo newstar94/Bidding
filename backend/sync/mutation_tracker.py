@@ -8,6 +8,10 @@ from typing import Any, Callable
 from backend.shared.helpers import clean_id
 from backend.sync.repository import VERSIONED_TABLES
 from backend.activity.service import ActivityEvent, build_record_activity_event
+from backend.sync.mutation_audit import (
+    MutationAuditEvent,
+    build_mutation_audit_event,
+)
 
 
 def clean_sync_record_id(table_name: str, raw_id: Any) -> str | None:
@@ -32,6 +36,7 @@ class SyncMutationTracker:
         clean_record_id: Callable[[str, Any], str | None],
         *,
         client_mutation_id: str | None = None,
+        request_id: str | None = None,
     ):
         self.clean_record_id = clean_record_id
         self._affected_version_families: dict[str, set[Any]] = {}
@@ -41,7 +46,9 @@ class SyncMutationTracker:
         self._delete_impacts: list[dict[str, Any]] = []
         self._image_cleanup_candidates: set[str] = set()
         self._activity_events: list[ActivityEvent] = []
+        self._audit_events: list[MutationAuditEvent] = []
         self.client_mutation_id = str(client_mutation_id or "").strip() or None
+        self.request_id = str(request_id or "").strip() or None
 
     def track_activity(
         self,
@@ -64,6 +71,26 @@ class SyncMutationTracker:
     @property
     def activity_events(self) -> tuple[ActivityEvent, ...]:
         return tuple(self._activity_events)
+
+    def track_audit(
+        self,
+        table_name: str,
+        previous_record: dict[str, Any] | None,
+        current_record: dict[str, Any],
+    ) -> None:
+        event = build_mutation_audit_event(
+            table_name,
+            previous_record,
+            current_record,
+            client_mutation_id=self.client_mutation_id,
+            request_id=self.request_id,
+        )
+        if event:
+            self._audit_events.append(event)
+
+    @property
+    def audit_events(self) -> tuple[MutationAuditEvent, ...]:
+        return tuple(self._audit_events)
 
     def track_record(self, table_name: str, record: Any) -> None:
         if not isinstance(record, dict):

@@ -9,6 +9,7 @@ import re
 import tempfile
 import time
 import urllib.parse
+import uuid
 import warnings
 
 from backend.shared.paths import IMAGE_DIR
@@ -446,3 +447,232 @@ def save_base64_image(
                 os.remove(temporary_path)
             except OSError:
                 pass
+
+
+def _staging_file(staging_path: str) -> str:
+    normalized = str(staging_path or "").replace("\\", "/").lstrip("/")
+    if not re.fullmatch(
+        r"\.staging/t-[a-f0-9]{24}/m-[a-f0-9]{24}/[A-Za-z0-9_.-]+\.(?:png|jpg|webp)",
+        normalized,
+        re.IGNORECASE,
+    ):
+        return ""
+    images_root = os.path.realpath(IMAGE_DIR)
+    file_path = os.path.realpath(os.path.join(images_root, *normalized.split("/")))
+    staging_root = os.path.realpath(os.path.join(images_root, ".staging"))
+    return file_path if file_path.startswith(staging_root + os.sep) else ""
+
+
+def stage_base64_image(
+    base64_str: str,
+    subfolder: str,
+    filename_prefix: str,
+    *,
+    tenant_id: str,
+    client_mutation_id: str,
+) -> dict:
+    """Validate and write an image to a non-public staging namespace."""
+
+    if subfolder not in ALLOWED_IMAGE_SUBFOLDERS:
+        raise ValueError("Thư mục lưu ảnh không hợp lệ")
+    mutation_id = str(client_mutation_id or "").strip()
+    if not mutation_id:
+        raise ValueError("Thiếu clientMutationId khi lưu ảnh")
+    _mime, ext, image = _decode_and_validate_image(base64_str)
+    tenant_segment = managed_image_tenant_segment(tenant_id)
+    mutation_segment = "m-" + hashlib.sha256(mutation_id.encode()).hexdigest()[:24]
+    safe_prefix = _safe_file_part(filename_prefix, "image")
+    final_name = f"{safe_prefix}.{ext}"
+    staging_name = f"{safe_prefix}.{uuid.uuid4().hex}.{ext}"
+    staging_path = f".staging/{tenant_segment}/{mutation_segment}/{staging_name}"
+    staging_file = _staging_file(staging_path)
+    if not staging_file:
+        raise ValueError("Đường dẫn staging không hợp lệ")
+    os.makedirs(os.path.dirname(staging_file), exist_ok=True)
+    save_format = {"png": "PNG", "jpg": "JPEG", "webp": "WEBP"}[ext]
+    max_size = 600 if ("sig" in filename_prefix or "stamp" in filename_prefix) else 1_200
+    image = _prepare_image_for_output(image, save_format, max_size)
+    temporary_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w+b",
+            suffix=f".{ext}",
+            prefix=".stage-",
+            dir=os.path.dirname(staging_file),
+            delete=False,
+        ) as temporary:
+            temporary_path = temporary.name
+            image.save(temporary, format=save_format, **_save_kwargs(save_format))
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        size_bytes = os.path.getsize(temporary_path)
+        if size_bytes <= 0 or size_bytes > MAX_IMAGE_UPLOAD_BYTES:
+            raise ValueError("Ảnh staging vượt quá giới hạn dung lượng")
+        with open(temporary_path, "rb") as staged_input:
+            digest = hashlib.sha256(staged_input.read()).hexdigest()
+        os.replace(temporary_path, staging_file)
+        temporary_path = ""
+        return {
+            "id": uuid.uuid4().hex,
+            "organization_id": str(tenant_id),
+            "client_mutation_id": mutation_id,
+            "staging_path": staging_path,
+            "managed_path": f"images/{subfolder}/{tenant_segment}/{final_name}",
+            "sha256": digest,
+            "size_bytes": size_bytes,
+        }
+    finally:
+        if temporary_path:
+            try:
+                os.remove(temporary_path)
+            except OSError:
+                pass
+
+
+def register_staged_assets(cursor, assets) -> None:
+    for asset in assets or ():
+        cursor.execute(
+            """INSERT INTO asset_journal (
+                   id, organization_id, client_mutation_id,
+                   staging_path, managed_path, sha256, size_bytes, status
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'staged')
+               ON CONFLICT (organization_id, client_mutation_id, managed_path)
+               DO UPDATE SET staging_path = EXCLUDED.staging_path,
+                             sha256 = EXCLUDED.sha256,
+                             size_bytes = EXCLUDED.size_bytes,
+                             status = 'staged', updated_at = CURRENT_TIMESTAMP""",
+            (
+                asset["id"], asset["organization_id"],
+                asset["client_mutation_id"], asset["staging_path"],
+                asset["managed_path"], asset["sha256"], asset["size_bytes"],
+            ),
+        )
+
+
+def _promote_staged_asset(asset) -> None:
+    source = _staging_file(asset["staging_path"])
+    destination = _managed_image_file(asset["managed_path"])
+    if not source or not destination:
+        raise ValueError("Đường dẫn asset journal không hợp lệ")
+    if not os.path.isfile(source):
+        if os.path.isfile(destination):
+            return
+        raise FileNotFoundError("ASSET_STAGE_MISSING")
+    with open(source, "rb") as staged_input:
+        digest = hashlib.sha256(staged_input.read()).hexdigest()
+    if not hmac.compare_digest(digest, str(asset["sha256"])):
+        raise ValueError("ASSET_STAGE_HASH_MISMATCH")
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    os.replace(source, destination)
+
+
+def promote_staged_assets(connection, assets) -> list[str]:
+    """Promote committed journal entries; failed entries remain reconcilable."""
+
+    promoted = []
+    for asset in assets or ():
+        try:
+            _promote_staged_asset(asset)
+            connection.execute(
+                """UPDATE asset_journal
+                   SET status = 'promoted', attempt_count = attempt_count + 1,
+                       last_error_code = NULL, updated_at = CURRENT_TIMESTAMP
+                   WHERE organization_id = ? AND client_mutation_id = ?
+                     AND managed_path = ? AND status = 'staged'""",
+                (
+                    asset["organization_id"], asset["client_mutation_id"],
+                    asset["managed_path"],
+                ),
+            )
+            promoted.append(asset["managed_path"])
+        except Exception as exc:  # noqa: BLE001 - journal records every promotion failure
+            connection.execute(
+                """UPDATE asset_journal
+                   SET attempt_count = attempt_count + 1,
+                       status = CASE WHEN attempt_count + 1 >= 5
+                                     THEN 'failed' ELSE 'staged' END,
+                       last_error_code = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE organization_id = ? AND client_mutation_id = ?
+                     AND managed_path = ? AND status = 'staged'""",
+                (
+                    exc.__class__.__name__[:96], asset["organization_id"],
+                    asset["client_mutation_id"], asset["managed_path"],
+                ),
+            )
+    connection.commit()
+    return promoted
+
+
+def discard_staged_assets(assets) -> None:
+    for asset in assets or ():
+        source = _staging_file(asset.get("staging_path"))
+        if source:
+            try:
+                os.remove(source)
+            except OSError:
+                pass
+
+
+def reconcile_asset_journal(database, *, batch_size: int = 100) -> int:
+    """Retry committed promotions and sweep old row-less staging files."""
+
+    connection = database.get_connection()
+    try:
+        rows = connection.execute(
+            """SELECT id, organization_id, client_mutation_id, staging_path,
+                      managed_path, sha256, size_bytes
+               FROM asset_journal
+               WHERE status = 'staged'
+               ORDER BY created_at, id
+               LIMIT ?""",
+            (max(1, min(1000, int(batch_size))),),
+        ).fetchall()
+        assets = [dict(row) for row in rows]
+        promoted = len(promote_staged_assets(connection, assets))
+    finally:
+        connection.close()
+    sweep_orphaned_staged_assets(database)
+    return promoted
+
+
+def sweep_orphaned_staged_assets(
+    database,
+    *,
+    grace_seconds: int = 300,
+    now: float | None = None,
+) -> int:
+    """Delete old staging files that have no committed journal row."""
+
+    staging_root = os.path.realpath(os.path.join(IMAGE_DIR, ".staging"))
+    if not os.path.isdir(staging_root):
+        return 0
+    connection = database.get_connection()
+    try:
+        referenced = {
+            str(row[0]).replace("\\", "/")
+            for row in connection.execute(
+                "SELECT staging_path FROM asset_journal WHERE status = 'staged'"
+            ).fetchall()
+        }
+    finally:
+        connection.close()
+    cutoff = float(time.time() if now is None else now) - max(60, int(grace_seconds))
+    removed = 0
+    for root, directories, filenames in os.walk(staging_root, topdown=True):
+        directories[:] = [
+            name for name in directories
+            if not os.path.islink(os.path.join(root, name))
+        ]
+        for filename in filenames:
+            file_path = os.path.realpath(os.path.join(root, filename))
+            if not file_path.startswith(staging_root + os.sep):
+                continue
+            relative = os.path.relpath(file_path, os.path.realpath(IMAGE_DIR)).replace("\\", "/")
+            try:
+                if relative in referenced or os.path.getmtime(file_path) > cutoff:
+                    continue
+                os.remove(file_path)
+                removed += 1
+            except OSError:
+                continue
+    return removed

@@ -148,9 +148,9 @@ export default defineConfig(({ mode }) => {
       cssCodeSplit: true,
       sourcemap: false,
       minify: 'esbuild',
-      // Keep one entry until route-level chunking is introduced with matching
-      // Trusted Types and startup-budget coverage.
-      chunkSizeWarningLimit: 5000,
+      // Route/module loaders are now the reviewed split points. Native ESM
+      // imports preserve CSP/Trusted Types without injecting script elements.
+      chunkSizeWarningLimit: 1800,
       rolldownOptions: {
         // Obfuscation is intentionally CPU-heavy in secure builds; keep all
         // correctness checks while suppressing only the expected timing notice.
@@ -161,7 +161,7 @@ export default defineConfig(({ mode }) => {
           app: appEntry
         },
         output: {
-          codeSplitting: false,
+          codeSplitting: true,
           entryFileNames: 'assets/[name]-[hash].js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]'

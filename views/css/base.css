@@ -53,8 +53,9 @@ a:hover {
   textarea,
   [tabindex]:not([tabindex="-1"])
 ):focus-visible {
-  outline: var(--focus-ring-width) solid var(--primary) !important;
-  outline-offset: 2px !important;
+  outline: var(--focus-ring-width) solid var(--focus-ring) !important;
+  outline-offset: var(--focus-ring-offset) !important;
+  box-shadow: none !important;
 }
 
 :where(
@@ -190,8 +191,8 @@ a:hover {
 }
 
 .sync-status-pill:focus-visible {
-  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--primary) 35%, transparent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .sync-status-dot {

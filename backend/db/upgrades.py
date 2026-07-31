@@ -916,9 +916,8 @@ def _upgrade_to_v28_drop_retired_evaluation_actor_columns(cursor, context):
         ("ket_qua_danh_gia_nha_thau", "nguoi_cham_id"),
     )
     for table_name, column_name in retired_columns:
-        populated = cursor.execute(
-            f"SELECT COUNT(*) FROM {table_name} WHERE {column_name} IS NOT NULL"
-        ).fetchone()
+        preflight_sql = f"SELECT COUNT(*) FROM {table_name} WHERE {column_name} IS NOT NULL"  # noqa: S608 - fixed migration identifiers
+        populated = cursor.execute(preflight_sql).fetchone()
         if populated and int(populated[0] or 0) > 0:
             raise RuntimeError(
                 f"Cannot drop retired column {table_name}.{column_name}: "
@@ -959,6 +958,83 @@ def _upgrade_to_v29_cover_remaining_foreign_keys(cursor, context):
     ):
         cursor.execute(statement)
     context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v30_add_tombstone_restore_evidence(cursor, _context):
+    """Retain the bounded evidence required by the explicit restore command."""
+
+    cursor.execute(
+        "ALTER TABLE deleted_records ADD COLUMN IF NOT EXISTS record_snapshot_json TEXT"
+    )
+    cursor.execute(
+        "ALTER TABLE deleted_records ADD COLUMN IF NOT EXISTS delete_actor_user_id TEXT"
+    )
+    cursor.execute(
+        "ALTER TABLE deleted_records ADD COLUMN IF NOT EXISTS delete_mutation_id TEXT"
+    )
+
+
+def _upgrade_to_v31_add_durable_assets_and_export_scope(cursor, _context):
+    """Add crash-safe asset staging and authorization scope for export jobs."""
+
+    for column in (
+        "organization_id TEXT",
+        "user_id TEXT",
+        "package_id TEXT",
+        "filename TEXT",
+        "content_type TEXT",
+        "cancelled_at INTEGER",
+    ):
+        cursor.execute(
+            f"ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS {column}"
+        )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS asset_journal (
+               id TEXT PRIMARY KEY,
+               organization_id TEXT NOT NULL CHECK(organization_id != ''),
+               client_mutation_id TEXT NOT NULL CHECK(client_mutation_id != ''),
+               staging_path TEXT NOT NULL CHECK(staging_path != ''),
+               managed_path TEXT NOT NULL CHECK(managed_path != ''),
+               sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+               size_bytes INTEGER NOT NULL CHECK(size_bytes > 0),
+               status TEXT NOT NULL DEFAULT 'staged'
+                   CHECK(status IN ('staged', 'promoted', 'failed')),
+               attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+               last_error_code TEXT,
+               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               UNIQUE(organization_id, client_mutation_id, managed_path)
+           )"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_asset_journal_reconcile
+           ON asset_journal (status, created_at, id)"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_document_jobs_owner
+           ON document_jobs (organization_id, user_id, status, created_at)
+           WHERE organization_id IS NOT NULL AND user_id IS NOT NULL"""
+    )
+
+
+def _upgrade_to_v32_add_websocket_delivery_state(cursor, _context):
+    """Add retry/dead-letter evidence to the multi-consumer event log."""
+
+    for column in (
+        "status TEXT NOT NULL DEFAULT 'pending'",
+        "attempt_count INTEGER NOT NULL DEFAULT 0",
+        "available_at INTEGER NOT NULL DEFAULT 0",
+        "delivered_at INTEGER",
+        "last_error_code TEXT",
+    ):
+        cursor.execute(
+            f"ALTER TABLE websocket_events ADD COLUMN IF NOT EXISTS {column}"
+        )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_websocket_events_pending
+           ON websocket_events (status, available_at, id)
+           WHERE status IN ('pending', 'retry')"""
+    )
 
 
 UPGRADES = (
@@ -1097,6 +1173,21 @@ UPGRADES = (
         29,
         "cover_remaining_foreign_keys",
         _upgrade_to_v29_cover_remaining_foreign_keys,
+    ),
+    DatabaseUpgrade(
+        30,
+        "add_tombstone_restore_evidence",
+        _upgrade_to_v30_add_tombstone_restore_evidence,
+    ),
+    DatabaseUpgrade(
+        31,
+        "add_durable_assets_and_export_scope",
+        _upgrade_to_v31_add_durable_assets_and_export_scope,
+    ),
+    DatabaseUpgrade(
+        32,
+        "add_websocket_delivery_state",
+        _upgrade_to_v32_add_websocket_delivery_state,
     ),
 )
 

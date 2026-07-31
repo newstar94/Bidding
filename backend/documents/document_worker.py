@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
 import os
 import shutil
 import signal
@@ -37,6 +38,7 @@ from backend.observability.recording import (
     document_worker_wait_started,
 )
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
+from backend.shared.audit_chain import insert_audit_row
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
@@ -578,6 +580,8 @@ def _enqueue_durable_document_job(
     payload: dict[str, Any],
     *,
     database=None,
+    owner_scope: dict[str, Any] | None = None,
+    audit_event: dict[str, Any] | None = None,
 ) -> str:
     database = database or _document_queue_database()
     job_id = uuid.uuid4().hex
@@ -619,20 +623,42 @@ def _enqueue_durable_document_job(
                 )
                 if active_jobs >= _external_queue_capacity():
                     raise DocumentWorkerBusyError(_BUSY_MESSAGE)
+            scope = owner_scope or {}
             connection.execute(
                 """INSERT INTO document_jobs (
-                       id, operation, status, attempt_count, available_at,
-                       expires_at, created_at, updated_at
-                   ) VALUES (?, ?, 'pending', 0, ?, ?, ?, ?)""",
+                       id, operation, organization_id, user_id, package_id,
+                       filename, content_type, status, attempt_count,
+                       available_at, expires_at, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)""",
                 (
                     job_id,
                     operation,
+                    scope.get("organization_id"),
+                    scope.get("user_id"),
+                    scope.get("package_id"),
+                    scope.get("filename"),
+                    scope.get("content_type"),
                     now,
                     now + retention_seconds,
                     now,
                     now,
                 ),
             )
+            if audit_event is not None:
+                metadata = dict(audit_event.get("metadata") or {})
+                metadata["job_id"] = job_id
+                insert_audit_row(
+                    connection,
+                    actor_user_id=audit_event.get("actor_user_id"),
+                    organization_id=audit_event.get("organization_id"),
+                    action=str(audit_event["action"]),
+                    target_type=audit_event.get("target_type"),
+                    target_id=audit_event.get("target_id"),
+                    ip_address=audit_event.get("ip_address"),
+                    metadata_json=json.dumps(
+                        metadata, ensure_ascii=False, default=str,
+                    ),
+                )
             connection.commit()
         except Exception:
             connection.rollback()
@@ -816,7 +842,8 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
                SET status = 'retry', attempt_count = 0, available_at = ?,
                    locked_at = NULL, locked_by = NULL, completed_at = NULL,
                    expires_at = ?, updated_at = ?
-               WHERE id = ? AND operation = ? AND status = 'failed'""",
+               WHERE id = ? AND operation = ? AND status = 'failed'
+                 AND cancelled_at IS NULL""",
             (now, now + retention_seconds, now, job_id, operation),
         )
         updated_count = int(updated.rowcount or 0)
@@ -827,6 +854,78 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
     finally:
         connection.close()
     return updated_count == 1
+
+
+def enqueue_document_export(
+    operation: str,
+    payload: dict[str, Any],
+    *,
+    organization_id: str,
+    user_id: str,
+    package_id: str,
+    filename: str,
+    content_type: str,
+    database=None,
+    audit_event: dict[str, Any] | None = None,
+) -> str:
+    return _enqueue_durable_document_job(
+        operation,
+        payload,
+        database=database,
+        owner_scope={
+            "organization_id": organization_id,
+            "user_id": user_id,
+            "package_id": package_id,
+            "filename": filename,
+            "content_type": content_type,
+        },
+        audit_event=audit_event,
+    )
+
+
+def get_document_export_job(database, job_id: str, organization_id: str, user_id: str):
+    connection = database.get_connection()
+    try:
+        row = connection.execute(
+            """SELECT id, operation, organization_id, user_id, package_id,
+                      filename, content_type, status, attempt_count,
+                      last_error_code, completed_at, expires_at, cancelled_at
+               FROM document_jobs
+               WHERE id = ? AND organization_id = ? AND user_id = ?""",
+            (job_id, organization_id, user_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        connection.close()
+
+
+def read_document_export_result(database, job_id: str, organization_id: str, user_id: str):
+    job = get_document_export_job(database, job_id, organization_id, user_id)
+    if not job or job["status"] != "completed":
+        return job, None
+    return job, _read_result(_document_job_dir(job_id) / "result.json", _document_job_dir(job_id))
+
+
+def cancel_document_export(database, job_id: str, organization_id: str, user_id: str) -> bool:
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        updated = connection.execute(
+            """UPDATE document_jobs
+               SET status = 'failed', cancelled_at = ?, completed_at = ?,
+                   last_error_code = 'JOB_CANCELLED',
+                   last_error_message = NULL, updated_at = ?
+               WHERE id = ? AND organization_id = ? AND user_id = ?
+                 AND status IN ('pending', 'retry')""",
+            (now, now, now, job_id, organization_id, user_id),
+        )
+        connection.commit()
+        return int(updated.rowcount or 0) == 1
+    except Exception:  # noqa: BLE001 - transaction boundary must roll back any driver failure
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def _process_claimed_document_job(database, claimed) -> None:

@@ -2,8 +2,11 @@ import { chromium } from "@playwright/test";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const viewports = [
-  { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
+  { name: "mobile-320", width: 320, height: 720 },
+  { name: "mobile-375", width: 375, height: 812 },
+  { name: "mobile-414", width: 414, height: 896 },
+  { name: "tablet-768", width: 768, height: 1024 },
+  { name: "desktop-1280", width: 1280, height: 720 },
 ];
 const results = [];
 const browser = await chromium.launch({ headless: true });
@@ -16,7 +19,10 @@ try {
     const httpErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text());
+      const source = message.location()?.url || "";
+      if (message.type() === "error" && !source.startsWith("https://accounts.google.com/")) {
+        consoleErrors.push(message.text());
+      }
     });
     page.on("response", (response) => {
       if (response.status() >= 400 && response.url().includes("/api/")) {

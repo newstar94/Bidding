@@ -1,4 +1,6 @@
 import { evaluationScopeKey } from "./BidEvaluationPanelState.js";
+import { RouteRegistry } from "../app/RouteRegistry.js";
+import { packageWorkspaceFor } from "./detail/PackageWorkspaceState.js";
 
 const PARAMS = Object.freeze({
   view: "evaluationView",
@@ -59,35 +61,31 @@ export function buildDetailedEvaluationNavigation(controller, packageId) {
 }
 
 export function serializeDetailedEvaluationNavigation(urlValue, navigation) {
-  const url = urlFrom(urlValue);
-  clearNavigationParams(url.searchParams);
+  const sourceUrl = urlFrom(urlValue);
+  clearNavigationParams(sourceUrl.searchParams);
   if (!navigation || navigation.view !== DETAIL_VIEW || !clean(navigation.packageId)) {
-    return navigationUrl(url);
+    return RouteRegistry.serialize({ pathname: sourceUrl.pathname }, sourceUrl);
   }
+  const serialized = RouteRegistry.serialize({
+    pathname: sourceUrl.pathname,
+    packageId: navigation.packageId,
+    workflowTab: navigation.workflowTab,
+    evaluationRoundId: navigation.round,
+    bidId: navigation.bidId,
+    detailTab: navigation.detailTab,
+    lotScope: { mode: navigation.lotMode || "all", ids: navigation.lotIds || [] },
+  }, sourceUrl);
+  const url = urlFrom(serialized);
   url.searchParams.set(PARAMS.view, DETAIL_VIEW);
-  url.searchParams.set(PARAMS.packageId, clean(navigation.packageId));
-  if (VALID_WORKFLOW_TABS.has(navigation.workflowTab)) {
-    url.searchParams.set(PARAMS.workflowTab, navigation.workflowTab);
-  }
-  if (VALID_ROUNDS.has(navigation.round)) {
-    url.searchParams.set(PARAMS.round, navigation.round);
-  }
-  if (clean(navigation.bidId)) url.searchParams.set(PARAMS.bidId, clean(navigation.bidId));
-  if (clean(navigation.detailTab)) {
-    url.searchParams.set(PARAMS.detailTab, clean(navigation.detailTab));
-  }
-  if (VALID_LOT_MODES.has(navigation.lotMode)) {
-    url.searchParams.set(PARAMS.lotMode, navigation.lotMode);
-  }
-  [...new Set((navigation.lotIds || []).map(clean).filter(Boolean))]
-    .forEach((lotId) => url.searchParams.append(PARAMS.lotId, lotId));
   return navigationUrl(url);
 }
 
 export function parseDetailedEvaluationNavigation(urlValue) {
-  const params = urlFrom(urlValue).searchParams;
+  const url = urlFrom(urlValue);
+  const params = url.searchParams;
   if (params.get(PARAMS.view) !== DETAIL_VIEW) return null;
-  const packageId = clean(params.get(PARAMS.packageId));
+  const route = RouteRegistry.parse(url);
+  const packageId = clean(route.packageId);
   if (!packageId) return null;
   const round = clean(params.get(PARAMS.round));
   const workflowTab = clean(params.get(PARAMS.workflowTab));
@@ -96,9 +94,9 @@ export function parseDetailedEvaluationNavigation(urlValue) {
     view: DETAIL_VIEW,
     packageId,
     workflowTab: VALID_WORKFLOW_TABS.has(workflowTab) ? workflowTab : "eval_tech",
-    round: VALID_ROUNDS.has(round) ? round : "technical",
-    bidId: clean(params.get(PARAMS.bidId)),
-    detailTab: clean(params.get(PARAMS.detailTab)) || "validity",
+    round: VALID_ROUNDS.has(round) ? round : route.evaluationRoundId,
+    bidId: route.bidId,
+    detailTab: route.detailTab,
     lotMode: VALID_LOT_MODES.has(lotMode) ? lotMode : "",
     lotIds: [...new Set(params.getAll(PARAMS.lotId).map(clean).filter(Boolean))],
   };
@@ -117,6 +115,17 @@ export function applyDetailedEvaluationNavigation(controller, navigation, packag
   controller.selectedEvaluationBidId = navigation.bidId || null;
   controller.selectedDetailedEvaluationTab = navigation.detailTab || "validity";
   controller._detailedEvaluationDirty = false;
+  packageWorkspaceFor(controller).load({
+    packageId,
+    workflowTab: navigation.workflowTab,
+    evaluationRoundId: navigation.round,
+    bidId: navigation.bidId,
+    detailTab: navigation.detailTab,
+    lotScope: {
+      mode: navigation.lotMode || "all",
+      ids: navigation.lotIds,
+    },
+  });
   controller._evaluationLotScopes = controller._evaluationLotScopes || {};
   if (navigation.lotMode) {
     controller._evaluationLotScopes[evaluationScopeKey(packageId, navigation.round)] = {

@@ -515,8 +515,10 @@ try {
   });
   assert(!syncResult.response.ok(), "Revoked employee still edited the expert");
   assert(
-    JSON.stringify(syncResult.body).includes("Không có quyền sửa phân hệ chuyengia"),
-    `Revoked edit response had the wrong reason: ${JSON.stringify(syncResult.body)}`,
+    (syncResult.body.errors || []).some((error) => error?.code === "RECORD_ACCESS_DENIED")
+      && !("serverRecord" in syncResult.body)
+      && !("currentVersion" in syncResult.body),
+    `Revoked edit response was not the bounded record-level deny contract: ${JSON.stringify(syncResult.body)}`,
   );
 
   managerData = await loadAll(managerContext);

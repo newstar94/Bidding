@@ -45,3 +45,7 @@ namespaces = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    "error::ResourceWarning",
+    "error::DeprecationWarning",
+]

@@ -534,21 +534,54 @@ async def _broadcast_local(organization_id, message):
         active_connections.pop(organization_id, None)
 
 
+def enqueue_websocket_event(
+    cursor,
+    event_type,
+    *,
+    organization_id=None,
+    user_id=None,
+    payload=None,
+):
+    """Insert and wake the broker using the caller's business transaction."""
+
+    sanitized_payload = (
+        serialize_websocket_event(payload)
+        if event_type == "broadcast" else payload
+    )
+    row = cursor.execute(
+        """
+        INSERT INTO websocket_events (event_type, organization_id, user_id, payload_json)
+        VALUES (?, ?, ?, ?)
+        RETURNING id
+        """,
+        (
+            event_type,
+            organization_id,
+            user_id,
+            json.dumps(sanitized_payload) if sanitized_payload is not None else None,
+        ),
+    ).fetchone()
+    event_id = int(row[0])
+    # PostgreSQL delivers NOTIFY only when this transaction commits.
+    cursor.execute("SELECT pg_notify(?, ?)", (_BROKER_CHANNEL, str(event_id)))
+    return event_id
+
+
 def _store_broker_event(event_type, organization_id=None, user_id=None, payload=None):
     conn = database.get_connection()
     try:
-        row = conn.execute(
-            """
-            INSERT INTO websocket_events (event_type, organization_id, user_id, payload_json)
-            VALUES (?, ?, ?, ?)
-            RETURNING id
-            """,
-            (event_type, organization_id, user_id, json.dumps(payload) if payload is not None else None),
-        ).fetchone()
-        event_id = int(row[0])
-        conn.execute("SELECT pg_notify(?, ?)", (_BROKER_CHANNEL, str(event_id)))
+        event_id = enqueue_websocket_event(
+            conn,
+            event_type,
+            organization_id=organization_id,
+            user_id=user_id,
+            payload=payload,
+        )
         conn.commit()
         return event_id
+    except Exception:  # noqa: BLE001 - transaction boundary must roll back any driver failure
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -598,8 +631,8 @@ async def dispatch_websocket_broker_event(event):
         try:
             payload = json.loads(event.get("payload_json") or "{}")
             payload = serialize_websocket_event(payload)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("WEBSOCKET_EVENT_PAYLOAD_INVALID") from exc
         await _broadcast_local(event.get("organization_id"), payload)
     elif event_type == "revoke_user":
         await _disconnect_user_local(event.get("user_id"))
@@ -610,13 +643,15 @@ def _load_broker_events(after_id):
     try:
         rows = conn.execute(
             """
-            SELECT id, event_type, organization_id, user_id, payload_json
+            SELECT id, event_type, organization_id, user_id, payload_json,
+                   status, attempt_count
             FROM websocket_events
-            WHERE id > ?
+            WHERE id > ? AND status != 'dead_letter'
+              AND available_at <= ?
             ORDER BY id
             LIMIT 500
             """,
-            (after_id,),
+            (after_id, int(time.time())),
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -628,6 +663,67 @@ def _latest_broker_event_id():
     try:
         row = conn.execute("SELECT COALESCE(MAX(id), 0) FROM websocket_events").fetchone()
         return int(row[0] or 0)
+    finally:
+        conn.close()
+
+
+def _pending_broker_start_id():
+    """Resume before the oldest event not acknowledged by any consumer."""
+
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            """SELECT COALESCE(
+                       MIN(id) FILTER (WHERE status IN ('pending', 'retry')) - 1,
+                       MAX(id),
+                       0
+                   )
+               FROM websocket_events"""
+        ).fetchone()
+        return max(0, int(row[0] or 0))
+    finally:
+        conn.close()
+
+
+def _record_broker_delivery(event_id, error=None):
+    now = int(time.time())
+    conn = database.get_connection()
+    try:
+        conn.execute("BEGIN")
+        if error is None:
+            conn.execute(
+                """UPDATE websocket_events
+                   SET status = 'delivered', attempt_count = attempt_count + 1,
+                       delivered_at = ?, last_error_code = NULL
+                   WHERE id = ?""",
+                (now, event_id),
+            )
+            status = "delivered"
+        else:
+            row = conn.execute(
+                "SELECT attempt_count FROM websocket_events WHERE id = ? FOR UPDATE",
+                (event_id,),
+            ).fetchone()
+            attempts = int(row[0] or 0) + 1 if row else 1
+            status = "dead_letter" if attempts >= 5 else "retry"
+            conn.execute(
+                """UPDATE websocket_events
+                   SET status = ?, attempt_count = ?, available_at = ?,
+                       last_error_code = ?
+                   WHERE id = ?""",
+                (
+                    status,
+                    attempts,
+                    now + min(60, 2 ** attempts) if status == "retry" else now,
+                    error.__class__.__name__[:96],
+                    event_id,
+                ),
+            )
+        conn.commit()
+        return status
+    except Exception:  # noqa: BLE001 - transaction boundary must roll back any driver failure
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -673,8 +769,24 @@ async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
             await asyncio.sleep(1.0)
             continue
         for event in events:
-            await dispatch_websocket_broker_event(event)
-            last_event_id = max(last_event_id, int(event["id"]))
+            try:
+                await dispatch_websocket_broker_event(event)
+                await run_blocking_io(
+                    _record_broker_delivery,
+                    int(event["id"]),
+                    timeout_seconds=5.0,
+                )
+                last_event_id = max(last_event_id, int(event["id"]))
+            except Exception as delivery_error:  # noqa: BLE001 - durable broker retries all delivery failures
+                status = await run_blocking_io(
+                    _record_broker_delivery,
+                    int(event["id"]),
+                    delivery_error,
+                    timeout_seconds=5.0,
+                )
+                if status == "dead_letter":
+                    last_event_id = max(last_event_id, int(event["id"]))
+                break
         cleanup_counter += 1
         if cleanup_counter >= 1_000:
             cleanup_counter = 0

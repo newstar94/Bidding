@@ -386,6 +386,16 @@ def validate_sync_payload_shape(payload):
             errors.append(_field_error(key, "UNKNOWN_FIELD", "Trường không được hỗ trợ."))
 
     mutation_id = payload.get("clientMutationId")
+    has_mutations = bool(payload.get("deletions")) or any(
+        isinstance(payload.get(key), list) and bool(payload.get(key))
+        for key in TABLE_KEYS_FOR_VALIDATION
+    )
+    if has_mutations and mutation_id is None:
+        errors.append(_field_error(
+            "clientMutationId",
+            "MUTATION_ID_REQUIRED",
+            "clientMutationId là bắt buộc cho yêu cầu có thay đổi dữ liệu.",
+        ))
     if mutation_id is not None and (
         not isinstance(mutation_id, str) or not mutation_id.strip() or len(mutation_id) > 128
     ):

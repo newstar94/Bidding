@@ -31,3 +31,34 @@ export function commitSyncCursor(storage, snapshot, { fetchedAt = Date.now() } =
   storage.setItem(FETCH_TIME_KEY, String(fetchedAt));
   return { syncVersion, timestamp, fetchedAt };
 }
+
+export async function fetchDeltaSnapshot(apiFetch, {
+  afterVersion,
+  headers,
+  maxPages = 10_000,
+} = {}) {
+  const aggregate = { deletions: [] };
+  let cursor = "";
+  let lastResponse = null;
+  for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
+    const query = new URLSearchParams(
+      cursor ? { cursor } : { after_version: String(afterVersion ?? 0) },
+    );
+    lastResponse = await apiFetch(`/api/sync/delta?${query}`, { headers });
+    if (!lastResponse.ok) return { response: lastResponse, snapshot: null };
+    const page = await lastResponse.json();
+    Object.entries(page).forEach(([key, value]) => {
+      if (!Array.isArray(value)) return;
+      aggregate[key] ||= [];
+      aggregate[key].push(...value);
+    });
+    aggregate.throughVersion = page.throughVersion;
+    cursor = String(page.nextCursor || "");
+    if (!cursor) {
+      aggregate.partial = false;
+      aggregate.syncVersion = page.syncVersion ?? page.throughVersion;
+      return { response: lastResponse, snapshot: aggregate };
+    }
+  }
+  throw new Error("SYNC_DELTA_PAGE_LIMIT_EXCEEDED");
+}

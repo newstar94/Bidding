@@ -217,6 +217,11 @@ SCHEMA_DINH_NGHIA = {
             "organization_id": "TEXT",
             "user_id": "TEXT",
             "payload_json": "TEXT",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'retry', 'delivered', 'dead_letter'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL DEFAULT 0 CHECK(available_at >= 0)",
+            "delivered_at": "INTEGER",
+            "last_error_code": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         }
     },
@@ -239,6 +244,12 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "operation": "TEXT NOT NULL CHECK(operation != '')",
+            "organization_id": "TEXT",
+            "user_id": "TEXT",
+            "package_id": "TEXT",
+            "filename": "TEXT",
+            "content_type": "TEXT",
+            "cancelled_at": "INTEGER",
             "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'completed', 'failed'))",
             "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
             "available_at": "INTEGER NOT NULL CHECK(available_at > 0)",
@@ -251,6 +262,25 @@ SCHEMA_DINH_NGHIA = {
             "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
             "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
         }
+    },
+    "asset_journal": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "client_mutation_id": "TEXT NOT NULL CHECK(client_mutation_id != '')",
+            "staging_path": "TEXT NOT NULL CHECK(staging_path != '')",
+            "managed_path": "TEXT NOT NULL CHECK(managed_path != '')",
+            "sha256": "TEXT NOT NULL CHECK(length(sha256) = 64)",
+            "size_bytes": "INTEGER NOT NULL CHECK(size_bytes > 0)",
+            "status": "TEXT NOT NULL DEFAULT 'staged' CHECK(status IN ('staged', 'promoted', 'failed'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "last_error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, client_mutation_id, managed_path)"
+        ]
     },
     "chu_dau_tu": {
         "columns": {
@@ -1163,7 +1193,10 @@ SCHEMA_DINH_NGHIA = {
             "record_id": "TEXT NOT NULL",
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "delete_version": "INTEGER DEFAULT 0",
-            "deleted_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
+            "deleted_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
+            "record_snapshot_json": "TEXT",
+            "delete_actor_user_id": "TEXT",
+            "delete_mutation_id": "TEXT"
         }
     },
     "cau_hinh_bien_word": {

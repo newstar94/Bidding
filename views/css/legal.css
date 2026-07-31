@@ -353,8 +353,9 @@ html[data-bf-shell="workspace"] .legal-page {
 }
 
 .legal-section:focus-visible {
-  outline: none !important;
-  box-shadow: inset 0 3px 0 var(--brand);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
 @keyframes legal-panel-enter {

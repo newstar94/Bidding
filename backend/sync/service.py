@@ -14,7 +14,6 @@ from backend.shared.helpers import (
     log_error,
     recalculate_is_latest,
     recalculate_tong_muc_dau_tu,
-    save_base64_image,
     verify_session,
 )
 from backend.shared.idempotency import acquire_idempotency_lock
@@ -28,7 +27,11 @@ from backend.observability.recording import record_database_phase
 from backend.shared.date_utils import vietnam_now_sql
 from backend.shared.media_helper import (
     delete_managed_image_files,
+    discard_staged_assets,
     find_unreferenced_image_paths,
+    promote_staged_assets,
+    register_staged_assets,
+    stage_base64_image,
 )
 from backend.sync.command import (
     SyncActorContext,
@@ -88,6 +91,7 @@ from backend.activity.service import (
     insert_activity_events,
     insert_assignment_removal_history,
 )
+from backend.sync.mutation_audit import insert_mutation_audit_events
 
 
 async def process_sync_request(request, broadcast_callback=None):
@@ -188,8 +192,14 @@ def validate_protected_media_upload_access(data, *, owner_type, can_upload):
     return errors
 
 
-def _persist_incoming_images(data, newly_written_images, organization_id):
-    """Decode/re-encode image payloads before opening the write transaction."""
+def _persist_incoming_images(
+    data,
+    newly_written_images,
+    staged_assets,
+    organization_id,
+    client_mutation_id,
+):
+    """Decode/re-encode images into the private staging namespace."""
 
     for _payload_key, table_name, items in iter_sync_table_payloads(data):
         if table_name not in _PROTECTED_MEDIA_COLUMNS:
@@ -212,14 +222,17 @@ def _persist_incoming_images(data, newly_written_images, organization_id):
                     if table_name == "chuyen_gia"
                     else "nha_thau"
                 )
-                managed_path = save_base64_image(
+                staged = stage_base64_image(
                     value,
                     subfolder,
                     f"{record_id}_{suffix}",
                     tenant_id=organization_id,
+                    client_mutation_id=client_mutation_id,
                 )
+                managed_path = staged["managed_path"]
                 original_item[json_key] = managed_path
                 newly_written_images.add(managed_path)
+                staged_assets.append(staged)
 
 
 def _resolve_sync_actor_context(request, envelope, log_sync_error):
@@ -403,6 +416,7 @@ def _run_post_commit_side_effects(
     organization_id = transaction.actor.organization_id
     payload = context.envelope.payload
     try:
+        promote_staged_assets(transaction.connection, context.staged_assets)
         unreferenced_images = find_unreferenced_image_paths(
             transaction.cursor,
             context.image_cleanup_candidates | context.newly_written_images,
@@ -414,8 +428,9 @@ def _run_post_commit_side_effects(
             f"Không thể dọn ảnh không còn tham chiếu: {cleanup_error}"
         )
 
-    if broadcast_callback:
-        broadcast_callback(organization_id, {"event": "db_changed"})
+    # The durable websocket event was inserted by commit_sync_response in the
+    # same transaction as the mutation. NOTIFY is delivered after commit.
+    del broadcast_callback
     if isinstance(payload.get("nhathau"), list) and payload.get("nhathau"):
         try:
             from backend.partners.partner_lookup_service import (
@@ -482,6 +497,7 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
     conn = None
     transaction_committed = False
     newly_written_images = set()
+    staged_assets = []
     batch_limit = _sync_batch_limit()
     try:
         envelope = SyncMutationEnvelope.from_payload(data)
@@ -514,8 +530,6 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
                 fields={"errors": protected_media_errors},
             )
 
-        _persist_incoming_images(data, newly_written_images, org_name)
-
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -530,6 +544,15 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             return early_response
         owner_type = transaction_context.owner_type
         current_time = transaction_context.current_time
+
+        _persist_incoming_images(
+            data,
+            newly_written_images,
+            staged_assets,
+            org_name,
+            client_mutation_id,
+        )
+        register_staged_assets(cursor, staged_assets)
 
         assignment_state_before = (
             snapshot_assignment_state(cursor, org_name)
@@ -565,6 +588,7 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
         mutation_tracker = SyncMutationTracker(
             get_clean_id,
             client_mutation_id=client_mutation_id,
+            request_id=get_request_id(request),
         )
         record_serializer = SyncRecordSerializer(
             transaction_context,
@@ -720,6 +744,7 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             sync_version=batch_sync_version,
             clean_record_id=get_clean_id,
             ip_address=get_client_ip(request),
+            client_mutation_id=client_mutation_id,
         )
         sync_item_errors.extend(deletion_result["errors"])
         mutation_tracker.merge_deletion_result(deletion_result)
@@ -780,6 +805,13 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
                 after=assignment_state_after,
             )
 
+        insert_mutation_audit_events(
+            cursor,
+            organization_id=org_name,
+            actor_user_id=user_id,
+            ip_address=get_client_ip(request),
+            events=mutation_tracker.audit_events,
+        )
         insert_activity_events(
             cursor,
             organization_id=org_name,
@@ -812,6 +844,7 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
                 response_data=response_data,
                 image_cleanup_candidates=mutation_outcome.image_cleanup_candidates,
                 newly_written_images=frozenset(newly_written_images),
+                staged_assets=tuple(staged_assets),
             ),
             broadcast_callback=broadcast_callback,
             clean_record_id=get_clean_id,
@@ -844,4 +877,5 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             except DatabaseError:
                 pass
         if not transaction_committed:
+            discard_staged_assets(staged_assets)
             _cleanup_rolled_back_images(newly_written_images, log_sync_error)
