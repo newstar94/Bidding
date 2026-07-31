@@ -1,6 +1,6 @@
 import asyncio
 
-import httpx
+import httpx2 as httpx
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.responses import JSONResponse

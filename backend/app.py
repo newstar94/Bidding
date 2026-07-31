@@ -1052,6 +1052,10 @@ def _initialize_database():
 def _start_local_database_if_managed():
     """Start the repository-managed PostgreSQL cluster for local development."""
 
+    setup_script = os.path.join(project_root, "scripts", "setup_local_postgres.py")
+    if not os.path.isfile(setup_script):
+        return False
+
     from scripts.setup_local_postgres import (
         ensure_local_postgres_running,
         should_auto_start_local_postgres,

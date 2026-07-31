@@ -95,3 +95,9 @@ def test_application_startup_auto_starts_managed_local_postgres(monkeypatch):
 
     assert app_module._start_local_database_if_managed() is True
     assert events == ["postgres-started"]
+
+
+def test_production_startup_skips_absent_local_postgres_setup(monkeypatch, tmp_path):
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+
+    assert app_module._start_local_database_if_managed() is False

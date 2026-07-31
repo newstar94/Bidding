@@ -11,7 +11,7 @@ from backend.http_middleware import ResponseIntegrityMiddleware
 def test_development_server_serves_shared_timeline_catalog():
     probe = """
 import asyncio
-import httpx
+import httpx2 as httpx
 from backend.app import app
 
 async def main():
