@@ -56,8 +56,44 @@ export function preparePackageSnapshot(source, overrides = {}) {
     tuyChonMuaThemList: copyChildRows(packageData.tuyChonMuaThemList),
     giaHanList: [],
     yeuCauLamRoList: [],
-    traLoiLamRoList: []
+    traLoiLamRoList: [],
+    timelineItems: [],
+    ehsmtAdjustments: []
   };
+}
+
+export function buildVersionEhsmtAdjustment(packageData = {}) {
+  const sequence = Number.parseInt(packageData.phienBan || "0", 10) || 0;
+  const packageId = String(packageData.id || "").trim();
+  if (sequence <= 0 || !packageId) return null;
+  return {
+    id: `package-version:${packageId}`,
+    sequence,
+    reason: "Điều chỉnh E-HSMT theo phiên bản gói thầu",
+    submissionNumber: "",
+    submissionDate: "",
+    appraisalReportNumber: "",
+    appraisalReportDate: "",
+    approvalDecisionNumber: packageData.soQuyetDinh || "",
+    approvalDecisionDate: packageData.ngayQuyetDinh || "",
+    publishedAt: packageData.thoiGianDangTai || ""
+  };
+}
+
+export function ensureVersionEhsmtAdjustment(packageData = {}) {
+  const generated = buildVersionEhsmtAdjustment(packageData);
+  if (!generated) return packageData;
+  const adjustments = Array.isArray(packageData.ehsmtAdjustments)
+    ? [...packageData.ehsmtAdjustments]
+    : [];
+  const existingIndex = adjustments.findIndex((item) => String(item?.id || "") === generated.id);
+  if (existingIndex >= 0) {
+    adjustments[existingIndex] = { ...adjustments[existingIndex], ...generated };
+  } else {
+    adjustments.push(generated);
+  }
+  packageData.ehsmtAdjustments = adjustments;
+  return packageData;
 }
 
 export function preserveRowVersion(record, current) {

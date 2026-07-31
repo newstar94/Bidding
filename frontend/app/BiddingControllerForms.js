@@ -283,7 +283,7 @@ export function setupActionListeners() {
   }
   document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]').forEach((radio) => {
     radio.addEventListener("change", (e) => {
-      const show = e.target.value === "Có";
+      const show = e.target.value === "REQUIRED";
       const soBaoCaoContainer = document.getElementById("phathanh-sobaocao-container");
       const ngayBaoCaoContainer = document.getElementById("phathanh-ngaybaocao-container");
       const soBaoCaoInp = document.getElementById("phathanh-sobaocaothamdinh");

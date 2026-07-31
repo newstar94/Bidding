@@ -9,6 +9,7 @@ from backend.shared.domain_enums import enum_label
 from backend.shared.date_utils import normalize_date_value, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
+from backend.timeline.effective_timeline import CATALOG as TIMELINE_CATALOG
 from backend.shared.text_utils import (
     clean_id,
     normalize_business_identifier,
@@ -17,6 +18,12 @@ from backend.shared.text_utils import (
     safe_float,
     to_camel_case,
 )
+
+LEGACY_TIMELINE_KEYS = {
+    code: milestone["milestoneKey"]
+    for milestone in TIMELINE_CATALOG["milestones"]
+    for code in milestone.get("legacyCodes", [])
+}
 
 
 def json_key_for_column(table_name, col):
@@ -503,6 +510,7 @@ def _save_package_children(cursor, parent_id, item, organization_id, owner_type,
         _save_extensions(cursor, parent_id, item.get("giaHanList"), organization_id, owner_type, sync_version, updated_at)
     _save_clarifications(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
     _save_timeline_items(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
+    _save_ehsmt_adjustments(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
 
 
 def _save_timeline_items(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
@@ -514,11 +522,19 @@ def _save_timeline_items(cursor, parent_id, item, organization_id, owner_type, s
     )
     rows = []
     for index, row in enumerate(_parse_child_list(item.get("timelineItems"))):
+        legacy_code = str(_first_value(row, "maMoc", "ma_moc", default="") or "").strip()
+        milestone_key = str(_first_value(
+            row, "milestoneKey", "milestone_key",
+            default=LEGACY_TIMELINE_KEYS.get(legacy_code, f"LEGACY_{legacy_code}"),
+        ) or "").strip()
         rows.append((
             _child_row_id(parent_id, "timeline", index, _first_value(row, "id")),
             organization_id,
             owner_type,
             parent_id,
+            milestone_key,
+            str(_first_value(row, "instanceKey", "instance_key", default="") or "").strip(),
+            str(_first_value(row, "sourceEntityId", "source_entity_id", default="") or "").strip(),
             str(_first_value(row, "maNhom", "ma_nhom", default="") or "").strip(),
             str(_first_value(row, "tenNhom", "ten_nhom", default="") or "").strip(),
             str(_first_value(row, "maMoc", "ma_moc", default="") or "").strip(),
@@ -540,13 +556,79 @@ def _save_timeline_items(cursor, parent_id, item, organization_id, owner_type, s
     if rows:
         cursor.executemany(
             """INSERT INTO goi_thau_moc_tien_do (
-                   id, organization_id, owner_type, goi_thau_id, ma_nhom, ten_nhom,
+                   id, organization_id, owner_type, goi_thau_id, milestone_key,
+                   instance_key, source_entity_id, ma_nhom, ten_nhom,
                    ma_moc, cong_viec, don_vi_ban_hanh, so_van_ban, ngay_du_kien,
                    ngay_thuc_te, ghi_chu, source_key, source_mode, is_optional,
                    trang_thai, sort_order, template_version, sync_version, updated_at
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             rows,
         )
+
+
+def _save_ehsmt_adjustments(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
+    if not _has_child_key(item, "ehsmtAdjustments"):
+        return
+    incoming = _parse_child_list(item.get("ehsmtAdjustments"))
+    incoming_ids = set()
+    for index, row in enumerate(incoming):
+        record_id = _child_row_id(parent_id, "ehsmt-adjustment", index, _first_value(row, "id"))
+        incoming_ids.add(record_id)
+        archived_at = _first_value(row, "archivedAt", "archived_at") or None
+        cursor.execute(
+            """INSERT INTO goi_thau_dieu_chinh_hsmt (
+                   id, organization_id, owner_type, goi_thau_id, sequence, reason,
+                   submission_number, submission_date, appraisal_report_number,
+                   appraisal_report_date, approval_decision_number,
+                   approval_decision_date, published_at, archived_at,
+                   sync_version, row_version, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE SET
+                   sequence = excluded.sequence,
+                   reason = excluded.reason,
+                   submission_number = excluded.submission_number,
+                   submission_date = excluded.submission_date,
+                   appraisal_report_number = excluded.appraisal_report_number,
+                   appraisal_report_date = excluded.appraisal_report_date,
+                   approval_decision_number = excluded.approval_decision_number,
+                   approval_decision_date = excluded.approval_decision_date,
+                   published_at = excluded.published_at,
+                   archived_at = excluded.archived_at,
+                   sync_version = excluded.sync_version,
+                   row_version = goi_thau_dieu_chinh_hsmt.row_version + 1,
+                   updated_at = excluded.updated_at
+               WHERE goi_thau_dieu_chinh_hsmt.organization_id = excluded.organization_id
+                 AND goi_thau_dieu_chinh_hsmt.goi_thau_id = excluded.goi_thau_id""",
+            (
+                record_id, organization_id, owner_type, parent_id,
+                int(_first_value(row, "sequence", default=index + 1) or index + 1),
+                str(_first_value(row, "reason", default="") or "").strip(),
+                str(_first_value(row, "submissionNumber", "submission_number", default="") or "").strip(),
+                _first_value(row, "submissionDate", "submission_date") or None,
+                str(_first_value(row, "appraisalReportNumber", "appraisal_report_number", default="") or "").strip(),
+                _first_value(row, "appraisalReportDate", "appraisal_report_date") or None,
+                str(_first_value(row, "approvalDecisionNumber", "approval_decision_number", default="") or "").strip(),
+                _first_value(row, "approvalDecisionDate", "approval_decision_date") or None,
+                _first_value(row, "publishedAt", "published_at") or None,
+                archived_at,
+                sync_version,
+                max(1, int(_first_value(row, "rowVersion", "row_version", default=1) or 1)),
+                updated_at,
+            ),
+        )
+    existing = cursor.execute(
+        "SELECT id FROM goi_thau_dieu_chinh_hsmt WHERE organization_id = ? AND goi_thau_id = ? AND archived_at IS NULL",
+        (organization_id, parent_id),
+    ).fetchall()
+    for existing_row in existing:
+        existing_id = existing_row[0]
+        if existing_id not in incoming_ids:
+            cursor.execute(
+                """UPDATE goi_thau_dieu_chinh_hsmt
+                   SET archived_at = ?, updated_at = ?, sync_version = ?, row_version = row_version + 1
+                   WHERE organization_id = ? AND goi_thau_id = ? AND id = ?""",
+                (updated_at, updated_at, sync_version, organization_id, parent_id, existing_id),
+            )
 
 
 def _save_package_expert_relations(cursor, parent_id, item, organization_id, owner_type):
@@ -1027,8 +1109,8 @@ def _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming):
 
 def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming):
     defaults = {
-        "camel": ["phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList", "timelineItems"],
-        "snake": ["phan_lo_list", "awarded_phan_lo_list", "tuy_chon_mua_them_list", "gia_han_list", "yeu_cau_lam_ro_list", "tra_loi_lam_ro_list", "timeline_items"],
+        "camel": ["phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList", "timelineItems", "ehsmtAdjustments"],
+        "snake": ["phan_lo_list", "awarded_phan_lo_list", "tuy_chon_mua_them_list", "gia_han_list", "yeu_cau_lam_ro_list", "tra_loi_lam_ro_list", "timeline_items", "ehsmt_adjustments"],
     }[naming]
     for item in by_id.values():
         item.update({key: [] for key in defaults})
@@ -1072,6 +1154,16 @@ def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming)
             if item:
                 item["timelineItems" if naming == "camel" else "timeline_items"].append(
                     _format_timeline_child(row, naming)
+                )
+    if _table_exists(cursor, "goi_thau_dieu_chinh_hsmt"):
+        for row in _select_children(
+            cursor, "goi_thau_dieu_chinh_hsmt", "goi_thau_id", parent_ids,
+            organization_id, extra_order="sequence, id",
+        ):
+            item = by_id.get(row.get("goi_thau_id"))
+            if item:
+                item["ehsmtAdjustments" if naming == "camel" else "ehsmt_adjustments"].append(
+                    _format_ehsmt_adjustment_child(row, naming)
                 )
     _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming)
 
@@ -1373,7 +1465,6 @@ def _save_bid_detailed_evaluation_reports(
                     "DETAILED_EVALUATION_TECHNICAL_NOT_QUALIFIED: "
                     "Nhà thầu chưa đạt vòng kỹ thuật."
                 )
-
         existing = cursor.execute(
             """SELECT id FROM bao_cao_danh_gia_nha_thau
                WHERE organization_id = ? AND vong_danh_gia_id = ?
@@ -2006,6 +2097,9 @@ def _format_clarification_child(row, naming, is_request):
 def _format_timeline_child(row, naming):
     fields = [
         ("id", "id"),
+        ("milestone_key", "milestoneKey"),
+        ("instance_key", "instanceKey"),
+        ("source_entity_id", "sourceEntityId"),
         ("ma_nhom", "maNhom"),
         ("ten_nhom", "tenNhom"),
         ("ma_moc", "maMoc"),
@@ -2033,6 +2127,27 @@ def _format_timeline_child(row, naming):
         else:
             shaped[key] = value or ""
     return shaped
+
+
+def _format_ehsmt_adjustment_child(row, naming):
+    return _shape_child(
+        row,
+        naming,
+        [
+            ("id", "id"),
+            ("sequence", "sequence"),
+            ("reason", "reason"),
+            ("submission_number", "submissionNumber"),
+            ("submission_date", "submissionDate"),
+            ("appraisal_report_number", "appraisalReportNumber"),
+            ("appraisal_report_date", "appraisalReportDate"),
+            ("approval_decision_number", "approvalDecisionNumber"),
+            ("approval_decision_date", "approvalDecisionDate"),
+            ("published_at", "publishedAt"),
+            ("archived_at", "archivedAt"),
+            ("row_version", "rowVersion"),
+        ],
+    )
 
 
 def _format_member_child(row, naming):

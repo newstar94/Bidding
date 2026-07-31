@@ -73,6 +73,7 @@ SYNC_CHILD_FIELDS = {
         "phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList",
         "yeuCauLamRoList", "traLoiLamRoList", "toChuyenGia", "toThamDinh",
         "timelineItems",
+        "ehsmtAdjustments",
     },
     "nha_thau": {"thanhVienLienDanh"},
     "thong_tin_mo_thau": {
@@ -109,6 +110,9 @@ TIMELINE_TEXT_LIMITS = {
     "maNhom": 3,
     "tenNhom": 160,
     "maMoc": 10,
+    "milestoneKey": 120,
+    "instanceKey": 160,
+    "sourceEntityId": 160,
     "congViec": 300,
     "donViBanHanh": 300,
     "soVanBan": 300,
@@ -163,13 +167,16 @@ def _validate_timeline_items(items, item_path, errors):
         if isinstance(group_code, str) and group_code not in {"I", "II", "III", "IV", "V"}:
             errors.append(_field_error(f"{child_path}.maNhom", "INVALID_TIMELINE_GROUP", "Mã nhóm timeline không hợp lệ."))
         milestone_code = child.get("maMoc")
+        milestone_key = child.get("milestoneKey")
+        instance_key = child.get("instanceKey") or ""
         if isinstance(milestone_code, str):
-            if not re.fullmatch(r"[1-5]\.(?:[1-9]|1[0-3])", milestone_code):
+            if not re.fullmatch(r"[1-5]\.(?:0|[1-9]|[1-9][0-9])", milestone_code):
                 errors.append(_field_error(f"{child_path}.maMoc", "INVALID_TIMELINE_CODE", "Mã mốc timeline không hợp lệ."))
-            elif milestone_code in seen_codes:
-                errors.append(_field_error(f"{child_path}.maMoc", "DUPLICATE_TIMELINE_CODE", "Mã mốc timeline bị trùng."))
-            else:
-                seen_codes.add(milestone_code)
+        stable_key = (str(milestone_key or milestone_code or ""), str(instance_key or ""))
+        if stable_key in seen_codes:
+            errors.append(_field_error(f"{child_path}.milestoneKey", "DUPLICATE_TIMELINE_KEY", "Khóa mốc timeline bị trùng."))
+        else:
+            seen_codes.add(stable_key)
         for field_name in ("ngayDuKien", "ngayThucTe"):
             value = child.get(field_name)
             if value in (None, ""):
@@ -190,8 +197,8 @@ def _validate_timeline_items(items, item_path, errors):
         if "isOptional" in child and not isinstance(child.get("isOptional"), bool):
             errors.append(_field_error(f"{child_path}.isOptional", "INVALID_BOOLEAN", "isOptional phải là boolean."))
         sort_order = child.get("sortOrder", child_index)
-        if isinstance(sort_order, bool) or not isinstance(sort_order, int) or not 0 <= sort_order <= 499:
-            errors.append(_field_error(f"{child_path}.sortOrder", "INVALID_SORT_ORDER", "Thứ tự timeline phải từ 0 đến 499."))
+        if isinstance(sort_order, bool) or not isinstance(sort_order, int) or not 0 <= sort_order <= 9999:
+            errors.append(_field_error(f"{child_path}.sortOrder", "INVALID_SORT_ORDER", "Thứ tự timeline phải từ 0 đến 9999."))
         template_version = child.get("templateVersion", 1)
         if isinstance(template_version, bool) or not isinstance(template_version, int) or template_version < 1:
             errors.append(_field_error(f"{child_path}.templateVersion", "INVALID_TEMPLATE_VERSION", "Phiên bản checklist không hợp lệ."))
@@ -233,6 +240,44 @@ def _validate_detailed_evaluation_reports(reports, item_path, errors):
                     "TYPE_OBJECT_REQUIRED",
                     "Dòng chi tiết đánh giá phải là object.",
                 ))
+
+
+def _validate_ehsmt_adjustments(items, item_path, errors):
+    seen_ids = set()
+    seen_sequences = set()
+    allowed = {
+        "id", "sequence", "reason", "submissionNumber", "submissionDate",
+        "appraisalReportNumber", "appraisalReportDate", "approvalDecisionNumber",
+        "approvalDecisionDate", "publishedAt", "archivedAt", "rowVersion",
+    }
+    for index, child in enumerate(items):
+        child_path = f"{item_path}.ehsmtAdjustments[{index}]"
+        if not isinstance(child, dict):
+            errors.append(_field_error(child_path, "TYPE_OBJECT_REQUIRED", "Lần điều chỉnh E-HSMT phải là object."))
+            continue
+        for unknown in sorted(set(child) - allowed):
+            errors.append(_field_error(f"{child_path}.{unknown}", "UNKNOWN_FIELD", "Trường điều chỉnh E-HSMT không được hỗ trợ."))
+        record_id = str(child.get("id") or "").strip()
+        if not record_id:
+            errors.append(_field_error(f"{child_path}.id", "REQUIRED", "ID lần điều chỉnh là bắt buộc."))
+        elif record_id in seen_ids:
+            errors.append(_field_error(f"{child_path}.id", "DUPLICATE_ID", "ID lần điều chỉnh bị trùng."))
+        seen_ids.add(record_id)
+        sequence = child.get("sequence")
+        if not _is_strict_integer(sequence) or sequence <= 0:
+            errors.append(_field_error(f"{child_path}.sequence", "INVALID_SEQUENCE", "Thứ tự điều chỉnh phải là số nguyên dương."))
+        elif sequence in seen_sequences:
+            errors.append(_field_error(f"{child_path}.sequence", "DUPLICATE_SEQUENCE", "Thứ tự điều chỉnh bị trùng."))
+        seen_sequences.add(sequence)
+        for field in ("submissionDate", "appraisalReportDate", "approvalDecisionDate"):
+            value = child.get(field)
+            if value not in (None, ""):
+                try:
+                    valid = datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d") == value
+                except (TypeError, ValueError):
+                    valid = False
+                if not valid:
+                    errors.append(_field_error(f"{child_path}.{field}", "INVALID_DATE", "Ngày điều chỉnh phải theo định dạng YYYY-MM-DD."))
 
 
 def _is_blank(value):
@@ -529,6 +574,8 @@ def validate_sync_payload_shape(payload):
                         )
                     elif key == "timelineItems":
                         _validate_timeline_items(child_value, item_path, errors)
+                    elif key == "ehsmtAdjustments":
+                        _validate_ehsmt_adjustments(child_value, item_path, errors)
                     else:
                         for child_index, child in enumerate(child_value):
                             child_path = f"{item_path}.{key}[{child_index}]"
@@ -659,6 +706,9 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             ("thongTinMoThauId", "Hồ sơ mở thầu"),
             ("danhMucHangHoa", "Danh mục hàng hóa"),
         ), errors)
+        appraisal_code = item.get("yeuCauThamDinhHsmtCode")
+        if appraisal_code not in (None, "", "UNDETERMINED", "REQUIRED", "NOT_REQUIRED"):
+            errors.append("Mã yêu cầu thẩm định E-HSMT không hợp lệ.")
         for key in (
             "sttNguon", "maPhanLoNguon", "tenPhanLoNguon", "danhMucHangHoa",
             "kyMaHieu", "nhanHieu", "namSanXuat", "xuatXu", "hangSanXuat",

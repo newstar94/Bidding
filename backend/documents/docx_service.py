@@ -122,33 +122,11 @@ def is_competitive_quotation_package(pkg):
 def clear_competitive_quotation_appraisal(pkg):
     if not pkg or not is_competitive_quotation_package(pkg):
         return pkg
-    for key, value in (
-        ('yeu_cau_tham_dinh_hsmt', 'Không'),
-        ('so_bao_cao_tham_dinh_hsmt', ''),
-        ('ngay_bao_cao_tham_dinh_hsmt', ''),
-        ('yeuCauThamDinhHsmt', 'Không'),
-        ('soBaoCaoThamDinhHsmt', ''),
-        ('ngayBaoCaoThamDinhHsmt', ''),
-        ('to_tham_dinh', []),
-        ('toThamDinh', []),
-    ):
-        pkg[key] = value
-    metadata_key = 'danh_gia_hsdt_metadata' if 'danh_gia_hsdt_metadata' in pkg else 'danhGiaHsdtMetadata'
-    raw_metadata = pkg.get(metadata_key)
-    try:
-        metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) and raw_metadata.strip() else raw_metadata
-    except (TypeError, ValueError, json.JSONDecodeError):
-        metadata = None
-    if isinstance(metadata, dict):
-        technical = metadata.get('technical')
-        if isinstance(technical, dict):
-            technical.pop('soBctdKt', None)
-            technical.pop('ngayBctdKt', None)
-        result = metadata.get('result')
-        if isinstance(result, dict):
-            result.pop('soBctdKetQua', None)
-            result.pop('ngayBctdKetQua', None)
-        pkg[metadata_key] = json.dumps(metadata, ensure_ascii=False) if isinstance(raw_metadata, str) else metadata
+    pkg['yeu_cau_tham_dinh_hsmt'] = 'Không'
+    pkg['yeuCauThamDinhHsmt'] = 'Không'
+    pkg['yeu_cau_tham_dinh_hsmt_code'] = 'NOT_REQUIRED'
+    pkg['yeuCauThamDinhHsmtCode'] = 'NOT_REQUIRED'
+    # Retain appraisal evidence so a later fact change can restore it.
     return pkg
 
 

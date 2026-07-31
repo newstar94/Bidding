@@ -5,6 +5,7 @@ import { bindCurrencyElement } from "../app/domUtils.js";
 import {
   canDeleteVersions,
   createNextVersion,
+  ensureVersionEhsmtAdjustment,
   preparePackageSnapshot,
   rememberSelectedVersion,
   removeAllVersions,
@@ -810,6 +811,7 @@ export async function savePlanBreakdown() {
           id: newGtId,
           timestamp
         });
+        ensureVersionEhsmtAdjustment(nextPackage);
         nextPackage.createdAt = gt.createdAt || timestamp;
         this.model.state.goithau.push(nextPackage);
         const previousPackageAssigneeIds = this.model.state.assignments

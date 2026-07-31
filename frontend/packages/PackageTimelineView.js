@@ -11,6 +11,7 @@ import {
   applyAutomaticTimelineSources,
   copyTimelineForNewVersion,
   mergeTimelineRows,
+  preserveHiddenTimelineRows,
   timelineDisplayCode,
   timelineIsOverdue
 } from "./packageTimelineRows.js";
@@ -341,7 +342,6 @@ function statusOptions(current) {
 
 function filteredRows(state) {
   return state.rows.filter((row) => {
-    if (row.isApplicable === false) return false;
     if (state.filters.status && row.trangThai !== state.filters.status) return false;
     return true;
   });
@@ -392,15 +392,23 @@ function renderTimelineTable(view) {
     const sourceLabel = row.sourceMode === "AUTO" ? "Tự động" : "Thủ công";
     const dateBinding = timelineDateBinding(row);
     const displayCode = timelineDisplayCode(row, state.rows);
+    const conditional = row.applicability === "CONDITIONAL";
+    const conditionalLabel = row.applicabilityReason === "CONFLICT_E_HSMT_APPRAISAL_DATA" ? "Cần xác nhận" : "Chưa xác định";
+    const adjustmentControls = row.milestoneKey === "E_HSMT_ADJUSTMENT_APPROVAL"
+      ? `<button type="button" class="timeline-restore-source" data-adjustment-action="remove" aria-label="Ẩn lần điều chỉnh E-HSMT ${safeAttr(row.instanceKey)}"${disabled}><i data-lucide="trash-2"></i></button>`
+      : "";
+    const appraisalConflictControl = row.applicabilityReason === "CONFLICT_E_HSMT_APPRAISAL_DATA"
+      ? `<button type="button" class="timeline-restore-source" data-appraisal-action="require" title="Xác nhận có thẩm định E-HSMT" aria-label="Xác nhận chuyển yêu cầu thẩm định E-HSMT sang Có"${disabled}><i data-lucide="badge-check"></i></button>`
+      : "";
     html.push(`
-      <tr class="timeline-item-row${overdue ? " is-overdue" : ""}" data-code="${safeAttr(row.maMoc)}">
-        <th scope="row" title="Mã mốc nghiệp vụ ${safeAttr(row.maMoc)}">${escapeHtml(displayCode)}</th>
-        <td><span class="timeline-work-title">${escapeHtml(row.congViec)}</span>${row.isOptional ? `<span class="timeline-optional">Nếu có</span>` : ""}</td>
+      <tr class="timeline-item-row${overdue ? " is-overdue" : ""}${conditional ? " is-conditional" : ""}" data-entry-id="${safeAttr(row.id)}">
+        <th scope="row" title="Mã mốc nghiệp vụ ${safeAttr(row.milestoneKey || row.maMoc)}">${escapeHtml(displayCode)}</th>
+        <td><span class="timeline-work-title">${escapeHtml(row.congViec)}</span>${conditional ? `<span class="timeline-conditional" title="${safeAttr(row.applicabilityReason)}">${escapeHtml(conditionalLabel)}</span>` : row.isOptional ? `<span class="timeline-optional">Nếu có</span>` : ""}</td>
         <td><input type="text" data-timeline-field="donViBanHanh" value="${safeAttr(row.donViBanHanh)}" maxlength="300" aria-label="Đơn vị ban hành mốc ${safeAttr(row.maMoc)}"${disabled}></td>
         <td><input type="text" data-timeline-field="soVanBan" value="${safeAttr(row.soVanBan)}" maxlength="300" aria-label="Số văn bản mốc ${safeAttr(row.maMoc)}"${disabled}></td>
         <td><input type="text" class="flatpickr-date" data-timeline-field="${dateBinding.field}" value="${safeAttr(formatTimelineDate(dateBinding.value))}" placeholder="dd/MM/yyyy" aria-label="${dateBinding.label} mốc ${safeAttr(row.maMoc)}"${disabled}></td>
         <td><select data-timeline-field="trangThai" aria-label="Trạng thái mốc ${safeAttr(row.maMoc)}"${disabled}>${statusOptions(row.trangThai)}</select>${overdue ? `<span class="timeline-overdue-label"><i data-lucide="alert-triangle"></i> Quá hạn</span>` : ""}</td>
-        <td><button type="button" class="timeline-source-badge ${row.sourceMode === "AUTO" ? "is-auto" : "is-manual"}" data-source-action="toggle" aria-label="Chuyển nguồn mốc ${safeAttr(row.maMoc)}"${disabled}>${sourceLabel}</button>${row.sourceKey && row.sourceMode === "MANUAL" ? `<button type="button" class="timeline-restore-source" data-source-action="restore" title="Khôi phục dữ liệu hệ thống" aria-label="Khôi phục dữ liệu hệ thống mốc ${safeAttr(row.maMoc)}"${disabled}><i data-lucide="rotate-ccw"></i></button>` : ""}</td>
+        <td><button type="button" class="timeline-source-badge ${row.sourceMode === "AUTO" ? "is-auto" : "is-manual"}" data-source-action="toggle" aria-label="Chuyển nguồn mốc ${safeAttr(row.milestoneKey || row.maMoc)}"${disabled}>${sourceLabel}</button>${row.sourceKey && row.sourceMode === "MANUAL" ? `<button type="button" class="timeline-restore-source" data-source-action="restore" title="Khôi phục dữ liệu hệ thống" aria-label="Khôi phục dữ liệu hệ thống mốc ${safeAttr(row.milestoneKey || row.maMoc)}"${disabled}><i data-lucide="rotate-ccw"></i></button>` : ""}${appraisalConflictControl}${adjustmentControls}</td>
       </tr>`);
   });
   if (!html.length) html.push(`<tr><td colspan="7" class="timeline-no-results">Không có mốc phù hợp với bộ lọc.</td></tr>`);
@@ -427,6 +435,40 @@ function setActionAvailability(state) {
   const versions = state.package?.allVersions || [];
   const copyButton = element("timeline-copy-previous");
   if (copyButton) copyButton.disabled = !canEdit || versions.length < 2;
+}
+
+async function removeEhsmtAdjustment(view, row) {
+  const state = timelineState(view);
+  const confirmed = await view.customConfirm(
+    "Ẩn lần điều chỉnh E-HSMT",
+    `Chỉ lần điều chỉnh ${row.instanceKey} sẽ được ẩn khỏi timeline. Dữ liệu vẫn được giữ để khôi phục.`,
+    "trash-2"
+  );
+  if (!confirmed) return;
+  const list = Array.isArray(state.package.ehsmtAdjustments) ? state.package.ehsmtAdjustments : [];
+  state.package.ehsmtAdjustments = list.map((item) => String(item.id) === String(row.instanceKey)
+    ? { ...item, archivedAt: new Date().toISOString() }
+    : item);
+  state.rows = mergeTimelineRows(state.package, state.plan, findContracts(view, state.package));
+  state.dirty = true;
+  renderTimelineTable(view);
+  updateLiveStatus("Đã ẩn lần điều chỉnh; hãy lưu thay đổi.");
+}
+
+async function resolveEhsmtAppraisalConflict(view) {
+  const state = timelineState(view);
+  const confirmed = await view.customConfirm(
+    "Xác nhận thẩm định E-HSMT",
+    "Dữ liệu thẩm định đã phát sinh. Chuyển lựa chọn của gói thầu sang Có thẩm định E-HSMT?",
+    "badge-check"
+  );
+  if (!confirmed) return;
+  state.package.yeuCauThamDinhHsmtCode = "REQUIRED";
+  state.package.yeuCauThamDinhHsmt = "Có";
+  state.rows = mergeTimelineRows(state.package, state.plan, findContracts(view, state.package));
+  state.dirty = true;
+  renderTimelineTable(view);
+  updateLiveStatus("Đã xác nhận có thẩm định E-HSMT; hãy lưu thay đổi.");
 }
 
 async function selectPackage(view, packageId) {
@@ -463,7 +505,7 @@ async function selectPackage(view, packageId) {
     setHidden("timeline-table-wrap", false);
     renderTimelineTable(view);
     setActionAvailability(state);
-    const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
+    const applicableCount = state.rows.filter((row) => row.applicability === "APPLICABLE").length;
     updateLiveStatus("Đã tải " + applicableCount + " mốc áp dụng của gói " + (pkg.maGoiThau || "") + ".");
   } catch (error) {
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
@@ -514,8 +556,8 @@ async function restoreTimelineSelection(view, selection) {
 
 function updateRowFromControl(view, control) {
   const state = timelineState(view);
-  const rowElement = control.closest("tr[data-code]");
-  const row = state.rows.find((item) => item.maMoc === rowElement?.dataset.code);
+  const rowElement = control.closest("tr[data-entry-id]");
+  const row = state.rows.find((item) => item.id === rowElement?.dataset.entryId);
   const field = control.dataset.timelineField;
   if (!row || !field) return;
   const nextValue = ["ngayDuKien", "ngayThucTe"].includes(field)
@@ -539,17 +581,34 @@ async function saveTimeline(view) {
   const button = element("timeline-save");
   if (button) button.disabled = true;
   try {
-    state.package.timelineItems = state.rows.map((row) => {
-      const persistedRow = { ...row };
-      delete persistedRow.isApplicable;
-      return persistedRow;
-    });
+    const persistedRows = state.rows.map((row) => ({
+      id: row.id,
+      milestoneKey: row.milestoneKey,
+      instanceKey: row.instanceKey || "",
+      sourceEntityId: row.sourceEntityId || "",
+      maNhom: row.maNhom,
+      tenNhom: row.tenNhom,
+      maMoc: row.maMoc,
+      congViec: row.congViec,
+      donViBanHanh: row.donViBanHanh,
+      soVanBan: row.soVanBan,
+      ngayDuKien: row.ngayDuKien,
+      ngayThucTe: row.ngayThucTe,
+      ghiChu: row.ghiChu,
+      sourceKey: row.sourceKey,
+      sourceMode: row.sourceMode,
+      isOptional: row.isOptional,
+      trangThai: row.trangThai,
+      sortOrder: Math.trunc(Number(row.sortOrder) || 0),
+      templateVersion: row.templateVersion
+    }));
+    state.package.timelineItems = preserveHiddenTimelineRows(state.package.timelineItems, persistedRows);
     view.model.commitLocalMutation("goithau", { records: [state.package] });
     await view.model.persistData("goithau");
     const controller = getAppController();
     if (typeof controller?.forceSyncData === "function") await controller.forceSyncData(false, false, true);
     state.dirty = false;
-    const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
+    const applicableCount = state.rows.filter((row) => row.applicability === "APPLICABLE").length;
     view.showToast("Thành công", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
     updateLiveStatus("Timeline đã được lưu.");
   } catch {
@@ -605,8 +664,9 @@ async function copyPreviousTimeline(view) {
     findPlan(view, previousPackage),
     findContracts(view, previousPackage)
   ));
-  state.rows = applyAutomaticTimelineSources(state.rows, pkg, state.plan);
-  state.rows = applyTimelineApplicability(state.rows, pkg, state.plan);
+  const contracts = findContracts(view, pkg);
+  state.rows = applyAutomaticTimelineSources(state.rows, pkg, state.plan, contracts);
+  state.rows = applyTimelineApplicability(state.rows, pkg, state.plan, contracts);
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã sao chép từ phiên bản trước; hãy lưu thay đổi.");
@@ -639,20 +699,32 @@ function bindTimelineEvents(view, pane) {
     if (control) updateRowFromControl(view, control);
   });
   element("timeline-table-body")?.addEventListener("click", (event) => {
+    const appraisalButton = event.target.closest("[data-appraisal-action]");
+    if (appraisalButton) {
+      resolveEhsmtAppraisalConflict(view);
+      return;
+    }
+    const adjustmentButton = event.target.closest("[data-adjustment-action]");
+    if (adjustmentButton) {
+      const state = timelineState(view);
+      const row = state.rows.find((item) => item.id === adjustmentButton.closest("tr")?.dataset.entryId);
+      if (row && adjustmentButton.dataset.adjustmentAction === "remove") removeEhsmtAdjustment(view, row);
+      return;
+    }
     const button = event.target.closest("[data-source-action]");
     if (!button) return;
     const state = timelineState(view);
-    const code = button.closest("tr[data-code]")?.dataset.code;
-    const row = state.rows.find((item) => item.maMoc === code);
+    const entryId = button.closest("tr[data-entry-id]")?.dataset.entryId;
+    const row = state.rows.find((item) => item.id === entryId);
     if (!row) return;
     row.sourceMode = button.dataset.sourceAction === "restore" || row.sourceMode === "MANUAL" ? "AUTO" : "MANUAL";
-    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan);
+    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan, findContracts(view, state.package));
     state.dirty = true;
     renderTimelineTable(view);
   });
   element("timeline-refresh-auto")?.addEventListener("click", () => {
     const state = timelineState(view);
-    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan);
+    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan, findContracts(view, state.package));
     state.dirty = true;
     renderTimelineTable(view);
     updateLiveStatus("Đã làm mới các mốc tự động; hãy lưu thay đổi.");

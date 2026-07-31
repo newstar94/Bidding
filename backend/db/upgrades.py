@@ -1037,6 +1037,153 @@ def _upgrade_to_v32_add_websocket_delivery_state(cursor, _context):
     )
 
 
+def _upgrade_to_v33_add_effective_timeline_model(cursor, _context):
+    """Add stable timeline identities and the tri-state appraisal decision."""
+
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           ADD COLUMN IF NOT EXISTS yeu_cau_tham_dinh_hsmt_code TEXT
+           NOT NULL DEFAULT 'UNDETERMINED'"""
+    )
+    cursor.execute(
+        """UPDATE goi_thau
+           SET yeu_cau_tham_dinh_hsmt_code = CASE
+             WHEN lower(trim(COALESCE(yeu_cau_tham_dinh_hsmt, ''))) IN ('có', 'co', 'true', '1', 'required') THEN 'REQUIRED'
+             WHEN lower(trim(COALESCE(yeu_cau_tham_dinh_hsmt, ''))) IN ('không', 'khong', 'false', '0', 'not_required') THEN 'NOT_REQUIRED'
+             ELSE 'UNDETERMINED'
+           END"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           DROP CONSTRAINT IF EXISTS goi_thau_yeu_cau_tham_dinh_hsmt_code_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           ADD CONSTRAINT goi_thau_yeu_cau_tham_dinh_hsmt_code_check
+           CHECK (yeu_cau_tham_dinh_hsmt_code IN ('UNDETERMINED', 'REQUIRED', 'NOT_REQUIRED'))"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_moc_tien_do
+           ADD COLUMN IF NOT EXISTS milestone_key TEXT NOT NULL DEFAULT ''"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_moc_tien_do
+           ADD COLUMN IF NOT EXISTS instance_key TEXT NOT NULL DEFAULT ''"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_moc_tien_do
+           ADD COLUMN IF NOT EXISTS source_entity_id TEXT NOT NULL DEFAULT ''"""
+    )
+    cursor.execute(
+        """UPDATE goi_thau_moc_tien_do
+           SET milestone_key = CASE ma_moc
+             WHEN '1.1' THEN 'VALUATION_EVIDENCE'
+             WHEN '1.2' THEN 'PLAN_TEAM_ESTABLISHMENT'
+             WHEN '1.3' THEN 'COST_ESTIMATE_SUBMISSION'
+             WHEN '1.4' THEN 'COST_ESTIMATE_APPROVAL'
+             WHEN '1.5' THEN 'PLAN_SUBMISSION'
+             WHEN '1.6' THEN 'PLAN_APPROVAL'
+             WHEN '1.7' THEN 'COMBINED_COST_PLAN_SUBMISSION'
+             WHEN '1.8' THEN 'COMBINED_COST_PLAN_APPROVAL'
+             WHEN '2.1' THEN 'PREPARATION_CONSULTANT_INVITATION'
+             WHEN '2.2' THEN 'PREPARATION_CONSULTANT_APPLICATION'
+             WHEN '2.3' THEN 'PREPARATION_CONSULTANT_CONTRACT_FINALIZATION'
+             WHEN '2.4' THEN 'PREPARATION_CONSULTANT_APPOINTMENT_SUBMISSION'
+             WHEN '2.5' THEN 'PREPARATION_CONSULTANT_APPOINTMENT'
+             WHEN '2.6' THEN 'PREPARATION_CONSULTANT_CONTRACT'
+             WHEN '2.7' THEN 'EXPERT_TEAM_ESTABLISHMENT'
+             WHEN '2.8' THEN 'E_HSMT_ACCEPTANCE'
+             WHEN '2.9' THEN 'EVALUATION_REPORT_ACCEPTANCE'
+             WHEN '2.10' THEN 'PREPARATION_CONSULTANT_COMPLETION_VOLUME'
+             WHEN '2.11' THEN 'PREPARATION_CONSULTANT_PAYMENT_REQUEST'
+             WHEN '2.12' THEN 'PREPARATION_CONSULTANT_LIQUIDATION'
+             WHEN '3.1' THEN 'APPRAISAL_CONSULTANT_INVITATION'
+             WHEN '3.2' THEN 'APPRAISAL_CONSULTANT_APPLICATION'
+             WHEN '3.3' THEN 'APPRAISAL_CONSULTANT_CONTRACT_FINALIZATION'
+             WHEN '3.4' THEN 'APPRAISAL_CONSULTANT_APPOINTMENT_SUBMISSION'
+             WHEN '3.5' THEN 'APPRAISAL_CONSULTANT_APPOINTMENT'
+             WHEN '3.6' THEN 'APPRAISAL_CONSULTANT_CONTRACT'
+             WHEN '3.7' THEN 'APPRAISAL_TEAM_ESTABLISHMENT'
+             WHEN '3.8' THEN 'E_HSMT_APPRAISAL_ACCEPTANCE'
+             WHEN '3.9' THEN 'RESULT_APPRAISAL_ACCEPTANCE'
+             WHEN '3.10' THEN 'APPRAISAL_CONSULTANT_COMPLETION_VOLUME'
+             WHEN '3.11' THEN 'APPRAISAL_CONSULTANT_PAYMENT_REQUEST'
+             WHEN '3.12' THEN 'APPRAISAL_CONSULTANT_LIQUIDATION'
+             WHEN '4.1' THEN 'E_HSMT_SUBMISSION'
+             WHEN '4.2' THEN 'E_HSMT_APPRAISAL_REPORT'
+             WHEN '4.3' THEN 'E_HSMT_APPROVAL'
+             WHEN '5.1' THEN 'BID_OPENING_MINUTES'
+             WHEN '5.2' THEN 'BID_EVALUATION_REPORT'
+             WHEN '5.3' THEN 'TECHNICAL_RESULT_APPRAISAL'
+             WHEN '5.4' THEN 'TECHNICAL_QUALIFIED_APPROVAL'
+             WHEN '5.5' THEN 'FINANCIAL_OPENING_MINUTES'
+             WHEN '5.6' THEN 'FINANCIAL_EVALUATION_REPORT'
+             WHEN '5.7' THEN 'DOCUMENT_RECONCILIATION_INVITATION'
+             WHEN '5.8' THEN 'DOCUMENT_RECONCILIATION_MINUTES'
+             WHEN '5.9' THEN 'CONTRACT_NEGOTIATION'
+             WHEN '5.10' THEN 'CONTRACTOR_SELECTION_RESULT_APPRAISAL'
+             WHEN '5.11' THEN 'CONTRACTOR_SELECTION_RESULT_APPROVAL'
+             WHEN '5.12' THEN 'CONTRACT_AWARD_NOTICE'
+             WHEN '5.13' THEN 'CONTRACT_FINALIZATION_MINUTES'
+             ELSE CONCAT('LEGACY_', ma_moc)
+           END
+           WHERE milestone_key = ''"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_moc_tien_do
+           DROP CONSTRAINT IF EXISTS goi_thau_moc_tien_do_organization_id_goi_thau_id_ma_moc_key"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_moc_tien_do
+           DROP CONSTRAINT IF EXISTS goi_thau_moc_tien_do_sort_order_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau_moc_tien_do
+           ADD CONSTRAINT goi_thau_moc_tien_do_sort_order_check
+           CHECK (sort_order BETWEEN 0 AND 9999)"""
+    )
+    cursor.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_stable
+           ON goi_thau_moc_tien_do (organization_id, goi_thau_id, milestone_key, instance_key)"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS goi_thau_dieu_chinh_hsmt (
+           id TEXT PRIMARY KEY,
+           organization_id TEXT NOT NULL,
+           owner_type TEXT NOT NULL DEFAULT 'organization' CHECK (owner_type IN ('organization', 'personal')),
+           goi_thau_id TEXT NOT NULL,
+           sequence INTEGER NOT NULL CHECK (sequence > 0),
+           reason TEXT NOT NULL DEFAULT '',
+           submission_number TEXT NOT NULL DEFAULT '',
+           submission_date DATE,
+           appraisal_report_number TEXT NOT NULL DEFAULT '',
+           appraisal_report_date DATE,
+           approval_decision_number TEXT NOT NULL DEFAULT '',
+           approval_decision_date DATE,
+           published_at TIMESTAMPTZ,
+           archived_at TIMESTAMPTZ,
+           created_by_id TEXT,
+           updated_by_id TEXT,
+           sync_version INTEGER NOT NULL DEFAULT 0,
+           row_version INTEGER NOT NULL DEFAULT 1 CHECK (row_version > 0),
+           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+           CONSTRAINT goi_thau_dieu_chinh_hsmt_package_fk
+             FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE,
+           CONSTRAINT goi_thau_dieu_chinh_hsmt_created_by_fk
+             FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL,
+           CONSTRAINT goi_thau_dieu_chinh_hsmt_updated_by_fk
+             FOREIGN KEY (updated_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL,
+           CONSTRAINT goi_thau_dieu_chinh_hsmt_sequence_unique
+             UNIQUE (organization_id, goi_thau_id, sequence)
+        )"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_package
+           ON goi_thau_dieu_chinh_hsmt (organization_id, goi_thau_id, sequence)"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1188,6 +1335,11 @@ UPGRADES = (
         32,
         "add_websocket_delivery_state",
         _upgrade_to_v32_add_websocket_delivery_state,
+    ),
+    DatabaseUpgrade(
+        33,
+        "add_effective_timeline_model",
+        _upgrade_to_v33_add_effective_timeline_model,
     ),
 )
 

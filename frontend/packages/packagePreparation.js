@@ -1,5 +1,10 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
-import { createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import {
+  createNextVersion,
+  ensureVersionEhsmtAdjustment,
+  preparePackageSnapshot,
+  rememberSelectedVersion
+} from "../shared/VersionedEntityService.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 
 function dateTimeChanged(previousValue, nextValue) {
@@ -37,6 +42,7 @@ export async function savePackagePreparation(controller, pkg, changes, { generat
       ...nextData,
       keHoachId: latestPlan?.id || pkg.keHoachId
     }), { id: packageId, timestamp });
+    ensureVersionEhsmtAdjustment(savedPackage);
     savedPackage.createdAt = pkg.createdAt || timestamp;
     clearCompetitiveQuotationAppraisal(savedPackage);
     model.state.goithau.push(savedPackage);

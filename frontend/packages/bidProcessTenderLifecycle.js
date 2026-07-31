@@ -134,13 +134,22 @@ export async function handlePhatHanhHsmtSubmit(e) {
     return;
   }
   const data = this.view.getPhathanhHsmtFormData(this.model);
-  const { id, maGoiThauVal, hieuLucHsdtVal, giaTriDamBaoVal, soQuyetDinh, thoiGianDangTai, thoiGianDongThau, ngayQuyetDinh, soToTrinhHsmt, ngayTrinhHsmt, yeuCauThamDinhHsmt, soBaoCaoThamDinhHsmt, ngayBaoCaoThamDinhHsmt, phanLoRows } = data;
+  const { id, maGoiThauVal, hieuLucHsdtVal, giaTriDamBaoVal, soQuyetDinh, thoiGianDangTai, thoiGianDongThau, ngayQuyetDinh, soToTrinhHsmt, ngayTrinhHsmt, yeuCauThamDinhHsmt, yeuCauThamDinhHsmtCode, soBaoCaoThamDinhHsmt, ngayBaoCaoThamDinhHsmt, phanLoRows } = data;
   const gt = this.model.state.goithau.find((g) => g.id === id);
   if (!gt) {
     await this.view.customAlert(
       "Không thể phát hành",
       "Không tìm thấy gói thầu cần phát hành. Vui lòng đóng cửa sổ và tải lại dữ liệu.",
       "alert-triangle"
+    );
+    return;
+  }
+  if (yeuCauThamDinhHsmtCode === "UNDETERMINED") {
+    await this.view.customAlert(
+      "Cần xác nhận thẩm định",
+      "Gói thầu có thực hiện thẩm định E-HSMT không? Vui lòng chọn Có hoặc Không trước khi phê duyệt E-HSMT.",
+      "alert-triangle",
+      document.querySelector('input[name="phathanh-yeucauthamdinh"]')
     );
     return;
   }
@@ -198,6 +207,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
     gt.thoiGianDangTai = thoiGianDangTai ? this.model.convertDMYHMSToYMDHMS(thoiGianDangTai) : "";
     gt.thoiGianDongThau = thoiGianDongThau ? this.model.convertDMYHMSToYMDHMS(thoiGianDongThau) : "";
     gt.yeuCauThamDinhHsmt = yeuCauThamDinhHsmt;
+    gt.yeuCauThamDinhHsmtCode = yeuCauThamDinhHsmtCode;
     gt.soBaoCaoThamDinhHsmt = soBaoCaoThamDinhHsmt;
     gt.ngayBaoCaoThamDinhHsmt = ngayBaoCaoThamDinhHsmt ? this.model.convertDMYToYMD(ngayBaoCaoThamDinhHsmt) : "";
     clearCompetitiveQuotationAppraisal(gt);

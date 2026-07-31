@@ -1,0 +1,59 @@
+[
+  {
+    "name": "one-envelope-undetermined-appraisal",
+    "package": {"hinhThucLuaChon":"Đấu thầu rộng rãi","phuongThucLuaChon":"Một giai đoạn một túi hồ sơ","yeuCauThamDinhHsmtCode":"UNDETERMINED"},
+    "related": {"plan":{"pheDuyet":"Kế hoạch"}},
+    "savedEntries": []
+  },
+  {
+    "name": "two-envelope-required-appraisal",
+    "package": {"hinhThucLuaChon":"Đấu thầu rộng rãi","phuongThucLuaChon":"Một giai đoạn hai túi hồ sơ","yeuCauThamDinhHsmtCode":"REQUIRED","soBaoCaoThamDinhHsmt":"12/BCTĐ"},
+    "related": {"plan":{"pheDuyet":"Dự toán và kế hoạch"},"technicalEvaluation":{"soBctdKt":"22/BCTĐ-KT","ngayBctdKt":"2026-05-10"}},
+    "savedEntries": []
+  },
+  {
+    "name": "competitive-offering-excludes-appraisal",
+    "package": {"hinhThucLuaChon":"Chào hàng cạnh tranh","phuongThucLuaChon":"Một giai đoạn một túi hồ sơ","yeuCauThamDinhHsmtCode":"UNDETERMINED"},
+    "related": {"plan":{"pheDuyet":"Kế hoạch"}},
+    "savedEntries": []
+  },
+  {
+    "name": "not-required-with-conflicting-evidence",
+    "package": {"hinhThucLuaChon":"Đấu thầu rộng rãi","phuongThucLuaChon":"Một giai đoạn một túi hồ sơ","yeuCauThamDinhHsmtCode":"NOT_REQUIRED","soBaoCaoThamDinhHsmt":"09/BCTĐ","ngayBaoCaoThamDinhHsmt":"2026-04-01"},
+    "related": {"plan":{"pheDuyet":"Kế hoạch"}},
+    "savedEntries": []
+  },
+  {
+    "name": "repeatable-business-entities",
+    "package": {"hinhThucLuaChon":"Đấu thầu rộng rãi","phuongThucLuaChon":"Một giai đoạn hai túi hồ sơ","yeuCauThamDinhHsmtCode":"REQUIRED"},
+    "related": {
+      "plan":{"pheDuyet":"Kế hoạch"},
+      "ehsmtAdjustments":[
+        {"id":"adj-2","sequence":2,"approvalDecisionNumber":"02/QĐ","approvalDecisionDate":"2026-06-02"},
+        {"id":"adj-1","sequence":1,"approvalDecisionNumber":"01/QĐ","approvalDecisionDate":"2026-05-01"}
+      ],
+      "clarificationRequests":[{"id":"clarify-1","noiDungYeuCau":"Làm rõ tiêu chí","thoiGianYeuCau":"2026-04-10"}],
+      "clarificationResponses":[{"id":"reply-1","noiDungTraLoi":"Văn bản trả lời","thoiGianTraLoi":"2026-04-12"}],
+      "extensions":[{"id":"extend-1","lyDoGiaHan":"Bổ sung thời gian","thoiGianDongThau":"2026-07-01"}]
+    },
+    "savedEntries": []
+  },
+  {
+    "name": "internal-consultants-and-simplified-direct-appointment",
+    "package": {"hinhThucLuaChon":"Chỉ định thầu rút gọn","phuongThucLuaChon":"Một giai đoạn một túi hồ sơ","yeuCauThamDinhHsmtCode":"NOT_REQUIRED"},
+    "related": {"plan":{"pheDuyet":"Dự toán và kế hoạch"},"preparationConsultantMode":"INTERNAL","appraisalConsultantMode":"INTERNAL","expertTeam":[{"id":"expert-1"}]},
+    "savedEntries": []
+  },
+  {
+    "name": "special-selection-safe-default",
+    "package": {"hinhThucLuaChon":"Lựa chọn nhà thầu trong trường hợp đặc biệt","yeuCauThamDinhHsmtCode":"UNDETERMINED"},
+    "related": {"plan":{"pheDuyet":"Kế hoạch"}},
+    "savedEntries": [{"id":"saved-special","milestoneKey":"E_HSMT_SUBMISSION","instanceKey":"","maNhom":"IV","tenNhom":"E-HSMT","maMoc":"4.1","congViec":"Tờ trình E-HSMT","donViBanHanh":"Tổ chuyên gia TVL","soVanBan":"11/TTr","ngayDuKien":"","ngayThucTe":"2026-03-01","ghiChu":"","sourceKey":"","sourceMode":"MANUAL","isOptional":false,"trangThai":"DONE","sortOrder":500,"templateVersion":2}]
+  },
+  {
+    "name": "version-derived-adjustment-and-latest-closing-time",
+    "package": {"id":"package-v02","phienBan":"02","hinhThucLuaChon":"Đấu thầu rộng rãi","phuongThucLuaChon":"Một giai đoạn một túi hồ sơ","yeuCauThamDinhHsmtCode":"NOT_REQUIRED","soQuyetDinh":"02/QĐ-ĐC","ngayQuyetDinh":"2026-07-20","thoiGianDongThau":"2026-07-15T10:00:00"},
+    "related": {"plan":{"pheDuyet":"Kế hoạch"},"extensions":[{"id":"earlier","thoiGianDongThau":"2026-07-12T10:00:00"},{"id":"latest","thoiGianDongThau":"2026-07-22T10:00:00"}]},
+    "savedEntries": []
+  }
+]

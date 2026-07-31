@@ -506,6 +506,7 @@ SCHEMA_DINH_NGHIA = {
             "rebid_from_package_id": "TEXT",
             "trang_thai": "TEXT NOT NULL DEFAULT 'PREPARING' CHECK(trang_thai IN ('PREPARING', 'INVITED', 'OPENED', 'EVALUATING', 'PARTIALLY_AWARDED', 'AWARDED', 'CANCELLED'))",
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không' CHECK(yeu_cau_tham_dinh_hsmt IN ('Có', 'Không') OR yeu_cau_tham_dinh_hsmt IS NULL)",
+            "yeu_cau_tham_dinh_hsmt_code": "TEXT NOT NULL DEFAULT 'UNDETERMINED' CHECK(yeu_cau_tham_dinh_hsmt_code IN ('UNDETERMINED', 'REQUIRED', 'NOT_REQUIRED'))",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
             "so_to_trinh_hsmt": "TEXT",
@@ -543,6 +544,7 @@ SCHEMA_DINH_NGHIA = {
             "trong_so_ky_thuat": "trongSoKyThuat",
             "is_thuoc": "isThuoc",
             "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
+            "yeu_cau_tham_dinh_hsmt_code": "yeuCauThamDinhHsmtCode",
             "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
             "ngay_bao_cao_tham_dinh_hsmt": "ngayBaoCaoThamDinhHsmt",
             "so_to_trinh_hsmt": "soToTrinhHsmt",
@@ -1473,6 +1475,9 @@ SCHEMA_DINH_NGHIA = {
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
             "goi_thau_id": "TEXT NOT NULL CHECK(trim(goi_thau_id) != '')",
+            "milestone_key": "TEXT NOT NULL CHECK(length(trim(milestone_key)) BETWEEN 1 AND 120)",
+            "instance_key": "TEXT NOT NULL DEFAULT '' CHECK(length(instance_key) <= 160)",
+            "source_entity_id": "TEXT NOT NULL DEFAULT '' CHECK(length(source_entity_id) <= 160)",
             "ma_nhom": "TEXT NOT NULL CHECK(ma_nhom IN ('I', 'II', 'III', 'IV', 'V'))",
             "ten_nhom": "TEXT NOT NULL CHECK(length(trim(ten_nhom)) BETWEEN 1 AND 160)",
             "ma_moc": "TEXT NOT NULL CHECK(length(trim(ma_moc)) BETWEEN 3 AND 10)",
@@ -1486,17 +1491,49 @@ SCHEMA_DINH_NGHIA = {
             "source_mode": "TEXT NOT NULL DEFAULT 'MANUAL' CHECK(source_mode IN ('AUTO', 'MANUAL'))",
             "is_optional": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_optional) = 'integer' AND is_optional IN (0, 1))",
             "trang_thai": "TEXT NOT NULL DEFAULT 'PENDING' CHECK(trang_thai IN ('PENDING', 'IN_PROGRESS', 'DONE', 'NOT_APPLICABLE'))",
-            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sort_order) = 'integer' AND sort_order BETWEEN 0 AND 499)",
-            "template_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(template_version) = 'integer' AND template_version >= 1)",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sort_order) = 'integer' AND sort_order BETWEEN 0 AND 9999)",
+            "template_version": "INTEGER NOT NULL DEFAULT 2 CHECK(typeof(template_version) = 'integer' AND template_version >= 1)",
             "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
         "unique_constraints": [
-            "UNIQUE(organization_id, goi_thau_id, ma_moc)"
+            "UNIQUE(organization_id, goi_thau_id, milestone_key, instance_key)"
         ],
         "foreign_keys": [
             "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE"
+        ]
+    },
+    "goi_thau_dieu_chinh_hsmt": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL CHECK(trim(goi_thau_id) != '')",
+            "sequence": "INTEGER NOT NULL CHECK(typeof(sequence) = 'integer' AND sequence > 0)",
+            "reason": "TEXT NOT NULL DEFAULT '' CHECK(length(reason) <= 2000)",
+            "submission_number": "TEXT NOT NULL DEFAULT '' CHECK(length(submission_number) <= 300)",
+            "submission_date": "TEXT CHECK(submission_date IS NULL OR date(submission_date) IS NOT NULL)",
+            "appraisal_report_number": "TEXT NOT NULL DEFAULT '' CHECK(length(appraisal_report_number) <= 300)",
+            "appraisal_report_date": "TEXT CHECK(appraisal_report_date IS NULL OR date(appraisal_report_date) IS NOT NULL)",
+            "approval_decision_number": "TEXT NOT NULL DEFAULT '' CHECK(length(approval_decision_number) <= 300)",
+            "approval_decision_date": "TEXT CHECK(approval_decision_date IS NULL OR date(approval_decision_date) IS NOT NULL)",
+            "published_at": "TEXT",
+            "archived_at": "TEXT",
+            "created_by_id": "TEXT",
+            "updated_by_id": "TEXT",
+            "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, goi_thau_id, sequence)",
+            "UNIQUE(organization_id, goi_thau_id, id)"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+            "FOREIGN KEY (updated_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
         ]
     },
     "pending_email_changes": {
@@ -1622,6 +1659,7 @@ ROW_VERSION_TABLES = frozenset({
     "hang_hoa_du_thau_nha_thau",
     "dot_xu_ly_phan_lo", "dot_xu_ly_phan_lo_chi_tiet",
     "nhom_phu_thuoc_phan_lo", "ho_so_nghiep_vu_lcnt",
+    "goi_thau_dieu_chinh_hsmt",
 })
 
 

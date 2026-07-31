@@ -4,6 +4,7 @@ import { getAppController } from "../app/controllerRef.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { getExcelPreviewFieldError } from "./excelPreviewValidation.js";
 import { isCompetitiveQuotationPackage } from "./packageAppraisal.js";
+import { normalizeEhsmtAppraisalRequirement } from "./timelineRuleEngine.js";
 import { escapeAttribute, escapeHtml } from "../shared/view_helpers.js";
 
 export function getExcelPreviewKeys(row = {}) {
@@ -339,10 +340,11 @@ export function populatePhathanhHsmtForm(gt, model) {
   const isCompetitiveQuotation = isCompetitiveQuotationPackage(gt);
   const appraisalSection = document.getElementById("phathanh-thamdinh-section");
   if (appraisalSection) setRuntimeStyle(appraisalSection, "display", isCompetitiveQuotation ? "none" : "block");
-  const hasAudit = !isCompetitiveQuotation && gt.yeuCauThamDinhHsmt === "Có";
+  const appraisalRequirement = isCompetitiveQuotation ? "NOT_REQUIRED" : normalizeEhsmtAppraisalRequirement(gt);
+  const hasAudit = appraisalRequirement === "REQUIRED";
   const auditRadios = document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]');
   auditRadios.forEach((radio) => {
-    radio.checked = radio.value === "Có" && hasAudit || radio.value === "Không" && !hasAudit;
+    radio.checked = radio.value === appraisalRequirement;
   });
   setVal("phathanh-sobaocaothamdinh", hasAudit ? gt.soBaoCaoThamDinhHsmt || "" : "");
   setVal("phathanh-ngaybaocaothamdinh", hasAudit && gt.ngayBaoCaoThamDinhHsmt ? model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : "");
@@ -450,9 +452,14 @@ export function getPhathanhHsmtFormData(model) {
     });
   });
   const auditRadioChecked = document.querySelector('input[name="phathanh-yeucauthamdinh"]:checked');
-  const yeuCauThamDinhHsmt = isCompetitiveQuotation ? "Không" : auditRadioChecked ? auditRadioChecked.value : "Không";
-  const soBaoCaoThamDinhHsmt = yeuCauThamDinhHsmt === "Có" ? getVal("phathanh-sobaocaothamdinh") : "";
-  const ngayBaoCaoThamDinhHsmt = yeuCauThamDinhHsmt === "Có" ? getVal("phathanh-ngaybaocaothamdinh") : "";
+  const yeuCauThamDinhHsmtCode = isCompetitiveQuotation ? "NOT_REQUIRED" : auditRadioChecked?.value || "UNDETERMINED";
+  const yeuCauThamDinhHsmt = yeuCauThamDinhHsmtCode === "REQUIRED" ? "Có" : yeuCauThamDinhHsmtCode === "NOT_REQUIRED" ? "Không" : "";
+  const soBaoCaoThamDinhHsmt = yeuCauThamDinhHsmtCode === "REQUIRED"
+    ? getVal("phathanh-sobaocaothamdinh")
+    : gt?.soBaoCaoThamDinhHsmt || "";
+  const ngayBaoCaoThamDinhHsmt = yeuCauThamDinhHsmtCode === "REQUIRED"
+    ? getVal("phathanh-ngaybaocaothamdinh")
+    : gt?.ngayBaoCaoThamDinhHsmt || "";
   return {
     id,
     maGoiThauVal,
@@ -465,6 +472,7 @@ export function getPhathanhHsmtFormData(model) {
     soToTrinhHsmt,
     ngayTrinhHsmt,
     yeuCauThamDinhHsmt,
+    yeuCauThamDinhHsmtCode,
     soBaoCaoThamDinhHsmt,
     ngayBaoCaoThamDinhHsmt,
     phanLoRows

@@ -543,6 +543,7 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_member ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_package ON goi_thau_moc_tien_do (organization_id, goi_thau_id, sort_order, ma_moc)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_status ON goi_thau_moc_tien_do (organization_id, trang_thai, ngay_du_kien)",
+        "CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_package ON goi_thau_dieu_chinh_hsmt (organization_id, goi_thau_id, sequence)",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
@@ -937,6 +938,7 @@ def assert_schema_contract(cursor) -> None:
     required_indexes = {
         "idx_goi_thau_moc_tien_do_package",
         "idx_goi_thau_moc_tien_do_status",
+        "idx_goi_thau_dieu_chinh_hsmt_package",
         "idx_pending_email_changes_expiry",
         "idx_document_export_capabilities_user",
         "idx_auth_sessions_one_active_per_user",

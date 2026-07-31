@@ -6,7 +6,13 @@ import { escapeHtml } from "../shared/view_helpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
-import { createInitialVersion, createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import {
+  createInitialVersion,
+  createNextVersion,
+  ensureVersionEhsmtAdjustment,
+  preparePackageSnapshot,
+  rememberSelectedVersion
+} from "../shared/VersionedEntityService.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import {
@@ -939,6 +945,7 @@ export async function handleGoiThauSubmit(e) {
         maGoiThau: inputCode,
         ...gtData
       }), { id: newGtId, timestamp });
+      ensureVersionEhsmtAdjustment(newPackageVersion);
       assignNewPackageLotIds(newPackageVersion);
       this.model.state.goithauhanghoa.push(...clonePackageGoodsForSnapshot(
         this.model.state.goithauhanghoa,

@@ -26,6 +26,7 @@ from scripts.env_utils import load_env
 
 RUNTIME_DIRECTORIES = {
     "backend": lambda path: path.suffix == ".py",
+    "shared": lambda path: path.suffix == ".json",
     "dist": lambda path: path.is_file(),
     "views": lambda path: path.is_file(),
     "deploy": lambda path: path.is_file(),
