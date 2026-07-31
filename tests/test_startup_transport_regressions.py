@@ -1,8 +1,42 @@
 import asyncio
 import json
+import os
+import subprocess
+import sys
 
 from backend import app as app_module
 from backend.http_middleware import ResponseIntegrityMiddleware
+
+
+def test_development_server_serves_shared_timeline_catalog():
+    probe = """
+import asyncio
+import httpx
+from backend.app import app
+
+async def main():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+        response = await client.get('/shared/timeline_rules.json')
+        print(response.status_code, response.headers.get('content-type', ''))
+        if response.status_code != 200 or response.json().get('catalogVersion') != 2:
+            raise SystemExit(1)
+
+asyncio.run(main())
+"""
+    environment = os.environ.copy()
+    environment.update({"APP_DEBUG": "True", "APP_ENV": "test"})
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=os.getcwd(),
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=15,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 def _response_headers_for(path: str) -> dict[str, str]:

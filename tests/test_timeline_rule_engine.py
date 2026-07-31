@@ -3,7 +3,11 @@ from pathlib import Path
 import subprocess
 
 from backend.db.schema import ROW_VERSION_TABLES, SCHEMA_DINH_NGHIA
-from backend.db.upgrades import DB_SCHEMA_VERSION, UPGRADES
+from backend.db.upgrades import (
+    DB_SCHEMA_VERSION,
+    UPGRADES,
+    _upgrade_to_v33_add_effective_timeline_model,
+)
 from backend.timeline.effective_timeline import build_effective_timeline
 from backend.sync.payload_validation import validate_sync_payload_shape
 
@@ -58,8 +62,39 @@ def test_timeline_schema_and_forward_only_migration():
     assert {"milestone_key", "instance_key", "source_entity_id"} <= set(timeline_columns)
     assert {"sequence", "approval_decision_number", "approval_decision_date", "row_version"} <= set(adjustment_columns)
     assert "goi_thau_dieu_chinh_hsmt" in ROW_VERSION_TABLES
-    assert DB_SCHEMA_VERSION >= 33
+    assert DB_SCHEMA_VERSION >= 34
     assert next(item for item in UPGRADES if item.version == 33).name == "add_effective_timeline_model"
+    assert next(item for item in UPGRADES if item.version == 34).name == "index_ehsmt_adjustment_actors"
+
+
+def test_v33_backfills_unrelated_fields_without_workspace_owner_triggers():
+    class WorkspaceGuardCursor:
+        def __init__(self):
+            self.trigger_enabled = {
+                "goi_thau": True,
+                "goi_thau_moc_tien_do": True,
+            }
+            self.backfilled = set()
+
+        def execute(self, statement, _params=None):
+            normalized = " ".join(statement.split())
+            for table_name in self.trigger_enabled:
+                trigger_name = f"trg_{table_name}_workspace_owner"
+                if normalized == f"ALTER TABLE {table_name} DISABLE TRIGGER {trigger_name}":
+                    self.trigger_enabled[table_name] = False
+                elif normalized == f"ALTER TABLE {table_name} ENABLE TRIGGER {trigger_name}":
+                    self.trigger_enabled[table_name] = True
+                elif normalized.startswith(f"UPDATE {table_name} "):
+                    if self.trigger_enabled[table_name]:
+                        raise RuntimeError("organization workspace does not exist")
+                    self.backfilled.add(table_name)
+            return self
+
+    cursor = WorkspaceGuardCursor()
+    _upgrade_to_v33_add_effective_timeline_model(cursor, None)
+
+    assert cursor.backfilled == {"goi_thau", "goi_thau_moc_tien_do"}
+    assert all(cursor.trigger_enabled.values())
 
 
 def test_appraisal_conflict_is_visible_without_overwriting_user_choice():

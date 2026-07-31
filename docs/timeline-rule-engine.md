@@ -14,7 +14,7 @@ Timeline dùng một seam thuần `buildEffectiveTimeline(packageData, relatedEn
 | `yeuCauThamDinhHsmt = Không`/`false` | `yeuCauThamDinhHsmtCode = NOT_REQUIRED` |
 | rỗng/null/chưa có | `yeuCauThamDinhHsmtCode = UNDETERMINED` |
 
-Migration v33 backfill khóa mốc cũ và thêm `goi_thau_dieu_chinh_hsmt`. Entry cũ không còn áp dụng chỉ bị ẩn; UI khi lưu giữ các entry bị ẩn để khôi phục.
+Migration v33 backfill khóa mốc cũ và thêm `goi_thau_dieu_chinh_hsmt`; migration v34 bổ sung index cho các FK actor audit. Entry cũ không còn áp dụng chỉ bị ẩn; UI khi lưu giữ các entry bị ẩn để khôi phục.
 
 ## Rule đã triển khai
 

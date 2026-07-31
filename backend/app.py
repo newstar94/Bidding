@@ -924,6 +924,9 @@ routes = [
 
 
     Mount("/dist", app=SafeStaticFiles(directory=dist_dir), name="dist"),
+    # The development ESM graph imports the shared JSON catalog directly;
+    # production keeps the mount as a safe fallback for uncached clients.
+    Mount("/shared", app=SafeStaticFiles(directory=os.path.join(project_root, "shared")), name="shared"),
 ]
 
 if APP_DEBUG:

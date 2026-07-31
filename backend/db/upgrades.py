@@ -1045,6 +1045,13 @@ def _upgrade_to_v33_add_effective_timeline_model(cursor, _context):
            ADD COLUMN IF NOT EXISTS yeu_cau_tham_dinh_hsmt_code TEXT
            NOT NULL DEFAULT 'UNDETERMINED'"""
     )
+    # These updates only backfill derived columns.  Older local/test databases
+    # can contain orphaned workspace rows, and the owner trigger must not turn
+    # an unrelated additive migration into a data-write failure.  PostgreSQL
+    # rolls DDL back with the migration transaction if the update fails.
+    cursor.execute(
+        "ALTER TABLE goi_thau DISABLE TRIGGER trg_goi_thau_workspace_owner"
+    )
     cursor.execute(
         """UPDATE goi_thau
            SET yeu_cau_tham_dinh_hsmt_code = CASE
@@ -1052,6 +1059,9 @@ def _upgrade_to_v33_add_effective_timeline_model(cursor, _context):
              WHEN lower(trim(COALESCE(yeu_cau_tham_dinh_hsmt, ''))) IN ('không', 'khong', 'false', '0', 'not_required') THEN 'NOT_REQUIRED'
              ELSE 'UNDETERMINED'
            END"""
+    )
+    cursor.execute(
+        "ALTER TABLE goi_thau ENABLE TRIGGER trg_goi_thau_workspace_owner"
     )
     cursor.execute(
         """ALTER TABLE goi_thau
@@ -1073,6 +1083,9 @@ def _upgrade_to_v33_add_effective_timeline_model(cursor, _context):
     cursor.execute(
         """ALTER TABLE goi_thau_moc_tien_do
            ADD COLUMN IF NOT EXISTS source_entity_id TEXT NOT NULL DEFAULT ''"""
+    )
+    cursor.execute(
+        "ALTER TABLE goi_thau_moc_tien_do DISABLE TRIGGER trg_goi_thau_moc_tien_do_workspace_owner"
     )
     cursor.execute(
         """UPDATE goi_thau_moc_tien_do
@@ -1130,6 +1143,9 @@ def _upgrade_to_v33_add_effective_timeline_model(cursor, _context):
            WHERE milestone_key = ''"""
     )
     cursor.execute(
+        "ALTER TABLE goi_thau_moc_tien_do ENABLE TRIGGER trg_goi_thau_moc_tien_do_workspace_owner"
+    )
+    cursor.execute(
         """ALTER TABLE goi_thau_moc_tien_do
            DROP CONSTRAINT IF EXISTS goi_thau_moc_tien_do_organization_id_goi_thau_id_ma_moc_key"""
     )
@@ -1181,6 +1197,19 @@ def _upgrade_to_v33_add_effective_timeline_model(cursor, _context):
     cursor.execute(
         """CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_package
            ON goi_thau_dieu_chinh_hsmt (organization_id, goi_thau_id, sequence)"""
+    )
+
+
+def _upgrade_to_v34_index_ehsmt_adjustment_actors(cursor, _context):
+    """Cover adjustment audit-actor foreign keys on existing databases."""
+
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_created_by
+           ON goi_thau_dieu_chinh_hsmt (created_by_id)"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_updated_by
+           ON goi_thau_dieu_chinh_hsmt (updated_by_id)"""
     )
 
 
@@ -1340,6 +1369,11 @@ UPGRADES = (
         33,
         "add_effective_timeline_model",
         _upgrade_to_v33_add_effective_timeline_model,
+    ),
+    DatabaseUpgrade(
+        34,
+        "index_ehsmt_adjustment_actors",
+        _upgrade_to_v34_index_ehsmt_adjustment_actors,
     ),
 )
 
