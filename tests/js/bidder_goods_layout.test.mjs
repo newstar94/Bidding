@@ -157,7 +157,7 @@ test("full bidder-goods table stays inside its scroll frame and keeps toolbar al
   }
 });
 
-test("bidder-goods search uses one compact focus ring without shifting layout", async () => {
+test("bidder-goods search uses one thin glowing focus ring without shifting layout", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -196,9 +196,9 @@ test("bidder-goods search uses one compact focus ring without shifting layout", 
       "focus must not resize the search control",
     );
     assert.equal(focused.outlineStyle, "solid");
-    assert.equal(focused.outlineWidth, "2px");
-    assert.equal(focused.outlineOffset, "2px");
-    assert.equal(focused.boxShadow, "none", "focus must not stack a box shadow beneath the outline");
+    assert.equal(focused.outlineWidth, "1px");
+    assert.equal(focused.outlineOffset, "0px");
+    assert.notEqual(focused.boxShadow, "none", "focus must retain the shared soft glow");
   } finally {
     await browser.close();
   }

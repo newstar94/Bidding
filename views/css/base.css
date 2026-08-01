@@ -55,7 +55,7 @@ a:hover {
 ):focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring) !important;
   outline-offset: var(--focus-ring-offset) !important;
-  box-shadow: none !important;
+  box-shadow: var(--focus-ring-glow) !important;
 }
 
 :where(

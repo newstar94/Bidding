@@ -1,0 +1,13 @@
+# Create the tunnel and credentials first, then replace only the deployment
+# identifiers below. The origin remains loopback-only.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: REPLACE_WITH_PRODUCTION_DOMAIN
+    service: http://127.0.0.1:8080
+    originRequest:
+      httpHostHeader: REPLACE_WITH_PRODUCTION_DOMAIN
+      connectTimeout: 5s
+      noHappyEyeballs: false
+  - service: http_status:404

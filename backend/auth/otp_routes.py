@@ -19,6 +19,7 @@ from backend.auth.auth_service import (
     get_client_ip,
     get_rate_limit_decision,
     RateLimitDecision,
+    RATE_LIMIT_MAX,
     rate_limit_response,
     generate_otp,
 )
@@ -43,11 +44,27 @@ from backend.shared.database_io import run_database_write
 from backend.shared.database_io import run_database_read
 from backend.auth.security_notifications import build_security_notification_tasks
 from backend.documents.word_defaults import ensure_personal_word_workspace
+from backend.security.turnstile import enforce_turnstile
 
 
 PASSWORD_RESET_REQUEST_MESSAGE = (
     "Nếu thông tin phù hợp với một tài khoản, chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu qua email."
 )
+TURNSTILE_VERIFY_AFTER_ATTEMPTS = max(
+    1,
+    int(os.environ.get("TURNSTILE_VERIFY_AFTER_ATTEMPTS", "3")),
+)
+
+
+def _verify_challenge_required(*decisions):
+    for decision in decisions:
+        if decision is None:
+            continue
+        remaining = max(0, int(getattr(decision, "remaining", RATE_LIMIT_MAX)))
+        attempts_including_current = max(0, RATE_LIMIT_MAX - remaining)
+        if max(0, attempts_including_current - 1) >= TURNSTILE_VERIFY_AFTER_ATTEMPTS:
+            return True
+    return False
 
 
 def _load_security_recipient(user_id):
@@ -112,9 +129,17 @@ async def register_api(request):
             "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
             "name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
             "email": {"type": "string", "required": True, "min_length": 3, "max_length": 320},
+            "turnstileToken": {"type": "string", "max_length": 2048},
         })
         if invalid:
             return invalid
+        challenge_error = await enforce_turnstile(
+            request,
+            data,
+            expected_action="register",
+        )
+        if challenge_error:
+            return challenge_error
         username = normalize_username(data.get('username'))
         password = data.get('password')
         try:
@@ -232,6 +257,7 @@ async def verify_email_api(request):
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
             "code": {"type": "string", "required": True, "min_length": 6, "max_length": 6},
+            "turnstileToken": {"type": "string", "max_length": 2048},
         })
         if invalid:
             return invalid
@@ -251,6 +277,18 @@ async def verify_email_api(request):
                 "Quá nhiều lần xác thực thất bại. Vui lòng thử lại sau.",
                 verify_ip_limit if not verify_ip_limit.allowed else verify_identity_limit,
             )
+
+        challenge_error = await enforce_turnstile(
+            request,
+            data,
+            expected_action="verify_email",
+            required=_verify_challenge_required(
+                verify_ip_limit,
+                verify_identity_limit,
+            ),
+        )
+        if challenge_error:
+            return challenge_error
 
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -288,6 +326,7 @@ async def resend_code_api(request):
             return json_error
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+            "turnstileToken": {"type": "string", "max_length": 2048},
         })
         if invalid:
             return invalid
@@ -306,6 +345,14 @@ async def resend_code_api(request):
                 "Quá nhiều yêu cầu gửi lại OTP. Vui lòng thử lại sau.",
                 resend_ip_limit if not resend_ip_limit.allowed else resend_identity_limit,
             )
+
+        challenge_error = await enforce_turnstile(
+            request,
+            data,
+            expected_action="resend_code",
+        )
+        if challenge_error:
+            return challenge_error
 
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -368,6 +415,7 @@ async def forgot_password_api(request):
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
             "email": {"type": "string", "required": True, "min_length": 3, "max_length": 320},
+            "turnstileToken": {"type": "string", "max_length": 2048},
         })
         if invalid:
             return invalid
@@ -386,6 +434,14 @@ async def forgot_password_api(request):
                 "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
                 forgot_ip_limit if not forgot_ip_limit.allowed else forgot_identity_limit,
             )
+
+        challenge_error = await enforce_turnstile(
+            request,
+            data,
+            expected_action="forgot_password",
+        )
+        if challenge_error:
+            return challenge_error
 
         reset_request = None
         if username and email:

@@ -3,22 +3,23 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 
-test("the shared focus token is at least two pixels and form focus keeps one compact outline", async () => {
+test("the shared focus token stays thin and adds a soft glow", async () => {
   const [variables, base, redesign] = await Promise.all([
     readFile(new URL("../../views/css/variables.css", import.meta.url), "utf8"),
     readFile(new URL("../../views/css/base.css", import.meta.url), "utf8"),
     readFile(new URL("../../views/css/ui-redesign.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(variables, /--focus-ring-width:\s*2px;/u);
-  assert.match(variables, /--focus-ring-offset:\s*2px;/u);
+  assert.match(variables, /--focus-ring-width:\s*1px;/u);
+  assert.match(variables, /--focus-ring-offset:\s*0;/u);
+  assert.match(variables, /--focus-ring-glow:\s*0 0 10px rgba\(49, 87, 232, 0\.18\);/u);
   assert.match(
     base,
-    /\):focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring\)[^}]*box-shadow:\s*none\s*!important/su,
+    /\):focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring\)[^}]*box-shadow:\s*var\(--focus-ring-glow\)\s*!important/su,
   );
   assert.match(
     redesign,
-    /\.form-control:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring\)[^}]*box-shadow:\s*none/su,
+    /\.form-control:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring\)[^}]*box-shadow:\s*var\(--focus-ring-glow\)/su,
   );
 });
 

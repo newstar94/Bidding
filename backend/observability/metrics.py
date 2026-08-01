@@ -67,6 +67,7 @@ _http_rate_limited: Counter[tuple[str, str]] = Counter()
 _http_duration_count: Counter[tuple[str, str]] = Counter()
 _http_duration_sum: Counter[tuple[str, str]] = Counter()
 _http_duration_buckets: Counter[tuple[str, str, float]] = Counter()
+_turnstile_validations: Counter[tuple[str, str]] = Counter()
 
 
 _artifact_verification_cache = {
@@ -117,6 +118,17 @@ def http_request_finished(method: object, route: object, status: int, duration_s
         for upper_bound in _HTTP_DURATION_BUCKETS:
             if duration <= upper_bound:
                 _http_duration_buckets[(method_label, route_label, upper_bound)] += 1
+
+
+def record_turnstile_validation(action: object, outcome: object) -> None:
+    """Record one low-cardinality bot-challenge outcome."""
+
+    action_label = _safe_label(action)
+    outcome_label = str(outcome or "unknown").strip().casefold()
+    if outcome_label not in {"passed", "required", "invalid", "unavailable"}:
+        outcome_label = "unknown"
+    with _lock:
+        _turnstile_validations[(action_label, outcome_label)] += 1
 
 
 def _escape_label(value: object) -> str:
@@ -589,6 +601,7 @@ def render_prometheus(application: object | None = None) -> str:
         http_duration_count = _http_duration_count.copy()
         http_duration_sum = _http_duration_sum.copy()
         http_duration_buckets = _http_duration_buckets.copy()
+        turnstile_validations = _turnstile_validations.copy()
 
     db_operations = recorded_metrics.database_operations
     db_busy = recorded_metrics.database_busy
@@ -638,6 +651,9 @@ def render_prometheus(application: object | None = None) -> str:
     _metric_header(lines, "biddingflow_http_rate_limited_total", "HTTP 429 responses returned by the application.", "counter")
     for (method, route), value in sorted(http_rate_limited.items()):
         lines.append(_sample("biddingflow_http_rate_limited_total", value, {"method": method, "route": route}))
+    _metric_header(lines, "biddingflow_turnstile_validations_total", "Turnstile validations by code-owned action and outcome.", "counter")
+    for (action, outcome), value in sorted(turnstile_validations.items()):
+        lines.append(_sample("biddingflow_turnstile_validations_total", value, {"action": action, "outcome": outcome}))
     _metric_header(lines, "biddingflow_http_request_duration_seconds", "HTTP request latency histogram.", "histogram")
     for method, route in sorted(http_duration_count):
         labels = {"method": method, "route": route}
@@ -910,6 +926,7 @@ def _reset_metrics_for_tests() -> None:
         _http_duration_count.clear()
         _http_duration_sum.clear()
         _http_duration_buckets.clear()
+        _turnstile_validations.clear()
         _artifact_verification_cache.update(
             {
                 "backup_directory": "",

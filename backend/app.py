@@ -63,6 +63,7 @@ if os.path.exists(env_path):
                 os.environ.setdefault(k.strip(), v.strip().strip("'").strip('"'))
 
 from backend.shared.paths import IMAGE_DIR, provision_system_word_templates
+from backend.security.turnstile import public_turnstile_config
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
@@ -241,6 +242,15 @@ def _build_index_response_payload():
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     html_content = html_content.replace("__GOOGLE_CLIENT_ID__", google_client_id)
+    turnstile = public_turnstile_config()
+    html_content = html_content.replace(
+        "__TURNSTILE_ENABLED__",
+        "true" if turnstile["enabled"] else "false",
+    )
+    html_content = html_content.replace(
+        "__TURNSTILE_SITE_KEY__",
+        html.escape(str(turnstile["siteKey"]), quote=True),
+    )
     etag = f'"{hashlib.sha256(html_content.encode("utf-8")).hexdigest()}"'
     if IS_PRODUCTION:
         with _compiled_html_lock:

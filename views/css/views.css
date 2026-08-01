@@ -2159,6 +2159,45 @@ table th {
 .auth-legal-consent + .btn-auth-submit {
   margin-top: 12px;
 }
+.auth-turnstile {
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.auth-turnstile[hidden] {
+  display: none;
+}
+.auth-turnstile-widget {
+  display: flex;
+  min-height: 65px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.auth-turnstile-status {
+  margin: 6px 4px 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  text-align: center;
+}
+.auth-turnstile[data-state="verified"] {
+  border-color: color-mix(in srgb, var(--success) 32%, var(--border-color));
+  background: var(--success-soft);
+}
+.auth-turnstile[data-state="error"] {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--border-color));
+  background: var(--danger-soft);
+}
+.auth-turnstile[data-state="error"] .auth-turnstile-status {
+  color: var(--danger);
+}
+.auth-turnstile + .btn-auth-submit {
+  margin-top: 12px;
+}
 .auth-legal-consent-oauth {
   margin-top: 8px;
 }
@@ -4976,7 +5015,7 @@ table th {
 .bidder-goods-table .form-control[aria-invalid="true"]:focus {
   outline: var(--focus-ring-width) solid var(--focus-ring) !important;
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none !important;
+  box-shadow: var(--focus-ring-glow) !important;
 }
 
 .bidder-goods-mapping-trigger.is-invalid,

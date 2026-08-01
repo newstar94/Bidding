@@ -61,6 +61,7 @@ from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.logging_utils import log_structured_event
+from backend.security.turnstile import edge_challenge_required, enforce_turnstile
 
 
 from backend.auth.auth_service import (
@@ -75,6 +76,7 @@ from backend.auth.auth_service import (
     SESSION_REMEMBER_EXPIRY_HOURS,
     SESSION_INACTIVITY_TIMEOUT_HOURS,
     generate_otp,
+    RATE_LIMIT_MAX,
 )
 
 
@@ -93,6 +95,23 @@ EMAIL_CHANGE_VERIFY_MAX = max(
 EMAIL_CHANGE_VERIFY_WINDOW_SECONDS = max(
     60, int(os.environ.get("EMAIL_CHANGE_VERIFY_WINDOW_SECONDS", "600"))
 )
+TURNSTILE_LOGIN_AFTER_ATTEMPTS = max(
+    1,
+    int(os.environ.get("TURNSTILE_LOGIN_AFTER_ATTEMPTS", "3")),
+)
+
+
+def _login_challenge_required(*decisions):
+    """Require a challenge only after the configured number of prior attempts."""
+
+    for decision in decisions:
+        if decision is None:
+            continue
+        remaining = max(0, int(getattr(decision, "remaining", RATE_LIMIT_MAX)))
+        attempts_including_current = max(0, RATE_LIMIT_MAX - remaining)
+        if max(0, attempts_including_current - 1) >= TURNSTILE_LOGIN_AFTER_ATTEMPTS:
+            return True
+    return False
 
 
 def _password_cpu_unavailable_response(request):
@@ -330,6 +349,7 @@ async def login_api(request):
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 320},
             "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
             "remember": {"type": "boolean"},
+            "turnstileToken": {"type": "string", "max_length": 2048},
         })
         if invalid:
             return invalid
@@ -351,6 +371,18 @@ async def login_api(request):
             return _database_lane_unavailable_response(request, write=True)
         if user_limit and not user_limit.allowed:
             return rate_limit_response("Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau.", user_limit)
+
+        challenge_error = await enforce_turnstile(
+            request,
+            data,
+            expected_action="login",
+            required=(
+                _login_challenge_required(ip_limit, user_limit)
+                or edge_challenge_required(request)
+            ),
+        )
+        if challenge_error:
+            return challenge_error
 
         async def record_failed_login():
             _record_failed_login(ip_rate_key, user_rate_key, request)

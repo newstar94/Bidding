@@ -50,9 +50,10 @@
   --aqua: #0797a6;
   --aqua-strong: #087d89;
   --aqua-soft: #e8fafb;
-  --focus-ring-width: 2px;
+  --focus-ring-width: 1px;
   --focus-ring: var(--brand);
-  --focus-ring-offset: 2px;
+  --focus-ring-offset: 0;
+  --focus-ring-glow: 0 0 10px rgba(49, 87, 232, 0.18);
   --bg-app: var(--canvas);
   --bg-sidebar: #ffffff;
   --bg-card: #ffffff;

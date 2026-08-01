@@ -1,0 +1,41 @@
+groups:
+  - name: biddingflow-security-availability
+    rules:
+      - alert: BiddingFlowTurnstileUnavailable
+        expr: sum(increase(biddingflow_turnstile_validations_total{outcome="unavailable"}[5m])) > 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Turnstile validation is unavailable
+          description: More than three Turnstile upstream failures occurred in five minutes.
+
+      - alert: BiddingFlowTurnstileInvalidSpike
+        expr: |
+          sum(increase(biddingflow_turnstile_validations_total{outcome="invalid"}[10m])) > 20
+          and
+          sum(increase(biddingflow_turnstile_validations_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Invalid Turnstile validations increased
+          description: Check WAF events, bot traffic and hostname/action configuration.
+
+      - alert: BiddingFlowRateLimitSpike
+        expr: sum(increase(biddingflow_http_rate_limited_total[5m])) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Application rate limiting increased
+          description: Confirm edge rate limiting is absorbing traffic before the origin.
+
+      - alert: BiddingFlowOverloadResponses
+        expr: sum(increase(biddingflow_http_requests_total{status="503"}[5m])) > 20
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: Origin is shedding load
+          description: Inspect worker queues, database capacity, event-loop lag and WAF traffic.

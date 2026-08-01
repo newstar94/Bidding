@@ -16,6 +16,10 @@ from backend.auth.email_delivery_service import (
     EmailOutboxConfigurationError,
     validate_email_outbox_configuration,
 )
+from backend.security.turnstile import (
+    TurnstileConfigurationError,
+    get_turnstile_config,
+)
 
 
 class StartupValidationError(RuntimeError):
@@ -106,6 +110,47 @@ def validate_database_connection_budget(
             f"reserved={budget['reserved']}, max_connections={server_max}."
         )
     return budget
+
+
+def validate_http_resource_limits(environ=None):
+    """Validate process-manager limits that bound HTTP/WebSocket overload."""
+
+    environ = os.environ if environ is None else environ
+    values = {
+        "limit_concurrency": _bounded_configuration_int(
+            environ, "UVICORN_LIMIT_CONCURRENCY", 256, 16, 100_000
+        ),
+        "backlog": _bounded_configuration_int(
+            environ, "UVICORN_BACKLOG", 512, 16, 65_535
+        ),
+        "timeout_keep_alive": _bounded_configuration_int(
+            environ, "UVICORN_TIMEOUT_KEEP_ALIVE", 5, 1, 30
+        ),
+        "max_requests": _bounded_configuration_int(
+            environ, "UVICORN_MAX_REQUESTS", 10_000, 1_000, 10_000_000
+        ),
+        "max_requests_jitter": _bounded_configuration_int(
+            environ, "UVICORN_MAX_REQUESTS_JITTER", 1_000, 0, 1_000_000
+        ),
+        "ws_max_size": _bounded_configuration_int(
+            environ, "UVICORN_WS_MAX_SIZE", 65_536, 1_024, 1_048_576
+        ),
+        "ws_max_queue": _bounded_configuration_int(
+            environ, "UVICORN_WS_MAX_QUEUE", 16, 1, 1_024
+        ),
+    }
+    application_ws_max = _bounded_configuration_int(
+        environ, "WEBSOCKET_MAX_FRAME_BYTES", 65_536, 1_024, 1_048_576
+    )
+    if values["ws_max_size"] != application_ws_max:
+        raise StartupValidationError(
+            "UVICORN_WS_MAX_SIZE must equal WEBSOCKET_MAX_FRAME_BYTES."
+        )
+    if values["max_requests_jitter"] > values["max_requests"]:
+        raise StartupValidationError(
+            "UVICORN_MAX_REQUESTS_JITTER cannot exceed UVICORN_MAX_REQUESTS."
+        )
+    return values
 
 
 def validate_secret_separation(environ=None) -> None:
@@ -418,6 +463,11 @@ def validate_startup_configuration(database, environ=None):
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
     is_production = app_env in {"prod", "production"}
+    try:
+        get_turnstile_config(environ)
+    except TurnstileConfigurationError as exc:
+        raise StartupValidationError(str(exc)) from exc
+    validate_http_resource_limits(environ)
     _validate_postgresql_configuration(database, environ, production=is_production)
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if is_production:

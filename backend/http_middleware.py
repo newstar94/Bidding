@@ -16,6 +16,18 @@ from backend.shared.origin_policy import (
 )
 
 
+TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
+
+
+def _turnstile_enabled():
+    return str(os.environ.get("TURNSTILE_ENABLED", "false")).strip().casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _websocket_source(origin):
     parsed = urlparse(origin)
     if not parsed.netloc:
@@ -33,6 +45,7 @@ def _connect_sources():
         *(_websocket_source(origin) for origin in get_allowed_websocket_origins()),
         "https://accounts.google.com",
         "https://oauth2.googleapis.com",
+        TURNSTILE_ORIGIN if _turnstile_enabled() else None,
     ]
     return " ".join(dict.fromkeys(value for value in values if value))
 
@@ -176,9 +189,10 @@ class SecurityHeadersMiddleware:
                 "interest-cohort=(), identity-credentials-get=(self)"
             )
             headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+            turnstile_source = f" {TURNSTILE_ORIGIN}" if _turnstile_enabled() else ""
             headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
-                "script-src 'self' https://accounts.google.com https://apis.google.com; "
+                f"script-src 'self' https://accounts.google.com https://apis.google.com{turnstile_source}; "
                 "style-src 'self' https://fonts.googleapis.com https://accounts.google.com; "
                 "style-src-elem 'self' https://fonts.googleapis.com https://accounts.google.com; "
                 # Google Identity Services sets one stable inline style on its own
@@ -188,7 +202,7 @@ class SecurityHeadersMiddleware:
                 "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
                 f"connect-src {_connect_sources()}; "
                 "font-src 'self' https://fonts.gstatic.com; "
-                "frame-src 'self' https://accounts.google.com; "
+                f"frame-src 'self' https://accounts.google.com{turnstile_source}; "
                 "worker-src 'self'; base-uri 'self'; object-src 'none'; "
                 "require-trusted-types-for 'script'; trusted-types biddingflow-html biddingflow-dompurify goog#html 'allow-duplicates';"
             )

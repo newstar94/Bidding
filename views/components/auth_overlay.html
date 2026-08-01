@@ -45,6 +45,11 @@
                 <label for="login-remember" class="bf-s-6a541adef9">Ghi nhớ đăng nhập</label>
             </div>
 
+            <div class="auth-turnstile" data-turnstile-action="login" hidden>
+                <div id="turnstile-login-widget" class="auth-turnstile-widget"></div>
+                <p class="auth-turnstile-status" role="status" aria-live="polite"></p>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit bf-s-b7aa1ec004">
                 <span>Đăng nhập</span>
                 <i data-lucide="arrow-right"></i>
@@ -147,6 +152,11 @@
             </div>
             <p class="auth-legal-consent">Bằng việc nhấn nút Đăng ký, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a> và <a href="/legal#security">Chính sách bảo mật</a> của chúng tôi.</p>
 
+            <div class="auth-turnstile" data-turnstile-action="register" hidden>
+                <div id="turnstile-register-widget" class="auth-turnstile-widget"></div>
+                <p class="auth-turnstile-status" role="status" aria-live="polite"></p>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit bf-s-b7aa1ec004">
                 <span>Đăng ký</span>
                 <i data-lucide="user-plus"></i>
@@ -182,6 +192,11 @@
                     <input type="email" id="forgot-email" required placeholder="Nhập email liên kết với tài khoản"
                         aria-describedby="forgot-error">
                 </div>
+            </div>
+
+            <div class="auth-turnstile" data-turnstile-action="forgot_password" hidden>
+                <div id="turnstile-forgot-password-widget" class="auth-turnstile-widget"></div>
+                <p class="auth-turnstile-status" role="status" aria-live="polite"></p>
             </div>
 
             <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit bf-s-b7aa1ec004">
@@ -259,11 +274,21 @@
                 </div>
             </div>
 
+            <div class="auth-turnstile" data-turnstile-action="verify_email" hidden>
+                <div id="turnstile-verify-email-widget" class="auth-turnstile-widget"></div>
+                <p class="auth-turnstile-status" role="status" aria-live="polite"></p>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit bf-s-47ccf7196d"
                >
                 <span>Xác nhận tài khoản</span>
                 <i data-lucide="check-circle"></i>
             </button>
+
+            <div class="auth-turnstile" data-turnstile-action="resend_code" hidden>
+                <div id="turnstile-resend-code-widget" class="auth-turnstile-widget"></div>
+                <p class="auth-turnstile-status" role="status" aria-live="polite"></p>
+            </div>
 
             <div class="bf-s-a8ceb2777c">
                 <button type="button" id="btn-resend-otp"

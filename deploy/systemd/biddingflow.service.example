@@ -1,0 +1,34 @@
+[Unit]
+Description=BiddingFlow web application
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=biddingflow
+Group=biddingflow
+WorkingDirectory=/opt/biddingflow/current
+EnvironmentFile=/etc/biddingflow/web.env
+ExecStart=/opt/biddingflow/venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers ${UVICORN_WORKERS} --no-proxy-headers --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY} --backlog ${UVICORN_BACKLOG} --timeout-keep-alive ${UVICORN_TIMEOUT_KEEP_ALIVE} --limit-max-requests ${UVICORN_MAX_REQUESTS} --limit-max-requests-jitter ${UVICORN_MAX_REQUESTS_JITTER} --ws-max-size ${UVICORN_WS_MAX_SIZE} --ws-max-queue ${UVICORN_WS_MAX_QUEUE}
+Restart=on-failure
+RestartSec=3s
+TimeoutStartSec=90s
+TimeoutStopSec=45s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/biddingflow
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

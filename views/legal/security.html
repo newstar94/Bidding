@@ -49,7 +49,7 @@
     </section>
     <section class="legal-clause">
         <h3><span>12</span>Rate limiting và chống lạm dụng</h3>
-        <p>Giới hạn tần suất được áp dụng cho đăng nhập, đăng ký, xác minh email, gửi lại mã, quên/đặt lại mật khẩu, đăng nhập Google, xác thực lại đặc quyền, một số chức năng tra cứu, xuất tài liệu, báo lỗi phía trình duyệt và kết nối đồng bộ. Hệ thống có thể từ chối tạm thời khi vượt ngưỡng hoặc khi kho giới hạn tần suất gặp lỗi ở luồng nhạy cảm.</p>
+        <p>Giới hạn tần suất được áp dụng cho đăng nhập, đăng ký, xác minh email, gửi lại mã, quên/đặt lại mật khẩu, đăng nhập Google, xác thực lại đặc quyền, một số chức năng tra cứu, xuất tài liệu, báo lỗi phía trình duyệt và kết nối đồng bộ. Khi được cấu hình, Turnstile bổ sung xác minh chống bot cho đăng ký, quên mật khẩu, gửi lại OTP và đăng nhập có dấu hiệu lạm dụng; token được kiểm tra tại máy chủ, gắn với hostname và đúng hành động. Hệ thống có thể từ chối tạm thời khi vượt ngưỡng, dịch vụ xác minh không khả dụng hoặc khi kho giới hạn tần suất gặp lỗi ở luồng nhạy cảm.</p>
     </section>
     <section class="legal-clause">
         <h3><span>13</span>Xử lý sự cố an toàn thông tin</h3>

@@ -1,0 +1,84 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP request rate by status",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(biddingflow_http_requests_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Application rate limiting",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (route) (rate(biddingflow_http_rate_limited_total[5m]))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Turnstile outcomes",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (action, outcome) (rate(biddingflow_turnstile_validations_total[5m]))",
+          "legendFormat": "{{action}} / {{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Origin overload responses",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (route) (rate(biddingflow_http_requests_total{status=\"503\"}[5m]))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Active origin requests",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(biddingflow_http_active_requests)",
+          "legendFormat": "active",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Edge correlation",
+      "type": "text",
+      "options": {
+        "mode": "markdown",
+        "content": "Correlate these origin metrics with Cloudflare Security Events, HTTP DDoS and rate-limiting analytics for the same time window."
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["biddingflow", "security", "turnstile", "ddos"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "BiddingFlow Security and Availability",
+  "uid": "biddingflow-security",
+  "version": 1
+}

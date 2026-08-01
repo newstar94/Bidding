@@ -14,6 +14,12 @@ import {
   setAuthSessionActive
 } from "./authRuntimeState.js";
 import { hideAuthOverlay, reloadWithInitLoader, showGoogleSignInState } from "./AuthUi.js";
+import {
+  isTurnstilePrepared,
+  prepareTurnstile,
+  requireTurnstileToken,
+  resetTurnstile
+} from "./TurnstileController.js";
 
 export function resolveSessionRequestedRole({ previousUser, previousRole, sessionUser } = {}) {
   const serverRole = String(sessionUser?.active_role || "").trim().toLowerCase();
@@ -29,8 +35,10 @@ export function resolveSessionRequestedRole({ previousUser, previousRole, sessio
   return sameAccount ? previousRole || null : null;
 }
 
-export function createRegistrationPayload({ username, password, name, email }) {
-  return { username, password, name, email };
+export function createRegistrationPayload({ username, password, name, email, turnstileToken = "" }) {
+  const payload = { username, password, name, email };
+  if (turnstileToken) payload.turnstileToken = turnstileToken;
+  return payload;
 }
 
 export function setupAuth() {
@@ -244,6 +252,12 @@ export function setupAuth() {
     if (formVerify) setRuntimeStyle(formVerify, "display", "none");
     document.querySelectorAll(".auth-error-msg, .auth-success-msg").forEach((el) => setRuntimeStyle(el, "display", "none"));
     setRuntimeStyle(showPane, "display", "block");
+    const challengeActions = {
+      "form-auth-register": "register",
+      "form-auth-forgot": "forgot_password"
+    };
+    const action = challengeActions[showPane?.id];
+    if (action) void prepareTurnstile(action);
   };
   let countdownInterval;
   const startOtpCountdown = () => {
@@ -347,15 +361,31 @@ export function setupAuth() {
     setRuntimeStyle(errorDiv, "display", "none");
     const remember = document.getElementById("login-remember")?.checked || false;
     try {
-      let res = await apiFetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, remember })
-      });
+      let turnstileToken = "";
+      if (isTurnstilePrepared("login")) {
+        const challenge = await requireTurnstileToken("login");
+        if (challenge.enabled && !challenge.token) {
+          return;
+        }
+        turnstileToken = challenge.token;
+      }
+      let res;
+      try {
+        res = await apiFetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password, remember, ...(turnstileToken ? { turnstileToken } : {}) })
+        });
+      } finally {
+        if (turnstileToken) resetTurnstile("login");
+      }
       let data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Đăng nhập không thành công!";
         setRuntimeStyle(errorDiv, "display", "block");
+        if (data.code === "BOT_CHALLENGE_REQUIRED") {
+          await prepareTurnstile("login");
+        }
         if (data.unverified && formVerify) {
           document.getElementById("verify-username-hidden").value = data.username || username;
           document.getElementById("verify-code").value = "";
@@ -460,16 +490,26 @@ export function setupAuth() {
       return;
     }
     try {
-      const res = await apiFetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createRegistrationPayload({
-          username,
-          password,
-          name: fullname,
-          email
-        }))
-      });
+      const challenge = await requireTurnstileToken("register");
+      if (challenge.enabled && !challenge.token) {
+        return;
+      }
+      let res;
+      try {
+        res = await apiFetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(createRegistrationPayload({
+            username,
+            password,
+            name: fullname,
+            email,
+            turnstileToken: challenge.token
+          }))
+        });
+      } finally {
+        if (challenge.token) resetTurnstile("register");
+      }
       const data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Đăng ký tài khoản thất bại!";
@@ -505,15 +545,29 @@ export function setupAuth() {
         return;
       }
       try {
-        const res = await apiFetch("/api/auth/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, code })
-        });
+        let turnstileToken = "";
+        if (isTurnstilePrepared("verify_email")) {
+          const challenge = await requireTurnstileToken("verify_email");
+          if (challenge.enabled && !challenge.token) return;
+          turnstileToken = challenge.token;
+        }
+        let res;
+        try {
+          res = await apiFetch("/api/auth/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, code, ...(turnstileToken ? { turnstileToken } : {}) })
+          });
+        } finally {
+          if (turnstileToken) resetTurnstile("verify_email");
+        }
         const data = await res.json();
         if (!res.ok) {
           errorDiv.textContent = data.error || "Xác thực OTP thất bại!";
           setRuntimeStyle(errorDiv, "display", "block");
+          if (data.code === "BOT_CHALLENGE_REQUIRED") {
+            await prepareTurnstile("verify_email");
+          }
           return;
         }
         successDiv.textContent = data.message || "Đang tải...";
@@ -543,11 +597,20 @@ export function setupAuth() {
         return;
       }
       try {
-        const res = await apiFetch("/api/auth/resend-code", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username })
-        });
+        const challenge = await requireTurnstileToken("resend_code");
+        if (challenge.enabled && !challenge.token) {
+          return;
+        }
+        let res;
+        try {
+          res = await apiFetch("/api/auth/resend-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, ...(challenge.token ? { turnstileToken: challenge.token } : {}) })
+          });
+        } finally {
+          if (challenge.token) resetTurnstile("resend_code");
+        }
         const data = await res.json();
         if (!res.ok) {
           errorDiv.textContent = data.error || "Không thể gửi lại mã OTP!";
@@ -572,11 +635,20 @@ export function setupAuth() {
     setRuntimeStyle(errorDiv, "display", "none");
     setRuntimeStyle(successDiv, "display", "none");
     try {
-      const res = await apiFetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email })
-      });
+      const challenge = await requireTurnstileToken("forgot_password");
+      if (challenge.enabled && !challenge.token) {
+        return;
+      }
+      let res;
+      try {
+        res = await apiFetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, email, ...(challenge.token ? { turnstileToken: challenge.token } : {}) })
+        });
+      } finally {
+        if (challenge.token) resetTurnstile("forgot_password");
+      }
       const data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Thông tin khôi phục không hợp lệ!";

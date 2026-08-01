@@ -1,0 +1,12 @@
+proxy_http_version 1.1;
+proxy_set_header Host $host;
+# NGINX has already replaced $remote_addr with the authenticated
+# CF-Connecting-IP value from the loopback-only cloudflared peer.
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Forwarded-Proto https;
+proxy_set_header X-Request-ID $request_id;
+proxy_connect_timeout 3s;
+proxy_send_timeout 60s;
+proxy_read_timeout 60s;
+proxy_request_buffering on;
+proxy_buffering on;

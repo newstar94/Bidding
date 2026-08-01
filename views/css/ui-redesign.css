@@ -133,12 +133,11 @@ label[for] {
   background: var(--brand-soft);
 }
 
-/* The selected item already has its own border. Keep keyboard focus visible
-   without stacking a second ring. */
+/* Keep keyboard focus crisp while adding only a soft, low-opacity halo. */
 .nav-btn:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring) !important;
   outline-offset: var(--focus-ring-offset) !important;
-  box-shadow: none !important;
+  box-shadow: var(--focus-ring-glow) !important;
 }
 
 .nav-btn.active {
@@ -392,7 +391,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .notification-read-all:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .notification-read-all:disabled {
@@ -452,7 +451,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .notification-item:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .notification-item-icon {
@@ -803,7 +802,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .assignment-transfer-mode input:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .assignment-transfer-mode span,
@@ -1135,7 +1134,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .form-control:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .form-group label {
@@ -1180,7 +1179,7 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 .form-group .radio-options .radio-option-input:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .form-group .error-text {
@@ -1791,7 +1790,7 @@ button:disabled {
 .dashboard-package-cell:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .dashboard-package-cell:active {
@@ -2454,7 +2453,7 @@ button:disabled {
 .assignment-transfer-dialog .bf-combobox-input:focus {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .assignment-transfer-dialog .bf-combobox-input:disabled {
@@ -2936,7 +2935,7 @@ body {
 :is(.btn, .btn-excel-action, .btn-add-row, .btn-text):focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 :is(.btn, .btn-excel-action, .btn-add-row, .btn-text):disabled,
@@ -3026,7 +3025,7 @@ body {
 :is(.action-btn, .btn-remove-file, .btn-del-row):focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: none;
+  box-shadow: var(--focus-ring-glow);
 }
 
 .modal-close {
