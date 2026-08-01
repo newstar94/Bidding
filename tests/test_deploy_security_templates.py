@@ -89,17 +89,75 @@ def test_turnstile_environment_templates_are_isolated_by_environment():
         assert environment["CORS_ORIGINS"] == f"https://{placeholder}"
         assert environment["ALLOWED_WS_ORIGINS"] == f"https://{placeholder}"
         assert environment["TURNSTILE_ALLOWED_HOSTNAMES"] == placeholder
-        assert environment["TURNSTILE_ENABLED"] == "true"
+        assert environment["TURNSTILE_ENABLED"] == "auto"
+        assert environment["TURNSTILE_SITE_KEY"] == ""
+        assert environment["TURNSTILE_SECRET_KEY"] == ""
         assert environment["TURNSTILE_SITE_KEY"] != TURNSTILE_TEST_SITE_KEY
         assert environment["TURNSTILE_SECRET_KEY"] != TURNSTILE_TEST_SECRET_KEY
-        assert (
-            environment["TURNSTILE_EDGE_CHALLENGE_HEADER"]
-            == "X-BiddingFlow-Edge-Risk"
-        )
-        assert environment["TURNSTILE_EDGE_CHALLENGE_VALUE"] == "challenge"
+        assert environment["TURNSTILE_EDGE_CHALLENGE_HEADER"] == ""
+        assert environment["TURNSTILE_EDGE_CHALLENGE_VALUE"] == ""
         assert "localhost" not in "\n".join(environment.values())
 
     assert production["TRUSTED_PROXY_CIDRS"] == "127.0.0.1/32,::1/128"
+
+
+def test_root_environment_example_is_an_optional_security_production_template():
+    path = ROOT / ".env.example"
+    content = path.read_text(encoding="utf-8")
+    environment = _parse_environment_template(path)
+    domain = "REPLACE_WITH_PRODUCTION_DOMAIN"
+
+    assert environment["APP_ENV"] == "production"
+    assert environment["APP_PUBLIC_URL"] == f"https://{domain}"
+    assert environment["ALLOWED_HOSTS"] == domain
+    assert environment["CORS_ORIGINS"] == f"https://{domain}"
+    assert environment["ALLOWED_WS_ORIGINS"] == f"https://{domain}"
+    assert environment["TURNSTILE_ALLOWED_HOSTNAMES"] == domain
+    assert environment["TURNSTILE_ENABLED"] == "auto"
+    assert environment["TURNSTILE_SITE_KEY"] == ""
+    assert environment["TURNSTILE_SECRET_KEY"] == ""
+    assert environment["TRUSTED_PROXY_CIDRS"] == "127.0.0.1/32,::1/128"
+    assert environment["DATABASE_URL"] == ""
+    assert environment["ADMIN_PASSWORD"] == ""
+    assert environment["SUPER_ADMIN_IP_ALLOWLIST"] == ""
+    assert environment["SECRET_ROTATION_CONFIRMED_AT"] == ""
+    for attestation in (
+        "DATABASE_PRIVATE_NETWORK_CONFIRMED",
+        "DATA_AT_REST_ENCRYPTION_CONFIRMED",
+        "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED",
+        "DOCUMENT_WORKER_SERVICE_ACCOUNT_CONFIRMED",
+        "DOCUMENT_WORKER_SHARED_STORAGE_CONFIRMED",
+    ):
+        assert environment[attestation] == "false"
+    assert "yourdomain.com" not in content
+
+
+def test_production_information_form_covers_every_external_input_without_secrets():
+    form = (ROOT / "docs/production-security-information.md").read_text(
+        encoding="utf-8"
+    )
+
+    for section in (
+        "Domain và môi trường",
+        "Hạ tầng máy chủ",
+        "PostgreSQL",
+        "Cloudflare zone và Tunnel",
+        "Cloudflare Turnstile",
+        "Baseline, WAF và cảnh báo",
+        "Ứng dụng, email và tài khoản khởi tạo",
+        "Lưu trữ, audit, restore và document worker",
+        "Secret và xác nhận vận hành",
+    ):
+        assert section in form
+    for required_value in (
+        "SHOW max_connections",
+        "Tunnel UUID",
+        "APP_INSTANCE_COUNT",
+        "TURNSTILE_SITE_KEY",
+        "TURNSTILE_SECRET_KEY",
+        "Không điền giá trị",
+    ):
+        assert required_value in form
 
 
 def test_systemd_template_passes_every_validated_uvicorn_limit():

@@ -6,6 +6,10 @@ Public production packaging is blocked until every fact in
 `npm run check:legal:production`; local development uses the warning-only
 `npm run check:legal` command.
 
+Phiếu thông tin cần thu thập trước khi điền production nằm tại
+`docs/production-security-information.md`. Không ghi secret thật vào phiếu;
+chỉ ghi tên và nơi lưu secret.
+
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.
 
 ## Preflight
@@ -15,8 +19,9 @@ Public production packaging is blocked until every fact in
 3. Verify `APP_PUBLIC_URL` HTTPS exact-origin, trusted proxy/host allowlist và cookie secure.
 4. Verify PostgreSQL backup có thể restore; ghi checkpoint migration.
 5. Verify document worker service account, DB role và Linux sandbox.
-6. Nếu bật Turnstile, tạo widget `Managed`, allow đúng hostname production,
-   lưu site/secret key trong secret manager và đặt `TURNSTILE_ENABLED=true`.
+6. Nếu dùng Turnstile, tạo widget `Managed`, allow đúng hostname production và
+   lưu site/secret key trong secret manager. `TURNSTILE_ENABLED=auto` tự bật khi
+   đủ cấu hình; dùng `true` chỉ khi muốn fail closed.
 7. Verify Cloudflare Tunnel là đường public duy nhất đến origin; firewall không
    mở các cổng loopback `8000`/`8080` ra Internet.
 
@@ -56,12 +61,11 @@ Các file này là phần bổ sung cho environment đầy đủ, không thay th
 scheme vào `ALLOWED_HOSTS`/`TURNSTILE_ALLOWED_HOSTNAMES` và không ghi key thật
 vào bản copy nằm trong repository.
 
-Staging/production overlay cũng cấu hình marker
-`X-BiddingFlow-Edge-Risk: challenge`. Chỉ bật hai biến
-`TURNSTILE_EDGE_CHALLENGE_*` sau khi Cloudflare Transform Rule đã overwrite
-header này đúng trên `POST /api/auth/login`; nếu không dùng edge signal thì đặt
-cả hai rỗng. Marker chỉ tăng mức bảo vệ, không phải credential và không thể
-giảm/bỏ challenge.
+Staging/production overlay để trống edge marker theo mặc định. Chỉ điền
+`TURNSTILE_EDGE_CHALLENGE_HEADER=X-BiddingFlow-Edge-Risk` và
+`TURNSTILE_EDGE_CHALLENGE_VALUE=challenge` sau khi Cloudflare Transform Rule đã
+overwrite header đúng trên `POST /api/auth/login`. Marker chỉ tăng mức bảo vệ,
+không phải credential và không thể giảm/bỏ challenge.
 
 ## Edge and process configuration
 
@@ -104,11 +108,12 @@ python scripts/check_security_deployment.py \
 Đặt `POSTGRES_MAX_CONNECTIONS` bằng giá trị đã đọc trực tiếp từ `SHOW
 max_connections` trên đúng PostgreSQL cluster production.
 
-Preflight fail closed nếu còn placeholder, domain/origin không đồng nhất,
-Turnstile bị tắt hoặc dùng test key, trusted proxy không chỉ là loopback,
-Cloudflare Tunnel bỏ qua NGINX, NGINX/Uvicorn lắng nghe public, thiếu resource
-limit hoặc tổng connection budget chạm giới hạn PostgreSQL. Output chỉ chứa
-domain và số liệu budget, không in site key/secret.
+Preflight fail closed nếu còn placeholder cốt lõi, domain/origin không đồng
+nhất, trusted proxy không chỉ là loopback, Cloudflare Tunnel bỏ qua NGINX,
+NGINX/Uvicorn lắng nghe public, thiếu resource limit hoặc tổng connection
+budget chạm giới hạn PostgreSQL. Turnstile `auto` chưa đủ key không làm
+preflight thất bại; output báo `TURNSTILE_AUTO_INCOMPLETE`. Nếu Turnstile đã
+active, preflight vẫn từ chối test key/hostname sai. Output không in key/secret.
 
 Preflight này kiểm tra cấu hình tĩnh. Nó không thay thế `cloudflared tunnel
 ingress validate`, `nginx -t`, `systemd-analyze verify`, firewall/DNS audit,
@@ -152,7 +157,7 @@ Reverse proxy chỉ chuyển traffic sau khi live/ready và smoke login/read-onl
 
 Sau khi tạo widget production, không sửa artifact: chỉ đặt
 `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
-`TURNSTILE_ALLOWED_HOSTNAMES=<domain>` và `TURNSTILE_ENABLED=true`, sau đó
+`TURNSTILE_ALLOWED_HOSTNAMES=<domain>` và `TURNSTILE_ENABLED=auto`, sau đó
 restart và smoke test đăng ký, quên mật khẩu, resend OTP và adaptive login.
 
 ## Rollback

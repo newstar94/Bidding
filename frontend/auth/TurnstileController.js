@@ -27,6 +27,12 @@ function shellFor(action) {
   return document.querySelector(`.auth-turnstile[data-turnstile-action="${action}"]`);
 }
 
+function preferredWidgetSize() {
+  return globalThis.matchMedia?.("(max-width: 359px)")?.matches
+    ? "compact"
+    : "flexible";
+}
+
 function updateStatus(action, state, message) {
   const shell = shellFor(action);
   if (!shell) return;
@@ -78,9 +84,11 @@ export async function prepareTurnstile(action) {
     const widgetId = api.render(target, {
       sitekey: config.siteKey,
       action,
-      theme: "light",
+      theme: "auto",
+      size: preferredWidgetSize(),
+      appearance: "interaction-only",
       callback() {
-        updateStatus(action, "verified", "Đã xác minh. Bạn có thể tiếp tục.");
+        updateStatus(action, "verified", "Đã xác minh");
       },
       "expired-callback"() {
         updateStatus(action, "error", "Phiên xác minh đã hết hạn. Vui lòng xác minh lại.");
@@ -90,7 +98,7 @@ export async function prepareTurnstile(action) {
       }
     });
     widgetIds.set(action, widgetId);
-    updateStatus(action, "ready", "Hoàn tất xác minh bảo mật để tiếp tục.");
+    updateStatus(action, "ready", "Xác minh để tiếp tục");
     return true;
   } catch (error) {
     updateStatus(action, "error", error?.message || "Không thể tải bước xác minh bảo mật.");
@@ -113,7 +121,7 @@ export function resetTurnstile(action) {
   const widgetId = widgetIds.get(action);
   if (widgetId === undefined || !globalThis.turnstile?.reset) return;
   globalThis.turnstile.reset(widgetId);
-  updateStatus(action, "ready", "Hoàn tất xác minh bảo mật để tiếp tục.");
+  updateStatus(action, "ready", "Xác minh để tiếp tục");
 }
 
 export async function requireTurnstileToken(action) {

@@ -91,9 +91,6 @@ def validate_production_environment(
         "CORS_ORIGINS",
         "ALLOWED_WS_ORIGINS",
         "TRUSTED_PROXY_CIDRS",
-        "TURNSTILE_SITE_KEY",
-        "TURNSTILE_SECRET_KEY",
-        "TURNSTILE_ALLOWED_HOSTNAMES",
     )
     if str(environment.get("APP_ENV", "")).strip().casefold() not in {
         "prod",
@@ -141,7 +138,6 @@ def validate_production_environment(
         "ALLOWED_HOSTS": [hostname],
         "CORS_ORIGINS": [exact_origin],
         "ALLOWED_WS_ORIGINS": [exact_origin],
-        "TURNSTILE_ALLOWED_HOSTNAMES": [hostname],
     }
     for name, expected_values in expected.items():
         actual = [value.casefold() for value in _csv(environment[name])]
@@ -149,6 +145,15 @@ def validate_production_environment(
             raise SecurityDeploymentError(
                 f"{name} must contain only the exact production origin/hostname."
             )
+    turnstile_hostnames = str(
+        environment.get("TURNSTILE_ALLOWED_HOSTNAMES", "")
+    ).strip()
+    if turnstile_hostnames and [
+        value.casefold() for value in _csv(turnstile_hostnames)
+    ] != [hostname]:
+        raise SecurityDeploymentError(
+            "TURNSTILE_ALLOWED_HOSTNAMES must contain only the exact production hostname."
+        )
 
     try:
         trusted_proxies = {
@@ -177,11 +182,10 @@ def validate_production_environment(
         )
     except (TurnstileConfigurationError, StartupValidationError) as exc:
         raise SecurityDeploymentError(str(exc)) from exc
-    if not turnstile.enabled:
-        raise SecurityDeploymentError("TURNSTILE_ENABLED=true is required.")
-
     return {
         "hostname": hostname,
+        "turnstile_enabled": turnstile.enabled,
+        "turnstile_diagnostic": turnstile.diagnostic_code,
         "resource_limits": resource_limits,
         "database_budget": database_budget,
     }
@@ -292,10 +296,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     database_budget = result["database_budget"]
+    turnstile_status = (
+        "active"
+        if result["turnstile_enabled"]
+        else result["turnstile_diagnostic"] or "disabled"
+    )
     print(
         "Security deployment preflight passed "
         f"for {hostname}; PostgreSQL budget "
-        f"{database_budget['total']}/{args.postgres_max_connections}."
+        f"{database_budget['total']}/{args.postgres_max_connections}; "
+        f"Turnstile {turnstile_status}."
     )
     return 0
 

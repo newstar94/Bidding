@@ -38,6 +38,64 @@ def test_local_configuration_accepts_official_test_keys():
     assert "secret_key" not in repr(config)
 
 
+def test_auto_mode_stays_disabled_until_every_required_value_is_present():
+    incomplete = {
+        "APP_ENV": "production",
+        "APP_PUBLIC_URL": "https://app.example.com",
+        "TURNSTILE_ENABLED": "auto",
+        "TURNSTILE_SITE_KEY": "configured-site-key",
+        "TURNSTILE_SECRET_KEY": "",
+        "TURNSTILE_ALLOWED_HOSTNAMES": "app.example.com",
+    }
+
+    config = turnstile.get_turnstile_config(incomplete)
+
+    assert config.enabled is False
+    assert config.mode == "auto"
+    assert config.diagnostic_code == "TURNSTILE_AUTO_INCOMPLETE"
+    assert turnstile.public_turnstile_config(incomplete) == {
+        "enabled": False,
+        "siteKey": "",
+    }
+
+
+def test_auto_mode_activates_only_after_complete_valid_configuration():
+    environment = {
+        "APP_ENV": "production",
+        "APP_PUBLIC_URL": "https://app.example.com",
+        "TURNSTILE_ENABLED": "auto",
+        "TURNSTILE_SITE_KEY": "configured-site-key",
+        "TURNSTILE_SECRET_KEY": "configured-secret-key",
+        "TURNSTILE_ALLOWED_HOSTNAMES": "app.example.com",
+    }
+
+    config = turnstile.get_turnstile_config(environment)
+
+    assert config.enabled is True
+    assert config.mode == "auto"
+    assert config.diagnostic_code == ""
+
+
+def test_auto_mode_disables_invalid_configuration_without_stopping_startup():
+    environment = {
+        **LOCAL_TEST_ENV,
+        "APP_ENV": "production",
+        "APP_PUBLIC_URL": "https://app.example.com",
+        "TURNSTILE_ENABLED": "auto",
+    }
+
+    config = turnstile.get_turnstile_config(environment)
+
+    assert config.enabled is False
+    assert config.mode == "auto"
+    assert config.diagnostic_code == "TURNSTILE_AUTO_INVALID"
+
+
+def test_unknown_turnstile_mode_is_rejected_instead_of_silently_disabling():
+    with pytest.raises(turnstile.TurnstileConfigurationError, match="false, auto, or true"):
+        turnstile.get_turnstile_config({"TURNSTILE_ENABLED": "tru"})
+
+
 @pytest.mark.parametrize(
     "overrides, message",
     [
@@ -433,6 +491,28 @@ def test_index_bootstrap_exposes_only_public_turnstile_configuration(monkeypatch
         in html_content
     )
     assert LOCAL_TEST_ENV["TURNSTILE_SECRET_KEY"] not in html_content
+    assert "__TURNSTILE_" not in html_content
+
+
+def test_index_bootstrap_runs_normally_with_incomplete_auto_configuration(
+    monkeypatch,
+):
+    from backend import app as app_module
+
+    monkeypatch.setenv("TURNSTILE_ENABLED", "auto")
+    monkeypatch.setenv("TURNSTILE_SITE_KEY", "")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", "")
+    monkeypatch.setenv("TURNSTILE_ALLOWED_HOSTNAMES", "")
+    monkeypatch.setattr(app_module, "_compiled_html_cache", None)
+    monkeypatch.setattr(app_module, "_compiled_html_cache_signature", None)
+    monkeypatch.setattr(app_module, "_index_response_cache", None)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+
+    html_content, _etag = app_module._build_index_response_payload()
+
+    assert 'name="bf-turnstile-enabled" content="false"' in html_content
+    assert 'name="bf-turnstile-site-key" content=""' in html_content
     assert "__TURNSTILE_" not in html_content
 
 

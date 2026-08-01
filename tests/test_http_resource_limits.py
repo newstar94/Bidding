@@ -39,8 +39,18 @@ def test_http_resource_limits_reject_restart_jitter_above_request_budget():
         })
 
 
-def _security_headers(monkeypatch, enabled):
-    monkeypatch.setenv("TURNSTILE_ENABLED", "true" if enabled else "false")
+def _security_headers(monkeypatch, mode, *, configured=True):
+    monkeypatch.setenv("TURNSTILE_ENABLED", mode)
+    values = {
+        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+        "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000AA",
+        "TURNSTILE_ALLOWED_HOSTNAMES": "localhost,127.0.0.1",
+    }
+    for name, value in values.items():
+        if configured:
+            monkeypatch.setenv(name, value)
+        else:
+            monkeypatch.delenv(name, raising=False)
     messages = []
 
     async def inner_app(_scope, _receive, send):
@@ -73,9 +83,20 @@ def _security_headers(monkeypatch, enabled):
 
 
 def test_csp_allows_turnstile_only_when_feature_is_enabled(monkeypatch):
-    enabled = _security_headers(monkeypatch, True)["content-security-policy"]
-    disabled = _security_headers(monkeypatch, False)["content-security-policy"]
+    enabled = _security_headers(monkeypatch, "true")["content-security-policy"]
+    disabled = _security_headers(monkeypatch, "false")["content-security-policy"]
 
     assert "https://challenges.cloudflare.com" in enabled
     assert "https://challenges.cloudflare.com" not in disabled
 
+
+def test_csp_tracks_auto_mode_activation(monkeypatch):
+    active = _security_headers(monkeypatch, "auto")["content-security-policy"]
+    inactive = _security_headers(
+        monkeypatch,
+        "auto",
+        configured=False,
+    )["content-security-policy"]
+
+    assert "https://challenges.cloudflare.com" in active
+    assert "https://challenges.cloudflare.com" not in inactive

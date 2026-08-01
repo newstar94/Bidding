@@ -25,7 +25,13 @@ async def main():
 asyncio.run(main())
 """
     environment = os.environ.copy()
-    environment.update({"APP_DEBUG": "True", "APP_ENV": "test"})
+    environment.update(
+        {
+            "APP_DEBUG": "True",
+            "APP_ENV": "test",
+            "ALLOWED_HOSTS": "testserver",
+        }
+    )
     completed = subprocess.run(
         [sys.executable, "-c", probe],
         cwd=os.getcwd(),

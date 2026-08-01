@@ -41,6 +41,33 @@ export function createRegistrationPayload({ username, password, name, email, tur
   return payload;
 }
 
+const PASSWORD_MISMATCH_MESSAGE = "Mật khẩu nhập lại không khớp.";
+
+export function updatePasswordConfirmationState(
+  passwordInput,
+  confirmationInput,
+  errorElement,
+  { force = false } = {},
+) {
+  if (!passwordInput || !confirmationInput || !errorElement) return true;
+  const password = String(passwordInput.value || "");
+  const confirmation = String(confirmationInput.value || "");
+  const comparisonReady = Boolean(confirmation)
+    && (force || confirmation.length >= password.length);
+  const mismatch = comparisonReady && password !== confirmation;
+
+  confirmationInput.setCustomValidity(mismatch ? PASSWORD_MISMATCH_MESSAGE : "");
+  if (mismatch) {
+    confirmationInput.setAttribute("aria-invalid", "true");
+  } else {
+    confirmationInput.removeAttribute("aria-invalid");
+  }
+  confirmationInput.closest(".form-group")?.classList.toggle("invalid", mismatch);
+  errorElement.textContent = mismatch ? PASSWORD_MISMATCH_MESSAGE : "";
+  errorElement.hidden = !mismatch;
+  return !mismatch;
+}
+
 export function setupAuth() {
   const overlay = document.getElementById("auth-overlay");
   if (!overlay) return;
@@ -49,6 +76,9 @@ export function setupAuth() {
   const formForgot = document.getElementById("form-auth-forgot");
   const formReset = document.getElementById("form-auth-reset");
   const formVerify = document.getElementById("form-auth-verify");
+  const registerPasswordInput = document.getElementById("register-password");
+  const registerConfirmPasswordInput = document.getElementById("register-confirm-password");
+  const registerConfirmPasswordError = document.getElementById("register-confirm-password-error");
   let resetToken = window.location.pathname === "/reset-password"
     ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token") || ""
     : "";
@@ -306,6 +336,26 @@ export function setupAuth() {
     e.preventDefault();
     switchForm(formLogin);
   };
+  if (registerPasswordInput && registerConfirmPasswordInput && registerConfirmPasswordError) {
+    const updatePasswordMatch = (force = false) => updatePasswordConfirmationState(
+      registerPasswordInput,
+      registerConfirmPasswordInput,
+      registerConfirmPasswordError,
+      { force },
+    );
+    registerConfirmPasswordInput.addEventListener("input", () => {
+      updatePasswordMatch(
+        registerConfirmPasswordInput.value.length >= registerPasswordInput.value.length,
+      );
+    });
+    registerConfirmPasswordInput.addEventListener("blur", () => updatePasswordMatch(true));
+    registerPasswordInput.addEventListener("input", () => {
+      updatePasswordMatch(Boolean(registerConfirmPasswordInput.value));
+    });
+    formRegister.addEventListener("reset", () => {
+      queueMicrotask(() => updatePasswordMatch(false));
+    });
+  }
   if (btnLogout) {
     btnLogout.onclick = async () => {
       const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
@@ -485,8 +535,13 @@ export function setupAuth() {
       return;
     }
     if (password !== confirmPassword) {
-      errorDiv.textContent = "Nhập lại mật khẩu không trùng khớp!";
-      setRuntimeStyle(errorDiv, "display", "block");
+      updatePasswordConfirmationState(
+        registerPasswordInput,
+        registerConfirmPasswordInput,
+        registerConfirmPasswordError,
+        { force: true },
+      );
+      registerConfirmPasswordInput?.focus();
       return;
     }
     try {

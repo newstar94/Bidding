@@ -57,6 +57,25 @@ def test_production_environment_preflight_binds_domain_and_resource_budgets():
     assert result["database_budget"]["application"] == 36
     assert result["database_budget"]["total"] == 56
     assert result["resource_limits"]["limit_concurrency"] == 256
+    assert result["turnstile_enabled"] is True
+
+
+def test_production_preflight_allows_auto_mode_without_turnstile_credentials():
+    environment = {
+        **PRODUCTION_ENVIRONMENT,
+        "TURNSTILE_ENABLED": "auto",
+        "TURNSTILE_SITE_KEY": "",
+        "TURNSTILE_SECRET_KEY": "",
+        "TURNSTILE_ALLOWED_HOSTNAMES": "",
+    }
+
+    result = preflight.validate_production_environment(
+        environment,
+        postgres_max_connections=100,
+    )
+
+    assert result["turnstile_enabled"] is False
+    assert result["turnstile_diagnostic"] == "TURNSTILE_AUTO_INCOMPLETE"
 
 
 @pytest.mark.parametrize(

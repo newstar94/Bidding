@@ -96,6 +96,27 @@ try {
       throw new Error(`Unknown Turnstile E2E expectation: ${expectation}`);
     }
   }
+  const shellPresentation = await challenge.evaluate((element) => {
+    const shellStyle = getComputedStyle(element);
+    const statusElement = element.querySelector(".auth-turnstile-status");
+    const statusRect = statusElement?.getBoundingClientRect();
+    return {
+      backgroundColor: shellStyle.backgroundColor,
+      borderTopWidth: shellStyle.borderTopWidth,
+      paddingTop: shellStyle.paddingTop,
+      statusHeight: statusRect?.height || 0,
+    };
+  });
+  if (
+    shellPresentation.backgroundColor !== "rgba(0, 0, 0, 0)"
+    || shellPresentation.borderTopWidth !== "0px"
+    || shellPresentation.paddingTop !== "0px"
+  ) {
+    throw new Error("Turnstile shell must not render a nested card background or border.");
+  }
+  if (shellPresentation.statusHeight > 32) {
+    throw new Error("Turnstile status must remain a compact single-line indicator.");
+  }
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error("Turnstile causes horizontal overflow on a mobile viewport.");
   const accessibility = await new AxeBuilder({ page }).include(".auth-card").analyze();

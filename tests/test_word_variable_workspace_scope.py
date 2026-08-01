@@ -211,6 +211,7 @@ def test_email_registration_bootstraps_word_variables_before_commit(monkeypatch)
     from backend.auth import otp_routes
 
     events = []
+    monkeypatch.setenv("TURNSTILE_ENABLED", "false")
 
     class Cursor:
         def __init__(self):

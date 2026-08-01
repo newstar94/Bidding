@@ -43,7 +43,8 @@
 
 1. Chuyển rule edge mới nhất về log/Managed Challenge trước khi xóa.
 2. Thu hẹp rule theo hostname, path và method; kiểm tra verified bots/monitoring allowlist.
-3. Nếu cần rollback Turnstile, đặt `TURNSTILE_ENABLED=false` và restart cùng artifact; application rate limit vẫn phải bật.
+3. Nếu cần rollback Turnstile, đặt `TURNSTILE_ENABLED=auto` rồi bỏ key, hoặc
+   đặt `false`, và restart cùng artifact; application rate limit vẫn phải bật.
 4. Không mở origin ra Internet trong quá trình rollback.
 
 ## Xác nhận phục hồi

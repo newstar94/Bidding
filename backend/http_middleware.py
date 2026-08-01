@@ -20,12 +20,15 @@ TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
 
 
 def _turnstile_enabled():
-    return str(os.environ.get("TURNSTILE_ENABLED", "false")).strip().casefold() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    from backend.security.turnstile import (
+        TurnstileConfigurationError,
+        get_turnstile_config,
+    )
+
+    try:
+        return get_turnstile_config().enabled
+    except TurnstileConfigurationError:
+        return False
 
 
 def _websocket_source(origin):

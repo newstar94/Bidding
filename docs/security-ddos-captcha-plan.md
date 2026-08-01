@@ -129,12 +129,13 @@ Uvicorn: concurrency/backlog/keep-alive limits
 
 - [x] Hoàn thiện toàn bộ backend, frontend, CSP, feature flag và test từ local; không để logic Turnstile phụ thuộc vào domain được hard-code.
 - [x] Mọi môi trường dùng cùng một code path; chỉ khác giá trị cấu hình và credential.
-- [x] Khi đưa lên production không sửa code: chỉ tạo widget thật, thêm hostname, cấp key production và bật feature flag.
+- [x] Khi đưa lên production không sửa code: auto mode tự bật khi có widget,
+  hostname và key production hợp lệ; thiếu cấu hình thì CAPTCHA giữ trạng thái tắt.
 - [x] Tách riêng cấu hình local/test, staging và production để key hoặc hostname không bị dùng chéo.
 
 #### Chính sách áp dụng
 
-- [x] Luôn yêu cầu Turnstile Managed cho:
+- [x] Khi Turnstile active, luôn yêu cầu Managed challenge cho:
   - `POST /api/auth/register`
   - `POST /api/auth/forgot-password`
   - `POST /api/auth/resend-code`
@@ -157,8 +158,10 @@ Uvicorn: concurrency/backlog/keep-alive limits
 - [x] Cấu hình mặc định an toàn:
   - Local/test: dùng test key chính thức, `TURNSTILE_ALLOWED_HOSTNAMES=localhost,127.0.0.1`.
   - Staging: dùng widget/key riêng và chỉ allow hostname staging.
-  - Production: ứng dụng từ chối khởi động nếu Turnstile đã bật nhưng thiếu site key, secret key hoặc hostname hợp lệ.
-- [x] Cho phép `TURNSTILE_ENABLED=false` ở local khi phát triển phần không liên quan; test bảo mật bắt buộc chạy với Turnstile bật.
+  - Production: `auto` giữ CAPTCHA tắt khi thiếu cấu hình; `true` từ chối
+    khởi động nếu thiếu site key, secret key hoặc hostname hợp lệ.
+- [x] Hỗ trợ `TURNSTILE_ENABLED=false`, `auto` và `true`: auto là tùy chọn,
+  true là fail-closed; test bảo mật bao phủ cả ba chế độ.
 - [x] Gửi token đến Siteverify từ backend; không đưa secret key xuống client.
 - [x] Kiểm tra đồng thời `success`, `hostname` và `action` tương ứng như `register`, `login`, `forgot_password`, `resend_code`.
 - [x] Giới hạn token tối đa 2.048 ký tự; không ghi token hoặc secret vào log.
@@ -188,13 +191,14 @@ Uvicorn: concurrency/backlog/keep-alive limits
 - [x] Kiểm tra CAPTCHA không xuất hiện ở lần login hợp lệ đầu tiên.
 - [x] Kiểm tra người dùng dùng bàn phím, screen reader, mạng chậm và khi JavaScript challenge tải lỗi.
 
-#### Checklist kích hoạt production — không sửa code
+#### Checklist kích hoạt Turnstile production (tùy chọn) — không sửa code
 
 - [ ] Sao chép template production và thay các placeholder domain/tunnel; không sửa artifact ứng dụng.
 - [ ] Tạo Turnstile Managed widget production trong Cloudflare.
 - [ ] Thêm chính xác domain production vào Hostname Management; không thêm `localhost`, wildcard hoặc hostname staging.
 - [ ] Đưa `TURNSTILE_SITE_KEY` và `TURNSTILE_SECRET_KEY` production vào secret manager/environment của dịch vụ.
-- [ ] Đặt `APP_PUBLIC_URL=https://<domain>`, allowed host/proxy, `TURNSTILE_ALLOWED_HOSTNAMES=<domain>` và `TURNSTILE_ENABLED=true`.
+- [ ] Đặt `APP_PUBLIC_URL=https://<domain>`, allowed host/proxy,
+  `TURNSTILE_ALLOWED_HOSTNAMES=<domain>` và cấp key; auto mode sẽ kích hoạt.
 - [ ] Tạo Cloudflare Tunnel, thay tunnel UUID/credential, tạo DNS route và xác nhận origin chỉ lắng nghe trên loopback.
 - [ ] Deploy/restart theo quy trình chuẩn, chạy smoke test register, forgot password, resend OTP và adaptive login.
 - [ ] Xác nhận Siteverify success/failure và cảnh báo hoạt động trước khi mở toàn bộ traffic.
@@ -236,7 +240,8 @@ Uvicorn: concurrency/backlog/keep-alive limits
 ### Rollback
 
 - Chuyển WAF/rate-limit rule về log thay vì xóa rule.
-- Tắt yêu cầu Turnstile bằng feature flag nhưng giữ application rate limit.
+- Đặt Turnstile về `auto` và bỏ key, hoặc đặt `false`; application rate limit
+  vẫn hoạt động.
 - Không mở firewall trực tiếp ra Internet để xử lý sự cố CAPTCHA.
 - Nếu CDN/WAF gặp sự cố, dùng tuyến dự phòng đã chuẩn bị; không công khai origin IP chưa được bảo vệ.
 
@@ -255,8 +260,8 @@ Uvicorn: concurrency/backlog/keep-alive limits
 
 Đã hoàn thành phần có thể kiểm chứng trước khi có domain production:
 
-- Backend Turnstile fail-closed, feature flag, action/hostname binding, test-key
-  isolation và startup validation.
+- Backend Turnstile hỗ trợ optional auto-mode và strict fail-closed mode,
+  action/hostname binding, test-key isolation và startup validation.
 - Bảo vệ register, forgot password, resend OTP; adaptive challenge cho login và
   verify email sau số lần thử cấu hình được.
 - Login nhận marker rủi ro escalation-only từ edge để yêu cầu challenge ngay;
@@ -272,6 +277,8 @@ Uvicorn: concurrency/backlog/keep-alive limits
 - Overload/recovery harness có guard loopback/remote, thống kê status và
   p50/p95/p99, kiểm tra shedding `429/503` và yêu cầu readiness phục hồi ba lần
   liên tiếp mà không restart.
+- Phiếu `docs/production-security-information.md` liệt kê domain, topology,
+  Cloudflare, PostgreSQL, baseline, owner và vị trí secret còn phải cung cấp.
 
 Khi chốt production, các file cần điền giá trị triển khai là:
 
@@ -298,9 +305,9 @@ npm run test:security-deploy
 
 Kết quả kiểm chứng local gần nhất ngày 2026-08-01:
 
-- `npm test`: 294 Python tests và 256 JavaScript tests đạt.
+- `npm test`: 303 Python tests và 256 JavaScript tests đạt.
 - `npm run build:secure`: secure build và 41 bundle checks đạt.
-- `npm run test:security-deploy`: 63 contract tests cùng 5 kịch bản browser
+- `npm run test:security-deploy`: 72 contract tests cùng 5 kịch bản browser
   Turnstile đạt.
 - Python quality, security lint và frontend debt gate đạt.
 

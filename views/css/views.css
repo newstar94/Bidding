@@ -2104,6 +2104,30 @@ table th {
 .auth-input-wrapper input[type=password] {
   padding-right: 48px;
 }
+.auth-field-error {
+  display: flex;
+  margin: 1px 2px 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--danger);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.auth-field-error::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: currentcolor;
+  content: "";
+}
+.auth-field-error[hidden] {
+  display: none;
+}
+.form-group.invalid .auth-input-wrapper > :is(i, svg) {
+  color: var(--danger);
+}
 .btn-auth-submit {
   height: 46px;
   font-size: 0.95rem;
@@ -2160,39 +2184,80 @@ table th {
   margin-top: 12px;
 }
 .auth-turnstile {
+  display: grid;
   width: 100%;
   margin-top: 14px;
-  padding: 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-subtle);
+  justify-items: center;
+  gap: 7px;
 }
 .auth-turnstile[hidden] {
   display: none;
 }
 .auth-turnstile-widget {
-  display: flex;
-  min-height: 65px;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+  display: grid;
+  width: min(100%, 420px);
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: visible;
+  border-radius: var(--radius-md);
+}
+.auth-turnstile-widget:empty {
+  display: none;
+}
+.auth-turnstile-widget > div,
+.auth-turnstile-widget iframe {
+  max-width: 100%;
+}
+.auth-turnstile-widget iframe {
+  display: block;
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
 }
 .auth-turnstile-status {
-  margin: 6px 4px 0;
+  display: inline-flex;
+  min-height: 24px;
+  margin: 0;
+  padding: 3px 9px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
   color: var(--text-muted);
-  font-size: 0.74rem;
-  line-height: 1.45;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.3;
   text-align: center;
 }
-.auth-turnstile[data-state="verified"] {
-  border-color: color-mix(in srgb, var(--success) 32%, var(--border-color));
-  background: var(--success-soft);
+.auth-turnstile-status:empty {
+  display: none;
 }
-.auth-turnstile[data-state="error"] {
-  border-color: color-mix(in srgb, var(--danger) 32%, var(--border-color));
-  background: var(--danger-soft);
+.auth-turnstile-status::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: currentcolor;
+  content: "";
+  opacity: 0.72;
+}
+.auth-turnstile[data-state="loading"] .auth-turnstile-status,
+.auth-turnstile[data-state="ready"] .auth-turnstile-status {
+  border-color: color-mix(in srgb, var(--primary) 16%, transparent);
+  background: color-mix(in srgb, var(--primary-soft) 72%, transparent);
+  color: var(--primary);
+}
+.auth-turnstile[data-state="verified"] .auth-turnstile-status {
+  border-color: color-mix(in srgb, var(--success) 18%, transparent);
+  background: color-mix(in srgb, var(--success-soft) 78%, transparent);
+  color: var(--success);
 }
 .auth-turnstile[data-state="error"] .auth-turnstile-status {
+  border-color: color-mix(in srgb, var(--danger) 18%, transparent);
+  background: var(--danger-soft);
   color: var(--danger);
 }
 .auth-turnstile + .btn-auth-submit {

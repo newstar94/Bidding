@@ -21,6 +21,7 @@ from backend.shared.safe_http import open_allowlisted_https
 TURNSTILE_HOST = "challenges.cloudflare.com"
 TURNSTILE_SITEVERIFY_URL = f"https://{TURNSTILE_HOST}/turnstile/v0/siteverify"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"", "0", "false", "no", "off"})
 _LOCAL_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 _TEST_SITE_KEYS = frozenset({
     "1x00000000000000000000AA",
@@ -43,6 +44,8 @@ class TurnstileConfigurationError(ValueError):
 @dataclass(frozen=True)
 class TurnstileConfig:
     enabled: bool
+    mode: str = "off"
+    diagnostic_code: str = ""
     site_key: str = ""
     secret_key: str = field(default="", repr=False)
     allowed_hostnames: frozenset[str] = frozenset()
@@ -72,8 +75,17 @@ def _is_production(environ) -> bool:
     }
 
 
-def _enabled(environ) -> bool:
-    return str(environ.get("TURNSTILE_ENABLED", "false")).strip().casefold() in _TRUTHY
+def _mode(environ) -> str:
+    value = str(environ.get("TURNSTILE_ENABLED", "false")).strip().casefold()
+    if value in _TRUTHY:
+        return "required"
+    if value in _FALSY:
+        return "off"
+    if value == "auto":
+        return "auto"
+    raise TurnstileConfigurationError(
+        "TURNSTILE_ENABLED must be false, auto, or true."
+    )
 
 
 def _normalize_hostname(value: str) -> str:
@@ -101,13 +113,7 @@ def _parse_hostnames(raw_value: str) -> frozenset[str]:
     return values
 
 
-def get_turnstile_config(environ=None) -> TurnstileConfig:
-    """Return validated environment-owned Turnstile configuration."""
-
-    environ = os.environ if environ is None else environ
-    if not _enabled(environ):
-        return TurnstileConfig(enabled=False)
-
+def _get_enabled_turnstile_config(environ, *, mode: str) -> TurnstileConfig:
     site_key = str(environ.get("TURNSTILE_SITE_KEY", "")).strip()
     secret_key = str(environ.get("TURNSTILE_SECRET_KEY", "")).strip()
     hostnames = _parse_hostnames(environ.get("TURNSTILE_ALLOWED_HOSTNAMES", ""))
@@ -200,6 +206,7 @@ def get_turnstile_config(environ=None) -> TurnstileConfig:
 
     return TurnstileConfig(
         enabled=True,
+        mode=mode,
         site_key=site_key,
         secret_key=secret_key,
         allowed_hostnames=hostnames,
@@ -208,6 +215,38 @@ def get_turnstile_config(environ=None) -> TurnstileConfig:
         edge_challenge_header=edge_challenge_header,
         edge_challenge_value=edge_challenge_value,
     )
+
+
+def get_turnstile_config(environ=None) -> TurnstileConfig:
+    """Return strict or auto-optional environment-owned configuration."""
+
+    environ = os.environ if environ is None else environ
+    mode = _mode(environ)
+    if mode == "off":
+        return TurnstileConfig(enabled=False, mode=mode)
+    if mode == "auto" and not all(
+        str(environ.get(name, "")).strip()
+        for name in (
+            "TURNSTILE_SITE_KEY",
+            "TURNSTILE_SECRET_KEY",
+            "TURNSTILE_ALLOWED_HOSTNAMES",
+        )
+    ):
+        return TurnstileConfig(
+            enabled=False,
+            mode=mode,
+            diagnostic_code="TURNSTILE_AUTO_INCOMPLETE",
+        )
+    try:
+        return _get_enabled_turnstile_config(environ, mode=mode)
+    except TurnstileConfigurationError:
+        if mode != "auto":
+            raise
+        return TurnstileConfig(
+            enabled=False,
+            mode=mode,
+            diagnostic_code="TURNSTILE_AUTO_INVALID",
+        )
 
 
 def public_turnstile_config(environ=None) -> dict[str, object]:

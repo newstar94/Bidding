@@ -143,12 +143,14 @@
                     <i data-lucide="lock"></i>
                     <input type="password" id="register-confirm-password" required minlength="8" maxlength="256"
                         autocomplete="new-password" placeholder="Xác nhận lại mật khẩu"
-                        aria-describedby="register-error">
+                        aria-describedby="register-confirm-password-error register-error">
                     <button type="button" class="toggle-password" data-target="register-confirm-password"
                         aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye" class="bf-s-ecb5967c33"></i>
                     </button>
                 </div>
+                <p id="register-confirm-password-error" class="auth-field-error" role="status"
+                    aria-live="polite" hidden></p>
             </div>
             <p class="auth-legal-consent">Bằng việc nhấn nút Đăng ký, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a> và <a href="/legal#security">Chính sách bảo mật</a> của chúng tôi.</p>
 
