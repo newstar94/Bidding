@@ -28,3 +28,14 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
     quality_gate = "run: npm run check"
     assert install in workflow
     assert workflow.index(install) < workflow.index(quality_gate)
+
+
+def test_performance_probe_authenticates_once_and_reuses_session_state():
+    probe = (PROJECT_ROOT / "scripts" / "measure_startup.mjs").read_text(
+        encoding="utf-8"
+    )
+
+    assert probe.count("await authenticate(") == 1
+    assert "await authenticatedContext.storageState()" in probe
+    assert "browser.newContext({" in probe
+    assert "storageState: authenticatedState" in probe

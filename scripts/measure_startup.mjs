@@ -168,13 +168,16 @@ async function measureNavigation(page, mode, run) {
   }
 }
 
-async function createAuthenticatedContext(browser) {
-  const context = await browser.newContext({ locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" });
+async function createAuthenticatedContext(browser, authenticatedState) {
+  const context = await browser.newContext({
+    locale: "vi-VN",
+    timezoneId: "Asia/Ho_Chi_Minh",
+    storageState: authenticatedState,
+  });
   await addPerformanceObserver(context);
   if (disableServiceWorker) {
     await context.route("**/service-worker.js?**", (requestRoute) => requestRoute.abort());
   }
-  await authenticate(context);
   return context;
 }
 
@@ -185,14 +188,19 @@ const coldSamples = [];
 const warmSamples = [];
 
 try {
+  const authenticatedContext = await browser.newContext();
+  await authenticate(authenticatedContext);
+  const authenticatedState = await authenticatedContext.storageState();
+  await authenticatedContext.close();
+
   for (let run = 1; run <= coldRuns; run += 1) {
-    const context = await createAuthenticatedContext(browser);
+    const context = await createAuthenticatedContext(browser, authenticatedState);
     const page = await context.newPage();
     coldSamples.push(await measureNavigation(page, "cold", run));
     await context.close();
   }
 
-  const warmContext = await createAuthenticatedContext(browser);
+  const warmContext = await createAuthenticatedContext(browser, authenticatedState);
   const warmPage = await warmContext.newPage();
   await measureNavigation(warmPage, "warmup", 0);
   for (let run = 1; run <= warmRuns; run += 1) {
