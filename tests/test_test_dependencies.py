@@ -30,6 +30,23 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
     assert workflow.index(install) < workflow.index(quality_gate)
 
 
+def test_full_ci_keeps_runtime_and_integration_databases_isolated():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    configured_databases = re.findall(
+        r"^\s+(?:DATABASE_URL|TEST_DATABASE_URL|API_TEST_DATABASE_URL):\s+"
+        r"postgresql://[^/]+/([^?\s]+)",
+        workflow,
+        flags=re.MULTILINE,
+    )
+    assert len(configured_databases) == 3
+    assert len(set(configured_databases)) == 3
+    assert "createdb --host 127.0.0.1" in workflow
+    assert workflow.count("python scripts/manage_database.py") == 3
+
+
 def test_performance_probe_authenticates_once_and_reuses_session_state():
     probe = (PROJECT_ROOT / "scripts" / "measure_startup.mjs").read_text(
         encoding="utf-8"

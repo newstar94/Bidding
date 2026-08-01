@@ -32,10 +32,13 @@ jobs:
       APP_PUBLIC_URL: http://127.0.0.1:8000
       DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
       MIGRATOR_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
-      TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
-      API_TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
+      TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_unit_test?sslmode=disable
+      API_TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_api_test?sslmode=disable
       DATABASE_AUTO_MIGRATE: "false"
+      ADMIN_USERNAME: admin
       ADMIN_PASSWORD: CI-only-admin-password-2026!
+      E2E_USERNAME: admin
+      E2E_PASSWORD: CI-only-admin-password-2026!
       AUDIT_CHECKPOINT_DIR: ""
       ENABLE_IMAGE_CACHE_PREWARM: "false"
       ENABLE_PARTNER_LOOKUP_WORKER: "false"
@@ -54,8 +57,17 @@ jobs:
           python -m pip install --disable-pip-version-check -e ".[test]"
           npm ci
           npx playwright install --with-deps chromium
-      - name: Initialize fresh PostgreSQL schema
-        run: python scripts/manage_database.py
+      - name: Create isolated test databases
+        env:
+          PGPASSWORD: ci-database-password
+        run: |
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_unit_test
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_api_test
+      - name: Initialize fresh PostgreSQL schemas
+        run: |
+          python scripts/manage_database.py
+          DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
+          DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
       - name: Full quality, test, build, FK-index and package gate
         run: npm run check
       - name: Start isolated E2E application

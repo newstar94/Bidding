@@ -75,7 +75,8 @@ async function authenticate(context) {
     data: { username, password, remember: false },
   });
   if (!response.ok()) {
-    throw new Error(`Login failed: HTTP ${response.status()}`);
+    const responseBody = (await response.text().catch(() => "")).slice(0, 500);
+    throw new Error(`Login failed: HTTP ${response.status()}${responseBody ? ` ${responseBody}` : ""}`);
   }
 }
 
