@@ -2523,6 +2523,32 @@ table th {
 .google-signin-status[data-state="error"] {
   color: var(--danger);
 }
+.google-signin-container[data-state="error"] {
+  min-height: 0;
+  margin-bottom: 0;
+}
+.google-signin-container[data-state="error"] .google-signin-loading {
+  display: none;
+}
+.google-signin-retry {
+  display: block;
+  margin: 7px auto 0;
+  padding: 0;
+  border: 0;
+  color: var(--primary);
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.google-signin-retry:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
 @media (max-height: 760px) and (min-width: 821px) {
   .auth-overlay {
     align-items: flex-start;

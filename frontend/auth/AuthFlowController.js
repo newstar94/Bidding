@@ -2,6 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { focusInvalidControl } from "../app/formStateUtils.js";
 import { setValidationError } from "../shared/FormValidation.js";
 import { trustedScriptURL } from "../shared/trustedTypes.js";
+import { createGoogleIdentityLoader } from "./GoogleIdentityLoader.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { setActiveOrganizationId } from "../app/workspaceState.js";
@@ -18,6 +19,7 @@ import {
 import {
   hideAuthOverlay,
   reloadWithInitLoader,
+  setGoogleSignInRetry,
   setAuthOverlayView,
   showGoogleSignInState,
 } from "./AuthUi.js";
@@ -785,10 +787,13 @@ export function setupAuth() {
       }
     };
   });
+  const googleIdentityLoader = createGoogleIdentityLoader({
+    documentRef: document,
+    globalRef: window,
+    scriptUrl: trustedScriptURL("https://accounts.google.com/gsi/client"),
+  });
   const initGoogle = () => {
-    if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
-      this.setupGoogleSignIn();
-    }
+    if (googleIdentityLoader.isReady()) this.setupGoogleSignIn();
   };
   if (formReset) formReset.onsubmit = async (e) => {
     e.preventDefault();
@@ -848,37 +853,28 @@ export function setupAuth() {
     }
   };
   const loadGoogleIdentity = () => {
-    if (typeof google !== "undefined" && google.accounts) {
+    setGoogleSignInRetry(null);
+    showGoogleSignInState("", "loading");
+    googleIdentityLoader.load().then(() => {
       initGoogle();
-      return;
-    }
-    const existingScript = document.querySelector("script[data-bf-google-identity]");
-    const script = existingScript || document.createElement("script");
-    const timeout = setTimeout(() => {
-      if (typeof google === "undefined" || !google.accounts) {
-        showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng.", "error");
+    }).catch((error) => {
+      googleIdentityLoadScheduled = false;
+      console.warn("Google Sign-In could not be loaded.", error);
+      showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng hoặc thử lại.", "error");
+      setGoogleSignInRetry(() => loadGoogleIdentity());
+      if (!googleIdentityRetryOnReconnect) {
+        googleIdentityRetryOnReconnect = true;
+        window.addEventListener("online", () => {
+          googleIdentityRetryOnReconnect = false;
+          loadGoogleIdentity();
+        }, { once: true });
       }
-    }, 8_000);
-    script.addEventListener("load", () => {
-      clearTimeout(timeout);
-      initGoogle();
-    }, { once: true });
-    script.addEventListener("error", () => {
-      clearTimeout(timeout);
-      console.warn("Google Sign-In could not be loaded.");
-      showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng.", "error");
-    }, { once: true });
-    if (!existingScript) {
-      script.src = trustedScriptURL("https://accounts.google.com/gsi/client");
-      script.async = true;
-      script.defer = true;
-      script.dataset.bfGoogleIdentity = "true";
-      document.head.appendChild(script);
-    }
+    });
   };
   let googleIdentityLoadScheduled = false;
+  let googleIdentityRetryOnReconnect = false;
   const scheduleGoogleIdentityLoad = () => {
-    if (googleIdentityLoadScheduled) return;
+    if (googleIdentityLoadScheduled && googleIdentityLoader.isReady()) return;
     googleIdentityLoadScheduled = true;
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => setTimeout(loadGoogleIdentity, 0), { once: true });

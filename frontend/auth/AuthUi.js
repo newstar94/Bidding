@@ -144,3 +144,10 @@ export function showGoogleSignInState(message, state = "loading") {
   status.hidden = !message;
   status.dataset.state = state;
 }
+
+export function setGoogleSignInRetry(handler) {
+  const retry = document.getElementById("google-signin-retry");
+  if (!retry) return;
+  retry.hidden = typeof handler !== "function";
+  retry.onclick = typeof handler === "function" ? handler : null;
+}
