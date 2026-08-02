@@ -75,9 +75,11 @@ test("double slider markup and responsive motion contracts are present", () => {
   assert.match(styles, /\.auth-card\[data-auth-view="register"\] \.auth-brand\s*\{[^}]*translateX\(100%\)/su);
   assert.match(styles, /\.auth-card\[data-auth-view="register"\] \.auth-form-stage\s*\{[^}]*translateX\(-100%\)/su);
   assert.match(styles, /\.auth-brand-action\s*\{[^}]*background:\s*#f8fafc[^}]*color:\s*var\(--primary-hover\)[^}]*box-shadow:/su);
+  assert.match(styles, /\.auth-card\s*\{[^}]*height:\s*min\(760px, calc\(100dvh - 40px\)\)/su);
+  assert.match(styles, /@media \(max-height: 760px\) and \(min-width: 821px\)[\s\S]*\.auth-card\s*\{[^}]*height:\s*740px[^}]*min-height:\s*740px/su);
   assert.match(styles, /@media \(max-width: 820px\)[\s\S]*transform: none !important;/u);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/u);
-  assert.match(shell, /views\.css[^"\n]*auth-panel-cta-v7-20260802/u);
+  assert.match(shell, /views\.css[^"\n]*auth-tall-card-v8-20260802/u);
   assert.equal(visual.subarray(0, 4).toString("ascii"), "RIFF");
   assert.equal(visual.subarray(8, 12).toString("ascii"), "WEBP");
   assert.ok(visual.byteLength < 100_000, "auth visual must stay lightweight");

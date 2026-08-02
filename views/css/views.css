@@ -2017,7 +2017,7 @@ table th {
   position: relative;
   isolation: isolate;
   width: min(100%, 980px);
-  height: min(700px, calc(100dvh - 40px));
+  height: min(760px, calc(100dvh - 40px));
   min-height: 620px;
   padding: 0;
   overflow: hidden;
@@ -2526,11 +2526,11 @@ table th {
 @media (max-height: 760px) and (min-width: 821px) {
   .auth-overlay {
     align-items: flex-start;
-    padding: 12px;
+    padding: 8px;
   }
   .auth-card {
-    height: calc(100dvh - 24px);
-    min-height: 560px;
+    height: 740px;
+    min-height: 740px;
   }
   .auth-form-pane {
     padding-top: 32px;
