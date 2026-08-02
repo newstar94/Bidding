@@ -29,6 +29,7 @@ from backend.shared.media_helper import (
     delete_managed_image_files,
     discard_staged_assets,
     find_unreferenced_image_paths,
+    normalize_managed_image_path,
     promote_staged_assets,
     register_staged_assets,
     stage_base64_image,
@@ -161,6 +162,69 @@ _PROTECTED_MEDIA_COLUMNS = {
     },
 }
 
+_PROTECTED_MEDIA_QUERY_CHUNK_SIZE = 400
+
+
+def _protected_media_write_columns(table_name):
+    return tuple(_PROTECTED_MEDIA_COLUMNS.get(table_name, {}))
+
+
+def _normalized_protected_media_value(value):
+    raw_value = "" if value is None else str(value).strip()
+    return normalize_managed_image_path(raw_value) or raw_value
+
+
+def _load_protected_media_state(cursor, table_name, items, organization_id):
+    record_ids = {
+        clean_id(canonicalize_payload_item(table_name, item).get("id"))
+        for item in items
+        if isinstance(item, dict)
+    }
+    root_ids = {
+        clean_id(
+            canonicalize_payload_item(table_name, item).get("rootId")
+            or canonicalize_payload_item(table_name, item).get("id_goc")
+        )
+        for item in items
+        if isinstance(item, dict)
+    }
+    reference_ids = sorted((record_ids | root_ids) - {None, ""})
+    if not reference_ids:
+        return {}, {}
+
+    columns = _protected_media_write_columns(table_name)
+    selected_columns = ", ".join(columns)
+    rows = []
+    for offset in range(0, len(reference_ids), _PROTECTED_MEDIA_QUERY_CHUNK_SIZE):
+        chunk = reference_ids[offset:offset + _PROTECTED_MEDIA_QUERY_CHUNK_SIZE]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows.extend(cursor.execute(
+            f"""SELECT id, id_goc, is_latest, updated_at, {selected_columns}
+                FROM {table_name}
+                WHERE organization_id = ?
+                  AND (id IN ({placeholders}) OR id_goc IN ({placeholders}))""",  # noqa: S608 - identifiers come from the fixed protected-media registry
+            (organization_id, *chunk, *chunk),
+        ).fetchall())
+
+    by_id = {}
+    latest_by_root = {}
+    for row in rows:
+        values = dict(zip(columns, row[4:]))
+        record_id = clean_id(row[0])
+        root_id = clean_id(row[1]) or record_id
+        state = {
+            "values": values,
+            "rank": (int(row[2] or 0), str(row[3] or ""), record_id or ""),
+        }
+        if record_id:
+            by_id[record_id] = state
+        if root_id and (
+            root_id not in latest_by_root
+            or state["rank"] > latest_by_root[root_id]["rank"]
+        ):
+            latest_by_root[root_id] = state
+    return by_id, latest_by_root
+
 
 def validate_protected_media_upload_access(data, *, owner_type, can_upload):
     """Return manager-only violations for new signature-related image uploads."""
@@ -189,6 +253,62 @@ def validate_protected_media_upload_access(data, *, owner_type, can_upload):
                             "ảnh chữ ký và ảnh chứng chỉ."
                         ),
                     })
+    return errors
+
+
+def validate_protected_media_mutation_access(
+    data,
+    *,
+    owner_type,
+    can_upload,
+    cursor,
+    organization_id,
+):
+    """Reject any protected media change by an organization employee."""
+
+    if owner_type != "organization" or can_upload:
+        return []
+    errors = []
+    for _payload_key, table_name, items in iter_sync_table_payloads(data):
+        columns = _protected_media_write_columns(table_name)
+        if not columns:
+            continue
+        by_id, latest_by_root = _load_protected_media_state(
+            cursor,
+            table_name,
+            items,
+            organization_id,
+        )
+        for original_item in items:
+            if not isinstance(original_item, dict):
+                continue
+            item = canonicalize_payload_item(table_name, original_item)
+            record_id = clean_id(item.get("id"))
+            root_id = clean_id(item.get("rootId") or item.get("id_goc"))
+            stored = by_id.get(record_id) or latest_by_root.get(root_id)
+            stored_values = stored["values"] if stored else {}
+            for column_name in columns:
+                json_key = json_key_for_column(table_name, column_name)
+                if json_key not in original_item and column_name not in original_item:
+                    continue
+                incoming = _normalized_protected_media_value(
+                    get_payload_value(table_name, item, column_name)
+                )
+                current = _normalized_protected_media_value(
+                    stored_values.get(column_name)
+                )
+                if incoming == current:
+                    continue
+                errors.append({
+                    "table": table_name,
+                    "id": record_id,
+                    "field": column_name,
+                    "code": "ORG_ASSET_MUTATION_MANAGER_REQUIRED",
+                    "message": (
+                        "Chỉ Quản lý của tổ chức được thêm, thay đổi hoặc xóa "
+                        "ảnh dấu, ảnh chữ ký và ảnh chứng chỉ."
+                    ),
+                })
     return errors
 
 
@@ -516,20 +636,6 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
         client_mutation_id = envelope.client_mutation_id
         mutation_request_hash = envelope.request_hash
 
-        protected_media_errors = validate_protected_media_upload_access(
-            data,
-            owner_type=owner_type,
-            can_upload=actor_context.can_upload_workspace_assets,
-        )
-        if protected_media_errors:
-            return error_response(
-                request,
-                "ORG_ASSET_UPLOAD_MANAGER_REQUIRED",
-                "Chỉ Quản lý của tổ chức được tải lên ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
-                status_code=403,
-                fields={"errors": protected_media_errors},
-            )
-
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -544,6 +650,46 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             return early_response
         owner_type = transaction_context.owner_type
         current_time = transaction_context.current_time
+
+        # Re-evaluate this permission in the write transaction. A manager may
+        # have been demoted after the initial session/organization lookup.
+        transaction_can_upload_assets = can_upload_workspace_assets(
+            cursor,
+            actor_context.role,
+            user_id,
+            org_name,
+        )
+        protected_media_errors = validate_protected_media_upload_access(
+            data,
+            owner_type=owner_type,
+            can_upload=transaction_can_upload_assets,
+        )
+        if protected_media_errors:
+            conn.rollback()
+            return error_response(
+                request,
+                "ORG_ASSET_UPLOAD_MANAGER_REQUIRED",
+                "Chỉ Quản lý của tổ chức được tải lên ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
+                status_code=403,
+                fields={"errors": protected_media_errors},
+            )
+
+        protected_media_mutation_errors = validate_protected_media_mutation_access(
+            data,
+            owner_type=owner_type,
+            can_upload=transaction_can_upload_assets,
+            cursor=cursor,
+            organization_id=org_name,
+        )
+        if protected_media_mutation_errors:
+            conn.rollback()
+            return error_response(
+                request,
+                "ORG_ASSET_MUTATION_MANAGER_REQUIRED",
+                "Chỉ Quản lý của tổ chức được thêm, thay đổi hoặc xóa ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
+                status_code=403,
+                fields={"errors": protected_media_mutation_errors},
+            )
 
         _persist_incoming_images(
             data,
