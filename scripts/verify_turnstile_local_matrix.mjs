@@ -33,6 +33,12 @@ const cases = [
     siteKey: "1x00000000000000000000AA",
     secretKey: "1x0000000000000000000000000000000AA",
   },
+  {
+    expectation: "auto-pending",
+    port: 8772,
+    siteKey: "1x00000000000000000000AA",
+    secretKey: "1x0000000000000000000000000000000AA",
+  },
 ];
 
 

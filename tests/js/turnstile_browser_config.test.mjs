@@ -65,6 +65,15 @@ test("Turnstile uses a responsive interaction-only widget and compact status she
   assert.match(controller, /theme:\s*"auto"/u);
   assert.match(controller, /max-width:\s*359px/u);
   assert.match(
+    controller,
+    /shell\.hidden\s*=\s*state\s*!==\s*"interactive"\s*&&\s*state\s*!==\s*"error"/u,
+  );
+  assert.match(controller, /"before-interactive-callback"\(\)/u);
+  assert.match(
+    controller,
+    /if \(shell\.dataset\.state === "loading"\)\s*\{\s*updateStatus\(action, "ready"/u,
+  );
+  assert.match(
     styles,
     /\.auth-turnstile\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*center;/su,
   );

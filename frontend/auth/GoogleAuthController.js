@@ -298,13 +298,15 @@ export function setupGoogleSignIn() {
   try {
     container.replaceChildren();
     markGoogleIdentityInitialized();
+    const measuredWidth = Math.round(container.getBoundingClientRect?.().width || 360);
+    const googleButtonWidth = Math.max(200, Math.min(400, measuredWidth));
     google.accounts.id.initialize(
       createGoogleIdentityOptions(clientId, handleGoogleResponse.bind(this))
     );
     google.accounts.id.renderButton(container, {
       theme: "outline",
       size: "large",
-      width: 300,
+      width: googleButtonWidth,
       text: "signin_with",
       locale: "vi",
       logo_alignment: "center"

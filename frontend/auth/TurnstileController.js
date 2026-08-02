@@ -36,7 +36,7 @@ function preferredWidgetSize() {
 function updateStatus(action, state, message) {
   const shell = shellFor(action);
   if (!shell) return;
-  shell.hidden = false;
+  shell.hidden = state !== "interactive" && state !== "error";
   shell.dataset.state = state;
   const status = shell.querySelector(".auth-turnstile-status");
   if (status) status.textContent = message;
@@ -75,7 +75,6 @@ export async function prepareTurnstile(action) {
   const shell = shellFor(action);
   const target = shell?.querySelector(".auth-turnstile-widget");
   if (!shell || !target || !config.siteKey) return false;
-  shell.hidden = false;
   if (widgetIds.has(action)) return true;
   updateStatus(action, "loading", "Đang chuẩn bị bước xác minh bảo mật…");
   try {
@@ -90,6 +89,9 @@ export async function prepareTurnstile(action) {
       callback() {
         updateStatus(action, "verified", "Đã xác minh");
       },
+      "before-interactive-callback"() {
+        updateStatus(action, "interactive", "Xác minh để tiếp tục");
+      },
       "expired-callback"() {
         updateStatus(action, "error", "Phiên xác minh đã hết hạn. Vui lòng xác minh lại.");
       },
@@ -98,7 +100,9 @@ export async function prepareTurnstile(action) {
       }
     });
     widgetIds.set(action, widgetId);
-    updateStatus(action, "ready", "Xác minh để tiếp tục");
+    if (shell.dataset.state === "loading") {
+      updateStatus(action, "ready", "Xác minh để tiếp tục");
+    }
     return true;
   } catch (error) {
     updateStatus(action, "error", error?.message || "Không thể tải bước xác minh bảo mật.");

@@ -1,4 +1,9 @@
 import { enhanceButtonSystem } from "./buttonSystem.js";
+import {
+  constraintValidationMessage,
+  setValidationError,
+  validateNativeForm,
+} from "./FormValidation.js";
 
 function readableName(value) {
   return String(value || "")
@@ -50,6 +55,9 @@ function matchingElements(root, selector) {
 
 export function enhanceSemanticAccessibility(root = document) {
   enhanceButtonSystem(root);
+  matchingElements(root, "form").forEach((form) => {
+    if (form.dataset.bfInlineValidation !== "off") form.noValidate = true;
+  });
   matchingElements(root, "table:not(:has(caption))").forEach((table) => {
     const caption = document.createElement("caption");
     caption.className = "visually-hidden";
@@ -80,7 +88,7 @@ export function enhanceSemanticAccessibility(root = document) {
     if (name) button.setAttribute("aria-label", name);
   });
   matchingElements(root, "#profile-dropdown-menu button").forEach((button) => button.setAttribute("role", "menuitem"));
-  matchingElements(root, ".error-text, .auth-error-msg").forEach((error) => {
+  matchingElements(root, ".error-text, .auth-field-error, .auth-error-msg").forEach((error) => {
     error.setAttribute("role", "alert");
     error.setAttribute("aria-live", "assertive");
     error.setAttribute("aria-atomic", "true");
@@ -95,13 +103,31 @@ export function enhanceSemanticAccessibility(root = document) {
 export function installSemanticAccessibility(root = document) {
   enhanceSemanticAccessibility(root);
   root.addEventListener?.("invalid", (event) => {
-    if (event.target?.matches?.("input, select, textarea")) event.target.setAttribute("aria-invalid", "true");
+    if (!event.target?.matches?.("input, select, textarea")) return;
+    event.preventDefault?.();
+    setValidationError(event.target, constraintValidationMessage(event.target));
   }, true);
-  root.addEventListener?.("input", (event) => {
-    if (event.target?.matches?.("input, select, textarea") && event.target.validity?.valid) {
-      event.target.setAttribute("aria-invalid", "false");
+  root.addEventListener?.("submit", (event) => {
+    const form = event.target?.matches?.("form") ? event.target : null;
+    if (!form || form.dataset.bfInlineValidation === "off" || event.submitter?.formNoValidate) return;
+    const validation = validateNativeForm(form);
+    if (validation.valid) return;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+  }, true);
+  const refreshFieldValidation = (event) => {
+    const control = event.target;
+    if (!control?.matches?.("input, select, textarea")) return;
+    if (control.validity?.valid) {
+      if (control.getAttribute?.("aria-invalid") === "true") setValidationError(control, "");
+      return;
     }
-  });
+    if (control.getAttribute?.("aria-invalid") === "true") {
+      setValidationError(control, constraintValidationMessage(control));
+    }
+  };
+  root.addEventListener?.("input", refreshFieldValidation);
+  root.addEventListener?.("change", refreshFieldValidation);
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
       if (node.nodeType === Node.ELEMENT_NODE) enhanceSemanticAccessibility(node);

@@ -1,4 +1,5 @@
 import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
+import { setValidationError } from "./FormValidation.js";
 
 function resolveControl(root, target) {
   if (!target) return null;
@@ -9,6 +10,11 @@ function resolveControl(root, target) {
 }
 
 export function clearFormValidation(form) {
+  form?.querySelectorAll?.("input, select, textarea")?.forEach((control) => {
+    if (control.getAttribute?.("aria-invalid") === "true" || control.closest?.(".form-group.invalid")) {
+      setValidationError(control, "");
+    }
+  });
   form?.querySelectorAll?.(".form-group.invalid, .invalid")?.forEach((element) => element.classList.remove("invalid"));
 }
 

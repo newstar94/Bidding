@@ -11,11 +11,35 @@ const AUTH_FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])"
 ].join(",");
 
+const AUTH_VIEW_CONFIG = Object.freeze({
+  login: { panel: "login", titleId: "auth-login-title" },
+  register: { panel: "register", titleId: "auth-register-title" },
+  forgot: { panel: "support", titleId: "auth-forgot-title" },
+  reset: { panel: "support", titleId: "auth-reset-title" },
+  verify: { panel: "support", titleId: "auth-verify-title" },
+});
+
 function setInert(element, inert) {
   if (!element) return;
   element.toggleAttribute("inert", inert);
   if (inert) element.setAttribute("aria-hidden", "true");
   else element.removeAttribute("aria-hidden");
+}
+
+export function setAuthOverlayView(view = "login", documentRef = globalThis.document) {
+  const resolvedView = Object.hasOwn(AUTH_VIEW_CONFIG, view) ? view : "login";
+  const config = AUTH_VIEW_CONFIG[resolvedView];
+  const overlay = documentRef?.getElementById?.("auth-overlay");
+  const card = overlay?.querySelector?.(".auth-card");
+  if (!card) return resolvedView;
+  card.dataset.authView = config.panel;
+  card.dataset.authForm = resolvedView;
+  overlay.setAttribute("aria-labelledby", config.titleId);
+  card.querySelectorAll(".auth-brand-message").forEach((message) => {
+    const active = message.classList.contains(`auth-brand-message-${config.panel}`);
+    message.setAttribute("aria-hidden", active ? "false" : "true");
+  });
+  return resolvedView;
 }
 
 export function syncAuthOverlayAccessibility() {

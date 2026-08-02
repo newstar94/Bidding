@@ -1159,8 +1159,19 @@
   background-color: var(--bg-card);
   box-shadow: none;
 }
-.form-group.invalid input,
-.form-group.invalid select {
+.form-group.invalid input:not([type="checkbox"]):not([type="radio"]),
+.form-group.invalid select,
+.form-group.invalid textarea,
+.form-group.invalid .custom-select-trigger,
+.form-group.invalid .custom-select-search {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.form-group.invalid input:not([type="checkbox"]):not([type="radio"]):focus,
+.form-group.invalid select:focus,
+.form-group.invalid textarea:focus,
+.form-group.invalid .custom-select-trigger:focus-visible,
+.form-group.invalid .custom-select-search:focus {
   border-color: var(--danger);
   box-shadow: 0 0 0 3px var(--danger-soft);
 }
@@ -1173,6 +1184,24 @@
 }
 .form-group.invalid .error-text {
   display: block;
+}
+.field-validation-error {
+  margin: 6px 2px 0;
+  line-height: 1.45;
+}
+.form-group.invalid .error-text.field-validation-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.error-text.field-validation-error::before {
+  width: 5px;
+  height: 5px;
+  margin-top: 0.48em;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: currentcolor;
+  content: "";
 }
 .helper-text {
   font-size: 0.72rem;

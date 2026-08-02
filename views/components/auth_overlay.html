@@ -1,17 +1,44 @@
 
 <div class="auth-overlay bf-s-65d1f1c3d7" id="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-login-title">
-    <div class="auth-card">
+    <div class="auth-card" data-auth-view="login">
 
-        <div class="auth-brand">
-            <div class="brand-icon">
-                <i data-lucide="layers"></i>
+        <section class="auth-brand" aria-label="BiddingFlow">
+            <div class="auth-brand-lockup">
+                <div class="brand-icon" aria-hidden="true">
+                    <i data-lucide="layers"></i>
+                </div>
+                <div>
+                    <strong>BiddingFlow</strong>
+                    <span>Hệ Thống Đấu Thầu</span>
+                </div>
             </div>
-            <h2>BiddingFlow</h2>
-            <span>Hệ Thống Đấu Thầu v2.0</span>
-        </div>
+
+            <div class="auth-brand-message auth-brand-message-login">
+                <h2>Chưa có tài khoản?</h2>
+                <p>Tạo hồ sơ để tham gia và quản lý công việc đấu thầu trên một không gian thống nhất.</p>
+                <button type="button" class="auth-brand-action" id="btn-auth-brand-register">Đăng ký</button>
+            </div>
+
+            <div class="auth-brand-message auth-brand-message-register" aria-hidden="true">
+                <h2>Đã là thành viên?</h2>
+                <p>Đăng nhập để tiếp tục công việc và truy cập dữ liệu thuộc phạm vi của bạn.</p>
+                <button type="button" class="auth-brand-action" id="btn-auth-brand-login">Đăng nhập</button>
+            </div>
+
+            <div class="auth-brand-message auth-brand-message-support" aria-hidden="true">
+                <h2>Bảo vệ tài khoản</h2>
+                <p>Hoàn tất bước xác thực để khôi phục quyền truy cập an toàn vào BiddingFlow.</p>
+                <button type="button" class="auth-brand-action" id="btn-auth-brand-back">Về đăng nhập</button>
+            </div>
+
+            <img class="auth-brand-visual" src="/assets/auth-procurement-visual-v2.webp" alt="" width="1254"
+                height="1254" aria-hidden="true">
+        </section>
+
+        <div class="auth-form-stage">
 
 
-        <form id="form-auth-login" class="auth-form-pane active">
+        <form id="form-auth-login" class="auth-form-pane active" novalidate>
             <h3 class="auth-title" id="auth-login-title">Đăng nhập hệ thống</h3>
             <p class="auth-subtitle">Nhập tài khoản để truy cập hệ thống đấu thầu</p>
             <div id="login-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
@@ -75,8 +102,8 @@
             <p class="auth-legal-consent auth-legal-consent-oauth">Với việc đăng nhập bằng Google, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a> và <a href="/legal#security">Chính sách bảo mật</a>.</p>
 
             <div class="auth-footer-links">
-                <a href="#" id="link-show-register">Đăng ký tài khoản</a>
-                <span class="bullet">•</span>
+                <a href="#" id="link-show-register" class="auth-mobile-switch-link">Đăng ký tài khoản</a>
+                <span class="bullet auth-mobile-switch-separator">•</span>
                 <a href="#" id="link-show-forgot">Quên mật khẩu?</a>
                 <span class="bullet">•</span>
                 <a href="/legal">Điều khoản và chính sách</a>
@@ -84,8 +111,8 @@
         </form>
 
 
-        <form id="form-auth-register" class="auth-form-pane bf-s-65d1f1c3d7">
-            <h3 class="auth-title">Đăng ký thành viên</h3>
+        <form id="form-auth-register" class="auth-form-pane bf-s-65d1f1c3d7" novalidate>
+            <h3 class="auth-title" id="auth-register-title">Đăng ký thành viên</h3>
             <p class="auth-subtitle">Tạo tài khoản mới để tham gia</p>
             <div id="register-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
             <div id="register-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -95,7 +122,8 @@
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="user"></i>
-                    <input type="text" id="register-username" required placeholder="Tên đăng nhập viết liền không dấu"
+                    <input type="text" id="register-username" required minlength="3" maxlength="30"
+                        pattern="[a-z0-9_]{3,30}" placeholder="Tên đăng nhập viết liền không dấu"
                         aria-describedby="register-error">
                 </div>
             </div>
@@ -115,7 +143,7 @@
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="mail"></i>
-                    <input type="email" id="register-email" required placeholder="Ví dụ: duong.vt@vinacorp.vn"
+                    <input type="email" id="register-email" required placeholder="Nhập email của bạn"
                         aria-describedby="register-error">
                 </div>
             </div>
@@ -164,14 +192,14 @@
                 <i data-lucide="user-plus"></i>
             </button>
 
-            <div class="auth-footer-links">
-                <a href="#" id="link-show-login-from-reg">Quay lại Đăng nhập</a>
+            <div class="auth-footer-links auth-mobile-switch-footer">
+                <a href="#" id="link-show-login-from-reg" class="auth-mobile-switch-link">Quay lại Đăng nhập</a>
             </div>
         </form>
 
 
-        <form id="form-auth-forgot" class="auth-form-pane bf-s-65d1f1c3d7">
-            <h3 class="auth-title">Khôi phục mật khẩu</h3>
+        <form id="form-auth-forgot" class="auth-form-pane bf-s-65d1f1c3d7" novalidate>
+            <h3 class="auth-title" id="auth-forgot-title">Khôi phục mật khẩu</h3>
             <p class="auth-subtitle">Nhập thông tin đã đăng ký để nhận liên kết đặt lại mật khẩu</p>
             <div id="forgot-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
             <div id="forgot-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -212,8 +240,8 @@
         </form>
 
 
-        <form id="form-auth-reset" class="auth-form-pane bf-s-65d1f1c3d7">
-            <h3 class="auth-title">Đặt lại mật khẩu</h3>
+        <form id="form-auth-reset" class="auth-form-pane bf-s-65d1f1c3d7" novalidate>
+            <h3 class="auth-title" id="auth-reset-title">Đặt lại mật khẩu</h3>
             <p class="auth-subtitle">Tạo mật khẩu mới cho tài khoản của bạn. Liên kết chỉ sử dụng được một lần.</p>
             <div id="reset-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
             <div id="reset-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -255,8 +283,8 @@
         </form>
 
 
-        <form id="form-auth-verify" class="auth-form-pane bf-s-65d1f1c3d7">
-            <h3 class="auth-title">Xác thực Email</h3>
+        <form id="form-auth-verify" class="auth-form-pane bf-s-65d1f1c3d7" novalidate>
+            <h3 class="auth-title" id="auth-verify-title">Xác thực Email</h3>
             <p class="auth-subtitle">Một mã OTP 6 chữ số đã được gửi đến email của bạn. Vui lòng nhập mã để kích hoạt
                 tài khoản.</p>
             <div id="verify-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
@@ -270,7 +298,8 @@
                     xác thực OTP</label>
                 <div class="auth-input-wrapper bf-s-1bd0231f6d"
                    >
-                    <input type="text" id="verify-code" required placeholder="******" maxlength="6" inputmode="numeric"
+                    <input type="text" id="verify-code" required placeholder="******" minlength="6" maxlength="6"
+                        inputmode="numeric" pattern="[0-9]{6}"
                         aria-describedby="verify-error"
                         class="bf-s-1f845de8bb">
                 </div>
@@ -305,6 +334,7 @@
                 <a href="#" id="link-show-login-from-verify">Quay lại Đăng nhập</a>
             </div>
         </form>
+        </div>
     </div>
 </div>
 

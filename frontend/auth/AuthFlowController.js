@@ -1,4 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { focusInvalidControl } from "../app/formStateUtils.js";
+import { setValidationError } from "../shared/FormValidation.js";
 import { trustedScriptURL } from "../shared/trustedTypes.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
@@ -13,7 +15,12 @@ import {
   setAuthFlowInProgress,
   setAuthSessionActive
 } from "./authRuntimeState.js";
-import { hideAuthOverlay, reloadWithInitLoader, showGoogleSignInState } from "./AuthUi.js";
+import {
+  hideAuthOverlay,
+  reloadWithInitLoader,
+  setAuthOverlayView,
+  showGoogleSignInState,
+} from "./AuthUi.js";
 import {
   isTurnstilePrepared,
   prepareTurnstile,
@@ -79,6 +86,7 @@ export function setupAuth() {
   const registerPasswordInput = document.getElementById("register-password");
   const registerConfirmPasswordInput = document.getElementById("register-confirm-password");
   const registerConfirmPasswordError = document.getElementById("register-confirm-password-error");
+  const registerUsernameInput = document.getElementById("register-username");
   let resetToken = window.location.pathname === "/reset-password"
     ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token") || ""
     : "";
@@ -100,6 +108,7 @@ export function setupAuth() {
     setRuntimeStyle(overlay, "display", "flex");
     setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
     const showResetForm = Boolean(resetToken && formReset);
+    setAuthOverlayView(showResetForm ? "reset" : "login");
     setRuntimeStyle(formLogin, "display", showResetForm ? "none" : "block");
     setRuntimeStyle(formRegister, "display", "none");
     setRuntimeStyle(formForgot, "display", "none");
@@ -273,6 +282,9 @@ export function setupAuth() {
   const btnShowLoginFromForgot = document.getElementById("link-show-login-from-forgot");
   const btnShowLoginFromReset = document.getElementById("link-show-login-from-reset");
   const btnShowLoginFromVerify = document.getElementById("link-show-login-from-verify");
+  const btnBrandRegister = document.getElementById("btn-auth-brand-register");
+  const btnBrandLogin = document.getElementById("btn-auth-brand-login");
+  const btnBrandBack = document.getElementById("btn-auth-brand-back");
   const btnLogout = document.getElementById("btn-auth-logout");
   const switchForm = (showPane) => {
     setRuntimeStyle(formLogin, "display", "none");
@@ -282,6 +294,14 @@ export function setupAuth() {
     if (formVerify) setRuntimeStyle(formVerify, "display", "none");
     document.querySelectorAll(".auth-error-msg, .auth-success-msg").forEach((el) => setRuntimeStyle(el, "display", "none"));
     setRuntimeStyle(showPane, "display", "block");
+    const viewByFormId = {
+      "form-auth-login": "login",
+      "form-auth-register": "register",
+      "form-auth-forgot": "forgot",
+      "form-auth-reset": "reset",
+      "form-auth-verify": "verify",
+    };
+    setAuthOverlayView(viewByFormId[showPane?.id] || "login");
     const challengeActions = {
       "form-auth-register": "register",
       "form-auth-forgot": "forgot_password"
@@ -314,6 +334,9 @@ export function setupAuth() {
     e.preventDefault();
     switchForm(formRegister);
   };
+  if (btnBrandRegister) btnBrandRegister.onclick = () => switchForm(formRegister);
+  if (btnBrandLogin) btnBrandLogin.onclick = () => switchForm(formLogin);
+  if (btnBrandBack) btnBrandBack.onclick = () => switchForm(formLogin);
   if (btnShowForgot) btnShowForgot.onclick = (e) => {
     e.preventDefault();
     switchForm(formForgot);
@@ -354,6 +377,24 @@ export function setupAuth() {
     });
     formRegister.addEventListener("reset", () => {
       queueMicrotask(() => updatePasswordMatch(false));
+    });
+  }
+  if (registerUsernameInput) {
+    const syncUsernameValidity = () => {
+      const value = registerUsernameInput.value.trim().toLowerCase();
+      const result = value ? validateUsernameClient(value) : { ok: true, message: "" };
+      registerUsernameInput.setCustomValidity(result.ok ? "" : result.message);
+      if (registerUsernameInput.getAttribute("aria-invalid") === "true") {
+        setValidationError(registerUsernameInput, result.ok ? "" : result.message);
+      }
+    };
+    registerUsernameInput.addEventListener("input", syncUsernameValidity);
+    registerUsernameInput.addEventListener("blur", syncUsernameValidity);
+    formRegister.addEventListener("reset", () => {
+      queueMicrotask(() => {
+        registerUsernameInput.setCustomValidity("");
+        setValidationError(registerUsernameInput, "");
+      });
     });
   }
   if (btnLogout) {
@@ -524,14 +565,13 @@ export function setupAuth() {
     setRuntimeStyle(successDiv, "display", "none");
     const usernameCheck = validateUsernameClient(username);
     if (!usernameCheck.ok) {
-      errorDiv.textContent = usernameCheck.message;
-      setRuntimeStyle(errorDiv, "display", "block");
-      document.getElementById("register-username").focus();
+      setValidationError(registerUsernameInput, usernameCheck.message);
+      focusInvalidControl(registerUsernameInput);
       return;
     }
     if (password.length < 8 || password.length > 256) {
-      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự!";
-      setRuntimeStyle(errorDiv, "display", "block");
+      setValidationError(registerPasswordInput, "Mật khẩu phải có từ 8 đến 256 ký tự.");
+      focusInvalidControl(registerPasswordInput);
       return;
     }
     if (password !== confirmPassword) {
@@ -595,8 +635,9 @@ export function setupAuth() {
       setRuntimeStyle(errorDiv, "display", "none");
       setRuntimeStyle(successDiv, "display", "none");
       if (code.length !== 6) {
-        errorDiv.textContent = "Mã xác thực OTP phải gồm đúng 6 chữ số!";
-        setRuntimeStyle(errorDiv, "display", "block");
+        const codeInput = document.getElementById("verify-code");
+        setValidationError(codeInput, "Mã xác thực OTP phải gồm đúng 6 chữ số.");
+        focusInvalidControl(codeInput);
         return;
       }
       try {
@@ -763,13 +804,15 @@ export function setupAuth() {
       return;
     }
     if (newPassword.length < 8 || newPassword.length > 256) {
-      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự.";
-      setRuntimeStyle(errorDiv, "display", "block");
+      const newPasswordInput = document.getElementById("reset-new-password");
+      setValidationError(newPasswordInput, "Mật khẩu phải có từ 8 đến 256 ký tự.");
+      focusInvalidControl(newPasswordInput);
       return;
     }
     if (newPassword !== confirmPassword) {
-      errorDiv.textContent = "Mật khẩu xác nhận không khớp.";
-      setRuntimeStyle(errorDiv, "display", "block");
+      const confirmPasswordInput = document.getElementById("reset-confirm-password");
+      setValidationError(confirmPasswordInput, "Mật khẩu xác nhận không khớp.");
+      focusInvalidControl(confirmPasswordInput);
       return;
     }
     const csrfToken = document.cookie
