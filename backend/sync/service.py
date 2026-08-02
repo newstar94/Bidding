@@ -209,7 +209,10 @@ def _load_protected_media_state(cursor, table_name, items, organization_id):
     by_id = {}
     latest_by_root = {}
     for row in rows:
-        values = dict(zip(columns, row[4:]))
+        # CompatRow deliberately supports scalar positional indexing but not
+        # slices. Converting here also keeps sqlite/PostgreSQL row handling
+        # identical for this cross-database authorization check.
+        values = dict(zip(columns, tuple(row)[4:]))
         record_id = clean_id(row[0])
         root_id = clean_id(row[1]) or record_id
         state = {

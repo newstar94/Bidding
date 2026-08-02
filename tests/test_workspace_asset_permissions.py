@@ -1,6 +1,7 @@
 import sqlite3
 from types import SimpleNamespace
 
+from backend.db.db_helper import CompatRow
 from backend.documents import custom_exporter
 from backend.shared.access_policy import can_upload_workspace_assets
 from backend.sync.service import (
@@ -162,6 +163,21 @@ def _protected_media_cursor():
     return connection, connection.cursor()
 
 
+class _CompatCursor:
+    """Expose sqlite fixture rows through the PostgreSQL-compatible row shape."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, statement, parameters=()):
+        self._cursor.execute(statement, parameters)
+        return self
+
+    def fetchall(self):
+        columns = tuple(column[0] for column in self._cursor.description or ())
+        return [CompatRow(columns, row) for row in self._cursor.fetchall()]
+
+
 def test_employee_cannot_clear_or_repoint_media_but_filename_metadata_is_ignored():
     connection, cursor = _protected_media_cursor()
     try:
@@ -220,6 +236,28 @@ def test_organization_employee_can_preserve_existing_media_in_updates_and_versio
             owner_type="organization",
             can_upload=False,
             cursor=cursor,
+            organization_id="org-a",
+        )
+    finally:
+        connection.close()
+
+    assert errors == []
+
+
+def test_media_access_check_accepts_postgresql_compat_rows():
+    connection, cursor = _protected_media_cursor()
+    try:
+        errors = validate_protected_media_mutation_access(
+            {
+                "chuyengia": [{
+                    "id": "cg-1",
+                    "anhChungChi": "images/chuyen_gia/cert.jpg",
+                    "anhChuKy": "images/chuyen_gia/signature.webp",
+                }],
+            },
+            owner_type="organization",
+            can_upload=False,
+            cursor=_CompatCursor(cursor),
             organization_id="org-a",
         )
     finally:

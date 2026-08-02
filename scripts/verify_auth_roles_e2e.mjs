@@ -151,8 +151,21 @@ async function uiLogin(browser, accountData, expectedRole) {
   await waitForApp(page);
   await page.locator("#login-username").fill(accountData.username);
   await page.locator("#login-password").fill(password);
+  const loginResponsePromise = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/auth/login",
+    { timeout: 10_000 },
+  );
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 20_000 });
+  const loginResponse = await loginResponsePromise;
+  try {
+    await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 20_000 });
+  } catch (error) {
+    const body = await loginResponse.json().catch(() => ({}));
+    throw new Error(
+      `Authenticated overlay did not close after login HTTP ${loginResponse.status()}: ${JSON.stringify(body)}`,
+      { cause: error },
+    );
+  }
   await page.waitForFunction((role) => {
     const profile = document.getElementById("header-profile-role")?.textContent || "";
     return role === "employee" ? /Chuyên viên/i.test(profile) : role === "manager" ? /Quản lý/i.test(profile) : /Super Admin/i.test(profile);
@@ -640,7 +653,7 @@ try {
   const registerPage = await publicContext.newPage();
   await registerPage.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
   await waitForApp(registerPage);
-  await registerPage.locator("#link-show-register").click();
+  await registerPage.locator("#btn-auth-brand-register").click();
   assert(await registerPage.locator("#form-auth-register .auth-legal-consent").isVisible(), "Registration did not show legal consent");
   await publicContext.close();
   mark("registration-legal-consent-and-forgot-password-privacy");

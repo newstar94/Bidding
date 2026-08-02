@@ -1287,8 +1287,8 @@ select.form-control:focus {
 input:not([readonly]):not([disabled]),
 select:not([readonly]):not([disabled]),
 textarea:not([readonly]):not([disabled]) {
-  background-color: #ffffff !important;
-  background: #ffffff !important;
+  background-color: white !important;
+  background: white !important;
   color: #0f172a !important;
 }
 .form-group input[readonly],

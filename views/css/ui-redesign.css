@@ -2830,13 +2830,13 @@ body {
 
 :is(.btn-primary, .btn-emerald, .btn-purple) {
   border-color: var(--brand);
-  color: #ffffff;
+  color: white;
   background: var(--brand);
 }
 
 :is(.btn-primary, .btn-emerald, .btn-purple):hover:not(:disabled) {
   border-color: var(--brand-strong);
-  color: #ffffff;
+  color: white;
   background: var(--brand-strong);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 20%, transparent);
   transform: none;
@@ -2884,13 +2884,13 @@ body {
 
 .btn-danger {
   border-color: var(--danger);
-  color: #ffffff;
+  color: white;
   background: var(--danger);
 }
 
 .btn-danger:hover:not(:disabled) {
   border-color: var(--danger-hover);
-  color: #ffffff;
+  color: white;
   background: var(--danger-hover);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--danger) 18%, transparent);
   transform: none;
@@ -2898,13 +2898,13 @@ body {
 
 .btn.btn-warning {
   border-color: var(--warning);
-  color: #ffffff;
+  color: white;
   background: var(--warning);
 }
 
 .btn.btn-warning:hover:not(:disabled) {
   border-color: var(--warning-hover);
-  color: #ffffff;
+  color: white;
   background: var(--warning-hover);
   box-shadow: none;
 }
@@ -3017,7 +3017,7 @@ body {
 
 :is(.action-btn.btn-delete, .btn-remove-file, .btn-del-row):hover:not(:disabled) {
   border-color: var(--danger);
-  color: #ffffff;
+  color: white;
   background: var(--danger);
   transform: none;
 }
@@ -3060,7 +3060,7 @@ body {
 
 .pagination-btn.active {
   border-color: var(--brand);
-  color: #ffffff;
+  color: white;
   background: var(--brand);
 }
 

@@ -32,7 +32,7 @@ a:hover {
   min-height: var(--touch-target-min);
   padding: 11px 16px;
   border-radius: var(--radius-md);
-  color: #ffffff;
+  color: white;
   background: var(--primary);
   box-shadow: var(--shadow-lg);
   transform: translateY(calc(-100% - var(--space-6)));
@@ -40,7 +40,7 @@ a:hover {
 }
 
 .skip-link:focus-visible {
-  color: #ffffff;
+  color: white;
   transform: translateY(0);
 }
 

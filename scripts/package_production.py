@@ -49,7 +49,7 @@ RUNTIME_FILES = (
     "scripts/verify_document_sandbox.py",
 )
 
-FORBIDDEN_PARTS = {
+FORBIDDEN_TOP_LEVEL_PARTS = {
     ".agents",
     ".claude",
     ".codex",
@@ -71,6 +71,7 @@ FORBIDDEN_PARTS = {
     "test-results",
     "tests",
 }
+FORBIDDEN_NESTED_PARTS = {"__pycache__"}
 FORBIDDEN_NAMES = {".env", "bidding.db", "bidding.db-shm", "bidding.db-wal"}
 FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".map", ".pyc", ".tmp"}
 REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
@@ -88,7 +89,10 @@ def _relative(path: Path) -> Path:
 
 
 def _assert_safe(relative_path: Path) -> None:
-    if FORBIDDEN_PARTS.intersection(relative_path.parts):
+    if (
+        relative_path.parts[0] in FORBIDDEN_TOP_LEVEL_PARTS
+        or FORBIDDEN_NESTED_PARTS.intersection(relative_path.parts)
+    ):
         raise RuntimeError(f"Forbidden production path: {relative_path.as_posix()}")
     if relative_path.name in FORBIDDEN_NAMES or relative_path.suffix.lower() in FORBIDDEN_SUFFIXES:
         raise RuntimeError(f"Forbidden production file: {relative_path.as_posix()}")
@@ -234,6 +238,25 @@ def _isolated_smoke_environment(database_url: str) -> dict[str, str]:
     return environment
 
 
+def _smoke_child_environment(database_url: str, extraction_root: Path) -> dict[str, str]:
+    """Build the isolated environment used by the extracted-package smoke test."""
+    environment = _isolated_smoke_environment(database_url)
+    environment.update({
+        "APP_ENV": "test",
+        "APP_DEBUG": "False",
+        "ADMIN_PASSWORD": "Production-smoke-only-123!",  # pragma: allowlist secret
+        # TestClient uses this synthetic host. Keep this override isolated to
+        # the extracted-package child process so a production .env cannot
+        # turn the package smoke test into an unrelated TrustedHost failure.
+        "ALLOWED_HOSTS": "testserver,localhost,127.0.0.1",
+        "DATABASE_AUTO_MIGRATE": "true",
+        "APP_SECURE_COOKIES": "False",
+        "AUDIT_CHECKPOINT_DIR": "",
+        "PYTHONPATH": str(extraction_root.resolve()),
+    })
+    return environment
+
+
 def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     """Boot the application from extracted bytes, not from the source tree."""
     extraction_root = extraction_root.resolve()
@@ -287,19 +310,10 @@ def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         connection.execute("CREATE SCHEMA public")
-    environment = _isolated_smoke_environment(database_url)
     # The parent process loads the developer .env so the packager can discover
     # API_TEST_DATABASE_URL. Never let a privileged/dev URL win over the
     # isolated smoke database inside the extracted child process.
-    environment.update({
-        "APP_ENV": "test",
-        "APP_DEBUG": "False",
-        "ADMIN_PASSWORD": "Production-smoke-only-123!",  # pragma: allowlist secret
-        "DATABASE_AUTO_MIGRATE": "true",
-        "APP_SECURE_COOKIES": "False",
-        "AUDIT_CHECKPOINT_DIR": "",
-        "PYTHONPATH": str(extraction_root.resolve()),
-    })
+    environment = _smoke_child_environment(database_url, extraction_root)
     smoke_code = """
 from starlette.testclient import TestClient
 from backend.app import app
