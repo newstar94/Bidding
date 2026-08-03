@@ -395,33 +395,36 @@ def format_context_dates(data):
 project_root = str(PROJECT_ROOT)
 TEMPLATE_DIR = str(WORD_TEMPLATE_DIR)
 
-def get_user_template_dir(user_id=None):
+def get_user_template_dir(user_id=None, *, create=True):
     if user_id:
         clean_user_id = str(user_id).replace('..', '').replace('/', '').replace('\\', '').strip()
         path = os.path.join(TEMPLATE_DIR, clean_user_id)
-        os.makedirs(path, exist_ok=True)
+        if create:
+            os.makedirs(path, exist_ok=True)
         return path
     return TEMPLATE_DIR
 
-def get_scope_template_dir(owner_type, owner_id):
+def get_scope_template_dir(owner_type, owner_id, *, create=True):
     normalized_type = str(owner_type or '').strip().lower()
     normalized_id = str(owner_id or '').replace('..', '').replace('/', '').replace('\\', '').strip()
     if not normalized_id:
         raise ValueError('Phạm vi biểu mẫu Word không hợp lệ')
     if normalized_type == 'personal':
-        return get_user_template_dir(normalized_id)
+        return get_user_template_dir(normalized_id, create=create)
     if normalized_type != 'organization':
         raise ValueError('Loại phạm vi biểu mẫu Word không hợp lệ')
     organizations_dir = os.path.realpath(os.path.join(TEMPLATE_DIR, 'organizations'))
-    os.makedirs(organizations_dir, exist_ok=True)
+    if create:
+        os.makedirs(organizations_dir, exist_ok=True)
     path = os.path.realpath(os.path.join(organizations_dir, normalized_id))
     if not path.startswith(organizations_dir + os.sep):
         raise ValueError('Phạm vi biểu mẫu Word không hợp lệ')
-    os.makedirs(path, exist_ok=True)
+    if create:
+        os.makedirs(path, exist_ok=True)
     return path
 
 def get_active_template(owner_id=None, *, owner_type='personal'):
-    scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
+    scope_dir = get_scope_template_dir(owner_type, owner_id, create=False) if owner_id else TEMPLATE_DIR
     config_path = os.path.join(scope_dir, 'config.json')
     if os.path.exists(config_path):
         try:
@@ -456,7 +459,7 @@ def list_templates(owner_id=None, *, owner_type='personal'):
             'is_active': is_available and active_template == filename
         })
 
-    scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
+    scope_dir = get_scope_template_dir(owner_type, owner_id, create=False) if owner_id else TEMPLATE_DIR
     if os.path.exists(scope_dir):
         for f in os.listdir(scope_dir):
             if f.endswith('.docx') and f not in system_filenames:

@@ -1219,6 +1219,23 @@ SCHEMA_DINH_NGHIA = {
         ]
     },
 
+    "word_mapping_overrides": {
+        "columns": {
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL CHECK(owner_type IN ('organization', 'personal'))",
+            "mapping_key": "TEXT NOT NULL CHECK(mapping_key != '')",
+            "ten_bien_override": "TEXT",
+            "source_table_override": "TEXT",
+            "source_column_override": "TEXT",
+            "mo_ta_override": "TEXT",
+            "disabled": "INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN (0,1))",
+            "base_version": "INTEGER NOT NULL CHECK(base_version > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["organization_id", "mapping_key"]
+    },
+
 
 
     "ma_tran_phan_quyen": {

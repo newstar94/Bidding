@@ -1213,6 +1213,25 @@ def _upgrade_to_v34_index_ehsmt_adjustment_actors(cursor, _context):
     )
 
 
+def _upgrade_to_v35_sparse_word_mapping_overrides(cursor, context):
+    """Replace per-scope Word defaults with shared defaults plus sparse overrides."""
+
+    if context.build_create_table_sql is None:
+        raise RuntimeError(
+            "Database upgrade v35 requires the canonical table builder."
+        )
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+    from backend.documents.word_mapping_registry import migrate_seeded_word_mappings
+
+    cursor.execute(
+        context.build_create_table_sql(
+            "word_mapping_overrides",
+            SCHEMA_DINH_NGHIA["word_mapping_overrides"],
+        )
+    )
+    migrate_seeded_word_mappings(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1374,6 +1393,11 @@ UPGRADES = (
         34,
         "index_ehsmt_adjustment_actors",
         _upgrade_to_v34_index_ehsmt_adjustment_actors,
+    ),
+    DatabaseUpgrade(
+        35,
+        "sparse_word_mapping_overrides",
+        _upgrade_to_v35_sparse_word_mapping_overrides,
     ),
 )
 

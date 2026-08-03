@@ -994,7 +994,6 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
     from backend.auth.identity import normalize_email, normalize_username
     from backend.auth.password_policy import validate_new_password
     from backend.db.id_utils import generate_record_id, stable_org_id
-    from backend.documents.word_defaults import ensure_default_word_mappings_for_all_orgs
 
     existing = _application_tables(cursor)
     if existing:
@@ -1076,7 +1075,6 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
         (organization_id,),
     )
     context.create_indexes_and_triggers(cursor)
-    ensure_default_word_mappings_for_all_orgs(cursor)
     record_database_version(cursor, DB_SCHEMA_VERSION)
     context.assert_foreign_key_integrity(cursor)
     return DB_SCHEMA_VERSION

@@ -573,7 +573,10 @@ def _delete_user_sync(request):
             table_name
             for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
             if "owner_type" in table_spec.get("columns", {})
-            and table_name != "cau_hinh_bien_word"
+            and table_name not in {
+                "cau_hinh_bien_word",
+                "word_mapping_overrides",
+            }
         ]
         personal_record_count = sum(
             int(cursor.execute(
@@ -612,6 +615,7 @@ def _delete_user_sync(request):
             value for key, value in impact.items() if key not in {"rootCount", "totalCount"}
         )
         cursor.execute("DELETE FROM cau_hinh_bien_word WHERE organization_id = ?", (personal_scope,))
+        cursor.execute("DELETE FROM word_mapping_overrides WHERE organization_id = ?", (personal_scope,))
         cursor.execute("DELETE FROM word_default_seeds WHERE organization_id = ?", (personal_scope,))
         cursor.execute("DELETE FROM sync_metadata WHERE organization_id = ?", (personal_scope,))
         cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE emp_id = ?", (user_id,))

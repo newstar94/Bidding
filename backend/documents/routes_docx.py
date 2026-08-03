@@ -14,7 +14,6 @@ from backend.shared.helpers import (
     OrgPermissionError,
     log_audit,
 )
-from backend.db.id_utils import generate_record_id
 from backend.shared.access_policy import (
     can_upload_workspace_assets,
     can_manage_word_config,
@@ -54,7 +53,12 @@ from backend.documents.docx_context_policy import (
 )
 from backend.documents.docx_formula_service import apply_computed_mappings
 from backend.documents.docx_mapping_service import apply_custom_mappings, lowercase_partner_identity_codes
-from backend.documents.word_defaults import ensure_default_word_mappings
+from backend.documents.word_mapping_registry import (
+    delete_word_mapping,
+    reset_word_mapping,
+    resolve_word_mappings,
+    save_word_mapping,
+)
 from backend.documents.timeline_context_service import build_timeline_context
 import uuid
 
@@ -283,7 +287,11 @@ def _resolve_template_path(owner_type, owner_id, filename):
         base_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
     else:
         base_dir = os.path.realpath(
-            custom_exporter.get_scope_template_dir(owner_type, owner_id)
+            custom_exporter.get_scope_template_dir(
+                owner_type,
+                owner_id,
+                create=False,
+            )
         )
     path = os.path.realpath(os.path.join(base_dir, safe_name))
     if not path.startswith(base_dir + os.sep):
@@ -342,20 +350,21 @@ def _load_word_export_policy(
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        ensure_default_word_mappings(cursor, organization_id)
-        conn.commit()
         capabilities = resolve_document_export_capabilities(
             cursor,
             role_str,
             user_id,
             organization_id,
         )
-        rows = conn.execute(
-            """SELECT ten_bien, source_table, source_column
-               FROM cau_hinh_bien_word
-               WHERE organization_id = ?""",
-            (organization_id,),
-        ).fetchall()
+        effective = resolve_word_mappings(cursor, organization_id)
+        rows = [
+            (
+                mapping["ten_bien"],
+                mapping["source_table"],
+                mapping["source_column"],
+            )
+            for mapping in effective
+        ]
         return capabilities, filter_mapping_rows(
             rows, document_type, capabilities
         )
@@ -804,11 +813,14 @@ async def list_word_mappings_api(request):
         if not can_read_word_config(cursor, role_or_err, user_id, org_name):
             return JSONResponse({"error": "Ban khong co quyen su dung cau hinh Word."}, status_code=403)
 
-        ensure_default_word_mappings(cursor, org_name)
-        conn.commit()
-
-        cursor.execute("SELECT id, ten_bien, source_table, source_column, mo_ta FROM cau_hinh_bien_word WHERE organization_id = ?", (org_name,))
-        rows = cursor.fetchall()
+        include_disabled = str(
+            request.query_params.get("includeDisabled") or ""
+        ).lower() in {"1", "true", "yes"}
+        rows = resolve_word_mappings(
+            cursor,
+            org_name,
+            include_disabled=include_disabled,
+        )
         mappings = []
         for row in rows:
             r = dict(row)
@@ -818,6 +830,8 @@ async def list_word_mappings_api(request):
             r['mappingType'] = 'computed' if r.get('source_table') == COMPUTED_SOURCE_TABLE else 'mapping'
             r['formula'] = r.get('source_column') if r.get('source_table') == COMPUTED_SOURCE_TABLE else ''
             r['moTa'] = r.get('mo_ta')
+            r['mappingKey'] = r.get('mapping_key')
+            r['isModified'] = bool(r.get('is_modified'))
             mappings.append(r)
         return JSONResponse(mappings)
     except OrgPermissionError as e:
@@ -866,7 +880,12 @@ async def save_word_mapping_api(request):
         source_column = (data.get('source_column') or data.get('sourceColumn') or '').strip()
         mapping_type = (data.get('mapping_type') or data.get('mappingType') or '').strip()
         formula = (data.get('formula') or '').strip()
-        mo_ta = (data.get('mo_ta') or data.get('moTa') or '').strip()
+        description_provided = 'mo_ta' in data or 'moTa' in data
+        mo_ta = (
+            (data.get('mo_ta') or data.get('moTa') or '').strip()
+            if description_provided
+            else None
+        )
         if mapping_type == 'computed':
             source_table = COMPUTED_SOURCE_TABLE
             source_column = formula
@@ -900,62 +919,22 @@ async def save_word_mapping_api(request):
 
 
 
-        row_by_data = None
-        if source_table != COMPUTED_SOURCE_TABLE:
-            cursor.execute("SELECT id FROM cau_hinh_bien_word WHERE source_table = ? AND source_column = ? AND organization_id = ?", (source_table, source_column, org_name))
-            row_by_data = cursor.fetchone()
-
-
-        cursor.execute("SELECT id FROM cau_hinh_bien_word WHERE ten_bien = ? AND organization_id = ?", (ten_bien, org_name))
-        row_by_name = cursor.fetchone()
-        if id_param:
-
-
-            if row_by_data and row_by_data[0] != id_param:
-                cursor.execute(
-                    "DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?",
-                    (row_by_data[0], org_name),
-                )
-            if row_by_name and row_by_name[0] != id_param:
-                cursor.execute(
-                    "DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?",
-                    (row_by_name[0], org_name),
-                )
-
-            cursor.execute("""
-                UPDATE cau_hinh_bien_word
-                SET ten_bien = ?, source_table = ?, source_column = ?, mo_ta = ?
-                WHERE id = ? AND organization_id = ?
-            """, (ten_bien, source_table, source_column, mo_ta, id_param, org_name))
-            mapping_id = id_param
-        else:
-
-            if row_by_data:
-
-                mapping_id = row_by_data[0]
-                cursor.execute("""
-                    UPDATE cau_hinh_bien_word
-                    SET ten_bien = ?, mo_ta = ?
-                    WHERE id = ? AND organization_id = ?
-                """, (ten_bien, mo_ta, mapping_id, org_name))
-            elif row_by_name:
-
-                mapping_id = row_by_name[0]
-                cursor.execute("""
-                    UPDATE cau_hinh_bien_word
-                    SET source_table = ?, source_column = ?, mo_ta = ?
-                    WHERE id = ? AND organization_id = ?
-                """, (source_table, source_column, mo_ta, mapping_id, org_name))
-            else:
-
-                mapping_id = generate_record_id("cau_hinh_bien_word")
-                cursor.execute("""
-                    INSERT INTO cau_hinh_bien_word (id, ten_bien, source_table, source_column, mo_ta, organization_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (mapping_id, ten_bien, source_table, source_column, mo_ta, org_name))
+        owner_type, _owner_id = _word_template_scope(user_id, org_name)
+        mapping = save_word_mapping(
+            cursor,
+            org_name,
+            owner_type,
+            mapping_id=id_param,
+            ten_bien=ten_bien,
+            source_table=source_table,
+            source_column=source_column,
+            mo_ta=mo_ta,
+        )
 
         conn.commit()
-        return JSONResponse({"success": True, "id": mapping_id})
+        return JSONResponse({"success": True, "id": mapping["id"]})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except OrgPermissionError as e:
         return _docx_error(request, e, "save_word_mapping_api")
     except Exception as e:
@@ -986,13 +965,54 @@ async def delete_word_mapping_api(request):
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
-        cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?", (mapping_id, org_name))
+        owner_type, _owner_id = _word_template_scope(user_id, org_name)
+        result = delete_word_mapping(
+            cursor,
+            org_name,
+            owner_type,
+            mapping_id,
+        )
         conn.commit()
-        return JSONResponse({"success": True})
+        return JSONResponse({"success": True, **result})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except OrgPermissionError as e:
         return _docx_error(request, e, "delete_word_mapping_api")
     except Exception as e:
         return _docx_error(request, e, "delete_word_mapping_api")
+    finally:
+        if conn:
+            try:
+                if conn.in_transaction:
+                    conn.rollback()
+                conn.close()
+            except DatabaseError:
+                pass
+
+
+async def reset_word_mapping_api(request):
+    conn = None
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        org_name = get_active_org(request, user_id)
+        mapping_id = request.path_params.get('mapping_id')
+        if not mapping_id:
+            return JSONResponse({"error": "Missing mapping_id parameter"}, status_code=400)
+
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
+        result = reset_word_mapping(cursor, org_name, mapping_id)
+        conn.commit()
+        return JSONResponse({"success": True, **result})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except OrgPermissionError as e:
+        return _docx_error(request, e, "reset_word_mapping_api")
     finally:
         if conn:
             try:

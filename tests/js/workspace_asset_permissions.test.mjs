@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import {
   applyAccessContext,
@@ -64,4 +65,18 @@ test("platform Word entitlement overrides an organization without a subscription
   } finally {
     globalThis.document = previousDocument;
   }
+});
+
+
+test("Word mapping UI distinguishes sparse overrides and can restore defaults", () => {
+  const workflow = fs.readFileSync("frontend/documents/WordIntegration.js", "utf8");
+  const view = fs.readFileSync("frontend/partners/PartnerView.js", "utf8");
+
+  assert.match(workflow, /word-mappings\?includeDisabled=true/);
+  assert.match(workflow, /disabledWordMappings/);
+  assert.match(workflow, /registerCommand\("resetWordMapping"/);
+  assert.match(workflow, /encodeURIComponent\(id\)/);
+  assert.match(view, /m\.origin === "override"/);
+  assert.match(view, /data-fn="resetWordMapping"/);
+  assert.match(view, /Đã ẩn/);
 });

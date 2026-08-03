@@ -76,6 +76,10 @@ async def delete_word_mapping_api(request):
     return await _dispatch("routes_docx", "delete_word_mapping_api", request)
 
 
+async def reset_word_mapping_api(request):
+    return await _dispatch("routes_docx", "reset_word_mapping_api", request)
+
+
 async def import_excel_api(request):
     return await _dispatch("routes_excel", "import_excel_api", request)
 

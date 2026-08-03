@@ -2,7 +2,7 @@ import hashlib
 
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
-from backend.shared.workspace_scope import personal_scope_id, personal_scope_owner_id
+from backend.shared.workspace_scope import personal_scope_id
 
 
 WORD_DEFAULT_MAPPINGS_VERSION = 14
@@ -466,6 +466,7 @@ def build_default_word_mappings():
                     "label": field_label(column, source_table),
                 }
             mappings.append({
+                "mapping_key": f"field:{source_table}.{column}",
                 "ten_bien": _default_single_name(source_table, column),
                 "source_table": source_table,
                 "source_column": column,
@@ -475,6 +476,7 @@ def build_default_word_mappings():
 
     for ten_bien, source_table, mo_ta in WORD_CONTEXT_MAPPINGS:
         mappings.append({
+            "mapping_key": f"context:{source_table}",
             "ten_bien": ten_bien,
             "source_table": "__context__",
             "source_column": source_table,
@@ -483,6 +485,7 @@ def build_default_word_mappings():
 
     for ten_bien, source_table, mo_ta in WORD_LIST_MAPPINGS:
         mappings.append({
+            "mapping_key": f"list:{source_table}",
             "ten_bien": ten_bien,
             "source_table": source_table,
             "source_column": "",
@@ -493,110 +496,10 @@ def build_default_word_mappings():
 
 
 def ensure_default_word_mappings(cursor, organization_id):
-    if not organization_id:
-        return 0
+    """Compatibility no-op: defaults are now resolved from the shared catalog."""
 
-    organization_row = cursor.execute(
-        "SELECT 1 FROM to_chuc WHERE id = ?",
-        (organization_id,),
-    ).fetchone()
-    if organization_row:
-        owner_type = "organization"
-    else:
-        owner_id = personal_scope_owner_id(organization_id)
-        if not owner_id or not cursor.execute(
-            "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'", (owner_id,)
-        ).fetchone():
-            return 0
-        owner_type = "personal"
-
-    cursor.execute(
-        "SELECT mappings_version FROM word_default_seeds WHERE organization_id = ?",
-        (organization_id,),
-    )
-    seed_row = cursor.fetchone()
-    marker_exists = bool(seed_row and int(seed_row[0]) >= WORD_DEFAULT_MAPPINGS_VERSION)
-
-    if not marker_exists:
-        cursor.execute(
-            """DELETE FROM cau_hinh_bien_word
-               WHERE organization_id = ?
-                 AND ten_bien = 'ds_kh'
-                 AND source_table = 'ke_hoach_lcnt'
-                 AND source_column = ''
-                 AND mo_ta LIKE ?""",
-            (organization_id, "Danh sách mặc định từ schema hệ thống:%"),
-        )
-        cursor.execute(
-            """DELETE FROM cau_hinh_bien_word
-               WHERE organization_id = ?
-                 AND source_table = 'ke_hoach_lcnt'
-                 AND source_column = 'is_tong_muc_tu_dong'
-                 AND mo_ta LIKE ?""",
-            (organization_id, "Bien don mac dinh tu schema he thong:%"),
-        )
-
-    inserted = 0
-    for mapping in build_default_word_mappings():
-        cursor.execute(
-            """
-            SELECT id, ten_bien, mo_ta
-            FROM cau_hinh_bien_word
-            WHERE organization_id = ? AND source_table = ? AND source_column = ?
-            """,
-            (organization_id, mapping["source_table"], mapping["source_column"]),
-        )
-        existing = cursor.fetchone()
-        if existing:
-            existing_id, existing_name, existing_desc = existing[0], existing[1], existing[2] or ""
-            if _is_default_mapping_description(existing_desc):
-                target_name = existing_name
-                if existing_name != mapping["ten_bien"]:
-                    cursor.execute(
-                        "SELECT 1 FROM cau_hinh_bien_word WHERE organization_id = ? AND ten_bien = ? AND id != ?",
-                        (organization_id, mapping["ten_bien"], existing_id),
-                    )
-                    if not cursor.fetchone():
-                        target_name = mapping["ten_bien"]
-                if target_name != existing_name or existing_desc != mapping["mo_ta"]:
-                    cursor.execute(
-                        "UPDATE cau_hinh_bien_word SET ten_bien = ?, mo_ta = ? WHERE id = ?",
-                        (target_name, mapping["mo_ta"], existing_id),
-                    )
-            continue
-
-        if not marker_exists:
-            cursor.execute(
-                """
-                INSERT INTO cau_hinh_bien_word (
-                    id, organization_id, owner_type, ten_bien, source_table, source_column, mo_ta
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
-                """,
-                (
-                    _stable_word_mapping_id(organization_id, mapping["ten_bien"]),
-                    organization_id,
-                    owner_type,
-                    mapping["ten_bien"],
-                    mapping["source_table"],
-                    mapping["source_column"],
-                    mapping["mo_ta"],
-                ),
-            )
-            inserted += cursor.rowcount or 0
-
-    if not marker_exists:
-        cursor.execute(
-            """
-            INSERT INTO word_default_seeds (organization_id, mappings_version)
-            VALUES (?, ?)
-            ON CONFLICT(organization_id) DO UPDATE SET
-                mappings_version = excluded.mappings_version,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (organization_id, WORD_DEFAULT_MAPPINGS_VERSION),
-        )
-    return inserted
+    del cursor, organization_id
+    return 0
 
 
 def ensure_personal_word_workspace(cursor, user_id):
@@ -618,9 +521,11 @@ def ensure_personal_word_workspace(cursor, user_id):
            ON CONFLICT (organization_id) DO NOTHING""",
         (scope_id,),
     )
-    return ensure_default_word_mappings(cursor, scope_id)
+    return 0
 
 
 def ensure_default_word_mappings_for_all_orgs(cursor):
-    cursor.execute("SELECT id FROM to_chuc WHERE id IS NOT NULL AND id != ''")
-    return sum(ensure_default_word_mappings(cursor, row[0]) for row in cursor.fetchall())
+    """Compatibility no-op retained for old initialization call sites."""
+
+    del cursor
+    return 0

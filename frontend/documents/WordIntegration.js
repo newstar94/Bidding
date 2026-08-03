@@ -931,10 +931,22 @@ export function setupWordTemplatesEvents() {
   };
   const deleteWordMappingHandler = async (id) => {
     if (!canManageWordVariables) return;
-    const confirmed = await this.view.customConfirm("Xác nhận xóa", "Bạn có chắc chắn muốn xóa biến ánh xạ này không?", "trash-2");
+    const mappings = [
+      ...(this.model.state.wordMappings || []),
+      ...(this._disabledWordMappings || [])
+    ];
+    const mapping = mappings.find((item) => item.id === id);
+    const isSystemMapping = mapping?.origin === "system" || mapping?.origin === "override";
+    const confirmed = await this.view.customConfirm(
+      isSystemMapping ? "Ẩn ánh xạ mặc định" : "Xác nhận xóa",
+      isSystemMapping
+        ? "Ánh xạ này chỉ bị ẩn trong phạm vi đang làm việc và có thể khôi phục sau."
+        : "Bạn có chắc chắn muốn xóa biến ánh xạ này không?",
+      "trash-2"
+    );
     if (!confirmed) return;
     try {
-      const res = await apiFetch(`/api/word-mappings/${id}`, {
+      const res = await apiFetch(`/api/word-mappings/${encodeURIComponent(id)}`, {
         method: "DELETE"
       });
       if (res.ok) {
@@ -950,9 +962,34 @@ export function setupWordTemplatesEvents() {
       console.error(err);
     }
   };
+  const resetWordMappingHandler = async (id) => {
+    if (!canManageWordVariables) return;
+    const confirmed = await this.view.customConfirm(
+      "Khôi phục ánh xạ mặc định",
+      "Mọi tùy chỉnh của ánh xạ này trong phạm vi đang làm việc sẽ bị xóa.",
+      "rotate-ccw"
+    );
+    if (!confirmed) return;
+    try {
+      const res = await apiFetch(`/api/word-mappings/${encodeURIComponent(id)}/reset`, {
+        method: "POST"
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        await this.view.customAlert("Lỗi khôi phục", data.error || "Không thể khôi phục ánh xạ mặc định.", "x-circle");
+        return;
+      }
+      await this.loadWordMappings();
+      await this.view.customAlert("Thành công", "Đã khôi phục ánh xạ mặc định dùng chung.", "check-circle");
+    } catch (err) {
+      console.error(err);
+      await this.view.customAlert("Lỗi kết nối", "Không thể kết nối máy chủ.", "x-circle");
+    }
+  };
   if (typeof this.registerCommand === "function") {
     this.registerCommand("editWordMapping", editWordMappingHandler);
     this.registerCommand("deleteWordMapping", deleteWordMappingHandler);
+    this.registerCommand("resetWordMapping", resetWordMappingHandler);
   } else {
   }
 }
@@ -1000,7 +1037,7 @@ export async function loadWordTemplates() {
 }
 export async function loadWordMappings() {
   try {
-    const res = await apiFetch("/api/word-mappings");
+    const res = await apiFetch("/api/word-mappings?includeDisabled=true");
     const payload = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(payload?.error || `HTTP ${res.status}`);
@@ -1009,9 +1046,10 @@ export async function loadWordMappings() {
       throw new Error("Phản hồi danh sách biến Word không đúng định dạng.");
     }
     if (!this.model.state) this.model.state = {};
-    this.model.state.wordMappings = payload;
+    this.model.state.wordMappings = payload.filter((mapping) => !mapping.disabled);
+    this._disabledWordMappings = payload.filter((mapping) => mapping.disabled);
     if (this.view.renderWordMappingsTable) {
-      this.view.renderWordMappingsTable(payload);
+      this.view.renderWordMappingsTable(this.model.state.wordMappings);
     }
     const dictionarySelect = document.getElementById("dictionary-group-select");
     const group = dictionarySelect ? dictionarySelect.value : "global";
@@ -1021,6 +1059,7 @@ export async function loadWordMappings() {
     console.error("Failed to load word mappings:", err);
     if (!this.model.state) this.model.state = {};
     this.model.state.wordMappings = [];
+    this._disabledWordMappings = [];
     const tbody = document.getElementById("dictionary-table-body");
     if (tbody) {
       tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Không tải được danh sách biến Word: ${escapeHtml(err.message || err)}</td></tr>`);

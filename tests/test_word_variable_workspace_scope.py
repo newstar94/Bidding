@@ -8,6 +8,11 @@ from backend.documents.word_defaults import (
     ensure_default_word_mappings,
     ensure_personal_word_workspace,
 )
+from backend.documents.word_mapping_registry import (
+    migrate_seeded_word_mappings,
+    resolve_word_mappings,
+    save_word_mapping,
+)
 from backend.shared.access_policy import (
     can_manage_word_config,
     can_read_word_config,
@@ -55,6 +60,20 @@ def _database():
             mappings_version INTEGER NOT NULL,
             updated_at TEXT
         );
+        CREATE TABLE word_mapping_overrides (
+            organization_id TEXT NOT NULL,
+            owner_type TEXT NOT NULL,
+            mapping_key TEXT NOT NULL,
+            ten_bien_override TEXT,
+            source_table_override TEXT,
+            source_column_override TEXT,
+            mo_ta_override TEXT,
+            disabled INTEGER NOT NULL DEFAULT 0,
+            base_version INTEGER NOT NULL,
+            created_at TEXT,
+            updated_at TEXT,
+            PRIMARY KEY (organization_id, mapping_key)
+        );
         CREATE TABLE goi_dich_vu (
             id TEXT PRIMARY KEY,
             trang_thai TEXT NOT NULL
@@ -88,7 +107,7 @@ def _request(active_workspace_id):
     )
 
 
-def test_new_account_bootstrap_creates_personal_word_variables_immediately():
+def test_new_account_bootstrap_uses_shared_word_variables_without_copying_rows():
     connection = _database()
     cursor = connection.cursor()
     cursor.execute("INSERT INTO tai_khoan (id, vai_tro) VALUES ('user-a', 'user')")
@@ -97,7 +116,7 @@ def test_new_account_bootstrap_creates_personal_word_variables_immediately():
     inserted_again = ensure_personal_word_workspace(cursor, "user-a")
 
     scope_id = personal_scope_id("user-a")
-    assert inserted > 0
+    assert inserted == 0
     assert inserted_again == 0
     assert cursor.execute(
         "SELECT current_version FROM sync_metadata WHERE organization_id = ?",
@@ -106,7 +125,11 @@ def test_new_account_bootstrap_creates_personal_word_variables_immediately():
     assert cursor.execute(
         "SELECT count(*) FROM cau_hinh_bien_word WHERE organization_id = ? AND owner_type = 'personal'",
         (scope_id,),
-    ).fetchone()[0] > 0
+    ).fetchone()[0] == 0
+    assert cursor.execute(
+        "SELECT count(*) FROM word_default_seeds WHERE organization_id = ?",
+        (scope_id,),
+    ).fetchone()[0] == 0
     connection.close()
 
 
@@ -127,29 +150,30 @@ def test_switching_workspace_selects_distinct_personal_and_organization_variable
     organization_scope = get_active_org(
         _request("org-a"), "user-a", cursor=cursor
     )
-    personal_mapping = cursor.execute(
-        "SELECT id, ten_bien FROM cau_hinh_bien_word WHERE organization_id = ? ORDER BY id LIMIT 1",
-        (personal_scope,),
-    ).fetchone()
-    cursor.execute(
-        "UPDATE cau_hinh_bien_word SET ten_bien = 'bien_ca_nhan' WHERE id = ? AND organization_id = ?",
-        (personal_mapping["id"], personal_scope),
+    personal_mapping = resolve_word_mappings(cursor, personal_scope)[0]
+    save_word_mapping(
+        cursor,
+        personal_scope,
+        "personal",
+        mapping_id=personal_mapping["id"],
+        ten_bien="bien_ca_nhan",
+        source_table=personal_mapping["source_table"],
+        source_column=personal_mapping["source_column"],
+        mo_ta=None,
     )
 
     assert personal_scope == "personal:user-a"
     assert organization_scope == "org-a"
+    assert resolve_word_mappings(cursor, personal_scope)[0]["ten_bien"] == "bien_ca_nhan"
+    assert resolve_word_mappings(cursor, organization_scope)[0]["ten_bien"] != "bien_ca_nhan"
     assert cursor.execute(
-        "SELECT ten_bien FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?",
-        (personal_mapping["id"], personal_scope),
-    ).fetchone()[0] == "bien_ca_nhan"
-    assert cursor.execute(
-        "SELECT count(*) FROM cau_hinh_bien_word WHERE organization_id = ? AND ten_bien = 'bien_ca_nhan'",
-        (organization_scope,),
-    ).fetchone()[0] == 0
+        "SELECT count(*) FROM word_mapping_overrides WHERE organization_id = ?",
+        (personal_scope,),
+    ).fetchone()[0] == 1
     connection.close()
 
 
-def test_default_word_variable_upgrade_rewrites_legacy_explanation_text():
+def test_default_word_variable_upgrade_compacts_legacy_default_rows():
     connection = _database()
     cursor = connection.cursor()
     cursor.execute("INSERT INTO to_chuc (id, ten_to_chuc) VALUES ('org-a', 'Tổ chức A')")
@@ -164,16 +188,21 @@ def test_default_word_variable_upgrade_rewrites_legacy_explanation_text():
         "INSERT INTO word_default_seeds (organization_id, mappings_version) VALUES ('org-a', 13)"
     )
 
-    ensure_default_word_mappings(cursor, "org-a")
+    migrate_seeded_word_mappings(cursor)
 
-    description = cursor.execute(
-        "SELECT mo_ta FROM cau_hinh_bien_word WHERE id = 'legacy-ma-cdt'"
-    ).fetchone()[0]
-    version = cursor.execute(
+    mapping = next(
+        item for item in resolve_word_mappings(cursor, "org-a")
+        if item["source_table"] == "chu_dau_tu"
+        and item["source_column"] == "ma_chu_dau_tu"
+    )
+    seed = cursor.execute(
         "SELECT mappings_version FROM word_default_seeds WHERE organization_id = 'org-a'"
-    ).fetchone()[0]
-    assert description == "Biến đơn mặc định từ schema hệ thống: chu_dau_tu.ma_chu_dau_tu"
-    assert version == 14
+    ).fetchone()
+    assert mapping["mo_ta"] == "Biến đơn mặc định từ schema hệ thống: chu_dau_tu.ma_chu_dau_tu"
+    assert cursor.execute(
+        "SELECT COUNT(*) FROM cau_hinh_bien_word WHERE id = 'legacy-ma-cdt'"
+    ).fetchone()[0] == 0
+    assert seed is None
     connection.close()
 
 

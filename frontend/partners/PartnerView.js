@@ -409,9 +409,22 @@ export function renderDictionary(group) {
       id: m.id,
       sourceTable: m.sourceTable,
       sourceColumn: m.sourceColumn,
+      tenBien: m.tenBien,
+      origin: m.origin,
+      canReset: Boolean(m.isModified && m.origin === "override")
+    }));
+    const hiddenVars = (this._disabledWordMappings || []).filter((m) => m.sourceColumn && m.sourceColumn !== "*" && m.sourceTable !== "__computed__").map((m) => ({
+      code: `{${m.tenBien}}`,
+      desc: "Ánh xạ mặc định đang bị ẩn trong phạm vi này",
+      isCustom: true,
+      isHidden: true,
+      canReset: true,
+      id: m.id,
+      sourceTable: m.sourceTable,
+      sourceColumn: m.sourceColumn,
       tenBien: m.tenBien
     }));
-    variables = [...variables, ...customVars];
+    variables = [...variables, ...customVars, ...hiddenVars];
   } else if (group === "custom_lists" && this.model.state && this.model.state.wordMappings) {
     const customLists = this.model.state.wordMappings.filter((m) => (!m.sourceColumn || m.sourceColumn === "*") && m.sourceTable !== "__computed__").map((m) => ({
       code: `{#${m.tenBien}}`,
@@ -421,9 +434,23 @@ export function renderDictionary(group) {
       id: m.id,
       sourceTable: m.sourceTable,
       sourceColumn: m.sourceColumn,
+      tenBien: m.tenBien,
+      origin: m.origin,
+      canReset: Boolean(m.isModified && m.origin === "override")
+    }));
+    const hiddenLists = (this._disabledWordMappings || []).filter((m) => (!m.sourceColumn || m.sourceColumn === "*") && m.sourceTable !== "__computed__").map((m) => ({
+      code: `{#${m.tenBien}}`,
+      desc: "Ánh xạ danh sách mặc định đang bị ẩn trong phạm vi này",
+      isCustom: true,
+      isList: true,
+      isHidden: true,
+      canReset: true,
+      id: m.id,
+      sourceTable: m.sourceTable,
+      sourceColumn: m.sourceColumn,
       tenBien: m.tenBien
     }));
-    variables = [...variables, ...customLists];
+    variables = [...variables, ...customLists, ...hiddenLists];
   } else if (group === "computed" && this.model.state && this.model.state.wordMappings) {
     variables = this.model.state.wordMappings.filter((m) => m.mappingType === "computed" || m.sourceTable === "__computed__").map((m) => ({
       code: `{${m.tenBien}}`,
@@ -471,7 +498,15 @@ export function renderDictionary(group) {
     const safeCopyCode = safeAttr(v.code || "");
     const editArgsKey = registerCommandArgs([String(v.id || "")]);
     const deleteArgsKey = registerCommandArgs([String(v.id || "")]);
-    if (v.isList) {
+    const resetArgsKey = registerCommandArgs([String(v.id || "")]);
+    const resetButton = canManageWordVariables && v.canReset ? `
+                    <button class="action-btn btn-edit bf-s-bdcd6b1c67" data-bf-action="call" data-fn="resetWordMapping" data-arg-key="${resetArgsKey}" title="Khôi phục mặc định">
+                        <i data-lucide="rotate-ccw" class="bf-s-0cfddc8ac4"></i>
+                    </button>` : "";
+    if (v.isHidden) {
+      codeHTML = `<code class="bf-s-79f6019cdd">${safeCode}</code>`;
+      actionHTML = `<div class="action-btn-group bf-s-207bd5e89c">${resetButton}</div>`;
+    } else if (v.isList) {
       codeHTML = `
                 <div class="bf-s-38029ccbb2">
                     <code class="bf-s-46e9ba44f5">{#${safeVariableName}}</code>
@@ -490,6 +525,7 @@ export function renderDictionary(group) {
                     <button class="action-btn btn-delete bf-s-bdcd6b1c67" data-bf-action="call" data-fn="deleteWordMapping" data-arg-key="${deleteArgsKey}" title="Xóa ánh xạ">
                         <i data-lucide="trash-2" class="bf-s-8931a7bc44"></i>
                     </button>
+                    ${resetButton}
                     ` : ""}
                 </div>
             `;
@@ -508,6 +544,7 @@ export function renderDictionary(group) {
                         <button class="action-btn btn-delete bf-s-bdcd6b1c67" data-bf-action="call" data-fn="deleteWordMapping" data-arg-key="${deleteArgsKey}" title="Xóa ánh xạ">
                             <i data-lucide="trash-2" class="bf-s-8931a7bc44"></i>
                         </button>
+                        ${resetButton}
                         ` : ""}
                     </div>
                 `;
@@ -520,7 +557,9 @@ export function renderDictionary(group) {
       }
     }
     let descHTML = "";
-    if (v.isCustom) {
+    if (v.isHidden) {
+      descHTML = `<span class="badge badge-warning bf-s-9019e5a08b">Đã ẩn</span> <span class="bf-s-a52dfa01bd">${escapeHtml(v.desc || "")}</span>`;
+    } else if (v.isCustom) {
       if (v.isComputed) {
         descHTML = `
                     <span class="badge badge-info bf-s-ce307fead3">Công thức</span>
