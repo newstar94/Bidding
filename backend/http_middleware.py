@@ -256,7 +256,9 @@ class BodySizeLimitMiddleware:
                 "REQUEST_MAX_PACKAGE_DOCUMENT_BYTES",
                 26 * 1024 * 1024,
             )
-        if path in cls.DOCUMENT_PATHS:
+        if path in cls.DOCUMENT_PATHS or (
+            path.startswith("/api/templates/") and path.lower().endswith(".docx")
+        ):
             return cls._configured_limit("REQUEST_MAX_DOCUMENT_BYTES", 11 * 1024 * 1024)
         return cls._configured_limit("REQUEST_MAX_JSON_BYTES", 1024 * 1024)
 

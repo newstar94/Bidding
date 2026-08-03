@@ -25,6 +25,28 @@ export {
   showHopDongDetails,
   renderContractVersionDetails
 };
+export function buildWordTemplateActions(tpl, canManageTemplates) {
+  const isAvailable = tpl.is_available !== false;
+  if (!isAvailable) return '<span class="text-muted">Chưa cài đặt</span>';
+  if (!canManageTemplates) {
+    return tpl.is_active
+      ? '<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>'
+      : '<span class="text-muted">Do Quản lý thiết lập</span>';
+  }
+
+  const safeFilename = safeAttr(tpl.filename);
+  const actions = [];
+  if (tpl.is_active) {
+    actions.push('<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>');
+  } else {
+    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`);
+  }
+  if (!tpl.is_system) {
+    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-edit-template" data-filename="${safeFilename}">Sửa</button>`);
+    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-delete-template" data-filename="${safeFilename}">Xóa</button>`);
+  }
+  return `<div class="word-template-actions">${actions.join("")}</div>`;
+}
 export function renderBieumauTab(templatesList = []) {
   const tbody = document.getElementById("word-templates-tbody");
   if (!tbody) return;
@@ -46,13 +68,7 @@ export function renderBieumauTab(templatesList = []) {
         : canManageWordVariables
           ? `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`
           : '<span class="badge badge-neutral">Chỉ xem</span>';
-    const actionButton = !isAvailable
-      ? '<span class="text-muted">Chưa cài đặt</span>'
-      : tpl.is_active
-        ? '<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>'
-        : canManageWordVariables
-          ? `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`
-          : '<span class="text-muted">Do Quản lý thiết lập</span>';
+    const actionButton = buildWordTemplateActions(tpl, canManageWordVariables);
     return `
             <tr>
                 <td class="fw-bold">${escapeHtml(tpl.name)}</td>

@@ -16,7 +16,15 @@ const PACKAGE_STATUS_COLORS = {
 };
 const PACKAGE_STATUS_ORDER = Object.keys(PACKAGE_STATUS_COLORS);
 const PLAN_STATUS_ORDER = ["Chưa triển khai", "Đang thực hiện", "Hoàn thành"];
-const CONTRACT_STATUS_ORDER = ["Chưa hiệu lực", "Đang thực hiện", "Tạm dừng", "Đã hoàn thành", "Đã thanh lý", "Đã hủy"];
+const CONTRACT_STATUS_COLORS = Object.freeze({
+  "Chưa hiệu lực": "#64748B",
+  "Đang thực hiện": "#2563EB",
+  "Tạm dừng": "#D97706",
+  "Đã hoàn thành": "#059669",
+  "Đã thanh lý": "#0F766E",
+  "Đã hủy": "#DC2626",
+});
+const CONTRACT_STATUS_ORDER = Object.keys(CONTRACT_STATUS_COLORS);
 const CONTRACT_EXPIRY_WARNING_DAYS = 10;
 export const ALERT_META = {
   closingToday: { label: "Đóng thầu hôm nay", detail: "Chưa chuyển sang đã mở thầu", icon: "calendar-clock", tone: "blue" },
@@ -106,12 +114,23 @@ export function normalizeContractStatusCounts(incoming = {}, order = CONTRACT_ST
   return normalized;
 }
 
-function getContractStatusCatalog(model) {
+export function getContractStatusCatalog(model) {
   const configured = Array.isArray(model?.state?.customcontractstatuses)
     ? model.state.customcontractstatuses
     : [];
-  if (configured.length) return configured;
-  return CONTRACT_STATUS_ORDER.map((name) => ({ name, color: "#64748B" }));
+  const withFallbackColor = (status) => {
+    const name = String(status?.name || "").trim();
+    const configuredColor = String(status?.color || "");
+    return {
+      ...status,
+      name,
+      color: /^#[0-9a-fA-F]{6}$/.test(configuredColor)
+        ? configuredColor
+        : CONTRACT_STATUS_COLORS[name] || "#64748B",
+    };
+  };
+  if (configured.length) return configured.map(withFallbackColor);
+  return CONTRACT_STATUS_ORDER.map((name) => withFallbackColor({ name }));
 }
 
 export function derivePlanStatusCounts(plans = [], packages = []) {

@@ -64,6 +64,14 @@ async def upload_template_api(request):
     return await _dispatch("routes_docx", "upload_template_api", request)
 
 
+async def replace_template_api(request):
+    return await _dispatch("routes_docx", "replace_template_api", request)
+
+
+async def delete_template_api(request):
+    return await _dispatch("routes_docx", "delete_template_api", request)
+
+
 async def list_word_mappings_api(request):
     return await _dispatch("routes_docx", "list_word_mappings_api", request)
 

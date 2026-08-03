@@ -86,6 +86,13 @@ def _docx_error(request, exception, context):
             "Không tìm thấy mẫu Word.",
             status_code=404,
         )
+    if isinstance(exception, FileExistsError):
+        return error_response(
+            request,
+            "DOCX_TEMPLATE_ALREADY_EXISTS",
+            "Tên biểu mẫu đã tồn tại.",
+            status_code=409,
+        )
     if isinstance(exception, DocumentWorkerInputError):
         return error_response(
             request,
@@ -281,8 +288,30 @@ def _content_disposition(filename):
     return f"attachment; filename={safe_name}; filename*=UTF-8''{quote(safe_name)}"
 
 
+def _normalize_custom_template_filename(value):
+    name = str(value or '').strip()
+    if not name:
+        raise ValueError('Tên biểu mẫu không được để trống')
+    if not name.lower().endswith('.docx'):
+        name = f'{name}.docx'
+    if os.path.basename(name) != name or re.search(r'[<>:"/\\|?*\x00-\x1f]', name):
+        raise ValueError('Tên biểu mẫu chứa ký tự không hợp lệ')
+    name = name.strip(' .')
+    if len(name) > 160:
+        raise ValueError('Tên biểu mẫu không được vượt quá 160 ký tự')
+    if not name or name.lower() == '.docx':
+        raise ValueError('Tên biểu mẫu không được để trống')
+    if os.path.splitext(name)[0].upper() in {
+        'CON', 'PRN', 'AUX', 'NUL',
+        *(f'COM{i}' for i in range(1, 10)),
+        *(f'LPT{i}' for i in range(1, 10)),
+    }:
+        raise ValueError('Tên biểu mẫu không hợp lệ')
+    return name
+
+
 def _resolve_template_path(owner_type, owner_id, filename):
-    safe_name = _safe_filename(filename)
+    safe_name = _normalize_custom_template_filename(filename)
     if safe_name in SYSTEM_TEMPLATES:
         base_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
     else:
@@ -301,6 +330,21 @@ def _resolve_template_path(owner_type, owner_id, filename):
     return path, safe_name
 
 
+def _resolve_custom_template_path(owner_type, owner_id, filename):
+    safe_name = _normalize_custom_template_filename(filename)
+    if safe_name.lower() in SYSTEM_TEMPLATES:
+        raise ValueError('Không thể thay đổi biểu mẫu hệ thống')
+    scope_dir = os.path.realpath(
+        custom_exporter.get_scope_template_dir(owner_type, owner_id, create=False)
+    )
+    path = os.path.realpath(os.path.join(scope_dir, safe_name))
+    if not path.startswith(scope_dir + os.sep):
+        raise ValueError('Tên mẫu không hợp lệ')
+    if not os.path.isfile(path):
+        raise FileNotFoundError('Không tìm thấy mẫu Word tùy chỉnh')
+    return path, safe_name
+
+
 def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_path):
     scope_dir = os.path.realpath(
         custom_exporter.get_scope_template_dir(owner_type, owner_id)
@@ -314,6 +358,89 @@ def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_pa
         owner_id,
         owner_type=owner_type,
     )
+
+
+def _replace_scoped_template_from_path(owner_type, owner_id, filename, source_path):
+    dest_path, _ = _update_scoped_template(
+        owner_type,
+        owner_id,
+        filename,
+        filename,
+        source_path=source_path,
+    )
+    return dest_path
+
+
+def _update_scoped_template(
+    owner_type,
+    owner_id,
+    filename,
+    new_filename,
+    *,
+    source_path=None,
+):
+    current_path, current_name = _resolve_custom_template_path(
+        owner_type, owner_id, filename
+    )
+    next_name = _normalize_custom_template_filename(new_filename or current_name)
+    if next_name.lower() in SYSTEM_TEMPLATES:
+        raise ValueError('Không thể ghi đè biểu mẫu hệ thống')
+    scope_dir = os.path.dirname(current_path)
+    next_path = os.path.abspath(os.path.join(scope_dir, next_name))
+    common_dir = os.path.normcase(os.path.commonpath([scope_dir, next_path]))
+    if common_dir != os.path.normcase(scope_dir):
+        raise ValueError('Tên biểu mẫu không hợp lệ')
+    same_path = os.path.normcase(next_path) == os.path.normcase(current_path)
+    if not same_path and os.path.exists(next_path):
+        raise FileExistsError('Tên biểu mẫu đã tồn tại')
+
+    if source_path:
+        temp_path = os.path.join(scope_dir, f'.{next_name}.{uuid.uuid4().hex}.tmp')
+        try:
+            shutil.copyfile(source_path, temp_path)
+            os.replace(temp_path, next_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        if not same_path:
+            os.remove(current_path)
+    elif not same_path:
+        os.replace(current_path, next_path)
+    elif current_name != next_name:
+        case_temp_path = os.path.join(
+            scope_dir, f'.{current_name}.{uuid.uuid4().hex}.rename'
+        )
+        os.replace(current_path, case_temp_path)
+        try:
+            os.replace(case_temp_path, next_path)
+        except OSError:
+            os.replace(case_temp_path, current_path)
+            raise
+
+    if (
+        current_name != next_name
+        and custom_exporter.get_active_template(owner_id, owner_type=owner_type)
+        == current_name
+    ):
+        custom_exporter.set_active_template(
+            next_name,
+            owner_id,
+            owner_type=owner_type,
+        )
+    return next_path, next_name
+
+
+def _delete_scoped_template(owner_type, owner_id, filename):
+    path, safe_name = _resolve_custom_template_path(owner_type, owner_id, filename)
+    os.remove(path)
+    if custom_exporter.get_active_template(
+        owner_id, owner_type=owner_type
+    ) == safe_name:
+        custom_exporter.set_active_template(
+            custom_exporter.DEFAULT_TEMPLATE,
+            owner_id,
+            owner_type=owner_type,
+        )
 
 
 def _validate_docx_upload(filename, content, *, deep_validation=True, total_size=None):
@@ -799,6 +926,114 @@ async def upload_template_api(request):
         return _docx_error(request, e, "upload_template_api")
     except Exception as e:
         return _docx_error(request, e, "upload_template_api")
+
+
+async def replace_template_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err, write=True)
+        if access_error is not None:
+            return access_error
+        organization_id = get_active_org(request, user_id)
+        upload_access_error = _word_template_upload_access_response(
+            request,
+            role_or_err,
+            organization_id,
+        )
+        if upload_access_error is not None:
+            return upload_access_error
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        template_name = request.path_params.get('filename')
+        _, safe_name = await run_blocking_io(
+            _resolve_custom_template_path,
+            owner_type,
+            owner_id,
+            template_name,
+            timeout_seconds=5,
+        )
+
+        form = await request.form()
+        file_obj = form.get('file')
+        new_name = _normalize_custom_template_filename(
+            form.get('name') or safe_name
+        )
+        if file_obj:
+            async with spooled_upload(
+                file_obj,
+                max_bytes=MAX_TEMPLATE_UPLOAD_BYTES,
+                suffix=".docx",
+            ) as (upload_path, upload_size, head):
+                _validate_docx_upload(
+                    file_obj.filename,
+                    head,
+                    deep_validation=False,
+                    total_size=upload_size,
+                )
+                await run_document_job_async(
+                    "validate_docx",
+                    {"content_path": str(upload_path)},
+                    timeout_seconds=15,
+                )
+                _, new_name = await run_blocking_io(
+                    _update_scoped_template,
+                    owner_type,
+                    owner_id,
+                    safe_name,
+                    new_name,
+                    source_path=str(upload_path),
+                    timeout_seconds=10,
+                )
+        else:
+            _, new_name = await run_blocking_io(
+                _update_scoped_template,
+                owner_type,
+                owner_id,
+                safe_name,
+                new_name,
+                timeout_seconds=5,
+            )
+        return JSONResponse({"success": True, "filename": new_name})
+    except (FileNotFoundError, FileExistsError, ValueError, DocumentWorkerError) as e:
+        return _docx_error(request, e, "replace_template_api")
+    except (DatabaseError, OrgPermissionError, BlockingIOBusyError, BlockingIOTimeoutError, OSError) as e:
+        return _docx_error(request, e, "replace_template_api")
+
+
+async def delete_template_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err, write=True)
+        if access_error is not None:
+            return access_error
+        organization_id = get_active_org(request, user_id)
+        upload_access_error = _word_template_upload_access_response(
+            request,
+            role_or_err,
+            organization_id,
+        )
+        if upload_access_error is not None:
+            return upload_access_error
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        template_name = request.path_params.get('filename')
+        await run_blocking_io(
+            _delete_scoped_template,
+            owner_type,
+            owner_id,
+            template_name,
+            timeout_seconds=5,
+        )
+        return JSONResponse({"success": True})
+    except (FileNotFoundError, ValueError) as e:
+        return _docx_error(request, e, "delete_template_api")
+    except (DatabaseError, OrgPermissionError, BlockingIOBusyError, BlockingIOTimeoutError, OSError) as e:
+        return _docx_error(request, e, "delete_template_api")
+
 
 async def list_word_mappings_api(request):
     conn = None

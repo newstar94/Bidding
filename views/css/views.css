@@ -429,18 +429,26 @@
   white-space: nowrap;
 }
 .dashboard-contract-values {
+  display: grid;
   flex: 0 0 auto;
+  grid-template-columns: 3.5rem 5.5rem;
+  column-gap: 6px;
+  justify-items: end;
 }
 .dashboard-contract-values strong {
   color: var(--text-main);
   font-size: 0.69rem;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 .dashboard-contract-values em {
   color: var(--dashboard-green);
   font-size: 0.65rem;
   font-style: normal;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 .dashboard-plan-alert {
   display: flex;
@@ -3176,6 +3184,25 @@ table th {
 
 #tab-bieumau .word-config-grid {
     align-items: stretch !important;
+}
+
+#tab-bieumau .word-resource-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+#tab-bieumau .word-resource-grid > .dashboard-card {
+    min-width: 0;
+}
+
+#tab-bieumau .word-template-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 #word-variable-readonly-notice {

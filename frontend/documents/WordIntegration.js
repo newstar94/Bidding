@@ -37,8 +37,9 @@ export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   });
 }
 
-export function applyWordTemplateUploadAccess({ input, zone, validation }, canUploadTemplates) {
+export function applyWordTemplateUploadAccess({ input, replaceInput, zone, validation }, canUploadTemplates) {
   if (input) input.disabled = !canUploadTemplates;
+  if (replaceInput) replaceInput.disabled = !canUploadTemplates;
   if (zone) {
     zone.hidden = !canUploadTemplates;
     zone.setAttribute("aria-hidden", String(!canUploadTemplates));
@@ -51,6 +52,7 @@ export function applyWordTemplateUploadAccess({ input, zone, validation }, canUp
 
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
+  const replaceInput = document.getElementById("word-template-replace-input");
   const canManageWordVariables = canManageWorkspaceWordVariables(
     this.model.state.activeuser || {},
     this.model.state.activerole,
@@ -63,6 +65,7 @@ export function setupWordTemplatesEvents() {
   const validationResult = document.getElementById("word-validation-result");
   applyWordTemplateUploadAccess({
     input: templateInput,
+    replaceInput,
     zone: dragDropZone,
     validation: validationResult,
   }, canUploadTemplates);
@@ -71,6 +74,20 @@ export function setupWordTemplatesEvents() {
     templateInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (file) this.handleWordTemplateUpload(file);
+    });
+  }
+  if (replaceInput && !replaceInput.dataset.wordReplaceBound) {
+    replaceInput.dataset.wordReplaceBound = "true";
+    replaceInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      const filename = e.target.dataset.filename;
+      const newFilename = e.target.dataset.newFilename || filename;
+      if (file && filename) {
+        await handleWordTemplateReplace.call(this, file, filename, newFilename);
+      }
+      e.target.value = "";
+      delete e.target.dataset.filename;
+      delete e.target.dataset.newFilename;
     });
   }
   if (dragDropZone && templateInput && !dragDropZone.dataset.wordUploadBound) {
@@ -1067,7 +1084,7 @@ export async function loadWordMappings() {
   }
 }
 export function setupTemplateActivationEvents() {
-  if (!canManageWorkspaceWordVariables(
+  if (!canUploadWorkspaceAssets(
     this.model.state.activeuser || {},
     this.model.state.activerole,
   )) return;
@@ -1090,20 +1107,93 @@ export function setupTemplateActivationEvents() {
       }
     };
   });
+  document.querySelectorAll(".btn-edit-template").forEach((btn) => {
+    btn.onclick = async (e) => {
+      const targetEl = e.target.closest(".btn-edit-template");
+      const replaceInput = document.getElementById("word-template-replace-input");
+      if (!targetEl || !replaceInput || replaceInput.disabled) return;
+      const filename = targetEl.getAttribute("data-filename");
+      const currentName = filename.replace(/\.docx$/i, "");
+      const enteredName = await this.view.customPrompt(
+        "Sửa biểu mẫu",
+        "Nhập tên biểu mẫu. Bạn có thể chỉ đổi tên hoặc chọn thêm một tệp Word thay thế.",
+        currentName,
+        "Tên biểu mẫu",
+        false,
+        (value) => validateWordTemplateName(value),
+      );
+      if (enteredName === null) return;
+      const newFilename = normalizeWordTemplateName(enteredName);
+      const replaceFile = await this.view.customConfirm(
+        "Nội dung biểu mẫu",
+        "Bạn có muốn chọn tệp .docx mới? Chọn “Chỉ lưu tên” để giữ nguyên nội dung hiện tại.",
+        "file-text",
+        {
+          confirmLabel: "Chọn tệp thay thế",
+          cancelLabel: "Chỉ lưu tên",
+        },
+      );
+      if (replaceFile === null) return;
+      if (!replaceFile) {
+        await handleWordTemplateReplace.call(this, null, filename, newFilename);
+        return;
+      }
+      replaceInput.value = "";
+      replaceInput.dataset.filename = filename;
+      replaceInput.dataset.newFilename = newFilename;
+      replaceInput.click();
+    };
+  });
+  document.querySelectorAll(".btn-delete-template").forEach((btn) => {
+    btn.onclick = async (e) => {
+      const targetEl = e.target.closest(".btn-delete-template");
+      if (!targetEl) return;
+      const filename = targetEl.getAttribute("data-filename");
+      await handleWordTemplateDelete.call(this, filename);
+    };
+  });
 }
+
+export function templateResourceUrl(filename) {
+  return `/api/templates/${encodeURIComponent(String(filename || ""))}`;
+}
+
+export function normalizeWordTemplateName(value) {
+  const name = String(value || "").trim();
+  return name.toLowerCase().endsWith(".docx") ? name : `${name}.docx`;
+}
+
+export function validateWordTemplateName(value) {
+  const name = String(value || "").trim();
+  if (!name) return "Tên biểu mẫu không được để trống.";
+  if (name.length > 155) return "Tên biểu mẫu không được vượt quá 155 ký tự.";
+  if (/[<>:"/\\|?*\u0000-\u001f]/.test(name)) {
+    return "Tên biểu mẫu chứa ký tự không hợp lệ.";
+  }
+  return "";
+}
+
+function canMutateWordTemplates(controller) {
+  return canUploadWorkspaceAssets(
+    controller.model.state.activeuser || {},
+    controller.model.state.activerole,
+  );
+}
+
+async function showTemplateAccessDenied(controller) {
+  await controller.view.customAlert(
+    "Từ chối truy cập",
+    "Chỉ Quản lý của tổ chức được thay đổi biểu mẫu Word.",
+    "lock",
+  );
+}
+
 export async function handleWordTemplateUpload(file) {
-  if (!canUploadWorkspaceAssets(
-    this.model.state.activeuser || {},
-    this.model.state.activerole,
-  )) {
-    await this.view.customAlert(
-      "Từ chối truy cập",
-      "Chỉ Quản lý của tổ chức được tải lên biểu mẫu Word.",
-      "lock",
-    );
+  if (!canMutateWordTemplates(this)) {
+    await showTemplateAccessDenied(this);
     return;
   }
-  if (!file.name.endsWith(".docx")) {
+  if (!file.name.toLowerCase().endsWith(".docx")) {
     await this.view.customAlert("Lỗi định dạng", "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!", "alert-triangle");
     return;
   }
@@ -1116,12 +1206,96 @@ export async function handleWordTemplateUpload(file) {
     });
     const data = await res.json();
     if (res.ok) {
-      await this.view.customAlert("Thành công", "Đã tải lên biểu mẫu QĐ phê duyệt thành công!", "check-circle");
+      await this.view.customAlert("Thành công", "Đã thêm biểu mẫu Word thành công!", "check-circle");
       await this.loadWordTemplates();
     } else {
       await this.view.customAlert("Thất bại", data.error || "Không thể tải lên biểu mẫu này.", "alert-triangle");
     }
   } catch (err) {
     await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+  }
+}
+
+export async function handleWordTemplateReplace(file, filename, newFilename = filename) {
+  if (!canMutateWordTemplates(this)) {
+    await showTemplateAccessDenied(this);
+    return;
+  }
+  if (file && !file.name?.toLowerCase().endsWith(".docx")) {
+    await this.view.customAlert(
+      "Lỗi định dạng",
+      "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!",
+      "alert-triangle",
+    );
+    return;
+  }
+  const formData = new FormData();
+  formData.append("name", normalizeWordTemplateName(newFilename));
+  if (file) formData.append("file", file);
+  try {
+    const res = await apiFetch(templateResourceUrl(filename), {
+      method: "PUT",
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      await this.view.customAlert(
+        "Thất bại",
+        data.error || "Không thể cập nhật biểu mẫu này.",
+        "alert-triangle",
+      );
+      return;
+    }
+    await this.view.customAlert(
+      "Thành công",
+      "Đã cập nhật biểu mẫu.",
+      "check-circle",
+    );
+    await this.loadWordTemplates();
+  } catch (err) {
+    await this.view.customAlert(
+      "Lỗi hệ thống",
+      "Lỗi kết nối máy chủ: " + err.message,
+      "alert-triangle",
+    );
+  }
+}
+
+export async function handleWordTemplateDelete(filename) {
+  if (!canMutateWordTemplates(this)) {
+    await showTemplateAccessDenied(this);
+    return;
+  }
+  const confirmed = await this.view.customConfirm(
+    "Xóa biểu mẫu",
+    `Bạn có chắc chắn muốn xóa biểu mẫu “${filename}”?`,
+    "trash-2",
+  );
+  if (!confirmed) return;
+  try {
+    const res = await apiFetch(templateResourceUrl(filename), {
+      method: "DELETE",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      await this.view.customAlert(
+        "Thất bại",
+        data.error || "Không thể xóa biểu mẫu này.",
+        "alert-triangle",
+      );
+      return;
+    }
+    await this.view.customAlert(
+      "Thành công",
+      "Đã xóa biểu mẫu.",
+      "check-circle",
+    );
+    await this.loadWordTemplates();
+  } catch (err) {
+    await this.view.customAlert(
+      "Lỗi hệ thống",
+      "Lỗi kết nối máy chủ: " + err.message,
+      "alert-triangle",
+    );
   }
 }

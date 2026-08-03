@@ -394,6 +394,7 @@ def format_context_dates(data):
             format_context_dates(item)
 project_root = str(PROJECT_ROOT)
 TEMPLATE_DIR = str(WORD_TEMPLATE_DIR)
+DEFAULT_TEMPLATE = 'mau_bao_cao_dau_thau.docx'
 
 def get_user_template_dir(user_id=None, *, create=True):
     if user_id:
@@ -430,10 +431,10 @@ def get_active_template(owner_id=None, *, owner_type='personal'):
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                return config.get('active_template', 'mau_bao_cao_dau_thau.docx')
+                return config.get('active_template', DEFAULT_TEMPLATE)
         except (OSError, json.JSONDecodeError, TypeError):
             pass
-    return 'mau_bao_cao_dau_thau.docx'
+    return DEFAULT_TEMPLATE
 
 def set_active_template(filename, owner_id=None, *, owner_type='personal'):
     scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
