@@ -180,6 +180,6 @@ export function validateNativeForm(form, { focus = true } = {}) {
       setValidationError(control, "");
     }
   });
-  if (focus && invalidControls[0]) focusInvalidControl(invalidControls[0]);
+  if (focus && invalidControls[0]) focusInvalidControl(invalidControls[0], { delay: 0 });
   return { valid: invalidControls.length === 0, invalidControls };
 }

@@ -22,12 +22,19 @@ test("tabs support roving focus with arrows and Home End", () => {
 test("tab markup links tabs to panels and exposes one roving tab stop", () => {
   const active = tabButtonMarkup({ id: "opening", label: "Mở thầu", icon: "folder" }, true, "package");
   const inactive = tabButtonMarkup({ id: "result", label: "Kết quả", icon: "award" }, false, "package");
+  const sharedPanel = tabButtonMarkup(
+    { id: "preparation", label: "Chuẩn bị", icon: "folder" },
+    true,
+    "package-workflow",
+    "detail-workflow-content-wrapper",
+  );
 
   assert.match(active, /role="tab"/u);
   assert.match(active, /aria-selected="true"/u);
   assert.match(active, /aria-controls="package-panel-opening"/u);
   assert.match(active, /tabindex="0"/u);
   assert.match(inactive, /tabindex="-1"/u);
+  assert.match(sharedPanel, /aria-controls="detail-workflow-content-wrapper"/u);
 });
 
 

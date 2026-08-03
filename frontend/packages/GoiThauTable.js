@@ -220,7 +220,7 @@ export async function renderGoiThauTable() {
         return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
       }).join("");
       const dropdownHtml = `
-                <select class="form-control version-droplist bf-s-b41ce2ea44" data-bf-change="change-package-version" data-root="${esc(root)}">
+                <select class="form-control version-droplist bf-s-b41ce2ea44" data-bf-change="change-package-version" data-root="${esc(root)}" aria-label="Chọn phiên bản gói thầu ${esc(displayedGt.maGoiThau || displayedGt.tenGoiThau || "")}">
                     ${optionsHtml}
                 </select>
             `;

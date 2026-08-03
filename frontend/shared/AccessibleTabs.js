@@ -16,14 +16,16 @@ export function resolveTabKeyboardTarget({ key, index, count, orientation = "hor
   return null;
 }
 
-export function tabButtonMarkup(tab, active, groupId) {
+export function tabButtonMarkup(tab, active, groupId, panelId = "") {
   const tabId = safeId(tab?.id);
   const group = safeId(groupId);
-  return `<button type="button" role="tab" id="${group}-tab-${tabId}" aria-selected="${active ? "true" : "false"}" aria-controls="${group}-panel-${tabId}" tabindex="${active ? "0" : "-1"}" ${tab?.disabled ? 'aria-disabled="true" disabled' : ""} class="btn package-workflow-tab ${active ? "active" : ""}" data-workflow-tab="${escapeHtml(tab?.id || "")}"><i data-lucide="${escapeHtml(tab?.icon || "circle-dot")}" aria-hidden="true"></i><span>${escapeHtml(tab?.label || "")}</span></button>`;
+  const controlledPanel = panelId ? safeId(panelId) : `${group}-panel-${tabId}`;
+  return `<button type="button" role="tab" id="${group}-tab-${tabId}" aria-selected="${active ? "true" : "false"}" aria-controls="${controlledPanel}" tabindex="${active ? "0" : "-1"}" ${tab?.disabled ? 'aria-disabled="true" disabled' : ""} class="btn package-workflow-tab ${active ? "active" : ""}" data-workflow-tab="${escapeHtml(tab?.id || "")}"><i data-lucide="${escapeHtml(tab?.icon || "circle-dot")}" aria-hidden="true"></i><span>${escapeHtml(tab?.label || "")}</span></button>`;
 }
 
 export function renderAccessibleTabs(container, tabs, activeTab, onSelect, {
   groupId = "package-workflow",
+  panelId = "",
   orientation = "horizontal",
   ariaLabel = "Các bước xử lý gói thầu",
 } = {}) {
@@ -33,7 +35,7 @@ export function renderAccessibleTabs(container, tabs, activeTab, onSelect, {
   container.setAttribute("aria-orientation", orientation);
   container.setAttribute("aria-label", ariaLabel);
   container.innerHTML = trustedHTML((tabs || []).map((tab) => (
-    tabButtonMarkup(tab, activeTab === tab.id, groupId)
+    tabButtonMarkup(tab, activeTab === tab.id, groupId, panelId)
   )).join(""));
 
   const buttons = () => [...container.querySelectorAll('[role="tab"]:not([disabled])')];

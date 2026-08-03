@@ -10,7 +10,15 @@ import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigati
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
   if (!container) return () => {};
   setRuntimeStyle(container, "display", "flex");
-  return renderAccessibleTabs(container, tabs, activeTab, onSelect);
+  const panelId = "detail-workflow-content-wrapper";
+  const cleanup = renderAccessibleTabs(container, tabs, activeTab, onSelect, { panelId });
+  const panel = document.getElementById(panelId);
+  const activeButton = container.querySelector('[role="tab"][aria-selected="true"]');
+  if (panel) {
+    panel.setAttribute("role", "tabpanel");
+    if (activeButton?.id) panel.setAttribute("aria-labelledby", activeButton.id);
+  }
+  return cleanup;
 }
 
 function renderVersionSelector(view, detail) {

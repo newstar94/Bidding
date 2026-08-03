@@ -21,12 +21,18 @@ from backend.shared.sensitive_data import (
     serialize_sensitive_read_item,
 )
 from backend.sync.conflict_projection import project_conflict_record
-from backend.sync.mapper import map_db_to_json
+from backend.sync.mapper import attach_child_rows_to_items, map_db_to_json
 from backend.sync.queries import TABLE_KEYS
 
 
 _CURSOR_VERSION = 1
 _TABLE_KEYS_BY_NAME = {table: key for key, table in TABLE_KEYS.items()}
+_CHILD_BEARING_TABLES = frozenset({
+    "ke_hoach_lcnt",
+    "goi_thau",
+    "nha_thau",
+    "thong_tin_mo_thau",
+})
 
 
 class DeltaCursorError(ValueError):
@@ -159,9 +165,34 @@ def _json_object(value):
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _prepare_upsert_items(cursor, rows, organization_id):
+    items_by_table = {}
+    prepared = {}
+    for row in rows:
+        if str(row["kind"]) != "upsert":
+            continue
+        raw_table_key = str(row["table_key"])
+        table_name = TABLE_KEYS.get(raw_table_key, raw_table_key)
+        raw_record = _json_object(row["record_json"])
+        if table_name not in TABLE_KEYS.values() or not raw_record:
+            continue
+        item = map_db_to_json(table_name, raw_record)
+        prepared[(table_name, str(row["record_id"]))] = item
+        items_by_table.setdefault(table_name, []).append(item)
+    for table_name, items in items_by_table.items():
+        if table_name in _CHILD_BEARING_TABLES:
+            attach_child_rows_to_items(
+                cursor,
+                table_name,
+                items,
+                organization_id=organization_id,
+            )
+    return prepared
+
+
 def _project_candidate(
     cursor, row, *, role, user_id, organization_id,
-    media_session_token, sensitive_policy,
+    media_session_token, sensitive_policy, prepared_upserts=None,
 ):
     kind = str(row["kind"])
     raw_table_key = str(row["table_key"])
@@ -172,10 +203,19 @@ def _project_candidate(
     raw_record = _json_object(
         row["record_json"] if kind == "upsert" else row["snapshot_json"]
     )
-    item = (
-        map_db_to_json(table_name, raw_record)
-        if raw_record else {"id": row["record_id"]}
-    )
+    item = (prepared_upserts or {}).get((table_name, str(row["record_id"])))
+    if item is None:
+        item = (
+            map_db_to_json(table_name, raw_record)
+            if raw_record else {"id": row["record_id"]}
+        )
+        if kind == "upsert" and table_name in _CHILD_BEARING_TABLES:
+            attach_child_rows_to_items(
+                cursor,
+                table_name,
+                [item],
+                organization_id=organization_id,
+            )
     if not can_read_record(
         cursor, role, user_id, organization_id,
         payload_key, table_name, item,
@@ -274,6 +314,11 @@ def _read_delta_page_blocking(request):
             cursor, organization_id, after_version,
             through_version, marker, candidate_limit,
         )
+        prepared_upserts = _prepare_upsert_items(
+            cursor,
+            candidates,
+            organization_id,
+        )
         policy = resolve_sensitive_read_policy(
             cursor, role, role.user_id, organization_id
         )
@@ -291,6 +336,7 @@ def _read_delta_page_blocking(request):
                 organization_id=organization_id,
                 media_session_token=signing_key,
                 sensitive_policy=policy,
+                prepared_upserts=prepared_upserts,
             )
             projected_size = (
                 len(json.dumps(

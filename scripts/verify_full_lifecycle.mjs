@@ -206,6 +206,7 @@ try {
   await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-HSMT`);
   await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
   await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
   await page.locator("#phathanh-thoigiandongthau").fill("02/08/2026 09:00");
   await page.locator("#phathanh-giatribaomothau").fill("10000000");
@@ -487,6 +488,7 @@ try {
   await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-HUY-HSMT`);
   await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
   await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
   await page.locator("#phathanh-thoigiandongthau").fill("02/08/2026 09:00");
   await page.locator("#phathanh-giatribaomothau").fill("5000000");
@@ -563,6 +565,7 @@ try {
   await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-2T-HSMT`);
   await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
   await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
   await page.locator("#phathanh-thoigiandongthau").fill("06/08/2026 09:00");
   await page.locator("#phathanh-giatribaomothau").fill("5000000");
@@ -657,6 +660,7 @@ try {
   await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-LOT-HSMT`);
   await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
   await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
   await page.locator("#phathanh-thoigiandongthau").fill("14/08/2026 09:00");
   await page.locator("#phathanh-hieuluchsdt").fill("90");

@@ -13,14 +13,15 @@ export function renderVersionSelector({
   selectedId,
   rootId,
   changeAction,
-  className = "form-control version-droplist"
+  className = "form-control version-droplist",
+  ariaLabel = "Chọn phiên bản"
 }) {
   const options = (versions || []).map((version) => {
     const label = String(Number.parseInt(version.phienBan || "0", 10) || 0).padStart(2, "0");
     return `<option value="${safeAttr(version.id)}" ${String(version.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(label)}</option>`;
   }).join("");
   return `
-    <select class="${safeAttr(className)} bf-s-1249e0db6b" data-bf-change="${safeAttr(changeAction)}" data-root="${safeAttr(rootId)}"
+    <select class="${safeAttr(className)} bf-s-1249e0db6b" data-bf-change="${safeAttr(changeAction)}" data-root="${safeAttr(rootId)}" aria-label="${safeAttr(ariaLabel)}"
      >
       ${options}
     </select>`;

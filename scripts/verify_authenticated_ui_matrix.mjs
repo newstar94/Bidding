@@ -58,7 +58,15 @@ async function auditScreen(page, name) {
   const axe = await new AxeBuilder({ page }).analyze();
   const severe = axe.violations.filter((violation) => ["serious", "critical"].includes(violation.impact));
   if (severe.length) {
-    throw new Error(`${name}: axe ${severe.map((item) => item.id).join(", ")}`);
+    const details = severe.map((item) => ({
+      id: item.id,
+      nodes: item.nodes.slice(0, 5).map((node) => ({
+        target: node.target,
+        html: node.html,
+        failureSummary: node.failureSummary,
+      })),
+    }));
+    throw new Error(`${name}: axe ${JSON.stringify(details)}`);
   }
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press("Tab");
@@ -69,12 +77,13 @@ async function auditScreen(page, name) {
     return {
       width: parseFloat(style.outlineWidth) || 0,
       style: style.outlineStyle,
+      glow: style.boxShadow,
       element: `${element.tagName.toLowerCase()}#${element.id}.${element.className}`,
     };
   });
   if (focus) {
-    if (focus.width < 2 || focus.style === "none") {
-      throw new Error(`${name}: focused control has no reviewed 2px indicator ${JSON.stringify(focus)}`);
+    if (focus.width < 1 || focus.style === "none" || !focus.glow || focus.glow === "none") {
+      throw new Error(`${name}: focused control has no reviewed outline and glow ${JSON.stringify(focus)}`);
     }
   }
   return layout;

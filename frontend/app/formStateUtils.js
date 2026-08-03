@@ -67,12 +67,14 @@ export function focusInvalidControl(input, { delay = 300 } = {}) {
   const visibleControl = getVisibleInvalidControl(input);
   if (!visibleControl) return null;
   visibleControl.scrollIntoView?.({ behavior: "smooth", block: "center", inline: "center" });
-  setTimeout(() => {
+  const focus = () => {
     if (!visibleControl.hasAttribute?.("tabindex") && typeof visibleControl.focus === "function" && !/^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test(visibleControl.tagName || "")) {
       visibleControl.setAttribute?.("tabindex", "-1");
     }
     visibleControl.focus?.({ preventScroll: true });
-  }, delay);
+  };
+  if (delay <= 0) focus();
+  else setTimeout(focus, delay);
   return visibleControl;
 }
 import { syncCustomSelectDisabled } from "../shared/view_helpers.js";
