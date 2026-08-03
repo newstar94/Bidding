@@ -403,7 +403,7 @@ function renderTimelineTable(view) {
     html.push(`
       <tr class="timeline-item-row${overdue ? " is-overdue" : ""}${conditional ? " is-conditional" : ""}" data-entry-id="${safeAttr(row.id)}">
         <th scope="row" title="Mã mốc nghiệp vụ ${safeAttr(row.milestoneKey || row.maMoc)}">${escapeHtml(displayCode)}</th>
-        <td><span class="timeline-work-title">${escapeHtml(row.congViec)}</span>${conditional ? `<span class="timeline-conditional" title="${safeAttr(row.applicabilityReason)}">${escapeHtml(conditionalLabel)}</span>` : row.isOptional ? `<span class="timeline-optional">Nếu có</span>` : ""}</td>
+        <td><span class="timeline-work-title">${escapeHtml(row.congViec)}</span>${conditional ? `<span class="timeline-conditional" title="${safeAttr(row.applicabilityReason)}">${escapeHtml(conditionalLabel)}</span>` : ""}</td>
         <td><input type="text" data-timeline-field="donViBanHanh" value="${safeAttr(row.donViBanHanh)}" maxlength="300" aria-label="Đơn vị ban hành mốc ${safeAttr(row.maMoc)}"${disabled}></td>
         <td><input type="text" data-timeline-field="soVanBan" value="${safeAttr(row.soVanBan)}" maxlength="300" aria-label="Số văn bản mốc ${safeAttr(row.maMoc)}"${disabled}></td>
         <td><input type="text" class="flatpickr-date" data-timeline-field="${dateBinding.field}" value="${safeAttr(formatTimelineDate(dateBinding.value))}" placeholder="dd/MM/yyyy" aria-label="${dateBinding.label} mốc ${safeAttr(row.maMoc)}"${disabled}></td>

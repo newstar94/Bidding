@@ -66,15 +66,23 @@ def provision_system_word_templates(source_dir=None, target_dir=None):
     target = Path(target_dir or WORD_TEMPLATE_DIR).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
-    result = {"copied": [], "missing": []}
+    result = {"copied": [], "generated": [], "missing": []}
     for filename in SYSTEM_WORD_TEMPLATE_NAMES:
         source_path = source / filename
         destination_path = target / filename
         if destination_path.exists():
             continue
-        if not source_path.is_file():
-            result["missing"].append(source_path)
+        if source_path.is_file():
+            shutil.copyfile(source_path, destination_path)
+            result["copied"].append(destination_path)
             continue
-        shutil.copyfile(source_path, destination_path)
-        result["copied"].append(destination_path)
+        if filename == "mau_timeline_goi_thau.docx":
+            # Production archives intentionally exclude mutable data/. Generate
+            # the system-owned timeline template when no bundled copy exists.
+            from backend.documents.timeline_document_service import create_timeline_template
+
+            create_timeline_template(destination_path)
+            result["generated"].append(destination_path)
+            continue
+        result["missing"].append(source_path)
     return result

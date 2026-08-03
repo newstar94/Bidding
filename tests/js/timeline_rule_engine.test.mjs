@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import {
@@ -59,7 +60,7 @@ test("contract negotiation is limited to simplified appointment, 1G2T, or consul
   assert.equal(negotiation({}).applicability, "NOT_APPLICABLE");
   assert.equal(negotiation({ hinhThucLuaChon: "Chỉ định thầu" }).applicability, "NOT_APPLICABLE");
   assert.equal(negotiation({ hinhThucLuaChon: "Chỉ định thầu rút gọn" }).applicability, "CONDITIONAL");
-  assert.equal(negotiation({ phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ" }).applicability, "CONDITIONAL");
+  assert.equal(negotiation({ phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ" }).applicability, "APPLICABLE");
   assert.equal(negotiation({ linhVuc: "Tư vấn" }).applicability, "CONDITIONAL");
 });
 
@@ -105,6 +106,88 @@ test("consultant appointment rows follow the linked contract appointment decisio
   assert.deepEqual(
     appraisalWithDecision.filter((row) => row.milestoneKey.startsWith("APPRAISAL_")).map((row) => row.applicability),
     ["APPLICABLE", "APPLICABLE"]
+  );
+});
+
+test("consultant preparation and appraisal processes remain visible before contracts exist", () => {
+  const rows = buildEffectiveTimeline(
+    base,
+    {
+      plan: { pheDuyet: "Kế hoạch" },
+      expertTeam: [{ id: "expert-team-1" }],
+      appraisalTeam: [{ id: "appraisal-team-1" }],
+      contracts: []
+    },
+    [],
+    { includeNotApplicable: true }
+  );
+  const consultantRows = rows.filter((row) => [
+    "PREPARATION_CONSULTANT",
+    "APPRAISAL_CONSULTANT"
+  ].includes(row.sectionKey));
+
+  assert.equal(consultantRows.length, 24);
+  assert.ok(consultantRows.every((row) => row.applicability === "APPLICABLE"));
+
+  const consultingPackageRows = buildEffectiveTimeline(
+    { ...base, linhVuc: "Tư vấn" },
+    { plan: { pheDuyet: "Kế hoạch" }, contracts: [] },
+    [],
+    { includeNotApplicable: true }
+  ).filter((row) => ["PREPARATION_CONSULTANT", "APPRAISAL_CONSULTANT"].includes(row.sectionKey));
+  assert.equal(consultingPackageRows.length, 24);
+  assert.ok(consultingPackageRows.every((row) => row.applicability === "APPLICABLE"));
+});
+
+test("timeline does not label rows as optional with 'Nếu có'", () => {
+  const source = fs.readFileSync("frontend/packages/PackageTimelineView.js", "utf8");
+  assert.doesNotMatch(source, /timeline-optional|Nếu có/);
+});
+
+test("bid evaluation report title follows the package envelope method", () => {
+  const oneEnvelope = buildEffectiveTimeline(base, { plan: { pheDuyet: "Kế hoạch" } }, [])
+    .find((row) => row.milestoneKey === "BID_EVALUATION_REPORT");
+  const twoEnvelopes = buildEffectiveTimeline(
+    { ...base, phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ" },
+    { plan: { pheDuyet: "Kế hoạch" } },
+    []
+  ).find((row) => row.milestoneKey === "BID_EVALUATION_REPORT");
+
+  assert.equal(oneEnvelope.title, "Báo cáo đánh giá E-HSDT");
+  assert.equal(twoEnvelopes.title, "Báo cáo đánh giá E-HSĐXKT");
+});
+
+test("document reconciliation invitation title follows the package envelope method", () => {
+  const oneEnvelope = buildEffectiveTimeline(base, { plan: { pheDuyet: "Kế hoạch" } }, [])
+    .find((row) => row.milestoneKey === "DOCUMENT_RECONCILIATION_INVITATION");
+  const twoEnvelopes = buildEffectiveTimeline(
+    { ...base, phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ" },
+    { plan: { pheDuyet: "Kế hoạch" } },
+    []
+  ).find((row) => row.milestoneKey === "DOCUMENT_RECONCILIATION_INVITATION");
+
+  assert.equal(oneEnvelope.title, "Thư mời đối chiếu tài liệu");
+  assert.equal(twoEnvelopes.title, "Thư mời đối chiếu tài liệu/Thương thảo hợp đồng");
+});
+
+test("mandatory 1G2T milestones are applicable before source documents exist", () => {
+  const rows = buildEffectiveTimeline(
+    { ...base, phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ" },
+    { plan: { pheDuyet: "Kế hoạch" } },
+    [],
+    { includeNotApplicable: true }
+  );
+  const mandatoryKeys = [
+    "DOCUMENT_RECONCILIATION_INVITATION",
+    "DOCUMENT_RECONCILIATION_MINUTES",
+    "CONTRACT_NEGOTIATION",
+    "CONTRACTOR_SELECTION_RESULT_APPRAISAL",
+    "TECHNICAL_RESULT_APPRAISAL"
+  ];
+
+  assert.deepEqual(
+    mandatoryKeys.map((key) => rows.find((row) => row.milestoneKey === key)?.applicability),
+    mandatoryKeys.map(() => "APPLICABLE")
   );
 });
 

@@ -136,7 +136,7 @@ def test_contract_negotiation_scope_matches_frontend_business_rule():
     assert applicability() == "NOT_APPLICABLE"
     assert applicability(hinh_thuc_lua_chon="Chỉ định thầu") == "NOT_APPLICABLE"
     assert applicability(hinh_thuc_lua_chon="Chỉ định thầu rút gọn") == "CONDITIONAL"
-    assert applicability(phuong_thuc_lua_chon="Một giai đoạn hai túi hồ sơ") == "CONDITIONAL"
+    assert applicability(phuong_thuc_lua_chon="Một giai đoạn hai túi hồ sơ") == "APPLICABLE"
     assert applicability(linh_vuc="Tư vấn") == "CONDITIONAL"
 
 
@@ -214,6 +214,123 @@ def test_consultant_appointments_and_visible_section_numbers_follow_contracts():
             "APPRAISAL_CONSULTANT_APPOINTMENT",
         }
     ] == ["APPLICABLE", "APPLICABLE"]
+
+
+def test_consultant_processes_remain_visible_before_contracts_exist():
+    rows = build_effective_timeline(
+        {
+            "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+            "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+        },
+        {
+            "plan": {"phe_duyet": "Kế hoạch"},
+            "expertTeam": [{"id": "expert-team-1"}],
+            "appraisalTeam": [{"id": "appraisal-team-1"}],
+            "contracts": [],
+        },
+        [],
+        include_not_applicable=True,
+    )
+    consultant_rows = [
+        row for row in rows
+        if row["section_key"] in {"PREPARATION_CONSULTANT", "APPRAISAL_CONSULTANT"}
+    ]
+
+    assert len(consultant_rows) == 24
+    assert all(row["applicability"] == "APPLICABLE" for row in consultant_rows)
+
+    consulting_package_rows = [
+        row for row in build_effective_timeline(
+            {
+                "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+                "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+                "linh_vuc": "Tư vấn",
+            },
+            {"plan": {"phe_duyet": "Kế hoạch"}, "contracts": []},
+            [],
+            include_not_applicable=True,
+        )
+        if row["section_key"] in {"PREPARATION_CONSULTANT", "APPRAISAL_CONSULTANT"}
+    ]
+    assert len(consulting_package_rows) == 24
+    assert all(row["applicability"] == "APPLICABLE" for row in consulting_package_rows)
+
+
+def test_bid_evaluation_report_title_follows_package_envelope_method():
+    one_envelope = next(
+        row for row in build_effective_timeline(
+            {
+                "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+                "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+            },
+            {"plan": {"phe_duyet": "Kế hoạch"}},
+            [],
+        )
+        if row["milestone_key"] == "BID_EVALUATION_REPORT"
+    )
+    two_envelopes = next(
+        row for row in build_effective_timeline(
+            {
+                "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+                "phuong_thuc_lua_chon": "Một giai đoạn hai túi hồ sơ",
+            },
+            {"plan": {"phe_duyet": "Kế hoạch"}},
+            [],
+        )
+        if row["milestone_key"] == "BID_EVALUATION_REPORT"
+    )
+
+    assert one_envelope["title"] == "Báo cáo đánh giá E-HSDT"
+    assert two_envelopes["title"] == "Báo cáo đánh giá E-HSĐXKT"
+
+    one_envelope_invitation = next(
+        row for row in build_effective_timeline(
+            {
+                "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+                "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+            },
+            {"plan": {"phe_duyet": "Kế hoạch"}},
+            [],
+        )
+        if row["milestone_key"] == "DOCUMENT_RECONCILIATION_INVITATION"
+    )
+    two_envelopes_invitation = next(
+        row for row in build_effective_timeline(
+            {
+                "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+                "phuong_thuc_lua_chon": "Một giai đoạn hai túi hồ sơ",
+            },
+            {"plan": {"phe_duyet": "Kế hoạch"}},
+            [],
+        )
+        if row["milestone_key"] == "DOCUMENT_RECONCILIATION_INVITATION"
+    )
+    assert one_envelope_invitation["title"] == "Thư mời đối chiếu tài liệu"
+    assert two_envelopes_invitation["title"] == "Thư mời đối chiếu tài liệu/Thương thảo hợp đồng"
+
+
+def test_mandatory_two_envelope_milestones_are_applicable_without_source_documents():
+    rows = build_effective_timeline(
+        {
+            "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+            "phuong_thuc_lua_chon": "Một giai đoạn hai túi hồ sơ",
+        },
+        {"plan": {"phe_duyet": "Kế hoạch"}},
+        [],
+        include_not_applicable=True,
+    )
+    applicability = {row["milestone_key"]: row["applicability"] for row in rows}
+    mandatory_keys = {
+        "DOCUMENT_RECONCILIATION_INVITATION",
+        "DOCUMENT_RECONCILIATION_MINUTES",
+        "CONTRACT_NEGOTIATION",
+        "CONTRACTOR_SELECTION_RESULT_APPRAISAL",
+        "TECHNICAL_RESULT_APPRAISAL",
+    }
+
+    assert {key: applicability[key] for key in mandatory_keys} == {
+        key: "APPLICABLE" for key in mandatory_keys
+    }
 
 
 def test_sync_contract_accepts_stable_timeline_keys_and_adjustments():

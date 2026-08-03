@@ -27,6 +27,7 @@ data/tools/
 # Runtime images and user-specific Word templates
 data/templates/images/
 data/templates/words/config.json
+data/templates/words/*.docx
 data/templates/words/*/
 agent
 

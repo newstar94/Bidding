@@ -12,6 +12,13 @@ _CATALOG_PATH = Path(__file__).resolve().parents[2] / "shared" / "timeline_rules
 CATALOG = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
 TIMELINE_TEMPLATE_VERSION = int(CATALOG["catalogVersion"])
 SECTION_BY_KEY = {item["sectionKey"]: item for item in CATALOG["sections"]}
+MANDATORY_TWO_ENVELOPE_MILESTONES = frozenset({
+    "DOCUMENT_RECONCILIATION_INVITATION",
+    "DOCUMENT_RECONCILIATION_MINUTES",
+    "CONTRACT_NEGOTIATION",
+    "CONTRACTOR_SELECTION_RESULT_APPRAISAL",
+    "TECHNICAL_RESULT_APPRAISAL",
+})
 
 
 def _normalized(value):
@@ -281,12 +288,16 @@ def _rule_result(definition, *, facts, package_data, related, saved, source):
             return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"
         if _has_appointment_decision(related.get("preparationContract")):
             return "APPLICABLE", "INCLUDED_BY_PREPARATION_APPOINTMENT_DECISION"
+        if related.get("expertTeam") or _is_consulting_package(facts) or has_data:
+            return "APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_PROCESS"
         return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_APPOINTMENT_DECISION"
     if rule == "CONSULTANT_APPRAISAL_APPOINTMENT":
         if str(related.get("appraisalConsultantMode") or "").upper() == "INTERNAL":
             return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"
         if _has_appointment_decision(related.get("appraisalContract")):
             return "APPLICABLE", "INCLUDED_BY_APPRAISAL_APPOINTMENT_DECISION"
+        if related.get("appraisalTeam") or _is_consulting_package(facts) or has_data:
+            return "APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_PROCESS"
         return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_APPOINTMENT_DECISION"
     if facts["selectionMethod"] == "COMPETITIVE_OFFERING" and "APPRAISAL" in tags:
         return "NOT_APPLICABLE", "EXCLUDED_BY_COMPETITIVE_OFFERING"
@@ -296,6 +307,8 @@ def _rule_result(definition, *, facts, package_data, related, saved, source):
         return "NOT_APPLICABLE", "EXCLUDED_BY_DIRECT_APPOINTMENT"
     if facts["selectionMethod"] == "DIRECT_APPOINTMENT_SIMPLIFIED" and "APPRAISAL" in tags:
         return "NOT_APPLICABLE", "EXCLUDED_BY_SIMPLIFIED_DIRECT_APPOINTMENT"
+    if facts["selectionProcedure"] == "ONE_STAGE_TWO_ENVELOPES" and definition["milestoneKey"] in MANDATORY_TWO_ENVELOPE_MILESTONES:
+        return "APPLICABLE", "INCLUDED_BY_ONE_STAGE_TWO_ENVELOPES"
     if rule == "CONTRACT_NEGOTIATION":
         is_eligible = (
             facts["selectionMethod"] == "DIRECT_APPOINTMENT_SIMPLIFIED"
@@ -350,19 +363,23 @@ def _rule_result(definition, *, facts, package_data, related, saved, source):
             return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"
         if related.get("preparationContract"):
             return "APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_DATA"
+        if related.get("expertTeam") or _is_consulting_package(facts) or has_data:
+            return "APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_PROCESS"
         return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_CONSULTANT_CONTRACT"
     if rule == "CONSULTANT_APPRAISAL":
         if str(related.get("appraisalConsultantMode") or "").upper() == "INTERNAL":
             return "NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"
         if related.get("appraisalContract"):
             return "APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_DATA"
+        if related.get("appraisalTeam") or _is_consulting_package(facts) or has_data:
+            return "APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_PROCESS"
         return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"
     if rule == "EXPERT_TEAM":
-        return ("APPLICABLE", "INCLUDED_BY_EXPERT_TEAM_DATA") if related.get("expertTeam") or has_data else ("CONDITIONAL", "WAITING_FOR_EXPERT_TEAM_DATA")
+        return ("APPLICABLE", "INCLUDED_BY_EXPERT_TEAM_DATA") if related.get("expertTeam") or _is_consulting_package(facts) or has_data else ("CONDITIONAL", "WAITING_FOR_EXPERT_TEAM_DATA")
     if rule == "APPRAISAL_TEAM":
-        if not related.get("appraisalContract") and not related.get("appraisalTeam") and not has_data:
+        if not related.get("appraisalContract") and not related.get("appraisalTeam") and not _is_consulting_package(facts) and not has_data:
             return "NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"
-        return ("APPLICABLE", "INCLUDED_BY_APPRAISAL_TEAM_DATA") if related.get("appraisalTeam") or has_data else ("CONDITIONAL", "WAITING_FOR_APPRAISAL_TEAM_DATA")
+        return ("APPLICABLE", "INCLUDED_BY_APPRAISAL_TEAM_DATA") if related.get("appraisalTeam") or _is_consulting_package(facts) or has_data else ("CONDITIONAL", "WAITING_FOR_APPRAISAL_TEAM_DATA")
     if rule in {"OPTIONAL_WHEN_DATA", "OPTIONAL_APPRAISAL"}:
         return ("APPLICABLE", "INCLUDED_BY_BUSINESS_DATA") if has_data else ("CONDITIONAL", "WAITING_FOR_OPTIONAL_BUSINESS_DATA")
     if rule == "STANDARD_TENDER" and facts["selectionMethod"] == "SPECIAL_SELECTION":
@@ -401,6 +418,17 @@ def _entity_sort(entity, index):
     return sequence, date, str(_first(entity, ("id",)) or index)
 
 
+def _timeline_title(definition, facts):
+    if definition["milestoneKey"] == "BID_EVALUATION_REPORT":
+        if facts["selectionProcedure"] == "ONE_STAGE_ONE_ENVELOPE":
+            return "Báo cáo đánh giá E-HSDT"
+        if facts["selectionProcedure"] == "ONE_STAGE_TWO_ENVELOPES":
+            return "Báo cáo đánh giá E-HSĐXKT"
+    if definition["milestoneKey"] == "DOCUMENT_RECONCILIATION_INVITATION" and facts["selectionProcedure"] == "ONE_STAGE_TWO_ENVELOPES":
+        return "Thư mời đối chiếu tài liệu/Thương thảo hợp đồng"
+    return definition["title"]
+
+
 def _make_row(definition, entity, ordinal, package_data, plan_data, related, indexes):
     section = SECTION_BY_KEY[definition["sectionKey"]]
     instance_key = str(_first(entity, ("id",)) or f"{definition['milestoneKey']}-{ordinal}") if definition["repeatable"] else ""
@@ -411,9 +439,10 @@ def _make_row(definition, entity, ordinal, package_data, plan_data, related, ind
     source_mode = str(_first(saved, ("sourceMode", "source_mode")) or ("AUTO" if definition.get("source") else "MANUAL")).upper()
     number = _first(saved, ("soVanBan", "so_van_ban")) if source_mode == "MANUAL" else source["number"]
     actual_date = _first(saved, ("ngayThucTe", "ngay_thuc_te")) if source_mode == "MANUAL" else source["date"]
+    facts = canonical_timeline_facts(package_data, plan_data)
     applicability, reason = _rule_result(
         definition,
-        facts=canonical_timeline_facts(package_data, plan_data),
+        facts=facts,
         package_data=package_data,
         related=related,
         saved=saved,
@@ -421,7 +450,8 @@ def _make_row(definition, entity, ordinal, package_data, plan_data, related, ind
     )
     entity_sequence = _sequence_number(entity)
     repeatable_ordinal = entity_sequence if entity_sequence > 0 else ordinal
-    title = f"{definition['title']} lần {repeatable_ordinal}" if definition["repeatable"] and repeatable_ordinal > 0 else definition["title"]
+    base_title = _timeline_title(definition, facts)
+    title = f"{base_title} lần {repeatable_ordinal}" if definition["repeatable"] and repeatable_ordinal > 0 else base_title
     status = str(_first(saved, ("status", "trangThai", "trang_thai")) or ("DONE" if actual_date else "PENDING")).upper()
     return {
         **deepcopy(saved),

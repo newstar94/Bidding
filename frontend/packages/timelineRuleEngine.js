@@ -14,6 +14,13 @@ export const E_HSMT_APPRAISAL_REQUIREMENT = Object.freeze({
 });
 
 const SECTION_BY_KEY = new Map(timelineCatalog.sections.map((section) => [section.sectionKey, section]));
+const MANDATORY_TWO_ENVELOPE_MILESTONES = new Set([
+  "DOCUMENT_RECONCILIATION_INVITATION",
+  "DOCUMENT_RECONCILIATION_MINUTES",
+  "CONTRACT_NEGOTIATION",
+  "CONTRACTOR_SELECTION_RESULT_APPRAISAL",
+  "TECHNICAL_RESULT_APPRAISAL"
+]);
 
 function normalized(value) {
   return String(value ?? "").trim().toLocaleLowerCase("vi").replace(/\s+/g, " ");
@@ -188,6 +195,25 @@ function isConsultingPackage(facts) {
   return ["tư vấn", "tu van", "consulting", "tu_van"].includes(normalized(facts.packageField));
 }
 
+function hasPreparationProcessEvidence(facts, related, hasData) {
+  return (related.expertTeam || []).length || isConsultingPackage(facts) || hasData;
+}
+
+function hasAppraisalProcessEvidence(facts, related, hasData) {
+  return (related.appraisalTeam || []).length || isConsultingPackage(facts) || hasData;
+}
+
+function timelineTitle(definition, facts) {
+  if (definition.milestoneKey === "BID_EVALUATION_REPORT") {
+    if (facts.selectionProcedure === "ONE_STAGE_ONE_ENVELOPE") return "Báo cáo đánh giá E-HSDT";
+    if (facts.selectionProcedure === "ONE_STAGE_TWO_ENVELOPES") return "Báo cáo đánh giá E-HSĐXKT";
+  }
+  if (definition.milestoneKey === "DOCUMENT_RECONCILIATION_INVITATION" && facts.selectionProcedure === "ONE_STAGE_TWO_ENVELOPES") {
+    return "Thư mời đối chiếu tài liệu/Thương thảo hợp đồng";
+  }
+  return definition.title;
+}
+
 function ruleResult(definition, context) {
   const { facts, packageData, related, saved, source } = context;
   const tags = new Set(definition.tags || []);
@@ -197,16 +223,18 @@ function ruleResult(definition, context) {
     if (String(related.preparationConsultantMode || "").toUpperCase() === "INTERNAL") {
       return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"];
     }
-    return hasAppointmentDecision(related.preparationContract)
-      ? ["APPLICABLE", "INCLUDED_BY_PREPARATION_APPOINTMENT_DECISION"]
+    if (hasAppointmentDecision(related.preparationContract)) return ["APPLICABLE", "INCLUDED_BY_PREPARATION_APPOINTMENT_DECISION"];
+    return hasPreparationProcessEvidence(facts, related, hasData)
+      ? ["APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_PROCESS"]
       : ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_APPOINTMENT_DECISION"];
   }
   if (definition.applicabilityRule === "CONSULTANT_APPRAISAL_APPOINTMENT") {
     if (String(related.appraisalConsultantMode || "").toUpperCase() === "INTERNAL") {
       return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"];
     }
-    return hasAppointmentDecision(related.appraisalContract)
-      ? ["APPLICABLE", "INCLUDED_BY_APPRAISAL_APPOINTMENT_DECISION"]
+    if (hasAppointmentDecision(related.appraisalContract)) return ["APPLICABLE", "INCLUDED_BY_APPRAISAL_APPOINTMENT_DECISION"];
+    return hasAppraisalProcessEvidence(facts, related, hasData)
+      ? ["APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_PROCESS"]
       : ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_APPOINTMENT_DECISION"];
   }
 
@@ -221,6 +249,9 @@ function ruleResult(definition, context) {
   }
   if (facts.selectionMethod === "DIRECT_APPOINTMENT_SIMPLIFIED" && tags.has("APPRAISAL")) {
     return ["NOT_APPLICABLE", "EXCLUDED_BY_SIMPLIFIED_DIRECT_APPOINTMENT"];
+  }
+  if (facts.selectionProcedure === "ONE_STAGE_TWO_ENVELOPES" && MANDATORY_TWO_ENVELOPE_MILESTONES.has(definition.milestoneKey)) {
+    return ["APPLICABLE", "INCLUDED_BY_ONE_STAGE_TWO_ENVELOPES"];
   }
   if (definition.applicabilityRule === "CONTRACT_NEGOTIATION") {
     const isEligible = facts.selectionMethod === "DIRECT_APPOINTMENT_SIMPLIFIED"
@@ -269,24 +300,26 @@ function ruleResult(definition, context) {
     const mode = String(related.preparationConsultantMode || "").toUpperCase();
     if (mode === "INTERNAL") return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_PREPARATION"];
     if (Object.keys(related.preparationContract || {}).length) return ["APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_DATA"];
+    if (hasPreparationProcessEvidence(facts, related, hasData)) return ["APPLICABLE", "INCLUDED_BY_PREPARATION_CONSULTANT_PROCESS"];
     return ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_PREPARATION_CONSULTANT_CONTRACT"];
   }
   if (definition.applicabilityRule === "CONSULTANT_APPRAISAL") {
     const mode = String(related.appraisalConsultantMode || "").toUpperCase();
     if (mode === "INTERNAL") return ["NOT_APPLICABLE", "EXCLUDED_BY_INTERNAL_APPRAISAL"];
     if (Object.keys(related.appraisalContract || {}).length) return ["APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_DATA"];
+    if (hasAppraisalProcessEvidence(facts, related, hasData)) return ["APPLICABLE", "INCLUDED_BY_APPRAISAL_CONSULTANT_PROCESS"];
     return ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"];
   }
   if (definition.applicabilityRule === "EXPERT_TEAM") {
-    return (related.expertTeam || []).length || hasData
+    return hasPreparationProcessEvidence(facts, related, hasData)
       ? ["APPLICABLE", "INCLUDED_BY_EXPERT_TEAM_DATA"]
       : ["CONDITIONAL", "WAITING_FOR_EXPERT_TEAM_DATA"];
   }
   if (definition.applicabilityRule === "APPRAISAL_TEAM") {
-    if (!Object.keys(related.appraisalContract || {}).length && !(related.appraisalTeam || []).length && !hasData) {
+    if (!Object.keys(related.appraisalContract || {}).length && !(related.appraisalTeam || []).length && !isConsultingPackage(facts) && !hasData) {
       return ["NOT_APPLICABLE", "EXCLUDED_WITHOUT_APPRAISAL_CONSULTANT_CONTRACT"];
     }
-    return (related.appraisalTeam || []).length || hasData
+    return hasAppraisalProcessEvidence(facts, related, hasData)
       ? ["APPLICABLE", "INCLUDED_BY_APPRAISAL_TEAM_DATA"]
       : ["CONDITIONAL", "WAITING_FOR_APPRAISAL_TEAM_DATA"];
   }
@@ -349,10 +382,12 @@ function createRow(definition, entity, ordinal, packageData, planData, related, 
   const storedSourceMode = String(firstValue(saved, ["sourceMode", "source_mode"]) || (definition.source ? "AUTO" : "MANUAL")).toUpperCase();
   const number = storedSourceMode === "MANUAL" ? firstValue(saved, ["soVanBan", "so_van_ban"]) : source.number;
   const actualDate = storedSourceMode === "MANUAL" ? firstValue(saved, ["ngayThucTe", "ngay_thuc_te"]) : source.date;
-  const [applicability, applicabilityReason] = ruleResult(definition, { facts: canonicalTimelineFacts(packageData, planData), packageData, related, saved, source });
+  const facts = canonicalTimelineFacts(packageData, planData);
+  const [applicability, applicabilityReason] = ruleResult(definition, { facts, packageData, related, saved, source });
   const entitySequence = Number(firstValue(entity, ["sequence", "thuTu", "thu_tu"]));
   const repeatableOrdinal = Number.isFinite(entitySequence) && entitySequence > 0 ? entitySequence : ordinal;
-  const title = definition.repeatable && repeatableOrdinal > 0 ? `${definition.title} lần ${repeatableOrdinal}` : definition.title;
+  const baseTitle = timelineTitle(definition, facts);
+  const title = definition.repeatable && repeatableOrdinal > 0 ? `${baseTitle} lần ${repeatableOrdinal}` : baseTitle;
   const row = {
     ...saved,
     id: String(firstValue(saved, ["id"]) || `${definition.milestoneKey}:${instanceKey || "base"}`),

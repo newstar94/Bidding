@@ -97,6 +97,12 @@ export async function deleteKeHoach(id) {
     }
   }
 }
+export async function handlePlanInvestorChange(event) {
+  if (event.target.value !== "__NEW_INVESTOR__") return;
+  event.target.value = "";
+  await this.ensureWorkflowReady("editChuDauTu");
+  return this.editChuDauTu(null);
+}
 export async function editKeHoach(id) {
   if (!document.getElementById("modal-kehoach")) {
     await this.ensureLazyModal?.("modal-kehoach");
@@ -108,11 +114,7 @@ export async function editKeHoach(id) {
   cdtSelect.innerHTML = trustedHTML('<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>');
   // The plan modal is lazy-loaded, so this select does not exist when the
   // application's one-time conditional handlers are registered.
-  cdtSelect.onchange = (event) => {
-    if (event.target.value !== "__NEW_INVESTOR__") return;
-    event.target.value = "";
-    void this.editChuDauTu(null);
-  };
+  cdtSelect.onchange = handlePlanInvestorChange.bind(this);
   this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
   const setSectionAvailability = (section, visible) => {
     if (!section) return;

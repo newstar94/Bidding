@@ -3962,7 +3962,6 @@ table th {
   line-height: 1.4;
 }
 
-.timeline-optional,
 .timeline-conditional,
 .timeline-overdue-label {
   display: inline-flex;
@@ -3972,12 +3971,6 @@ table th {
   border-radius: 999px;
   font-size: 0.68rem;
   font-weight: 750;
-}
-
-.timeline-optional {
-  padding: 3px 7px;
-  color: var(--warning);
-  background: var(--warning-soft);
 }
 
 .timeline-overdue-label {
