@@ -3205,6 +3205,149 @@ table th {
     justify-content: flex-end;
 }
 
+#tab-bieumau #word-templates-table {
+    min-width: 960px;
+}
+
+#tab-bieumau #word-templates-table th:nth-child(1) {
+    width: 28%;
+}
+
+#tab-bieumau #word-templates-table th:nth-child(2) {
+    width: 36%;
+}
+
+#tab-bieumau #word-templates-table th:nth-child(3) {
+    width: 18%;
+}
+
+#tab-bieumau #word-templates-table th:nth-child(4),
+#tab-bieumau #word-templates-table td:nth-child(4) {
+    width: 1%;
+    white-space: nowrap;
+}
+
+#tab-bieumau .word-template-actions .btn,
+#tab-bieumau .word-template-file-link,
+#tab-bieumau .word-template-choose-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#tab-bieumau .word-template-actions .btn svg,
+#tab-bieumau .word-template-file-link svg,
+#tab-bieumau .word-template-choose-file svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+#tab-bieumau .word-template-file-link {
+    max-width: 100%;
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+#tab-bieumau .word-template-file-link span,
+#tab-bieumau .word-template-selected-file {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tab-bieumau .word-template-file-link:hover {
+    text-decoration: underline;
+}
+
+#tab-bieumau .word-template-name-input {
+    min-width: 180px;
+    width: 100%;
+}
+
+#tab-bieumau .word-template-file-editor {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+#tab-bieumau .word-template-selected-file {
+    min-width: 0;
+    font-size: 0.82rem;
+}
+
+#tab-bieumau .word-template-inline-error {
+    display: block;
+    margin-top: 6px;
+    color: var(--danger);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+#tab-bieumau tr.is-editing > td {
+    background: var(--primary-soft);
+    vertical-align: top;
+}
+
+#tab-bieumau tr.is-editing .word-template-status-cell .btn-activate-template {
+    pointer-events: none;
+    opacity: 0.65;
+}
+
+#tab-bieumau [data-word-template-display][hidden],
+#tab-bieumau .word-template-inline-error[hidden] {
+    display: none !important;
+}
+
+#tab-bieumau .word-template-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+#tab-bieumau .word-template-toolbar h4 {
+    margin: 0;
+}
+
+#tab-bieumau #word-template-add-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+#tab-bieumau #word-template-add-button svg {
+    width: 18px;
+    height: 18px;
+}
+
+#tab-bieumau .word-template-empty-state {
+    padding: 36px 16px;
+}
+
+#tab-bieumau .word-template-empty-state svg {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    vertical-align: text-bottom;
+}
+
+@media (max-width: 640px) {
+    #tab-bieumau .word-template-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #tab-bieumau #word-template-add-button {
+        justify-content: center;
+        width: 100%;
+    }
+}
+
 #word-variable-readonly-notice {
     grid-column: 1 / -1;
 }

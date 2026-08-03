@@ -56,6 +56,10 @@ async def list_templates_api(request):
     return await _dispatch("routes_docx", "list_templates_api", request)
 
 
+async def view_template_api(request):
+    return await _dispatch("routes_docx", "view_template_api", request)
+
+
 async def set_active_template_api(request):
     return await _dispatch("routes_docx", "set_active_template_api", request)
 

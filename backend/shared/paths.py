@@ -48,8 +48,6 @@ WORD_TEMPLATE_DIR = resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")
 
 SYSTEM_WORD_TEMPLATE_DIR = (PROJECT_ROOT / "data" / "templates" / "words").resolve()
 SYSTEM_WORD_TEMPLATE_NAMES = (
-    "mau_bao_cao_dau_thau.docx",
-    "mau_hop_dong_lcnt.docx",
     "mau_timeline_goi_thau.docx",
 )
 

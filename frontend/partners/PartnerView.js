@@ -36,16 +36,23 @@ export function buildWordTemplateActions(tpl, canManageTemplates) {
 
   const safeFilename = safeAttr(tpl.filename);
   const actions = [];
-  if (tpl.is_active) {
-    actions.push('<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>');
-  } else {
-    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`);
+  if (!tpl.is_active) {
+    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}"><i data-lucide="play" aria-hidden="true"></i>Sử dụng</button>`);
   }
-  if (!tpl.is_system) {
-    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-edit-template" data-filename="${safeFilename}">Sửa</button>`);
-    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-delete-template" data-filename="${safeFilename}">Xóa</button>`);
+  const isMutable = tpl.is_mutable === undefined ? !tpl.is_system : tpl.is_mutable;
+  if (isMutable) {
+    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-edit-template" data-filename="${safeFilename}"><i data-lucide="pencil" aria-hidden="true"></i>Sửa</button>`);
+    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-delete-template" data-filename="${safeFilename}"><i data-lucide="trash-2" aria-hidden="true"></i>Xóa</button>`);
   }
-  return `<div class="word-template-actions">${actions.join("")}</div>`;
+  return `<div class="word-template-actions" data-word-template-display>${actions.join("")}</div>`;
+}
+
+export function buildWordTemplateFileLink(tpl) {
+  if (tpl.is_available === false) return '<span class="text-muted">Chưa có file</span>';
+  const filename = String(tpl.filename || "");
+  const safeFilename = escapeHtml(filename);
+  const safeUrl = safeAttr(`/api/templates/${encodeURIComponent(filename)}`);
+  return `<a class="word-template-file-link" href="${safeUrl}" target="_blank" rel="noopener" data-word-template-display aria-label="Xem file mẫu ${safeAttr(tpl.name || filename)}"><i data-lucide="file-text" aria-hidden="true"></i><span>${safeFilename}</span><i data-lucide="external-link" aria-hidden="true"></i></a>`;
 }
 export function renderBieumauTab(templatesList = []) {
   const tbody = document.getElementById("word-templates-tbody");
@@ -55,7 +62,8 @@ export function renderBieumauTab(templatesList = []) {
     this.model.state.activerole,
   );
   if (templatesList.length === 0) {
-    tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Đang tải biểu mẫu...</td></tr>`);
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="4" class="text-center text-muted word-template-empty-state"><i data-lucide="file-plus-2"></i><span>Chưa có biểu mẫu Word. Hãy thêm biểu mẫu đầu tiên.</span></td></tr>`);
+    lucide.createIcons({ root: tbody });
     return;
   }
   tbody.innerHTML = trustedHTML(templatesList.map((tpl) => {
@@ -69,11 +77,13 @@ export function renderBieumauTab(templatesList = []) {
           ? `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`
           : '<span class="badge badge-neutral">Chỉ xem</span>';
     const actionButton = buildWordTemplateActions(tpl, canManageWordVariables);
+    const fileLink = buildWordTemplateFileLink(tpl);
     return `
-            <tr>
-                <td class="fw-bold">${escapeHtml(tpl.name)}</td>
-                <td>${activeBadge}</td>
-                <td class="text-right">${actionButton}</td>
+            <tr data-word-template-row data-filename="${safeFilename}">
+                <td class="fw-bold word-template-name-cell"><span data-word-template-display>${escapeHtml(tpl.name)}</span></td>
+                <td class="word-template-file-cell">${fileLink}</td>
+                <td class="word-template-status-cell">${activeBadge}</td>
+                <td class="text-right word-template-action-cell">${actionButton}</td>
             </tr>
         `;
   }).join(""));

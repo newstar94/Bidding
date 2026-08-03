@@ -275,38 +275,29 @@
                     <i data-lucide="file-text" class="text-muted"></i>
                 </div>
                 <div class="card-body">
-                    <div class="excel-drag-drop-zone bf-s-528ea4d5dc" id="word-drag-drop-zone"
-                       >
-                        <i data-lucide="file-up"
-                            class="bf-s-a9f6c95748"></i>
-                        <p class="mt-2 bf-s-0d6efb9bd4"><strong>Nhấp hoặc kéo thả để tải
-                                biểu mẫu .docx</strong></p>
-                        <span class="text-muted bf-s-fa4b46b3e3">Biểu mẫu chứa các biến dạng {Biến}</span>
-                        <input type="file" id="word-file-input" accept=".docx" class="bf-s-65d1f1c3d7">
+                    <input type="file" id="word-file-input" accept=".docx" class="bf-s-65d1f1c3d7"
+                        aria-label="Chọn biểu mẫu Word để thêm">
+                    <div class="word-template-toolbar">
+                        <h4>Danh sách biểu mẫu</h4>
+                        <button type="button" class="btn btn-primary" id="word-template-add-button">
+                            <i data-lucide="plus" aria-hidden="true"></i>
+                            Thêm biểu mẫu Word
+                        </button>
                     </div>
-                    <input type="file" id="word-template-replace-input" accept=".docx" class="bf-s-65d1f1c3d7"
-                        aria-label="Chọn tệp Word thay thế biểu mẫu">
-                    <div id="word-validation-result" class="mb-3 bf-s-da8ed566b6"
-                       >
-                    </div>
-
-                    <h4 class="bf-s-1a407dffd0">Danh sách biểu mẫu
-                    </h4>
                     <div class="table-container bf-s-a4a7a93a36"
                        >
                         <table class="data-table bf-s-56af3282d2" id="word-templates-table">
                             <thead>
                                 <tr>
                                     <th>Tên biểu mẫu</th>
+                                    <th>File mẫu</th>
                                     <th>Trạng thái</th>
                                     <th class="text-right">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody id="word-templates-tbody">
                                 <tr>
-                                    <td class="fw-bold">Bản báo cáo đánh giá mặc định</td>
-                                    <td><span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span></td>
-                                    <td class="text-right"><span class="badge badge-info">Hệ thống</span></td>
+                                    <td colspan="4" class="text-center text-muted">Đang tải biểu mẫu...</td>
                                 </tr>
                             </tbody>
                         </table>

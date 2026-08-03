@@ -4,7 +4,7 @@ import re
 import shutil
 from io import BytesIO
 from urllib.parse import quote
-from starlette.responses import StreamingResponse, JSONResponse
+from starlette.responses import FileResponse, StreamingResponse, JSONResponse
 
 from backend.shared.helpers import (
     database,
@@ -62,11 +62,14 @@ from backend.documents.word_mapping_registry import (
 from backend.documents.timeline_context_service import build_timeline_context
 import uuid
 
-SYSTEM_TEMPLATES = {
+LEGACY_MANAGED_TEMPLATES = {
     'mau_bao_cao_dau_thau.docx',
     'mau_hop_dong_lcnt.docx',
+}
+SYSTEM_TEMPLATES = {
     'mau_timeline_goi_thau.docx',
 }
+SHARED_TEMPLATES = LEGACY_MANAGED_TEMPLATES | SYSTEM_TEMPLATES
 MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
 
@@ -94,10 +97,11 @@ def _docx_error(request, exception, context):
             status_code=409,
         )
     if isinstance(exception, DocumentWorkerInputError):
+        detail = str(exception or '').strip()
         return error_response(
             request,
             "DOCX_INPUT_INVALID",
-            "Tệp hoặc mẫu Word không hợp lệ.",
+            detail or "Tệp hoặc mẫu Word không hợp lệ.",
             status_code=422,
         )
     if isinstance(exception, ValueError):
@@ -311,23 +315,27 @@ def _normalize_custom_template_filename(value):
 
 
 def _resolve_template_path(owner_type, owner_id, filename):
+    if not str(filename or '').strip():
+        raise FileNotFoundError('Chưa có biểu mẫu Word đang được sử dụng')
     safe_name = _normalize_custom_template_filename(filename)
-    if safe_name in SYSTEM_TEMPLATES:
-        base_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
-    else:
-        base_dir = os.path.realpath(
-            custom_exporter.get_scope_template_dir(
-                owner_type,
-                owner_id,
-                create=False,
-            )
+    scope_dir = os.path.realpath(
+        custom_exporter.get_scope_template_dir(
+            owner_type,
+            owner_id,
+            create=False,
         )
-    path = os.path.realpath(os.path.join(base_dir, safe_name))
-    if not path.startswith(base_dir + os.sep):
+    )
+    scoped_path = os.path.realpath(os.path.join(scope_dir, safe_name))
+    if not scoped_path.startswith(scope_dir + os.sep):
         raise ValueError('Tên mẫu không hợp lệ')
-    if not os.path.exists(path):
-        raise FileNotFoundError('Không tìm thấy mẫu Word')
-    return path, safe_name
+    if os.path.isfile(scoped_path):
+        return scoped_path, safe_name
+    if safe_name in SHARED_TEMPLATES:
+        shared_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
+        shared_path = os.path.realpath(os.path.join(shared_dir, safe_name))
+        if shared_path.startswith(shared_dir + os.sep) and os.path.isfile(shared_path):
+            return shared_path, safe_name
+    raise FileNotFoundError('Không tìm thấy mẫu Word')
 
 
 def _resolve_custom_template_path(owner_type, owner_id, filename):
@@ -337,12 +345,17 @@ def _resolve_custom_template_path(owner_type, owner_id, filename):
     scope_dir = os.path.realpath(
         custom_exporter.get_scope_template_dir(owner_type, owner_id, create=False)
     )
-    path = os.path.realpath(os.path.join(scope_dir, safe_name))
-    if not path.startswith(scope_dir + os.sep):
+    scoped_path = os.path.realpath(os.path.join(scope_dir, safe_name))
+    if not scoped_path.startswith(scope_dir + os.sep):
         raise ValueError('Tên mẫu không hợp lệ')
-    if not os.path.isfile(path):
-        raise FileNotFoundError('Không tìm thấy mẫu Word tùy chỉnh')
-    return path, safe_name
+    if os.path.isfile(scoped_path):
+        return scoped_path, safe_name
+    if safe_name.lower() in LEGACY_MANAGED_TEMPLATES:
+        shared_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
+        shared_path = os.path.realpath(os.path.join(shared_dir, safe_name))
+        if shared_path.startswith(shared_dir + os.sep) and os.path.isfile(shared_path):
+            return shared_path, safe_name
+    raise FileNotFoundError('Không tìm thấy mẫu Word tùy chỉnh')
 
 
 def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_path):
@@ -385,7 +398,9 @@ def _update_scoped_template(
     next_name = _normalize_custom_template_filename(new_filename or current_name)
     if next_name.lower() in SYSTEM_TEMPLATES:
         raise ValueError('Không thể ghi đè biểu mẫu hệ thống')
-    scope_dir = os.path.dirname(current_path)
+    scope_dir = os.path.realpath(
+        custom_exporter.get_scope_template_dir(owner_type, owner_id)
+    )
     next_path = os.path.abspath(os.path.join(scope_dir, next_name))
     common_dir = os.path.normcase(os.path.commonpath([scope_dir, next_path]))
     if common_dir != os.path.normcase(scope_dir):
@@ -437,7 +452,7 @@ def _delete_scoped_template(owner_type, owner_id, filename):
         owner_id, owner_type=owner_type
     ) == safe_name:
         custom_exporter.set_active_template(
-            custom_exporter.DEFAULT_TEMPLATE,
+            '',
             owner_id,
             owner_type=owner_type,
         )
@@ -557,8 +572,6 @@ def _prepare_report_render(
         owner_id,
         owner_type=owner_type,
     )
-    if document_type in {"contract", "liquidation"}:
-        active_template = "mau_hop_dong_lcnt.docx"
     template_path, _ = _resolve_template_path(
         owner_type, owner_id, active_template
     )
@@ -830,6 +843,47 @@ async def list_templates_api(request):
         return JSONResponse(templates)
     except Exception as e:
         return _docx_error(request, e, "list_templates_api")
+
+
+async def view_template_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err)
+        if access_error is not None:
+            return access_error
+        organization_id = get_active_org(request, user_id)
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        template_path, safe_name = await run_blocking_io(
+            _resolve_template_path,
+            owner_type,
+            owner_id,
+            request.path_params.get('filename'),
+            timeout_seconds=5,
+        )
+        safe_download_name = _safe_filename(safe_name)
+        disposition = (
+            f"inline; filename={safe_download_name}; "
+            f"filename*=UTF-8''{quote(safe_name)}"
+        )
+        return FileResponse(
+            template_path,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+            headers={
+                "Content-Disposition": disposition,
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except (FileNotFoundError, ValueError) as e:
+        return _docx_error(request, e, "view_template_api")
+    except (OrgPermissionError, BlockingIOBusyError, BlockingIOTimeoutError, OSError) as e:
+        return _docx_error(request, e, "view_template_api")
 
 async def set_active_template_api(request):
     try:

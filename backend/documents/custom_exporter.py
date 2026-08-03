@@ -394,7 +394,11 @@ def format_context_dates(data):
             format_context_dates(item)
 project_root = str(PROJECT_ROOT)
 TEMPLATE_DIR = str(WORD_TEMPLATE_DIR)
-DEFAULT_TEMPLATE = 'mau_bao_cao_dau_thau.docx'
+DEFAULT_TEMPLATE = ''
+LEGACY_WORD_TEMPLATES = {
+    'mau_bao_cao_dau_thau.docx': 'Bản báo cáo đánh giá mặc định',
+    'mau_hop_dong_lcnt.docx': 'Mẫu hợp đồng kinh tế LCNT',
+}
 
 def get_user_template_dir(user_id=None, *, create=True):
     if user_id:
@@ -445,32 +449,41 @@ def set_active_template(filename, owner_id=None, *, owner_type='personal'):
 def list_templates(owner_id=None, *, owner_type='personal'):
     templates = []
     active_template = get_active_template(owner_id, owner_type=owner_type)
-    system_templates = (
-        ('mau_bao_cao_dau_thau.docx', 'Bản báo cáo đánh giá mặc định'),
-        ('mau_hop_dong_lcnt.docx', 'Mẫu hợp đồng kinh tế LCNT'),
-    )
-    system_filenames = {filename for filename, _ in system_templates}
-    for filename, name in system_templates:
-        is_available = os.path.isfile(os.path.join(TEMPLATE_DIR, filename))
-        templates.append({
-            'filename': filename,
-            'name': name,
-            'is_system': True,
-            'is_available': is_available,
-            'is_active': is_available and active_template == filename
-        })
-
     scope_dir = get_scope_template_dir(owner_type, owner_id, create=False) if owner_id else TEMPLATE_DIR
+    scoped_filenames = set()
     if os.path.exists(scope_dir):
-        for f in os.listdir(scope_dir):
-            if f.endswith('.docx') and f not in system_filenames:
+        for f in sorted(os.listdir(scope_dir), key=str.casefold):
+            if f.lower().endswith('.docx'):
+                if f.lower() == 'mau_timeline_goi_thau.docx':
+                    continue
+                if not owner_id and f.lower() in LEGACY_WORD_TEMPLATES:
+                    continue
+                scoped_filenames.add(f.lower())
                 templates.append({
                     'filename': f,
                     'name': f,
                     'is_system': False,
+                    'is_mutable': True,
                     'is_available': True,
                     'is_active': active_template == f
                 })
+
+    # Older installations may still contain the two templates that used to be
+    # provisioned globally. Keep them visible and manageable until an operator
+    # edits or deletes them; fresh installations no longer create these files.
+    for filename, name in LEGACY_WORD_TEMPLATES.items():
+        if filename.lower() in scoped_filenames:
+            continue
+        if os.path.isfile(os.path.join(TEMPLATE_DIR, filename)):
+            templates.append({
+                'filename': filename,
+                'name': name,
+                'is_system': False,
+                'is_mutable': True,
+                'is_legacy': True,
+                'is_available': True,
+                'is_active': active_template == filename,
+            })
     return templates
 
 def validate_template_syntax(file_bytes):

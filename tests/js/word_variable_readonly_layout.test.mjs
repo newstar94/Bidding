@@ -91,39 +91,37 @@ test("manager Word dictionary restores mutation controls", () => {
   });
 });
 
-test("employee view removes the unavailable template-upload control instead of dimming it", () => {
+test("employee view hides and disables the add-template button", () => {
   const input = createControl();
-  const zone = createControl();
-  zone.hidden = false;
-  zone.title = "";
-  zone.classList = {
-    remove(name) { zone.removedClass = name; },
-  };
+  const trigger = createControl();
+  trigger.hidden = false;
+  trigger.title = "";
   const validation = { hidden: false };
 
-  applyWordTemplateUploadAccess({ input, zone, validation }, false);
+  applyWordTemplateUploadAccess({ input, trigger, validation }, false);
 
   assert.equal(input.disabled, true);
-  assert.equal(zone.hidden, true);
-  assert.equal(zone.attributes.get("aria-hidden"), "true");
-  assert.equal(zone.attributes.has("aria-disabled"), false);
-  assert.equal(zone.removedClass, "is-upload-disabled");
+  assert.equal(trigger.hidden, true);
+  assert.equal(trigger.disabled, true);
+  assert.equal(trigger.attributes.get("aria-hidden"), "true");
+  assert.equal(trigger.attributes.get("aria-disabled"), "true");
   assert.equal(validation.hidden, true);
 });
 
-test("manager view restores the template-upload control", () => {
+test("manager view restores the add-template button", () => {
   const input = createControl();
-  const zone = createControl();
-  zone.hidden = true;
-  zone.title = "";
-  zone.classList = { remove() {} };
+  const trigger = createControl();
+  trigger.hidden = true;
+  trigger.title = "";
   const validation = { hidden: true };
 
-  applyWordTemplateUploadAccess({ input, zone, validation }, true);
+  applyWordTemplateUploadAccess({ input, trigger, validation }, true);
 
   assert.equal(input.disabled, false);
-  assert.equal(zone.hidden, false);
-  assert.equal(zone.attributes.get("aria-hidden"), "false");
-  assert.equal(zone.title, "Tải lên biểu mẫu Word");
+  assert.equal(trigger.hidden, false);
+  assert.equal(trigger.disabled, false);
+  assert.equal(trigger.attributes.get("aria-hidden"), "false");
+  assert.equal(trigger.attributes.get("aria-disabled"), "false");
+  assert.equal(trigger.title, "Thêm biểu mẫu Word");
   assert.equal(validation.hidden, false);
 });

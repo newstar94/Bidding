@@ -10,6 +10,10 @@ from backend.shared.paths import provision_system_word_templates
 
 
 TIMELINE_TEMPLATE = "mau_timeline_goi_thau.docx"
+LEGACY_DEFAULT_TEMPLATES = {
+    "mau_bao_cao_dau_thau.docx",
+    "mau_hop_dong_lcnt.docx",
+}
 
 
 def test_timeline_template_is_generated_and_resolvable_without_bundled_data(tmp_path, monkeypatch):
@@ -74,3 +78,15 @@ def test_generated_timeline_template_renders_effective_rows(tmp_path):
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
     assert "GT-01 - Gói thầu thử nghiệm" in text
     assert "[[PACKAGE_CODE]]" not in text
+
+
+def test_fresh_install_does_not_provision_legacy_default_templates(tmp_path):
+    source_dir = tmp_path / "bundled"
+    source_dir.mkdir()
+    for filename in LEGACY_DEFAULT_TEMPLATES:
+        (source_dir / filename).write_bytes(b"legacy")
+
+    target_dir = tmp_path / "runtime"
+    provision_system_word_templates(source_dir=source_dir, target_dir=target_dir)
+
+    assert all(not (target_dir / filename).exists() for filename in LEGACY_DEFAULT_TEMPLATES)

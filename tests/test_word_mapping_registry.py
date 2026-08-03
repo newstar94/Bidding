@@ -76,7 +76,7 @@ def test_reading_shared_templates_does_not_create_an_empty_scope_directory(
         owner_type="organization",
     )
 
-    assert templates
+    assert templates == []
     assert not (tmp_path / "organizations" / "org-never-customized").exists()
 
 

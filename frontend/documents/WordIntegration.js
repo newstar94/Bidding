@@ -37,22 +37,22 @@ export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   });
 }
 
-export function applyWordTemplateUploadAccess({ input, replaceInput, zone, validation }, canUploadTemplates) {
+export function applyWordTemplateUploadAccess({ input, replaceInput, trigger, zone, validation }, canUploadTemplates) {
   if (input) input.disabled = !canUploadTemplates;
   if (replaceInput) replaceInput.disabled = !canUploadTemplates;
-  if (zone) {
-    zone.hidden = !canUploadTemplates;
-    zone.setAttribute("aria-hidden", String(!canUploadTemplates));
-    zone.classList.remove("is-upload-disabled");
-    zone.removeAttribute("aria-disabled");
-    zone.title = canUploadTemplates ? "Tải lên biểu mẫu Word" : "";
+  const uploadTrigger = trigger || zone;
+  if (uploadTrigger) {
+    uploadTrigger.hidden = !canUploadTemplates;
+    uploadTrigger.setAttribute("aria-hidden", String(!canUploadTemplates));
+    uploadTrigger.disabled = !canUploadTemplates;
+    uploadTrigger.setAttribute("aria-disabled", String(!canUploadTemplates));
+    uploadTrigger.title = canUploadTemplates ? "Thêm biểu mẫu Word" : "";
   }
   if (validation) validation.hidden = !canUploadTemplates;
 }
 
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
-  const replaceInput = document.getElementById("word-template-replace-input");
   const canManageWordVariables = canManageWorkspaceWordVariables(
     this.model.state.activeuser || {},
     this.model.state.activerole,
@@ -61,57 +61,25 @@ export function setupWordTemplatesEvents() {
     this.model.state.activeuser || {},
     this.model.state.activerole,
   );
-  const dragDropZone = document.getElementById("word-drag-drop-zone");
+  const addButton = document.getElementById("word-template-add-button");
   const validationResult = document.getElementById("word-validation-result");
   applyWordTemplateUploadAccess({
     input: templateInput,
-    replaceInput,
-    zone: dragDropZone,
+    trigger: addButton,
     validation: validationResult,
   }, canUploadTemplates);
   if (templateInput && !templateInput.dataset.wordUploadBound) {
     templateInput.dataset.wordUploadBound = "true";
-    templateInput.addEventListener("change", (e) => {
+    templateInput.addEventListener("change", async (e) => {
       const file = e.target.files[0];
-      if (file) this.handleWordTemplateUpload(file);
-    });
-  }
-  if (replaceInput && !replaceInput.dataset.wordReplaceBound) {
-    replaceInput.dataset.wordReplaceBound = "true";
-    replaceInput.addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      const filename = e.target.dataset.filename;
-      const newFilename = e.target.dataset.newFilename || filename;
-      if (file && filename) {
-        await handleWordTemplateReplace.call(this, file, filename, newFilename);
-      }
+      if (file) await this.handleWordTemplateUpload(file);
       e.target.value = "";
-      delete e.target.dataset.filename;
-      delete e.target.dataset.newFilename;
     });
   }
-  if (dragDropZone && templateInput && !dragDropZone.dataset.wordUploadBound) {
-    dragDropZone.dataset.wordUploadBound = "true";
-    dragDropZone.addEventListener("click", () => {
+  if (addButton && templateInput && !addButton.dataset.wordUploadBound) {
+    addButton.dataset.wordUploadBound = "true";
+    addButton.addEventListener("click", () => {
       if (!templateInput.disabled) templateInput.click();
-    });
-    dragDropZone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (templateInput.disabled) return;
-      dragDropZone.classList.add("dragover");
-    });
-    dragDropZone.addEventListener("dragleave", () => {
-      dragDropZone.classList.remove("dragover");
-    });
-    dragDropZone.addEventListener("drop", (e) => {
-      e.preventDefault();
-      dragDropZone.classList.remove("dragover");
-      if (templateInput.disabled) return;
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        templateInput.files = e.dataTransfer.files;
-        this.handleWordTemplateUpload(file);
-      }
     });
   }
   const dictionarySelect = document.getElementById("dictionary-group-select");
@@ -1108,40 +1076,11 @@ export function setupTemplateActivationEvents() {
     };
   });
   document.querySelectorAll(".btn-edit-template").forEach((btn) => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const targetEl = e.target.closest(".btn-edit-template");
-      const replaceInput = document.getElementById("word-template-replace-input");
-      if (!targetEl || !replaceInput || replaceInput.disabled) return;
-      const filename = targetEl.getAttribute("data-filename");
-      const currentName = filename.replace(/\.docx$/i, "");
-      const enteredName = await this.view.customPrompt(
-        "Sửa biểu mẫu",
-        "Nhập tên biểu mẫu. Bạn có thể chỉ đổi tên hoặc chọn thêm một tệp Word thay thế.",
-        currentName,
-        "Tên biểu mẫu",
-        false,
-        (value) => validateWordTemplateName(value),
-      );
-      if (enteredName === null) return;
-      const newFilename = normalizeWordTemplateName(enteredName);
-      const replaceFile = await this.view.customConfirm(
-        "Nội dung biểu mẫu",
-        "Bạn có muốn chọn tệp .docx mới? Chọn “Chỉ lưu tên” để giữ nguyên nội dung hiện tại.",
-        "file-text",
-        {
-          confirmLabel: "Chọn tệp thay thế",
-          cancelLabel: "Chỉ lưu tên",
-        },
-      );
-      if (replaceFile === null) return;
-      if (!replaceFile) {
-        await handleWordTemplateReplace.call(this, null, filename, newFilename);
-        return;
-      }
-      replaceInput.value = "";
-      replaceInput.dataset.filename = filename;
-      replaceInput.dataset.newFilename = newFilename;
-      replaceInput.click();
+      const row = targetEl?.closest("[data-word-template-row]");
+      if (!targetEl || !row) return;
+      beginWordTemplateInlineEdit(this, row, targetEl);
     };
   });
   document.querySelectorAll(".btn-delete-template").forEach((btn) => {
@@ -1152,6 +1091,155 @@ export function setupTemplateActivationEvents() {
       await handleWordTemplateDelete.call(this, filename);
     };
   });
+}
+
+function createInlineTemplateButton(label, className, iconName) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  const icon = document.createElement("i");
+  icon.setAttribute("data-lucide", iconName);
+  icon.setAttribute("aria-hidden", "true");
+  button.append(icon, document.createTextNode(label));
+  return button;
+}
+
+function setInlineTemplateError(container, message) {
+  let error = container.querySelector(".word-template-inline-error");
+  if (!error) {
+    error = document.createElement("span");
+    error.className = "word-template-inline-error word-template-inline-editor";
+    error.setAttribute("role", "alert");
+    container.appendChild(error);
+  }
+  error.textContent = message || "";
+  error.hidden = !message;
+}
+
+export function beginWordTemplateInlineEdit(controller, row, editButton) {
+  const activeRow = document.querySelector("[data-word-template-row].is-editing");
+  if (activeRow && activeRow !== row && typeof activeRow._cancelWordTemplateEdit === "function") {
+    activeRow._cancelWordTemplateEdit();
+  }
+  if (row.classList.contains("is-editing")) return;
+
+  const filename = row.getAttribute("data-filename") || editButton.getAttribute("data-filename");
+  const nameCell = row.querySelector(".word-template-name-cell");
+  const fileCell = row.querySelector(".word-template-file-cell");
+  const actionCell = row.querySelector(".word-template-action-cell");
+  if (!filename || !nameCell || !fileCell || !actionCell) return;
+
+  row.classList.add("is-editing");
+  row.querySelectorAll("[data-word-template-display]").forEach((element) => {
+    element.hidden = true;
+  });
+
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.className = "form-control word-template-name-input word-template-inline-editor";
+  nameInput.value = filename.replace(/\.docx$/i, "");
+  nameInput.maxLength = 155;
+  nameInput.setAttribute("aria-label", `Tên biểu mẫu ${filename}`);
+  nameCell.appendChild(nameInput);
+
+  const fileEditor = document.createElement("div");
+  fileEditor.className = "word-template-file-editor word-template-inline-editor";
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = ".docx";
+  fileInput.hidden = true;
+  fileInput.setAttribute("aria-label", `Chọn file thay thế cho ${filename}`);
+  const chooseFileButton = createInlineTemplateButton(
+    "Chọn file khác",
+    "btn btn-outline btn-sm word-template-choose-file",
+    "upload",
+  );
+  const selectedFile = document.createElement("span");
+  selectedFile.className = "word-template-selected-file text-muted";
+  selectedFile.textContent = "Giữ file hiện tại";
+  chooseFileButton.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    selectedFile.textContent = fileInput.files?.[0]?.name || "Giữ file hiện tại";
+    setInlineTemplateError(fileCell, "");
+  });
+  fileEditor.append(fileInput, chooseFileButton, selectedFile);
+  fileCell.appendChild(fileEditor);
+
+  const actionEditor = document.createElement("div");
+  actionEditor.className = "word-template-actions word-template-inline-actions word-template-inline-editor";
+  const cancelButton = createInlineTemplateButton(
+    "Hủy",
+    "btn btn-outline btn-sm btn-cancel-template-edit",
+    "x",
+  );
+  const saveButton = createInlineTemplateButton(
+    "Lưu",
+    "btn btn-primary btn-sm btn-save-template-edit",
+    "save",
+  );
+  actionEditor.append(cancelButton, saveButton);
+  actionCell.appendChild(actionEditor);
+
+  let saving = false;
+  const restore = () => {
+    if (saving) return;
+    row.querySelectorAll(".word-template-inline-editor").forEach((element) => element.remove());
+    row.querySelectorAll("[data-word-template-display]").forEach((element) => {
+      element.hidden = false;
+    });
+    row.classList.remove("is-editing");
+    delete row._cancelWordTemplateEdit;
+    editButton.focus();
+  };
+  row._cancelWordTemplateEdit = restore;
+  cancelButton.addEventListener("click", restore);
+
+  const save = async () => {
+    if (saving) return;
+    const nameError = validateWordTemplateName(nameInput.value);
+    if (nameError) {
+      setInlineTemplateError(nameCell, nameError);
+      nameInput.focus();
+      return;
+    }
+    const replacement = fileInput.files?.[0] || null;
+    if (replacement && !replacement.name.toLowerCase().endsWith(".docx")) {
+      setInlineTemplateError(fileCell, "Chỉ hỗ trợ file Microsoft Word (.docx).");
+      return;
+    }
+    saving = true;
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    nameInput.disabled = true;
+    chooseFileButton.disabled = true;
+    saveButton.setAttribute("aria-busy", "true");
+    const saved = await handleWordTemplateReplace.call(
+      controller,
+      replacement,
+      filename,
+      normalizeWordTemplateName(nameInput.value),
+      { inline: true },
+    );
+    if (!saved && row.isConnected) {
+      saving = false;
+      saveButton.disabled = false;
+      cancelButton.disabled = false;
+      nameInput.disabled = false;
+      chooseFileButton.disabled = false;
+      saveButton.setAttribute("aria-busy", "false");
+      nameInput.focus();
+    }
+  };
+  saveButton.addEventListener("click", save);
+  nameInput.addEventListener("input", () => setInlineTemplateError(nameCell, ""));
+  nameInput.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") restore();
+    if (event.key === "Enter") save();
+  });
+
+  lucide.createIcons({ root: row });
+  nameInput.focus();
+  nameInput.select();
 }
 
 export function templateResourceUrl(filename) {
@@ -1216,18 +1304,21 @@ export async function handleWordTemplateUpload(file) {
   }
 }
 
-export async function handleWordTemplateReplace(file, filename, newFilename = filename) {
+export async function handleWordTemplateReplace(
+  file,
+  filename,
+  newFilename = filename,
+  { inline = false } = {},
+) {
   if (!canMutateWordTemplates(this)) {
     await showTemplateAccessDenied(this);
-    return;
+    return false;
   }
   if (file && !file.name?.toLowerCase().endsWith(".docx")) {
-    await this.view.customAlert(
-      "Lỗi định dạng",
-      "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!",
-      "alert-triangle",
-    );
-    return;
+    const message = "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!";
+    if (inline && this.view.showToast) this.view.showToast("Lỗi định dạng", message, "error");
+    else await this.view.customAlert("Lỗi định dạng", message, "alert-triangle");
+    return false;
   }
   const formData = new FormData();
   formData.append("name", normalizeWordTemplateName(newFilename));
@@ -1239,25 +1330,27 @@ export async function handleWordTemplateReplace(file, filename, newFilename = fi
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      await this.view.customAlert(
-        "Thất bại",
-        data.error || "Không thể cập nhật biểu mẫu này.",
-        "alert-triangle",
-      );
-      return;
+      const message = data.error || "Không thể cập nhật biểu mẫu này.";
+      if (inline && this.view.showToast) this.view.showToast("Thất bại", message, "error");
+      else await this.view.customAlert("Thất bại", message, "alert-triangle");
+      return false;
     }
-    await this.view.customAlert(
-      "Thành công",
-      "Đã cập nhật biểu mẫu.",
-      "check-circle",
-    );
+    if (inline && this.view.showToast) {
+      this.view.showToast("Thành công", "Đã cập nhật biểu mẫu.", "success");
+    } else {
+      await this.view.customAlert(
+        "Thành công",
+        "Đã cập nhật biểu mẫu.",
+        "check-circle",
+      );
+    }
     await this.loadWordTemplates();
+    return true;
   } catch (err) {
-    await this.view.customAlert(
-      "Lỗi hệ thống",
-      "Lỗi kết nối máy chủ: " + err.message,
-      "alert-triangle",
-    );
+    const message = "Lỗi kết nối máy chủ: " + err.message;
+    if (inline && this.view.showToast) this.view.showToast("Lỗi hệ thống", message, "error");
+    else await this.view.customAlert("Lỗi hệ thống", message, "alert-triangle");
+    return false;
   }
 }
 
