@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -22,6 +24,13 @@ THIN_BORDER = Border(
     top=BORDER_SIDE,
     bottom=BORDER_SIDE,
 )
+
+TIMELINE_STATUS_LABELS = {
+    "PENDING": "Chưa thực hiện",
+    "IN_PROGRESS": "Đang thực hiện",
+    "DONE": "Đã hoàn thành",
+    "NOT_APPLICABLE": "Không áp dụng",
+}
 
 def _safe_spreadsheet_text(value):
     if isinstance(value, str) and value.startswith(
@@ -154,6 +163,196 @@ def create_excel_from_spec(spec):
     ):
         raise ValueError("Excel export spec requires headers.")
     return _build_configured_workbook(**spec)
+
+
+def _timeline_date(value):
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    raw = str(value or "").strip()
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw[:10], pattern)
+        except ValueError:
+            continue
+    return None
+
+
+def _timeline_metadata_value(record, code_key, name_key):
+    code = str(record.get(code_key) or "").strip()
+    name = str(record.get(name_key) or "").strip()
+    if code and name:
+        return f"{code} - {name}"
+    return code or name
+
+
+def create_timeline_excel(context):
+    """Build an editable package Timeline workbook from a data-only context."""
+    if not isinstance(context, dict):
+        raise ValueError("Timeline Excel context must be an object.")
+
+    package = context.get("goi_thau") or {}
+    plan = context.get("ke_hoach") or {}
+    organization = context.get("to_chuc") or {}
+    sections = context.get("timeline_sections") or []
+    if not isinstance(package, dict) or not isinstance(sections, list):
+        raise ValueError("Timeline Excel context is invalid.")
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Timeline"
+    sheet.sheet_view.showGridLines = False
+    sheet.freeze_panes = "A10"
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.fitToWidth = 1
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.print_title_rows = "1:9"
+
+    sheet.merge_cells("A1:G1")
+    title_cell = sheet["A1"]
+    title_cell.value = "TIMELINE GÓI THẦU"
+    title_cell.font = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
+    title_cell.fill = HEADER_FILL
+    title_cell.alignment = CENTER_ALIGN
+    sheet.row_dimensions[1].height = 32
+
+    metadata = [
+        ("Mã gói thầu", package.get("ma_goi_thau") or ""),
+        ("Tên gói thầu", package.get("ten_goi_thau") or ""),
+        (
+            "Kế hoạch LCNT",
+            _timeline_metadata_value(plan, "ma_ke_hoach", "ten_ke_hoach"),
+        ),
+        ("Đơn vị", organization.get("ten_to_chuc") or ""),
+        (
+            "Thông tin xuất",
+            "Phiên bản {version} - Ngày {generated}".format(
+                version=context.get("timeline_template_version") or "-",
+                generated=context.get("generated_date") or "-",
+            ),
+        ),
+    ]
+    for row_index, (label, value) in enumerate(metadata, start=3):
+        sheet.cell(row=row_index, column=1, value=label).font = Font(bold=True)
+        sheet.cell(
+            row=row_index,
+            column=2,
+            value=_safe_spreadsheet_text(value),
+        )
+        sheet.merge_cells(
+            start_row=row_index,
+            start_column=2,
+            end_row=row_index,
+            end_column=7,
+        )
+        sheet.cell(row=row_index, column=2).alignment = Alignment(
+            vertical="center",
+            wrap_text=True,
+        )
+        sheet.row_dimensions[row_index].height = 22
+
+    headers = [
+        "STT",
+        "Công việc",
+        "Đơn vị ban hành",
+        "Số văn bản",
+        "Thời gian",
+        "Trạng thái",
+        "Nguồn",
+    ]
+    for column_index, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=9, column=column_index, value=header)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.alignment = CENTER_ALIGN
+        cell.border = THIN_BORDER
+    sheet.row_dimensions[9].height = 28
+
+    status_validation = DataValidation(
+        type="list",
+        formula1='"Chưa thực hiện,Đang thực hiện,Đã hoàn thành,Không áp dụng"',
+        allow_blank=False,
+    )
+    status_validation.error = "Vui lòng chọn một trạng thái trong danh sách."
+    status_validation.errorTitle = "Trạng thái không hợp lệ"
+    sheet.add_data_validation(status_validation)
+
+    current_row = 10
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        code = str(section.get("code") or "").strip()
+        title = str(section.get("title") or "").strip()
+        sheet.merge_cells(
+            start_row=current_row,
+            start_column=1,
+            end_row=current_row,
+            end_column=7,
+        )
+        section_cell = sheet.cell(
+            row=current_row,
+            column=1,
+            value=_safe_spreadsheet_text(f"{code}. {title}".strip(". ")),
+        )
+        section_cell.font = Font(bold=True, color="1F1F1F")
+        section_cell.fill = PatternFill(
+            start_color="D9EAF7",
+            end_color="D9EAF7",
+            fill_type="solid",
+        )
+        section_cell.alignment = Alignment(vertical="center")
+        sheet.row_dimensions[current_row].height = 24
+        current_row += 1
+
+        for item in section.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            date_value = _timeline_date(
+                item.get("ngay_thuc_te") or item.get("ngay_du_kien")
+            )
+            values = [
+                item.get("display_code") or "",
+                item.get("cong_viec") or "",
+                item.get("don_vi_ban_hanh") or "",
+                item.get("so_van_ban") or "",
+                date_value,
+                TIMELINE_STATUS_LABELS.get(
+                    str(item.get("trang_thai") or "").upper(),
+                    item.get("trang_thai") or "",
+                ),
+                "Thủ công"
+                if str(item.get("source_mode") or "").upper() == "MANUAL"
+                else "Tự động",
+            ]
+            for column_index, value in enumerate(values, start=1):
+                cell = sheet.cell(
+                    row=current_row,
+                    column=column_index,
+                    value=value if column_index == 5 else _safe_spreadsheet_text(value),
+                )
+                cell.border = THIN_BORDER
+                cell.alignment = Alignment(
+                    horizontal="center" if column_index in {1, 5, 6, 7} else "left",
+                    vertical="center",
+                    wrap_text=column_index in {2, 3, 4},
+                )
+            date_cell = sheet.cell(row=current_row, column=5)
+            date_cell.number_format = "dd/mm/yyyy"
+            if item.get("is_planned_date"):
+                date_cell.font = Font(color="C00000")
+            status_validation.add(sheet.cell(row=current_row, column=6))
+            sheet.row_dimensions[current_row].height = 30
+            current_row += 1
+
+    sheet.column_dimensions["A"].width = 18
+    sheet.column_dimensions["B"].width = 48
+    sheet.column_dimensions["C"].width = 28
+    sheet.column_dimensions["D"].width = 22
+    sheet.column_dimensions["E"].width = 15
+    sheet.column_dimensions["F"].width = 20
+    sheet.column_dimensions["G"].width = 14
+    return workbook
 
 
 def create_excel_template(import_type):

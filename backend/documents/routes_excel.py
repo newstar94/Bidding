@@ -7,9 +7,11 @@ from backend.shared.helpers import (
     verify_session,
     clean_id,
     get_active_org,
-    OrgPermissionError
+    OrgPermissionError,
+    log_audit,
 )
 from backend.shared.access_policy import can_read_record
+from backend.shared.subscription_policy import can_use_word_export
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.database_io import run_database_read
@@ -21,6 +23,12 @@ from backend.documents.document_worker import (
     run_document_job_async,
 )
 from backend.documents.upload_spooling import spooled_upload
+from backend.documents.routes_docx import (
+    _content_disposition,
+    _ensure_export_snapshot_unchanged,
+    _validate_export_snapshot,
+)
+from backend.documents.timeline_context_service import build_timeline_context
 
 MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -94,6 +102,28 @@ def _can_export_package(role_or_err, org_name, package_id):
         conn.close()
 
 
+def _timeline_export_entitlement_response(role_or_err, organization_id):
+    conn = database.get_connection()
+    try:
+        enabled = can_use_word_export(
+            conn.cursor(),
+            role_or_err,
+            role_or_err.user_id,
+            organization_id,
+        )
+    finally:
+        conn.close()
+    if enabled:
+        return None
+    return JSONResponse(
+        {
+            "error": "Phạm vi đang làm việc chưa có gói trả phí hoạt động để xuất Excel.",
+            "code": "TIMELINE_EXPORT_SUBSCRIPTION_REQUIRED",
+        },
+        status_code=403,
+    )
+
+
 def _validate_excel_upload(file_obj, file_bytes, *, deep_validation=True, total_size=None):
     filename = os.path.basename(str(getattr(file_obj, 'filename', '') or ''))
     _, ext = os.path.splitext(filename)
@@ -128,6 +158,79 @@ async def _export_excel(function_name, *args):
         {"function": function_name, "args": list(args)},
     )
     return BytesIO(result)
+
+
+async def export_timeline_api(request):
+    package_id = clean_id(request.path_params.get("package_id"))
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        org_name = get_active_org(request, user_id)
+        entitlement_error = _timeline_export_entitlement_response(
+            role_or_err,
+            org_name,
+        )
+        if entitlement_error is not None:
+            return entitlement_error
+        snapshot_version, snapshot_error = _validate_export_snapshot(
+            request,
+            org_name,
+        )
+        if snapshot_error is not None:
+            return snapshot_error
+        if not _can_export_package(role_or_err, org_name, package_id):
+            return JSONResponse(
+                {"error": "Bạn không có quyền xuất timeline gói thầu này."},
+                status_code=403,
+            )
+
+        context = await run_database_read(
+            build_timeline_context,
+            package_id,
+            user_id,
+            org_name,
+            timeout_seconds=10,
+        )
+        out_stream = await _export_excel("create_timeline_excel", context)
+        snapshot_error = _ensure_export_snapshot_unchanged(
+            org_name,
+            snapshot_version,
+        )
+        if snapshot_error is not None:
+            return snapshot_error
+
+        log_audit(
+            "document.excel_exported",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="goi_thau",
+            target_id=package_id,
+            request=request,
+            metadata={
+                "organization_id": org_name,
+                "document_type": "timeline",
+                "sensitive_capabilities_used": [],
+            },
+            required=True,
+        )
+
+        package_code = context.get("goi_thau", {}).get("ma_goi_thau") or "LCNT"
+        filename = f"Timeline_goi_thau_{package_code}.xlsx"
+        return StreamingResponse(
+            out_stream,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            headers={"Content-Disposition": _content_disposition(filename)},
+        )
+    except OrgPermissionError as exception:
+        return _excel_error(request, exception, "export_timeline_api")
+    except ValueError as exception:
+        return _excel_error(request, exception, "export_timeline_api")
+    except DocumentWorkerError as exception:
+        return _excel_error(request, exception, "export_timeline_api")
 
 async def import_excel_api(request):
     try:

@@ -144,6 +144,18 @@ test("timeline does not label rows as optional with 'Nếu có'", () => {
   assert.doesNotMatch(source, /timeline-optional|Nếu có/);
 });
 
+test("timeline toolbar exports an editable Excel workbook", () => {
+  const source = fs.readFileSync("frontend/packages/PackageTimelineView.js", "utf8");
+  const markup = fs.readFileSync("views/tabs/tab_goithau_timeline.html", "utf8");
+
+  assert.match(markup, /id="timeline-export-excel"/);
+  assert.match(markup, />\s*Xuất Excel\s*</);
+  assert.doesNotMatch(markup, /id="timeline-export-word"|Xuất Word/);
+  assert.match(source, /Timeline_goi_thau_\$\{code\}\.xlsx/);
+  assert.match(source, /\/api\/export-timeline\//);
+  assert.doesNotMatch(source, /Timeline_goi_thau_\$\{code\}\.docx/);
+});
+
 test("bid evaluation report title follows the package envelope method", () => {
   const oneEnvelope = buildEffectiveTimeline(base, { plan: { pheDuyet: "Kế hoạch" } }, [])
     .find((row) => row.milestoneKey === "BID_EVALUATION_REPORT");

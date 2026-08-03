@@ -84,7 +84,7 @@ function timelineState(view) {
     selectionRequestVersion: 0,
     optionsRequestVersion: 0
   };
-  view._packageTimelineState.wordExportEnabled = Boolean(
+  view._packageTimelineState.documentExportEnabled = Boolean(
     view.model?.state?.activeuser?.wordExportEnabled
   );
   return view._packageTimelineState;
@@ -425,12 +425,12 @@ function setActionAvailability(state) {
     const button = element(id);
     if (button) button.disabled = !canEdit;
   });
-  const exportButton = element("timeline-export-word");
+  const exportButton = element("timeline-export-excel");
   if (exportButton) {
-    exportButton.disabled = !hasPackage || !state.wordExportEnabled;
-    exportButton.title = state.wordExportEnabled
-      ? "Xuất timeline ra tệp Word"
-      : "Cần gói trả phí đang hoạt động để xuất Word";
+    exportButton.disabled = !hasPackage || !state.documentExportEnabled;
+    exportButton.title = state.documentExportEnabled
+      ? "Xuất timeline ra tệp Excel"
+      : "Cần gói trả phí đang hoạt động để xuất Excel";
   }
   const versions = state.package?.allVersions || [];
   const copyButton = element("timeline-copy-previous");
@@ -621,11 +621,11 @@ async function saveTimeline(view) {
 async function exportTimeline(view) {
   const state = timelineState(view);
   if (!state.package) return;
-  if (!state.wordExportEnabled) {
-    view.showToast("Cảnh báo", "Gói dịch vụ hiện tại chưa hỗ trợ xuất Word.", "warning");
+  if (!state.documentExportEnabled) {
+    view.showToast("Cảnh báo", "Gói dịch vụ hiện tại chưa hỗ trợ xuất Excel.", "warning");
     return;
   }
-  const button = element("timeline-export-word");
+  const button = element("timeline-export-excel");
   if (button) button.disabled = true;
   try {
     if (state.dirty) await saveTimeline(view);
@@ -633,10 +633,10 @@ async function exportTimeline(view) {
     const snapshotVersion = await controller.prepareExportSnapshot();
     const url = appendExportSnapshotVersion(`/api/export-timeline/${encodeURIComponent(state.package.id)}`, snapshotVersion);
     const code = String(state.package.maGoiThau || "LCNT").replace(/[^A-Za-z0-9_-]+/g, "_");
-    await authFetchDownload(url, `Timeline_goi_thau_${code}.docx`);
+    await authFetchDownload(url, `Timeline_goi_thau_${code}.xlsx`);
     view.showToast("Thành công", "Đã tải xuống checklist timeline.", "success");
   } catch {
-    view.showToast("Thất bại", "Không thể xuất tệp Word. Vui lòng thử lại.", "error");
+    view.showToast("Thất bại", "Không thể xuất tệp Excel. Vui lòng thử lại.", "error");
   } finally {
     setActionAvailability(state);
   }
@@ -730,7 +730,7 @@ function bindTimelineEvents(view, pane) {
     updateLiveStatus("Đã làm mới các mốc tự động; hãy lưu thay đổi.");
   });
   element("timeline-save")?.addEventListener("click", () => saveTimeline(view));
-  element("timeline-export-word")?.addEventListener("click", () => exportTimeline(view));
+  element("timeline-export-excel")?.addEventListener("click", () => exportTimeline(view));
   element("timeline-copy-previous")?.addEventListener("click", () => copyPreviousTimeline(view));
 }
 

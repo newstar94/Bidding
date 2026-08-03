@@ -190,6 +190,7 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
             "create_excel_template",
             "create_mothau_template",
             "create_phanlo_excel",
+            "create_timeline_excel",
             "create_tuychonmuathem_excel",
         }
         function_name = payload.get("function")
@@ -200,6 +201,7 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
             "create_excel_template",
             "create_mothau_template",
             "create_phanlo_excel",
+            "create_timeline_excel",
             "create_tuychonmuathem_excel",
         }
         if function_name in pure_exports:

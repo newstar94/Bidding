@@ -49,7 +49,7 @@ async def export_report_api(request):
 
 
 async def export_timeline_api(request):
-    return await _dispatch("routes_docx", "export_timeline_api", request)
+    return await _dispatch("routes_excel", "export_timeline_api", request)
 
 
 async def list_templates_api(request):
