@@ -722,6 +722,30 @@ def render_prometheus(application: object | None = None) -> str:
     _metric_header(lines, "biddingflow_document_worker_duration_seconds_total", "Cumulative active document-worker job time.", "counter")
     lines.append(_sample("biddingflow_document_worker_duration_seconds_total", document_duration_seconds))
 
+    try:
+        from backend.documents.award_result_excel_service import (
+            validation_artifact_metrics,
+        )
+
+        artifact_metrics = validation_artifact_metrics()
+    except (OSError, ValueError, TypeError):
+        artifact_metrics = {
+            "count": 0,
+            "totalBytes": 0,
+            "expiredCount": 0,
+            "cleanupFailures": 0,
+            "quotaRejections": 0,
+        }
+    for key, metric_name, help_text, metric_type in (
+        ("count", "biddingflow_award_result_artifacts", "Validation artifacts currently stored.", "gauge"),
+        ("totalBytes", "biddingflow_award_result_artifact_bytes", "Bytes used by validation artifacts.", "gauge"),
+        ("expiredCount", "biddingflow_award_result_artifacts_expired", "Expired validation artifacts awaiting cleanup.", "gauge"),
+        ("cleanupFailures", "biddingflow_award_result_artifact_cleanup_failures_total", "Validation artifact cleanup failures.", "counter"),
+        ("quotaRejections", "biddingflow_award_result_artifact_quota_rejections_total", "Validation artifacts rejected by quota.", "counter"),
+    ):
+        _metric_header(lines, metric_name, help_text, metric_type)
+        lines.append(_sample(metric_name, artifact_metrics[key]))
+
     _metric_header(lines, "biddingflow_partner_lookup_requests_total", "Partner lookup requests by bounded outcome; tenant attribution is emitted in structured logs.", "counter")
     for outcome, value in sorted(partner_lookup_requests.items()):
         lines.append(_sample("biddingflow_partner_lookup_requests_total", value, {"outcome": outcome}))

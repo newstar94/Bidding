@@ -94,7 +94,7 @@ def test_authorize_rejects_unauthenticated_request(monkeypatch):
         routes._authorize(_Request(), "pkg")
 
     assert denied.value.code == "AUTH_REQUIRED"
-    assert denied.value.status_code == 403
+    assert denied.value.status_code == 401
 
 
 @pytest.mark.parametrize(
@@ -113,7 +113,9 @@ def test_authorize_enforces_record_scope_and_subscription(
     monkeypatch.setattr(routes, "verify_session", lambda _request: (True, role))
     monkeypatch.setattr(routes, "get_active_org", lambda *_args, **_kwargs: "org")
     monkeypatch.setattr(routes, "can_read_record", lambda *_args: record_access)
-    monkeypatch.setattr(routes, "can_use_word_export", lambda *_args: entitlement)
+    monkeypatch.setattr(
+        routes, "can_use_award_result_excel_export", lambda *_args: entitlement
+    )
 
     with pytest.raises(service.AwardResultExcelError) as denied:
         routes._authorize(_Request(), "pkg")
@@ -199,7 +201,20 @@ def test_template_selection_depends_only_on_package_is_thuoc(
 def test_validate_endpoint_returns_reconciliation_token_and_audits(monkeypatch):
     content = _xlsx_bytes("standard")
     inspection = service.inspect_award_result_workbook(content)
-    match_result = service.match_award_result_rows(inspection, [])
+    match_result = service.match_award_result_rows(
+        inspection,
+        [
+            service.AwardRecord(
+                opening_id="opening",
+                lot_code="L01",
+                bidder_identifier="vn001",
+                tax_code="001",
+                bidder_name="Nhà thầu 01",
+                status="Trúng thầu",
+                award_price=900,
+            )
+        ],
+    )
     audits = []
 
     monkeypatch.setattr(
@@ -242,7 +257,8 @@ def test_validate_endpoint_returns_reconciliation_token_and_audits(monkeypatch):
     assert response.status_code == 200
     assert payload["validationToken"] == "validation-token"
     assert payload["totalRows"] == 1
-    assert payload["unmatchedRows"] == 1
+    assert payload["unmatchedRows"] == 0
+    assert payload["writableRows"] == 1
     assert audits[0][0] == "award_result.excel_validated"
     assert audits[0][1]["required"] is True
 
@@ -250,14 +266,55 @@ def test_validate_endpoint_returns_reconciliation_token_and_audits(monkeypatch):
 def test_validate_endpoint_maps_authentication_failure(monkeypatch):
     def deny(_request, _package_id):
         raise service.AwardResultExcelError(
-            "AUTH_REQUIRED", "Vui lòng đăng nhập.", status_code=403
+            "AUTH_REQUIRED", "Vui lòng đăng nhập.", status_code=401
         )
 
     monkeypatch.setattr(routes, "_authorize", deny)
     response = asyncio.run(routes.validate_award_result_excel_api(_Request()))
 
-    assert response.status_code == 403
+    assert response.status_code == 401
     assert _json(response)["code"] == "AUTH_REQUIRED"
+
+
+def test_validate_blocking_result_does_not_create_artifact(monkeypatch):
+    content = _xlsx_bytes("standard")
+    inspection = service.inspect_award_result_workbook(content)
+    match_result = service.match_award_result_rows(inspection, [])
+    match_result["blockingErrors"].append(
+        {"code": "TEMPLATE_PACKAGE_TYPE_MISMATCH", "message": "blocked"}
+    )
+    created = []
+
+    monkeypatch.setattr(
+        routes,
+        "_authorize",
+        lambda _request, _package_id: (SimpleNamespace(user_id="user"), "org"),
+    )
+
+    async def inspect_worker(_operation, _payload, **_kwargs):
+        return inspection
+
+    async def match_context(_package_id, _organization_id, _inspection):
+        return {"package": {"ma_goi_thau": "IB-01"}}, match_result
+
+    monkeypatch.setattr(routes, "run_document_job_async", inspect_worker)
+    monkeypatch.setattr(routes, "_load_match_context", match_context)
+    monkeypatch.setattr(
+        routes,
+        "create_validation_artifact",
+        lambda *_args, **_kwargs: created.append(True),
+    )
+    monkeypatch.setattr(routes, "log_audit", lambda *_args, **_kwargs: None)
+
+    response = asyncio.run(
+        routes.validate_award_result_excel_api(_Request(upload=_Upload(content)))
+    )
+    payload = _json(response)
+
+    assert response.status_code == 200
+    assert created == []
+    assert "validationToken" not in payload
+    assert payload["canExport"] is False
 
 
 def test_validate_endpoint_returns_413_for_oversized_stream(monkeypatch):
@@ -342,3 +399,74 @@ def test_export_endpoint_reloads_data_sends_only_worker_updates_and_audits(monke
     assert audits[0][0] == "award_result.excel_exported"
     assert audits[0][1]["required"] is True
     assert consumed == ["validation-token"]
+
+
+def test_reconciliation_endpoint_recomputes_server_data_without_consuming_token(monkeypatch):
+    inspection = service.inspect_award_result_workbook(_xlsx_bytes("standard"))
+    match_result = service.match_award_result_rows(
+        inspection,
+        [
+            service.AwardRecord(
+                opening_id="opening",
+                lot_code="L01",
+                bidder_identifier="vn001",
+                tax_code="001",
+                bidder_name="Nhà thầu 01",
+                status="Trúng thầu",
+                award_price=900,
+            )
+        ],
+    )
+    worker_payloads = []
+    audits = []
+    monkeypatch.setattr(
+        routes,
+        "_authorize",
+        lambda _request, _package_id: (SimpleNamespace(user_id="user"), "org"),
+    )
+
+    async def read_payload(_request):
+        return {"validationToken": "validation-token"}, None
+
+    async def match_context(_package_id, _organization_id, actual_inspection):
+        assert actual_inspection == inspection
+        return {"package": {"ma_goi_thau": "IB-01"}}, match_result
+
+    async def report_worker(operation, payload, **_kwargs):
+        assert operation == "build_award_result_reconciliation"
+        worker_payloads.append(payload)
+        return b"report-xlsx"
+
+    monkeypatch.setattr(routes, "read_json_object", read_payload)
+    monkeypatch.setattr(
+        routes,
+        "load_validation_artifact",
+        lambda *_args, **_kwargs: (
+            {
+                "inspection": inspection,
+                "originalFilename": "input.xlsx",
+                "sha256": "a" * 64,
+            },
+            b"source",
+        ),
+    )
+    monkeypatch.setattr(routes, "_load_match_context", match_context)
+    monkeypatch.setattr(routes, "run_document_job_async", report_worker)
+    monkeypatch.setattr(
+        routes,
+        "log_audit",
+        lambda action, **kwargs: audits.append((action, kwargs)),
+    )
+
+    response = asyncio.run(routes.award_result_excel_reconciliation_api(_Request()))
+
+    assert response.status_code == 200
+    assert response.body == b"report-xlsx"
+    assert "input_bao_cao_doi_chieu.xlsx" in response.headers["content-disposition"]
+    report = json.loads(worker_payloads[0]["reportJson"].decode("utf-8"))
+    assert report["metadata"]["sourceSha256"] == "a" * 64
+    assert report["metadata"]["userId"] == "user"
+    assert report["summary"]["updatedRows"] == 1
+    assert len(report["rows"]) == 1
+    assert "validationToken" not in str(report)
+    assert audits[0][0] == "award_result.excel_reconciliation_exported"

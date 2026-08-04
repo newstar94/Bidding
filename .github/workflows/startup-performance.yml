@@ -54,12 +54,12 @@ jobs:
       STARTUP_LONG_TASK_MS: "100"
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
           cache: pip
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -85,7 +85,7 @@ jobs:
           npm run test:performance
       - name: Upload startup measurements
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: startup-performance-${{ github.sha }}
           path: |

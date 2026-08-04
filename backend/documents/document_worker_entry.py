@@ -178,6 +178,27 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
             raise ValueError("Tệp Excel kết quả vượt quá giới hạn kích thước.")
         return result
 
+    if operation == "build_award_result_reconciliation":
+        import json
+
+        from backend.documents.award_result_excel import (
+            build_reconciliation_workbook,
+        )
+
+        report_json = payload.get("reportJson")
+        if not isinstance(report_json, bytes) or len(report_json) > 32 * 1024 * 1024:
+            raise ValueError("Tác vụ Excel thiếu dữ liệu báo cáo đối chiếu.")
+        try:
+            report_payload = json.loads(report_json.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Dữ liệu báo cáo đối chiếu không hợp lệ.") from exc
+        if not isinstance(report_payload, dict):
+            raise ValueError("Tác vụ Excel thiếu dữ liệu báo cáo đối chiếu.")
+        result = build_reconciliation_workbook(report_payload)
+        if len(result) > MAX_OUTPUT_BYTES:
+            raise ValueError("Báo cáo đối chiếu vượt quá giới hạn kích thước.")
+        return result
+
     if operation == "render_docx":
         from backend.documents.custom_exporter import generate_report_from_custom_template
 

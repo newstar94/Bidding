@@ -25,9 +25,24 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
     )
 
     install = "npx playwright install --with-deps chromium"
-    quality_gate = "run: npm run check"
     assert install in workflow
-    assert workflow.index(install) < workflow.index(quality_gate)
+    required_gates = (
+        "- name: Python compile",
+        "- name: Python lint and quality",
+        "- name: ESLint and Trusted Types",
+        "- name: Frontend debt gate",
+        "- name: Python tests and coverage",
+        "- name: JavaScript tests",
+        "- name: Secure build",
+        "- name: FK and index audit",
+        "- name: Production package validation",
+        "- name: SBOM",
+        "- name: Full role and workflow E2E",
+        "- name: Dependency audit",
+    )
+    for gate in required_gates:
+        assert gate in workflow
+        assert workflow.index(install) < workflow.index(gate)
 
 
 def test_full_ci_keeps_runtime_and_integration_databases_isolated():

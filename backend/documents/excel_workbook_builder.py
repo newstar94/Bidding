@@ -9,6 +9,8 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from backend.documents.spreadsheet_security import safe_spreadsheet_text
+
 
 HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 HEADER_FILL = PatternFill(
@@ -32,12 +34,7 @@ TIMELINE_STATUS_LABELS = {
     "NOT_APPLICABLE": "Không áp dụng",
 }
 
-def _safe_spreadsheet_text(value):
-    if isinstance(value, str) and value.startswith(
-        ("=", "+", "-", "@", "\t", "\r", "\n")
-    ):
-        return f"'{value}"
-    return value
+_safe_spreadsheet_text = safe_spreadsheet_text
 
 
 def _add_dropdown_sheet(workbook, options_map):

@@ -28,6 +28,7 @@ ALLOWED_OPERATIONS = frozenset({
     "parse_excel",
     "inspect_award_result_excel",
     "export_award_result_excel",
+    "build_award_result_reconciliation",
     "render_docx",
     "render_timeline_docx",
     "export_excel",

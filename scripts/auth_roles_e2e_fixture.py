@@ -210,13 +210,28 @@ def _cleanup(data: dict) -> dict:
     }
 
 
+def _clear_rate_limits(_data: dict) -> dict:
+    """Isolate negative-login assertions from subsequent positive role checks."""
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM rate_limit_buckets")
+            deleted = cursor.rowcount
+    return {"deletedRateLimitBuckets": deleted}
+
+
 def main() -> None:
     if len(sys.argv) != 2:
-        raise RuntimeError("Expected one action: setup, revoke, expire, seed-reset, cleanup")
+        raise RuntimeError(
+            "Expected one action: setup, clear-rate-limits, revoke, expire, "
+            "seed-reset, cleanup"
+        )
     action = sys.argv[1]
     data = _payload()
     if action == "setup":
         result = _setup(data)
+    elif action == "clear-rate-limits":
+        result = _clear_rate_limits(data)
     elif action == "revoke":
         result = _session_action(data)
     elif action == "expire":

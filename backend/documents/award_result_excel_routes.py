@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from starlette.responses import JSONResponse, Response
@@ -18,12 +21,14 @@ from backend.documents.award_result_excel_service import (
     match_award_result_rows,
     output_filename,
     public_validation_result,
+    release_validation_artifact,
 )
 from backend.documents.document_worker import (
     DocumentWorkerError,
     DocumentWorkerInputError,
     run_document_job_async,
 )
+from backend.documents.award_result_excel import reconciliation_filename
 from backend.documents.routes_docx import _content_disposition
 from backend.documents.upload_spooling import spooled_upload
 from backend.shared.access_policy import can_read_record
@@ -39,7 +44,7 @@ from backend.shared.helpers import (
 )
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
-from backend.shared.subscription_policy import can_use_word_export
+from backend.shared.subscription_policy import can_use_award_result_excel_export
 
 
 MAX_AWARD_RESULT_EXCEL_BYTES = 10 * 1024 * 1024
@@ -100,7 +105,7 @@ def _authorize(request, package_id):
     valid, role = verify_session(request)
     if not valid:
         raise AwardResultExcelError(
-            "AUTH_REQUIRED", str(role), status_code=403
+            "AUTH_REQUIRED", str(role), status_code=401
         )
     connection = database.get_connection()
     try:
@@ -120,7 +125,7 @@ def _authorize(request, package_id):
                 "Bạn không có quyền xuất kết quả của gói thầu này.",
                 status_code=403,
             )
-        if not can_use_word_export(
+        if not can_use_award_result_excel_export(
             cursor, role, role.user_id, organization_id
         ):
             raise AwardResultExcelError(
@@ -251,26 +256,37 @@ async def validate_award_result_excel_api(request):
         dataset, match_result = await _load_match_context(
             package_id, organization_id, inspection
         )
-        token, metadata = await run_blocking_io(
-            create_validation_artifact,
-            content,
-            inspection,
-            user_id=role.user_id,
-            organization_id=organization_id,
-            package_id=package_id,
-            original_filename=getattr(upload, "filename", "workbook.xlsx"),
-            timeout_seconds=15,
-        )
         public_result = public_validation_result(match_result)
+        metadata = {
+            "originalFilename": Path(
+                str(getattr(upload, "filename", "workbook.xlsx"))
+            ).name,
+            "sizeBytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+        if public_result.get("canExport"):
+            token, stored_metadata = await run_blocking_io(
+                create_validation_artifact,
+                content,
+                inspection,
+                user_id=role.user_id,
+                organization_id=organization_id,
+                package_id=package_id,
+                original_filename=getattr(upload, "filename", "workbook.xlsx"),
+                timeout_seconds=15,
+            )
+            metadata.update(stored_metadata)
         public_result.update(
             {
-                "validationToken": token,
                 "fileName": metadata["originalFilename"],
                 "fileSize": metadata["sizeBytes"],
-                "expiresAt": metadata["expiresAt"],
                 "packageCode": dataset["package"].get("ma_goi_thau"),
             }
         )
+        if token:
+            public_result.update(
+                {"validationToken": token, "expiresAt": metadata["expiresAt"]}
+            )
         log_audit(
             "award_result.excel_validated",
             actor_user_id=role.user_id,
@@ -307,6 +323,7 @@ async def export_award_result_excel_api(request):
             "Mã gói thầu không hợp lệ.",
             status_code=400,
         )
+    token = None
     try:
         role, organization_id = await run_database_read(
             _authorize, request, package_id, timeout_seconds=10
@@ -328,6 +345,7 @@ async def export_award_result_excel_api(request):
             user_id=role.user_id,
             organization_id=organization_id,
             package_id=package_id,
+            claim=True,
             timeout_seconds=15,
         )
         inspection = metadata.get("inspection")
@@ -348,8 +366,17 @@ async def export_award_result_excel_api(request):
                     "code": "AWARD_RESULT_EXPORT_BLOCKED",
                 }
             )
+            await run_blocking_io(
+                release_validation_artifact, token, timeout_seconds=5
+            )
             return JSONResponse(public_result, status_code=409)
         updates = export_updates_from_match(match_result)
+        if not updates:
+            raise AwardResultExcelError(
+                "NO_APPROVED_RESULT_TO_EXPORT",
+                "Không có dòng kết quả đã phê duyệt có thể ghi vào workbook.",
+                status_code=409,
+            )
         output = await run_document_job_async(
             "export_award_result_excel",
             {"content": content, "updates": updates},
@@ -387,7 +414,227 @@ async def export_award_result_excel_api(request):
             },
         )
     except Exception as exception:  # noqa: BLE001 - route boundary maps safe failures
+        if token:
+            await run_blocking_io(
+                release_validation_artifact, token, timeout_seconds=5
+            )
         return _safe_error(request, exception, "export_award_result_excel_api")
+
+
+async def award_result_excel_preview_api(request):
+    package_id = clean_id(request.path_params.get("package_id"))
+    if not package_id:
+        return error_response(
+            request,
+            "PACKAGE_ID_INVALID",
+            "Mã gói thầu không hợp lệ.",
+            status_code=400,
+        )
+    try:
+        role, organization_id = await run_database_read(
+            _authorize, request, package_id, timeout_seconds=10
+        )
+        query = request.query_params
+        token = str(query.get("validationToken") or "")
+        if not token:
+            raise AwardResultExcelError(
+                "VALIDATION_TOKEN_REQUIRED",
+                "Thiếu validation token.",
+            )
+        try:
+            page = max(1, int(query.get("page") or 1))
+            page_size = max(1, min(200, int(query.get("pageSize") or 100)))
+        except (TypeError, ValueError) as exc:
+            raise AwardResultExcelError(
+                "PREVIEW_PAGINATION_INVALID", "Tham số phân trang không hợp lệ."
+            ) from exc
+        metadata, _content = await run_blocking_io(
+            load_validation_artifact,
+            token,
+            user_id=role.user_id,
+            organization_id=organization_id,
+            package_id=package_id,
+            timeout_seconds=15,
+        )
+        inspection = metadata.get("inspection")
+        if not isinstance(inspection, dict):
+            raise AwardResultExcelError(
+                "VALIDATION_ARTIFACT_INVALID",
+                "Dữ liệu kiểm tra file không còn hợp lệ.",
+                status_code=410,
+            )
+        _dataset, match_result = await _load_match_context(
+            package_id, organization_id, inspection
+        )
+        writable_filter = query.get("writable")
+        writable = (
+            None
+            if writable_filter is None
+            else str(writable_filter).casefold() in {"1", "true", "yes"}
+        )
+        return JSONResponse(
+            public_validation_result(
+                match_result,
+                page=page,
+                page_size=page_size,
+                status=query.get("status"),
+                warning=query.get("warning"),
+                match_method=query.get("matchMethod"),
+                writable=writable,
+            )
+        )
+    except Exception as exception:  # noqa: BLE001 - route boundary maps safe failures
+        return _safe_error(request, exception, "award_result_excel_preview_api")
+
+
+async def award_result_excel_reconciliation_api(request):
+    package_id = clean_id(request.path_params.get("package_id"))
+    if not package_id:
+        return error_response(
+            request,
+            "PACKAGE_ID_INVALID",
+            "Mã gói thầu không hợp lệ.",
+            status_code=400,
+        )
+    try:
+        role, organization_id = await run_database_read(
+            _authorize, request, package_id, timeout_seconds=10
+        )
+        payload, payload_error = await read_json_object(request)
+        if payload_error:
+            return payload_error
+        invalid = validate_or_response(
+            request,
+            payload,
+            {
+                "validationToken": {
+                    "type": "string",
+                    "required": True,
+                    "max_length": 256,
+                }
+            },
+        )
+        if invalid:
+            return invalid
+        token = str(payload["validationToken"])
+        metadata, _content = await run_blocking_io(
+            load_validation_artifact,
+            token,
+            user_id=role.user_id,
+            organization_id=organization_id,
+            package_id=package_id,
+            timeout_seconds=15,
+        )
+        inspection = metadata.get("inspection")
+        if not isinstance(inspection, dict):
+            raise AwardResultExcelError(
+                "VALIDATION_ARTIFACT_INVALID",
+                "Dữ liệu kiểm tra file không còn hợp lệ.",
+                status_code=410,
+            )
+        dataset, match_result = await _load_match_context(
+            package_id, organization_id, inspection
+        )
+        report_payload = {
+            "metadata": {
+                "sourceSha256": metadata.get("sha256"),
+                "packageCode": dataset["package"].get("ma_goi_thau"),
+                "userId": role.user_id,
+                "generatedAt": datetime.now(timezone.utc).isoformat(),
+            },
+            "summary": {
+                key: match_result.get(key, 0)
+                for key in (
+                    "totalRows",
+                    "exactMatches",
+                    "fallbackMatches",
+                    "unmatchedRows",
+                    "updatedRows",
+                )
+            },
+            "rows": list(match_result.get("rows") or []),
+        }
+        report = await run_document_job_async(
+            "build_award_result_reconciliation",
+            {
+                "reportJson": json.dumps(
+                report_payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                ).encode("utf-8"),
+            },
+            timeout_seconds=45,
+        )
+        if not isinstance(report, (bytes, bytearray)):
+            raise DocumentWorkerError("Báo cáo đối chiếu không hợp lệ.")
+        filename = reconciliation_filename(metadata.get("originalFilename"))
+        log_audit(
+            "award_result.excel_reconciliation_exported",
+            actor_user_id=role.user_id,
+            organization_id=organization_id,
+            target_type="goi_thau",
+            target_id=package_id,
+            request=request,
+            metadata={
+                "file_sha256": metadata.get("sha256"),
+                "report_size": len(report),
+                "total_rows": match_result.get("totalRows", 0),
+                "updated_rows": match_result.get("updatedRows", 0),
+            },
+            required=True,
+        )
+        return Response(
+            bytes(report),
+            media_type=XLSX_CONTENT_TYPE,
+            headers={
+                "Content-Disposition": _content_disposition(filename),
+                "Cache-Control": "private, no-store",
+                "Pragma": "no-cache",
+            },
+        )
+    except Exception as exception:  # noqa: BLE001 - route boundary maps safe failures
+        return _safe_error(
+            request, exception, "award_result_excel_reconciliation_api"
+        )
+
+
+async def cancel_award_result_excel_validation_api(request):
+    package_id = clean_id(request.path_params.get("package_id"))
+    if not package_id:
+        return error_response(
+            request,
+            "PACKAGE_ID_INVALID",
+            "Mã gói thầu không hợp lệ.",
+            status_code=400,
+        )
+    try:
+        role, organization_id = await run_database_read(
+            _authorize, request, package_id, timeout_seconds=10
+        )
+        payload, payload_error = await read_json_object(request)
+        if payload_error:
+            return payload_error
+        token = str(payload.get("validationToken") or "")
+        if not token:
+            raise AwardResultExcelError(
+                "VALIDATION_TOKEN_REQUIRED", "Thiếu validation token."
+            )
+        await run_blocking_io(
+            load_validation_artifact,
+            token,
+            user_id=role.user_id,
+            organization_id=organization_id,
+            package_id=package_id,
+            timeout_seconds=15,
+        )
+        await run_blocking_io(
+            consume_validation_artifact, token, timeout_seconds=5
+        )
+        return Response(status_code=204)
+    except Exception as exception:  # noqa: BLE001 - route boundary maps safe failures
+        return _safe_error(
+            request, exception, "cancel_award_result_excel_validation_api"
+        )
 
 
 def award_result_excel_routes(Route):
@@ -401,5 +648,20 @@ def award_result_excel_routes(Route):
             "/api/packages/{package_id}/award-result-excel/export",
             export_award_result_excel_api,
             methods=["POST"],
+        ),
+        Route(
+            "/api/packages/{package_id}/award-result-excel/preview",
+            award_result_excel_preview_api,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/packages/{package_id}/award-result-excel/reconciliation",
+            award_result_excel_reconciliation_api,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/packages/{package_id}/award-result-excel/validation",
+            cancel_award_result_excel_validation_api,
+            methods=["DELETE"],
         ),
     ]

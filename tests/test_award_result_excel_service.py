@@ -3,7 +3,9 @@ from __future__ import annotations
 from copy import copy
 from decimal import Decimal
 from io import BytesIO
+import json
 import sqlite3
+import zipfile
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
@@ -11,6 +13,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 import pytest
 
 from backend.documents import award_result_excel_service as service
+from backend.documents.workbook_preservation import archive_manifest
 
 
 def _workbook_bytes(headers, row, *, header_row=1):
@@ -94,6 +97,22 @@ def medicine_workbook_bytes():
     )
 
 
+def medicine_multi_item_workbook_bytes():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Danh sách nhà thầu"
+    sheet.append(["Mẫu kết quả thuốc"])
+    sheet.append(list(service.MEDICINE_EXPECTED_HEADERS))
+    for row in (
+        [1, "THUOC-01", "Atropin sulfat", "vn001", "001", "Nhà thầu 01", 1_014_000],
+        [2, "THUOC-01", "Natri clorid", "vn001", "001", "Nhà thầu 01", 7_800],
+    ):
+        sheet.append([*row, *([""] * 6), 5, *([""] * 5)])
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 def _record(**overrides):
     values = {
         "opening_id": "opening-1",
@@ -117,6 +136,8 @@ def test_inspection_finds_source_and_output_columns_after_reordering():
     )
 
     assert inspection["templateType"] == "standard"
+    assert inspection["templateVersion"] == "muasamcong-standard-v1"
+    assert len(inspection["templateFingerprint"]) == 64
     assert inspection["columnMap"]["source"] == [2, 4, 3, 5, 1, 6]
     assert inspection["columnMap"]["output"][:2] == [8, 7]
     assert inspection["rows"][0]["lotCode"] == "L01"
@@ -136,8 +157,26 @@ def test_inspection_rejects_invalid_workbook_and_missing_template_sheet():
     inspection = service.inspect_award_result_workbook(output.getvalue())
 
     assert {item["code"] for item in inspection["blockingErrors"]} == {
-        "WORKSHEET_NOT_FOUND"
+        "UNSUPPORTED_TEMPLATE_VERSION"
     }
+
+
+def test_template_registry_rejects_declared_unsupported_ooxml_parts():
+    source = standard_workbook_bytes()
+    output = BytesIO()
+    with zipfile.ZipFile(BytesIO(source)) as before, zipfile.ZipFile(output, "w") as after:
+        for item in before.infolist():
+            after.writestr(item, before.read(item.filename))
+        after.writestr("xl/connections.xml", "<connections />")
+
+    inspection = service.inspect_award_result_workbook(output.getvalue())
+
+    issue = next(
+        item
+        for item in inspection["blockingErrors"]
+        if item["code"] == "UNSUPPORTED_TEMPLATE_PART"
+    )
+    assert issue["parts"] == ["xl/connections.xml"]
 
 
 def test_inspection_reports_missing_required_result_header():
@@ -165,6 +204,9 @@ def test_inspection_reports_missing_required_result_header():
         ("001.0", "001"),
         (1.0, "1"),
         (Decimal("12.50"), "12.50"),
+        ("  Ｌ０１\u00a0", "l01"),
+        ("Straße", "strasse"),
+        ("L01\u2003 A", "l01 a"),
         (None, ""),
     ],
 )
@@ -180,6 +222,76 @@ def test_decimal_mapping_never_uses_float_arithmetic():
     assert service._number("123.456789012345678") == {
         "decimal": "123.456789012345678"
     }
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    [
+        "=1+1",
+        "+SUM(A1:A2)",
+        "-1+1",
+        "@SUM(A1:A2)",
+        "\t=1+1",
+        "\r=1+1",
+        "\n=1+1",
+        " =1+1",
+        "\uff1d1+1",
+    ],
+)
+def test_award_result_export_neutralizes_formula_injection(unsafe_text):
+    content = standard_workbook_bytes()
+    inspection = service.inspect_award_result_workbook(content)
+    match = service.match_award_result_rows(
+        inspection,
+        [_record(other_content=unsafe_text, rejection_reason=unsafe_text)],
+    )
+
+    output = service.write_award_result_workbook(
+        content, service.export_updates_from_match(match)
+    )
+    sheet = load_workbook(BytesIO(output), data_only=False).worksheets[0]
+    other_content_column = inspection["columnMap"]["output"][-1]
+    cell = sheet.cell(2, other_content_column)
+
+    assert cell.data_type != "f"
+    assert cell.value == f"'{unsafe_text}"
+
+
+def test_matching_blocks_export_when_no_approved_result_is_writable():
+    content = standard_workbook_bytes()
+    inspection = service.inspect_award_result_workbook(content)
+    match = service.match_award_result_rows(
+        inspection, [_record(status=None, award_price=None)]
+    )
+
+    assert match["totalRows"] == 1
+    assert match["matchedRows"] == 1
+    assert match["approvedRows"] == 0
+    assert match["writableRows"] == 0
+    assert match["updatedRows"] == 0
+    assert match["canExport"] is False
+    assert "NO_APPROVED_RESULT_TO_EXPORT" in {
+        item["code"] for item in match["blockingErrors"]
+    }
+
+
+def test_matching_blocks_when_approved_values_are_already_identical():
+    content = standard_workbook_bytes()
+    record = _record()
+    first_inspection = service.inspect_award_result_workbook(content)
+    first_match = service.match_award_result_rows(first_inspection, [record])
+    filled = service.write_award_result_workbook(
+        content, service.export_updates_from_match(first_match)
+    )
+
+    second_match = service.match_award_result_rows(
+        service.inspect_award_result_workbook(filled), [record]
+    )
+
+    assert second_match["approvedRows"] == 1
+    assert second_match["writableRows"] == 0
+    assert second_match["updatedRows"] == 0
+    assert second_match["canExport"] is False
 
 
 def test_matching_uses_primary_then_fallback_and_never_name_only():
@@ -277,6 +389,15 @@ def test_standard_export_preserves_source_order_styles_validation_and_hidden_she
         before.worksheets[0].cell(2, output_columns[0]).comment.text
     )
     assert len(after.worksheets[0].data_validations.dataValidation) == 1
+    before_manifest = archive_manifest(content)
+    after_manifest = archive_manifest(output)
+    assert set(before_manifest) == set(after_manifest)
+    changed_parts = {
+        name
+        for name in before_manifest
+        if before_manifest[name]["sha256"] != after_manifest[name]["sha256"]
+    }
+    assert changed_parts == {"xl/worksheets/sheet1.xml"}
 
 
 def test_medicine_export_writes_quantity_and_unit_price_but_preserves_discount():
@@ -284,6 +405,9 @@ def test_medicine_export_writes_quantity_and_unit_price_but_preserves_discount()
     inspection = service.inspect_award_result_workbook(content)
     record = _record(
         lot_code="THUOC-01",
+        goods_item_id="requirement-1",
+        goods_sequence="1",
+        goods_name="Atropin sulfat",
         corrected_price=1_014_000,
         award_quantity=1_300,
         award_unit_price=780,
@@ -302,6 +426,91 @@ def test_medicine_export_writes_quantity_and_unit_price_but_preserves_discount()
     assert sheet["M3"].value == 780
     assert sheet["N3"].value == 5
     assert sheet["O3"].value == 1_014_000
+
+
+def test_medicine_matching_uses_item_sequence_and_rejects_reusing_an_item():
+    content = medicine_multi_item_workbook_bytes()
+    inspection = service.inspect_award_result_workbook(content)
+    records = [
+        _record(
+            lot_code="THUOC-01",
+            goods_item_id="requirement-1",
+            goods_sequence="1",
+            goods_name="Atropin sulfat",
+            award_quantity=1_300,
+            award_unit_price=780,
+            award_price=1_014_000,
+        ),
+        _record(
+            lot_code="THUOC-01",
+            goods_item_id="requirement-2",
+            goods_sequence="2",
+            goods_name="Natri clorid",
+            award_quantity=10,
+            award_unit_price=780,
+            award_price=7_800,
+        ),
+    ]
+
+    match = service.match_award_result_rows(inspection, records)
+
+    assert [row["goodsSequence"] for row in inspection["rows"]] == [1, 2]
+    assert match["exactMatches"] == 2
+    assert match["blockingErrors"] == []
+    output = service.write_award_result_workbook(
+        content, service.export_updates_from_match(match)
+    )
+    sheet = load_workbook(BytesIO(output)).worksheets[0]
+    assert [sheet.cell(row, 12).value for row in (3, 4)] == [1_300, 10]
+    assert [sheet.cell(row, 15).value for row in (3, 4)] == [1_014_000, 7_800]
+
+    duplicated = service.inspect_award_result_workbook(content)
+    duplicated["rows"][1]["goodsSequence"] = 1
+    duplicate_match = service.match_award_result_rows(duplicated, records)
+    assert "MEDICINE_GOODS_MATCHED_MULTIPLE_ROWS" in {
+        issue["code"] for issue in duplicate_match["blockingErrors"]
+    }
+
+
+def test_medicine_matching_allows_two_bidders_for_the_same_required_goods():
+    inspection = service.inspect_award_result_workbook(
+        medicine_multi_item_workbook_bytes()
+    )
+    inspection["rows"][1].update(
+        goodsSequence=1,
+        goodsName="Atropin sulfat",
+        bidderIdentifier="vn002",
+        taxCode="002",
+        bidderName="Nhà thầu 02",
+    )
+    records = [
+        _record(
+            opening_id="opening-1",
+            lot_code="THUOC-01",
+            goods_item_id="requirement-1",
+            goods_sequence="1",
+            goods_name="Atropin sulfat",
+        ),
+        _record(
+            opening_id="opening-2",
+            lot_code="THUOC-01",
+            bidder_identifier="vn002",
+            tax_code="002",
+            bidder_name="Nhà thầu 02",
+            goods_item_id="requirement-1",
+            goods_sequence="1",
+            goods_name="Atropin sulfat",
+            status="Không trúng thầu",
+            award_price=None,
+            rejection_reason="Xếp hạng sau nhà thầu khác",
+        ),
+    ]
+
+    match = service.match_award_result_rows(inspection, records)
+
+    assert match["exactMatches"] == 2
+    assert match["duplicateRows"] == 0
+    assert match["blockingErrors"] == []
 
 
 def test_multi_lot_pipeline_keeps_each_bidder_lot_independent_and_leaves_unmatched_row():
@@ -419,22 +628,25 @@ def test_medicine_dataset_uses_official_lot_and_bidder_goods_without_n_plus_one(
         connection.set_trace_callback(statements.append)
         connection.executescript(
             """
-        CREATE TABLE goi_thau (id TEXT, organization_id TEXT, ma_goi_thau TEXT, ten_goi_thau TEXT, phan_lo TEXT, trang_thai TEXT, nha_thau_trung_thau_id TEXT, gia_trung_thau INTEGER, thoi_gian_goi_thau TEXT, thoi_gian_hop_dong TEXT, phuong_phap_danh_gia TEXT, is_thuoc INTEGER);
+        CREATE TABLE goi_thau (id TEXT, organization_id TEXT, ma_goi_thau TEXT, ten_goi_thau TEXT, phan_lo TEXT, trang_thai TEXT, nha_thau_trung_thau_id TEXT, gia_trung_thau INTEGER, thoi_gian_goi_thau TEXT, thoi_gian_hop_dong TEXT, phuong_phap_danh_gia TEXT, is_thuoc INTEGER, so_quyet_dinh_ket_qua TEXT, ngay_quyet_dinh_ket_qua TEXT);
         CREATE TABLE goi_thau_phan_lo (id TEXT, organization_id TEXT, goi_thau_id TEXT, ma_phan_lo TEXT, ten_phan_lo TEXT, nha_thau_trung_thau_id TEXT, gia_trung_thau INTEGER, thoi_gian_goi_thau TEXT, thoi_gian_hop_dong TEXT, archived_at TEXT, sort_order INTEGER);
         CREATE TABLE dot_xu_ly_phan_lo_chi_tiet (organization_id TEXT, lot_id TEXT, batch_id TEXT, current_stage TEXT, outcome TEXT);
         CREATE TABLE dot_xu_ly_phan_lo (organization_id TEXT, id TEXT, sequence_no INTEGER);
         CREATE TABLE nha_thau (id TEXT, organization_id TEXT, ten_nha_thau TEXT, ma_nha_thau TEXT, ma_so_thue TEXT);
         CREATE TABLE thong_tin_mo_thau (id TEXT, organization_id TEXT, goi_thau_id TEXT, nha_thau_id TEXT, ma_phan_lo TEXT, ma_dinh_danh TEXT, ten_nha_thau TEXT, gia_du_thau INTEGER, gia_sau_giam_gia INTEGER, gia_danh_gia_sau_uu_dai INTEGER, thoi_gian_thuc_hien TEXT, archived_at TEXT);
         CREATE TABLE ket_qua_danh_gia_nha_thau (organization_id TEXT, thong_tin_mo_thau_id TEXT, diem REAL, ly_do_loai TEXT, danh_gia_ket_luan TEXT);
-        CREATE TABLE hang_hoa_du_thau_nha_thau (id TEXT, organization_id TEXT, goi_thau_id TEXT, thong_tin_mo_thau_id TEXT, khoi_luong REAL, don_gia_du_thau INTEGER, gia_tri_co_so_sau_giam_gia INTEGER, goi_thau_hang_hoa_id TEXT, sort_order INTEGER, is_draft INTEGER);
-        INSERT INTO goi_thau VALUES ('pkg','org','IB-01','Thuốc','Có','AWARDED',NULL,1014000,NULL,NULL,NULL,1);
+        CREATE TABLE goi_thau_hang_hoa (id TEXT, organization_id TEXT, goi_thau_id TEXT, ma_hang_hoa TEXT, ten_hang_hoa TEXT, don_vi_tinh TEXT);
+        CREATE TABLE hang_hoa_du_thau_nha_thau (id TEXT, organization_id TEXT, goi_thau_id TEXT, thong_tin_mo_thau_id TEXT, khoi_luong REAL, don_gia_du_thau INTEGER, gia_tri_co_so_sau_giam_gia INTEGER, goi_thau_hang_hoa_id TEXT, stt_nguon TEXT, danh_muc_hang_hoa TEXT, don_vi_tinh TEXT, mapping_status TEXT, sort_order INTEGER, is_draft INTEGER);
+        INSERT INTO goi_thau VALUES ('pkg','org','IB-01','Thuốc','Có','AWARDED',NULL,1014000,NULL,NULL,NULL,1,'QD-01','2026-08-04');
         INSERT INTO goi_thau_phan_lo VALUES ('lot','org','pkg','THUOC-01','Atropin','bidder',1014000,'220 ngày','220 ngày + nghĩa vụ',NULL,1);
         INSERT INTO dot_xu_ly_phan_lo VALUES ('org','batch',1);
         INSERT INTO dot_xu_ly_phan_lo_chi_tiet VALUES ('org','lot','batch','RESULT_APPROVED','AWARDED');
         INSERT INTO nha_thau VALUES ('bidder','org','Nhà thầu 01','vn001','001');
         INSERT INTO thong_tin_mo_thau VALUES ('opening','org','pkg','bidder','THUOC-01','vn001','Nhà thầu 01',1014000,1014000,NULL,'220 ngày',NULL);
         INSERT INTO ket_qua_danh_gia_nha_thau VALUES ('org','opening',NULL,NULL,'Đạt');
-        INSERT INTO hang_hoa_du_thau_nha_thau VALUES ('goods','org','pkg','opening',1300,780,1014000,'requirement',1,0);
+        INSERT INTO goi_thau_hang_hoa VALUES ('requirement','org','pkg','TH-01','Atropin sulfat','Ống');
+        INSERT INTO goi_thau_hang_hoa VALUES ('requirement-2','org','pkg','TH-02','Natri clorid','Chai');
+        INSERT INTO hang_hoa_du_thau_nha_thau VALUES ('goods','org','pkg','opening',1300,780,1014000,'requirement','1','Atropin sulfat','Ống','matched',1,0);
             """
         )
         statements.clear()
@@ -449,10 +661,111 @@ def test_medicine_dataset_uses_official_lot_and_bidder_goods_without_n_plus_one(
         assert record.award_quantity == 1_300
         assert record.award_unit_price == 780
         assert record.award_price == 1_014_000
+        assert record.goods_item_id == "requirement"
+        assert record.goods_sequence == "1"
         assert dataset["blockingErrors"] == []
         assert len(
             [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
         ) == 4
+
+        connection.execute(
+            "UPDATE goi_thau SET so_quyet_dinh_ket_qua = NULL"
+        )
+        missing_decision = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert "AWARD_DECISION_NOT_READY" in {
+            item["code"] for item in missing_decision["blockingErrors"]
+        }
+        assert next(
+            item
+            for item in missing_decision["blockingErrors"]
+            if item["code"] == "AWARD_DECISION_NOT_READY"
+        )["editPath"] == "/packages/pkg/award-result"
+        connection.execute(
+            "UPDATE goi_thau SET so_quyet_dinh_ket_qua = 'QD-01'"
+        )
+
+        connection.execute(
+            "UPDATE goi_thau_phan_lo SET nha_thau_trung_thau_id = 'missing'"
+        )
+        invalid_winner = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert "AWARD_WINNER_NOT_READY" in {
+            item["code"] for item in invalid_winner["blockingErrors"]
+        }
+        connection.execute(
+            "UPDATE goi_thau_phan_lo SET nha_thau_trung_thau_id = 'bidder'"
+        )
+
+        connection.execute(
+            "UPDATE hang_hoa_du_thau_nha_thau SET goi_thau_hang_hoa_id = NULL"
+        )
+        missing_goods_id = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert "MEDICINE_GOODS_ID_MISSING" in {
+            item["code"] for item in missing_goods_id["blockingErrors"]
+        }
+        connection.execute(
+            """UPDATE hang_hoa_du_thau_nha_thau
+               SET goi_thau_hang_hoa_id = 'requirement'"""
+        )
+
+        connection.execute(
+            """INSERT INTO hang_hoa_du_thau_nha_thau VALUES
+               ('goods-2','org','pkg','opening',10,780,7800,'requirement-2','2','Natri clorid','Chai','matched',2,0)"""
+        )
+        connection.execute(
+            "UPDATE goi_thau_phan_lo SET gia_trung_thau = 1021800"
+        )
+        multiple_items = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert multiple_items["blockingErrors"] == []
+        assert [record.goods_item_id for record in multiple_items["records"]] == [
+            "requirement", "requirement-2"
+        ]
+        assert [record.award_price for record in multiple_items["records"]] == [
+            1_014_000, 7_800
+        ]
+
+        connection.execute(
+            "UPDATE goi_thau_phan_lo SET gia_trung_thau = 1021801"
+        )
+        total_conflict = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert "MEDICINE_AWARD_VALUE_CONFLICT" in {
+            item["code"] for item in total_conflict["blockingErrors"]
+        }
+        connection.execute(
+            "UPDATE goi_thau_phan_lo SET gia_trung_thau = 1021800"
+        )
+
+        connection.execute(
+            "UPDATE hang_hoa_du_thau_nha_thau SET don_vi_tinh = 'Hộp' WHERE id = 'goods-2'"
+        )
+        unit_mismatch = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert "MEDICINE_GOODS_UNIT_MISMATCH" in {
+            item["code"] for item in unit_mismatch["blockingErrors"]
+        }
+        connection.execute(
+            "UPDATE hang_hoa_du_thau_nha_thau SET don_vi_tinh = 'Chai' WHERE id = 'goods-2'"
+        )
+
+        connection.execute(
+            "UPDATE hang_hoa_du_thau_nha_thau SET stt_nguon = '1' WHERE id = 'goods-2'"
+        )
+        duplicate_stt = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert "MEDICINE_GOODS_SEQUENCE_DUPLICATED" in {
+            item["code"] for item in duplicate_stt["blockingErrors"]
+        }
     finally:
         connection.close()
 
@@ -481,6 +794,11 @@ def test_validation_token_is_bound_to_user_org_package_hash_and_expiry(tmp_path,
     )
     assert stored == content
     assert metadata["sha256"]
+    service.consume_validation_artifact(f"{token}tampered")
+    _metadata_after_tamper, stored_after_tamper = service.load_validation_artifact(
+        token, user_id="user", organization_id="org", package_id="pkg", now=101
+    )
+    assert stored_after_tamper == content
     with pytest.raises(service.AwardResultExcelError) as wrong_user:
         service.load_validation_artifact(
             token, user_id="other", organization_id="org", package_id="pkg", now=101
@@ -544,5 +862,223 @@ def test_validation_artifact_detects_changed_workbook(tmp_path, monkeypatch):
     assert changed.value.code == "WORKBOOK_CHANGED_AFTER_VALIDATION"
 
 
+def test_cleanup_does_not_starve_expired_artifact_after_scan_limit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        service,
+        "resolve_runtime_path",
+        lambda _name: tmp_path / "document-worker-temp",
+    )
+    root = service._validation_root()
+    for index in range(128):
+        path = root / f"validation-{index:032x}"
+        path.mkdir()
+        (path / "metadata.json").write_text(
+            json.dumps({"expiresAt": 10_000 + index}), encoding="utf-8"
+        )
+    expired = root / f"validation-{128:032x}"
+    expired.mkdir()
+    (expired / "metadata.json").write_text(
+        json.dumps({"expiresAt": 1}), encoding="utf-8"
+    )
+
+    removed = service.cleanup_expired_validation_artifacts(now=100, limit=128)
+
+    assert removed == 1
+    assert not expired.exists()
+
+
+def test_cleanup_removes_old_corrupt_metadata_safely(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "resolve_runtime_path",
+        lambda _name: tmp_path / "document-worker-temp",
+    )
+    path = service._validation_root() / f"validation-{'f' * 32}"
+    path.mkdir()
+    (path / "metadata.json").write_text("{broken", encoding="utf-8")
+    service.os.utime(path, (1, 1))
+
+    assert service.cleanup_expired_validation_artifacts(now=10_000) == 1
+    assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "second_user", "second_org", "limit_value"),
+    [
+        ("AWARD_RESULT_ARTIFACT_MAX_PER_USER", "user", "org", "1"),
+        ("AWARD_RESULT_ARTIFACT_MAX_PER_ORGANIZATION", "other", "org", "1"),
+        ("AWARD_RESULT_ARTIFACT_MAX_GLOBAL_BYTES", "other", "other-org", "1"),
+    ],
+)
+def test_validation_artifact_enforces_user_org_and_global_quotas(
+    tmp_path,
+    monkeypatch,
+    limit_name,
+    second_user,
+    second_org,
+    limit_value,
+):
+    monkeypatch.setattr(
+        service,
+        "resolve_runtime_path",
+        lambda _name: tmp_path / "document-worker-temp",
+    )
+    monkeypatch.setenv("AWARD_RESULT_EXCEL_TOKEN_KEY", "x" * 32)
+    if limit_name != "AWARD_RESULT_ARTIFACT_MAX_GLOBAL_BYTES":
+        monkeypatch.setenv(limit_name, limit_value)
+    content = standard_workbook_bytes()
+    inspection = service.inspect_award_result_workbook(content)
+    service.create_validation_artifact(
+        content,
+        inspection,
+        user_id="user",
+        organization_id="org",
+        package_id="pkg",
+        original_filename="input.xlsx",
+        now=100,
+    )
+    if limit_name == "AWARD_RESULT_ARTIFACT_MAX_GLOBAL_BYTES":
+        monkeypatch.setenv(limit_name, str(len(content)))
+
+    with pytest.raises(service.AwardResultExcelError) as rejected:
+        service.create_validation_artifact(
+            content,
+            inspection,
+            user_id=second_user,
+            organization_id=second_org,
+            package_id="pkg-2",
+            original_filename="input.xlsx",
+            now=101,
+        )
+
+    assert rejected.value.code == "VALIDATION_ARTIFACT_QUOTA_EXCEEDED"
+
+
+def test_partial_artifact_write_is_never_published(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "resolve_runtime_path",
+        lambda _name: tmp_path / "document-worker-temp",
+    )
+    monkeypatch.setattr(service.os, "replace", lambda *_args: (_ for _ in ()).throw(OSError("crash")))
+    content = standard_workbook_bytes()
+
+    with pytest.raises(OSError):
+        service.create_validation_artifact(
+            content,
+            service.inspect_award_result_workbook(content),
+            user_id="user",
+            organization_id="org",
+            package_id="pkg",
+            original_filename="input.xlsx",
+            now=100,
+        )
+
+    root = service._validation_root()
+    assert list(root.glob("validation-*")) == []
+    assert list(root.glob(".tmp-validation-*")) == []
+
+
+def test_claim_prevents_concurrent_export_and_cleanup(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "resolve_runtime_path",
+        lambda _name: tmp_path / "document-worker-temp",
+    )
+    monkeypatch.setenv("AWARD_RESULT_EXCEL_TOKEN_KEY", "x" * 32)
+    content = standard_workbook_bytes()
+    token, _metadata = service.create_validation_artifact(
+        content,
+        service.inspect_award_result_workbook(content),
+        user_id="user",
+        organization_id="org",
+        package_id="pkg",
+        original_filename="input.xlsx",
+        now=100,
+    )
+    service.load_validation_artifact(
+        token,
+        user_id="user",
+        organization_id="org",
+        package_id="pkg",
+        now=999,
+        claim=True,
+    )
+
+    with pytest.raises(service.AwardResultExcelError) as in_use:
+        service.load_validation_artifact(
+            token,
+            user_id="user",
+            organization_id="org",
+            package_id="pkg",
+            now=999,
+            claim=True,
+        )
+    assert in_use.value.code == "VALIDATION_TOKEN_IN_USE"
+    assert service.cleanup_expired_validation_artifacts(
+        now=1_001
+    ) == 0
+    service.release_validation_artifact(token)
+    assert service.cleanup_expired_validation_artifacts(
+        now=1_001
+    ) == 1
+
+
 def test_output_filename_is_sanitized():
     assert service.output_filename('../35:"bad".xlsx') == "35__bad_da_dien_ket_qua.xlsx"
+
+
+def test_multi_replica_local_artifact_store_fails_closed():
+    with pytest.raises(RuntimeError):
+        service.validate_artifact_store_configuration(
+            {"APP_ENV": "production", "APP_INSTANCE_COUNT": "2"}
+        )
+    service.validate_artifact_store_configuration(
+        {
+            "APP_ENV": "production",
+            "APP_INSTANCE_COUNT": "2",
+            "AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED": "true",
+        }
+    )
+
+
+def test_validation_preview_is_bounded_stable_and_filterable():
+    rows = [
+        {
+            "excelRow": index + 2,
+            "status": "matched" if index % 2 == 0 else "unmatched",
+            "matchMethod": "lot_code_and_bidder_identifier" if index % 2 == 0 else None,
+            "writable": index % 2 == 0,
+            "warnings": ([{"code": "RESULT_NOT_FOUND"}] if index % 2 else []),
+        }
+        for index in range(10_000)
+    ]
+    match = {
+        "totalRows": 10_000,
+        "rows": rows,
+        "warnings": [
+            {"code": "RESULT_NOT_FOUND", "excelRow": index + 2}
+            for index in range(5_000)
+        ],
+        "blockingErrors": [],
+        "canExport": True,
+    }
+
+    first = service.public_validation_result(match)
+    filtered = service.public_validation_result(
+        match, page=2, page_size=50, writable=True
+    )
+
+    assert len(first["rows"]) == 100
+    assert len(first["warnings"]) == 100
+    assert first["remainingRows"] == 9_900
+    assert first["totalPages"] == 100
+    assert first["hasPreviousPage"] is False
+    assert first["hasNextPage"] is True
+    assert first["warningSummary"] == {"RESULT_NOT_FOUND": 5_000}
+    assert [item["excelRow"] for item in filtered["rows"][:2]] == [102, 104]
+    assert filtered["filteredRows"] == 5_000
+    assert filtered["page"] == 2
+    assert filtered["totalPages"] == 100

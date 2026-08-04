@@ -11,7 +11,7 @@ import json
 from backend.domain.goods_preference import calculate_goods_preference, preference_rate_bp
 from backend.domain.goods_workflow import supports_goods_workflow
 from backend.shared.numeric_utils import parse_vnd_amount
-from backend.shared.text_utils import clean_id
+from backend.shared.text_utils import clean_id, normalize_lot_code
 
 
 def _value(row, name, index):
@@ -223,11 +223,11 @@ def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=No
             continue
 
         is_lotted = str(package.get("phan_lo") or "").strip() == "Có"
-        opening_lot_code = str(opening.get("ma_phan_lo") or "").strip().casefold()
+        opening_lot_code = normalize_lot_code(opening.get("ma_phan_lo"))
         if is_lotted:
             if not lot or lot.get("archived_at") or clean_id(lot.get("goi_thau_id")) != package_id:
                 errors.append(_error(item, "phanLoId", "BIDDER_GOODS_LOT_INVALID", "Phần lô không thuộc gói thầu hiện tại."))
-            elif str(lot.get("ma_phan_lo") or "").strip().casefold() != opening_lot_code:
+            elif normalize_lot_code(lot.get("ma_phan_lo")) != opening_lot_code:
                 errors.append(_error(item, "phanLoId", "BIDDER_GOODS_OPENING_LOT_MISMATCH", "Nhà thầu không tham dự phần lô đã chọn."))
         elif lot_id:
             errors.append(_error(item, "phanLoId", "BIDDER_GOODS_UNEXPECTED_LOT", "Gói không phân lô không được gán phần lô cho hàng hóa dự thầu."))

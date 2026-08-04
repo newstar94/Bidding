@@ -1232,6 +1232,140 @@ def _upgrade_to_v35_sparse_word_mapping_overrides(cursor, context):
     migrate_seeded_word_mappings(cursor)
 
 
+def _upgrade_to_v36_persist_canonical_lot_codes(cursor, _context):
+    """Backfill canonical lot codes and index the stored representation."""
+
+    from backend.shared.text_utils import normalize_lot_code
+
+    def value(row, name, position):
+        if hasattr(row, "keys") and name in row.keys():
+            return row[name]
+        return row[position]
+
+    lot_rows = cursor.execute(
+        """SELECT id, organization_id, goi_thau_id, ma_phan_lo, archived_at
+           FROM goi_thau_phan_lo"""
+    ).fetchall()
+    opening_rows = cursor.execute(
+        """SELECT id, organization_id, goi_thau_id, nha_thau_id,
+                  ma_phan_lo, archived_at
+           FROM thong_tin_mo_thau"""
+    ).fetchall()
+
+    collisions = []
+    seen_lots = {}
+    for row in lot_rows:
+        normalized = normalize_lot_code(value(row, "ma_phan_lo", 3))
+        if value(row, "archived_at", 4) is not None or not normalized:
+            continue
+        key = (
+            str(value(row, "organization_id", 1)),
+            str(value(row, "goi_thau_id", 2)),
+            normalized,
+        )
+        previous = seen_lots.setdefault(key, str(value(row, "id", 0)))
+        if previous != str(value(row, "id", 0)):
+            collisions.append(("goi_thau_phan_lo", previous, str(value(row, "id", 0))))
+
+    seen_openings = {}
+    for row in opening_rows:
+        normalized = normalize_lot_code(value(row, "ma_phan_lo", 4))
+        if value(row, "archived_at", 5) is not None:
+            continue
+        key = (
+            str(value(row, "organization_id", 1)),
+            str(value(row, "goi_thau_id", 2)),
+            str(value(row, "nha_thau_id", 3)),
+            normalized,
+        )
+        previous = seen_openings.setdefault(key, str(value(row, "id", 0)))
+        if previous != str(value(row, "id", 0)):
+            collisions.append(("thong_tin_mo_thau", previous, str(value(row, "id", 0))))
+
+    if collisions:
+        tables = ", ".join(sorted({item[0] for item in collisions}))
+        raise RuntimeError(
+            "Canonical lot-code migration found active-key collisions in "
+            f"{tables}; resolve duplicates before retrying schema upgrade."
+        )
+
+    cursor.execute(
+        """ALTER TABLE goi_thau_phan_lo
+           ADD COLUMN IF NOT EXISTS ma_phan_lo_normalized TEXT"""
+    )
+    cursor.execute(
+        """ALTER TABLE thong_tin_mo_thau
+           ADD COLUMN IF NOT EXISTS ma_phan_lo_normalized TEXT"""
+    )
+    cursor.executemany(
+        "UPDATE goi_thau_phan_lo SET ma_phan_lo_normalized = ? WHERE id = ?",
+        [
+            (normalize_lot_code(value(row, "ma_phan_lo", 3)), value(row, "id", 0))
+            for row in lot_rows
+        ],
+    )
+    cursor.executemany(
+        "UPDATE thong_tin_mo_thau SET ma_phan_lo_normalized = ? WHERE id = ?",
+        [
+            (normalize_lot_code(value(row, "ma_phan_lo", 4)), value(row, "id", 0))
+            for row in opening_rows
+        ],
+    )
+    for table_name in ("goi_thau_phan_lo", "thong_tin_mo_thau"):
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                ALTER COLUMN ma_phan_lo_normalized SET DEFAULT ''"""
+        )
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                ALTER COLUMN ma_phan_lo_normalized SET NOT NULL"""
+        )
+    cursor.execute("DROP INDEX IF EXISTS idx_goi_thau_phan_lo_active_code")
+    cursor.execute(
+        """CREATE UNIQUE INDEX idx_goi_thau_phan_lo_active_code
+           ON goi_thau_phan_lo (
+               organization_id, goi_thau_id, ma_phan_lo_normalized
+           ) WHERE archived_at IS NULL AND ma_phan_lo_normalized <> ''"""
+    )
+    cursor.execute(
+        "DROP INDEX IF EXISTS idx_thong_tin_mo_thau_active_business_key"
+    )
+    cursor.execute(
+        """CREATE UNIQUE INDEX idx_thong_tin_mo_thau_active_business_key
+           ON thong_tin_mo_thau (
+               organization_id, goi_thau_id, nha_thau_id,
+               ma_phan_lo_normalized
+           ) WHERE archived_at IS NULL"""
+    )
+
+
+def _upgrade_to_v37_add_document_export_capabilities(cursor, _context):
+    """Preserve legacy access while allowing new plans to grant formats separately."""
+
+    statements = []
+    for column in (
+        "document_export_word",
+        "document_export_excel",
+        "document_export_award_result_excel",
+    ):
+        statements.extend((
+            f"""ALTER TABLE goi_dich_vu
+                ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT 1""",
+            f"UPDATE goi_dich_vu SET {column} = 1 WHERE {column} IS NULL",  # noqa: S608 - column comes from the fixed capability tuple above
+            f"""ALTER TABLE goi_dich_vu
+                ALTER COLUMN {column} SET DEFAULT 1""",
+            f"""ALTER TABLE goi_dich_vu
+                ALTER COLUMN {column} SET NOT NULL""",
+            f"""ALTER TABLE goi_dich_vu
+                DROP CONSTRAINT IF EXISTS goi_dich_vu_{column}_check""",
+            f"""ALTER TABLE goi_dich_vu
+                ADD CONSTRAINT goi_dich_vu_{column}_check
+                CHECK ({column} IN (0, 1))""",
+        ))
+    for statement in statements:
+        cursor.execute(statement)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1398,6 +1532,16 @@ UPGRADES = (
         35,
         "sparse_word_mapping_overrides",
         _upgrade_to_v35_sparse_word_mapping_overrides,
+    ),
+    DatabaseUpgrade(
+        36,
+        "persist_canonical_lot_codes",
+        _upgrade_to_v36_persist_canonical_lot_codes,
+    ),
+    DatabaseUpgrade(
+        37,
+        "add_document_export_capabilities",
+        _upgrade_to_v37_add_document_export_capabilities,
     ),
 )
 

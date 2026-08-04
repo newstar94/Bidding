@@ -1,6 +1,6 @@
 """Opening-bid participant uniqueness within a package/lot scope."""
 
-from backend.shared.text_utils import clean_id
+from backend.shared.text_utils import clean_id, normalize_lot_code
 
 
 PACKAGE_SCOPE = "__PACKAGE__"
@@ -8,7 +8,7 @@ PACKAGE_SCOPE = "__PACKAGE__"
 
 def normalize_lot_scope(value):
     """Return one stable scope for package-wide bids and normalized lot codes."""
-    normalized = " ".join(str(value or "").strip().casefold().split())
+    normalized = normalize_lot_code(value)
     return normalized or PACKAGE_SCOPE
 
 

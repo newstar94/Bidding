@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 import zipfile
 
 from openpyxl import Workbook, load_workbook
@@ -78,3 +79,45 @@ def test_worker_rejects_archive_path_traversal(monkeypatch):
             {"content": output.getvalue()},
             timeout_seconds=15,
         )
+
+
+def test_worker_builds_formula_safe_reconciliation_report(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DOCUMENT_WORKER_DATABASE_URL", raising=False)
+
+    output = run_document_job(
+        "build_award_result_reconciliation",
+        {
+            "reportJson": json.dumps({
+                "metadata": {
+                    "sourceSha256": "a" * 64,
+                    "packageCode": "=DANGEROUS",
+                    "userId": "user",
+                    "generatedAt": "2026-08-04T00:00:00Z",
+                },
+                "summary": {"totalRows": 1, "updatedRows": 1},
+                "rows": [{
+                    "excelRow": 2,
+                    "lotCode": "L01",
+                    "bidderName": "+SUM(A1:A2)",
+                    "matchMethod": "lot_code_and_bidder_identifier",
+                    "writable": True,
+                    "changes": [{
+                        "field": "award_price",
+                        "oldValue": 900,
+                        "newValue": 850,
+                        "source": "approved_result.award_price",
+                    }],
+                    "warnings": [],
+                }],
+            }, ensure_ascii=False).encode("utf-8")
+        },
+        timeout_seconds=15,
+    )
+
+    workbook = load_workbook(BytesIO(output), data_only=False)
+    assert workbook.sheetnames == ["Tổng quan", "Đối chiếu"]
+    assert workbook["Tổng quan"]["B3"].data_type != "f"
+    assert workbook["Đối chiếu"]["C2"].data_type != "f"
+    assert workbook["Đối chiếu"]["G2"].value == 900
+    assert workbook["Đối chiếu"]["H2"].value == 850

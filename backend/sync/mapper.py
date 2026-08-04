@@ -13,6 +13,7 @@ from backend.timeline.effective_timeline import CATALOG as TIMELINE_CATALOG
 from backend.shared.text_utils import (
     clean_id,
     normalize_business_identifier,
+    normalize_lot_code,
     normalize_organization_name,
     normalize_person_name,
     safe_float,
@@ -677,12 +678,21 @@ def _save_package_expert_relations(cursor, parent_id, item, organization_id, own
 
 
 def _lot_match_key(row):
-    return str(_first_value(row, "maPhanLo", "ma_phan_lo", "tenPhanLo", "ten_phan_lo", default="")).strip().lower()
+    return normalize_lot_code(
+        _first_value(
+            row,
+            "maPhanLo",
+            "ma_phan_lo",
+            "tenPhanLo",
+            "ten_phan_lo",
+            default="",
+        )
+    )
 
 
 def _existing_lot_ids_by_key(cursor, parent_id, organization_id):
     rows = cursor.execute(
-        """SELECT id, ma_phan_lo
+        """SELECT id, ma_phan_lo_normalized
            FROM goi_thau_phan_lo
            WHERE organization_id = ? AND goi_thau_id = ?""",
         (organization_id, parent_id),
@@ -695,7 +705,7 @@ def _existing_lot_ids_by_key(cursor, parent_id, organization_id):
         else:
             row_id = clean_id(row[0]) if row else None
             code = row[1] if len(row) > 1 else None
-        key = str(code or "").strip().lower()
+        key = normalize_lot_code(code)
         if row_id and key:
             result[key] = row_id
     return result
@@ -746,6 +756,7 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
             owner_type,
             parent_id,
             _first_value(row, "maPhanLo", "ma_phan_lo", default=""),
+            normalize_lot_code(_first_value(row, "maPhanLo", "ma_phan_lo", default="")),
             _first_value(row, "tenPhanLo", "ten_phan_lo", default=""),
             _child_money(_first_value(row, "giaTriPhanLo", "gia_tri_phan_lo")),
             _child_money(_first_value(row, "baoDamDuThau", "bao_dam_du_thau")),
@@ -761,14 +772,16 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
     if rows:
         cursor.executemany("""
             INSERT INTO goi_thau_phan_lo (
-                id, organization_id, owner_type, goi_thau_id, ma_phan_lo, ten_phan_lo,
+                id, organization_id, owner_type, goi_thau_id, ma_phan_lo,
+                ma_phan_lo_normalized, ten_phan_lo,
                 gia_tri_phan_lo, bao_dam_du_thau, thoi_gian_thuc_hien,
                 nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau,
                 thoi_gian_hop_dong, sort_order, sync_version, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (organization_id, id) DO UPDATE SET
                 owner_type=excluded.owner_type,
                 ma_phan_lo=excluded.ma_phan_lo,
+                ma_phan_lo_normalized=excluded.ma_phan_lo_normalized,
                 ten_phan_lo=excluded.ten_phan_lo,
                 gia_tri_phan_lo=excluded.gia_tri_phan_lo,
                 bao_dam_du_thau=excluded.bao_dam_du_thau,

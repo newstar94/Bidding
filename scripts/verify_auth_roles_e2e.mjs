@@ -199,6 +199,7 @@ try {
   assert(auth.response.status() === 400 && auth.body.unverified === true, "Unverified account was not rejected");
   await invalidContext.close();
   mark("invalid-logins-rejected");
+  fixture("clear-rate-limits");
 
   const roleExpectations = [
     ["superadmin", "super_admin", "btn-tab-superadmin", true, "btn-tab-managernhanvien", false],
@@ -632,6 +633,7 @@ try {
   await managerContext.close();
   mark("password-reset-one-time-and-logout");
 
+  fixture("clear-rate-limits");
   const publicContext = await browser.newContext();
   const registerUsername = registeredUsername;
   const registerEmail = `${registerUsername}@example.test`;

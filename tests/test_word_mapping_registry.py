@@ -62,7 +62,7 @@ def _first_default():
 
 def test_sparse_word_mapping_schema_upgrade_is_registered():
     assert DB_SCHEMA_VERSION >= 35
-    assert UPGRADES[-1].name == "sparse_word_mapping_overrides"
+    assert next(item for item in UPGRADES if item.version == 35).name == "sparse_word_mapping_overrides"
 
 
 def test_reading_shared_templates_does_not_create_an_empty_scope_directory(

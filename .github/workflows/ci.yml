@@ -42,6 +42,7 @@ jobs:
       AUDIT_CHECKPOINT_DIR: ""
       ENABLE_IMAGE_CACHE_PREWARM: "false"
       ENABLE_PARTNER_LOOKUP_WORKER: "false"
+      TURNSTILE_ENABLED: "false"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -68,8 +69,42 @@ jobs:
           python scripts/manage_database.py
           DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
           DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
-      - name: Full quality, test, build, FK-index and package gate
-        run: npm run check
+      - name: Python compile
+        run: python -m compileall -q backend scripts tests
+      - name: Python lint and quality
+        run: npm run lint:python
+      - name: ESLint and Trusted Types
+        run: npm run lint:security
+      - name: Frontend debt gate
+        run: npm run lint:debt
+      - name: Python tests and coverage
+        run: >-
+          python -m pytest -q
+          --junitxml=pytest-junit.xml
+          --cov=backend --cov-branch
+          --cov-report=term
+          --cov-report=xml:coverage.xml
+          --cov-report=json:coverage.json
+          --cov-fail-under=28
+          && python scripts/check_critical_coverage.py coverage.json
+      - name: JavaScript tests
+        run: >-
+          node --test --test-concurrency=1 --test-timeout=60000
+          --test-reporter=junit
+          --test-reporter-destination=javascript-junit.xml
+          tests/js/*.test.mjs
+      - name: Secure build
+        run: |
+          set -o pipefail
+          npm run build:secure 2>&1 | tee secure-build.log
+      - name: FK and index audit
+        run: python scripts/audit_fk_indexes.py
+      - name: Production package validation
+        run: |
+          set -o pipefail
+          python scripts/package_production.py --check 2>&1 | tee package-validation.log
+      - name: SBOM
+        run: npm run sbom
       - name: Start isolated E2E application
         run: |
           python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --no-proxy-headers > /tmp/biddingflow-e2e.log 2>&1 &
@@ -84,6 +119,8 @@ jobs:
         run: npm run test:performance
       - name: Full role and workflow E2E
         run: |
+          set -o pipefail
+          exec > >(tee -a e2e-tests.log) 2>&1
           npm run test:auth-shell
           npm run test:auth-roles-e2e
           npm run test:bidder-goods-e2e
@@ -101,10 +138,32 @@ jobs:
           if [ -f /tmp/biddingflow-e2e.pid ]; then kill "$(cat /tmp/biddingflow-e2e.pid)" || true; fi
           if [ "${{ job.status }}" != "success" ]; then cat /tmp/biddingflow-e2e.log || true; fi
       - name: Dependency audit
-        run: npm run audit:dependencies
+        run: |
+          set -o pipefail
+          npm run audit:dependencies 2>&1 | tee dependency-audit.log
       - name: Build reproducible production archive
         run: npm run package:production
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: biddingflow-ci-diagnostics-${{ github.sha }}
+          path: |
+            pytest-junit.xml
+            coverage.xml
+            coverage.json
+            javascript-junit.xml
+            secure-build.log
+            package-validation.log
+            dependency-audit.log
+            e2e-tests.log
+            /tmp/biddingflow-e2e.log
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload production artifact
+        if: success()
         uses: actions/upload-artifact@v7
         with:
           name: biddingflow-production-${{ github.sha }}

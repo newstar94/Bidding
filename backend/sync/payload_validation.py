@@ -9,7 +9,7 @@ from backend.partners.position_normalization import derive_investor_head_positio
 from .mapper import json_key_for_column
 from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value, vietnam_today
-from backend.shared.text_utils import safe_int
+from backend.shared.text_utils import normalize_lot_code, safe_int
 from backend.shared.numeric_utils import parse_vnd_amount
 from backend.shared.domain_enums import PACKAGE_STATUS_CODES, PACKAGE_STATUS_LABELS, enum_label
 from backend.sync.evaluation_metadata import parse_evaluation_metadata
@@ -926,7 +926,9 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             for index, lot in enumerate(phan_lo_list):
                 if not isinstance(lot, dict):
                     continue
-                code = str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                code = normalize_lot_code(
+                    lot.get("maPhanLo") or lot.get("ma_phan_lo")
+                )
                 if not code:
                     errors.append(f"Phần lô thứ {index + 1} chưa có mã phần lô.")
                 else:
@@ -951,7 +953,7 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                     )
                 ]
             known_codes = {
-                str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                normalize_lot_code(lot.get("maPhanLo") or lot.get("ma_phan_lo"))
                 for lot in phan_lo_list if isinstance(lot, dict)
             }
             awarded_codes = []
@@ -960,7 +962,9 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             for lot in awarded_lots:
                 if not isinstance(lot, dict):
                     continue
-                code = str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                code = normalize_lot_code(
+                    lot.get("maPhanLo") or lot.get("ma_phan_lo")
+                )
                 winner = str(lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id") or "").strip()
                 value = parse_vnd_amount(lot.get("giaTrungThau", lot.get("gia_trung_thau")))
                 awarded_codes.append(code)

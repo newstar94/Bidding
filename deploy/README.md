@@ -12,6 +12,11 @@ chỉ ghi tên và nơi lưu secret.
 
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.
 
+Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
+`DOCUMENT_WORKER_TEMP_DIR/award-result-validations` trước khi đặt
+`AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED=true`. Không dùng sticky session
+để che local artifact store; readiness cố ý fail nếu thiếu xác nhận này.
+
 ## Preflight
 
 1. Xác nhận artifact SHA-256/`PRODUCTION_MANIFEST.json` và release ID.

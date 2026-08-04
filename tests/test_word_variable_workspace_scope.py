@@ -76,6 +76,9 @@ def _database():
         );
         CREATE TABLE goi_dich_vu (
             id TEXT PRIMARY KEY,
+            document_export_word INTEGER NOT NULL DEFAULT 1,
+            document_export_excel INTEGER NOT NULL DEFAULT 1,
+            document_export_award_result_excel INTEGER NOT NULL DEFAULT 1,
             trang_thai TEXT NOT NULL
         );
         CREATE TABLE organization_subscriptions (

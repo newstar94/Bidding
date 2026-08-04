@@ -15,7 +15,7 @@ from backend.shared.date_utils import (
 from backend.shared.domain_enums import enum_code
 from backend.shared.media_helper import normalize_managed_image_path
 from backend.shared.numeric_utils import parse_vnd_amount
-from backend.shared.text_utils import normalize_person_name
+from backend.shared.text_utils import normalize_lot_code, normalize_person_name
 from backend.shared.helpers import safe_float, safe_int
 
 
@@ -141,6 +141,10 @@ class SyncRecordSerializer:
 
         if not db_row_data.get("id"):
             db_row_data["id"] = generate_record_id(table_name)
+        if table_name == "thong_tin_mo_thau" and "ma_phan_lo" in db_row_data:
+            db_row_data["ma_phan_lo_normalized"] = normalize_lot_code(
+                db_row_data.get("ma_phan_lo")
+            )
         if not item.get("id"):
             item["id"] = db_row_data["id"]
         return db_row_data

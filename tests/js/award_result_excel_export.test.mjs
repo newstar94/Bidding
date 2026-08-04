@@ -34,7 +34,7 @@ class FakeElement {
 }
 
 
-function harness({ validationResult, exportResponse, onError } = {}) {
+function harness({ validationResult, previewResult, exportResponse, onError } = {}) {
   const root = new FakeElement();
   const openButton = new FakeElement();
   const panel = new FakeElement();
@@ -45,6 +45,8 @@ function harness({ validationResult, exportResponse, onError } = {}) {
   validateButton.disabled = true;
   const confirmButton = new FakeElement();
   confirmButton.disabled = true;
+  const reconciliationButton = new FakeElement();
+  reconciliationButton.disabled = true;
   const status = new FakeElement();
   const summary = new FakeElement();
   const close = new FakeElement();
@@ -54,6 +56,7 @@ function harness({ validationResult, exportResponse, onError } = {}) {
   panel.selectors.set("[data-award-excel-file-name]", filename);
   panel.selectors.set("[data-award-excel-validate]", validateButton);
   panel.selectors.set("[data-award-excel-confirm]", confirmButton);
+  panel.selectors.set("[data-award-excel-reconciliation]", reconciliationButton);
   panel.selectors.set("[data-award-excel-status]", status);
   panel.selectors.set("[data-award-excel-summary]", summary);
   panel.selectors.set("[data-award-excel-close]", close);
@@ -65,7 +68,7 @@ function harness({ validationResult, exportResponse, onError } = {}) {
     packageCode: "IB-01",
     requestJsonImpl: async (...args) => {
       validationCalls.push(args);
-      return validationResult;
+      return String(args[0]).includes("/preview?") ? previewResult : validationResult;
     },
     apiFetchImpl: async (...args) => {
       exportCalls.push(args);
@@ -80,6 +83,7 @@ function harness({ validationResult, exportResponse, onError } = {}) {
     filename,
     validateButton,
     confirmButton,
+    reconciliationButton,
     status,
     summary,
     validationCalls,
@@ -148,17 +152,83 @@ test("blocking template mismatch is displayed and keeps export disabled", async 
 });
 
 
+test("preview pagination fetches filters and renders per-column old/new/source diff", async () => {
+  const ui = harness({
+    validationResult: {
+      validationToken: "token-page",
+      writableRows: 2,
+      blockingErrors: [],
+      warnings: [],
+      rows: [],
+      page: 1,
+      totalPages: 2,
+    },
+    previewResult: {
+      writableRows: 2,
+      blockingErrors: [],
+      warnings: [],
+      page: 2,
+      totalPages: 2,
+      filteredRows: 1,
+      rows: [{
+        excelRow: 102,
+        lotCode: "L01",
+        bidderName: "Nhà thầu A",
+        matchMethod: "lot_code_and_bidder_identifier",
+        changes: [{
+          field: "award_price",
+          oldValue: 900,
+          newValue: 850,
+          source: "approved_result.award_price",
+        }],
+        warnings: [],
+      }],
+    },
+  });
+  ui.input.files = [xlsxFile()];
+  ui.input.dispatch("change");
+  await ui.binding.validateSelectedFile();
+
+  const result = await ui.binding.loadPreview({ page: 2, writable: "true" });
+
+  assert.equal(result.page, 2);
+  assert.equal(ui.validationCalls.length, 2);
+  const previewUrl = new URL(ui.validationCalls[1][0], "https://example.test");
+  assert.equal(previewUrl.pathname, "/api/packages/pkg%2F01/award-result-excel/preview");
+  assert.equal(previewUrl.searchParams.get("validationToken"), "token-page");
+  assert.equal(previewUrl.searchParams.get("page"), "2");
+  assert.equal(previewUrl.searchParams.get("writable"), "true");
+  assert.equal(ui.validationCalls[1][1].method, "GET");
+  assert.match(String(ui.summary.innerHTML), /Giá trị cũ/);
+  assert.match(String(ui.summary.innerHTML), /approved_result\.award_price/);
+  assert.match(String(ui.summary.innerHTML), />900</);
+  assert.match(String(ui.summary.innerHTML), />850</);
+});
+
+
 test("export sends only validationToken and downloads the returned filename", async () => {
   const originalDocument = globalThis.document;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
   const clicked = [];
   const appended = [];
+  const lifecycle = [];
+  const deferred = [];
+  URL.createObjectURL = () => "blob:award-result";
+  URL.revokeObjectURL = (value) => lifecycle.push(`revoke:${value}`);
+  globalThis.setTimeout = (callback) => {
+    lifecycle.push("scheduled");
+    deferred.push(callback);
+    return 1;
+  };
   globalThis.document = {
     createElement() {
       return {
         href: "",
         download: "",
         hidden: false,
-        click() { clicked.push(this.download); },
+        click() { clicked.push(this.download); lifecycle.push("click"); },
         remove() {},
       };
     },
@@ -199,11 +269,70 @@ test("export sends only validationToken and downloads the returned filename", as
     ]);
     assert.equal(appended.length, 1);
     assert.deepEqual(clicked, ["ket-qua_da_dien_ket_qua.xlsx"]);
+    assert.deepEqual(lifecycle, ["click", "scheduled"]);
+    assert.equal(deferred.length, 1);
+    deferred[0]();
+    assert.deepEqual(lifecycle, ["click", "scheduled", "revoke:blob:award-result"]);
     assert.match(ui.status.textContent, /Đã tạo và tải/);
     assert.equal(ui.confirmButton.disabled, true);
   } finally {
     globalThis.document = originalDocument;
+    globalThis.setTimeout = originalSetTimeout;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
   }
+});
+
+
+test("zero writable rows keeps export disabled even when a token is present", async () => {
+  const ui = harness({
+    validationResult: {
+      validationToken: "must-not-export",
+      writableRows: 0,
+      blockingErrors: [],
+      warnings: [],
+    },
+  });
+  ui.input.files = [xlsxFile()];
+  ui.input.dispatch("change");
+  await ui.binding.validateSelectedFile();
+
+  assert.equal(ui.confirmButton.disabled, true);
+  assert.equal(ui.reconciliationButton.disabled, true);
+  assert.equal(await ui.binding.exportValidatedFile(), false);
+});
+
+
+test("reconciliation request sends only the scoped validation token", async () => {
+  const errors = [];
+  const ui = harness({
+    validationResult: {
+      validationToken: "token-report",
+      writableRows: 1,
+      blockingErrors: [],
+      warnings: [],
+    },
+    exportResponse: {
+      ok: false,
+      json: async () => ({ message: "report unavailable" }),
+    },
+    onError: async (error) => errors.push(error.message),
+  });
+  ui.input.files = [xlsxFile()];
+  ui.input.dispatch("change");
+  await ui.binding.validateSelectedFile();
+
+  assert.equal(ui.reconciliationButton.disabled, false);
+  assert.equal(await ui.binding.downloadReconciliation(), false);
+  assert.equal(
+    ui.exportCalls[0][0],
+    "/api/packages/pkg%2F01/award-result-excel/reconciliation",
+  );
+  assert.equal(ui.exportCalls[0][1].method, "POST");
+  assert.deepEqual(JSON.parse(ui.exportCalls[0][1].body), {
+    validationToken: "token-report",
+  });
+  assert.deepEqual(errors, ["report unavailable"]);
 });
 
 

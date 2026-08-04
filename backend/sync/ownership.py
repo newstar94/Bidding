@@ -5,6 +5,7 @@ from backend.shared.helpers import clean_id
 from backend.sync.mapper import get_payload_value
 from backend.shared.domain_enums import enum_label
 from backend.shared.workspace_scope import personal_scope_owner_id
+from backend.shared.text_utils import normalize_lot_code
 
 
 OWNER_SCOPED_REFERENCES = {
@@ -232,7 +233,7 @@ def build_owner_reference_context(
         ).fetchall()
         for row in rows:
             package_id = str(_row_value(row, "goi_thau_id", 0))
-            lot_code = str(_row_value(row, "ma_phan_lo", 1) or "").strip().casefold()
+            lot_code = normalize_lot_code(_row_value(row, "ma_phan_lo", 1))
             context.lot_codes_by_package_id.setdefault(package_id, set()).add(lot_code)
 
     for chunk in _chunked(list(dict.fromkeys(rebid_pairs))):
@@ -735,14 +736,16 @@ def validate_owner_scoped_references(
 
     if table_name == "thong_tin_mo_thau":
         package_id = clean_id(get_payload_value(table_name, item, "goi_thau_id"))
-        lot_code = str(get_payload_value(table_name, item, "ma_phan_lo") or "").strip()
+        lot_code = normalize_lot_code(
+            get_payload_value(table_name, item, "ma_phan_lo")
+        )
         if not package_id:
             package_id = None
         incoming_package = _incoming_record(incoming_records_by_table, "goi_thau", package_id)
         if incoming_package:
             is_lotted = str(get_payload_value("goi_thau", incoming_package, "phan_lo") or "").strip() == "Có"
             lot_codes = {
-                str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                normalize_lot_code(lot.get("maPhanLo") or lot.get("ma_phan_lo"))
                 for lot in (incoming_package.get("phanLoList") or [])
                 if isinstance(lot, dict)
             }
@@ -761,7 +764,7 @@ def validate_owner_scoped_references(
             ).fetchone()
             is_lotted = bool(package_row and str(package_row[0] or "").strip() == "Có")
             lot_codes = {
-                str(row[0] or "").strip().casefold()
+                normalize_lot_code(row[0])
                 for row in cursor.execute(
                     """SELECT ma_phan_lo FROM goi_thau_phan_lo
                        WHERE organization_id = ? AND goi_thau_id = ?
@@ -773,7 +776,7 @@ def validate_owner_scoped_references(
             is_lotted = False
             lot_codes = set()
         if package_id:
-            if is_lotted and (not lot_code or lot_code.casefold() not in lot_codes):
+            if is_lotted and (not lot_code or lot_code not in lot_codes):
                 errors.append("Mã phần lô của hồ sơ mở thầu không tồn tại trong gói thầu.")
             if not is_lotted and lot_code:
                 errors.append("Gói không phân lô không được ghi mã phần lô trong hồ sơ mở thầu.")

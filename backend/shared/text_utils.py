@@ -2,6 +2,18 @@ import re
 import unicodedata
 
 
+def normalize_lot_code(value):
+    """Canonical package/lot code used by storage, matching, and imports."""
+
+    if value is None or isinstance(value, bool):
+        return ""
+    text = unicodedata.normalize("NFKC", str(value))
+    text = re.sub(r"\s+", " ", text).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text[:text.index(".")]
+    return text.casefold()
+
+
 def normalize_business_identifier(value, *, digits_only=False, preserve_case=False):
     """Return the canonical stored representation of a business identifier."""
     text = unicodedata.normalize("NFKC", str(value or ""))

@@ -19,6 +19,10 @@ from backend.documents.document_worker import (
     run_durable_document_queue_worker,
     validate_document_worker_configuration,
 )
+from backend.documents.award_result_excel_service import (
+    run_validation_artifact_janitor,
+    validate_artifact_store_configuration,
+)
 from backend.observability.metrics import monitor_operational_artifacts
 from backend.shared.async_io import run_blocking_io
 from backend.shared.audit_monitor import (
@@ -210,8 +214,10 @@ async def application_lifespan(
     broker_task = None
     email_delivery_task = None
     document_queue_task = None
+    validation_artifact_janitor_task = None
     try:
         validate_startup(database)
+        validate_artifact_store_configuration()
         validate_document_worker_configuration()
         if external_document_worker_enabled():
             cleanup_orphaned_durable_document_jobs(database)
@@ -244,6 +250,9 @@ async def application_lifespan(
         monitor_audit_chain(database, application=application)
     )
     artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
+    validation_artifact_janitor_task = asyncio.create_task(
+        run_validation_artifact_janitor()
+    )
     email_delivery_task = asyncio.create_task(run_email_delivery_worker(database))
     if not external_document_worker_enabled():
         document_queue_task = asyncio.create_task(
@@ -260,6 +269,7 @@ async def application_lifespan(
             artifact_monitor_task,
             email_delivery_task,
             document_queue_task,
+            validation_artifact_janitor_task,
         ):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -296,6 +306,7 @@ async def application_lifespan(
             broker_task,
             email_delivery_task,
             document_queue_task,
+            validation_artifact_janitor_task,
         ):
             if task is not None:
                 task.cancel()

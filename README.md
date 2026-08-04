@@ -82,6 +82,14 @@ sudo python scripts/verify_document_worker_deployment.py
 
 Không truyền SMTP/OAuth, web runtime credential hay secret người dùng vào môi trường parser.
 
+Validation artifact của luồng Excel kết quả được lưu dưới
+`DOCUMENT_WORKER_TEMP_DIR/award-result-validations`, có TTL, quota và janitor.
+Khi chạy nhiều máy web (`APP_INSTANCE_COUNT > 1`), thư mục này phải là private
+shared storage có atomic rename/file locking và phải đặt
+`AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED=true`; startup production sẽ từ
+chối cấu hình nhiều replica dùng local disk. Nhiều worker trên cùng một máy dùng
+chung filesystem vẫn được hỗ trợ.
+
 ## Backup và restore
 
 ```powershell

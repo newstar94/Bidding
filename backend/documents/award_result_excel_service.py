@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
-from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 import hashlib
@@ -21,7 +21,33 @@ from typing import Any, Iterable
 import zipfile
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
+from backend.documents.award_result_mapping import (
+    LotApprovedOutcome,
+    map_bidder_award,
+    parse_lot_outcome,
+)
+from backend.documents.award_result_excel.templates import (
+    EXPECTED_HEADERS,  # noqa: F401 - compatibility re-export
+    MEDICINE_EXPECTED_HEADERS,  # noqa: F401 - compatibility re-export
+    MEDICINE_TEMPLATE,  # noqa: F401 - compatibility re-export
+    STANDARD_TEMPLATE,
+    TEMPLATE_DEFINITIONS,
+    WorkbookTemplateDefinition,
+)
+from backend.documents.award_result_excel.types import (
+    AwardRecord,
+    AwardResultExcelError,
+    RowMatch,
+)
+from backend.documents.award_result_excel.normalization import (
+    normalize_code,
+    normalize_tax_code,
+    normalize_text as _normalised_text,
+)
+from backend.documents.spreadsheet_security import safe_spreadsheet_text
+from backend.documents.workbook_preservation import patch_worksheet_cells
 from backend.shared.paths import resolve_runtime_path
 
 
@@ -31,235 +57,10 @@ XLSX_CONTENT_TYPE = (
 MAX_AWARD_RESULT_ROWS = 10_000
 MAX_WORKBOOK_CELLS = 1_000_000
 VALIDATION_TTL_SECONDS = 15 * 60
+VALIDATION_EXPORT_LEASE_SECONDS = 2 * 60
 _VALIDATION_ID = re.compile(r"[a-f0-9]{32}")
-
-EXPECTED_HEADERS = (
-    "Mã phần (lô)",
-    "Tên phần (lô)",
-    "Mã định danh",
-    "Mã số thuế",
-    "Tên nhà thầu",
-    "Giá dự thầu",
-    "Kết quả",
-    "Giá dự thầu sau hiệu chỉnh sai lệch thừa (nếu có), giảm giá (nếu có)",
-    "Điểm kỹ thuật (nếu có)",
-    "Giá đánh giá (nếu có)",
-    "Giá trúng thầu",
-    "Lý do không đáp ứng",
-    "Thời gian thực hiện gói thầu",
-    "Thời gian thực hiện hợp đồng",
-    "Các nội dung khác (nếu có)",
-)
-
-MEDICINE_EXPECTED_HEADERS = (
-    "STT",
-    "Mã phần (lô)",
-    "Tên hoạt chất/ Tên thành phần thuốc",
-    "Mã định danh",
-    "Mã số thuế",
-    "Tên nhà thầu",
-    "Giá dự thầu",
-    "Kết quả",
-    "Giá dự thầu sau hiệu chỉnh sai lệch thừa (nếu có), giảm giá (nếu có)",
-    "Điểm kỹ thuật (nếu có)",
-    "Giá đánh giá (nếu có)",
-    "Số lượng trúng thầu",
-    "Đơn giá trúng thầu (VND)",
-    "Tỷ lệ giảm giá",
-    "Giá trúng thầu",
-    "Lý do không đáp ứng",
-    "Thời gian thực hiện gói thầu",
-    "Thời gian thực hiện hợp đồng",
-    "Các nội dung khác (nếu có)",
-)
-
-_STANDARD_HEADER_ALIASES = {
-    0: {"Mã phần/lô", "Mã lô", "Mã phần"},
-    1: {"Tên phần/lô", "Tên lô", "Tên phần"},
-    2: {"Mã định danh nhà thầu", "Mã nhà thầu"},
-    3: {"Mã số thuế nhà thầu"},
-    4: {"Tên nhà thầu (Nhập chính xác)"},
-    5: {"Giá dự thầu (VND)"},
-    7: {
-        "Giá sau sửa lỗi, hiệu chỉnh sai lệch hoặc giảm giá",
-        "Giá dự thầu sau hiệu chỉnh sai lệch thừa (nếu có), giảm giá (nếu có)",
-    },
-    8: {"Điểm kỹ thuật"},
-    9: {"Giá đánh giá"},
-    10: {"Giá trúng thầu (VND)"},
-    11: {
-        "Lý do không đáp ứng",
-        "Lý do không đáp ứng hoặc lý do không trúng thầu",
-    },
-    12: {"Thời gian thực hiện gói thầu (ngày)"},
-    13: {"Thời gian thực hiện hợp đồng (ngày)"},
-    14: {
-        "Các nội dung khác (nếu có)",
-        "Nội dung khác (nếu có)",
-    },
-}
-
-_MEDICINE_HEADER_ALIASES = {
-    1: {"Mã phần/lô", "Mã lô", "Mã phần"},
-    2: {"Tên hoạt chất/Tên thành phần thuốc", "Tên hoạt chất", "Tên thành phần thuốc"},
-    3: {"Mã định danh nhà thầu", "Mã nhà thầu"},
-    4: {"Mã số thuế nhà thầu"},
-    5: {"Tên nhà thầu (Nhập chính xác)"},
-    6: {"Giá dự thầu (VND)"},
-    8: {
-        "Giá sau sửa lỗi, hiệu chỉnh sai lệch hoặc giảm giá",
-        "Giá dự thầu sau hiệu chỉnh sai lệch thừa (nếu có), giảm giá (nếu có)",
-    },
-    9: {"Điểm kỹ thuật"},
-    10: {"Giá đánh giá"},
-    12: {"Đơn giá trúng thầu"},
-    14: {"Giá trúng thầu (VND)"},
-    15: {"Lý do không đáp ứng hoặc lý do không trúng thầu"},
-    16: {"Thời gian thực hiện gói thầu (ngày)"},
-    17: {"Thời gian thực hiện hợp đồng (ngày)"},
-    18: {"Nội dung khác (nếu có)"},
-}
-
-
-@dataclass(frozen=True)
-class WorkbookTemplateDefinition:
-    template_type: str
-    headers: tuple[str, ...]
-    aliases: dict[int, set[str]]
-    source_indices: tuple[int, ...]
-    output_indices: tuple[int, ...]
-    output_roles: tuple[str, ...]
-    lot_index: int
-    bidder_identifier_index: int
-    tax_code_index: int
-    bidder_name_index: int
-
-
-STANDARD_TEMPLATE = WorkbookTemplateDefinition(
-    template_type="standard",
-    headers=EXPECTED_HEADERS,
-    aliases=_STANDARD_HEADER_ALIASES,
-    source_indices=(0, 1, 2, 3, 4, 5),
-    output_indices=(6, 7, 8, 9, 10, 11, 12, 13, 14),
-    output_roles=(
-        "status", "corrected_price", "technical_score", "evaluated_price",
-        "award_price", "rejection_reason", "package_duration",
-        "contract_duration", "other_content",
-    ),
-    lot_index=0,
-    bidder_identifier_index=2,
-    tax_code_index=3,
-    bidder_name_index=4,
-)
-
-MEDICINE_TEMPLATE = WorkbookTemplateDefinition(
-    template_type="medicine",
-    headers=MEDICINE_EXPECTED_HEADERS,
-    aliases=_MEDICINE_HEADER_ALIASES,
-    # Tỷ lệ giảm giá is system-extracted input even though it sits inside H–S.
-    source_indices=(0, 1, 2, 3, 4, 5, 6, 13),
-    output_indices=(7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18),
-    output_roles=(
-        "status", "corrected_price", "technical_score", "evaluated_price",
-        "award_quantity", "award_unit_price", "award_price",
-        "rejection_reason", "package_duration", "contract_duration",
-        "other_content",
-    ),
-    lot_index=1,
-    bidder_identifier_index=3,
-    tax_code_index=4,
-    bidder_name_index=5,
-)
-
-TEMPLATE_DEFINITIONS = (STANDARD_TEMPLATE, MEDICINE_TEMPLATE)
-
-
-class AwardResultExcelError(ValueError):
-    """A safe error with an API-level status and stable code."""
-
-    def __init__(self, code: str, message: str, *, status_code: int = 400):
-        super().__init__(message)
-        self.code = code
-        self.status_code = status_code
-
-
-@dataclass(frozen=True)
-class AwardRecord:
-    opening_id: str
-    lot_code: str
-    bidder_identifier: str
-    tax_code: str
-    bidder_name: str
-    status: str | None
-    corrected_price: Any = None
-    technical_score: Any = None
-    evaluated_price: Any = None
-    award_quantity: Any = None
-    award_unit_price: Any = None
-    award_price: Any = None
-    rejection_reason: str | None = None
-    package_duration: str | None = None
-    contract_duration: str | None = None
-    other_content: str | None = None
-    lot_cancelled: bool = False
-
-    def output_values(self, output_roles: Iterable[str]) -> list[Any]:
-        return [getattr(self, role) for role in output_roles]
-
-
-@dataclass
-class RowMatch:
-    excel_row: int
-    lot_code: str
-    bidder_identifier: str
-    tax_code: str
-    bidder_name: str
-    source_fingerprint: str
-    status: str
-    match_method: str | None = None
-    warnings: list[dict[str, Any]] = field(default_factory=list)
-    errors: list[dict[str, Any]] = field(default_factory=list)
-    record: AwardRecord | None = field(default=None, repr=False)
-
-    def public_dict(self) -> dict[str, Any]:
-        value = asdict(self)
-        value.pop("record", None)
-        value.pop("source_fingerprint", None)
-        return {
-            "excelRow": value.pop("excel_row"),
-            "lotCode": value.pop("lot_code"),
-            "bidderIdentifier": value.pop("bidder_identifier"),
-            "taxCode": value.pop("tax_code"),
-            "bidderName": value.pop("bidder_name"),
-            "matchMethod": value.pop("match_method"),
-            **value,
-        }
-
-
-def _normalised_text(value: Any) -> str:
-    return " ".join(
-        unicodedata.normalize("NFKC", str(value or "")).strip().split()
-    ).casefold()
-
-
-def normalize_code(value: Any) -> str:
-    """Normalise Excel identifiers without discarding string leading zeroes."""
-
-    if value is None or isinstance(value, bool):
-        return ""
-    if isinstance(value, Decimal):
-        value = int(value) if value == value.to_integral_value() else format(value, "f")
-    elif isinstance(value, float) and value.is_integer():
-        value = int(value)
-    text = unicodedata.normalize("NFKC", str(value)).strip()
-    if re.fullmatch(r"[+-]?\d+\.0+", text):
-        text = text[: text.index(".")]
-    return text.casefold()
-
-
-def normalize_tax_code(value: Any) -> str:
-    return normalize_code(value)
-
+_ARTIFACT_CLEANUP_FAILURES = 0
+_ARTIFACT_QUOTA_REJECTIONS = 0
 
 def _json_value(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
@@ -355,8 +156,8 @@ def inspect_award_result_workbook(content: bytes) -> dict[str, Any]:
             "rows": [],
             "blockingErrors": [
                 _issue(
-                    "WORKSHEET_NOT_FOUND",
-                    "Không tìm thấy sheet có cấu trúc danh sách nhà thầu của muasamcong.",
+                    "UNSUPPORTED_TEMPLATE_VERSION",
+                    "Không nhận diện được phiên bản biểu mẫu kết quả muasamcong.",
                 )
             ],
             "warnings": [],
@@ -372,6 +173,24 @@ def inspect_award_result_workbook(content: bytes) -> dict[str, Any]:
             )
         )
     _, _, _, _, definition, worksheet, header_row, columns_by_header = best
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        unsupported_parts = sorted(
+            name
+            for name in archive.namelist()
+            if name in definition.unsupported_entries
+            or any(
+                name.startswith(prefix)
+                for prefix in definition.unsupported_entry_prefixes
+            )
+        )
+    if unsupported_parts:
+        blocking_errors.append(
+            _issue(
+                "UNSUPPORTED_TEMPLATE_PART",
+                "Workbook chứa thành phần OOXML không được hỗ trợ cho luồng xuất kết quả.",
+                parts=unsupported_parts[:20],
+            )
+        )
     for index in range(len(definition.headers)):
         columns = columns_by_header.get(index, [])
         if not columns:
@@ -444,8 +263,20 @@ def inspect_award_result_workbook(content: bytes) -> dict[str, Any]:
                 "bidderName": _json_value(
                     cells_by_header[definition.bidder_name_index].value
                 ),
+                "goodsSequence": _json_value(cells_by_header[0].value)
+                if definition.template_type == "medicine"
+                else None,
+                "goodsName": _json_value(cells_by_header[2].value)
+                if definition.template_type == "medicine"
+                else None,
                 "sourceFingerprint": _row_fingerprint(source_cells),
                 "hasExistingResult": has_existing_result,
+                "existingOutputValues": [
+                    _json_value(cell.value) for cell in output_cells
+                ],
+                "existingOutputDataTypes": [
+                    str(cell.data_type or "") for cell in output_cells
+                ],
             }
         )
 
@@ -468,6 +299,8 @@ def inspect_award_result_workbook(content: bytes) -> dict[str, Any]:
     return {
         "sheetName": worksheet.title,
         "templateType": definition.template_type,
+        "templateVersion": definition.version,
+        "templateFingerprint": definition.fingerprint,
         "headerRow": header_row,
         "columnMap": {
             "source": source_columns,
@@ -498,6 +331,16 @@ def _append_index(index, key, record):
         index.setdefault(key, []).append(record)
 
 
+def _output_values_equal(old: Any, new: Any) -> bool:
+    if isinstance(new, dict) and set(new) == {"decimal"}:
+        new = Decimal(str(new["decimal"]))
+    if isinstance(old, (int, float, Decimal)) and isinstance(
+        new, (int, float, Decimal)
+    ):
+        return Decimal(str(old)) == Decimal(str(new))
+    return old == new
+
+
 def match_award_result_rows(
     inspection: dict[str, Any],
     records: Iterable[AwardRecord | dict[str, Any]],
@@ -508,27 +351,61 @@ def match_award_result_rows(
     """Match sanitized workbook rows without using bidder names as keys."""
 
     award_records = [_award_record(item) for item in records]
-    primary_index: dict[tuple[str, str], list[AwardRecord]] = {}
-    fallback_index: dict[tuple[str, str], list[AwardRecord]] = {}
+    definition = next(
+        (
+            item
+            for item in TEMPLATE_DEFINITIONS
+            if item.template_type == inspection.get("templateType")
+        ),
+        STANDARD_TEMPLATE,
+    )
+    medicine_template = definition.template_type == "medicine"
+    primary_index: dict[tuple[str, ...], list[AwardRecord]] = {}
+    fallback_index: dict[tuple[str, ...], list[AwardRecord]] = {}
+    blocking_errors = list(inspection.get("blockingErrors") or [])
+    warnings = list(inspection.get("warnings") or [])
     for record in award_records:
         lot_key = normalize_code(record.lot_code)
+        item_key = normalize_code(record.goods_sequence) if medicine_template else ""
+        if medicine_template and not str(record.goods_item_id or "").strip():
+            blocking_errors.append(
+                _issue(
+                    "MEDICINE_GOODS_ID_MISSING",
+                    "Hàng thuốc thiếu mã hàng hóa ổn định.",
+                    openingId=record.opening_id,
+                )
+            )
+        if medicine_template and not item_key:
+            blocking_errors.append(
+                _issue(
+                    "MEDICINE_GOODS_SEQUENCE_MISSING",
+                    "Hàng thuốc thiếu STT nguồn để đối chiếu.",
+                    openingId=record.opening_id,
+                    goodsItemId=record.goods_item_id,
+                )
+            )
+            continue
+        primary_key = (lot_key, normalize_code(record.bidder_identifier))
+        fallback_key = (lot_key, normalize_tax_code(record.tax_code))
+        if medicine_template:
+            primary_key += (item_key,)
+            fallback_key += (item_key,)
         _append_index(
             primary_index,
-            (lot_key, normalize_code(record.bidder_identifier)),
+            primary_key,
             record,
         )
         _append_index(
             fallback_index,
-            (lot_key, normalize_tax_code(record.tax_code)),
+            fallback_key,
             record,
         )
 
     known_lots = {normalize_code(item) for item in known_lot_codes}
     known_lots.update(normalize_code(item.lot_code) for item in award_records)
     foreign_lots = {normalize_code(item) for item in foreign_lot_codes}
-    blocking_errors = list(inspection.get("blockingErrors") or [])
-    warnings = list(inspection.get("warnings") or [])
     matched_rows: list[RowMatch] = []
+    matched_goods_rows: dict[tuple[str, str], int] = {}
     exact_matches = fallback_matches = unmatched_rows = 0
     duplicate_rows = conflict_rows = 0
     missing_lot_rows = missing_identity_rows = 0
@@ -538,12 +415,15 @@ def match_award_result_rows(
         lot_key = normalize_code(source.get("lotCode"))
         identifier_key = normalize_code(source.get("bidderIdentifier"))
         tax_key = normalize_tax_code(source.get("taxCode"))
+        item_key = normalize_code(source.get("goodsSequence")) if medicine_template else ""
         row = RowMatch(
             excel_row=excel_row,
             lot_code=str(source.get("lotCode") or ""),
             bidder_identifier=str(source.get("bidderIdentifier") or ""),
             tax_code=str(source.get("taxCode") or ""),
             bidder_name=str(source.get("bidderName") or ""),
+            goods_sequence=source.get("goodsSequence"),
+            goods_name=str(source.get("goodsName") or ""),
             source_fingerprint=str(source.get("sourceFingerprint") or ""),
             status="unmatched",
         )
@@ -571,18 +451,45 @@ def match_award_result_rows(
                 )
             )
 
-        primary = primary_index.get((lot_key, identifier_key), []) if identifier_key else []
-        fallback = fallback_index.get((lot_key, tax_key), []) if tax_key else []
-        if len(primary) > 1 or len(fallback) > 1:
-            duplicate_rows += 1
+        if medicine_template and not item_key:
             issue = _issue(
-                "DUPLICATE_MATCH_KEY",
-                "Khóa đối chiếu cho ra nhiều kết quả trong dữ liệu ứng dụng.",
+                "MEDICINE_GOODS_SEQUENCE_MISSING",
+                "Dòng thuốc thiếu STT để đối chiếu hàng hóa.",
                 excel_row=excel_row,
             )
             row.errors.append(issue)
             blocking_errors.append(issue)
-        elif primary and fallback and primary[0].opening_id != fallback[0].opening_id:
+
+        primary_key = (lot_key, identifier_key)
+        fallback_key = (lot_key, tax_key)
+        if medicine_template:
+            primary_key += (item_key,)
+            fallback_key += (item_key,)
+        primary = primary_index.get(primary_key, []) if identifier_key and item_key else []
+        fallback = fallback_index.get(fallback_key, []) if tax_key and item_key else []
+        if not medicine_template:
+            primary = primary_index.get(primary_key, []) if identifier_key else []
+            fallback = fallback_index.get(fallback_key, []) if tax_key else []
+        if len(primary) > 1 or len(fallback) > 1:
+            duplicate_rows += 1
+            issue = _issue(
+                "MEDICINE_GOODS_SEQUENCE_DUPLICATED"
+                if medicine_template
+                else "DUPLICATE_MATCH_KEY",
+                "STT hàng thuốc cho ra nhiều hàng hóa trong dữ liệu ứng dụng."
+                if medicine_template
+                else "Khóa đối chiếu cho ra nhiều kết quả trong dữ liệu ứng dụng.",
+                excel_row=excel_row,
+            )
+            row.errors.append(issue)
+            blocking_errors.append(issue)
+        elif primary and fallback and (
+            primary[0].opening_id,
+            str(primary[0].goods_item_id or ""),
+        ) != (
+            fallback[0].opening_id,
+            str(fallback[0].goods_item_id or ""),
+        ):
             conflict_rows += 1
             issue = _issue(
                 "IDENTIFIER_TAX_CONFLICT",
@@ -593,18 +500,43 @@ def match_award_result_rows(
             blocking_errors.append(issue)
         else:
             record = primary[0] if primary else (fallback[0] if fallback else None)
-            if record is None:
-                unmatched_rows += 1
-                row.warnings.append(
-                    _issue(
-                        "RESULT_NOT_FOUND",
-                        "Không tìm thấy kết quả phù hợp cho dòng Excel.",
-                        excel_row=excel_row,
-                    )
+            goods_identity = (
+                (record.opening_id, str(record.goods_item_id or ""))
+                if record
+                else ("", "")
+            )
+            if (
+                medicine_template
+                and record is not None
+                and goods_identity[1]
+                and goods_identity in matched_goods_rows
+            ):
+                duplicate_rows += 1
+                issue = _issue(
+                    "MEDICINE_GOODS_MATCHED_MULTIPLE_ROWS",
+                    "Một hàng thuốc trong dữ liệu ứng dụng khớp với nhiều dòng Excel.",
+                    excel_row=excel_row,
+                    firstExcelRow=matched_goods_rows[goods_identity],
+                    goodsItemId=goods_identity[1],
                 )
+                row.errors.append(issue)
+                blocking_errors.append(issue)
+                record = None
+            if record is None:
+                if not row.errors:
+                    unmatched_rows += 1
+                    row.warnings.append(
+                        _issue(
+                            "RESULT_NOT_FOUND",
+                            "Không tìm thấy kết quả phù hợp cho dòng Excel.",
+                            excel_row=excel_row,
+                        )
+                    )
             else:
                 row.record = record
                 row.status = "matched"
+                if medicine_template and goods_identity[1]:
+                    matched_goods_rows[goods_identity] = excel_row
                 if primary:
                     row.match_method = "lot_code_and_bidder_identifier"
                     exact_matches += 1
@@ -622,6 +554,21 @@ def match_award_result_rows(
                             "BIDDER_NAME_DIFFERS",
                             "Tên nhà thầu trong Excel khác dữ liệu ứng dụng nhưng mã vẫn khớp.",
                             excel_row=excel_row,
+                        )
+                    )
+                if (
+                    medicine_template
+                    and _normalised_text(source.get("goodsName"))
+                    and _normalised_text(record.goods_name)
+                    and _normalised_text(source.get("goodsName"))
+                    != _normalised_text(record.goods_name)
+                ):
+                    row.warnings.append(
+                        _issue(
+                            "MEDICINE_GOODS_NAME_DIFFERS",
+                            "Tên hoạt chất trong Excel khác hàng hóa đã liên kết; STT và mã nhà thầu vẫn khớp.",
+                            excel_row=excel_row,
+                            goodsItemId=record.goods_item_id,
                         )
                     )
                 if record.status is None:
@@ -646,6 +593,36 @@ def match_award_result_rows(
                             fields=missing_fields,
                         )
                     )
+                if record.status is not None:
+                    existing_values = list(source.get("existingOutputValues") or [])
+                    existing_types = list(source.get("existingOutputDataTypes") or [])
+                    new_values = record.output_values(definition.output_roles)
+                    for index, (role, new_value) in enumerate(
+                        zip(definition.output_roles, new_values, strict=True)
+                    ):
+                        old_value = (
+                            existing_values[index]
+                            if index < len(existing_values)
+                            else None
+                        )
+                        old_type = (
+                            existing_types[index]
+                            if index < len(existing_types)
+                            else ""
+                        )
+                        safe_new_value = safe_spreadsheet_text(new_value)
+                        if old_type == "f" or not _output_values_equal(
+                            old_value, safe_new_value
+                        ):
+                            row.changes.append(
+                                {
+                                    "field": role,
+                                    "oldValue": old_value,
+                                    "newValue": _json_value(safe_new_value),
+                                    "source": f"approved_result.{role}",
+                                }
+                            )
+                    row.writable = bool(row.changes)
         if source.get("hasExistingResult"):
             row.warnings.append(
                 _issue(
@@ -657,11 +634,32 @@ def match_award_result_rows(
         warnings.extend(row.warnings)
         matched_rows.append(row)
 
+    matched_count = exact_matches + fallback_matches
+    approved_count = sum(
+        1
+        for row in matched_rows
+        if not row.errors and row.record is not None and row.record.status is not None
+    )
+    writable_count = sum(int(row.writable and not row.errors) for row in matched_rows)
+    if writable_count == 0 and not blocking_errors:
+        blocking_errors.append(
+            _issue(
+                "NO_APPROVED_RESULT_TO_EXPORT",
+                "Không có dòng kết quả đã phê duyệt có thể ghi vào workbook.",
+            )
+        )
+
     return {
         "sheetName": inspection.get("sheetName"),
         "templateType": inspection.get("templateType"),
+        "templateVersion": inspection.get("templateVersion"),
+        "templateFingerprint": inspection.get("templateFingerprint"),
         "headerRow": inspection.get("headerRow"),
         "totalRows": int(inspection.get("totalRows") or 0),
+        "matchedRows": matched_count,
+        "approvedRows": approved_count,
+        "writableRows": writable_count,
+        "updatedRows": writable_count,
         "exactMatches": exact_matches,
         "fallbackMatches": fallback_matches,
         "unmatchedRows": unmatched_rows,
@@ -672,7 +670,7 @@ def match_award_result_rows(
         "existingResultRows": int(inspection.get("existingResultRows") or 0),
         "blockingErrors": blocking_errors,
         "warnings": warnings,
-        "canExport": not blocking_errors,
+        "canExport": not blocking_errors and writable_count > 0,
         "rows": [row.public_dict() for row in matched_rows],
         "_rowMatches": matched_rows,
     }
@@ -686,7 +684,12 @@ def export_updates_from_match(match_result: dict[str, Any]) -> list[dict[str, An
     )
     updates = []
     for row in match_result.get("_rowMatches") or []:
-        if row.errors or row.record is None or row.record.status is None:
+        if (
+            row.errors
+            or row.record is None
+            or row.record.status is None
+            or not row.writable
+        ):
             continue
         updates.append(
             {
@@ -698,8 +701,68 @@ def export_updates_from_match(match_result: dict[str, Any]) -> list[dict[str, An
     return updates
 
 
-def public_validation_result(match_result: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in match_result.items() if not key.startswith("_")}
+def public_validation_result(
+    match_result: dict[str, Any],
+    *,
+    page: int = 1,
+    page_size: int = 100,
+    status: str | None = None,
+    warning: str | None = None,
+    match_method: str | None = None,
+    writable: bool | None = None,
+) -> dict[str, Any]:
+    rows = list(match_result.get("rows") or [])
+    if status:
+        rows = [item for item in rows if item.get("status") == status]
+    if warning:
+        rows = [
+            item
+            for item in rows
+            if any(issue.get("code") == warning for issue in item.get("warnings") or [])
+        ]
+    if match_method:
+        rows = [item for item in rows if item.get("matchMethod") == match_method]
+    if writable is not None:
+        rows = [item for item in rows if bool(item.get("writable")) is writable]
+    bounded_page_size = max(1, min(int(page_size), 200))
+    bounded_page = max(1, int(page))
+    warning_summary: dict[str, int] = {}
+    for issue in match_result.get("warnings") or []:
+        code = str(issue.get("code") or "UNKNOWN")
+        warning_summary[code] = warning_summary.get(code, 0) + 1
+    blocking_error_summary: dict[str, int] = {}
+    for issue in match_result.get("blockingErrors") or []:
+        code = str(issue.get("code") or "UNKNOWN")
+        blocking_error_summary[code] = blocking_error_summary.get(code, 0) + 1
+    result = {
+        key: value
+        for key, value in match_result.items()
+        if not key.startswith("_")
+        and key not in {"rows", "warnings", "blockingErrors"}
+    }
+    filtered_count = len(rows)
+    total_pages = max(1, (filtered_count + bounded_page_size - 1) // bounded_page_size)
+    bounded_page = min(bounded_page, total_pages)
+    start = (bounded_page - 1) * bounded_page_size
+    result.update(
+        {
+            "rows": rows[start : start + bounded_page_size],
+            "warnings": list(match_result.get("warnings") or [])[:bounded_page_size],
+            "blockingErrors": list(match_result.get("blockingErrors") or [])[
+                :bounded_page_size
+            ],
+            "warningSummary": warning_summary,
+            "blockingErrorSummary": blocking_error_summary,
+            "page": bounded_page,
+            "pageSize": bounded_page_size,
+            "filteredRows": filtered_count,
+            "remainingRows": max(0, filtered_count - start - bounded_page_size),
+            "totalPages": total_pages,
+            "hasPreviousPage": bounded_page > 1,
+            "hasNextPage": bounded_page < total_pages,
+        }
+    )
+    return result
 
 
 def _color_payload(color):
@@ -926,11 +989,17 @@ def _materialize_excel_value(value: Any) -> Any:
                 "DECIMAL_VALUE_INVALID", "Giá trị số thập phân không hợp lệ."
             )
         return Decimal(text)
-    return value
+    return safe_spreadsheet_text(value)
 
 
 def write_award_result_workbook(content: bytes, updates: list[dict[str, Any]]) -> bytes:
     """Write only header-detected result cells and prove all other state is stable."""
+
+    if not updates:
+        raise AwardResultExcelError(
+            "NO_APPROVED_RESULT_TO_EXPORT",
+            "Không có dòng kết quả đã phê duyệt có thể ghi vào workbook.",
+        )
 
     inspection = inspect_award_result_workbook(content)
     if inspection.get("blockingErrors"):
@@ -969,33 +1038,25 @@ def write_award_result_workbook(content: bytes, updates: list[dict[str, Any]]) -
                 "UPDATE_VALUES_INVALID", "Dữ liệu cập nhật workbook không hợp lệ."
             )
 
-    workbook = load_workbook(
-        BytesIO(content), data_only=False, keep_links=False, rich_text=True
-    )
-    allowed_rows = set(updates_by_row)
-    allowed_columns = set(output_columns)
-    before_digest = _preservation_digest(
-        workbook, sheet_name, allowed_rows, allowed_columns
-    )
-    worksheet = workbook[sheet_name]
+    values_by_coordinate = {}
     for row_number, update in updates_by_row.items():
         for column, value in zip(output_columns, update["values"], strict=True):
-            worksheet.cell(row_number, column).value = _materialize_excel_value(value)
-
-    output = BytesIO()
-    workbook.save(output)
-    result = _restore_document_properties(content, output.getvalue())
-    reopened = load_workbook(
-        BytesIO(result), data_only=False, keep_links=False, rich_text=True
-    )
-    after_digest = _preservation_digest(
-        reopened, sheet_name, allowed_rows, allowed_columns
-    )
-    if not hmac.compare_digest(before_digest, after_digest):
+            values_by_coordinate[
+                f"{get_column_letter(column)}{row_number}"
+            ] = _materialize_excel_value(value)
+    try:
+        result, _worksheet_part = patch_worksheet_cells(
+            content, sheet_name, values_by_coordinate
+        )
+        reopened = load_workbook(
+            BytesIO(result), data_only=False, keep_links=False, rich_text=True
+        )
+        reopened.close()
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
         raise AwardResultExcelError(
             "WORKBOOK_PRESERVATION_FAILED",
             "Không thể chứng minh workbook được bảo toàn ngoài các trường kết quả.",
-        )
+        ) from exc
     return result
 
 
@@ -1057,13 +1118,15 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
             "id", "ma_goi_thau", "ten_goi_thau", "phan_lo", "trang_thai",
             "nha_thau_trung_thau_id", "gia_trung_thau", "thoi_gian_goi_thau",
             "thoi_gian_hop_dong", "phuong_phap_danh_gia", "is_thuoc",
+            "so_quyet_dinh_ket_qua", "ngay_quyet_dinh_ket_qua",
         )
         package = _row_mapping(
             cursor.execute(
                 """SELECT id, ma_goi_thau, ten_goi_thau, phan_lo, trang_thai,
                           nha_thau_trung_thau_id, gia_trung_thau,
                           thoi_gian_goi_thau, thoi_gian_hop_dong,
-                          phuong_phap_danh_gia, is_thuoc
+                          phuong_phap_danh_gia, is_thuoc,
+                          so_quyet_dinh_ket_qua, ngay_quyet_dinh_ket_qua
                    FROM goi_thau
                    WHERE id = ? AND organization_id = ?""",
                 (package_id, organization_id),
@@ -1112,7 +1175,7 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
             "opening_id", "ma_phan_lo", "ma_dinh_danh", "nha_thau_id",
             "ten_nha_thau", "ma_nha_thau", "ma_so_thue", "gia_du_thau",
             "gia_sau_giam_gia", "gia_danh_gia_sau_uu_dai",
-            "thoi_gian_thuc_hien", "diem", "ly_do_loai", "danh_gia_ket_luan",
+            "diem", "ly_do_loai", "danh_gia_ket_luan",
         )
         opening_rows = cursor.execute(
             """SELECT opening.id, opening.ma_phan_lo, opening.ma_dinh_danh,
@@ -1121,8 +1184,8 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
                       bidder.ma_nha_thau, bidder.ma_so_thue,
                       opening.gia_du_thau, opening.gia_sau_giam_gia,
                       opening.gia_danh_gia_sau_uu_dai,
-                      opening.thoi_gian_thuc_hien, result.diem,
-                      result.ly_do_loai, result.danh_gia_ket_luan
+                      result.diem, result.ly_do_loai,
+                      result.danh_gia_ket_luan
                FROM thong_tin_mo_thau AS opening
                JOIN nha_thau AS bidder
                  ON bidder.organization_id = opening.organization_id
@@ -1136,15 +1199,30 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
             (package_id, organization_id),
         ).fetchall()
         goods_columns = (
-            "thong_tin_mo_thau_id", "khoi_luong", "don_gia_du_thau",
-            "gia_tri_co_so_sau_giam_gia", "goi_thau_hang_hoa_id", "sort_order",
+            "offered_goods_id", "thong_tin_mo_thau_id", "khoi_luong",
+            "don_gia_du_thau", "gia_tri_co_so_sau_giam_gia",
+            "goi_thau_hang_hoa_id", "stt_nguon", "danh_muc_hang_hoa",
+            "offered_unit", "mapping_status", "requirement_code",
+            "requirement_name", "requirement_unit", "sort_order",
         )
         goods_rows = cursor.execute(
-            """SELECT thong_tin_mo_thau_id, khoi_luong, don_gia_du_thau,
-                      gia_tri_co_so_sau_giam_gia, goi_thau_hang_hoa_id, sort_order
-               FROM hang_hoa_du_thau_nha_thau
-               WHERE goi_thau_id = ? AND organization_id = ? AND is_draft = 0
-               ORDER BY thong_tin_mo_thau_id, sort_order, id""",
+            """SELECT offered.id, offered.thong_tin_mo_thau_id,
+                      offered.khoi_luong, offered.don_gia_du_thau,
+                      offered.gia_tri_co_so_sau_giam_gia,
+                      offered.goi_thau_hang_hoa_id, offered.stt_nguon,
+                      offered.danh_muc_hang_hoa, offered.don_vi_tinh,
+                      offered.mapping_status, requirement.ma_hang_hoa,
+                      requirement.ten_hang_hoa, requirement.don_vi_tinh,
+                      offered.sort_order
+               FROM hang_hoa_du_thau_nha_thau AS offered
+               LEFT JOIN goi_thau_hang_hoa AS requirement
+                 ON requirement.organization_id = offered.organization_id
+                AND requirement.goi_thau_id = offered.goi_thau_id
+                AND requirement.id = offered.goi_thau_hang_hoa_id
+               WHERE offered.goi_thau_id = ?
+                 AND offered.organization_id = ? AND offered.is_draft = 0
+               ORDER BY offered.thong_tin_mo_thau_id,
+                        offered.sort_order, offered.id""",
             (package_id, organization_id),
         ).fetchall()
     finally:
@@ -1160,6 +1238,77 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
     package_is_lotted = str(package["phan_lo"] or "") == "Có"
     package_is_medicine = bool(int(package["is_thuoc"] or 0))
     package_status = str(package["trang_thai"] or "")
+    edit_path = f"/packages/{package_id}/award-result"
+    opening_bidder_ids_by_lot: dict[str, set[str]] = {}
+    all_opening_bidder_ids: set[str] = set()
+    for raw_row in opening_rows:
+        opening = _row_mapping(raw_row, opening_columns)
+        bidder_id = str(opening.get("nha_thau_id") or "")
+        all_opening_bidder_ids.add(bidder_id)
+        opening_bidder_ids_by_lot.setdefault(
+            normalize_code(opening.get("ma_phan_lo")), set()
+        ).add(bidder_id)
+
+    approved_lots = [
+        lot for lot in lots.values() if str(lot.get("outcome") or "").strip()
+    ]
+    has_approved_result = package_status in {"AWARDED", "PARTIALLY_AWARDED"} or bool(
+        approved_lots
+    )
+    if has_approved_result and (
+        not str(package.get("so_quyet_dinh_ket_qua") or "").strip()
+        or not str(package.get("ngay_quyet_dinh_ket_qua") or "").strip()
+    ):
+        dataset_errors.append(
+            _issue(
+                "AWARD_DECISION_NOT_READY",
+                "Kết quả đã duyệt nhưng thiếu số hoặc ngày quyết định phê duyệt.",
+                editPath=edit_path,
+            )
+        )
+    if package_is_lotted:
+        for lot in approved_lots:
+            parsed_lot_outcome = parse_lot_outcome(lot.get("outcome"))
+            if parsed_lot_outcome is not LotApprovedOutcome.AWARDED:
+                continue
+            winner = str(lot.get("nha_thau_trung_thau_id") or "")
+            lot_code = normalize_code(lot.get("ma_phan_lo"))
+            if not winner or winner not in opening_bidder_ids_by_lot.get(lot_code, set()):
+                dataset_errors.append(
+                    _issue(
+                        "AWARD_WINNER_NOT_READY",
+                        "Phần/lô đã duyệt trúng thầu nhưng nhà thầu trúng không hợp lệ.",
+                        lotCode=lot.get("ma_phan_lo"),
+                        editPath=edit_path,
+                    )
+                )
+            if lot.get("gia_trung_thau") is None:
+                dataset_errors.append(
+                    _issue(
+                        "AWARD_PRICE_NOT_READY",
+                        "Phần/lô đã duyệt trúng thầu nhưng thiếu giá trúng thầu.",
+                        lotCode=lot.get("ma_phan_lo"),
+                        editPath=edit_path,
+                    )
+                )
+    elif package_status == "AWARDED":
+        package_winner = str(package.get("nha_thau_trung_thau_id") or "")
+        if not package_winner or package_winner not in all_opening_bidder_ids:
+            dataset_errors.append(
+                _issue(
+                    "AWARD_WINNER_NOT_READY",
+                    "Gói thầu đã duyệt nhưng nhà thầu trúng không hợp lệ.",
+                    editPath=edit_path,
+                )
+            )
+        if package.get("gia_trung_thau") is None:
+            dataset_errors.append(
+                _issue(
+                    "AWARD_PRICE_NOT_READY",
+                    "Gói thầu đã duyệt nhưng thiếu giá trúng thầu.",
+                    editPath=edit_path,
+                )
+            )
     for raw_row in opening_rows:
         opening = _row_mapping(raw_row, opening_columns)
         lot = lots_by_code.get(normalize_code(opening["ma_phan_lo"]))
@@ -1178,104 +1327,245 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
             package_duration = package["thoi_gian_goi_thau"]
             contract_duration = package["thoi_gian_hop_dong"]
 
-        approved = False
-        lot_cancelled = False
-        if package_is_lotted:
-            approved = bool(lot and (outcome or winner_id))
-            lot_cancelled = outcome in {
-                "CANCELLED_LOT", "REPROCUREMENT_REQUIRED", "NO_BID",
-                "NO_TECHNICAL_QUALIFIER", "NO_FINANCIAL_QUALIFIER",
-                "NO_RESPONSIVE_BID", "OTHER_APPROVED_OUTCOME",
-            }
-        else:
-            approved = package_status in {"AWARDED", "CANCELLED"}
-            lot_cancelled = package_status == "CANCELLED"
-
         status = None
         is_winner = False
-        if approved:
+        rejection_reason = None
+        lot_cancelled = False
+        parsed_outcome = (
+            parse_lot_outcome(outcome)
+            if package_is_lotted
+            else (
+                LotApprovedOutcome.AWARDED
+                if package_status == "AWARDED"
+                else LotApprovedOutcome.CANCELLED_LOT
+                if package_status == "CANCELLED"
+                else None
+            )
+        )
+        if outcome and parsed_outcome is None:
+            dataset_errors.append(
+                _issue(
+                    "LOT_APPROVED_OUTCOME_UNKNOWN",
+                    "Kết quả phê duyệt phần/lô không được hỗ trợ để xuất Excel.",
+                    outcome=str(outcome),
+                )
+            )
+        if parsed_outcome is not None:
             is_winner = bool(
-                not lot_cancelled
+                parsed_outcome is LotApprovedOutcome.AWARDED
                 and winner_id
                 and str(winner_id) == str(opening["nha_thau_id"])
             )
-            status = "Trúng thầu" if is_winner else "Không trúng thầu"
+            mapped = map_bidder_award(
+                parsed_outcome,
+                is_winner=is_winner,
+                evaluation_reason=opening["ly_do_loai"],
+            )
+            status = mapped.status.value
+            rejection_reason = mapped.reason
+            lot_cancelled = not mapped.lot_has_award
         corrected_price = (
             opening["gia_sau_giam_gia"]
             if opening["gia_sau_giam_gia"] is not None
             else opening["gia_du_thau"]
         )
-        award_quantity = award_unit_price = None
-        if is_winner and package_is_medicine:
-            goods_for_opening = goods_by_opening.get(str(opening["opening_id"]), [])
-            if len(goods_for_opening) != 1:
-                dataset_errors.append(
-                    _issue(
-                        "MEDICINE_WINNING_GOODS_AMBIGUOUS",
-                        "Không xác định duy nhất hàng thuốc trúng thầu để lấy số lượng và đơn giá.",
-                        openingId=str(opening["opening_id"]),
-                    )
+        if parsed_outcome is not None and corrected_price is None:
+            dataset_errors.append(
+                _issue(
+                    "CORRECTED_PRICE_NOT_READY",
+                    "Kết quả đã duyệt nhưng thiếu giá dự thầu sau hiệu chỉnh/giảm giá.",
+                    openingId=str(opening["opening_id"]),
+                    editPath=edit_path,
                 )
-            else:
-                goods = goods_for_opening[0]
-                award_quantity = _exact_number(goods["khoi_luong"])
-                quantity_decimal = _decimal_from_exact(award_quantity)
-                if not quantity_decimal or quantity_decimal <= 0:
+            )
+        if (
+            parsed_outcome is LotApprovedOutcome.AWARDED
+            and not is_winner
+            and not rejection_reason
+        ):
+            dataset_errors.append(
+                _issue(
+                    "NON_WINNER_REASON_NOT_READY",
+                    "Nhà thầu không trúng trong phần/lô có người trúng nhưng thiếu lý do.",
+                    openingId=str(opening["opening_id"]),
+                    editPath=edit_path,
+                )
+            )
+        if is_winner and (
+            not str(package_duration or "").strip()
+            or not str(contract_duration or "").strip()
+        ):
+            dataset_errors.append(
+                _issue(
+                    "AWARD_DURATION_NOT_READY",
+                    "Kết quả trúng thầu thiếu thời gian thực hiện gói thầu hoặc hợp đồng.",
+                    openingId=str(opening["opening_id"]),
+                    editPath=edit_path,
+                )
+            )
+        goods_for_opening = goods_by_opening.get(str(opening["opening_id"]), [])
+        if package_is_medicine and not goods_for_opening:
+            dataset_errors.append(
+                _issue(
+                    "MEDICINE_GOODS_MISSING",
+                    "Nhà thầu chưa có hàng thuốc chính thức để đối chiếu.",
+                    openingId=str(opening["opening_id"]),
+                )
+            )
+        record_goods = goods_for_opening if package_is_medicine else [None]
+        seen_sequences: set[str] = set()
+        winner_item_totals: list[Decimal] = []
+        for goods in record_goods:
+            award_quantity = award_unit_price = item_award_price = None
+            item_corrected_price = corrected_price
+            if goods is not None:
+                goods_id = str(goods.get("goi_thau_hang_hoa_id") or "").strip()
+                sequence = str(goods.get("stt_nguon") or "").strip()
+                sequence_key = normalize_code(sequence)
+                issue_context = {
+                    "openingId": str(opening["opening_id"]),
+                    "offeredGoodsId": str(goods.get("offered_goods_id") or ""),
+                    "goodsItemId": goods_id or None,
+                }
+                if not goods_id:
                     dataset_errors.append(
                         _issue(
-                            "MEDICINE_AWARD_QUANTITY_MISSING",
-                            "Hàng thuốc trúng thầu chưa có số lượng hợp lệ.",
-                            openingId=str(opening["opening_id"]),
+                            "MEDICINE_GOODS_ID_MISSING",
+                            "Hàng thuốc thiếu mã hàng hóa ổn định.",
+                            **issue_context,
+                        )
+                    )
+                if not sequence_key:
+                    dataset_errors.append(
+                        _issue(
+                            "MEDICINE_GOODS_SEQUENCE_MISSING",
+                            "Hàng thuốc thiếu STT nguồn để đối chiếu.",
+                            **issue_context,
+                        )
+                    )
+                elif sequence_key in seen_sequences:
+                    dataset_errors.append(
+                        _issue(
+                            "MEDICINE_GOODS_SEQUENCE_DUPLICATED",
+                            "Một nhà thầu có nhiều hàng thuốc cùng STT nguồn trong một phần/lô.",
+                            goodsSequence=sequence,
+                            **issue_context,
                         )
                     )
                 else:
-                    allocated_total = goods["gia_tri_co_so_sau_giam_gia"]
-                    if allocated_total is not None:
-                        unit_decimal = Decimal(str(allocated_total)) / quantity_decimal
-                        award_unit_price = _exact_number(unit_decimal)
-                    else:
-                        award_unit_price = _exact_number(goods["don_gia_du_thau"])
-                    unit_decimal = _decimal_from_exact(award_unit_price)
-                    if unit_decimal is None:
+                    seen_sequences.add(sequence_key)
+                if str(goods.get("mapping_status") or "") != "matched":
+                    dataset_errors.append(
+                        _issue(
+                            "MEDICINE_GOODS_MAPPING_NOT_READY",
+                            "Hàng thuốc chưa được liên kết chính thức với danh mục yêu cầu.",
+                            mappingStatus=str(goods.get("mapping_status") or ""),
+                            **issue_context,
+                        )
+                    )
+                offered_unit = _normalised_text(goods.get("offered_unit"))
+                requirement_unit = _normalised_text(goods.get("requirement_unit"))
+                if offered_unit and requirement_unit and offered_unit != requirement_unit:
+                    dataset_errors.append(
+                        _issue(
+                            "MEDICINE_GOODS_UNIT_MISMATCH",
+                            "Đơn vị tính của hàng dự thầu khác danh mục hàng hóa đã liên kết.",
+                            offeredUnit=str(goods.get("offered_unit") or ""),
+                            requirementUnit=str(goods.get("requirement_unit") or ""),
+                            **issue_context,
+                        )
+                    )
+                allocated_total = goods.get("gia_tri_co_so_sau_giam_gia")
+                if allocated_total is not None:
+                    item_corrected_price = allocated_total
+                if is_winner:
+                    award_quantity = _exact_number(goods.get("khoi_luong"))
+                    quantity_decimal = _decimal_from_exact(award_quantity)
+                    if not quantity_decimal or quantity_decimal <= 0:
                         dataset_errors.append(
                             _issue(
-                                "MEDICINE_AWARD_UNIT_PRICE_MISSING",
-                                "Hàng thuốc trúng thầu chưa có đơn giá hợp lệ.",
-                                openingId=str(opening["opening_id"]),
+                                "MEDICINE_AWARD_QUANTITY_MISSING",
+                                "Hàng thuốc trúng thầu chưa có số lượng hợp lệ.",
+                                **issue_context,
                             )
                         )
-                    elif award_price is not None:
-                        computed_total = quantity_decimal * unit_decimal
-                        if computed_total != Decimal(str(award_price)):
+                    else:
+                        if allocated_total is not None:
+                            unit_decimal = Decimal(str(allocated_total)) / quantity_decimal
+                            award_unit_price = _exact_number(unit_decimal)
+                        else:
+                            award_unit_price = _exact_number(goods.get("don_gia_du_thau"))
+                        unit_decimal = _decimal_from_exact(award_unit_price)
+                        if unit_decimal is None:
                             dataset_errors.append(
                                 _issue(
-                                    "MEDICINE_AWARD_VALUE_CONFLICT",
-                                    "Số lượng nhân đơn giá không khớp giá trúng thầu đã phê duyệt.",
-                                    openingId=str(opening["opening_id"]),
+                                    "MEDICINE_AWARD_UNIT_PRICE_MISSING",
+                                    "Hàng thuốc trúng thầu chưa có đơn giá hợp lệ.",
+                                    **issue_context,
                                 )
                             )
-        records.append(
-            AwardRecord(
-                opening_id=str(opening["opening_id"]),
-                lot_code=str(opening["ma_phan_lo"] or ""),
-                bidder_identifier=str(opening["ma_dinh_danh"] or ""),
-                tax_code=str(opening["ma_so_thue"] or ""),
-                bidder_name=str(opening["ten_nha_thau"] or ""),
-                status=status,
-                corrected_price=_number(corrected_price),
-                technical_score=_number(opening["diem"]),
-                evaluated_price=_number(opening["gia_danh_gia_sau_uu_dai"]),
-                award_quantity=award_quantity,
-                award_unit_price=award_unit_price,
-                award_price=_number(award_price) if is_winner else None,
-                rejection_reason=(
-                    None if is_winner else str(opening["ly_do_loai"] or "").strip() or None
-                ),
-                package_duration=(str(package_duration or "").strip() or None) if is_winner else None,
-                contract_duration=(str(contract_duration or "").strip() or None) if is_winner else None,
-                lot_cancelled=lot_cancelled,
+                        else:
+                            computed_total = quantity_decimal * unit_decimal
+                            winner_item_totals.append(computed_total)
+                            item_award_price = _exact_number(computed_total)
+            records.append(
+                AwardRecord(
+                    opening_id=str(opening["opening_id"]),
+                    lot_code=str(opening["ma_phan_lo"] or ""),
+                    bidder_identifier=str(opening["ma_dinh_danh"] or ""),
+                    tax_code=str(opening["ma_so_thue"] or ""),
+                    bidder_name=str(opening["ten_nha_thau"] or ""),
+                    status=status,
+                    goods_item_id=(
+                        str(goods.get("goi_thau_hang_hoa_id") or "").strip() or None
+                    ) if goods is not None else None,
+                    goods_sequence=(
+                        str(goods.get("stt_nguon") or "").strip() or None
+                    ) if goods is not None else None,
+                    goods_code=(
+                        str(goods.get("requirement_code") or "").strip() or None
+                    ) if goods is not None else None,
+                    goods_name=(
+                        str(
+                            goods.get("requirement_name")
+                            or goods.get("danh_muc_hang_hoa")
+                            or ""
+                        ).strip() or None
+                    ) if goods is not None else None,
+                    goods_unit=(
+                        str(goods.get("requirement_unit") or "").strip() or None
+                    ) if goods is not None else None,
+                    corrected_price=_number(item_corrected_price),
+                    technical_score=_number(opening["diem"]),
+                    evaluated_price=_number(opening["gia_danh_gia_sau_uu_dai"]),
+                    award_quantity=award_quantity,
+                    award_unit_price=award_unit_price,
+                    award_price=item_award_price,
+                    rejection_reason=rejection_reason,
+                    package_duration=(str(package_duration or "").strip() or None) if is_winner else None,
+                    contract_duration=(str(contract_duration or "").strip() or None) if is_winner else None,
+                    other_content=(
+                        str(opening["danh_gia_ket_luan"] or "").strip() or None
+                    ),
+                    lot_cancelled=lot_cancelled,
+                )
             )
-        )
+        if (
+            package_is_medicine
+            and is_winner
+            and award_price is not None
+            and len(winner_item_totals) == len(goods_for_opening)
+            and sum(winner_item_totals, Decimal("0")) != Decimal(str(award_price))
+        ):
+            dataset_errors.append(
+                _issue(
+                    "MEDICINE_AWARD_VALUE_CONFLICT",
+                    "Tổng số lượng nhân đơn giá theo hàng không khớp giá trúng thầu đã phê duyệt.",
+                    openingId=str(opening["opening_id"]),
+                    computedTotal=format(sum(winner_item_totals, Decimal("0")), "f"),
+                    approvedTotal=format(Decimal(str(award_price)), "f"),
+                )
+            )
     return {
         "package": package,
         "records": records,
@@ -1297,19 +1587,15 @@ def find_foreign_lot_codes(
     connection = database_obj.get_connection()
     try:
         cursor = connection.cursor()
-        for offset in range(0, len(codes), 500):
-            chunk = codes[offset : offset + 500]
-            placeholders = ", ".join("?" for _ in chunk)
-            query = (
-                "SELECT ma_phan_lo FROM goi_thau_phan_lo "  # noqa: S608
-                "WHERE organization_id = ? AND goi_thau_id != ? "
-                f"AND lower(trim(ma_phan_lo)) IN ({placeholders})"
-            )
-            rows = cursor.execute(
-                query,
-                (organization_id, package_id, *chunk),
-            ).fetchall()
-            found.update(normalize_code(row[0]) for row in rows)
+        placeholders = ", ".join("?" for _ in codes)
+        rows = cursor.execute(
+            f"""SELECT ma_phan_lo_normalized FROM goi_thau_phan_lo
+                WHERE organization_id = ? AND goi_thau_id != ?
+                  AND archived_at IS NULL
+                  AND ma_phan_lo_normalized IN ({placeholders})""",  # noqa: S608 - placeholders only
+            (organization_id, package_id, *codes),
+        ).fetchall()
+        found.update(str(row[0]) for row in rows)
     finally:
         connection.close()
     return found
@@ -1319,6 +1605,26 @@ def _validation_root() -> Path:
     root = (resolve_runtime_path("DOCUMENT_WORKER_TEMP_DIR") / "award-result-validations").resolve()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     return root
+
+
+def validate_artifact_store_configuration(environ=None) -> None:
+    environment = os.environ if environ is None else environ
+    production = str(environment.get("APP_ENV", "development")).casefold() in {
+        "prod",
+        "production",
+    }
+    try:
+        instances = max(1, int(environment.get("APP_INSTANCE_COUNT", "1")))
+    except (TypeError, ValueError):
+        instances = 1
+    shared_confirmed = str(
+        environment.get("AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED", "false")
+    ).casefold() in {"1", "true", "yes", "on"}
+    if production and instances > 1 and not shared_confirmed:
+        raise RuntimeError(
+            "AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED=true is required "
+            "when APP_INSTANCE_COUNT is greater than one."
+        )
 
 
 def _signing_key(environ=None) -> bytes:
@@ -1357,20 +1663,130 @@ def _validation_path(validation_id: str) -> Path:
     return path
 
 
+def _configured_limit(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _artifact_inventory(*, now: int | None = None) -> list[dict[str, Any]]:
+    current = int(time.time() if now is None else now)
+    inventory = []
+    for path in _validation_root().glob("validation-*"):
+        try:
+            if path.is_symlink() or path.resolve().parent != _validation_root():
+                continue
+            metadata = json.loads(
+                (path / "metadata.json").read_text(encoding="utf-8")
+            )
+            inventory.append(
+                {
+                    "path": path,
+                    "userId": str(metadata.get("userId") or ""),
+                    "organizationId": str(metadata.get("organizationId") or ""),
+                    "sizeBytes": int(metadata.get("sizeBytes") or 0),
+                    "expiresAt": int(metadata.get("expiresAt") or 0),
+                    "expired": int(metadata.get("expiresAt") or 0) <= current,
+                }
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+    return inventory
+
+
+def validation_artifact_metrics(*, now: int | None = None) -> dict[str, int]:
+    inventory = _artifact_inventory(now=now)
+    return {
+        "count": len(inventory),
+        "totalBytes": sum(item["sizeBytes"] for item in inventory),
+        "expiredCount": sum(int(item["expired"]) for item in inventory),
+        "cleanupFailures": _ARTIFACT_CLEANUP_FAILURES,
+        "quotaRejections": _ARTIFACT_QUOTA_REJECTIONS,
+    }
+
+
+def _enforce_artifact_quota(
+    *, user_id: str, organization_id: str, size_bytes: int, now: int
+) -> None:
+    global _ARTIFACT_QUOTA_REJECTIONS
+
+    active = [item for item in _artifact_inventory(now=now) if not item["expired"]]
+    user_items = [item for item in active if item["userId"] == str(user_id)]
+    organization_items = [
+        item
+        for item in active
+        if item["organizationId"] == str(organization_id)
+    ]
+    exceeded = (
+        len(user_items) + 1
+        > _configured_limit("AWARD_RESULT_ARTIFACT_MAX_PER_USER", 20)
+        or sum(item["sizeBytes"] for item in user_items) + size_bytes
+        > _configured_limit("AWARD_RESULT_ARTIFACT_MAX_BYTES_PER_USER", 100 * 1024 * 1024)
+        or len(organization_items) + 1
+        > _configured_limit("AWARD_RESULT_ARTIFACT_MAX_PER_ORGANIZATION", 200)
+        or sum(item["sizeBytes"] for item in organization_items) + size_bytes
+        > _configured_limit(
+            "AWARD_RESULT_ARTIFACT_MAX_BYTES_PER_ORGANIZATION",
+            1024 * 1024 * 1024,
+        )
+        or sum(item["sizeBytes"] for item in active) + size_bytes
+        > _configured_limit("AWARD_RESULT_ARTIFACT_MAX_GLOBAL_BYTES", 2 * 1024 * 1024 * 1024)
+    )
+    if exceeded:
+        _ARTIFACT_QUOTA_REJECTIONS += 1
+        raise AwardResultExcelError(
+            "VALIDATION_ARTIFACT_QUOTA_EXCEEDED",
+            "Đã đạt giới hạn tệp Excel chờ xuất; vui lòng hoàn tất hoặc hủy tệp cũ.",
+            status_code=429,
+        )
+
+
 def cleanup_expired_validation_artifacts(*, now: int | None = None, limit: int = 128) -> int:
+    global _ARTIFACT_CLEANUP_FAILURES
+
     current = int(time.time() if now is None else now)
     removed = 0
     root = _validation_root()
-    for path in list(root.glob("validation-*"))[: max(1, min(limit, 512))]:
+    candidates = []
+    for path in root.glob("validation-*"):
         try:
             if path.is_symlink() or path.resolve().parent != root:
                 continue
             metadata_path = path / "metadata.json"
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if int(metadata.get("expiresAt") or 0) <= current:
-                shutil.rmtree(path)
-                removed += 1
+            lock_path = path / "export.lock"
+            if lock_path.exists():
+                try:
+                    claimed_at = int(lock_path.read_text(encoding="ascii") or 0)
+                except (OSError, ValueError):
+                    claimed_at = current
+                if claimed_at + VALIDATION_EXPORT_LEASE_SECONDS > current:
+                    continue
+            candidates.append((int(metadata.get("expiresAt") or 0), path))
         except (OSError, ValueError, json.JSONDecodeError):
+            _ARTIFACT_CLEANUP_FAILURES += 1
+            try:
+                if (
+                    not (path / "export.lock").exists()
+                    and int(path.stat().st_mtime) + VALIDATION_TTL_SECONDS
+                    <= current
+                    and removed < max(1, min(limit, 512))
+                ):
+                    shutil.rmtree(path)
+                    removed += 1
+            except OSError:
+                _ARTIFACT_CLEANUP_FAILURES += 1
+            continue
+    removal_limit = max(1, min(limit, 512))
+    for expires_at, path in sorted(candidates, key=lambda item: (item[0], item[1].name)):
+        if expires_at > current or removed >= removal_limit:
+            break
+        try:
+            shutil.rmtree(path)
+            removed += 1
+        except OSError:
+            _ARTIFACT_CLEANUP_FAILURES += 1
             continue
     return removed
 
@@ -1387,11 +1803,18 @@ def create_validation_artifact(
 ) -> tuple[str, dict[str, Any]]:
     cleanup_expired_validation_artifacts(now=now)
     created_at = int(time.time() if now is None else now)
+    _enforce_artifact_quota(
+        user_id=str(user_id),
+        organization_id=str(organization_id),
+        size_bytes=len(content),
+        now=created_at,
+    )
     validation_id = uuid.uuid4().hex
     path = _validation_path(validation_id)
-    path.mkdir(mode=0o700)
-    workbook_path = path / "workbook.xlsx"
-    metadata_path = path / "metadata.json"
+    temporary_path = _validation_root() / f".tmp-validation-{validation_id}"
+    temporary_path.mkdir(mode=0o700)
+    workbook_path = temporary_path / "workbook.xlsx"
+    metadata_path = temporary_path / "metadata.json"
     digest = hashlib.sha256(content).hexdigest()
     metadata = {
         "version": 1,
@@ -1409,12 +1832,17 @@ def create_validation_artifact(
     try:
         with workbook_path.open("xb") as handle:
             handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
         workbook_path.chmod(0o600)
         with metadata_path.open("x", encoding="utf-8") as handle:
             json.dump(metadata, handle, ensure_ascii=False, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
         metadata_path.chmod(0o600)
+        os.replace(temporary_path, path)
     except Exception:
-        shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(temporary_path, ignore_errors=True)
         raise
     return _token(validation_id), metadata
 
@@ -1426,6 +1854,7 @@ def load_validation_artifact(
     organization_id: str,
     package_id: str,
     now: int | None = None,
+    claim: bool = False,
 ) -> tuple[dict[str, Any], bytes]:
     try:
         validation_id, supplied_signature = str(token or "").split(".", 1)
@@ -1475,13 +1904,51 @@ def load_validation_artifact(
             "File đã thay đổi sau bước kiểm tra.",
             status_code=409,
         )
+    if claim:
+        try:
+            with (path / "export.lock").open("x", encoding="ascii") as handle:
+                handle.write(str(current))
+        except FileExistsError as exc:
+            raise AwardResultExcelError(
+                "VALIDATION_TOKEN_IN_USE",
+                "Validation token đang được dùng để xuất file.",
+                status_code=409,
+            ) from exc
     return metadata, content
 
 
 def consume_validation_artifact(token: str) -> None:
-    validation_id = str(token or "").split(".", 1)[0]
+    try:
+        validation_id, supplied_signature = str(token or "").split(".", 1)
+    except ValueError:
+        return
     if _VALIDATION_ID.fullmatch(validation_id):
+        expected = _token(validation_id).split(".", 1)[1]
+        if not hmac.compare_digest(expected, supplied_signature):
+            return
         shutil.rmtree(_validation_path(validation_id), ignore_errors=True)
+
+
+def release_validation_artifact(token: str) -> None:
+    try:
+        validation_id, supplied_signature = str(token or "").split(".", 1)
+    except ValueError:
+        return
+    if _VALIDATION_ID.fullmatch(validation_id):
+        expected = _token(validation_id).split(".", 1)[1]
+        if not hmac.compare_digest(expected, supplied_signature):
+            return
+        try:
+            (_validation_path(validation_id) / "export.lock").unlink()
+        except FileNotFoundError:
+            pass
+
+
+async def run_validation_artifact_janitor() -> None:
+    interval = _configured_limit("AWARD_RESULT_ARTIFACT_CLEANUP_INTERVAL_SECONDS", 60)
+    while True:
+        await asyncio.to_thread(cleanup_expired_validation_artifacts)
+        await asyncio.sleep(interval)
 
 
 def output_filename(original_filename: str) -> str:
