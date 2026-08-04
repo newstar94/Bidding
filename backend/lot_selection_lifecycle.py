@@ -272,44 +272,6 @@ def assess_partial_result_publication(
     return base
 
 
-def allowed_next_stages(
-    procedure_kind: ProcedureKind,
-    current_stage: LotStage,
-) -> FrozenSet[LotStage]:
-    transitions = (
-        _ONE_STAGE_ONE_ENVELOPE_TRANSITIONS
-        if procedure_kind == ProcedureKind.ONE_STAGE_ONE_ENVELOPE
-        else _ONE_STAGE_TWO_ENVELOPE_TRANSITIONS
-    )
-    return transitions.get(current_stage, frozenset())
-
-
-def require_transition(
-    procedure_kind: ProcedureKind,
-    current_stage: LotStage,
-    target_stage: LotStage,
-    *,
-    outcome: Optional[LotOutcome] = None,
-) -> None:
-    if target_stage not in allowed_next_stages(procedure_kind, current_stage):
-        raise LotLifecyclePolicyError(
-            "Invalid lot lifecycle transition: "
-            f"{procedure_kind.value} {current_stage.value} -> {target_stage.value}."
-        )
-    if target_stage == LotStage.RESULT_APPROVED and outcome is None:
-        blocker = PolicyBlocker(
-            BlockerCode.INVALID_FINAL_OUTCOME,
-            "An approved lot result must have an explicit final outcome.",
-        )
-        raise LotLifecyclePolicyError(blocker.message, (blocker,))
-    if target_stage != LotStage.RESULT_APPROVED and outcome is not None:
-        blocker = PolicyBlocker(
-            BlockerCode.INVALID_FINAL_OUTCOME,
-            "A final lot outcome can only be recorded when the result is approved.",
-        )
-        raise LotLifecyclePolicyError(blocker.message, (blocker,))
-
-
 def project_package_status(
     lots: Iterable[LotProgress],
     *,
@@ -328,20 +290,3 @@ def project_package_status(
     if completed_count:
         return PackageStatus.PARTIALLY_COMPLETED
     return PackageStatus.IN_PROGRESS
-
-
-def validate_artifact_scope(
-    artifact_lot_ids: Iterable[str],
-    batch_lot_ids: Iterable[str],
-) -> None:
-    """Require a formal artifact to identify an exact, non-empty lot scope."""
-
-    artifact_scope = frozenset(artifact_lot_ids)
-    batch_scope = frozenset(batch_lot_ids)
-    if not artifact_scope or artifact_scope != batch_scope:
-        blocker = PolicyBlocker(
-            BlockerCode.INVALID_ARTIFACT_SCOPE,
-            "The artifact lot scope must exactly match the immutable batch snapshot.",
-            artifact_scope,
-        )
-        raise LotLifecyclePolicyError(blocker.message, (blocker,))

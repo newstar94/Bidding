@@ -65,7 +65,3 @@ def _validate_avatar(value):
 
 def validate_profile_fields(name, email, avatar):
     return _validate_name(name), _validate_email(email), _validate_avatar(avatar)
-
-
-def validate_profile_email(email):
-    return _validate_email(email)

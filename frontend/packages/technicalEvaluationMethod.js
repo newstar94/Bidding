@@ -101,9 +101,3 @@ export function applyTechnicalEvaluationMethod(criteria = [], method = "") {
     ? { ...criterion, resultType: normalizedMethod === TECHNICAL_EVALUATION_METHODS.SCORE ? "score" : "pass_fail" }
     : criterion);
 }
-
-export function technicalEvaluationMethodLabel(method) {
-  return normalizeTechnicalEvaluationMethod(method) === TECHNICAL_EVALUATION_METHODS.SCORE
-    ? "Chấm điểm"
-    : "Đạt/Không đạt";
-}

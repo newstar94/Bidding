@@ -486,10 +486,6 @@ def list_templates(owner_id=None, *, owner_type='personal'):
             })
     return templates
 
-def validate_template_syntax(file_bytes):
-
-    return True, "Cú pháp biểu mẫu hoàn toàn hợp lệ."
-
 def translate_xml_tags(xml_content, valid_vars):
 
 

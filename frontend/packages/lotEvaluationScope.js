@@ -370,24 +370,6 @@ async function responseBody(response) {
   }
 }
 
-export async function ensureWholePackageEvaluationAvailable({ packageId, fetcher }) {
-  if (!packageId || typeof fetcher !== "function") {
-    throw new Error("Không thể kiểm tra trạng thái đợt đánh giá phần lô.");
-  }
-  const response = await fetcher(`/api/packages/${encodeURIComponent(packageId)}/lot-lifecycle`);
-  const lifecycle = await responseBody(response);
-  if (!response?.ok) {
-    throw new Error(lifecycle?.error || "Không thể kiểm tra trạng thái đợt đánh giá phần lô.");
-  }
-  const activeBatches = (lifecycle?.batches || []).filter((batch) => batch?.status === "ACTIVE");
-  if (activeBatches.length > 0) {
-    throw new Error(
-      "Gói thầu đã có đợt đánh giá phần lô đang xử lý. Hãy tiếp tục từng đợt; không thể chuyển lại sang đánh giá toàn bộ khi chưa có bước hợp nhất đợt."
-    );
-  }
-  return lifecycle;
-}
-
 function lotIdsOfBatch(batch) {
   if (Array.isArray(batch?.lotIds)) return unique(batch.lotIds);
   return unique((batch?.lots || []).map((lot) => lot?.lotId || lot?.lot_id));

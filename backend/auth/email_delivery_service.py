@@ -6,7 +6,6 @@ import asyncio
 import base64
 import hashlib
 import os
-import random
 import re
 import time
 import uuid
@@ -430,56 +429,6 @@ def deliver_email_once(
         finally:
             connection.close()
     return _deliver_claimed(database, claimed, max_attempts=max_attempts)
-
-
-def retry_email_delivery(
-    database,
-    delivery_id: str,
-    recipient: str | None = None,
-    subject: str | None = None,
-    html_body: str | None = None,
-    *,
-    sensitive_content: bool = True,
-    max_attempts: int = MAX_DELIVERY_ATTEMPTS,
-) -> bool:
-    """Compatibility helper; durable workers normally perform these retries."""
-
-    supplied = (recipient, subject, html_body)
-    if any(value is not None for value in supplied):
-        if not all(value is not None for value in supplied):
-            raise ValueError("Recipient, subject and body must be supplied together.")
-        _store_payload_if_missing(
-            database,
-            delivery_id,
-            str(recipient),
-            str(subject),
-            str(html_body),
-            sensitive_content,
-        )
-    while True:
-        connection = database.get_connection()
-        try:
-            row = connection.execute(
-                """SELECT status, attempt_count, next_attempt_at
-                   FROM email_delivery_status WHERE id = ?""",
-                (delivery_id,),
-            ).fetchone()
-        finally:
-            connection.close()
-        if row is None or row["status"] in {"sent", "failed"}:
-            return bool(row and row["status"] == "sent")
-        if int(row["attempt_count"]) >= max_attempts:
-            return False
-        due_at = int(row["next_attempt_at"] or int(time.time()))
-        delay = max(0.0, due_at - time.time()) + random.uniform(0.0, 0.25)
-        if delay:
-            time.sleep(min(delay, 300.0))
-        if deliver_email_once(
-            database,
-            delivery_id,
-            max_attempts=max_attempts,
-        ):
-            return True
 
 
 def process_next_email_delivery(database) -> bool:

@@ -109,21 +109,6 @@ def get_rate_limit_decision(
             conn.close()
 
 
-def check_rate_limit(
-    bucket: str,
-    consume_attempt: bool = True,
-    *,
-    max_attempts: int = RATE_LIMIT_MAX,
-    window_seconds: int = RATE_LIMIT_WINDOW,
-) -> bool:
-    return get_rate_limit_decision(
-        bucket,
-        consume_attempt,
-        max_attempts=max_attempts,
-        window_seconds=window_seconds,
-    ).allowed
-
-
 def rate_limit_response(message, decision=None):
     retry_after = max(1, int(getattr(decision, "retry_after", RATE_LIMIT_WINDOW)))
     return JSONResponse(
@@ -135,11 +120,6 @@ def rate_limit_response(message, decision=None):
         status_code=429,
         headers={"Retry-After": str(retry_after)},
     )
-
-def record_rate_limit_failure(ip: str) -> bool:
-    """Ghi nhan mot lan that bai vao rate limiter."""
-    return check_rate_limit(ip, consume_attempt=True)
-
 
 def rate_limit_bucket_hash(bucket: str) -> str:
     """Return the opaque database key for one logical rate-limit bucket."""
@@ -156,35 +136,6 @@ def clear_rate_limit_buckets(cursor, *buckets: str) -> None:
             (rate_limit_bucket_hash(bucket),),
         )
 
-
-async def get_rate_limit_decision_async(
-    bucket: str,
-    consume_attempt: bool = True,
-    *,
-    max_attempts: int = RATE_LIMIT_MAX,
-    window_seconds: int = RATE_LIMIT_WINDOW,
-) -> RateLimitDecision:
-    """Run the persistent limiter in the bounded PostgreSQL write lane."""
-    from backend.shared.async_io import BlockingIOBusyError
-    from backend.shared.database_io import run_database_write
-
-    try:
-        return await run_database_write(
-            get_rate_limit_decision,
-            bucket,
-            consume_attempt,
-            max_attempts=max_attempts,
-            window_seconds=window_seconds,
-        )
-    except BlockingIOBusyError:
-        # Rate limiting is security-sensitive and therefore fails closed when
-        # the bounded writer lane cannot accept more work.
-        return RateLimitDecision(False, window_seconds, 0, storage_failed=True)
-
-
-async def record_rate_limit_failure_async(bucket: str) -> bool:
-    decision = await get_rate_limit_decision_async(bucket, consume_attempt=True)
-    return decision.allowed
 
 def generate_otp() -> str:
     """Tạo OTP cryptographically secure."""

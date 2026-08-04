@@ -1,5 +1,3 @@
-import re
-
 from backend.sync.dashboard_summary import build_dashboard_summary
 from backend.sync.mapper import map_db_to_json
 
@@ -24,14 +22,6 @@ ALLOWED_ORPHAN_TABLES = {
     "goi_thau",
     "thong_tin_mo_thau",
 }
-
-def build_fts_match_query(search_text):
-    tokens = re.findall(r"[\w]+", str(search_text or ""), flags=re.UNICODE)
-    tokens = [token for token in tokens if token]
-    if not tokens:
-        return ""
-    return " ".join(f"{token}*" for token in tokens[:8])
-
 
 def get_expert_relations_for_packages(cursor, gt_ids, organization_id=None):
     if not gt_ids:

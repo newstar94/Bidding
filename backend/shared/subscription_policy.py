@@ -114,16 +114,3 @@ def can_use_word_export(cursor, role_str, user_id, organization_id):
             get_organization_subscription(cursor, organization_id)
         )
     )
-
-
-def word_export_entitlement_payload(cursor, role_str, user_id, organization_id):
-    enabled = can_use_word_export(
-        cursor, role_str, user_id, organization_id
-    )
-    if "super_admin" in get_effective_roles(str(role_str or "")):
-        source = "platform"
-    elif is_personal_scope_for_user(organization_id, user_id):
-        source = "account_subscription"
-    else:
-        source = "organization_subscription"
-    return {"word_export": enabled, "source": source}

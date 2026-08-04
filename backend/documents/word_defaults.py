@@ -522,10 +522,3 @@ def ensure_personal_word_workspace(cursor, user_id):
         (scope_id,),
     )
     return 0
-
-
-def ensure_default_word_mappings_for_all_orgs(cursor):
-    """Compatibility no-op retained for old initialization call sites."""
-
-    del cursor
-    return 0

@@ -28,17 +28,6 @@ function exactLineDifference(row) {
   };
 }
 
-export function bidderGoodsLineDifference(row) {
-  const difference = exactLineDifference(row);
-  if (!difference) return null;
-  const numeric = Number(difference.numerator) / Number(difference.denominator);
-  return Number.isSafeInteger(Number(row?.donGiaDuThau))
-    && Number.isSafeInteger(Number(row?.thanhTienDuThau))
-    && Number.isFinite(numeric)
-    ? numeric
-    : difference.numerator;
-}
-
 export function bidderGoodsRowFieldErrors(row, { official = false } = {}) {
   const errors = {};
   const add = (field, message) => {

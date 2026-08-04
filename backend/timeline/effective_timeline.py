@@ -565,9 +565,3 @@ def build_effective_timeline(
     rows.sort(key=lambda row: (row["sort_order"], row["milestone_key"], row["instance_key"]))
     assign_timeline_display_codes(rows)
     return rows if include_not_applicable else [row for row in rows if row["applicability"] != "NOT_APPLICABLE"]
-
-
-def timeline_progress(rows):
-    applicable = [row for row in rows if row.get("applicability") == "APPLICABLE"]
-    completed = sum(str(row.get("status") or row.get("trang_thai") or "").upper() in {"DONE", "COMPLETED"} for row in applicable)
-    return {"completed": completed, "total": len(applicable), "ratio": completed / len(applicable) if applicable else 0}

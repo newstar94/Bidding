@@ -242,14 +242,6 @@ def clean_money(val):
     parsed = parse_vnd_amount(val_str)
     return parsed if parsed is not None else 0
 
-def clean_int(val):
-    if pd.isna(val):
-        return 0
-    try:
-        return int(float(str(val).strip()))
-    except ValueError:
-        return 0
-
 def parse_excel(file_bytes, import_type):
     """Phân tích file Excel và trả về danh sách các bản ghi cùng thông tin kiểm thử hợp lệ."""
     map_cols = _schema_to_map_cols(import_type)

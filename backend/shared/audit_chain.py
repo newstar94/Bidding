@@ -495,10 +495,6 @@ def inspect_audit_chain_incremental(cursor, checkpoint, *, hmac_key=None):
     )
 
 
-def verify_audit_chain(cursor):
-    return inspect_audit_chain(cursor).valid
-
-
 def inspect_audit_chain_against_checkpoint(cursor, checkpoint, *, hmac_key=None):
     """Detect chain rollback/truncation relative to a previously anchored head."""
 

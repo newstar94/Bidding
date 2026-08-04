@@ -2,16 +2,6 @@ import timelineCatalog from "../../shared/timeline_rules.json" with { type: "jso
 import { buildVersionEhsmtAdjustment } from "../shared/VersionedEntityService.js";
 
 export const TIMELINE_TEMPLATE_VERSION = timelineCatalog.catalogVersion;
-export const TIMELINE_APPLICABILITY = Object.freeze({
-  APPLICABLE: "APPLICABLE",
-  CONDITIONAL: "CONDITIONAL",
-  NOT_APPLICABLE: "NOT_APPLICABLE"
-});
-export const E_HSMT_APPRAISAL_REQUIREMENT = Object.freeze({
-  UNDETERMINED: "UNDETERMINED",
-  REQUIRED: "REQUIRED",
-  NOT_REQUIRED: "NOT_REQUIRED"
-});
 
 const SECTION_BY_KEY = new Map(timelineCatalog.sections.map((section) => [section.sectionKey, section]));
 const MANDATORY_TWO_ENVELOPE_MILESTONES = new Set([
@@ -496,8 +486,4 @@ export function timelineProgress(rows = []) {
   const applicable = rows.filter((row) => row.applicability === "APPLICABLE");
   const completed = applicable.filter((row) => ["DONE", "COMPLETED"].includes(String(row.status || row.trangThai || "").toUpperCase())).length;
   return { completed, total: applicable.length, ratio: applicable.length ? completed / applicable.length : 0 };
-}
-
-export function timelineCatalogDefinition() {
-  return structuredClone(timelineCatalog);
 }

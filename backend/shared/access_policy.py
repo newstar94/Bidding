@@ -8,7 +8,6 @@ from backend.shared.subscription_policy import can_use_word_export
 
 PLATFORM_ADMIN_ROLES = {"super_admin"}
 ORGANIZATION_MANAGER_ROLES = {"manager"}
-DOCUMENT_EXPORT_CAPABILITY_IDS = frozenset({"financial", "identity", "signature"})
 WRITE_PROTECTED_KEYS = {
     "assignments",
     "customcontractstatuses",
@@ -207,20 +206,6 @@ def resolve_document_export_capabilities(cursor, role_str, user_id, organization
     if has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return DocumentExportCapabilities.allow_all()
     return DocumentExportCapabilities()
-
-
-def can_export_document_capability(
-    cursor, role_str, user_id, organization_id, capability_id
-):
-    """Return one effective capability without accepting arbitrary field names."""
-
-    capability_id = str(capability_id or "").strip().lower()
-    if capability_id not in DOCUMENT_EXPORT_CAPABILITY_IDS:
-        return False
-    capabilities = resolve_document_export_capabilities(
-        cursor, role_str, user_id, organization_id
-    )
-    return bool(getattr(capabilities, capability_id))
 
 
 def _permission_for(cursor, organization_id, user_id, module_name):

@@ -1,25 +1,10 @@
 import {
   buildEffectiveTimeline,
   mergeSavedTimelineEntries,
-  timelineCatalogDefinition,
   TIMELINE_TEMPLATE_VERSION
 } from "./timelineRuleEngine.js";
 
 export { TIMELINE_TEMPLATE_VERSION };
-
-const catalog = timelineCatalogDefinition();
-export const TIMELINE_SECTIONS = Object.freeze(catalog.sections.map((section) => [
-  section.legacyCode,
-  section.title,
-  catalog.milestones
-    .filter((milestone) => milestone.sectionKey === section.sectionKey && !milestone.repeatable)
-    .map((milestone) => [
-      milestone.legacyCodes[0] || `${section.displayPrefix}.0`,
-      milestone.title,
-      milestone.issuer,
-      milestone.tags.includes("OPTIONAL")
-    ])
-]));
 
 function related(plan = {}, contracts = []) {
   return { plan, contracts };
@@ -27,15 +12,6 @@ function related(plan = {}, contracts = []) {
 
 export function createDefaultTimelineRows() {
   return buildEffectiveTimeline({}, { plan: {} }, [], { includeNotApplicable: true });
-}
-
-export function isTimelineRowApplicable(row, pkg = {}, plan = {}) {
-  const rows = buildEffectiveTimeline(pkg, { plan }, [row], { includeNotApplicable: true });
-  const match = rows.find((item) => (
-    item.milestoneKey === row?.milestoneKey
-    || item.maMoc === row?.maMoc
-  ));
-  return match?.applicability !== "NOT_APPLICABLE";
 }
 
 export function applyTimelineApplicability(rows, pkg = {}, plan = {}, contracts = []) {

@@ -1,12 +1,3 @@
-export function summarizeMutationQueue(queue = {}) {
-  const upserts = Object.values(queue.upserts || {}).reduce(
-    (total, records) => total + Object.keys(records || {}).length,
-    0
-  );
-  const deletions = Array.isArray(queue.deletes) ? queue.deletes.length : 0;
-  return { upserts, deletions, pendingCount: upserts + deletions };
-}
-
 export function deriveSyncStatus({
   phase = "idle",
   online = true,

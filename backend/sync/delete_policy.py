@@ -1,7 +1,6 @@
 """Server-side reference policy for synchronized entity deletion."""
 
 import json
-import time
 
 from backend.shared.audit_chain import insert_audit_row
 from backend.sync.mutation_audit import business_record_hash
@@ -174,37 +173,6 @@ def delete_assignment_dependents(cursor, organization_id, table_name, record_id)
     return int(result.rowcount or 0)
 
 
-def build_delete_impact(cursor, organization_id, table_name, record_id):
-    """Return an owner-scoped preview of every row affected by a delete request."""
-
-    cascade_rows = find_blocking_delete_references(
-        cursor,
-        organization_id,
-        table_name,
-        record_id,
-        rules=CASCADE_IMPACT_RULES.get(table_name, ()),
-    )
-    assignment_count = 0
-    target_type = ASSIGNMENT_TARGET_TYPES.get(table_name)
-    if target_type:
-        row = cursor.execute(
-            """
-            SELECT COUNT(*) FROM phan_cong_nhan_su
-            WHERE organization_id = ? AND id_muc_tieu = ? AND loai_doi_tuong = ?
-            """,
-            (organization_id, record_id, target_type),
-        ).fetchone()
-        assignment_count = int(row[0] if row else 0)
-    child_count = sum(item["count"] for item in cascade_rows) + assignment_count
-    return {
-        "rootCount": 1,
-        "dependentCount": child_count,
-        "totalCount": 1 + child_count,
-        "dependents": cascade_rows,
-        "assignmentCount": assignment_count,
-    }
-
-
 def build_delete_impacts_by_record_ids(
     cursor,
     organization_id,
@@ -253,22 +221,6 @@ def build_delete_impacts_by_record_ids(
             "assignmentCount": assignment_count,
         }
     return impacts
-
-
-def has_recent_password_reauthentication(cursor, user_id, ttl_seconds, session_id=None):
-    row = cursor.execute(
-        """
-        SELECT privileged_reauth_at
-        FROM auth_sessions
-        WHERE user_id = ? AND id = ? AND revoked_at IS NULL
-        """,
-        (user_id, session_id),
-    ).fetchone()
-    try:
-        reauthenticated_at = int(row[0] if row else 0)
-    except (TypeError, ValueError):
-        return False
-    return reauthenticated_at > 0 and time.time() - reauthenticated_at <= ttl_seconds
 
 
 def archive_versioned_record(

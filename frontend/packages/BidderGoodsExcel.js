@@ -2,7 +2,6 @@ import { ensureXlsxLoaded } from "../shared/externalAssets.js";
 import { normalizeBidderGoodsText } from "./bidderGoodsMapping.js";
 
 export const BIDDER_GOODS_SHEET_LABEL = "Mẫu số 12.1B. Bảng giá dự thầu";
-export const GOODS_PREFERENCE_SHEET_LABEL = "Mẫu số 15A. Bảng kê khai hàng hóa được hưởng ưu đãi";
 
 const HEADER_ALIASES = Object.freeze({
   sttNguon: ["stt", "so thu tu"],

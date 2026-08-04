@@ -865,9 +865,6 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     if (shouldShowFullLoader && this.view && this.view.hideLoader) this.view.hideLoader();
   }
 }
-export function updateSyncStatusDisplay(timestamp) {
-  this.updateSyncState({ phase: "idle", lastSyncedAt: timestamp });
-}
 export function setupWebSocketConnection() {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return;

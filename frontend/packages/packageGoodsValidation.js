@@ -1,21 +1,5 @@
 import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
 
-export const GOODS_FIELD_LABELS = Object.freeze({
-  maHangHoa: "Mã hàng hóa",
-  tenHangHoa: "Tên hàng hóa",
-  nhomHangHoa: "Nhóm hàng hóa",
-  donViTinh: "Đơn vị tính",
-  soLuong: "Số lượng",
-  yeuCauKyThuat: "Yêu cầu kỹ thuật",
-  kyMaHieuThamChieu: "Ký mã hiệu tham chiếu",
-  xuatXuYeuCau: "Xuất xứ yêu cầu",
-  diaDiemGiaoHang: "Địa điểm giao hàng",
-  thoiGianGiaoHang: "Thời gian giao hàng",
-  donGiaDuToan: "Đơn giá dự toán",
-  thanhTienDuToan: "Thành tiền dự toán",
-  ghiChu: "Ghi chú",
-});
-
 export function normalizeGoodsCode(value) {
   return String(value || "").trim().toLocaleLowerCase("vi");
 }

@@ -377,13 +377,6 @@ def validate_package_locked_fields(previous_record, item):
     return errors
 
 
-def validate_contract_status_transition(previous_status, item):
-    """Custom contract statuses intentionally have no hard-coded transition graph."""
-
-    del previous_status, item
-    return []
-
-
 def _field_error(path, code, message):
     return {"field": path, "code": code, "message": message}
 
