@@ -49,9 +49,9 @@ from backend.shared.email_templates import render_branded_email
 
 PASSWORD_RESET_SENT_MESSAGE = (
     "Đã gửi email hướng dẫn đặt lại mật khẩu. "
-    "Vui lòng kiểm tra hộp thư đến và thư rác."
+    "Vui lòng kiểm tra hộp thư đến hoặc thư rác."
 )
-PASSWORD_RESET_MISMATCH_MESSAGE = "Tên đăng nhập và email không khớp với tài khoản nào."
+PASSWORD_RESET_MISMATCH_MESSAGE = "Tên đăng nhập và email không khớp với tài khoản nào. Vui lòng kiểm tra lại."
 TURNSTILE_VERIFY_AFTER_ATTEMPTS = max(
     1,
     int(os.environ.get("TURNSTILE_VERIFY_AFTER_ATTEMPTS", "3")),
