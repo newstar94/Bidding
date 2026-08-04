@@ -3122,6 +3122,29 @@ table th {
 .award-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
 .award-result-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
 .award-result-value { margin: 4px 0 0; color: var(--text-main); font-size: 1.1rem; font-weight: 800; }
+.award-result-excel-panel { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-subtle); }
+.award-result-excel-panel[hidden] { display: none; }
+.award-result-excel-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.award-result-excel-panel-header h5 { margin: 0 0 4px; color: var(--text-main); font-size: 0.95rem; }
+.award-result-excel-panel-header p { margin: 0; font-size: 0.8rem; }
+.award-result-excel-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.award-result-excel-file-name { min-width: 180px; color: var(--text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+.award-result-excel-status { min-height: 20px; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; }
+.award-result-excel-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.award-result-excel-summary > div { display: grid; gap: 4px; padding: 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.award-result-excel-summary span { color: var(--text-muted); font-size: 0.72rem; }
+.award-result-excel-summary strong { color: var(--text-main); font-size: 1rem; }
+.award-result-excel-issues { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.award-result-excel-issues h6 { margin: 0 0 8px; font-size: 0.8rem; }
+.award-result-excel-issues ul { display: grid; gap: 5px; max-height: 220px; margin: 0; padding-left: 20px; overflow: auto; font-size: 0.78rem; }
+.award-result-excel-issues.is-error { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); background: var(--danger-soft); color: var(--danger); }
+.award-result-excel-issues.is-warning { border-color: color-mix(in srgb, var(--warning) 35%, var(--line)); background: var(--warning-soft); }
+.award-result-excel-actions { display: flex; justify-content: flex-end; }
+@media (max-width: 720px) {
+  .award-result-excel-file-row { align-items: stretch; flex-direction: column; }
+  .award-result-excel-file-row .btn { width: 100%; }
+  .award-result-excel-actions .btn { width: 100%; }
+}
 .required-marker { color: var(--danger); }
 .col-actions-sm { width: 50px; }
 .is-hidden { display: none !important; }

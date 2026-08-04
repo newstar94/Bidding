@@ -26,6 +26,7 @@ import {
   selectWinningGoodsForExport,
 } from "../winningGoodsSelectors.js";
 import { downloadWinningGoodsWorkbook } from "../WinningGoodsExcel.js";
+import { bindAwardResultExcelExport } from "./AwardResultExcelExport.js";
 
 
 export function beginOfficialResultBatchEdit(view, pkg, batchId, rerender) {
@@ -162,6 +163,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           appraisalDate: ngayBctdResult,
           isEditable,
           wordExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
+          awardResultExcelExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
           winningGoodsExportEnabled: hasWinningGoodsExportScope(gt),
           formatCurrency: (value) => view.model.formatCurrency(value),
           formatDate: (value) => view.model.formatDate(value)
@@ -197,6 +199,16 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             "alert-triangle",
           ),
           refreshIcons: () => lucide.createIcons()
+        });
+        bindAwardResultExcelExport(contentWrapper, {
+          packageId: id,
+          packageCode: gt.maGoiThau || "GoiThau",
+          onError: (error) => view.customAlert(
+            "Không thể xuất file muasamcong",
+            error?.message || "Vui lòng thử lại.",
+            "alert-triangle",
+          ),
+          refreshIcons: () => lucide.createIcons(),
         });
       } else {
         const scopedResultPackage = activeScopedEvaluation

@@ -77,7 +77,13 @@ def _validate_content_types(zf: zipfile.ZipFile, archive_kind: str) -> None:
         raise UnsafeArchiveError("Loại nội dung bên trong tệp Office không phù hợp.")
 
 
-def _validate_xml_part(zf: zipfile.ZipFile, name: str, archive_kind: str) -> None:
+def _validate_xml_part(
+    zf: zipfile.ZipFile,
+    name: str,
+    archive_kind: str,
+    *,
+    allow_xlsx_formulas: bool = False,
+) -> None:
     raw = zf.read(name)
     upper_raw = raw.upper()
     if b"<!DOCTYPE" in upper_raw or b"<!ENTITY" in upper_raw:
@@ -95,7 +101,12 @@ def _validate_xml_part(zf: zipfile.ZipFile, name: str, archive_kind: str) -> Non
                 local_name = node.tag.rsplit("}", 1)[-1]
                 if local_name == "Relationship" and str(node.attrib.get("TargetMode", "")).casefold() == "external":
                     raise UnsafeArchiveError("Tệp Office chứa liên kết ngoài không được phép.")
-                if archive_kind == "xlsx" and name.startswith("xl/worksheets/") and local_name == "f":
+                if (
+                    archive_kind == "xlsx"
+                    and not allow_xlsx_formulas
+                    and name.startswith("xl/worksheets/")
+                    and local_name == "f"
+                ):
                     raise UnsafeArchiveError("Tệp Excel import không được chứa công thức.")
             else:
                 depth -= 1
@@ -103,7 +114,12 @@ def _validate_xml_part(zf: zipfile.ZipFile, name: str, archive_kind: str) -> Non
         raise UnsafeArchiveError("Cấu trúc XML của tệp Office không hợp lệ.") from exc
 
 
-def validate_ooxml_archive(content: bytes, archive_kind: str) -> None:
+def validate_ooxml_archive(
+    content: bytes,
+    archive_kind: str,
+    *,
+    allow_xlsx_formulas: bool = False,
+) -> None:
     """Validate DOCX/XLSX bytes without extracting their ZIP entries."""
 
     if archive_kind not in _REQUIRED_PARTS:
@@ -152,7 +168,12 @@ def validate_ooxml_archive(content: bytes, archive_kind: str) -> None:
                     total_xml_size += info.file_size
                     if total_xml_size > MAX_TOTAL_XML_BYTES:
                         raise UnsafeArchiveError("Tổng kích thước XML vượt quá giới hạn.")
-                    _validate_xml_part(zf, name, archive_kind)
+                    _validate_xml_part(
+                        zf,
+                        name,
+                        archive_kind,
+                        allow_xlsx_formulas=allow_xlsx_formulas,
+                    )
 
             if not _REQUIRED_PARTS[archive_kind].issubset(names):
                 raise UnsafeArchiveError("Cấu trúc tệp Office không hợp lệ.")

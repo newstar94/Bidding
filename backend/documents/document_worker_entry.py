@@ -152,6 +152,32 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
             raise ValueError("Tệp Excel có quá nhiều dòng dữ liệu.")
         return rows
 
+    if operation == "inspect_award_result_excel":
+        from backend.documents.archive_validation import validate_ooxml_archive
+        from backend.documents.award_result_excel_service import (
+            inspect_award_result_workbook,
+        )
+
+        content = _payload_content(payload)
+        validate_ooxml_archive(content, "xlsx", allow_xlsx_formulas=True)
+        return inspect_award_result_workbook(content)
+
+    if operation == "export_award_result_excel":
+        from backend.documents.archive_validation import validate_ooxml_archive
+        from backend.documents.award_result_excel_service import (
+            write_award_result_workbook,
+        )
+
+        content = _payload_content(payload)
+        validate_ooxml_archive(content, "xlsx", allow_xlsx_formulas=True)
+        updates = payload.get("updates")
+        if not isinstance(updates, list):
+            raise ValueError("Tác vụ Excel thiếu danh sách cập nhật.")
+        result = write_award_result_workbook(content, updates)
+        if len(result) > MAX_OUTPUT_BYTES:
+            raise ValueError("Tệp Excel kết quả vượt quá giới hạn kích thước.")
+        return result
+
     if operation == "render_docx":
         from backend.documents.custom_exporter import generate_report_from_custom_template
 

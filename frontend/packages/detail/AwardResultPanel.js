@@ -1,5 +1,9 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import {
+  buildAwardResultExcelButtonMarkup,
+  buildAwardResultExcelPanelMarkup,
+} from "./AwardResultExcelExport.js";
 
 export function buildAwardedResultPanelMarkup({
   pkg,
@@ -11,6 +15,7 @@ export function buildAwardedResultPanelMarkup({
   appraisalDate = "",
   isEditable = false,
   wordExportEnabled = false,
+  awardResultExcelExportEnabled = false,
   winningGoodsExportEnabled = false,
   formatCurrency,
   formatDate
@@ -25,12 +30,14 @@ export function buildAwardedResultPanelMarkup({
           <div><h4 class="award-result-title">Gói thầu đã hoàn thành LCNT</h4><p class="text-muted award-result-description">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p></div>
         </div>
         <div class="compact-action-group">
+          ${buildAwardResultExcelButtonMarkup(awardResultExcelExportEnabled)}
           ${winningGoodsExportEnabled ? '<button class="btn btn-outline action-strong" id="btn-export-winning-goods"><i data-lucide="file-spreadsheet"></i> Xuất danh sách hàng hóa trúng thầu</button>' : ""}
           <button class="btn btn-primary action-strong" id="btn-export-docx-report"
             ${wordExportEnabled ? "" : "disabled"}
             title="${wordExportEnabled ? "Xuất báo cáo kết quả ra Word" : "Cần gói trả phí đang hoạt động để xuất Word"}"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
         </div>
       </div>
+      ${buildAwardResultExcelPanelMarkup()}
       <div class="award-result-grid">
         <div><span class="text-muted award-result-label">Nhà thầu trúng thầu</span>${winnerHtml}</div>
         <div><span class="text-muted award-result-label">Giá trúng thầu</span><h5 class="award-result-value">${escapeHtml(formatCurrency(pkg?.giaTrungThau))}</h5></div>

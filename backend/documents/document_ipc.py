@@ -26,6 +26,8 @@ ALLOWED_OPERATIONS = frozenset({
     "validate_docx",
     "validate_ooxml",
     "parse_excel",
+    "inspect_award_result_excel",
+    "export_award_result_excel",
     "render_docx",
     "render_timeline_docx",
     "export_excel",

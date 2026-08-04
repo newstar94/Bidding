@@ -566,6 +566,7 @@ from backend.notifications.routes import (
     mark_notification_read_api,
 )
 from backend.documents.document_job_routes import document_job_routes
+from backend.documents.award_result_excel_routes import award_result_excel_routes
 from backend.activity.routes import list_activity_timeline_api
 from backend.lot_lifecycle_routes import (
     create_lot_batch_api,
@@ -833,6 +834,7 @@ routes = [
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
     Route("/api/export-timeline/{package_id}", export_timeline_api, methods=["GET"]),
     *document_job_routes(Route),
+    *award_result_excel_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
