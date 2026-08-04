@@ -6,7 +6,6 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
-import html
 import secrets
 from datetime import datetime, timezone
 
@@ -52,6 +51,7 @@ from backend.shared.async_io import (
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_write
 from backend.documents.word_defaults import ensure_personal_word_workspace
+from backend.shared.email_templates import render_branded_email
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
@@ -124,29 +124,22 @@ def _add_background_audit(bg_tasks, action, **kwargs):
 
 
 def _temporary_password_email(display_name, email, temporary_password):
-    safe_name = html.escape(str(display_name or "bạn"))
-    safe_email = html.escape(str(email))
-    safe_password = html.escape(str(temporary_password))
     subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản"
-    body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-            <h2 style="color: #4057d6; text-align: center;">Tài khoản BiddingFlow đã được tạo</h2>
-            <p>Xin chào <strong>{safe_name}</strong>,</p>
-            <p>Bạn vừa tạo tài khoản BiddingFlow bằng Google với email <strong>{safe_email}</strong>.</p>
-            <p>Mật khẩu tạm của bạn:</p>
-            <div style="margin: 20px 0; padding: 16px; border-radius: 8px; background: #f1f5f9; text-align: center;">
-                <code style="font-size: 20px; font-weight: 700; letter-spacing: 1px; color: #0f172a;">{safe_password}</code>
-            </div>
-            <p>Sau khi đặt tên đăng nhập trong ứng dụng, bạn có thể dùng tên đăng nhập và mật khẩu này để đăng nhập. Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên.</p>
-            <p style="font-size: 14px; color: #64748b;">Nếu bạn không thực hiện thao tác này, hãy đổi mật khẩu và liên hệ quản trị viên.</p>
-            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-            <p style="font-size: 12px; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-        </div>
-    </body>
-    </html>
-    """
+    body = render_branded_email(
+        title="Tài khoản BiddingFlow đã được tạo",
+        preheader="Thông tin đăng nhập dự phòng cho tài khoản Google của bạn.",
+        eyebrow="TÀI KHOẢN MỚI",
+        recipient_name=display_name or "bạn",
+        lead="Bạn vừa tạo tài khoản BiddingFlow bằng Google.",
+        details=(("Email đăng ký", email),),
+        paragraphs=(
+            "Sau khi đặt tên đăng nhập trong ứng dụng, bạn có thể dùng tên đăng nhập và mật khẩu tạm dưới đây để đăng nhập.",
+        ),
+        code=temporary_password,
+        code_label="Mật khẩu tạm",
+        notice="Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên. Nếu bạn không thực hiện thao tác này, hãy liên hệ quản trị viên.",
+        notice_tone="warning",
+    )
     return subject, body
 
 

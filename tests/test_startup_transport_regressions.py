@@ -45,6 +45,45 @@ asyncio.run(main())
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
+def test_development_index_aliases_never_expose_template_placeholders():
+    probe = """
+import asyncio
+import httpx2 as httpx
+from backend.app import app
+
+async def main():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+        for path in ('/index.html', '/views/index.html'):
+            response = await client.get(path)
+            body = response.text
+            print(path, response.status_code, '__BF_' in body)
+            if response.status_code != 200 or '__BF_' in body:
+                raise SystemExit(1)
+
+asyncio.run(main())
+"""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "APP_DEBUG": "True",
+            "APP_ENV": "test",
+            "ALLOWED_HOSTS": "testserver",
+        }
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=os.getcwd(),
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=15,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 def _response_headers_for(path: str) -> dict[str, str]:
     messages = []
 

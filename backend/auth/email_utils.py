@@ -12,6 +12,7 @@ import smtplib
 import ssl
 
 from backend.shared.logging_utils import log_structured_event
+from backend.shared.email_templates import html_to_plain_text
 
 
 @dataclass(frozen=True)
@@ -133,11 +134,13 @@ def gui_email(email_nhan, tieu_de, noi_dung_html, sensitive_content=False):
         )
         return EmailDeliveryResult(False, "mock", "SMTP_NOT_CONFIGURED")
 
-    message = MIMEMultipart()
+    message = MIMEMultipart("alternative")
     message["From"] = configuration.sender
     message["To"] = recipient
     message["Subject"] = subject
-    message.attach(MIMEText(str(noi_dung_html), "html", "utf-8"))
+    html_body = str(noi_dung_html)
+    message.attach(MIMEText(html_to_plain_text(html_body), "plain", "utf-8"))
+    message.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
         context = _tls_context(configuration)

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import html
 from starlette.background import BackgroundTasks
 
 from backend.shared.helpers import gui_email
+from backend.shared.email_templates import render_branded_email
 
 
 def build_security_notification_tasks(
@@ -18,14 +18,15 @@ def build_security_notification_tasks(
     recipient = str(email or "").strip()
     if not recipient:
         return None
-    safe_name = html.escape(str(display_name or "bạn"))
-    safe_message = html.escape(str(message))
-    body = (
-        '<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b">'
-        f"<p>Xin chào <strong>{safe_name}</strong>,</p>"
-        f"<p>{safe_message}</p>"
-        "<p>Nếu không phải bạn thực hiện, hãy đổi mật khẩu và liên hệ quản trị viên ngay.</p>"
-        "</body></html>"
+    email_title = str(subject or "").removeprefix("[BiddingFlow]").strip()
+    body = render_branded_email(
+        title=email_title or "Thông báo bảo mật tài khoản",
+        preheader=message,
+        eyebrow="BẢO MẬT TÀI KHOẢN",
+        recipient_name=display_name or "bạn",
+        lead=message,
+        notice="Nếu không phải bạn thực hiện, hãy đổi mật khẩu và liên hệ quản trị viên ngay.",
+        notice_tone="danger",
     )
     tasks = BackgroundTasks()
     tasks.add_task(gui_email, recipient, subject, body)

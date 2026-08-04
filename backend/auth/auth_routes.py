@@ -5,7 +5,6 @@ import uuid
 import time
 import hashlib
 import urllib.parse
-import html
 from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
@@ -62,6 +61,7 @@ from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.logging_utils import log_structured_event
 from backend.security.turnstile import edge_challenge_required, enforce_turnstile
+from backend.shared.email_templates import render_branded_email
 
 
 from backend.auth.auth_service import (
@@ -263,35 +263,42 @@ def _verify_and_hash_replacement(stored_password, old_password, new_password):
 
 def _email_change_request_tasks(*, old_email, new_email, display_name, code):
     tasks = BackgroundTasks()
-    safe_name = html.escape(str(display_name or "bạn"))
-    safe_new_email = html.escape(str(new_email or ""))
-    safe_code = html.escape(str(code or ""))
     tasks.add_task(
         gui_email,
         new_email,
         "[BiddingFlow] Xác minh địa chỉ email mới",
-        f"""
-        <html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2>Xác minh địa chỉ email mới</h2>
-        <p>Xin chào <strong>{safe_name}</strong>,</p>
-        <p>Mã OTP xác minh email mới của bạn là:</p>
-        <p style="font-size: 24px; font-weight: bold; letter-spacing: 4px;">{safe_code}</p>
-        <p>Mã có hiệu lực trong {EMAIL_CHANGE_OTP_TTL_SECONDS // 60} phút. Không chia sẻ mã này với bất kỳ ai.</p>
-        </body></html>
-        """,
+        render_branded_email(
+            title="Xác minh địa chỉ email mới",
+            preheader="Mã OTP xác minh email mới cho tài khoản BiddingFlow.",
+            eyebrow="BẢO MẬT TÀI KHOẢN",
+            recipient_name=display_name or "bạn",
+            lead="Bạn đang hoàn tất thay đổi địa chỉ email đăng nhập.",
+            code=code,
+            code_label="Mã OTP xác minh email",
+            notice=(
+                f"Mã có hiệu lực trong {EMAIL_CHANGE_OTP_TTL_SECONDS // 60} phút. "
+                "Không chia sẻ mã này với bất kỳ ai."
+            ),
+            notice_tone="warning",
+        ),
         True,
     )
     tasks.add_task(
         gui_email,
         old_email,
         "[BiddingFlow] Cảnh báo yêu cầu thay đổi email",
-        f"""
-        <html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2>Yêu cầu thay đổi email tài khoản</h2>
-        <p>Chúng tôi vừa nhận được yêu cầu đổi email tài khoản của bạn sang <strong>{safe_new_email}</strong>.</p>
-        <p>Email hiện tại vẫn được giữ nguyên cho đến khi địa chỉ mới được xác minh. Nếu không phải bạn thực hiện, hãy đổi mật khẩu ngay.</p>
-        </body></html>
-        """,
+        render_branded_email(
+            title="Yêu cầu thay đổi email tài khoản",
+            preheader="Cảnh báo bảo mật về yêu cầu thay đổi email BiddingFlow.",
+            eyebrow="CẢNH BÁO BẢO MẬT",
+            lead="Chúng tôi vừa nhận được yêu cầu thay đổi email đăng nhập.",
+            details=(("Email mới", new_email),),
+            paragraphs=(
+                "Email hiện tại vẫn được giữ nguyên cho đến khi địa chỉ mới được xác minh.",
+            ),
+            notice="Nếu không phải bạn thực hiện, hãy đổi mật khẩu và liên hệ quản trị viên ngay.",
+            notice_tone="danger",
+        ),
     )
     return tasks
 
@@ -302,25 +309,29 @@ def _email_change_completed_tasks(*, old_email, new_email):
         gui_email,
         old_email,
         "[BiddingFlow] Email tài khoản đã được thay đổi",
-        """
-        <html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2>Email tài khoản đã được thay đổi</h2>
-        <p>Địa chỉ email đăng nhập của tài khoản vừa được thay đổi sau khi xác minh OTP.</p>
-        <p>Tất cả phiên đăng nhập đã bị thu hồi. Nếu không phải bạn thực hiện, hãy liên hệ quản trị viên ngay.</p>
-        </body></html>
-        """,
+        render_branded_email(
+            title="Email tài khoản đã được thay đổi",
+            preheader="Thông báo bảo mật về thay đổi email tài khoản BiddingFlow.",
+            eyebrow="THAY ĐỔI THÔNG TIN ĐĂNG NHẬP",
+            lead="Địa chỉ email đăng nhập vừa được thay đổi sau khi xác minh OTP.",
+            paragraphs=("Tất cả phiên đăng nhập cũ đã được thu hồi để bảo vệ tài khoản.",),
+            notice="Nếu không phải bạn thực hiện, hãy liên hệ quản trị viên ngay.",
+            notice_tone="danger",
+        ),
     )
     tasks.add_task(
         gui_email,
         new_email,
         "[BiddingFlow] Xác minh email mới thành công",
-        """
-        <html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2>Xác minh email thành công</h2>
-        <p>Email này hiện là địa chỉ đăng nhập của tài khoản BiddingFlow.</p>
-        <p>Vui lòng đăng nhập lại vì các phiên cũ đã được thu hồi.</p>
-        </body></html>
-        """,
+        render_branded_email(
+            title="Xác minh email thành công",
+            preheader="Email mới đã trở thành địa chỉ đăng nhập BiddingFlow.",
+            eyebrow="CẬP NHẬT THÀNH CÔNG",
+            lead="Email này hiện là địa chỉ đăng nhập của tài khoản BiddingFlow.",
+            paragraphs=("Vui lòng đăng nhập lại vì các phiên cũ đã được thu hồi.",),
+            notice="Thông tin đăng nhập đã được cập nhật an toàn.",
+            notice_tone="success",
+        ),
     )
     return tasks
 

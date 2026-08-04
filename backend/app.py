@@ -436,6 +436,8 @@ async def index(request):
         session_bootstrap = {"valid": False, "reason": "bootstrap_error"}
     safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     request_path = request.url.path
+    if request_path in {"/index.html", "/views/index.html"}:
+        request_path = "/"
     page_title, page_description, canonical_link = _page_metadata(request_path)
     response_etag = f'"{hashlib.sha256((etag + safe_bootstrap + request_path).encode("utf-8")).hexdigest()}"'
     if_none_match = request.headers.get("if-none-match")
@@ -816,6 +818,8 @@ routes = [
     Route("/metrics", metrics_api, methods=["GET"]),
     Route("/api/client-errors", client_error_api, methods=["POST"]),
     Route("/", index, methods=["GET"]),
+    Route("/index.html", index, methods=["GET"]),
+    Route("/views/index.html", index, methods=["GET"]),
     Route("/dang-nhap", index, methods=["GET"]),
     Route("/legal", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),

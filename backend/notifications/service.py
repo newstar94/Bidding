@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import html
 import os
 import time
 import uuid
 
 from backend.auth.email_delivery_service import create_email_deliveries
+from backend.shared.email_templates import application_url, render_branded_email
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -39,24 +39,16 @@ def _accounts(cursor, user_ids) -> dict[str, tuple[str, str]]:
     return result
 
 
-def _email_html(display_name: str, message: str, route: str | None) -> str:
-    safe_name = html.escape(display_name or "bạn")
-    safe_message = html.escape(message)
-    public_url = str(os.environ.get("APP_PUBLIC_URL", "")).strip().rstrip("/")
-    action = ""
-    if route and public_url:
-        href = html.escape(f"{public_url}{route}", quote=True)
-        action = (
-            '<p style="margin:24px 0">'
-            f'<a href="{href}" style="background:#4356d8;color:#fff;text-decoration:none;'
-            'padding:11px 18px;border-radius:8px;display:inline-block">Mở BiddingFlow</a></p>'
-        )
-    return (
-        '<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b">'
-        f"<p>Xin chào <strong>{safe_name}</strong>,</p>"
-        f"<p>{safe_message}</p>{action}"
-        '<p style="color:#64748b;font-size:13px">Đây là email tự động từ BiddingFlow.</p>'
-        "</body></html>"
+def _email_html(display_name: str, title: str, message: str, route: str | None) -> str:
+    action_url = application_url(route) if route else None
+    return render_branded_email(
+        title=title or "Bạn có thông báo mới",
+        preheader=message,
+        eyebrow="CẬP NHẬT CÔNG VIỆC",
+        recipient_name=display_name or "bạn",
+        lead=message,
+        action_label="Mở BiddingFlow" if action_url else None,
+        action_url=action_url,
     )
 
 
@@ -130,7 +122,12 @@ def queue_user_notifications(cursor, notifications) -> list[str]:
                 "purpose": "user_notification",
                 "recipient": account[0],
                 "subject": item["email_subject"],
-                "html_body": _email_html(account[1], item["message"], item.get("route")),
+                "html_body": _email_html(
+                    account[1],
+                    item["title"],
+                    item["message"],
+                    item.get("route"),
+                ),
                 "sensitive_content": False,
                 "now": item["created_at"],
             })

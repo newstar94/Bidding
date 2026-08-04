@@ -2,7 +2,6 @@ from backend.db.db_helper import DatabaseError, IntegrityError
 import time
 import secrets
 import hashlib
-import html
 import os
 from urllib.parse import quote
 from starlette.responses import JSONResponse
@@ -45,11 +44,14 @@ from backend.shared.database_io import run_database_read
 from backend.auth.security_notifications import build_security_notification_tasks
 from backend.documents.word_defaults import ensure_personal_word_workspace
 from backend.security.turnstile import enforce_turnstile
+from backend.shared.email_templates import render_branded_email
 
 
-PASSWORD_RESET_REQUEST_MESSAGE = (
-    "Nếu thông tin phù hợp với một tài khoản, chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu qua email."
+PASSWORD_RESET_SENT_MESSAGE = (
+    "Đã gửi email hướng dẫn đặt lại mật khẩu. "
+    "Vui lòng kiểm tra hộp thư đến và thư rác."
 )
+PASSWORD_RESET_MISMATCH_MESSAGE = "Tên đăng nhập và email không khớp với tài khoản nào."
 TURNSTILE_VERIFY_AFTER_ATTEMPTS = max(
     1,
     int(os.environ.get("TURNSTILE_VERIFY_AFTER_ATTEMPTS", "3")),
@@ -207,23 +209,20 @@ async def register_api(request):
         conn.commit()
 
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"
-        noi_dung_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <h2 style="color: #2563eb; text-align: center;">Chào mừng bạn đến với BiddingFlow</h2>
-                <p>Xin chào <strong>{html.escape(name)}</strong>,</p>
-                <p>Cảm ơn bạn đã đăng ký tài khoản tại BiddingFlow. Mã OTP xác thực email của bạn là:</p>
-                <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0;">
-                    <span style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 4px;">{code}</span>
-                </div>
-                <p style="font-size: 0.9rem; color: #64748b;">Mã OTP này có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-            </div>
-        </body>
-        </html>
-        """
+        noi_dung_html = render_branded_email(
+            title="Chào mừng bạn đến với BiddingFlow",
+            preheader="Mã xác thực tài khoản BiddingFlow của bạn.",
+            eyebrow="XÁC THỰC TÀI KHOẢN",
+            recipient_name=name,
+            lead="Tài khoản của bạn đã được tạo thành công.",
+            paragraphs=(
+                "Hoàn tất xác thực email bằng mã OTP dưới đây để bắt đầu sử dụng không gian làm việc BiddingFlow.",
+            ),
+            code=code,
+            code_label="Mã OTP xác thực",
+            notice="Mã có hiệu lực trong 10 phút. Không chia sẻ mã này với bất kỳ ai, kể cả người tự xưng là nhân viên hỗ trợ.",
+            notice_tone="warning",
+        )
         tasks = BackgroundTasks()
         tasks.add_task(gui_email, email, tieu_de, noi_dung_html)
 
@@ -378,23 +377,20 @@ async def resend_code_api(request):
         conn.close()
 
         tieu_de = "[BiddingFlow] Gửi lại mã xác thực tài khoản"
-        noi_dung_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <h2 style="color: #2563eb; text-align: center;">Mã xác thực mới của bạn</h2>
-                <p>Xin chào <strong>{html.escape(str(user.get('ho_ten') or 'bạn'))}</strong>,</p>
-                <p>Bạn đã yêu cầu gửi lại mã xác nhận email cho tài khoản BiddingFlow. Mã OTP mới là:</p>
-                <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0;">
-                    <span style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 4px;">{code}</span>
-                </div>
-                <p style="font-size: 0.9rem; color: #64748b;">Mã OTP này có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-            </div>
-        </body>
-        </html>
-        """
+        noi_dung_html = render_branded_email(
+            title="Mã xác thực mới của bạn",
+            preheader="Mã OTP mới để xác thực tài khoản BiddingFlow.",
+            eyebrow="GỬI LẠI MÃ XÁC THỰC",
+            recipient_name=user.get('ho_ten') or 'bạn',
+            lead="Yêu cầu gửi lại mã đã được tiếp nhận.",
+            paragraphs=(
+                "Sử dụng mã OTP mới dưới đây để hoàn tất xác thực email. Mã cũ không còn hiệu lực.",
+            ),
+            code=code,
+            code_label="Mã OTP mới",
+            notice="Mã có hiệu lực trong 10 phút. Không chia sẻ mã này với bất kỳ ai.",
+            notice_tone="warning",
+        )
         tasks = BackgroundTasks()
         tasks.add_task(gui_email, user['email'], tieu_de, noi_dung_html)
 
@@ -457,36 +453,35 @@ async def forgot_password_api(request):
                 return _database_write_unavailable_response()
 
         tasks = BackgroundTasks()
-        if reset_request is not None:
-            public_url = os.environ.get("APP_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
-            reset_link = f"{public_url}/reset-password#token={quote(reset_request['token'], safe='')}"
-            safe_name = html.escape(str(reset_request.get('name') or 'bạn'))
-            safe_username = html.escape(str(reset_request.get('username') or ''))
-            safe_link = html.escape(reset_link, quote=True)
+        if reset_request is None:
+            return JSONResponse(
+                {"error": PASSWORD_RESET_MISMATCH_MESSAGE},
+                status_code=400,
+            )
 
-            subject = "[BiddingFlow] Đặt lại mật khẩu tài khoản"
-            email_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                    <h2 style="color: #2563eb; text-align: center;">Đặt lại mật khẩu BiddingFlow</h2>
-                    <p>Xin chào <strong>{safe_name}</strong>,</p>
-                    <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <strong>{safe_username}</strong>.</p>
-                    <p style="text-align: center; margin: 28px 0;">
-                        <a href="{safe_link}" style="display: inline-block; padding: 12px 22px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px;">Đặt lại mật khẩu</a>
-                    </p>
-                    <p>Liên kết chỉ dùng được một lần và hết hạn sau 30 phút. Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email.</p>
-                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                    <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-                </div>
-            </body>
-            </html>
-            """
-            tasks.add_task(gui_email, reset_request['email'], subject, email_body, True)
+        public_url = os.environ.get("APP_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
+        reset_link = f"{public_url}/reset-password#token={quote(reset_request['token'], safe='')}"
+        subject = "[BiddingFlow] Đặt lại mật khẩu tài khoản"
+        email_body = render_branded_email(
+            title="Đặt lại mật khẩu BiddingFlow",
+            preheader="Liên kết đặt lại mật khẩu an toàn cho tài khoản của bạn.",
+            eyebrow="KHÔI PHỤC TÀI KHOẢN",
+            recipient_name=reset_request.get('name') or 'bạn',
+            lead="Chúng tôi đã nhận được yêu cầu đặt lại mật khẩu.",
+            details=(("Tên đăng nhập", reset_request.get('username') or ''),),
+            action_label="Đặt lại mật khẩu",
+            action_url=reset_link,
+            paragraphs=(
+                "Nếu bạn không yêu cầu thao tác này, bạn có thể bỏ qua email và mật khẩu hiện tại vẫn được giữ nguyên.",
+            ),
+            notice="Liên kết chỉ sử dụng được một lần và sẽ hết hạn sau 30 phút.",
+            notice_tone="warning",
+        )
+        tasks.add_task(gui_email, reset_request['email'], subject, email_body, True)
 
         return JSONResponse({
             "success": True,
-            "message": PASSWORD_RESET_REQUEST_MESSAGE,
+            "message": PASSWORD_RESET_SENT_MESSAGE,
         }, background=tasks)
     except Exception as e:
         log_error(e, "forgot_password_api")
