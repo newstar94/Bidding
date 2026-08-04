@@ -1,6 +1,7 @@
 import { resolvePackageResultStatus } from "../lotEvaluationScope.js";
 import { resolvePackageDetailState } from "./PackageDetailState.js";
 import { buildPackageTabs } from "./PackageTabs.js";
+import { getVersionLabel } from "../../shared/formatters.js";
 
 function numericVersion(value) {
   const version = Number.parseInt(value, 10);
@@ -53,7 +54,7 @@ function buildVersionOptions(model, pkg) {
     ))
     .map((candidate) => ({
       id: candidate.id,
-      label: String(candidate.phienBan || "00"),
+      label: getVersionLabel(candidate.phienBan),
       selected: String(candidate.phienBan || "00") === selectedVersion,
     }));
 }

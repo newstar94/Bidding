@@ -5,6 +5,7 @@ import { getJson } from "../shared/apiClient.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
+import { getVersionLabel } from "../shared/formatters.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import {
   applyTimelineApplicability,
@@ -327,7 +328,7 @@ function renderVersionOptions(pkg) {
     : pkg ? [{ id: pkg.id, phienBan: pkg.phienBan || "00" }] : [];
   versions.sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0));
   select.innerHTML = trustedHTML(versions.map((version) => (
-    `<option value="${safeAttr(version.id)}">Phiên bản ${escapeHtml(version.phienBan || "00")}</option>`
+    `<option value="${safeAttr(version.id)}">Phiên bản ${escapeHtml(getVersionLabel(version.phienBan))}</option>`
   )).join("") || `<option value="">--</option>`);
   select.value = pkg?.id || "";
   select.disabled = versions.length <= 1;

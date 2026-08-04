@@ -3,6 +3,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
+import { getVersionLabel } from "../shared/formatters.js";
 import {
   createInitialVersion,
   createNextVersion,
@@ -286,7 +287,7 @@ export async function handleChuyenGiaSubmit(e) {
     const nextVersion = getNextVersion(this.model.state.chuyengia, currentCg);
     const isNewVersion = await this.view.customConfirm(
       "Lưu Chuyên gia",
-      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${Number(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCg.phienBan || 0)})`,
+      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${getVersionLabel(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${getVersionLabel(currentCg.phienBan)})`,
       "save"
     );
     if (isNewVersion) {

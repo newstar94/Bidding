@@ -14,7 +14,7 @@ import {
 } from "../shared/VersionedEntityService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { getCurrentDateYmd } from "../shared/formatters.js";
+import { getCurrentDateYmd, getVersionLabel } from "../shared/formatters.js";
 import {
   applyPartnerValidationErrors,
   collectPartnerFormData,
@@ -116,7 +116,7 @@ export async function handleChuDauTuSubmit(e) {
     const nextVersion = getNextVersion(this.model.state.chudautu, currentCdt);
     const isNewVersion = await this.view.customConfirm(
       "Lưu Chủ đầu tư",
-      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${Number(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCdt.phienBan || 0)})`,
+      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${getVersionLabel(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${getVersionLabel(currentCdt.phienBan)})`,
       "save"
     );
     if (isNewVersion) {

@@ -15,7 +15,7 @@ import {
   removeAllVersions,
   removeLatestVersion,
 } from "../shared/VersionedEntityService.js";
-import { getCurrentDateYmd } from "../shared/formatters.js";
+import { getCurrentDateYmd, getVersionLabel } from "../shared/formatters.js";
 import { setContractorViewOnly } from "../shared/runtimeState.js";
 import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
 import { generateRecordId } from "../shared/idUtils.js";
@@ -258,7 +258,7 @@ export async function handleNhaThauSubmit(e) {
     const nextVersion = getNextVersion(this.model.state.nhathau, currentNt);
     const isNewVersion = await this.view.customConfirm(
       "Lưu Nhà thầu",
-      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${Number(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentNt.phienBan || 0)})`,
+      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${getVersionLabel(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${getVersionLabel(currentNt.phienBan)})`,
       "save"
     );
     if (isNewVersion) {

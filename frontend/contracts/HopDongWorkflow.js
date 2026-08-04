@@ -8,6 +8,7 @@ import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+import { getVersionLabel } from "../shared/formatters.js";
 import { ensureCurrentUserAssignee } from "../packages/packageAssignmentPolicy.js";
 import {
   applyAssignmentDelta,
@@ -624,7 +625,7 @@ export async function handleHopDongSubmit(e) {
     const nextVerStr = String(maxVerNum + 1).padStart(2, "0");
     const isNewVersion = await this.view.customConfirm(
       "Lưu Hợp đồng",
-      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentHd.phienBan || 0)})`,
+      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${getVersionLabel(maxVerNum + 1)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${getVersionLabel(currentHd.phienBan)})`,
       "save"
     );
     if (isNewVersion) {

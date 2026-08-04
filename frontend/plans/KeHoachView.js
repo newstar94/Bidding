@@ -8,6 +8,7 @@ import { renderEntityActions, standardEditDeleteActions } from "../shared/Entity
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+import { getVersionLabel } from "../shared/formatters.js";
 export async function renderKeHoachTable() {
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
@@ -70,7 +71,7 @@ export async function renderKeHoachTable() {
       const displayedKh = this.model.state.kehoach.find((k) => k.id === selectedId) || kh;
       const cdt = this.model.state.chudautu.find((c) => c.id === displayedKh.chuDauTuId);
       const optionsHtml = allVersions.map((v) => {
-        const label = v.phienBan || "00";
+        const label = getVersionLabel(v.phienBan);
         const isSel = v.id === displayedKh.id ? "selected" : "";
         return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
       }).join("");
@@ -362,7 +363,7 @@ export async function renderPlanVersionDetails(versionId) {
                         <span class="detail-code bf-s-4ec19854c0">${this.model.getPlanBaseCode(kh.maKeHoach) ? escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span>
                         <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         <select id="fullpage-kh-version-select" class="page-version-select" ${allVersions.length < 2 ? "disabled" : ""}>
-                            ${allVersions.map((k) => `<option value="${safeAttr(k.id)}" ${k.id === versionId ? "selected" : ""}>${escapeHtml(k.phienBan || "00")}</option>`).join("")}
+                            ${allVersions.map((k) => `<option value="${safeAttr(k.id)}" ${k.id === versionId ? "selected" : ""}>${escapeHtml(getVersionLabel(k.phienBan))}</option>`).join("")}
                         </select>
                     </div>
                 </div>

@@ -12,6 +12,7 @@ import { renderCustomStatusBadge } from "../shared/statusBadges.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { assigneeLabelsForTarget } from "../shared/MultiAssigneeSelect.js";
 import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
+import { getVersionLabel } from "../shared/formatters.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
@@ -295,8 +296,8 @@ export function renderContractVersionDetails(versionId) {
             <div class="detail-sub-section bf-s-a005516828">
                 <h5 class="detail-sub-title">Thông tin đối tác tại thời điểm thanh lý</h5>
                 <div class="associated-item">
-                    <div><strong>Chủ đầu tư:</strong> ${escapeHtml(liquidationCdt?.tenChuDauTu || "--")} (phiên bản ${escapeHtml(liquidationCdt?.phienBan || "--")})</div>
-                    <div><strong>Nhà thầu:</strong> ${escapeHtml(liquidationNt?.tenNhaThau || "--")} (phiên bản ${escapeHtml(liquidationNt?.phienBan || "--")})</div>
+                    <div><strong>Chủ đầu tư:</strong> ${escapeHtml(liquidationCdt?.tenChuDauTu || "--")} (phiên bản ${escapeHtml(liquidationCdt ? getVersionLabel(liquidationCdt.phienBan) : "--")})</div>
+                    <div><strong>Nhà thầu:</strong> ${escapeHtml(liquidationNt?.tenNhaThau || "--")} (phiên bản ${escapeHtml(liquidationNt ? getVersionLabel(liquidationNt.phienBan) : "--")})</div>
                 </div>
             </div>` : ""}
 
