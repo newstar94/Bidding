@@ -34,6 +34,17 @@ function activeWorkspaceName(controller) {
   return user.organizations?.find((item) => String(item?.id) === id)?.name || document.getElementById("header-active-org-name")?.textContent || id || "Workspace hiện tại";
 }
 
+function formatConversationTime(value) {
+  const parsed = new Date(value || "");
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(parsed);
+}
+
 export function mountAssistant(controller, config) {
   const assistant = new AssistantController(controller, config);
   assistant.mount();
@@ -54,6 +65,14 @@ class AssistantController {
     this.trigger = null;
     this.panel = null;
     this.status = null;
+    this.conversations = [];
+    this.historyRequestId = 0;
+    this.conversationRequestId = 0;
+    this.historyReady = Promise.resolve();
+    this.historyInitialized = false;
+    this.historyButton = null;
+    this.historyPanel = null;
+    this.historyList = null;
   }
 
   mount() {
@@ -94,6 +113,11 @@ class AssistantController {
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !this.panel.hidden) this.close();
     });
+    document.addEventListener("click", (event) => {
+      if (this.historyPanel?.hidden !== false) return;
+      if (this.historyPanel.contains(event.target) || this.historyButton?.contains(event.target)) return;
+      this.setHistoryOpen(false);
+    });
     window.addEventListener("bf:workspace-changed", () => this.resetForWorkspace());
     window.addEventListener("popstate", () => this.loadSuggestions());
     this.loadSuggestions();
@@ -104,9 +128,19 @@ class AssistantController {
     const header = make("div", "bf-assistant-header");
     const heading = make("div", "bf-assistant-heading");
     heading.append(make("span", "bf-assistant-eyebrow", "BiddingFlow AI"), make("h2", "bf-assistant-title", "Trợ lý đấu thầu"));
-    const close = make("button", "bf-assistant-icon-button");
-    close.type = "button"; close.setAttribute("aria-label", "Đóng trợ lý"); close.append(icon("x")); close.addEventListener("click", () => this.close());
-    header.append(heading, close);
+    const headerActions = make("div", "bf-assistant-header-actions");
+    this.historyButton = make("button", "action-btn bf-assistant-history-trigger");
+    this.historyButton.type = "button";
+    this.historyButton.title = "Lịch sử trò chuyện";
+    this.historyButton.setAttribute("aria-label", "Lịch sử trò chuyện");
+    this.historyButton.setAttribute("aria-controls", "bf-assistant-history-panel");
+    this.historyButton.setAttribute("aria-expanded", "false");
+    this.historyButton.append(icon("history"));
+    this.historyButton.addEventListener("click", () => this.setHistoryOpen(this.historyPanel?.hidden !== false));
+    const close = make("button", "modal-close bf-assistant-close", "×");
+    close.type = "button"; close.setAttribute("aria-label", "Đóng trợ lý"); close.addEventListener("click", () => this.close());
+    headerActions.append(this.historyButton, close);
+    header.append(heading, headerActions);
 
     const context = make("div", "bf-assistant-context");
     context.append(icon("building-2"), make("span", "bf-assistant-workspace", activeWorkspaceName(this.controller)));
@@ -118,6 +152,17 @@ class AssistantController {
     modeSelect.value = this.mode;
     modeSelect.addEventListener("change", () => this.changeMode(modeSelect.value));
     context.append(modeSelect);
+
+    this.historyPanel = make("section", "bf-assistant-history-panel");
+    this.historyPanel.id = "bf-assistant-history-panel";
+    this.historyPanel.hidden = true;
+    this.historyPanel.setAttribute("role", "region");
+    this.historyPanel.setAttribute("aria-label", "Lịch sử trò chuyện");
+    const historyHeading = make("div", "bf-assistant-history-heading");
+    historyHeading.append(make("strong", "", "Lịch sử trò chuyện"), make("span", "", "Chọn để tiếp tục"));
+    this.historyList = make("div", "bf-assistant-history-list");
+    this.historyList.setAttribute("role", "list");
+    this.historyPanel.append(historyHeading, this.historyList);
 
     this.status = make("div", "bf-assistant-status", "Sẵn sàng");
     this.status.setAttribute("role", "status");
@@ -140,7 +185,7 @@ class AssistantController {
     actions.append(this.clearButton, this.stopButton, this.sendButton);
     this.composer.append(this.input, actions);
     this.composer.addEventListener("submit", (event) => { event.preventDefault(); this.send(); });
-    this.panel.append(header, context, this.status, this.messages, this.suggestions, this.composer);
+    this.panel.append(header, context, this.historyPanel, this.status, this.messages, this.suggestions, this.composer);
     initCustomSelect(modeSelect.id);
     const modeWrapper = this.panel.querySelector(`.custom-select-container[data-target="${modeSelect.id}"]`);
     modeWrapper?.classList.add("bf-assistant-mode-select");
@@ -195,9 +240,14 @@ class AssistantController {
     this.panel.hidden = false;
     this.trigger.setAttribute("aria-expanded", "true");
     this.trigger.setAttribute("aria-label", "Đóng trợ lý BiddingFlow");
+    if (!this.historyInitialized) {
+      this.historyInitialized = true;
+      this.historyReady = this.restoreLatestConversation();
+    }
     this.input.focus();
   }
   close() {
+    this.setHistoryOpen(false);
     this.panel.hidden = true;
     this.trigger.setAttribute("aria-expanded", "false");
     this.trigger.setAttribute("aria-label", "Mở trợ lý BiddingFlow");
@@ -206,6 +256,13 @@ class AssistantController {
   }
 
   trapFocus(event) {
+    if (event.key === "Escape" && this.historyPanel?.hidden === false) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.setHistoryOpen(false);
+      this.historyButton?.focus();
+      return;
+    }
     if (event.key !== "Tab") return;
     const focusable = [...this.panel.querySelectorAll("button:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex=\"-1\"])")]
       .filter((element) => !element.hidden && element.offsetParent !== null);
@@ -226,29 +283,156 @@ class AssistantController {
 
   setStatus(text) { if (this.status) this.status.textContent = text; }
 
+  setHistoryOpen(open) {
+    if (!this.historyPanel || !this.historyButton) return;
+    const next = Boolean(open);
+    if (next) this.renderConversationHistory();
+    this.historyPanel.hidden = !next;
+    this.historyButton.setAttribute("aria-expanded", String(next));
+  }
+
+  renderConversationHistory() {
+    if (!this.historyList) return;
+    this.historyList.replaceChildren();
+    const conversations = this.conversations.filter((item) => item?.id && item?.mode === this.mode);
+    if (!conversations.length) {
+      this.historyList.appendChild(make("p", "bf-assistant-history-empty", "Chưa có cuộc trò chuyện nào."));
+      return;
+    }
+    conversations.forEach((conversation) => {
+      const row = make("div", "bf-assistant-history-row");
+      row.setAttribute("role", "listitem");
+      const button = make("button", "bf-assistant-history-item");
+      button.type = "button";
+      button.dataset.conversationId = conversation.id;
+      button.setAttribute("aria-current", String(conversation.id === this.conversationId));
+      const title = make("span", "bf-assistant-history-item-title", conversation.title || "Cuộc trò chuyện chưa đặt tên");
+      const time = make("span", "bf-assistant-history-item-time", formatConversationTime(
+        conversation.updatedAt || conversation.updated_at || conversation.createdAt || conversation.created_at
+      ));
+      button.append(title, time);
+      button.addEventListener("click", () => this.selectConversation(conversation.id));
+      row.appendChild(button);
+      this.historyList.appendChild(row);
+    });
+  }
+
+  async selectConversation(conversationId) {
+    const target = this.conversations.find((item) => item?.id === conversationId && item?.mode === this.mode);
+    if (!target || this.abortController) return;
+    const requestId = ++this.conversationRequestId;
+    this.setStatus("Đang tải cuộc trò chuyện…");
+    try {
+      const detail = await assistantApi.getConversation(conversationId);
+      if (requestId !== this.conversationRequestId || target.mode !== this.mode) return;
+      if (detail?.conversation?.mode && detail.conversation.mode !== this.mode) return;
+      this.conversationId = conversationId;
+      this.renderConversationMessages(detail?.messages || []);
+      this.renderConversationHistory();
+      this.setHistoryOpen(false);
+      this.setStatus("Đã tải cuộc trò chuyện.");
+      this.input?.focus();
+    } catch (_) {
+      if (requestId === this.conversationRequestId) this.setStatus("Không thể tải cuộc trò chuyện.");
+    }
+  }
+
   async changeMode(mode) {
     if (!MODES.some(([value]) => value === mode)) return;
-    this.mode = mode; this.conversationId = ""; this.showWelcome();
-    this.addNotice(`Đã chuyển sang ${MODES.find(([value]) => value === mode)?.[1] || "chế độ mới"}. Cuộc trò chuyện được tách riêng.`);
+    this.conversationRequestId += 1;
+    this.mode = mode;
+    this.conversationId = "";
+    this.historyInitialized = true;
+    this.setHistoryOpen(false);
+    this.showWelcome();
+    this.renderConversationHistory();
+    this.setStatus(`Đang tải ${MODES.find(([value]) => value === mode)?.[1] || "chế độ mới"}…`);
+    this.historyReady = this.restoreLatestConversation();
+    await this.historyReady;
   }
 
   async newConversation() {
     this.stop();
-    const previousConversationId = this.conversationId;
+    this.historyRequestId += 1;
+    this.conversationRequestId += 1;
+    this.historyReady = Promise.resolve();
+    this.historyInitialized = true;
     this.conversationId = "";
-    if (previousConversationId) {
-      try { await assistantApi.deleteConversation(previousConversationId); } catch (_) { /* The next conversation remains isolated. */ }
-    }
+    this.renderConversationHistory();
+    this.setHistoryOpen(false);
     this.showWelcome();
+    this.setStatus("Sẵn sàng cho cuộc trò chuyện mới.");
     await this.loadSuggestions();
     this.input.focus();
   }
 
   async ensureConversation() {
+    await this.historyReady;
     if (this.conversationId) return this.conversationId;
     const result = await assistantApi.createConversation(this.mode);
     this.conversationId = result.id;
+    this.conversations = [
+      { ...result, mode: result.mode || this.mode },
+      ...this.conversations.filter((item) => item?.id !== result.id)
+    ];
+    this.renderConversationHistory();
     return this.conversationId;
+  }
+
+  rememberConversationTitle(conversationId, content) {
+    const index = this.conversations.findIndex((item) => item?.id === conversationId);
+    if (index < 0) return;
+    const current = this.conversations[index];
+    const updated = {
+      ...current,
+      title: current.title || String(content || "").slice(0, 120),
+      updatedAt: new Date().toISOString()
+    };
+    this.conversations.splice(index, 1);
+    this.conversations.unshift(updated);
+    this.renderConversationHistory();
+  }
+
+  renderConversationMessages(messages = []) {
+    this.messages.replaceChildren();
+    messages.forEach((message) => {
+      if (!message || !["user", "assistant"].includes(message.role)) return;
+      const rendered = this.addBubble(message.role, String(message.content || ""));
+      if (message.role === "assistant" && message.id) this.addFeedback(rendered.row, message.id);
+    });
+    if (!this.messages.childElementCount) this.showWelcome();
+    this.messages.scrollTop = this.messages.scrollHeight;
+  }
+
+  async restoreLatestConversation() {
+    const requestId = ++this.historyRequestId;
+    const workspaceId = this.workspaceId;
+    const mode = this.mode;
+    try {
+      const result = await assistantApi.listConversations();
+      if (requestId !== this.historyRequestId || workspaceId !== this.workspaceId || mode !== this.mode) return;
+      this.conversations = Array.isArray(result.items) ? result.items : [];
+      this.renderConversationHistory();
+      const latest = this.conversations.find((item) => item?.mode === mode && item?.id);
+      if (!latest) {
+        this.conversationId = "";
+        this.setStatus("Sẵn sàng");
+        return;
+      }
+      const conversationRequestId = ++this.conversationRequestId;
+      const detail = await assistantApi.getConversation(latest.id);
+      if (requestId !== this.historyRequestId || conversationRequestId !== this.conversationRequestId || workspaceId !== this.workspaceId || mode !== this.mode) return;
+      if (detail?.conversation?.mode && detail.conversation.mode !== mode) return;
+      this.conversationId = latest.id;
+      this.renderConversationMessages(detail?.messages || []);
+      this.renderConversationHistory();
+      this.setStatus("Đã khôi phục cuộc trò chuyện gần nhất.");
+    } catch (_) {
+      if (requestId === this.historyRequestId) {
+        this.historyInitialized = false;
+        this.setStatus("Sẵn sàng");
+      }
+    }
   }
 
   addNotice(text) { const node = make("div", "bf-assistant-notice", text); this.messages.appendChild(node); this.messages.scrollTop = this.messages.scrollHeight; }
@@ -292,19 +476,33 @@ class AssistantController {
     if (this.abortController) return;
     const content = String(question ?? this.input.value ?? "").trim();
     if (!content) { this.input.focus(); return; }
-    this.lastQuestion = content; this.input.value = "";
-    this.setStatus("Đang xử lý câu hỏi…");
-    this.addBubble("user", content);
-    const assistant = this.addBubble("assistant", ""); this.activeMessage = assistant;
-    this.abortController = new AbortController(); this.sendButton.disabled = true; this.stopButton.hidden = false;
+    const operation = new AbortController();
+    this.abortController = operation;
+    this.sendButton.disabled = true;
+    this.stopButton.hidden = false;
+    this.setStatus("Đang chuẩn bị cuộc trò chuyện…");
     try {
+      await this.historyReady;
+      if (operation.signal.aborted || this.abortController !== operation) return;
+      this.lastQuestion = content;
+      this.input.value = "";
+      this.setStatus("Đang xử lý câu hỏi…");
+      this.addBubble("user", content);
+      const assistant = this.addBubble("assistant", "");
+      this.activeMessage = assistant;
       const id = await this.ensureConversation();
-      const response = await assistantApi.sendMessage(id, content, this.abortController.signal);
-      await consumeAssistantStream(response, (event) => this.onEvent(event), this.abortController.signal);
+      this.rememberConversationTitle(id, content);
+      const response = await assistantApi.sendMessage(id, content, operation.signal);
+      await consumeAssistantStream(response, (event) => this.onEvent(event), operation.signal);
     } catch (error) {
       if (error?.name !== "AbortError") this.showFailure(error?.message || "Không thể nhận câu trả lời.");
     } finally {
-      this.abortController = null; this.sendButton.disabled = false; this.stopButton.hidden = true; this.activeMessage = null;
+      if (this.abortController === operation) {
+        this.abortController = null;
+        this.sendButton.disabled = false;
+        this.stopButton.hidden = true;
+        this.activeMessage = null;
+      }
     }
   }
 
@@ -345,9 +543,21 @@ class AssistantController {
   stop() { this.abortController?.abort(); }
 
   resetForWorkspace() {
-    this.workspaceId = getActiveOrganizationId(); this.conversationId = ""; this.stop();
+    const restoreNow = this.panel?.hidden === false;
+    this.stop();
+    this.historyRequestId += 1;
+    this.conversationRequestId += 1;
+    this.workspaceId = getActiveOrganizationId();
+    this.conversationId = "";
+    this.conversations = [];
+    this.historyReady = Promise.resolve();
+    this.historyInitialized = restoreNow;
     const workspace = this.panel?.querySelector(".bf-assistant-workspace"); if (workspace) workspace.textContent = activeWorkspaceName(this.controller);
-    this.showWelcome(); this.loadSuggestions();
+    this.setHistoryOpen(false);
+    this.renderConversationHistory();
+    this.showWelcome();
+    this.loadSuggestions();
+    if (restoreNow) this.historyReady = this.restoreLatestConversation();
   }
 
   async loadSuggestions() {

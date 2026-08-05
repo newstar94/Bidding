@@ -29,7 +29,9 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
         response.end(`<!doctype html><html><head>
           <link rel="stylesheet" href="/views/css/tokens.css">
           <link rel="stylesheet" href="/views/css/variables.css">
+          <link rel="stylesheet" href="/views/css/base.css">
           <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/views/css/ui-redesign.css">
           <link rel="stylesheet" href="/views/css/runtime-styles.css" data-runtime-styles>
         </head><body></body></html>`);
         return;
@@ -105,6 +107,14 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       assistant.onEvent({ type: 'message.completed', messageId: 'message-1' });
       return {
         triggerPresentation,
+        closePresentation: {
+          usesSharedClose: document.querySelector('.bf-assistant-close')?.classList.contains('modal-close'),
+          hasEmbeddedIcon: Boolean(document.querySelector('.bf-assistant-close')?.querySelector('svg, i')),
+          accessibleLabel: document.querySelector('.bf-assistant-close')?.getAttribute('aria-label'),
+          width: getComputedStyle(document.querySelector('.bf-assistant-close')).width,
+          height: getComputedStyle(document.querySelector('.bf-assistant-close')).height,
+          borderRadius: getComputedStyle(document.querySelector('.bf-assistant-close')).borderRadius,
+        },
         welcomePresentation: {
           display: getComputedStyle(document.querySelector('.bf-assistant-welcome')).display,
           height: Math.round(document.querySelector('.bf-assistant-welcome').getBoundingClientRect().height),
@@ -155,6 +165,14 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
     assert.deepEqual(result.selected, ["app_help"]);
     assert.deepEqual(result.ariaSelected, ["app_help"]);
     assert.equal(result.assistantMode, "app_help");
+    assert.deepEqual(result.closePresentation, {
+      usesSharedClose: true,
+      hasEmbeddedIcon: false,
+      accessibleLabel: 'Đóng trợ lý',
+      width: '38px',
+      height: '38px',
+      borderRadius: '8px',
+    });
     assert.equal(result.welcomePresentation.display, 'grid');
     assert.ok(result.welcomePresentation.height <= 84);
     assert.equal(result.welcomePresentation.markMarginBottom, '0px');
