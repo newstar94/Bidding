@@ -308,7 +308,7 @@ class BodySizeLimitMiddleware:
         async def limited_receive():
             nonlocal received_size
             message = await receive()
-            if message["type"] == "http.disconnect":
+            if message["type"] == "http.disconnect" and not response_started:
                 raise BodyLimitSignal(
                     "REQUEST_BODY_INCOMPLETE",
                     "Kết nối bị ngắt trước khi nhận đủ dữ liệu.",

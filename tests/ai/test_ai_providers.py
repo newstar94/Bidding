@@ -202,6 +202,17 @@ def test_gemini_interactions_stream_normalizes_argument_deltas():
         {"event_type": "interaction.created", "interaction": {"id": "int-1"}},
         {
             "event_type": "step.start",
+            "index": 0,
+            "step": {"type": "thought"},
+        },
+        {
+            "event_type": "step.delta",
+            "index": 0,
+            "delta": {"type": "thought_signature", "signature": "signed-context"},
+        },
+        {"event_type": "step.stop", "index": 0},
+        {
+            "event_type": "step.start",
             "index": 3,
             "step": {"type": "function_call", "id": "gem-call", "name": "get_package", "arguments": {}},
         },
@@ -223,6 +234,22 @@ def test_gemini_interactions_stream_normalizes_argument_deltas():
     final = completed(events)["response"]
     assert final["output"][0]["call_id"] == "gem-call"
     assert final["usage"] == {"input_tokens": 20, "output_tokens": 4}
+    history = final["output"][0]["provider_data"]["gemini_interaction_steps"]
+    assert history[0] == {"type": "thought", "signature": "signed-context"}
+    assert history[1] == {
+        "type": "function_call",
+        "id": "gem-call",
+        "name": "get_package",
+        "arguments": {"id": "P1"},
+    }
+    continued = interaction_steps([
+        final["output"][0],
+        {"type": "function_call_output", "call_id": "gem-call", "output": '{"ok":true}'},
+    ])
+    assert continued[0] == {"type": "thought", "signature": "signed-context"}
+    assert continued[1]["type"] == "function_call"
+    assert continued[2]["type"] == "function_result"
+    assert continued[2]["name"] == "get_package"
 
 
 def test_gemini_generate_content_preserves_thought_signature():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from typing import Any
 
@@ -288,6 +289,21 @@ def interaction_steps(input_items: list[dict]) -> list[dict]:
             step_type = "model_output" if str(item.get("role") or "assistant") == "assistant" else "user_input"
             steps.append({"type": step_type, "content": [{"type": "text", "text": text}]})
         elif item_type == "function_call":
+            provider_data = item.get("provider_data")
+            if isinstance(provider_data, dict):
+                native_history = provider_data.get("gemini_interaction_steps")
+                if isinstance(native_history, list):
+                    for native_step in native_history:
+                        if not isinstance(native_step, dict):
+                            continue
+                        copied_step = deepcopy(native_step)
+                        steps.append(copied_step)
+                        if copied_step.get("type") == "function_call":
+                            native_call_id = str(copied_step.get("id") or "")
+                            call_names[native_call_id] = str(copied_step.get("name") or "")
+                    continue
+                if provider_data.get("gemini_interaction_history_replayed"):
+                    continue
             call_id = str(item.get("call_id") or item.get("id") or "")
             name = str(item.get("name") or "")
             call_names[call_id] = name

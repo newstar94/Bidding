@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from backend.http_middleware import SecurityHeadersMiddleware
+from backend.http_middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 from backend.startup import StartupValidationError, validate_http_resource_limits
 
 
@@ -37,6 +37,37 @@ def test_http_resource_limits_reject_restart_jitter_above_request_budget():
             "UVICORN_MAX_REQUESTS": "1000",
             "UVICORN_MAX_REQUESTS_JITTER": "1001",
         })
+
+
+def test_body_limit_middleware_allows_disconnect_after_stream_response_started():
+    messages = []
+
+    async def streaming_app(_scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        assert await receive() == {"type": "http.disconnect"}
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/ai/conversations/test/messages",
+        "raw_path": b"/api/ai/conversations/test/messages",
+        "query_string": b"",
+        "headers": [],
+        "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 8000),
+    }
+
+    asyncio.run(BodySizeLimitMiddleware(streaming_app)(scope, receive, send))
+
+    assert messages == [{"type": "http.response.start", "status": 200, "headers": []}]
 
 
 def _security_headers(monkeypatch, mode, *, configured=True):

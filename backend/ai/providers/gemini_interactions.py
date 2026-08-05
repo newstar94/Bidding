@@ -97,6 +97,7 @@ def _interaction_usage(native_usage: dict) -> dict[str, int]:
 def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable[dict]:
     text_parts: list[str] = []
     calls: dict[int, dict] = {}
+    native_steps: dict[int, dict] = {}
     finished_calls: set[int] = set()
     usage: dict[str, int] = {}
     completed = False
@@ -116,6 +117,30 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
         }
         yield {"type": "response.output_item.done", "output_index": index, "item": item}
 
+    def completed_calls_with_history() -> list[dict]:
+        completed_calls = [calls[index]["item"] for index in sorted(calls)]
+        if not completed_calls:
+            return completed_calls
+        history: list[dict] = []
+        for index in sorted(native_steps):
+            step = dict(native_steps[index])
+            if step.get("type") == "function_call" and index in calls:
+                arguments = str(calls[index].get("arguments") or "{}")
+                try:
+                    step["arguments"] = json.loads(arguments)
+                except json.JSONDecodeError:
+                    step["arguments"] = {}
+            history.append(step)
+        if history:
+            completed_calls[0]["provider_data"] = {
+                "gemini_interaction_steps": history,
+            }
+            for item in completed_calls[1:]:
+                item["provider_data"] = {
+                    "gemini_interaction_history_replayed": True,
+                }
+        return completed_calls
+
     for event in raw_events:
         event_type = str(event.get("event_type") or event.get("type") or event.get("_event") or "")
         if event_type in {"error", "interaction.failed", "interaction.cancelled"} or event.get("error"):
@@ -131,6 +156,7 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
             index = int(event.get("index") or 0)
             step = event.get("step") if isinstance(event.get("step"), dict) else {}
             step_type = str(step.get("type") or "")
+            native_steps[index] = dict(step)
             if step_type == "function_call":
                 initial_arguments = step.get("arguments")
                 arguments = (
@@ -165,9 +191,18 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
             index = int(event.get("index") or 0)
             delta = event.get("delta") if isinstance(event.get("delta"), dict) else {}
             delta_type = str(delta.get("type") or "")
+            native_step = native_steps.setdefault(index, {})
+            if delta_type == "thought_signature" and delta.get("signature"):
+                native_step["signature"] = str(delta["signature"])
             if delta_type == "text" and delta.get("text"):
                 text = str(delta["text"])
                 text_parts.append(text)
+                content = native_step.setdefault("content", [])
+                if isinstance(content, list):
+                    if content and isinstance(content[-1], dict) and content[-1].get("type") == "text":
+                        content[-1]["text"] = str(content[-1].get("text") or "") + text
+                    else:
+                        content.append({"type": "text", "text": text})
                 yield {"type": "response.output_text.delta", "delta": text}
             elif delta_type == "arguments_delta" and index in calls:
                 fragment = str(delta.get("arguments") or "")
@@ -186,11 +221,11 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
             usage = _interaction_usage(native_usage)
             for index in sorted(calls):
                 yield from finish_call(index)
-            completed_calls = [calls[index]["item"] for index in sorted(calls)]
+            completed_calls = completed_calls_with_history()
             yield completed_event("".join(text_parts), completed_calls, usage)
             completed = True
     if not completed:
         for index in sorted(calls):
             yield from finish_call(index)
-        completed_calls = [calls[index]["item"] for index in sorted(calls)]
+        completed_calls = completed_calls_with_history()
         yield completed_event("".join(text_parts), completed_calls, usage)

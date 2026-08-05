@@ -60,6 +60,7 @@ class AssistantController {
     this.abortController = null;
     this.lastQuestion = "";
     this.activeMessage = null;
+    this.activeUserMessage = null;
     this.workspaceId = getActiveOrganizationId();
     this.previousFocus = null;
     this.trigger = null;
@@ -487,7 +488,7 @@ class AssistantController {
       this.lastQuestion = content;
       this.input.value = "";
       this.setStatus("Đang xử lý câu hỏi…");
-      this.addBubble("user", content);
+      this.activeUserMessage = this.addBubble("user", content);
       const assistant = this.addBubble("assistant", "");
       this.activeMessage = assistant;
       const id = await this.ensureConversation();
@@ -502,6 +503,7 @@ class AssistantController {
         this.sendButton.disabled = false;
         this.stopButton.hidden = true;
         this.activeMessage = null;
+        this.activeUserMessage = null;
       }
     }
   }
@@ -534,8 +536,10 @@ class AssistantController {
 
   showFailure(message, code = "") {
     this.setStatus("Có lỗi khi xử lý câu hỏi.");
+    const failedUserRow = this.activeUserMessage?.row || null;
+    this.activeMessage?.row?.remove();
     const failure = make("div", "bf-assistant-error"); failure.append(make("span", "", message));
-    if (this.lastQuestion) { const retry = make("button", "bf-assistant-retry", "Thử lại"); retry.type = "button"; retry.addEventListener("click", () => { failure.remove(); this.send(this.lastQuestion); }); failure.appendChild(retry); }
+    if (this.lastQuestion) { const retry = make("button", "bf-assistant-retry", "Thử lại"); retry.type = "button"; retry.addEventListener("click", () => { failure.remove(); failedUserRow?.remove(); this.send(this.lastQuestion); }); failure.appendChild(retry); }
     if (code === "AI_DISABLED") this.addNotice("Trợ lý hiện đang tắt theo cấu hình hệ thống.");
     this.messages.appendChild(failure); this.messages.scrollTop = this.messages.scrollHeight;
   }

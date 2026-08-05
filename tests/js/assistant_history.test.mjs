@@ -15,8 +15,8 @@ function contentType(pathname) {
   return "text/html; charset=utf-8";
 }
 
-async function startServer({ listDelayMs = 0 } = {}) {
-  const state = { sentPath: "", requests: [], deletedPaths: [], createdCount: 0, activeWorkspace: "org-a" };
+async function startServer({ listDelayMs = 0, failMessageAttempts = 0 } = {}) {
+  const state = { sentPath: "", requests: [], deletedPaths: [], createdCount: 0, messageAttempts: 0, activeWorkspace: "org-a" };
   const conversations = [
     { id: "aic-help", mode: "app_help", title: "Cách dùng ứng dụng", updated_at: "2026-08-05T10:00:00Z" },
     { id: "aic-data-new", mode: "data", title: "Gói cần mở hôm nay", updated_at: "2026-08-05T09:00:00Z" },
@@ -92,7 +92,12 @@ async function startServer({ listDelayMs = 0 } = {}) {
       }
       if (pathname === "/api/ai/conversations/aic-data-new/messages" && request.method === "POST") {
         state.sentPath = pathname;
+        state.messageAttempts += 1;
         response.writeHead(200, { "content-type": "text/event-stream" });
+        if (state.messageAttempts <= failMessageAttempts) {
+          response.end('data: {"type":"message.failed","code":"AI_PROVIDER_UNAVAILABLE","message":"AI provider tam thoi khong kha dung."}\n\n');
+          return;
+        }
         response.end([
           'data: {"type":"message.started","messageId":"aim-user-followup"}',
           '',
@@ -164,6 +169,48 @@ test("assistant restores the latest conversation for its mode and continues that
     assert.equal(state.sentPath, "/api/ai/conversations/aic-data-new/messages", state.requests.join("\n"));
     const continued = await page.locator(".bf-assistant-bubble").allTextContents();
     assert.ok(continued.includes("Trả lời tiếp nối"), JSON.stringify(continued));
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("assistant removes failed placeholder and retry does not duplicate the user question", async () => {
+  const { server, state, port } = await startServer({ failMessageAttempts: 1 });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${port}/`);
+    await page.evaluate(() => { document.cookie = "csrf_token=test-token; path=/"; });
+    await page.evaluate(async () => {
+      const { mountAssistant } = await import("/frontend/assistant/AssistantController.js");
+      mountAssistant({ model: { state: { activeuser: { organizations: [] } } } }, { enabled: true });
+      document.getElementById("bf-assistant-trigger").click();
+    });
+    await page.waitForFunction(() => document.querySelectorAll(".bf-assistant-message").length === 2, null, { timeout: 2000 });
+
+    await page.locator(".bf-assistant-input").fill("How many packages open today?");
+    await page.locator(".bf-assistant-send").click();
+    await page.waitForFunction(() => document.querySelectorAll(".bf-assistant-error").length === 1, null, { timeout: 2000 });
+
+    const afterFailure = await page.locator(".bf-assistant-bubble").allTextContents();
+    assert.equal(afterFailure.filter((text) => text === "How many packages open today?").length, 1);
+    assert.equal(afterFailure.filter((text) => text === "").length, 0);
+
+    await page.locator(".bf-assistant-retry").click();
+    await page.waitForFunction(() => {
+      const bubbles = [...document.querySelectorAll(".bf-assistant-bubble")];
+      return bubbles.length === 4
+        && bubbles.every((node) => node.textContent.trim())
+        && document.querySelectorAll(".bf-assistant-error").length === 0;
+    }, null, { timeout: 2000 });
+
+    const afterRetry = await page.locator(".bf-assistant-bubble").allTextContents();
+    assert.equal(state.messageAttempts, 2);
+    assert.equal(afterRetry.filter((text) => text === "How many packages open today?").length, 1);
+    assert.equal(afterRetry.filter((text) => text === "").length, 0);
+    assert.equal(await page.locator(".bf-assistant-error").count(), 0);
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
