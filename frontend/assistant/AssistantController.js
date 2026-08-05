@@ -185,7 +185,7 @@ class AssistantController {
   showWelcome() {
     this.messages.replaceChildren();
     const welcome = make("div", "bf-assistant-welcome");
-    welcome.append(make("div", "bf-assistant-welcome-mark", "✦"), make("h3", "", "Bạn muốn kiểm tra điều gì?"), make("p", "", "Mình chỉ đọc dữ liệu trong workspace hiện tại và trả lời trực tiếp từ số liệu đã được kiểm tra."));
+    welcome.append(make("div", "bf-assistant-welcome-mark", "✦"), make("h3", "", "Bạn muốn kiểm tra điều gì?"), make("p", "", "Mình chỉ đọc dữ liệu đã kiểm tra trong workspace hiện tại."));
     this.messages.appendChild(welcome);
   }
 

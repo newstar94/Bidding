@@ -105,6 +105,11 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       assistant.onEvent({ type: 'message.completed', messageId: 'message-1' });
       return {
         triggerPresentation,
+        welcomePresentation: {
+          display: getComputedStyle(document.querySelector('.bf-assistant-welcome')).display,
+          height: Math.round(document.querySelector('.bf-assistant-welcome').getBoundingClientRect().height),
+          markMarginBottom: getComputedStyle(document.querySelector('.bf-assistant-welcome-mark')).marginBottom,
+        },
         openAccessibleLabel: assistantTrigger?.getAttribute("aria-label") || "",
         opened,
         value: select?.value,
@@ -150,6 +155,9 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
     assert.deepEqual(result.selected, ["app_help"]);
     assert.deepEqual(result.ariaSelected, ["app_help"]);
     assert.equal(result.assistantMode, "app_help");
+    assert.equal(result.welcomePresentation.display, 'grid');
+    assert.ok(result.welcomePresentation.height <= 84);
+    assert.equal(result.welcomePresentation.markMarginBottom, '0px');
     assert.deepEqual(result.answerPresentation, {
       text: 'H\u00f4m nay kh\u00f4ng c\u00f3 g\u00f3i th\u1ea7u n\u00e0o c\u1ea7n m\u1edf th\u1ea7u.',
       resultCards: 0,
