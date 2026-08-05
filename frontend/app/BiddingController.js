@@ -452,6 +452,9 @@ export class BiddingController {
       }
       this.disconnectWebSocket?.(false);
       setActiveOrganizationId(organizationId);
+      window.dispatchEvent(new CustomEvent("bf:workspace-changed", {
+        detail: { organizationId, previousOrganizationId: currentOrganizationId }
+      }));
       applyAccessContext(currentUser, {
         ...currentUser,
         active_org_id: organizationId,

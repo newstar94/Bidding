@@ -590,6 +590,7 @@ from backend.lot_lifecycle_routes import (
     finalize_lot_batch_api,
     get_lot_lifecycle_api,
 )
+from backend.ai.routes import ai_routes
 
 
 _holidays_cache = None
@@ -832,6 +833,7 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 provision_system_word_templates()
 
 routes = [
+    *ai_routes,
     Route("/health/live", health_live_api, methods=["GET"]),
     Route("/health/ready", health_ready_api, methods=["GET"]),
     Route("/metrics", metrics_api, methods=["GET"]),

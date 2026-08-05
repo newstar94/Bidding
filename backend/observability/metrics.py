@@ -33,6 +33,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
 from backend.shared.client_ip import get_client_ip
+from backend.ai.metrics import render_prometheus_lines
 from backend.observability.recording import (
     DATABASE_DURATION_BUCKETS as _DATABASE_DURATION_BUCKETS,
     document_worker_acquired,
@@ -848,6 +849,7 @@ def render_prometheus(application: object | None = None) -> str:
         lines.append(_sample(timestamp_name, filesystem[timestamp_key] or 0))
         _metric_header(lines, age_name, f"Age in seconds of the latest verified {prefix.replace('_', ' ')}.", "gauge")
         lines.append(_sample(age_name, filesystem[age_key] or 0))
+    lines.extend(render_prometheus_lines())
     return "\n".join(lines) + "\n"
 
 

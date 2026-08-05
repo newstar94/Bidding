@@ -174,6 +174,101 @@ SCHEMA_DINH_NGHIA = {
             "expires_at": "INTEGER NOT NULL"
         }
     },
+    "ai_conversations": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "user_id": "TEXT NOT NULL",
+            "mode": "TEXT NOT NULL CHECK(mode IN ('data', 'procurement_advice', 'app_help'))",
+            "title": "TEXT",
+            "status": "TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'deleted'))",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "deleted_at": "TEXT"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ],
+        "unique_constraints": [
+            "CHECK((status = 'active' AND deleted_at IS NULL) OR (status = 'deleted' AND deleted_at IS NOT NULL))"
+        ]
+    },
+    "ai_messages": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "conversation_id": "TEXT NOT NULL",
+            "role": "TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system'))",
+            "content": "TEXT NOT NULL",
+            "status": "TEXT NOT NULL DEFAULT 'completed' CHECK(status IN ('pending', 'completed', 'failed'))",
+            "model": "TEXT",
+            "input_tokens": "INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0)",
+            "output_tokens": "INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0)",
+            "error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, conversation_id) REFERENCES ai_conversations(organization_id, id) ON DELETE CASCADE"
+        ]
+    },
+    "ai_tool_executions": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "conversation_id": "TEXT NOT NULL",
+            "message_id": "TEXT",
+            "user_id": "TEXT NOT NULL",
+            "tool_name": "TEXT NOT NULL",
+            "arguments_redacted": "TEXT NOT NULL DEFAULT '{}'",
+            "result_summary": "TEXT",
+            "record_count": "INTEGER NOT NULL DEFAULT 0 CHECK(record_count >= 0)",
+            "duration_ms": "INTEGER NOT NULL DEFAULT 0 CHECK(duration_ms >= 0)",
+            "status": "TEXT NOT NULL CHECK(status IN ('completed', 'denied', 'failed', 'timeout'))",
+            "error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, conversation_id) REFERENCES ai_conversations(organization_id, id) ON DELETE CASCADE",
+            "FOREIGN KEY (organization_id, message_id) REFERENCES ai_messages(organization_id, id) ON DELETE SET NULL",
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "ai_feedback": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "message_id": "TEXT NOT NULL",
+            "user_id": "TEXT NOT NULL",
+            "rating": "TEXT NOT NULL CHECK(rating IN ('up', 'down'))",
+            "category": "TEXT NOT NULL CHECK(category IN ('correct', 'incorrect_data', 'missing_source', 'permission_issue', 'not_helpful', 'too_slow', 'other'))",
+            "comment": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, message_id) REFERENCES ai_messages(organization_id, id) ON DELETE CASCADE",
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, message_id, user_id)"
+        ]
+    },
+    "ai_usage_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "user_id": "TEXT NOT NULL",
+            "request_count": "INTEGER NOT NULL DEFAULT 0 CHECK(request_count >= 0)",
+            "input_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(input_tokens >= 0)",
+            "output_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(output_tokens >= 0)",
+            "tool_call_count": "INTEGER NOT NULL DEFAULT 0 CHECK(tool_call_count >= 0)",
+            "estimated_cost": "REAL NOT NULL DEFAULT 0 CHECK(estimated_cost >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "organization_id", "user_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
     "partner_lookup_cache": {
         "columns": {
             "cache_key": "TEXT PRIMARY KEY",

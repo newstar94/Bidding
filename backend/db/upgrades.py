@@ -1366,6 +1366,142 @@ def _upgrade_to_v37_add_document_export_capabilities(cursor, _context):
         cursor.execute(statement)
 
 
+def _upgrade_to_v38_add_ai_assistant_storage(cursor, context):
+    """Add tenant-scoped, read-only AI assistant conversation storage."""
+
+    del context
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_conversations (
+               id TEXT NOT NULL,
+               organization_id TEXT NOT NULL CHECK(organization_id <> ''),
+               user_id TEXT NOT NULL,
+               mode TEXT NOT NULL CHECK(mode IN ('data', 'procurement_advice', 'app_help')),
+               title TEXT,
+               status TEXT NOT NULL DEFAULT 'active'
+                   CHECK(status IN ('active', 'deleted')),
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               deleted_at TIMESTAMPTZ,
+               PRIMARY KEY (organization_id, id),
+               CONSTRAINT ai_conversations_lifecycle_check CHECK(
+                   (status = 'active' AND deleted_at IS NULL)
+                   OR (status = 'deleted' AND deleted_at IS NOT NULL)
+               ),
+               CONSTRAINT ai_conversations_user_fk
+                   FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE
+           )"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_messages (
+               id TEXT NOT NULL,
+               organization_id TEXT NOT NULL CHECK(organization_id <> ''),
+               conversation_id TEXT NOT NULL,
+               role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+               content TEXT NOT NULL,
+               status TEXT NOT NULL DEFAULT 'completed'
+                   CHECK(status IN ('pending', 'completed', 'failed')),
+               model TEXT,
+               input_tokens BIGINT CHECK(input_tokens IS NULL OR input_tokens >= 0),
+               output_tokens BIGINT CHECK(output_tokens IS NULL OR output_tokens >= 0),
+               error_code TEXT,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (organization_id, id),
+               CONSTRAINT ai_messages_conversation_fk
+                   FOREIGN KEY (organization_id, conversation_id)
+                   REFERENCES ai_conversations(organization_id, id) ON DELETE CASCADE
+           )"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_tool_executions (
+               id TEXT NOT NULL,
+               organization_id TEXT NOT NULL CHECK(organization_id <> ''),
+               conversation_id TEXT NOT NULL,
+               message_id TEXT,
+               user_id TEXT NOT NULL,
+               tool_name TEXT NOT NULL,
+               arguments_redacted TEXT NOT NULL DEFAULT '{}',
+               result_summary TEXT,
+               record_count BIGINT NOT NULL DEFAULT 0 CHECK(record_count >= 0),
+               duration_ms BIGINT NOT NULL DEFAULT 0 CHECK(duration_ms >= 0),
+               status TEXT NOT NULL CHECK(status IN ('completed', 'denied', 'failed', 'timeout')),
+               error_code TEXT,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (organization_id, id),
+               CONSTRAINT ai_tool_execution_conversation_fk
+                   FOREIGN KEY (organization_id, conversation_id)
+                   REFERENCES ai_conversations(organization_id, id) ON DELETE CASCADE,
+               CONSTRAINT ai_tool_execution_message_fk
+                   FOREIGN KEY (organization_id, message_id)
+                   REFERENCES ai_messages(organization_id, id) ON DELETE SET NULL,
+               CONSTRAINT ai_tool_execution_user_fk
+                   FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE
+           )"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_feedback (
+               id TEXT NOT NULL,
+               organization_id TEXT NOT NULL CHECK(organization_id <> ''),
+               message_id TEXT NOT NULL,
+               user_id TEXT NOT NULL,
+               rating TEXT NOT NULL CHECK(rating IN ('up', 'down')),
+               category TEXT NOT NULL CHECK(category IN (
+                   'correct', 'incorrect_data', 'missing_source',
+                   'permission_issue', 'not_helpful', 'too_slow', 'other'
+               )),
+               comment TEXT,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (organization_id, id),
+               CONSTRAINT ai_feedback_message_fk
+                   FOREIGN KEY (organization_id, message_id)
+                   REFERENCES ai_messages(organization_id, id) ON DELETE CASCADE,
+               CONSTRAINT ai_feedback_user_fk
+                   FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE,
+               CONSTRAINT ai_feedback_unique_user_message
+                   UNIQUE (organization_id, message_id, user_id)
+           )"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_usage_daily (
+               usage_date DATE NOT NULL,
+               organization_id TEXT NOT NULL CHECK(organization_id <> ''),
+               user_id TEXT NOT NULL,
+               request_count BIGINT NOT NULL DEFAULT 0 CHECK(request_count >= 0),
+               input_tokens BIGINT NOT NULL DEFAULT 0 CHECK(input_tokens >= 0),
+               output_tokens BIGINT NOT NULL DEFAULT 0 CHECK(output_tokens >= 0),
+               tool_call_count BIGINT NOT NULL DEFAULT 0 CHECK(tool_call_count >= 0),
+               estimated_cost NUMERIC(20, 8) NOT NULL DEFAULT 0 CHECK(estimated_cost >= 0),
+               updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (usage_date, organization_id, user_id),
+               CONSTRAINT ai_usage_daily_user_fk
+                   FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE
+           )"""
+    )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_workspace_updated ON ai_conversations (user_id, organization_id, updated_at DESC) WHERE status = 'active'",
+        "CREATE INDEX IF NOT EXISTS idx_ai_conversations_workspace_created ON ai_conversations (organization_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_created ON ai_messages (organization_id, conversation_id, created_at ASC)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_conversation_created ON ai_tool_executions (organization_id, conversation_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_message ON ai_tool_executions (organization_id, message_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_user ON ai_tool_executions (user_id, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_feedback_user ON ai_feedback (user_id, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_workspace_date ON ai_usage_daily (organization_id, usage_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_user ON ai_usage_daily (user_id, organization_id, usage_date DESC)",
+    ):
+        cursor.execute(statement)
+
+
+def _upgrade_to_v39_cover_ai_foreign_keys(cursor, _context):
+    """Add child-side indexes required by the AI foreign-key audit."""
+
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_message ON ai_tool_executions (organization_id, message_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_user ON ai_tool_executions (user_id, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_feedback_user ON ai_feedback (user_id, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_user ON ai_usage_daily (user_id, organization_id, usage_date DESC)",
+    ):
+        cursor.execute(statement)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1542,6 +1678,16 @@ UPGRADES = (
         37,
         "add_document_export_capabilities",
         _upgrade_to_v37_add_document_export_capabilities,
+    ),
+    DatabaseUpgrade(
+        38,
+        "add_ai_assistant_storage",
+        _upgrade_to_v38_add_ai_assistant_storage,
+    ),
+    DatabaseUpgrade(
+        39,
+        "cover_ai_foreign_keys",
+        _upgrade_to_v39_cover_ai_foreign_keys,
     ),
 )
 

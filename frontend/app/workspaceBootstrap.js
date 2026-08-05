@@ -129,6 +129,13 @@ export async function bootstrapWorkspace(initialSession) {
   const controller = new BiddingController(model, view);
   controller._initialSessionData = initialSession;
   await controller.init();
+  import("../assistant/AssistantLoader.js").then(({ loadAssistant }) => {
+    loadAssistant(controller).catch((error) => {
+      console.warn("Assistant could not be initialized:", error);
+    });
+  }).catch((error) => {
+    console.warn("Assistant module could not be loaded:", error);
+  });
   import("./NotificationCenter.js").then(({ initializeNotificationCenter }) => {
     controller.notificationCenter = initializeNotificationCenter(controller);
   }).catch((error) => {
