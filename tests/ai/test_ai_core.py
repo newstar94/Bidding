@@ -81,6 +81,17 @@ def test_fake_provider_streams_without_network(monkeypatch):
     assert any(event["type"] == "response.function_call_arguments.done" for event in events)
 
 
+def test_fake_provider_answers_tool_result_without_filter_metadata(monkeypatch):
+    monkeypatch.setenv('AI_PROVIDER', 'fake')
+    items = [{'role': 'user', 'content': 'Hom nay co may goi can mo thau?'},
+             {'type': 'function_call', 'name': 'aggregate_packages'},
+             {'type': 'function_call_output', 'output': json.dumps({'summary': {'recordCount': 0}})}]
+    events = list(ResponsesProvider(get_ai_config()).stream_response(
+        input_items=items, instructions='', tools=[]))
+    answer = ''.join(event.get('delta', '') for event in events)
+    assert answer == 'H\u00f4m nay kh\u00f4ng c\u00f3 g\u00f3i th\u1ea7u n\u00e0o c\u1ea7n m\u1edf th\u1ea7u.'
+
+
 def test_sse_parser_handles_typed_events():
     class Response:
         def __iter__(self):

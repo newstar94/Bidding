@@ -185,7 +185,7 @@ class AssistantController {
   showWelcome() {
     this.messages.replaceChildren();
     const welcome = make("div", "bf-assistant-welcome");
-    welcome.append(make("div", "bf-assistant-welcome-mark", "✦"), make("h3", "", "Bạn muốn kiểm tra điều gì?"), make("p", "", "Mình chỉ đọc dữ liệu trong workspace hiện tại và luôn hiển thị bộ lọc, thời điểm cùng nguồn kiểm chứng."));
+    welcome.append(make("div", "bf-assistant-welcome-mark", "✦"), make("h3", "", "Bạn muốn kiểm tra điều gì?"), make("p", "", "Mình chỉ đọc dữ liệu trong workspace hiện tại và trả lời trực tiếp từ số liệu đã được kiểm tra."));
     this.messages.appendChild(welcome);
   }
 
@@ -314,7 +314,6 @@ class AssistantController {
     if (event.type === "tool.started") this.setStatus("Đang kiểm tra dữ liệu được phân quyền…");
     if (event.type === "tool.completed") {
       this.setStatus(event.status === "completed" ? "Đã kiểm tra dữ liệu và nguồn." : "Không thể hoàn tất truy vấn dữ liệu.");
-      if (event.result) this.renderToolResult(event.result);
     }
     if (event.type === "source.added") this.setStatus("Đã thêm nguồn kiểm chứng.");
     if (event.type === "message.completed" && this.activeMessage) {
@@ -328,7 +327,11 @@ class AssistantController {
     if (!messageId || row.querySelector(".bf-assistant-feedback")) return;
     const controls = make("div", "bf-assistant-feedback");
     [["up", "thumbs-up", "Hữu ích"], ["down", "thumbs-down", "Chưa đúng"]].forEach(([rating, iconName, label]) => { const button = make("button", "bf-assistant-feedback-button"); button.type = "button"; button.setAttribute("aria-label", label); button.append(icon(iconName)); button.addEventListener("click", async () => { button.disabled = true; try { await assistantApi.feedback(messageId, rating, rating === "up" ? "correct" : "not_helpful"); button.classList.add("is-selected"); } catch (_) { button.disabled = false; } }); controls.appendChild(button); });
+    controls.querySelectorAll('button').forEach((button) => {
+      button.title = button.getAttribute('aria-label') || '';
+    });
     row.appendChild(controls);
+    window.lucide?.createIcons?.({ root: controls });
   }
 
   showFailure(message, code = "") {

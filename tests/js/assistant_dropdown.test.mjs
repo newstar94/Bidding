@@ -51,6 +51,15 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${address.port}/`);
     const result = await page.evaluate(async () => {
+      window.lucide = {
+        createIcons({ root = document } = {}) {
+          root.querySelectorAll('i[data-lucide]').forEach((node) => {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('data-lucide', node.getAttribute('data-lucide'));
+            node.replaceWith(svg);
+          });
+        },
+      };
       const { mountAssistant } = await import("/frontend/assistant/AssistantController.js");
       const assistant = mountAssistant({ model: { state: { activeuser: { organizations: [] } } } }, { enabled: true });
       const assistantTrigger = document.getElementById("bf-assistant-trigger");
@@ -78,6 +87,22 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       };
       options?.querySelector('[data-value="app_help"]')?.click();
       await new Promise((resolve) => queueMicrotask(resolve));
+      assistant.activeMessage = assistant.addBubble('assistant', '');
+      assistant.onEvent({
+        type: 'message.delta',
+        delta: 'H\u00f4m nay kh\u00f4ng c\u00f3 g\u00f3i th\u1ea7u n\u00e0o c\u1ea7n m\u1edf th\u1ea7u.',
+      });
+      assistant.onEvent({
+        type: 'tool.completed',
+        status: 'completed',
+        result: {
+          summary: { recordCount: 0 },
+          filters: { dateFrom: '2026-08-05', dateTo: '2026-08-05' },
+          records: [],
+          sourceLinks: [],
+        },
+      });
+      assistant.onEvent({ type: 'message.completed', messageId: 'message-1' });
       return {
         triggerPresentation,
         openAccessibleLabel: assistantTrigger?.getAttribute("aria-label") || "",
@@ -91,6 +116,17 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
           .filter((item) => item.getAttribute("aria-selected") === "true")
           .map((item) => item.dataset.value),
         assistantMode: assistant.mode,
+        answerPresentation: {
+          text: assistant.activeMessage.bubble.textContent,
+          resultCards: document.querySelectorAll('.bf-assistant-result-card').length,
+          filterRows: document.querySelectorAll('.bf-assistant-filter-row').length,
+          feedbackButtons: assistant.activeMessage.row.querySelectorAll('.bf-assistant-feedback-button').length,
+          feedbackTitles: [...assistant.activeMessage.row.querySelectorAll('.bf-assistant-feedback-button')]
+            .map((button) => button.title),
+          feedbackIcons: assistant.activeMessage.row.querySelectorAll(
+            '.bf-assistant-feedback-button svg[data-lucide]'
+          ).length,
+        },
       };
     });
 
@@ -114,6 +150,14 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
     assert.deepEqual(result.selected, ["app_help"]);
     assert.deepEqual(result.ariaSelected, ["app_help"]);
     assert.equal(result.assistantMode, "app_help");
+    assert.deepEqual(result.answerPresentation, {
+      text: 'H\u00f4m nay kh\u00f4ng c\u00f3 g\u00f3i th\u1ea7u n\u00e0o c\u1ea7n m\u1edf th\u1ea7u.',
+      resultCards: 0,
+      filterRows: 0,
+      feedbackButtons: 2,
+      feedbackTitles: ['Hữu ích', 'Chưa đúng'],
+      feedbackIcons: 2,
+    });
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
