@@ -60,7 +60,16 @@ if os.path.exists(env_path):
                 continue
             if '=' in line:
                 k, v = line.split('=', 1)
-                os.environ.setdefault(k.strip(), v.strip().strip("'").strip('"'))
+                key = k.strip()
+                value = v.strip().strip("'").strip('"')
+                # Local feature toggles must follow the checked-in .env even
+                # when a stale parent process exported an older AI value.
+                # Secrets and all other deployment settings keep the existing
+                # process-environment precedence.
+                if key in {"AI_ENABLED", "AI_PROVIDER"} and os.environ.get("APP_ENV", "development").strip().lower() not in {"prod", "production"}:
+                    os.environ[key] = value
+                else:
+                    os.environ.setdefault(key, value)
 
 from backend.shared.paths import IMAGE_DIR, provision_system_word_templates
 from backend.security.turnstile import public_turnstile_config

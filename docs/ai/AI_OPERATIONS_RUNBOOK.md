@@ -6,11 +6,13 @@
 
 ## Cấu hình
 
-`AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `AI_MODEL`, `AI_MAX_OUTPUT_TOKENS`, `AI_REQUEST_TIMEOUT_SECONDS`, `AI_TOOL_TIMEOUT_SECONDS`, `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_CONVERSATION_RETENTION_DAYS`, `AI_PROVIDER_STORE_RESPONSES`.
+Biến chung: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `AI_API_VERSION`, `AI_PROVIDER_VERSION`, `AI_AUTH_TYPE`, `AI_MAX_OUTPUT_TOKENS`, `AI_REQUEST_TIMEOUT_SECONDS`, `AI_TOOL_TIMEOUT_SECONDS`, `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_CONVERSATION_RETENTION_DAYS`, `AI_PROVIDER_STORE_RESPONSES`.
+
+`OPENAI_API_KEY`/`OPENAI_BASE_URL` tiếp tục là fallback tương thích ngược. Anthropic, Gemini, Ollama và Azure cũng chấp nhận các tên env riêng được liệt kê trong [AI_PROVIDER_ADAPTERS.md](AI_PROVIDER_ADAPTERS.md).
 
 ## Sự cố provider
 
-Kiểm tra `AI_PROVIDER_UNAVAILABLE`, `AI_PROVIDER_TIMEOUT`, latency và quota. Tắt flag nếu provider lỗi kéo dài; không retry vô hạn ở frontend.
+Kiểm tra `AI_PROVIDER_UNAVAILABLE`, `AI_PROVIDER_TIMEOUT`, `AI_RATE_LIMITED`, latency và quota. Xác minh `AI_PROVIDER`, model, base URL, auth type và API version khớp cùng một giao thức. Tắt flag nếu provider lỗi kéo dài; không retry vô hạn ở frontend.
 
 ## Dữ liệu/audit
 

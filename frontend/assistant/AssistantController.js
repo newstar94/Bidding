@@ -1,6 +1,6 @@
-import "./assistant.css";
 import { assistantApi, consumeAssistantStream } from "./AssistantApi.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
+import { initCustomSelect } from "../shared/view_helpers.js";
 
 const MODES = [
   ["data", "Dữ liệu BiddingFlow"],
@@ -64,7 +64,20 @@ class AssistantController {
     this.trigger.setAttribute("aria-label", "Mở trợ lý BiddingFlow");
     this.trigger.setAttribute("aria-controls", "bf-assistant-panel");
     this.trigger.setAttribute("aria-expanded", "false");
-    this.trigger.append(icon("sparkles"), make("span", "bf-assistant-trigger-label", "Trợ lý"));
+    const triggerMark = make("span", "bf-assistant-trigger-mark");
+    triggerMark.setAttribute("aria-hidden", "true");
+    const robotFace = make("span", "bf-assistant-trigger-robot");
+    robotFace.append(
+      make("span", "bf-assistant-trigger-robot-eyes"),
+      make("span", "bf-assistant-trigger-robot-smile")
+    );
+    triggerMark.appendChild(robotFace);
+    const triggerCopy = make("span", "bf-assistant-trigger-copy");
+    triggerCopy.append(
+      make("strong", "bf-assistant-trigger-label", "Trợ lý AI"),
+      make("span", "bf-assistant-trigger-hint", "Hỏi về đấu thầu")
+    );
+    this.trigger.append(triggerMark, triggerCopy);
     document.body.appendChild(this.trigger);
 
     this.panel = make("aside", "bf-assistant-panel");
@@ -98,6 +111,8 @@ class AssistantController {
     const context = make("div", "bf-assistant-context");
     context.append(icon("building-2"), make("span", "bf-assistant-workspace", activeWorkspaceName(this.controller)));
     const modeSelect = make("select", "bf-assistant-mode");
+    modeSelect.id = "bf-assistant-mode-select";
+    modeSelect.dataset.dropdownInline = "true";
     modeSelect.setAttribute("aria-label", "Chế độ trợ lý");
     MODES.forEach(([value, label]) => { const option = make("option", "", label); option.value = value; modeSelect.appendChild(option); });
     modeSelect.value = this.mode;
@@ -126,7 +141,45 @@ class AssistantController {
     this.composer.append(this.input, actions);
     this.composer.addEventListener("submit", (event) => { event.preventDefault(); this.send(); });
     this.panel.append(header, context, this.status, this.messages, this.suggestions, this.composer);
+    initCustomSelect(modeSelect.id);
+    const modeWrapper = this.panel.querySelector(`.custom-select-container[data-target="${modeSelect.id}"]`);
+    modeWrapper?.classList.add("bf-assistant-mode-select");
+    this.enhanceModeSelect(modeSelect, modeWrapper);
     this.showWelcome();
+  }
+
+  enhanceModeSelect(select, wrapper) {
+    const trigger = wrapper?.querySelector(".custom-select-trigger");
+    const options = wrapper?.querySelector(".custom-select-options");
+    if (!trigger || !options) return;
+    trigger.tabIndex = 0;
+    trigger.setAttribute("role", "button");
+    trigger.setAttribute("aria-haspopup", "listbox");
+    options.id = `${select.id}-options`;
+    options.setAttribute("role", "listbox");
+    trigger.setAttribute("aria-controls", options.id);
+    const syncAccessibility = () => {
+      trigger.setAttribute("aria-expanded", String(wrapper.classList.contains("open")));
+      options.querySelectorAll(".custom-option-item").forEach((item) => {
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", String(item.dataset.value === select.value));
+      });
+    };
+    trigger.addEventListener("keydown", (event) => {
+      if (["Enter", " ", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        trigger.click();
+      } else if (event.key === "Escape" && wrapper.classList.contains("open")) {
+        event.preventDefault();
+        document.dispatchEvent(new Event("click"));
+        trigger.focus();
+      }
+    });
+    select.addEventListener("change", syncAccessibility);
+    options.addEventListener("click", () => queueMicrotask(syncAccessibility));
+    const observer = new MutationObserver(syncAccessibility);
+    observer.observe(wrapper, { attributes: true, attributeFilter: ["class"] });
+    syncAccessibility();
   }
 
   showWelcome() {
@@ -141,18 +194,20 @@ class AssistantController {
     this.previousFocus = document.activeElement;
     this.panel.hidden = false;
     this.trigger.setAttribute("aria-expanded", "true");
+    this.trigger.setAttribute("aria-label", "Đóng trợ lý BiddingFlow");
     this.input.focus();
   }
   close() {
     this.panel.hidden = true;
     this.trigger.setAttribute("aria-expanded", "false");
+    this.trigger.setAttribute("aria-label", "Mở trợ lý BiddingFlow");
     if (this.previousFocus instanceof HTMLElement && document.contains(this.previousFocus)) this.previousFocus.focus();
     else this.trigger.focus();
   }
 
   trapFocus(event) {
     if (event.key !== "Tab") return;
-    const focusable = [...this.panel.querySelectorAll("button:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]")]
+    const focusable = [...this.panel.querySelectorAll("button:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex=\"-1\"])")]
       .filter((element) => !element.hidden && element.offsetParent !== null);
     if (!focusable.length) {
       event.preventDefault();

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from backend.ai.configuration import AiConfig
+from backend.ai.configuration import AiConfig, get_ai_config
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext
 from backend.shared.helpers import database

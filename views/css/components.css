@@ -1,3 +1,5 @@
+@import "../../frontend/assistant/assistant.css";
+
 .sidebar {
   width: var(--sidebar-width);
   background-color: var(--bg-sidebar);
