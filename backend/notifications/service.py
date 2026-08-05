@@ -260,6 +260,22 @@ def queue_assignment_state_changes(
 
     organization_name = _organization_name(cursor, organization_id)
     notifications = []
+    before_lineage_memberships = {
+        (
+            item["target_type"],
+            str(item.get("target_root_id") or item["target_id"]),
+            item["user_id"],
+        )
+        for item in before.values()
+    }
+    after_lineage_memberships = {
+        (
+            item["target_type"],
+            str(item.get("target_root_id") or item["target_id"]),
+            item["user_id"],
+        )
+        for item in after.values()
+    }
     for key in sorted(set(before) | set(after)):
         old = before.get(key)
         new = after.get(key)
@@ -267,7 +283,17 @@ def queue_assignment_state_changes(
         new_user = new and new["user_id"]
         if old_user == new_user:
             continue
-        if old_user:
+        old_lineage_membership = old and (
+            old["target_type"],
+            str(old.get("target_root_id") or old["target_id"]),
+            old_user,
+        )
+        new_lineage_membership = new and (
+            new["target_type"],
+            str(new.get("target_root_id") or new["target_id"]),
+            new_user,
+        )
+        if old_user and old_lineage_membership not in after_lineage_memberships:
             item = old
             noun, display_type, identity = _target_copy(item)
             notifications.append({
@@ -284,7 +310,7 @@ def queue_assignment_state_changes(
                 "target_type": item["target_type"],
                 "target_id": item["target_id"],
             })
-        if new_user:
+        if new_user and new_lineage_membership not in before_lineage_memberships:
             item = new
             noun, display_type, identity = _target_copy(item)
             route_prefix = "/goi-thau-chi-tiet/" if item["target_type"] == "goithau" else "/hop-dong-chi-tiet/"

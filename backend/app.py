@@ -105,6 +105,21 @@ def _is_public_https_origin(origin):
     )
 
 
+def _public_google_client_id():
+    """Expose Google Identity only where it is intentionally enabled.
+
+    Development defaults to local credentials and origins that are not accepted
+    by a production OAuth client.  Avoid loading the third-party widget there
+    unless a developer explicitly opts in with a matching OAuth client.
+    """
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    mode = os.environ.get("GOOGLE_AUTH_ENABLED", "auto").strip().casefold()
+    if mode not in {"auto", "true", "false"}:
+        mode = "auto"
+    enabled = mode == "true" or (mode == "auto" and IS_PRODUCTION)
+    return client_id if enabled else ""
+
+
 ALLOWED_WS_ORIGINS = get_allowed_websocket_origins()
 
 
@@ -240,7 +255,7 @@ def _build_index_response_payload():
     """Compile the index and its ETag once for a production process."""
     global _index_response_cache
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
-    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    google_client_id = _public_google_client_id()
     html_content = html_content.replace("__GOOGLE_CLIENT_ID__", google_client_id)
     turnstile = public_turnstile_config()
     html_content = html_content.replace(
@@ -683,17 +698,21 @@ class SafeStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
+def _is_production_view_asset_allowed(path):
+    normalized = str(path or "").replace("\\", "/").lstrip("/")
+    return (
+        normalized == "service-worker.js"
+        or normalized == "assets/auth-procurement-visual-v2.webp"
+        or (normalized.startswith("css/") and normalized.endswith(".css"))
+        or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
+        or (normalized.startswith("tabs/") and normalized.endswith(".html"))
+        or (normalized.startswith("modals/") and normalized.endswith(".html"))
+    )
+
+
 class ProductionViewStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
-        normalized = path.replace("\\", "/").lstrip("/")
-        allowed = (
-            normalized == "service-worker.js"
-            or (normalized.startswith("css/") and normalized.endswith(".css"))
-            or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
-            or (normalized.startswith("tabs/") and normalized.endswith(".html"))
-            or (normalized.startswith("modals/") and normalized.endswith(".html"))
-        )
-        if not allowed:
+        if not _is_production_view_asset_allowed(path):
             return Response("Access Denied", status_code=403)
         return await super().get_response(path, scope)
 

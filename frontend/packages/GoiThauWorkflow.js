@@ -8,9 +8,8 @@ import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } fro
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import {
   createInitialVersion,
-  createNextVersion,
   ensureVersionEhsmtAdjustment,
-  preparePackageSnapshot,
+  getNextVersion,
   rememberSelectedVersion
 } from "../shared/VersionedEntityService.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -27,6 +26,7 @@ import {
 } from "../shared/MultiAssigneeSelect.js";
 import { derivePackagePrice } from "./packagePricing.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
+import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 // eslint-disable-next-line complexity -- Legacy package form orchestration is isolated for a dedicated refactor.
@@ -941,20 +941,25 @@ export async function handleGoiThauSubmit(e) {
       const newGtId = generateRecordId("goithau");
       finalGtId = newGtId;
       const timestamp = this.model.getCurrentDateTimeString();
-      const newPackageVersion = createNextVersion(this.model.state.goithau, oldGt, preparePackageSnapshot(oldGt, {
-        maGoiThau: inputCode,
-        ...gtData
-      }), { id: newGtId, timestamp });
+      const newPackageSnapshot = snapshotPackageAggregate(this.model.state, oldGt, {
+        targetPackageId: newGtId,
+        targetPlanId: gtData.keHoachId,
+        packageVersion: getNextVersion(this.model.state.goithau, oldGt),
+        timestamp,
+        overrides: { maGoiThau: inputCode, ...gtData },
+      });
+      const newPackageVersion = newPackageSnapshot.packageRecord;
+      const packageRootId = String(oldGt.rootId || oldGt.id);
+      this.model.state.goithau.forEach((candidate) => {
+        if (String(candidate.rootId || candidate.id) === packageRootId) candidate.isLatest = 0;
+      });
       ensureVersionEhsmtAdjustment(newPackageVersion);
-      assignNewPackageLotIds(newPackageVersion);
-      this.model.state.goithauhanghoa.push(...clonePackageGoodsForSnapshot(
-        this.model.state.goithauhanghoa,
-        oldGt,
-        newPackageVersion,
-      ));
-      newPackageVersion.createdAt = oldGt.createdAt || timestamp;
       clearCompetitiveQuotationAppraisal(newPackageVersion);
       this.model.state.goithau.push(newPackageVersion);
+      ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments"].forEach((key) => {
+        this.model.state[key] ||= [];
+        this.model.state[key].push(...newPackageSnapshot[key]);
+      });
       rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
       await applyAssignmentDelta(this.model, {
         targetId: newGtId,
@@ -1025,13 +1030,31 @@ export async function handleGoiThauSubmit(e) {
     "goithauhanghoa",
     this.model.state.goithauhanghoa.filter((item) => String(item.goiThauId) === String(finalGtId)),
   );
+  stageLocalRecords(
+    this.model,
+    "thongtinmothau",
+    this.model.state.thongtinmothau.filter((item) => String(item.goiThauId) === String(finalGtId)),
+  );
+  stageLocalRecords(
+    this.model,
+    "hanghoaduthaunhathau",
+    this.model.state.hanghoaduthaunhathau.filter((item) => String(item.goiThauId) === String(finalGtId)),
+  );
   const affectedPlanIds = new Set([oldPlanId, gtData.keHoachId].filter(Boolean).map(String));
   stageLocalRecords(
     this.model,
     "kehoach",
     this.model.state.kehoach.filter((item) => affectedPlanIds.has(String(item.id))),
   );
-  const syncResult = await persistAndSync(this, ["goithau", "goithauhanghoa", "kehoach", "hopdong", "thongtinmothau"], {
+  const syncResult = await persistAndSync(this, [
+    "goithau",
+    "goithauhanghoa",
+    "hanghoaduthaunhathau",
+    "kehoach",
+    "hopdong",
+    "thongtinmothau",
+    "assignments",
+  ], {
     afterPersist: () => {
       this.view.renderGoiThauTable();
       this.view.renderKeHoachTable();

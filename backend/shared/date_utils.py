@@ -28,6 +28,14 @@ def parse_datetime_value(value):
     text = str(value).strip()
     if not text:
         return None
+    iso_text = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        parsed = datetime.fromisoformat(iso_text)
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(VIETNAM_TIMEZONE).replace(tzinfo=None)
+        return parsed
+    except ValueError:
+        pass
     text = text.replace("T", " ")
     formats = (
         "%Y-%m-%d %H:%M:%S",

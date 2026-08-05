@@ -13,6 +13,8 @@ import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { assigneeLabelsForTarget } from "../shared/MultiAssigneeSelect.js";
 import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 import { getVersionLabel } from "../shared/formatters.js";
+import { getAppController } from "../app/controllerRef.js";
+import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
@@ -156,9 +158,10 @@ export function showHopDongDetails(id, isSwitchingVersion = false) {
   if (!hd) return;
   this.renderContractVersionDetails(id);
 }
-export function renderContractVersionDetails(versionId) {
+export async function renderContractVersionDetails(versionId) {
   const hd = this.model.state.hopdong.find((h) => h.id === versionId);
   if (!hd) return;
+  await hydrateVersionFamily(getAppController(), "hopdong", hd);
   const editBtn = document.getElementById("btn-edit-hopdong-fullpage");
   if (editBtn) {
     const latestContract = this.model.getLatestContract(versionId);
@@ -176,10 +179,10 @@ export function renderContractVersionDetails(versionId) {
   const nt = this.model.state.nhathau.find((n) => n.id === hd.nhaThauId);
   const liquidationCdt = this.model.state.chudautu.find((c) => c.id === hd.chuDauTuThanhLyId);
   const liquidationNt = this.model.state.nhathau.find((n) => n.id === hd.nhaThauThanhLyId);
-  const kh = this.model.getLatestPlan(hd.keHoachId);
-  const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : this.model.state.goithau || [];
+  const kh = this.model.state.kehoach.find((plan) => String(plan.id) === String(hd.keHoachId));
+  const goithauList = this.model.state.goithau || [];
   const linkedPkgs = (hd.goiThauIds || []).map((gtId) => {
-    return goithauList.find((g) => g.id === gtId);
+    return goithauList.find((g) => String(g.id) === String(gtId));
   }).filter(Boolean);
   const contractStatusBadge = renderCustomStatusBadge(
     hd.trangThaiHopDong || "Đang thực hiện",

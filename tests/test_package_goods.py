@@ -64,7 +64,7 @@ def test_package_goods_duplicate_scope_is_case_insensitive_and_batched():
     assert all(error["code"] == "DUPLICATE_GOODS_CODE" for error in errors)
 
 
-def _access_context(*, status="PREPARING", assigned=True):
+def _access_context(*, status="PREPARING", assigned=True, snapshot=False):
     return BatchWriteAuthorizationContext(
         role_str=SimpleNamespace(active_role="employee"),
         user_id="employee-1",
@@ -78,6 +78,7 @@ def _access_context(*, status="PREPARING", assigned=True):
         assigned_targets={("goithau", "package-1")} if assigned else set(),
         goods_parent_by_id={"goods-1": "package-1"},
         package_status_by_id={"package-1": status},
+        snapshot_package_ids={"package-1"} if snapshot else set(),
     )
 
 
@@ -94,6 +95,25 @@ def test_package_goods_write_inherits_package_assignment_and_status_lock():
     )
     assert not locked.allowed
     assert "Chuẩn bị" in locked.message
+
+
+def test_awarded_snapshot_allows_only_new_cloned_package_goods():
+    context = _access_context(status="AWARDED", snapshot=True)
+    new_child = authorize_record_write_from_context(
+        context,
+        "goithauhanghoa",
+        "goi_thau_hang_hoa",
+        {"id": "goods-v2", "goiThauId": "package-1"},
+    )
+    stored_child = authorize_record_write_from_context(
+        context,
+        "goithauhanghoa",
+        "goi_thau_hang_hoa",
+        {"id": "goods-1", "goiThauId": "package-1"},
+    )
+
+    assert new_child.allowed
+    assert not stored_child.allowed
 
 
 def test_new_snapshot_goods_can_reference_a_new_lot_from_the_same_package_payload():

@@ -13,7 +13,7 @@ from backend.shared.subscription_policy import (
     get_account_subscriptions_by_user_ids,
 )
 from backend.sync import delete_policy, ownership, uniqueness
-from backend.sync.mapper import map_db_to_json
+from backend.sync.mapper import _save_ehsmt_adjustments, map_db_to_json
 
 
 def _test_database_url():
@@ -131,6 +131,63 @@ def postgres_owner_records(postgres_cursor):
         "plan_ids": plan_ids,
         "package_ids": package_ids,
     }
+
+
+def test_ehsmt_adjustment_upsert_allows_same_tenant_assignment(
+    postgres_cursor,
+    postgres_owner_records,
+):
+    organization_id = postgres_owner_records["organization_id"]
+    package_id = postgres_owner_records["package_ids"][0]
+    adjustment_id = f"{package_id}-adjustment"
+
+    _save_ehsmt_adjustments(
+        postgres_cursor,
+        package_id,
+        {
+            "ehsmtAdjustments": [{
+                "id": adjustment_id,
+                "sequence": 1,
+                "reason": "PostgreSQL conflict-target regression",
+            }],
+        },
+        organization_id,
+        "organization",
+        1,
+        "2026-08-05T00:00:00+00:00",
+    )
+    _save_ehsmt_adjustments(
+        postgres_cursor,
+        package_id,
+        {
+            "ehsmtAdjustments": [{
+                "id": adjustment_id,
+                "sequence": 1,
+                "reason": "PostgreSQL conflict-target regression updated",
+            }],
+        },
+        organization_id,
+        "organization",
+        2,
+        "2026-08-05T00:01:00+00:00",
+    )
+
+    employee_id = postgres_cursor.execute(
+        "SELECT id FROM tai_khoan ORDER BY id LIMIT 1"
+    ).fetchone()[0]
+    postgres_cursor.execute(
+        """INSERT INTO phan_cong_nhan_su (
+               id, organization_id, owner_type, id_nhan_vien,
+               id_muc_tieu, loai_doi_tuong
+           ) VALUES (?, ?, 'organization', ?, ?, 'goithau')""",
+        (f"{package_id}-assignment", organization_id, employee_id, package_id),
+    )
+
+    assert postgres_cursor.execute(
+        """SELECT reason FROM goi_thau_dieu_chinh_hsmt
+           WHERE organization_id = ? AND id = ?""",
+        (organization_id, adjustment_id),
+    ).fetchone()[0] == "PostgreSQL conflict-target regression updated"
 
 
 def test_account_subscription_batch_matches_scalar_postgres(postgres_cursor):

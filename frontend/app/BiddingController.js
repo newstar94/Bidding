@@ -23,6 +23,7 @@ import {
 } from "./workspaceState.js";
 import { apiFetch, configureApiClient } from "../shared/apiClient.js";
 import { showLotWinnersModal as renderLotWinnersModal } from "../packages/lotWinnersModal.js";
+import { selectExpertVersion } from "../experts/ExpertVersionSelection.js";
 import {
   WorkflowModuleLoader,
   workflowRequirementForMethod,
@@ -884,13 +885,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.model.state.selectedNhaThauVersion[root] = selectedId;
       this.view.renderNhaThauTable();
     };
-    const changeChuyenGiaRowVersion = (root, selectedId) => {
-      if (!this.model.state.selectedChuyenGiaVersion) {
-        this.model.state.selectedChuyenGiaVersion = {};
-      }
-      this.model.state.selectedChuyenGiaVersion[root] = selectedId;
-      this.view.renderChuyenGiaTable();
-    };
+    const changeChuyenGiaRowVersion = (root, selectedId) => (
+      selectExpertVersion(this, root, selectedId)
+    );
     const changeHopDongRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedHopDongVersion) {
         this.model.state.selectedHopDongVersion = {};

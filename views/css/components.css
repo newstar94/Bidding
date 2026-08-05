@@ -1645,6 +1645,22 @@ textarea[disabled] {
   font-size: 0.75rem !important;
   text-align: center !important;
 }
+.custom-select-options.version-select-options {
+  width: auto;
+  min-width: 52px;
+  border-radius: 4px;
+}
+.custom-select-options.version-select-options li {
+  padding: 6px 0;
+  font-size: 0.75rem;
+  text-align: center;
+}
+.custom-select-container.version-select-container.disabled {
+  opacity: 1;
+}
+.custom-select-container.version-select-container.disabled .custom-select-trigger {
+  color: var(--text-main);
+}
 .custom-select-container.disabled {
   opacity: 0.6;
   cursor: not-allowed;

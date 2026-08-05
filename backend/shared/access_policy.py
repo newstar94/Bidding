@@ -77,6 +77,7 @@ class BatchWriteAuthorizationContext:
     goods_parent_by_id: dict[str, str] = field(default_factory=dict)
     bidder_goods_parent_by_id: dict[str, str] = field(default_factory=dict)
     package_status_by_id: dict[str, str] = field(default_factory=dict)
+    snapshot_package_ids: set[str] = field(default_factory=set)
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -571,6 +572,7 @@ def build_batch_write_authorization_context(
 
     assignment_target_ids_by_table = {}
     assignment_targets = set()
+    incoming_self_assignment_targets = set()
     for item in records_by_table.get("phan_cong_nhan_su", ()):
         target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))
         target_type = str(item.get("type") or item.get("loai_doi_tuong") or "").strip()
@@ -582,6 +584,9 @@ def build_batch_write_authorization_context(
         if target_id and target_table:
             assignment_target_ids_by_table.setdefault(target_table, set()).add(target_id)
             assignment_targets.add((target_type, target_id))
+            employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
+            if employee_id == clean_id(user_id):
+                incoming_self_assignment_targets.add((target_type, target_id))
     for table_name, target_ids in assignment_target_ids_by_table.items():
         for chunk in _chunked(sorted(target_ids)):
             placeholders = ", ".join("?" for _ in chunk)
@@ -594,6 +599,11 @@ def build_batch_write_authorization_context(
                 (ASSIGNED_TABLE_TYPES[table_name], str(_row_value(row, "id", 0)))
                 for row in rows
             )
+    context.assigned_targets.update(
+        target
+        for target in incoming_self_assignment_targets
+        if target not in context.existing_assignment_targets
+    )
 
     opening_parent_ids = set()
     opening_record_ids = []
@@ -758,6 +768,13 @@ def build_batch_write_authorization_context(
                     (table_name, str(_row_value(row, "record_id", 0)))
                     for row in rows
                 )
+    for package in records_by_table.get("goi_thau", ()):
+        package_id = clean_id(package.get("id"))
+        requested_root = clean_id(package.get("rootId") or package.get("id_goc"))
+        if not package_id or not requested_root or package_id == requested_root:
+            continue
+        if context.lineage_root_by_item.get(("goi_thau", requested_root)):
+            context.snapshot_package_ids.add(package_id)
     return context
 
 
@@ -841,12 +858,30 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     goods_parent_id = None
     if table_name == "goi_thau_hang_hoa":
         goods_parent_id = child_parent_id
-        if context.package_status_by_id.get(goods_parent_id) not in {"PREPARING", "Chuẩn bị"}:
+        record_id = clean_id(item.get("id"))
+        creates_snapshot_child = bool(
+            record_id
+            and goods_parent_id in context.snapshot_package_ids
+            and record_id not in context.goods_parent_by_id
+        )
+        if (
+            not creates_snapshot_child
+            and context.package_status_by_id.get(goods_parent_id)
+            not in {"PREPARING", "Chuẩn bị"}
+        ):
             return AccessDecision(False, "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái Chuẩn bị.")
     bidder_goods_parent_id = None
     if table_name == "hang_hoa_du_thau_nha_thau":
         bidder_goods_parent_id = child_parent_id
+        record_id = clean_id(item.get("id"))
+        creates_snapshot_child = bool(
+            record_id
+            and bidder_goods_parent_id in context.snapshot_package_ids
+            and record_id not in context.bidder_goods_parent_by_id
+        )
         if (
+            not creates_snapshot_child
+            and
             context.package_status_by_id.get(bidder_goods_parent_id)
             not in BIDDER_GOODS_EDITABLE_PACKAGE_STATUSES
         ):

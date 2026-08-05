@@ -23,6 +23,7 @@ import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
 import { renderPackageGoodsPanel } from "./PackageGoodsWorkflow.js";
 import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 import { restoreDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
+import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 export { checkBidQualified };
 
 export function resetDetailedEvaluationNavigationForPackageChange(
@@ -74,6 +75,12 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
     return;
   }
   restoreDetailedEvaluationNavigation(appController, id);
+  const requestedPackage = (this.model?.state?.goithau || []).find(
+    (pkg) => String(pkg?.id || "") === String(id || ""),
+  );
+  if (requestedPackage) {
+    await hydrateVersionFamily(appController, "goithau", requestedPackage);
+  }
   const detail = buildPackageDetailViewModel({
     model: this.model,
     packageId: id,

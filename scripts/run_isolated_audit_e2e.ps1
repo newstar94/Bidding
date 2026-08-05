@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("ui", "domain", "lifecycle", "bidder-goods", "all")]
+    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "ui", "domain", "lifecycle", "bidder-goods", "all")]
     [string]$Suite = "all",
     [int]$Port = 8010
 )
@@ -18,16 +18,20 @@ $env:DATABASE_URL = $testUrl
 $env:MIGRATOR_DATABASE_URL = $testUrl
 $env:TEST_DATABASE_URL = $testUrl
 $env:APP_ENV = "development"
+$env:APP_DEBUG = if ($Suite -eq "performance") { "false" } else { "true" }
 $env:DATABASE_AUTO_MIGRATE = "false"
 $env:APP_PUBLIC_URL = $baseUrl
 $env:APP_SECURE_COOKIES = "false"
+$env:ALLOWED_WS_ORIGINS = $baseUrl
 $env:E2E_BASE_URL = $baseUrl
+$env:TURNSTILE_ENABLED = "false"
+$env:GOOGLE_AUTH_ENABLED = "false"
 
 $uiCommands = @(
+    "test:e2e:smoke",
     "test:auth-shell",
     "test:ui-quality-e2e",
-    "test:authenticated-ui-matrix",
-    "test:performance"
+    "test:authenticated-ui-matrix"
 )
 $domainCommands = @(
     "test:auth-roles-e2e",
@@ -39,7 +43,15 @@ $domainCommands = @(
     "test:package-pairwise-e2e",
     "test:lifecycle"
 )
-$commands = if ($Suite -eq "ui") {
+$commands = if ($Suite -eq "smoke") {
+    @("test:e2e:smoke")
+} elseif ($Suite -eq "ui-quality") {
+    @("test:ui-quality-e2e")
+} elseif ($Suite -eq "performance") {
+    @("test:performance")
+} elseif ($Suite -eq "auth-roles") {
+    @("test:auth-roles-e2e")
+} elseif ($Suite -eq "ui") {
     $uiCommands
 } elseif ($Suite -eq "domain") {
     $domainCommands

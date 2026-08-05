@@ -8,6 +8,8 @@ import sys
 
 import psycopg
 
+from backend.shared.text_utils import normalize_lot_code
+
 
 def _database_url() -> str:
     value = str(os.environ.get("DATABASE_URL") or "").strip()
@@ -142,13 +144,15 @@ def _setup(data: dict) -> dict:
                     cursor.execute(
                         """INSERT INTO goi_thau_phan_lo (
                                id, organization_id, owner_type, goi_thau_id,
-                               ma_phan_lo, ten_phan_lo, gia_tri_phan_lo, sort_order
-                           ) VALUES (%s, %s, 'organization', %s, %s, %s, %s, %s)""",
+                               ma_phan_lo, ma_phan_lo_normalized, ten_phan_lo,
+                               gia_tri_phan_lo, sort_order
+                           ) VALUES (%s, %s, 'organization', %s, %s, %s, %s, %s, %s)""",
                         (
                             lot["id"],
                             organization_id,
                             package_id,
                             lot["code"],
+                            normalize_lot_code(lot["code"]),
                             lot["name"],
                             int(lot["price"]),
                             int(lot["order"]),
@@ -177,11 +181,12 @@ def _setup(data: dict) -> dict:
                     cursor.execute(
                         """INSERT INTO thong_tin_mo_thau (
                                id, organization_id, owner_type, goi_thau_id,
-                               nha_thau_id, ma_phan_lo, ten_phan_lo, ma_dinh_danh,
+                               nha_thau_id, ma_phan_lo, ma_phan_lo_normalized,
+                               ten_phan_lo, ma_dinh_danh,
                                gia_du_thau, gia_sau_giam_gia, hieu_luc_hsdt,
                                thoi_gian_thuc_hien, ten_nha_thau, loai_nha_thau
                            ) VALUES (
-                               %s, %s, 'organization', %s, %s, %s, %s, %s,
+                               %s, %s, 'organization', %s, %s, %s, %s, %s, %s,
                                %s, %s, 90, '30 ngày', %s, 'Độc lập'
                            )""",
                         (
@@ -190,6 +195,7 @@ def _setup(data: dict) -> dict:
                             package_id,
                             bidder_id,
                             opening.get("lotCode") or "",
+                            normalize_lot_code(opening.get("lotCode")),
                             opening.get("lotName") or "",
                             f"{run_id}-MST",
                             int(opening["bidPrice"]),

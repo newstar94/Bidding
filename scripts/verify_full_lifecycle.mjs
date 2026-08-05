@@ -10,6 +10,7 @@ if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configure
 const runId = `E2E-${Date.now()}`;
 const runDigits = String(Date.now()).slice(-9);
 const result = { runId, steps: [] };
+process.stdout.write(`[E2E] run ${runId}\n`);
 const excelFixtures = {
   noLot: process.env.E2E_PACKAGE_GOODS_NO_LOT
     || "C:\\Users\\newst\\OneDrive - 79401\\Không phân lô.xlsx",
@@ -148,6 +149,7 @@ try {
   await page.locator("#kh-ngaytrinhkehoach").fill("01/07/2026");
   await page.locator("#kh-quyetdinh").fill(`${runId}/QD-KH`);
   await page.locator("#kh-ngaypheduyet").fill("02/07/2026");
+  await page.locator("#kh-thoigiandang").fill("03/07/2026 08:00");
   await page.locator("#kh-tongmuc").fill("5000000000");
   await page.locator("#form-kehoach button[type='submit']").click();
   await page.locator("#modal-plan-breakdown.active").waitFor({ state: "visible", timeout: 10_000 });
@@ -313,7 +315,8 @@ try {
   await waitForApp(page);
   await page.locator('button[data-workflow-tab="result"]').click();
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 15_000 });
-  const persistedContractor = page.getByText(`Nhà thầu ${runId}`, { exact: true }).filter({ visible: true });
+  const persistedContractor = page.locator(".award-result-card")
+    .getByText(`Nhà thầu ${runId}`, { exact: true });
   if (await persistedContractor.count() !== 1) {
     throw new Error("Award persistence rendered an ambiguous or missing visible contractor result.");
   }
@@ -759,6 +762,161 @@ try {
   if (!finalLotStatus.includes("Đã có kết quả")) throw new Error(`Unexpected final lot status: ${finalLotStatus}`);
   if (await page.locator(".evaluation-round-card").count() !== 2) throw new Error("Expected two official lot result rounds.");
   mark("lot-second-batch-approved", { finalStatus: finalLotStatus, rounds: 2 });
+
+  await page.goto(`${baseURL}/ke-hoach`, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.locator("#search-kehoach").fill(`Kế hoạch ${runId}`);
+  const historicalPlanRow = page.locator("#kehoach-table tbody tr").filter({ hasText: `Kế hoạch ${runId}` });
+  await historicalPlanRow.first().waitFor({ state: "visible", timeout: 15_000 });
+  if (await historicalPlanRow.count() !== 1) throw new Error("Expected one plan row before versioning.");
+  await historicalPlanRow.locator('[data-bf-action="show-plan"]').click();
+  await page.locator("#fullpage-kh-version-select").waitFor({ state: "attached", timeout: 15_000 });
+  const historicalPlanId = await page.locator("#fullpage-kh-version-select").inputValue();
+  await page.locator("#btn-edit-kehoach-fullpage").click();
+  await page.locator("#modal-kehoach.active").waitFor({ state: "visible", timeout: 10_000 });
+  await page.locator("#kh-thoigiandang").fill("04/07/2026 08:00");
+  await page.locator("#form-kehoach button[type='submit']").click();
+  await page.locator("#modal-plan-breakdown.active").waitFor({ state: "visible", timeout: 10_000 });
+  await page.locator("#btn-save-plan-breakdown").click();
+  await page.locator("#modal-plan-breakdown.active").waitFor({ state: "hidden", timeout: 30_000 }).catch(async (error) => {
+    const failureState = await page.evaluate(() => ({
+      dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
+      dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent || "",
+      saveDisabled: document.querySelector("#btn-save-plan-breakdown")?.disabled || false,
+    }));
+    throw new Error(`Plan snapshot save did not finish: ${JSON.stringify({ failureState, pageErrors, httpErrors })}; ${error.message}`);
+  });
+  const planSaveDialog = page.locator("#modal-custom-dialog.active");
+  if (await planSaveDialog.isVisible().catch(() => false)) {
+    await page.locator("#btn-dialog-ok").click();
+    await planSaveDialog.waitFor({ state: "hidden", timeout: 10_000 });
+  }
+
+  await page.goto(`${baseURL}/ke-hoach`, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.locator("#search-kehoach").fill(`Kế hoạch ${runId}`);
+  const latestPlanRow = page.locator("#kehoach-table tbody tr").filter({ hasText: `Kế hoạch ${runId}` });
+  await latestPlanRow.first().waitFor({ state: "visible", timeout: 15_000 });
+  if (await latestPlanRow.count() !== 1) throw new Error("Expected one plan row after versioning.");
+  await latestPlanRow.locator('[data-bf-action="show-plan"]').click();
+  await page.locator("#fullpage-kh-version-select").waitFor({ state: "attached", timeout: 15_000 });
+  const planVersionState = await page.locator("#fullpage-kh-version-select").evaluate((selectElement) => ({
+    value: selectElement.value,
+    options: [...selectElement.options].map((option) => ({ value: option.value, text: option.textContent })),
+  }));
+  if (planVersionState.options.length !== 2) {
+    throw new Error(`Expected two plan versions, got ${JSON.stringify(planVersionState)}`);
+  }
+  const latestPlanId = planVersionState.value;
+  if (!historicalPlanId || !latestPlanId || historicalPlanId === latestPlanId) {
+    throw new Error(`Plan version identifiers are invalid: ${JSON.stringify({ historicalPlanId, latestPlanId })}`);
+  }
+
+  const inheritedSnapshot = await page.evaluate(async ({ historicalPlanId: oldPlanId, latestPlanId: newPlanId, packageCode, contractNumber }) => {
+    const readPage = async (table, extra = {}) => {
+      const query = new URLSearchParams({ table, pageSize: "500", ...extra });
+      const response = await fetch(`/api/paginate?${query}`);
+      if (!response.ok) throw new Error(`${table} pagination failed: ${response.status}`);
+      return response.json();
+    };
+    const [
+      oldPackages,
+      newPackages,
+      oldGoods,
+      newGoods,
+      oldOpenings,
+      newOpenings,
+      contracts,
+    ] = await Promise.all([
+      readPage("goithau", { keHoachId: oldPlanId }),
+      readPage("goithau", { keHoachId: newPlanId }),
+      readPage("goithauhanghoa", { keHoachId: oldPlanId }),
+      readPage("goithauhanghoa", { keHoachId: newPlanId }),
+      readPage("thongtinmothau", { keHoachId: oldPlanId }),
+      readPage("thongtinmothau", { keHoachId: newPlanId }),
+      readPage("hopdong"),
+    ]);
+    const byCode = (items) => items.find((item) => item.maGoiThau === packageCode);
+    const oldPackage = byCode(oldPackages.items || []);
+    const newPackage = byCode(newPackages.items || []);
+    const contract = (contracts.items || []).find((item) => item.soHopDong === contractNumber);
+    return {
+      oldPackage,
+      newPackage,
+      oldGoods: (oldGoods.items || []).filter((item) => item.goiThauId === oldPackage?.id),
+      newGoods: (newGoods.items || []).filter((item) => item.goiThauId === newPackage?.id),
+      oldOpenings: (oldOpenings.items || []).filter((item) => item.goiThauId === oldPackage?.id),
+      newOpenings: (newOpenings.items || []).filter((item) => item.goiThauId === newPackage?.id),
+      contract,
+    };
+  }, {
+    historicalPlanId,
+    latestPlanId,
+    packageCode: `${runId}-GT`,
+    contractNumber: `${runId}/HD`,
+  });
+  if (!inheritedSnapshot.oldPackage || !inheritedSnapshot.newPackage) {
+    throw new Error(`Plan snapshot did not inherit the primary package: ${JSON.stringify(inheritedSnapshot)}`);
+  }
+  if (inheritedSnapshot.oldPackage.id === inheritedSnapshot.newPackage.id
+      || inheritedSnapshot.oldPackage.phienBan !== inheritedSnapshot.newPackage.phienBan
+      || inheritedSnapshot.oldPackage.trangThai !== inheritedSnapshot.newPackage.trangThai) {
+    throw new Error(`Inherited package metadata is invalid: ${JSON.stringify(inheritedSnapshot)}`);
+  }
+  if (!inheritedSnapshot.oldGoods.length
+      || inheritedSnapshot.oldGoods.length !== inheritedSnapshot.newGoods.length
+      || inheritedSnapshot.newGoods.some((row) => inheritedSnapshot.oldGoods.some((oldRow) => oldRow.id === row.id))) {
+    throw new Error(`Required goods were not independently inherited: ${JSON.stringify(inheritedSnapshot)}`);
+  }
+  if (!inheritedSnapshot.oldOpenings.length
+      || inheritedSnapshot.oldOpenings.length !== inheritedSnapshot.newOpenings.length
+      || inheritedSnapshot.newOpenings.some((row) => inheritedSnapshot.oldOpenings.some((oldRow) => oldRow.id === row.id))) {
+    throw new Error(`Opening data was not independently inherited: ${JSON.stringify(inheritedSnapshot)}`);
+  }
+  if (!inheritedSnapshot.contract
+      || inheritedSnapshot.contract.keHoachId !== historicalPlanId
+      || !inheritedSnapshot.contract.goiThauIds?.includes(inheritedSnapshot.oldPackage.id)
+      || inheritedSnapshot.contract.goiThauIds?.includes(inheritedSnapshot.newPackage.id)) {
+    throw new Error(`Historical contract references drifted during plan versioning: ${JSON.stringify(inheritedSnapshot.contract)}`);
+  }
+  mark("plan-version-snapshot-inherited", {
+    packageVersion: inheritedSnapshot.newPackage.phienBan,
+    status: inheritedSnapshot.newPackage.trangThai,
+    goods: inheritedSnapshot.newGoods.length,
+    openings: inheritedSnapshot.newOpenings.length,
+  });
+
+  const rebidOldName = `Gói đấu thầu lại ${runId}`;
+  const rebidNewName = `Gói đấu thầu lại đã sửa ${runId}`;
+  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.locator("#search-goithau").fill(rebidOldName);
+  const rebidRow = page.locator("#goithau-table tbody tr").filter({ hasText: rebidOldName });
+  await rebidRow.first().waitFor({ state: "visible", timeout: 15_000 });
+  if (await rebidRow.count() !== 1) throw new Error("Expected one inherited rebid package row.");
+  await rebidRow.locator(".btn-edit").click();
+  await page.locator("#modal-goithau.active").waitFor({ state: "visible", timeout: 10_000 });
+  await page.locator("#gt-ten").fill(rebidNewName);
+  await submitModal(page, "#form-goithau", "#modal-goithau");
+
+  const copyOnWriteState = await page.evaluate(async ({ oldPlanId, newPlanId, oldName, newName }) => {
+    const readPackages = async (planId) => {
+      const response = await fetch(`/api/paginate?table=goithau&pageSize=500&keHoachId=${encodeURIComponent(planId)}`);
+      if (!response.ok) throw new Error(`package pagination failed: ${response.status}`);
+      return (await response.json()).items || [];
+    };
+    const [oldPackages, newPackages] = await Promise.all([readPackages(oldPlanId), readPackages(newPlanId)]);
+    return {
+      oldPackage: oldPackages.find((item) => item.tenGoiThau === oldName),
+      newPackage: newPackages.find((item) => item.tenGoiThau === newName),
+    };
+  }, { oldPlanId: historicalPlanId, newPlanId: latestPlanId, oldName: rebidOldName, newName: rebidNewName });
+  if (!copyOnWriteState.oldPackage || !copyOnWriteState.newPackage
+      || copyOnWriteState.oldPackage.id === copyOnWriteState.newPackage.id
+      || copyOnWriteState.oldPackage.rootId !== copyOnWriteState.newPackage.rootId) {
+    throw new Error(`Package copy-on-write failed: ${JSON.stringify(copyOnWriteState)}`);
+  }
+  mark("historical-plan-package-frozen");
 
   if (pageErrors.length) throw new Error(`Page errors: ${pageErrors.join(" | ")}`);
   if (httpErrors.length) throw new Error(`HTTP errors: ${httpErrors.join(" | ")}`);

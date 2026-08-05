@@ -9,6 +9,8 @@ import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { getVersionLabel } from "../shared/formatters.js";
+import { getAppController } from "../app/controllerRef.js";
+import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 export async function renderKeHoachTable() {
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
@@ -154,6 +156,7 @@ async function fetchPlanPackageSnapshots(planId) {
 export async function renderPlanVersionDetails(versionId) {
   const kh = this.model.state.kehoach.find((k) => k.id === versionId);
   if (!kh) return;
+  await hydrateVersionFamily(getAppController(), "kehoach", kh);
   const editBtn = document.getElementById("btn-edit-kehoach-fullpage");
   if (editBtn) {
     const latestPlan = this.model.getLatestPlan(versionId);

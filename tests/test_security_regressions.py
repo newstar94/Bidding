@@ -244,6 +244,66 @@ def test_goods_pagination_filters_unassigned_packages(
     assert [item["id"] for item in payload["items"]] == [assigned_id]
 
 
+def test_package_goods_pagination_can_filter_one_plan_snapshot(monkeypatch):
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.executescript(
+        """
+        CREATE TABLE goi_thau (
+            id TEXT, organization_id TEXT, ke_hoach_id TEXT, archived_at TEXT
+        );
+        CREATE TABLE goi_thau_hang_hoa (
+            id TEXT, organization_id TEXT, goi_thau_id TEXT
+        );
+        INSERT INTO goi_thau VALUES ('package-A', 'org-1', 'plan-A', NULL);
+        INSERT INTO goi_thau VALUES ('package-B', 'org-1', 'plan-B', NULL);
+        INSERT INTO goi_thau_hang_hoa VALUES ('goods-A', 'org-1', 'package-A');
+        INSERT INTO goi_thau_hang_hoa VALUES ('goods-B', 'org-1', 'package-B');
+        """
+    )
+    role = SimpleNamespace(user_id="manager-1")
+    monkeypatch.setattr(pagination, "verify_session", lambda _request: (True, role))
+    monkeypatch.setattr(
+        pagination,
+        "get_active_org",
+        lambda _request, _user_id, cursor=None: "org-1",
+    )
+    monkeypatch.setattr(pagination, "can_read_table", lambda *_args: True)
+    monkeypatch.setattr(pagination, "is_personal_scope_for_user", lambda *_args: False)
+    monkeypatch.setattr(pagination, "is_organization_manager", lambda *_args: True)
+    monkeypatch.setattr(
+        pagination,
+        "resolve_sensitive_read_policy",
+        lambda *_args, **_kwargs: SimpleNamespace(can_view=lambda _family: True),
+    )
+    monkeypatch.setattr(
+        pagination,
+        "serialize_sensitive_read_items",
+        lambda _table, items, _policy: items,
+    )
+    monkeypatch.setattr(
+        pagination,
+        "database",
+        SimpleNamespace(get_connection=lambda: connection),
+    )
+    request = SimpleNamespace(
+        query_params={
+            "table": "goithauhanghoa",
+            "page": "1",
+            "pageSize": "20",
+            "keHoachId": "plan-A",
+        },
+        cookies={"session_token": "local-test"},
+    )
+
+    response = pagination._paginate_records_blocking(request)
+    payload = json.loads(response.body)
+
+    assert response.status_code == 200
+    assert payload["totalItems"] == 1
+    assert [item["id"] for item in payload["items"]] == ["goods-A"]
+
+
 class _AdminCursor:
     def __init__(self):
         self.one = None

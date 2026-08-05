@@ -41,6 +41,52 @@ from backend.shared.database_io import run_database_read
 from backend.observability.recording import record_database_phase
 
 
+_VERSION_FAMILY_SQL = {
+    "goi_thau": """
+        SELECT id, phien_ban FROM goi_thau
+        WHERE organization_id = ? AND archived_at IS NULL
+          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
+               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
+    """,
+    "ke_hoach_lcnt": """
+        SELECT id, phien_ban FROM ke_hoach_lcnt
+        WHERE organization_id = ? AND archived_at IS NULL
+          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
+               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
+    """,
+    "hop_dong": """
+        SELECT id, phien_ban FROM hop_dong
+        WHERE organization_id = ? AND archived_at IS NULL
+          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
+               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
+    """,
+    "chu_dau_tu": """
+        SELECT id, phien_ban FROM chu_dau_tu
+        WHERE organization_id = ? AND archived_at IS NULL
+          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
+               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
+    """,
+    "nha_thau": """
+        SELECT id, phien_ban FROM nha_thau
+        WHERE organization_id = ? AND archived_at IS NULL
+          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
+               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
+    """,
+    "chuyen_gia": """
+        SELECT id, phien_ban FROM chuyen_gia
+        WHERE organization_id = ? AND archived_at IS NULL
+          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
+               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
+    """,
+}
+
+
 def _database_read_unavailable(request, code, message):
     response = error_response(request, code, message, status_code=503)
     response.headers["Retry-After"] = "1"
@@ -546,6 +592,7 @@ def _read_single_record_blocking(request):
             "hop_dong",
             "chu_dau_tu",
             "nha_thau",
+            "chuyen_gia",
             "thong_tin_mo_thau",
         }:
             return JSONResponse({"error": "Record lookup is not supported for this table"}, status_code=400)
@@ -577,6 +624,7 @@ def _read_single_record_blocking(request):
                 "hop_dong": "so_hop_dong",
                 "chu_dau_tu": "ma_chu_dau_tu",
                 "nha_thau": "ma_nha_thau",
+                "chuyen_gia": "so_chung_chi",
             }[table_name]
             lookup_candidates = [lookup_value]
             if "_" in lookup_value:
@@ -606,7 +654,18 @@ def _read_single_record_blocking(request):
         if not can_read_record(cursor, role_str, user_id, org_name, table_key, table_name, row_dict):
             return JSONResponse({"error": "Không có quyền đọc bản ghi này."}, status_code=403)
 
-        if table_name == "nha_thau":
+        if table_name == "chuyen_gia":
+            row_dict["anh_chung_chi"] = public_image_path(
+                row_dict.get("anh_chung_chi"),
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+            row_dict["anh_chu_ky"] = public_image_path(
+                row_dict.get("anh_chu_ky"),
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+        elif table_name == "nha_thau":
             row_dict["anh_dau"] = public_image_path(
                 row_dict.get("anh_dau"),
                 session_token=media_session_token,
@@ -632,6 +691,15 @@ def _read_single_record_blocking(request):
                     item[list_key] = []
         elif table_name == "hop_dong":
             item["goiThauIds"] = _get_contract_package_ids(cursor, [row_dict["id"]], org_name).get(row_dict["id"], [])
+
+        version_family_sql = _VERSION_FAMILY_SQL.get(table_name)
+        if version_family_sql:
+            root_id = row_dict.get("id_goc") or row_dict.get("id")
+            cursor.execute(version_family_sql, (org_name, root_id, root_id))
+            item["allVersions"] = [
+                {"id": version_row[0], "phienBan": version_row[1]}
+                for version_row in cursor.fetchall()
+            ]
 
         sensitive_read_policy = resolve_sensitive_read_policy(
             cursor,

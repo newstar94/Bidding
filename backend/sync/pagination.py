@@ -277,10 +277,36 @@ def _paginate_records_blocking(request):
 
 
         versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "hop_dong", "chuyen_gia"]
-        plan_snapshot_id = params.get("keHoachId", "").strip() if table_name == "goi_thau" else ""
+        plan_snapshot_id = params.get("keHoachId", "").strip()
         if table_name == "goi_thau" and plan_snapshot_id:
             query_parts.append("ke_hoach_id = ?")
             query_params.append(plan_snapshot_id)
+        elif table_name in {
+            "thong_tin_mo_thau",
+            "goi_thau_hang_hoa",
+            "hang_hoa_du_thau_nha_thau",
+        } and plan_snapshot_id:
+            query_parts.append("""
+                goi_thau_id IN (
+                    SELECT id FROM goi_thau
+                    WHERE organization_id = ? AND ke_hoach_id = ?
+                      AND archived_at IS NULL
+                )
+            """)
+            query_params.extend([org_name, plan_snapshot_id])
+        elif table_name == "phan_cong_nhan_su" and plan_snapshot_id:
+            query_parts.append("""
+                (
+                    (loai_doi_tuong = 'kehoach' AND id_muc_tieu = ?)
+                    OR
+                    (loai_doi_tuong = 'goithau' AND id_muc_tieu IN (
+                        SELECT id FROM goi_thau
+                        WHERE organization_id = ? AND ke_hoach_id = ?
+                          AND archived_at IS NULL
+                    ))
+                )
+            """)
+            query_params.extend([plan_snapshot_id, org_name, plan_snapshot_id])
         elif table_name in versioned_tables:
             query_parts.append("is_latest = 1")
             if table_name == "goi_thau":

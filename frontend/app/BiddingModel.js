@@ -836,12 +836,11 @@ export class BiddingModel {
       rootMap[root].push(gt);
     });
     return Object.values(rootMap).map((candidates) => {
-      const explicitLatest = candidates.find((g) => g.isLatest == 1);
-      if (explicitLatest) return explicitLatest;
       return candidates.reduce((best, current) => {
         const currentVer = parseInt(current.phienBan || 0);
         const bestVer = parseInt(best.phienBan || 0);
-        return currentVer > bestVer ? current : best;
+        if (currentVer !== bestVer) return currentVer > bestVer ? current : best;
+        return current.isLatest == 1 && best.isLatest != 1 ? current : best;
       }, candidates[0]);
     }).filter(Boolean);
   }

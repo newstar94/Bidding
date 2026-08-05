@@ -584,7 +584,7 @@ def _save_ehsmt_adjustments(cursor, parent_id, item, organization_id, owner_type
                    approval_decision_date, published_at, archived_at,
                    sync_version, row_version, updated_at
                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT (id) DO UPDATE SET
+               ON CONFLICT (organization_id, id) DO UPDATE SET
                    sequence = excluded.sequence,
                    reason = excluded.reason,
                    submission_number = excluded.submission_number,

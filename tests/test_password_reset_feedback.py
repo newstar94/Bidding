@@ -31,12 +31,16 @@ def _request_password_reset(monkeypatch, reset_request):
     return asyncio.run(otp_routes.forgot_password_api(Request()))
 
 
-def test_password_reset_reports_mismatched_account_details(monkeypatch):
+def test_password_reset_does_not_reveal_mismatched_account_details(monkeypatch):
     response = _request_password_reset(monkeypatch, None)
 
-    assert response.status_code == 400
+    assert response.status_code == 200
     assert json.loads(response.body) == {
-        "error": "Tên đăng nhập và email không khớp với tài khoản nào."
+        "success": True,
+        "message": (
+            "Đã gửi email hướng dẫn đặt lại mật khẩu. "
+            "Vui lòng kiểm tra hộp thư đến hoặc thư rác."
+        ),
     }
     assert response.background is None
 
@@ -57,7 +61,7 @@ def test_password_reset_confirms_email_was_sent(monkeypatch):
         "success": True,
         "message": (
             "Đã gửi email hướng dẫn đặt lại mật khẩu. "
-            "Vui lòng kiểm tra hộp thư đến và thư rác."
+            "Vui lòng kiểm tra hộp thư đến hoặc thư rác."
         ),
     }
     assert len(response.background.tasks) == 1

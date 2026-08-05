@@ -2,7 +2,10 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { focusInvalidControl } from "../app/formStateUtils.js";
 import { setValidationError } from "../shared/FormValidation.js";
 import { trustedScriptURL } from "../shared/trustedTypes.js";
-import { createGoogleIdentityLoader } from "./GoogleIdentityLoader.js";
+import {
+  createGoogleIdentityLoader,
+  getGoogleIdentityClientId,
+} from "./GoogleIdentityLoader.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { setActiveOrganizationId } from "../app/workspaceState.js";
@@ -874,6 +877,10 @@ export function setupAuth() {
   let googleIdentityLoadScheduled = false;
   let googleIdentityRetryOnReconnect = false;
   const scheduleGoogleIdentityLoad = () => {
+    if (!getGoogleIdentityClientId(document)) {
+      showGoogleSignInState("Đăng nhập Google chưa được cấu hình.", "error");
+      return;
+    }
     if (googleIdentityLoadScheduled && googleIdentityLoader.isReady()) return;
     googleIdentityLoadScheduled = true;
     if (document.readyState === "loading") {

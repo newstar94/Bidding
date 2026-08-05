@@ -5,8 +5,6 @@ import { bindCurrencyElement } from "../app/domUtils.js";
 import {
   canDeleteVersions,
   createNextVersion,
-  ensureVersionEhsmtAdjustment,
-  preparePackageSnapshot,
   rememberSelectedVersion,
   removeAllVersions,
   removeLatestVersion
@@ -15,8 +13,9 @@ import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationSer
 import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
-import { applyAssignmentDelta } from "../shared/MultiAssigneeSelect.js";
+import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
 export async function deleteKeHoach(id) {
   const targetPlan = await refreshRecordBeforeDelete(this, "kehoach", id);
   if (!targetPlan) return;
@@ -596,13 +595,36 @@ export async function loadBreakdownPackageDetails(planId) {
   const incompletePackages = packages.filter((gt) => gt.referenceOnly === true ||
     gt.giaGoiThau === void 0 || gt.giaGoiThau === null ||
     gt.hinhThucLuaChon === void 0 || gt.hinhThucLuaChon === null || gt.hinhThucLuaChon === "");
-  if (incompletePackages.length === 0) return;
-  await Promise.all(incompletePackages.map((gt) =>
-    this.fetchRecordByLookup("goithau", gt.id || gt.maGoiThau).catch((error) => {
-      console.error("Failed to load package details for plan breakdown:", error);
-      return null;
-    })
-  ));
+  if (incompletePackages.length > 0) {
+    await Promise.all(incompletePackages.map((gt) =>
+      this.fetchRecordByLookup("goithau", gt.id || gt.maGoiThau).catch((error) => {
+        console.error("Failed to load package details for plan breakdown:", error);
+        return null;
+      })
+    ));
+  }
+  const loadPlanTable = async (table) => {
+    let cursor = "";
+    do {
+      const page = await loadPaginatedRecords(this.model, table, {
+        pageSize: 200,
+        pagination: "cursor",
+        sortBy: "id",
+        sortOrder: "asc",
+        keHoachId: planId,
+        ...(cursor ? { cursor } : {}),
+      });
+      const nextCursor = String(page.nextCursor || "");
+      if (!page.hasMore || !nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    } while (cursor);
+  };
+  await Promise.all([
+    loadPlanTable("goithauhanghoa"),
+    loadPlanTable("thongtinmothau"),
+    loadPlanTable("hanghoaduthaunhathau"),
+    loadPlanTable("assignments"),
+  ]);
   if (String(document.getElementById("breakdown-plan-id")?.value || "") !== String(planId)) return;
   this.renderBreakdownPackagesList(planId);
   this.updateBreakdownTotal(planId);
@@ -732,6 +754,9 @@ export async function savePlanBreakdown() {
   const planId = document.getElementById("breakdown-plan-id").value;
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
   if (!kh) return;
+  if (typeof this.loadBreakdownPackageDetails === "function") {
+    await this.loadBreakdownPackageDetails(planId);
+  }
   const parseRows = (type) => {
     const tbody = document.getElementById(`tbody-breakdown-${type}`);
     if (!tbody) return [];
@@ -791,38 +816,27 @@ export async function savePlanBreakdown() {
       });
       nextPlan.createdAt = oldKh.createdAt || timestamp;
       this.model.state.kehoach.push(nextPlan);
+      const inheritedAggregate = snapshotPlanAggregate(this.model.state, {
+        sourcePlanId: oldKh.id,
+        targetPlanId: nextPlan.id,
+        timestamp,
+        sourcePackages: this.model.state.goithau,
+      });
+      applyPlanAggregateSnapshot(this.model.state, inheritedAggregate);
       rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
-      const previousPlanAssignment = this.model.state.assignments.find(
-        (assignment) => assignment.targetId === oldKh.id && assignment.type === "kehoach"
-      );
-      const activeUserId = previousPlanAssignment?.empId || this.model.state.activeuser.id;
-      if (activeUserId) {
-        await this.model.addRecord("assignments", {
+      const previousPlanAssigneeIds = this.model.state.assignments
+        .filter((assignment) => String(assignment.targetId) === String(oldKh.id) && assignment.type === "kehoach")
+        .map((assignment) => assignment.empId)
+        .filter(Boolean);
+      const planAssigneeIds = previousPlanAssigneeIds.length
+        ? [...new Set(previousPlanAssigneeIds)]
+        : [this.model.state.activeuser.id].filter(Boolean);
+      for (const activeUserId of planAssigneeIds) {
+        this.model.state.assignments.push({
           id: generateRecordId("assignments"),
           empId: activeUserId,
           targetId: newId,
           type: "kehoach"
-        });
-      }
-      const oldPackages = this.model.state.goithau.filter((gt) => gt.keHoachId === oldKh.id);
-      for (const gt of oldPackages) {
-        const newGtId = generateRecordId("goithau");
-        const nextPackage = createNextVersion(this.model.state.goithau, gt, preparePackageSnapshot(gt, {
-          keHoachId: newId
-        }), {
-          id: newGtId,
-          timestamp
-        });
-        ensureVersionEhsmtAdjustment(nextPackage);
-        nextPackage.createdAt = gt.createdAt || timestamp;
-        this.model.state.goithau.push(nextPackage);
-        const previousPackageAssigneeIds = this.model.state.assignments
-          .filter((assignment) => assignment.targetId === gt.id && assignment.type === "goithau")
-          .map((assignment) => assignment.empId);
-        await applyAssignmentDelta(this.model, {
-          targetId: newGtId,
-          type: "goithau",
-          selectedIds: previousPackageAssigneeIds,
         });
       }
     } else {
@@ -862,7 +876,14 @@ export async function savePlanBreakdown() {
   if (hasModalReturnState("kehoach-detail") && finalPlanId) {
     updateModalReturnAction(finalPlanId);
   }
-  const syncResult = await persistAndSync(this, ["kehoach", "goithau", "thongtinmothau"], {
+  const syncResult = await persistAndSync(this, [
+    "kehoach",
+    "goithau",
+    "goithauhanghoa",
+    "thongtinmothau",
+    "hanghoaduthaunhathau",
+    "assignments",
+  ], {
     afterPersist: () => Promise.all([
       this.view.renderKeHoachTable(),
       this.view.renderGoiThauTable()

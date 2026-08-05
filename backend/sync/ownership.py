@@ -155,6 +155,50 @@ def build_owner_reference_context(
                         )
 
     context = OwnerReferenceContext()
+    for package in records_by_table.get("goi_thau", ()):
+        package_id = clean_id(package.get("id"))
+        if not package_id:
+            continue
+        package_id = str(package_id)
+        root_id = clean_id(
+            package.get("rootId")
+            or package.get("idGoc")
+            or package.get("id_goc")
+            or package_id
+        )
+        context.active_ids_by_table.setdefault("goi_thau", set()).add(package_id)
+        context.root_by_table_and_id[("goi_thau", package_id)] = str(
+            root_id or package_id
+        )
+        context.package_plan_by_id[package_id] = clean_id(
+            get_payload_value("goi_thau", package, "ke_hoach_id")
+        )
+        context.package_lotted_by_id[package_id] = str(
+            get_payload_value("goi_thau", package, "phan_lo") or ""
+        ).strip() == "Có"
+        context.package_status_by_id[package_id] = get_payload_value(
+            "goi_thau", package, "trang_thai"
+        )
+        context.package_field_by_id[package_id] = str(
+            get_payload_value("goi_thau", package, "linh_vuc") or ""
+        ).strip()
+        for lot in package.get("phanLoList") or package.get("phan_lo_list") or ():
+            if not isinstance(lot, dict):
+                continue
+            lot_id = clean_id(lot.get("id"))
+            if not lot_id:
+                continue
+            lot_id = str(lot_id)
+            context.active_ids_by_table.setdefault(
+                "goi_thau_phan_lo", set()
+            ).add(lot_id)
+            context.lot_package_by_id[lot_id] = package_id
+            lot_code = normalize_lot_code(
+                lot.get("maPhanLo") or lot.get("ma_phan_lo")
+            )
+            context.lot_codes_by_package_id.setdefault(package_id, set()).add(
+                lot_code
+            )
     for chunk in _chunked(sorted(employee_ids)):
         placeholders = ", ".join("?" for _ in chunk)
         rows = cursor.execute(

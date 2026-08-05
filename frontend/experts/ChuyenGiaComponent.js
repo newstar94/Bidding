@@ -7,7 +7,7 @@ import { renderTableEmpty, renderTableError, renderTableLoading } from "../share
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { getAppController } from "../app/controllerRef.js";
-export async function renderChuyenGiaTable() {
+export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
   const table = document.getElementById("chuyengia-table");
   if (!table) return;
   const tableBody = table.querySelector("tbody");
@@ -21,22 +21,40 @@ export async function renderChuyenGiaTable() {
   const sortState = this.model.sortState.chuyengia || {};
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
+  const pageSnapshotKey = JSON.stringify([
+    currentPage,
+    pageSize,
+    searchVal,
+    sortBy,
+    sortOrder,
+  ]);
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 7);
-    try {
-      const data = await loadPaginatedRecords(this.model, "chuyengia", {
-        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
-      });
-      if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
-      slicedData = data.items;
-      totalItems = data.totalItems;
-    } catch (e) {
-      if (e?.name === "AbortError") return;
-      console.error("Failed to fetch paginated experts", e);
-      if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
-      clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 7, message: "Không thể tải danh sách chuyên gia. Vui lòng thử lại.", onRetry: () => this.renderChuyenGiaTable() });
-      return;
+    const pageSnapshot = this._chuyenGiaPageSnapshot;
+    if (reuseCurrentPage && pageSnapshot?.key === pageSnapshotKey) {
+      slicedData = pageSnapshot.items;
+      totalItems = pageSnapshot.totalItems;
+    } else {
+      renderTableLoading(tableBody, 7);
+      try {
+        const data = await loadPaginatedRecords(this.model, "chuyengia", {
+          page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
+        });
+        if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
+        slicedData = data.items;
+        totalItems = data.totalItems;
+        this._chuyenGiaPageSnapshot = {
+          key: pageSnapshotKey,
+          items: slicedData,
+          totalItems,
+        };
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        console.error("Failed to fetch paginated experts", e);
+        if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
+        clearVirtualTable(tableBody);
+        renderTableError(tableBody, { colspan: 7, message: "Không thể tải danh sách chuyên gia. Vui lòng thử lại.", onRetry: () => this.renderChuyenGiaTable() });
+        return;
+      }
     }
   } else {
     const latestChuyenGia = this.model.getLatestChuyenGia();

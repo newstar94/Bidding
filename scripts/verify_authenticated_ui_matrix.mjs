@@ -89,6 +89,66 @@ async function auditScreen(page, name) {
   return layout;
 }
 
+async function auditPackageVersionSelector(page, name) {
+  const selector = page.locator("#detail-workflow-version-select.page-version-select");
+  const wrapper = page.locator('.custom-select-container.version-select-container[data-target="detail-workflow-version-select"]');
+  const trigger = wrapper.locator(".custom-select-trigger");
+  await trigger.waitFor({ state: "visible", timeout: 10_000 });
+  const triggerMetrics = await trigger.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return {
+      width: rect.width,
+      height: rect.height,
+      borderRadius: style.borderRadius,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+    };
+  });
+  if (
+    Math.abs(triggerMetrics.height - 22) > 1
+    || triggerMetrics.width < 52
+    || triggerMetrics.borderRadius !== "4px"
+    || triggerMetrics.fontWeight !== "800"
+  ) {
+    throw new Error(`${name}: package version trigger is not visually aligned ${JSON.stringify(triggerMetrics)}`);
+  }
+  if (await selector.isEnabled()) {
+    await trigger.click();
+    const dropdown = page.locator('body > .custom-select-options.version-select-options[data-parent="detail-workflow-version-select"]');
+    await dropdown.waitFor({ state: "visible", timeout: 5_000 });
+    const dropdownMetrics = await dropdown.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const option = element.querySelector("li");
+      const optionStyle = option ? getComputedStyle(option) : null;
+      return {
+        width: rect.width,
+        borderRadius: style.borderRadius,
+        backgroundColor: style.backgroundColor,
+        boxShadow: style.boxShadow,
+        optionCount: element.querySelectorAll("li").length,
+        optionFontSize: optionStyle?.fontSize || "",
+        optionTextAlign: optionStyle?.textAlign || "",
+      };
+    });
+    if (
+      dropdownMetrics.width < 52
+      || dropdownMetrics.borderRadius !== "4px"
+      || dropdownMetrics.backgroundColor === "rgba(0, 0, 0, 0)"
+      || dropdownMetrics.boxShadow === "none"
+      || dropdownMetrics.optionCount < 2
+      || dropdownMetrics.optionTextAlign !== "center"
+    ) {
+      throw new Error(`${name}: package version dropdown is not visually aligned ${JSON.stringify(dropdownMetrics)}`);
+    }
+    await trigger.click();
+    await dropdown.waitFor({ state: "hidden", timeout: 5_000 });
+    return { triggerMetrics, dropdownMetrics };
+  }
+  return { triggerMetrics, dropdownMetrics: null };
+}
+
 const browser = await chromium.launch({ headless: true });
 try {
   for (const viewport of viewports) {
@@ -110,6 +170,7 @@ try {
       await page.waitForURL(/goi-thau-chi-tiet/u, { timeout: 10_000 });
       const detailURL = page.url();
       await auditScreen(page, `${viewport.width}:package-detail`);
+      await auditPackageVersionSelector(page, `${viewport.width}:package-detail`);
       screens.push("package-detail");
       await page.reload({ waitUntil: "domcontentloaded" });
       await waitForShell(page);

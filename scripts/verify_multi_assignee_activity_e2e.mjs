@@ -550,10 +550,27 @@ try {
     throw new Error("Blocked last-assignee removal still changed organization membership");
   }
 
+  const assignmentNotificationCountBeforeVersion = new Map();
+  for (const [userId, kind] of state.notificationKinds) {
+    if (kind !== "assignment_added") continue;
+    assignmentNotificationCountBeforeVersion.set(
+      userId,
+      (assignmentNotificationCountBeforeVersion.get(userId) || 0) + 1,
+    );
+  }
   const packageVersionId = await createPackageVersion(page);
   state = fixture("verify");
   if (state.versionAssignments.map((item) => item.userId).join(",") !== [employeeB.id, employeeC.id].sort().join(",")) {
     throw new Error(`New package version did not inherit all assignees: ${JSON.stringify(state.versionAssignments)}`);
+  }
+  for (const employee of [employeeB, employeeC]) {
+    const afterCount = state.notificationKinds.filter(([userId, kind]) => (
+      userId === employee.id && kind === "assignment_added"
+    )).length;
+    const beforeCount = assignmentNotificationCountBeforeVersion.get(employee.id) || 0;
+    if (afterCount !== beforeCount) {
+      throw new Error(`Inherited package version emitted a duplicate assignment notification for ${employee.id}`);
+    }
   }
   if (await activityStatus(browser, employeeB, "goithau", packageVersionId) !== 200) {
     throw new Error("B cannot read the inherited package version");

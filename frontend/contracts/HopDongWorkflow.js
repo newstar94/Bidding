@@ -113,22 +113,15 @@ export async function editHopDong(id) {
     const planList = typeof this.model.getLatestPlans === "function" ? this.model.getLatestPlans() : Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : [];
     khSelect.innerHTML = trustedHTML('<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${escapeHtml(kh.id)}" data-search="${escapeHtml(`${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}`)}">${escapeHtml(kh.tenKeHoach || "")}</option>`).join(""));
     this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch...");
-    const getPlanVersionIds = (selectedPlanId) => {
-      if (!selectedPlanId) return [];
-      const plan = this.model.state.kehoach.find((kh) => kh.id === selectedPlanId);
-      if (!plan) return [];
-      const rootId = plan.rootId || plan.id;
-      return this.model.state.kehoach.filter((kh) => kh.rootId === rootId || kh.id === rootId).map((kh) => kh.id);
-    };
     const renderPackagesForPlan = (selectedPlanId, checkedIds = []) => {
-      const planVersionIds = getPlanVersionIds(selectedPlanId);
       const gtContainer = document.getElementById("hd-goithau-list");
       if (!selectedPlanId) {
         gtContainer.innerHTML = trustedHTML('<p class="text-muted bf-s-64c2770c2f">Vui lòng chọn Kế hoạch LCNT để hiển thị gói thầu</p>');
         return;
       }
-      const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
-      const filteredGoithau = goithauList.filter((g) => planVersionIds.includes(g.keHoachId));
+      const filteredGoithau = typeof this.model.getLatestPackagesForPlan === "function"
+        ? this.model.getLatestPackagesForPlan(selectedPlanId)
+        : (this.model.state.goithau || []).filter((g) => String(g.keHoachId) === String(selectedPlanId));
       if (filteredGoithau.length === 0) {
         gtContainer.innerHTML = trustedHTML('<p class="text-muted bf-s-64c2770c2f">Kế hoạch này chưa có gói thầu để liên kết</p>');
       } else {
@@ -424,6 +417,16 @@ export async function editHopDong(id) {
       document.getElementById("hd-songay").value = hd.soNgayThucHien || "";
       statusSelect.value = hd.trangThaiHopDong || "Đang thực hiện";
       if (hd.keHoachId) {
+        if (!Array.from(khSelect.options).some((option) => String(option.value) === String(hd.keHoachId))) {
+          const referencedPlan = this.model.state.kehoach.find((plan) => String(plan.id) === String(hd.keHoachId));
+          if (referencedPlan) {
+            const option = document.createElement("option");
+            option.value = referencedPlan.id;
+            option.textContent = `${referencedPlan.tenKeHoach || "Kế hoạch"} (${this.model.getVersionLabel(referencedPlan.phienBan || "00")})`;
+            option.dataset.search = `${referencedPlan.maKeHoach || ""} ${referencedPlan.tenKeHoach || ""}`;
+            khSelect.append(option);
+          }
+        }
         khSelect.value = hd.keHoachId;
         khSelect.dispatchEvent(new Event("change"));
         renderPackagesForPlan(hd.keHoachId, hd.goiThauIds || []);

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createGoogleIdentityLoader } from "../../frontend/auth/GoogleIdentityLoader.js";
+import {
+  createGoogleIdentityLoader,
+  getGoogleIdentityClientId,
+} from "../../frontend/auth/GoogleIdentityLoader.js";
 
 
 class FakeScript {
@@ -27,6 +30,16 @@ class FakeScript {
     this.parentNode?.removeChild(this);
   }
 }
+
+test("Google Identity configuration is read from the public meta value", () => {
+  assert.equal(getGoogleIdentityClientId({ querySelector: () => null }), "");
+  assert.equal(getGoogleIdentityClientId({
+    querySelector: (selector) => {
+      assert.equal(selector, 'meta[name="google-client-id"]');
+      return { content: "  local-client-id  " };
+    },
+  }), "local-client-id");
+});
 
 function createFakeDocument() {
   const scripts = [];

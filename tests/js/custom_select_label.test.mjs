@@ -43,7 +43,10 @@ test("custom select inside a label stays open and allows choosing an option", as
             </label>
             <button class="btn btn-outline">Tải file mẫu</button><button class="btn btn-outline">Xuất Excel</button><button class="btn btn-outline">Nhập Excel</button><button class="btn btn-primary">Thêm hàng hóa</button>
           </div>
-        </header></body></html>`);
+        </header>
+        <div><select id="version-select" class="page-version-select" aria-label="Chọn phiên bản gói thầu">
+          <option value="v00">00</option><option value="v01">01</option><option value="v02">02</option><option value="v03" selected>03</option>
+        </select></div></body></html>`);
         return;
       }
       const filePath = pathname === "/css/runtime-styles.css"
@@ -68,6 +71,7 @@ test("custom select inside a label stays open and allows choosing an option", as
     await page.evaluate(async () => {
       const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
       initCustomSelect("lot-select");
+      initCustomSelect("version-select");
     });
 
     await page.locator('.custom-select-container[data-target="lot-select"] .custom-select-trigger').click();
@@ -95,6 +99,29 @@ test("custom select inside a label stays open and allows choosing an option", as
     assert.deepEqual(alignment, { leftDelta: 0, widthDelta: 0 });
     await page.locator('.custom-select-options[data-parent="lot-select"] [data-value="lot-1"]').click();
     assert.equal(await page.locator("#lot-select").inputValue(), "lot-1");
+
+    await page.locator('.custom-select-container[data-target="version-select"] .custom-select-trigger').click();
+    const versionDropdown = page.locator('body > .custom-select-options.version-select-options[data-parent="version-select"]');
+    const versionStyles = await versionDropdown.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const optionStyle = getComputedStyle(element.querySelector("li"));
+      return {
+        display: style.display,
+        minWidth: parseFloat(style.minWidth),
+        borderRadius: style.borderRadius,
+        backgroundColor: style.backgroundColor,
+        boxShadow: style.boxShadow,
+        optionFontSize: optionStyle.fontSize,
+        optionTextAlign: optionStyle.textAlign,
+      };
+    });
+    assert.equal(versionStyles.display, "block");
+    assert.ok(versionStyles.minWidth >= 52);
+    assert.equal(versionStyles.borderRadius, "4px");
+    assert.notEqual(versionStyles.backgroundColor, "rgba(0, 0, 0, 0)");
+    assert.notEqual(versionStyles.boxShadow, "none");
+    assert.equal(versionStyles.optionFontSize, "12px");
+    assert.equal(versionStyles.optionTextAlign, "center");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

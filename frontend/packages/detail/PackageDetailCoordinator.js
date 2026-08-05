@@ -1,6 +1,6 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
-import { escapeHtml } from "../../shared/view_helpers.js";
+import { escapeHtml, initCustomSelect } from "../../shared/view_helpers.js";
 import { renderAccessibleTabs } from "../../shared/AccessibleTabs.js";
 import { selectPackageDetailTab } from "./PackageDetailState.js";
 import { renderWorkflowActions } from "./WorkflowActions.js";
@@ -25,12 +25,15 @@ function renderVersionSelector(view, detail) {
   const verSelect = document.getElementById("detail-workflow-version-select");
   if (!verSelect) return () => {};
 
-  verSelect.parentElement
-    ?.querySelector('.custom-select-container[data-target="detail-workflow-version-select"]')
-    ?.remove();
-  document.body
-    ?.querySelector('.custom-select-dropdown[data-target="detail-workflow-version-select"]')
-    ?.remove();
+  const cleanupDropdown = () => {
+    verSelect.parentElement
+      ?.querySelector('.custom-select-container[data-target="detail-workflow-version-select"]')
+      ?.remove();
+    document.body
+      ?.querySelector('.custom-select-options[data-parent="detail-workflow-version-select"]')
+      ?.remove();
+  };
+  cleanupDropdown();
 
   setRuntimeStyle(verSelect, "display", "none");
   verSelect.innerHTML = trustedHTML(detail.versions.map((version) => (
@@ -39,14 +42,19 @@ function renderVersionSelector(view, detail) {
 
   const separator = document.getElementById("detail-workflow-version-separator");
   if (separator) setRuntimeStyle(separator, "display", "inline-block");
-  setRuntimeStyle(verSelect, "display", "inline-block");
   verSelect.disabled = detail.versions.length < 2;
-  verSelect.dataset.noCustom = "true";
+  verSelect.removeAttribute("data-no-custom");
+  verSelect.setAttribute(
+    "aria-label",
+    `Chọn phiên bản gói thầu ${detail.pkg.maGoiThau || detail.pkg.tenGoiThau || ""}`.trim(),
+  );
   verSelect.onchange = verSelect.disabled
     ? null
     : (event) => view.showPackageDetails(event.target.value, true);
+  initCustomSelect("detail-workflow-version-select");
   return () => {
     verSelect.onchange = null;
+    cleanupDropdown();
   };
 }
 

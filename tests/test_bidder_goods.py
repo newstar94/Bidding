@@ -326,6 +326,35 @@ def test_manager_cannot_edit_bidder_goods_after_evaluation_closes():
     assert not decision.allowed
 
 
+def test_awarded_snapshot_allows_only_new_cloned_bidder_goods():
+    context = BatchWriteAuthorizationContext(
+        role_str="user",
+        user_id="manager-1",
+        organization_id="org-1",
+        organization_manager=True,
+        personal_workspace_owner=False,
+        active_membership=True,
+        inherited_specialist_access=False,
+        membership_role="manager",
+        bidder_goods_parent_by_id={"offered-stored": "package-v2"},
+        package_status_by_id={"package-v2": "AWARDED"},
+        snapshot_package_ids={"package-v2"},
+    )
+
+    assert authorize_record_write_from_context(
+        context,
+        "hanghoaduthaunhathau",
+        "hang_hoa_du_thau_nha_thau",
+        {"id": "offered-v2", "goiThauId": "package-v2"},
+    ).allowed
+    assert not authorize_record_write_from_context(
+        context,
+        "hanghoaduthaunhathau",
+        "hang_hoa_du_thau_nha_thau",
+        {"id": "offered-stored", "goiThauId": "package-v2"},
+    ).allowed
+
+
 def test_employee_write_inherits_package_assignment_and_evaluation_status():
     context = BatchWriteAuthorizationContext(
         role_str="employee",

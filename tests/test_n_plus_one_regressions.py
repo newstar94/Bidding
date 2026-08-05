@@ -939,6 +939,119 @@ def test_rebid_and_winner_queries_are_batched_and_keep_cycle_validation():
     assert any("vòng tham chiếu" in error for error in cycle_errors)
 
 
+def test_owner_reference_context_indexes_incoming_package_snapshot_aggregate():
+    cancelled_snapshot = {
+        "id": "cancelled-v2",
+        "rootId": "cancelled-root",
+        "keHoachId": "plan-v2",
+        "linhVuc": "Hàng hóa",
+        "phanLo": "Có",
+        "trangThai": "CANCELLED",
+        "phanLoList": [{"id": "lot-v2", "maPhanLo": "L01"}],
+    }
+    rebid_snapshot = {
+        "id": "rebid-v2",
+        "rootId": "rebid-root",
+        "keHoachId": "plan-v2",
+        "trangThai": "PREPARING",
+        "rebidFromPackageId": "cancelled-v2",
+    }
+    records = {
+        "ke_hoach_lcnt": [{"id": "plan-v2", "rootId": "plan-root"}],
+        "goi_thau": [cancelled_snapshot, rebid_snapshot],
+    }
+    incoming_ids = {
+        "ke_hoach_lcnt": {"plan-v2"},
+        "goi_thau": {"cancelled-v2", "rebid-v2"},
+    }
+    cursor = _Cursor(lambda _sql, _params: _Answer(rows=[]))
+
+    context = ownership.build_owner_reference_context(
+        cursor,
+        "organization-1",
+        records,
+        incoming_ids,
+    )
+
+    assert context.active_ids_by_table["goi_thau"] == {
+        "cancelled-v2",
+        "rebid-v2",
+    }
+    assert context.root_by_table_and_id[("goi_thau", "cancelled-v2")] == "cancelled-root"
+    assert context.package_plan_by_id["cancelled-v2"] == "plan-v2"
+    assert context.package_status_by_id["cancelled-v2"] == "CANCELLED"
+    assert context.package_lotted_by_id["cancelled-v2"] is True
+    assert context.package_field_by_id["cancelled-v2"] == "Hàng hóa"
+    assert context.active_ids_by_table["goi_thau_phan_lo"] == {"lot-v2"}
+    assert context.lot_package_by_id["lot-v2"] == "cancelled-v2"
+    assert context.lot_codes_by_package_id["cancelled-v2"] == {"l01"}
+    assert ownership.validate_owner_scoped_references(
+        cursor,
+        "organization-1",
+        "goi_thau",
+        rebid_snapshot,
+        incoming_ids,
+        {
+            "goi_thau": {
+                "cancelled-v2": cancelled_snapshot,
+                "rebid-v2": rebid_snapshot,
+            }
+        },
+        context,
+    ) == []
+
+
+def test_batch_authorization_recognizes_new_snapshot_and_cloned_assignment():
+    records = {
+        "goi_thau": [{
+            "id": "package-v2",
+            "rootId": "package-root",
+            "trangThai": "AWARDED",
+        }],
+        "goi_thau_hang_hoa": [{
+            "id": "goods-v2",
+            "goiThauId": "package-v2",
+        }],
+        "phan_cong_nhan_su": [{
+            "id": "assignment-v2",
+            "targetId": "package-v2",
+            "type": "goithau",
+            "empId": "employee-1",
+        }],
+    }
+
+    def handler(sql, _params):
+        if sql.startswith("SELECT lower(trim(vai_tro_trong_to_chuc))"):
+            return _Answer(one=("employee",))
+        if sql.startswith("SELECT goithau FROM ma_tran_phan_quyen"):
+            return _Answer(one=("edit",))
+        if sql.startswith("SELECT id, COALESCE(NULLIF(id_goc"):
+            return _Answer(rows=[{
+                "id": "package-root",
+                "lineage_root": "package-root",
+            }])
+        if sql.startswith("SELECT DISTINCT COALESCE(NULLIF(record.id_goc"):
+            return _Answer(rows=[{"lineage_root": "package-root"}])
+        return _Answer(rows=[])
+
+    context = access_policy.build_batch_write_authorization_context(
+        _Cursor(handler),
+        SimpleNamespace(active_role="employee", platform_role="user"),
+        "employee-1",
+        "organization-1",
+        records,
+    )
+
+    assert context.snapshot_package_ids == {"package-v2"}
+    assert ("goithau", "package-v2") in context.assigned_targets
+    assert access_policy.authorize_record_write_from_context(
+        context,
+        "goithauhanghoa",
+        "goi_thau_hang_hoa",
+        records["goi_thau_hang_hoa"][0],
+    ).allowed
+
+
 def test_batch_authorization_decisions_preserve_assignment_and_membership_rules():
     context = access_policy.BatchWriteAuthorizationContext(
         role_str="employee",

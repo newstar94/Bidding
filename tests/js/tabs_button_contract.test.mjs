@@ -61,13 +61,14 @@ test("button contract is explicit and loading prevents double submit", () => {
 });
 
 
-test("migrated package chrome no longer calls the legacy custom select or inferred button system", async () => {
+test("package chrome keeps accessible tabs and explicit buttons while sharing the styled version dropdown", async () => {
   const [coordinator, actions] = await Promise.all([
     readFile(new URL("../../frontend/packages/detail/PackageDetailCoordinator.js", import.meta.url), "utf8"),
     readFile(new URL("../../frontend/packages/detail/WorkflowActions.js", import.meta.url), "utf8"),
   ]);
 
-  assert.doesNotMatch(coordinator, /initCustomSelect/u);
+  assert.match(coordinator, /initCustomSelect/u);
+  assert.doesNotMatch(coordinator, /dataset\.noCustom/u);
   assert.match(coordinator, /renderAccessibleTabs/u);
   assert.match(actions, /buttonMarkup/u);
 });

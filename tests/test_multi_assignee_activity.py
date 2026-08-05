@@ -322,6 +322,53 @@ class _NotificationCursor(_AnswerCursor):
         return self.rows[0] if self.rows else None
 
 
+def test_inherited_assignment_on_new_package_version_does_not_notify_again(monkeypatch):
+    monkeypatch.delenv("EMAIL_OUTBOX_ENCRYPTION_KEY", raising=False)
+    cursor = _NotificationCursor()
+    original = _assignment("assignment-v1", "user-a", "package-v1")
+    inherited = _assignment("assignment-v2", "user-a", "package-v2")
+    original["target_root_id"] = "package-root"
+    inherited["target_root_id"] = "package-root"
+    before = {
+        ("goithau", "package-v1", "user-a"): original,
+    }
+    after = {
+        **before,
+        ("goithau", "package-v2", "user-a"): inherited,
+    }
+
+    assert queue_assignment_state_changes(
+        cursor,
+        organization_id="org-1",
+        before=before,
+        after=after,
+    ) == 0
+    assert not any("INSERT INTO user_notifications" in sql for sql, _params in cursor.calls)
+
+
+def test_removing_one_version_copy_keeps_lineage_assignment_without_notification(monkeypatch):
+    monkeypatch.delenv("EMAIL_OUTBOX_ENCRYPTION_KEY", raising=False)
+    cursor = _NotificationCursor()
+    original = _assignment("assignment-v1", "user-a", "package-v1")
+    inherited = _assignment("assignment-v2", "user-a", "package-v2")
+    original["target_root_id"] = "package-root"
+    inherited["target_root_id"] = "package-root"
+    before = {
+        ("goithau", "package-v1", "user-a"): original,
+        ("goithau", "package-v2", "user-a"): inherited,
+    }
+    after = {
+        ("goithau", "package-v2", "user-a"): inherited,
+    }
+
+    assert queue_assignment_state_changes(
+        cursor,
+        organization_id="org-1",
+        before=before,
+        after=after,
+    ) == 0
+
+
 def _measure_assignment_notification_operations(monkeypatch, assignee_count):
     monkeypatch.setenv(
         "EMAIL_OUTBOX_ENCRYPTION_KEY",

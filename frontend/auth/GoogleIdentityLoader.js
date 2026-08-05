@@ -1,5 +1,11 @@
 export const GOOGLE_IDENTITY_SCRIPT_URL = "https://accounts.google.com/gsi/client";
 
+export function getGoogleIdentityClientId(documentRef = globalThis.document) {
+  return String(
+    documentRef?.querySelector?.('meta[name="google-client-id"]')?.content || "",
+  ).trim();
+}
+
 export function hasGoogleIdentityApi(globalRef = globalThis) {
   return Boolean(globalRef?.google?.accounts?.id);
 }

@@ -53,7 +53,11 @@ try {
         bodyText: document.body.innerText,
         unnamed,
         submitRect: submit ? { width: submit.getBoundingClientRect().width, height: submit.getBoundingClientRect().height } : null,
-        googleRect: google ? { width: google.getBoundingClientRect().width, height: google.getBoundingClientRect().height } : null,
+        googleRect: google ? {
+          width: google.getBoundingClientRect().width,
+          height: google.getBoundingClientRect().height,
+          state: google.dataset.state || "",
+        } : null,
       };
     });
     if (metrics.horizontalOverflow) throw new Error(`${viewport.name}: horizontal overflow ${JSON.stringify(metrics)}`);
@@ -66,7 +70,9 @@ try {
       throw new Error(`${viewport.name}: mojibake detected near ${JSON.stringify(metrics.bodyText.slice(start, mojibakeMatch.index + 120))}`);
     }
     if (metrics.unnamed.length) throw new Error(`${viewport.name}: unnamed visible controls ${metrics.unnamed.join(", ")}`);
-    if (!metrics.submitRect || metrics.submitRect.height < 40 || !metrics.googleRect || metrics.googleRect.height < 40) {
+    const googleTargetTooSmall = metrics.googleRect?.state !== "error"
+      && (!metrics.googleRect || metrics.googleRect.height < 40);
+    if (!metrics.submitRect || metrics.submitRect.height < 40 || googleTargetTooSmall) {
       throw new Error(`${viewport.name}: touch targets too small ${JSON.stringify(metrics)}`);
     }
 

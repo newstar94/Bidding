@@ -234,6 +234,7 @@ export function initCustomSelect(selectId) {
     }
     const optionsList = document.createElement("ul");
     optionsList.className = "custom-select-options";
+    if (isVersionSelect) optionsList.classList.add("version-select-options");
     optionsList.dataset.parent = selectId;
     setRuntimeStyle(optionsList, "display", "none");
     setRuntimeStyle(optionsList, "backgroundColor", "var(--bg-card)");
