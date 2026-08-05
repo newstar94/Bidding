@@ -30,7 +30,7 @@
 
 - “Giá trị hợp đồng” mặc định là `gia_tri` theo `ngay_ky`; câu hỏi thanh lý dùng `ngay_thanh_ly`.
 - Chậm tiến độ chỉ được tính khi bảng mốc `goi_thau_moc_tien_do` có ngày dự kiến và trạng thái hoàn tất rõ ràng.
-- Kho tài liệu pháp luật/RAG chưa được bật; mode tư vấn phải nói rõ khi chưa có citation.
+- Kho RAG local đã có registry version theo global/organization, ingestion có phê duyệt và citation backend. Mode tư vấn vẫn phải nói rõ khi câu hỏi không truy xuất được nguồn pháp lý phù hợp.
 
 ## File dự kiến/thực tế
 

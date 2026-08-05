@@ -95,6 +95,15 @@ export function setupSyncUx() {
   };
   window.addEventListener("online", updateOnline);
   window.addEventListener("offline", updateOnline);
+  window.addEventListener("pagehide", () => {
+    this._wsPageSuspended = true;
+    this.disconnectWebSocket?.(false);
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted && !this._wsPageSuspended) return;
+    this._wsPageSuspended = false;
+    if (navigator.onLine) this.setupWebSocketConnection?.();
+  });
   document.addEventListener("input", (event) => {
     const modal = event.target?.closest?.(".modal-overlay.active");
     if (modal && event.isTrusted !== false) modal.dataset.bfUnsaved = "true";
@@ -957,6 +966,7 @@ export function setupWebSocketConnection() {
     }, nextDelay);
   };
   ws.onerror = (err) => {
+    if (this.ws !== ws || this._wsPageSuspended) return;
     console.error("WebSocket error:", err);
     ws.close();
   };

@@ -72,6 +72,9 @@ _BIGINT_COLUMNS = frozenset(
         "revoked_at",
         "privileged_reauth_at",
         "read_at",
+        "chunk_index",
+        "page_number",
+        "char_count",
     }
 )
 
@@ -129,7 +132,12 @@ def postgres_column_definition(table_name: str, column_name: str, definition: st
         elif _is_boolean_definition(result):
             result = "SMALLINT" + result[len("INTEGER") :]
     elif result.startswith("TEXT"):
-        is_date = column_name.startswith("ngay_") or column_name == "document_date"
+        is_date = column_name.startswith("ngay_") or column_name in {
+            "document_date",
+            "issued_date",
+            "effective_from",
+            "effective_to",
+        }
         is_timestamp = (
             column_name in _SYSTEM_TIMESTAMP_COLUMNS
             or (table_name, column_name) in _BUSINESS_TIMESTAMP_COLUMNS
@@ -511,6 +519,12 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ai_feedback_user ON ai_feedback (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_workspace_date ON ai_usage_daily (organization_id, usage_date DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_user ON ai_usage_daily (user_id, organization_id, usage_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_active_org ON ai_knowledge_documents (organization_id, document_type, updated_at DESC) WHERE status = 'active'",
+        "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_approved_by ON ai_knowledge_documents (approved_by)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_scope_hash ON ai_knowledge_documents (COALESCE(organization_id, ''), content_hash)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_one_global_active ON ai_knowledge_documents (document_type, document_number) WHERE organization_id IS NULL AND status = 'active'",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_one_org_active ON ai_knowledge_documents (organization_id, document_type, document_number) WHERE organization_id IS NOT NULL AND status = 'active'",
+        "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_chunks_document ON ai_knowledge_chunks (document_id, chunk_index)",
         "CREATE INDEX IF NOT EXISTS idx_partner_lookup_cache_expiry ON partner_lookup_cache (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_partner_upstream_open ON partner_upstream_health (opened_until, probe_locked_until)",
         "CREATE INDEX IF NOT EXISTS idx_partner_enrichment_claim ON partner_enrichment_jobs (status, available_at, created_at)",

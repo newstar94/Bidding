@@ -23,6 +23,14 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(str(os.environ.get(name, default)).strip())
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
 @dataclass(frozen=True)
 class AiConfig:
     enabled: bool
@@ -45,6 +53,11 @@ class AiConfig:
     max_message_chars: int
     max_history_messages: int
     max_tool_calls_per_message: int
+    knowledge_enabled: bool
+    knowledge_top_k: int
+    knowledge_min_score: float
+    knowledge_max_context_chars: int
+    knowledge_candidate_limit: int
 
     @property
     def public_capabilities(self) -> list[str]:
@@ -142,4 +155,13 @@ def get_ai_config() -> AiConfig:
         max_message_chars=_env_int("AI_MAX_MESSAGE_CHARS", 4000, 100, 20000),
         max_history_messages=_env_int("AI_MAX_HISTORY_MESSAGES", 40, 4, 100),
         max_tool_calls_per_message=_env_int("AI_MAX_TOOL_CALLS_PER_MESSAGE", 4, 1, 10),
+        knowledge_enabled=_env_bool("AI_KNOWLEDGE_ENABLED", True),
+        knowledge_top_k=_env_int("AI_KNOWLEDGE_TOP_K", 5, 1, 10),
+        knowledge_min_score=_env_float("AI_KNOWLEDGE_MIN_SCORE", 0.12, 0.0, 2.0),
+        knowledge_max_context_chars=_env_int(
+            "AI_KNOWLEDGE_MAX_CONTEXT_CHARS", 16000, 1000, 48000
+        ),
+        knowledge_candidate_limit=_env_int(
+            "AI_KNOWLEDGE_CANDIDATE_LIMIT", 2000, 50, 5000
+        ),
     )

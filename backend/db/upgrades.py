@@ -1502,6 +1502,71 @@ def _upgrade_to_v39_cover_ai_foreign_keys(cursor, _context):
         cursor.execute(statement)
 
 
+def _upgrade_to_v40_add_ai_knowledge(cursor, _context):
+    """Add the approved, versioned document registry used by local RAG."""
+
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_knowledge_documents (
+               id TEXT PRIMARY KEY,
+               organization_id TEXT,
+               title TEXT NOT NULL CHECK(trim(title) <> ''),
+               document_number TEXT NOT NULL CHECK(trim(document_number) <> ''),
+               issuing_authority TEXT NOT NULL CHECK(trim(issuing_authority) <> ''),
+               document_type TEXT NOT NULL CHECK(document_type IN (
+                   'LEGAL_DOCUMENT', 'INTERNAL_POLICY', 'PROCESS_GUIDE',
+                   'BIDDINGFLOW_HELP', 'TEMPLATE_GUIDE', 'APPROVED_QA'
+               )),
+               issued_date DATE NOT NULL,
+               effective_from DATE NOT NULL,
+               effective_to DATE,
+               version TEXT NOT NULL CHECK(trim(version) <> ''),
+               status TEXT NOT NULL CHECK(status IN ('active', 'retired')),
+               confidentiality TEXT NOT NULL CHECK(confidentiality IN (
+                   'public', 'internal', 'confidential'
+               )),
+               approved_by TEXT NOT NULL,
+               approved_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               source_url TEXT NOT NULL DEFAULT '',
+               source_filename TEXT NOT NULL,
+               content_hash TEXT NOT NULL CHECK(length(content_hash) = 64),
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               CONSTRAINT ai_knowledge_effective_dates_check
+                   CHECK(effective_to IS NULL OR effective_to >= effective_from),
+               CONSTRAINT ai_knowledge_global_confidentiality_check
+                   CHECK(organization_id IS NOT NULL OR confidentiality <> 'confidential'),
+               CONSTRAINT ai_knowledge_approver_fk
+                   FOREIGN KEY (approved_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT
+           )"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_knowledge_chunks (
+               id TEXT PRIMARY KEY,
+               document_id TEXT NOT NULL,
+               chunk_index BIGINT NOT NULL CHECK(chunk_index >= 0),
+               section TEXT NOT NULL DEFAULT '',
+               page_number BIGINT CHECK(page_number IS NULL OR page_number > 0),
+               content TEXT NOT NULL CHECK(trim(content) <> ''),
+               char_count BIGINT NOT NULL CHECK(char_count > 0),
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               CONSTRAINT ai_knowledge_chunks_document_fk
+                   FOREIGN KEY (document_id)
+                   REFERENCES ai_knowledge_documents(id) ON DELETE CASCADE,
+               CONSTRAINT ai_knowledge_chunks_document_index_unique
+                   UNIQUE (document_id, chunk_index)
+           )"""
+    )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_active_org ON ai_knowledge_documents (organization_id, document_type, updated_at DESC) WHERE status = 'active'",
+        "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_approved_by ON ai_knowledge_documents (approved_by)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_scope_hash ON ai_knowledge_documents (COALESCE(organization_id, ''), content_hash)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_one_global_active ON ai_knowledge_documents (document_type, document_number) WHERE organization_id IS NULL AND status = 'active'",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_one_org_active ON ai_knowledge_documents (organization_id, document_type, document_number) WHERE organization_id IS NOT NULL AND status = 'active'",
+        "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_chunks_document ON ai_knowledge_chunks (document_id, chunk_index)",
+    ):
+        cursor.execute(statement)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1688,6 +1753,11 @@ UPGRADES = (
         39,
         "cover_ai_foreign_keys",
         _upgrade_to_v39_cover_ai_foreign_keys,
+    ),
+    DatabaseUpgrade(
+        40,
+        "add_ai_knowledge",
+        _upgrade_to_v40_add_ai_knowledge,
     ),
 )
 

@@ -269,6 +269,54 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ]
     },
+    "ai_knowledge_documents": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT",
+            "title": "TEXT NOT NULL CHECK(trim(title) != '')",
+            "document_number": "TEXT NOT NULL CHECK(trim(document_number) != '')",
+            "issuing_authority": "TEXT NOT NULL CHECK(trim(issuing_authority) != '')",
+            "document_type": "TEXT NOT NULL CHECK(document_type IN ('LEGAL_DOCUMENT', 'INTERNAL_POLICY', 'PROCESS_GUIDE', 'BIDDINGFLOW_HELP', 'TEMPLATE_GUIDE', 'APPROVED_QA'))",
+            "issued_date": "TEXT NOT NULL CHECK(date(issued_date) IS NOT NULL)",
+            "effective_from": "TEXT NOT NULL CHECK(date(effective_from) IS NOT NULL)",
+            "effective_to": "TEXT CHECK(effective_to IS NULL OR (length(effective_to) = 10 AND date(effective_to) IS NOT NULL))",
+            "version": "TEXT NOT NULL CHECK(trim(version) != '')",
+            "status": "TEXT NOT NULL CHECK(status IN ('active', 'retired'))",
+            "confidentiality": "TEXT NOT NULL CHECK(confidentiality IN ('public', 'internal', 'confidential'))",
+            "approved_by": "TEXT NOT NULL",
+            "approved_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "source_url": "TEXT NOT NULL DEFAULT ''",
+            "source_filename": "TEXT NOT NULL",
+            "content_hash": "TEXT NOT NULL CHECK(length(content_hash) = 64)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (approved_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "CHECK(effective_to IS NULL OR effective_to >= effective_from)",
+            "CHECK(organization_id IS NOT NULL OR confidentiality != 'confidential')"
+        ]
+    },
+    "ai_knowledge_chunks": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "document_id": "TEXT NOT NULL",
+            "chunk_index": "INTEGER NOT NULL CHECK(chunk_index >= 0)",
+            "section": "TEXT NOT NULL DEFAULT ''",
+            "page_number": "INTEGER CHECK(page_number IS NULL OR page_number > 0)",
+            "content": "TEXT NOT NULL CHECK(trim(content) != '')",
+            "char_count": "INTEGER NOT NULL CHECK(char_count > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (document_id) REFERENCES ai_knowledge_documents(id) ON DELETE CASCADE"
+        ],
+        "unique_constraints": [
+            "UNIQUE(document_id, chunk_index)"
+        ]
+    },
     "partner_lookup_cache": {
         "columns": {
             "cache_key": "TEXT PRIMARY KEY",

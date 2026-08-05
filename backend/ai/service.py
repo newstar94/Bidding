@@ -19,6 +19,7 @@ from backend.ai.conversation_repository import (
     list_messages,
 )
 from backend.ai.errors import AiError, ai_error
+from backend.ai.knowledge.repository import retrieve_for_context as retrieve_knowledge
 from backend.ai.prompt_policy import policy_for_mode
 from backend.ai.quota_service import consume_request, record_tokens
 from backend.ai.tool_executor import execute_tool
@@ -27,6 +28,7 @@ from backend.ai.tool_registry import tool_definitions
 from backend.ai.types import AiRequestContext
 from backend.ai.metrics import increment
 from backend.shared.async_io import BlockingIOTimeoutError
+from backend.db.db_helper import OperationalError
 from backend.shared.database_io import run_database_read, run_database_write
 
 
@@ -96,15 +98,38 @@ async def stream_message(request, context: AiRequestContext, conversation_id: st
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."
+    knowledge = None
+    if config.knowledge_enabled and mode in {"procurement_advice", "app_help"}:
+        try:
+            knowledge = await run_database_read(
+                retrieve_knowledge,
+                context,
+                content,
+                mode=mode,
+                limit=config.knowledge_top_k,
+                min_score=config.knowledge_min_score,
+                max_context_chars=config.knowledge_max_context_chars,
+                candidate_limit=config.knowledge_candidate_limit,
+                timeout_seconds=10,
+            )
+        except (BlockingIOTimeoutError, OperationalError) as exc:
+            raise ai_error(
+                "AI_SOURCE_UNAVAILABLE",
+                "Kho tài liệu đã kiểm chứng tạm thời không khả dụng.",
+            ) from exc
+        if knowledge.prompt_context:
+            instructions += f"\n\n{knowledge.prompt_context}"
     provider = ResponsesProvider(config)
     tools = tool_definitions(mode)
-    all_sources: list[dict] = []
+    all_sources: list[dict] = list(knowledge.sources if knowledge else ())
     assistant_text_parts: list[str] = []
     total_tool_calls = 0
     input_tokens = 0
     output_tokens = 0
 
     yield {"type": "message.started", "messageId": user_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "mode": mode}
+    for source in all_sources:
+        yield {"type": "source.added", "source": source}
     try:
         for _attempt in range(3):
             function_calls: dict[int, dict] = {}
