@@ -313,7 +313,11 @@ try {
   await waitForApp(page);
   await page.locator('button[data-workflow-tab="result"]').click();
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 15_000 });
-  await page.getByText(`Nhà thầu ${runId}`, { exact: true }).first().waitFor({ state: "visible", timeout: 15_000 });
+  const persistedContractor = page.getByText(`Nhà thầu ${runId}`, { exact: true }).filter({ visible: true });
+  if (await persistedContractor.count() !== 1) {
+    throw new Error("Award persistence rendered an ambiguous or missing visible contractor result.");
+  }
+  await persistedContractor.waitFor({ state: "visible", timeout: 15_000 });
   mark("award-persisted");
 
   await openCreateModal(page, "/hop-dong", "#btn-add-hopdong", "#modal-hopdong");
