@@ -2,7 +2,6 @@ import { apiFetch } from "../../shared/apiClient.js";
 import { generateRecordId, generateUUID } from "../../shared/idUtils.js";
 import {
   getExactContractorVersion,
-  selectContractorVersionForDate,
 } from "../../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "../packageAppraisal.js";
 import {
@@ -162,23 +161,20 @@ function applyBidRows(model, pkg, command, decisionDate) {
   });
 }
 
-function resolveResultContractorId(model, versionId, decisionDate) {
-  return selectContractorVersionForDate(model, versionId, decisionDate)?.id
-    || versionId
-    || "";
+function resolveOpeningContractorId(model, row) {
+  const bid = model.state.thongtinmothau.find(
+    (item) => String(item.id) === String(row.bidId),
+  );
+  return bid?.nhaThauId || row.contractorId || row.bidId || "";
 }
 
-function applyPackageAward(model, pkg, command, activeScope, decisionDate) {
+function applyPackageAward(model, pkg, command, activeScope) {
   let winnerId = "none";
   if (pkg.phanLo === "Có") {
     const lots = parseLots(pkg.phanLoList);
     const scopedLotResults = command.winnerRows.map((row) => {
       const lot = lots.find((item) => String(item.maPhanLo || "") === String(row.lotCode));
-      let contractorId = row.contractorId;
-      if (command.isDirectOrSpecial) {
-        contractorId = resolveApprovalContractor(model, row)?.id || row.bidId;
-      }
-      contractorId = resolveResultContractorId(model, contractorId, decisionDate);
+      const contractorId = resolveOpeningContractorId(model, row);
       return {
         id: lot?.id || "",
         maPhanLo: row.lotCode,
@@ -209,16 +205,11 @@ function applyPackageAward(model, pkg, command, activeScope, decisionDate) {
     let packageDuration = "";
     let contractDuration = "";
     if (winner) {
-      winnerId = command.isDirectOrSpecial
-        ? resolveApprovalContractor(model, winner)?.id || winner.bidId
-        : winner.contractorId;
+      winnerId = resolveOpeningContractorId(model, winner);
       finalPrice = winner.awardPrice;
       packageDuration = winner.packageDuration;
       contractDuration = winner.contractDuration;
     }
-    winnerId = winnerId === "none"
-      ? winnerId
-      : resolveResultContractorId(model, winnerId, decisionDate);
     pkg.nhaThauTrungThauId = winnerId === "none" ? "" : normalizeStoredId(winnerId);
     pkg.giaTrungThau = finalPrice;
     pkg.thoiGianGoiThau = winnerId === "none" ? "" : packageDuration;
@@ -248,7 +239,7 @@ function resolveResultMetadata(pkg, activeScope, isTwoEnvelope, decision) {
   return { metadata, target };
 }
 
-function buildContractorBindings(model, command, decisionDate) {
+function buildContractorBindings(model, command) {
   return command.winnerRows.map((row) => {
     const bid = model.state.thongtinmothau.find(
       (item) => String(item.id) === String(row.bidId),
@@ -256,17 +247,9 @@ function buildContractorBindings(model, command, decisionDate) {
     return {
       bidId: row.bidId,
       jointVentureName: bid?.loaiNhaThau === "Liên danh" ? bid.tenNhaThau || "" : "",
-      contractorVersionId: resolveResultContractorId(
-        model,
-        row.contractorId || bid?.nhaThauId || "",
-        decisionDate,
-      ),
+      contractorVersionId: bid?.nhaThauId || row.contractorId || "",
       memberVersionIds: (bid?.thanhVienLienDanh || [])
-        .map((member) => resolveResultContractorId(
-          model,
-          member.thanhVienNhaThauId,
-          decisionDate,
-        ))
+        .map((member) => member.thanhVienNhaThauId)
         .filter(Boolean),
     };
   });
@@ -315,7 +298,6 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
         pkg,
         command,
         activeScope,
-        decision.date,
       );
       let { metadata, target } = resolveResultMetadata(
         pkg,
@@ -334,7 +316,6 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
       target.contractorBindings = buildContractorBindings(
         view.model,
         command,
-        decision.date,
       );
 
       if (activeScope) {

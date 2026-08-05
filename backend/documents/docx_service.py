@@ -1,4 +1,6 @@
 import json
+import re
+from datetime import date, datetime
 from backend.shared.helpers import database
 from backend.documents.docx_context_policy import (
     REPORT_DOCUMENT_TYPES,
@@ -9,6 +11,161 @@ from backend.documents.detailed_evaluation_context import (
 )
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 from backend.shared.date_utils import vietnam_now
+
+
+def _date_only(value):
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    iso = re.match(r'^(\d{4})-(\d{2})-(\d{2})', raw)
+    if iso:
+        return f'{iso.group(1)}-{iso.group(2)}-{iso.group(3)}'
+    dmy = re.match(r'^(\d{2})/(\d{2})/(\d{4})', raw)
+    if dmy:
+        return f'{dmy.group(3)}-{dmy.group(2)}-{dmy.group(1)}'
+    return ''
+
+
+def select_effective_partner_version(records, partner_version_id, business_date):
+    """Select the version effective on a document's business date."""
+    selected = next(
+        (
+            item for item in records or []
+            if str(item.get('id') or '') == str(partner_version_id or '')
+        ),
+        None,
+    )
+    if not selected:
+        return None
+    root_id = selected.get('id_goc') or selected.get('rootId') or selected['id']
+    family = [
+        item for item in records or []
+        if str(item.get('id_goc') or item.get('rootId') or item.get('id') or '')
+        == str(root_id)
+    ]
+    if not family:
+        return selected
+    target = _date_only(business_date)
+    if not target:
+        return selected
+
+    def rank(item):
+        effective_date = _date_only(
+            item.get('ngay_ap_dung')
+            or item.get('ngayApDung')
+            or item.get('created_at')
+            or item.get('createdAt')
+            or item.get('updated_at')
+            or item.get('updatedAt')
+        )
+        try:
+            version = int(item.get('phien_ban') or item.get('phienBan') or 0)
+        except (TypeError, ValueError):
+            version = 0
+        return effective_date, version
+
+    applicable = [item for item in family if rank(item)[0] and rank(item)[0] <= target]
+    if applicable:
+        return max(applicable, key=rank)
+    return min(family, key=lambda item: (rank(item)[1], rank(item)[0]))
+
+
+def _metadata_object(value):
+    if isinstance(value, dict):
+        return value
+    try:
+        parsed = json.loads(value or '{}')
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _collect_metadata_dates(value, field_names):
+    dates = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in field_names and _date_only(child):
+                dates.append(_date_only(child))
+            elif isinstance(child, (dict, list)):
+                dates.extend(_collect_metadata_dates(child, field_names))
+    elif isinstance(value, list):
+        for child in value:
+            dates.extend(_collect_metadata_dates(child, field_names))
+    return dates
+
+
+def resolve_report_business_date(document_type, package):
+    """Return the milestone date that governs partner data for a Word report."""
+    pkg = package or {}
+    if document_type == 'hsmt':
+        return pkg.get('ngay_quyet_dinh') or pkg.get('ngayQuyetDinh') or ''
+    if document_type == 'opening':
+        return (
+            pkg.get('thoi_gian_mo_thau')
+            or pkg.get('thoiGianMoThau')
+            or pkg.get('thoi_gian_mo_ehsdxtc')
+            or pkg.get('thoiGianMoEhsdxtc')
+            or ''
+        )
+    metadata = _metadata_object(
+        pkg.get('danh_gia_hsdt_metadata') or pkg.get('danhGiaHsdtMetadata')
+    )
+    if document_type == 'evaluation':
+        report_dates = _collect_metadata_dates(
+            metadata,
+            {
+                'ngayBaoCao',
+                'ngay_bao_cao',
+                'ngayBaoCaoDanhGiaNhaThau',
+                'ngay_bao_cao_danh_gia_nha_thau',
+            },
+        )
+        return max(report_dates) if report_dates else ''
+    if document_type == 'result':
+        decision_date = (
+            pkg.get('ngay_quyet_dinh_ket_qua')
+            or pkg.get('ngayQuyetDinhKetQua')
+        )
+        if decision_date:
+            return decision_date
+        result_dates = _collect_metadata_dates(
+            metadata,
+            {'ngayQuyetDinhKetQua', 'ngay_quyet_dinh_ket_qua'},
+        )
+        return max(result_dates) if result_dates else ''
+    return ''
+
+
+def load_effective_investor(cursor, investor_id, organization_id, business_date):
+    """Load the investor lineage and return the version effective for the document."""
+    if not investor_id:
+        return {}
+    cursor.execute(
+        """SELECT * FROM chu_dau_tu
+           WHERE id = ? AND organization_id = ? AND archived_at IS NULL""",
+        (investor_id, organization_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return {}
+    anchor = parse_json_fields(dict(row))
+    root_id = str(anchor.get('id_goc') or anchor['id']).strip()
+    cursor.execute(
+        """SELECT * FROM chu_dau_tu
+           WHERE organization_id = ? AND archived_at IS NULL
+             AND (id_goc = ? OR id = ?)""",
+        (organization_id, root_id, root_id),
+    )
+    versions = [parse_json_fields(dict(item)) for item in cursor.fetchall()]
+    return select_effective_partner_version(
+        versions or [anchor],
+        anchor['id'],
+        business_date,
+    ) or anchor
 
 def to_snake_case(s):
     import re
@@ -169,13 +326,13 @@ def build_plan_context(plan_id, user_id, org_name, capabilities=None):
     investor_address = ''
     inv_data = {}
     if plan.get('chu_dau_tu_id'):
-        cursor.execute(
-            "SELECT * FROM chu_dau_tu WHERE id = ? AND organization_id = ? AND archived_at IS NULL",
-            (plan['chu_dau_tu_id'], org_name),
+        inv_data = load_effective_investor(
+            cursor,
+            plan['chu_dau_tu_id'],
+            org_name,
+            plan.get('ngay_phe_duyet'),
         )
-        row_inv = cursor.fetchone()
-        if row_inv:
-            inv_data = parse_json_fields(dict(row_inv))
+        if inv_data:
             investor_name = inv_data.get('ten_chu_dau_tu', '--')
             investor_address = inv_data.get('dia_chi', '')
 
@@ -274,13 +431,13 @@ def build_report_context(
             attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
             plan_versions = load_plan_versions(cursor, plan, org_name)
             if plan.get('chu_dau_tu_id'):
-                cursor.execute(
-                    "SELECT * FROM chu_dau_tu WHERE id = ? AND organization_id = ? AND archived_at IS NULL",
-                    (plan['chu_dau_tu_id'], org_name),
+                inv_data = load_effective_investor(
+                    cursor,
+                    plan['chu_dau_tu_id'],
+                    org_name,
+                    resolve_report_business_date(type_param, pkg),
                 )
-                row_inv = cursor.fetchone()
-                if row_inv:
-                    inv_data = parse_json_fields(dict(row_inv))
+                if inv_data:
                     investor_name = inv_data.get('ten_chu_dau_tu', '--')
                     investor_address = inv_data.get('dia_chi', '')
 
