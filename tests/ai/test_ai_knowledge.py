@@ -7,6 +7,7 @@ import pytest
 from backend.ai.knowledge import (
     KnowledgeContext,
     KnowledgeIngestionError,
+    RetrievedChunk,
     ingest_approved_document,
     prepare_document,
     retrieve_knowledge,
@@ -41,6 +42,30 @@ def context(organization_id="org-1"):
         scope_type="organization",
         permissions={"ai.chat": "view", "goithau": "view"},
     )
+
+
+def test_generic_app_guide_route_is_not_returned_as_a_clickable_source():
+    source = RetrievedChunk(
+        chunk_id="chunk-1",
+        document_id="doc-help",
+        title="Hướng dẫn sử dụng BiddingFlow",
+        document_number="BF-HELP-APP",
+        document_type="BIDDINGFLOW_HELP",
+        version="2.0.0",
+        effective_from=date(2026, 8, 5),
+        effective_to=None,
+        section="Biểu mẫu và từ điển",
+        page_number=None,
+        chunk_index=0,
+        source_url="/tong-quan",
+        content="Hướng dẫn xuất tài liệu.",
+        score=1.0,
+        expired=False,
+    ).source()
+
+    assert source["documentType"] == "BIDDINGFLOW_HELP"
+    assert source["sourceUrl"] == ""
+    assert source["url"] == ""
 
 
 def row(

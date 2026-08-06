@@ -89,6 +89,8 @@ class AssistantController {
     this.historyButton = null;
     this.historyPanel = null;
     this.historyList = null;
+    this.sourceList = null;
+    this.sourceKeys = new Set();
   }
 
   mount() {
@@ -191,12 +193,18 @@ class AssistantController {
     this.input.rows = 2; this.input.maxLength = 4000; this.input.placeholder = "Hỏi về dữ liệu, quy trình hoặc cách dùng BiddingFlow…";
     this.input.setAttribute("aria-label", "Nội dung câu hỏi");
     this.input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); this.send(); } });
+    const inputShell = make("div", "bf-assistant-input-shell");
     const actions = make("div", "bf-assistant-composer-actions");
-    this.clearButton = make("button", "bf-assistant-clear", "Cuộc trò chuyện mới"); this.clearButton.type = "button"; this.clearButton.addEventListener("click", () => this.newConversation());
+    this.clearButton = make("button", "bf-assistant-clear");
+    this.clearButton.type = "button";
+    this.clearButton.setAttribute("aria-label", "Tạo cuộc trò chuyện mới");
+    this.clearButton.append(icon("plus"), make("span", "", "Cuộc trò chuyện mới"));
+    this.clearButton.addEventListener("click", () => this.newConversation());
     this.stopButton = make("button", "bf-assistant-stop", "Dừng"); this.stopButton.type = "button"; this.stopButton.hidden = true; this.stopButton.addEventListener("click", () => this.stop());
     this.sendButton = make("button", "bf-assistant-send"); this.sendButton.type = "submit"; this.sendButton.setAttribute("aria-label", "Gửi câu hỏi"); this.sendButton.append(icon("arrow-up"));
     actions.append(this.clearButton, this.stopButton, this.sendButton);
-    this.composer.append(this.input, actions);
+    inputShell.append(this.input, actions);
+    this.composer.append(inputShell);
     this.composer.addEventListener("submit", (event) => { event.preventDefault(); this.send(); });
     this.panel.append(header, context, this.historyPanel, this.status, this.messages, this.composer);
     initCustomSelect(modeSelect.id);
@@ -241,6 +249,8 @@ class AssistantController {
   }
 
   showWelcome() {
+    this.sourceList = null;
+    this.sourceKeys.clear();
     this.messages.replaceChildren();
     const welcome = make("div", "bf-assistant-welcome");
     welcome.append(make("div", "bf-assistant-welcome-mark", "✦"), make("h3", "", "Bạn muốn kiểm tra điều gì?"), make("p", "", "Mình chỉ đọc dữ liệu đã kiểm tra trong workspace hiện tại."));
@@ -406,6 +416,8 @@ class AssistantController {
   }
 
   renderConversationMessages(messages = []) {
+    this.sourceList = null;
+    this.sourceKeys.clear();
     this.messages.replaceChildren();
     messages.forEach((message) => {
       if (!message || !["user", "assistant"].includes(message.role)) return;
@@ -487,18 +499,28 @@ class AssistantController {
   }
 
   renderSource(source) {
-    const url = source?.url;
-    if (!isSafeSourceUrl(url)) return;
-    const row = make("div", "bf-assistant-source-row");
-    const anchor = make("a", "bf-assistant-source", source.title || source.label || "Nguồn pháp luật");
+    const url = String(source?.url || "").trim();
+    const title = String(source?.title || source?.label || "Nguồn pháp luật").trim();
+    const isGenericGuideRoute = url === "/tong-quan"
+      && (source?.documentType === "BIDDINGFLOW_HELP" || title === "Hướng dẫn sử dụng BiddingFlow");
+    if (isGenericGuideRoute || !isSafeSourceUrl(url) || this.sourceKeys.has(url)) return;
+    this.sourceKeys.add(url);
+    const sourceTarget = this.activeMessage?.row || this.messages;
+    if (!this.sourceList || !this.sourceList.isConnected || !sourceTarget.contains(this.sourceList)) {
+      this.sourceList = make("section", "bf-assistant-source-list");
+      this.sourceList.setAttribute("aria-label", "Nguồn tham khảo");
+      sourceTarget.appendChild(this.sourceList);
+    }
+    const item = make("div", "bf-assistant-source-item");
+    const anchor = make("a", "bf-assistant-source", title);
     anchor.href = url;
     if (isExternalSourceUrl(url)) {
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
     }
-    row.appendChild(anchor);
-    if (source.effectiveFrom) row.appendChild(make("span", "bf-assistant-source-meta", `Hiệu lực: ${source.effectiveFrom}`));
-    this.messages.appendChild(row);
+    item.appendChild(anchor);
+    if (source.effectiveFrom) item.appendChild(make("span", "bf-assistant-source-meta", `Hiệu lực: ${source.effectiveFrom}`));
+    this.sourceList.appendChild(item);
     this.messages.scrollTop = this.messages.scrollHeight;
   }
 
@@ -516,6 +538,8 @@ class AssistantController {
       if (operation.signal.aborted || this.abortController !== operation) return;
       this.lastQuestion = content;
       this.input.value = "";
+      this.sourceList = null;
+      this.sourceKeys.clear();
       this.setStatus("Đang xử lý câu hỏi…");
       this.activeUserMessage = this.addBubble("user", content);
       const assistant = this.addBubble("assistant", "");

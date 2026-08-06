@@ -125,9 +125,13 @@ class RetrievedChunk:
         location = self.section or (
             f"Trang {self.page_number}" if self.page_number is not None else f"Đoạn {self.chunk_index + 1}"
         )
+        source_url = self.source_url
+        if self.document_type == "BIDDINGFLOW_HELP" and source_url == "/tong-quan":
+            source_url = ""
         return {
             "documentId": self.document_id,
             "title": self.title,
+            "documentType": self.document_type,
             "documentNumber": self.document_number,
             "version": self.version,
             "effectiveFrom": self.effective_from.isoformat() if self.effective_from else None,
@@ -135,8 +139,8 @@ class RetrievedChunk:
             "section": self.section,
             "page": self.page_number,
             "chunk": self.chunk_index,
-            "sourceUrl": self.source_url,
-            "url": _safe_internal_url(self.source_url),
+            "sourceUrl": source_url,
+            "url": _safe_internal_url(source_url),
             "label": f"{self.title} · {location}",
             "expired": self.expired,
         }

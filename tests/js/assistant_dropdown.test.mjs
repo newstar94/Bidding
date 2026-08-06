@@ -89,6 +89,8 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       };
       options?.querySelector('[data-value="app_help"]')?.click();
       await new Promise((resolve) => queueMicrotask(resolve));
+      const composer = document.querySelector('.bf-assistant-composer');
+      const inputShell = document.querySelector('.bf-assistant-input-shell');
       assistant.activeMessage = assistant.addBubble('assistant', '');
       assistant.onEvent({
         type: 'message.delta',
@@ -122,6 +124,13 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
         },
         openAccessibleLabel: assistantTrigger?.getAttribute("aria-label") || "",
         opened,
+        composerPresentation: {
+          hasInputShell: Boolean(inputShell),
+          inputInsideShell: inputShell?.contains(document.querySelector('.bf-assistant-input')) || false,
+          newConversationInsideShell: inputShell?.contains(document.querySelector('.bf-assistant-clear')) || false,
+          sendInsideShell: inputShell?.contains(document.querySelector('.bf-assistant-send')) || false,
+          composerChildCount: composer?.children.length || 0,
+        },
         value: select?.value,
         triggerText: trigger?.textContent?.trim(),
         selected: [...(options?.querySelectorAll(".custom-option-item") || [])]
@@ -153,6 +162,13 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       height: "54px",
     });
     assert.equal(result.openAccessibleLabel, "Đóng trợ lý BiddingFlow");
+    assert.deepEqual(result.composerPresentation, {
+      hasInputShell: true,
+      inputInsideShell: true,
+      newConversationInsideShell: true,
+      sendInsideShell: true,
+      composerChildCount: 1,
+    });
     assert.equal(result.opened.selectDisplay, "none");
     assert.equal(result.opened.optionsTag, "UL");
     assert.equal(result.opened.optionsDisplay, "block");

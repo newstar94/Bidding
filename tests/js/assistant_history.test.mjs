@@ -207,6 +207,41 @@ test("assistant renders allowlisted external legal sources as safe links", async
   }
 });
 
+test("assistant groups internal sources compactly and hides generic guide routes", async () => {
+  const { server, port } = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${port}/`);
+    const result = await page.evaluate(async () => {
+      const { mountAssistant } = await import("/frontend/assistant/AssistantController.js");
+      const assistant = mountAssistant({ model: { state: { activeuser: { organizations: [] } } } }, { enabled: true });
+      assistant.onEvent({
+        type: "source.added",
+        source: { title: "Hướng dẫn sử dụng BiddingFlow", documentType: "BIDDINGFLOW_HELP", url: "/tong-quan" },
+      });
+      assistant.onEvent({ type: "source.added", source: { title: "Quản lý Biểu mẫu & Từ điển", url: "/bieu-mau" } });
+      assistant.onEvent({ type: "source.added", source: { title: "Timeline gói thầu", url: "/timeline-goi-thau" } });
+      return {
+        sourceListCount: document.querySelectorAll(".bf-assistant-source-list").length,
+        sourceItemCount: document.querySelectorAll(".bf-assistant-source-item").length,
+        hrefs: [...document.querySelectorAll(".bf-assistant-source-item a")].map((link) => link.getAttribute("href")),
+        genericGuideLinkCount: document.querySelectorAll('a[href="/tong-quan"]').length,
+      };
+    });
+    assert.deepEqual(result, {
+      sourceListCount: 1,
+      sourceItemCount: 2,
+      hrefs: ["/bieu-mau", "/timeline-goi-thau"],
+      genericGuideLinkCount: 0,
+    });
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("assistant removes failed placeholder and retry does not duplicate the user question", async () => {
   const { server, state, port } = await startServer({ failMessageAttempts: 1 });
   let browser;
