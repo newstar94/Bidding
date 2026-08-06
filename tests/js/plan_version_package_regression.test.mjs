@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
+import {
+  createPackagePreparationVersionSnapshot,
+  savePackagePreparation,
+} from "../../frontend/packages/packagePreparation.js";
 import { snapshotPackageAggregate } from "../../frontend/packages/packageAggregateSnapshot.js";
 import {
   loadBreakdownPackageDetails,
@@ -28,6 +32,88 @@ function withoutOwnedIds(value) {
     .filter(([key, item]) => key !== "id" && item !== undefined)
     .map(([key, item]) => [key, withoutOwnedIds(item)]));
 }
+
+test("detail preparation version inherits status, opening data, and assignees", () => {
+  const source = {
+    id: "package-old",
+    rootId: "package-root",
+    phienBan: "00",
+    isLatest: 1,
+    keHoachId: "plan-1",
+    trangThai: "Äang cháº¥m tháº§u",
+    thoiGianDangTai: "2026-08-01 08:00:00",
+    thoiGianDongThau: "2026-08-05 08:00:00",
+    phanLoList: [],
+    timelineItems: [],
+    ehsmtAdjustments: [],
+  };
+  const state = {
+    goithau: [source],
+    goithauhanghoa: [],
+    thongtinmothau: [{ id: "opening-old", goiThauId: source.id, tenNhaThau: "NhÃ  tháº§u cÅ©" }],
+    hanghoaduthaunhathau: [],
+    assignments: [{ id: "assignment-old", targetId: source.id, type: "goithau", empId: "employee-1" }],
+  };
+
+  const snapshot = createPackagePreparationVersionSnapshot(state, source, {
+    thoiGianDongThau: "2026-08-06 08:00:00",
+  }, {
+    targetPackageId: "package-new",
+    timestamp: "2026-08-05 10:00:00",
+    createId: (type) => `${type}-new`,
+  });
+
+  assert.equal(snapshot.packageRecord.trangThai, source.trangThai);
+  assert.equal(snapshot.thongtinmothau[0].goiThauId, "package-new");
+  assert.equal(snapshot.assignments[0].targetId, "package-new");
+  assert.equal(snapshot.assignments[0].empId, "employee-1");
+});
+
+test("detail preparation stages the historical package when creating a version", async () => {
+  const source = {
+    id: "package-old",
+    rootId: "package-root",
+    phienBan: "00",
+    isLatest: 1,
+    keHoachId: "plan-1",
+    thoiGianDangTai: "2026-08-01 08:00:00",
+    thoiGianDongThau: "2026-08-05 08:00:00",
+    phanLoList: [],
+    timelineItems: [],
+    ehsmtAdjustments: [],
+  };
+  const state = {
+    goithau: [source],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [{ id: "assignment-old", targetId: source.id, type: "goithau", empId: "employee-1" }],
+  };
+  const mutations = [];
+  const controller = {
+    model: {
+      state,
+      getLatestPlan: () => ({ id: "plan-1" }),
+      getCurrentDateTimeString: () => "2026-08-05 10:00:00",
+      commitLocalMutation: (table, options) => mutations.push({ table, records: options.records }),
+      persistData: async () => {},
+      flushMutationOutbox: async () => {},
+    },
+    autoSync: async () => ({ ok: true }),
+  };
+
+  await savePackagePreparation(
+    controller,
+    source,
+    { thoiGianDongThau: "2026-08-06 08:00:00" },
+    { generateRecordId: (type) => `${type}-new` },
+  );
+
+  const packageMutation = mutations.find((mutation) => mutation.table === "goithau");
+  assert.equal(packageMutation.records.find((record) => record.id === source.id)?.isLatest, 0);
+  assert.equal(packageMutation.records.some((record) => record.id === "goithau-new"), true);
+  assert.equal(state.goithau.find((record) => record.id === "goithau-new")?.isLatest, 1);
+});
 
 test("creating a plan version inherits a frozen package snapshot without incrementing its version", async () => {
   const previousDocument = globalThis.document;

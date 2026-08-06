@@ -1022,6 +1022,21 @@ def _save_opening_participant_registry(cursor, opening_id, item, organization_id
         root_id = roots.get(participant_id)
         if not root_id:
             continue
+        # Older soft-deleted opening rows may have left their materialized
+        # participant registry behind. Remove only registry entries whose
+        # opening is no longer active; an active conflict must still fail.
+        cursor.execute(
+            """DELETE FROM nha_thau_tham_du_mo_thau
+               WHERE organization_id = ? AND goi_thau_id = ?
+                 AND lot_scope = ? AND nha_thau_goc_id = ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM thong_tin_mo_thau AS opening
+                     WHERE opening.organization_id = nha_thau_tham_du_mo_thau.organization_id
+                       AND opening.id = nha_thau_tham_du_mo_thau.thong_tin_mo_thau_id
+                       AND opening.archived_at IS NULL
+                 )""",
+            (organization_id, package_id, lot_scope, root_id),
+        )
         rows.append((
             f"opening-participant:{opening_id}:{root_id}",
             organization_id,

@@ -147,6 +147,39 @@ def test_provider_uses_detail_cancellation_and_never_public_date_as_behavior_dat
     assert reputation[0].behavior_date is None
 
 
+def test_provider_uses_evaluate_id_when_reputation_list_omits_id():
+    provider = FixtureProvider({
+        "get-list-violate": {"content": []},
+        "get-detail-violation": {},
+        "econsign/contractor-reputation-eval/searchContractorPo": {
+            "content": [{
+                "evaluateId": "21959af1-01de-4c64-b5bc-ff2e965492aa",
+                "orgCode": "vn001",
+                "documentNo": "2910/QĐ-BV",
+                "publicDate": "2025-10-01",
+            }]
+        },
+        "econsign/contractor-reputation-eval/getContractorDetailPo": {
+            "contractorInfo": {
+                "orgCode": "vn001",
+                "behaviorDate": "2025-09-24",
+            },
+            "evalInfo": {
+                "status": "01",
+                "documentNo": "2910/QĐ-BV",
+            },
+        },
+    })
+
+    result = provider.lookup(contractor_identifier="vn001")
+
+    assert result.records[0].behavior_date.isoformat() == "2025-09-24"
+    assert (
+        "econsign/contractor-reputation-eval/getContractorDetailPo",
+        {"id": "21959af1-01de-4c64-b5bc-ff2e965492aa"},
+    ) in provider.requests
+
+
 def test_provider_does_not_match_same_name_or_identifier_substring():
     provider = FixtureProvider({
         "get-list-violate": {

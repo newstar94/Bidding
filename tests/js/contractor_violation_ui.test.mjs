@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   applyViolationNameClass,
+  shouldRefreshSavedOpeningViolationCheck,
   updateOpeningViolationPresentation,
 } from "../../frontend/packages/openingContractorLookup.js";
 
@@ -34,6 +35,17 @@ test("only VIOLATION_CONFIRMED adds the violator name class", () => {
   }
   applyViolationNameClass(element, "VIOLATION_CONFIRMED");
   assert.equal(element.classList.contains("bidder-name--violator"), true);
+});
+
+
+test("legacy saved opening rows without a violation status are refreshed", () => {
+  assert.equal(
+    shouldRefreshSavedOpeningViolationCheck(
+      { id: "bid-1", maDinhDanh: "vn0101905830" },
+      "vn0101905830",
+    ),
+    true,
+  );
 });
 
 

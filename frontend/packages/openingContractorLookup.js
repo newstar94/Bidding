@@ -19,6 +19,14 @@ export function applyViolationNameClass(element, status) {
   element?.classList?.toggle("bidder-name--violator", isViolationConfirmed(status));
 }
 
+export function shouldRefreshSavedOpeningViolationCheck(bidData, contractorCode = "") {
+  return Boolean(
+    bidData?.id
+    && (!bidData?.violationStatus || bidData.violationStatus === VIOLATION_NOT_CHECKED)
+    && (bidData?.maDinhDanh || contractorCode)
+  );
+}
+
 export function updateOpeningViolationPresentation(row) {
   if (!row) return VIOLATION_NOT_CHECKED;
   const isJointVenture = String(row.querySelector?.(".mt-loai-nha-thau")?.value || "")

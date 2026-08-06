@@ -349,11 +349,12 @@ class ContractorRiskRepository:
         if not context.opening_id:
             return None
         row = self.cursor.execute(
-            """SELECT contractor_identifier, tax_code, source_provider,
-                      source_payload_hash, source_records_json
+            """SELECT contractor_identifier, tax_code, bid_closing_at,
+                      source_provider, source_payload_hash, source_records_json
                FROM contractor_violation_checks
                WHERE organization_id = ? AND bid_opening_record_id = ?
                  AND COALESCE(joint_venture_member_id, '') = COALESCE(?, '')
+                 AND is_stale = 0
                ORDER BY checked_at DESC, created_at DESC LIMIT 1""",
             (context.organization_id, context.opening_id, context.member_id),
         ).fetchone()
@@ -368,6 +369,8 @@ class ContractorRiskRepository:
                 and normalize_tax_code(row["tax_code"]) != normalize_tax_code(tax_code)
             )
         ):
+            return None
+        if _as_aware(row["bid_closing_at"]) != _as_aware(context.bid_closing_at):
             return None
         records = _deserialize_records(row["source_records_json"])
         if not records and str(row["source_records_json"] or "").strip() not in {"", "[]"}:

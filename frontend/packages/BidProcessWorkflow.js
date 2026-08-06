@@ -35,6 +35,7 @@ import {
   refreshSavedOpeningViolationChecks,
   resolveBidOpeningContractor,
   resolveLeadMemberName,
+  shouldRefreshSavedOpeningViolationCheck,
   updateOpeningViolationPresentation,
   VIOLATION_LOOKUP_FAILED,
   VIOLATION_NOT_CHECKED
@@ -834,9 +835,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     this.unifyTableInputsHeight(document);
   }
   if (
-    bidData.id
-    && bidData.violationStatus === VIOLATION_NOT_CHECKED
-    && (bidData.maDinhDanh || ntCode)
+    shouldRefreshSavedOpeningViolationCheck(bidData, ntCode)
   ) {
     refreshSavedOpeningViolationChecks(gt.id, [bidData]).then(() => {
       tr._violationStatus = bidData.violationStatus || VIOLATION_NOT_CHECKED;

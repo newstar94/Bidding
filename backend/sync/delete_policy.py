@@ -233,6 +233,14 @@ def archive_versioned_record(
 ):
     if table_name not in ARCHIVABLE_TABLES:
         raise ValueError(f"Bảng {table_name} không hỗ trợ lưu trữ mềm.")
+    if table_name == "thong_tin_mo_thau":
+        # The participant registry is an active-scope index without
+        # archived_at, so a soft-deleted opening must release its unique key.
+        cursor.execute(
+            "DELETE FROM nha_thau_tham_du_mo_thau "
+            "WHERE organization_id = ? AND thong_tin_mo_thau_id = ?",
+            (organization_id, record_id),
+        )
     latest_assignment = ", is_latest = 0" if table_name in VERSIONED_TABLES else ""
     result = cursor.execute(
         f"""

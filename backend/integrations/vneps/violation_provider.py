@@ -168,7 +168,7 @@ _OUTBOUND_SLOTS = threading.BoundedSemaphore(
 
 class VnepsViolationProvider:
     name = "MuaSamCong"
-    schema_version = "vneps-public-ui-2026.1"
+    schema_version = "vneps-public-ui-2026.2"
 
     def __init__(self, service_base: str | None = None):
         self.service_base = str(
@@ -328,7 +328,7 @@ class VnepsViolationProvider:
         ]
         results = []
         for item in exact[:MAX_DETAIL_REQUESTS]:
-            record_id = item.get("id")
+            record_id = item.get("id") or item.get("evaluateId")
             if not record_id:
                 results.append({
                     "category": "UNRELIABLE_BID_PARTICIPATION",
