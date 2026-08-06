@@ -340,11 +340,60 @@ test("assistant history popover switches between conversations in the current mo
     assert.equal(await page.locator("#bf-assistant-panel").isVisible(), true);
     await trigger.click();
 
-    await page.locator('[data-conversation-id="aic-data-old"]').click();
+    await page.locator('.bf-assistant-history-item[data-conversation-id="aic-data-old"]').click();
     await page.waitForFunction(() => [...document.querySelectorAll(".bf-assistant-bubble")]
       .some((node) => node.textContent === "Trả lời data cũ"));
     assert.deepEqual(await page.locator(".bf-assistant-bubble").allTextContents(), ["Câu hỏi data cũ", "Trả lời data cũ"]);
     assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("assistant deletes a conversation from history after confirmation", async () => {
+  const { server, state, port } = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${port}/`);
+    await page.evaluate(() => { document.cookie = "csrf_token=test-token; path=/"; });
+    await page.evaluate(async () => {
+      window.__assistantConfirmCalls = [];
+      const { mountAssistant } = await import("/frontend/assistant/AssistantController.js");
+      mountAssistant({
+        model: { state: { activeuser: { organizations: [] } } },
+        view: {
+          customConfirm: async (...args) => {
+            window.__assistantConfirmCalls.push(args);
+            return true;
+          },
+        },
+      }, { enabled: true });
+      document.getElementById("bf-assistant-trigger").click();
+    });
+    await page.waitForFunction(() => document.querySelectorAll(".bf-assistant-message").length === 2, null, { timeout: 2000 });
+    await page.locator(".bf-assistant-history-trigger").click();
+
+    await page.locator('.bf-assistant-history-delete[data-conversation-id="aic-data-old"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.bf-assistant-history-delete[data-conversation-id="aic-data-old"]').length === 0, null, { timeout: 2000 });
+    assert.deepEqual(state.deletedPaths, ["/api/ai/conversations/aic-data-old"]);
+    assert.deepEqual(await page.locator(".bf-assistant-history-item-title").allTextContents(), ["Gói cần mở hôm nay"]);
+
+    const confirmation = await page.evaluate(() => window.__assistantConfirmCalls[0]);
+    assert.equal(confirmation[0], "Xóa lịch sử trợ lý");
+    assert.match(confirmation[1], /Gói thầu năm trước/);
+    assert.equal(confirmation[2], "trash-2");
+
+    await page.locator('.bf-assistant-history-delete[data-conversation-id="aic-data-new"]').click();
+    await page.waitForFunction(() => document.querySelector(".bf-assistant-welcome"), null, { timeout: 2000 });
+    assert.deepEqual(state.deletedPaths, [
+      "/api/ai/conversations/aic-data-old",
+      "/api/ai/conversations/aic-data-new",
+    ]);
+    assert.equal(await page.locator(".bf-assistant-history-item-title").count(), 0);
+    assert.equal(await page.locator(".bf-assistant-welcome").count(), 1);
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

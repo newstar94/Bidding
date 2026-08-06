@@ -335,9 +335,57 @@ class AssistantController {
       ));
       button.append(title, time);
       button.addEventListener("click", () => this.selectConversation(conversation.id));
-      row.appendChild(button);
+      const deleteLabel = conversation.title || "Cuộc trò chuyện chưa đặt tên";
+      const deleteButton = make("button", "bf-assistant-history-delete");
+      deleteButton.type = "button";
+      deleteButton.dataset.conversationId = conversation.id;
+      deleteButton.setAttribute("aria-label", `Xóa cuộc trò chuyện ${deleteLabel}`);
+      deleteButton.title = "Xóa cuộc trò chuyện";
+      deleteButton.append(icon("trash-2"));
+      deleteButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.deleteConversation(conversation.id);
+      });
+      row.append(button, deleteButton);
       this.historyList.appendChild(row);
     });
+    window.lucide?.createIcons?.({ root: this.historyList });
+  }
+
+  notify(title, message, type = "info") {
+    this.controller?.view?.showToast?.(title, message, type);
+  }
+
+  async deleteConversation(conversationId) {
+    const target = this.conversations.find((item) => item?.id === conversationId && item?.mode === this.mode);
+    if (!target || this.abortController) return;
+    const title = target.title || "Cuộc trò chuyện chưa đặt tên";
+    const confirmationMessage = `Bạn có chắc muốn xóa cuộc trò chuyện "${title}" không? Toàn bộ tin nhắn trong cuộc trò chuyện này sẽ bị xóa khỏi lịch sử.`;
+    let confirmed = false;
+    if (typeof this.controller?.view?.customConfirm === "function") {
+      confirmed = Boolean(await this.controller.view.customConfirm("Xóa lịch sử trợ lý", confirmationMessage, "trash-2"));
+    } else if (typeof globalThis.confirm === "function") {
+      confirmed = globalThis.confirm(confirmationMessage);
+    }
+    if (!confirmed) return;
+
+    const wasCurrent = this.conversationId === conversationId;
+    this.setStatus("Đang xóa cuộc trò chuyện…");
+    try {
+      await assistantApi.deleteConversation(conversationId);
+      this.conversations = this.conversations.filter((item) => item?.id !== conversationId);
+      if (wasCurrent && this.conversationId === conversationId) {
+        this.conversationRequestId += 1;
+        this.conversationId = "";
+        this.showWelcome();
+      }
+      this.renderConversationHistory();
+      this.setStatus("Đã xóa cuộc trò chuyện khỏi lịch sử.");
+      this.notify("Đã xóa lịch sử", `Cuộc trò chuyện "${title}" đã được xóa.`, "success");
+    } catch (error) {
+      this.setStatus("Không thể xóa cuộc trò chuyện.");
+      this.notify("Không thể xóa lịch sử", error?.message || "Vui lòng thử lại.", "error");
+    }
   }
 
   async selectConversation(conversationId) {
