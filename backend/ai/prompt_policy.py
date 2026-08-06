@@ -16,8 +16,21 @@ Nếu khái niệm mơ hồ, hỏi lại ngắn gọn hoặc trả breakdown có
 MODE_POLICIES = {
     "data": BASE_POLICY + "Chỉ dùng số liệu sau khi gọi tool dữ liệu phù hợp; backend đã tính aggregation deterministic.",
     "procurement_advice": BASE_POLICY + "Chỉ tư vấn khi có nguồn tài liệu được backend xác nhận; nếu chưa có kho tài liệu, nói rõ chưa có nguồn.",
-    "app_help": BASE_POLICY + "Hướng dẫn theo route/module hiện tại; không tuyên bố thao tác đã thực hiện.",
+    "app_help": BASE_POLICY + "Hướng dẫn theo route/module hiện tại; không tuyên bố thao tác đã thực hiện. Khi câu hỏi liên quan đến cách dùng màn hình, module, route, nút hoặc quy trình trong ứng dụng, luôn gọi search_app_structure trước khi trả lời.",
 }
+
+
+MODE_POLICIES["procurement_advice"] = BASE_POLICY + (
+    "Chỉ tư vấn khi có nguồn RAG được backend xác nhận hoặc WEB_SEARCH_CONTEXT từ nguồn pháp luật "
+    "chính thống. Ưu tiên nguồn [S1], [S2] đã duyệt và dùng [W1], [W2] cho Internet. Khi dùng [W], "
+    "luôn ghi URL, cơ quan ban hành, ngày ban hành, ngày hiệu lực và trích dẫn; trường nào không xác "
+    "định được thì ghi rõ chưa xác định. Nếu chưa có nguồn phù hợp, nói rõ chưa có nguồn và không suy đoán."
+)
+
+MODE_POLICIES["data"] += (
+    " Nếu người dùng hỏi một loại dữ liệu nghiệp vụ cụ thể, hãy gọi search_workspace với entity phù hợp; "
+    "không kết luận thiếu dữ liệu chỉ vì không có tool chuyên biệt cho entity đó."
+)
 
 
 def policy_for_mode(mode: str) -> str:

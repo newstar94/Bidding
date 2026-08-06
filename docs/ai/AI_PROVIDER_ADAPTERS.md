@@ -111,6 +111,21 @@ Adapter gửi `store=false` theo mặc định an toàn. Nếu cần giao thức
 AI_PROVIDER=gemini_generate_content
 ```
 
+### Internet search cho tư vấn đấu thầu
+
+Luồng `procurement_advice` đọc RAG nội bộ trước, sau đó có thể gọi adapter Gemini Google Search bằng một truy vấn pháp luật đã làm sạch. Chỉ URL HTTPS thuộc allowlist mới được đưa vào câu trả lời; dữ liệu workspace, lịch sử hội thoại và nội dung RAG không được gửi sang bước Internet.
+
+```text
+AI_WEB_SEARCH_ENABLED=true
+AI_WEB_SEARCH_PROVIDER=gemini_grounding
+AI_WEB_SEARCH_API_KEY=<gemini-secret> # bỏ trống để dùng AI_API_KEY
+AI_WEB_SEARCH_MODEL=<gemini-model-hỗ-trợ-google-search>
+AI_WEB_SEARCH_ALLOWED_DOMAINS=vanban.chinhphu.vn,vbpl.vn,muasamcong.gov.vn
+AI_WEB_SEARCH_TIMEOUT_SECONDS=20
+```
+
+Adapter chuẩn hóa citation thành `[W1]`, `[W2]`, URL, ngày ban hành, ngày hiệu lực và trích đoạn. Trường ngày không có trong nguồn được hiển thị là `chưa xác định`; hệ thống không tự suy đoán. Xem [Gemini Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search) để kiểm tra model và hạn mức hiện hành.
+
 ### Ollama local
 
 ```text

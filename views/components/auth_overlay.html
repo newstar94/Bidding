@@ -90,15 +90,14 @@
             </div>
 
 
-            <div id="google-signin-btn-container" class="google-signin-container" data-state="loading" role="group"
+            <div id="google-signin-btn-container" class="google-signin-container" data-state="idle" role="group"
                 aria-label="Đăng nhập bằng Google">
-                <div class="google-signin-loading" aria-hidden="true">
-                    <span class="google-signin-spinner"></span>
-                    <span>Đang tải đăng nhập Google...</span>
-                </div>
+                <button id="google-signin-launch" class="google-signin-launch" type="button">
+                    <span class="google-signin-launch-mark" aria-hidden="true">G</span>
+                    <span class="google-signin-launch-label">Tiếp tục với Google</span>
+                </button>
             </div>
             <div id="google-signin-status" class="google-signin-status" role="status" aria-live="polite" hidden></div>
-            <button id="google-signin-retry" class="google-signin-retry" type="button" hidden>Thử lại đăng nhập Google</button>
 
             <p class="auth-legal-consent auth-legal-consent-oauth">Với việc đăng nhập bằng Google, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a> và <a href="/legal#security">Chính sách bảo mật</a>.</p>
 

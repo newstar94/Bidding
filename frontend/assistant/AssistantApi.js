@@ -28,10 +28,10 @@ export const assistantApi = {
   listMessages(id, { limit = 40, offset = 0 } = {}) { return requestJson(`/api/ai/conversations/${encodeURIComponent(id)}/messages?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`, { method: "GET", timeoutMs: 15000, retries: 0 }); },
   deleteConversation(id) { return requestJson(`/api/ai/conversations/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: 15000, retries: 0 }); },
   getSuggestedQuestions(route) { return requestJson(`/api/ai/suggested-questions?route=${encodeURIComponent(route || "/")}`, { method: "GET", timeoutMs: 10000, retries: 0 }); },
-  sendMessage(id, content, signal) {
+  sendMessage(id, content, signal, route = globalThis.location?.pathname || "/") {
     return apiFetch(`/api/ai/conversations/${encodeURIComponent(id)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, route }),
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       timeoutMs: 120000,
       retries: 0,
@@ -41,7 +41,10 @@ export const assistantApi = {
   },
   feedback(messageId, rating, category = "other", comment = null) {
     return requestJson("/api/ai/feedback", { method: "POST", body: JSON.stringify({ messageId, rating, category, comment }), headers: { "Content-Type": "application/json" }, timeoutMs: 15000, retries: 0 });
-  }
+  },
+  clearFeedback(messageId) {
+    return requestJson("/api/ai/feedback", { method: "DELETE", body: JSON.stringify({ messageId }), headers: { "Content-Type": "application/json" }, timeoutMs: 15000, retries: 0 });
+  },
 };
 
 export async function consumeAssistantStream(response, onEvent, signal) {

@@ -7,6 +7,8 @@ test("Google sign-in area is prominent while its icon remains constrained", () =
   const css = fs.readFileSync("views/css/views.css", "utf8");
   const controller = fs.readFileSync("frontend/auth/GoogleAuthController.js", "utf8");
   assert.match(markup, /id="google-signin-btn-container"[^>]*class="google-signin-container"/u);
+  assert.match(markup, /id="google-signin-launch"[^>]*class="google-signin-launch"/u);
+  assert.doesNotMatch(markup, /class="google-signin-loading"/u);
   assert.doesNotMatch(markup, /google-signin-panel|google-signin-copy|google-signin-title/u);
   assert.doesNotMatch(css, /\.google-signin-panel|\.google-signin-copy/u);
   assert.match(css, /\.google-signin-container iframe\s*\{[^}]*border:\s*0\s*!important[^}]*box-shadow:\s*none/s);
@@ -17,4 +19,14 @@ test("Google sign-in area is prominent while its icon remains constrained", () =
   assert.match(css, /\.google-signin-container #button-label[^{]*\{[^}]*position:\s*absolute/s);
   assert.match(controller, /const googleButtonWidth = Math\.max\(200, Math\.min\(400, measuredWidth\)\)/u);
   assert.match(controller, /renderButton\(container,[\s\S]*width:\s*googleButtonWidth,/u);
+});
+
+test("Google sign-in keeps its launch button visible while the identity client preloads", () => {
+  const controller = fs.readFileSync("frontend/auth/AuthFlowController.js", "utf8");
+  const css = fs.readFileSync("views/css/views.css", "utf8");
+  assert.match(controller, /setGoogleSignInAction\(loadGoogleIdentity\)/u);
+  assert.match(controller, /scheduleGoogleIdentityLoad\(\);/u);
+  assert.match(controller, /showGoogleSignInState\("", "idle"\)/u);
+  assert.match(controller, /google\.accounts\.id\.prompt|google\?\.accounts\?\.id\?\.prompt/u);
+  assert.match(css, /\.google-signin-launch\s*\{/u);
 });

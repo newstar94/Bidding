@@ -28,6 +28,21 @@ function formatValue(value) {
   return String(value);
 }
 
+function isSafeSourceUrl(value) {
+  const url = String(value || "").trim();
+  if (url.startsWith("/") && !url.startsWith("//")) return true;
+  try {
+    const parsed = new URL(url, globalThis.location?.origin || "http://localhost");
+    return parsed.protocol === "https:" && !parsed.username && !parsed.password;
+  } catch (_) {
+    return false;
+  }
+}
+
+function isExternalSourceUrl(value) {
+  return String(value || "").trim().startsWith("https://");
+}
+
 function activeWorkspaceName(controller) {
   const id = getActiveOrganizationId();
   const user = controller?.model?.state?.activeuser || {};
@@ -120,8 +135,6 @@ class AssistantController {
       this.setHistoryOpen(false);
     });
     window.addEventListener("bf:workspace-changed", () => this.resetForWorkspace());
-    window.addEventListener("popstate", () => this.loadSuggestions());
-    this.loadSuggestions();
     window.lucide?.createIcons?.({ root: this.panel });
   }
 
@@ -172,7 +185,6 @@ class AssistantController {
     this.messages = make("div", "bf-assistant-messages");
     this.messages.setAttribute("role", "log");
     this.messages.setAttribute("aria-live", "polite");
-    this.suggestions = make("div", "bf-assistant-suggestions");
     this.composer = make("form", "bf-assistant-composer");
     this.composer.setAttribute("aria-label", "Gửi câu hỏi cho trợ lý");
     this.input = make("textarea", "bf-assistant-input");
@@ -186,7 +198,7 @@ class AssistantController {
     actions.append(this.clearButton, this.stopButton, this.sendButton);
     this.composer.append(this.input, actions);
     this.composer.addEventListener("submit", (event) => { event.preventDefault(); this.send(); });
-    this.panel.append(header, context, this.historyPanel, this.status, this.messages, this.suggestions, this.composer);
+    this.panel.append(header, context, this.historyPanel, this.status, this.messages, this.composer);
     initCustomSelect(modeSelect.id);
     const modeWrapper = this.panel.querySelector(`.custom-select-container[data-target="${modeSelect.id}"]`);
     modeWrapper?.classList.add("bf-assistant-mode-select");
@@ -363,7 +375,6 @@ class AssistantController {
     this.setHistoryOpen(false);
     this.showWelcome();
     this.setStatus("Sẵn sàng cho cuộc trò chuyện mới.");
-    await this.loadSuggestions();
     this.input.focus();
   }
 
@@ -399,7 +410,9 @@ class AssistantController {
     messages.forEach((message) => {
       if (!message || !["user", "assistant"].includes(message.role)) return;
       const rendered = this.addBubble(message.role, String(message.content || ""));
-      if (message.role === "assistant" && message.id) this.addFeedback(rendered.row, message.id);
+      if (message.role === "assistant" && message.id) {
+        this.addFeedback(rendered.row, message.id, message.feedbackRating || message.feedback_rating || "");
+      }
     });
     if (!this.messages.childElementCount) this.showWelcome();
     this.messages.scrollTop = this.messages.scrollHeight;
@@ -473,6 +486,22 @@ class AssistantController {
     this.messages.appendChild(card); this.messages.scrollTop = this.messages.scrollHeight;
   }
 
+  renderSource(source) {
+    const url = source?.url;
+    if (!isSafeSourceUrl(url)) return;
+    const row = make("div", "bf-assistant-source-row");
+    const anchor = make("a", "bf-assistant-source", source.title || source.label || "Nguồn pháp luật");
+    anchor.href = url;
+    if (isExternalSourceUrl(url)) {
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+    }
+    row.appendChild(anchor);
+    if (source.effectiveFrom) row.appendChild(make("span", "bf-assistant-source-meta", `Hiệu lực: ${source.effectiveFrom}`));
+    this.messages.appendChild(row);
+    this.messages.scrollTop = this.messages.scrollHeight;
+  }
+
   async send(question = null) {
     if (this.abortController) return;
     const content = String(question ?? this.input.value ?? "").trim();
@@ -509,6 +538,7 @@ class AssistantController {
   }
 
   onEvent(event) {
+    if (event.type === "source.added") this.renderSource(event.source);
     if (event.type === "message.started") this.setStatus("Đang xử lý câu hỏi…");
     if (event.type === "message.delta" && this.activeMessage) { this.activeMessage.bubble.textContent += String(event.delta || ""); this.messages.scrollTop = this.messages.scrollHeight; }
     if (event.type === "tool.started") this.setStatus("Đang kiểm tra dữ liệu được phân quyền…");
@@ -523,13 +553,47 @@ class AssistantController {
     if (event.type === "message.failed") this.showFailure(event.message || "Trợ lý không thể hoàn thành yêu cầu.", event.code);
   }
 
-  addFeedback(row, messageId) {
+  addFeedback(row, messageId, initialRating = "") {
     if (!messageId || row.querySelector(".bf-assistant-feedback")) return;
     const controls = make("div", "bf-assistant-feedback");
-    [["up", "thumbs-up", "Hữu ích"], ["down", "thumbs-down", "Chưa đúng"]].forEach(([rating, iconName, label]) => { const button = make("button", "bf-assistant-feedback-button"); button.type = "button"; button.setAttribute("aria-label", label); button.append(icon(iconName)); button.addEventListener("click", async () => { button.disabled = true; try { await assistantApi.feedback(messageId, rating, rating === "up" ? "correct" : "not_helpful"); button.classList.add("is-selected"); } catch (_) { button.disabled = false; } }); controls.appendChild(button); });
-    controls.querySelectorAll('button').forEach((button) => {
-      button.title = button.getAttribute('aria-label') || '';
+    const definitions = [["up", "thumbs-up", "Hữu ích"], ["down", "thumbs-down", "Chưa đúng"]];
+    const buttons = new Map();
+    let selectedRating = ["up", "down"].includes(initialRating) ? initialRating : "";
+    const syncState = () => {
+      buttons.forEach((button, rating) => {
+        const selected = rating === selectedRating;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", String(selected));
+      });
+    };
+    definitions.forEach(([rating, iconName, label]) => {
+      const button = make("button", "bf-assistant-feedback-button");
+      button.type = "button";
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      button.setAttribute("aria-pressed", "false");
+      button.append(icon(iconName));
+      buttons.set(rating, button);
+      button.addEventListener("click", async () => {
+        const nextRating = selectedRating === rating ? "" : rating;
+        buttons.forEach((item) => { item.disabled = true; });
+        try {
+          if (nextRating) {
+            await assistantApi.feedback(messageId, nextRating, nextRating === "up" ? "correct" : "not_helpful");
+          } else {
+            await assistantApi.clearFeedback(messageId);
+          }
+          selectedRating = nextRating;
+          syncState();
+        } catch (_) {
+          // Keep the previous selection when persistence fails.
+        } finally {
+          buttons.forEach((item) => { item.disabled = false; });
+        }
+      });
+      controls.appendChild(button);
     });
+    syncState();
     row.appendChild(controls);
     window.lucide?.createIcons?.({ root: controls });
   }
@@ -560,11 +624,6 @@ class AssistantController {
     this.setHistoryOpen(false);
     this.renderConversationHistory();
     this.showWelcome();
-    this.loadSuggestions();
     if (restoreNow) this.historyReady = this.restoreLatestConversation();
-  }
-
-  async loadSuggestions() {
-    try { const result = await assistantApi.getSuggestedQuestions(window.location.pathname); this.suggestions.replaceChildren(); (result.items || []).forEach((item) => { const button = make("button", "bf-assistant-suggestion", item.label || item.question); button.type = "button"; button.addEventListener("click", () => this.send(item.question)); this.suggestions.appendChild(button); }); } catch (_) { this.suggestions.replaceChildren(); }
   }
 }

@@ -2498,28 +2498,57 @@ table th {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.google-signin-loading {
+.google-signin-launch {
   display: flex;
   width: 100%;
   min-height: 46px;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 10px;
   border: 1.5px solid color-mix(in srgb, var(--primary) 22%, var(--border-color));
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text-main);
   background: var(--bg-card);
   box-shadow: var(--shadow-sm);
-  font-size: 0.82rem;
-  font-weight: 600;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
 }
-.google-signin-spinner {
-  width: 15px;
-  height: 15px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: bf-initial-spin 0.75s linear infinite;
+.google-signin-launch:hover:not(:disabled) {
+  border-color: var(--primary);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--primary) 13%, transparent);
+}
+.google-signin-launch:active:not(:disabled) {
+  transform: translateY(1px) scale(0.995);
+}
+.google-signin-launch:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  outline-offset: 3px;
+}
+.google-signin-launch:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+.google-signin-launch-mark {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: var(--primary);
+  font-family: Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+.google-signin-launch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.google-signin-launch[aria-busy="true"] {
+  pointer-events: none;
 }
 .google-signin-status {
   margin: 8px auto 0;
@@ -2535,28 +2564,7 @@ table th {
   min-height: 0;
   margin-bottom: 0;
 }
-.google-signin-container[data-state="error"] .google-signin-loading {
-  display: none;
-}
-.google-signin-retry {
-  display: block;
-  margin: 7px auto 0;
-  padding: 0;
-  border: 0;
-  color: var(--primary);
-  background: transparent;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.google-signin-retry:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 3px;
-  border-radius: 2px;
-}
+.google-signin-container[data-state="error"] .google-signin-launch { margin-bottom: 0; }
 @media (max-height: 760px) and (min-width: 821px) {
   .auth-overlay {
     align-items: flex-start;

@@ -22,7 +22,7 @@ import {
 import {
   hideAuthOverlay,
   reloadWithInitLoader,
-  setGoogleSignInRetry,
+  setGoogleSignInAction,
   setAuthOverlayView,
   showGoogleSignInState,
 } from "./AuthUi.js";
@@ -119,6 +119,8 @@ export function setupAuth() {
     setRuntimeStyle(formForgot, "display", "none");
     if (formReset) setRuntimeStyle(formReset, "display", showResetForm ? "block" : "none");
     if (formVerify) setRuntimeStyle(formVerify, "display", "none");
+    showGoogleSignInState("", "idle");
+    setGoogleSignInAction(loadGoogleIdentity);
     scheduleGoogleIdentityLoad();
     document.getElementById("login-username").value = "";
     document.getElementById("login-password").value = "";
@@ -855,38 +857,49 @@ export function setupAuth() {
       setRuntimeStyle(errorDiv, "display", "block");
     }
   };
-  const loadGoogleIdentity = () => {
-    setGoogleSignInRetry(null);
-    showGoogleSignInState("", "loading");
-    googleIdentityLoader.load().then(() => {
-      initGoogle();
-    }).catch((error) => {
-      googleIdentityLoadScheduled = false;
-      console.warn("Google Sign-In could not be loaded.", error);
-      showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng hoặc thử lại.", "error");
-      setGoogleSignInRetry(() => loadGoogleIdentity());
-      if (!googleIdentityRetryOnReconnect) {
-        googleIdentityRetryOnReconnect = true;
-        window.addEventListener("online", () => {
-          googleIdentityRetryOnReconnect = false;
-          loadGoogleIdentity();
-        }, { once: true });
-      }
-    });
-  };
+  let googleIdentityLoadPromise = null;
   let googleIdentityLoadScheduled = false;
-  let googleIdentityRetryOnReconnect = false;
-  const scheduleGoogleIdentityLoad = () => {
+  const loadGoogleIdentity = ({ userInitiated = false } = {}) => {
+    if (googleIdentityLoader.isReady()) {
+      initGoogle();
+      if (userInitiated && document.getElementById("google-signin-btn-container")?.dataset.state === "ready") {
+        globalThis.google?.accounts?.id?.prompt?.();
+      }
+      return Promise.resolve(true);
+    }
     if (!getGoogleIdentityClientId(document)) {
       showGoogleSignInState("Đăng nhập Google chưa được cấu hình.", "error");
-      return;
+      setGoogleSignInAction(loadGoogleIdentity);
+      return Promise.resolve(false);
     }
-    if (googleIdentityLoadScheduled && googleIdentityLoader.isReady()) return;
-    googleIdentityLoadScheduled = true;
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => setTimeout(loadGoogleIdentity, 0), { once: true });
-    } else {
-      setTimeout(loadGoogleIdentity, 0);
-    }
+    if (googleIdentityLoadPromise) return googleIdentityLoadPromise;
+    googleIdentityLoadPromise = googleIdentityLoader.load()
+      .then(() => {
+        initGoogle();
+        if (userInitiated && document.getElementById("google-signin-btn-container")?.dataset.state === "ready") {
+          globalThis.google?.accounts?.id?.prompt?.();
+        }
+        return true;
+      })
+      .catch((error) => {
+        console.warn("Google Sign-In could not be loaded.", error);
+        showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng hoặc thử lại.", "error");
+        setGoogleSignInAction(loadGoogleIdentity);
+        return false;
+      })
+      .finally(() => {
+        googleIdentityLoadPromise = null;
+      });
+    return googleIdentityLoadPromise;
   };
+  const scheduleGoogleIdentityLoad = () => {
+    if (googleIdentityLoader.isReady() || googleIdentityLoadScheduled) return;
+    googleIdentityLoadScheduled = true;
+    setTimeout(() => {
+      googleIdentityLoadScheduled = false;
+      void loadGoogleIdentity();
+    }, 0);
+  };
+  showGoogleSignInState("", "idle");
+  setGoogleSignInAction(loadGoogleIdentity);
 }

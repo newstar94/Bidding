@@ -175,6 +175,38 @@ test("assistant restores the latest conversation for its mode and continues that
   }
 });
 
+test("assistant renders allowlisted external legal sources as safe links", async () => {
+  const { server, port } = await startServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${port}/`);
+    await page.evaluate(async () => {
+      const { mountAssistant } = await import("/frontend/assistant/AssistantController.js");
+      const assistant = mountAssistant({ model: { state: { activeuser: { organizations: [] } } } }, { enabled: true });
+      assistant.onEvent({
+        type: "source.added",
+        source: {
+          title: "Luật Đấu thầu 2023",
+          url: "https://vanban.chinhphu.vn/luat-dau-thau",
+          effectiveFrom: "2024-01-01",
+        },
+      });
+      assistant.onEvent({ type: "source.added", source: { title: "Unsafe", url: "javascript:alert(1)" } });
+    });
+    const link = page.locator('a.bf-assistant-source[href="https://vanban.chinhphu.vn/luat-dau-thau"]');
+    assert.equal(await link.count(), 1);
+    assert.equal(await link.getAttribute("target"), "_blank");
+    assert.equal(await link.getAttribute("rel"), "noopener noreferrer");
+    assert.equal(await page.locator('a[href^="javascript:"]').count(), 0);
+    assert.equal(await page.locator(".bf-assistant-source-meta").textContent(), "Hiệu lực: 2024-01-01");
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("assistant removes failed placeholder and retry does not duplicate the user question", async () => {
   const { server, state, port } = await startServer({ failMessageAttempts: 1 });
   let browser;

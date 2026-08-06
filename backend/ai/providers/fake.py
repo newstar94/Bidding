@@ -94,6 +94,8 @@ def _answer_from_tool_output(input_items: list[dict]) -> str | None:
         '',
     ).casefold()
     count = _as_count(summary.get('recordCount'))
+    if tool_name == 'search_workspace':
+        return _count_answer(count, str(summary.get('entityLabel') or 'record'))
     if tool_name in {'aggregate_packages', 'list_packages'}:
         if 'hôm nay' in question or 'hom nay' in question:
             if count == 0:
@@ -185,6 +187,18 @@ def _fake_tool_call(question: str, tools: list[dict]) -> dict | None:
     available = {item.get("name") for item in tools}
     lowered = question.casefold()
     today = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
+    if "chuyên gia" in lowered and "search_workspace" in available:
+        return {
+            "name": "search_workspace",
+            "arguments": {
+                "entity": "experts",
+                "operation": "count",
+                "query": "",
+                "status": "",
+                "packageId": "",
+                "limit": 20,
+            },
+        }
     if "hợp đồng" in lowered and "thanh lý" in lowered and "aggregate_contracts" in available:
         year = re.search(r"20\d{2}", question)
         selected_year = year.group(0) if year else str(datetime.now().year)

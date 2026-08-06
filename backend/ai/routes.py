@@ -18,6 +18,7 @@ from backend.ai.conversation_repository import (
     list_conversations,
     list_messages,
     list_messages_page,
+    remove_feedback,
 )
 from backend.ai.errors import AiError, ai_error
 from backend.ai.permission_context import build_request_context
@@ -170,6 +171,9 @@ async def send_ai_message_api(request: Request):
         return json_error
     try:
         content = validate_message(data.get("content"))
+        current_route = str(data.get("route") or "/").strip()
+        if len(current_route) > 160 or not current_route.startswith("/") or current_route.startswith("//"):
+            return _error(request, ai_error("AI_INVALID_MESSAGE", "Route ứng dụng không hợp lệ."))
         conversation_id = str(request.path_params.get("conversation_id") or "").strip()
         await run_database_read(get_conversation, context, conversation_id, timeout_seconds=10)
         await run_database_write(consume_request, context, get_ai_config())
@@ -185,7 +189,7 @@ async def send_ai_message_api(request: Request):
     async def event_stream():
         started_at = time.perf_counter()
         try:
-            async for event in stream_message(request, context, conversation_id, content, quota_consumed=True):
+            async for event in stream_message(request, context, conversation_id, content, current_route=current_route, quota_consumed=True):
                 yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n".encode("utf-8")
         finally:
             increment("ai_request_duration_seconds", time.perf_counter() - started_at)
@@ -206,6 +210,17 @@ async def ai_feedback_api(request: Request):
     if json_error:
         return json_error
     message_id = str(data.get("messageId") or "").strip()
+    if request.method == "DELETE":
+        if not message_id:
+            return _error(request, ai_error("AI_INVALID_MESSAGE", "Feedback không hợp lệ."))
+        try:
+            await run_database_write(remove_feedback, context, message_id)
+            return JSONResponse({"success": True, "removed": True})
+        except AiError as exc:
+            return _error(request, exc)
+        except (DatabaseError, BlockingIOBusyError, BlockingIOTimeoutError) as exc:
+            log_error(exc, "ai_feedback_remove")
+            return _error(request, ai_error("AI_DATA_UNAVAILABLE", "Không thể bỏ feedback."))
     rating = str(data.get("rating") or "").strip()
     category = str(data.get("category") or "").strip()
     comment = data.get("comment")
@@ -257,6 +272,6 @@ ai_routes = [
     Route("/api/ai/conversations/{conversation_id}/messages", list_ai_messages_api, methods=["GET"]),
     Route("/api/ai/conversations/{conversation_id}", get_ai_conversation_api, methods=["GET"]),
     Route("/api/ai/conversations/{conversation_id}", delete_ai_conversation_api, methods=["DELETE"]),
-    Route("/api/ai/feedback", ai_feedback_api, methods=["POST"]),
+    Route("/api/ai/feedback", ai_feedback_api, methods=["POST", "DELETE"]),
     Route("/api/ai/suggested-questions", suggested_questions_api, methods=["GET"]),
 ]

@@ -81,6 +81,26 @@ def test_fake_provider_streams_without_network(monkeypatch):
     assert any(event["type"] == "response.function_call_arguments.done" for event in events)
 
 
+def test_fake_provider_uses_workspace_search_for_unmodeled_business_entities(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    events = list(
+        ResponsesProvider(get_ai_config()).stream_response(
+            input_items=[{"role": "user", "content": "Hiện tại có mấy chuyên gia?"}],
+            instructions="",
+            tools=tool_definitions("data"),
+        )
+    )
+    done = next(event for event in events if event["type"] == "response.function_call_arguments.done")
+    assert json.loads(done["arguments"]) == {
+        "entity": "experts",
+        "operation": "count",
+        "query": "",
+        "status": "",
+        "packageId": "",
+        "limit": 20,
+    }
+
+
 def test_fake_provider_answers_tool_result_without_filter_metadata(monkeypatch):
     monkeypatch.setenv('AI_PROVIDER', 'fake')
     items = [{'role': 'user', 'content': 'Hom nay co may goi can mo thau?'},

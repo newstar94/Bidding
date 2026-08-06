@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import re
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -29,6 +30,18 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
     except (TypeError, ValueError):
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _env_domains(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    values = str(os.environ.get(name, "")).split(",")
+    domains: list[str] = []
+    for value in values:
+        domain = value.strip().casefold().rstrip(".")
+        if not domain or not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", domain):
+            continue
+        if domain not in domains:
+            domains.append(domain)
+    return tuple(domains) or default
 
 
 @dataclass(frozen=True)
@@ -58,6 +71,13 @@ class AiConfig:
     knowledge_min_score: float
     knowledge_max_context_chars: int
     knowledge_candidate_limit: int
+    web_search_enabled: bool
+    web_search_provider: str
+    web_search_api_key: str
+    web_search_base_url: str
+    web_search_model: str
+    web_search_timeout_seconds: int
+    web_search_allowed_domains: tuple[str, ...]
 
     @property
     def public_capabilities(self) -> list[str]:
@@ -163,5 +183,30 @@ def get_ai_config() -> AiConfig:
         ),
         knowledge_candidate_limit=_env_int(
             "AI_KNOWLEDGE_CANDIDATE_LIMIT", 2000, 50, 5000
+        ),
+        web_search_enabled=_env_bool("AI_WEB_SEARCH_ENABLED", False),
+        web_search_provider=(
+            str(os.environ.get("AI_WEB_SEARCH_PROVIDER", "gemini_grounding"))
+            .strip()
+            .casefold()
+            .replace("-", "_")
+            or "gemini_grounding"
+        ),
+        web_search_api_key=first_value(
+            "AI_WEB_SEARCH_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "AI_API_KEY"
+        ),
+        web_search_base_url=first_value(
+            "AI_WEB_SEARCH_BASE_URL", "GEMINI_BASE_URL", default=""
+        ).rstrip("/"),
+        web_search_model=first_value("AI_WEB_SEARCH_MODEL", default=str(os.environ.get("AI_MODEL", default_model)).strip()),
+        web_search_timeout_seconds=_env_int("AI_WEB_SEARCH_TIMEOUT_SECONDS", 20, 5, 60),
+        web_search_allowed_domains=_env_domains(
+            "AI_WEB_SEARCH_ALLOWED_DOMAINS",
+            (
+                "vanban.chinhphu.vn",
+                "vbpl.vn",
+                "muasamcong.gov.vn",
+                "muasamcong.mpi.gov.vn",
+            ),
         ),
     )

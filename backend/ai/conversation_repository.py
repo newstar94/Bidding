@@ -112,9 +112,12 @@ def list_messages(context: AiRequestContext, conversation_id: str, limit: int = 
     try:
         rows = connection.execute(
             """SELECT m.id, m.role, m.content, m.status, m.model,
-                      m.input_tokens, m.output_tokens, m.error_code, m.created_at
+                      m.input_tokens, m.output_tokens, m.error_code, m.created_at,
+                      f.rating AS feedback_rating
                FROM ai_messages m JOIN ai_conversations c
                  ON c.organization_id = m.organization_id AND c.id = m.conversation_id
+               LEFT JOIN ai_feedback f
+                 ON f.organization_id = m.organization_id AND f.message_id = m.id AND f.user_id = c.user_id
                WHERE m.organization_id = ? AND c.user_id = ? AND m.conversation_id = ?
                  AND c.status = 'active'
                ORDER BY m.created_at DESC, m.id DESC LIMIT ?""",
@@ -140,9 +143,12 @@ def list_messages_page(
     try:
         rows = connection.execute(
             """SELECT m.id, m.role, m.content, m.status, m.model,
-                      m.input_tokens, m.output_tokens, m.error_code, m.created_at
+                      m.input_tokens, m.output_tokens, m.error_code, m.created_at,
+                      f.rating AS feedback_rating
                FROM ai_messages m JOIN ai_conversations c
                  ON c.organization_id = m.organization_id AND c.id = m.conversation_id
+               LEFT JOIN ai_feedback f
+                 ON f.organization_id = m.organization_id AND f.message_id = m.id AND f.user_id = c.user_id
                WHERE m.organization_id = ? AND c.user_id = ? AND m.conversation_id = ?
                  AND c.status = 'active'
                ORDER BY m.created_at DESC, m.id DESC LIMIT ? OFFSET ?""",
@@ -170,17 +176,21 @@ def add_tool_execution(context: AiRequestContext, conversation_id: str, message_
         connection.close()
 
 
+def _assert_message_access(connection, context: AiRequestContext, message_id: str) -> None:
+    message = connection.execute(
+        """SELECT 1 FROM ai_messages m JOIN ai_conversations c
+            ON c.organization_id = m.organization_id AND c.id = m.conversation_id
+           WHERE m.organization_id = ? AND m.id = ? AND c.user_id = ? LIMIT 1""",
+        (context.organization_id, message_id, context.user_id),
+    ).fetchone()
+    if not message:
+        raise ai_error("AI_CONVERSATION_NOT_FOUND", "Không tìm thấy tin nhắn trong workspace hiện tại.")
+
+
 def add_feedback(context: AiRequestContext, message_id: str, rating: str, category: str, comment: str | None) -> None:
     connection = database.get_connection()
     try:
-        message = connection.execute(
-            """SELECT 1 FROM ai_messages m JOIN ai_conversations c
-                ON c.organization_id = m.organization_id AND c.id = m.conversation_id
-               WHERE m.organization_id = ? AND m.id = ? AND c.user_id = ? LIMIT 1""",
-            (context.organization_id, message_id, context.user_id),
-        ).fetchone()
-        if not message:
-            raise ai_error("AI_CONVERSATION_NOT_FOUND", "Không tìm thấy tin nhắn trong workspace hiện tại.")
+        _assert_message_access(connection, context, message_id)
         connection.execute(
             """INSERT INTO ai_feedback (id, organization_id, message_id, user_id, rating, category, comment)
                VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -188,6 +198,19 @@ def add_feedback(context: AiRequestContext, message_id: str, rating: str, catego
                  rating = excluded.rating, category = excluded.category,
                  comment = excluded.comment, created_at = CURRENT_TIMESTAMP""",
             (_id("aif"), context.organization_id, message_id, context.user_id, rating, category, comment),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def remove_feedback(context: AiRequestContext, message_id: str) -> None:
+    connection = database.get_connection()
+    try:
+        _assert_message_access(connection, context, message_id)
+        connection.execute(
+            "DELETE FROM ai_feedback WHERE organization_id = ? AND message_id = ? AND user_id = ?",
+            (context.organization_id, message_id, context.user_id),
         )
         connection.commit()
     finally:

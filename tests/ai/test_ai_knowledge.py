@@ -359,6 +359,7 @@ def test_stream_message_adds_validated_knowledge_context_and_sources(monkeypatch
                 context(),
                 "conversation-1",
                 "Tạo gói thầu thế nào?",
+                current_route="/goi-thau",
                 quota_consumed=True,
             )
         ]
@@ -366,6 +367,88 @@ def test_stream_message_adds_validated_knowledge_context_and_sources(monkeypatch
     events = asyncio.run(collect())
 
     assert "KNOWLEDGE_CONTEXT [S1]" in captured["instructions"]
+    assert "Route ứng dụng hiện tại: /goi-thau" in captured["instructions"]
+    assert [tool["name"] for tool in captured["tools"]] == ["search_app_structure"]
     assert any(event == {"type": "source.added", "source": source} for event in events)
     completed = next(event for event in events if event["type"] == "message.completed")
     assert completed["sources"] == [source]
+
+
+def test_procurement_advice_prioritizes_rag_then_adds_allowlisted_web_sources(monkeypatch):
+    from backend.ai import service
+    from backend.ai.providers.legal_search import LegalSearchResult
+
+    captured = {}
+    rag_source = {"documentId": "law-rag", "title": "Luật đã duyệt", "url": "/docs/law"}
+    web_source = {
+        "type": "web",
+        "title": "Luật Đấu thầu 2023",
+        "url": "https://vanban.chinhphu.vn/luat-dau-thau",
+        "effectiveFrom": "2024-01-01",
+    }
+
+    async def database_read(function, *args, **kwargs):
+        del kwargs
+        if function is service.get_conversation:
+            return {"mode": "procurement_advice"}
+        if function is service.list_messages:
+            return [{"role": "user", "content": "Hạn mức chỉ định thầu là bao nhiêu?"}]
+        if function is service.retrieve_knowledge:
+            return KnowledgeContext(
+                sources=(rag_source,),
+                prompt_context="KNOWLEDGE_CONTEXT [S1] Luật đã duyệt",
+            )
+        raise AssertionError(f"Unexpected read: {function}")
+
+    async def database_write(function, *args, **kwargs):
+        del args, kwargs
+        if function is service.add_message:
+            return "message-1"
+        return None
+
+    def web_search(_content, _config):
+        return LegalSearchResult(
+            sources=(web_source,),
+            prompt_context="WEB_SEARCH_CONTEXT [W1] Luật Đấu thầu 2023",
+        )
+
+    async def provider_events(_provider, input_items, instructions, tools):
+        captured.update(input_items=input_items, instructions=instructions, tools=tools)
+        yield {"type": "response.output_text.delta", "delta": "Theo [S1] và [W1]."}
+        yield {
+            "type": "response.completed",
+            "response": {"output": [], "usage": {"input_tokens": 10, "output_tokens": 6}},
+        }
+
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    monkeypatch.setenv("AI_MODEL", "fake-local")
+    monkeypatch.setenv("AI_KNOWLEDGE_ENABLED", "true")
+    monkeypatch.setenv("AI_WEB_SEARCH_ENABLED", "true")
+    monkeypatch.setattr(service, "run_database_read", database_read)
+    monkeypatch.setattr(service, "run_database_write", database_write)
+    monkeypatch.setattr(service, "_search_legal_sources", web_search)
+    monkeypatch.setattr(service, "_provider_event_stream", provider_events)
+    monkeypatch.setattr(service, "audit_chat", lambda *args, **kwargs: None)
+    monkeypatch.setattr(service, "increment", lambda *args, **kwargs: None)
+
+    async def collect():
+        return [
+            event
+            async for event in service.stream_message(
+                SimpleNamespace(),
+                context(),
+                "conversation-1",
+                "Hạn mức chỉ định thầu là bao nhiêu?",
+                quota_consumed=True,
+            )
+        ]
+
+    events = asyncio.run(collect())
+
+    assert "KNOWLEDGE_CONTEXT [S1]" in captured["instructions"]
+    assert "WEB_SEARCH_CONTEXT [W1]" in captured["instructions"]
+    assert captured["tools"] == []
+    assert any(event == {"type": "source.added", "source": web_source} for event in events)
+    completed = next(event for event in events if event["type"] == "message.completed")
+    assert completed["sources"] == [rag_source, web_source]

@@ -96,6 +96,27 @@ export function reloadWithInitLoader() {
     requestAnimationFrame(() => window.location.reload());
   });
 }
+
+function ensureGoogleSignInLaunch(container) {
+  if (!container) return null;
+  const existing = container.querySelector("#google-signin-launch");
+  if (existing) return existing;
+  const launch = document.createElement("button");
+  launch.id = "google-signin-launch";
+  launch.className = "google-signin-launch";
+  launch.type = "button";
+  const mark = document.createElement("span");
+  mark.className = "google-signin-launch-mark";
+  mark.setAttribute("aria-hidden", "true");
+  mark.textContent = "G";
+  const label = document.createElement("span");
+  label.className = "google-signin-launch-label";
+  label.textContent = "Tiếp tục với Google";
+  launch.append(mark, label);
+  container.appendChild(launch);
+  return launch;
+}
+
 export function showGoogleAuthPending({
   title = "Đang đăng nhập bằng Google",
   detail = "Đang xác thực tài khoản..."
@@ -139,15 +160,29 @@ export function showGoogleSignInState(message, state = "loading") {
   const container = document.getElementById("google-signin-btn-container");
   const status = document.getElementById("google-signin-status");
   if (container) container.dataset.state = state;
+  const launch = state === "ready" ? container?.querySelector("#google-signin-launch") : ensureGoogleSignInLaunch(container);
+  const launchLabel = launch?.querySelector(".google-signin-launch-label");
+  if (launch) {
+    launch.hidden = state === "ready";
+    launch.disabled = state === "loading" || launch.disabled;
+    launch.setAttribute("aria-busy", String(state === "loading"));
+    if (launchLabel) launchLabel.textContent = state === "loading" ? "Đang kiểm tra Google..." : "Tiếp tục với Google";
+  }
   if (!status) return;
   status.textContent = message || "";
   status.hidden = !message;
   status.dataset.state = state;
 }
 
-export function setGoogleSignInRetry(handler) {
-  const retry = document.getElementById("google-signin-retry");
-  if (!retry) return;
-  retry.hidden = typeof handler !== "function";
-  retry.onclick = typeof handler === "function" ? handler : null;
+export function setGoogleSignInAction(handler) {
+  const container = document.getElementById("google-signin-btn-container");
+  const launch = ensureGoogleSignInLaunch(container);
+  if (!launch) return;
+  const canLaunch = typeof handler === "function";
+  launch.disabled = !canLaunch;
+  launch.onclick = canLaunch ? (event) => {
+    event.preventDefault();
+    void handler({ userInitiated: true });
+  } : null;
 }
+

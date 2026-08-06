@@ -21,6 +21,7 @@ from backend.ai.conversation_repository import (
 from backend.ai.errors import AiError, ai_error
 from backend.ai.knowledge.repository import retrieve_for_context as retrieve_knowledge
 from backend.ai.prompt_policy import policy_for_mode
+from backend.ai.providers.legal_search import LegalSearchResult, create_legal_search_adapter
 from backend.ai.quota_service import consume_request, record_tokens
 from backend.ai.tool_executor import execute_tool
 from backend.ai.tool_result_formatter import format_tool_result
@@ -83,7 +84,43 @@ def _input_items(messages: list[dict]) -> list[dict]:
     return items
 
 
-async def stream_message(request, context: AiRequestContext, conversation_id: str, content: str, *, quota_consumed: bool = False) -> AsyncIterator[dict]:
+def _search_legal_sources(content: str, config) -> LegalSearchResult:
+    adapter = create_legal_search_adapter(config)
+    return adapter.search_official_law(content, config.web_search_allowed_domains)
+
+
+def _merge_sources(*groups: list[dict] | tuple[dict, ...] | None) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for group in groups:
+        for source in group or ():
+            if not isinstance(source, dict):
+                continue
+            key = (str(source.get("documentId") or ""), str(source.get("url") or source.get("sourceUrl") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(source)
+    return merged
+
+
+def _legal_source_footer(sources: tuple[dict, ...] | list[dict]) -> str:
+    lines = ["\n\nNguồn pháp luật kiểm chứng (hệ thống):"]
+    for index, source in enumerate(sources, start=1):
+        lines.extend(
+            (
+                f"[W{index}] {source.get('title') or 'Nguồn pháp luật chính thống'}",
+                f"URL: {source.get('url') or source.get('sourceUrl') or 'chưa xác định'}",
+                f"Cơ quan ban hành: {source.get('issuingAuthority') or 'chưa xác định'}; "
+                f"ngày ban hành: {source.get('issuedDate') or 'chưa xác định'}; "
+                f"ngày hiệu lực: {source.get('effectiveFrom') or 'chưa xác định'}.",
+                f"Trích dẫn: {source.get('citationText') or 'chưa có trích đoạn được provider trả về.'}",
+            )
+        )
+    return "\n".join(lines)
+
+
+async def stream_message(request, context: AiRequestContext, conversation_id: str, content: str, *, current_route: str = "/", quota_consumed: bool = False) -> AsyncIterator[dict]:
     config = get_ai_config()
     if not config.enabled:
         raise ai_error("AI_DISABLED", "Trợ lý AI đang được tắt.")
@@ -98,6 +135,8 @@ async def stream_message(request, context: AiRequestContext, conversation_id: st
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."
+    if mode == "app_help":
+        instructions += f"\nRoute ứng dụng hiện tại: {current_route or '/'}"
     knowledge = None
     if config.knowledge_enabled and mode in {"procurement_advice", "app_help"}:
         try:
@@ -119,9 +158,34 @@ async def stream_message(request, context: AiRequestContext, conversation_id: st
             ) from exc
         if knowledge.prompt_context:
             instructions += f"\n\n{knowledge.prompt_context}"
+    web_search: LegalSearchResult | None = None
+    if mode == "procurement_advice" and config.web_search_enabled:
+        try:
+            web_search = await asyncio.to_thread(_search_legal_sources, content, config)
+        except AiError as exc:
+            if not knowledge or not knowledge.sources:
+                raise ai_error(
+                    "AI_SOURCE_UNAVAILABLE",
+                    "Không thể tìm nguồn pháp luật chính thống trên Internet.",
+                ) from exc
+            instructions += (
+                "\n\nWEB_SEARCH_STATUS: Không thể truy cập Internet trong lượt này. "
+                "Chỉ sử dụng tài liệu RAG đã được backend duyệt; không tự tạo nguồn ngoài."
+            )
+        else:
+            if web_search.prompt_context:
+                instructions += f"\n\n{web_search.prompt_context}"
+            if not web_search.sources and (not knowledge or not knowledge.sources):
+                raise ai_error(
+                    "AI_SOURCE_UNAVAILABLE",
+                    "Chưa tìm thấy nguồn pháp luật chính thống phù hợp để trả lời.",
+                )
     provider = ResponsesProvider(config)
     tools = tool_definitions(mode)
-    all_sources: list[dict] = list(knowledge.sources if knowledge else ())
+    all_sources = _merge_sources(
+        knowledge.sources if knowledge else (),
+        web_search.sources if web_search else (),
+    )
     assistant_text_parts: list[str] = []
     total_tool_calls = 0
     input_tokens = 0
@@ -232,6 +296,10 @@ async def stream_message(request, context: AiRequestContext, conversation_id: st
         if not answer:
             answer = "Mình chưa nhận được câu trả lời từ AI provider. Vui lòng thử lại."
             yield {"type": "message.delta", "delta": answer}
+        if mode == "procurement_advice" and web_search and web_search.sources:
+            footer = _legal_source_footer(web_search.sources)
+            answer += footer
+            yield {"type": "message.delta", "delta": footer}
         assistant_message_id = await run_database_write(
             add_message,
             context,
