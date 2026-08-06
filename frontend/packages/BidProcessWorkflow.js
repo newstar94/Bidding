@@ -20,7 +20,7 @@ import {
   getWinnerRows
 } from "./bidProcessAwardResult.js";
 import { renderOpeningSummary } from "./bidProcessRender.js";
-import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
+import { getPartnerLookupInput } from "../partners/partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
@@ -32,7 +32,12 @@ import {
   getJointVentureSubMembers,
   mapPartnerLookupToContractor,
   normalizeContractorLookupCode,
-  resolveLeadMemberName
+  refreshSavedOpeningViolationChecks,
+  resolveBidOpeningContractor,
+  resolveLeadMemberName,
+  updateOpeningViolationPresentation,
+  VIOLATION_LOOKUP_FAILED,
+  VIOLATION_NOT_CHECKED
 } from "./openingContractorLookup.js";
 import {
   resolveWorkflowActionMode,
@@ -373,6 +378,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     return role.includes("đứng") && role.includes("đầu") || (m.maNhaThau || m.maSoThue) && normalizeContractorLookupCode(m.maNhaThau || m.maSoThue) === normalizeContractorLookupCode(ntCode);
   });
   tr._leadMemberName = leadM ? leadM.tenNhaThau : "";
+  tr._leadMemberId = leadM?.id || "";
+  tr._violationStatus = bidData.violationStatus || VIOLATION_NOT_CHECKED;
+  tr._leadMemberViolationStatus = leadM?.violationStatus || "";
   tr._leadMemberContractorId = leadM?.thanhVienNhaThauId || foundNt?.id || "";
   tr._leadMemberCode = normalizeContractorLookupCode(ntCode);
   if (!tr._leadMemberName && ntCode) {
@@ -593,6 +601,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         `;
   }
   tr.innerHTML = trustedHTML(cellHtml);
+  updateOpeningViolationPresentation(tr);
   const rowLotSelect = tr.querySelector(".mt-ma-phan-lo");
   if (rowLotSelect) {
     if (bidData.maPhanLo) rowLotSelect.value = bidData.maPhanLo;
@@ -632,16 +641,35 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const inputTen = tr.querySelector(".mt-ten-nha-thau");
   if (inputMa && inputTen) {
     let lookupRequestId = 0;
+    let lookupController = null;
     const runRemoteLookup = async (code) => {
       const lookupInput = getPartnerLookupInput(code);
       if (!lookupInput || !tr.isConnected || inputMa.value.trim() !== code) return;
       const requestId = ++lookupRequestId;
+      lookupController?.abort();
+      const currentController = new AbortController();
+      lookupController = currentController;
       try {
         setRuntimeStyle(inputMa, "opacity", "0.7");
-        const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
+        const data = await resolveBidOpeningContractor({
+          packageId: gt.id,
+          contractorIdentifier: code,
+          lotId: tr.querySelector(".mt-ma-phan-lo")?.selectedOptions?.[0]?.dataset?.lotId || null,
+          bidOpeningRecordId: tr.getAttribute("data-id"),
+          signal: currentController.signal
+        });
         if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
-        if (data?.name) {
-          const lookupData = await mapPartnerLookupToContractor(code, data);
+        tr._leadMemberViolationStatus = data?.violationStatus || VIOLATION_LOOKUP_FAILED;
+        if (tr.querySelector(".mt-loai-nha-thau")?.value !== "Liên danh") {
+          tr._violationStatus = tr._leadMemberViolationStatus;
+        }
+        updateOpeningViolationPresentation(tr);
+        if (data?.contractor?.name) {
+          const lookupData = await mapPartnerLookupToContractor(code, {
+            name: data.contractor.name,
+            org_code: data.contractor.identifier,
+            tax_code: data.contractor.taxCode
+          });
           if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
           tr._leadMemberLookupData = lookupData;
           tr._leadMemberContractorId = "";
@@ -650,16 +678,24 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
           const names = resolveOpeningLookupNames(
             tr.querySelector(".mt-loai-nha-thau")?.value,
             inputTen.value,
-            data.name,
+            data.contractor.name,
             tr._leadMemberName
           );
           inputTen.value = names.bidName;
           tr._leadMemberName = names.leadMemberName;
         }
       } catch (err) {
-        console.error("New-contractor tax-code lookup during bid opening failed: ", err);
+        if (err?.name !== "AbortError") {
+          console.error("Contractor risk lookup during bid opening failed: ", err);
+          tr._leadMemberViolationStatus = VIOLATION_LOOKUP_FAILED;
+          tr._violationStatus = VIOLATION_LOOKUP_FAILED;
+          updateOpeningViolationPresentation(tr);
+        }
       } finally {
-        if (requestId === lookupRequestId) setRuntimeStyle(inputMa, "opacity", "1");
+        if (requestId === lookupRequestId) {
+          setRuntimeStyle(inputMa, "opacity", "1");
+          if (lookupController === currentController) lookupController = null;
+        }
       }
     };
     const scheduleRemoteLookup = debounce((code) => {
@@ -670,11 +706,15 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       lookupRequestId++;
       const normalizedCode = normalizeContractorLookupCode(code);
       if (normalizedCode !== tr._leadMemberCode) {
+        lookupController?.abort();
         tr._leadMemberName = "";
         tr._leadMemberLookupData = null;
         tr._leadMemberContractorId = "";
         tr.dataset.contractorVersionId = "";
         tr._leadMemberCode = normalizedCode;
+        tr._leadMemberViolationStatus = VIOLATION_NOT_CHECKED;
+        tr._violationStatus = VIOLATION_NOT_CHECKED;
+        updateOpeningViolationPresentation(tr);
       }
       if (!code) {
         setRuntimeStyle(inputMa, "opacity", "1");
@@ -694,14 +734,19 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         );
         inputTen.value = names.bidName;
         tr._leadMemberName = names.leadMemberName;
-        scheduleRemoteLookup.cancel();
+        scheduleRemoteLookup(code);
         return;
       }
       scheduleRemoteLookup(code);
     };
     inputMa.addEventListener("input", handleCodeChange);
     inputMa.addEventListener("blur", () => scheduleRemoteLookup.flush());
-    inputMa.addEventListener("pointerleave", () => scheduleRemoteLookup.flush());
+    inputMa.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        scheduleRemoteLookup.flush();
+      }
+    });
   }
   const inputPkgDuration = tr.querySelector(".mt-thoi-gian-thuc-hien");
   const inputCtrDuration = tr.querySelector(".mt-thoi-gian-thuc-hien-hop-dong");
@@ -782,11 +827,33 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (jvViewLink) {
     jvViewLink.addEventListener("click", (e) => {
       e.preventDefault();
-      this.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode, tr._leadMemberContractorId || "");
+      this.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode, tr._leadMemberContractorId || "", tr._leadMemberViolationStatus || "");
     });
   }
   if (typeof this.unifyTableInputsHeight === "function") {
     this.unifyTableInputsHeight(document);
+  }
+  if (
+    bidData.id
+    && bidData.violationStatus === VIOLATION_NOT_CHECKED
+    && (bidData.maDinhDanh || ntCode)
+  ) {
+    refreshSavedOpeningViolationChecks(gt.id, [bidData]).then(() => {
+      tr._violationStatus = bidData.violationStatus || VIOLATION_NOT_CHECKED;
+      if (String(bidData.loaiNhaThau || "").trim() === "Liên danh") {
+        const refreshedLead = (bidData.thanhVienLienDanh || []).find((member) => {
+          const role = String(member?.vaiTro || "").toLocaleLowerCase("vi-VN");
+          return role.includes("đứng") && role.includes("đầu")
+            || normalizeContractorLookupCode(member?.maNhaThau || member?.maSoThue) === normalizeContractorLookupCode(ntCode);
+        });
+        tr._leadMemberViolationStatus = refreshedLead?.violationStatus || VIOLATION_NOT_CHECKED;
+      }
+      updateOpeningViolationPresentation(tr);
+    }).catch((error) => {
+      console.error("Stale bid-opening violation refresh failed:", error);
+      tr._violationStatus = VIOLATION_LOOKUP_FAILED;
+      updateOpeningViolationPresentation(tr);
+    });
   }
 }
 async function performSaveThongTinMoThau() {
@@ -894,6 +961,7 @@ async function performSaveThongTinMoThau() {
     );
     return;
   }
+  await refreshSavedOpeningViolationChecks(gtId, tempBids);
   this.view.renderGoiThauTable();
   const successMsg = isDirectOrSpecial ? "Đã lưu thành công dữ liệu nhà thầu" : `Đã lưu toàn bộ thông tin mở thầu (E-HSDT / E-HSĐXKT) của gói thầu "${gt.tenGoiThau}" thành công! Trạng thái gói thầu đã được chuyển sang Đang chấm thầu.`;
   this.renderMoThauPanel();

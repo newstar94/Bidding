@@ -1567,6 +1567,54 @@ def _upgrade_to_v40_add_ai_knowledge(cursor, _context):
         cursor.execute(statement)
 
 
+def _upgrade_to_v41_add_contractor_violation_checks(cursor, context):
+    """Persist server-authoritative contractor violation assessments."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    statuses = (
+        "'VIOLATION_CONFIRMED', 'NO_ACTIVE_VIOLATION', 'REVIEW_REQUIRED', "
+        "'LOOKUP_FAILED', 'NOT_CHECKED', 'IDENTITY_CONFLICT'"
+    )
+    for table_name in (
+        "thong_tin_mo_thau",
+        "thong_tin_mo_thau_lien_danh_thanh_vien",
+    ):
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                ADD COLUMN IF NOT EXISTS violation_status TEXT NOT NULL
+                DEFAULT 'NOT_CHECKED'
+                CHECK(violation_status IN ({statuses}))"""
+        )
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                ADD COLUMN IF NOT EXISTS violation_bid_closing_at TIMESTAMPTZ"""
+        )
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                ADD COLUMN IF NOT EXISTS violation_checked_at TIMESTAMPTZ"""
+        )
+
+    tables = ("contractor_violation_cache", "contractor_violation_checks")
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name,
+            SCHEMA_DINH_NGHIA[table_name],
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    context.create_foreign_keys(
+        cursor,
+        ("contractor_violation_checks",),
+        if_not_exists=True,
+    )
+    context.create_indexes_and_triggers(cursor)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1758,6 +1806,11 @@ UPGRADES = (
         40,
         "add_ai_knowledge",
         _upgrade_to_v40_add_ai_knowledge,
+    ),
+    DatabaseUpgrade(
+        41,
+        "add_contractor_violation_checks",
+        _upgrade_to_v41_add_contractor_violation_checks,
     ),
 )
 

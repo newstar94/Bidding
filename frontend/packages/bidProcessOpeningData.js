@@ -165,6 +165,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
 }
 function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, businessDate) {
   const bidJvMembers = [{
+    id: row._leadMemberId || generateRecordId("member"),
     thanhVienNhaThauId: foundNt?.id || "",
     tenNhaThau: foundNt?.tenNhaThau || row._leadMemberName || `Thành viên đứng đầu ${maNhaThau}`,
     maNhaThau: foundNt?.maNhaThau || maNhaThau,
@@ -176,7 +177,8 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, bu
     email: foundNt?.email || row._leadMemberLookupData?.email || "",
     diaChi: foundNt?.diaChi || row._leadMemberLookupData?.diaChi || "",
     diaChiGoc: foundNt?.diaChiGoc || row._leadMemberLookupData?.diaChiGoc || "",
-    tenVietTat: foundNt?.tenVietTat || row._leadMemberLookupData?.tenVietTat || ""
+    tenVietTat: foundNt?.tenVietTat || row._leadMemberLookupData?.tenVietTat || "",
+    violationStatus: row._leadMemberViolationStatus || "NOT_CHECKED"
   }];
   const rowMembers = Array.isArray(row._thanhVienLienDanh) ? row._thanhVienLienDanh : [];
   const fallbackMembers = Array.isArray(foundNt?.thanhVienLienDanh) ? foundNt.thanhVienLienDanh : [];
@@ -191,6 +193,7 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, bu
     const candidate = exactMember || findLatestContractorByCode(contractorVersions, m.maNhaThau || m.maSoThue);
     const memberContractor = exactMember || (candidate ? selectContractorVersionForDate(model, candidate.id, businessDate) : null);
     bidJvMembers.push({
+      id: m.id || generateRecordId("member"),
       thanhVienNhaThauId: memberContractor?.id || "",
       tenNhaThau: memberContractor?.tenNhaThau || m.tenNhaThau,
       maNhaThau: memberContractor?.maNhaThau || m.maNhaThau || m.maSoThue || "",
@@ -202,7 +205,8 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, bu
       email: memberContractor?.email || m.email || "",
       diaChi: memberContractor?.diaChi || m.diaChi || "",
       diaChiGoc: memberContractor?.diaChiGoc || m.diaChiGoc || "",
-      tenVietTat: memberContractor?.tenVietTat || m.tenVietTat || ""
+      tenVietTat: memberContractor?.tenVietTat || m.tenVietTat || "",
+      violationStatus: m.violationStatus || "NOT_CHECKED"
     });
   });
   return bidJvMembers;
@@ -316,6 +320,7 @@ export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecia
       tenNhaThau: resolvedTenNhaThau,
       loaiNhaThau,
       thanhVienLienDanh: bidJvMembers,
+      violationStatus: row._violationStatus || "NOT_CHECKED",
       danhGiaHopLe: isDirectOrSpecial ? "Đạt" : "",
       danhGiaNangLuc: isDirectOrSpecial ? "Đạt" : "",
       danhGiaKyThuat: isDirectOrSpecial ? "Đạt" : "",

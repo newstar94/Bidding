@@ -43,6 +43,12 @@ _BUSINESS_TIMESTAMP_COLUMNS = frozenset(
         ("goi_thau", "thoi_gian_mo_thau"),
         ("goi_thau", "thoi_gian_mo_ehsdxtc"),
         ("goi_thau_gia_han", "thoi_gian_dong_thau"),
+        ("thong_tin_mo_thau", "violation_bid_closing_at"),
+        ("thong_tin_mo_thau", "violation_checked_at"),
+        ("thong_tin_mo_thau_lien_danh_thanh_vien", "violation_bid_closing_at"),
+        ("thong_tin_mo_thau_lien_danh_thanh_vien", "violation_checked_at"),
+        ("contractor_violation_checks", "bid_closing_at"),
+        ("contractor_violation_checks", "checked_at"),
         ("goi_thau_lam_ro", "thoi_gian"),
     }
 )
@@ -564,6 +570,13 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_version ON nha_thau_tham_du_mo_thau (organization_id, nha_thau_phien_ban_id)",
         "CREATE INDEX IF NOT EXISTS idx_phan_cong_nhan_su_employee ON phan_cong_nhan_su (id_nhan_vien)",
         "CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_member ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_cache_expiry ON contractor_violation_cache (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_check_target ON contractor_violation_checks (organization_id, bid_opening_record_id, joint_venture_member_id, checked_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_check_package ON contractor_violation_checks (organization_id, package_id, bid_closing_at)",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_check_lot ON contractor_violation_checks (organization_id, lot_id) WHERE lot_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_check_contractor ON contractor_violation_checks (organization_id, contractor_id, checked_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_check_member ON contractor_violation_checks (organization_id, joint_venture_member_id, checked_at DESC) WHERE joint_venture_member_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_contractor_violation_check_creator ON contractor_violation_checks (created_by)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_package ON goi_thau_moc_tien_do (organization_id, goi_thau_id, sort_order, ma_moc)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_status ON goi_thau_moc_tien_do (organization_id, trang_thai, ngay_du_kien)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_package ON goi_thau_dieu_chinh_hsmt (organization_id, goi_thau_id, sequence)",
@@ -755,8 +768,51 @@ def _create_trigger_functions(cursor) -> None:
     )
 
 
+def _create_contractor_violation_stale_function(cursor) -> None:
+    cursor.execute(
+        """CREATE OR REPLACE FUNCTION bf_mark_contractor_violation_package_stale(
+               p_workspace_id TEXT, p_package_id TEXT
+           ) RETURNS void LANGUAGE plpgsql AS $$
+           BEGIN
+             UPDATE contractor_violation_checks
+                SET is_stale = 1, updated_at = CURRENT_TIMESTAMP
+              WHERE organization_id = p_workspace_id
+                AND package_id = p_package_id AND is_stale = 0;
+             UPDATE thong_tin_mo_thau
+                SET violation_status = 'NOT_CHECKED',
+                    violation_bid_closing_at = NULL,
+                    violation_checked_at = NULL
+              WHERE organization_id = p_workspace_id
+                AND goi_thau_id = p_package_id;
+             UPDATE thong_tin_mo_thau_lien_danh_thanh_vien AS member
+                SET violation_status = 'NOT_CHECKED',
+                    violation_bid_closing_at = NULL,
+                    violation_checked_at = NULL
+               FROM thong_tin_mo_thau AS opening
+              WHERE opening.organization_id = p_workspace_id
+                AND opening.goi_thau_id = p_package_id
+                AND member.organization_id = opening.organization_id
+                AND member.thong_tin_mo_thau_id = opening.id;
+           END $$"""
+    )
+    cursor.execute(
+        """CREATE OR REPLACE FUNCTION bf_mark_contractor_violation_checks_stale()
+           RETURNS trigger LANGUAGE plpgsql AS $$
+           BEGIN
+             IF NEW.thoi_gian_dong_thau IS NOT DISTINCT FROM OLD.thoi_gian_dong_thau THEN
+               RETURN NEW;
+             END IF;
+             PERFORM bf_mark_contractor_violation_package_stale(
+               NEW.organization_id, NEW.id
+             );
+             RETURN NEW;
+           END $$"""
+    )
+
+
 def _create_triggers(cursor) -> None:
     _create_trigger_functions(cursor)
+    _create_contractor_violation_stale_function(cursor)
     owner_tables = tuple(
         table_name
         for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
@@ -869,6 +925,17 @@ def _create_triggers(cursor) -> None:
         """CREATE TRIGGER trg_nhat_ky_thuc_hien_immutable
            BEFORE UPDATE OR DELETE ON nhat_ky_thuc_hien
            FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"""
+    )
+    cursor.execute(
+        "DROP TRIGGER IF EXISTS trg_goi_thau_violation_stale ON goi_thau"
+    )
+    cursor.execute(
+        """CREATE TRIGGER trg_goi_thau_violation_stale
+           AFTER UPDATE OF thoi_gian_dong_thau ON goi_thau
+           FOR EACH ROW EXECUTE FUNCTION bf_mark_contractor_violation_checks_stale()"""
+    )
+    cursor.execute(
+        "DROP TRIGGER IF EXISTS trg_goi_thau_gia_han_violation_stale ON goi_thau_gia_han"
     )
 
 

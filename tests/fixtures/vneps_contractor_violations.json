@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "fixture-2026.1",
+  "records": [
+    {
+      "category": "BIDDING_BAN",
+      "contractorIdentifier": "vn000000001",
+      "taxCode": "0000000001",
+      "decisionNumber": "FIXTURE-BAN-1",
+      "effectiveFrom": "2026-01-01T00:00:00+07:00",
+      "effectiveTo": "2027-01-01T00:00:00+07:00",
+      "sourceStatus": "PUBLISH",
+      "isRevoked": false
+    },
+    {
+      "category": "CONTRACT_TERMINATION_BY_CONTRACTOR_FAULT",
+      "contractorIdentifier": "vn000000002",
+      "taxCode": "0000000002",
+      "decisionNumber": "FIXTURE-TERM-1",
+      "issuedDate": "2024-06-01",
+      "contractorFault": true,
+      "sourceStatus": "PUBLISH",
+      "isRevoked": false
+    },
+    {
+      "category": "UNRELIABLE_BID_PARTICIPATION",
+      "contractorIdentifier": "vn000000003",
+      "taxCode": "0000000003",
+      "decisionNumber": "FIXTURE-REP-1",
+      "behaviorDate": "2025-06-01",
+      "sourceStatus": "01",
+      "isRevoked": false
+    },
+    {
+      "category": "UNRELIABLE_BID_PARTICIPATION",
+      "contractorIdentifier": "vn000000004",
+      "taxCode": "0000000004",
+      "decisionNumber": "FIXTURE-MISSING-DATE",
+      "publicDate": "2025-06-01",
+      "sourceStatus": "01",
+      "isRevoked": false
+    }
+  ]
+}

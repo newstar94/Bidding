@@ -4,7 +4,7 @@ import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { executeAppCommand } from "../app/commandBus.js";
-import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
+import { getPartnerLookupInput } from "../partners/partnerTaxLookup.js";
 import { resolveContractorVersion } from "../partners/contractorVersionBinding.js";
 import { setValidationError } from "../shared/FormValidation.js";
 import {
@@ -18,8 +18,13 @@ import {
   getJointVentureSubMembers,
   mapPartnerLookupToContractor,
   normalizeContractorLookupCode,
+  applyViolationNameClass,
+  isViolationConfirmed,
+  resolveBidOpeningContractor,
   resolveLeadMemberName,
-  resolveOpeningLeadContractor
+  resolveOpeningLeadContractor,
+  updateOpeningViolationPresentation,
+  VIOLATION_LOOKUP_FAILED
 } from "./openingContractorLookup.js";
 
 export function resolveJvMemberNameAfterLookup(currentName, apiInfo) {
@@ -106,17 +111,33 @@ export function openMoThauJVManager(tr) {
   document.body.appendChild(modal);
   const listContainer = document.getElementById("mothau-jv-members-list");
   const leadNameInput = document.getElementById("jv-input-lead-name");
+  applyViolationNameClass(leadNameInput, tr._leadMemberViolationStatus);
   leadNameInput?.addEventListener("input", () => setValidationError(leadNameInput, ""));
-  const lookupInfoByTaxCode = async (code, inputToDim) => {
+  const packageId = document.getElementById("mothau-goithau-select")?.value || "";
+  const lookupInfoByTaxCode = async (code, inputToDim, memberId = null) => {
     const lookupInput = getPartnerLookupInput(code);
     if (!lookupInput) return null;
     try {
       if (inputToDim) setRuntimeStyle(inputToDim, "opacity", "0.7");
-      const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
-      return data ? await mapPartnerLookupToContractor(code, data) : null;
+      const data = await resolveBidOpeningContractor({
+        packageId,
+        contractorIdentifier: code,
+        bidOpeningRecordId: tr.getAttribute("data-id"),
+        jointVentureMemberId: memberId
+      });
+      if (!data) return null;
+      const contractor = data.contractor || {};
+      const lookupData = await mapPartnerLookupToContractor(code, {
+        name: contractor.name,
+        org_code: contractor.identifier,
+        tax_code: contractor.taxCode
+      });
+      return { ...lookupData, violationStatus: data.violationStatus };
     } catch (err) {
-      console.error("Tax-code lookup during bid opening failed: ", err);
-      return null;
+      if (err?.name !== "AbortError") {
+        console.error("Joint-venture member risk lookup failed: ", err);
+      }
+      return { violationStatus: VIOLATION_LOOKUP_FAILED };
     } finally {
       if (inputToDim) setRuntimeStyle(inputToDim, "opacity", "1");
     }
@@ -150,6 +171,9 @@ export function openMoThauJVManager(tr) {
       return;
     }
     const apiInfo = await lookupInfoByTaxCode(leadCode, leadNameInput);
+    tr._leadMemberViolationStatus = apiInfo?.violationStatus || VIOLATION_LOOKUP_FAILED;
+    applyViolationNameClass(leadNameInput, tr._leadMemberViolationStatus);
+    updateOpeningViolationPresentation(tr);
     if (apiInfo?.tenNhaThau) {
       if (!leadNameInput.value.trim() || leadNameInput.dataset.autofilled !== "0") {
         leadNameInput.value = apiInfo.tenNhaThau;
@@ -194,6 +218,7 @@ export function openMoThauJVManager(tr) {
     mstInput.addEventListener("input", () => setValidationError(mstInput, ""));
     tenInput.addEventListener("input", () => setValidationError(tenInput, ""));
     rowDiv._lookupData = member;
+    applyViolationNameClass(tenInput, member.violationStatus);
     let lastResolvedMemberCode = normalizeContractorLookupCode(mstInput.value);
     const fillMemberNameFromCode = async (allowOnlineLookup = false) => {
       const code = mstInput.value.trim();
@@ -221,8 +246,14 @@ export function openMoThauJVManager(tr) {
           ...found,
           maNhaThau: found.maNhaThau || code,
           maSoThue: found.maSoThue || "",
-          tenNhaThau: found.tenNhaThau || ""
+          tenNhaThau: found.tenNhaThau || "",
+          violationStatus: rowDiv._lookupData?.violationStatus || member.violationStatus || "NOT_CHECKED"
         };
+        if (allowOnlineLookup) {
+          const riskInfo = await lookupInfoByTaxCode(code, mstInput, member.id || null);
+          rowDiv._lookupData = { ...rowDiv._lookupData, ...riskInfo || {} };
+          applyViolationNameClass(tenInput, rowDiv._lookupData.violationStatus);
+        }
         return;
       }
       if (allowOnlineLookup) {
@@ -231,6 +262,7 @@ export function openMoThauJVManager(tr) {
         if (tenInput.value) setValidationError(tenInput, "");
         tenInput.dataset.autofilled = "1";
         rowDiv._lookupData = apiInfo || {};
+        applyViolationNameClass(tenInput, rowDiv._lookupData.violationStatus);
       }
     };
     tenInput.addEventListener("input", () => {
@@ -322,6 +354,7 @@ export function openMoThauJVManager(tr) {
     }
     tr._leadMemberName = leadNameInput2;
     tr._thanhVienLienDanh = updatedMembers;
+    updateOpeningViolationPresentation(tr);
     const labelSpan = tr.querySelector(".mt-jv-btn-text") || tr.querySelector(".row-jv-btn-text");
     if (labelSpan) {
       labelSpan.textContent = `Thành viên liên danh (${updatedMembers.length})`;
@@ -335,7 +368,7 @@ export function showNhaThauDetailsAndCloseJV(ntId) {
   if (jvModal) jvModal.remove();
   executeAppCommand("showNhaThauDetails", ntId);
 }
-export function openMoThauJVViewModal(members, leadName, leadCode, leadContractorVersionId = "") {
+export function openMoThauJVViewModal(members, leadName, leadCode, leadContractorVersionId = "", leadViolationStatus = "") {
   const modalId = "modal-mothau-jv-view";
   let modal = document.getElementById(modalId);
   if (modal) modal.remove();
@@ -366,7 +399,8 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   const leadNtId = matchedContractor?.id || null;
   const leadIdAttr = escapeHtml(leadNtId || "");
   const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${displayLeadCode}</a>` : displayLeadCode;
-  const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${displayLeadName}</a>` : displayLeadName;
+  const leadViolationClass = isViolationConfirmed(leadViolationStatus) ? " bidder-name--violator" : "";
+  const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1${leadViolationClass}">${displayLeadName}</a>` : `<span class="${leadViolationClass.trim()}">${displayLeadName}</span>`;
   let membersHtml = "";
   if (visibleMembers.length === 0) {
     membersHtml = `<div class="bf-s-7fa70bc597"><small>Không có Thành viên liên danh</small></div>`;
@@ -378,7 +412,8 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
       const memberNtId = memberContractor?.id || null;
       const memberIdAttr = escapeHtml(memberNtId || "");
       const mCodeHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${memberCode}</a>` : memberCode;
-      const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${memberName}</a>` : memberName;
+      const memberViolationClass = isViolationConfirmed(m.violationStatus) ? " bidder-name--violator" : "";
+      const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1${memberViolationClass}">${memberName}</a>` : `<span class="${memberViolationClass.trim()}">${memberName}</span>`;
       return `
                 <div class="bf-s-a8d71b3a93">
                     <div>

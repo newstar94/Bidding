@@ -600,6 +600,7 @@ from backend.lot_lifecycle_routes import (
     get_lot_lifecycle_api,
 )
 from backend.ai.routes import ai_routes
+from backend.contractor_risk.routes import contractor_risk_routes
 
 
 _holidays_cache = None
@@ -869,6 +870,7 @@ routes = [
     Route("/api/export-timeline/{package_id}", export_timeline_api, methods=["GET"]),
     *document_job_routes(Route),
     *award_result_excel_routes(Route),
+    *contractor_risk_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),

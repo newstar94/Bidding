@@ -53,6 +53,13 @@ class SyncRecordSerializer:
         explicit_json = set(table_spec.get("json_fields", []))
         db_row_data: dict[str, Any] = {}
         for column, raw_column_type in table_spec["columns"].items():
+            if table_name == "thong_tin_mo_thau" and column in {
+                "violation_status",
+                "violation_bid_closing_at",
+                "violation_checked_at",
+            }:
+                # Server-authoritative lookup state is read-only to sync clients.
+                continue
             if column == "organization_id":
                 db_row_data[column] = self.transaction.actor.organization_id
                 continue

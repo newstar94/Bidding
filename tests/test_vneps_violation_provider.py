@@ -1,0 +1,177 @@
+from backend.contractor_risk.types import ViolationCategory
+from backend.integrations.vneps.violation_provider import VnepsViolationProvider
+from backend.integrations.vneps.fake_provider import FixtureViolationProvider
+
+
+class FixtureProvider(VnepsViolationProvider):
+    def __init__(self, responses):
+        super().__init__()
+        self.responses = responses
+        self.requests = []
+
+    def _post(self, path, payload):
+        self.requests.append((path, payload))
+        response = self.responses[path]
+        return response(payload) if callable(response) else response
+
+
+def test_provider_exact_filters_and_maps_all_supported_sources():
+    def violation_search(payload):
+        category = payload["penType"]["contains"]
+        if category == "CT":
+            return {
+                "page": {
+                    "content": [
+                        {
+                            "orgCode": "vn001",
+                            "idType": "MST",
+                            "idNo": "0012345678",
+                            "penType": "CD,CT",
+                            "effDate": "2026-01-01",
+                            "expDate": "2027-01-01",
+                            "decisionNo": "BAN-1",
+                            "decisionId": "decision-1",
+                            "status": "PUBLISH",
+                        },
+                        {
+                            "orgCode": "vn001-extra",
+                            "idType": "MST",
+                            "idNo": "9999999999",
+                            "effDate": "2026-01-01",
+                            "expDate": "2027-01-01",
+                        },
+                    ]
+                }
+            }
+        return {
+            "content": [{
+                "orgCode": "vn001",
+                "idType": "MST",
+                "idNo": "0012345678",
+                "issuedDate": "2025-01-01",
+                "methodType": "NTHD_140",
+                "decisionNo": "TERM-1",
+                "status": "PUBLISH",
+            }]
+        }
+
+    provider = FixtureProvider({
+        "get-list-violate": violation_search,
+        "get-detail-violation": {
+            "violates": [{
+                "orgCode": "vn001",
+                "idType": "MST",
+                "idNo": "0012345678",
+                "status": "PUBLISH",
+            }]
+        },
+        "econsign/contractor-reputation-eval/searchContractorPo": {
+            "content": [{
+                "id": "reputation-1",
+                "orgCode": "vn001",
+                "documentNo": "REP-1",
+                "publicDate": "2026-02-01",
+            }]
+        },
+        "econsign/contractor-reputation-eval/getContractorDetailPo": {
+            "contractorInfo": {
+                "orgCode": "vn001",
+                "behaviorDate": "2025-02-01",
+            },
+            "evalInfo": {
+                "idNo": "0012345678",
+                "status": "01",
+                "publicDate": "2026-02-01",
+            },
+        },
+    })
+
+    result = provider.lookup(
+        contractor_identifier="vn001",
+        tax_code="0012345678",
+    )
+
+    assert [record.category for record in result.records] == [
+        ViolationCategory.BIDDING_BAN,
+        ViolationCategory.CONTRACT_TERMINATION_BY_CONTRACTOR_FAULT,
+        ViolationCategory.UNRELIABLE_BID_PARTICIPATION,
+    ]
+    assert result.records[0].effective_from.isoformat() == "2026-01-01"
+    assert result.records[1].requires_review is True
+    assert result.records[2].behavior_date.isoformat() == "2025-02-01"
+    assert all(record.contractor_identifier == "vn001" for record in result.records)
+
+
+def test_provider_uses_detail_cancellation_and_never_public_date_as_behavior_date():
+    provider = FixtureProvider({
+        "get-list-violate": {
+            "content": [{
+                "orgCode": "vn001",
+                "decisionId": "decision-1",
+                "effDate": "2026-01-01",
+                "expDate": "2027-01-01",
+                "status": "PUBLISH",
+            }]
+        },
+        "get-detail-violation": {
+            "userViolates": [{
+                "orgCode": "vn001",
+                "status": "CANCEL",
+                "decNoCancel": "CANCEL-1",
+            }]
+        },
+        "econsign/contractor-reputation-eval/searchContractorPo": {
+            "content": [{
+                "id": "reputation-1",
+                "orgCode": "vn001",
+                "publicDate": "2026-02-01",
+            }]
+        },
+        "econsign/contractor-reputation-eval/getContractorDetailPo": {
+            "contractorInfo": {"orgCode": "vn001", "behaviorDate": None},
+            "evalInfo": {"status": "01", "publicDate": "2026-02-01"},
+        },
+    })
+
+    result = provider.lookup(contractor_identifier="vn001")
+
+    bans = [
+        record for record in result.records
+        if record.category == ViolationCategory.BIDDING_BAN
+    ]
+    reputation = [
+        record for record in result.records
+        if record.category == ViolationCategory.UNRELIABLE_BID_PARTICIPATION
+    ]
+    assert bans[0].is_revoked is True
+    assert reputation[0].behavior_date is None
+
+
+def test_provider_does_not_match_same_name_or_identifier_substring():
+    provider = FixtureProvider({
+        "get-list-violate": {
+            "content": [{
+                "orgCode": "vn001-extra",
+                "orgNameViolate": "Công ty trùng tên",
+                "effDate": "2026-01-01",
+                "expDate": "2027-01-01",
+            }]
+        },
+        "get-detail-violation": {},
+        "econsign/contractor-reputation-eval/searchContractorPo": {
+            "content": [{"id": "wrong", "orgCode": "vn001-extra"}]
+        },
+        "econsign/contractor-reputation-eval/getContractorDetailPo": {},
+    })
+
+    result = provider.lookup(contractor_identifier="vn001")
+    assert result.records == ()
+
+
+def test_fixture_provider_exact_matches_without_network():
+    provider = FixtureViolationProvider(
+        "tests/fixtures/vneps_contractor_violations.json"
+    )
+    result = provider.lookup(contractor_identifier="vn000000001")
+    assert len(result.records) == 1
+    assert result.records[0].category == ViolationCategory.BIDDING_BAN

@@ -4,8 +4,108 @@ import { parseVietnamAddress } from "../shared/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
 import { getExactContractorVersion } from "../partners/contractorVersionBinding.js";
 import { resolveOpeningLookupNames } from "./bidProcessOpeningData.js";
+import { postJson } from "../shared/apiClient.js";
 
 const OPENING_SAVE_LOOKUP_TIMEOUT_MS = 3000;
+export const VIOLATION_CONFIRMED = "VIOLATION_CONFIRMED";
+export const VIOLATION_NOT_CHECKED = "NOT_CHECKED";
+export const VIOLATION_LOOKUP_FAILED = "LOOKUP_FAILED";
+
+export function isViolationConfirmed(status) {
+  return status === VIOLATION_CONFIRMED;
+}
+
+export function applyViolationNameClass(element, status) {
+  element?.classList?.toggle("bidder-name--violator", isViolationConfirmed(status));
+}
+
+export function updateOpeningViolationPresentation(row) {
+  if (!row) return VIOLATION_NOT_CHECKED;
+  const isJointVenture = String(row.querySelector?.(".mt-loai-nha-thau")?.value || "")
+    .trim().toLocaleLowerCase("vi-VN") === "liên danh";
+  const memberStatuses = [
+    row._leadMemberViolationStatus,
+    ...(row._thanhVienLienDanh || []).map((member) => member?.violationStatus)
+  ];
+  const aggregate = isJointVenture && memberStatuses.some(isViolationConfirmed)
+    ? VIOLATION_CONFIRMED
+    : isJointVenture && memberStatuses.some(Boolean)
+      ? memberStatuses.find((status) => status && status !== "NO_ACTIVE_VIOLATION") || "NO_ACTIVE_VIOLATION"
+      : row._violationStatus || VIOLATION_NOT_CHECKED;
+  row._violationStatus = aggregate;
+  applyViolationNameClass(row.querySelector?.(".mt-ten-nha-thau"), aggregate);
+  return aggregate;
+}
+
+export async function resolveBidOpeningContractor({
+  packageId,
+  contractorIdentifier,
+  lotId = null,
+  bidOpeningRecordId = null,
+  jointVentureMemberId = null,
+  signal
+}) {
+  if (!packageId || !contractorIdentifier) return null;
+  return postJson(
+    `/api/packages/${encodeURIComponent(packageId)}/bid-opening/contractors/resolve`,
+    {
+      contractorIdentifier,
+      lotId,
+      bidOpeningRecordId,
+      jointVentureId: null,
+      jointVentureMemberId
+    },
+    { signal, timeoutMs: 20_000 }
+  );
+}
+
+export async function refreshSavedOpeningViolationChecks(packageId, bids) {
+  await Promise.all((bids || []).map(async (bid) => {
+    if (String(bid?.loaiNhaThau || "").trim().toLocaleLowerCase("vi-VN") !== "liên danh") {
+      try {
+        const result = await resolveBidOpeningContractor({
+          packageId,
+          contractorIdentifier: bid.maDinhDanh || bid.maNhaThau || "",
+          lotId: bid.phanLoId || null,
+          bidOpeningRecordId: bid.id
+        });
+        bid.violationStatus = result?.violationStatus || VIOLATION_LOOKUP_FAILED;
+        bid.violationBidClosingAt = result?.bidClosingAt || null;
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          console.error("Stored bid-opening violation lookup failed:", error);
+        }
+        bid.violationStatus = VIOLATION_LOOKUP_FAILED;
+      }
+      return;
+    }
+    await Promise.all((bid.thanhVienLienDanh || []).map(async (member) => {
+      try {
+        const result = await resolveBidOpeningContractor({
+          packageId,
+          contractorIdentifier: member.maNhaThau || member.maSoThue || "",
+          lotId: bid.phanLoId || null,
+          bidOpeningRecordId: bid.id,
+          jointVentureMemberId: member.id
+        });
+        member.violationStatus = result?.violationStatus || VIOLATION_LOOKUP_FAILED;
+        member.violationBidClosingAt = result?.bidClosingAt || null;
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          console.error("Stored joint-venture member violation lookup failed:", error);
+        }
+        member.violationStatus = VIOLATION_LOOKUP_FAILED;
+      }
+    }));
+    bid.violationStatus = (bid.thanhVienLienDanh || []).some(
+      (member) => isViolationConfirmed(member.violationStatus)
+    ) ? VIOLATION_CONFIRMED : (
+      (bid.thanhVienLienDanh || []).find(
+        (member) => member.violationStatus && member.violationStatus !== "NO_ACTIVE_VIOLATION"
+      )?.violationStatus || "NO_ACTIVE_VIOLATION"
+    );
+  }));
+}
 
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);

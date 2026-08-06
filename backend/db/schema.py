@@ -335,6 +335,19 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
         }
     },
+    "contractor_violation_cache": {
+        "columns": {
+            "cache_key": "TEXT PRIMARY KEY",
+            "provider": "TEXT NOT NULL CHECK(trim(provider) != '')",
+            "contractor_identifier": "TEXT NOT NULL CHECK(trim(contractor_identifier) != '')",
+            "tax_code": "TEXT",
+            "response_schema_version": "TEXT NOT NULL CHECK(trim(response_schema_version) != '')",
+            "records_json": "TEXT NOT NULL DEFAULT '[]'",
+            "payload_hash": "TEXT NOT NULL DEFAULT '' CHECK(length(payload_hash) IN (0, 64))",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        }
+    },
     "partner_enrichment_jobs": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
@@ -1206,6 +1219,9 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_thuc_hien": "TEXT",
             "ten_nha_thau": "TEXT",
             "loai_nha_thau": "TEXT",
+            "violation_status": "TEXT NOT NULL DEFAULT 'NOT_CHECKED' CHECK(violation_status IN ('VIOLATION_CONFIRMED', 'NO_ACTIVE_VIOLATION', 'REVIEW_REQUIRED', 'LOOKUP_FAILED', 'NOT_CHECKED', 'IDENTITY_CONFLICT'))",
+            "violation_bid_closing_at": "TEXT",
+            "violation_checked_at": "TEXT",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
@@ -1229,6 +1245,9 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_thuc_hien": "thoiGianThucHien",
             "ten_nha_thau": "tenNhaThau",
             "loai_nha_thau": "loaiNhaThau",
+            "violation_status": "violationStatus",
+            "violation_bid_closing_at": "violationBidClosingAt",
+            "violation_checked_at": "violationCheckedAt",
         },
         "unique_constraints": [
             "UNIQUE(organization_id, goi_thau_id, id)"
@@ -1254,6 +1273,9 @@ SCHEMA_DINH_NGHIA = {
             "so_tai_khoan": "TEXT",
             "noi_mo_tai_khoan": "TEXT",
             "ma_ngan_hang": "TEXT",
+            "violation_status": "TEXT NOT NULL DEFAULT 'NOT_CHECKED' CHECK(violation_status IN ('VIOLATION_CONFIRMED', 'NO_ACTIVE_VIOLATION', 'REVIEW_REQUIRED', 'LOOKUP_FAILED', 'NOT_CHECKED', 'IDENTITY_CONFLICT'))",
+            "violation_bid_closing_at": "TEXT",
+            "violation_checked_at": "TEXT",
             "sort_order": "INTEGER DEFAULT 0",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
@@ -1288,6 +1310,39 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
             "FOREIGN KEY (nha_thau_goc_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_phien_ban_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
+        ]
+    },
+    "contractor_violation_checks": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "package_id": "TEXT NOT NULL",
+            "lot_id": "TEXT",
+            "bid_opening_record_id": "TEXT NOT NULL",
+            "contractor_id": "TEXT",
+            "joint_venture_member_id": "TEXT",
+            "contractor_identifier": "TEXT NOT NULL CHECK(trim(contractor_identifier) != '')",
+            "tax_code": "TEXT",
+            "bid_closing_at": "TEXT",
+            "checked_at": "TEXT NOT NULL",
+            "status": "TEXT NOT NULL CHECK(status IN ('VIOLATION_CONFIRMED', 'NO_ACTIVE_VIOLATION', 'REVIEW_REQUIRED', 'LOOKUP_FAILED', 'NOT_CHECKED', 'IDENTITY_CONFLICT'))",
+            "matched_identity_type": "TEXT NOT NULL CHECK(matched_identity_type IN ('CONTRACTOR_IDENTIFIER', 'TAX_CODE', 'NONE'))",
+            "rule_version": "TEXT NOT NULL CHECK(trim(rule_version) != '')",
+            "source_provider": "TEXT NOT NULL CHECK(trim(source_provider) != '')",
+            "source_payload_hash": "TEXT NOT NULL DEFAULT '' CHECK(length(source_payload_hash) IN (0, 64))",
+            "source_records_json": "TEXT NOT NULL DEFAULT '[]'",
+            "is_stale": "INTEGER NOT NULL DEFAULT 0 CHECK(is_stale IN (0,1))",
+            "created_by": "TEXT NOT NULL",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (package_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (lot_id) REFERENCES goi_thau_phan_lo(id) ON DELETE CASCADE",
+            "FOREIGN KEY (bid_opening_record_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (contractor_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
+            "FOREIGN KEY (joint_venture_member_id) REFERENCES thong_tin_mo_thau_lien_danh_thanh_vien(id) ON DELETE CASCADE",
+            "FOREIGN KEY (created_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
         ]
     },
     "to_chuc": {

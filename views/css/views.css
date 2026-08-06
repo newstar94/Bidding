@@ -6660,3 +6660,6 @@ table th {
     flex: 1 1 calc(50% - 8px);
   }
 }
+.bidder-name--violator {
+  color: var(--color-danger);
+}

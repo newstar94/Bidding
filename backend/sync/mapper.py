@@ -842,6 +842,12 @@ def _save_options(cursor, parent_id, value, organization_id, owner_type, sync_ve
 
 
 def _save_extensions(cursor, parent_id, value, organization_id, owner_type, sync_version, updated_at):
+    previous_row = cursor.execute(
+        """SELECT MAX(thoi_gian_dong_thau) FROM goi_thau_gia_han
+           WHERE organization_id = ? AND goi_thau_id = ?""",
+        (organization_id, parent_id),
+    ).fetchone()
+    previous_closing = previous_row[0] if previous_row else None
     cursor.execute("DELETE FROM goi_thau_gia_han WHERE organization_id = ? AND goi_thau_id = ?", (organization_id, parent_id))
     rows = []
     items = _dedupe_child_items(
@@ -867,6 +873,17 @@ def _save_extensions(cursor, parent_id, value, organization_id, owner_type, sync
                 ly_do_gia_han, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
+    current_row = cursor.execute(
+        """SELECT MAX(thoi_gian_dong_thau) FROM goi_thau_gia_han
+           WHERE organization_id = ? AND goi_thau_id = ?""",
+        (organization_id, parent_id),
+    ).fetchone()
+    current_closing = current_row[0] if current_row else None
+    if previous_closing != current_closing:
+        cursor.execute(
+            "SELECT bf_mark_contractor_violation_package_stale(?, ?)",
+            (organization_id, parent_id),
+        )
 
 
 def _save_clarifications(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
@@ -2183,6 +2200,9 @@ def _format_member_child(row, naming):
             ("so_tai_khoan", "soTaiKhoan"),
             ("noi_mo_tai_khoan", "noiMoTaiKhoan"),
             ("ma_ngan_hang", "maNganHang"),
+            ("violation_status", "violationStatus"),
+            ("violation_bid_closing_at", "violationBidClosingAt"),
+            ("violation_checked_at", "violationCheckedAt"),
         ],
     )
     representative_key = "nguoi_dai_dien" if naming == "snake" else "nguoiDaiDien"
