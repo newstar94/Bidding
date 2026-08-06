@@ -45,4 +45,27 @@ def validate_tool_arguments(mode: str, name: str, arguments: object) -> dict:
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "operation khÃ´ng há»£p lá»‡.")
         if "limit" in arguments and (not isinstance(arguments["limit"], int) or isinstance(arguments["limit"], bool) or not 1 <= arguments["limit"] <= 20):
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit pháº£i náº±m trong khoáº£ng 1-20.")
+    if name == "describe_workspace_schema":
+        if not isinstance(arguments.get("query"), str) or len(arguments["query"]) > 200:
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "query schema không hợp lệ.")
+        if not isinstance(arguments.get("includeRelationships"), bool):
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "includeRelationships không hợp lệ.")
+        if not isinstance(arguments.get("limit"), int) or isinstance(arguments["limit"], bool) or not 1 <= arguments["limit"] <= 50:
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit schema phải nằm trong khoảng 1-50.")
+    if name == "query_workspace":
+        if arguments.get("operation") not in {"count", "list"}:
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "operation query không hợp lệ.")
+        fields = arguments.get("fields")
+        if (
+            not isinstance(fields, list)
+            or len(fields) > 20
+            or any(not isinstance(field, str) for field in fields)
+            or len(set(fields)) != len(fields)
+        ):
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "fields query phải là danh sách tối đa 20 cột.")
+        for field in ("query", "status", "packageId"):
+            if not isinstance(arguments.get(field), str) or len(arguments[field]) > {"query": 200, "status": 120, "packageId": 160}[field]:
+                raise ai_error("AI_TOOL_INVALID_ARGUMENTS", f"{field} query không hợp lệ.")
+        if not isinstance(arguments.get("limit"), int) or isinstance(arguments["limit"], bool) or not 1 <= arguments["limit"] <= 50:
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit query phải nằm trong khoảng 1-50.")
     return dict(arguments)

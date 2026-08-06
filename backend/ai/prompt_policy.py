@@ -30,6 +30,9 @@ MODE_POLICIES["procurement_advice"] = BASE_POLICY + (
 MODE_POLICIES["data"] += (
     " Nếu người dùng hỏi một loại dữ liệu nghiệp vụ cụ thể, hãy gọi search_workspace với entity phù hợp; "
     "không kết luận thiếu dữ liệu chỉ vì không có tool chuyên biệt cho entity đó."
+    " Nếu cần biết danh sách bảng, cột hoặc quan hệ, hãy gọi describe_workspace_schema trước; "
+    "nếu cần danh sách cột cụ thể thì tiếp tục gọi query_workspace với entity, fields và bộ lọc phù hợp; "
+    "không tự viết SQL thô hoặc truy cập bảng ngoài schema tool cung cấp."
 )
 
 

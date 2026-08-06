@@ -101,6 +101,45 @@ def test_fake_provider_uses_workspace_search_for_unmodeled_business_entities(mon
     }
 
 
+def test_fake_provider_uses_schema_tool_for_schema_questions(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    events = list(
+        ResponsesProvider(get_ai_config()).stream_response(
+            input_items=[{"role": "user", "content": "Liệt kê các bảng, cột và quan hệ trong database"}],
+            instructions="",
+            tools=tool_definitions("data"),
+        )
+    )
+    done = next(event for event in events if event["type"] == "response.function_call_arguments.done")
+    assert next(event for event in events if event["type"] == "response.output_item.done")["item"]["name"] == "describe_workspace_schema"
+    assert json.loads(done["arguments"]) == {
+        "query": "",
+        "includeRelationships": True,
+        "limit": 50,
+    }
+
+
+def test_fake_provider_uses_structured_query_for_explicit_workspace_fields(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    events = list(
+        ResponsesProvider(get_ai_config()).stream_response(
+            input_items=[{"role": "user", "content": "Liệt kê tên và mã số thuế nhà thầu"}],
+            instructions="",
+            tools=tool_definitions("data"),
+        )
+    )
+    done = next(event for event in events if event["type"] == "response.function_call_arguments.done")
+    assert json.loads(done["arguments"]) == {
+        "entity": "contractors",
+        "operation": "list",
+        "fields": ["name", "code", "taxCode"],
+        "query": "",
+        "status": "",
+        "packageId": "",
+        "limit": 20,
+    }
+
+
 def test_fake_provider_answers_tool_result_without_filter_metadata(monkeypatch):
     monkeypatch.setenv('AI_PROVIDER', 'fake')
     items = [{'role': 'user', 'content': 'Hom nay co may goi can mo thau?'},

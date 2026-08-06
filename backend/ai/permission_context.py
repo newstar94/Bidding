@@ -17,6 +17,7 @@ MODULES = {
     "contracts": "hopdong",
     "assignments": "assignments",
     "bidders": "nhathau",
+    "investors": "chudautu",
     "experts": "chuyengia",
 }
 
@@ -31,7 +32,7 @@ def build_request_context(request) -> AiRequestContext:
         cursor = connection.cursor()
         organization_id = get_active_org(request, session_or_error.user_id, cursor=cursor)
         organization_context = getattr(request.state, "organization_context", None)
-        membership_role = str(getattr(organization_context, "membership_role", "") or "")
+        membership_role = str(getattr(organization_context, "membership_role", "") or "").strip().lower()
         scope_type = str(getattr(organization_context, "scope_type", "organization") or "organization")
         organization_name = "Cá nhân" if scope_type == "personal" else organization_id
         if scope_type != "personal":
@@ -41,10 +42,15 @@ def build_request_context(request) -> AiRequestContext:
             ).fetchone()
             organization_name = str(row[0] if row else organization_id)
         platform_role = str(getattr(session_or_error, "platform_role", str(session_or_error)) or "")
+        active_role = str(getattr(session_or_error, "active_role", "") or platform_role).strip().lower()
+        manager_context = membership_role == "manager" or active_role in {"manager", "super_admin"}
         permissions = {}
         for module in MODULES.values():
             if module == "assignments":
                 permissions[module] = "view" if membership_role in {"manager", "employee"} or scope_type == "personal" else ""
+                continue
+            if manager_context:
+                permissions[module] = "edit"
                 continue
             permissions[module] = (
                 "edit" if has_module_permission(
@@ -63,7 +69,7 @@ def build_request_context(request) -> AiRequestContext:
             platform_role=platform_role,
             membership_role=membership_role,
             scope_type=scope_type,
-            active_role=str(getattr(session_or_error, "active_role", "") or platform_role),
+            active_role=active_role,
             permissions=permissions,
         )
     finally:

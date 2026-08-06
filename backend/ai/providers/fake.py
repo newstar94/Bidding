@@ -94,6 +94,11 @@ def _answer_from_tool_output(input_items: list[dict]) -> str | None:
         '',
     ).casefold()
     count = _as_count(summary.get('recordCount'))
+    if tool_name == 'describe_workspace_schema':
+        return f'Workspace hiện có {count} bảng nghiệp vụ được phép tra cứu, kèm cột và quan hệ khóa ngoại.'
+    if tool_name == 'query_workspace':
+        entity_label = str(summary.get('entityLabel') or 'bản ghi')
+        return _count_answer(count, entity_label)
     if tool_name == 'search_workspace':
         return _count_answer(count, str(summary.get('entityLabel') or 'record'))
     if tool_name in {'aggregate_packages', 'list_packages'}:
@@ -187,6 +192,61 @@ def _fake_tool_call(question: str, tools: list[dict]) -> dict | None:
     available = {item.get("name") for item in tools}
     lowered = question.casefold()
     today = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
+    if any(term in lowered for term in ("bảng trong db", "bảng trong database", "cột", "quan hệ bảng", "schema")) and "describe_workspace_schema" in available:
+        return {
+            "name": "describe_workspace_schema",
+            "arguments": {"query": "", "includeRelationships": True, "limit": 50},
+        }
+    if "nhà thầu" in lowered and "query_workspace" in available and any(
+        term in lowered for term in ("danh sách", "liệt kê", "tên", "mã số thuế", "địa chỉ", "email", "số điện thoại")
+    ):
+        fields = ["name", "code", "taxCode"]
+        if "địa chỉ" in lowered:
+            fields.append("address")
+        if "email" in lowered:
+            fields.append("email")
+        return {
+            "name": "query_workspace",
+            "arguments": {
+                "entity": "contractors",
+                "operation": "list",
+                "fields": fields,
+                "query": "",
+                "status": "",
+                "packageId": "",
+                "limit": 20,
+            },
+        }
+    if "chủ đầu tư" in lowered and "query_workspace" in available and any(
+        term in lowered for term in ("danh sách", "liệt kê", "tên", "mã số thuế", "địa chỉ", "email", "số điện thoại")
+    ):
+        fields = ["name", "code", "taxCode"]
+        if "địa chỉ" in lowered:
+            fields.append("address")
+        if "email" in lowered:
+            fields.append("email")
+        return {
+            "name": "query_workspace",
+            "arguments": {
+                "entity": "investors",
+                "operation": "list",
+                "fields": fields,
+                "query": "",
+                "status": "",
+                "packageId": "",
+                "limit": 20,
+            },
+        }
+    if "nhà thầu" in lowered and "search_workspace" in available:
+        return {
+            "name": "search_workspace",
+            "arguments": {"entity": "contractors", "operation": "count", "query": "", "status": "", "packageId": "", "limit": 20},
+        }
+    if "chủ đầu tư" in lowered and "search_workspace" in available:
+        return {
+            "name": "search_workspace",
+            "arguments": {"entity": "investors", "operation": "count", "query": "", "status": "", "packageId": "", "limit": 20},
+        }
     if "chuyên gia" in lowered and "search_workspace" in available:
         return {
             "name": "search_workspace",
