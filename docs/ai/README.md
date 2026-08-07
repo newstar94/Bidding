@@ -33,7 +33,7 @@ AI_ENABLED=true
 AI_PROVIDER=ollama
 AI_BASE_URL=http://127.0.0.1:11434
 AI_MODEL=<model đã cài trong Ollama>
-AI_API_KEY=
+AI_API_KEY=""
 AI_KNOWLEDGE_ENABLED=true
 ```
 
