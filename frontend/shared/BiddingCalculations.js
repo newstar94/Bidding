@@ -1,5 +1,6 @@
 import { parseVND } from "./formatters.js";
 import { isLowPriceBidRejected } from "../packages/bidEvaluationLowPriceRules.js";
+import { isCombinedTechnicalPriceMethod } from "../packages/technicalEvaluationMethod.js";
 
 function moneyBigInt(value) {
   const parsed = parseVND(value);
@@ -15,6 +16,7 @@ export function calculateRankings(gt, bids) {
   const scores = {};
   const isTuVan = gt.linhVuc === "Tư vấn";
   const method = gt.phuongPhapDanhGia || "";
+  const isCombinedMethod = isCombinedTechnicalPriceMethod(method);
   const hasLots = gt.phanLo === "Có";
   const groups = {};
   if (hasLots) {
@@ -61,7 +63,7 @@ export function calculateRankings(gt, bids) {
           return price > 0n && price <= packagePrice;
         });
         eligibleBids.sort((x, y) => getTechScore(y) - getTechScore(x));
-      } else if (method === "Kết hợp giữa kỹ thuật và giá") {
+      } else if (isCombinedMethod) {
         eligibleBids = lotBids.filter((b) => isQualified(b) && isPriceRankable(b));
         const prices = eligibleBids.map(getRankingPrice).filter((p) => p > 0n);
         const gMin = prices.reduce((minimum, price) => price < minimum ? price : minimum, prices[0] || 0n);
@@ -100,7 +102,7 @@ export function calculateRankings(gt, bids) {
         });
         eligibleBids.sort((x, y) => compareMoney(x.__evaluationPrice, y.__evaluationPrice));
         eligibleBids.forEach((bid) => delete bid.__evaluationPrice);
-      } else if (method === "Kết hợp giữa kỹ thuật và giá") {
+      } else if (isCombinedMethod) {
         eligibleBids = lotBids.filter(isRankable);
         const prices = eligibleBids.map(getRankingPrice).filter((p) => p > 0n);
         const gMin = prices.reduce((minimum, price) => price < minimum ? price : minimum, prices[0] || 0n);
