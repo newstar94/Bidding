@@ -2648,3 +2648,236 @@ textarea[disabled] {
   }
 
 }
+
+/* Excel processing feedback stays above application modals and below alerts/toasts. */
+.excel-import-loading {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal, 800) + 20);
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 4vw, 32px);
+  background: color-mix(in srgb, var(--ink) 52%, transparent);
+  backdrop-filter: blur(5px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.excel-import-loading,
+.excel-import-loading * {
+  box-sizing: border-box;
+}
+
+.excel-import-loading[hidden] {
+  display: none;
+}
+
+.excel-import-loading.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.excel-import-loading-card {
+  width: min(500px, 100%);
+  padding: clamp(20px, 4vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-main);
+  font-family: var(--font-primary);
+  transform: translateY(8px);
+  transition: transform var(--transition-normal);
+}
+
+.excel-import-loading.is-active .excel-import-loading-card {
+  transform: translateY(0);
+}
+
+.excel-import-loading-header {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.excel-import-loading-visual {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 92px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.excel-import-loading-file-mark {
+  padding: 7px 9px;
+  background: var(--success);
+  color: var(--surface);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.excel-import-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  padding: 8px;
+}
+
+.excel-import-loading-cell {
+  min-height: 9px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.excel-import-loading-cell:nth-child(4n + 1),
+.excel-import-loading-cell:nth-child(7) {
+  background: color-mix(in srgb, var(--primary) 24%, var(--surface));
+}
+
+.excel-import-loading-title {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.excel-import-loading-message {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.excel-import-loading-filename {
+  max-width: 100%;
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: var(--primary-hover);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excel-import-loading-progress {
+  position: relative;
+  height: 5px;
+  margin-top: var(--space-6);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--neutral-hover);
+}
+
+.excel-import-loading-progress-value {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 42%;
+  border-radius: inherit;
+  background: var(--primary);
+  transform: translateX(-120%);
+  animation: excel-import-progress 1.25s ease-in-out infinite;
+}
+
+.excel-import-loading-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.excel-import-loading-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-light);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.excel-import-loading-step-index {
+  display: grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-light);
+  font-size: 0.68rem;
+}
+
+.excel-import-loading-step[data-state="active"] {
+  color: var(--text-main);
+}
+
+.excel-import-loading-step[data-state="active"] .excel-import-loading-step-index {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.excel-import-loading-step[data-state="complete"] {
+  color: var(--success);
+}
+
+.excel-import-loading-step[data-state="complete"] .excel-import-loading-step-index {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+body.excel-import-is-busy {
+  cursor: progress;
+}
+
+@keyframes excel-import-progress {
+  0% { transform: translateX(-120%); }
+  55% { transform: translateX(120%); }
+  100% { transform: translateX(280%); }
+}
+
+@media (max-width: 480px) {
+  .excel-import-loading-header {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .excel-import-loading-visual {
+    min-height: 76px;
+  }
+
+  .excel-import-loading-steps {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .excel-import-loading-filename {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .excel-import-loading,
+  .excel-import-loading-card {
+    transition: none;
+  }
+
+  .excel-import-loading-progress-value {
+    left: 29%;
+    animation: none;
+    transform: none;
+  }
+}

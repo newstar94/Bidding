@@ -1,5 +1,6 @@
 import { readExcelWorkbookSheets } from "../documents/excelFileReader.js";
 import { generateRecordId, generateUUID } from "../shared/idUtils.js";
+import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import { persistAndSync } from "../shared/MutationService.js";
 import { workspaceDataStoreFor } from "../app/WorkspaceDataStore.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
@@ -709,8 +710,14 @@ export function renderBidderGoodsPanelMarkup(state) {
     </div>`;
 }
 
-export async function analyzeBidderGoodsExcel(controller, detailedState, file) {
+export async function analyzeBidderGoodsExcel(
+  controller,
+  detailedState,
+  file,
+  { onWorkbookRead } = {},
+) {
   const sheets = await readExcelWorkbookSheets(file);
+  await onWorkbookRead?.();
   const parsed = parseBidderGoodsWorkbookSheets(sheets, { pkg: detailedState.pkg });
   const currentContractorId = String(detailedState.bid?.nhaThauId || "");
   const candidateBids = detailedState.rawBids.filter(
@@ -759,17 +766,29 @@ export async function importBidderGoodsExcel(controller, detailedState, file) {
   controller._bidderGoodsBusy = "import";
   controller._bidderGoodsError = "";
   controller.renderDetailedEvaluation();
+  const loading = await beginExcelImportLoading({ fileName: file.name });
   try {
-    const preview = await analyzeBidderGoodsExcel(controller, detailedState, file);
+    const preview = await analyzeBidderGoodsExcel(controller, detailedState, file, {
+      onWorkbookRead: () => loading.update(
+        "validate",
+        "File đã được đọc. Hệ thống đang ghép hàng hóa với hồ sơ dự thầu.",
+      ),
+    });
+    await loading.update(
+      "preview",
+      "Hàng hóa dự thầu đang được chuẩn bị để bạn xác nhận trước khi nhập.",
+    );
     controller._bidderGoodsImportPreview = preview;
     controller._detailedEvaluationDirty = true;
     return true;
   } catch (error) {
     console.error(error);
+    await loading.close();
     controller._bidderGoodsError = error?.message || "Vui lòng kiểm tra lại file Excel.";
     await controller.view.customAlert("Không thể đọc Excel", error?.message || "Vui lòng kiểm tra lại file Excel.", "alert-triangle");
     return false;
   } finally {
+    await loading.close();
     controller._bidderGoodsBusy = "";
     controller.renderDetailedEvaluation();
   }

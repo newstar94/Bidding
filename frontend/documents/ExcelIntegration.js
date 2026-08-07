@@ -1,4 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import {
   authFetchDownloadWithAlert,
 } from "../shared/workflow_helpers.js";
@@ -243,12 +244,16 @@ export function triggerExcelTemplateDownload(type) {
     )
   ));
 }
-async function renderClientExcelImport(controller, file, parser, context) {
+async function renderClientExcelImport(controller, file, parser, context, loading) {
   try {
     if (!excelImportContextIsCurrent(controller, context)) {
       return await rejectStaleExcelImport(controller);
     }
     const rows = await readExcelRows(file);
+    await loading?.update(
+      "validate",
+      "File đã được đọc. Hệ thống đang kiểm tra cấu trúc và dữ liệu.",
+    );
     if (!excelImportContextIsCurrent(controller, context)) {
       return await rejectStaleExcelImport(controller);
     }
@@ -257,6 +262,10 @@ async function renderClientExcelImport(controller, file, parser, context) {
     if (!excelImportContextIsCurrent(controller, context)) {
       return await rejectStaleExcelImport(controller);
     }
+    await loading?.update(
+      "preview",
+      "Dữ liệu hợp lệ đang được sắp xếp để hiển thị bản xem trước.",
+    );
     controller._excelImportData = parsedRows;
     renderExcelPreview(controller._excelImportData, controller._excelImportType);
     showExcelImportSaveButton();
@@ -272,6 +281,7 @@ export async function handleExcelUpload(file, context = null) {
   if (!excelImportContextIsCurrent(this, importContext)) {
     return await rejectStaleExcelImport(this);
   }
+  const loading = await beginExcelImportLoading({ fileName: file.name });
   const fileInfo = document.getElementById("excel-file-info");
   if (fileInfo) {
     document.getElementById("excel-filename").textContent = file.name;
@@ -279,19 +289,35 @@ export async function handleExcelUpload(file, context = null) {
     setRuntimeStyle(fileInfo, "display", "flex");
   }
   if (this._excelImportType === "opening_fin") {
-    await renderClientExcelImport(this, file, parseOpeningFinancialImport, importContext);
+    try {
+      await renderClientExcelImport(this, file, parseOpeningFinancialImport, importContext, loading);
+    } finally {
+      await loading.close();
+    }
     return;
   }
   if (this._excelImportType === "danhgiahsdt") {
-    await renderClientExcelImport(this, file, parseBidEvaluationImport, importContext);
+    try {
+      await renderClientExcelImport(this, file, parseBidEvaluationImport, importContext, loading);
+    } finally {
+      await loading.close();
+    }
     return;
   }
   if (this._excelImportType === "ketquaqd") {
-    await renderClientExcelImport(this, file, parseAwardResultImport, importContext);
+    try {
+      await renderClientExcelImport(this, file, parseAwardResultImport, importContext, loading);
+    } finally {
+      await loading.close();
+    }
     return;
   }
   if (this._excelImportType === "mothau") {
-    await renderClientExcelImport(this, file, parseOpeningImport, importContext);
+    try {
+      await renderClientExcelImport(this, file, parseOpeningImport, importContext, loading);
+    } finally {
+      await loading.close();
+    }
     return;
   }
   let apiType = this._excelImportType;
@@ -300,6 +326,10 @@ export async function handleExcelUpload(file, context = null) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("type", apiType);
+  await loading.update(
+    "validate",
+    "File đã được nhận. Hệ thống đang tải lên và kiểm tra dữ liệu.",
+  );
   try {
     const res = await apiFetch("/api/import-excel", {
       method: "POST",
@@ -310,6 +340,10 @@ export async function handleExcelUpload(file, context = null) {
       return await rejectStaleExcelImport(this);
     }
     if (res.ok && data.success) {
+      await loading.update(
+        "preview",
+        "Dữ liệu đã được kiểm tra. Hệ thống đang chuẩn bị bản xem trước.",
+      );
       const rawRows = data.rows || data.data || [];
       const seenKeys = /* @__PURE__ */ new Set();
       this._excelImportData = rawRows.map((row) => {
@@ -489,6 +523,8 @@ export async function handleExcelUpload(file, context = null) {
       "Không thể xử lý tệp Excel: " + err.message,
       "alert-triangle"
     );
+  } finally {
+    await loading.close();
   }
 }
 export async function saveExcelImport() {
@@ -654,8 +690,13 @@ export function exportEditTuyChonMuaThemExcel() {
   }).catch((err) => this.view.customAlert("Lỗi tải mẫu", "Không thể tải Excel mẫu: " + err.message, "x-circle"));
 }
 export async function importPhatHanhPhanLoExcel(file) {
+  const loading = await beginExcelImportLoading({ fileName: file?.name || "" });
   try {
       const json = await readExcelRows(file);
+      await loading.update(
+        "validate",
+        "File đã được đọc. Hệ thống đang đối chiếu dữ liệu từng phần lô.",
+      );
       let count = 0;
       const trList = document.querySelectorAll("#phathanh-phanlo-baodam-tbody tr");
       json.forEach((row, rowIndex) => {
@@ -699,12 +740,15 @@ export async function importPhatHanhPhanLoExcel(file) {
         }
       });
       if (count > 0) {
+        await loading.update("preview", "Dữ liệu phần lô đã được cập nhật vào biểu mẫu.");
         this.view.customAlert("Nhập thành công", `Đã cập nhật/ghi đè giá trị bảo đảm cho ${count} phần lô từ file Excel!`, "check-circle");
       } else {
         this.view.customAlert("Không nhập được dữ liệu", "Không thể đồng bộ dữ liệu phần lô nào từ file Excel!", "alert-triangle");
       }
   } catch (err) {
       this.view.customAlert("Lỗi đọc file", "Không thể đọc file Excel: " + err.message, "x-circle");
+  } finally {
+      await loading.close();
   }
 }
 export function revalidateExcelImportData() {

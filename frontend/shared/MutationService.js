@@ -44,6 +44,14 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
  * expectedVersion so the first delete request is not rejected as a conflict.
  */
 export async function refreshRecordBeforeDelete(controller, tableKey, recordId) {
+  return refreshRecordBeforeMutation(controller, tableKey, recordId);
+}
+
+/**
+ * Refresh a versioned record before staging a state transition so the
+ * mutation carries the latest rowVersion instead of a stale page snapshot.
+ */
+export async function refreshRecordBeforeMutation(controller, tableKey, recordId) {
   const localRecord = controller?.model?.state?.[tableKey]?.find?.(
     (record) => String(record?.id) === String(recordId)
   ) || null;
@@ -51,7 +59,7 @@ export async function refreshRecordBeforeDelete(controller, tableKey, recordId) 
   try {
     return await controller.fetchRecordByLookup(tableKey, recordId) || localRecord;
   } catch (error) {
-    console.warn(`[Delete] Could not refresh ${tableKey}/${recordId} before deletion.`, error);
+    console.warn(`[Sync] Could not refresh ${tableKey}/${recordId} before mutation.`, error);
     return localRecord;
   }
 }

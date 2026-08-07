@@ -3,6 +3,7 @@ import { escapeHtml } from "../shared/view_helpers.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import { getAppController } from "../app/controllerRef.js";
 import { generateRecordId } from "../shared/idUtils.js";
+import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import { downloadPackageGoodsWorkbook, buildPackageGoodsPreview, readPackageGoodsExcel } from "./PackageGoodsExcel.js";
 import { isPackageGoodsEditable, validatePackageGoodsItem } from "./packageGoodsValidation.js";
 import { renderPackageSummary } from "./detail/PackageSummary.js";
@@ -476,14 +477,26 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   contentWrapper.querySelector("#btn-package-goods-import-trigger")?.addEventListener("click", () => fileInput?.click());
   fileInput?.addEventListener("change", async () => {
     const file = fileInput.files?.[0]; if (!file) return;
+    const loading = await beginExcelImportLoading({ fileName: file.name });
     try {
       const imported = await readPackageGoodsExcel(file, { pkg, selectedLotId: selected });
+      await loading.update(
+        "validate",
+        "File đã được đọc. Hệ thống đang kiểm tra mã hàng hóa và phạm vi phần lô.",
+      );
       const preview = buildPackageGoodsPreview(imported, allGoods, { pkg });
+      await loading.update(
+        "preview",
+        "Danh mục hàng hóa đang được chuẩn bị để bạn kiểm tra trước khi lưu.",
+      );
       view._packageGoodsImportPreview = preview;
       const section = contentWrapper.querySelector("#package-goods-import"); section.hidden = false;
       renderPreview(contentWrapper.querySelector("#package-goods-preview"), preview, lots);
     } catch (error) {
       await view.customAlert("Không thể đọc Excel", error?.message || "Tệp Excel không hợp lệ.", "alert-triangle");
+    } finally {
+      fileInput.value = "";
+      await loading.close();
     }
   });
   contentWrapper.querySelector("#btn-package-goods-import-save")?.addEventListener("click", async () => {

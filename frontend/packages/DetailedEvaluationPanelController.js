@@ -10,6 +10,7 @@ import {
   aggregateDetailedEvaluationAutomatic,
   aggregateDetailedEvaluationReport,
 } from "./detailedEvaluationAggregation.js";
+import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 
 export async function confirmDetailedEvaluationDiscard(appController) {
   if (!appController._detailedEvaluationDirty) return true;
@@ -395,12 +396,20 @@ export function bindDetailedEvaluationPanelController({
   excelInput?.addEventListener("change", async () => {
     const file = excelInput.files?.[0];
     if (!file) return;
+    const loading = await beginExcelImportLoading({ fileName: file.name });
     excelButton.disabled = true;
+    excelButton.setAttribute("aria-busy", "true");
     try {
       await commands.importExcel(file);
+      await loading.update(
+        "preview",
+        "Kết quả đánh giá đang được sắp xếp để hiển thị trên biểu mẫu.",
+      );
     } finally {
       excelInput.value = "";
       excelButton.disabled = false;
+      excelButton.removeAttribute("aria-busy");
+      await loading.close();
     }
   });
   appController.view.createIconsScoped?.(root);

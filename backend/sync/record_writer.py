@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from backend.sync.conflict_projection import project_conflict_record
+from backend.sync.uniqueness import assignment_conflict_detail
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -108,10 +109,36 @@ class SyncRecordWriter:
             db_row_data["row_version"] = 1
             columns = ", ".join(db_row_data)
             placeholders = ", ".join(["?"] * len(db_row_data))
+            conflict_clause = (
+                " ON CONFLICT (organization_id, id_nhan_vien, "
+                "id_muc_tieu, loai_doi_tuong) DO NOTHING"
+                if table_name == "phan_cong_nhan_su"
+                else ""
+            )
             cursor.execute(
-                f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})",
+                f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+                f"{conflict_clause}",
                 tuple(db_row_data.values()),
             )
+            if table_name == "phan_cong_nhan_su" and cursor.rowcount != 1:
+                conflict_row = cursor.execute(
+                    """SELECT id FROM phan_cong_nhan_su
+                       WHERE organization_id = ? AND id_nhan_vien = ?
+                         AND id_muc_tieu = ? AND loai_doi_tuong = ?
+                       LIMIT 1""",
+                    (
+                        organization_id,
+                        db_row_data.get("id_nhan_vien"),
+                        db_row_data.get("id_muc_tieu"),
+                        db_row_data.get("loai_doi_tuong"),
+                    ),
+                ).fetchone()
+                conflicting_id = str(conflict_row[0]) if conflict_row else ""
+                return SyncRecordWriteResult(conflict_error={
+                    "table": table_name,
+                    "id": db_row_data["id"],
+                    **assignment_conflict_detail(conflicting_id),
+                })
 
         if table_name in self.ownership_scoped_tables:
             lineage_root = (

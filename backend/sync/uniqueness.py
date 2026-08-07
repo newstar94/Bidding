@@ -24,6 +24,9 @@ class DomainUniquenessContext:
     candidates: dict[tuple[str, str, str], list[tuple[str, str | None]]] = field(
         default_factory=dict
     )
+    assignment_candidates: dict[tuple[str, str, str], list[str]] = field(
+        default_factory=dict
+    )
 
 
 _RULES_BY_TABLE = {
@@ -77,6 +80,24 @@ def _normalized_value(rule: _UniquenessRule, value: str) -> str:
     return normalized.lower() if rule.case_insensitive else normalized
 
 
+def _assignment_key(item: dict[str, Any]) -> tuple[str, str, str] | None:
+    employee_id = _value(item, "empId", "id_nhan_vien")
+    target_id = _value(item, "targetId", "id_muc_tieu")
+    target_type = _value(item, "type", "loai_doi_tuong")
+    if not employee_id or not target_id or not target_type:
+        return None
+    return employee_id, target_id, target_type
+
+
+def assignment_conflict_detail(conflicting_id: str) -> dict[str, str]:
+    return {
+        "field": "$record",
+        "code": "ASSIGNMENT_ALREADY_EXISTS",
+        "message": "Nhân sự đã được phân công cho đối tượng này.",
+        "conflictingId": conflicting_id,
+    }
+
+
 def build_domain_uniqueness_context(
     cursor,
     organization_id: str,
@@ -119,6 +140,37 @@ def build_domain_uniqueness_context(
                         (table_name, rule.token, normalized),
                         [],
                     ).append((candidate_id, candidate_root))
+
+    assignment_items = records_by_table.get("phan_cong_nhan_su", ())
+    assignment_keys = list(dict.fromkeys(
+        key
+        for item in assignment_items
+        if (key := _assignment_key(item)) is not None
+    ))
+    for offset in range(0, len(assignment_keys), _QUERY_CHUNK_SIZE):
+        chunk = assignment_keys[offset:offset + _QUERY_CHUNK_SIZE]
+        tuple_placeholders = ", ".join("(?, ?, ?)" for _key in chunk)
+        rows = cursor.execute(
+            f"""SELECT id, id_nhan_vien, id_muc_tieu, loai_doi_tuong
+                FROM phan_cong_nhan_su
+                WHERE organization_id = ?
+                  AND (id_nhan_vien, id_muc_tieu, loai_doi_tuong)
+                      IN ({tuple_placeholders})""",  # noqa: S608 - validated placeholder count
+            (
+                organization_id,
+                *(value for key in chunk for value in key),
+            ),
+        ).fetchall()
+        for row in rows:
+            key = (str(row[1]), str(row[2]), str(row[3]))
+            context.assignment_candidates.setdefault(key, []).append(str(row[0]))
+    for item in assignment_items:
+        key = _assignment_key(item)
+        record_id = str(item.get("id") or "").strip()
+        if key and record_id:
+            candidates = context.assignment_candidates.setdefault(key, [])
+            if record_id not in candidates:
+                candidates.append(record_id)
     return context
 
 
@@ -172,6 +224,16 @@ def validate_domain_uniqueness_from_context(
             record_id,
             root_id,
         )
+
+    if table_name == "phan_cong_nhan_su":
+        key = _assignment_key(item)
+        conflicting_id = next((
+            candidate_id
+            for candidate_id in context.assignment_candidates.get(key, ())
+            if candidate_id != str(record_id)
+        ), None)
+        if conflicting_id:
+            errors.append(assignment_conflict_detail(conflicting_id))
 
     if table_name == "chu_dau_tu":
         code = _value(item, "maChuDauTu")

@@ -1,11 +1,39 @@
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
-import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import {
+  persistAndSync,
+  refreshRecordBeforeMutation,
+  stageLocalRecords,
+} from "../shared/MutationService.js";
 import { derivePackagePrice } from "./packagePricing.js";
+import { normalizeStatus } from "./LifecyclePolicy.js";
 
-export async function moThauGoiThau(id) {
+function runExclusivePackageWorkflow(controller, key, workflow) {
+  controller._packageWorkflowPromises = controller._packageWorkflowPromises || new Map();
+  const existing = controller._packageWorkflowPromises.get(key);
+  if (existing) return existing;
+  const promise = Promise.resolve()
+    .then(workflow)
+    .finally(() => {
+      if (controller._packageWorkflowPromises.get(key) === promise) {
+        controller._packageWorkflowPromises.delete(key);
+      }
+    });
+  controller._packageWorkflowPromises.set(key, promise);
+  return promise;
+}
+
+export function moThauGoiThau(id) {
+  return runExclusivePackageWorkflow(
+    this,
+    `open-package:${String(id || "")}`,
+    () => performMoThauGoiThau.call(this, id),
+  );
+}
+
+async function performMoThauGoiThau(id) {
   const requestedPackage = this.model.state.goithau.find((g) => g.id === id);
-  const gt = resolveLatestPackage(this.model, requestedPackage || id);
+  let gt = resolveLatestPackage(this.model, requestedPackage || id);
   if (!gt) return;
   id = gt.id;
   const thoiGianMoThauStr = await this.view.customPrompt(
@@ -86,6 +114,50 @@ export async function moThauGoiThau(id) {
     return;
   }
   const ymdStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+  const refreshedPackage = await refreshRecordBeforeMutation(this, "goithau", id);
+  gt = resolveLatestPackage(this.model, refreshedPackage || gt);
+  if (!gt) {
+    await this.view.customAlert(
+      "Không thể mở thầu",
+      "Không tìm thấy dữ liệu gói thầu mới nhất. Vui lòng tải lại và thử lại.",
+      "alert-triangle",
+    );
+    return { ok: false, code: "PACKAGE_NOT_FOUND" };
+  }
+  const currentStatus = normalizeStatus(gt.trangThai);
+  if (currentStatus === "OPENED") {
+    this.view.renderGoiThauTable?.();
+    await this.view.customAlert(
+      "Gói thầu đã được mở",
+      `Gói thầu "${gt.tenGoiThau}" đã được mở ở một thao tác trước đó. Dữ liệu mới nhất đã được tải lại.`,
+      "info",
+    );
+    return { ok: true, skipped: true };
+  }
+  if (currentStatus !== "INVITED") {
+    await this.view.customAlert(
+      "Trạng thái đã thay đổi",
+      "Gói thầu không còn ở trạng thái Đang mời thầu. Dữ liệu mới nhất đã được tải lại; vui lòng kiểm tra trước khi tiếp tục.",
+      "alert-triangle",
+    );
+    return { ok: false, code: "PACKAGE_STATE_CHANGED" };
+  }
+  if (gt.thoiGianDongThau) {
+    const closingTime = new Date(gt.thoiGianDongThau);
+    const openingTime = new Date(ymdStr);
+    if (
+      !Number.isNaN(closingTime.getTime())
+      && !Number.isNaN(openingTime.getTime())
+      && openingTime < closingTime
+    ) {
+      await this.view.customAlert(
+        "Thời gian không hợp lệ",
+        `Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu (${this.model.formatDateWithTime(gt.thoiGianDongThau)}).`,
+        "alert-triangle",
+      );
+      return { ok: false, code: "OPENING_TIME_BEFORE_CLOSING" };
+    }
+  }
   gt.thoiGianMoThau = ymdStr;
   gt.trangThai = "Đã mở thầu";
   stageLocalRecords(this.model, "goithau", gt);
