@@ -2806,6 +2806,14 @@ table th {
 #mothau-table select.form-control {
   min-width: 130px;
 }
+#tab-goithau-detail #mothau-table .package-contractor-code-column,
+#tab-goithau-detail #mothau-table td:has(.mt-ma-nha-thau) {
+  width: 13rem;
+  min-width: 13rem;
+}
+#tab-goithau-detail #mothau-table .mt-ma-nha-thau {
+  min-width: 11.75rem;
+}
 #mothau-table-tbody tr.invalid td {
   background-color: var(--danger-soft);
 }

@@ -8,6 +8,7 @@ import { bootstrapLandingPage, isLandingPath } from "../landing/LandingPage.js";
 import { bootstrapLegalPage, isLegalPath } from "../legal/LegalPage.js";
 import { installReleaseDiagnostics } from "../shared/releaseDiagnostics.js";
 import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
+import { installOverflowTextAutoScroll } from "../shared/overflowTextAutoScroll.js";
 import {
   embeddedSessionNeedsWorkspaceRefresh,
   preferredWorkspaceId
@@ -116,6 +117,7 @@ const bootstrapApplication = async () => {
   installDialogAccessibility(document);
   installAuthOverlayAccessibility();
   installSemanticAccessibility(document);
+  installOverflowTextAutoScroll(document);
   if (isLandingPath()) {
     bootstrapLandingPage(readSessionBootstrap());
     requestAnimationFrame(() => {

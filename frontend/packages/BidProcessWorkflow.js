@@ -212,7 +212,7 @@ export function renderMoThauPanel() {
       theadHtml = `
                 <tr>
                     <th class="bf-s-ad8c93e5fe">Loại nhà thầu</th>
-                    <th class="bf-s-a01153c965">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-a01153c965">Mã nhà thầu</th>
                     <th class="bf-s-eb7671413b">Tên nhà thầu</th>
                     <th class="bf-s-ad8c93e5fe">Hiệu lực E-HSĐXKT</th>
                     <th class="bf-s-2811ee8f01">Thời gian thực hiện</th>
@@ -223,7 +223,7 @@ export function renderMoThauPanel() {
       theadHtml = `
                 <tr>
                     <th class="bf-s-2811ee8f01">Loại nhà thầu</th>
-                    <th class="bf-s-fa210469db">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-fa210469db">Mã nhà thầu</th>
                     <th class="bf-s-4a13035285">Tên nhà thầu</th>
                     <th class="bf-s-2811ee8f01">Đảm bảo dự thầu</th>
                     <th class="bf-s-2811ee8f01">Hiệu lực đảm bảo</th>
@@ -237,7 +237,7 @@ export function renderMoThauPanel() {
                     <th class="bf-s-ae54075f01">Mã phần lô</th>
                     <th class="bf-s-ae54075f01">Tên phần lô</th>
                     <th class="bf-s-ae54075f01">Loại nhà thầu</th>
-                    <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-ad8c93e5fe">Mã nhà thầu</th>
                     <th class="bf-s-a01153c965">Tên nhà thầu</th>
                     <th class="bf-s-3faf34a5d2">Đảm bảo</th>
                     <th class="bf-s-3faf34a5d2">Hiệu lực ĐB</th>
@@ -249,7 +249,7 @@ export function renderMoThauPanel() {
       theadHtml = `
                 <tr>
                     <th class="bf-s-ae54075f01">Loại nhà thầu</th>
-                    <th class="bf-s-c83ebbe56b">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-c83ebbe56b">Mã nhà thầu</th>
                     <th class="bf-s-a01153c965">Tên nhà thầu</th>
                     <th class="bf-s-ae54075f01">Giá dự thầu</th>
                     <th class="bf-s-b258c3e162">Tỷ lệ giảm (%)</th>
@@ -267,7 +267,7 @@ export function renderMoThauPanel() {
                     <th class="bf-s-8523765ec6">Mã phần lô</th>
                     <th class="bf-s-8523765ec6">Tên phần lô</th>
                     <th class="bf-s-8523765ec6">Loại nhà thầu</th>
-                    <th class="bf-s-2811ee8f01">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-2811ee8f01">Mã nhà thầu</th>
                     <th class="bf-s-c264699ce5">Tên nhà thầu</th>
                     <th class="bf-s-8523765ec6">Giá dự thầu</th>
                     <th class="bf-s-415b5d64b8">Tỷ lệ giảm (%)</th>
@@ -283,7 +283,7 @@ export function renderMoThauPanel() {
       theadHtml = `
                 <tr>
                     <th class="bf-s-2811ee8f01">Loại nhà thầu</th>
-                    <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-ad8c93e5fe">Mã nhà thầu</th>
                     <th class="bf-s-4a13035285">Tên nhà thầu</th>
                     <th class="bf-s-ad8c93e5fe">Giá dự thầu</th>
                     <th class="bf-s-4a13035285">Thời gian thực hiện gói thầu</th>
@@ -296,7 +296,7 @@ export function renderMoThauPanel() {
                     <th class="bf-s-ae54075f01">Mã phần lô</th>
                     <th class="bf-s-ae54075f01">Tên phần lô</th>
                     <th class="bf-s-ae54075f01">Loại nhà thầu</th>
-                    <th class="bf-s-2811ee8f01">Mã nhà thầu</th>
+                    <th class="package-contractor-code-column bf-s-2811ee8f01">Mã nhà thầu</th>
                     <th class="bf-s-fa210469db">Tên nhà thầu</th>
                     <th class="bf-s-ae54075f01">Giá dự thầu</th>
                     <th class="bf-s-a01153c965">Thời gian thực hiện gói thầu</th>
