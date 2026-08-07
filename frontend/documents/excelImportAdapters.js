@@ -4,6 +4,10 @@
   isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
 import { normalizeLowPriceAcceptance } from "../packages/bidEvaluationLowPriceRules.js";
+import {
+  requiresTechnicalScoreInput,
+  validateTechnicalScore,
+} from "../packages/evaluationMethodRules.js";
 
 function findOpeningPackage(controller, context = {}) {
   const select = context.packageId
@@ -83,17 +87,26 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
   const hasPhanLo = goiThau.phanLo === "Có";
   const activeLotDetails = getActiveEvaluationLotScope(controller, goiThau);
   const isPartialScope = isPartialEvaluationLotScope(activeLotDetails);
+  const evaluationTab = context.evaluationTab || controller.currentDanhGiaTab || "technical";
+  const technicalScoreRequired = requiresTechnicalScoreInput(goiThau)
+    && evaluationTab === "technical";
   return rows.map((row) => {
     const maNhaThau = String(row["Mã nhà thầu"] || row["Mã định danh"] || row["Mã số thuế"] || row["Mã"] || "").trim();
     const tenNhaThau = String(row["Tên nhà thầu"] || row["Nhà thầu"] || "").trim();
     const maPhanLo = String(row["Mã phần lô"] || row["Phần lô"] || row["Mã lô"] || "").trim();
     const foundBid = findEvaluationBid(controller, gtId, maNhaThau, tenNhaThau, maPhanLo, hasPhanLo);
     const inSelectedScope = !isPartialScope || isBidWithinEvaluationLotDetails(foundBid, activeLotDetails);
-    const isValid = Boolean(foundBid && inSelectedScope);
+    const technicalScore = String(row["Đánh giá kỹ thuật"] || row["Kỹ thuật"] || "").trim();
+    const technicalValidation = technicalScoreRequired
+      ? validateTechnicalScore(technicalScore, { required: true })
+      : { valid: true };
+    const isValid = Boolean(foundBid && inSelectedScope && technicalValidation.valid);
     const comment = isValid
       ? "Hợp lệ"
       : foundBid && !inSelectedScope
         ? "Dòng này thuộc phần lô ngoài phạm vi đợt đánh giá đang chọn."
+        : foundBid && !technicalValidation.valid
+          ? `${technicalValidation.message} Không được nhập Đạt/Không đạt.`
         : "Không tìm thấy nhà thầu/lô tương ứng trong thông tin mở thầu của gói thầu này!";
     if (["financial", "unified"].includes(context.evaluationTab || controller.currentDanhGiaTab)) {
       const giaDuThauRaw = String(row["Giá dự thầu (VND)"] || row["Giá dự thầu (VND)"] || row["Giá dự thầu"] || row["Giá"] || "0").trim();
@@ -101,7 +114,6 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
       const hieuLucHsdtRaw = String(row["Hiệu lực HSDT"] || row["Hiệu lực HSDT (ngày)"] || "").trim();
       const thoiGianThucHien = String(row["Thời gian thực hiện"] || row["Thời gian thực hiện (ngày)"] || row["Thời gian TH"] || "").trim();
       const lamRoTaiChinh = String(row["Làm rõ tài chính"] || "").trim();
-      const danhGiaTaiChinh = String(row["Đánh giá tài chính"] || row["Xếp hạng"] || "").trim();
       const giaXepHang = controller.model.parseVND(row["Giá xếp hạng (VND)"] || row["Giá xếp hạng"] || "") || 0;
       const giaDeNghiTrungThau = controller.model.parseVND(
         row["Giá đề nghị trúng thầu (VND)"] || row["Giá đề nghị trúng thầu"] || "",
@@ -128,8 +140,7 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
         chapThuanGiaDeNghiTrungThauDuoi50,
         hieuLucHsdt: parseInt(hieuLucHsdtRaw, 10) || 0,
         thoiGianThucHien,
-        lamRoTaiChinh,
-        danhGiaTaiChinh
+        lamRoTaiChinh
       };
       if (hasPhanLo) {
         rec2.maPhanLo = foundBid ? foundBid.maPhanLo : maPhanLo;
@@ -145,7 +156,7 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
       tenNhaThau: foundBid ? foundBid.tenNhaThau : tenNhaThau,
       danhGiaHopLe: String(row["Đánh giá hợp lệ"] || row["Đánh giá tính hợp lệ"] || row["Hợp lệ"] || "").trim(),
       danhGiaNangLuc: String(row["Đánh giá năng lực"] || row["Đánh giá năng lực kinh nghiệm"] || row["Năng lực"] || "").trim(),
-      danhGiaKyThuat: String(row["Đánh giá kỹ thuật"] || row["Kỹ thuật"] || "").trim(),
+      danhGiaKyThuat: technicalScore,
       danhGiaKetLuan: String(row["Kết luận"] || row["Kết quả"] || "").trim(),
       lamRoHopLe: String(row["Làm rõ hợp lệ"] || row["Làm rõ tính hợp lệ"] || "").trim(),
       lamRoNangLuc: String(row["Làm rõ năng lực"] || row["Làm rõ năng lực kinh nghiệm"] || "").trim(),

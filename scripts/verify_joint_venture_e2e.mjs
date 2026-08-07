@@ -887,8 +887,15 @@ try {
   const twoEnvelopeFinancialRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await twoEnvelopeFinancialRow.locator(".mt-gia-xep-hang").fill("400000");
   await twoEnvelopeFinancialRow.locator(".mt-gia-de-nghi-trung-thau").fill("400000");
-  if (await twoEnvelopeFinancialRow.locator(".mt-dg-tai-chinh").count()) {
-    await twoEnvelopeFinancialRow.locator(".mt-dg-tai-chinh").fill("Xếp hạng 1");
+  const automaticRanking = twoEnvelopeFinancialRow.locator(".mt-dg-tai-chinh");
+  if (await automaticRanking.count()) {
+    const tagName = await automaticRanking.evaluate((element) => element.tagName);
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(tagName)) {
+      throw new Error("Automatic ranking must be display-only");
+    }
+    if (!(await automaticRanking.innerText()).includes("Xếp hạng")) {
+      throw new Error("Automatic ranking was not calculated");
+    }
   }
   await twoEnvelopeFinancialRow.locator('.mt-low-price-acceptance[value="true"]').check();
   await page.locator("#btn-danhgiahsdt-save").click();

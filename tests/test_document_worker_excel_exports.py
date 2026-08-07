@@ -229,6 +229,7 @@ def test_financial_evaluation_excel_contains_ranking_and_proposed_award_prices(m
     assert "Giá xếp hạng (VND)" in spec["headers"]
     assert "Giá đề nghị trúng thầu (VND)" in spec["headers"]
     assert "Xử lý giá đề nghị trúng thầu dưới 50%" in spec["headers"]
+    assert "Đánh giá tài chính (Điểm hoặc Xếp hạng)" not in spec["headers"]
     ranking_index = spec["headers"].index("Giá xếp hạng (VND)")
     proposed_index = spec["headers"].index("Giá đề nghị trúng thầu (VND)")
     assert spec["rows"][0][ranking_index] == 950

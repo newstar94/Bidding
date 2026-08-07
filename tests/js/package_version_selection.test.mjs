@@ -108,3 +108,22 @@ test("a remembered selection that no longer exists falls back to the current row
   assert.equal(result.viewOnly, false, "a dangling selection must not hide edit and delete");
   assert.equal(result.displayedId, "pkg-a");
 });
+
+test("a remembered historical package version follows the inherited current snapshot", () => {
+  const state = planWithPackage();
+  state.goithau.push({
+    ...state.goithau[0],
+    id: "pkg-history",
+    phienBan: "00",
+    isLatest: 0,
+  });
+  state.selectedPackageVersion["pkg-a"] = "pkg-history";
+
+  const inheritedRow = createPlanVersion(state);
+
+  assert.equal(
+    state.selectedPackageVersion["pkg-a"],
+    inheritedRow.id,
+    "a plan version must not retain a historical package selection",
+  );
+});

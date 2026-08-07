@@ -4,6 +4,7 @@ from backend.sync.mapper import (
     _attach_bid_evaluation_results,
     _save_bid_evaluation_result,
 )
+from backend.sync.bid_evaluation_rules import is_inherited_legacy_technical_result
 from backend.sync.payload_validation import (
     SYNC_VIRTUAL_FIELDS,
     validate_sync_item,
@@ -96,6 +97,107 @@ def test_sync_payload_shape_accepts_boolean_low_price_decision():
         "clientMutationId": "bid-evaluation-shape-test",
     })
     assert errors == []
+
+
+def test_sync_payload_shape_defers_combined_score_relationship_to_record_validator():
+    errors = validate_sync_payload_shape({
+        "goithau": [{
+            "id": "gt-1",
+            "phuongPhapDanhGia": "Kết hợp giữa kỹ thuật và giá",
+        }],
+        "thongtinmothau": [{
+            "id": "bid-1",
+            "goiThauId": "gt-1",
+            "danhGiaKyThuat": "Đạt",
+        }],
+        "clientMutationId": "combined-score-shape-test",
+    })
+    assert errors == []
+
+
+def test_sync_payload_accepts_numeric_combined_technical_score():
+    errors = validate_sync_payload_shape({
+        "goithau": [{
+            "id": "gt-1",
+            "phuongPhapDanhGia": "Kết hợp giữa kỹ thuật và giá",
+        }],
+        "thongtinmothau": [{
+            "id": "bid-1",
+            "goiThauId": "gt-1",
+            "danhGiaKyThuat": "87",
+        }],
+        "clientMutationId": "combined-score-shape-test",
+    })
+    assert errors == []
+
+
+class _LegacySnapshotCursor:
+    def __init__(self, row):
+        self.row = row
+        self.sql = ""
+        self.params = ()
+
+    def execute(self, sql, params=()):
+        self.sql = sql
+        self.params = params
+        return self
+
+    def fetchone(self):
+        return self.row
+
+
+def test_legacy_combined_result_is_allowed_only_as_an_exact_plan_snapshot_copy():
+    cursor = _LegacySnapshotCursor((1,))
+
+    assert is_inherited_legacy_technical_result(
+        cursor,
+        "org-1",
+        "package-root",
+        0,
+        "plan-v01",
+        "plan-root",
+        "contractor-1",
+        "",
+        "Đạt",
+    ) is True
+    assert "source_package.phien_ban = ?" in cursor.sql
+    assert cursor.params == (
+        "org-1",
+        "package-root",
+        0,
+        "plan-v01",
+        "plan-root",
+        "Kết hợp giữa kỹ thuật và giá",
+        "contractor-1",
+        "",
+        "Đạt",
+    )
+
+    cursor.row = None
+    assert is_inherited_legacy_technical_result(
+        cursor,
+        "org-1",
+        "package-root",
+        0,
+        "plan-v01",
+        "plan-root",
+        "contractor-1",
+        "",
+        "Không đạt",
+    ) is False
+
+    cursor.row = (1,)
+    assert is_inherited_legacy_technical_result(
+        cursor,
+        "org-1",
+        "package-root",
+        0,
+        "plan-v01",
+        "plan-root",
+        "contractor-1",
+        "",
+        "Giá trị cũ không hợp lệ",
+    ) is False
 
 
 def test_sync_rejects_negative_bid_evaluation_prices():

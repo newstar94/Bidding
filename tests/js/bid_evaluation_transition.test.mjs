@@ -1,7 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { saveDanhGiaHsdt } from "../../frontend/packages/bidEvaluationActions.js";
+import {
+  findInvalidRequiredTechnicalScore,
+  saveDanhGiaHsdt,
+} from "../../frontend/packages/bidEvaluationActions.js";
+
+test("combined evaluation rejects missing or pass/fail technical text before saving", () => {
+  const makeInput = (value) => ({
+    value,
+    disabled: false,
+    classList: { add() {}, remove() {} },
+    setAttribute() {},
+    removeAttribute() {},
+    setCustomValidity() {},
+  });
+  const rowFor = (input) => ({
+    querySelector: (selector) => selector === ".mt-dg-ky-thuat" ? input : null,
+  });
+  const pkg = { phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá" };
+  assert.ok(findInvalidRequiredTechnicalScore({ pkg, rows: [rowFor(makeInput("Đạt"))] }));
+  assert.ok(findInvalidRequiredTechnicalScore({ pkg, rows: [rowFor(makeInput(""))] }));
+  assert.equal(findInvalidRequiredTechnicalScore({ pkg, rows: [rowFor(makeInput("85"))] }), null);
+});
 
 test("waits for the paginated package refresh before opening the result step", async () => {
   const packageRecord = {

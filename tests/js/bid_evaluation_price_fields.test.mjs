@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 import { parseBidEvaluationImport } from "../../frontend/documents/excelImportAdapters.js";
+import { saveBusinessExcelImport } from "../../frontend/documents/excelSaveAdapters.js";
 import { buildBidEvaluationTablePresentation } from "../../frontend/packages/BidEvaluationTablePresentation.js";
 import { resolveBidEvaluationRowReadOnly } from "../../frontend/packages/BidEvaluationRowRenderer.js";
 import { applyAwardResultToPackage } from "../../frontend/packages/bidProcessAwardResult.js";
@@ -121,6 +122,108 @@ test("renders editable controls for both persisted prices", () => {
   assert.match(source, /class="form-control mt-gia-xep-hang"/);
   assert.match(source, /class="form-control mt-gia-de-nghi-trung-thau/);
   assert.match(source, /class="mt-low-price-acceptance"/);
+});
+
+test("renders automatic ranking as display-only text", () => {
+  const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
+  assert.doesNotMatch(source, /<input[^>]*class="[^"]*mt-dg-tai-chinh/);
+  assert.match(source, /<span[^>]*class="mt-dg-tai-chinh[^"]*"/);
+});
+
+test("ranking controller writes the automatic rank to display text", () => {
+  const source = fs.readFileSync("frontend/packages/BidEvaluationRankingController.js", "utf8");
+  assert.match(source, /financial\.textContent\s*=/);
+  assert.doesNotMatch(source, /financial\.value\s*=/);
+});
+
+test("financial workbook import ignores user-supplied automatic ranking", async () => {
+  const controller = {
+    currentDanhGiaTab: "financial",
+    model: {
+      parseVND: (value) => Number(String(value || "").replace(/\D/g, "")),
+      state: {
+        goithau: [{ id: "gt-1", phanLo: "KhÃ´ng" }],
+        thongtinmothau: [{
+          id: "bid-1",
+          goiThauId: "gt-1",
+          maNhaThau: "NT-01",
+          tenNhaThau: "NhÃ  tháº§u 01",
+        }],
+      },
+    },
+  };
+
+  const [row] = await parseBidEvaluationImport(controller, [{
+    "MÃ£ nhÃ  tháº§u": "NT-01",
+    "TÃªn nhÃ  tháº§u": "NhÃ  tháº§u 01",
+    "Xáº¿p háº¡ng": "Xáº¿p háº¡ng 99",
+  }], { packageId: "gt-1", evaluationTab: "financial" });
+
+  assert.equal(Object.hasOwn(row, "danhGiaTaiChinh"), false);
+});
+
+test("saving a financial workbook cannot overwrite automatic ranking", async () => {
+  const bid = {
+    id: "bid-1",
+    goiThauId: "gt-1",
+    danhGiaTaiChinh: "Xáº¿p háº¡ng 1",
+  };
+  const controller = {
+    currentDanhGiaTab: "financial",
+    model: {
+      state: {
+        goithau: [{ id: "gt-1", phanLo: "KhÃ´ng" }],
+        thongtinmothau: [bid],
+      },
+      async persistData() {},
+    },
+    renderDanhGiaHsdtPanel() {},
+  };
+
+  await saveBusinessExcelImport(controller, "danhgiahsdt", [{
+    id: "bid-1",
+    danhGiaTaiChinh: "Xáº¿p háº¡ng 99",
+  }], { packageId: "gt-1", evaluationTab: "financial" });
+
+  assert.equal(bid.danhGiaTaiChinh, "Xáº¿p háº¡ng 1");
+});
+
+test("marks pass/fail technical text invalid when importing a combined evaluation", async () => {
+  const alerts = [];
+  const controller = {
+    currentDanhGiaTab: "technical",
+    model: {
+      state: {
+        goithau: [{
+          id: "gt-combined",
+          phanLo: "Không",
+          phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá",
+        }],
+        thongtinmothau: [{
+          id: "bid-combined",
+          goiThauId: "gt-combined",
+          maNhaThau: "NT-01",
+          tenNhaThau: "Nhà thầu 01",
+        }],
+      },
+      parseVND: (value) => Number(String(value || "").replace(/\D/g, "")),
+    },
+    view: { customAlert: (...args) => alerts.push(args) },
+  };
+  const [row] = await parseBidEvaluationImport(controller, [{
+    "Mã nhà thầu": "NT-01",
+    "Tên nhà thầu": "Nhà thầu 01",
+    "Đánh giá kỹ thuật": "Đạt",
+  }], { packageId: "gt-combined", evaluationTab: "technical" });
+  assert.equal(row._valid, false);
+  assert.match(row._comment, /Không được nhập Đạt\/Không đạt/);
+  assert.equal(alerts.length, 0);
+});
+
+test("combined evaluation renders a required numeric technical-score control", () => {
+  const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
+  assert.match(source, /type="number" inputmode="decimal" min="0" step="any" required/);
+  assert.match(source, /requiresTechnicalScoreInput\(pkg\)/);
 });
 
 test("a detailed evaluation report does not lock the outer summary row", () => {

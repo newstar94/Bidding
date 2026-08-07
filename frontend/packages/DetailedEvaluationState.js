@@ -26,6 +26,7 @@ import {
   applyTechnicalEvaluationMethod,
   resolveTechnicalEvaluationMethod,
 } from "./technicalEvaluationMethod.js";
+import { requiresTechnicalScoreInput } from "./evaluationMethodRules.js";
 
 export function buildDetailedEvaluationRow(reportId, criterionId) {
   return {
@@ -101,13 +102,16 @@ const GROUP_PROJECTION_FIELDS = Object.freeze({
   financial: Object.freeze({ result: "danhGiaTaiChinh" }),
 });
 
-export function applyDetailedEvaluationProjection(bid, report, criteria, groups) {
+export function applyDetailedEvaluationProjection(bid, report, criteria, groups, pkg = null) {
   if (report?.trangThai !== "completed") return bid;
   const aggregation = aggregateDetailedEvaluationReport({ report, criteria, groups });
   const projected = { ...bid };
   Object.entries(aggregation.byGroup).forEach(([group, result]) => {
     const fields = GROUP_PROJECTION_FIELDS[group];
-    if (fields) projected[fields.result] = result.status;
+    if (!fields) return;
+    projected[fields.result] = group === "technical" && requiresTechnicalScoreInput(pkg)
+      ? result.score === null ? "" : String(result.score)
+      : result.status;
   });
   projected.danhGiaKetLuan = aggregation.overall.status;
   projected.diemDanhGia = aggregation.overall.score;

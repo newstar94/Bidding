@@ -1,5 +1,9 @@
 import { parseVND } from "./formatters.js";
 import { isLowPriceBidRejected } from "../packages/bidEvaluationLowPriceRules.js";
+import {
+  parseTechnicalScore,
+  requiresTechnicalScoreInput,
+} from "../packages/evaluationMethodRules.js";
 
 function moneyBigInt(value) {
   const parsed = parseVND(value);
@@ -15,6 +19,7 @@ export function calculateRankings(gt, bids) {
   const scores = {};
   const isTuVan = gt.linhVuc === "Tư vấn";
   const method = gt.phuongPhapDanhGia || "";
+  const technicalScoreRequired = requiresTechnicalScoreInput(method);
   const hasLots = gt.phanLo === "Có";
   const groups = {};
   if (hasLots) {
@@ -29,6 +34,9 @@ export function calculateRankings(gt, bids) {
   for (const lot in groups) {
     const lotBids = groups[lot].filter((bid) => !isLowPriceBidRejected(gt, bid));
     const isQualified = (b) => {
+      if (technicalScoreRequired && parseTechnicalScore(b.danhGiaKyThuat) === null) {
+        return false;
+      }
       if (b.danhGiaKetLuan) {
         return b.danhGiaKetLuan === "Đạt" || b.danhGiaKetLuan.startsWith("Đạt");
       }
@@ -39,8 +47,7 @@ export function calculateRankings(gt, bids) {
       return hl && nl && isKtOk;
     };
     const getTechScore = (b) => {
-      const val = (b.danhGiaKyThuat || "").trim().replace(/,/g, ".");
-      return parseFloat(val) || 0;
+      return parseTechnicalScore(b.danhGiaKyThuat) || 0;
     };
     const getPriceG = (b) => moneyBigInt(b.giaSauGiamGia || b.giaDuThau);
     const getRankingPrice = (b) => moneyBigInt(b.giaXepHang);

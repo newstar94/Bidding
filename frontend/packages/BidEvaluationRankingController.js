@@ -127,7 +127,7 @@ function renderRanking(row, bid, rankings, scores) {
   const rank = rankings[bid.id];
   const score = scores[bid.id];
   const financial = row.querySelector(".mt-dg-tai-chinh");
-  if (financial) financial.value = rank ? `Xếp hạng ${rank}` : "";
+  if (financial) financial.textContent = rank ? `Xếp hạng ${rank}` : "--";
   const rankCell = row.querySelector(".mt-dg-xep-hang");
   if (rankCell) {
     const conclusion = controlValue(row.querySelector(".mt-ketluan-cell"));

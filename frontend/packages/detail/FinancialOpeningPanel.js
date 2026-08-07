@@ -206,7 +206,7 @@ export function buildFinancialOpeningState({
   const qualifiedBids = (view?.model?.state?.thongtinmothau || [])
     .filter((bid) => String(bid?.goiThauId || "") === String(pkg?.id || ""))
     .filter((bid) => !technicalScope || isBidWithinEvaluationLotDetails(bid, technicalScope))
-    .filter(checkBidQualified)
+    .filter((bid) => checkBidQualified(bid, pkg))
     .sort(compareOpeningBids);
   const scopedOpening = technicalScope?.batch?.financialOpening || {};
   const financialScope = resolveActiveSavedEvaluationScope(pkg, metadata.financial || {});

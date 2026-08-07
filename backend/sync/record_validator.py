@@ -32,6 +32,11 @@ from backend.sync.package_goods import (
     validate_package_goods_configuration_change,
 )
 from backend.sync.bidder_goods import validate_bidder_goods_batch
+from backend.sync.bid_evaluation_rules import (
+    is_inherited_legacy_technical_result,
+    parse_technical_score,
+    requires_technical_score,
+)
 from backend.sync.validator import validate_sync_item
 
 
@@ -133,6 +138,11 @@ class SyncRecordValidator:
         ]
         current_records_by_table = self._load_current_records(
             payloads,
+            organization_id,
+        )
+        evaluation_methods_by_package = self._load_evaluation_methods_by_package(
+            payloads,
+            current_records_by_table,
             organization_id,
         )
         tombstones_by_table = self._load_tombstones(
@@ -294,6 +304,21 @@ class SyncRecordValidator:
                     allowed_statuses,
                 )
                 item_errors.extend(pure_errors)
+                if table_name == "thong_tin_mo_thau" and "danhGiaKyThuat" in item:
+                    package_id = self._opening_package_id(item, current_record)
+                    if (
+                        requires_technical_score(evaluation_methods_by_package.get(package_id))
+                        and parse_technical_score(item.get("danhGiaKyThuat")) is None
+                        and not self._is_legacy_snapshot_result(item, package_id)
+                    ):
+                        item_errors.append({
+                            "field": "danhGiaKyThuat",
+                            "code": "TECHNICAL_SCORE_REQUIRED",
+                            "message": (
+                                "Gói thầu kết hợp kỹ thuật và giá bắt buộc nhập "
+                                "điểm kỹ thuật bằng số; không được nhập Đạt/Không đạt."
+                            ),
+                        })
                 if table_name == "goi_thau" and current_record:
                     item_errors.extend(validate_package_status_transition(
                         current_record.get("trang_thai"),
@@ -341,6 +366,100 @@ class SyncRecordValidator:
                     item_errors,
                 ))
         return validation_errors
+
+    def _is_legacy_snapshot_result(self, item, package_id):
+        if self.payload_index.stored_record("thong_tin_mo_thau", self.clean_record_id(
+            "thong_tin_mo_thau", item.get("id"),
+        )):
+            return False
+        package = self.payload_index.incoming_records_by_table.get("goi_thau", {}).get(
+            package_id,
+        )
+        if not package:
+            return False
+        target_plan_id = self.clean_record_id("ke_hoach_lcnt", package.get("keHoachId"))
+        target_plan = self.payload_index.incoming_records_by_table.get(
+            "ke_hoach_lcnt", {},
+        ).get(target_plan_id)
+        if not target_plan:
+            return False
+        return is_inherited_legacy_technical_result(
+            self.transaction.cursor,
+            self.transaction.actor.organization_id,
+            self.clean_record_id("goi_thau", package.get("rootId") or package.get("id")),
+            package.get("phienBan"),
+            target_plan_id,
+            self.clean_record_id(
+                "ke_hoach_lcnt",
+                target_plan.get("rootId") or target_plan.get("id"),
+            ),
+            self.clean_record_id("nha_thau", item.get("nhaThauId") or item.get("nha_thau_id")),
+            item.get("maPhanLo") or item.get("ma_phan_lo"),
+            item.get("danhGiaKyThuat"),
+        )
+
+    def _load_evaluation_methods_by_package(
+        self,
+        payloads,
+        current_records_by_table,
+        organization_id: str,
+    ) -> dict[str, str]:
+        opening_records = current_records_by_table.get("thong_tin_mo_thau", {})
+        package_ids = {
+            package_id
+            for _payload_key, table_name, items in payloads
+            if table_name == "thong_tin_mo_thau"
+            for item in items
+            if "danhGiaKyThuat" in item
+            if (
+                package_id := self._opening_package_id(
+                    item,
+                    opening_records.get(
+                        self.clean_record_id(table_name, item.get("id")) or ""
+                    ),
+                )
+            )
+        }
+        if not package_ids:
+            return {}
+
+        methods = {}
+        for _payload_key, table_name, items in payloads:
+            if table_name != "goi_thau":
+                continue
+            for item in items:
+                package_id = self.clean_record_id(table_name, item.get("id"))
+                if package_id not in package_ids or "phuongPhapDanhGia" not in item:
+                    continue
+                methods[package_id] = str(item.get("phuongPhapDanhGia") or "").strip()
+
+        missing_ids = sorted(package_ids - methods.keys())
+        for offset in range(0, len(missing_ids), _QUERY_CHUNK_SIZE):
+            chunk = missing_ids[offset:offset + _QUERY_CHUNK_SIZE]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.transaction.cursor.execute(
+                f"""SELECT id, phuong_phap_danh_gia FROM goi_thau
+                    WHERE organization_id = ? AND id IN ({placeholders})""",  # noqa: S608 - placeholders are generated from validated IDs
+                (organization_id, *chunk),
+            ).fetchall()
+            for row in rows:
+                if isinstance(row, dict):
+                    package_id = self.clean_record_id("goi_thau", row.get("id"))
+                    method = row.get("phuong_phap_danh_gia")
+                else:
+                    package_id = self.clean_record_id("goi_thau", row[0])
+                    method = row[1] if len(row) > 1 else ""
+                if package_id:
+                    methods[package_id] = str(method or "").strip()
+        return methods
+
+    def _opening_package_id(self, item, current_record) -> str | None:
+        return self.clean_record_id(
+            "goi_thau",
+            item.get("goiThauId")
+            or item.get("goi_thau_id")
+            or (current_record or {}).get("goi_thau_id"),
+        )
 
     def _load_tombstones(
         self,

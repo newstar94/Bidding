@@ -13,6 +13,10 @@ import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
 } from "./bidEvaluationLowPriceRules.js";
+import {
+  requiresTechnicalScoreInput,
+  validateTechnicalScore,
+} from "./evaluationMethodRules.js";
 import { setJvData } from "./jvDataStore.js";
 
 const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
@@ -154,7 +158,7 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
       ${validityCell}
       <td><span>${escapeHtml(clarification || "--")}</span></td>
       ${combinedCells}
-      <td><span class="bf-s-6e8bcfac8d">${escapeHtml(financialEvaluation || "--")}</span></td>
+      <td><span class="mt-dg-tai-chinh bf-s-6e8bcfac8d" aria-label="Xếp hạng tự động">${escapeHtml(financialEvaluation || "--")}</span></td>
     `;
   }
   return `
@@ -165,7 +169,7 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
     ${validityCell}
     <td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(clarification)}" placeholder="Nhập làm rõ tài chính..."></td>
     ${combinedCells}
-    <td><input type="text" class="form-control mt-dg-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(financialEvaluation)}" placeholder="Xếp hạng..."></td>
+    <td><span class="mt-dg-tai-chinh bf-s-6e8bcfac8d" aria-label="Xếp hạng tự động">${escapeHtml(financialEvaluation || "--")}</span></td>
   `;
 }
 
@@ -239,9 +243,13 @@ function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
   const technicalLayout = TECHNICAL_CASES.has(presentation.caseType);
   const disabled = forceDisabled ? " disabled" : "";
   const waiting = forceDisabled ? "Chờ đánh giá hạng trên..." : "";
-  const technicalPlaceholder = waiting || (pkg.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá"
+  const technicalScoreRequired = requiresTechnicalScoreInput(pkg);
+  const technicalPlaceholder = waiting || (technicalScoreRequired
     ? "Nhập điểm kỹ thuật..."
     : "Điểm hoặc Đạt...");
+  const technicalInputAttributes = technicalScoreRequired
+    ? 'type="number" inputmode="decimal" min="0" step="any" required'
+    : 'type="text"';
   return `
     <td>
       <select class="form-control mt-dg-hop-le"${disabled} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
@@ -260,7 +268,7 @@ function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
     </td>
     <td><input type="text" class="form-control mt-lam-ro-nang-luc"${disabled} value="${escapeHtml(bid.lamRoNangLuc || "")}" placeholder="${waiting || "Nhập làm rõ năng lực..."}"></td>
     <td>
-      <input type="text" class="form-control mt-dg-ky-thuat"${disabled} value="${escapeHtml(bid.danhGiaKyThuat || "")}" placeholder="${technicalPlaceholder}">
+      <input ${technicalInputAttributes} class="form-control mt-dg-ky-thuat"${disabled} value="${escapeHtml(bid.danhGiaKyThuat || "")}" placeholder="${technicalPlaceholder}" aria-label="${technicalScoreRequired ? "Điểm kỹ thuật" : "Đánh giá kỹ thuật"}">
       <input type="text" class="form-control mt-reason-fail-kythuat bf-s-32fe8a23fe" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..."${disabled}>
     </td>
     <td><input type="text" class="form-control mt-lam-ro-ky-thuat"${disabled} value="${escapeHtml(bid.lamRoKyThuat || "")}" placeholder="${waiting || "Nhập làm rõ kỹ thuật..."}"></td>
@@ -354,6 +362,21 @@ function bindEvaluationInputs(row, onRankingChange) {
   row.addEventListener("change", (event) => {
     if (event.target?.classList.contains("mt-dg-ketluan")) notifyRankingChange(event);
   });
+}
+
+function bindRequiredTechnicalScore(row, pkg) {
+  if (!requiresTechnicalScoreInput(pkg)) return;
+  const input = row.querySelector(".mt-dg-ky-thuat");
+  if (!input) return;
+  const updateValidity = () => {
+    const validation = validateTechnicalScore(input.value, { required: true });
+    if (typeof input.setCustomValidity === "function") {
+      input.setCustomValidity(validation.valid ? "" : validation.message);
+    }
+  };
+  input.addEventListener("input", updateValidity);
+  input.addEventListener("change", updateValidity);
+  updateValidity();
 }
 
 function bindJointVentureLink({ row, bid, model }) {
@@ -460,6 +483,7 @@ function appendBidEvaluationRow({
   }
   if (!rowReadOnly) {
     bindEvaluationInputs(row, onRankingChange);
+    bindRequiredTechnicalScore(row, pkg);
     bindFinancialInputs({ row, model, presentation, onRankingChange });
     bindEvaluationPriceInputs({ row, pkg, bid, model, onRankingChange });
   }

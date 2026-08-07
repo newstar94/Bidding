@@ -220,6 +220,58 @@ test("creating a plan version inherits a frozen package snapshot without increme
   assert.equal(inheritedPlanAssignment?.empId, "employee-1");
 });
 
+test("plan version inheritance projects a legacy combined technical result as a numeric score", async () => {
+  const sourcePlanId = "plan-v00";
+  const sourcePackage = {
+    id: "package-v00",
+    rootId: "package-root",
+    phienBan: "00",
+    isLatest: 1,
+    keHoachId: sourcePlanId,
+    phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá",
+    danhGiaHsdtMetadata: JSON.stringify({
+      schemaVersion: 1,
+      is1G2T: true,
+      technical: {
+        id: "evaluation-round:package-v00:technical",
+        criteria: [{ id: "criterion-technical", group: "technical", resultType: "score" }],
+      },
+      financial: { id: "evaluation-round:package-v00:financial", criteria: [] },
+    }),
+  };
+  const sourceOpening = {
+    id: "opening-v00",
+    goiThauId: sourcePackage.id,
+    danhGiaKyThuat: "Đạt",
+    danhGiaKetLuan: "Đạt",
+    baoCaoDanhGiaChiTietList: [{
+      id: "report-technical-v00",
+      vongDanhGiaId: "evaluation-round:package-v00:technical",
+      loaiVong: "technical",
+      chiTietList: [{
+        id: "detail-technical-v00",
+        tieuChiDanhGiaId: "criterion-technical",
+        ketQua: "pass",
+        diem: 87,
+      }],
+    }],
+  };
+  const aggregate = (await import("../../frontend/plans/planAggregateSnapshot.js")).snapshotPlanAggregate({
+    goithau: [sourcePackage],
+    goithauhanghoa: [],
+    thongtinmothau: [sourceOpening],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+  }, {
+    sourcePlanId,
+    targetPlanId: "plan-v01",
+    timestamp: "2026-08-07 10:00:00",
+    createId: (type) => `${type}-copy`,
+  });
+
+  assert.equal(aggregate.thongtinmothau[0].danhGiaKyThuat, "87");
+});
+
 test("package copy-on-write clones mutable children and freezes the source aggregate", () => {
   let sequence = 0;
   const createId = (type) => `${type}-${++sequence}`;

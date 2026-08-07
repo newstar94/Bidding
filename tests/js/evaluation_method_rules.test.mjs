@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   EVALUATION_METHODS,
   getEvaluationMethods,
+  parseTechnicalScore,
+  requiresTechnicalScoreInput,
+  validateTechnicalScore,
 } from "../../frontend/packages/evaluationMethodRules.js";
 import { calculateRankings } from "../../frontend/shared/BiddingCalculations.js";
 
@@ -80,4 +83,27 @@ test("ranks qualified non-consulting bids by technical score", () => {
   ];
   const { rankings } = calculateRankings(pkg, bids);
   assert.deepEqual(rankings, { b: 1, a: 2 });
+});
+
+test("combined technical/price evaluation requires a numeric technical score", () => {
+  assert.equal(requiresTechnicalScoreInput(COMBINED), true);
+  assert.equal(requiresTechnicalScoreInput({ phuongPhapDanhGia: COMBINED }), true);
+  assert.equal(parseTechnicalScore("85,5"), 85.5);
+  assert.equal(parseTechnicalScore("Đạt"), null);
+  assert.equal(validateTechnicalScore("", { required: true }).valid, false);
+  assert.equal(validateTechnicalScore("Không đạt", { required: true }).valid, false);
+  assert.equal(validateTechnicalScore("85,5", { required: true }).valid, true);
+});
+
+test("combined rankings exclude bids whose technical value is a pass/fail label", () => {
+  const pkg = {
+    linhVuc: "Hàng hóa",
+    phuongPhapDanhGia: COMBINED,
+    phanLo: "Không",
+  };
+  const bids = [
+    { id: "legacy", danhGiaKetLuan: "Đạt", danhGiaKyThuat: "Đạt", giaXepHang: 1 },
+    { id: "scored", danhGiaKetLuan: "Đạt", danhGiaKyThuat: "85", giaXepHang: 2 },
+  ];
+  assert.deepEqual(calculateRankings(pkg, bids).rankings, { scored: 1 });
 });

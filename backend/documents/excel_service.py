@@ -231,7 +231,7 @@ def prepare_danhgiahsdt_template_spec(
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
                 'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
                 'Xử lý giá đề nghị trúng thầu dưới 50%',
-                'Đánh giá tài chính (Điểm hoặc Xếp hạng)', 'Làm rõ tài chính (nếu có)'
+                'Làm rõ tài chính (nếu có)'
             ]
         else:
             headers = [
@@ -239,7 +239,7 @@ def prepare_danhgiahsdt_template_spec(
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
                 'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
                 'Xử lý giá đề nghị trúng thầu dưới 50%',
-                'Đánh giá tài chính (Điểm hoặc Xếp hạng)', 'Làm rõ tài chính (nếu có)'
+                'Làm rõ tài chính (nếu có)'
             ]
         options_map['Xử lý giá đề nghị trúng thầu dưới 50%'] = [
             'Chấp thuận', 'Không chấp thuận'
@@ -272,7 +272,7 @@ def prepare_danhgiahsdt_template_spec(
                 bid[5] or "", bid[6] or "", bid[7] or "",
                 bid[23] or "", bid[24] or "",
                 "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
-                bid[19] or "", bid[18] or "",
+                bid[18] or "",
             ]
         else:
             row_values = [
@@ -280,7 +280,7 @@ def prepare_danhgiahsdt_template_spec(
                 bid[5] or "", bid[6] or "", bid[7] or "",
                 bid[23] or "", bid[24] or "",
                 "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
-                bid[19] or "", bid[18] or "",
+                bid[18] or "",
             ]
         rows.append(row_values)
 

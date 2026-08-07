@@ -6,6 +6,38 @@ export const EVALUATION_METHODS = Object.freeze({
   TECHNICAL: "Dựa trên kỹ thuật",
 });
 
+/**
+ * The combined technical/price method uses a numeric technical score in the
+ * summary bid-evaluation table.  Keep this rule in one place so the editor,
+ * import path, and ranking logic agree on what constitutes a score.
+ */
+export function requiresTechnicalScoreInput(packageOrMethod) {
+  const method = typeof packageOrMethod === "string"
+    ? packageOrMethod
+    : packageOrMethod?.phuongPhapDanhGia;
+  return method === EVALUATION_METHODS.COMBINED;
+}
+
+export function parseTechnicalScore(value) {
+  const normalized = String(value ?? "").trim().replace(/,/g, ".");
+  if (!normalized || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+  const score = Number(normalized);
+  return Number.isFinite(score) && score >= 0 ? score : null;
+}
+
+export function validateTechnicalScore(value, { required = false } = {}) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return required
+      ? { valid: false, message: "Vui lòng nhập điểm kỹ thuật." }
+      : { valid: true, score: null };
+  }
+  const score = parseTechnicalScore(normalized);
+  return score === null
+    ? { valid: false, message: "Điểm kỹ thuật phải là số không âm." }
+    : { valid: true, score };
+}
+
 const STANDARD_METHODS = Object.freeze([
   EVALUATION_METHODS.LOWEST_PRICE,
   EVALUATION_METHODS.EVALUATED_PRICE,

@@ -5,6 +5,10 @@ import {
   getActiveEvaluationLotScope,
   isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
+import {
+  requiresTechnicalScoreInput,
+  validateTechnicalScore,
+} from "../packages/evaluationMethodRules.js";
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
 import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
@@ -387,6 +391,19 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
   const evaluationTab = context.evaluationTab || controller.currentDanhGiaTab || "technical";
   const activeScopeKey = `${String(gtId)}:${String(evaluationTab)}`;
   const activeScope = controller._evaluationLotScopes?.[activeScopeKey];
+  if (requiresTechnicalScoreInput(pkg) && evaluationTab === "technical") {
+    const invalidRow = (validRows || []).find((row) => (
+      !validateTechnicalScore(row.danhGiaKyThuat, { required: true }).valid
+    ));
+    if (invalidRow) {
+      await controller.view.customAlert(
+        "Điểm kỹ thuật chưa hợp lệ",
+        "Gói thầu áp dụng phương pháp kết hợp kỹ thuật và giá nên phần kỹ thuật bắt buộc nhập điểm số, không được nhập Đạt/Không đạt.",
+        "alert-triangle",
+      );
+      return 0;
+    }
+  }
   const allowedBidIds = isPartialEvaluationLotScope(activeDetails)
     ? new Set(filterBidsByEvaluationLotScope(
       controller.model.state.thongtinmothau.filter((bid) => String(bid.goiThauId) === String(gtId)),
@@ -407,7 +424,6 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
       bid.hieuLucHsdt = row.hieuLucHsdt || 0;
       bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || "";
       bid.lamRoTaiChinh = row.lamRoTaiChinh || "";
-      bid.danhGiaTaiChinh = row.danhGiaTaiChinh || "";
       return;
     }
     bid.danhGiaHopLe = row.danhGiaHopLe || "";

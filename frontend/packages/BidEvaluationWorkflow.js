@@ -18,6 +18,7 @@ import {
   resolvePackageResultStatus
 } from "./lotEvaluationScope.js";
 import { syncDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
+import { checkBidQualified } from "./detail/PackageTabs.js";
 
 function getEvaluationScopeStore(controller) {
   if (!controller._evaluationLotScopes) controller._evaluationLotScopes = {};
@@ -144,16 +145,7 @@ export function renderDanhGiaHsdtPanel() {
       bids = filterBidsByEvaluationLotScope(bids, gt, lotScope);
     }
     if (is1G2T && this.currentDanhGiaTab === "financial") {
-      bids = bids.filter((b) => {
-        const kl = String(b.danhGiaKetLuan || "").trim().toLowerCase();
-        if (kl) {
-          return kl === "đạt" || kl.startsWith("đạt");
-        }
-        const hl = String(b.danhGiaHopLe || "").trim().toLowerCase();
-        const nl = String(b.danhGiaNangLuc || "").trim().toLowerCase();
-        const kt = String(b.danhGiaKyThuat || "").trim().toLowerCase();
-        return hl === "đạt" && nl === "đạt" && kt !== "không đạt" && kt !== "";
-      });
+      bids = bids.filter((bid) => checkBidQualified(bid, gt));
     }
     if (!is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
       bids.sort((a, b) => {

@@ -57,7 +57,7 @@ export function buildQualifiedApprovalState({
   const bids = (view?.model?.state?.thongtinmothau || [])
     .filter((bid) => String(bid?.goiThauId || "") === String(pkg?.id || ""))
     .filter((bid) => !activeScope || isBidWithinEvaluationLotDetails(bid, activeScope));
-  const qualifiedBids = bids.filter(checkBidQualified);
+  const qualifiedBids = bids.filter((bid) => checkBidQualified(bid, pkg));
   const target = activeScope?.batch || metadata.technical;
   const isCompleted = target.qualifiedSaved === true;
   const isEditing = Boolean(view?._editingState?.qualified);

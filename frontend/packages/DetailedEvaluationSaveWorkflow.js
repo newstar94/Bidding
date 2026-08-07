@@ -280,6 +280,7 @@ export async function executeDetailedEvaluationSave({
         report,
         configuredCriteria,
         evaluationGroups,
+        state.pkg,
       ),
     );
   }

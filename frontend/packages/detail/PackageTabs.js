@@ -6,6 +6,10 @@ import {
 } from "../lotEvaluationScope.js";
 import { isLowPriceBidRejected } from "../bidEvaluationLowPriceRules.js";
 import { supportsGoodsWorkflow } from "../goodsWorkflowSupport.js";
+import {
+  parseTechnicalScore,
+  requiresTechnicalScoreInput,
+} from "../evaluationMethodRules.js";
 
 const PACKAGE_TAB_ICONS = Object.freeze({
   preparation: "info",
@@ -26,6 +30,10 @@ const PACKAGE_TAB_ICONS = Object.freeze({
 export function checkBidQualified(bid, pkg = null) {
   if (!bid) return false;
   if (pkg && isLowPriceBidRejected(pkg, bid)) return false;
+  if (pkg && requiresTechnicalScoreInput(pkg)
+    && parseTechnicalScore(bid.danhGiaKyThuat) === null) {
+    return false;
+  }
   const conclusion = String(bid.danhGiaKetLuan || "").trim().toLowerCase();
   if (conclusion) {
     return conclusion === "đạt" || conclusion.startsWith("đạt") || conclusion.includes("trúng thầu");
@@ -63,7 +71,7 @@ export function getPackageWorkflowState(pkg, bids = []) {
   );
   const qualifiedBids = bids
     .filter((bid) => !activeTechnicalScope || isBidWithinEvaluationLotDetails(bid, activeTechnicalScope))
-    .filter(checkBidQualified);
+    .filter((bid) => checkBidQualified(bid, pkg));
   return {
     isTwoEnvelope,
     isTechEvalSaved: isTwoEnvelope ? Boolean(metadata.is1G2T && (metadata.technical?.saved || activeTechnicalScope)) : false,

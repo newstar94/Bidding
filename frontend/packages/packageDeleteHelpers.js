@@ -43,7 +43,11 @@ export function getPackageDeleteContext(goithauList, targetId) {
   });
   const versionRefs = Array.from(versionRefsById.values());
   const relatedIds = versionRefs.map((gt) => gt.id);
-  const versionCount = new Set(versionRefs.map((g) => g.phienBan || "00")).size;
+  // A plan snapshot may intentionally keep the same package version number as
+  // its source. Count distinct rows, not distinct `phienBan` values; otherwise
+  // the workflow mistakes two plan-owned snapshots for a single package and
+  // skips the "latest version / all versions" choice, deleting the whole family.
+  const versionCount = versionRefs.length;
   const planIds = [...new Set(relatedPackages.map((gt) => gt.keHoachId))];
   return {
     targetPackage,

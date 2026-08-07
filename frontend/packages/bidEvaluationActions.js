@@ -20,6 +20,10 @@ import {
   resolvePackageResultStatus,
   saveEvaluationScopeMetadata
 } from "./lotEvaluationScope.js";
+import {
+  requiresTechnicalScoreInput,
+  validateTechnicalScore,
+} from "./evaluationMethodRules.js";
 
 function parseEvaluationMetadata(value) {
   if (!value) return {};
@@ -61,6 +65,40 @@ export function resolvePostEvaluationTargetTab({
   if (!isTwoEnvelope) return "result";
   if (currentEvaluationTab === "financial") return "result";
   return qualifiedBidCount > 0 ? "qualified" : "result";
+}
+
+export function findInvalidRequiredTechnicalScore({
+  pkg,
+  rows = [],
+  isTwoEnvelope = false,
+  currentEvaluationTab = "technical",
+} = {}) {
+  if (
+    !requiresTechnicalScoreInput(pkg)
+    || (isTwoEnvelope && currentEvaluationTab === "financial")
+  ) return null;
+
+  const activeRows = Array.from(rows || []);
+  for (let index = 0; index < activeRows.length; index += 1) {
+    const input = activeRows[index]?.querySelector?.(".mt-dg-ky-thuat");
+    if (!input || input.disabled) continue;
+    const validation = validateTechnicalScore(input.value, { required: true });
+    if (typeof input.setCustomValidity === "function") {
+      input.setCustomValidity(validation.valid ? "" : validation.message);
+    }
+    if (validation.valid) {
+      input.classList?.remove?.("field-invalid");
+      input.removeAttribute?.("aria-invalid");
+      continue;
+    }
+    input.classList?.add?.("field-invalid");
+    input.setAttribute?.("aria-invalid", "true");
+    return {
+      input,
+      message: `Dòng ${index + 1}: ${validation.message}`,
+    };
+  }
+  return null;
 }
 
 export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false) {
@@ -221,6 +259,24 @@ export async function saveDanhGiaHsdt() {
     this.view.focusInvalidControl(first);
     return;
   }
+  const evaluationTableBody = this.view.getActiveElement("danhgiahsdt-table-tbody");
+  const rows = Array.from(evaluationTableBody?.querySelectorAll?.("tr") || []);
+  const invalidTechnicalScore = findInvalidRequiredTechnicalScore({
+    pkg: gt,
+    rows,
+    isTwoEnvelope: is1G2T,
+    currentEvaluationTab: this.currentDanhGiaTab,
+  });
+  if (invalidTechnicalScore) {
+    this.view.focusInvalidControl(invalidTechnicalScore.input);
+    await this.view.customAlert(
+      "Điểm kỹ thuật chưa hợp lệ",
+      `${invalidTechnicalScore.message} Gói thầu áp dụng phương pháp kết hợp kỹ thuật và giá nên không được nhập Đạt/Không đạt.`,
+      "alert-triangle",
+      invalidTechnicalScore.input,
+    );
+    return;
+  }
   let evaluationLotScope = null;
   let evaluationLotDetails = null;
   let evaluationBatch = null;
@@ -349,7 +405,6 @@ export async function saveDanhGiaHsdt() {
       )
       : activeBlock);
   }
-  const rows = this.view.getActiveElement("danhgiahsdt-table-tbody").querySelectorAll("tr");
   const bidsById = new Map(
     this.model.state.thongtinmothau.map((bid) => [String(bid.id || ""), bid]),
   );

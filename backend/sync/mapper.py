@@ -9,6 +9,11 @@ from backend.shared.domain_enums import enum_label
 from backend.shared.date_utils import normalize_date_value, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
+from backend.sync.bid_evaluation_rules import (
+    is_inherited_legacy_technical_result,
+    parse_technical_score,
+    requires_technical_score,
+)
 from backend.timeline.effective_timeline import CATALOG as TIMELINE_CATALOG
 from backend.shared.text_utils import (
     clean_id,
@@ -1495,17 +1500,63 @@ def _save_bid_detailed_evaluation_reports(
             raise ValueError("Loai vong danh gia khong khop bao cao chi tiet.")
         if round_type == "financial":
             technical_result = cursor.execute(
-                """SELECT danh_gia_ky_thuat
-                     FROM ket_qua_danh_gia_nha_thau
-                    WHERE organization_id = ?
-                      AND goi_thau_id = ?
-                      AND thong_tin_mo_thau_id = ?""",
+                """SELECT result.danh_gia_ky_thuat,
+                          result.danh_gia_ket_luan,
+                          package.phuong_phap_danh_gia,
+                          COALESCE(NULLIF(package.id_goc, ''), package.id) AS package_root_id,
+                          package.phien_ban,
+                          package.ke_hoach_id,
+                          COALESCE(NULLIF(target_plan.id_goc, ''), target_plan.id) AS plan_root_id,
+                          opening.nha_thau_id,
+                          opening.ma_phan_lo
+                     FROM ket_qua_danh_gia_nha_thau AS result
+                     JOIN goi_thau AS package
+                       ON package.organization_id = result.organization_id
+                      AND package.id = result.goi_thau_id
+                     JOIN thong_tin_mo_thau AS opening
+                       ON opening.organization_id = result.organization_id
+                      AND opening.id = result.thong_tin_mo_thau_id
+                     JOIN ke_hoach_lcnt AS target_plan
+                       ON target_plan.organization_id = package.organization_id
+                      AND target_plan.id = package.ke_hoach_id
+                    WHERE result.organization_id = ?
+                      AND result.goi_thau_id = ?
+                      AND result.thong_tin_mo_thau_id = ?""",
                 (organization_id, package_id, opening_id),
             ).fetchone()
             technical_status = str(
                 _db_row_value(technical_result, 0, "danh_gia_ky_thuat", "") or ""
             ).strip()
-            if not technical_status.startswith("Đạt"):
+            overall_status = str(
+                _db_row_value(technical_result, 1, "danh_gia_ket_luan", "") or ""
+            ).strip()
+            package_method = _db_row_value(
+                technical_result,
+                2,
+                "phuong_phap_danh_gia",
+                "",
+            )
+            inherited_legacy_result = False
+            if requires_technical_score(package_method):
+                inherited_legacy_result = is_inherited_legacy_technical_result(
+                    cursor,
+                    organization_id,
+                    _db_row_value(technical_result, 3, "package_root_id", ""),
+                    _db_row_value(technical_result, 4, "phien_ban", ""),
+                    _db_row_value(technical_result, 5, "ke_hoach_id", ""),
+                    _db_row_value(technical_result, 6, "plan_root_id", ""),
+                    _db_row_value(technical_result, 7, "nha_thau_id", ""),
+                    _db_row_value(technical_result, 8, "ma_phan_lo", ""),
+                    technical_status,
+                )
+            technical_qualified = (
+                (
+                    parse_technical_score(technical_status) is not None
+                    or inherited_legacy_result
+                )
+                and overall_status.startswith("Đạt")
+            ) if requires_technical_score(package_method) else technical_status.startswith("Đạt")
+            if not technical_qualified:
                 raise ValueError(
                     "DETAILED_EVALUATION_TECHNICAL_NOT_QUALIFIED: "
                     "Nhà thầu chưa đạt vòng kỹ thuật."

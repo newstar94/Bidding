@@ -1,4 +1,8 @@
 import { generateRecordId } from "../shared/idUtils.js";
+import {
+  parseTechnicalScore,
+  requiresTechnicalScoreInput,
+} from "./evaluationMethodRules.js";
 
 const SERVER_FIELDS = [
   "rowVersion",
@@ -84,6 +88,63 @@ function deepClone(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function parseMetadata(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function technicalEvaluationBlock(sourcePackage) {
+  const metadata = parseMetadata(sourcePackage?.danhGiaHsdtMetadata);
+  return metadata.is1G2T ? metadata.technical || {} : metadata;
+}
+
+function technicalReportForOpening(sourceOpening, sourcePackage) {
+  const block = technicalEvaluationBlock(sourcePackage);
+  const roundId = String(block.id || block.vongDanhGiaId || "").trim();
+  return asArray(sourceOpening?.baoCaoDanhGiaChiTietList).find((report) => {
+    const reportRoundId = String(report?.vongDanhGiaId || report?.vong_danh_gia_id || "").trim();
+    const reportType = String(report?.loaiVong || report?.loai_vong || "").trim();
+    return reportType === "technical"
+      || (roundId && reportRoundId === roundId)
+      || reportRoundId.endsWith(":technical");
+  });
+}
+
+function inheritedTechnicalScore(sourceOpening, sourcePackage) {
+  if (!requiresTechnicalScoreInput(sourcePackage)) return null;
+  const existingScore = parseTechnicalScore(sourceOpening?.danhGiaKyThuat);
+  if (existingScore !== null) return String(existingScore);
+  const report = technicalReportForOpening(sourceOpening, sourcePackage);
+  if (!report) return null;
+  const criteria = asArray(technicalEvaluationBlock(sourcePackage).criteria);
+  const criterionIds = new Set(
+    criteria
+      .filter((criterion) => !criterion.group || criterion.group === "technical")
+      .map((criterion) => String(criterion.id || "").trim())
+      .filter(Boolean),
+  );
+  const numericRows = asArray(report.chiTietList || report.chi_tiet_list)
+    .filter((row) => !criterionIds.size || criterionIds.has(String(
+      row?.tieuChiDanhGiaId || row?.tieu_chi_danh_gia_id || "",
+    )))
+    .map((row) => parseTechnicalScore(row?.diem))
+    .filter((score) => score !== null);
+  if (numericRows.length) {
+    const total = numericRows.reduce((sum, score) => sum + Number(score), 0);
+    return String(total);
+  }
+  const reportScore = parseTechnicalScore(
+    report.diemKyThuat ?? report.diem_ky_thuat ?? report.technicalScore,
+  );
+  return reportScore === null ? null : String(reportScore);
 }
 
 function cleanServerFields(record) {
@@ -227,6 +288,8 @@ function cloneOpenings(state, sourcePackage, packageRecord, mappings, createId) 
     .filter((row) => String(row.goiThauId) === String(sourcePackage.id))
     .map((row) => {
       const clone = cloneOwnedRow(row, "thongtinmothau", createId);
+      const score = inheritedTechnicalScore(row, sourcePackage);
+      if (score !== null) clone.danhGiaKyThuat = score;
       openingIds.set(String(row.id), clone.id);
       clone.goiThauId = packageRecord.id;
       clone.phanLoId = row.phanLoId ? (mappings.lotIds.get(String(row.phanLoId)) || null) : row.phanLoId;

@@ -33,7 +33,10 @@ export function snapshotPlanAggregate(state, {
     hanghoaduthaunhathau: [],
     assignments: [],
     sourcePackageIds: [],
-    mappings: { packageIds: new Map() },
+    mappings: {
+      packageIds: new Map(),
+      packageRoots: new Map(),
+    },
   };
   latestPackagesInPlan(sourcePackages, sourcePlanId).forEach((sourcePackage) => {
     const snapshot = snapshotPackageAggregate(state, sourcePackage, {
@@ -50,6 +53,10 @@ export function snapshotPlanAggregate(state, {
     aggregate.assignments.push(...snapshot.assignments);
     aggregate.sourcePackageIds.push(sourcePackage.id);
     aggregate.mappings.packageIds.set(String(sourcePackage.id), snapshot.packageRecord.id);
+    aggregate.mappings.packageRoots.set(
+      String(sourcePackage.rootId || sourcePackage.id),
+      snapshot.packageRecord.id,
+    );
   });
   aggregate.goithau.forEach((packageRecord) => {
     const sourceRebidId = String(packageRecord.rebidFromPackageId || "");
@@ -83,9 +90,11 @@ export function applyPlanAggregateSnapshot(state, aggregate) {
 function repointSelectedPackageVersions(state, aggregate) {
   const selection = state?.selectedPackageVersion;
   const mapping = aggregate?.mappings?.packageIds;
-  if (!selection || !mapping) return;
+  const rootMapping = aggregate?.mappings?.packageRoots;
+  if (!selection || (!mapping && !rootMapping)) return;
   Object.entries(selection).forEach(([rootId, selectedId]) => {
-    const replacementId = mapping.get(String(selectedId));
+    const replacementId = mapping?.get(String(selectedId))
+      || rootMapping?.get(String(rootId));
     if (replacementId) selection[rootId] = replacementId;
   });
 }

@@ -22,7 +22,7 @@ export function getPackageEvaluationBids(model, pkg) {
 }
 
 export function getEligibleFinancialEvaluationBids(model, pkg) {
-  return getPackageEvaluationBids(model, pkg).filter(checkBidQualified);
+  return getPackageEvaluationBids(model, pkg).filter((bid) => checkBidQualified(bid, pkg));
 }
 
 export function getDetailedEvaluationBidLabel(model, bid) {

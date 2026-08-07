@@ -11,6 +11,7 @@ import {
   collectConfiguredDetailedEvaluationCriteria,
 } from "../../frontend/packages/DetailedEvaluationPanelController.js";
 import { validateDetailedEvaluationRow } from "../../frontend/packages/detailedEvaluationValidation.js";
+import { applyDetailedEvaluationProjection } from "../../frontend/packages/DetailedEvaluationState.js";
 
 const { PASS_FAIL, SCORE } = TECHNICAL_EVALUATION_METHODS;
 
@@ -114,6 +115,20 @@ test("technical score rows derive pass-fail status from the minimum score", () =
   const [row] = collectActiveGroupRows(container, { id: "report-1", chiTietList: [] }, [criterion]);
   assert.equal(row.diem, 65);
   assert.equal(row.ketQua, "fail");
+});
+
+test("combined packages project the detailed technical score instead of a pass/fail label", () => {
+  const projected = applyDetailedEvaluationProjection(
+    { id: "bid-1", danhGiaKyThuat: "Đạt" },
+    {
+      trangThai: "completed",
+      chiTietList: [{ tieuChiDanhGiaId: "technical-1", ketQua: "pass", diem: 85 }],
+    },
+    [{ id: "technical-1", group: "technical", required: true, resultType: "score" }],
+    ["technical"],
+    { phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá" },
+  );
+  assert.equal(projected.danhGiaKyThuat, "85");
 });
 
 test("score limits are collected for configured and imported criteria", () => {
