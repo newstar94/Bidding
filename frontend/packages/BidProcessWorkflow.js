@@ -345,6 +345,15 @@ export function renderMoThauPanel() {
   }
 }
 export * from "./bidProcessJointVenture.js";
+export function calculateOpeningDiscountedPrice(model, bidPriceValue, discountValue) {
+  const price = Number(model.parseVND(bidPriceValue || ""));
+  if (!Number.isFinite(price) || price <= 0) return "";
+  const discountPercent = parseFloat(
+    String(discountValue || "0").replace(/,/g, ".")
+  ) || 0;
+  return model.formatVND(price * (1 - discountPercent / 100));
+}
+
 // eslint-disable-next-line complexity -- Legacy row orchestration is isolated for a dedicated refactor.
 export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tbody = document.getElementById("mothau-table-tbody");
@@ -504,7 +513,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
             <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-8b424f074a" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required placeholder="Tỷ lệ %"></td>
-            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly placeholder="..."></td>
+            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiực lực"></td>
             <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Giá trị ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay bf-s-8b424f074a" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required></td>
@@ -546,7 +555,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
             <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-8b424f074a" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required placeholder="Tỷ lệ %"></td>
-            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly placeholder="..."></td>
+            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Giá trị ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay bf-s-8b424f074a" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required></td>
@@ -783,11 +792,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     const inputTyLe2 = tr.querySelector(".mt-ty-le-giam-gia");
     const inputSauGiam = tr.querySelector(".mt-gia-sau-giam-gia");
     if (inputGia2 && inputTyLe2 && inputSauGiam) {
-      const price = this.model.parseVND(inputGia2.value);
-      const discountPercentStr = (inputTyLe2.value || "0").replace(/,/g, ".");
-      const discountPercent = parseFloat(discountPercentStr) || 0;
-      const finalPrice = price * (1 - discountPercent / 100);
-      inputSauGiam.value = this.model.formatVND(finalPrice);
+      inputSauGiam.value = calculateOpeningDiscountedPrice(
+        this.model,
+        inputGia2.value,
+        inputTyLe2.value,
+      );
     }
   };
   const inputGia = tr.querySelector(".mt-gia-du-thau");
@@ -810,6 +819,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     });
     inputTyLe.addEventListener("change", recalculateDiscountPrice);
   }
+  recalculateDiscountPrice();
   const removeBtn = tr.querySelector(".mt-remove-row");
   if (removeBtn) {
     removeBtn.onclick = async () => {
@@ -916,7 +926,13 @@ async function performSaveThongTinMoThau() {
   await enrichOpeningRowsWithPartnerInfo(rows, this.model);
   const openingRowsValidation = validateOpeningRows(rows);
   if (!openingRowsValidation.valid) {
-    await this.view.customAlert("Thiếu dữ liệu", "Vui lòng nhập đầy đủ Mã nhà thầu và Tên nhà thầu cho tất cả các dòng!", "alert-triangle", openingRowsValidation.invalidInputs);
+    const message = openingRowsValidation.missingBidPriceInputs?.length
+      ? "Vui lòng nhập Giá dự thầu lớn hơn 0 cho tất cả các dòng!"
+      : "Vui lòng nhập đầy đủ Mã nhà thầu và Tên nhà thầu cho tất cả các dòng!";
+    await this.view.customAlert("Thiếu dữ liệu", message, "alert-triangle", [
+      ...openingRowsValidation.invalidInputs,
+      ...(openingRowsValidation.missingBidPriceInputs || []),
+    ]);
     return;
   }
   const jvRowsValidation = validateOpeningJointVentureMembers(rows);

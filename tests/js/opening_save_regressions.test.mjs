@@ -3,11 +3,62 @@ import fs from "node:fs";
 import test from "node:test";
 
 import { formatPartnerIdentityCode } from "../../frontend/app/domUtils.js";
-import { saveThongTinMoThau } from "../../frontend/packages/BidProcessWorkflow.js";
+import {
+  calculateOpeningDiscountedPrice,
+  saveThongTinMoThau,
+} from "../../frontend/packages/BidProcessWorkflow.js";
+import { validateOpeningRows } from "../../frontend/packages/bidProcessOpeningData.js";
 import {
   createPartnerLookupHandlers,
   PARTNER_FORM_CONFIGS,
 } from "../../frontend/partners/PartnerFormController.js";
+
+function openingRow({ price, includePrice = true } = {}) {
+  const classes = new Set();
+  const fields = {
+    ".mt-ma-nha-thau": { value: "vn000000001" },
+    ".mt-ten-nha-thau": { value: "Nhà thầu thử nghiệm" },
+  };
+  if (includePrice) fields[".mt-gia-du-thau"] = { value: price ?? "" };
+  return {
+    querySelector(selector) { return fields[selector] || null; },
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+    },
+  };
+}
+
+test("opening bids require a positive bid price when the price field exists", () => {
+  assert.equal(validateOpeningRows([openingRow({ price: "" })]).valid, false);
+  assert.equal(validateOpeningRows([openingRow({ price: "0" })]).valid, false);
+  assert.equal(validateOpeningRows([openingRow({ price: "-1.000" })]).valid, false);
+  assert.equal(validateOpeningRows([openingRow({ price: "1.250.000" })]).valid, true);
+});
+
+test("opening rows without a bid-price field remain valid", () => {
+  assert.equal(validateOpeningRows([openingRow({ includePrice: false })]).valid, true);
+});
+
+test("discounted bid price stays blank until a positive bid price exists", () => {
+  const model = {
+    parseVND(value) { return Number(String(value).replace(/\D/g, "")) || 0; },
+    formatVND(value) { return String(Math.round(value)); },
+  };
+
+  assert.equal(calculateOpeningDiscountedPrice(model, "", "0"), "");
+  assert.equal(calculateOpeningDiscountedPrice(model, "0", "10"), "");
+  assert.equal(calculateOpeningDiscountedPrice(model, "1.000.000", "10"), "900000");
+});
+
+test("discounted price inputs do not expose a placeholder", () => {
+  const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+  assert.doesNotMatch(
+    source,
+    /class="[^"]*mt-gia-sau-giam-gia[^"]*"[^>]*placeholder=/,
+  );
+});
 
 test("contractor codes keep their original letter casing", () => {
   assert.equal(formatPartnerIdentityCode("  VnAb-01  "), "VnAb-01");

@@ -213,12 +213,18 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, bu
 }
 export function validateOpeningRows(rows) {
   const invalidInputs = [];
+  const missingBidPriceInputs = [];
   let hasInvalid = false;
   rows.forEach((row) => {
     const inputMa = row.querySelector(".mt-ma-nha-thau");
     const inputTen = row.querySelector(".mt-ten-nha-thau");
+    const inputBidPrice = row.querySelector(".mt-gia-du-thau");
     const maNhaThau = inputMa ? inputMa.value.trim() : "";
     const tenNhaThau = inputTen ? inputTen.value.trim() : "";
+    const bidPriceRaw = inputBidPrice ? String(inputBidPrice.value || "").trim() : "";
+    const bidPriceDigits = inputBidPrice
+      ? bidPriceRaw.replace(/[^0-9]/g, "")
+      : "";
     let rowInvalid = false;
     if (!maNhaThau) {
       rowInvalid = true;
@@ -228,6 +234,14 @@ export function validateOpeningRows(rows) {
       rowInvalid = true;
       if (inputTen) invalidInputs.push(inputTen);
     }
+    if (inputBidPrice && (
+      bidPriceRaw.startsWith("-")
+      || !bidPriceDigits
+      || Number(bidPriceDigits) <= 0
+    )) {
+      rowInvalid = true;
+      missingBidPriceInputs.push(inputBidPrice);
+    }
     if (rowInvalid) {
       hasInvalid = true;
       row.classList.add("invalid");
@@ -235,7 +249,11 @@ export function validateOpeningRows(rows) {
       row.classList.remove("invalid");
     }
   });
-  return { valid: !hasInvalid, invalidInputs };
+  return {
+    valid: !hasInvalid,
+    invalidInputs,
+    missingBidPriceInputs,
+  };
 }
 export function validateOpeningJointVentureMembers(rows) {
   const invalidInputs = [];

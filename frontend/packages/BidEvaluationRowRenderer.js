@@ -168,7 +168,7 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
   return `
     <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${escapeHtml(bidPrice)}" readonly placeholder="Ví dụ: 1.000.000.000"></td>
     <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${escapeHtml(discount)}" readonly placeholder="0"></td>
-    <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${escapeHtml(discountedPrice)}" readonly placeholder="......"></td>
+    <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${escapeHtml(discountedPrice)}" readonly></td>
     ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
     ${validityCell}
     <td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(clarification)}" placeholder="Nhập làm rõ tài chính..."></td>
