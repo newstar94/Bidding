@@ -10,6 +10,12 @@ const FORCED_PASS_FAIL_FORMS = new Set([
   "lua chon nha thau trong truong hop dac biet",
 ]);
 
+const FORCED_SCORE_OVERALL_METHODS = new Set([
+  "ket hop giua ky thuat va gia",
+  "ket hop ky thuat va gia",
+  "dua tren ky thuat",
+]);
+
 function normalize(value) {
   return String(value ?? "")
     .normalize("NFD")
@@ -60,7 +66,7 @@ export function getForcedTechnicalEvaluationMethod(pkg = {}) {
     return TECHNICAL_EVALUATION_METHODS.PASS_FAIL;
   }
   const overallMethod = normalize(pkg.phuongPhapDanhGia);
-  if (overallMethod === "ket hop giua ky thuat va gia" || overallMethod === "dua tren ky thuat") {
+  if (FORCED_SCORE_OVERALL_METHODS.has(overallMethod)) {
     return TECHNICAL_EVALUATION_METHODS.SCORE;
   }
   return "";
@@ -92,6 +98,42 @@ export function resolveTechnicalEvaluationMethod({
         || report?.extension?.phuongPhapDanhGiaKyThuat,
     )
     || inferImportedMethod(criteria);
+}
+
+export function requiresTechnicalScore(pkg = {}, roundType = "single") {
+  return resolveTechnicalEvaluationMethod({ pkg, roundType })
+    === TECHNICAL_EVALUATION_METHODS.SCORE;
+}
+
+export function parseTechnicalScore(value) {
+  const raw = String(value ?? "").trim().replace(/,/g, ".");
+  if (!raw) return null;
+  const score = Number(raw);
+  return Number.isFinite(score) && score >= 0 ? score : null;
+}
+
+export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "single") {
+  const scoreRequired = requiresTechnicalScore(pkg, roundType);
+  root?.querySelectorAll?.("input.mt-dg-ky-thuat").forEach((input) => {
+    if (!scoreRequired) {
+      input.removeAttribute?.("data-technical-score-required");
+      input.removeAttribute?.("required");
+      input.removeAttribute?.("aria-required");
+      return;
+    }
+    const current = String(input.value ?? "").trim();
+    const parsed = parseTechnicalScore(current);
+    input.type = "number";
+    input.setAttribute?.("min", "0");
+    input.setAttribute?.("step", "any");
+    input.setAttribute?.("inputmode", "decimal");
+    input.setAttribute?.("required", "true");
+    input.setAttribute?.("aria-required", "true");
+    input.setAttribute?.("data-technical-score-required", "true");
+    input.placeholder = "Nhập điểm kỹ thuật...";
+    if (current) input.value = parsed === null ? "" : String(parsed);
+  });
+  return scoreRequired;
 }
 
 export function applyTechnicalEvaluationMethod(criteria = [], method = "") {
