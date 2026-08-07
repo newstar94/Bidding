@@ -6663,3 +6663,14 @@ table th {
 .bidder-name--violator {
   color: var(--color-danger);
 }
+
+/*
+ * The appraisal-report rows are toggled with the `hidden` attribute. Their
+ * layout class sets `display: flex`, which would otherwise defeat `hidden`.
+ */
+.appraisal-report-row[hidden] {
+  display: none;
+}
+.appraisal-report-row--last {
+  border-bottom: 0;
+}

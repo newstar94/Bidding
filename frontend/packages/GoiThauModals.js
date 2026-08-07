@@ -352,8 +352,11 @@ export function populatePhathanhHsmtForm(gt, model) {
   const ngayBaoCaoContainer = document.getElementById("phathanh-ngaybaocao-container");
   const soBaoCaoInp = document.getElementById("phathanh-sobaocaothamdinh");
   const ngayBaoCaoInp = document.getElementById("phathanh-ngaybaocaothamdinh");
-  if (soBaoCaoContainer) setRuntimeStyle(soBaoCaoContainer, "display", hasAudit ? "block" : "none");
-  if (ngayBaoCaoContainer) setRuntimeStyle(ngayBaoCaoContainer, "display", hasAudit ? "block" : "none");
+  // `.form-group` lays its label and control out as a flex column with a row
+  // gap. Revealing one as a block removes that gap, so the control sits 6px
+  // higher than the fields beside it in the form grid.
+  if (soBaoCaoContainer) setRuntimeStyle(soBaoCaoContainer, "display", hasAudit ? "flex" : "none");
+  if (ngayBaoCaoContainer) setRuntimeStyle(ngayBaoCaoContainer, "display", hasAudit ? "flex" : "none");
   if (hasAudit) {
     if (soBaoCaoInp) soBaoCaoInp.setAttribute("required", "true");
     if (ngayBaoCaoInp) ngayBaoCaoInp.setAttribute("required", "true");
@@ -377,7 +380,7 @@ export function populatePhathanhHsmtForm(gt, model) {
       if (isPhanLo) {
         setRuntimeStyle(baodamContainer, "display", "none");
         baodamInput.removeAttribute("required");
-        setRuntimeStyle(phanloBaodamContainer, "display", "block");
+        setRuntimeStyle(phanloBaodamContainer, "display", "flex");
         phanloBaodamTbody.innerHTML = trustedHTML("");
         const list = gt.phanLoList || [];
         list.forEach((item) => {
@@ -407,7 +410,7 @@ export function populatePhathanhHsmtForm(gt, model) {
           bindCurrencyElement(tr.querySelector(".phathanh-pl-baodam-input"), (value) => model.formatVND(model.parseVND(value)));
         });
       } else {
-        setRuntimeStyle(baodamContainer, "display", "block");
+        setRuntimeStyle(baodamContainer, "display", "flex");
         baodamInput.setAttribute("required", "");
         baodamInput.setAttribute("required", "true");
         baodamInput.value = gt.giaTriDamBaoDuThau ? model.formatVND(gt.giaTriDamBaoDuThau) : "";

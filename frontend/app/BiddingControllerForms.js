@@ -288,8 +288,10 @@ export function setupActionListeners() {
       const ngayBaoCaoContainer = document.getElementById("phathanh-ngaybaocao-container");
       const soBaoCaoInp = document.getElementById("phathanh-sobaocaothamdinh");
       const ngayBaoCaoInp = document.getElementById("phathanh-ngaybaocaothamdinh");
-      setVisible(soBaoCaoContainer, show, "block");
-      setVisible(ngayBaoCaoContainer, show, "block");
+      // `.form-group` is a flex column with a row gap; revealing it as a block
+      // drops that gap and the input lands 6px above its neighbour in the grid.
+      setVisible(soBaoCaoContainer, show);
+      setVisible(ngayBaoCaoContainer, show);
       setRequired(soBaoCaoInp, show);
       setRequired(ngayBaoCaoInp, show);
       if (!show) {

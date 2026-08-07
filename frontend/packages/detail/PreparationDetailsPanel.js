@@ -243,7 +243,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                             <span class="package-info-value">${escapeHtml(gt.yeuCauThamDinhHsmt || "Không")}</span>
                                         `}
                                     </div>
-                                    <div id="wrapper-sobaocaothamdinh" style="display: ${view._inPlaceEditMode || gt.yeuCauThamDinhHsmt === "Có" ? "flex" : "none"}; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
+                                    <div id="wrapper-sobaocaothamdinh" class="bf-s-c733ba5cc7 appraisal-report-row" ${view._inPlaceEditMode || gt.yeuCauThamDinhHsmt === "Có" ? "" : "hidden"}>
                                         <span class="package-info-label">Số BCTĐ HSMT</span>
                                         ${view._inPlaceEditMode ? `
                                             <div class="bf-s-be718f4a76">
@@ -254,7 +254,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                             <span class="package-info-value">${escapeHtml(gt.soBaoCaoThamDinhHsmt || "--")}</span>
                                         `}
                                     </div>
-                                    <div id="wrapper-ngaybaocaothamdinh" style="display: ${view._inPlaceEditMode || gt.yeuCauThamDinhHsmt === "Có" ? "flex" : "none"}; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
+                                    <div id="wrapper-ngaybaocaothamdinh" class="bf-s-c733ba5cc7 appraisal-report-row appraisal-report-row--last" ${view._inPlaceEditMode || gt.yeuCauThamDinhHsmt === "Có" ? "" : "hidden"}>
                                         <span class="package-info-label">Ngày BCTĐ HSMT</span>
                                         ${view._inPlaceEditMode ? `
                                             <div class="bf-s-be718f4a76">
@@ -302,8 +302,11 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
             const toggleReportFields = () => {
               const checkedRadio = document.querySelector('input[name="ip-yeucauthamdinh"]:checked');
               const show = checkedRadio && checkedRadio.value === "Có";
-              setRuntimeStyle(document.getElementById("wrapper-sobaocaothamdinh"), "display", show ? "flex" : "none");
-              setRuntimeStyle(document.getElementById("wrapper-ngaybaocaothamdinh"), "display", show ? "flex" : "none");
+              // `hidden` is toggled instead of an inline display value: an inline
+              // style attribute outranks the class-based runtime styles, so the
+              // rows could not be hidden again once rendered.
+              document.getElementById("wrapper-sobaocaothamdinh")?.toggleAttribute("hidden", !show);
+              document.getElementById("wrapper-ngaybaocaothamdinh")?.toggleAttribute("hidden", !show);
             };
             radioYeuCaus.forEach((radio) => {
               radio.onchange = toggleReportFields;

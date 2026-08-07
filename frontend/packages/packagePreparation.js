@@ -6,6 +6,55 @@ import {
 } from "../shared/VersionedEntityService.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
+import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
+
+/**
+ * Creating a package version copies the aggregate that is present in local
+ * state. The detail screen can be reached with a lightweight projection of the
+ * package (`referenceOnly`) and without its assignments, because the
+ * goithau-detail route does not preload them. Copying that partial picture
+ * silently drops inherited data: an absent `trangThai` falls back to the server
+ * default "Chuẩn bị", and absent assignment rows read as "chưa phân công".
+ *
+ * Load the authoritative package and its owned rows before snapshotting.
+ */
+async function hydratePackageAggregate(controller, pkg) {
+  const model = controller.model;
+  const packageId = String(pkg?.id || "");
+  if (!packageId) return pkg;
+  let hydrated = pkg;
+  if (pkg?.referenceOnly === true && typeof controller.fetchRecordByLookup === "function") {
+    hydrated = await controller.fetchRecordByLookup("goithau", packageId).catch((error) => {
+      console.error("Failed to load the package before creating a version:", error);
+      return null;
+    }) || pkg;
+  }
+  if (!model?.useServerSidePagination) return hydrated;
+  // /api/paginate scopes these owned tables by plan, not by package.
+  const planId = String(hydrated?.keHoachId || pkg?.keHoachId || "");
+  if (!planId) return hydrated;
+  const ownedTables = ["assignments", "goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau"];
+  await Promise.all(ownedTables.map(async (table) => {
+    let cursor = "";
+    do {
+      const page = await loadPaginatedRecords(model, table, {
+        pageSize: 200,
+        pagination: "cursor",
+        sortBy: "id",
+        sortOrder: "asc",
+        keHoachId: planId,
+        ...(cursor ? { cursor } : {}),
+      }).catch((error) => {
+        console.error(`Failed to load ${table} of plan ${planId} before versioning:`, error);
+        return null;
+      });
+      const nextCursor = String(page?.nextCursor || "");
+      if (!page?.hasMore || !nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    } while (cursor);
+  }));
+  return model.state.goithau.find((row) => String(row.id) === packageId) || hydrated;
+}
 
 function dateTimeChanged(previousValue, nextValue) {
   const previous = String(previousValue || "").trim();
@@ -49,7 +98,14 @@ export async function savePackagePreparation(controller, pkg, changes, { generat
   const { model } = controller;
   const nextData = { ...changes };
   clearCompetitiveQuotationAppraisal(nextData);
-  const createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  let createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  if (createVersion) {
+    // Inheriting from a partial local copy would silently reset status and
+    // assignees, so refresh the aggregate first and re-evaluate the decision
+    // against the authoritative record.
+    pkg = await hydratePackageAggregate(controller, pkg);
+    createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  }
   let tables = ["goithau"];
   let savedPackage = pkg;
   let previousLatestPackages = [];
