@@ -1,5 +1,12 @@
 import { getJson } from "./apiClient.js";
 
+const PLAN_SCOPED_PACKAGE_CHILD_TABLES = new Set([
+  "goithauhanghoa",
+  "thongtinmothau",
+  "hanghoaduthaunhathau",
+  "assignments",
+]);
+
 export function parseYearMonth(dateStr) {
   if (!dateStr) return { year: null, month: null };
   const cleaned = String(dateStr).replace(/\s*-\s*/, " ").trim();
@@ -51,7 +58,58 @@ export function paginateRecords(records, currentPage, pageSize) {
   return (records || []).slice(startIndex, startIndex + pageSize);
 }
 
+/**
+ * Load every package row owned by one plan version, including historical
+ * package versions. The normal package list endpoint only returns `is_latest`
+ * rows from the latest plans, so plan snapshot/version workflows must never
+ * rely on whatever package rows happen to be cached locally.
+ */
+export async function hydratePlanPackageRecords(model, planId) {
+  const normalizedPlanId = String(planId || "").trim();
+  if (!model?.useServerSidePagination || !normalizedPlanId) return [];
+
+  model._planPackageHydrationRequests ||= new Map();
+  const existing = model._planPackageHydrationRequests.get(normalizedPlanId);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const hydrated = [];
+    let cursor = "";
+    do {
+      const query = new URLSearchParams({
+        table: "goithau",
+        pageSize: "200",
+        pagination: "cursor",
+        sortBy: "id",
+        sortOrder: "asc",
+        keHoachId: normalizedPlanId,
+      });
+      if (cursor) query.set("cursor", cursor);
+      const data = await getJson(`/api/paginate?${query}`);
+      hydrated.push(...cachePaginatedRecords(model, "goithau", data?.items || []));
+      const nextCursor = String(data?.nextCursor || "");
+      if (!data?.hasMore || !nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    } while (cursor);
+    return hydrated;
+  })().finally(() => {
+    if (model._planPackageHydrationRequests.get(normalizedPlanId) === request) {
+      model._planPackageHydrationRequests.delete(normalizedPlanId);
+    }
+  });
+
+  model._planPackageHydrationRequests.set(normalizedPlanId, request);
+  return request;
+}
+
 export async function loadPaginatedRecords(model, table, params = {}) {
+  // Plan aggregate workflows often start by loading package-owned child rows.
+  // Hydrate their parent package snapshots first; otherwise a newly-created plan
+  // version can silently inherit zero packages when the browser cache is cold.
+  if (PLAN_SCOPED_PACKAGE_CHILD_TABLES.has(table) && params?.keHoachId) {
+    await hydratePlanPackageRecords(model, params.keHoachId);
+  }
+
   const query = new URLSearchParams({ table });
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) query.set(key, String(value));
