@@ -69,5 +69,23 @@ export function applyPlanAggregateSnapshot(state, aggregate) {
     state[key] = Array.isArray(state[key]) ? state[key] : [];
     state[key].push(...(aggregate[key] || []));
   });
+  repointSelectedPackageVersions(state, aggregate);
   return aggregate;
+}
+
+/**
+ * The package version droplist remembers which row of a version family the user
+ * is looking at. Inheriting a plan version replaces the active package row with
+ * a frozen copy that has a new id, so a remembered id would keep pointing at the
+ * superseded row. The table then treats the row as a historical version and
+ * offers only "view", hiding edit and delete until the selection is rebuilt.
+ */
+function repointSelectedPackageVersions(state, aggregate) {
+  const selection = state?.selectedPackageVersion;
+  const mapping = aggregate?.mappings?.packageIds;
+  if (!selection || !mapping) return;
+  Object.entries(selection).forEach(([rootId, selectedId]) => {
+    const replacementId = mapping.get(String(selectedId));
+    if (replacementId) selection[rootId] = replacementId;
+  });
 }

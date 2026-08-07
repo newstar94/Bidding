@@ -10,12 +10,43 @@ import {
   removeLatestVersion
 } from "../shared/VersionedEntityService.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
+
+/**
+ * Load every package attached to the given plan versions so reference guards
+ * decide against server truth instead of whatever happens to be cached locally.
+ */
+async function loadPackagesForPlans(controller, planIds) {
+  const model = controller.model;
+  if (!model?.useServerSidePagination) return;
+  const targets = [...new Set((planIds || []).filter(Boolean).map(String))];
+  await Promise.all(targets.map(async (planId) => {
+    let cursor = "";
+    do {
+      const page = await loadPaginatedRecords(model, "goithau", {
+        pageSize: 200,
+        pagination: "cursor",
+        sortBy: "id",
+        sortOrder: "asc",
+        keHoachId: planId,
+        ...(cursor ? { cursor } : {}),
+      }).catch((error) => {
+        console.error(`Failed to load packages of plan ${planId} before deletion:`, error);
+        return null;
+      });
+      const nextCursor = String(page?.nextCursor || "");
+      if (!page?.hasMore || !nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    } while (cursor);
+  }));
+}
+
 export async function deleteKeHoach(id) {
   const targetPlan = await refreshRecordBeforeDelete(this, "kehoach", id);
   if (!targetPlan) return;
@@ -33,6 +64,12 @@ export async function deleteKeHoach(id) {
       const preview = removeLatestVersion(this.model.state.kehoach, targetPlan);
       const latestKh = preview.removed[0];
       if (!latestKh) return;
+      // Each plan version owns a frozen snapshot of its packages. Those rows may
+      // not be in local state (server-side pagination loads them on demand), so
+      // the reference guard has to read the plan's packages from the server;
+      // otherwise the plan version is deleted and its packages stay behind,
+      // making the previous version's packages reappear.
+      await loadPackagesForPlans(this, preview.removed.map((plan) => plan.id));
       const deletionCheck = canDeleteVersions(latestKh, [{
         name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
       }]);
@@ -51,6 +88,7 @@ export async function deleteKeHoach(id) {
       });
       return;
     } else if (choice === 2) {
+      await loadPackagesForPlans(this, relatedPlans.map((plan) => plan.id));
       const deletionCheck = canDeleteVersions(relatedPlans, [{
         name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
       }]);
@@ -71,6 +109,7 @@ export async function deleteKeHoach(id) {
       return;
     }
   } else {
+    await loadPackagesForPlans(this, relatedPlans.map((plan) => plan.id));
     const deletionCheck = canDeleteVersions(relatedPlans, [{
       name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
     }]);
@@ -800,7 +839,10 @@ export async function savePlanBreakdown() {
       }
     }
     if (saveAsNewVersion) {
-      this.model.state.kehoach = JSON.parse(JSON.stringify(this.backupKeHoachState));
+      this.model.state.kehoach = restoreRecordSnapshot(
+        this.model.state.kehoach,
+        this.backupKeHoachState,
+      );
       const oldKh = this.model.state.kehoach.find((k) => k.id === this.tempPlanData.id);
       const newId = generateRecordId("kehoach");
       finalPlanId = newId;

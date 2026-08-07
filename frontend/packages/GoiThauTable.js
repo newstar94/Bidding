@@ -114,8 +114,20 @@ export async function renderGoiThauTable() {
       if (!this.model.state.selectedPackageVersion) {
         this.model.state.selectedPackageVersion = {};
       }
-      const selectedId = this.model.state.selectedPackageVersion[root] || uniqueVersions[0]?.id || gt.id;
-      const displayedGt = this.model.state.goithau.find((g) => g.id === selectedId) || gt;
+      // A remembered selection can outlive the row it points at, for example
+      // when a plan version froze a new copy of the package or the row was
+      // deleted. Falling back to the current row keeps the actions correct
+      // instead of silently degrading them to view-only.
+      const rememberedId = this.model.state.selectedPackageVersion[root];
+      const rememberedGt = rememberedId
+        ? uniqueVersions.find((version) => String(version.id) === String(rememberedId))
+        : null;
+      if (rememberedId && !rememberedGt) {
+        delete this.model.state.selectedPackageVersion[root];
+      }
+      const displayedGt = rememberedGt
+        || this.model.state.goithau.find((g) => String(g.id) === String(uniqueVersions[0]?.id))
+        || gt;
       const displayedStatus = resolvePackageResultStatus(displayedGt);
       const kh = this.model.getLatestPlan(displayedGt.keHoachId);
       const nt = displayedGt.nhaThauTrungThauId ? this.model.state.nhathau.find((n) => n.id === displayedGt.nhaThauTrungThauId) : null;

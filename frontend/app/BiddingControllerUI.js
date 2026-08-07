@@ -1,5 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
+import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import {
@@ -686,11 +687,17 @@ export async function closeModal(modalId, options = {}) {
   }
   if (modalId === "modal-plan-breakdown") {
     if (this.backupKeHoachState) {
-      this.model.state.kehoach = this.backupKeHoachState;
+      this.model.state.kehoach = restoreRecordSnapshot(
+        this.model.state.kehoach,
+        this.backupKeHoachState,
+      );
       this.backupKeHoachState = null;
     }
     if (this.backupGoiThauState) {
-      this.model.state.goithau = this.backupGoiThauState;
+      this.model.state.goithau = restoreRecordSnapshot(
+        this.model.state.goithau,
+        this.backupGoiThauState,
+      );
       this.backupGoiThauState = null;
     }
     this.tempPlanData = null;

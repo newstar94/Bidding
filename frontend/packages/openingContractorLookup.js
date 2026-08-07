@@ -19,10 +19,22 @@ export function applyViolationNameClass(element, status) {
   element?.classList?.toggle("bidder-name--violator", isViolationConfirmed(status));
 }
 
+// A saved row is re-checked when its stored state carries no verdict.
+// NOT_CHECKED is what the server writes when it invalidates a stale check (for
+// example after the bid-closing time moves), and LOOKUP_FAILED means the
+// previous attempt never reached the violation provider. Both must be retried,
+// otherwise a real violator stays unmarked until someone edits the row.
+// REVIEW_REQUIRED and IDENTITY_CONFLICT are deliberate verdicts that need a
+// human decision, so they are not silently re-resolved.
+const RETRYABLE_VIOLATION_STATUSES = new Set([
+  VIOLATION_NOT_CHECKED,
+  VIOLATION_LOOKUP_FAILED,
+]);
+
 export function shouldRefreshSavedOpeningViolationCheck(bidData, contractorCode = "") {
   return Boolean(
     bidData?.id
-    && (!bidData?.violationStatus || bidData.violationStatus === VIOLATION_NOT_CHECKED)
+    && (!bidData?.violationStatus || RETRYABLE_VIOLATION_STATUSES.has(bidData.violationStatus))
     && (bidData?.maDinhDanh || contractorCode)
   );
 }
@@ -35,7 +47,14 @@ export function updateOpeningViolationPresentation(row) {
     row._leadMemberViolationStatus,
     ...(row._thanhVienLienDanh || []).map((member) => member?.violationStatus)
   ];
-  const aggregate = isJointVenture && memberStatuses.some(isViolationConfirmed)
+  // A confirmed violation is never downgraded by a less specific status. The
+  // per-member rows and the stored aggregate are both written by the server,
+  // but they are loaded independently: joint-venture members rehydrated from
+  // contractor master data carry NOT_CHECKED even when the saved bid is known
+  // to be a violator. Ignoring the stored aggregate there hides the violation.
+  const confirmedAnywhere = isViolationConfirmed(row._violationStatus)
+    || (isJointVenture && memberStatuses.some(isViolationConfirmed));
+  const aggregate = confirmedAnywhere
     ? VIOLATION_CONFIRMED
     : isJointVenture && memberStatuses.some(Boolean)
       ? memberStatuses.find((status) => status && status !== "NO_ACTIVE_VIOLATION") || "NO_ACTIVE_VIOLATION"
@@ -69,7 +88,11 @@ export async function resolveBidOpeningContractor({
 
 export async function refreshSavedOpeningViolationChecks(packageId, bids) {
   await Promise.all((bids || []).map(async (bid) => {
-    if (String(bid?.loaiNhaThau || "").trim().toLocaleLowerCase("vi-VN") !== "liên danh") {
+    const isJointVenture = String(bid?.loaiNhaThau || "").trim().toLocaleLowerCase("vi-VN") === "liên danh";
+    // A joint-venture bid whose member rows are not loaded locally still has to
+    // be checked. Resolving it per member only would silently report
+    // NO_ACTIVE_VIOLATION for an empty member list.
+    if (!isJointVenture || (bid.thanhVienLienDanh || []).length === 0) {
       try {
         const result = await resolveBidOpeningContractor({
           packageId,
