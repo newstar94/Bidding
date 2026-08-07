@@ -18,6 +18,8 @@ import {
   resolvePackageResultStatus
 } from "./lotEvaluationScope.js";
 import { syncDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
+import { checkBidQualified } from "./detail/PackageTabs.js";
+import { configureBidTechnicalScoreInputs } from "./technicalEvaluationMethod.js";
 
 function getEvaluationScopeStore(controller) {
   if (!controller._evaluationLotScopes) controller._evaluationLotScopes = {};

@@ -1,5 +1,10 @@
 import { parseVND } from "./formatters.js";
 import { isLowPriceBidRejected } from "../packages/bidEvaluationLowPriceRules.js";
+import {
+  parseTechnicalScore,
+  requiresTechnicalScoreInput,
+} from "../packages/evaluationMethodRules.js";
+import { isCombinedTechnicalPriceMethod } from "../packages/technicalEvaluationMethod.js";
 
 function moneyBigInt(value) {
   const parsed = parseVND(value);
@@ -15,6 +20,8 @@ export function calculateRankings(gt, bids) {
   const scores = {};
   const isTuVan = gt.linhVuc === "Tư vấn";
   const method = gt.phuongPhapDanhGia || "";
+  const technicalScoreRequired = requiresTechnicalScoreInput(method);
+  const isCombinedMethod = isCombinedTechnicalPriceMethod(method);
   const hasLots = gt.phanLo === "Có";
   const groups = {};
   if (hasLots) {
