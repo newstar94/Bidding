@@ -10,9 +10,13 @@ const FORCED_PASS_FAIL_FORMS = new Set([
   "lua chon nha thau trong truong hop dac biet",
 ]);
 
-const FORCED_SCORE_OVERALL_METHODS = new Set([
+const COMBINED_TECHNICAL_PRICE_METHODS = new Set([
   "ket hop giua ky thuat va gia",
   "ket hop ky thuat va gia",
+]);
+
+const FORCED_SCORE_OVERALL_METHODS = new Set([
+  ...COMBINED_TECHNICAL_PRICE_METHODS,
   "dua tren ky thuat",
 ]);
 
@@ -35,6 +39,13 @@ export function normalizeTechnicalEvaluationMethod(value) {
     return TECHNICAL_EVALUATION_METHODS.PASS_FAIL;
   }
   return "";
+}
+
+export function isCombinedTechnicalPriceMethod(valueOrPackage = {}) {
+  const value = valueOrPackage && typeof valueOrPackage === "object"
+    ? valueOrPackage.phuongPhapDanhGia
+    : valueOrPackage;
+  return COMBINED_TECHNICAL_PRICE_METHODS.has(normalize(value));
 }
 
 function metadataBlock(pkg, roundType) {
