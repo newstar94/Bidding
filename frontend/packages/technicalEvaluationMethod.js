@@ -123,6 +123,7 @@ export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "si
     }
     const current = String(input.value ?? "").trim();
     const parsed = parseTechnicalScore(current);
+    const hadInvalidLegacyValue = Boolean(current) && parsed === null;
     input.type = "number";
     input.setAttribute?.("min", "0");
     input.setAttribute?.("step", "any");
@@ -132,6 +133,13 @@ export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "si
     input.setAttribute?.("data-technical-score-required", "true");
     input.placeholder = "Nhập điểm kỹ thuật...";
     if (current) input.value = parsed === null ? "" : String(parsed);
+    if (
+      hadInvalidLegacyValue
+      && typeof input.dispatchEvent === "function"
+      && typeof globalThis.Event === "function"
+    ) {
+      input.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
+    }
   });
   return scoreRequired;
 }
