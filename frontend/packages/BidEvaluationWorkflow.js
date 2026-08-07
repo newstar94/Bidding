@@ -18,7 +18,6 @@ import {
   resolvePackageResultStatus
 } from "./lotEvaluationScope.js";
 import { syncDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
-import { checkBidQualified } from "./detail/PackageTabs.js";
 
 function getEvaluationScopeStore(controller) {
   if (!controller._evaluationLotScopes) controller._evaluationLotScopes = {};
@@ -175,6 +174,7 @@ export function renderDanhGiaHsdtPanel() {
       onRankingChange: updateAllRankings,
     };
     const finalizeRowRender = () => {
+      configureBidTechnicalScoreInputs(tbody, gt, is1G2T ? "technical" : "single");
       lucide.createIcons();
       if (typeof this.unifyTableInputsHeight === "function") {
         this.unifyTableInputsHeight(document);
