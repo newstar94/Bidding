@@ -241,6 +241,48 @@ async function waitForEvaluationSave(page, httpErrors, pageErrors) {
   await successToast.waitFor({ state: "hidden", timeout: 10_000 });
 }
 
+async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
+  const evaluationTab = page.locator('[data-workflow-tab="eval_tech"]');
+  const dialog = page.locator("#modal-custom-dialog.active");
+  const successToast = page.locator(".bf-toast.toast-success:not(.toast-hiding)").last();
+  const outcome = await Promise.race([
+    evaluationTab.waitFor({ state: "visible", timeout: 20_000 }).then(() => "advanced").catch(() => null),
+    dialog.waitFor({ state: "visible", timeout: 20_000 }).then(() => "dialog").catch(() => null),
+    successToast.waitFor({ state: "visible", timeout: 20_000 }).then(() => "saved").catch(() => null),
+  ]);
+
+  if (outcome === "dialog") {
+    const dialogText = await page.locator("#modal-custom-dialog").innerText();
+    if (!/Thành công/i.test(dialogText)) {
+      throw new Error(`${label} blocked: ${dialogText}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}`);
+    }
+    await page.locator("#btn-dialog-ok").click();
+    await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+  }
+
+  if (outcome !== "advanced") {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitForApp(page);
+  }
+
+  try {
+    await evaluationTab.waitFor({ state: "visible", timeout: 20_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      dialogClass: document.getElementById("modal-custom-dialog")?.className || "",
+      dialogText: document.getElementById("modal-custom-dialog")?.innerText || "",
+      toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
+      workflowTabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => ({
+        id: item.getAttribute("data-workflow-tab"),
+        display: getComputedStyle(item).display,
+        visibility: getComputedStyle(item).visibility,
+      })),
+    }));
+    throw new Error(`${label} did not advance to eval_tech: ${JSON.stringify(diagnostics)}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}; ${error.message}`);
+  }
+  return evaluationTab;
+}
+
 let browser;
 let fixtureCreated = false;
 try {
@@ -711,7 +753,7 @@ try {
     if (spec.type === "Liên danh") await configureJointMembers(page, row);
   }
   await page.locator("#btn-mothau-save").click();
-  await page.locator('[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
+  await waitForOpeningAdvance(page, httpErrors, pageErrors, "Multi-lot opening save");
   mark("joint-venture-multi-lot-opening-saved", { bids: 3, jointLots: 2 });
 
   const evaluateLot = async ({ lot, sequence, jointPrice, independentPrice = null, rejectJoint = false }) => {
@@ -806,7 +848,7 @@ try {
     if (spec.type === "Liên danh") await configureJointMembers(page, row);
   }
   await page.locator("#btn-mothau-save").click();
-  await page.locator('[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
+  await waitForOpeningAdvance(page, httpErrors, pageErrors, "Two-envelope technical opening save");
   mark("joint-venture-two-envelope-technical-opening-saved");
 
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-2T-KT`);
