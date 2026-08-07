@@ -2,13 +2,16 @@ from types import SimpleNamespace
 
 from backend.db.postgres_schema import build_create_table_sql
 from backend.db.schema import SCHEMA_DINH_NGHIA
-from backend.db.upgrades import DB_SCHEMA_VERSION
+from backend.db.upgrades import (
+    DB_SCHEMA_VERSION,
+    _upgrade_to_v42_recheck_failed_violation_snapshots,
+)
 from backend.sync.mapper import map_db_to_json
 from backend.sync.record_serializer import SyncRecordSerializer
 
 
 def test_contractor_risk_schema_is_current_and_timezone_aware():
-    assert DB_SCHEMA_VERSION == 41
+    assert DB_SCHEMA_VERSION == 42
     assert "contractor_violation_cache" in SCHEMA_DINH_NGHIA
     assert "contractor_violation_checks" in SCHEMA_DINH_NGHIA
     sql = build_create_table_sql(
@@ -19,6 +22,23 @@ def test_contractor_risk_schema_is_current_and_timezone_aware():
     assert "checked_at TIMESTAMPTZ NOT NULL" in sql
     assert "source_records_json TEXT NOT NULL" in sql
     assert "PRIMARY KEY (organization_id, id)" in sql
+
+
+def test_v42_rechecks_snapshots_without_authoritative_payload():
+    statements = []
+
+    class Cursor:
+        def execute(self, statement):
+            statements.append(" ".join(statement.split()))
+            return self
+
+    _upgrade_to_v42_recheck_failed_violation_snapshots(Cursor(), None)
+
+    sql = "\n".join(statements)
+    assert "source_payload_hash = ''" in sql
+    assert "status IN ('LOOKUP_FAILED', 'NO_ACTIVE_VIOLATION')" in sql
+    assert "SET violation_status = 'NOT_CHECKED'" in sql
+    assert "thong_tin_mo_thau_lien_danh_thanh_vien" in sql
 
 
 def test_opening_sync_hydrates_authoritative_status():

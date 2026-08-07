@@ -6,8 +6,8 @@ import urllib.request
 import urllib.error
 import json
 import re
-import ssl
 import random
+import unicodedata
 import uuid
 from backend.db.db_helper import database
 from backend.partners.address_parser import compose_external_address, parse_vietnam_address_to_internal
@@ -16,6 +16,7 @@ from backend.shared.text_utils import normalize_organization_name, normalize_per
 from backend.shared.logging_utils import log_error, log_structured_event
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.observability.recording import record_partner_upstream
+from backend.shared.muasamcong_tls import MUASAMCONG_SSL_CONTEXT
 from backend.shared.safe_http import open_allowlisted_https
 
 
@@ -23,7 +24,7 @@ _partner_worker_started = False
 _partner_worker_lock = threading.Lock()
 _partner_work_event = threading.Event()
 _lookup_locks = tuple(threading.Lock() for _ in range(64))
-PARTNER_LOOKUP_CACHE_VERSION = "2"
+PARTNER_LOOKUP_CACHE_VERSION = "3"
 
 
 class PartnerLookupBusyError(RuntimeError):
@@ -276,22 +277,6 @@ MUASAMCONG_INVESTOR_SERVICE_BASE = (
 )
 
 
-def _create_muasamcong_ssl_context():
-    # Keep certificate and hostname verification while avoiding the upstream's
-    # obsolete finite-field DHE parameters. MuaSamCong also supports modern
-    # ECDHE suites, so preferring those resolves DH_KEY_TOO_SMALL without
-    # lowering OpenSSL's security level or weakening the application process.
-    context = ssl.create_default_context()
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.set_ciphers(
-        "ECDHE+AESGCM:ECDHE+CHACHA20:!DHE:!aNULL:!eNULL:!MD5:!DSS"
-    )
-    return context
-
-
-MUASAMCONG_SSL_CONTEXT = _create_muasamcong_ssl_context()
-
-
 def normalize_procurement_org_code(value):
     raw_value = re.sub(r"[\s._-]+", "", str(value or "").strip().lower())
     match = re.fullmatch(r"(vnp|vnz|vn)(\d{9,14})", raw_value)
@@ -400,6 +385,41 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
     }
 
 
+def _muasamcong_status_key(value):
+    decomposed = unicodedata.normalize("NFKD", str(value or ""))
+    without_marks = "".join(
+        character
+        for character in decomposed
+        if unicodedata.category(character) != "Mn"
+    )
+    return " ".join(without_marks.casefold().split())
+
+
+def _latest_muasamcong_contractor_status(data):
+    history = data.get("roleContractorHis") if isinstance(data, dict) else None
+    status_events = [
+        event
+        for event in (history or [])
+        if isinstance(event, dict)
+        and str(event.get("type") or "").strip().upper() == "CHANGE_ROLE_STATUS"
+        and str(event.get("value") or "").strip()
+    ]
+    if not status_events:
+        return ""
+    latest = max(
+        enumerate(status_events),
+        key=lambda entry: (str(entry[1].get("createdDate") or ""), -entry[0]),
+    )[1]
+    return _muasamcong_status_key(latest.get("value"))
+
+
+def _is_muasamcong_contractor_terminated(data):
+    return _latest_muasamcong_contractor_status(data) in {
+        "cham dut",
+        "terminated",
+    }
+
+
 def fetch_muasamcong_info(tax_code="", org_code="", role_name="NT"):
     normalized_org_code = normalize_procurement_org_code(org_code)
     if not normalized_org_code:
@@ -429,9 +449,14 @@ def fetch_muasamcong_info(tax_code="", org_code="", role_name="NT"):
                 service_base=service_base,
             )
 
-        returned_tax_code = extract_clean_tax_code(data.get("taxCode")) if isinstance(data, dict) else None
-        requested_tax_code = extract_clean_tax_code(tax_code)
-        if returned_tax_code and requested_tax_code and returned_tax_code != requested_tax_code:
+        returned_org_code = (
+            normalize_procurement_org_code(data.get("orgCode"))
+            if isinstance(data, dict)
+            else None
+        )
+        if returned_org_code != normalized_org_code:
+            return None
+        if normalized_role == "NT" and _is_muasamcong_contractor_terminated(data):
             return None
 
         area_codes = list(dict.fromkeys(

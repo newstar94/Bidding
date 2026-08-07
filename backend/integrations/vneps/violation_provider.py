@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import random
-import ssl
 import threading
 import time
 import urllib.error
@@ -23,6 +22,7 @@ from backend.integrations.vneps.errors import (
     VnepsUpstreamError,
 )
 from backend.integrations.vneps.response_parser import parse_violation_response
+from backend.shared.muasamcong_tls import MUASAMCONG_SSL_CONTEXT
 from backend.shared.safe_http import open_allowlisted_https
 
 
@@ -414,7 +414,6 @@ class VnepsViolationProvider:
             "VNEPS_VIOLATION_TIMEOUT_SECONDS", 6.0, 1.0, 15.0
         )
         retries = _bounded_int("VNEPS_VIOLATION_RETRIES", 1, 0, 2)
-        context = ssl.create_default_context()
         last_error = None
         for attempt in range(retries + 1):
             try:
@@ -422,7 +421,7 @@ class VnepsViolationProvider:
                     request,
                     allowed_hosts={"muasamcong.mpi.gov.vn"},
                     timeout=timeout,
-                    context=context,
+                    context=MUASAMCONG_SSL_CONTEXT,
                 ) as response:
                     raw = response.read(1024 * 1024 + 1)
                     if len(raw) > 1024 * 1024:

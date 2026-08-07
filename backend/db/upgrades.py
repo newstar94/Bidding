@@ -1615,6 +1615,50 @@ def _upgrade_to_v41_add_contractor_violation_checks(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v42_recheck_failed_violation_snapshots(cursor, _context):
+    """Invalidate false clean results derived from failed provider lookups."""
+
+    cursor.execute(
+        """UPDATE thong_tin_mo_thau_lien_danh_thanh_vien AS member
+               SET violation_status = 'NOT_CHECKED',
+                   violation_bid_closing_at = NULL,
+                   violation_checked_at = NULL
+             WHERE member.violation_status IN ('LOOKUP_FAILED', 'NO_ACTIVE_VIOLATION')
+               AND EXISTS (
+                   SELECT 1
+                     FROM contractor_violation_checks AS check_row
+                    WHERE check_row.organization_id = member.organization_id
+                      AND check_row.bid_opening_record_id = member.thong_tin_mo_thau_id
+                      AND check_row.joint_venture_member_id = member.id
+                      AND check_row.source_payload_hash = ''
+                      AND check_row.status IN ('LOOKUP_FAILED', 'NO_ACTIVE_VIOLATION')
+               )"""
+    )
+    cursor.execute(
+        """UPDATE thong_tin_mo_thau AS opening
+               SET violation_status = 'NOT_CHECKED',
+                   violation_bid_closing_at = NULL,
+                   violation_checked_at = NULL
+             WHERE opening.violation_status IN ('LOOKUP_FAILED', 'NO_ACTIVE_VIOLATION')
+               AND EXISTS (
+                   SELECT 1
+                     FROM contractor_violation_checks AS check_row
+                    WHERE check_row.organization_id = opening.organization_id
+                      AND check_row.bid_opening_record_id = opening.id
+                      AND check_row.joint_venture_member_id IS NULL
+                      AND check_row.source_payload_hash = ''
+                      AND check_row.status IN ('LOOKUP_FAILED', 'NO_ACTIVE_VIOLATION')
+               )"""
+    )
+    cursor.execute(
+        """UPDATE contractor_violation_checks
+               SET is_stale = 1,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE source_payload_hash = ''
+               AND status IN ('LOOKUP_FAILED', 'NO_ACTIVE_VIOLATION')"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1811,6 +1855,11 @@ UPGRADES = (
         41,
         "add_contractor_violation_checks",
         _upgrade_to_v41_add_contractor_violation_checks,
+    ),
+    DatabaseUpgrade(
+        42,
+        "recheck_failed_violation_snapshots",
+        _upgrade_to_v42_recheck_failed_violation_snapshots,
     ),
 )
 

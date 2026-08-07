@@ -349,7 +349,7 @@ class ContractorRiskRepository:
         if not context.opening_id:
             return None
         row = self.cursor.execute(
-            """SELECT contractor_identifier, tax_code, bid_closing_at,
+            """SELECT contractor_identifier, tax_code, bid_closing_at, status,
                       source_provider, source_payload_hash, source_records_json
                FROM contractor_violation_checks
                WHERE organization_id = ? AND bid_opening_record_id = ?
@@ -359,6 +359,17 @@ class ContractorRiskRepository:
             (context.organization_id, context.opening_id, context.member_id),
         ).fetchone()
         if not row:
+            return None
+        # A failed lookup has no authoritative provider payload. Treating its
+        # serialized fallback ([]) as a successful empty response lets a
+        # concurrent retry incorrectly downgrade LOOKUP_FAILED to
+        # NO_ACTIVE_VIOLATION. An empty payload hash is also evidence of older
+        # snapshots created through that race, regardless of their final status.
+        if (
+            str(row.get("status") or "")
+            in {ViolationStatus.LOOKUP_FAILED.value, ViolationStatus.NOT_CHECKED.value}
+            or not str(row.get("source_payload_hash") or "").strip()
+        ):
             return None
         if (
             normalize_identity_code(row["contractor_identifier"])

@@ -56,3 +56,22 @@ def test_latest_snapshot_ignores_stale_and_closing_time_mismatch():
         contractor_identifier="vn001",
         tax_code="0012345678",
     ) is None
+
+
+def test_latest_snapshot_never_turns_failed_lookup_into_clean_result():
+    closing_at = datetime(2026, 6, 1, tzinfo=VIETNAM_TIMEZONE)
+    repository = repository_for({
+        "contractor_identifier": "vn001",
+        "tax_code": "0012345678",
+        "bid_closing_at": closing_at,
+        "status": "LOOKUP_FAILED",
+        "source_provider": "MuaSamCong",
+        "source_payload_hash": "",
+        "source_records_json": "[]",
+    })
+
+    assert repository.latest_snapshot_result(
+        context(closing_at),
+        contractor_identifier="vn001",
+        tax_code="0012345678",
+    ) is None

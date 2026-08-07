@@ -17,6 +17,7 @@ import {
   requiresTechnicalScoreInput,
   validateTechnicalScore,
 } from "./evaluationMethodRules.js";
+import { isViolationConfirmed } from "./openingContractorLookup.js";
 import { setJvData } from "./jvDataStore.js";
 
 const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
@@ -32,7 +33,7 @@ export function resolveBidEvaluationRowReadOnly({ isReadOnly = false } = {}) {
   return Boolean(isReadOnly);
 }
 
-function buildContractorDisplay({ pkg, bid, model }) {
+export function buildContractorDisplay({ pkg, bid, model }) {
   let contractorCode = bid.maNhaThau || bid.maDinhDanh || "--";
   const contractorName = resolveBidContractorName(model, bid) || "--";
   const exactContractor = getExactContractorVersion(model, bid.nhaThauId)
@@ -40,6 +41,8 @@ function buildContractorDisplay({ pkg, bid, model }) {
   if (exactContractor) contractorCode = exactContractor.maNhaThau || contractorCode;
 
   let html;
+  const violationConfirmed = isViolationConfirmed(bid.violationStatus);
+  const violationClass = violationConfirmed ? " bidder-name--violator" : "";
   if (bid.loaiNhaThau === "Liên danh") {
     const jvKey = `${pkg.id}_eval_bidder_${bid.id}`;
     setJvData(jvKey, {
@@ -51,9 +54,10 @@ function buildContractorDisplay({ pkg, bid, model }) {
     html = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${escapeHtml(jvKey)}" title="Xem thành viên liên danh">👥 ${escapeHtml(contractorName)}</a>`;
   } else {
     const contractorId = exactContractor?.id || "";
+    const colorClass = violationConfirmed ? "" : " text-blue";
     html = contractorId
-      ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorId)}" class="text-blue fw-bold link-hover">${escapeHtml(contractorName)}</a>`
-      : `<span class="fw-bold">${escapeHtml(contractorName)}</span>`;
+      ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorId)}" class="fw-bold link-hover${colorClass}${violationClass}">${escapeHtml(contractorName)}</a>`
+      : `<span class="fw-bold${violationClass}">${escapeHtml(contractorName)}</span>`;
   }
   return { contractorCode, html };
 }

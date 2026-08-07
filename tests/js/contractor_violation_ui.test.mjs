@@ -8,6 +8,7 @@ import {
   shouldRefreshSavedOpeningViolationCheck,
   updateOpeningViolationPresentation,
 } from "../../frontend/packages/openingContractorLookup.js";
+import { buildContractorDisplay } from "../../frontend/packages/BidEvaluationRowRenderer.js";
 
 
 function fakeClassList() {
@@ -145,6 +146,37 @@ test("violation UI adds one color-only class and no warning presentation", () =>
     css,
     /\.bidder-name--violator\s*\{\s*color:\s*var\(--color-danger\);\s*\}/,
   );
+  assert.match(
+    css,
+    /input\.form-control\.bidder-name--violator\s*\{\s*color:\s*var\(--color-danger\)\s*!important;\s*\}/,
+    "editable contractor inputs must keep the violation color",
+  );
   assert.doesNotMatch(lookupSource, /badge|tooltip|toast|modal|popup/i);
   assert.doesNotMatch(lookupSource, /Có vi phạm|Xem chi tiết|decisionNumber/i);
+});
+
+
+test("evaluation contractor name preserves confirmed violation color", () => {
+  const contractor = buildContractorDisplay({
+    pkg: { id: "pkg-1" },
+    bid: {
+      id: "bid-1",
+      nhaThauId: "contractor-1",
+      maDinhDanh: "vn0304153199",
+      tenNhaThau: "Violating contractor",
+      loaiNhaThau: "Independent",
+      violationStatus: "VIOLATION_CONFIRMED",
+    },
+    model: {
+      state: {
+        nhathau: [{
+          id: "contractor-1",
+          maNhaThau: "vn0304153199",
+          tenNhaThau: "Violating contractor",
+        }],
+      },
+    },
+  });
+
+  assert.match(contractor.html, /class="[^"]*bidder-name--violator[^"]*"/);
 });

@@ -1,3 +1,5 @@
+import ssl
+
 from backend.contractor_risk.types import ViolationCategory
 from backend.integrations.vneps.violation_provider import VnepsViolationProvider
 from backend.integrations.vneps.fake_provider import FixtureViolationProvider
@@ -13,6 +15,44 @@ class FixtureProvider(VnepsViolationProvider):
         self.requests.append((path, payload))
         response = self.responses[path]
         return response(payload) if callable(response) else response
+
+
+def test_provider_transport_uses_verified_ecdhe_tls_context(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, _limit):
+            return b"{}"
+
+    def fake_open(_request, *, allowed_hosts, timeout, context):
+        captured.update({
+            "allowed_hosts": allowed_hosts,
+            "timeout": timeout,
+            "context": context,
+        })
+        return Response()
+
+    monkeypatch.setattr(
+        "backend.integrations.vneps.violation_provider.open_allowlisted_https",
+        fake_open,
+    )
+
+    VnepsViolationProvider()._post("get-list-violate", {})
+
+    context = captured["context"]
+    assert captured["allowed_hosts"] == {"muasamcong.mpi.gov.vn"}
+    assert context.minimum_version == ssl.TLSVersion.TLSv1_2
+    assert context.check_hostname is True
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert not any(
+        cipher.get("kea") == "kx-dhe" for cipher in context.get_ciphers()
+    )
 
 
 def test_provider_exact_filters_and_maps_all_supported_sources():

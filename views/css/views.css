@@ -6663,6 +6663,9 @@ table th {
 .bidder-name--violator {
   color: var(--color-danger);
 }
+input.form-control.bidder-name--violator {
+  color: var(--color-danger) !important;
+}
 
 /*
  * The appraisal-report rows are toggled with the `hidden` attribute. Their
