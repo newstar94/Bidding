@@ -1,4 +1,5 @@
 import { getEvaluationLotScopeDetails } from "./lotEvaluationScope.js";
+import { isCombinedTechnicalPriceMethod } from "./technicalEvaluationMethod.js";
 
 function cell(label, className) {
   return `<th class="${className}">${label}</th>`;
@@ -175,7 +176,7 @@ export function buildBidEvaluationTablePresentation({
   } else if (hasLots) {
     caseType = "1G1T_WITH_LOT";
   }
-  const isCombinedMethod = pkg.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá";
+  const isCombinedMethod = isCombinedTechnicalPriceMethod(pkg);
   const showCombinedScore = isCombinedMethod
     && !(isTwoEnvelope && currentTab === "technical");
   const lotLabel = getEvaluationLotScopeDetails(pkg, lotScope)?.lotCodes?.join(", ");
