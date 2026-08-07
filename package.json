@@ -21,7 +21,7 @@
     "check": "npm run check:quality && npm run build:secure && python scripts/audit_fk_indexes.py && python scripts/package_production.py --check && npm run sbom",
     "test:auth-shell": "node --env-file-if-exists=.env scripts/verify_auth_shell.mjs",
     "test:auth-roles-e2e": "node --env-file-if-exists=.env scripts/verify_auth_roles_e2e.mjs",
-    "test:bidder-goods-e2e": "node --env-file-if-exists=.env scripts/verify_bidder_goods_e2e.cjs",
+    "test:bidder-goods-e2e": "node --env-file-if-exists=.env scripts/run_bidder_goods_e2e.cjs",
     "test:crud-modules-e2e": "node --env-file-if-exists=.env scripts/verify_crud_modules_e2e.mjs",
     "test:multi-assignee-e2e": "node --env-file-if-exists=.env scripts/verify_multi_assignee_activity_e2e.mjs",
     "test:joint-venture-e2e": "node --env-file-if-exists=.env scripts/verify_joint_venture_e2e.mjs",
