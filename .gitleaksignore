@@ -8,6 +8,9 @@ e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/auth_routes.py:generic-api
 e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/google_auth_routes.py:generic-api-key:134
 e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/auth_routes.py:generic-api-key:1310
 
+# Reviewed false positive: empty Ollama AI_API_KEY example in historical docs.
+7142abde24acbd155298285de3aee08a0fc92287:docs/ai/README.md:generic-api-key:36
+
 # Reviewed false positives: high-entropy identifiers emitted by the retired
 # JavaScript obfuscator into historical, generated dist artifacts.
 b9385b666b496ecb0ee5346959d64de98f8c6a8c:dist/assets/BiddingControllerForms-fd1dcc9b.js:generic-api-key:20
