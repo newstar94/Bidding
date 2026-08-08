@@ -42,7 +42,7 @@ export function renderFinancialOpeningTable({
     const scoreCell = hasTechnicalScore ? `<td class="text-center">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : "";
     if (isReadOnly) {
       const validityText = validity ? `${validity}${String(validity).includes("ngày") ? "" : " ngày"}` : "--";
-      return `<tr>${lotCells}<td>${identity}</td><td>${contractor}</td>${scoreCell}<td>${escapeHtml(bidPrice || "--")}</td><td class="text-right">${escapeHtml(discount)}</td><td>${escapeHtml(finalPrice || "--")}</td>${isConsulting ? `<td>${escapeHtml(validityText)}</td>` : ""}</tr>`;
+      return `<tr>${lotCells}<td>${identity}</td><td>${contractor}</td>${scoreCell}<td><span class="bf-money-display">${escapeHtml(bidPrice || "--")}</span></td><td class="text-right">${escapeHtml(discount)}</td><td><span class="bf-money-display">${escapeHtml(finalPrice || "--")}</span></td>${isConsulting ? `<td>${escapeHtml(validityText)}</td>` : ""}</tr>`;
     }
     const validityValue = validity ? `${validity}${String(validity).includes("ngày") ? "" : " ngày"}` : "";
     return `<tr data-opening-bid-id="${escapeHtml(bid.id)}">${lotCells}<td>${identity}</td><td>${contractor}</td>${scoreCell}

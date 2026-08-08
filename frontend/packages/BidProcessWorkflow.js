@@ -409,6 +409,10 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const contractorCodeValue = escapeHtml(ntCode || bidData.maDinhDanh || "");
   const contractorNameDisplay = escapeHtml(ntName || "--");
   const contractorNameValue = escapeHtml(ntName);
+  const contractorVersionId = foundNt?.id || bidData.nhaThauId || "";
+  const readOnlyContractorIdentity = (value, className) => contractorVersionId
+    ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorVersionId)}" class="${className} text-blue link-hover">${value}</a>`
+    : `<span class="${className}">${value}</span>`;
   const lotCodeDisplay = escapeHtml(bidData.maPhanLo || "--");
   const lotNameDisplay = escapeHtml(bidData.tenPhanLo || "--");
   const lotNameValue = escapeHtml(bidData.tenPhanLo || "");
@@ -423,8 +427,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (caseType === "TU_VAN") {
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
             <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
@@ -441,8 +445,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   } else if (caseType === "1G2T_NO_LOT") {
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || "--"}</td>
             <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
@@ -468,8 +472,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
             <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
@@ -495,8 +499,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   } else if (caseType === "1G1T_NO_LOT") {
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td class="bf-s-5f326564a5">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
@@ -530,8 +534,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td class="bf-s-5f326564a5">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
@@ -566,8 +570,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td>${escapeHtml(defaultDurationPkg)}</td>
         ` : `
@@ -587,8 +591,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
-            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
+            <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
+            <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td>${escapeHtml(defaultDurationPkg)}</td>
         ` : `

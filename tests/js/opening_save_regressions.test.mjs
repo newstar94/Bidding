@@ -240,3 +240,12 @@ test("joint-venture member controls use one replaceable runtime display rule", (
     /setRuntimeStyle\(jvContainer, "display", ntType === "Liên danh" \? "block" : "none"\)/,
   );
 });
+
+test("saved opening rows keep a clickable contractor identity", () => {
+  const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+  assert.match(
+    source,
+    /data-bf-action="show-contractor"[^>]*data-id=/,
+    "read-only opening rows must keep a link to contractor details",
+  );
+});

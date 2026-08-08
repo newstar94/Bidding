@@ -419,11 +419,26 @@ export async function saveDanhGiaHsdt() {
       let danhGiaNangLuc = bid.danhGiaNangLuc;
       let danhGiaKyThuat = bid.danhGiaKyThuat;
       let danhGiaKetLuan = bid.danhGiaKetLuan;
+      const bidPriceInput = tr.querySelector(".mt-gia-du-thau");
+      const bidPriceRaw = bidPriceInput?.value?.trim() || "";
+      if (bidPriceInput && bidPriceRaw) {
+        giaDuThau = this.model.parseVND(bidPriceRaw);
+      }
+      const discountInput = tr.querySelector(".mt-ty-le-giam-gia");
+      const discountRaw = discountInput?.value?.trim() || "";
+      if (discountInput && discountRaw) {
+        tyLeGiamGia = parseFloat(discountRaw.replace(/,/g, ".")) || 0;
+      }
+      const discountedPriceInput = tr.querySelector(".mt-gia-sau-giam-gia");
+      const discountedPriceRaw = discountedPriceInput?.value?.trim() || "";
+      if (discountedPriceInput && discountedPriceRaw) {
+        giaSauGiamGia = this.model.parseVND(discountedPriceRaw);
+      }
       if (is1G2T && this.currentDanhGiaTab === "financial") {
-        giaDuThau = this.model.parseVND(tr.querySelector(".mt-gia-du-thau")?.value || "");
-        const tyLeRaw = tr.querySelector(".mt-ty-le-giam-gia")?.value || "0";
+        giaDuThau = this.model.parseVND(bidPriceInput?.value || "");
+        const tyLeRaw = discountInput?.value || "0";
         tyLeGiamGia = parseFloat(tyLeRaw.replace(/,/g, ".")) || 0;
-        giaSauGiamGia = this.model.parseVND(tr.querySelector(".mt-gia-sau-giam-gia")?.value || "");
+        giaSauGiamGia = this.model.parseVND(discountedPriceInput?.value || "");
       } else {
         danhGiaHopLe = tr.querySelector(".mt-dg-hop-le")?.value.trim() || "";
         danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
@@ -503,11 +518,13 @@ export async function saveDanhGiaHsdt() {
       if (giaDeNghiTrungThauEl) {
         bid.giaDeNghiTrungThau = this.model.parseVND(giaDeNghiTrungThauEl.value || "");
       }
+      // The price controls are shared by 1G1T and the 1G2T financial tab.
+      // Copy the values prepared from the row once, before applying the
+      // tab-specific fields below. This keeps 1G1T edits persistent too.
+      bid.giaDuThau = preparedBid?.giaDuThau ?? bid.giaDuThau;
+      bid.tyLeGiamGia = preparedBid?.tyLeGiamGia ?? bid.tyLeGiamGia;
+      bid.giaSauGiamGia = preparedBid?.giaSauGiamGia ?? bid.giaSauGiamGia;
       if (is1G2T && this.currentDanhGiaTab === "financial") {
-        bid.giaDuThau = this.model.parseVND(tr.querySelector(".mt-gia-du-thau")?.value || "");
-        const tyLeRaw = tr.querySelector(".mt-ty-le-giam-gia")?.value || "0";
-        bid.tyLeGiamGia = parseFloat(tyLeRaw.replace(/,/g, ".")) || 0;
-        bid.giaSauGiamGia = this.model.parseVND(tr.querySelector(".mt-gia-sau-giam-gia")?.value || "");
         bid.hieuLucHsdt = parseInt(tr.querySelector(".mt-hieu-luc-hsdt")?.value || "0", 10);
         const giaTriDamBaoEl = tr.querySelector(".mt-gia-tri-dam-bao");
         if (giaTriDamBaoEl) {

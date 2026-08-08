@@ -48,6 +48,13 @@ test("overflow text waits, moves left, pauses at the end, then restarts", () => 
 test("only connected, overflowing, unfocused text controls auto-scroll", () => {
   const control = textControl();
   assert.equal(shouldAutoScrollTextControl(control), true);
+  assert.equal(
+    shouldAutoScrollTextControl(textControl({
+      matches: (selector) => !selector.includes(".bf-money-control"),
+    })),
+    false,
+    "monetary controls keep their full value visible instead of auto-scrolling",
+  );
   assert.equal(shouldAutoScrollTextControl(control, control), false);
   assert.equal(shouldAutoScrollTextControl(textControl({ value: "" })), false);
   assert.equal(shouldAutoScrollTextControl(textControl({ scrollWidth: 120 })), false);
@@ -63,7 +70,14 @@ test("application installs overflow scrolling during shared UI bootstrap", () =>
   );
   assert.match(source, /installOverflowTextAutoScroll\(document\)/u);
   assert.match(behaviorSource, /detectProgrammaticValueChanges/u);
+  assert.match(behaviorSource, /MONEY_CONTROL_SELECTORS/u);
   assert.match(behaviorSource, /:not\(\.mt-ma-nha-thau\)/u);
+});
+
+test("money controls reserve enough width for a 14-digit VND amount", () => {
+  const styles = fs.readFileSync("views/css/views.css", "utf8");
+  assert.match(styles, /min-width:\s*calc\(18ch\s*\+\s*2rem\)\s*!important/u);
+  assert.match(styles, /\.bf-money-display/u);
 });
 
 test("package detail gives contractor names more room than contractor codes", () => {

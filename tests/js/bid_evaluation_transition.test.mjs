@@ -52,6 +52,9 @@ test("waits for the paginated package refresh before opening the result step", a
     [".mt-dg-nang-luc", { value: "Đạt" }],
     [".mt-dg-ky-thuat", { value: "Đạt" }],
     [".mt-ketluan-cell", { textContent: "Đạt" }],
+    [".mt-gia-du-thau", { value: "800000000" }],
+    [".mt-ty-le-giam-gia", { value: "5" }],
+    [".mt-gia-sau-giam-gia", { value: "760000000" }],
     [".mt-gia-xep-hang", { value: "772200000" }],
     [".mt-gia-de-nghi-trung-thau", { value: "772200000" }],
   ]);
@@ -98,6 +101,9 @@ test("waits for the paginated package refresh before opening the result step", a
 
   assert.equal(detailOpened, true);
   assert.equal(packageRecord.danhGiaHsdtMetadata.includes('"saved":true'), true);
+  assert.equal(bid.giaDuThau, 800_000_000);
+  assert.equal(bid.tyLeGiamGia, 5);
+  assert.equal(bid.giaSauGiamGia, 760_000_000);
 });
 
 test("awarded packages reject evaluation saves before reading report controls", async () => {

@@ -56,6 +56,11 @@ export function bindCurrencyInput(id, formatValue) {
 }
 export function bindCurrencyElement(element, formatValue) {
   if (!element) return null;
+  // Money fields have a fixed readable width and must never be animated by the
+  // shared overflowing-text behavior. Marking them here also covers fields
+  // created dynamically after the application bootstrap.
+  element.classList?.add("bf-money-control");
+  element.setAttribute?.("data-bf-money", "true");
   element.__bfBoundEvents = element.__bfBoundEvents || /* @__PURE__ */ new Set();
   if (element.__bfBoundEvents.has("currency-input")) return element;
   element.__bfBoundEvents.add("currency-input");

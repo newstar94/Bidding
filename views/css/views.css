@@ -2809,6 +2809,9 @@ table th {
   border-radius: var(--radius-sm);
   min-width: 70px;
 }
+#mothau-table input.bf-money-control {
+  min-width: calc(18ch + 2rem);
+}
 #mothau-table select.form-control {
   min-width: 130px;
 }
@@ -2985,6 +2988,53 @@ table th {
   font-size: 0.85rem !important;
   border-radius: var(--radius-md) !important;
 }
+
+/* Monetary values use a stable 14-digit visual budget (18 characters after
+   Vietnamese thousands separators). Keep the whole value visible and let the
+   surrounding table scroll horizontally on narrow screens. */
+input.bf-money-control,
+input[data-bf-money="true"],
+input:is(
+  .mt-format-vnd,
+  .mt-gia-du-thau,
+  .mt-gia-sau-giam-gia,
+  .mt-gia-tri-dam-bao,
+  .mt-dam-bao-du-thau,
+  .mt-gia-xep-hang,
+  .mt-gia-de-nghi-trung-thau,
+  .op-gia-du-thau,
+  .op-gia-sau-giam,
+  .cdtrug-format-vnd,
+  .row-gia-trung,
+  .pl-price-input,
+  .pl-baodam-input,
+  .tc-price-input,
+  .breakdown-value,
+  .phathanh-pl-price-input,
+  .phathanh-pl-baodam-input,
+  .awarded-pl-gia,
+  .input-gia,
+  [data-bidder-goods-nonnegative-money]
+),
+input#gt-gia,
+input#gt-giatrungthau,
+input#gt-giatribaomothau,
+input#phathanh-giatribaomothau,
+input#hd-giatri,
+input#edit-pkg-price {
+  box-sizing: border-box;
+  min-width: calc(18ch + 2rem) !important;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bf-money-display {
+  display: inline-block;
+  min-width: 18ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .btn-excel-action {
   display: inline-flex;
   align-items: center;
@@ -3099,6 +3149,13 @@ table th {
 .evaluation-round-fields span { color: var(--text-muted); font-size: 0.72rem; }
 .evaluation-round-fields strong { color: var(--text-main); font-size: 0.82rem; }
 .evaluation-round-table { margin: 16px; }
+.evaluation-round-table td:nth-child(4),
+.evaluation-round-table td:nth-child(5) {
+  min-width: 18ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .evaluation-round-continuation { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; border: 1px solid rgba(59, 91, 219, 0.25); border-radius: var(--radius-lg); background: rgba(59, 91, 219, 0.05); }
 .evaluation-round-continuation strong { color: var(--text-main); }
 .evaluation-round-continuation p { margin: 4px 0 0; color: var(--text-muted); font-size: 0.8rem; }
@@ -3135,7 +3192,7 @@ table th {
 .readonly-soft { background: #f1f5f9; }
 .col-lot-name { width: 180px; }
 .col-score { width: 100px; }
-.col-price { width: 160px; }
+.col-price { width: 18ch; min-width: 18ch; }
 .col-validity { width: 150px; }
 .action-strong { font-weight: 700; }
 .workflow-action-row.with-top-space { margin-top: 16px; }

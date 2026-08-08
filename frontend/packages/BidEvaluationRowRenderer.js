@@ -21,7 +21,6 @@ import { isViolationConfirmed } from "./openingContractorLookup.js";
 import { setJvData } from "./jvDataStore.js";
 
 const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
-const FINANCIAL_CASES = new Set(["1G2T_TC_NO_LOT", "1G2T_TC_WITH_LOT"]);
 
 function durationText(value, fallback = "") {
   const raw = String(value || "").trim();
@@ -118,9 +117,9 @@ function buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly, disabled = ""
   const warningClass = lowPriceDecision.isWarning ? " is-low-price-warning" : "";
   if (rowReadOnly) {
     return `
-      <td><span>${escapeHtml(rankingPrice || "--")}</span></td>
+      <td><span class="bf-money-display">${escapeHtml(rankingPrice || "--")}</span></td>
       <td>
-        <span class="evaluation-proposed-award-price${warningClass}">${escapeHtml(proposedAwardPrice || "--")}</span>
+        <span class="evaluation-proposed-award-price bf-money-display${warningClass}">${escapeHtml(proposedAwardPrice || "--")}</span>
         ${lowPriceDecision.html}
       </td>
     `;
@@ -155,9 +154,9 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
 
   if (rowReadOnly) {
     return `
-      <td><span>${escapeHtml(bidPrice || "--")}</span></td>
+      <td><span class="bf-money-display">${escapeHtml(bidPrice || "--")}</span></td>
       <td class="bf-s-5f326564a5"><span>${escapeHtml(discount)}</span></td>
-      <td><span>${escapeHtml(discountedPrice || "--")}</span></td>
+      <td><span class="bf-money-display">${escapeHtml(discountedPrice || "--")}</span></td>
       ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
       ${validityCell}
       <td><span>${escapeHtml(clarification || "--")}</span></td>
@@ -166,7 +165,7 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
     `;
   }
   return `
-    <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${escapeHtml(bidPrice)}" readonly placeholder="Ví dụ: 1.000.000.000"></td>
+    <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${escapeHtml(bidPrice)}" placeholder="Ví dụ: 1.000.000.000"></td>
     <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${escapeHtml(discount)}" readonly placeholder="0"></td>
     <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${escapeHtml(discountedPrice)}" readonly></td>
     ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
@@ -186,23 +185,23 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly, force
   if (!technicalLayout) {
     if (rowReadOnly) {
       return `
-        <td><span>${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : "--"}</span></td>
+        <td><span class="bf-money-display">${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : "--"}</span></td>
         <td class="bf-s-5f326564a5"><span>${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}</span></td>
-        <td><span>${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : "--"}</span></td>
+        <td><span class="bf-money-display">${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : "--"}</span></td>
         ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
         <td><span>${escapeHtml(bidValidity)}</span></td>
-        <td><span>${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : "--"}</span></td>
+        <td><span class="bf-money-display">${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : "--"}</span></td>
         <td><span>${escapeHtml(securityValidity)}</span></td>
         <td><span>${performanceTime}</span></td>
       `;
     }
     return `
-      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : ""}" readonly></td>
-      <td><input type="text" class="form-control bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}" readonly></td>
-      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : ""}" readonly></td>
+      <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : ""}"${forceDisabled ? " disabled" : ""}></td>
+      <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}" readonly></td>
+      <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : ""}" readonly></td>
       ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly, disabled: forceDisabled ? " disabled" : "" })}
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>
-      <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : ""}" readonly></td>
+      <td><input type="text" class="form-control bf-s-9eae6acf9f" data-bf-money="true" value="${bid.giaTriDamBao ? escapeHtml(model.formatVND(bid.giaTriDamBao)) : ""}" readonly></td>
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td>
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${performanceTime}" readonly></td>
     `;
@@ -214,8 +213,8 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly, force
   }
   const securityValue = bid.giaTriDamBao ? model.formatVND(bid.giaTriDamBao) : "";
   return rowReadOnly
-    ? `<td><span>${securityValue ? escapeHtml(securityValue) : "--"}</span></td><td><span>${escapeHtml(securityValidity)}</span></td><td><span>${escapeHtml(bidValidity)}</span></td>`
-    : `<td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValue)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>`;
+    ? `<td><span class="bf-money-display">${securityValue ? escapeHtml(securityValue) : "--"}</span></td><td><span>${escapeHtml(securityValidity)}</span></td><td><span>${escapeHtml(bidValidity)}</span></td>`
+    : `<td><input type="text" class="form-control bf-s-9eae6acf9f" data-bf-money="true" value="${escapeHtml(securityValue)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(securityValidity)}" readonly></td><td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>`;
 }
 
 function readOnlyEvaluationCells({ bid, presentation }) {
@@ -300,8 +299,7 @@ function bindDurationInputs(row) {
   });
 }
 
-function bindFinancialInputs({ row, model, presentation, onRankingChange }) {
-  if (!FINANCIAL_CASES.has(presentation.caseType)) return;
+function bindFinancialInputs({ row, model, onRankingChange }) {
   const bidPrice = row.querySelector(".mt-gia-du-thau");
   const discount = row.querySelector(".mt-ty-le-giam-gia");
   const security = row.querySelector(".mt-gia-tri-dam-bao");
@@ -488,7 +486,7 @@ function appendBidEvaluationRow({
   if (!rowReadOnly) {
     bindEvaluationInputs(row, onRankingChange);
     bindRequiredTechnicalScore(row, pkg);
-    bindFinancialInputs({ row, model, presentation, onRankingChange });
+    bindFinancialInputs({ row, model, onRankingChange });
     bindEvaluationPriceInputs({ row, pkg, bid, model, onRankingChange });
   }
   bindDurationInputs(row);

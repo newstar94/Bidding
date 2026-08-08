@@ -1,3 +1,38 @@
+const MONEY_CONTROL_SELECTORS = [
+  ".bf-money-control",
+  '[data-bf-money="true"]',
+  ".mt-format-vnd",
+  ".mt-gia-du-thau",
+  ".mt-gia-sau-giam-gia",
+  ".mt-gia-tri-dam-bao",
+  ".mt-dam-bao-du-thau",
+  ".mt-gia-xep-hang",
+  ".mt-gia-de-nghi-trung-thau",
+  ".op-gia-du-thau",
+  ".op-gia-sau-giam",
+  ".cdtrug-format-vnd",
+  ".row-gia-trung",
+  ".pl-price-input",
+  ".pl-baodam-input",
+  ".tc-price-input",
+  ".breakdown-value",
+  ".phathanh-pl-price-input",
+  ".phathanh-pl-baodam-input",
+  ".awarded-pl-gia",
+  ".input-gia",
+  '[data-bidder-goods-nonnegative-money]',
+  "#gt-gia",
+  "#gt-giatrungthau",
+  "#gt-giatribaomothau",
+  "#phathanh-giatribaomothau",
+  "#hd-giatri",
+  "#edit-pkg-price",
+];
+
+const MONEY_CONTROL_EXCLUSIONS = MONEY_CONTROL_SELECTORS
+  .map((selector) => `:not(${selector})`)
+  .join("");
+
 const TEXT_CONTROL_SELECTOR = [
   "input:not([type])",
   'input[type="text"]',
@@ -6,7 +41,7 @@ const TEXT_CONTROL_SELECTOR = [
   'input[type="url"]',
   'input[type="tel"]',
 ].map((selector) => (
-  `${selector}:not([data-bf-auto-scroll="off"]):not(.mt-ma-nha-thau)`
+  `${selector}:not([data-bf-auto-scroll="off"])${MONEY_CONTROL_EXCLUSIONS}:not(.mt-ma-nha-thau)`
 )).join(",");
 
 export const OVERFLOW_SCROLL_DEFAULTS = Object.freeze({
@@ -195,6 +230,7 @@ export function installOverflowTextAutoScroll(root = globalThis.document) {
     resizeObserver?.unobserve(control);
     intersectionObserver?.unobserve(control);
     activeControls.delete(control);
+    control.scrollLeft = 0;
     if (state.generatedTitle) control.removeAttribute("title");
     states.delete(control);
     stopAnimationWhenIdle();
@@ -276,7 +312,7 @@ export function installOverflowTextAutoScroll(root = globalThis.document) {
     }))
     : null;
   mutationObserver?.observe(root.documentElement || root, {
-    attributeFilter: ["data-bf-auto-scroll", "type", "value"],
+    attributeFilter: ["class", "data-bf-auto-scroll", "data-bf-money", "type", "value"],
     attributes: true,
     childList: true,
     subtree: true,

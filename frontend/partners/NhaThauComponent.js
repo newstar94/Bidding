@@ -9,6 +9,23 @@ import { renderTableEmpty, renderTableError, renderTableLoading } from "../share
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+
+export function resolveLatestNhaThauVersionId(model, versionId) {
+  const records = Array.isArray(model?.state?.nhathau) ? model.state.nhathau : [];
+  const selected = records.find((record) => String(record.id) === String(versionId));
+  if (!selected) return versionId;
+  const rootId = selected.rootId || selected.id;
+  const family = records.filter((record) => (record.rootId || record.id) === rootId);
+  const latest = family.find((record) => record.isLatest == 1)
+    || family.reduce((winner, record) => {
+      if (!winner) return record;
+      const winnerVersion = Number.parseInt(winner.phienBan || "0", 10) || 0;
+      const recordVersion = Number.parseInt(record.phienBan || "0", 10) || 0;
+      return recordVersion > winnerVersion ? record : winner;
+    }, null);
+  return latest?.id || versionId;
+}
+
 export async function renderNhaThauTable() {
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-nhathau").value.toLowerCase();
@@ -132,15 +149,26 @@ export async function renderNhaThauTable() {
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("nhathau-table", "nhathau");
 }
-export function showNhaThauDetails(id) {
+export function showNhaThauDetails(id, { skipDetailLoad = false } = {}) {
+  const resolvedId = resolveLatestNhaThauVersionId(this.model, id);
+  if (!skipDetailLoad && typeof this.ensureDetailRecordLoaded === "function") {
+    const pendingDetailLoad = this.ensureDetailRecordLoaded("nhathau-detail", resolvedId);
+    if (pendingDetailLoad) {
+      return pendingDetailLoad.then((record) => showNhaThauDetails.call(
+        this,
+        record?.id || resolvedId,
+        { skipDetailLoad: true },
+      ));
+    }
+  }
   const detailPane = document.getElementById("tab-nhathau-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
-    executeAppCommand("switchTab", "nhathau-detail", id);
+    executeAppCommand("switchTab", "nhathau-detail", resolvedId);
     return;
   }
-  const nt = this.model.state.nhathau.find((n) => n.id === id);
+  const nt = this.model.state.nhathau.find((n) => n.id === resolvedId);
   if (!nt) return;
-  this.renderNhaThauVersionDetails(id);
+  this.renderNhaThauVersionDetails(resolvedId);
 }
 export function renderNhaThauVersionDetails(versionId) {
   const nt = this.model.state.nhathau.find((n) => n.id === versionId);

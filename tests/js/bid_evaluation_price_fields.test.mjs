@@ -119,6 +119,9 @@ test("imports both price columns from a unified 1G1T evaluation workbook", async
 
 test("renders editable controls for both persisted prices", () => {
   const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
+  assert.doesNotMatch(source, /class="form-control mt-gia-du-thau[^>]*readonly/);
+  assert.match(source, /class="form-control mt-ty-le-giam-gia/);
+  assert.match(source, /class="form-control mt-gia-sau-giam-gia/);
   assert.match(source, /class="form-control mt-gia-xep-hang"/);
   assert.match(source, /class="form-control mt-gia-de-nghi-trung-thau/);
   assert.match(source, /class="mt-low-price-acceptance"/);
