@@ -162,6 +162,238 @@ test("compatibility full-table persistence succeeds after explicit read recovery
 });
 
 
+test("a table recovers locally after a read failure that follows successful hydration", async () => {
+  let readMode = "ready";
+  let goiThauReads = 0;
+  const storedPackage = { id: "stored-package", value: 1 };
+  const { model, writes } = createModel({
+    readTable(table) {
+      if (table !== "goithau") return [];
+      goiThauReads += 1;
+      if (readMode === "failed") throw readError("TRANSACTION_ABORTED");
+      return [storedPackage];
+    },
+  });
+
+  await model.hydrateMutationOutbox();
+  await model.loadStorageKeys(["GOITHAU"]);
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.deepEqual(model.state.goithau, [storedPackage]);
+
+  model.markRecordDirty("goithau", [{ id: "already-pending", value: 9 }]);
+  await model.flushMutationOutbox();
+  const pendingBeforeFailure = model.getMutationQueue();
+  readMode = "failed";
+  await assert.rejects(
+    withoutConsoleErrors(() => model.persistData("goithau", { throwOnError: true })),
+    { code: "TRANSACTION_ABORTED" },
+  );
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "failed");
+  assert.throws(() => model.assertStorageTablesWritable("goithau"), {
+    code: "TRANSACTION_ABORTED",
+  });
+  assert.deepEqual(writes, []);
+  assert.deepEqual(model.getMutationQueue(), pendingBeforeFailure);
+
+  readMode = "ready";
+  await model.loadStorageKeys(["GOITHAU"]);
+
+  assert.equal(goiThauReads, 3);
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.deepEqual(model.state.goithau, [storedPackage]);
+  assert.doesNotThrow(() => model.assertStorageTablesWritable("goithau"));
+  assert.deepEqual(model.getMutationQueue(), pendingBeforeFailure);
+  model.state.goithau = [{ id: "stored-package", value: 2 }];
+  await model.persistData("goithau", { throwOnError: true });
+  assert.deepEqual(writes, [{
+    records: [{ id: "stored-package", value: 2 }],
+    table: "goithau",
+  }]);
+});
+
+
+test("ensureAllDataLoaded retries only a table that failed after the cached load completed", async () => {
+  let goiThauFailed = false;
+  const reads = { goithau: 0, kehoach: 0 };
+  const { model } = createModel({
+    readTable(table) {
+      reads[table] += 1;
+      if (table === "goithau" && goiThauFailed) {
+        throw readError("OPERATION_FAILED");
+      }
+      return [{ id: `${table}-stored` }];
+    },
+  });
+
+  await model.ensureAllDataLoaded();
+  assert.deepEqual(reads, { goithau: 1, kehoach: 1 });
+  goiThauFailed = true;
+  await assert.rejects(
+    withoutConsoleErrors(() => model.trackDeletions("goithau")),
+    { code: "OPERATION_FAILED" },
+  );
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "failed");
+
+  goiThauFailed = false;
+  await model.ensureAllDataLoaded();
+
+  assert.deepEqual(reads, { goithau: 3, kehoach: 1 });
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.equal(model.getStorageHydrationStatus("kehoach").state, "ready");
+});
+
+
+test("a failed local retry preserves memory and keeps the table write-locked", async () => {
+  let shouldFail = false;
+  const storedPackage = { id: "stored-package", value: 1 };
+  const { model, writes } = createModel({
+    readTable(table) {
+      if (table !== "goithau") return [];
+      if (shouldFail) throw readError("PERMISSION_DENIED");
+      return [storedPackage];
+    },
+  });
+
+  await model.loadStorageKeys(["GOITHAU"]);
+  const preservedMemory = model.state.goithau;
+  shouldFail = true;
+  await assert.rejects(
+    withoutConsoleErrors(() => model.trackDeletions("goithau")),
+    { code: "PERMISSION_DENIED" },
+  );
+
+  await withoutConsoleErrors(() => model.loadStorageKeys(["GOITHAU"]));
+
+  assert.strictEqual(model.state.goithau, preservedMemory);
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "failed");
+  assert.throws(() => model.assertStorageTablesWritable("goithau"), {
+    code: "PERMISSION_DENIED",
+  });
+  assert.deepEqual(writes, []);
+});
+
+
+test("concurrent callers share one failed-table hydration retry", async () => {
+  let mode = "ready";
+  let reads = 0;
+  let releaseRetry;
+  const retryRead = new Promise((resolve) => { releaseRetry = resolve; });
+  const storedPackage = { id: "stored-package", value: 1 };
+  const { model, writes } = createModel({
+    readTable(table) {
+      if (table !== "goithau") return [];
+      reads += 1;
+      if (mode === "failed") throw readError("TRANSACTION_ABORTED");
+      if (mode === "retrying") return retryRead;
+      return [storedPackage];
+    },
+  });
+
+  await model.hydrateMutationOutbox();
+  await model.loadStorageKeys(["GOITHAU"]);
+  model.markRecordDirty("goithau", [{ id: "already-pending" }]);
+  await model.flushMutationOutbox();
+  const pendingBeforeRetry = model.getMutationQueue();
+  mode = "failed";
+  await assert.rejects(
+    withoutConsoleErrors(() => model.trackDeletions("goithau")),
+    { code: "TRANSACTION_ABORTED" },
+  );
+
+  mode = "retrying";
+  const retryA = model.loadStorageKeys(["GOITHAU"]);
+  const retryB = model.loadStorageKeys(["GOITHAU"]);
+  await Promise.resolve();
+
+  assert.equal(reads, 3);
+  releaseRetry([storedPackage]);
+  await Promise.all([retryA, retryB]);
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.deepEqual(model.state.goithau, [storedPackage]);
+  assert.deepEqual(model.getMutationQueue(), pendingBeforeRetry);
+  assert.deepEqual(writes, []);
+});
+
+
+test("workspace switch clears loaded, failed, and all-data hydration state", async () => {
+  let workspace = "a";
+  let workspaceAFailed = false;
+  const reads = { a: 0, b: 0 };
+  const { model } = createModel({
+    readTable(table) {
+      if (table !== "goithau") return [];
+      reads[workspace] += 1;
+      if (workspace === "a" && workspaceAFailed) {
+        throw readError("CORRUPTED_OR_INCOMPATIBLE");
+      }
+      return [{ id: `package-${workspace}` }];
+    },
+  });
+
+  await model.ensureAllDataLoaded();
+  workspaceAFailed = true;
+  await assert.rejects(
+    withoutConsoleErrors(() => model.trackDeletions("goithau")),
+    { code: "CORRUPTED_OR_INCOMPATIBLE" },
+  );
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "failed");
+
+  await model.deactivateWorkspace();
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "pending");
+  assert.equal(model.hasStorageReadFailures(), false);
+  workspace = "b";
+  model.workspaceScope = { key: "user:workspace-b", organizationId: "workspace-b" };
+  model.workspaceStorage = storage();
+
+  await model.ensureAllDataLoaded();
+
+  assert.deepEqual(reads, { a: 2, b: 1 });
+  assert.deepEqual(model.state.goithau, [{ id: "package-b" }]);
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.doesNotThrow(() => model.assertStorageTablesWritable("goithau"));
+});
+
+
+test("an in-flight recovery from workspace A cannot overwrite workspace B", async () => {
+  let mode = "a-ready";
+  let releaseWorkspaceARecovery;
+  const workspaceARecovery = new Promise((resolve) => {
+    releaseWorkspaceARecovery = resolve;
+  });
+  const { model } = createModel({
+    readTable(table) {
+      if (table !== "goithau") return [];
+      if (mode === "a-failed") throw readError("OPERATION_FAILED");
+      if (mode === "a-retrying") return workspaceARecovery;
+      if (mode === "b-ready") return [{ id: "package-b" }];
+      return [{ id: "package-a" }];
+    },
+  });
+
+  await model.loadStorageKeys(["GOITHAU"]);
+  mode = "a-failed";
+  await assert.rejects(
+    withoutConsoleErrors(() => model.trackDeletions("goithau")),
+    { code: "OPERATION_FAILED" },
+  );
+  mode = "a-retrying";
+  const staleWorkspaceARetry = model.loadStorageKeys(["GOITHAU"]);
+  await Promise.resolve();
+
+  await model.deactivateWorkspace();
+  model.workspaceScope = { key: "user:workspace-b", organizationId: "workspace-b" };
+  model.workspaceStorage = storage();
+  mode = "b-ready";
+  await model.loadStorageKeys(["GOITHAU"]);
+  releaseWorkspaceARecovery([{ id: "package-a-stale" }]);
+  await staleWorkspaceARetry;
+
+  assert.deepEqual(model.state.goithau, [{ id: "package-b" }]);
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.equal(model.hasStorageReadFailures(), false);
+});
+
+
 test("IndexedDB request, permission, and corruption failures preserve memory and stay retryable", async (t) => {
   for (const code of ["OPERATION_FAILED", "PERMISSION_DENIED", "CORRUPTED_OR_INCOMPATIBLE"]) {
     await t.test(code, async () => {

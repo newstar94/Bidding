@@ -102,6 +102,7 @@ export class BiddingModel {
     };
     this.pageSize = 10;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
+    this._storageLoadPromises = /* @__PURE__ */ new Map();
     this._storageReadFailures = /* @__PURE__ */ new Map();
     this._storageHydrationListeners = /* @__PURE__ */ new Set();
     this._allDataLoadPromise = null;
@@ -201,6 +202,7 @@ export class BiddingModel {
     this.useServerSidePagination = false;
     this._hasPersistedWorkspaceData = false;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
+    this._storageLoadPromises = /* @__PURE__ */ new Map();
     this._storageReadFailures = /* @__PURE__ */ new Map();
     this._allDataLoadPromise = null;
     this._remainingHydrationScheduled = false;
@@ -240,38 +242,52 @@ export class BiddingModel {
   }
   async loadStorageKeys(keysToLoad) {
     const requested = new Set(keysToLoad || Object.keys(this.STORAGE_KEYS));
-    const loadPromises = Object.keys(this.STORAGE_KEYS).map(async (key) => {
+    const loadPromises = Object.keys(this.STORAGE_KEYS).map((key) => {
       if (!requested.has(key) || this._loadedStorageKeys.has(key)) return;
       if (key === "THEME" || key === "ACTIVEROLE" || key === "ACTIVEUSER") return;
-      const lowKey = key.toLowerCase();
-      try {
-        let stored;
-        if (this.db.stores.includes(lowKey)) {
-          stored = await this.db.getTableData(lowKey);
-        } else {
-          stored = await this.db.get(this.STORAGE_KEYS[key]);
+      const inFlight = this._storageLoadPromises.get(key);
+      if (inFlight) return inFlight;
+      const workspaceEpoch = this._workspaceEpoch;
+      let loadPromise;
+      loadPromise = (async () => {
+        const lowKey = key.toLowerCase();
+        try {
+          let stored;
+          if (this.db.stores.includes(lowKey)) {
+            stored = await this.db.getTableData(lowKey);
+          } else {
+            stored = await this.db.get(this.STORAGE_KEYS[key]);
+          }
+          if (this._workspaceEpoch !== workspaceEpoch) return;
+          this.state[lowKey] = stored == null
+            ? []
+            : Array.isArray(stored)
+              ? this.normalizeRecords(lowKey, stored)
+              : stored;
+          const recovered = this._storageReadFailures.delete(lowKey);
+          this._loadedStorageKeys.add(key);
+          this._notifyStorageHydration({
+            code: null,
+            recovered,
+            state: "ready",
+            table: lowKey,
+          });
+        } catch (error) {
+          if (this._workspaceEpoch !== workspaceEpoch) return;
+          const failure = this._recordStorageReadFailure(lowKey, error);
+          console.error("Failed to read local workspace table", {
+            code: failure.code,
+            operation: "read",
+            table: lowKey,
+          });
         }
-        this.state[lowKey] = stored == null
-          ? []
-          : Array.isArray(stored)
-            ? this.normalizeRecords(lowKey, stored)
-            : stored;
-        const recovered = this._storageReadFailures.delete(lowKey);
-        this._loadedStorageKeys.add(key);
-        this._notifyStorageHydration({
-          code: null,
-          recovered,
-          state: "ready",
-          table: lowKey,
-        });
-      } catch (error) {
-        const failure = this._recordStorageReadFailure(lowKey, error);
-        console.error("Failed to read local workspace table", {
-          code: failure.code,
-          operation: "read",
-          table: lowKey,
-        });
-      }
+      })().finally(() => {
+        if (this._storageLoadPromises.get(key) === loadPromise) {
+          this._storageLoadPromises.delete(key);
+        }
+      });
+      this._storageLoadPromises.set(key, loadPromise);
+      return loadPromise;
     });
     await Promise.all(loadPromises);
   }
@@ -284,6 +300,11 @@ export class BiddingModel {
           operation: "read",
           store: table,
         });
+    const storageKey = Object.keys(this.STORAGE_KEYS).find(
+      (key) => key.toLowerCase() === String(table || "").toLowerCase(),
+    );
+    if (storageKey) this._loadedStorageKeys.delete(storageKey);
+    this._allDataLoadPromise = null;
     this._storageReadFailures.set(table, failure);
     this._notifyStorageHydration({ code, recovered: false, state: "failed", table });
     return failure;
