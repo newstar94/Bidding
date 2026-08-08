@@ -686,6 +686,12 @@ try {
     if (["INPUT", "SELECT", "TEXTAREA"].includes(tagName)) {
       throw new Error("Automatic ranking must be display-only");
     }
+    const rankingElement = await automaticRanking.elementHandle();
+    await page.waitForFunction(
+      (element) => String(element?.textContent || "").includes("Xếp hạng"),
+      rankingElement,
+      { timeout: 5_000 },
+    );
     if (!(await automaticRanking.innerText()).includes("Xếp hạng")) {
       throw new Error("Automatic ranking was not calculated");
     }
@@ -752,7 +758,20 @@ try {
     await row.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
   }
   await page.locator("#btn-mothau-save").click();
-  await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
+  await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => ({
+      dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
+      dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent || "",
+      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
+      rows: [...document.querySelectorAll("#mothau-table-tbody tr")].map((row) => ({
+        lot: row.querySelector(".mt-ma-phan-lo")?.value || "",
+        contractorCode: row.querySelector(".mt-ma-nha-thau")?.value || "",
+        contractorName: row.querySelector(".mt-ten-nha-thau")?.value || "",
+        price: row.querySelector(".mt-gia-du-thau")?.value || "",
+      })),
+    }));
+    throw new Error(`Lot opening did not advance: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
+  });
   mark("lot-opening-saved", { lots: 2 });
 
   const evaluateCurrentLot = async ({ lotCode, reportSuffix, price }) => {

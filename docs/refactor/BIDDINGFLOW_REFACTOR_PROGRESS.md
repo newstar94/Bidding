@@ -14,15 +14,16 @@ Phạm vi chỉ gồm sửa lỗi, refactor, giảm nợ kỹ thuật, tối ưu
 
 Lệnh: `npm run check`
 
-Kết quả ngày 2026-08-08: đạt.
+Kết quả cuối ngày 2026-08-08: đạt.
 
-- Python tests: đạt; tổng coverage 55%, ngưỡng repository 28%.
-- JavaScript tests: 399/399 đạt.
+- Python tests: 615/615 đạt; combined line/branch coverage 45%, ngưỡng repository 28%.
+- Critical coverage ratchet: đạt cho 15 module sync/WebSocket/delta/document/versioning/conflict trọng yếu.
+- JavaScript tests: 475/475 đạt.
 - Trusted Types/CSP-related lint: đạt.
 - Vendor/SheetJS/archive security audit: đạt.
 - Secure Vite build: đạt, 46 bundle đã được kiểm tra.
 - Foreign-key audit: 104 khóa ngoại, không thiếu index.
-- Production package smoke check: đạt, 377 runtime files.
+- Production package smoke check: đạt, 383 runtime files.
 - SBOM: đã sinh thành công.
 
 Debt baseline:
@@ -46,23 +47,26 @@ Lệnh: `npm run test:performance`
 
 Kết quả: đạt.
 
-| Chỉ số | Baseline | Giới hạn |
+| Chỉ số | Kết quả cuối | Giới hạn |
 |---|---:|---:|
-| Cold median | 348 ms | — |
-| Cold p95 | 405 ms | 800 ms |
-| Warm median | 186 ms | — |
-| Warm p95 | 201 ms | 325 ms |
-| Longest task | 0 ms | 100 ms |
+| Cold median | 320 ms | — |
+| Cold p95 | 365 ms | 800 ms |
+| Warm median | 118 ms | — |
+| Warm p95 | 130 ms | 325 ms |
+| Longest task | 71 ms | 100 ms |
 
 Artifact: `data/logs/startup-performance.json`.
 
-### E2E baseline
+### E2E verification
 
 | Gate | Trạng thái | Ghi chú |
 |---|---|---|
 | Auth shell | Đạt | Loader, profile menu và modal owner hoạt động. |
-| Auth/roles matrix | Chưa xác minh | Server dev hiện tại bật Turnstile; bước đăng ký bị chặn đúng với `BOT_CHALLENGE_REQUIRED`. Cần chạy lại trên process E2E riêng với Turnstile test/disabled, không thay đổi security production. |
-| CRUD/multi-assignee/JV/bidder goods/low-price/offline/pairwise/lifecycle/UI quality | Chờ chạy | Không coi baseline tổng thể là hoàn tất cho đến khi các gate này có kết quả. |
+| Auth/roles matrix | Đạt | Chạy trong server E2E riêng, không thay đổi cấu hình Turnstile production. |
+| CRUD/multi-assignee/JV/low-price/offline/pairwise | Đạt | Domain matrix chạy cô lập trên PostgreSQL. |
+| Full lifecycle | Đạt | Gồm 1G1T, 1G2T, phân lô nhiều đợt, hủy/đấu lại, hợp đồng và version copy-on-write. |
+| Bidder goods | Đạt | 1G1T/1G2T, có/không phân lô, reload, PostgreSQL và browser context thứ hai. |
+| UI quality | Đạt | 320/375/414/768/1280 px, không horizontal overflow, keyboard/validation/accessibility shell đạt. |
 
 ## Dependency map tối thiểu
 
@@ -83,7 +87,7 @@ BiddingController / feature workflows
 - `WorkspaceMutationOutbox.js`: mutation generation, acknowledgement/rejection và local deletion projection.
 - `WorkspaceMutationOutboxStore.js`: envelope/revision, ghi local storage + IndexedDB theo thứ tự.
 - `WorkspaceDataStore.js`: transaction/state notification, hiện gọi `MutationService.persistAndSync`.
-- `BiddingControllerSync.js`: push/pull/delta/conflict/WebSocket/UI refresh; đang mang nhiều trách nhiệm.
+- `BiddingControllerSync.js`: facade tương thích; push/pull/delta/conflict/WebSocket/UI refresh đã được chuyển sang các service chuyên trách ở Phase B5.
 - `backend/sync/service.py`: orchestration sync phía server, dùng validator/writer/repository/deletion/audit/notification.
 
 ### Evaluation
@@ -105,7 +109,7 @@ planAggregateSnapshot
   -> lots/goods/openings/JV/evaluation/assignments/timeline child records
 ```
 
-Hiện authority tạo snapshot chính thức vẫn có phần nằm phía client và phải tiếp tục audit cold-cache/full-hydration trước khi chuyển dần về backend transaction.
+Official plan/package version creation nay đi qua backend transaction. Client snapshot chỉ còn là compatibility fallback cho server legacy không có endpoint; cold-cache correctness không còn phụ thuộc browser hydrate.
 
 ## Phase A — Correctness
 
@@ -143,9 +147,7 @@ Migration/backward compatibility:
 - Không đổi payload hoặc public method signatures.
 - Caller có semantics mạnh hơn: `await` nay đồng nghĩa transaction đã commit.
 
-Rủi ro còn lại:
-
-- Cần chạy lại full suite/E2E sau khi hoàn tất nhóm Phase A.
+Xác minh cuối: full unit/integration/E2E đạt; abort/error semantics vẫn được giữ bằng regression test riêng cho mọi write API.
 
 ### A2. WorkspaceDataStore/outbox/offline state machine — hoàn thành
 
@@ -184,8 +186,8 @@ Migration/backward compatibility:
 
 Rủi ro còn lại:
 
-- Transaction vẫn clone full các bảng liên quan; chuyển sang patch-based thuộc Phase B.
-- Cần chạy full suite/E2E offline sau khi hoàn tất toàn Phase A.
+- Full-table transaction vẫn được giữ cho legacy callers; hot paths đã chuyển sang patch-based ở Phase B.
+- Offline/reconnect E2E cuối đã đạt, gồm reload với pending outbox.
 
 ### A3. Canonical evaluation domain — hoàn thành
 
@@ -252,7 +254,7 @@ Tests/gates:
 - Backend AI/contractor-risk regression: 28/28 đạt.
 - JS fixtures/sync/version regression: 71/71 đạt.
 
-## Phase B–D
+## Phase B — Architecture
 
 ### B1–B3. Mutation boundary, explicit persistence, patch transaction — hoàn thành
 
@@ -288,8 +290,186 @@ Microbenchmark `node scripts/benchmark_explicit_persistence.mjs` (adapter CPU, k
 
 Rủi ro còn lại: các feature legacy chưa migrate vẫn dùng `persistData/trackDeletions`; compatibility path chưa xóa trong phase này.
 
-### B4–B6 — đang thực hiện
+### B4. Server-authoritative plan/package version transaction — hoàn thành
 
-- Server-side official plan/package version transaction.
-- Incremental sync decomposition.
-- Runtime prototype/service migration.
+- Thêm endpoint `/api/versioning/aggregate` và các module `backend/versioning/{service,command,repository,aggregate_snapshot}.py`.
+- Client gửi `sourceId`, `expectedRowVersion`, thay đổi được phép và `clientMutationId`; server kiểm tra tenant/RBAC, khóa aggregate bằng `FOR UPDATE`, kiểm tra optimistic version, clone/remap children, ghi audit/sync và commit trong một transaction.
+- Plan snapshot tải package, lots, goods, bidder goods, opening/JV, assignments, evaluation metadata và owned children trực tiếp từ server; không phụ thuộc pagination/cold browser cache.
+- Version command idempotent theo mutation id; conflict không force overwrite; historical records và `rootId` được giữ nguyên.
+- Alias plan legacy `diadiemQuymo`/`thongtinKhac` được migrate idempotent sang `diaDiemQuyMo`/`thongTinKhac`; command chỉ phát canonical payload.
+- Sửa regression cuối: repository versioning hydrate và khóa `goi_thau_chuyen_gia`, nhờ đó plan snapshot giữ nguyên Tổ chuyên gia/Tổ thẩm định. Sửa thêm race tạo gói đấu thầu lại để submit chờ inheritance hoàn tất và không bị completion cũ xóa pending selection mới.
+
+Tests:
+
+- 11/11 targeted backend aggregate version tests đạt.
+- Package/plan version JS regressions đạt, gồm cold cache, child remap, date canonicalization, rebid ancestry và field aliases.
+- PostgreSQL full lifecycle đạt tới `plan-version-snapshot-inherited` và `historical-plan-package-frozen`.
+
+Migration/backward compatibility:
+
+- Client chỉ fallback snapshot cũ khi endpoint trả đúng nhóm status legacy `404/405/501`.
+- Legacy versions, labels, metadata và root lineage không bị rewrite hàng loạt.
+- Canonical field thắng nếu record đồng thời chứa alias và canonical key.
+
+### B5. Decompose `BiddingControllerSync` — hoàn thành incremental
+
+`BiddingControllerSync.js` được thu gọn thành facade điều phối; trách nhiệm đã tách thành:
+
+```text
+SyncCoordinator
+SyncPushService
+SyncPullService
+ConflictResolver
+WebSocketSyncClient
+WorkspaceEventBridge
+SyncPresenter
+SyncRenderCoordinator
+SyncWorkspaceContext
+```
+
+- Push/pull, delta paging, conflict projection, WebSocket lifecycle, workspace event, UI status và render invalidation có seam riêng.
+- `db_changed` được coalesce; WebSocket healthy dùng event-driven, chỉ polling khi channel unavailable.
+- BFCache đóng/reconnect WebSocket đúng lifecycle; polling dừng khi realtime khỏe.
+- Startup không replay mutation rỗng/trùng và không báo synced khi outbox còn pending.
+
+Tests gồm sync conflict recovery, startup reconciliation, delta paging, sync status và WebSocket polling fallback; full JS suite đạt.
+
+### B6. Feature service migration — hoàn thành incremental
+
+- Thêm `FeatureServices.js`; controller có các namespace lazy `plans`, `packages`, `evaluation`, `contracts`, `partners`.
+- Registry/prototype legacy vẫn được giữ làm compatibility bridge, nhưng feature mới trong phạm vi refactor dùng service seam rõ ràng.
+- Module graph guard kiểm tra static imports/exports; kết quả 256 modules, 0 static import cycle.
+
+## Phase C — Technical debt, CSS và coverage
+
+### C1. Debt repayment — hoàn thành theo ratchet
+
+| Metric | Baseline đầu việc | Kết quả cuối |
+|---|---:|---:|
+| `direct_state_writes` | 91 | 85 |
+| `important` | 421 | 421 |
+| `inferred_actions` | 6 | 6 |
+| `raw_colors` | 842 | 842 |
+| `runtime_styles` | 545 | 541 |
+| Python `BLE001` | 151 | 147 |
+| Python `F401` | 60 | 0 |
+| Python `F841` | 13 | 0 |
+| Python `S110` | 16 | 14 |
+| Python `S608` | 129 | 129 |
+
+- Không tăng limit để làm gate xanh.
+- Runtime style/CSS touched paths dùng semantic class/token; `!important` và raw colors không tăng.
+- Mojibake scanner, frontend module guard và Python debt scanner đều nằm trong `check:quality`.
+
+### C2. Coverage ratchet — hoàn thành
+
+- Thêm threshold cho aggregate version snapshot/command/repository/service bên cạnh sync, WebSocket, delta, conflict và document worker.
+- Full gate: 615 Python tests và 475 JavaScript tests đạt.
+- Combined coverage 44.86%; statement coverage 48.56%; branch coverage 34.87%; repository floor giữ nguyên 28%.
+- 15 critical modules đều đạt line/branch threshold riêng, không hạ threshold cũ.
+
+## Phase D — Performance và UX nền tảng
+
+### D1. Entity indexes — hoàn thành
+
+- `EntityIndexes` cung cấp index `byId`, `byRootId`, `byPlanId`, `byPackageId`, `byOpeningId`, `byContractorId`, `byLotId` trên source arrays, không tạo source of truth thứ hai.
+- Paginated replacement invalidates index đúng lúc; sửa regression stale package làm mất metadata đánh giá sau reload.
+- Benchmark 10.000 records/2.000 lookups: linear median 94.632 ms, indexed median 0.190 ms, nhanh hơn 499.1 lần.
+
+### D2. Existing virtualization — đã profile và giữ kiến trúc phù hợp
+
+- Không thêm framework mới. Profile dùng utility `virtualTable` hiện có trên package goods, bidder goods, detailed evaluation, timeline và contractors.
+- 1.000 rows: virtual render median 2.6–7.2 ms, chỉ mount 22–24 rows; full render median 87.7–279.9 ms.
+- Bidder goods đã có pagination và detailed evaluation đã có incremental chunking nên không thay bằng virtualization gây mất mounted editable state; contractors tiếp tục dùng shared virtual table. Kết quả được ghi tại `data/logs/table-virtualization-benchmark.json`.
+
+### D3. Excel worker — hoàn thành theo kết quả profiling
+
+| File | Main-thread median | Main-thread longest task | Worker median | Worker longest task |
+|---:|---:|---:|---:|---:|
+| 1 MB | 38.8 ms | 76 ms | 133.2 ms | 0 ms |
+| 5 MB | 226.9 ms | 229 ms | 313.6 ms | 0 ms |
+| 10 MB | 518.9 ms | 524 ms | 647.6 ms | 0 ms |
+
+- 5/10 MB tạo long task rõ ràng nên parsing/validation nặng được chuyển sang Web Worker; giữ nguyên reader/business mapping, row order và stale-job cancellation.
+- Worker URL và `importScripts` SheetJS đều đi qua Trusted Types policy hẹp, chỉ chấp nhận first-party hashed asset hoặc đúng vendored SheetJS URL.
+- Vite bắt buộc emit worker thành same-origin `/dist/assets/excelParseWorker-*.js`; secure artifact guard từ chối mọi `data:text/javascript` worker bị CSP chặn.
+- Bidder-goods E2E xác minh worker trong browser với CSP thật, reload, PostgreSQL và context thứ hai.
+
+Artifact: `data/logs/excel-parse-benchmark.json`.
+
+### D4. WebSocket-first notification — hoàn thành
+
+- Realtime healthy: event-driven và coalesce render/pull.
+- Realtime unavailable: polling fallback có backoff; tự dừng khi socket phục hồi.
+- Không tạo notification system mới.
+
+### D5. Obfuscation A/B — hoàn thành
+
+| Variant | Effective build | JS bytes | Gzip bytes | Cold median | Warm median |
+|---|---:|---:|---:|---:|---:|
+| Dead-code injection ON | 14.419 s | 2,984,523 | 784,619 | 61.1 ms | 62.9 ms |
+| OFF | 11.152 s | 2,940,278 | 769,762 | 59.8 ms | 60.1 ms |
+
+Dead-code injection tăng build khoảng 29%, JS khoảng 1.5% và gzip khoảng 1.9%; startup chênh nhỏ. Secure build hiện tại vẫn giữ cấu hình đã review; benchmark không thay thế CSP/RBAC/secrets. Artifact: `data/logs/obfuscation-benchmark.json`.
+
+### D6. UX nền tảng — hoàn thành
+
+- Save/sync status dùng state machine thật: server saved, local pending, syncing, offline, conflict, validation rejected và transport error.
+- Detailed evaluation draft autosave có debounce, dirty state, timestamp, stale cancellation, restore và pending sync; không autosave thành completed.
+- Validation summary hiển thị số lỗi, click/focus field và giữ inline validation.
+- Detailed evaluation giữ sticky context package/lot/contractor/round/method/status trên bảng dài.
+
+## Regression fixes phát hiện trong E2E cuối
+
+- Invalidate entity index sau paginated replacement để không đọc stale package/metadata.
+- Tách identity thành viên liên danh khỏi contractor identity; backend migrate legacy collision sang UUID5 ổn định theo parent + contractor.
+- Coalesce lot-scope rerender qua microtask sau khi commit scope để không thay DOM giữa native checkbox activation.
+- Plan aggregate chỉ phát canonical field names.
+- Server plan snapshot giữ expert/appraisal relations trong transaction.
+- Package rebid submit chờ inheritance async hoàn tất.
+- Excel worker và dependency `importScripts` tương thích CSP Trusted Types.
+- Lifecycle ranking assertion chờ frame tính toán thực thay vì kiểm tra đồng bộ trước `requestAnimationFrame`.
+
+## Final verification
+
+### E2E
+
+| Suite | Kết quả |
+|---|---|
+| Auth/roles | Đạt |
+| Offline/reconnect/outbox | Đạt |
+| Multi-assignee/activity | Đạt |
+| Joint venture + low-price + export + multi-lot | Đạt |
+| Low-price conflict | Đạt |
+| CRUD modules | Đạt |
+| Package pairwise (15 cases) | Đạt |
+| Full lifecycle | Đạt |
+| Bidder goods | Đạt |
+| UI quality responsive/accessibility | Đạt |
+| Startup performance | Đạt |
+
+### Quality, security và package
+
+- `npm run check`: đạt.
+- `npm run test:security-deploy`: 73/73 đạt; Turnstile pass/fail/interactive/slow/script-failure/auto-pending đều đạt.
+- `npm audit --omit=dev`: 0 vulnerability.
+- `pip-audit -r requirements.txt --no-deps --disable-pip`: không có vulnerability đã biết trên lock file pin/hash.
+- Trusted Types, DOMPurify, CSP, vendor SheetJS và Excel archive guard: đạt.
+- Secure Vite build: 260 modules transformed, 46 obfuscated JS bundles và worker asset same-origin được xác minh.
+- Foreign-key index audit: 104 foreign keys, không thiếu index.
+- Production package extracted-runtime smoke: 383 files, đạt.
+- CycloneDX SBOM: đã sinh trong `release/`.
+
+## Migration và rủi ro còn lại
+
+- IndexedDB schema, outbox envelope, historical versions, rootId và template config không đổi; migration alias/metadata/JV idempotent.
+- Full-table `persistData/transaction` và prototype registry vẫn tồn tại cho legacy callers, nhưng hot paths đã có explicit mutation/service seams. Nên tiếp tục giảm theo ratchet ở sprint sau, không xóa big-bang.
+- CSS debt tuyệt đối còn cao; gate ngăn tăng và phase này chỉ giảm các path có bằng chứng, tránh visual regression diện rộng.
+- Benchmark phụ thuộc máy/chromium hiện tại; giữ artifacts để so sánh cùng môi trường CI về sau.
+- Theo dõi production metrics cho sync conflict, worker failure/fallback và WebSocket reconnect sau rollout.
+
+Không có product feature mới nào được triển khai trong nhiệm vụ này.
+
+## Kết luận
+
+Nền tảng đã sẵn sàng cho giai đoạn chọn tính năng mới.

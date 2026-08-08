@@ -28,6 +28,18 @@ for (const transformed of marker.transformedFiles) {
   assert.equal(Buffer.byteLength(code), transformed.outputBytes);
   assert.ok(transformed.outputBytes > transformed.inputBytes, `${transformed.file} contains no measurable injected code.`);
   assert.match(code.slice(0, 4096), /_0x[0-9a-f]{4,}/i, `${transformed.file} does not look obfuscated.`);
+  assert.doesNotMatch(
+    code,
+    /data:text\/javascript(?:;|,)/i,
+    `${transformed.file} embeds a worker script that CSP would reject.`,
+  );
 }
+
+const assetNames = fs.readdirSync(path.join(distRoot, "assets"));
+const excelWorkerAsset = assetNames.find((name) => /^excelParseWorker-[A-Za-z0-9_-]+\.js$/.test(name));
+assert.ok(excelWorkerAsset, "Secure build must emit the Excel parser worker as a same-origin asset.");
+const excelWorkerSource = fs.readFileSync(path.join(distRoot, "assets", excelWorkerAsset), "utf8");
+assert.match(excelWorkerSource, /importScripts\(/, "Excel worker asset lost its vendored parser import.");
+assert.match(excelWorkerSource, /trustedTypes/, "Excel worker asset must enforce its TrustedScriptURL policy.");
 
 console.log(`Secure build verification passed (${marker.transformedFiles.length} obfuscated bundle).`);

@@ -76,6 +76,7 @@ for (const payload of safeHtml) {
 for (const url of [
   "/frontend/app.js",
   "/vendor/flatpickr/flatpickr.min.js?v=1.0",
+  "/dist/assets/excelParseWorker-C3f9_a1.js",
   "/service-worker.js?build=app-12345678.js",
   "https://accounts.google.com/gsi/client"
 ]) {

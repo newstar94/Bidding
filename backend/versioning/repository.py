@@ -23,6 +23,42 @@ class AggregateVersionRepository:
     def _mapped_rows(self, table_name, rows):
         return [self.map_record(table_name, dict(row)) for row in rows]
 
+    def _attach_package_expert_relations(self, organization_id, packages):
+        for package in packages:
+            package["toChuyenGia"] = []
+            package["toThamDinh"] = []
+        package_ids = [package["id"] for package in packages if package.get("id")]
+        if not package_ids:
+            return
+        placeholders = ", ".join("?" for _ in package_ids)
+        rows = self.cursor.execute(
+            f"""SELECT goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
+                FROM goi_thau_chuyen_gia
+                WHERE organization_id = ?
+                  AND goi_thau_id IN ({placeholders})
+                ORDER BY goi_thau_id, loai, chuyen_gia_id
+                FOR UPDATE""",  # noqa: S608 - placeholders only
+            (organization_id, *package_ids),
+        ).fetchall()
+        packages_by_id = {str(package["id"]): package for package in packages}
+        for raw_row in rows:
+            row = dict(raw_row)
+            package = packages_by_id.get(str(row.get("goi_thau_id")))
+            if not package:
+                continue
+            relation = {
+                "chuyenGiaId": row.get("chuyen_gia_id"),
+                "id": row.get("chuyen_gia_id"),
+                "chucVu": row.get("chuc_vu") or "Tổ viên",
+                "congViec": row.get("cong_viec") or "",
+            }
+            target = (
+                "toChuyenGia"
+                if row.get("loai") == "chuyen_gia"
+                else "toThamDinh"
+            )
+            package[target].append(relation)
+
     def _load_package_relations(self, organization_id, package_ids):
         state = {
             "goithauhanghoa": [],
@@ -86,6 +122,7 @@ class AggregateVersionRepository:
             packages,
             organization_id=organization_id,
         )
+        self._attach_package_expert_relations(organization_id, packages)
         state = {"kehoach": [], "goithau": packages}
         state.update(
             self._load_package_relations(
@@ -130,6 +167,7 @@ class AggregateVersionRepository:
             packages,
             organization_id=organization_id,
         )
+        self._attach_package_expert_relations(organization_id, packages)
         state = {"kehoach": plans, "goithau": packages}
         state.update(
             self._load_package_relations(

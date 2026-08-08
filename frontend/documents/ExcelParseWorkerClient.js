@@ -1,3 +1,6 @@
+import { trustedScriptURL } from "../shared/trustedTypes.js";
+
+
 function parserError(message, code) {
   return Object.assign(new Error(message), { code });
 }
@@ -6,7 +9,11 @@ function defaultWorkerFactory() {
   if (typeof globalThis.Worker !== "function") {
     throw parserError("Excel worker is unavailable.", "WORKER_UNAVAILABLE");
   }
-  return new globalThis.Worker(new URL("./excelParseWorker.js", import.meta.url));
+  const resolved = new URL("./excelParseWorker.js?no-inline", import.meta.url);
+  const scriptPath = resolved.protocol === "file:"
+    ? "/frontend/documents/excelParseWorker.js"
+    : `${resolved.pathname}${resolved.search}`;
+  return new globalThis.Worker(trustedScriptURL(scriptPath));
 }
 
 export class ExcelParseWorkerClient {
@@ -56,9 +63,14 @@ export class ExcelParseWorkerClient {
           ),
         );
       };
-      worker.onerror = () => finish(
+      worker.onerror = (event) => finish(
         reject,
-        parserError("Excel worker gặp lỗi khi xử lý tệp.", "EXCEL_PARSE_FAILED"),
+        parserError(
+          event?.message
+            ? `Excel worker gặp lỗi khi xử lý tệp: ${event.message}`
+            : "Excel worker gặp lỗi khi xử lý tệp.",
+          "EXCEL_PARSE_FAILED",
+        ),
       );
       if (signal?.aborted) {
         onAbort();

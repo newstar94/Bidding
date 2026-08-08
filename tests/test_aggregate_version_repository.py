@@ -24,6 +24,23 @@ class ScriptedCursor:
             self.rows = [{"id": "opening-1", "goi_thau_id": "package-1"}]
         elif "FROM hang_hoa_du_thau_nha_thau" in normalized:
             self.rows = [{"id": "bidder-goods-1", "goi_thau_id": "package-1"}]
+        elif "FROM goi_thau_chuyen_gia" in normalized:
+            self.rows = [
+                {
+                    "goi_thau_id": "package-1",
+                    "chuyen_gia_id": "expert-1",
+                    "loai": "chuyen_gia",
+                    "chuc_vu": "Tổ trưởng",
+                    "cong_viec": "Lập HSMT",
+                },
+                {
+                    "goi_thau_id": "package-1",
+                    "chuyen_gia_id": "expert-2",
+                    "loai": "tham_dinh",
+                    "chuc_vu": "Tổ trưởng",
+                    "cong_viec": "Thẩm định HSMT",
+                },
+            ]
         elif "FROM phan_cong_nhan_su" in normalized and "'kehoach'" in normalized:
             self.rows = [{
                 "id": "plan-assignment-1",
@@ -83,6 +100,18 @@ def test_package_repository_loads_the_complete_server_aggregate_in_tenant_scope(
         "id": "package-1",
         "keHoachId": "plan-1",
         "packageChildrenLoaded": True,
+        "toChuyenGia": [{
+            "chuyenGiaId": "expert-1",
+            "id": "expert-1",
+            "chucVu": "Tổ trưởng",
+            "congViec": "Lập HSMT",
+        }],
+        "toThamDinh": [{
+            "chuyenGiaId": "expert-2",
+            "id": "expert-2",
+            "chucVu": "Tổ trưởng",
+            "congViec": "Thẩm định HSMT",
+        }],
     }]
     assert state["goithauhanghoa"][0]["goiThauId"] == "package-1"
     assert state["thongtinmothau"][0]["openingChildrenLoaded"] is True
@@ -107,6 +136,9 @@ def test_plan_repository_loads_latest_package_aggregates_from_server_state():
         "package-2",
     ]
     assert all(package["packageChildrenLoaded"] for package in state["goithau"])
+    assert state["goithau"][0]["toChuyenGia"][0]["chucVu"] == "Tổ trưởng"
+    assert state["goithau"][0]["toThamDinh"][0]["chucVu"] == "Tổ trưởng"
+    assert state["goithau"][1]["toChuyenGia"] == []
     assert any(
         assignment["type"] == "kehoach"
         and assignment["targetId"] == "plan-1"

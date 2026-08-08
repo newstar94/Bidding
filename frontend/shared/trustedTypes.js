@@ -120,6 +120,7 @@ function unwrapSanitizedContext(source, tagName) {
 export function assertSafeScriptURL(value) {
   const source = String(value ?? "");
   if (/^\/(?:frontend|vendor)\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+$/.test(source)) return source;
+  if (/^\/dist\/assets\/[A-Za-z0-9._-]+\.js(?:\?[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*)?$/.test(source)) return source;
   if (/^\/service-worker\.js(?:\?[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*)?$/.test(source)) return source;
   if (source === "https://accounts.google.com/gsi/client") return source;
   if (source === "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit") return source;

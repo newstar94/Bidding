@@ -388,7 +388,17 @@ async function importAndPersist(page, packageData, workflowTab) {
   const fileInput = page.locator("#bidder-goods-excel-input");
   await fileInput.setInputFiles(packageData.filePath);
   const preview = page.locator(".bidder-goods-preview");
-  await preview.waitFor({ state: "visible", timeout: 30_000 });
+  await preview.waitFor({ state: "visible", timeout: 30_000 }).catch(async (error) => {
+    const diagnostics = await page.evaluate(() => ({
+      dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent?.trim() || "",
+      dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent?.trim() || "",
+      operationState: document.querySelector(".bidder-goods-operation-state")?.textContent?.trim() || "",
+      panelText: document.querySelector(".bidder-goods-panel")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 800) || "",
+      loadingTitle: document.querySelector("#excel-import-loading-title")?.textContent?.trim() || "",
+      loadingMessage: document.querySelector("#excel-import-loading-message")?.textContent?.trim() || "",
+    }));
+    throw new Error(`${packageData.code}: bidder-goods preview did not render: ${JSON.stringify(diagnostics)}; ${error.message}`);
+  });
   const previewCount = await preview.locator("tbody tr").count();
   if (previewCount !== packageData.expectedCount) {
     throw new Error(

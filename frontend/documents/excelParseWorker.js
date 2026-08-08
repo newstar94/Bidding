@@ -1,6 +1,19 @@
 /* global importScripts, self */
 
-importScripts("/vendor/xlsx/xlsx.full.min.js?v=0.20.3");
+const SHEETJS_SCRIPT_URL = "/vendor/xlsx/xlsx.full.min.js?v=0.20.3";
+const trustedVendorPolicy = self.trustedTypes?.createPolicy?.("biddingflow-html", {
+  createScriptURL(value) {
+    if (value !== SHEETJS_SCRIPT_URL) {
+      throw new TypeError("Unapproved Excel worker dependency URL.");
+    }
+    return value;
+  },
+}) || null;
+const trustedSheetJsUrl = trustedVendorPolicy
+  ? trustedVendorPolicy.createScriptURL(SHEETJS_SCRIPT_URL)
+  : SHEETJS_SCRIPT_URL;
+
+importScripts(trustedSheetJsUrl);
 
 function parseRows(data) {
   const workbook = self.XLSX.read(data, { type: "array" });

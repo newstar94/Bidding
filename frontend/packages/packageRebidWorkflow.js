@@ -1,6 +1,22 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
+export function trackPackageInheritance(controller, inherit) {
+  if (!controller || typeof inherit !== "function") return Promise.resolve();
+  const pending = Promise.resolve().then(inherit);
+  controller._packageInheritancePromise = pending;
+  return pending.finally(() => {
+    if (controller._packageInheritancePromise === pending) {
+      controller._packageInheritancePromise = null;
+    }
+  });
+}
+
+export async function waitForPackageInheritance(controller) {
+  const pending = controller?._packageInheritancePromise;
+  if (pending) await pending;
+}
+
 export async function restoreCanceledPackage(id) {
   const gt = this.model.state.goithau.find((g) => g.id === id);
   if (!gt) return;

@@ -13,6 +13,7 @@ import {
   isCombinedEvaluationMethod,
 } from "../packages/evaluationMethodRules.js";
 import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
+import { trackPackageInheritance } from "../packages/packageRebidWorkflow.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -83,7 +84,10 @@ export function setupConditionalUI() {
       const isNewPackage = !idInput || !idInput.value;
       if (isNewPackage && e.target.value) {
         if (typeof this.checkAndInheritCanceledPackage === "function") {
-          await this.checkAndInheritCanceledPackage(e.target.value);
+          await trackPackageInheritance(
+            this,
+            () => this.checkAndInheritCanceledPackage(e.target.value),
+          );
         }
       }
     });

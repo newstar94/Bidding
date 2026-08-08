@@ -32,6 +32,7 @@ import {
   evaluationMethodLabel,
   isCombinedEvaluationMethod,
 } from "./evaluationMethodRules.js";
+import { waitForPackageInheritance } from "./packageRebidWorkflow.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function createOfficialPackageVersionFromForm(
@@ -612,6 +613,7 @@ export async function editGoiThau(id, isReadOnly = false) {
 // eslint-disable-next-line complexity -- Legacy package persistence orchestration is isolated for a dedicated refactor.
 export async function handleGoiThauSubmit(e) {
   e.preventDefault();
+  await waitForPackageInheritance(this);
   const form = document.getElementById("form-goithau");
   const assignedEmpSelect = document.getElementById("gt-nhanvienphutrach");
   const isNewPackage = !String(document.getElementById("form-goithau-id")?.value || "").trim();
