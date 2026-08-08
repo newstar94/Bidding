@@ -3,6 +3,7 @@ import {
   parseTechnicalScore,
   requiresTechnicalScoreInput,
 } from "./evaluationMethodRules.js";
+import { parseEvaluationMetadataStrict } from "./evaluationMetadata.js";
 
 const SERVER_FIELDS = [
   "rowVersion",
@@ -91,14 +92,7 @@ function asArray(value) {
 }
 
 function parseMetadata(value) {
-  if (!value) return {};
-  if (typeof value === "object" && !Array.isArray(value)) return value;
-  try {
-    const parsed = JSON.parse(String(value));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataStrict(value);
 }
 
 function technicalEvaluationBlock(sourcePackage) {

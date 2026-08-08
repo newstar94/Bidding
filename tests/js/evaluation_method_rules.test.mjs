@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 import {
+  EVALUATION_METHOD_CODES,
   EVALUATION_METHODS,
   getEvaluationMethods,
+  normalizeEvaluationMethod,
   parseTechnicalScore,
   requiresTechnicalScoreInput,
   validateTechnicalScore,
@@ -20,6 +23,10 @@ const {
 
 const standard = [LOWEST_PRICE, EVALUATED_PRICE];
 const advanced = [LOWEST_PRICE, EVALUATED_PRICE, COMBINED, TECHNICAL];
+const domainCases = JSON.parse(await readFile(
+  new URL("../fixtures/evaluation_domain_cases.json", import.meta.url),
+  "utf8",
+));
 
 function methods(linhVuc, hinhThucLuaChon, phuongThucLuaChon) {
   return getEvaluationMethods({ linhVuc, hinhThucLuaChon, phuongThucLuaChon });
@@ -93,6 +100,48 @@ test("combined technical/price evaluation requires a numeric technical score", (
   assert.equal(validateTechnicalScore("", { required: true }).valid, false);
   assert.equal(validateTechnicalScore("Không đạt", { required: true }).valid, false);
   assert.equal(validateTechnicalScore("85,5", { required: true }).valid, true);
+});
+
+test("normalizes canonical evaluation codes and every supported legacy label", () => {
+  for (const vector of domainCases.methods) {
+    assert.equal(normalizeEvaluationMethod(vector.input), vector.code, vector.input);
+  }
+  assert.equal(
+    EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE,
+    "COMBINED_TECHNICAL_PRICE",
+  );
+  assert.equal(requiresTechnicalScoreInput("Kết hợp kỹ thuật và giá"), true);
+  assert.equal(requiresTechnicalScoreInput("COMBINED_TECHNICAL_PRICE"), true);
+});
+
+test("technical score parser follows the shared frontend-backend contract", () => {
+  for (const vector of domainCases.scores) {
+    const parsed = parseTechnicalScore(vector.input);
+    assert.equal(parsed !== null, vector.valid, JSON.stringify(vector.input));
+    if (vector.valid) assert.equal(parsed, vector.number, JSON.stringify(vector.input));
+  }
+});
+
+test("legacy combined wording ranks with canonical combined semantics", () => {
+  const bids = [
+    { id: "a", danhGiaKetLuan: "Đạt", danhGiaKyThuat: "90", giaXepHang: 200 },
+    { id: "b", danhGiaKetLuan: "Đạt", danhGiaKyThuat: "80", giaXepHang: 100 },
+  ];
+  const canonical = calculateRankings({
+    linhVuc: "Hàng hóa",
+    phuongPhapDanhGia: "COMBINED_TECHNICAL_PRICE",
+    trongSoKyThuat: 30,
+    phanLo: "Không",
+  }, structuredClone(bids));
+  const legacy = calculateRankings({
+    linhVuc: "Hàng hóa",
+    phuongPhapDanhGia: "Kết hợp kỹ thuật và giá",
+    trongSoKyThuat: 30,
+    phanLo: "Không",
+  }, structuredClone(bids));
+
+  assert.deepEqual(legacy, canonical);
+  assert.deepEqual(legacy.rankings, { b: 1, a: 2 });
 });
 
 test("combined rankings exclude bids whose technical value is a pass/fail label", () => {

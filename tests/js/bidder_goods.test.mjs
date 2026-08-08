@@ -423,14 +423,14 @@ test("bidder goods panel derives totals and preference values without editable r
 
 test("bidder goods panel defers aggregate price warnings and orders toolbar actions consistently", () => {
   const state = {
-    pkg: { tenGoiThau: "GÃ³i thá»­", phanLo: "KhÃ´ng", phanLoList: [] },
+    pkg: { tenGoiThau: "Gói thử", phanLo: "Không", phanLoList: [] },
     bid: { id: "opening-1", giaDuThau: 110, trangThaiTinhUuDai: "draft" },
     roundType: "single",
     lot: null,
     requirements: [{ id: "required-1" }],
     rows: [{
       id: "offered-1",
-      danhMucHangHoa: "HÃ³a cháº¥t A",
+      danhMucHangHoa: "Hóa chất A",
       khoiLuong: 2,
       donGiaDuThau: 50,
       thanhTienDuThau: 100,
@@ -517,7 +517,7 @@ test("official bidder-goods save shows a popup when the aggregate total differs"
 });
 
 test("official bidder-goods save stages goods and their opening in one sync batch", async () => {
-  const pkg = { id: "package-1", phanLo: "KhÃ´ng", phanLoList: [] };
+  const pkg = { id: "package-1", phanLo: "Không", phanLoList: [] };
   const bid = { id: "opening-1", giaDuThau: 100, tyLeGiamGia: 0 };
   const requirement = { id: "required-1", goiThauId: pkg.id, phanLoId: null };
   const row = {
@@ -525,7 +525,7 @@ test("official bidder-goods save stages goods and their opening in one sync batc
     goiThauId: pkg.id,
     thongTinMoThauId: bid.id,
     goiThauHangHoaId: requirement.id,
-    danhMucHangHoa: "HÃ³a cháº¥t A",
+    danhMucHangHoa: "Hóa chất A",
     khoiLuong: 2,
     donGiaDuThau: 50,
     thanhTienDuThau: 100,

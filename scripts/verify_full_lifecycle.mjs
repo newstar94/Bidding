@@ -49,9 +49,54 @@ const openCreateModal = async (page, route, buttonSelector, modalSelector) => {
   await page.locator(`${modalSelector}.active`).waitFor({ state: "visible", timeout: 10_000 });
 };
 
-const submitModal = async (page, formSelector, modalSelector) => {
+const submitModal = async (page, formSelector, modalSelector, { diagnostics = null } = {}) => {
   await page.locator(`${formSelector} button[type='submit']`).click();
-  await page.locator(`${modalSelector}.active`).waitFor({ state: "hidden", timeout: 15_000 });
+  try {
+    await page.locator(`${modalSelector}.active`).waitFor({ state: "hidden", timeout: 15_000 });
+  } catch (error) {
+    if (!diagnostics) throw error;
+    const browserState = await page.evaluate(({ formSelector: form, modalSelector: modal }) => {
+      const formElement = document.querySelector(form);
+      const activeDialog = document.querySelector("#modal-custom-dialog.active");
+      const activeToasts = [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")];
+      const invalidControls = [...(formElement?.querySelectorAll(":invalid, .invalid input, .invalid select, .invalid textarea") || [])];
+      const packageId = document.querySelector("#form-goithau-id")?.value || "";
+      const packageRecord = globalThis.app?.model?.state?.goithau?.find?.(
+        (item) => String(item.id) === String(packageId),
+      ) || null;
+      return {
+        modalActive: document.querySelector(modal)?.classList.contains("active") || false,
+        dialog: activeDialog ? {
+          title: activeDialog.querySelector("#dialog-title")?.textContent?.trim() || "",
+          message: activeDialog.querySelector("#dialog-message")?.textContent?.trim() || "",
+        } : null,
+        toasts: activeToasts.map((toast) => toast.textContent?.trim() || ""),
+        invalidControls: invalidControls.map((control) => ({
+          id: control.id || "",
+          name: control.getAttribute("name") || "",
+          value: control.value || "",
+          validationMessage: control.validationMessage || "",
+        })),
+        packageId,
+        packageRecord: packageRecord ? {
+          id: packageRecord.id,
+          rootId: packageRecord.rootId,
+          rowVersion: packageRecord.rowVersion,
+          phienBan: packageRecord.phienBan,
+          isLatest: packageRecord.isLatest,
+          keHoachId: packageRecord.keHoachId,
+          tenGoiThau: packageRecord.tenGoiThau,
+        } : null,
+        fields: {
+          planId: document.querySelector("#gt-kehoachid")?.value || "",
+          code: document.querySelector("#gt-ma")?.value || "",
+          name: document.querySelector("#gt-ten")?.value || "",
+          status: document.querySelector("#gt-trangthai")?.value || "",
+        },
+      };
+    }, { formSelector, modalSelector });
+    throw new Error(`${diagnostics} submit failed: ${JSON.stringify(browserState)}; ${error.message}`);
+  }
 };
 
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
@@ -904,7 +949,9 @@ try {
   await rebidRow.locator(".btn-edit").click();
   await page.locator("#modal-goithau.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#gt-ten").fill(rebidNewName);
-  await submitModal(page, "#form-goithau", "#modal-goithau");
+  await submitModal(page, "#form-goithau", "#modal-goithau", {
+    diagnostics: "inherited rebid package copy-on-write",
+  });
 
   const copyOnWriteState = await page.evaluate(async ({ oldPlanId, newPlanId, oldName, newName }) => {
     const readPackages = async (planId) => {

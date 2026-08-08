@@ -42,9 +42,9 @@ def validate_tool_arguments(mode: str, name: str, arguments: object) -> dict:
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "statuses không hợp lệ.")
     if name == "search_workspace":
         if arguments.get("operation") not in {"count", "list"}:
-            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "operation khÃ´ng há»£p lá»‡.")
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "operation không hợp lệ.")
         if "limit" in arguments and (not isinstance(arguments["limit"], int) or isinstance(arguments["limit"], bool) or not 1 <= arguments["limit"] <= 20):
-            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit pháº£i náº±m trong khoáº£ng 1-20.")
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit phải nằm trong khoảng 1-20.")
     if name == "describe_workspace_schema":
         if not isinstance(arguments.get("query"), str) or len(arguments["query"]) > 200:
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "query schema không hợp lệ.")

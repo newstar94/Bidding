@@ -164,8 +164,13 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
   return foundNt;
 }
 function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, businessDate) {
+  const memberChildId = (candidateId, contractorId) => {
+    const candidate = String(candidateId || "").trim();
+    const contractor = String(contractorId || "").trim();
+    return candidate && candidate !== contractor ? candidate : generateRecordId("member");
+  };
   const bidJvMembers = [{
-    id: row._leadMemberId || generateRecordId("member"),
+    id: memberChildId(row._leadMemberId, foundNt?.id),
     thanhVienNhaThauId: foundNt?.id || "",
     tenNhaThau: foundNt?.tenNhaThau || row._leadMemberName || `Thành viên đứng đầu ${maNhaThau}`,
     maNhaThau: foundNt?.maNhaThau || maNhaThau,
@@ -193,7 +198,7 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, bu
     const candidate = exactMember || findLatestContractorByCode(contractorVersions, m.maNhaThau || m.maSoThue);
     const memberContractor = exactMember || (candidate ? selectContractorVersionForDate(model, candidate.id, businessDate) : null);
     bidJvMembers.push({
-      id: m.id || generateRecordId("member"),
+      id: memberChildId(m.id, memberContractor?.id),
       thanhVienNhaThauId: memberContractor?.id || "",
       tenNhaThau: memberContractor?.tenNhaThau || m.tenNhaThau,
       maNhaThau: memberContractor?.maNhaThau || m.maNhaThau || m.maSoThue || "",

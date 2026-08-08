@@ -810,7 +810,7 @@ async def protected_image_api(request):
             return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
         if not os.path.isfile(file_path):
             return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

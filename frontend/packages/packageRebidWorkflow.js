@@ -1,16 +1,16 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
 export async function restoreCanceledPackage(id) {
   const gt = this.model.state.goithau.find((g) => g.id === id);
   if (!gt) return;
   let previousState = "Đang chấm thầu";
   if (gt.danhGiaHsdtMetadata) {
-    try {
-      const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-      if (parsed.cancelDetails && parsed.cancelDetails.trangThaiTruocHuy) {
-        previousState = parsed.cancelDetails.trangThaiTruocHuy;
-      }
-    } catch {
+    const parsed = parseEvaluationMetadataForDisplay(
+      gt.danhGiaHsdtMetadata,
+    ).metadata;
+    if (parsed.cancelDetails && parsed.cancelDetails.trangThaiTruocHuy) {
+      previousState = parsed.cancelDetails.trangThaiTruocHuy;
     }
   }
   const confirmed = await this.view.customConfirm(

@@ -1339,6 +1339,12 @@
   box-shadow: var(--shadow-lg);
   object-fit: contain;
 }
+.certificate-lightbox img.certificate-lightbox-signature {
+  max-height: 60vh;
+  padding: 24px;
+  border-radius: 12px;
+  background: var(--surface);
+}
 #cg-preview-container {
   background-color: #ffffff !important;
   border: 1px dashed var(--border-color) !important;
@@ -4326,6 +4332,49 @@ table th {
   min-width: 0;
 }
 
+.detailed-evaluation-sticky-context {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.detailed-evaluation-context-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  min-width: 0;
+  margin: 0;
+}
+
+.detailed-evaluation-context-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto);
+  gap: 5px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.detailed-evaluation-context-item dt {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detailed-evaluation-context-item dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-main);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .detailed-evaluation-bid-field,
 .detailed-evaluation-metric {
   min-width: 0;
@@ -6179,6 +6228,22 @@ table th {
 
   .detailed-evaluation-bid-field {
     grid-column: auto;
+  }
+
+  .detailed-evaluation-sticky-context {
+    padding-inline: 10px;
+  }
+
+  .detailed-evaluation-context-list {
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .detailed-evaluation-context-item {
+    flex: 0 0 auto;
   }
 
   .detailed-evaluation-navigation,

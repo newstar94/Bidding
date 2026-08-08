@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.db.db_helper import database
 from backend.db.schema import SCHEMA_DINH_NGHIA
-from backend.db.upgrades import DB_SCHEMA_VERSION
+from backend.db.upgrades import DB_SCHEMA_VERSION as DB_SCHEMA_VERSION
 
 
 _ALLOWED_TABLES = frozenset(SCHEMA_DINH_NGHIA)

@@ -195,7 +195,11 @@ def _upgrade_to_v9_normalize_package_technical_weight(cursor, context):
            SET trong_so_ky_thuat = NULL
            WHERE trong_so_ky_thuat IS NOT NULL
              AND COALESCE(TRIM(phuong_phap_danh_gia), '')
-                 <> 'Kết hợp giữa kỹ thuật và giá'"""
+                 NOT IN (
+                     'Kết hợp giữa kỹ thuật và giá',
+                     'Kết hợp kỹ thuật và giá',
+                     'COMBINED_TECHNICAL_PRICE'
+                 )"""
     )
 
 

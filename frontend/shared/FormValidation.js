@@ -129,6 +129,7 @@ function bindClearOnChange(control) {
   const clear = () => {
     const stillInvalid = control?.validity && !control.validity.valid;
     setValidationError(control, stillInvalid ? constraintValidationMessage(control) : "");
+    refreshValidationSummary(control?.form || control?.closest?.("form"));
     if (stillInvalid) return;
     control.removeEventListener?.("input", clear);
     control.removeEventListener?.("change", clear);
@@ -137,6 +138,34 @@ function bindClearOnChange(control) {
   control.addEventListener?.("input", clear);
   control.addEventListener?.("change", clear);
   control.__bfValidationCleanup = clear;
+}
+
+export function validationSummaryLabel(count) {
+  return `${Math.max(0, Number(count) || 0)} lỗi cần xử lý`;
+}
+
+function refreshValidationSummary(form, invalidControls = null) {
+  if (!form?.querySelector) return null;
+  const invalid = invalidControls || [...form.querySelectorAll('[aria-invalid="true"]')];
+  let summary = form.querySelector("[data-validation-summary]");
+  if (!invalid.length) {
+    if (summary) summary.hidden = true;
+    return summary;
+  }
+  if (!summary) {
+    summary = (form.ownerDocument || globalThis.document)?.createElement?.("button");
+    if (!summary) return null;
+    summary.type = "button";
+    summary.className = "validation-summary";
+    summary.dataset.validationSummary = "true";
+    summary.setAttribute("role", "alert");
+    summary.setAttribute("aria-live", "assertive");
+    form.prepend?.(summary);
+  }
+  summary.hidden = false;
+  summary.textContent = validationSummaryLabel(invalid.length);
+  summary.onclick = () => focusInvalidControl(invalid[0], { delay: 0 });
+  return summary;
 }
 
 export function validateForm(form, { rules = [], focus = true } = {}) {
@@ -162,6 +191,7 @@ export function validateForm(form, { rules = [], focus = true } = {}) {
       bindClearOnChange(control);
     }
   });
+  refreshValidationSummary(form, invalid);
   if (focus && invalid[0]) focusInvalidControl(invalid[0]);
   return { valid: invalid.length === 0, invalidControls: invalid };
 }
@@ -180,6 +210,7 @@ export function validateNativeForm(form, { focus = true } = {}) {
       setValidationError(control, "");
     }
   });
+  refreshValidationSummary(form, invalidControls);
   if (focus && invalidControls[0]) focusInvalidControl(invalidControls[0], { delay: 0 });
   return { valid: invalidControls.length === 0, invalidControls };
 }

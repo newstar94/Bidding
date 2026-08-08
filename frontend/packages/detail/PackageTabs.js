@@ -10,6 +10,7 @@ import {
   parseTechnicalScore,
   requiresTechnicalScoreInput,
 } from "../evaluationMethodRules.js";
+import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
 
 const PACKAGE_TAB_ICONS = Object.freeze({
   preparation: "info",
@@ -45,12 +46,7 @@ export function checkBidQualified(bid, pkg = null) {
 }
 
 function parseMetadata(value) {
-  if (!value) return {};
-  try {
-    return typeof value === "string" ? JSON.parse(value) : value;
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataForDisplay(value).metadata;
 }
 
 export function getPackageWorkflowState(pkg, bids = []) {

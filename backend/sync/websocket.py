@@ -477,7 +477,7 @@ async def sync_websocket_endpoint(websocket):
                     return
                 _waiting_pong = False
                 try:
-                    msg_in = json.loads(raw)
+                    json.loads(raw)
 
 
                 except (json.JSONDecodeError, TypeError):

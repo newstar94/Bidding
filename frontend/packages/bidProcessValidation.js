@@ -1,15 +1,13 @@
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
+
 export function isDirectOrSpecialPackage(gt) {
   return gt?.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt?.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
 }
 export function isNextEvaluationStepSaved(gt) {
   const is1G2T = gt?.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
   if (!gt?.danhGiaHsdtMetadata) return false;
-  try {
-    const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-    return is1G2T ? !!(parsed.is1G2T && parsed.technical && parsed.technical.saved) : !!parsed.saved;
-  } catch {
-    return false;
-  }
+  const parsed = parseEvaluationMetadataForDisplay(gt.danhGiaHsdtMetadata).metadata;
+  return is1G2T ? !!(parsed.is1G2T && parsed.technical && parsed.technical.saved) : !!parsed.saved;
 }
 export function canSaveOpeningInfo(gt) {
   if (!gt) return false;

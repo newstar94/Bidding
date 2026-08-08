@@ -14,22 +14,16 @@ import {
   resolveWorkflowActionMode,
   WORKFLOW_ACTION_MODE,
 } from "../workflowActionState.js";
-
-const TECHNICAL_SCORE_METHODS = new Set([
-  "Kết hợp giữa kỹ thuật và giá",
-  "Giá cố định",
-  "Dựa trên kỹ thuật",
-]);
+import {
+  evaluationMethodDisplay,
+  evaluationMethodUsesTechnicalScore,
+} from "../evaluationMethodRules.js";
+import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
 
 function parseMetadata(pkg) {
-  let parsed = {};
-  try {
-    parsed = typeof pkg?.danhGiaHsdtMetadata === "string"
-      ? JSON.parse(pkg.danhGiaHsdtMetadata || "{}")
-      : pkg?.danhGiaHsdtMetadata || {};
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseEvaluationMetadataForDisplay(
+    pkg?.danhGiaHsdtMetadata,
+  ).metadata;
   if (parsed?.is1G2T) return parsed;
   return {
     is1G2T: true,
@@ -42,7 +36,7 @@ function hasTechnicalScore(pkg, bids) {
   return bids.some((bid) => {
     const normalized = String(bid?.danhGiaKyThuat || "").trim().replace(/,/g, ".");
     return normalized !== "" && Number.isFinite(Number.parseFloat(normalized));
-  }) || TECHNICAL_SCORE_METHODS.has(pkg?.phuongPhapDanhGia);
+  }) || evaluationMethodUsesTechnicalScore(pkg);
 }
 
 export function buildQualifiedApprovalState({
@@ -110,7 +104,7 @@ function renderPackageFacts(view, state) {
         <div>• <strong class="bf-s-fcb5ddef65">Phân lô:</strong> ${pkg.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
         <div>• <strong class="bf-s-fcb5ddef65">Giá gói thầu:</strong> <span class="text-dark fw-bold">${escapeHtml(view.model.formatCurrency(pkg.giaGoiThau))}</span></div>
         <div>• <strong class="bf-s-fcb5ddef65">Hình thức LCNT:</strong> ${escapeHtml(pkg.hinhThucLuaChon || "--")}</div>
-        ${pkg.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(pkg.phuongPhapDanhGia)}${pkg.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && pkg.trongSoKyThuat ? ` (${escapeHtml(pkg.trongSoKyThuat)}%)` : ""}</div>` : ""}
+        ${pkg.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(evaluationMethodDisplay(pkg))}</div>` : ""}
         <div>• <strong class="bf-s-fcb5ddef65">Loại hợp đồng:</strong> ${escapeHtml(pkg.loaiHopDong || "--")}</div>
         <div>• <strong class="bf-s-fcb5ddef65">Thời gian thực hiện:</strong> ${escapeHtml(pkg.thoiGianThucHien || "--")}</div>
         <div>• <strong class="bf-s-fcb5ddef65">Nguồn vốn:</strong> ${escapeHtml(pkg.nguonVon || "--")}</div>

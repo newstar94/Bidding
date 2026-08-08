@@ -6,6 +6,7 @@ import { getExcelPreviewFieldError } from "./excelPreviewValidation.js";
 import { isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { normalizeEhsmtAppraisalRequirement } from "./timelineRuleEngine.js";
 import { escapeAttribute, escapeHtml } from "../shared/view_helpers.js";
+import { isCombinedEvaluationMethod } from "./evaluationMethodRules.js";
 
 export function getExcelPreviewKeys(row = {}) {
   const source = row?.data || row || {};
@@ -505,7 +506,7 @@ export function getGoiThauFormInputValues(model) {
     hinhThucLuaChon: getRawVal("gt-hinhthuc"),
     phuongThucLuaChon: getRawVal("gt-phuongthuc"),
     phuongPhapDanhGia,
-    trongSoKyThuat: phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && trongSoKyThuatRaw !== ""
+    trongSoKyThuat: isCombinedEvaluationMethod(phuongPhapDanhGia) && trongSoKyThuatRaw !== ""
       ? parseInt(trongSoKyThuatRaw)
       : null,
     trangThai: getRawVal("gt-trangthai"),

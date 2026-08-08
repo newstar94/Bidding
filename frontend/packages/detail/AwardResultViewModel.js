@@ -6,20 +6,13 @@ import {
   resolveActiveSavedEvaluationScope,
   resolvePackageResultStatus,
 } from "../lotEvaluationScope.js";
+import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
 
 const TWO_ENVELOPE_METHOD = "Một giai đoạn hai túi hồ sơ";
 const AWARDED_STATUS = "Đã có kết quả";
 
 function parseResultMetadata(value) {
-  if (!value) return { technical: {}, result: {} };
-  let metadata = value;
-  if (typeof value === "string") {
-    try {
-      metadata = JSON.parse(value);
-    } catch {
-      return { technical: {}, result: {} };
-    }
-  }
+  const metadata = parseEvaluationMetadataForDisplay(value).metadata;
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return { technical: {}, result: {} };
   }

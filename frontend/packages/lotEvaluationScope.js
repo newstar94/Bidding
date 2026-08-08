@@ -1,3 +1,8 @@
+import {
+  parseEvaluationMetadataStrict,
+  serializeEvaluationMetadata,
+} from "./evaluationMetadata.js";
+
 const MODE_ALL = "all";
 const MODE_SELECTED = "selected";
 
@@ -13,12 +18,8 @@ function parseList(value) {
 }
 
 function parseMetadataRecord(value) {
-  if (!value) return {};
-  if (typeof value === "object" && !Array.isArray(value)) return value;
-  if (typeof value !== "string") return null;
   try {
-    const parsed = JSON.parse(value || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    return parseEvaluationMetadataStrict(value);
   } catch {
     return null;
   }
@@ -137,7 +138,7 @@ export function setPackageResultEditState(pkg, editState = {}) {
       : {};
     metadata.technical.resultEdit = resultEdit;
   }
-  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
   if (pkg.trangThai !== "Hủy thầu") {
     pkg.trangThai = resolvePackageResultStatus(pkg);
   }
@@ -152,7 +153,7 @@ export function clearPackageResultEditState(pkg) {
   if (metadata.technical && typeof metadata.technical === "object") {
     delete metadata.technical.resultEdit;
   }
-  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
   if (pkg.trangThai !== "Hủy thầu") {
     pkg.trangThai = resolvePackageResultStatus(pkg);
   }

@@ -19,6 +19,7 @@ from backend.shared.helpers import (
 from backend.shared.idempotency import acquire_idempotency_lock
 from backend.shared.access_policy import (
     OWNERSHIP_SCOPED_TABLES,
+    authorize_record_write,
     can_upload_workspace_assets,
 )
 from backend.shared.client_ip import get_client_ip
@@ -72,6 +73,11 @@ from backend.sync.repository import (
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
 from backend.sync.payload_validation import validate_sync_payload_shape
+from backend.versioning.command import (
+    AggregateVersionConflict,
+    build_aggregate_version_payload,
+)
+from backend.versioning.repository import AggregateVersionRepository
 
 
 from backend.sync.request_contract import (
@@ -609,7 +615,13 @@ def _cleanup_rolled_back_images(newly_written_images, log_sync_error):
         )
 
 
-def execute_sync_mutation(request, data, broadcast_callback=None):
+def execute_sync_mutation(
+    request,
+    data,
+    broadcast_callback=None,
+    *,
+    aggregate_version_command=False,
+):
     """
     [POST] /api/sync
     Đồng bộ dữ liệu thay đổi từ ứng dụng Frontend vào cơ sở dữ liệu PostgreSQL.
@@ -640,7 +652,11 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
         mutation_request_hash = envelope.request_hash
 
         conn = database.get_connection()
-        conn.execute("BEGIN")
+        conn.execute(
+            "BEGIN ISOLATION LEVEL SERIALIZABLE"
+            if aggregate_version_command
+            else "BEGIN"
+        )
         cursor = conn.cursor()
         transaction_context, early_response = _prepare_sync_transaction(
             conn,
@@ -653,6 +669,68 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             return early_response
         owner_type = transaction_context.owner_type
         current_time = transaction_context.current_time
+
+        if aggregate_version_command:
+            command_kind = str(data.get("kind") or "").strip().lower()
+            source_access = {
+                "package": ("goithau", "goi_thau"),
+                "plan": ("kehoach", "ke_hoach_lcnt"),
+            }.get(command_kind)
+            if source_access is None:
+                conn.rollback()
+                return error_response(
+                    request,
+                    "INVALID_VERSION_COMMAND",
+                    "Loại đối tượng tạo phiên bản không hợp lệ.",
+                    status_code=400,
+                )
+            payload_key, table_name = source_access
+            access = authorize_record_write(
+                cursor,
+                role_str,
+                user_id,
+                org_name,
+                payload_key,
+                table_name,
+                {"id": data.get("sourceId")},
+            )
+            if not access.allowed:
+                conn.rollback()
+                return error_response(
+                    request,
+                    "VERSION_SOURCE_WRITE_DENIED",
+                    access.reason or "Không có quyền tạo phiên bản cho bản ghi này.",
+                    status_code=403,
+                )
+            data = build_aggregate_version_payload(
+                AggregateVersionRepository(cursor),
+                org_name,
+                data,
+                timestamp=current_time,
+            )
+            shape_errors = validate_sync_payload_shape(data)
+            if shape_errors:
+                conn.rollback()
+                return error_response(
+                    request,
+                    "SYNC_VALIDATION_FAILED",
+                    "Dữ liệu phiên bản sinh trên máy chủ không hợp lệ.",
+                    status_code=400,
+                    fields={"errors": shape_errors},
+                )
+            generated_batch_size = _sync_batch_size(data)
+            if generated_batch_size > batch_limit:
+                conn.rollback()
+                return error_response(
+                    request,
+                    "SYNC_BATCH_TOO_LARGE",
+                    "Số lượng bản ghi của phiên bản vượt quá giới hạn cho phép.",
+                    status_code=413,
+                    fields={
+                        "maxItems": batch_limit,
+                        "receivedItems": generated_batch_size,
+                    },
+                )
 
         # Re-evaluate this permission in the write transaction. A manager may
         # have been demoted after the initial session/organization lookup.
@@ -999,7 +1077,44 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
             clean_record_id=get_clean_id,
             log_sync_error=log_sync_error,
         )
-    except OrgPermissionError as e:
+    except AggregateVersionConflict as conflict:
+        if conn:
+            conn.rollback()
+        return error_response(
+            request,
+            "ROW_VERSION_CONFLICT",
+            "Bản ghi nguồn đã thay đổi trên máy chủ.",
+            status_code=409,
+            fields={"currentVersion": conflict.current_version},
+        )
+    except LookupError:
+        if conn:
+            conn.rollback()
+        return error_response(
+            request,
+            "VERSION_SOURCE_NOT_FOUND",
+            "Không tìm thấy bản ghi nguồn để tạo phiên bản.",
+            status_code=404,
+        )
+    except ValueError as validation_error:
+        if conn:
+            conn.rollback()
+        if not aggregate_version_command:
+            log_sync_error(
+                "Lỗi tổng quát sync_api: "
+                f"{validation_error}\n{traceback.format_exc()}"
+            )
+            return JSONResponse(
+                {"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."},
+                status_code=500,
+            )
+        return error_response(
+            request,
+            "INVALID_VERSION_COMMAND",
+            str(validation_error),
+            status_code=400,
+        )
+    except OrgPermissionError:
         if conn:
             try:
                 conn.rollback()
@@ -1017,6 +1132,16 @@ def execute_sync_mutation(request, data, broadcast_callback=None):
                 conn.rollback()
             except DatabaseError:
                 pass
+        if aggregate_version_command and getattr(e, "sqlstate", None) in {
+            "40001",
+            "40P01",
+        }:
+            return error_response(
+                request,
+                "VERSION_CREATION_CONFLICT",
+                "Có thay đổi đồng thời khi tạo phiên bản. Vui lòng tải lại và thử lại.",
+                status_code=409,
+            )
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
     finally:

@@ -142,21 +142,21 @@ test("financial workbook import ignores user-supplied automatic ranking", async 
     model: {
       parseVND: (value) => Number(String(value || "").replace(/\D/g, "")),
       state: {
-        goithau: [{ id: "gt-1", phanLo: "KhÃ´ng" }],
+        goithau: [{ id: "gt-1", phanLo: "Không" }],
         thongtinmothau: [{
           id: "bid-1",
           goiThauId: "gt-1",
           maNhaThau: "NT-01",
-          tenNhaThau: "NhÃ  tháº§u 01",
+          tenNhaThau: "Nhà thầu 01",
         }],
       },
     },
   };
 
   const [row] = await parseBidEvaluationImport(controller, [{
-    "MÃ£ nhÃ  tháº§u": "NT-01",
-    "TÃªn nhÃ  tháº§u": "NhÃ  tháº§u 01",
-    "Xáº¿p háº¡ng": "Xáº¿p háº¡ng 99",
+    "Mã nhà thầu": "NT-01",
+    "Tên nhà thầu": "Nhà thầu 01",
+    "Xếp hạng": "Xếp hạng 99",
   }], { packageId: "gt-1", evaluationTab: "financial" });
 
   assert.equal(Object.hasOwn(row, "danhGiaTaiChinh"), false);
@@ -166,13 +166,13 @@ test("saving a financial workbook cannot overwrite automatic ranking", async () 
   const bid = {
     id: "bid-1",
     goiThauId: "gt-1",
-    danhGiaTaiChinh: "Xáº¿p háº¡ng 1",
+    danhGiaTaiChinh: "Xếp hạng 1",
   };
   const controller = {
     currentDanhGiaTab: "financial",
     model: {
       state: {
-        goithau: [{ id: "gt-1", phanLo: "KhÃ´ng" }],
+        goithau: [{ id: "gt-1", phanLo: "Không" }],
         thongtinmothau: [bid],
       },
       async persistData() {},
@@ -182,10 +182,10 @@ test("saving a financial workbook cannot overwrite automatic ranking", async () 
 
   await saveBusinessExcelImport(controller, "danhgiahsdt", [{
     id: "bid-1",
-    danhGiaTaiChinh: "Xáº¿p háº¡ng 99",
+    danhGiaTaiChinh: "Xếp hạng 99",
   }], { packageId: "gt-1", evaluationTab: "financial" });
 
-  assert.equal(bid.danhGiaTaiChinh, "Xáº¿p háº¡ng 1");
+  assert.equal(bid.danhGiaTaiChinh, "Xếp hạng 1");
 });
 
 test("marks pass/fail technical text invalid when importing a combined evaluation", async () => {

@@ -57,6 +57,26 @@ from backend.observability.recording import (
 )
 
 
+__all__ = [
+    "document_worker_acquired",
+    "document_worker_finished",
+    "document_worker_rejected",
+    "document_worker_wait_started",
+    "record_audit_chain_verification",
+    "record_audit_checkpoint",
+    "record_database_operation",
+    "record_database_phase",
+    "record_partner_lookup",
+    "record_partner_upstream",
+    "runtime_log_dropped",
+    "websocket_attempted",
+    "websocket_authentication_failed",
+    "websocket_connected",
+    "websocket_disconnected",
+    "websocket_rejected",
+]
+
+
 _HTTP_DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 _PROCESS_STARTED_AT = time.time()
@@ -284,8 +304,6 @@ def _restore_drill_timestamp(backup_directory: Path) -> float | None:
 
 def refresh_operational_artifact_verification() -> dict[str, object]:
     """Perform expensive backup/restore verification and publish a small cache."""
-
-    from backend.shared.helpers import database
 
     backup_raw = str(os.environ.get("BIDDING_BACKUP_DIR", "")).strip()
     backup_directory = Path(backup_raw).resolve() if backup_raw else Path("data/backups").resolve()

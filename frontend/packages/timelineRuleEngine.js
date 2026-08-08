@@ -1,5 +1,6 @@
 import timelineCatalog from "../../shared/timeline_rules.json" with { type: "json" };
 import { buildVersionEhsmtAdjustment } from "../shared/VersionedEntityService.js";
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
 export const TIMELINE_TEMPLATE_VERSION = timelineCatalog.catalogVersion;
 
@@ -60,13 +61,7 @@ export function normalizeEhsmtAppraisalRequirement(packageData = {}) {
 }
 
 function parseMetadata(raw) {
-  if (raw && typeof raw === "object") return raw;
-  try {
-    const parsed = JSON.parse(raw || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataForDisplay(raw).metadata;
 }
 
 function contractKind(contract) {

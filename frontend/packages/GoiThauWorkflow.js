@@ -1,6 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-﻿import { validateExtensionRows } from "./packageValidation.js";
+import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
@@ -27,7 +27,48 @@ import {
 import { derivePackagePrice } from "./packagePricing.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
+import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
+import {
+  evaluationMethodLabel,
+  isCombinedEvaluationMethod,
+} from "./evaluationMethodRules.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
+
+export async function createOfficialPackageVersionFromForm(
+  controller,
+  sourcePackage,
+  changes,
+  { generateId = generateRecordId } = {},
+) {
+  if (!(Number(sourcePackage?.rowVersion) > 0)) {
+    return { authoritative: false, fallbackRequired: true };
+  }
+  const createAggregateVersion = controller.createAggregateVersion
+    || createOfficialAggregateVersion;
+  const result = await createAggregateVersion(controller, {
+    kind: "package",
+    sourceId: sourcePackage.id,
+    expectedRowVersion: Number(sourcePackage.rowVersion),
+    changes,
+    clientMutationId: generateId("version-command"),
+  });
+  if (!result?.authoritative) return result;
+  const rootId = String(sourcePackage.rootId || sourcePackage.id);
+  const packageRecord = controller.model.state.goithau.find((candidate) => (
+    String(candidate.rootId || candidate.id) === rootId
+    && candidate.isLatest == 1
+    && String(candidate.id) !== String(sourcePackage.id)
+  ));
+  if (!packageRecord) {
+    throw new Error("Máy chủ đã tạo phiên bản nhưng gói thầu mới chưa được tải về.");
+  }
+  rememberSelectedVersion(
+    controller.model.state,
+    "selectedPackageVersion",
+    packageRecord,
+  );
+  return { ...result, packageRecord };
+}
 
 // eslint-disable-next-line complexity -- Legacy package form orchestration is isolated for a dedicated refactor.
 export async function editGoiThau(id, isReadOnly = false) {
@@ -345,7 +386,7 @@ export async function editGoiThau(id, isReadOnly = false) {
     if (this.updatePhuongPhapDanhGiaOptions) {
       this.updatePhuongPhapDanhGiaOptions();
     }
-    document.getElementById("gt-phuongphapdanhgia").value = gt.phuongPhapDanhGia || "";
+    document.getElementById("gt-phuongphapdanhgia").value = evaluationMethodLabel(gt);
     if (this.updateTrongSoKyThuatVisibility) {
       this.updateTrongSoKyThuatVisibility();
     }
@@ -833,7 +874,7 @@ export async function handleGoiThauSubmit(e) {
     }
   }
   const phuongPhapDanhGia = formVals.phuongPhapDanhGia;
-  const trongSoKyThuat = phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá"
+  const trongSoKyThuat = isCombinedEvaluationMethod(phuongPhapDanhGia)
     ? formVals.trongSoKyThuat
     : null;
   const phuongThucLuaChon = formVals.phuongThucLuaChon;
@@ -843,7 +884,7 @@ export async function handleGoiThauSubmit(e) {
       await this.view.customAlert("Lỗi kiểm tra", "Giá trị trọng số kỹ thuật không hợp lệ, vui lòng kiểm tra lại thông tin lỗi bên dưới trường nhập liệu!", "x-circle", inputEl);
       return;
     }
-    if (phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && linhVuc !== "Tư vấn" && (phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ" || phuongThucLuaChon === "Hai giai đoạn hai túi hồ sơ")) {
+    if (isCombinedEvaluationMethod(phuongPhapDanhGia) && linhVuc !== "Tư vấn" && (phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ" || phuongThucLuaChon === "Hai giai đoạn hai túi hồ sơ")) {
       if (trongSoKyThuat > 30 && trongSoKyThuat <= 50) {
         await this.view.customAlert("Cảnh báo", "Cảnh báo: Trọng số kỹ thuật lớn hơn 30% (mức khuyến nghị thông thường là 10% - 30%).", "alert-triangle");
       }
@@ -938,31 +979,41 @@ export async function handleGoiThauSubmit(e) {
       }
     }
     if (saveAsNewVersion) {
-      const newGtId = generateRecordId("goithau");
-      finalGtId = newGtId;
-      const timestamp = this.model.getCurrentDateTimeString();
-      const newPackageSnapshot = snapshotPackageAggregate(this.model.state, oldGt, {
-        targetPackageId: newGtId,
-        targetPlanId: gtData.keHoachId,
-        packageVersion: getNextVersion(this.model.state.goithau, oldGt),
-        timestamp,
-        overrides: { maGoiThau: inputCode, ...gtData },
-      });
-      const newPackageVersion = newPackageSnapshot.packageRecord;
-      const packageRootId = String(oldGt.rootId || oldGt.id);
-      this.model.state.goithau.forEach((candidate) => {
-        if (String(candidate.rootId || candidate.id) === packageRootId) candidate.isLatest = 0;
-      });
-      ensureVersionEhsmtAdjustment(newPackageVersion);
-      clearCompetitiveQuotationAppraisal(newPackageVersion);
-      this.model.state.goithau.push(newPackageVersion);
-      ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments"].forEach((key) => {
-        this.model.state[key] ||= [];
-        this.model.state[key].push(...newPackageSnapshot[key]);
-      });
-      rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
+      const requestedChanges = { maGoiThau: inputCode, ...gtData };
+      const officialVersion = await createOfficialPackageVersionFromForm(
+        this,
+        oldGt,
+        requestedChanges,
+      );
+      if (officialVersion?.authoritative) {
+        finalGtId = officialVersion.packageRecord.id;
+      } else {
+        const newGtId = generateRecordId("goithau");
+        finalGtId = newGtId;
+        const timestamp = this.model.getCurrentDateTimeString();
+        const newPackageSnapshot = snapshotPackageAggregate(this.model.state, oldGt, {
+          targetPackageId: newGtId,
+          targetPlanId: gtData.keHoachId,
+          packageVersion: getNextVersion(this.model.state.goithau, oldGt),
+          timestamp,
+          overrides: requestedChanges,
+        });
+        const newPackageVersion = newPackageSnapshot.packageRecord;
+        const packageRootId = String(oldGt.rootId || oldGt.id);
+        this.model.state.goithau.forEach((candidate) => {
+          if (String(candidate.rootId || candidate.id) === packageRootId) candidate.isLatest = 0;
+        });
+        ensureVersionEhsmtAdjustment(newPackageVersion);
+        clearCompetitiveQuotationAppraisal(newPackageVersion);
+        this.model.state.goithau.push(newPackageVersion);
+        ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments"].forEach((key) => {
+          this.model.state[key] ||= [];
+          this.model.state[key].push(...newPackageSnapshot[key]);
+        });
+        rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
+      }
       await applyAssignmentDelta(this.model, {
-        targetId: newGtId,
+        targetId: finalGtId,
         type: "goithau",
         selectedIds: assignedEmpIds,
       });

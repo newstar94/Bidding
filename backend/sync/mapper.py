@@ -1,6 +1,7 @@
 import json
 import re
 import unicodedata
+import uuid
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.domain.goods_workflow import supports_goods_workflow
@@ -196,6 +197,25 @@ def _first_value(item, *keys, default=None):
 
 def _child_row_id(parent_id, prefix, index, raw_id=None):
     return clean_id(raw_id) or generate_record_id(prefix)
+
+
+def _member_child_row_id(parent_id, index, row):
+    raw_id = clean_id(_first_value(row, "id"))
+    contractor_id = clean_id(_first_value(
+        row,
+        "thanhVienNhaThauId",
+        "thanh_vien_nha_thau_id",
+        "nhaThauId",
+    ))
+    if raw_id and raw_id != contractor_id:
+        return raw_id
+    if contractor_id:
+        stable_id = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"biddingflow:joint-venture-member:{parent_id}:{contractor_id}",
+        )
+        return f"ldtv-{stable_id}"
+    return _child_row_id(parent_id, "member", index, raw_id)
 
 
 def _child_number(value):
@@ -936,12 +956,18 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, orga
     cursor.execute(f"DELETE FROM {child_table} WHERE organization_id = ? AND {parent_col} = ?", (organization_id, parent_id))
     rows = []
     for index, row in enumerate(_parse_child_list(item.get(CHILD_MEMBER_KEY))):
+        contractor_id = clean_id(_first_value(
+            row,
+            "thanhVienNhaThauId",
+            "thanh_vien_nha_thau_id",
+            "nhaThauId",
+        ))
         rows.append((
-            _child_row_id(parent_id, "member", index, _first_value(row, "id")),
+            _member_child_row_id(parent_id, index, row),
             organization_id,
             owner_type,
             parent_id,
-            clean_id(_first_value(row, "thanhVienNhaThauId", "thanh_vien_nha_thau_id", "nhaThauId")),
+            contractor_id,
             _first_value(row, "tenNhaThau", "ten_nha_thau", default=""),
             _first_value(row, "maNhaThau", "ma_nha_thau", default=""),
             _first_value(row, "maSoThue", "ma_so_thue", default=""),

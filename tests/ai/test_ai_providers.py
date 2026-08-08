@@ -1,4 +1,3 @@
-import json
 from dataclasses import replace
 import urllib.error
 import urllib.request

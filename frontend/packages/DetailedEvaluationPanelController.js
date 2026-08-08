@@ -11,6 +11,7 @@ import {
   aggregateDetailedEvaluationReport,
 } from "./detailedEvaluationAggregation.js";
 import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
+import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
 
 export async function confirmDetailedEvaluationDiscard(appController) {
   if (!appController._detailedEvaluationDirty) return true;
@@ -258,7 +259,24 @@ export function bindDetailedEvaluationPanelController({
   };
   root.querySelector("#btn-detailed-evaluation-previous")?.addEventListener("click", () => moveBid(-1));
   root.querySelector("#btn-detailed-evaluation-next")?.addEventListener("click", () => moveBid(1));
-  const markDirty = () => { appController._detailedEvaluationDirty = true; };
+  const scheduleDraftAutosave = () => {
+    appController._detailedEvaluationDirty = true;
+    detailedEvaluationAutosaveFor(appController).schedule(state.draftKey, () => {
+      const criteria = markHierarchicalDetailedEvaluationCriteria(
+        collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
+      );
+      const groupCriteria = criteria.filter(
+        (criterion) => criterion.group === appController.selectedDetailedEvaluationTab,
+      );
+      const report = applyHierarchicalDetailedEvaluationResults({
+        ...(appController._detailedEvaluationDrafts.get(state.draftKey) || state.report),
+        chiTietList: collectActiveGroupRows(root, state.report, groupCriteria),
+      }, criteria);
+      appController._detailedEvaluationDrafts.set(state.draftKey, report);
+      return report;
+    });
+  };
+  const markDirty = scheduleDraftAutosave;
   root.querySelectorAll("input:not([data-bidder-goods-filter]), select:not([data-bidder-goods-filter]), textarea:not([data-bidder-goods-filter])").forEach((input) => {
     input._bfDetailedDirtyBound = true;
     input.addEventListener("input", () => {
@@ -266,12 +284,14 @@ export function bindDetailedEvaluationPanelController({
       if (input.matches('[data-detailed-field="diem"], [data-detailed-config-field="maxScore"], [data-detailed-config-field="minScore"]')) {
         captureResultChange();
       }
+      scheduleDraftAutosave();
     });
     input.addEventListener("change", () => {
       appController._detailedEvaluationDirty = true;
       if (input.matches('select[data-detailed-field="ketQua"]')) {
         captureResultChange();
       }
+      scheduleDraftAutosave();
     });
   });
   const applyImmediateSequentialGate = (updatedReport, configuredCriteria) => {
@@ -320,7 +340,9 @@ export function bindDetailedEvaluationPanelController({
       configuredGroupCriteria,
       appController.selectedDetailedEvaluationTab,
     );
+    appController._detailedEvaluationDrafts.set(state.draftKey, updatedReport);
     applyImmediateSequentialGate(updatedReport, configuredCriteria);
+    scheduleDraftAutosave();
   };
   const handleResultChange = (input) => {
     const row = input.closest("[data-detailed-criterion-id]");

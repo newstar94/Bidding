@@ -1,5 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
-﻿import { normalizePersonName } from "../app/domUtils.js";
+import { normalizePersonName } from "../app/domUtils.js";
 import {
   filterBidsByEvaluationLotScope,
   getActiveEvaluationLotScope,

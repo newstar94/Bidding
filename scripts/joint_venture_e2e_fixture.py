@@ -632,7 +632,7 @@ def _inspect_export(data: dict) -> dict:
                 raise AssertionError(f"Export is missing expected value: {expected}")
         if "Chấp thuận" not in text:
             raise AssertionError("Export is missing the accepted low-price decision")
-        if "�" in text or "Ã" in text:
+        if "\ufffd" in text or "Ã" in text:
             raise AssertionError("Export contains broken Vietnamese text")
         return {
             "sheets": workbook.sheetnames,

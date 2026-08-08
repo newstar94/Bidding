@@ -2,6 +2,9 @@ from backend.sync.dashboard_summary import build_dashboard_summary
 from backend.sync.mapper import map_db_to_json
 
 
+__all__ = ["build_dashboard_summary", "map_db_to_json"]
+
+
 TABLE_KEYS = {
     "chudautu": "chu_dau_tu",
     "kehoach": "ke_hoach_lcnt",

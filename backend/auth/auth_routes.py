@@ -1539,9 +1539,9 @@ async def privileged_reauth_api(request):
             conn.close()
 
 from backend.auth.admin_user_routes import (
-    delete_user_api,
-    list_users_api,
-    update_user_access_settings_api,
+    delete_user_api as delete_user_api,
+    list_users_api as list_users_api,
+    update_user_access_settings_api as update_user_access_settings_api,
 )
 
 async def update_user_role_api(request):
@@ -1703,7 +1703,7 @@ async def update_user_role_api(request):
         return JSONResponse(
             {"success": True, "message": "Cập nhật vai trò thành công!"}
         )
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         if conn:
             conn.rollback()
         return error_response(

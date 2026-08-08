@@ -175,6 +175,7 @@ export function cachePaginatedRecords(model, key, records) {
       model.state[key].push(record);
     }
   });
+  if (normalized.length > 0) model.entityIndexes?.invalidate?.(key);
   if (normalized.length > 0 && model.db && typeof model.db.putRecords === "function") {
     model.db.putRecords(key, normalized).catch((err) => {
       console.error(`Failed to cache paginated ${key} records:`, err);

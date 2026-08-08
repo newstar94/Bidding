@@ -205,7 +205,22 @@ async function configureJointMembers(page, row) {
 
 async function selectEvaluationLot(page, lotCode) {
   const selectedMode = page.locator('input[name="danhgiahsdt-scope-mode"][value="selected"]');
-  if (await selectedMode.count()) await selectedMode.check();
+  if (await selectedMode.count()) {
+    await selectedMode.check();
+    await page.waitForFunction(async () => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const selected = document.querySelector(
+        'input[name="danhgiahsdt-scope-mode"][value="selected"]',
+      );
+      const inputs = [...document.querySelectorAll(
+        "#danhgiahsdt-lot-options [data-evaluation-lot-id]",
+      )];
+      return getAppController()?._evaluationLotScopeRenderQueued !== true
+        && selected?.checked === true
+        && inputs.length > 0
+        && inputs.every((input) => !input.disabled);
+    });
+  }
   const optionLabels = page.locator("#danhgiahsdt-lot-options label");
   for (const label of await optionLabels.all()) {
     const input = label.locator("input");
@@ -216,6 +231,43 @@ async function selectEvaluationLot(page, lotCode) {
       await input.uncheck();
     }
   }
+  try {
+    await page.waitForFunction(async (expectedCode) => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const selected = document.querySelector(
+        'input[name="danhgiahsdt-scope-mode"][value="selected"]',
+      );
+      const checked = [...document.querySelectorAll(
+        "#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked",
+      )];
+      return getAppController()?._evaluationLotScopeRenderQueued !== true
+        && selected?.checked === true
+        && checked.length === 1
+        && checked[0].closest("label")?.textContent?.includes(expectedCode);
+    }, lotCode, { timeout: 10_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(async () => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const controller = getAppController();
+      return {
+        currentTab: controller?.currentDanhGiaTab || "",
+        currentView: controller?.currentEvaluationView || "",
+        scopeStore: controller?._evaluationLotScopes || {},
+        selectedMode: Boolean(document.querySelector(
+          'input[name="danhgiahsdt-scope-mode"][value="selected"]',
+        )?.checked),
+        options: [...document.querySelectorAll(
+          "#danhgiahsdt-lot-options [data-evaluation-lot-id]",
+        )].map((input) => ({
+          id: input.getAttribute("data-evaluation-lot-id"),
+          checked: input.checked,
+          disabled: input.disabled,
+          text: input.closest("label")?.textContent?.trim() || "",
+        })),
+      };
+    });
+    throw new Error(`Lot scope selection did not settle on ${lotCode}: ${JSON.stringify(diagnostics)}; ${error.message}`);
+  }
 }
 
 async function waitForEvaluationSave(page, httpErrors, pageErrors) {
@@ -225,12 +277,35 @@ async function waitForEvaluationSave(page, httpErrors, pageErrors) {
       || document.getElementById("modal-custom-dialog")?.classList.contains("active")
     ), null, { timeout: 20_000 });
   } catch (error) {
-    const diagnostics = await page.evaluate(() => ({
+    const diagnostics = await page.evaluate(async () => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const controller = getAppController();
+      const packageId = document.getElementById("danhgiahsdt-goithau-select")?.value || "";
+      const pkg = controller?.model?.state?.goithau?.find((item) => String(item.id) === String(packageId));
+      const latestPackage = controller?.model?.getLatestPackage?.(packageId);
+      return ({
       dialogClass: document.getElementById("modal-custom-dialog")?.className || "",
-      dialogText: document.getElementById("modal-custom-dialog")?.innerText || "",
+      dialogTitle: document.getElementById("dialog-title")?.textContent?.trim() || "",
+      dialogMessage: document.getElementById("dialog-message")?.textContent?.trim() || "",
+      saveButton: {
+        disabled: Boolean(document.getElementById("btn-danhgiahsdt-save")?.disabled),
+        hidden: Boolean(document.getElementById("btn-danhgiahsdt-save")?.hidden),
+        text: document.getElementById("btn-danhgiahsdt-save")?.textContent?.trim() || "",
+      },
+      reportFields: {
+        number: document.getElementById("danhgiahsdt-so-baocao")?.value || "",
+        numberInvalid: document.getElementById("danhgiahsdt-so-baocao")?.getAttribute("aria-invalid") || "",
+        date: document.getElementById("danhgiahsdt-ngay-baocao")?.value || "",
+        dateInvalid: document.getElementById("danhgiahsdt-ngay-baocao")?.getAttribute("aria-invalid") || "",
+      },
+      syncState: document.getElementById("btn-force-sync")?.dataset?.syncState || "",
       toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
       workflowTabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
-    }));
+      packageMetadata: pkg?.danhGiaHsdtMetadata || "",
+      latestPackageIsCanonical: latestPackage === pkg,
+      latestPackageMetadata: latestPackage?.danhGiaHsdtMetadata || "",
+    });
+    });
     throw new Error(`Evaluation did not complete: ${JSON.stringify(diagnostics)}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}; ${error.message}`);
   }
   if (await page.locator("#modal-custom-dialog.active").isVisible()) {
@@ -440,7 +515,25 @@ try {
     await row.locator(".mt-gia-de-nghi-trung-thau").fill(isJoint ? "400000" : "600000");
   }
   await page.locator("#btn-danhgiahsdt-save").click();
-  await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
+  try {
+    await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
+  } catch (error) {
+    const diagnostics = await evaluationRows.evaluateAll((rows) => rows.map((row) => ({
+      text: row.innerText,
+      bidId: row.dataset.bidId || "",
+      rankingPrice: row.querySelector(".mt-gia-xep-hang")?.value || "",
+      proposedPrice: row.querySelector(".mt-gia-de-nghi-trung-thau")?.value || "",
+      lowPriceDecision: row.querySelector(".mt-low-price-acceptance:checked")?.value || "",
+      technicalValue: row.querySelector(".mt-dg-ky-thuat")?.value || "",
+      technicalValidation: row.querySelector(".mt-dg-ky-thuat")?.validationMessage || "",
+    })));
+    throw new Error(`Mandatory low-price prompt did not appear: ${JSON.stringify({
+      diagnostics,
+      toasts: await page.locator(".bf-toast").allInnerTexts(),
+      httpErrors,
+      pageErrors,
+    })}; ${error.message}`);
+  }
   const lowPriceMessage = (await page.locator("#dialog-message").innerText()).trim();
   if (!/Chấp thuận hoặc Không chấp thuận/i.test(lowPriceMessage)) {
     throw new Error(`Missing mandatory low-price decision: ${lowPriceMessage}`);
@@ -758,7 +851,7 @@ try {
 
   const evaluateLot = async ({ lot, sequence, jointPrice, independentPrice = null, rejectJoint = false }) => {
     if (await page.locator("#modal-custom-dialog.active").isVisible()) {
-      throw new Error(`[DEBUG-jv-dialog] ${JSON.stringify({
+      throw new Error(`Multi-lot evaluation started with an open dialog: ${JSON.stringify({
         dialog: await page.locator("#modal-custom-dialog").innerText(),
         httpErrors,
         pageErrors,
@@ -791,7 +884,36 @@ try {
       }
     }
     await page.locator("#btn-danhgiahsdt-save").click();
-    await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
+    try {
+      await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
+    } catch (error) {
+      const diagnostics = await page.evaluate(async (packageId) => {
+        const { getAppController } = await import("/frontend/app/controllerRef.js");
+        const controller = getAppController();
+        const pkg = controller?.model?.state?.goithau?.find(
+          (item) => String(item.id) === String(packageId),
+        );
+        return {
+          currentTab: controller?.currentDanhGiaTab || "",
+          currentView: controller?.currentEvaluationView || "",
+          workflowTab: controller?.view?._currentWorkflowTab || "",
+          scopeStore: controller?._evaluationLotScopes || {},
+          metadata: pkg?.danhGiaHsdtMetadata || "",
+          dialog: document.querySelector("#modal-custom-dialog.active")?.textContent?.trim() || "",
+          toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.textContent?.trim()),
+          rows: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")].map((row) => ({
+            text: row.innerText,
+            proposedPrice: row.querySelector(".mt-gia-de-nghi-trung-thau")?.value || "",
+            conclusion: row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
+          })),
+        };
+      }, lotPackageData.id);
+      throw new Error(`Lot ${lot.code} evaluation did not advance to result: ${JSON.stringify({
+        diagnostics,
+        httpErrors,
+        pageErrors,
+      })}; ${error.message}`);
+    }
   };
 
   const approveLot = async ({ lot, sequence, winnerName, price }) => {
@@ -800,9 +922,36 @@ try {
     await page.locator("#award-decision-no").fill(`${runId}/QD-LOT-${sequence}`);
     await page.locator("#award-decision-date").fill(sequence === 1 ? "01/08/2026" : "04/08/2026");
     const rows = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]");
+    const rowDiagnostics = await rows.evaluateAll((items) => items.map((row) => ({
+      bidId: row.dataset.approveBidId || "",
+      text: row.innerText,
+      qualified: row.dataset.isQualified || "",
+      status: row.querySelector(".row-status-select")?.value || "",
+      statusDisabled: Boolean(row.querySelector(".row-status-select")?.disabled),
+    })));
+    if (rowDiagnostics.some((row) => !row.text.includes(lot.code))) {
+      const packageState = await page.evaluate(async (packageId) => {
+        const { getAppController } = await import("/frontend/app/controllerRef.js");
+        const pkg = getAppController()?.model?.state?.goithau?.find(
+          (item) => String(item.id) === String(packageId),
+        );
+        return { metadata: pkg?.danhGiaHsdtMetadata || "", status: pkg?.trangThai || "" };
+      }, lotPackageData.id);
+      throw new Error(`Lot ${lot.code} result approval leaked bidders from another scope: ${JSON.stringify({
+        rowDiagnostics,
+        packageState,
+      })}`);
+    }
     for (const row of await rows.all()) {
       const isWinner = (await row.innerText()).includes(winnerName);
-      await row.locator(".row-status-select").selectOption(isWinner ? "trung" : "truot", { force: true });
+      const status = row.locator(".row-status-select");
+      if (await status.isDisabled()) {
+        if (isWinner || await status.inputValue() !== "truot") {
+          throw new Error(`Lot ${lot.code} has an invalid locked award status: ${JSON.stringify(rowDiagnostics)}`);
+        }
+      } else {
+        await status.selectOption(isWinner ? "trung" : "truot", { force: true });
+      }
       if (isWinner) {
         await row.locator(".row-gia-trung").fill(String(price));
         await row.locator(".row-tg-goithau").fill("90 ngày");

@@ -116,6 +116,31 @@ test("saving a new plan version keeps the row version committed by a package sav
       flushMutationOutbox: async () => {},
       addRecord: async () => {},
     },
+    createAggregateVersion: async (_controller, command) => {
+      assert.equal(command.expectedRowVersion, 2);
+      const serverPlan = controller.model.state.kehoach.find((plan) => plan.id === stalePlan.id);
+      serverPlan.isLatest = 0;
+      controller.model.state.kehoach.push({
+        ...serverPlan,
+        ...command.changes,
+        id: "plan-v01",
+        phienBan: "01",
+        isLatest: 1,
+        rowVersion: 1,
+      });
+      const serverPackage = controller.model.state.goithau.find(
+        (pkg) => pkg.id === linkedPackage.id,
+      );
+      serverPackage.isLatest = 0;
+      controller.model.state.goithau.push({
+        ...serverPackage,
+        id: "package-v00-plan-v01",
+        keHoachId: "plan-v01",
+        isLatest: 1,
+        rowVersion: 1,
+      });
+      return { authoritative: true };
+    },
     view: {
       renderKeHoachTable: async () => {},
       renderGoiThauTable: async () => {},
@@ -143,10 +168,10 @@ test("saving a new plan version keeps the row version committed by a package sav
   );
   assert.equal(historicalPlan.isLatest, 0);
   assert.equal(newPlanVersion.isLatest, 1);
-  assert.equal("rowVersion" in newPlanVersion, false, "a brand new version has no server version yet");
+  assert.equal(newPlanVersion.rowVersion, 1, "the authoritative version keeps its server row version");
 
   const inheritedPackage = controller.model.state.goithau.find((pkg) => pkg.id !== linkedPackage.id);
   const historicalPackage = controller.model.state.goithau.find((pkg) => pkg.id === linkedPackage.id);
   assert.equal(historicalPackage.rowVersion, 2, "package row versions stay untouched by the plan snapshot");
-  assert.equal("rowVersion" in inheritedPackage, false);
+  assert.equal(inheritedPackage.rowVersion, 1);
 });

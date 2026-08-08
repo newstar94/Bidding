@@ -145,7 +145,7 @@ class VietnameseFloat(float):
         try:
             formatted = format(float(self), ",.0f")
             return formatted.replace(",", ".")
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             return super().__str__()
 
     def __repr__(self):
@@ -155,5 +155,5 @@ class VietnameseFloat(float):
         try:
             formatted = format(float(self), ",.0f")
             return formatted.replace(",", ".")
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             return super().__format__(spec)

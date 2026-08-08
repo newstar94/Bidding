@@ -10,10 +10,10 @@ from backend.auth.roles import (
     normalize_organization_role,
     normalize_platform_role,
 )
-from backend.shared.client_ip import get_client_ip
 from backend.shared.workspace_scope import personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscription
 from backend.shared.date_utils import vietnam_date_from_epoch
+from backend.shared.client_ip import get_client_ip as get_client_ip
 
 
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"

@@ -675,7 +675,7 @@ def cmd_drill(args) -> int:
         if len(private_key_bytes) != 32:
             raise ValueError
         signing_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError):
         print(
             "ERROR: BIDDING_RESTORE_DRILL_PRIVATE_KEY must be a base64 "
             "Ed25519 raw private key.",

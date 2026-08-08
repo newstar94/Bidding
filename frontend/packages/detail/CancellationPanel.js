@@ -1,12 +1,9 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
 
 function parseMetadata(value) {
-  try {
-    return value ? JSON.parse(value) : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataForDisplay(value).metadata;
 }
 
 export function renderCancellationPanel(container, { pkg, formatDate, initDatePicker, onSave }) {

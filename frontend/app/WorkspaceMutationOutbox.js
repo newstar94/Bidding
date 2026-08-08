@@ -53,6 +53,27 @@ export class WorkspaceMutationOutbox {
     return cloneValue(this.queue);
   }
 
+  checkpoint() {
+    return {
+      queue: cloneValue(this.queue),
+      localDeletions: cloneValue(this.localDeletions),
+    };
+  }
+
+  restore(checkpoint) {
+    if (!checkpoint || typeof checkpoint !== "object") return false;
+    this.queue = normalizeMutationQueue(cloneValue(checkpoint.queue), {
+      baseSyncVersion: this.getBaseSyncVersion(),
+      createId: this.createId,
+    });
+    this.localDeletions = Array.isArray(checkpoint.localDeletions)
+      ? cloneValue(checkpoint.localDeletions)
+      : [];
+    this._rebuildGenerations();
+    this._persist();
+    return true;
+  }
+
   async hydrate() {
     const hydrated = await this.store.hydrate({
       baseSyncVersion: this.getBaseSyncVersion(),

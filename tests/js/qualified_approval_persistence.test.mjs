@@ -44,7 +44,10 @@ test("qualified approval stages a detached package before persisting and syncing
 
   const saved = await saveQualifiedApproval(controller, detachedPackage, metadata);
 
-  assert.deepEqual(JSON.parse(controller.model.state.goithau[0].danhGiaHsdtMetadata), metadata);
+  assert.deepEqual(JSON.parse(controller.model.state.goithau[0].danhGiaHsdtMetadata), {
+    ...metadata,
+    schemaVersion: 1,
+  });
   assert.deepEqual(events.map(([name]) => name), ["update", "persist", "flush", "sync"]);
   assert.equal(saved, controller.model.state.goithau[0]);
 });

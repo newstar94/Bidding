@@ -1,6 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-﻿import { bindCurrencyElement } from "../app/domUtils.js";
+import { bindCurrencyElement } from "../app/domUtils.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";

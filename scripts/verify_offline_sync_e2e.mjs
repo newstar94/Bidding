@@ -151,7 +151,7 @@ try {
     const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
     return !controller?._autoSyncPromise
       && !controller?._syncImmediateTimer
-      && ["error", "offline"].includes(syncState)
+      && syncState === "transport-error"
       && Boolean(controller?.model?.buildMutationSyncPayload?.());
   }, null, { timeout: 15_000 });
   // A submit can coalesce one scheduled mutation flush behind the direct flush.
@@ -163,11 +163,11 @@ try {
     const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
     return !controller?._autoSyncPromise
       && !controller?._syncImmediateTimer
-      && ["error", "offline"].includes(syncState)
+      && syncState === "transport-error"
       && Boolean(controller?.model?.buildMutationSyncPayload?.());
   }, null, { timeout: 15_000 });
   const interruptedSyncState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
-  if (!["error", "offline"].includes(interruptedSyncState || "")) {
+  if (interruptedSyncState !== "transport-error") {
     throw new Error(`Interrupted sync exposed an invalid UI state: ${interruptedSyncState || "missing"}`);
   }
   if (abortedSyncCount < 1 || await page.locator("#modal-chuyengia.active").isHidden()) {

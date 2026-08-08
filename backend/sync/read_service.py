@@ -524,7 +524,7 @@ def _read_sync_data_blocking(request):
             )
         response.headers["Server-Timing"] = f"sync-read;dur={(time.perf_counter() - started_at) * 1000:.1f}"
         return response
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         if conn:
             try:
                 conn.rollback()
@@ -713,7 +713,7 @@ def _read_single_record_blocking(request):
         )
 
         return JSONResponse({"item": item})
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

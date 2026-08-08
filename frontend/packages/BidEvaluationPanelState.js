@@ -8,6 +8,7 @@ import {
   resolveWorkflowActionMode,
   WORKFLOW_ACTION_MODE,
 } from "./workflowActionState.js";
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
 const EMPTY_REPORT_METADATA = Object.freeze({
   soBaoCao: "",
@@ -28,16 +29,8 @@ function emptyReportMetadata(extra = {}) {
 }
 
 function parseMetadata(value) {
-  if (!value) return emptyReportMetadata();
-  if (typeof value === "object" && !Array.isArray(value)) return { ...value };
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed
-      : emptyReportMetadata();
-  } catch {
-    return emptyReportMetadata();
-  }
+  const result = parseEvaluationMetadataForDisplay(value);
+  return result.canPersist ? result.metadata : emptyReportMetadata();
 }
 
 function normalizeMetadata(pkg, rawMetadata) {

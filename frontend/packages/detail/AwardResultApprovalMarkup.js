@@ -7,6 +7,10 @@ import {
   getLowPriceRejectionReason,
   isLowPriceBidRejected,
 } from "../bidEvaluationLowPriceRules.js";
+import {
+  evaluationMethodDisplay,
+  isCombinedEvaluationMethod,
+} from "../evaluationMethodRules.js";
 
 // eslint-disable-next-line complexity -- Legacy approval markup is isolated for a dedicated refactor.
 export function buildAwardResultApprovalMarkup(view, {
@@ -84,7 +88,7 @@ export function buildAwardResultApprovalMarkup(view, {
         const ngayTrinhKetQua = metadata.result.ngayTrinhKetQua ? view.model.formatForDateInput(metadata.result.ngayTrinhKetQua) : defaultTkq ? view.model.formatForDateInput(defaultTkq) : "";
         const defaultDecDate = gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : defaultPdkq ? view.model.formatForDateInput(defaultPdkq) : "";
         const { rankings, scores } = calculateRankings(gt, allBids);
-        const isCombinedMethod = gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá";
+        const isCombinedMethod = isCombinedEvaluationMethod(gt);
         const getIsQualified = (bidItem) => {
           return checkBidQualified(bidItem, gt);
         };
@@ -230,7 +234,7 @@ export function buildAwardResultApprovalMarkup(view, {
                             <div>• <strong class="bf-s-fcb5ddef65">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
                             <div>• <strong class="bf-s-fcb5ddef65">Giá gói thầu:</strong> <span class="text-dark fw-bold">${view.model.formatCurrency(gt.giaGoiThau)}</span></div>
                             <div>• <strong class="bf-s-fcb5ddef65">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(evaluationMethodDisplay(gt))}</div>` : ""}
                             <div>• <strong class="bf-s-fcb5ddef65">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
                             <div>• <strong class="bf-s-fcb5ddef65">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
                             <div>• <strong class="bf-s-fcb5ddef65">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>

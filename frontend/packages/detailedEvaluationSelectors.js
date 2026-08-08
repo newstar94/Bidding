@@ -1,6 +1,7 @@
 import { resolveBidContractorName } from "../partners/contractorVersionBinding.js";
 import { checkBidQualified } from "./detail/PackageTabs.js";
 import { createDefaultDetailedEvaluationCriteria } from "./detailedEvaluationTemplates.js";
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
 
 function isTwoEnvelope(pkg) {
@@ -40,13 +41,7 @@ export function getDetailedEvaluationBidLabel(model, bid) {
 }
 
 function parseEvaluationMetadata(value) {
-  if (!value) return {};
-  try {
-    const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataForDisplay(value).metadata;
 }
 
 const LEGACY_SUMMARY_CODES = new Set([

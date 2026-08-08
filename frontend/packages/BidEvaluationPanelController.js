@@ -5,23 +5,24 @@ import {
   setWorkflowActionVisibility,
   WORKFLOW_ACTION_MODE,
 } from "./workflowActionState.js";
+import {
+  EVALUATION_METHOD_CODES,
+  normalizeEvaluationMethod,
+} from "./evaluationMethodRules.js";
+import {
+  parseEvaluationMetadataStrict,
+  serializeEvaluationMetadata,
+} from "./evaluationMetadata.js";
 
 const ONE_ENVELOPE = "Một giai đoạn một túi hồ sơ";
 const PROCESS_FIELDS = new Set(["Hàng hóa", "Xây lắp", "Hỗn hợp", "Phi tư vấn"]);
 
 function readMetadata(pkg) {
-  if (!pkg?.danhGiaHsdtMetadata) return {};
-  if (typeof pkg.danhGiaHsdtMetadata === "object") return { ...pkg.danhGiaHsdtMetadata };
-  try {
-    const parsed = JSON.parse(pkg.danhGiaHsdtMetadata);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataStrict(pkg?.danhGiaHsdtMetadata);
 }
 
 function writeMetadata(appController, pkg, metadata) {
-  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
   appController.model.persistData("goithau");
 }
 
@@ -37,7 +38,7 @@ function processTwoEligibility(appController, pkg) {
     (bid) => String(bid.goiThauId) === String(pkg.id),
   );
   const reasons = [];
-  if (pkg.phuongPhapDanhGia !== "Giá thấp nhất") {
+  if (normalizeEvaluationMethod(pkg) !== EVALUATION_METHOD_CODES.LOWEST_PRICE) {
     reasons.push('PP đánh giá không phải "Giá thấp nhất"');
   }
   if (metadata.coUuDai) reasons.push("Có nhà thầu được hưởng ưu đãi");

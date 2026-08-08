@@ -1,6 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
+import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import {
   canDeleteVersions,
@@ -17,6 +17,7 @@ import { escapeHtml } from "../shared/view_helpers.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
+import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 
 /**
  * Load every package attached to the given plan versions so reference guards
@@ -297,8 +298,8 @@ export async function editKeHoach(id) {
     document.getElementById("kh-soqdpheduyetduan").value = kh.soQdPheDuyetDuAn || "";
     document.getElementById("kh-ngayqdpheduyetduan").value = this.model.formatForDateInput(kh.ngayQdPheDuyetDuAn);
     document.getElementById("kh-coquanpheduyetduan").value = kh.coQuanPheDuyetDuAn || "";
-    document.getElementById("kh-diadiem-quymo").value = kh.diadiemQuymo || "";
-    document.getElementById("kh-thongtinkhac").value = kh.thongtinKhac || "";
+    document.getElementById("kh-diadiem-quymo").value = kh.diaDiemQuyMo || "";
+    document.getElementById("kh-thongtinkhac").value = kh.thongTinKhac || "";
     toggleProjectFields();
     document.getElementById("kh-ngaypheduyet").value = this.model.formatForDateInput(kh.ngayPheDuyet);
     document.getElementById("kh-quyetdinh").value = kh.quyetDinhPheDuyet;
@@ -470,8 +471,8 @@ export async function handleKeHoachSubmit(e) {
   const ngayQdPheDuyetDuAnRaw = document.getElementById("kh-ngayqdpheduyetduan").value;
   const ngayQdPheDuyetDuAnYMD = this.model.convertDMYToYMD(ngayQdPheDuyetDuAnRaw);
   const coQuanPheDuyetDuAn = document.getElementById("kh-coquanpheduyetduan").value.trim();
-  const diadiemQuymo = document.getElementById("kh-diadiem-quymo").value.trim();
-  const thongtinKhac = document.getElementById("kh-thongtinkhac").value.trim();
+  const diaDiemQuyMo = document.getElementById("kh-diadiem-quymo").value.trim();
+  const thongTinKhac = document.getElementById("kh-thongtinkhac").value.trim();
   const tmInput = document.getElementById("kh-tongmuc");
   const currentVal = tmInput.value.trim();
   const initialVal = tmInput.getAttribute("data-initial-val") || "";
@@ -512,8 +513,8 @@ export async function handleKeHoachSubmit(e) {
     soQdPheDuyetDuAn: loaiHinhVal === "Dự án" ? soQdPheDuyetDuAn : "",
     ngayQdPheDuyetDuAn: loaiHinhVal === "Dự án" ? ngayQdPheDuyetDuAnYMD : "",
     coQuanPheDuyetDuAn: loaiHinhVal === "Dự án" ? coQuanPheDuyetDuAn : "",
-    diadiemQuymo,
-    thongtinKhac,
+    diaDiemQuyMo,
+    thongTinKhac,
     pheDuyet,
     ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
     soToTrinhKeHoach: pheDuyet === "Kế hoạch" ? soToTrinhKeHoach : "",
@@ -822,6 +823,7 @@ export async function savePlanBreakdown() {
   const cvKhongApDung = parseRows("khongapdung");
   const cvChuaDuDieuKien = parseRows("chuadudieuKien");
   let finalPlanId = planId;
+  let officialVersionCommitted = false;
   if (this.tempPlanAction === "edit") {
     const backupKh = this.backupKeHoachState.find((k) => k.id === this.tempPlanData.id);
     let saveAsNewVersion = false;
@@ -844,42 +846,70 @@ export async function savePlanBreakdown() {
         this.backupKeHoachState,
       );
       const oldKh = this.model.state.kehoach.find((k) => k.id === this.tempPlanData.id);
-      const newId = generateRecordId("kehoach");
-      finalPlanId = newId;
-      const timestamp = this.model.getCurrentDateTimeString();
-      const nextPlan = createNextVersion(this.model.state.kehoach, oldKh, {
+      const versionChanges = {
         ...this.tempPlanData,
         cvDaThucHienList: cvDaThucHien,
         cvKhongApDungList: cvKhongApDung,
         cvChuaDuDieuKienList: cvChuaDuDieuKien
-      }, {
-        id: newId,
-        timestamp
-      });
-      nextPlan.createdAt = oldKh.createdAt || timestamp;
-      this.model.state.kehoach.push(nextPlan);
-      const inheritedAggregate = snapshotPlanAggregate(this.model.state, {
-        sourcePlanId: oldKh.id,
-        targetPlanId: nextPlan.id,
-        timestamp,
-        sourcePackages: this.model.state.goithau,
-      });
-      applyPlanAggregateSnapshot(this.model.state, inheritedAggregate);
-      rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
-      const previousPlanAssigneeIds = this.model.state.assignments
-        .filter((assignment) => String(assignment.targetId) === String(oldKh.id) && assignment.type === "kehoach")
-        .map((assignment) => assignment.empId)
-        .filter(Boolean);
-      const planAssigneeIds = previousPlanAssigneeIds.length
-        ? [...new Set(previousPlanAssigneeIds)]
-        : [this.model.state.activeuser.id].filter(Boolean);
-      for (const activeUserId of planAssigneeIds) {
-        this.model.state.assignments.push({
-          id: generateRecordId("assignments"),
-          empId: activeUserId,
-          targetId: newId,
-          type: "kehoach"
+      };
+      if (Number(oldKh?.rowVersion) > 0) {
+        const createAggregateVersion = this.createAggregateVersion
+          || createOfficialAggregateVersion;
+        const result = await createAggregateVersion(this, {
+          kind: "plan",
+          sourceId: oldKh.id,
+          expectedRowVersion: Number(oldKh.rowVersion),
+          changes: versionChanges,
+          clientMutationId: generateRecordId("version-command"),
         });
+        if (result?.authoritative) {
+          const rootId = String(oldKh.rootId || oldKh.id);
+          const nextPlan = this.model.state.kehoach.find((candidate) => (
+            String(candidate.rootId || candidate.id) === rootId
+            && candidate.isLatest == 1
+            && String(candidate.id) !== String(oldKh.id)
+          ));
+          if (!nextPlan) {
+            throw new Error("Máy chủ đã tạo phiên bản nhưng kế hoạch mới chưa được tải về.");
+          }
+          finalPlanId = nextPlan.id;
+          rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
+          officialVersionCommitted = true;
+        }
+      }
+      if (!officialVersionCommitted) {
+        const newId = generateRecordId("kehoach");
+        finalPlanId = newId;
+        const timestamp = this.model.getCurrentDateTimeString();
+        const nextPlan = createNextVersion(this.model.state.kehoach, oldKh, versionChanges, {
+          id: newId,
+          timestamp
+        });
+        nextPlan.createdAt = oldKh.createdAt || timestamp;
+        this.model.state.kehoach.push(nextPlan);
+        const inheritedAggregate = snapshotPlanAggregate(this.model.state, {
+          sourcePlanId: oldKh.id,
+          targetPlanId: nextPlan.id,
+          timestamp,
+          sourcePackages: this.model.state.goithau,
+        });
+        applyPlanAggregateSnapshot(this.model.state, inheritedAggregate);
+        rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
+        const previousPlanAssigneeIds = this.model.state.assignments
+          .filter((assignment) => String(assignment.targetId) === String(oldKh.id) && assignment.type === "kehoach")
+          .map((assignment) => assignment.empId)
+          .filter(Boolean);
+        const planAssigneeIds = previousPlanAssigneeIds.length
+          ? [...new Set(previousPlanAssigneeIds)]
+          : [this.model.state.activeuser.id].filter(Boolean);
+        for (const activeUserId of planAssigneeIds) {
+          this.model.state.assignments.push({
+            id: generateRecordId("assignments"),
+            empId: activeUserId,
+            targetId: newId,
+            type: "kehoach"
+          });
+        }
       }
     } else {
       const currentKh = this.model.state.kehoach.find((k) => k.id === planId);
@@ -918,19 +948,20 @@ export async function savePlanBreakdown() {
   if (hasModalReturnState("kehoach-detail") && finalPlanId) {
     updateModalReturnAction(finalPlanId);
   }
-  const syncResult = await persistAndSync(this, [
-    "kehoach",
-    "goithau",
-    "goithauhanghoa",
-    "thongtinmothau",
-    "hanghoaduthaunhathau",
-    "assignments",
-  ], {
-    afterPersist: () => Promise.all([
+  const renderVersionTables = () => Promise.all([
       this.view.renderKeHoachTable(),
       this.view.renderGoiThauTable()
-    ])
-  });
+    ]);
+  const syncResult = officialVersionCommitted
+    ? (await renderVersionTables(), { ok: true })
+    : await persistAndSync(this, [
+      "kehoach",
+      "goithau",
+      "goithauhanghoa",
+      "thongtinmothau",
+      "hanghoaduthaunhathau",
+      "assignments",
+    ], { afterPersist: renderVersionTables });
   if (!syncResult?.ok) return;
   this.closeModal("modal-plan-breakdown");
   await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");

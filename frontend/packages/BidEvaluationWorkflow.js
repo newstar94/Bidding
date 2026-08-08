@@ -26,6 +26,27 @@ function getEvaluationScopeStore(controller) {
   return controller._evaluationLotScopes;
 }
 
+export function commitEvaluationLotScopeChange({
+  controller,
+  scopeStore,
+  scopeKey,
+  nextScope,
+  syncNavigation,
+  rerender,
+  schedule = queueMicrotask,
+} = {}) {
+  if (!controller || !scopeStore || !scopeKey || !nextScope) return false;
+  scopeStore[scopeKey] = nextScope;
+  syncNavigation?.();
+  if (controller._evaluationLotScopeRenderQueued) return true;
+  controller._evaluationLotScopeRenderQueued = true;
+  schedule(() => {
+    controller._evaluationLotScopeRenderQueued = false;
+    rerender?.();
+  });
+  return true;
+}
+
 export function renderDanhGiaHsdtPanel() {
   this.currentEvaluationView = this.currentEvaluationView || "summary";
   this.selectedDetailedEvaluationTab = this.selectedDetailedEvaluationTab || "validity";
@@ -113,9 +134,14 @@ export function renderDanhGiaHsdtPanel() {
       scope: lotScope,
       isLocked,
       onChange: (nextScope) => {
-        scopeStore[evaluationScopeKey(gtId, this.currentDanhGiaTab)] = nextScope;
-        syncDetailedEvaluationNavigation(this, gtId);
-        handlePackageSelection();
+        commitEvaluationLotScopeChange({
+          controller: this,
+          scopeStore,
+          scopeKey: evaluationScopeKey(gtId, this.currentDanhGiaTab),
+          nextScope,
+          syncNavigation: () => syncDetailedEvaluationNavigation(this, gtId),
+          rerender: handlePackageSelection,
+        });
       }
     });
     bindBidEvaluationPanelController({

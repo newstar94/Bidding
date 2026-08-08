@@ -168,6 +168,8 @@ def test_legacy_combined_result_is_allowed_only_as_an_exact_plan_snapshot_copy()
         "plan-v01",
         "plan-root",
         "Kết hợp giữa kỹ thuật và giá",
+        "Kết hợp kỹ thuật và giá",
+        "COMBINED_TECHNICAL_PRICE",
         "contractor-1",
         "",
         "Đạt",

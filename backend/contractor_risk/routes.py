@@ -54,7 +54,7 @@ def _resolve_blocking(request, package_id: str, payload: dict):
         package_id = clean_id(package_id)
         if not package_id:
             raise ContractorRiskRouteError(
-                "PACKAGE_ID_INVALID", "MÃ£ gÃ³i tháº§u khÃ´ng há»£p lá»‡.", 400
+                "PACKAGE_ID_INVALID", "Mã gói thầu không hợp lệ.", 400
             )
         decision = authorize_record_write(
             cursor,
@@ -68,7 +68,7 @@ def _resolve_blocking(request, package_id: str, payload: dict):
         if not decision.allowed:
             raise ContractorRiskRouteError(
                 "BID_OPENING_WRITE_DENIED",
-                "KhÃ´ng cÃ³ quyá»n chá»‰nh sá»­a biÃªn báº£n má»Ÿ tháº§u cá»§a gÃ³i tháº§u nÃ y.",
+                "Không có quyền chỉnh sửa biên bản mở thầu của gói thầu này.",
                 403,
             )
         repository = ContractorRiskRepository(connection)
@@ -91,7 +91,7 @@ def _resolve_blocking(request, package_id: str, payload: dict):
             } else 400
             raise ContractorRiskRouteError(
                 code,
-                "KhÃ´ng tÃ¬m tháº¥y pháº¡m vi biÃªn báº£n má»Ÿ tháº§u tÆ°Æ¡ng á»©ng.",
+                "Không tìm thấy phạm vi biên bản mở thầu tương ứng.",
                 status,
             ) from error
         resolution = ContractorRiskService(
@@ -169,14 +169,14 @@ async def resolve_bid_opening_contractor(request):
         return error_response(
             request,
             "ORGANIZATION_ACCESS_DENIED",
-            "KhÃ´ng cÃ³ quyá»n truy cáº­p tá»• chá»©c nÃ y.",
+            "Không có quyền truy cập tổ chức này.",
             status_code=403,
         )
     except BlockingIOBusyError:
         response = error_response(
             request,
             "CONTRACTOR_RISK_BUSY",
-            "Dá»‹ch vá»¥ tra cá»©u Ä‘ang báº­n. Vui lÃ²ng thá»­ láº¡i sau.",
+            "Dịch vụ tra cứu đang bận. Vui lòng thử lại sau.",
             status_code=503,
         )
         response.headers["Retry-After"] = "1"
@@ -187,7 +187,7 @@ async def resolve_bid_opening_contractor(request):
             error,
             "resolve_bid_opening_contractor",
             "CONTRACTOR_RISK_LOOKUP_FAILED",
-            "KhÃ´ng thá»ƒ tra cá»©u nhÃ  tháº§u lÃºc nÃ y.",
+            "Không thể tra cứu nhà thầu lúc này.",
             status_code=503,
         )
 

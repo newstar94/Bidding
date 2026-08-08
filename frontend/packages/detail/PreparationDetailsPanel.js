@@ -3,6 +3,10 @@ import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { savePackagePreparation } from "../packagePreparation.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { assigneeLabelsForTarget } from "../../shared/MultiAssigneeSelect.js";
+import {
+  evaluationMethodLabel,
+  isCombinedEvaluationMethod,
+} from "../evaluationMethodRules.js";
 
 // eslint-disable-next-line complexity -- Legacy preparation markup is isolated for a dedicated refactor.
 export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, isEditable, appController }) {
@@ -74,9 +78,9 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Phương pháp đánh giá</span>
-                                        <span class="package-info-value">${escapeHtml(gt.phuongPhapDanhGia || "--")}</span>
+                                        <span class="package-info-value">${escapeHtml(evaluationMethodLabel(gt) || "--")}</span>
                                     </div>
-                                    ${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat != null ? `
+                                    ${isCombinedEvaluationMethod(gt) && gt.trongSoKyThuat != null ? `
                                     <div class="package-info-row">
                                         <span class="package-info-label">Trọng số kỹ thuật (%)</span>
                                         <span class="package-info-value">${escapeHtml(gt.trongSoKyThuat)}%</span>

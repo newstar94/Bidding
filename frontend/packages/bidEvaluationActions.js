@@ -24,16 +24,10 @@ import {
   requiresTechnicalScoreInput,
   validateTechnicalScore,
 } from "./evaluationMethodRules.js";
-
-function parseEvaluationMetadata(value) {
-  if (!value) return {};
-  try {
-    const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+import {
+  parseEvaluationMetadataStrict,
+  serializeEvaluationMetadata,
+} from "./evaluationMetadata.js";
 
 export function stageBidEvaluationMutation(model, pkg, bids = []) {
   if (!model || !pkg?.id || typeof model.commitLocalMutation !== "function") {
@@ -282,7 +276,7 @@ export async function saveDanhGiaHsdt() {
   let evaluationBatch = null;
   const packageLots = getPackageEvaluationLots(gt);
   if (packageLots.length > 0) {
-    const parsedMetadata = parseEvaluationMetadata(gt.danhGiaHsdtMetadata);
+    const parsedMetadata = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
     const scopeBlock = is1G2T
       ? parsedMetadata.technical || {}
       : parsedMetadata;
@@ -367,7 +361,7 @@ export async function saveDanhGiaHsdt() {
     let currentMetadata = { is1G2T: true, technical: { saved: false }, financial: { saved: false } };
     if (gt.danhGiaHsdtMetadata) {
       try {
-        const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+        const parsed = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
         if (parsed.is1G2T) {
           currentMetadata = parsed;
         }
@@ -394,11 +388,11 @@ export async function saveDanhGiaHsdt() {
         )
         : { ...currentMetadata.financial, ...activeBlock };
     }
-    gt.danhGiaHsdtMetadata = JSON.stringify(currentMetadata);
+    gt.danhGiaHsdtMetadata = serializeEvaluationMetadata(currentMetadata);
   } else {
-    gt.danhGiaHsdtMetadata = JSON.stringify(evaluationBatch
+    gt.danhGiaHsdtMetadata = serializeEvaluationMetadata(evaluationBatch
       ? saveEvaluationScopeMetadata(
-        parseEvaluationMetadata(gt.danhGiaHsdtMetadata),
+        parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata),
         evaluationBatch,
         activeBlock,
         packageLots.map((lot) => lot.id)

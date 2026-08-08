@@ -7,6 +7,8 @@ import {
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
+import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
+import { generateRecordId as defaultGenerateRecordId } from "../shared/idUtils.js";
 
 /**
  * Creating a package version copies the aggregate that is present in local
@@ -82,7 +84,7 @@ export function createPackagePreparationVersionSnapshot(
   { targetPackageId, targetPlanId, timestamp, createId } = {},
 ) {
   if (!targetPackageId || !sourcePackage?.id) {
-    throw new Error("KhÃ´ng Ä‘á»§ dá»¯ liá»‡u Ä‘á»ƒ táº¡o snapshot gÃ³i tháº§u.");
+    throw new Error("Không đủ dữ liệu để tạo snapshot gói thầu.");
   }
   return snapshotPackageAggregate(state, sourcePackage, {
     targetPackageId,
@@ -94,11 +96,40 @@ export function createPackagePreparationVersionSnapshot(
   });
 }
 
-export async function savePackagePreparation(controller, pkg, changes, { generateRecordId } = {}) {
+export async function savePackagePreparation(controller, pkg, changes, {
+  generateRecordId = defaultGenerateRecordId,
+  createAggregateVersion = createOfficialAggregateVersion,
+} = {}) {
   const { model } = controller;
   const nextData = { ...changes };
   clearCompetitiveQuotationAppraisal(nextData);
   let createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  if (createVersion && pkg?.referenceOnly === true && typeof controller.fetchRecordByLookup === "function") {
+    pkg = await controller.fetchRecordByLookup("goithau", pkg.id) || pkg;
+    createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  }
+  if (createVersion && Number(pkg?.rowVersion) > 0) {
+    const officialResult = await createAggregateVersion(controller, {
+      kind: "package",
+      sourceId: pkg.id,
+      expectedRowVersion: Number(pkg.rowVersion),
+      changes: nextData,
+      clientMutationId: generateRecordId("version-command"),
+    });
+    if (officialResult?.authoritative) {
+      const packageRootId = String(pkg.rootId || pkg.id);
+      const savedPackage = model.state.goithau.find((candidate) => (
+        String(candidate.rootId || candidate.id) === packageRootId
+        && candidate.isLatest == 1
+        && String(candidate.id) !== String(pkg.id)
+      ));
+      if (!savedPackage) {
+        throw new Error("Máy chủ đã tạo phiên bản nhưng dữ liệu mới chưa được tải về.");
+      }
+      rememberSelectedVersion(model.state, "selectedPackageVersion", savedPackage);
+      return savedPackage;
+    }
+  }
   if (createVersion) {
     // Inheriting from a partial local copy would silently reset status and
     // assignees, so refresh the aggregate first and re-evaluate the decision

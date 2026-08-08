@@ -13,6 +13,8 @@ import {
   applyDetailedEvaluationProjection,
   parseDetailedEvaluationMetadata,
 } from "./DetailedEvaluationState.js";
+import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
+import { serializeEvaluationMetadata } from "./evaluationMetadata.js";
 import {
   validateDetailedEvaluationGroup,
   validateDetailedEvaluationReport,
@@ -71,7 +73,7 @@ function persistCriteriaOnSave(pkg, roundType, criteria, context = {}) {
       metadata[roundType].templateVersion = templateInfo.templateVersion;
     }
   }
-  pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+  pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
 }
 
 function findInvalidConfiguredCriterion(criteria) {
@@ -290,6 +292,7 @@ export async function executeDetailedEvaluationSave({
   ]);
   if (!result?.ok) return false;
   appController._detailedEvaluationDrafts.set(state.draftKey, report);
+  detailedEvaluationAutosaveFor(appController).clear(state.draftKey);
   appController._editingDetailedEvaluationKey = null;
   appController._detailedEvaluationDirty = false;
   const nextTab = getNextDetailedEvaluationTabAfterCompletion({

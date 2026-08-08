@@ -55,3 +55,15 @@ from backend.shared.logging_utils import (
     ErrorLoggingMiddleware,
     RequestIdMiddleware
 )
+
+
+__all__ = [
+    "models", "database", "save_base64_image", "ROLE_HIERARCHY",
+    "get_effective_roles", "hash_password", "verify_password",
+    "password_needs_rehash", "SessionRole", "verify_session",
+    "SCHEMA_DINH_NGHIA", "to_snake_case", "to_camel_case", "clean_id",
+    "VietnameseFloat", "safe_float", "safe_int", "recalculate_is_latest",
+    "recalculate_tong_muc_dau_tu", "khoi_tao_va_di_tru_he_thong",
+    "_assert_safe_table", "gui_email", "get_active_org", "OrgPermissionError",
+    "log_error", "log_audit", "ErrorLoggingMiddleware", "RequestIdMiddleware",
+]

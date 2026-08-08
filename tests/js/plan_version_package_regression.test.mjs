@@ -11,6 +11,7 @@ import {
   loadBreakdownPackageDetails,
   savePlanBreakdown,
 } from "../../frontend/plans/KeHoachWorkflow.js";
+import { createOfficialPackageVersionFromForm } from "../../frontend/packages/GoiThauWorkflow.js";
 
 function packageSnapshotPayload(pkg) {
   const {
@@ -40,7 +41,7 @@ test("detail preparation version inherits status, opening data, and assignees", 
     phienBan: "00",
     isLatest: 1,
     keHoachId: "plan-1",
-    trangThai: "Äang cháº¥m tháº§u",
+    trangThai: "Đang chấm thầu",
     thoiGianDangTai: "2026-08-01 08:00:00",
     thoiGianDongThau: "2026-08-05 08:00:00",
     phanLoList: [],
@@ -50,7 +51,7 @@ test("detail preparation version inherits status, opening data, and assignees", 
   const state = {
     goithau: [source],
     goithauhanghoa: [],
-    thongtinmothau: [{ id: "opening-old", goiThauId: source.id, tenNhaThau: "NhÃ  tháº§u cÅ©" }],
+    thongtinmothau: [{ id: "opening-old", goiThauId: source.id, tenNhaThau: "Nhà thầu cũ" }],
     hanghoaduthaunhathau: [],
     assignments: [{ id: "assignment-old", targetId: source.id, type: "goithau", empId: "employee-1" }],
   };
@@ -113,6 +114,108 @@ test("detail preparation stages the historical package when creating a version",
   assert.equal(packageMutation.records.find((record) => record.id === source.id)?.isLatest, 0);
   assert.equal(packageMutation.records.some((record) => record.id === "goithau-new"), true);
   assert.equal(state.goithau.find((record) => record.id === "goithau-new")?.isLatest, 1);
+});
+
+test("detail preparation delegates official version creation to the server when rowVersion exists", async () => {
+  const source = {
+    id: "package-old",
+    rootId: "package-root",
+    phienBan: "00",
+    isLatest: 1,
+    rowVersion: 7,
+    keHoachId: "plan-1",
+    thoiGianDangTai: "2026-08-01 08:00:00",
+    thoiGianDongThau: "2026-08-05 08:00:00",
+    phanLoList: [],
+  };
+  const state = {
+    goithau: [source],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  let command = null;
+  let localWriteCount = 0;
+  const controller = {
+    model: {
+      state,
+      getCurrentDateTimeString: () => "2026-08-05 10:00:00",
+      commitLocalMutation: () => { localWriteCount += 1; },
+      persistData: async () => { localWriteCount += 1; },
+    },
+  };
+  const created = {
+    ...source,
+    id: "package-new",
+    phienBan: "01",
+    isLatest: 1,
+    rowVersion: 1,
+    thoiGianDongThau: "2026-08-06 08:00:00",
+  };
+
+  const result = await savePackagePreparation(
+    controller,
+    source,
+    { thoiGianDongThau: "2026-08-06 08:00:00" },
+    {
+      generateRecordId: (type) => `${type}-mutation`,
+      createAggregateVersion: async (_controller, nextCommand) => {
+        command = nextCommand;
+        source.isLatest = 0;
+        state.goithau.push(created);
+        return { authoritative: true };
+      },
+    },
+  );
+
+  assert.equal(command.kind, "package");
+  assert.equal(command.sourceId, source.id);
+  assert.equal(command.expectedRowVersion, 7);
+  assert.equal(command.changes.thoiGianDongThau, "2026-08-06 08:00:00");
+  assert.equal(command.clientMutationId, "version-command-mutation");
+  assert.equal(result, created);
+  assert.equal(localWriteCount, 0);
+});
+
+test("full package form delegates version creation and resolves the server-created latest row", async () => {
+  const source = {
+    id: "package-old",
+    rootId: "package-root",
+    isLatest: 1,
+    rowVersion: 8,
+  };
+  const state = { goithau: [source] };
+  let command = null;
+  const created = {
+    ...source,
+    id: "package-new",
+    isLatest: 1,
+    rowVersion: 1,
+    tenGoiThau: "Gói mới",
+  };
+  const controller = {
+    model: { state },
+    createAggregateVersion: async (_controller, nextCommand) => {
+      command = nextCommand;
+      source.isLatest = 0;
+      state.goithau.push(created);
+      return { authoritative: true };
+    },
+  };
+
+  const result = await createOfficialPackageVersionFromForm(
+    controller,
+    source,
+    { tenGoiThau: "Gói mới" },
+    { generateId: (type) => `${type}-1` },
+  );
+
+  assert.equal(command.kind, "package");
+  assert.equal(command.expectedRowVersion, 8);
+  assert.equal(command.clientMutationId, "version-command-1");
+  assert.equal(result.authoritative, true);
+  assert.equal(result.packageRecord, created);
 });
 
 test("creating a plan version inherits a frozen package snapshot without incrementing its version", async () => {
@@ -218,6 +321,83 @@ test("creating a plan version inherits a frozen package snapshot without increme
     (assignment) => assignment.type === "kehoach" && assignment.targetId === latestPlan.id,
   );
   assert.equal(inheritedPlanAssignment?.empId, "employee-1");
+});
+
+test("plan breakdown delegates official version creation to server state", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "breakdown-plan-id") return { value: "plan-old" };
+      return null;
+    },
+  };
+  const source = {
+    id: "plan-old",
+    rootId: "plan-root",
+    phienBan: "00",
+    isLatest: 1,
+    rowVersion: 4,
+    thoiGianDangMa: "2026-08-01T08:00",
+  };
+  const state = {
+    kehoach: [source],
+    goithau: [],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+    activeuser: { id: "user-1" },
+  };
+  let command = null;
+  let localWriteCount = 0;
+  const controller = {
+    tempPlanAction: "edit",
+    tempPlanData: { ...source, thoiGianDangMa: "2026-08-02T08:00" },
+    backupKeHoachState: [structuredClone(source)],
+    backupGoiThauState: [],
+    model: {
+      state,
+      getCurrentDateTimeString: () => "2026-08-05 10:00:00",
+      persistData: async () => { localWriteCount += 1; },
+      flushMutationOutbox: async () => { localWriteCount += 1; },
+    },
+    createAggregateVersion: async (_controller, nextCommand) => {
+      command = nextCommand;
+      const serverSource = state.kehoach.find((plan) => plan.id === source.id);
+      serverSource.isLatest = 0;
+      state.kehoach.push({
+        ...serverSource,
+        ...nextCommand.changes,
+        id: "plan-new",
+        phienBan: "01",
+        isLatest: 1,
+        rowVersion: 1,
+      });
+      return { authoritative: true };
+    },
+    view: {
+      renderKeHoachTable: async () => {},
+      renderGoiThauTable: async () => {},
+      customAlert: async () => {},
+    },
+    updateBreakdownTotal() {},
+    closeModal() {},
+    autoSync: async () => { localWriteCount += 1; return { ok: true }; },
+  };
+
+  try {
+    await savePlanBreakdown.call(controller);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.equal(command.kind, "plan");
+  assert.equal(command.sourceId, source.id);
+  assert.equal(command.expectedRowVersion, 4);
+  assert.equal(command.changes.thoiGianDangMa, "2026-08-02T08:00");
+  assert.equal(state.kehoach.find((plan) => plan.isLatest == 1).id, "plan-new");
+  assert.equal(localWriteCount, 0);
 });
 
 test("plan version inheritance projects a legacy combined technical result as a numeric score", async () => {

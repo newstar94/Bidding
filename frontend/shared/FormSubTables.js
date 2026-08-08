@@ -1,6 +1,6 @@
 import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
-﻿import { parseBidDateTime } from "./dateParseUtils.js";
+import { parseBidDateTime } from "./dateParseUtils.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { escapeHtml } from "./view_helpers.js";
 import { initCustomSelect, syncCustomSelectDisabled } from "./view_helpers.js";

@@ -601,7 +601,7 @@ async def add_user_to_org_api(request):
         })
 
         return JSONResponse({"success": True, "message": success_message})
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         return error_response(
             request,
             "ORG_ACCESS_DENIED",
@@ -934,7 +934,7 @@ async def remove_user_from_org_api(request):
             "message": "Gỡ nhân sự khỏi tổ chức thành công!",
             "deleteImpact": impact,
         })
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

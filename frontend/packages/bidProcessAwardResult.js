@@ -1,4 +1,8 @@
 import { isLowPriceBidRejected } from "./bidEvaluationLowPriceRules.js";
+import {
+  parseEvaluationMetadataStrict,
+  serializeEvaluationMetadata,
+} from "./evaluationMetadata.js";
 
 export function getWinnerRows(tbodyResult, { isDirectOrSpecial }) {
   if (!tbodyResult) return [];
@@ -18,15 +22,10 @@ export function applyAutoPassedEvaluation({ gt, bids, model }) {
       bidInState.danhGiaTaiChinh = "Xếp hạng 1";
     }
   });
-  let existingMeta = {};
-  try {
-    existingMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-  } catch {
-    existingMeta = {};
-  }
+  const existingMeta = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
   if (!existingMeta.saved) {
     const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-    gt.danhGiaHsdtMetadata = JSON.stringify({
+    gt.danhGiaHsdtMetadata = serializeEvaluationMetadata({
       ...existingMeta,
       soBaoCao: "Tự động",
       ngayBaoCao: today,
@@ -82,12 +81,7 @@ export function applyAwardResultToPackage({ gt, bids, winnerRows, tbodyResult, m
   gt.thoiGianHopDong = winner.durationContract;
 }
 export function applyAwardMetadata({ gt, isDirectOrSpecial, soBctdVal, ngayBctdVal, directDates, decDate }) {
-  let metaFinal = {};
-  try {
-    metaFinal = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-  } catch {
-    metaFinal = {};
-  }
+  const metaFinal = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
   if (!metaFinal.result) metaFinal.result = {};
   if (soBctdVal) metaFinal.result.soBctdKetQua = soBctdVal;
   if (ngayBctdVal) metaFinal.result.ngayBctdKetQua = ngayBctdVal;
@@ -103,7 +97,7 @@ export function applyAwardMetadata({ gt, isDirectOrSpecial, soBctdVal, ngayBctdV
       ngayPheDuyetKetQua: decDate
     });
   }
-  gt.danhGiaHsdtMetadata = JSON.stringify(metaFinal);
+  gt.danhGiaHsdtMetadata = serializeEvaluationMetadata(metaFinal);
 }
 function resolveWinner({ gt, bids, winnerRows, model }) {
   if (winnerRows.length > 0) {

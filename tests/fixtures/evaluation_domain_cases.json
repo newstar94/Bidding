@@ -1,0 +1,37 @@
+{
+  "methods": [
+    { "input": "LOWEST_PRICE", "code": "LOWEST_PRICE" },
+    { "input": "Giá thấp nhất", "code": "LOWEST_PRICE" },
+    { "input": "EVALUATED_PRICE", "code": "EVALUATED_PRICE" },
+    { "input": "Giá đánh giá", "code": "EVALUATED_PRICE" },
+    { "input": "FIXED_PRICE", "code": "FIXED_PRICE" },
+    { "input": "Giá cố định", "code": "FIXED_PRICE" },
+    { "input": "COMBINED_TECHNICAL_PRICE", "code": "COMBINED_TECHNICAL_PRICE" },
+    { "input": "Kết hợp giữa kỹ thuật và giá", "code": "COMBINED_TECHNICAL_PRICE" },
+    { "input": "Kết hợp kỹ thuật và giá", "code": "COMBINED_TECHNICAL_PRICE" },
+    { "input": "TECHNICAL_BASED", "code": "TECHNICAL_BASED" },
+    { "input": "Dựa trên kỹ thuật", "code": "TECHNICAL_BASED" },
+    { "input": "không xác định", "code": "" },
+    { "input": "", "code": "" }
+  ],
+  "scores": [
+    { "input": 0, "valid": true, "number": 0 },
+    { "input": 85.5, "valid": true, "number": 85.5 },
+    { "input": " 85,5 ", "valid": true, "number": 85.5 },
+    { "input": ".5", "valid": true, "number": 0.5 },
+    { "input": "0,0", "valid": true, "number": 0 },
+    { "input": null, "valid": false },
+    { "input": "", "valid": false },
+    { "input": true, "valid": false },
+    { "input": false, "valid": false },
+    { "input": "-1", "valid": false },
+    { "input": "1e2", "valid": false },
+    { "input": "0x10", "valid": false },
+    { "input": "NaN", "valid": false },
+    { "input": "Infinity", "valid": false },
+    { "input": "Đạt", "valid": false },
+    { "input": "Không đạt", "valid": false },
+    { "input": "12 điểm", "valid": false },
+    { "input": [12], "valid": false }
+  ]
+}

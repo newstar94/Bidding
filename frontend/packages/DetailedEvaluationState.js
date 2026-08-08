@@ -26,7 +26,9 @@ import {
   applyTechnicalEvaluationMethod,
   resolveTechnicalEvaluationMethod,
 } from "./technicalEvaluationMethod.js";
+import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
 import { requiresTechnicalScoreInput } from "./evaluationMethodRules.js";
+import { parseEvaluationMetadataStrict } from "./evaluationMetadata.js";
 
 export function buildDetailedEvaluationRow(reportId, criterionId) {
   return {
@@ -119,13 +121,7 @@ export function applyDetailedEvaluationProjection(bid, report, criteria, groups,
 }
 
 export function parseDetailedEvaluationMetadata(value) {
-  if (!value) return {};
-  try {
-    const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataStrict(value);
 }
 
 function isUserConfiguredCriterion(criterion = {}) {
@@ -196,11 +192,15 @@ export function resolveDetailedEvaluationState(controller) {
   const draftKey = `${pkg.id}:${bid?.id || ""}:${roundType}`;
   controller._detailedEvaluationDrafts = controller._detailedEvaluationDrafts || new Map();
   const persistedReport = bid ? getDetailedReportForRound(bid, roundType) : null;
+  const restoredDraft = detailedEvaluationAutosaveFor(controller).restore(draftKey);
   const reportSource = controller._detailedEvaluationDrafts.has(draftKey)
     ? controller._detailedEvaluationDrafts.get(draftKey)
-    : persistedReport;
+    : restoredDraft?.report || persistedReport;
   let report = normalizeDetailedEvaluationReport(reportSource);
-  if (reportSource) controller._detailedEvaluationDrafts.set(draftKey, report);
+  if (reportSource) {
+    controller._detailedEvaluationDrafts.set(draftKey, report);
+    if (restoredDraft?.pendingServerSync) controller._detailedEvaluationDirty = true;
+  }
   const criteriaKey = `${pkg.id}:${roundType}`;
   controller._detailedEvaluationCriteriaOverrides = controller._detailedEvaluationCriteriaOverrides || new Map();
   controller._technicalEvaluationMethodDrafts = controller._technicalEvaluationMethodDrafts || new Map();

@@ -1,10 +1,90 @@
-export const EVALUATION_METHODS = Object.freeze({
-  LOWEST_PRICE: "Giá thấp nhất",
-  EVALUATED_PRICE: "Giá đánh giá",
-  FIXED_PRICE: "Giá cố định",
-  COMBINED: "Kết hợp giữa kỹ thuật và giá",
-  TECHNICAL: "Dựa trên kỹ thuật",
+export const EVALUATION_METHOD_CODES = Object.freeze({
+  LOWEST_PRICE: "LOWEST_PRICE",
+  EVALUATED_PRICE: "EVALUATED_PRICE",
+  FIXED_PRICE: "FIXED_PRICE",
+  COMBINED_TECHNICAL_PRICE: "COMBINED_TECHNICAL_PRICE",
+  TECHNICAL_BASED: "TECHNICAL_BASED",
 });
+
+export const EVALUATION_METHOD_LABELS = Object.freeze({
+  [EVALUATION_METHOD_CODES.LOWEST_PRICE]: "Giá thấp nhất",
+  [EVALUATION_METHOD_CODES.EVALUATED_PRICE]: "Giá đánh giá",
+  [EVALUATION_METHOD_CODES.FIXED_PRICE]: "Giá cố định",
+  [EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE]: "Kết hợp giữa kỹ thuật và giá",
+  [EVALUATION_METHOD_CODES.TECHNICAL_BASED]: "Dựa trên kỹ thuật",
+});
+
+// Compatibility labels for existing select values and persisted workspaces.
+export const EVALUATION_METHODS = Object.freeze({
+  LOWEST_PRICE: EVALUATION_METHOD_LABELS[EVALUATION_METHOD_CODES.LOWEST_PRICE],
+  EVALUATED_PRICE: EVALUATION_METHOD_LABELS[EVALUATION_METHOD_CODES.EVALUATED_PRICE],
+  FIXED_PRICE: EVALUATION_METHOD_LABELS[EVALUATION_METHOD_CODES.FIXED_PRICE],
+  COMBINED: EVALUATION_METHOD_LABELS[EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE],
+  TECHNICAL: EVALUATION_METHOD_LABELS[EVALUATION_METHOD_CODES.TECHNICAL_BASED],
+});
+
+function normalizeToken(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("vi")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const EVALUATION_METHOD_CODE_BY_TOKEN = new Map([
+  ["lowest price", EVALUATION_METHOD_CODES.LOWEST_PRICE],
+  ["gia thap nhat", EVALUATION_METHOD_CODES.LOWEST_PRICE],
+  ["evaluated price", EVALUATION_METHOD_CODES.EVALUATED_PRICE],
+  ["gia danh gia", EVALUATION_METHOD_CODES.EVALUATED_PRICE],
+  ["fixed price", EVALUATION_METHOD_CODES.FIXED_PRICE],
+  ["gia co dinh", EVALUATION_METHOD_CODES.FIXED_PRICE],
+  ["combined technical price", EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE],
+  ["ket hop giua ky thuat va gia", EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE],
+  ["ket hop ky thuat va gia", EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE],
+  ["technical based", EVALUATION_METHOD_CODES.TECHNICAL_BASED],
+  ["dua tren ky thuat", EVALUATION_METHOD_CODES.TECHNICAL_BASED],
+]);
+
+export function normalizeEvaluationMethod(valueOrPackage) {
+  const value = valueOrPackage && typeof valueOrPackage === "object"
+    ? valueOrPackage.evaluationMethodCode ?? valueOrPackage.phuongPhapDanhGia
+    : valueOrPackage;
+  return EVALUATION_METHOD_CODE_BY_TOKEN.get(normalizeToken(value)) || "";
+}
+
+export function evaluationMethodLabel(valueOrPackage) {
+  const code = normalizeEvaluationMethod(valueOrPackage);
+  return EVALUATION_METHOD_LABELS[code] || String(
+    valueOrPackage && typeof valueOrPackage === "object"
+      ? valueOrPackage.phuongPhapDanhGia || ""
+      : valueOrPackage || "",
+  );
+}
+
+export function isCombinedEvaluationMethod(valueOrPackage) {
+  return normalizeEvaluationMethod(valueOrPackage)
+    === EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE;
+}
+
+export function evaluationMethodUsesTechnicalScore(valueOrPackage) {
+  return [
+    EVALUATION_METHOD_CODES.FIXED_PRICE,
+    EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE,
+    EVALUATION_METHOD_CODES.TECHNICAL_BASED,
+  ].includes(normalizeEvaluationMethod(valueOrPackage));
+}
+
+export function evaluationMethodDisplay(valueOrPackage) {
+  const label = evaluationMethodLabel(valueOrPackage);
+  if (!label || !valueOrPackage || typeof valueOrPackage !== "object") return label;
+  const weight = valueOrPackage.trongSoKyThuat;
+  return isCombinedEvaluationMethod(valueOrPackage) && weight !== undefined
+    && weight !== null && String(weight).trim() !== ""
+    ? `${label} (${weight}%)`
+    : label;
+}
 
 /**
  * The combined technical/price method uses a numeric technical score in the
@@ -12,13 +92,11 @@ export const EVALUATION_METHODS = Object.freeze({
  * import path, and ranking logic agree on what constitutes a score.
  */
 export function requiresTechnicalScoreInput(packageOrMethod) {
-  const method = typeof packageOrMethod === "string"
-    ? packageOrMethod
-    : packageOrMethod?.phuongPhapDanhGia;
-  return method === EVALUATION_METHODS.COMBINED;
+  return isCombinedEvaluationMethod(packageOrMethod);
 }
 
 export function parseTechnicalScore(value) {
+  if (!["string", "number"].includes(typeof value)) return null;
   const normalized = String(value ?? "").trim().replace(/,/g, ".");
   if (!normalized || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
   const score = Number(normalized);

@@ -14,6 +14,10 @@ import {
 } from "../lotEvaluationScope.js";
 import { mergeScopedAwardLotResults } from "../lotAwardResultScope.js";
 import { selectPackageDetailTab } from "./PackageDetailState.js";
+import {
+  parseEvaluationMetadataStrict,
+  serializeEvaluationMetadata,
+} from "../evaluationMetadata.js";
 
 const CANCEL_REASON = "Tất cả các hồ sơ dự thầu không đáp ứng yêu cầu của hồ sơ mời thầu. Hủy thầu theo quy định tại Điểm a Khoản 1 Điều 17 Luật Đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023, sửa đổi, bổ sung tại Luật số 57/2024/QH15, Luật số 90/2025/QH15.";
 
@@ -24,14 +28,7 @@ const productionPorts = Object.freeze({
 });
 
 function parseMetadata(value) {
-  if (!value) return {};
-  if (value && typeof value === "object" && !Array.isArray(value)) return value;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataStrict(value);
 }
 
 function parseLots(value) {
@@ -355,7 +352,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
           );
         }
         clearResultEditState(metadata);
-        pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+        pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
 
         let lifecycle = null;
         if (shouldFinalize) {
@@ -453,7 +450,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
         metadata.cancelDetails.soQuyetDinhHuyThau = decision.number;
         metadata.cancelDetails.ngayQuyetDinhHuyThau = decision.date;
         metadata.cancelDetails.lyDoHuyThau = CANCEL_REASON;
-        pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+        pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
         clearCompetitiveQuotationAppraisal(pkg);
         pkg.soQuyetDinhKetQua = decision.number;
         pkg.ngayQuyetDinhKetQua = decision.date;
@@ -473,7 +470,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
 
       target.saved = true;
       clearResultEditState(metadata);
-      pkg.danhGiaHsdtMetadata = JSON.stringify(metadata);
+      pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
       clearCompetitiveQuotationAppraisal(pkg);
       pkg.soQuyetDinhKetQua = decision.number;
       pkg.ngayQuyetDinhKetQua = decision.date;

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable
+
+
+logger = logging.getLogger(__name__)
 
 
 class BlockingIOBusyError(RuntimeError):
@@ -81,10 +85,7 @@ class _BlockingIOPool:
     def _complete(self, future: Future[Any]) -> None:
         # Retrieve worker exceptions even if the awaiting request already timed out.
         if not future.cancelled():
-            try:
-                future.exception()
-            except Exception:
-                pass
+            future.exception()
         with self._lock:
             self._completed += 1
             self._in_flight = max(0, self._in_flight - 1)
@@ -120,9 +121,9 @@ class _BlockingIOPool:
                 if timing_callback is not None:
                     try:
                         timing_callback(queue_wait_seconds, execution_seconds)
-                    except Exception:
+                    except Exception as error:
                         # Observability must never change the outcome of the work.
-                        pass
+                        logger.debug("Blocking-I/O timing callback failed", exc_info=error)
 
         try:
             future = self._executor.submit(execute)

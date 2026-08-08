@@ -75,7 +75,6 @@ def _list_users_sync(request):
         sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar FROM tai_khoan"
 
         email_query = (request.query_params.get('email') or '').strip().lower()
-        email_filter_sql = " AND email_norm = ?" if email_query else ""
         email_filter_tk_sql = " AND tk.email_norm = ?" if email_query else ""
 
         if 'super_admin' in effective_roles:
@@ -221,7 +220,7 @@ def _list_users_sync(request):
                 )
             users.append(u)
         return JSONResponse(users)
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

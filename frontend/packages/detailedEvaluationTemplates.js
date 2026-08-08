@@ -1,3 +1,5 @@
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
+
 const COMMON_CRITERIA = Object.freeze({
   validity: Object.freeze({
     code: "VALIDITY_SUMMARY",
@@ -173,14 +175,7 @@ function packageField(pkg, names) {
 }
 
 function packageMetadata(pkg) {
-  const value = pkg?.danhGiaHsdtMetadata;
-  if (!value) return {};
-  try {
-    const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataForDisplay(pkg?.danhGiaHsdtMetadata).metadata;
 }
 
 export function resolveDetailedEvaluationTemplate(pkg = {}) {

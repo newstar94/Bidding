@@ -12,10 +12,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ("backend", "scripts", "tests")
 DEBT_LIMITS = {
-    "BLE001": 151,
-    "F401": 60,
-    "F841": 13,
-    "S110": 16,
+    "BLE001": 147,
+    "F401": 0,
+    "F841": 0,
+    "S110": 14,
     "S608": 129,
 }
 

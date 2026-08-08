@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { evaluationMethodDisplay } from "../evaluationMethodRules.js";
 
 export function renderPackageSummary({
   pkg,
@@ -23,7 +24,7 @@ export function renderPackageSummary({
       ${field("Phân lô", pkg.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô")}
       ${field("Giá gói thầu", escapeHtml(formatCurrency(pkg.giaGoiThau)), true)}
       ${field("Hình thức LCNT", escapeHtml(pkg.hinhThucLuaChon || "--"))}
-      ${pkg.phuongPhapDanhGia ? field("Phương pháp đánh giá", `${escapeHtml(pkg.phuongPhapDanhGia)}${pkg.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && pkg.trongSoKyThuat ? ` (${escapeHtml(pkg.trongSoKyThuat)}%)` : ""}`) : ""}
+      ${pkg.phuongPhapDanhGia ? field("Phương pháp đánh giá", escapeHtml(evaluationMethodDisplay(pkg))) : ""}
       ${field("Loại hợp đồng", escapeHtml(pkg.loaiHopDong || "--"))}
       ${field("Thời gian thực hiện", escapeHtml(pkg.thoiGianThucHien || "--"))}
       ${field("Nguồn vốn", escapeHtml(pkg.nguonVon || "--"))}

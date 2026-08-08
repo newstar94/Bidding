@@ -11,8 +11,9 @@ from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value, vietnam_today
 from backend.shared.text_utils import normalize_lot_code, safe_int
 from backend.shared.numeric_utils import parse_vnd_amount
-from backend.shared.domain_enums import PACKAGE_STATUS_CODES, PACKAGE_STATUS_LABELS, enum_label
+from backend.shared.domain_enums import PACKAGE_STATUS_LABELS, enum_label
 from backend.sync.evaluation_metadata import parse_evaluation_metadata
+from backend.sync.bid_evaluation_rules import is_combined_evaluation_method
 
 
 PACKAGE_STATUSES = set(PACKAGE_STATUS_LABELS.values())
@@ -1002,8 +1003,9 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
         _validate_single_team_leader(item, "toChuyenGia", "Tổ chuyên gia", errors)
         _validate_single_team_leader(item, "toThamDinh", "Tổ thẩm định", errors)
 
-        phuong_phap = str(item.get("phuongPhapDanhGia") or "").strip()
-        if phuong_phap != "Kết hợp giữa kỹ thuật và giá":
+        phuong_phap = item.get("phuongPhapDanhGia")
+        is_combined_method = is_combined_evaluation_method(phuong_phap)
+        if not is_combined_method:
             item["trongSoKyThuat"] = None
 
         trong_so = item.get("trongSoKyThuat")
@@ -1016,7 +1018,7 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
             str(item.get("linhVuc") or "").strip() == "Hàng hóa"
             and item.get("isThuoc") in (True, 1, "1", "true", "True")
         )
-        if phuong_phap == "Kết hợp giữa kỹ thuật và giá" and is_medicine_package:
+        if is_combined_method and is_medicine_package:
             ts_val = safe_int(trong_so)
             if ts_val is None or ts_val < 30 or ts_val > 40:
                 errors.append("Đối với gói thầu thuốc, trọng số kỹ thuật phải nằm trong khoảng 30% - 40%.")
@@ -1104,7 +1106,6 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
 
     elif table_name == "thong_tin_mo_thau":
         bid_price = parse_vnd_amount(item.get("giaDuThau"))
-        discounted_price = parse_vnd_amount(item.get("giaSauGiamGia"))
         discount_rate = item.get("tyLeGiamGia")
         if bid_price is not None and discount_rate not in (None, ""):
             try:

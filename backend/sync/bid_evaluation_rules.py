@@ -3,19 +3,63 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from decimal import Decimal, InvalidOperation
 
 
+LOWEST_PRICE = "LOWEST_PRICE"
+EVALUATED_PRICE = "EVALUATED_PRICE"
+FIXED_PRICE = "FIXED_PRICE"
+COMBINED_TECHNICAL_PRICE = "COMBINED_TECHNICAL_PRICE"
+TECHNICAL_BASED = "TECHNICAL_BASED"
 COMBINED_EVALUATION_METHOD = "Kết hợp giữa kỹ thuật và giá"
+COMBINED_EVALUATION_METHOD_ALIASES = (
+    COMBINED_EVALUATION_METHOD,
+    "Kết hợp kỹ thuật và giá",
+    COMBINED_TECHNICAL_PRICE,
+)
 LEGACY_TECHNICAL_RESULTS = frozenset({"Đạt", "Không đạt"})
 _TECHNICAL_SCORE_PATTERN = re.compile(r"^(?:\d+(?:\.\d+)?|\.\d+)$")
+
+
+def _normalize_method_token(value) -> str:
+    normalized = unicodedata.normalize("NFD", str(value or ""))
+    normalized = "".join(
+        character for character in normalized
+        if unicodedata.category(character) != "Mn"
+    ).lower().replace("đ", "d")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", normalized).split())
+
+
+_EVALUATION_METHOD_BY_TOKEN = {
+    "lowest price": LOWEST_PRICE,
+    "gia thap nhat": LOWEST_PRICE,
+    "evaluated price": EVALUATED_PRICE,
+    "gia danh gia": EVALUATED_PRICE,
+    "fixed price": FIXED_PRICE,
+    "gia co dinh": FIXED_PRICE,
+    "combined technical price": COMBINED_TECHNICAL_PRICE,
+    "ket hop giua ky thuat va gia": COMBINED_TECHNICAL_PRICE,
+    "ket hop ky thuat va gia": COMBINED_TECHNICAL_PRICE,
+    "technical based": TECHNICAL_BASED,
+    "dua tren ky thuat": TECHNICAL_BASED,
+}
+
+
+def normalize_evaluation_method(method) -> str:
+    """Return the canonical evaluation-method code for codes or legacy labels."""
+    return _EVALUATION_METHOD_BY_TOKEN.get(_normalize_method_token(method), "")
+
+
+def is_combined_evaluation_method(method) -> bool:
+    return normalize_evaluation_method(method) == COMBINED_TECHNICAL_PRICE
 
 
 def parse_technical_score(value):
     """Return a non-negative finite score, or ``None`` for invalid input."""
     if isinstance(value, bool):
         return None
-    normalized = str(value or "").strip().replace(",", ".")
+    normalized = ("" if value is None else str(value)).strip().replace(",", ".")
     if not normalized or not _TECHNICAL_SCORE_PATTERN.fullmatch(normalized):
         return None
     try:
@@ -26,7 +70,7 @@ def parse_technical_score(value):
 
 
 def requires_technical_score(method) -> bool:
-    return str(method or "").strip() == COMBINED_EVALUATION_METHOD
+    return is_combined_evaluation_method(method)
 
 
 def is_inherited_legacy_technical_result(
@@ -82,7 +126,7 @@ def is_inherited_legacy_technical_result(
               AND source_package.phien_ban = ?
               AND source_package.ke_hoach_id <> ?
               AND COALESCE(NULLIF(source_plan.id_goc, ''), source_plan.id) = ?
-              AND TRIM(source_package.phuong_phap_danh_gia) = ?
+              AND TRIM(source_package.phuong_phap_danh_gia) IN (?, ?, ?)
               AND source_package.archived_at IS NULL
               AND source_opening.archived_at IS NULL
               AND source_opening.nha_thau_id = ?
@@ -95,7 +139,7 @@ def is_inherited_legacy_technical_result(
             package_version,
             target_plan_id,
             target_plan_root_id,
-            COMBINED_EVALUATION_METHOD,
+            *COMBINED_EVALUATION_METHOD_ALIASES,
             contractor_id,
             normalized_lot,
             normalized_technical_value,

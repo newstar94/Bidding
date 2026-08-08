@@ -798,34 +798,41 @@ export async function confirmBidderGoodsImport(controller) {
   const preview = controller._bidderGoodsImportPreview;
   if (!preview) return false;
   const incomingScopes = new Set(preview.rows.map((row) => String(row.thongTinMoThauId)));
-  const retained = (controller.model.state.hanghoaduthaunhathau || []).filter((row) => {
-    if (!incomingScopes.has(String(row.thongTinMoThauId))) return true;
-    return false;
-  });
-  const existingByKey = new Map((controller.model.state.hanghoaduthaunhathau || []).map((row) => [
+  const existingRows = controller.model.state.hanghoaduthaunhathau || [];
+  const existingByKey = new Map(existingRows.map((row) => [
     `${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`,
     row,
   ]));
-  const nextGoods = [
-    ...retained,
-    ...preview.rows.map((row) => {
-      const current = existingByKey.get(`${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`);
-      return { ...row, id: current?.id || row.id, rowVersion: current?.rowVersion };
-    }),
-  ];
+  const upsertGoods = preview.rows.map((row) => {
+    const current = existingByKey.get(`${row.thongTinMoThauId}::${row.goiThauHangHoaId || row.sttNguon}`);
+    return { ...row, id: current?.id || row.id, rowVersion: current?.rowVersion };
+  });
+  const upsertIds = new Set(upsertGoods.map((row) => String(row.id)));
+  const deletedGoodsIds = existingRows
+    .filter((row) => incomingScopes.has(String(row.thongTinMoThauId)))
+    .filter((row) => !upsertIds.has(String(row.id)))
+    .map((row) => row.id);
+  const updatedOpenings = (controller.model.state.thongtinmothau || [])
+    .filter((opening) => incomingScopes.has(String(opening.id)))
+    .map((opening) => {
+      const updated = { ...opening };
+      invalidateOpeningPreference(updated);
+      return updated;
+    });
   const mutationIdentity = preview.rows[0]?.importBatchId
     || preview.rows.map((row) => String(row.id || "")).sort().join(",");
   const mutationId = `bidder-goods-import:${String(mutationIdentity)}`;
-  const outcome = await workspaceDataStoreFor(controller).transaction({
-    tables: ["hanghoaduthaunhathau", "thongtinmothau"],
+  const outcome = await workspaceDataStoreFor(controller).patch({
     mutationId,
-  }, (draft) => {
-    draft.hanghoaduthaunhathau = nextGoods;
-    draft.thongtinmothau.forEach((opening) => {
-      if (incomingScopes.has(String(opening.id))) invalidateOpeningPreference(opening);
-    });
+    upserts: {
+      hanghoaduthaunhathau: upsertGoods,
+      thongtinmothau: updatedOpenings,
+    },
+    deletions: {
+      hanghoaduthaunhathau: deletedGoodsIds,
+    },
   });
-  if (!["committed", "offlineQueued"].includes(outcome.status)) {
+  if (!["committed", "offlineQueued", "transportFailed"].includes(outcome.status)) {
     controller._bidderGoodsError = "Không thể lưu bản nháp nhập Excel.";
     controller.renderDetailedEvaluation();
     return false;

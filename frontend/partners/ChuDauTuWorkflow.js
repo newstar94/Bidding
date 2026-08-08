@@ -1,7 +1,11 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
-﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
+import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  mutatePersistAndSync,
+  persistAndSync,
+  refreshRecordBeforeDelete,
+} from "../shared/MutationService.js";
 import {
   createInitialVersion,
   createNextVersion,
@@ -111,6 +115,7 @@ export async function handleChuDauTuSubmit(e) {
   });
   const validationErrors = validatePartnerRecord(data, this.model.state.chudautu, id, PARTNER_FORM_CONFIGS.chudautu);
   if (!applyPartnerValidationErrors(document, validationErrors, (control) => this.view.focusInvalidControl(control))) return;
+  let upsertRecords;
   if (id) {
     const currentCdt = this.model.state.chudautu.find((c) => c.id === id);
     const nextVersion = getNextVersion(this.model.state.chudautu, currentCdt);
@@ -121,13 +126,15 @@ export async function handleChuDauTuSubmit(e) {
     );
     if (isNewVersion) {
       const timestamp = this.model.getCurrentDateTimeString();
-      data = createNextVersion(this.model.state.chudautu, currentCdt, data, {
+      const versionDraft = this.model.state.chudautu.map((record) => ({ ...record }));
+      const draftCurrent = versionDraft.find((record) => record.id === currentCdt.id);
+      data = createNextVersion(versionDraft, draftCurrent, data, {
         id: generateRecordId("chudautu"), timestamp
       });
       if (data.ngayApDung === (currentCdt.ngayApDung || String(currentCdt.createdAt || "").slice(0, 10))) {
         data.ngayApDung = todayYmd();
       }
-      this.model.state.chudautu.push(data);
+      upsertRecords = [...getVersionFamily(versionDraft, draftCurrent), data];
     } else {
       data.id = id;
       data.rootId = currentCdt.rootId || currentCdt.id;
@@ -136,18 +143,17 @@ export async function handleChuDauTuSubmit(e) {
       data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
       preserveRowVersion(data, currentCdt);
-      const idx = this.model.state.chudautu.findIndex((c) => c.id === id);
-      this.model.state.chudautu[idx] = data;
+      upsertRecords = [data];
     }
   } else {
     const newId = generateRecordId("chudautu");
     data = createInitialVersion(data, { id: newId, timestamp: this.model.getCurrentDateTimeString() });
-    this.model.state.chudautu.push(data);
+    upsertRecords = [data];
   }
   rememberSelectedVersion(this.model.state, "selectedChuDauTuVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await persistAndSync(this, "chudautu", {
+  await mutatePersistAndSync(this, { upserts: { chudautu: upsertRecords } }, {
     afterPersist: async () => {
       await this.closeModal("modal-chudautu");
       this.view.renderChuDauTuTable();

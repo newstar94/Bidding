@@ -12,12 +12,14 @@ import {
   resolveWorkflowActionMode,
   WORKFLOW_ACTION_MODE,
 } from "../workflowActionState.js";
-
-const TECHNICAL_SCORE_METHODS = new Set([
-  "Kết hợp giữa kỹ thuật và giá",
-  "Giá cố định",
-  "Dựa trên kỹ thuật",
-]);
+import {
+  evaluationMethodDisplay,
+  evaluationMethodUsesTechnicalScore,
+} from "../evaluationMethodRules.js";
+import {
+  parseEvaluationMetadataForDisplay,
+  serializeEvaluationMetadata,
+} from "../evaluationMetadata.js";
 
 export function renderFinancialOpeningTable({
   model,
@@ -165,14 +167,7 @@ export function collectFinancialOpeningRows(rows, { parseVND } = {}) {
 }
 
 function parseOpeningMetadata(pkg) {
-  try {
-    const parsed = typeof pkg?.danhGiaHsdtMetadata === "string"
-      ? JSON.parse(pkg.danhGiaHsdtMetadata || "{}")
-      : pkg?.danhGiaHsdtMetadata || {};
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  return parseEvaluationMetadataForDisplay(pkg?.danhGiaHsdtMetadata).metadata;
 }
 
 function compareOpeningBids(left, right) {
@@ -193,7 +188,7 @@ function hasTechnicalScore(pkg, bids) {
   return bids.some((bid) => {
     const normalized = String(bid?.danhGiaKyThuat || "").trim().replace(/,/g, ".");
     return normalized !== "" && Number.isFinite(Number.parseFloat(normalized));
-  }) || TECHNICAL_SCORE_METHODS.has(pkg?.phuongPhapDanhGia);
+  }) || evaluationMethodUsesTechnicalScore(pkg);
 }
 
 export function buildFinancialOpeningState({
@@ -265,7 +260,7 @@ function renderFinancialOpeningFacts(view, state) {
         <div>• <strong class="bf-s-fcb5ddef65">Phân lô:</strong> ${pkg.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
         <div>• <strong class="bf-s-fcb5ddef65">Giá gói thầu:</strong> <span class="text-dark fw-bold">${escapeHtml(view.model.formatCurrency(pkg.giaGoiThau))}</span></div>
         <div>• <strong class="bf-s-fcb5ddef65">Hình thức LCNT:</strong> ${escapeHtml(pkg.hinhThucLuaChon || "--")}</div>
-        ${pkg.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(pkg.phuongPhapDanhGia)}${pkg.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && pkg.trongSoKyThuat ? ` (${escapeHtml(pkg.trongSoKyThuat)}%)` : ""}</div>` : ""}
+        ${pkg.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(evaluationMethodDisplay(pkg))}</div>` : ""}
         <div>• <strong class="bf-s-fcb5ddef65">Loại hợp đồng:</strong> ${escapeHtml(pkg.loaiHopDong || "--")}</div>
         <div>• <strong class="bf-s-fcb5ddef65">Thời gian thực hiện:</strong> ${escapeHtml(pkg.thoiGianThucHien || "--")}</div>
         <div>• <strong class="bf-s-fcb5ddef65">Nguồn vốn:</strong> ${escapeHtml(pkg.nguonVon || "--")}</div>
@@ -282,7 +277,7 @@ function renderFinancialOpeningFacts(view, state) {
 function stageScopedFinancialOpening(state, openingTime) {
   if (!state.technicalScope?.batch) return;
   state.technicalScope.batch.financialOpening = { saved: true, openingTime };
-  state.pkg.danhGiaHsdtMetadata = JSON.stringify(state.metadata);
+  state.pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(state.metadata);
 }
 
 function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {

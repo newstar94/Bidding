@@ -1,4 +1,23 @@
-export async function persistAndSync(controller, tableKeys, { afterPersist } = {}) {
+function explicitTableChanges(changes, table) {
+  if (!changes || typeof changes !== "object") return null;
+  const hasUpserts = Object.prototype.hasOwnProperty.call(changes.upserts || {}, table);
+  const hasDeletions = Object.prototype.hasOwnProperty.call(changes.deletions || {}, table);
+  if (!hasUpserts && !hasDeletions) return null;
+  const upserts = hasUpserts
+    ? (Array.isArray(changes.upserts[table]) ? changes.upserts[table] : [changes.upserts[table]])
+    : [];
+  const deletions = hasDeletions
+    ? (Array.isArray(changes.deletions[table]) ? changes.deletions[table] : [changes.deletions[table]])
+    : [];
+  return {
+    upserts: upserts.filter(Boolean),
+    deletions: deletions
+      .map((value) => value && typeof value === "object" ? value.id : value)
+      .filter((value) => value !== undefined && value !== null && String(value) !== ""),
+  };
+}
+
+export async function persistAndSync(controller, tableKeys, { afterPersist, changes = null } = {}) {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
   controller._deferImmediateSync = true;
   if (controller._syncImmediateTimer) {
@@ -7,7 +26,12 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
   }
   try {
     for (const key of keys) {
-      await controller.model.persistData(key);
+      const tableChanges = explicitTableChanges(changes, key);
+      if (tableChanges && typeof controller.model.persistChanges === "function") {
+        await controller.model.persistChanges(key, tableChanges, { throwOnError: true });
+      } else if (typeof controller.model.persistData === "function") {
+        await controller.model.persistData(key, { throwOnError: true });
+      }
     }
   } finally {
     controller._deferImmediateSync = false;
@@ -29,9 +53,14 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
     await afterPersist();
   }
   await controller.model?.flushMutationOutbox?.();
-  const syncResult = typeof controller.autoSync === "function"
-    ? await controller.autoSync()
-    : { ok: true };
+  let syncResult;
+  try {
+    syncResult = typeof controller.autoSync === "function"
+      ? await controller.autoSync()
+      : { ok: true };
+  } catch (error) {
+    syncResult = { ok: false, transport: true, error };
+  }
   if (usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
     await afterPersist();
   }
@@ -75,14 +104,15 @@ export function stageLocalRecords(model, table, records) {
 
 export function applyStateMutations(model, { upserts = {}, deletions = {}, mutate } = {}) {
   const changed = new Set();
-  if (typeof mutate === "function") mutate(model.state, model);
+  const state = model.state;
+  if (typeof mutate === "function") mutate(state, model);
   Object.entries(upserts).forEach(([table, records]) => {
-    model.state[table] = Array.isArray(model.state[table]) ? model.state[table] : [];
+    state[table] = Array.isArray(state[table]) ? state[table] : [];
     const staged = (Array.isArray(records) ? records : [records]).filter(Boolean).map((record) => {
       const normalized = model.normalizeRecordKeys?.(record, table) || record;
-      const index = model.state[table].findIndex((item) => String(item.id) === String(normalized.id));
-      if (index >= 0) model.state[table][index] = normalized;
-      else model.state[table].push(normalized);
+      const index = state[table].findIndex((item) => String(item.id) === String(normalized.id));
+      if (index >= 0) state[table][index] = normalized;
+      else state[table].push(normalized);
       return normalized;
     });
     stageLocalRecords(model, table, staged);
@@ -91,8 +121,8 @@ export function applyStateMutations(model, { upserts = {}, deletions = {}, mutat
   Object.entries(deletions).forEach(([table, ids]) => {
     const idList = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
     const deleted = new Set(idList.map(String));
-    const deletedRecords = (model.state[table] || []).filter((record) => deleted.has(String(record.id)));
-    model.state[table] = (model.state[table] || []).filter((record) => !deleted.has(String(record.id)));
+    const deletedRecords = (state[table] || []).filter((record) => deleted.has(String(record.id)));
+    state[table] = (state[table] || []).filter((record) => !deleted.has(String(record.id)));
     model.markDeleted?.(table, deletedRecords.length ? deletedRecords : idList);
     changed.add(table);
   });
@@ -102,5 +132,5 @@ export function applyStateMutations(model, { upserts = {}, deletions = {}, mutat
 export async function mutatePersistAndSync(controller, mutation, options = {}) {
   const changedTables = applyStateMutations(controller.model, mutation);
   const tableKeys = options.tableKeys || changedTables;
-  return persistAndSync(controller, tableKeys, options);
+  return persistAndSync(controller, tableKeys, { ...options, changes: mutation });
 }

@@ -9,6 +9,7 @@ import {
   aggregateDetailedEvaluation,
   aggregateDetailedEvaluationAutomatic,
 } from "../detailedEvaluationAggregation.js";
+import { getEvaluationLotScopeDetails } from "../lotEvaluationScope.js";
 
 const GROUP_LABELS = Object.freeze({
   validity: "Tính hợp lệ",
@@ -19,6 +20,91 @@ const GROUP_LABELS = Object.freeze({
 });
 
 const LARGE_TABLE_ROW_CHUNK_SIZE = 25;
+
+const ROUND_LABELS = Object.freeze({
+  single: "Vòng đánh giá chung",
+  technical: "Vòng kỹ thuật",
+  financial: "Vòng tài chính",
+});
+
+const TECHNICAL_METHOD_LABELS = Object.freeze({
+  pass_fail: "Kỹ thuật: Đạt/Không đạt",
+  score: "Kỹ thuật: Chấm điểm",
+});
+
+function joinContextParts(parts) {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(" — ");
+}
+
+function resolveLotContext(pkg, selectedBid, lotScope) {
+  if (pkg?.phanLo !== "Có") return "Không phân lô";
+  const details = getEvaluationLotScopeDetails(pkg, lotScope);
+  if (details?.selectedLots?.length) {
+    return details.selectedLots.map((lot) => joinContextParts([lot.code, lot.name])).join(", ");
+  }
+  const bidLot = joinContextParts([
+    selectedBid?.maPhanLo || selectedBid?.ma_phan_lo,
+    selectedBid?.tenPhanLo || selectedBid?.ten_phan_lo,
+  ]);
+  return bidLot || "Toàn bộ phần lô";
+}
+
+export function buildDetailedEvaluationContextItems({
+  pkg = null,
+  selectedBid = null,
+  lotScope = null,
+  roundType = "single",
+  context = {},
+  activeGroup = "validity",
+  status = "Chưa đánh giá",
+} = {}) {
+  const technicalMethod = TECHNICAL_METHOD_LABELS[context?.technicalEvaluationMethod];
+  return [
+    {
+      key: "package",
+      label: "Gói thầu",
+      value: joinContextParts([pkg?.maGoiThau, pkg?.tenGoiThau]) || "Chưa xác định",
+    },
+    { key: "lot", label: "Phần lô", value: resolveLotContext(pkg, selectedBid, lotScope) },
+    {
+      key: "contractor",
+      label: "Nhà thầu/HSDT",
+      value: String(selectedBid?.label || selectedBid?.tenNhaThau || "").trim()
+        || "Chưa chọn hồ sơ dự thầu",
+    },
+    {
+      key: "round",
+      label: "Vòng",
+      value: ROUND_LABELS[roundType] || String(roundType || "").trim() || "Chưa xác định",
+    },
+    {
+      key: "group",
+      label: "Nhóm",
+      value: GROUP_LABELS[activeGroup] || String(activeGroup || "").trim() || "Chưa xác định",
+    },
+    {
+      key: "method",
+      label: "Phương pháp",
+      value: technicalMethod
+        || String(pkg?.phuongPhapDanhGia || pkg?.phuongThucLuaChon || "").trim()
+        || "Chưa cấu hình",
+    },
+    { key: "status", label: "Trạng thái", value: String(status || "").trim() || "Chưa đánh giá" },
+  ];
+}
+
+export function renderDetailedEvaluationContextStrip(items = []) {
+  return `
+    <aside class="detailed-evaluation-sticky-context" aria-label="Ngữ cảnh đánh giá đang hiển thị">
+      <dl class="detailed-evaluation-context-list">
+        ${items.map(({ key, label, value }) => `
+          <div class="detailed-evaluation-context-item" data-context-key="${escapeHtml(key)}">
+            <dt>${escapeHtml(label)}</dt>
+            <dd>${escapeHtml(value)}</dd>
+          </div>`).join("")}
+      </dl>
+    </aside>`;
+}
 
 export function renderDetailedEvaluationLowPriceSummary({ pkg, bid } = {}) {
   if (!isProposedAwardPriceBelowHalf(pkg, bid)) return "";
@@ -417,6 +503,8 @@ export function renderDetailedEvaluationPanel(container, {
   pkg = null,
   bids = [],
   selectedBidId = "",
+  lotScope = null,
+  roundType = "single",
   context,
   activeGroup = "validity",
   criteria = [],
@@ -508,6 +596,17 @@ export function renderDetailedEvaluationPanel(container, {
     ? "Hoàn thành"
     : report ? "Bản nháp" : "Chưa đánh giá";
   const statusClass = report?.trangThai === "completed" ? "badge-success" : "badge-warning";
+  const stickyContext = renderDetailedEvaluationContextStrip(
+    buildDetailedEvaluationContextItems({
+      pkg,
+      selectedBid,
+      lotScope,
+      roundType,
+      context,
+      activeGroup,
+      status,
+    }),
+  );
   const progressTotal = Math.max(Number(progress.total) || 0, 1);
   const progressCompleted = Math.min(Number(progress.completed) || 0, progressTotal);
   const selectedIndex = bids.findIndex((bid) => String(bid.id) === String(selectedBidId));
@@ -639,6 +738,7 @@ export function renderDetailedEvaluationPanel(container, {
         </div>
         ${lowPriceDecisionSummary}
       </div>
+      ${stickyContext}
       ${selectedBid ? bidderNavigation : '<div class="package-panel-empty">Chưa có hồ sơ dự thầu phù hợp.</div>'}
       <div class="detailed-evaluation-tabs-toolbar">
         <div class="detailed-evaluation-tabs" role="tablist" aria-label="Nhóm đánh giá">${tabs}</div>

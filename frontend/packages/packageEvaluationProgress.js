@@ -1,5 +1,6 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import { getAppController } from "../app/controllerRef.js";
+import { serializeEvaluationMetadata } from "./evaluationMetadata.js";
 
 async function stagePackageRecord(controller, packageRecord) {
   if (!packageRecord) return;
@@ -20,7 +21,7 @@ export async function saveQualifiedApproval(controller, pkg, metadata) {
   const packageId = pkg?.id;
   const stagedPackage = {
     ...pkg,
-    danhGiaHsdtMetadata: JSON.stringify(metadata),
+    danhGiaHsdtMetadata: serializeEvaluationMetadata(metadata),
   };
   await stagePackageRecord(controller, stagedPackage);
   await persistAndSync(controller, "goithau");

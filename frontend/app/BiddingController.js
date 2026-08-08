@@ -29,10 +29,12 @@ import {
   workflowRequirementForMethod,
   workflowRequirementForRoute,
 } from "./WorkflowModuleLoader.js";
+import { createFeatureServices } from "./FeatureServices.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
     this.view = view;
+    Object.assign(this, createFeatureServices(this));
     this.tempChuyenGiaImageBase64 = "";
     this.tempChuyenGiaSignatureBase64 = "";
     this.tempNhaThauStampBase64 = "";
@@ -957,14 +959,11 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       const lightbox = document.createElement("div");
       lightbox.className = "certificate-lightbox";
       const img = document.createElement("img");
+      img.className = "certificate-lightbox-signature";
       img.src = safeSrc;
       img.alt = "Chu ky Zoom";
       img.loading = "lazy";
       img.decoding = "async";
-      setRuntimeStyle(img, "maxHeight", "60vh");
-      setRuntimeStyle(img, "background", "#fff");
-      setRuntimeStyle(img, "padding", "24px");
-      setRuntimeStyle(img, "borderRadius", "12px");
       lightbox.appendChild(img);
       lightbox.onclick = () => lightbox.remove();
       document.body.appendChild(lightbox);
@@ -973,30 +972,30 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       await this.ensureWorkflowReady(methodName);
       return this[methodName](...args);
     };
-    const editKeHoach = (id) => runWorkflow("editKeHoach", id);
-    const deleteKeHoach = (id) => runWorkflow("deleteKeHoach", id);
-    const addBreakdownRow = (type) => runWorkflow("addBreakdownRow", type);
-    const removeBreakdownRow = (btn, type) => runWorkflow("removeBreakdownRow", btn, type);
-    const editGoiThau = (id, isReadOnly = false) => runWorkflow("editGoiThau", id, isReadOnly);
-    const deleteGoiThau = (id) => runWorkflow("deleteGoiThau", id);
-    const restoreCanceledPackage = (id) => runWorkflow("restoreCanceledPackage", id);
-    const addGiaHanRow = (data) => runWorkflow("addGiaHanRow", data);
+    const editKeHoach = (id) => this.plans.edit(id);
+    const deleteKeHoach = (id) => this.plans.delete(id);
+    const addBreakdownRow = (type) => this.plans.addBreakdownRow(type);
+    const removeBreakdownRow = (btn, type) => this.plans.removeBreakdownRow(btn, type);
+    const editGoiThau = (id, isReadOnly = false) => this.packages.edit(id, isReadOnly);
+    const deleteGoiThau = (id) => this.packages.delete(id);
+    const restoreCanceledPackage = (id) => this.packages.restoreCanceled(id);
+    const addGiaHanRow = (data) => this.packages.addExtension(data);
     const validateGiaHanRealtime = () => runWorkflow("validateGiaHanRealtime");
-    const moThauGoiThau = (id) => runWorkflow("moThauGoiThau", id);
-    const phatHanhHsmtGoiThau = (id) => runWorkflow("phatHanhHsmtGoiThau", id);
+    const moThauGoiThau = (id) => this.evaluation.openBid(id);
+    const phatHanhHsmtGoiThau = (id) => this.packages.publishInvitation(id);
     const enforceSingleLeader = (tbodyId, roleName) => runWorkflow("enforceSingleLeader", tbodyId, roleName);
-    const openMoThauJVManager = (tr) => runWorkflow("openMoThauJVManager", tr);
+    const openMoThauJVManager = (tr) => this.evaluation.openJointVentureManager(tr);
     const openMoThauJVViewModal = (members, leadName, leadCode, leadContractorVersionId = "") => runWorkflow("openMoThauJVViewModal", members, leadName, leadCode, leadContractorVersionId);
     const showNhaThauDetailsAndCloseJV = (ntId) => runWorkflow("showNhaThauDetailsAndCloseJV", ntId);
-    const editChuDauTu = (id) => runWorkflow("editChuDauTu", id);
-    const deleteChuDauTu = (id) => runWorkflow("deleteChuDauTu", id);
-    const editNhaThau = (id, isReadOnly = false) => runWorkflow("editNhaThau", id, isReadOnly);
-    const deleteNhaThau = (id) => runWorkflow("deleteNhaThau", id);
-    const editChuyenGia = (id) => runWorkflow("editChuyenGia", id);
-    const deleteChuyenGia = (id) => runWorkflow("deleteChuyenGia", id);
-    const editHopDong = (id) => runWorkflow("editHopDong", id);
-    const deleteHopDong = (id) => runWorkflow("deleteHopDong", id);
-    const saveKetQuaChiDinhThau = (gtId) => runWorkflow("saveKetQuaChiDinhThau", gtId);
+    const editChuDauTu = (id) => this.partners.editInvestor(id);
+    const deleteChuDauTu = (id) => this.partners.deleteInvestor(id);
+    const editNhaThau = (id, isReadOnly = false) => this.partners.editContractor(id, isReadOnly);
+    const deleteNhaThau = (id) => this.partners.deleteContractor(id);
+    const editChuyenGia = (id) => this.partners.editExpert(id);
+    const deleteChuyenGia = (id) => this.partners.deleteExpert(id);
+    const editHopDong = (id) => this.contracts.edit(id);
+    const deleteHopDong = (id) => this.contracts.delete(id);
+    const saveKetQuaChiDinhThau = (gtId) => this.evaluation.saveDirectAppointmentResult(gtId);
     const exportContractFromHopDong = async (pkgId, soHopDong) => {
       if (!this.model.state.activeuser?.wordExportEnabled) {
         await this.view.customAlert(

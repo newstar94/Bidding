@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "ui", "domain", "lifecycle", "bidder-goods", "all")]
+    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "offline", "joint-venture", "ui", "domain", "lifecycle", "bidder-goods", "all")]
     [string]$Suite = "all",
     [int]$Port = 8010
 )
@@ -51,6 +51,10 @@ $commands = if ($Suite -eq "smoke") {
     @("test:performance")
 } elseif ($Suite -eq "auth-roles") {
     @("test:auth-roles-e2e")
+} elseif ($Suite -eq "offline") {
+    @("test:offline-sync-e2e")
+} elseif ($Suite -eq "joint-venture") {
+    @("test:joint-venture-e2e")
 } elseif ($Suite -eq "ui") {
     $uiCommands
 } elseif ($Suite -eq "domain") {

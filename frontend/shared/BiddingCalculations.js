@@ -1,10 +1,11 @@
 import { parseVND } from "./formatters.js";
 import { isLowPriceBidRejected } from "../packages/bidEvaluationLowPriceRules.js";
 import {
+  EVALUATION_METHOD_CODES,
+  normalizeEvaluationMethod,
   parseTechnicalScore,
   requiresTechnicalScoreInput,
 } from "../packages/evaluationMethodRules.js";
-import { isCombinedTechnicalPriceMethod } from "../packages/technicalEvaluationMethod.js";
 
 function moneyBigInt(value) {
   const parsed = parseVND(value);
@@ -19,9 +20,9 @@ export function calculateRankings(gt, bids) {
   const rankings = {};
   const scores = {};
   const isTuVan = gt.linhVuc === "Tư vấn";
-  const method = gt.phuongPhapDanhGia || "";
-  const technicalScoreRequired = requiresTechnicalScoreInput(method);
-  const isCombinedMethod = isCombinedTechnicalPriceMethod(method);
+  const method = normalizeEvaluationMethod(gt);
+  const technicalScoreRequired = requiresTechnicalScoreInput(gt);
+  const isCombinedMethod = method === EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE;
   const hasLots = gt.phanLo === "Có";
   const groups = {};
   if (hasLots) {
@@ -57,13 +58,13 @@ export function calculateRankings(gt, bids) {
     const isRankable = (b) => isQualified(b) && isPriceRankable(b);
     let eligibleBids = [];
     if (isTuVan) {
-      if (method === "Giá thấp nhất") {
+      if (method === EVALUATION_METHOD_CODES.LOWEST_PRICE) {
         eligibleBids = lotBids.filter((b) => {
           const kt = (b.danhGiaKyThuat || "").trim().toLowerCase();
           return kt !== "không đạt" && kt !== "" && isPriceRankable(b);
         });
         eligibleBids.sort((x, y) => compareMoney(getRankingPrice(x), getRankingPrice(y)));
-      } else if (method === "Giá cố định") {
+      } else if (method === EVALUATION_METHOD_CODES.FIXED_PRICE) {
         const packagePrice = moneyBigInt(gt.giaGoiThau);
         eligibleBids = lotBids.filter((b) => {
           const price = getPriceG(b);
@@ -88,15 +89,15 @@ export function calculateRankings(gt, bids) {
           scores[b.id] = score;
         });
         eligibleBids.sort((x, y) => (scores[y.id] || 0) - (scores[x.id] || 0));
-      } else if (method === "Dựa trên kỹ thuật") {
+      } else if (method === EVALUATION_METHOD_CODES.TECHNICAL_BASED) {
         eligibleBids = [...lotBids];
         eligibleBids.sort((x, y) => getTechScore(y) - getTechScore(x));
       }
     } else {
-      if (method === "Giá thấp nhất") {
+      if (method === EVALUATION_METHOD_CODES.LOWEST_PRICE) {
         eligibleBids = lotBids.filter(isRankable);
         eligibleBids.sort((x, y) => compareMoney(getRankingPrice(x), getRankingPrice(y)));
-      } else if (method === "Giá đánh giá") {
+      } else if (method === EVALUATION_METHOD_CODES.EVALUATED_PRICE) {
         eligibleBids = lotBids.filter(isRankable);
         eligibleBids.forEach((b) => {
           const explicitRankingPrice = moneyBigInt(b.giaXepHang);
@@ -127,7 +128,7 @@ export function calculateRankings(gt, bids) {
           scores[b.id] = score;
         });
         eligibleBids.sort((x, y) => (scores[y.id] || 0) - (scores[x.id] || 0));
-      } else if (method === "Dựa trên kỹ thuật") {
+      } else if (method === EVALUATION_METHOD_CODES.TECHNICAL_BASED) {
         eligibleBids = lotBids.filter(isQualified);
         eligibleBids.sort((x, y) => getTechScore(y) - getTechScore(x));
       }

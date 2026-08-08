@@ -7,7 +7,10 @@ import {
   calculateOpeningDiscountedPrice,
   saveThongTinMoThau,
 } from "../../frontend/packages/BidProcessWorkflow.js";
-import { validateOpeningRows } from "../../frontend/packages/bidProcessOpeningData.js";
+import {
+  collectOpeningBidsFromRows,
+  validateOpeningRows,
+} from "../../frontend/packages/bidProcessOpeningData.js";
 import {
   createPartnerLookupHandlers,
   PARTNER_FORM_CONFIGS,
@@ -39,6 +42,62 @@ test("opening bids require a positive bid price when the price field exists", ()
 
 test("opening rows without a bid-price field remain valid", () => {
   assert.equal(validateOpeningRows([openingRow({ includePrice: false })]).valid, true);
+});
+
+test("opening bids use child identities distinct from contractor identities across lots", () => {
+  const contractors = [
+    { id: "contractor-1", rootId: "contractor-1", maNhaThau: "NT-01", tenNhaThau: "Lead", isLatest: 1 },
+    { id: "contractor-2", rootId: "contractor-2", maNhaThau: "NT-02", tenNhaThau: "Member", isLatest: 1 },
+  ];
+  const makeJointRow = (bidId, lotCode) => {
+    const fields = new Map([
+      [".mt-ma-nha-thau", { value: "NT-01" }],
+      [".mt-ten-nha-thau", { value: "Joint venture" }],
+      [".mt-loai-nha-thau", { value: "Liên danh" }],
+      [".mt-ma-phan-lo", { value: lotCode }],
+      [".mt-ten-phan-lo", { value: lotCode }],
+      [".mt-ma-dinh-danh", { value: "NT-01" }],
+      [".mt-gia-du-thau", { value: "400000" }],
+      [".mt-gia-sau-giam-gia", { value: "400000" }],
+      [".mt-hieu-luc-hsdt, .mt-hieu-luc-hsdxt", { value: "90" }],
+      [".mt-gia-tri-dam-bao, .mt-dam-bao-du-thau", { value: "10000" }],
+      [".mt-hieu-luc-bao-dam-ngay, .mt-hieu-luc-dam-bao", { value: "120" }],
+    ]);
+    return {
+      dataset: { contractorVersionId: "contractor-1" },
+      _leadMemberName: "Lead",
+      _leadMemberContractorId: "contractor-1",
+      _thanhVienLienDanh: [{
+        id: "contractor-2",
+        thanhVienNhaThauId: "contractor-2",
+        maNhaThau: "NT-02",
+        tenNhaThau: "Member",
+      }],
+      getAttribute: (name) => name === "data-id" ? bidId : null,
+      querySelector: (selector) => fields.get(selector) || null,
+    };
+  };
+  const model = {
+    state: {
+      goithau: [{ id: "package-1", thoiGianMoThau: "2026-08-08" }],
+      nhathau: contractors,
+      thongtinmothau: [],
+    },
+    getLatestNhaThau: () => contractors,
+    parseVND: (value) => Number(value || 0),
+    persistData() {},
+  };
+
+  const bids = collectOpeningBidsFromRows({
+    rows: [makeJointRow("bid-l1", "L1"), makeJointRow("bid-l2", "L2")],
+    gtId: "package-1",
+    model,
+    isDirectOrSpecial: false,
+  });
+
+  const childIds = bids.map((bid) => bid.thanhVienLienDanh.map((member) => member.id));
+  assert.equal(childIds.flat().some((id) => contractors.some((contractor) => contractor.id === id)), false);
+  assert.equal(new Set(childIds.flat()).size, childIds.flat().length);
 });
 
 test("discounted bid price stays blank until a positive bid price exists", () => {

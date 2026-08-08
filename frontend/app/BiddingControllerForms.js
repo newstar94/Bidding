@@ -6,7 +6,12 @@ import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisib
 import { setupInlineExcelControls } from "./inlineExcelControls.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { derivePackagePrice } from "../packages/packagePricing.js";
-import { EVALUATION_METHODS, getEvaluationMethods } from "../packages/evaluationMethodRules.js";
+import {
+  EVALUATION_METHODS,
+  evaluationMethodLabel,
+  getEvaluationMethods,
+  isCombinedEvaluationMethod,
+} from "../packages/evaluationMethodRules.js";
 import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
@@ -319,7 +324,7 @@ export function setupActionListeners() {
       message,
       color: "var(--danger)"
     });
-    if (gtPhuongPhapDanhGiaSelect.value !== "Kết hợp giữa kỹ thuật và giá") {
+    if (!isCombinedEvaluationMethod(gtPhuongPhapDanhGiaSelect.value)) {
       clearFeedback();
       return true;
     }
@@ -369,7 +374,7 @@ export function setupActionListeners() {
   };
   const updateTrongSoKyThuatVisibility = () => {
     if (!gtTrongSoKyThuatContainer || !gtPhuongPhapDanhGiaSelect) return;
-    if (gtPhuongPhapDanhGiaSelect.value === "Kết hợp giữa kỹ thuật và giá") {
+    if (isCombinedEvaluationMethod(gtPhuongPhapDanhGiaSelect.value)) {
       setVisible(gtTrongSoKyThuatContainer, true);
       setRequired(gtTrongSoKyThuatInput, true);
       validateTrongSoKyThuat();
@@ -413,8 +418,9 @@ export function setupActionListeners() {
     gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(methods
       .map((method) => `<option value="${escapeHtml(method)}">${escapeHtml(method)}</option>`)
       .join(""));
-    if (!forceDefault && currentVal && methods.includes(currentVal)) {
-      gtPhuongPhapDanhGiaSelect.value = currentVal;
+    const currentLabel = evaluationMethodLabel(currentVal);
+    if (!forceDefault && currentLabel && methods.includes(currentLabel)) {
+      gtPhuongPhapDanhGiaSelect.value = currentLabel;
     } else {
       gtPhuongPhapDanhGiaSelect.value = linhVucVal === "Tư vấn"
         ? EVALUATION_METHODS.COMBINED

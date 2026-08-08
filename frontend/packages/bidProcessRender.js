@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { evaluationMethodDisplay } from "./evaluationMethodRules.js";
 
 export function renderOpeningSummary({
   container,
@@ -25,7 +26,7 @@ export function renderOpeningSummary({
             <div>• <strong>Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
             <div>• <strong>Giá gói thầu:</strong> <span class="text-dark fw-bold">${model.formatCurrency(gt.giaGoiThau)}</span></div>
             <div>• <strong>Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
-            ${gt.phuongPhapDanhGia ? `<div>• <strong>Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+            ${gt.phuongPhapDanhGia ? `<div>• <strong>Phương pháp đánh giá:</strong> ${escapeHtml(evaluationMethodDisplay(gt))}</div>` : ""}
             <div>• <strong>Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
             <div>• <strong>Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
             <div>• <strong>Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>

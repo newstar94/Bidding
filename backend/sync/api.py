@@ -13,6 +13,14 @@ async def sync_api(request):
     return await process_sync_request(request, broadcast_websocket_event)
 
 
+async def aggregate_version_api(request):
+    from backend.versioning.service import process_aggregate_version_request
+    return await process_aggregate_version_request(
+        request,
+        broadcast_websocket_event,
+    )
+
+
 async def restore_record_api(request):
     from backend.sync.restore_service import process_restore_request
     return await process_restore_request(request, broadcast_websocket_event)
@@ -46,6 +54,11 @@ async def current_sync_version_api(request):
 def sync_http_routes(Route):
     return [
         Route("/api/sync", sync_api, methods=["POST"]),
+        Route(
+            "/api/versioning/aggregate",
+            aggregate_version_api,
+            methods=["POST"],
+        ),
         Route("/api/sync/restore", restore_record_api, methods=["POST"]),
         Route("/api/sync/delta", delta_sync_api, methods=["GET"]),
         Route("/api/sync-version", current_sync_version_api, methods=["GET"]),
@@ -57,6 +70,7 @@ def sync_http_routes(Route):
 
 __all__ = [
     "active_connections",
+    "aggregate_version_api",
     "broadcast_websocket_event",
     "current_sync_version_api",
     "delta_sync_api",

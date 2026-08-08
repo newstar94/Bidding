@@ -1,5 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-﻿import { safeImageSrc } from "../shared/view_helpers.js";
+import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import { canUploadWorkspaceAssets } from "../auth/accessContext.js";

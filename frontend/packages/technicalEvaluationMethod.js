@@ -1,3 +1,13 @@
+import {
+  EVALUATION_METHOD_CODES,
+  isCombinedEvaluationMethod,
+  normalizeEvaluationMethod,
+  parseTechnicalScore,
+} from "./evaluationMethodRules.js";
+import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
+
+export { parseTechnicalScore } from "./evaluationMethodRules.js";
+
 export const TECHNICAL_EVALUATION_METHODS = Object.freeze({
   PASS_FAIL: "pass_fail",
   SCORE: "score",
@@ -8,16 +18,6 @@ const FORCED_PASS_FAIL_FORMS = new Set([
   "chi dinh thau",
   "chi dinh thau rut gon",
   "lua chon nha thau trong truong hop dac biet",
-]);
-
-const COMBINED_TECHNICAL_PRICE_METHODS = new Set([
-  "ket hop giua ky thuat va gia",
-  "ket hop ky thuat va gia",
-]);
-
-const FORCED_SCORE_OVERALL_METHODS = new Set([
-  ...COMBINED_TECHNICAL_PRICE_METHODS,
-  "dua tren ky thuat",
 ]);
 
 function normalize(value) {
@@ -42,20 +42,14 @@ export function normalizeTechnicalEvaluationMethod(value) {
 }
 
 export function isCombinedTechnicalPriceMethod(valueOrPackage = {}) {
-  const value = valueOrPackage && typeof valueOrPackage === "object"
-    ? valueOrPackage.phuongPhapDanhGia
-    : valueOrPackage;
-  return COMBINED_TECHNICAL_PRICE_METHODS.has(normalize(value));
+  return isCombinedEvaluationMethod(valueOrPackage);
 }
 
 function metadataBlock(pkg, roundType) {
-  try {
-    const raw = pkg?.danhGiaHsdtMetadata;
-    const metadata = typeof raw === "string" ? JSON.parse(raw || "{}") : raw || {};
-    return roundType === "single" ? metadata : metadata?.[roundType] || {};
-  } catch {
-    return {};
-  }
+  const metadata = parseEvaluationMetadataForDisplay(
+    pkg?.danhGiaHsdtMetadata,
+  ).metadata;
+  return roundType === "single" ? metadata : metadata?.[roundType] || {};
 }
 
 export function getStoredTechnicalEvaluationMethod(pkg = {}, roundType = "single") {
@@ -76,8 +70,11 @@ export function getForcedTechnicalEvaluationMethod(pkg = {}) {
   if (FORCED_PASS_FAIL_FORMS.has(normalize(pkg.hinhThucLuaChon))) {
     return TECHNICAL_EVALUATION_METHODS.PASS_FAIL;
   }
-  const overallMethod = normalize(pkg.phuongPhapDanhGia);
-  if (FORCED_SCORE_OVERALL_METHODS.has(overallMethod)) {
+  const overallMethod = normalizeEvaluationMethod(pkg);
+  if ([
+    EVALUATION_METHOD_CODES.COMBINED_TECHNICAL_PRICE,
+    EVALUATION_METHOD_CODES.TECHNICAL_BASED,
+  ].includes(overallMethod)) {
     return TECHNICAL_EVALUATION_METHODS.SCORE;
   }
   return "";
@@ -114,13 +111,6 @@ export function resolveTechnicalEvaluationMethod({
 export function requiresTechnicalScore(pkg = {}, roundType = "single") {
   return resolveTechnicalEvaluationMethod({ pkg, roundType })
     === TECHNICAL_EVALUATION_METHODS.SCORE;
-}
-
-export function parseTechnicalScore(value) {
-  const raw = String(value ?? "").trim().replace(/,/g, ".");
-  if (!raw) return null;
-  const score = Number(raw);
-  return Number.isFinite(score) && score >= 0 ? score : null;
 }
 
 export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "single") {

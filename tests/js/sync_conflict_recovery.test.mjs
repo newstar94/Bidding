@@ -95,9 +95,9 @@ test("a successful pull cannot report synced while the outbox is pending", () =>
 
   assert.equal(finalizePulledSyncState(controller, 123), true);
   assert.deepEqual(patches, [{
-    phase: "error",
+    phase: "localPending",
     online: true,
-    message: "CÃ³ thay Ä‘á»•i chÆ°a Ä‘á»“ng bá»™",
+    message: "Đã lưu cục bộ · Chờ đồng bộ",
   }]);
 });
 
@@ -110,7 +110,7 @@ test("a successful pull reports synced after the outbox is empty", () => {
   };
 
   assert.equal(finalizePulledSyncState(controller, 123), false);
-  assert.deepEqual(patches, [{ phase: "idle", online: true, lastSyncedAt: 123 }]);
+  assert.deepEqual(patches, [{ phase: "serverSaved", online: true, lastSyncedAt: 123 }]);
 });
 
 

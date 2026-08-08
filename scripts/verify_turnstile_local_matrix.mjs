@@ -1,41 +1,36 @@
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { findAvailableLoopbackPort } from "./local_e2e_port.mjs";
 
 
 const cases = [
   {
     expectation: "pass",
-    port: 8765,
     siteKey: "1x00000000000000000000AA",
     secretKey: "1x0000000000000000000000000000000AA",
   },
   {
     expectation: "fail",
-    port: 8766,
     siteKey: "2x00000000000000000000AB",
     secretKey: "2x0000000000000000000000000000000AA",
   },
   {
     expectation: "interactive",
-    port: 8767,
     siteKey: "3x00000000000000000000FF",
     secretKey: "1x0000000000000000000000000000000AA",
   },
   {
     expectation: "slow",
-    port: 8770,
     siteKey: "1x00000000000000000000AA",
     secretKey: "1x0000000000000000000000000000000AA",
   },
   {
     expectation: "script-failure",
-    port: 8771,
     siteKey: "1x00000000000000000000AA",
     secretKey: "1x0000000000000000000000000000000AA",
   },
   {
     expectation: "auto-pending",
-    port: 8772,
     siteKey: "1x00000000000000000000AA",
     secretKey: "1x0000000000000000000000000000000AA",
   },
@@ -72,14 +67,15 @@ async function stopServer(child) {
 
 
 for (const testCase of cases) {
-  const baseUrl = `http://127.0.0.1:${testCase.port}`;
+  const port = await findAvailableLoopbackPort();
+  const baseUrl = `http://127.0.0.1:${port}`;
   const stderr = { value: "" };
   const child = spawn(
     process.env.PYTHON || "python",
     [
       "-m", "uvicorn", "backend.app:app",
       "--host", "127.0.0.1",
-      "--port", String(testCase.port),
+      "--port", String(port),
       "--no-proxy-headers",
     ],
     {

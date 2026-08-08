@@ -13,6 +13,7 @@ import { BrowserDB } from "./BrowserDB.js";
 import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
+import { EntityIndexes } from "./EntityIndexes.js";
 import {
   ScopedWorkspaceStorage,
   purgeWorkspaceLocalData,
@@ -22,6 +23,12 @@ import {
 const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
   Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
 );
+const LEGACY_FIELD_ALIASES_BY_TYPE = Object.freeze({
+  kehoach: Object.freeze({
+    diadiemQuymo: "diaDiemQuyMo",
+    thongtinKhac: "thongTinKhac",
+  }),
+});
 const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
   "chudautu",
   "kehoach",
@@ -89,6 +96,7 @@ export class BiddingModel {
       assignments: [],
       thongtinmothau: []
     };
+    this.entityIndexes = new EntityIndexes((table) => this.state[table]);
     this.sortState = {
       kehoach: { field: "maKeHoach", order: "asc" },
       goithau: { field: "maGoiThau", order: "asc" },
@@ -128,8 +136,9 @@ export class BiddingModel {
     }
     const normalized = {};
     Object.entries(record).forEach(([key, value]) => {
-      const canonicalKey = snakeToCamel(key, type);
-      if (!(canonicalKey in normalized) || normalized[canonicalKey] === void 0 || normalized[canonicalKey] === null || normalized[canonicalKey] === "") {
+      const canonicalKey = LEGACY_FIELD_ALIASES_BY_TYPE[type]?.[key] || snakeToCamel(key, type);
+      const isCanonicalInput = key === canonicalKey;
+      if (isCanonicalInput || !(canonicalKey in normalized) || normalized[canonicalKey] === void 0 || normalized[canonicalKey] === null || normalized[canonicalKey] === "") {
         normalized[canonicalKey] = value;
       }
     });
@@ -422,6 +431,14 @@ export class BiddingModel {
   async hydrateMutationOutbox() {
     return this._getMutationOutbox().hydrate();
   }
+  captureMutationCheckpoint() {
+    return this._getMutationOutbox().checkpoint();
+  }
+  async restoreMutationCheckpoint(checkpoint) {
+    const restored = this._getMutationOutbox().restore(checkpoint);
+    if (restored) await this._getMutationOutbox().flush();
+    return restored;
+  }
   discardRejectedMutations(errors, snapshot = null) {
     return this._getMutationOutbox().reject(snapshot, errors);
   }
@@ -468,6 +485,7 @@ export class BiddingModel {
   }
   commitLocalMutation(type, options = {}) {
     this._assertWorkspaceWritable();
+    this.entityIndexes.invalidate(type);
     if (options.deletedIds !== void 0) {
       this.markDeleted(type, options.deletedIds);
       return;
@@ -513,6 +531,7 @@ export class BiddingModel {
   }
   async persistData(type, options = {}) {
     if (options.trackMutation !== false) this._assertWorkspaceWritable();
+    this.entityIndexes.invalidate(type);
     const key = type.toUpperCase();
     if (this.STORAGE_KEYS[key]) {
       if (Array.isArray(this.state[type])) {
@@ -526,14 +545,38 @@ export class BiddingModel {
           await this.db.putTableData(type, this.state[type]);
         } catch (err) {
           console.error("Failed to persist data for type:", type, err);
+          if (options.throwOnError) throw err;
         }
       } else {
         try {
           await this.db.set(this.STORAGE_KEYS[key], this.state[type]);
         } catch (err) {
           console.error("Failed to persist data for type:", type, err);
+          if (options.throwOnError) throw err;
         }
       }
+    }
+  }
+  async persistChanges(type, { upserts = [], deletions = [] } = {}, options = {}) {
+    if (options.trackMutation !== false) this._assertWorkspaceWritable();
+    const records = (Array.isArray(upserts) ? upserts : [upserts])
+      .filter((record) => record?.id !== undefined && record?.id !== null)
+      .map((record) => this.normalizeRecordKeys(record, type));
+    const ids = (Array.isArray(deletions) ? deletions : [deletions])
+      .map((value) => value && typeof value === "object" ? value.id : value)
+      .filter((value) => value !== undefined && value !== null && String(value) !== "");
+    if (!this.db.stores.includes(type)) {
+      return this.persistData(type, {
+        ...options,
+        trackMutation: false,
+      });
+    }
+    try {
+      if (records.length > 0) await this.db.putRecords(type, records);
+      if (ids.length > 0) await this.db.deleteRecords(type, ids);
+    } catch (err) {
+      console.error("Failed to persist changes for type:", type, err);
+      if (options.throwOnError) throw err;
     }
   }
   async addRecord(type, record) {
@@ -961,18 +1004,19 @@ export class BiddingModel {
   }
   getLatestPlan(planId) {
     if (!planId) return null;
-    const plan = (this.state.kehoach || []).find((k) => k.id === planId);
+    const plan = this.entityIndexes.byId("kehoach").get(String(planId));
     if (!plan) return null;
-    const root = plan.rootId || plan.id;
-    const latest = (this.state.kehoach || []).find((k) => (k.rootId === root || k.id === root) && k.isLatest == 1);
+    const root = String(plan.rootId || plan.id);
+    const latest = (this.entityIndexes.byRootId("kehoach").get(root) || [])
+      .find((candidate) => candidate.isLatest == 1);
     return latest || plan;
   }
   getLatestPackage(packageId) {
     if (!packageId) return null;
-    const pkg = (this.state.goithau || []).find((g) => g.id === packageId);
+    const pkg = this.entityIndexes.byId("goithau").get(String(packageId));
     if (!pkg) return null;
-    const root = pkg.rootId || pkg.id;
-    const all = (this.state.goithau || []).filter((g) => g.rootId === root || g.id === root);
+    const root = String(pkg.rootId || pkg.id);
+    const all = this.entityIndexes.byRootId("goithau").get(root) || [];
     if (all.length === 0) return pkg;
     if (all.length === 1) return all[0];
     const maxVer = Math.max(...all.map((g) => parseInt(g.phienBan) || 0));

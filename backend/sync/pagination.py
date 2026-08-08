@@ -40,7 +40,7 @@ from backend.sync.queries import (
 )
 from backend.db.postgres_schema import postgres_column_definition
 from backend.shared.domain_enums import enum_code
-from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
+from backend.sync.repository import ARCHIVED_TABLES
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
@@ -640,7 +640,7 @@ def _paginate_records_blocking(request):
             "nextCursor": next_cursor,
             "hasMore": bool(has_more),
         })
-    except OrgPermissionError as e:
+    except OrgPermissionError:
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

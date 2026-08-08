@@ -165,5 +165,6 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   } else if (typeof model.persistData === "function") {
     persistencePromise = Promise.all(Array.from(changedKeys).map((key) => model.persistData(key, { trackMutation: false })));
   }
+  for (const key of changedKeys) model.entityIndexes?.invalidate?.(key);
   return { changedKeys, deletionsByTable, useServerSidePagination, persistencePromise };
 }

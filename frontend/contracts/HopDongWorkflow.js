@@ -1,6 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
+import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";

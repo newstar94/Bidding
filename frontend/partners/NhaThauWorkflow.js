@@ -1,8 +1,12 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
+import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  mutatePersistAndSync,
+  persistAndSync,
+  refreshRecordBeforeDelete,
+} from "../shared/MutationService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml, safeImageSrc } from "../shared/view_helpers.js";
 import {
@@ -253,6 +257,7 @@ export async function handleNhaThauSubmit(e) {
         : currentNtForStamp?.tenAnhDau || `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
       : ""
   };
+  let upsertRecords;
   if (id) {
     const currentNt = this.model.state.nhathau.find((n) => n.id === id);
     const nextVersion = getNextVersion(this.model.state.nhathau, currentNt);
@@ -263,13 +268,15 @@ export async function handleNhaThauSubmit(e) {
     );
     if (isNewVersion) {
       const timestamp = this.model.getCurrentDateTimeString();
-      data = createNextVersion(this.model.state.nhathau, currentNt, data, {
+      const versionDraft = this.model.state.nhathau.map((record) => ({ ...record }));
+      const draftCurrent = versionDraft.find((record) => record.id === currentNt.id);
+      data = createNextVersion(versionDraft, draftCurrent, data, {
         id: generateRecordId("nhathau"), timestamp
       });
       if (data.ngayApDung === (currentNt.ngayApDung || String(currentNt.createdAt || "").slice(0, 10))) {
         data.ngayApDung = todayYmd();
       }
-      this.model.state.nhathau.push(data);
+      upsertRecords = [...getVersionFamily(versionDraft, draftCurrent), data];
     } else {
       data.id = id;
       data.rootId = currentNt.rootId || currentNt.id;
@@ -278,18 +285,17 @@ export async function handleNhaThauSubmit(e) {
       data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
       preserveRowVersion(data, currentNt);
-      const idx = this.model.state.nhathau.findIndex((n) => n.id === id);
-      this.model.state.nhathau[idx] = data;
+      upsertRecords = [data];
     }
   } else {
     const newId = generateRecordId("nhathau");
     data = createInitialVersion(data, { id: newId, timestamp: this.model.getCurrentDateTimeString() });
-    this.model.state.nhathau.push(data);
+    upsertRecords = [data];
   }
   rememberSelectedVersion(this.model.state, "selectedNhaThauVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await persistAndSync(this, "nhathau", {
+  await mutatePersistAndSync(this, { upserts: { nhathau: upsertRecords } }, {
     afterPersist: async () => {
       await this.closeModal("modal-nhathau");
       this.view.renderNhaThauTable();
