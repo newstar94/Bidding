@@ -19,7 +19,7 @@ def _load_holidays():
         with open(holidays_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             return data if isinstance(data, dict) else {}
-    except Exception:
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return {}
 
 
@@ -222,7 +222,7 @@ def _to_comparable(value):
         return _parse_formula_date(value)
     try:
         return _to_number(value)
-    except Exception:
+    except (ArithmeticError, TypeError, ValueError):
         return str(value)
 
 
@@ -270,5 +270,4 @@ def apply_computed_mappings(context, mappings_rows):
 
     for ten_bien, formula in pending.items():
         context[ten_bien] = '-- Lỗi công thức: vòng lặp hoặc thiếu biến nguồn'
-
 

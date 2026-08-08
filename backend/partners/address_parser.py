@@ -162,5 +162,5 @@ def parse_vietnam_address_to_internal(raw_address):
             ward.get("name") if ward else "",
             province.get("name") if province else "",
         )
-    except Exception:
+    except (LookupError, OSError, TypeError, ValueError):
         return compose_internal_address(raw, "", "")

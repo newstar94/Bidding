@@ -76,7 +76,14 @@ test("application installs overflow scrolling during shared UI bootstrap", () =>
 
 test("money controls reserve enough width for a 14-digit VND amount", () => {
   const styles = fs.readFileSync("views/css/views.css", "utf8");
-  assert.match(styles, /min-width:\s*calc\(18ch\s*\+\s*2rem\)\s*!important/u);
+  assert.match(
+    styles,
+    /input#edit-pkg-price\s*\{[^}]*min-width:\s*calc\(18ch\s*\+\s*2rem\)\s*;/su,
+  );
+  assert.doesNotMatch(
+    styles,
+    /input#edit-pkg-price\s*\{[^}]*min-width:[^;}]*!important/su,
+  );
   assert.match(styles, /\.bf-money-display/u);
 });
 

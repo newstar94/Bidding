@@ -108,7 +108,7 @@ def safe_float(val):
 
                 s = s.replace(',', '')
         return float(s)
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -118,7 +118,7 @@ def safe_int(val):
         return None
     try:
         return int(float(val))
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 def to_snake_case(name):

@@ -21,6 +21,23 @@ function bindAdminEvent(element, eventName, bindingName, handler) {
   element.addEventListener(eventName, handler);
 }
 
+async function persistAdminUpserts(model, upsertsByTable) {
+  const entries = Object.entries(upsertsByTable)
+    .map(([table, records]) => [
+      table,
+      [...new Map(
+        (records || []).filter((record) => record?.id != null).map((record) => [String(record.id), record]),
+      ).values()],
+    ])
+    .filter(([, records]) => records.length > 0);
+  for (const [table, records] of entries) {
+    await model.persistChanges(table, { upserts: records }, { throwOnError: true });
+  }
+  for (const [table, records] of entries) {
+    model.commitLocalMutation(table, { records });
+  }
+}
+
 function setProfileFormBusy(form, label, busy, busyText, idleText) {
   form?.setAttribute("aria-busy", busy ? "true" : "false");
   const submitButton = form?.querySelector?.('button[type="submit"]');
@@ -392,14 +409,24 @@ export function setupRBACEvents() {
             console.error("Failed to remove the previous employee from the organization:", err);
           }
           const newEmpId = foundUser.id;
+          const changedPermissions = [];
+          const changedAssignments = [];
           this.model.state.permissionmatrix.forEach((m) => {
-            if (m.empId === id) m.empId = newEmpId;
+            if (m.empId === id) {
+              m.empId = newEmpId;
+              changedPermissions.push(m);
+            }
           });
           this.model.state.assignments.forEach((a) => {
-            if (a.empId === id) a.empId = newEmpId;
+            if (a.empId === id) {
+              a.empId = newEmpId;
+              changedAssignments.push(a);
+            }
           });
-          this.model.persistData("permissionmatrix");
-          this.model.persistData("assignments");
+          await persistAdminUpserts(this.model, {
+            assignments: changedAssignments,
+            permissionmatrix: changedPermissions,
+          });
         }
       }
       try {
@@ -424,7 +451,7 @@ export function setupRBACEvents() {
       const empIdInState = foundUser.id;
       await this.reloadEmployeesFromDatabase();
       if (!this.model.state.permissionmatrix.some((m) => m.empId === empIdInState)) {
-        this.model.state.permissionmatrix.push({
+        const defaultPermission = {
           id: generateRecordId("permissionmatrix"),
           empId: empIdInState,
           kehoach: "view",
@@ -433,8 +460,9 @@ export function setupRBACEvents() {
           chudautu: "view",
           nhathau: "view",
           chuyengia: "view"
-        });
-        this.model.persistData("permissionmatrix");
+        };
+        this.model.state.permissionmatrix.push(defaultPermission);
+        await persistAdminUpserts(this.model, { permissionmatrix: [defaultPermission] });
       }
       this.view.closeModal("modal-manager-employee");
       this.view.renderManagerNhanVienPanel();
@@ -445,6 +473,7 @@ export function setupRBACEvents() {
   const btnSaveMatrix = document.getElementById("btn-save-permission-matrix");
   if (btnSaveMatrix) {
     bindAdminEvent(btnSaveMatrix, "click", "save-permission-matrix", async () => {
+      const changedPermissions = [];
       document.querySelectorAll("#manager-matrix-tbody tr").forEach((row) => {
         const selects = row.querySelectorAll(".matrix-select");
         if (selects.length > 0) {
@@ -455,10 +484,11 @@ export function setupRBACEvents() {
               const mod = sel.getAttribute("data-module");
               matrix[mod] = sel.value;
             });
+            changedPermissions.push(matrix);
           }
         }
       });
-      this.model.persistData("permissionmatrix");
+      await persistAdminUpserts(this.model, { permissionmatrix: changedPermissions });
       await this.view.customAlert("Lưu Ma trận thầu", "Ma trận phân quyền chi tiết đã được áp dụng và đồng bộ hóa thành công!", "check-circle");
       this.autoSync();
     });
@@ -492,7 +522,7 @@ export function setupRBACEvents() {
       } else {
         this.model.state.customcontractstatuses.push(data);
       }
-      await this.model.persistData("customcontractstatuses");
+      await this.model.updateRecord("customcontractstatuses", data);
       this.view.renderManagerHoSoGiayPanel();
       const syncResult = await this.autoSync();
       if (!syncResult?.ok) {
@@ -1092,7 +1122,7 @@ export async function reAddEmployee(id, actionButton = null) {
 
     await this.reloadEmployeesFromDatabase();
     if (!this.model.state.permissionmatrix.some((item) => item.empId === employee.id)) {
-      this.model.state.permissionmatrix.push({
+      const defaultPermission = {
         id: generateRecordId("permissionmatrix"),
         empId: employee.id,
         kehoach: "view",
@@ -1101,8 +1131,9 @@ export async function reAddEmployee(id, actionButton = null) {
         chudautu: "view",
         nhathau: "view",
         chuyengia: "view"
-      });
-      await this.model.persistData("permissionmatrix");
+      };
+      this.model.state.permissionmatrix.push(defaultPermission);
+      await persistAdminUpserts(this.model, { permissionmatrix: [defaultPermission] });
       await this.forceSyncData(true, true);
     }
     this.view.renderManagerNhanVienPanel();

@@ -71,7 +71,7 @@ export function setupConditionalUI() {
   if (khCdtSelect) {
     khCdtSelect.addEventListener("change", (e) => {
       if (e.target.value === "__NEW_INVESTOR__") {
-        this.editChuDauTu(null);
+        void this.partners.editInvestor(null);
         e.target.value = "";
       }
     });
@@ -217,12 +217,12 @@ export function setupActionListeners() {
     await this.ensureWorkflowReady(methodName);
     return this[methodName](...args);
   };
-  onById("btn-add-kehoach", "click", () => runWorkflow("editKeHoach", null));
-  onById("btn-add-goithau", "click", () => runWorkflow("editGoiThau", null));
-  onById("btn-add-chudautu", "click", () => runWorkflow("editChuDauTu", null));
-  onById("btn-add-nhathau", "click", () => runWorkflow("editNhaThau", null));
-  onById("btn-add-chuyengia", "click", () => runWorkflow("editChuyenGia", null));
-  onById("btn-add-hopdong", "click", () => runWorkflow("editHopDong", null));
+  onById("btn-add-kehoach", "click", () => this.plans.edit(null));
+  onById("btn-add-goithau", "click", () => this.packages.edit(null));
+  onById("btn-add-chudautu", "click", () => this.partners.editInvestor(null));
+  onById("btn-add-nhathau", "click", () => this.partners.editContractor(null));
+  onById("btn-add-chuyengia", "click", () => this.partners.editExpert(null));
+  onById("btn-add-hopdong", "click", () => this.contracts.edit(null));
   [
     "kh-tongmuc",
     "gt-gia",

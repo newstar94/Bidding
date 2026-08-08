@@ -3,14 +3,13 @@ import test from "node:test";
 
 import { handlePlanInvestorChange } from "../../frontend/plans/KeHoachWorkflow.js";
 
-test("plan investor selection loads partner workflows before opening a new investor", async () => {
+test("plan investor selection delegates creation through the partner feature service", async () => {
   const calls = [];
   const controller = {
-    async ensureWorkflowReady(methodName) {
-      calls.push(["ensure", methodName]);
-      this.editChuDauTu = async (id) => {
+    partners: {
+      async editInvestor(id) {
         calls.push(["edit", id]);
-      };
+      },
     },
   };
   const target = { value: "__NEW_INVESTOR__" };
@@ -19,7 +18,6 @@ test("plan investor selection loads partner workflows before opening a new inves
 
   assert.equal(target.value, "");
   assert.deepEqual(calls, [
-    ["ensure", "editChuDauTu"],
     ["edit", null],
   ]);
 });

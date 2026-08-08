@@ -19,6 +19,7 @@ function explicitTableChanges(changes, table) {
 
 export async function persistAndSync(controller, tableKeys, { afterPersist, changes = null } = {}) {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
+  controller.model?.assertStorageTablesWritable?.(keys);
   controller._deferImmediateSync = true;
   if (controller._syncImmediateTimer) {
     clearTimeout(controller._syncImmediateTimer);
@@ -102,8 +103,22 @@ export function stageLocalRecords(model, table, records) {
   return staged;
 }
 
+// Intentional reducer boundary for business projections. Persistence and
+// outbox staging remain explicit at the caller so a table replacement cannot
+// silently become a full-table sync mutation.
+export function replaceTableProjection(model, table, records) {
+  model.assertStorageTablesWritable?.(table);
+  model.state[table] = Array.isArray(records) ? records : [];
+  model.entityIndexes?.invalidate?.(table);
+  return model.state[table];
+}
+
 export function applyStateMutations(model, { upserts = {}, deletions = {}, mutate } = {}) {
   const changed = new Set();
+  model.assertStorageTablesWritable?.([
+    ...Object.keys(upserts || {}),
+    ...Object.keys(deletions || {}),
+  ]);
   const state = model.state;
   if (typeof mutate === "function") mutate(state, model);
   Object.entries(upserts).forEach(([table, records]) => {

@@ -82,9 +82,10 @@ export async function deleteKeHoach(id) {
         );
         return;
       }
-      this.model.state.kehoach = preview.records;
-      this.model.markDeleted("kehoach", preview.removed.map((item) => item.id));
+      this.model.replaceTableState("kehoach", preview.records);
+      this.model.markDeleted("kehoach", preview.removed);
       await persistAndSync(this, "kehoach", {
+        changes: { deletions: { kehoach: preview.removed } },
         afterPersist: () => this.view.renderKeHoachTable()
       });
       return;
@@ -102,9 +103,10 @@ export async function deleteKeHoach(id) {
         return;
       }
       const result = removeAllVersions(this.model.state.kehoach, targetPlan);
-      this.model.state.kehoach = result.records;
-      this.model.markDeleted("kehoach", result.removed.map((item) => item.id));
+      this.model.replaceTableState("kehoach", result.records);
+      this.model.markDeleted("kehoach", result.removed);
       await persistAndSync(this, "kehoach", {
+        changes: { deletions: { kehoach: result.removed } },
         afterPersist: () => this.view.renderKeHoachTable()
       });
       return;
@@ -128,9 +130,13 @@ export async function deleteKeHoach(id) {
       "trash-2"
     );
     if (confirmed) {
-      this.model.state.kehoach = this.model.state.kehoach.filter((kh) => kh.id !== id);
-      this.model.markDeleted("kehoach", id);
+      this.model.replaceTableState(
+        "kehoach",
+        this.model.state.kehoach.filter((kh) => kh.id !== id),
+      );
+      this.model.markDeleted("kehoach", targetPlan);
       await persistAndSync(this, "kehoach", {
+        changes: { deletions: { kehoach: [targetPlan] } },
         afterPersist: () => this.view.renderKeHoachTable()
       });
     }
@@ -139,8 +145,7 @@ export async function deleteKeHoach(id) {
 export async function handlePlanInvestorChange(event) {
   if (event.target.value !== "__NEW_INVESTOR__") return;
   event.target.value = "";
-  await this.ensureWorkflowReady("editChuDauTu");
-  return this.editChuDauTu(null);
+  return this.partners.editInvestor(null);
 }
 export async function editKeHoach(id) {
   if (!document.getElementById("modal-kehoach")) {
@@ -593,7 +598,7 @@ export async function openPlanBreakdownModal(planId) {
   const btnAddPkg = document.getElementById("btn-breakdown-add-package");
   if (btnAddPkg) {
     btnAddPkg.onclick = async () => {
-      await this.editGoiThau(null);
+      await this.packages.edit(null);
       const planSelect = document.getElementById("gt-kehoachid");
       if (planSelect) {
         planSelect.value = planId;
@@ -841,9 +846,9 @@ export async function savePlanBreakdown() {
       }
     }
     if (saveAsNewVersion) {
-      this.model.state.kehoach = restoreRecordSnapshot(
-        this.model.state.kehoach,
-        this.backupKeHoachState,
+      this.model.replaceTableState(
+        "kehoach",
+        restoreRecordSnapshot(this.model.state.kehoach, this.backupKeHoachState),
       );
       const oldKh = this.model.state.kehoach.find((k) => k.id === this.tempPlanData.id);
       const versionChanges = {

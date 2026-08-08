@@ -23,7 +23,7 @@ function readMetadata(pkg) {
 
 function writeMetadata(appController, pkg, metadata) {
   pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
-  appController.model.persistData("goithau");
+  void appController.model.updateRecord("goithau", pkg);
 }
 
 function setDisabled(control, disabled) {

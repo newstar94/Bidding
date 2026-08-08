@@ -113,8 +113,8 @@ def _structured_log_worker():
         line = _structured_log_queue.get()
         try:
             _append_redacted_runtime_log("runtime.jsonl", line)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 - the logging worker must survive sink failures
+            continue
         finally:
             _structured_log_queue.task_done()
 
@@ -136,8 +136,8 @@ def _enqueue_structured_log(line):
             from backend.observability.recording import runtime_log_dropped
 
             runtime_log_dropped()
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 - dropped-log telemetry must not recurse into logging
+            return
 
 
 def _structured_value(value):
@@ -213,8 +213,8 @@ def get_request_id(request=None):
             request_id = uuid.uuid4().hex
         try:
             request.state.request_id = request_id
-        except Exception:
-            pass
+        except (AttributeError, TypeError):
+            return request_id
         return request_id
     return uuid.uuid4().hex
 
@@ -314,8 +314,10 @@ def log_error(
             organization_id=organization_id,
             fields=event_fields,
         )
-    except Exception:
-        pass
+    except Exception:  # noqa: BLE001 - log failures must never break business requests
+        if os.environ.get("APP_DEBUG", "False").lower() == "true":
+            print(redact_log_value(f"[{context}] [{level}] {e_or_msg}"))
+        return
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
         print(redact_log_value(f"[{context}] [{level}] {e_or_msg}"))
 

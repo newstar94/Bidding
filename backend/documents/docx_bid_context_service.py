@@ -103,7 +103,7 @@ def _money_text(value):
         if amount == 0:
             return ''
         return f'{VietnameseFloat(amount)}'
-    except Exception:
+    except (ArithmeticError, TypeError, ValueError):
         return _as_text(value)
 
 

@@ -5,7 +5,24 @@ import {
   deleteLatestPackageVersion,
   getPackageDeleteContext,
 } from "../../frontend/packages/packageDeleteHelpers.js";
+import { BiddingModel } from "../../frontend/app/BiddingModel.js";
+import { deleteHopDong } from "../../frontend/contracts/HopDongWorkflow.js";
 import { deleteKeHoach } from "../../frontend/plans/KeHoachWorkflow.js";
+
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    readJson(key, fallback) {
+      return structuredClone(values.get(key) ?? fallback);
+    },
+    writeJson(key, value) {
+      values.set(key, structuredClone(value));
+    },
+  };
+}
 
 function fakeModel(goithau) {
   const deleted = [];
@@ -117,4 +134,41 @@ test("deleting the latest plan version is blocked by packages known only to the 
   assert.equal(alertTitle, "Không thể xóa");
   assert.equal(markDeletedCalled, false, "no plan version may be deleted while packages reference it");
   assert.deepEqual(controller.model.state.kehoach.map((plan) => plan.id), ["plan-00", "plan-01"]);
+});
+
+test("deleting a contract retains the server row version after removing its local projection", async () => {
+  const contract = {
+    id: "contract-01",
+    rootId: "contract-01",
+    rowVersion: 12,
+    tenHopDong: "Contract with version",
+  };
+  const model = new BiddingModel();
+  model.workspaceScope = { key: "user:org", organizationId: "org" };
+  model.workspaceStorage = memoryStorage();
+  model.db = {
+    stores: ["hopdong"],
+    async get() { return null; },
+    async set() {},
+  };
+  model.state.hopdong = [contract];
+  model.persistChanges = async () => {};
+
+  const controller = {
+    model,
+    view: {
+      customConfirm: async () => true,
+      renderHopDongTable: async () => {},
+    },
+    fetchRecordByLookup: async () => contract,
+    autoSync: async () => ({ ok: true }),
+  };
+
+  await deleteHopDong.call(controller, contract.id);
+
+  assert.deepEqual(model.buildMutationSyncPayload()?.payload.deletions, [{
+    table: "hopdong",
+    id: contract.id,
+    expectedVersion: 12,
+  }]);
 });

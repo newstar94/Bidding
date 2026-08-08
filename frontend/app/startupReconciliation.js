@@ -1,9 +1,12 @@
+import { reportOutboxRetry } from "../shared/releaseDiagnostics.js";
+
 export async function reconcileRouteDataAtStartup(controller) {
   controller?.markStartup?.("route-data-sync:start");
   try {
     let initialPush = { ok: true, skipped: true };
     if (typeof controller?.autoSync === "function") {
       initialPush = await controller.autoSync();
+      if (initialPush?.skipped !== true) void reportOutboxRetry();
     }
     if (initialPush?.conflict) {
       if (typeof controller?.forceSyncData === "function") {
@@ -18,6 +21,7 @@ export async function reconcileRouteDataAtStartup(controller) {
     if (!pullResult?.ok) return false;
     if (pullResult?.localMutationsPending && typeof controller?.autoSync === "function") {
       const replay = await controller.autoSync();
+      void reportOutboxRetry();
       if (!replay?.ok) return false;
     }
     return true;

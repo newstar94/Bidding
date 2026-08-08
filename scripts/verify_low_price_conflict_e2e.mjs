@@ -45,6 +45,14 @@ async function login(context, account) {
   assert(response.ok(), `Login failed for ${account.username}: ${response.status()} ${JSON.stringify(body)}`);
 }
 
+async function waitForApp(page) {
+  await page.waitForFunction(() => {
+    const loader = document.getElementById("system-init-loader");
+    return loader?.getAttribute("aria-busy") === "false"
+      && getComputedStyle(loader).visibility === "hidden";
+  }, null, { timeout: 20_000 });
+}
+
 async function csrfHeaders(context) {
   let token = (await context.cookies(baseURL)).find((cookie) => cookie.name === "csrf_token")?.value;
   if (!token) {
@@ -83,6 +91,23 @@ async function saveDecision(context, staleSnapshot, decision, mutationId) {
     data: {
       thongtinmothau: [item],
       baseSyncVersion: staleSnapshot.syncVersion,
+      clientMutationId: mutationId,
+    },
+  });
+}
+
+async function saveOpeningChanges(context, snapshot, changes, mutationId) {
+  const item = {
+    ...snapshot.opening,
+    ...changes,
+    expectedVersion: snapshot.opening.rowVersion,
+  };
+  delete item.rowVersion;
+  return context.request.post(`${baseURL}/api/sync`, {
+    headers: await csrfHeaders(context),
+    data: {
+      thongtinmothau: [item],
+      baseSyncVersion: snapshot.syncVersion,
       clientMutationId: mutationId,
     },
   });
@@ -128,6 +153,103 @@ try {
   assert(database.decision === true, `Database decision is not true: ${JSON.stringify(database)}`);
   assert(database.rowVersion > firstSnapshot.opening.rowVersion, "Database rowVersion did not advance");
 
+  const offlinePage = await secondContext.newPage();
+  await offlinePage.goto(`${baseURL}/mothau`, { waitUntil: "domcontentloaded" });
+  await waitForApp(offlinePage);
+  const sharedSnapshot = await loadOpening(firstContext, seeded.openingId);
+  await secondContext.setOffline(true);
+  const offlineOutcome = await offlinePage.evaluate(async ({ openingId, mutationId }) => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const { workspaceDataStoreFor } = await import("/frontend/app/WorkspaceDataStore.js");
+    const controller = getAppController();
+    const opening = controller.model.state.thongtinmothau.find((item) => item.id === openingId);
+    if (!opening) throw new Error("Offline browser did not hydrate the shared opening");
+    return workspaceDataStoreFor(controller).patch({
+      mutationId,
+      upserts: {
+        thongtinmothau: [{ ...opening, hieuLucHsdt: 321 }],
+      },
+    });
+  }, { openingId: seeded.openingId, mutationId: `${runId}-offline-field` });
+  assert(
+    offlineOutcome.status === "offlineQueued",
+    `Offline browser did not queue its field update: ${JSON.stringify(offlineOutcome)}`,
+  );
+
+  const onlineResponse = await saveOpeningChanges(
+    firstContext,
+    sharedSnapshot,
+    { thoiGianThucHien: "45 ngày" },
+    `${runId}-online-field`,
+  );
+  const onlineBody = await onlineResponse.json().catch(() => ({}));
+  assert(onlineResponse.ok(), `Online field update failed: ${onlineResponse.status()} ${JSON.stringify(onlineBody)}`);
+
+  const reconnectConflict = offlinePage.waitForResponse((response) => (
+    response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/sync"
+      && response.status() === 409
+  ), { timeout: 20_000 });
+  await secondContext.setOffline(false);
+  await reconnectConflict;
+  await offlinePage.waitForFunction(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    return !controller?._autoSyncPromise
+      && !controller?.model?.buildMutationSyncPayload?.();
+  }, null, { timeout: 15_000 });
+  const afterOfflineConflict = await loadOpening(secondContext, seeded.openingId);
+  assert(
+    afterOfflineConflict.opening.thoiGianThucHien === "45 ngày",
+    `Offline conflict overwrote the online field: ${JSON.stringify(afterOfflineConflict.opening)}`,
+  );
+  assert(
+    afterOfflineConflict.opening.hieuLucHsdt !== 321,
+    `Stale offline field was committed despite row conflict: ${JSON.stringify(afterOfflineConflict.opening)}`,
+  );
+
+  await secondContext.setOffline(true);
+  const invalidOfflineOutcome = await offlinePage.evaluate(async ({ openingId, mutationId }) => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const { workspaceDataStoreFor } = await import("/frontend/app/WorkspaceDataStore.js");
+    const controller = getAppController();
+    const opening = controller.model.state.thongtinmothau.find((item) => item.id === openingId);
+    if (!opening) throw new Error("Conflict recovery did not restore the shared opening");
+    return workspaceDataStoreFor(controller).patch({
+      mutationId,
+      upserts: {
+        thongtinmothau: [{ ...opening, giaDuThau: -1 }],
+      },
+    });
+  }, { openingId: seeded.openingId, mutationId: `${runId}-offline-invalid` });
+  assert(
+    invalidOfflineOutcome.status === "offlineQueued",
+    `Invalid offline update was not retained for server validation: ${JSON.stringify(invalidOfflineOutcome)}`,
+  );
+  const reconnectValidation = offlinePage.waitForResponse((response) => (
+    response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/sync"
+  ), { timeout: 20_000 });
+  await secondContext.setOffline(false);
+  const validationResponse = await reconnectValidation;
+  const validationBody = await validationResponse.json().catch(() => ({}));
+  assert(
+    validationResponse.status() === 400,
+    `Offline validation reconnect returned ${validationResponse.status()}: ${JSON.stringify(validationBody)}`,
+  );
+  await offlinePage.waitForFunction(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    return !controller?._autoSyncPromise
+      && !controller?.model?.buildMutationSyncPayload?.();
+  }, null, { timeout: 15_000 });
+  const afterOfflineValidation = await loadOpening(secondContext, seeded.openingId);
+  assert(
+    afterOfflineValidation.opening.giaDuThau === afterOfflineConflict.opening.giaDuThau,
+    `Rejected offline mutation changed the server bid price: ${JSON.stringify(afterOfflineValidation.opening)}`,
+  );
+  await offlinePage.close();
+
   process.stdout.write(`${JSON.stringify({
     runId,
     staleStatus: secondResponse.status(),
@@ -135,6 +257,12 @@ try {
     initialRowVersion: firstSnapshot.opening.rowVersion,
     finalRowVersion: database.rowVersion,
     finalDecision: database.decision,
+    offlineOnlineConflict: {
+      onlineField: afterOfflineConflict.opening.thoiGianThucHien,
+      staleOfflineFieldCommitted: afterOfflineConflict.opening.hieuLucHsdt === 321,
+    },
+    offlineValidationRejected: afterOfflineValidation.opening.giaDuThau
+      === afterOfflineConflict.opening.giaDuThau,
   }, null, 2)}\n`);
 } finally {
   if (browser) await browser.close();

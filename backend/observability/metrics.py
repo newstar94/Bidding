@@ -83,6 +83,7 @@ _PROCESS_STARTED_AT = time.time()
 _lock = threading.Lock()
 
 _active_http_requests = 0
+_http_request_log_failures = 0
 _http_requests: Counter[tuple[str, str, str]] = Counter()
 _http_rate_limited: Counter[tuple[str, str]] = Counter()
 _http_duration_count: Counter[tuple[str, str]] = Counter()
@@ -139,6 +140,14 @@ def http_request_finished(method: object, route: object, status: int, duration_s
         for upper_bound in _HTTP_DURATION_BUCKETS:
             if duration <= upper_bound:
                 _http_duration_buckets[(method_label, route_label, upper_bound)] += 1
+
+
+def http_request_log_failed() -> None:
+    """Count request-log sink failures without recursively invoking the logger."""
+
+    global _http_request_log_failures
+    with _lock:
+        _http_request_log_failures += 1
 
 
 def record_turnstile_validation(action: object, outcome: object) -> None:
@@ -615,6 +624,7 @@ def render_prometheus(application: object | None = None) -> str:
     recorded_metrics = snapshot_recorded_metrics()
     with _lock:
         active_http = _active_http_requests
+        http_request_log_failures = _http_request_log_failures
         http_requests = _http_requests.copy()
         http_rate_limited = _http_rate_limited.copy()
         http_duration_count = _http_duration_count.copy()
@@ -664,6 +674,8 @@ def render_prometheus(application: object | None = None) -> str:
     lines.append(_sample("biddingflow_process_open_descriptors", process_resources["open_descriptors"]))
     _metric_header(lines, "biddingflow_http_active_requests", "HTTP requests currently executing.", "gauge")
     lines.append(_sample("biddingflow_http_active_requests", active_http))
+    _metric_header(lines, "biddingflow_http_request_log_failures_total", "Request log sink failures.", "counter")
+    lines.append(_sample("biddingflow_http_request_log_failures_total", http_request_log_failures))
     _metric_header(lines, "biddingflow_http_requests_total", "Completed HTTP requests by code-owned endpoint and status.", "counter")
     for (method, route, status), value in sorted(http_requests.items()):
         lines.append(_sample("biddingflow_http_requests_total", value, {"method": method, "route": route, "status": status}))
@@ -957,14 +969,15 @@ class ObservabilityMiddleware:
                     status_code=status_code,
                     duration_seconds=duration,
                 )
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001 - telemetry failure cannot change HTTP semantics
+                http_request_log_failed()
 
 
 def _reset_metrics_for_tests() -> None:
-    global _active_http_requests
+    global _active_http_requests, _http_request_log_failures
     with _lock:
         _active_http_requests = 0
+        _http_request_log_failures = 0
         _http_requests.clear()
         _http_rate_limited.clear()
         _http_duration_count.clear()

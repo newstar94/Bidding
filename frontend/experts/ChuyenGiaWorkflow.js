@@ -72,9 +72,10 @@ export async function deleteChuyenGia(id) {
   const result = choice === 1
     ? removeLatestVersion(this.model.state.chuyengia, target)
     : removeAllVersions(this.model.state.chuyengia, target);
-  this.model.state.chuyengia = result.records;
-  this.model.markDeleted("chuyengia", result.removed.map((item) => item.id));
+  this.model.replaceTableState("chuyengia", result.records);
+  this.model.markDeleted("chuyengia", result.removed);
   await persistAndSync(this, "chuyengia", {
+    changes: { deletions: { chuyengia: result.removed } },
     afterPersist: () => this.view.renderChuyenGiaTable()
   });
 }

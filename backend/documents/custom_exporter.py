@@ -760,7 +760,7 @@ def optimize_image_for_docx(filepath, max_width=800):
             try:
                 with open(cache_path, "wb") as f:
                     f.write(data)
-            except Exception as cache_err:
+            except OSError as cache_err:
                 log_error(cache_err, "Document.ImageCacheWrite")
 
             _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
@@ -889,7 +889,7 @@ def convert_images_in_context(doc, data, allowed_image_fields=None):
     try:
         section = doc.sections[0]
         usable_width = section.page_width - section.left_margin - section.right_margin
-    except Exception:
+    except (AttributeError, IndexError, TypeError):
         usable_width = Inches(6.0)
 
 

@@ -768,8 +768,8 @@ def cmd_list(args) -> int:
             try:
                 m = json.loads(manifest_path.read_text(encoding="utf-8"))
                 created_at = m.get("createdAt", "?")
-            except Exception:
-                pass
+            except (OSError, UnicodeError, json.JSONDecodeError, AttributeError, TypeError):
+                created_at = "?"
         print(f"  {snap.name}  ({created_at})")
     return 0
 

@@ -2,6 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { ensureXlsxLoaded } from "../shared/externalAssets.js";
 import { readAndValidateExcelFile } from "./excelArchiveGuard.js";
 import { excelParseWorkerClient } from "./ExcelParseWorkerClient.js";
+import { reportExcelWorkerFallback } from "../shared/releaseDiagnostics.js";
 
 async function parseWithoutWorker(data, mode) {
   const XLSX = await ensureXlsxLoaded();
@@ -35,6 +36,7 @@ async function parseExcel(data, mode, options) {
     return await excelParseWorkerClient.parse(data, mode, options);
   } catch (error) {
     if (error?.code !== "WORKER_UNAVAILABLE") throw error;
+    void reportExcelWorkerFallback();
     return parseWithoutWorker(data, mode);
   }
 }

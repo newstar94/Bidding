@@ -1,4 +1,8 @@
-from scripts.check_frontend_debt import collect_debt_metrics, validate_debt_metrics
+from scripts.check_frontend_debt import (
+    collect_debt_metrics,
+    find_unauthorized_synced_persist_calls,
+    validate_debt_metrics,
+)
 
 
 def test_frontend_debt_gate_reports_only_increases(tmp_path):
@@ -22,4 +26,15 @@ def test_frontend_debt_gate_reports_only_increases(tmp_path):
     assert validate_debt_metrics(metrics, metrics) == []
     assert validate_debt_metrics(metrics, {**metrics, "important": 0}) == [
         "important increased from 0 to 1"
+    ]
+
+
+def test_frontend_debt_gate_rejects_new_synced_persist_data_callers(tmp_path):
+    (tmp_path / "feature.js").write_text(
+        'controller.model.persistData("goithau");',
+        encoding="utf-8",
+    )
+
+    assert find_unauthorized_synced_persist_calls(tmp_path) == [
+        "feature.js:1: persistData(goithau)"
     ]

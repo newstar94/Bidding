@@ -54,6 +54,111 @@ export const reportReleaseDiagnostic = async (diagnostic, now = Date.now()) => {
   }
 };
 
+const INDEXED_DB_READ_CODES = new Set([
+  "QUOTA_EXCEEDED",
+  "TRANSACTION_ABORTED",
+  "PERMISSION_DENIED",
+  "CORRUPTED_OR_INCOMPATIBLE",
+  "OPERATION_FAILED",
+  "NOT_INITIALIZED",
+  "STORE_NOT_FOUND",
+]);
+
+export const reportIndexedDBReadFailure = (code) => {
+  const boundedCode = INDEXED_DB_READ_CODES.has(String(code))
+    ? String(code)
+    : "OPERATION_FAILED";
+  return reportReleaseDiagnostic({
+    column: 0,
+    errorName: `IndexedDBRead.${boundedCode}`,
+    kind: "error",
+    line: 0,
+    releaseId: RELEASE_ID,
+    source: "/frontend/app/BiddingModel.js",
+  });
+};
+
+const VERSION_FALLBACK_REASONS = new Map([
+  ["capability_missing", "CapabilityMissing"],
+]);
+
+export const reportLegacyVersionFallback = (reason) => {
+  const boundedReason = VERSION_FALLBACK_REASONS.get(String(reason)) || "Unknown";
+  return reportReleaseDiagnostic({
+    column: 0,
+    errorName: `LegacyVersionFallback.${boundedReason}`,
+    kind: "error",
+    line: 0,
+    releaseId: RELEASE_ID,
+    source: "/frontend/shared/AggregateVersionClient.js",
+  });
+};
+
+export const reportAggregateVersionConflict = () => reportReleaseDiagnostic({
+  column: 0,
+  errorName: "AggregateVersion.Conflict",
+  kind: "error",
+  line: 0,
+  releaseId: RELEASE_ID,
+  source: "/frontend/shared/AggregateVersionClient.js",
+});
+
+const reportOperationalSignal = (errorName, source) => reportReleaseDiagnostic({
+  column: 0,
+  errorName,
+  kind: "error",
+  line: 0,
+  releaseId: RELEASE_ID,
+  source,
+});
+
+export const reportSyncConflict = () => reportOperationalSignal(
+  "Sync.Conflict",
+  "/frontend/app/SyncPushService.js",
+);
+
+export const reportOfflineQueuedMutation = () => reportOperationalSignal(
+  "Sync.OfflineQueued",
+  "/frontend/app/WorkspaceDataStore.js",
+);
+
+export const reportOutboxFailure = () => reportOperationalSignal(
+  "Outbox.TransportFailure",
+  "/frontend/app/SyncPushService.js",
+);
+
+export const reportOutboxRetry = () => reportOperationalSignal(
+  "Outbox.StartupRetry",
+  "/frontend/app/startupReconciliation.js",
+);
+
+export const reportExcelWorkerFailure = () => reportOperationalSignal(
+  "ExcelWorker.Failure",
+  "/frontend/documents/ExcelParseWorkerClient.js",
+);
+
+export const reportExcelWorkerFallback = () => reportOperationalSignal(
+  "ExcelWorker.Fallback",
+  "/frontend/documents/excelFileReader.js",
+);
+
+export const pollingFallbackDurationBucket = (durationMs) => {
+  const duration = Math.max(0, Number(durationMs) || 0);
+  if (duration < 30_000) return "Under30s";
+  if (duration < 300_000) return "30sTo5m";
+  return "Over5m";
+};
+
+export const reportWebSocketReconnect = () => reportOperationalSignal(
+  "WebSocket.Reconnect",
+  "/frontend/app/WebSocketSyncClient.js",
+);
+
+export const reportWebSocketPollingFallback = (durationMs) => reportOperationalSignal(
+  `WebSocket.PollingFallback.${pollingFallbackDurationBucket(durationMs)}`,
+  "/frontend/app/WebSocketSyncClient.js",
+);
+
 export const installReleaseDiagnostics = (target = globalThis.window) => {
   if (!target?.addEventListener || target.__bfReleaseDiagnosticsInstalled) return;
   Object.defineProperty(target, "__bfReleaseDiagnosticsInstalled", {

@@ -11,6 +11,7 @@ import { installAdminModule } from "./adminModuleLoader.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { beginExplicitLogout, hideInitLoader } from "../auth/authRuntimeState.js";
 import { setActiveOrganizationId } from "./workspaceState.js";
+import { reportIndexedDBReadFailure } from "../shared/releaseDiagnostics.js";
 
 export function sessionHasActiveWorkspace(initialSession) {
   const user = initialSession?.user;
@@ -125,6 +126,9 @@ export async function bootstrapWorkspace(initialSession) {
     { name: "integration-bridges", module: IntegrationBridges },
   ]);
   const model = new BiddingModel();
+  model.addStorageHydrationListener(({ code, state }) => {
+    if (state === "failed") void reportIndexedDBReadFailure(code);
+  });
   const view = new BiddingView(model);
   const controller = new BiddingController(model, view);
   controller._initialSessionData = initialSession;

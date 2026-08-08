@@ -2,6 +2,7 @@ import {
   mutatePersistAndSync,
   persistAndSync,
 } from "../shared/MutationService.js";
+import { reportOfflineQueuedMutation } from "../shared/releaseDiagnostics.js";
 
 function clone(value) {
   return structuredClone(value);
@@ -36,6 +37,10 @@ function classifySyncResult(result) {
     return "transportFailed";
   }
   return "validationRejected";
+}
+
+function observeWorkspaceOutcome(status) {
+  if (status === "offlineQueued") void reportOfflineQueuedMutation();
 }
 
 function normalizePatch({ upserts = {}, deletions = {} } = {}) {
@@ -102,6 +107,11 @@ export class WorkspaceDataStore {
       return { status: "validationRejected", reason: "CHANGES_REQUIRED" };
     }
     const model = this.#controller.model;
+    try {
+      model.assertStorageTablesWritable?.(tables);
+    } catch (error) {
+      return { status: "persistenceFailed", reason: "LOCAL_STORAGE_UNAVAILABLE", error };
+    }
     const mutationCheckpoint = model.captureMutationCheckpoint?.() ?? null;
     const before = this.#capturePatchBefore(changes, tables);
     let syncResult;
@@ -117,6 +127,7 @@ export class WorkspaceDataStore {
       };
     }
     const status = classifySyncResult(syncResult);
+    observeWorkspaceOutcome(status);
     if (status === "validationRejected") {
       const rollbackError = await this.#rollbackPatch(before, mutationCheckpoint);
       return {
@@ -146,6 +157,11 @@ export class WorkspaceDataStore {
       return clone(this.#completed.get(normalizedMutationId));
     }
     const model = this.#controller.model;
+    try {
+      model.assertStorageTablesWritable?.(tableNames);
+    } catch (error) {
+      return { status: "persistenceFailed", reason: "LOCAL_STORAGE_UNAVAILABLE", error };
+    }
     const state = model.state;
     const mutationCheckpoint = model.captureMutationCheckpoint?.() ?? null;
     const snapshots = Object.fromEntries(
@@ -180,6 +196,7 @@ export class WorkspaceDataStore {
       };
     }
     const status = classifySyncResult(syncResult);
+    observeWorkspaceOutcome(status);
     if (status === "validationRejected") {
       const rollbackError = await this.#rollback(snapshots, mutationCheckpoint);
       return {

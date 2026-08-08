@@ -1,4 +1,4 @@
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, replaceTableProjection } from "../shared/MutationService.js";
 import { aggregateDetailedEvaluationReport } from "./detailedEvaluationAggregation.js";
 import { mergeConfiguredCriteria } from "./DetailedEvaluationCriteriaController.js";
 import {
@@ -211,11 +211,11 @@ export async function executeDetailedEvaluationSave({
       Object.entries(report.extension.groupResults || {}).filter(([group]) => !invalidated.has(group)),
     );
     if (configured.slice(Math.max(0, activeIndex + 1)).includes("bidder_goods")) {
-      appController.model.state.hanghoaduthaunhathau = (
+      replaceTableProjection(appController.model, "hanghoaduthaunhathau", (
         appController.model.state.hanghoaduthaunhathau || []
       ).map((row) => String(row.thongTinMoThauId || "") === String(state.bid.id)
         ? { ...row, trangThaiUuDai: "stale" }
-        : row);
+        : row));
       state.bid.trangThaiTinhUuDai = "stale";
       invalidatedBidderGoods = true;
     }

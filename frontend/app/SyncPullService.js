@@ -103,8 +103,10 @@ export async function fetchRecordByLookup(tableKey, lookup) {
   storeFetchedRecord(this.model, tableKey, record);
   if (this.model.db && typeof this.model.db.putRecord === "function") {
     await this.model.db.putRecord(tableKey, record);
+    this.model.markStorageTablesRecovered?.([tableKey]);
   } else if (typeof this.model.persistData === "function") {
     await this.model.persistData(tableKey, { trackMutation: false });
+    this.model.markStorageTablesRecovered?.([tableKey]);
   }
   return record;
 }
@@ -217,6 +219,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       { useVersionDelta, since },
     );
     await persistencePromise;
+    this.model?.markStorageTablesRecovered?.(changedKeys);
     if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
     const committedCursor = commitSyncCursor(storage, dbData);

@@ -1,4 +1,5 @@
 import { trustedScriptURL } from "../shared/trustedTypes.js";
+import { reportExcelWorkerFailure } from "../shared/releaseDiagnostics.js";
 
 
 function parserError(message, code) {
@@ -40,6 +41,7 @@ export class ExcelParseWorkerClient {
     try {
       worker = this.createWorker();
     } catch (error) {
+      void reportExcelWorkerFailure();
       return Promise.reject(error);
     }
     return new Promise((resolve, reject) => {
@@ -47,6 +49,9 @@ export class ExcelParseWorkerClient {
       const cleanup = () => signal?.removeEventListener?.("abort", onAbort);
       const finish = (callback, value) => {
         if (this.active?.worker !== worker) return;
+        if (callback === reject && value?.code === "EXCEL_PARSE_FAILED") {
+          void reportExcelWorkerFailure();
+        }
         this.active = null;
         worker.terminate();
         cleanup();

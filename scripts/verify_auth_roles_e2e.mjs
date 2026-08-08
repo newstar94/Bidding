@@ -8,6 +8,8 @@ const runId = String(Date.now());
 const password = `Aa!9${randomBytes(12).toString("hex")}`;
 const changedPassword = `Bb!8${randomBytes(12).toString("hex")}`;
 const resetPassword = `Cc!7${randomBytes(12).toString("hex")}`;
+const TURNSTILE_ALWAYS_PASS_SITE_KEY = "1x00000000000000000000AA";
+const TURNSTILE_ALWAYS_PASS_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const organizationId = `auth-e2e-${runId}-org`;
 const otherOrganizationId = `auth-e2e-${runId}-other-org`;
 const suspendedOrganizationId = `auth-e2e-${runId}-suspended-org`;
@@ -79,6 +81,22 @@ function versionedMutation(item, changes = {}) {
 async function json(response) {
   const body = await response.json().catch(() => ({}));
   return { response, body };
+}
+
+async function localRegistrationChallenge(context) {
+  const response = await context.request.get(`${baseURL}/dang-nhap`);
+  assert(response.ok(), `Could not read local Turnstile configuration: ${response.status()}`);
+  const html = await response.text();
+  const enabled = /<meta\s+name="bf-turnstile-enabled"\s+content="true"\s*\/?>/u.test(html);
+  if (!enabled) return {};
+  const siteKey = html.match(
+    /<meta\s+name="bf-turnstile-site-key"\s+content="([A-Za-z0-9_-]+)"\s*\/?>/u,
+  )?.[1] || "";
+  assert(
+    siteKey === TURNSTILE_ALWAYS_PASS_SITE_KEY,
+    "Auth/roles E2E requires Cloudflare's published always-pass local test key when Turnstile is enabled",
+  );
+  return { turnstileToken: TURNSTILE_ALWAYS_PASS_TOKEN };
 }
 
 async function apiLogin(context, accountData, loginPassword = password, activeOrg = "") {
@@ -637,18 +655,29 @@ try {
   const publicContext = await browser.newContext();
   const registerUsername = registeredUsername;
   const registerEmail = `${registerUsername}@example.test`;
+  const registrationChallenge = await localRegistrationChallenge(publicContext);
   response = await publicContext.request.post(`${baseURL}/api/auth/register`, {
-    data: { username: registerUsername, password, name: "Registered E2E", email: registerEmail },
+    data: {
+      username: registerUsername,
+      password,
+      name: "Registered E2E",
+      email: registerEmail,
+      ...registrationChallenge,
+    },
   });
   const registrationBody = await response.text();
   assert(response.ok(), `Registration returned ${response.status()}: ${registrationBody}`);
   auth = await apiLogin(publicContext, { username: registerUsername }, password);
   assert(auth.response.status() === 400 && auth.body.unverified === true, "New unverified registration could log in");
   const forgotKnown = await json(await publicContext.request.post(`${baseURL}/api/auth/forgot-password`, {
-    data: { username: registerUsername, email: registerEmail },
+    data: { username: registerUsername, email: registerEmail, ...registrationChallenge },
   }));
   const forgotUnknown = await json(await publicContext.request.post(`${baseURL}/api/auth/forgot-password`, {
-    data: { username: `auth-e2e-${runId}-unknown`, email: `auth-e2e-${runId}-unknown@example.test` },
+    data: {
+      username: `auth-e2e-${runId}-unknown`,
+      email: `auth-e2e-${runId}-unknown@example.test`,
+      ...registrationChallenge,
+    },
   }));
   assert(forgotKnown.response.ok() && forgotUnknown.response.ok(), "Forgot-password response failed");
   assert(forgotKnown.body.message === forgotUnknown.body.message, "Forgot password leaked account existence");

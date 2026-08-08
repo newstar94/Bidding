@@ -1,7 +1,7 @@
 import { readExcelWorkbookSheets } from "../documents/excelFileReader.js";
 import { generateRecordId, generateUUID } from "../shared/idUtils.js";
 import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
-import { persistAndSync } from "../shared/MutationService.js";
+import { persistAndSync, replaceTableProjection } from "../shared/MutationService.js";
 import { workspaceDataStoreFor } from "../app/WorkspaceDataStore.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -211,7 +211,7 @@ export function initializeBidderGoodsFromRequirements(controller, detailedState)
     }];
   });
   if (!changed && !additions.length) return 0;
-  controller.model.state.hanghoaduthaunhathau = [...hydratedRows, ...additions];
+  replaceTableProjection(controller.model, "hanghoaduthaunhathau", [...hydratedRows, ...additions]);
   invalidateOpeningPreference(detailedState.bid);
   return additions.length;
 }
@@ -527,7 +527,7 @@ function openBidderGoodsMappingModal(controller, state, row) {
     const requirementId = select?.value || "";
     if (!requirementId) return;
     const requirement = state.requirements.find((item) => String(item.id) === String(requirementId));
-    controller.model.state.hanghoaduthaunhathau = applyManualBidderGoodsMapping(
+    replaceTableProjection(controller.model, "hanghoaduthaunhathau", applyManualBidderGoodsMapping(
       controller.model.state.hanghoaduthaunhathau.map((item) => (
         String(item.id) === String(row.id)
           ? { ...item, phanLoId: requirement?.phanLoId || item.phanLoId || null }
@@ -535,7 +535,7 @@ function openBidderGoodsMappingModal(controller, state, row) {
       )),
       row.id,
       requirementId,
-    );
+    ));
     invalidateOpeningPreference(state.bid);
     controller._detailedEvaluationDirty = true;
     close();
@@ -905,7 +905,7 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
   if (!official) invalidateOpeningPreference(detailedState.bid);
   const derivedById = new Map(rows.map((row) => [String(row.id), row]));
   const calculatedById = new Map((calculation?.lines || []).map((row) => [String(row.id), row]));
-  controller.model.state.hanghoaduthaunhathau = snapshot.map((row) => {
+  replaceTableProjection(controller.model, "hanghoaduthaunhathau", snapshot.map((row) => {
     if (!scopeIds.has(String(row.id))) return row;
     const derivedRow = derivedById.get(String(row.id));
     return {
@@ -926,7 +926,7 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
           ? "stale"
           : "draft",
     };
-  });
+  }));
   if (official && calculation) {
     Object.assign(detailedState.bid, {
       tongGiaTriCongUuDai: calculation.tongGiaTriCongUuDai,
@@ -950,7 +950,7 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
     ["hanghoaduthaunhathau", "thongtinmothau"],
   );
   if (result?.ok === false) {
-    controller.model.state.hanghoaduthaunhathau = snapshot;
+    replaceTableProjection(controller.model, "hanghoaduthaunhathau", snapshot);
     Object.assign(detailedState.bid, bidPreferenceSnapshot);
     await controller.model.db?.putTableData?.("hanghoaduthaunhathau", snapshot);
     await controller.model.db?.putTableData?.(
@@ -1059,12 +1059,12 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
     select.addEventListener("change", () => {
       const rowId = select.closest("[data-bidder-goods-id]")?.getAttribute("data-bidder-goods-id");
       const actorId = controller.model.state.activeuser?.id || "";
-      controller.model.state.hanghoaduthaunhathau = updateBidderGoodsPreferenceCode(
+      replaceTableProjection(controller.model, "hanghoaduthaunhathau", updateBidderGoodsPreferenceCode(
         controller.model.state.hanghoaduthaunhathau,
         rowId,
         select.value,
         { actorId },
-      );
+      ));
       invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();
@@ -1107,7 +1107,7 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
             ? rawValue
             : numericValue
         : rawValue;
-      controller.model.state.hanghoaduthaunhathau = controller.model.state.hanghoaduthaunhathau.map(
+      replaceTableProjection(controller.model, "hanghoaduthaunhathau", controller.model.state.hanghoaduthaunhathau.map(
         (row) => {
           if (String(row.id) !== String(rowId)) return row;
           const updated = { ...row, [field]: value, isDraft: true };
@@ -1115,7 +1115,7 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
             ? withDerivedBidderGoodsFinancials(updated)
             : updated;
         },
-      );
+      ));
       invalidateOpeningPreference(state.bid);
       controller._detailedEvaluationDirty = true;
       controller.renderDetailedEvaluation();

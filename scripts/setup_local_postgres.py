@@ -421,8 +421,10 @@ def main() -> None:
             "postgres",
             "-d",
             "postgres",
+            "-v",
+            f"database_name={database_name}",
             "-tAc",
-            f"SELECT 1 FROM pg_database WHERE datname='{database_name}'",
+            "SELECT 1 FROM pg_database WHERE datname = :'database_name'",
             env=child_env,
         ).stdout.strip()
         if exists != "1":

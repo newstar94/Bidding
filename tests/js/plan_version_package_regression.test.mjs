@@ -13,6 +13,10 @@ import {
 } from "../../frontend/plans/KeHoachWorkflow.js";
 import { createOfficialPackageVersionFromForm } from "../../frontend/packages/GoiThauWorkflow.js";
 
+function replaceTableState(table, records) {
+  this.state[table] = records;
+}
+
 function packageSnapshotPayload(pkg) {
   const {
     id: _id,
@@ -272,6 +276,7 @@ test("creating a plan version inherits a frozen package snapshot without increme
         throw new Error("version assignment must be staged with its new plan");
       },
       getCurrentDateTimeString: () => "2026-08-05T10:00",
+      replaceTableState,
       persistData: async () => {},
       flushMutationOutbox: async () => {},
     },
@@ -358,6 +363,7 @@ test("plan breakdown delegates official version creation to server state", async
     model: {
       state,
       getCurrentDateTimeString: () => "2026-08-05 10:00:00",
+      replaceTableState,
       persistData: async () => { localWriteCount += 1; },
       flushMutationOutbox: async () => { localWriteCount += 1; },
     },

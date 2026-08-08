@@ -178,7 +178,8 @@ test("saving a financial workbook cannot overwrite automatic ranking", async () 
         goithau: [{ id: "gt-1", phanLo: "Không" }],
         thongtinmothau: [bid],
       },
-      async persistData() {},
+      async persistChanges() {},
+      commitLocalMutation() {},
     },
     renderDanhGiaHsdtPanel() {},
   };

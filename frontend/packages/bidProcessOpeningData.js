@@ -80,7 +80,16 @@ function mergeContractorLookupData(target, source = {}) {
   if (source.soDienThoai && !target.soDienThoai) target.soDienThoai = source.soDienThoai;
   if (source.email && !target.email) target.email = source.email;
 }
-function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row, businessDate }) {
+function ensureContractor({
+  model,
+  latestNhaThauList,
+  maNhaThau,
+  tenNhaThau,
+  loaiNhaThau,
+  row,
+  businessDate,
+  changedContractors,
+}) {
   const bound = getExactContractorVersion(model, row.dataset.contractorVersionId);
   const boundMatchesCode = bound && normalizeOpeningCode(bound.maNhaThau || bound.maSoThue) === normalizeOpeningCode(maNhaThau);
   const candidate = boundMatchesCode ? bound : findLatestContractorByCode(latestNhaThauList, maNhaThau);
@@ -94,19 +103,19 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
         member: row._leadMemberLookupData || {}
       });
       model.state.nhathau.push(foundNt);
-      model.persistData("nhathau");
+      changedContractors.push(foundNt);
       latestNhaThauList.push(foundNt);
     } else if (foundNt.loaiNhaThau !== "Độc lập") {
       const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id);
       if (dbNt) {
         dbNt.loaiNhaThau = "Độc lập";
         mergeContractorLookupData(dbNt, { ...row._leadMemberLookupData || {}, tenNhaThau });
-        model.persistData("nhathau");
+        changedContractors.push(dbNt);
       }
     } else {
       const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id) || foundNt;
       mergeContractorLookupData(dbNt, { ...row._leadMemberLookupData || {}, tenNhaThau });
-      model.persistData("nhathau");
+      changedContractors.push(dbNt);
     }
     return foundNt;
   }
@@ -121,7 +130,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
       }
     });
     model.state.nhathau.push(foundNt);
-    model.persistData("nhathau");
+    changedContractors.push(foundNt);
     latestNhaThauList.push(foundNt);
   } else if (row._leadMemberName && !isJointVentureType(foundNt.loaiNhaThau)) {
     const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id);
@@ -131,7 +140,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
         ...row._leadMemberLookupData || {},
         tenNhaThau: row._leadMemberName
       });
-      model.persistData("nhathau");
+      changedContractors.push(dbNt);
     }
   } else {
     const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id) || foundNt;
@@ -139,7 +148,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
       ...row._leadMemberLookupData || {},
       tenNhaThau: row._leadMemberName
     });
-    model.persistData("nhathau");
+    changedContractors.push(dbNt);
   }
   (row._thanhVienLienDanh || []).forEach((member) => {
     const memberCode = member.maNhaThau || member.maSoThue;
@@ -153,12 +162,12 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
         member
       });
       model.state.nhathau.push(subNt);
-      model.persistData("nhathau");
+      changedContractors.push(subNt);
       latestNhaThauList.push(subNt);
     } else {
       const dbSubNt = model.state.nhathau.find((n) => n.id === subNt.id) || subNt;
       mergeContractorLookupData(dbSubNt, member);
-      model.persistData("nhathau");
+      changedContractors.push(dbSubNt);
     }
   });
   return foundNt;
@@ -311,7 +320,13 @@ export function validateOpeningParticipantScopes(bids, contractors = []) {
   }
   return { valid: true };
 }
-export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecial }) {
+export function collectOpeningBidsFromRows({
+  rows,
+  gtId,
+  model,
+  isDirectOrSpecial,
+  changedContractors = [],
+}) {
   const latestNhaThauList = model.getLatestNhaThau();
   const gt = (model.state.goithau || []).find((item) => String(item.id) === String(gtId));
   const businessDate = gt?.thoiGianMoThau || gt?.thoiGianMoEhsdxtc || gt?.ngayQuyetDinh || gt?.createdAt || "";
@@ -320,7 +335,16 @@ export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecia
     const maNhaThau = row.querySelector(".mt-ma-nha-thau")?.value.trim() || "";
     const tenNhaThau = row.querySelector(".mt-ten-nha-thau")?.value.trim() || "";
     const loaiNhaThau = row.querySelector(".mt-loai-nha-thau")?.value || "Độc lập";
-    const foundNt = ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row, businessDate });
+    const foundNt = ensureContractor({
+      model,
+      latestNhaThauList,
+      maNhaThau,
+      tenNhaThau,
+      loaiNhaThau,
+      row,
+      businessDate,
+      changedContractors,
+    });
     const isJointVenture = isJointVentureType(loaiNhaThau);
     const resolvedTenNhaThau = isJointVenture ? tenNhaThau : foundNt ? foundNt.tenNhaThau : tenNhaThau;
     const tyLeGiamGiaRaw = row.querySelector(".mt-ty-le-giam-gia")?.value || "0";

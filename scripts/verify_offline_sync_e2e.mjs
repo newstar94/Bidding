@@ -182,6 +182,21 @@ try {
       && !controller?._syncImmediateTimer
       && Boolean(controller?.model?.buildMutationSyncPayload?.());
   }, null, { timeout: 10_000 });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.waitForFunction(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    return !controller?._autoSyncPromise
+      && Boolean(controller?.model?.buildMutationSyncPayload?.());
+  }, null, { timeout: 15_000 });
+  const pendingAfterReload = await page.evaluate(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    return Boolean(getAppController()?.model?.buildMutationSyncPayload?.());
+  });
+  if (!pendingAfterReload) {
+    throw new Error("Interrupted mutation disappeared from the outbox after reload");
+  }
   const interruptedCommit = page.waitForResponse((response) => (
     response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/sync"
@@ -204,7 +219,7 @@ try {
     runId,
     syncAttempts: syncRequests.length,
     reconnectRetry: { rowCount, serverCount: serverMatches.length },
-    interruptedRetry: { rowCount: interruptedRowCount },
+    interruptedRetry: { pendingAfterReload, rowCount: interruptedRowCount },
   }, null, 2)}\n`);
 } finally {
   if (browser) await browser.close();

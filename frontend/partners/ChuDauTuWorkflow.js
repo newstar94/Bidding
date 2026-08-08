@@ -59,9 +59,10 @@ export async function deleteChuDauTu(id) {
   const result = choice === 1
     ? removeLatestVersion(this.model.state.chudautu, target)
     : removeAllVersions(this.model.state.chudautu, target);
-  this.model.state.chudautu = result.records;
-  this.model.markDeleted("chudautu", result.removed.map((item) => item.id));
+  this.model.replaceTableState("chudautu", result.records);
+  this.model.markDeleted("chudautu", result.removed);
   await persistAndSync(this, "chudautu", {
+    changes: { deletions: { chudautu: result.removed } },
     afterPersist: () => this.view.renderChuDauTuTable()
   });
 }

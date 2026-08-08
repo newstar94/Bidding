@@ -24,6 +24,17 @@ def _state():
         "isLatest": 1,
         "rowVersion": 7,
         "phanLoList": [{"id": "lot-source", "maPhanLo": "L01"}],
+        "awardedPhanLoList": [{"id": "lot-source", "maPhanLo": "L01"}],
+        "tuyChonMuaThemList": [{"id": "option-source", "noiDung": "Mua them"}],
+        "giaHanList": [{"id": "extension-source", "lyDo": "Gia han"}],
+        "yeuCauLamRoList": [{"id": "clarification-source", "noiDung": "Yeu cau"}],
+        "traLoiLamRoList": [{"id": "answer-source", "noiDung": "Tra loi"}],
+        "timelineItems": [{
+            "id": "timeline-source",
+            "sourceEntityId": "lot-source",
+            "rowVersion": 2,
+        }],
+        "ehsmtAdjustments": [{"id": "adjustment-source", "noiDung": "Dieu chinh"}],
         "danhGiaHsdtMetadata": {
             "schemaVersion": 1,
             "is1G2T": True,
@@ -99,6 +110,19 @@ def test_package_snapshot_remaps_full_aggregate_without_server_fields():
     assert package["phienBan"] == 3
     assert "rowVersion" not in package
     lot_id = package["phanLoList"][0]["id"]
+    assert package["awardedPhanLoList"][0]["id"] == lot_id
+    source_ids = {
+        "tuyChonMuaThemList": "option-source",
+        "giaHanList": "extension-source",
+        "yeuCauLamRoList": "clarification-source",
+        "traLoiLamRoList": "answer-source",
+        "timelineItems": "timeline-source",
+        "ehsmtAdjustments": "adjustment-source",
+    }
+    for field, source_id in source_ids.items():
+        assert package[field][0]["id"] != source_id
+        assert "rowVersion" not in package[field][0]
+    assert package["timelineItems"][0]["sourceEntityId"] == lot_id
     goods = snapshot["goithauhanghoa"][0]
     opening = snapshot["thongtinmothau"][0]
     bidder_goods = snapshot["hanghoaduthaunhathau"][0]
@@ -130,3 +154,7 @@ def test_plan_snapshot_uses_complete_server_state_without_browser_hydration():
     assert len(aggregate["thongtinmothau"]) == 1
     assert len(aggregate["hanghoaduthaunhathau"]) == 1
     assert len(aggregate["assignments"]) == 1
+    inherited_package = aggregate["goithau"][0]
+    assert inherited_package["timelineItems"][0]["sourceEntityId"] == inherited_package["phanLoList"][0]["id"]
+    assert inherited_package["yeuCauLamRoList"][0]["id"] != "clarification-source"
+    assert inherited_package["giaHanList"][0]["id"] != "extension-source"

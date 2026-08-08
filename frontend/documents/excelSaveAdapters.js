@@ -49,6 +49,22 @@ function upsertById(list, items) {
     }
   });
 }
+function uniqueRecords(records) {
+  return [...new Map(
+    (records || []).filter((record) => record?.id != null).map((record) => [String(record.id), record]),
+  ).values()];
+}
+async function persistExplicitUpserts(model, upsertsByTable) {
+  const entries = Object.entries(upsertsByTable)
+    .map(([table, records]) => [table, uniqueRecords(records)])
+    .filter(([, records]) => records.length > 0);
+  for (const [table, records] of entries) {
+    await model.persistChanges(table, { upserts: records }, { throwOnError: true });
+  }
+  for (const [table, records] of entries) {
+    model.commitLocalMutation(table, { records });
+  }
+}
 export function isBasicExcelImportType(type) {
   return BASIC_IMPORT_TYPES.has(type);
 }
@@ -84,7 +100,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     });
     assertImportRecords("kehoach", mappedData);
     upsertById(controller.model.state.kehoach, mappedData);
-    await controller.model.persistData("kehoach");
+    await persistExplicitUpserts(controller.model, { kehoach: mappedData });
     return mappedData.length;
   }
   if (type === "package" || type === "goithau") {
@@ -132,11 +148,13 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     });
     assertImportRecords("goithau", mappedData);
     upsertById(controller.model.state.goithau, mappedData);
-    [...new Set(mappedData.map((gt) => gt.keHoachId).filter(Boolean))].forEach((pid) => controller.recalculatePlanTotal(pid));
-    await Promise.all([
-      controller.model.persistData("goithau"),
-      controller.model.persistData("kehoach")
-    ]);
+    const affectedPlanIds = new Set(mappedData.map((gt) => gt.keHoachId).filter(Boolean));
+    affectedPlanIds.forEach((pid) => controller.recalculatePlanTotal(pid));
+    const affectedPlans = controller.model.state.kehoach.filter((plan) => affectedPlanIds.has(plan.id));
+    await persistExplicitUpserts(controller.model, {
+      goithau: mappedData,
+      kehoach: affectedPlans,
+    });
     return mappedData.length;
   }
   if (type === "chudautu") {
@@ -170,7 +188,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     });
     assertImportRecords("chudautu", mappedData);
     upsertById(controller.model.state.chudautu, mappedData);
-    await controller.model.persistData("chudautu");
+    await persistExplicitUpserts(controller.model, { chudautu: mappedData });
     return mappedData.length;
   }
   if (type === "nhathau") {
@@ -207,7 +225,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     });
     assertImportRecords("nhathau", mappedData);
     upsertById(controller.model.state.nhathau, mappedData);
-    await controller.model.persistData("nhathau");
+    await persistExplicitUpserts(controller.model, { nhathau: mappedData });
     return mappedData.length;
   }
   if (type === "chuyengia") {
@@ -238,7 +256,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     });
     assertImportRecords("chuyengia", mappedData);
     upsertById(controller.model.state.chuyengia, mappedData);
-    await controller.model.persistData("chuyengia");
+    await persistExplicitUpserts(controller.model, { chuyengia: mappedData });
     return mappedData.length;
   }
   if (type === "hopdong") {
@@ -283,7 +301,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     });
     assertImportRecords("hopdong", mappedData);
     upsertById(controller.model.state.hopdong, mappedData);
-    await controller.model.persistData("hopdong");
+    await persistExplicitUpserts(controller.model, { hopdong: mappedData });
     return mappedData.length;
   }
   return null;
@@ -334,8 +352,10 @@ async function saveOpeningImport(controller, validRows, context = {}) {
   const gtId = context.packageId || (select ? select.value : "");
   if (!gtId) return 0;
   const importedBids = [];
+  const importedContractors = [];
   validRows.forEach((row) => {
     const foundNt = ensureContractorForOpeningImport(controller, row);
+    if (foundNt) importedContractors.push(foundNt);
     const nhaThauId = foundNt ? foundNt.id : row.nhaThauId;
     const existingBid = controller.model.state.thongtinmothau.find((bid) =>
       String(bid.goiThauId) === String(gtId) &&
@@ -363,10 +383,10 @@ async function saveOpeningImport(controller, validRows, context = {}) {
     });
   });
   upsertById(controller.model.state.thongtinmothau, importedBids);
-  await Promise.all([
-    controller.model.persistData("nhathau"),
-    controller.model.persistData("thongtinmothau")
-  ]);
+  await persistExplicitUpserts(controller.model, {
+    nhathau: importedContractors,
+    thongtinmothau: importedBids,
+  });
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (goiThau) {
     const tbody = document.getElementById("mothau-table-tbody");
@@ -411,6 +431,7 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
       activeScope
     ).map((bid) => String(bid.id)))
     : null;
+  const changedBids = [];
   validRows.forEach((row) => {
     const bid = controller.model.state.thongtinmothau.find((b) => b.id === row.id);
     if (!bid || allowedBidIds && !allowedBidIds.has(String(bid.id))) return;
@@ -424,6 +445,7 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
       bid.hieuLucHsdt = row.hieuLucHsdt || 0;
       bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || "";
       bid.lamRoTaiChinh = row.lamRoTaiChinh || "";
+      changedBids.push(bid);
       return;
     }
     bid.danhGiaHopLe = row.danhGiaHopLe || "";
@@ -439,8 +461,9 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
     bid.nguyenNhanKhongDatHopLe = bid.danhGiaHopLe === "Không đạt" ? row.nguyenNhanKhongDatHopLe || "" : "";
     bid.nguyenNhanKhongDatNangLuc = bid.danhGiaNangLuc === "Không đạt" ? row.nguyenNhanKhongDatNangLuc || "" : "";
     bid.nguyenNhanKhongDatKyThuat = bid.danhGiaKyThuat === "Không đạt" ? row.nguyenNhanKhongDatKyThuat || "" : "";
+    changedBids.push(bid);
   });
-  await controller.model.persistData("thongtinmothau");
+  await persistExplicitUpserts(controller.model, { thongtinmothau: changedBids });
   controller.renderDanhGiaHsdtPanel();
   return validRows.length;
 }
@@ -450,6 +473,7 @@ async function saveAwardResultImport(controller, validRows, context = {}) {
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) return 0;
   const winnerRow = validRows.find((r) => r.trangThai === "Trúng thầu" || r.trangThai === "trung");
+  const changedBids = [];
   validRows.forEach((row) => {
     let bid = controller.model.state.thongtinmothau.find((b) => b.id === row.id);
     if (!bid && (goiThau.hinhThucLuaChon === "Chỉ định thầu rút gọn" || goiThau.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt")) {
@@ -477,6 +501,7 @@ async function saveAwardResultImport(controller, validRows, context = {}) {
     }
     if (bid) {
       bid.lyDoTruot = row.trangThai === "Trúng thầu" || row.trangThai === "trung" ? "" : row.lyDoTruot || "Nhà thầu xếp hạng 1 trúng thầu";
+      changedBids.push(bid);
     }
   });
   if (winnerRow) {
@@ -499,10 +524,10 @@ async function saveAwardResultImport(controller, validRows, context = {}) {
     goiThau.thoiGianHopDong = "";
     goiThau.trangThai = "Hủy thầu";
   }
-  await Promise.all([
-    controller.model.persistData("goithau"),
-    controller.model.persistData("thongtinmothau")
-  ]);
+  await persistExplicitUpserts(controller.model, {
+    goithau: [goiThau],
+    thongtinmothau: changedBids,
+  });
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
@@ -514,6 +539,7 @@ async function saveOpeningFinancialImport(controller, validRows, context = {}) {
   if (!gtId) return 0;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   const defaultDuration = goiThau ? goiThau.thoiGianThucHien || "" : "";
+  const changedBids = [];
   validRows.forEach((row) => {
     const bid = controller.model.state.thongtinmothau.find((b) => b.id === row.id);
     if (!bid) return;
@@ -522,11 +548,9 @@ async function saveOpeningFinancialImport(controller, validRows, context = {}) {
     bid.giaSauGiamGia = row.giaSauGiamGia || 0;
     bid.hieuLucHsdt = row.hieuLucHsdt || 0;
     bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || defaultDuration || "";
+    changedBids.push(bid);
   });
-  await Promise.all([
-    controller.model.persistData("thongtinmothau"),
-    controller.model.persistData("goithau")
-  ]);
+  await persistExplicitUpserts(controller.model, { thongtinmothau: changedBids });
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }

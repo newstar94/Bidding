@@ -545,8 +545,8 @@ async def upload_package_document_api(request):
                     new_storage_key,
                     timeout_seconds=5,
                 )
-            except Exception:
-                pass
+            except Exception as cleanup_error:  # noqa: BLE001 - best-effort rollback cleanup
+                log_error(cleanup_error, "package_document_invalid_upload_cleanup")
         return _document_error(
             str(exc),
             getattr(exc, "code", "PACKAGE_DOCUMENT_FILE_INVALID"),
@@ -581,8 +581,8 @@ async def upload_package_document_api(request):
                     new_storage_key,
                     timeout_seconds=5,
                 )
-            except Exception:
-                pass
+            except Exception as cleanup_error:  # noqa: BLE001 - best-effort rollback cleanup
+                log_error(cleanup_error, "package_document_failed_upload_cleanup")
         return log_and_error(
             request,
             exc,

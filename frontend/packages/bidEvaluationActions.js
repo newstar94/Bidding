@@ -18,7 +18,8 @@ import {
   initializeEvaluationLotScope,
   isPartialEvaluationLotScope,
   resolvePackageResultStatus,
-  saveEvaluationScopeMetadata
+  saveEvaluationScopeMetadata,
+  updateEvaluationLotScope,
 } from "./lotEvaluationScope.js";
 import {
   requiresTechnicalScoreInput,
@@ -59,6 +60,20 @@ export function resolvePostEvaluationTargetTab({
   if (!isTwoEnvelope) return "result";
   if (currentEvaluationTab === "financial") return "result";
   return qualifiedBidCount > 0 ? "qualified" : "result";
+}
+
+export function reconcileEvaluationLotScopeControls(view, pkg, scope) {
+  const selectedMode = view?.getActiveElement?.("danhgiahsdt-scope-container")
+    ?.querySelector?.('input[name="danhgiahsdt-scope-mode"][value="selected"]');
+  if (!selectedMode?.checked) return scope;
+  const options = view.getActiveElement("danhgiahsdt-lot-options");
+  const selectedLotIds = Array.from(
+    options?.querySelectorAll?.("[data-evaluation-lot-id]:checked") || [],
+  ).map((input) => input.getAttribute("data-evaluation-lot-id"));
+  return updateEvaluationLotScope(scope, getPackageEvaluationLots(pkg), {
+    mode: "selected",
+    selectedLotIds,
+  });
 }
 
 export function findInvalidRequiredTechnicalScore({
@@ -282,7 +297,16 @@ export async function saveDanhGiaHsdt() {
       : parsedMetadata;
     const scopeKey = `${String(gtId)}:${String(this.currentDanhGiaTab || "technical")}`;
     this._evaluationLotScopes = this._evaluationLotScopes || {};
-    evaluationLotScope = initializeEvaluationLotScope(gt, scopeBlock, this._evaluationLotScopes[scopeKey]);
+    evaluationLotScope = initializeEvaluationLotScope(
+      gt,
+      scopeBlock,
+      this._explicitEvaluationLotScopes?.[scopeKey] || this._evaluationLotScopes[scopeKey],
+    );
+    evaluationLotScope = reconcileEvaluationLotScopeControls(
+      this.view,
+      gt,
+      evaluationLotScope,
+    );
     this._evaluationLotScopes[scopeKey] = evaluationLotScope;
     evaluationLotDetails = getEvaluationLotScopeDetails(gt, evaluationLotScope);
     if (!evaluationLotDetails?.lotIds?.length) {

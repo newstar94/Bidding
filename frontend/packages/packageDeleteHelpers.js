@@ -1,3 +1,5 @@
+import { replaceTableProjection } from "../shared/MutationService.js";
+
 function versionNumber(record) {
   return Number.parseInt(record?.phienBan, 10) || 0;
 }
@@ -67,9 +69,9 @@ export function deleteLatestPackageVersion(model, context) {
   const latestBidRecords = (model.state.thongtinmothau || []).filter((b) => (
     latestIdSet.has(String(b.goiThauId))
   ));
-  model.state.goithau = model.state.goithau.filter((gt) => !latestIdSet.has(String(gt.id)));
+  replaceTableProjection(model, "goithau", model.state.goithau.filter((gt) => !latestIdSet.has(String(gt.id))));
   model.markDeleted("goithau", latestPackages);
-  model.state.thongtinmothau = model.state.thongtinmothau.filter((b) => !latestIdSet.has(String(b.goiThauId)));
+  replaceTableProjection(model, "thongtinmothau", model.state.thongtinmothau.filter((b) => !latestIdSet.has(String(b.goiThauId))));
   model.markDeleted("thongtinmothau", latestBidRecords);
   const remainingRelated = context.relatedPackages.filter((gt) => !latestIds.includes(gt.id));
   context.planIds.forEach((planId) => {
@@ -80,6 +82,7 @@ export function deleteLatestPackageVersion(model, context) {
       gt.isLatest = (parseInt(gt.phienBan) || 0) === nextMaxVersion ? 1 : 0;
     });
   });
+  return { deletedBids: latestBidRecords, deletedPackages: latestPackages };
 }
 export function deleteAllPackageVersions(model, context) {
   const relatedIdSet = new Set(context.relatedIds.map(String));
@@ -89,11 +92,12 @@ export function deleteAllPackageVersions(model, context) {
   const relatedBidRecords = (model.state.thongtinmothau || []).filter((b) => (
     relatedIdSet.has(String(b.goiThauId))
   ));
-  model.state.goithau = model.state.goithau.filter((gt) => (
+  replaceTableProjection(model, "goithau", model.state.goithau.filter((gt) => (
     String(gt.rootId || gt.id) !== String(context.rootId)
     && !relatedIdSet.has(String(gt.id))
-  ));
+  )));
   model.markDeleted("goithau", relatedPackages);
-  model.state.thongtinmothau = model.state.thongtinmothau.filter((b) => !relatedIdSet.has(String(b.goiThauId)));
+  replaceTableProjection(model, "thongtinmothau", model.state.thongtinmothau.filter((b) => !relatedIdSet.has(String(b.goiThauId))));
   model.markDeleted("thongtinmothau", relatedBidRecords);
+  return { deletedBids: relatedBidRecords, deletedPackages: relatedPackages };
 }

@@ -763,8 +763,8 @@ async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
             if listener is not None:
                 try:
                     listener.close()
-                except Exception:
-                    pass
+                except Exception as close_error:  # noqa: BLE001 - broker recovery must continue
+                    log_error(close_error, "websocket_broker_listener_close", level="WARN")
             listener = None
             await asyncio.sleep(1.0)
             continue

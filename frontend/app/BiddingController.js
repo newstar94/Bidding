@@ -363,6 +363,7 @@ export class BiddingController {
     });
   }
   hasLocalWorkspaceData() {
+    if (this.model?.hasStorageReadFailures?.()) return true;
     const keys = ["kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "thongtinmothau"];
     return keys.some((key) => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0) || this.model?._hasPersistedWorkspaceData === true;
   }

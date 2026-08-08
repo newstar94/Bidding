@@ -5,8 +5,19 @@ from scripts.setup_local_postgres import (
     effective_reset_environment,
     ensure_local_postgres_running,
     initialize_application_schemas,
+    main,
     should_auto_start_local_postgres,
 )
+
+
+def test_database_existence_probe_uses_psql_value_binding():
+    source = (
+        __import__("inspect").getsource(main)
+    )
+
+    assert "database_name={database_name}" in source
+    assert "datname = :'database_name'" in source
+    assert "datname='{database_name}'" not in source
 
 
 def test_reset_accepts_only_repository_managed_local_development_databases():

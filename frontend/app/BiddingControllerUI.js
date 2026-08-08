@@ -495,22 +495,22 @@ export function switchTab(tabName, action = null, updateState = true, transition
       if (!shouldAutoOpenCreateModal(this.model?.state, tabName)) return;
       if (tabName === "kehoach") {
         const modal = document.getElementById("modal-kehoach");
-        if (!modal || !modal.classList.contains("active")) this.editKeHoach(null);
+        if (!modal || !modal.classList.contains("active")) void this.plans.edit(null);
       } else if (tabName === "goithau") {
         const modal = document.getElementById("modal-goithau");
-        if (!modal || !modal.classList.contains("active")) this.editGoiThau(null);
+        if (!modal || !modal.classList.contains("active")) void this.packages.edit(null);
       } else if (tabName === "hopdong") {
         const modal = document.getElementById("modal-hopdong");
-        if (!modal || !modal.classList.contains("active")) this.editHopDong(null);
+        if (!modal || !modal.classList.contains("active")) void this.contracts.edit(null);
       } else if (tabName === "chudautu") {
         const modal = document.getElementById("modal-chudautu");
-        if (!modal || !modal.classList.contains("active")) this.editChuDauTu(null);
+        if (!modal || !modal.classList.contains("active")) void this.partners.editInvestor(null);
       } else if (tabName === "nhathau") {
         const modal = document.getElementById("modal-nhathau");
-        if (!modal || !modal.classList.contains("active")) this.editNhaThau(null);
+        if (!modal || !modal.classList.contains("active")) void this.partners.editContractor(null);
       } else if (tabName === "chuyengia") {
         const modal = document.getElementById("modal-chuyengia");
-        if (!modal || !modal.classList.contains("active")) this.editChuyenGia(null);
+        if (!modal || !modal.classList.contains("active")) void this.partners.editExpert(null);
       }
     }, 100);
   } else if (!action) {
@@ -687,26 +687,23 @@ export async function closeModal(modalId, options = {}) {
   }
   if (modalId === "modal-plan-breakdown") {
     if (this.backupKeHoachState) {
-      this.model.state.kehoach = restoreRecordSnapshot(
-        this.model.state.kehoach,
-        this.backupKeHoachState,
+      this.model.replaceTableState(
+        "kehoach",
+        restoreRecordSnapshot(this.model.state.kehoach, this.backupKeHoachState),
       );
       this.backupKeHoachState = null;
     }
     if (this.backupGoiThauState) {
-      this.model.state.goithau = restoreRecordSnapshot(
-        this.model.state.goithau,
-        this.backupGoiThauState,
+      this.model.replaceTableState(
+        "goithau",
+        restoreRecordSnapshot(this.model.state.goithau, this.backupGoiThauState),
       );
       this.backupGoiThauState = null;
     }
     this.tempPlanData = null;
     this.tempPlanAction = null;
-    this.model.persistData("kehoach");
-    this.model.persistData("goithau");
     this.view.renderKeHoachTable();
     this.view.renderGoiThauTable();
-    this.autoSync();
   }
   this.view.closeModal(modalId);
   if (!restoreRoute) return;

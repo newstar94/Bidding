@@ -216,9 +216,9 @@ async function persistImport(model, pkg, preview, { mode, selectedLotId }) {
   });
   const deletedIds = new Set(deleted.map((item) => String(item.id)));
   const upsertById = new Map(upserts.map((item) => [String(item.id), item]));
-  model.state.goithauhanghoa = (model.state.goithauhanghoa || [])
+  model.replaceTableState("goithauhanghoa", (model.state.goithauhanghoa || [])
     .filter((item) => !deletedIds.has(String(item.id)))
-    .map((item) => upsertById.get(String(item.id)) || item);
+    .map((item) => upsertById.get(String(item.id)) || item));
   upserts.forEach((item) => {
     if (!model.state.goithauhanghoa.some((currentItem) => String(currentItem.id) === String(item.id))) model.state.goithauhanghoa.push(item);
   });

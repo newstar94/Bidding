@@ -1,5 +1,9 @@
 import { APP_DEBUG } from "./appConfig.js";
 import { getActiveOrganizationId } from "./workspaceState.js";
+import {
+  reportWebSocketPollingFallback,
+  reportWebSocketReconnect,
+} from "../shared/releaseDiagnostics.js";
 
 
 const NON_RETRYABLE_CLOSE_CODES = new Set([1000, 4001, 4003, 4401, 4403]);
@@ -36,6 +40,7 @@ export class WebSocketSyncClient {
   startPollingFallback(interval = 30_000) {
     const controller = this.controller;
     if (controller._wsPollingTimer) return;
+    controller._wsPollingStartedAt = Date.now();
     controller._wsPollingTimer = setInterval(() => {
       if (globalThis.navigator?.onLine === false) return;
       controller.notificationCenter?.refresh?.();
@@ -48,6 +53,9 @@ export class WebSocketSyncClient {
     if (!controller._wsPollingTimer) return;
     clearInterval(controller._wsPollingTimer);
     controller._wsPollingTimer = null;
+    const startedAt = Number(controller._wsPollingStartedAt || 0);
+    controller._wsPollingStartedAt = 0;
+    if (startedAt > 0) void reportWebSocketPollingFallback(Date.now() - startedAt);
   }
 
   connect() {
@@ -132,6 +140,7 @@ export class WebSocketSyncClient {
       const currentDelay = controller._wsRetryDelay || 5e3;
       const nextDelay = Math.min(6e4, Math.round(currentDelay * 1.5));
       controller._wsRetryDelay = nextDelay;
+      void reportWebSocketReconnect();
       this.startPollingFallback();
       if (debug) {
         console.log(`WebSocket connection closed (code: ${event.code || "unknown"}, reason: ${event.reason || "none"}). Reconnecting in ${Math.round(nextDelay / 1e3)}s...`);

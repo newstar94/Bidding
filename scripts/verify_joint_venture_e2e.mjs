@@ -204,70 +204,67 @@ async function configureJointMembers(page, row) {
 }
 
 async function selectEvaluationLot(page, lotCode) {
-  const selectedMode = page.locator('input[name="danhgiahsdt-scope-mode"][value="selected"]');
-  if (await selectedMode.count()) {
-    await selectedMode.check();
-    await page.waitForFunction(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const selected = document.querySelector(
+  await page.waitForFunction(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    const container = controller?.view?.getActiveElement?.("danhgiahsdt-scope-container");
+    const options = controller?.view?.getActiveElement?.("danhgiahsdt-lot-options");
+    return controller?._evaluationLotScopeRenderQueued !== true
+      && Boolean(container?.querySelector(
         'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-      );
-      const inputs = [...document.querySelectorAll(
-        "#danhgiahsdt-lot-options [data-evaluation-lot-id]",
-      )];
-      return getAppController()?._evaluationLotScopeRenderQueued !== true
-        && selected?.checked === true
-        && inputs.length > 0
-        && inputs.every((input) => !input.disabled);
-    });
-  }
-  const optionLabels = page.locator("#danhgiahsdt-lot-options label");
-  for (const label of await optionLabels.all()) {
-    const input = label.locator("input");
-    const text = (await label.innerText()).trim();
-    if (text.includes(lotCode)) {
-      if (!await input.isChecked()) await input.check();
-    } else if (await input.isChecked()) {
-      await input.uncheck();
+      ))
+      && Boolean(options?.querySelector("[data-evaluation-lot-id]"));
+  }, null, { timeout: 10_000 });
+  const result = await page.evaluate(async (expectedCode) => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    const getContainer = () => controller?.view?.getActiveElement?.("danhgiahsdt-scope-container");
+    const getOptions = () => controller?.view?.getActiveElement?.("danhgiahsdt-lot-options");
+    const selected = getContainer()?.querySelector(
+      'input[name="danhgiahsdt-scope-mode"][value="selected"]',
+    );
+    if (!selected) return { error: "selected mode missing" };
+    if (!selected.checked) selected.click();
+
+    const identities = [...(getOptions()?.querySelectorAll("[data-evaluation-lot-id]") || [])]
+      .map((input) => ({
+        id: input.getAttribute("data-evaluation-lot-id"),
+        matches: input.closest("label")?.textContent?.includes(expectedCode) || false,
+      }));
+    for (const identity of identities) {
+      const input = [...(getOptions()?.querySelectorAll("[data-evaluation-lot-id]") || [])]
+        .find((candidate) => candidate.getAttribute("data-evaluation-lot-id") === identity.id);
+      if (input && input.checked !== identity.matches) input.click();
     }
-  }
-  try {
-    await page.waitForFunction(async (expectedCode) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const selected = document.querySelector(
+    const checked = [...(getOptions()?.querySelectorAll("[data-evaluation-lot-id]:checked") || [])];
+    return {
+      checkedCodes: checked.map((input) => input.closest("label")?.textContent?.trim() || ""),
+      explicitStore: controller?._explicitEvaluationLotScopes || {},
+      selectedMode: getContainer()?.querySelector(
         'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-      );
-      const checked = [...document.querySelectorAll(
-        "#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked",
-      )];
-      return getAppController()?._evaluationLotScopeRenderQueued !== true
-        && selected?.checked === true
-        && checked.length === 1
-        && checked[0].closest("label")?.textContent?.includes(expectedCode);
-    }, lotCode, { timeout: 10_000 });
-  } catch (error) {
-    const diagnostics = await page.evaluate(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const controller = getAppController();
-      return {
-        currentTab: controller?.currentDanhGiaTab || "",
-        currentView: controller?.currentEvaluationView || "",
-        scopeStore: controller?._evaluationLotScopes || {},
-        selectedMode: Boolean(document.querySelector(
-          'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-        )?.checked),
-        options: [...document.querySelectorAll(
-          "#danhgiahsdt-lot-options [data-evaluation-lot-id]",
-        )].map((input) => ({
-          id: input.getAttribute("data-evaluation-lot-id"),
-          checked: input.checked,
-          disabled: input.disabled,
-          text: input.closest("label")?.textContent?.trim() || "",
-        })),
-      };
-    });
-    throw new Error(`Lot scope selection did not settle on ${lotCode}: ${JSON.stringify(diagnostics)}; ${error.message}`);
+      )?.checked || false,
+    };
+  }, lotCode);
+  const committed = Object.values(result.explicitStore || {}).some((scope) => (
+    scope?.mode === "selected" && scope?.selectedLotIds?.length === 1
+  ));
+  if (!result.selectedMode || result.checkedCodes?.length !== 1 || !committed) {
+    throw new Error(`Lot scope selection did not settle on ${lotCode}: ${JSON.stringify(result)}`);
   }
+  await page.waitForFunction(async (expectedCode) => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const controller = getAppController();
+    const container = controller?.view?.getActiveElement?.("danhgiahsdt-scope-container");
+    const options = controller?.view?.getActiveElement?.("danhgiahsdt-lot-options");
+    const selected = container?.querySelector(
+      'input[name="danhgiahsdt-scope-mode"][value="selected"]',
+    );
+    const checked = [...(options?.querySelectorAll("[data-evaluation-lot-id]:checked") || [])];
+    return controller?._evaluationLotScopeRenderQueued !== true
+      && selected?.checked === true
+      && checked.length === 1
+      && checked[0].closest("label")?.textContent?.includes(expectedCode);
+  }, lotCode, { timeout: 10_000 });
 }
 
 async function waitForEvaluationSave(page, httpErrors, pageErrors) {
@@ -883,6 +880,33 @@ try {
         await row.locator('.mt-low-price-acceptance[value="false"]').check();
       }
     }
+    // Ranking/conclusion updates are intentionally batched to animation frames.
+    // Wait for that public UI state to settle before submitting the report so
+    // the click cannot race the pending low-price/conclusion projection.
+    await page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    await page.waitForFunction(async ({ expectedCount, expectedLotCode, requiresRejection }) => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const view = getAppController()?.view;
+      const tbody = view?.getActiveElement?.("danhgiahsdt-table-tbody");
+      const rows = [...(tbody?.querySelectorAll("tr[data-bid-id]") || [])]
+        .filter((row) => row.textContent?.includes(expectedLotCode));
+      const activeButton = view?.getActiveElement?.("btn-danhgiahsdt-save");
+      const rejectionReady = !requiresRejection || rows.some((row) => (
+        row.textContent?.includes("Liên danh")
+        && row.querySelector('.mt-low-price-acceptance[value="false"]')?.checked === true
+      ));
+      return rows.length === expectedCount
+        && rows.every((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt")
+        && rejectionReady
+        && activeButton?.isConnected === true
+        && typeof activeButton.onclick === "function";
+    }, {
+      expectedCount: expectedRows,
+      expectedLotCode: lot.code,
+      requiresRejection: rejectJoint,
+    }, { timeout: 10_000 });
     await page.locator("#btn-danhgiahsdt-save").click();
     try {
       await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
@@ -935,7 +959,18 @@ try {
         const pkg = getAppController()?.model?.state?.goithau?.find(
           (item) => String(item.id) === String(packageId),
         );
-        return { metadata: pkg?.danhGiaHsdtMetadata || "", status: pkg?.trangThai || "" };
+        return {
+          metadata: pkg?.danhGiaHsdtMetadata || "",
+          status: pkg?.trangThai || "",
+          scopeStore: getAppController()?._evaluationLotScopes || {},
+          currentEvaluationTab: getAppController()?.currentDanhGiaTab || "",
+          selectedMode: document.querySelector(
+            'input[name="danhgiahsdt-scope-mode"][value="selected"]',
+          )?.checked || false,
+          checkedLotIds: [...document.querySelectorAll(
+            "#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked",
+          )].map((input) => input.getAttribute("data-evaluation-lot-id")),
+        };
       }, lotPackageData.id);
       throw new Error(`Lot ${lot.code} result approval leaked bidders from another scope: ${JSON.stringify({
         rowDiagnostics,

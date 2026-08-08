@@ -115,9 +115,10 @@ export async function deleteNhaThau(id) {
   const result = choice === 1
     ? removeLatestVersion(this.model.state.nhathau, nt)
     : removeAllVersions(this.model.state.nhathau, nt);
-  this.model.state.nhathau = result.records;
-  this.model.markDeleted("nhathau", result.removed.map((item) => item.id));
+  this.model.replaceTableState("nhathau", result.records);
+  this.model.markDeleted("nhathau", result.removed);
   await persistAndSync(this, "nhathau", {
+    changes: { deletions: { nhathau: result.removed } },
     afterPersist: () => this.view.renderNhaThauTable()
   });
 }

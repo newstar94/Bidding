@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 
 from backend.versioning.command import (
@@ -39,6 +41,8 @@ def _state():
 
 
 def test_package_version_command_builds_an_idempotent_server_sync_payload():
+    source_state = _state()
+    frozen_source = deepcopy(source_state)
     command = {
         "kind": "package",
         "sourceId": "package-1",
@@ -47,7 +51,7 @@ def test_package_version_command_builds_an_idempotent_server_sync_payload():
         "clientMutationId": "version-command-1",
     }
     first = build_aggregate_version_payload(
-        FakeRepository(_state()), "org-1", command, timestamp="2026-08-08 10:00:00"
+        FakeRepository(source_state), "org-1", command, timestamp="2026-08-08 10:00:00"
     )
     second = build_aggregate_version_payload(
         FakeRepository(_state()), "org-1", command, timestamp="2026-08-08 10:00:00"
@@ -64,8 +68,29 @@ def test_package_version_command_builds_an_idempotent_server_sync_payload():
     assert created["id"] != "package-1"
     assert created["phienBan"] == 3
     assert created["tenGoiThau"] == "Gói mới"
+    assert source_state == frozen_source
 
 
+def test_version_command_cannot_resolve_a_same_id_source_from_another_tenant():
+    class TenantRepository(FakeRepository):
+        def load_package_state(self, organization_id, _source_id):
+            return self.state if organization_id == "org-a" else None
+
+    command = {
+        "kind": "package",
+        "sourceId": "package-1",
+        "expectedRowVersion": 5,
+        "changes": {},
+        "clientMutationId": "tenant-scoped-version-command",
+    }
+
+    with pytest.raises(LookupError, match="does not exist"):
+        build_aggregate_version_payload(
+            TenantRepository(_state()),
+            "org-b",
+            command,
+            timestamp="2026-08-08 10:00:00",
+        )
 def test_plan_version_command_clones_packages_from_server_state():
     state = _state()
     state["assignments"] = [{

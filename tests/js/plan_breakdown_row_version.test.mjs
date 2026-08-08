@@ -5,6 +5,10 @@ import { restoreRecordSnapshot } from "../../frontend/shared/recordSnapshot.js";
 import { getNextVersion } from "../../frontend/shared/VersionedEntityService.js";
 import { savePlanBreakdown } from "../../frontend/plans/KeHoachWorkflow.js";
 
+function replaceTableState(table, records) {
+  this.state[table] = records;
+}
+
 test("restoring a form snapshot keeps the row version owned by the server", () => {
   const live = [{ id: "plan-1", tenKeHoach: "Tên mới", rowVersion: 4, syncVersion: 12 }];
   const snapshot = [{ id: "plan-1", tenKeHoach: "Tên cũ", rowVersion: 1, syncVersion: 7 }];
@@ -112,6 +116,7 @@ test("saving a new plan version keeps the row version committed by a package sav
         activeuser: { id: "employee-1" },
       },
       getCurrentDateTimeString: () => "2026-08-05T10:00",
+      replaceTableState,
       persistData: async () => {},
       flushMutationOutbox: async () => {},
       addRecord: async () => {},

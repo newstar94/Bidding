@@ -46,9 +46,9 @@ def _record_postgres_timing(
             duration_seconds,
             outcome=outcome,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - metrics are a fail-open isolation boundary
         # Metrics must remain fail-open and never affect a transaction.
-        pass
+        return
 
 
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:

@@ -1,5 +1,9 @@
 import { apiFetch } from "../shared/apiClient.js";
 import {
+  reportOutboxFailure,
+  reportSyncConflict,
+} from "../shared/releaseDiagnostics.js";
+import {
   getSyncValidationErrors,
   resolveRowVersionConflicts,
 } from "./ConflictResolver.js";
@@ -153,6 +157,7 @@ async function applySuccessfulPush(controller, {
 async function applyFailedPush(controller, { status, data, snapshot }) {
   const validationErrors = getSyncValidationErrors(data);
   if (status === 409 || data.status === "conflict") {
+    void reportSyncConflict();
     const resolution = await resolveRowVersionConflicts(controller, { data, snapshot });
     if (resolution.resolved) {
       controller._syncConflict = null;
@@ -244,6 +249,7 @@ export function autoSync() {
       status,
     });
   }).catch((error) => {
+    void reportOutboxFailure();
     console.error("Error auto sync:", error);
     this.updateSyncState({ phase: "transportError", message: "Không thể kết nối máy chủ" });
     return { ok: false, error };

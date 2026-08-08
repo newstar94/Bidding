@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { WebSocketSyncClient } from "../../frontend/app/WebSocketSyncClient.js";
+import { pollingFallbackDurationBucket } from "../../frontend/shared/releaseDiagnostics.js";
+
+
+test("polling fallback duration uses bounded low-cardinality buckets", () => {
+  assert.equal(pollingFallbackDurationBucket(0), "Under30s");
+  assert.equal(pollingFallbackDurationBucket(29_999), "Under30s");
+  assert.equal(pollingFallbackDurationBucket(30_000), "30sTo5m");
+  assert.equal(pollingFallbackDurationBucket(299_999), "30sTo5m");
+  assert.equal(pollingFallbackDurationBucket(300_000), "Over5m");
+});
 
 
 test("WebSocket client polls only while the realtime channel is unavailable", () => {

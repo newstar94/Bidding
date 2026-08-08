@@ -43,10 +43,11 @@ export async function deleteHopDong(id) {
   if (deleteChoice === 1) {
     const result = removeLatestVersion(this.model.state.hopdong, targetHd);
     if (!result.removed.length) return;
-    this.model.state.hopdong = result.records;
-    this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
+    this.model.replaceTableState("hopdong", result.records);
+    this.model.markDeleted("hopdong", result.removed);
     try {
       const syncResult = await persistAndSync(this, "hopdong", {
+        changes: { deletions: { hopdong: result.removed } },
         afterPersist: () => this.view.renderHopDongTable()
       });
       if (!syncResult?.ok) {
@@ -58,10 +59,11 @@ export async function deleteHopDong(id) {
     }
   } else if (deleteChoice === 2 || deleteConfirmed) {
     const result = removeAllVersions(this.model.state.hopdong, targetHd);
-    this.model.state.hopdong = result.records;
-    this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
+    this.model.replaceTableState("hopdong", result.records);
+    this.model.markDeleted("hopdong", result.removed);
     try {
       const syncResult = await persistAndSync(this, "hopdong", {
+        changes: { deletions: { hopdong: result.removed } },
         afterPersist: () => this.view.renderHopDongTable()
       });
       if (!syncResult?.ok) {
@@ -203,7 +205,7 @@ export async function editHopDong(id) {
     cdtSelect.onchange = (e) => {
       if (e.target.value === "__NEW_INVESTOR__") {
         e.target.value = "";
-        void this.editChuDauTu(null);
+        void this.partners.editInvestor(null);
         queueMicrotask(() => e.target.dispatchEvent(new Event("change", { bubbles: true })));
         return;
       }
@@ -278,7 +280,7 @@ export async function editHopDong(id) {
     ntSelect.onchange = (e) => {
       if (e.target.value === "__NEW_CONTRACTOR__") {
         e.target.value = "";
-        void this.editNhaThau(null);
+        void this.partners.editContractor(null);
         queueMicrotask(() => e.target.dispatchEvent(new Event("change", { bubbles: true })));
         return;
       }
@@ -577,7 +579,7 @@ export async function handleHopDongSubmit(e) {
     originalPackageIds,
   );
   if (!Array.isArray(this.model.state.hopdong)) {
-    this.model.state.hopdong = [];
+    this.model.replaceTableState("hopdong", []);
   }
   let finalHdId = id;
   const assignedEmpSelect = document.getElementById("hd-nhanvienphutrach");

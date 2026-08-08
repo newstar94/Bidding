@@ -61,6 +61,7 @@ from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.logging_utils import log_structured_event
 from backend.security.turnstile import edge_challenge_required, enforce_turnstile
+from backend.runtime_capabilities import with_server_capabilities
 from backend.shared.email_templates import render_branded_email
 
 
@@ -545,16 +546,16 @@ def build_session_bootstrap(request):
     """Return a read-only session snapshot for the HTML bootstrap payload."""
     session_token = (request.cookies.get('session_token') or '').strip()
     if not session_token:
-        return {"valid": False, "reason": "missing_auth"}
+        return with_server_capabilities({"valid": False, "reason": "missing_auth"})
 
     user = _load_user_by_session_token(session_token)
     invalid_reason = _validate_token_expiry(session_token, user)
     if invalid_reason:
-        return {"valid": False, "reason": invalid_reason}
+        return with_server_capabilities({"valid": False, "reason": invalid_reason})
 
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
     access_payload = _get_access_for_session(user, request)
-    return {
+    return with_server_capabilities({
         "valid": True,
         "device_info": user.get('device_info'),
         "user": {
@@ -570,13 +571,13 @@ def build_session_bootstrap(request):
             "suggested_username": suggested_username,
             "account_linked": account_linked
         }
-    }
+    })
 
 
 def _session_response(user, request):
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
     access_payload = _get_access_for_session(user, request)
-    response = JSONResponse({
+    response = JSONResponse(with_server_capabilities({
         "valid": True,
         "device_info": user.get('device_info'),
         "user": {
@@ -591,7 +592,7 @@ def _session_response(user, request):
             "suggested_username": suggested_username,
             "account_linked": account_linked
         }
-    })
+    }))
 
     return response
 
@@ -601,12 +602,12 @@ def _check_session_sync(request, data, started_at):
         session_token = (request.cookies.get('session_token') or '').strip()
 
         if not session_token:
-            return JSONResponse({"valid": False, "reason": "missing_auth"})
+            return JSONResponse(with_server_capabilities({"valid": False, "reason": "missing_auth"}))
 
         user = _load_user_by_session_token(session_token)
         invalid_reason = _validate_token_expiry(session_token, user)
         if invalid_reason:
-            return JSONResponse({"valid": False, "reason": invalid_reason})
+            return JSONResponse(with_server_capabilities({"valid": False, "reason": invalid_reason}))
 
         _extend_session_if_needed(user)
         response = _session_response(user, request)
@@ -614,7 +615,10 @@ def _check_session_sync(request, data, started_at):
         return response
     except Exception as e:
         log_error(e, "check_session_api")
-        return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
+        return JSONResponse(
+            with_server_capabilities({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}),
+            status_code=500,
+        )
 
 
 async def check_session_api(request):

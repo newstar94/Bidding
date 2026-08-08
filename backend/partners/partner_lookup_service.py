@@ -945,8 +945,8 @@ def _apply_partner_enrichment(job, contractor, info):
                     "syncVersion": new_sync_version,
                 },
             )
-        except Exception:
-            pass
+        except Exception as notification_error:  # noqa: BLE001 - enrichment commit must survive notification failure
+            log_error(notification_error, "partner_enrichment_notification", level="WARN")
 
 
 def _process_partner_enrichment_job(job):

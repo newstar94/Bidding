@@ -9,7 +9,7 @@ import {
 import { generateUUID as createUUID } from "../shared/idUtils.js";
 import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
 import { serializeOutboundRecord } from "./outboundSerializer.js";
-import { BrowserDB } from "./BrowserDB.js";
+import { BrowserDB, BrowserDBError } from "./BrowserDB.js";
 import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
@@ -115,6 +115,8 @@ export class BiddingModel {
     };
     this.pageSize = 10;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
+    this._storageReadFailures = /* @__PURE__ */ new Map();
+    this._storageHydrationListeners = /* @__PURE__ */ new Set();
     this._allDataLoadPromise = null;
     this._hasPersistedWorkspaceData = false;
     this._suspendMutationTracking = 0;
@@ -157,6 +159,12 @@ export class BiddingModel {
     const normalized = records.map((record) => this.normalizeRecordKeys(record, type));
     this.state[type] = normalized;
     return normalized;
+  }
+  replaceTableState(type, records) {
+    this.assertStorageTablesWritable(type);
+    this.state[type] = Array.isArray(records) ? records : [];
+    this.entityIndexes.invalidate(type);
+    return this.state[type];
   }
   /** Lưu trang hiện tại vào sessionStorage để F5 không mất trang */
   savePage(table) {
@@ -206,6 +214,7 @@ export class BiddingModel {
     this.useServerSidePagination = false;
     this._hasPersistedWorkspaceData = false;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
+    this._storageReadFailures = /* @__PURE__ */ new Map();
     this._allDataLoadPromise = null;
     this._remainingHydrationScheduled = false;
     this._mutationOutbox = null;
@@ -255,23 +264,101 @@ export class BiddingModel {
         } else {
           stored = await this.db.get(this.STORAGE_KEYS[key]);
         }
-        if (stored) {
-          this.state[lowKey] = Array.isArray(stored) ? this.normalizeRecords(lowKey, stored) : stored;
-        } else {
-          this.state[lowKey] = [];
-          if (this.db.stores.includes(lowKey)) {
-            await this.db.putTableData(lowKey, []);
-          } else {
-            await this.db.set(this.STORAGE_KEYS[key], []);
-          }
-        }
-      } catch {
-        this.state[lowKey] = [];
-      } finally {
+        this.state[lowKey] = stored == null
+          ? []
+          : Array.isArray(stored)
+            ? this.normalizeRecords(lowKey, stored)
+            : stored;
+        const recovered = this._storageReadFailures.delete(lowKey);
         this._loadedStorageKeys.add(key);
+        this._notifyStorageHydration({
+          code: null,
+          recovered,
+          state: "ready",
+          table: lowKey,
+        });
+      } catch (error) {
+        const failure = this._recordStorageReadFailure(lowKey, error);
+        console.error("Failed to read local workspace table", {
+          code: failure.code,
+          operation: "read",
+          table: lowKey,
+        });
       }
     });
     await Promise.all(loadPromises);
+  }
+  _recordStorageReadFailure(table, error) {
+    const code = String(error?.code || "OPERATION_FAILED");
+    const failure = error instanceof BrowserDBError
+      ? error
+      : new BrowserDBError(code, `IndexedDB read failed for ${table}`, {
+          cause: error instanceof Error ? error : null,
+          operation: "read",
+          store: table,
+        });
+    this._storageReadFailures.set(table, failure);
+    this._notifyStorageHydration({ code, recovered: false, state: "failed", table });
+    return failure;
+  }
+  _notifyStorageHydration(event) {
+    this._storageHydrationListeners.forEach((listener) => {
+      try {
+        listener({ ...event });
+      } catch (error) {
+        console.error("Storage hydration listener failed", error);
+      }
+    });
+  }
+  addStorageHydrationListener(listener) {
+    if (typeof listener !== "function") return () => {};
+    this._storageHydrationListeners.add(listener);
+    return () => this._storageHydrationListeners.delete(listener);
+  }
+  getStorageHydrationStatus(type) {
+    const table = String(type || "").toLowerCase();
+    const failure = this._storageReadFailures.get(table);
+    if (failure) {
+      return { code: failure.code || "OPERATION_FAILED", recoverable: true, state: "failed", table };
+    }
+    const storageKey = Object.keys(this.STORAGE_KEYS).find(
+      (key) => key.toLowerCase() === table,
+    );
+    return {
+      code: null,
+      recoverable: false,
+      state: storageKey && this._loadedStorageKeys.has(storageKey) ? "ready" : "pending",
+      table,
+    };
+  }
+  getStorageReadFailures() {
+    return Array.from(this._storageReadFailures.entries()).map(([table, error]) => ({
+      code: error?.code || "OPERATION_FAILED",
+      recoverable: true,
+      state: "failed",
+      table,
+    }));
+  }
+  hasStorageReadFailures() {
+    return this._storageReadFailures.size > 0;
+  }
+  assertStorageTablesWritable(types) {
+    for (const type of Array.isArray(types) ? types : [types]) {
+      const table = String(type || "").toLowerCase();
+      const failure = this._storageReadFailures.get(table);
+      if (failure) throw failure;
+    }
+  }
+  markStorageTablesRecovered(types) {
+    for (const type of types || []) {
+      const table = String(type || "").toLowerCase();
+      if (!this._storageReadFailures.delete(table)) continue;
+      const storageKey = Object.keys(this.STORAGE_KEYS).find(
+        (key) => key.toLowerCase() === table,
+      );
+      if (storageKey) this._loadedStorageKeys.add(storageKey);
+      this._notifyStorageHydration({ code: null, recovered: true, state: "ready", table });
+    }
   }
   ensureAllDataLoaded() {
     if (!this._allDataLoadPromise) {
@@ -325,7 +412,13 @@ export class BiddingModel {
       "hopdong",
       "thongtinmothau",
       "assignments"
-    ]);
+    ]).catch((error) => {
+      console.error("Failed to inspect local workspace availability", {
+        code: error?.code || "OPERATION_FAILED",
+        operation: error?.operation || "count",
+      });
+      return null;
+    });
     const priorityLoadPromise = this.loadStorageKeys(options.priorityKeys || Object.keys(this.STORAGE_KEYS));
     [this._hasPersistedWorkspaceData] = await Promise.all([persistedDataPromise, priorityLoadPromise]);
     if (!this.state.systempackages) {
@@ -361,6 +454,7 @@ export class BiddingModel {
     }
   }
   async trackDeletions(type) {
+    this.assertStorageTablesWritable?.(type);
     try {
       const oldData = await this.db.getTableData(type);
       if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
@@ -453,6 +547,7 @@ export class BiddingModel {
   }
   markRecordDirty(type, records) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     return this._getMutationOutbox().enqueue({
       kind: "upsert",
@@ -462,6 +557,7 @@ export class BiddingModel {
   }
   markTableDirty(type) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     return this._getMutationOutbox().enqueue({
       kind: "replace-table",
@@ -471,6 +567,7 @@ export class BiddingModel {
   }
   markDeleted(type, recordIds) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const values = Array.isArray(recordIds) ? recordIds : [recordIds];
     const records = values.filter(Boolean).map((value) => {
@@ -485,6 +582,7 @@ export class BiddingModel {
   }
   commitLocalMutation(type, options = {}) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     this.entityIndexes.invalidate(type);
     if (options.deletedIds !== void 0) {
       this.markDeleted(type, options.deletedIds);
@@ -530,7 +628,10 @@ export class BiddingModel {
     }
   }
   async persistData(type, options = {}) {
-    if (options.trackMutation !== false) this._assertWorkspaceWritable();
+    if (options.trackMutation !== false) {
+      this._assertWorkspaceWritable();
+      this.assertStorageTablesWritable(type);
+    }
     this.entityIndexes.invalidate(type);
     const key = type.toUpperCase();
     if (this.STORAGE_KEYS[key]) {
@@ -558,7 +659,10 @@ export class BiddingModel {
     }
   }
   async persistChanges(type, { upserts = [], deletions = [] } = {}, options = {}) {
-    if (options.trackMutation !== false) this._assertWorkspaceWritable();
+    if (options.trackMutation !== false) {
+      this._assertWorkspaceWritable();
+      this.assertStorageTablesWritable(type);
+    }
     const records = (Array.isArray(upserts) ? upserts : [upserts])
       .filter((record) => record?.id !== undefined && record?.id !== null)
       .map((record) => this.normalizeRecordKeys(record, type));
@@ -581,6 +685,7 @@ export class BiddingModel {
   }
   async addRecord(type, record) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     const normalizedRecord = upsertEntity(
       this.state,
       type,
@@ -596,6 +701,7 @@ export class BiddingModel {
   }
   async updateRecord(type, record) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     const normalizedRecord = upsertEntity(
       this.state,
       type,
@@ -611,6 +717,7 @@ export class BiddingModel {
   }
   async deleteRecord(type, recordId) {
     this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
     const deletedRecord = (this.state[type] || []).find(
       (record) => String(record.id) === String(recordId)
     );

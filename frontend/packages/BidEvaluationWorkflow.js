@@ -37,6 +37,12 @@ export function commitEvaluationLotScopeChange({
 } = {}) {
   if (!controller || !scopeStore || !scopeKey || !nextScope) return false;
   scopeStore[scopeKey] = nextScope;
+  controller._explicitEvaluationLotScopes ||= {};
+  if (nextScope.mode === "selected") {
+    controller._explicitEvaluationLotScopes[scopeKey] = nextScope;
+  } else {
+    delete controller._explicitEvaluationLotScopes[scopeKey];
+  }
   syncNavigation?.();
   if (controller._evaluationLotScopeRenderQueued) return true;
   controller._evaluationLotScopeRenderQueued = true;
@@ -88,7 +94,10 @@ export function renderDanhGiaHsdtPanel() {
       pkg: gt,
       requestedTab: this.currentDanhGiaTab,
       editingState: this.view._editingState,
-      cachedScopes: scopeStore,
+      cachedScopes: {
+        ...scopeStore,
+        ...this._explicitEvaluationLotScopes,
+      },
     });
     this.currentDanhGiaTab = panelState.currentTab;
     const {
@@ -125,6 +134,7 @@ export function renderDanhGiaHsdtPanel() {
       onContinue: () => {
         this._continueOfficialLotEvaluation[gt.id] = true;
         delete scopeStore[scopeKey];
+        delete this._explicitEvaluationLotScopes?.[scopeKey];
         handlePackageSelection();
       }
     });
@@ -141,6 +151,10 @@ export function renderDanhGiaHsdtPanel() {
           nextScope,
           syncNavigation: () => syncDetailedEvaluationNavigation(this, gtId),
           rerender: handlePackageSelection,
+          // Scope controls are replaced by the rerender itself. Commit and
+          // render in one event turn so a second click cannot target controls
+          // from an older queued projection.
+          schedule: (callback) => callback(),
         });
       }
     });
@@ -159,14 +173,6 @@ export function renderDanhGiaHsdtPanel() {
     const tableTitle = this.view.getActiveElement("danhgiahsdt-table-title");
     if (tableTitle) tableTitle.textContent = tablePresentation.title;
     thead.innerHTML = trustedHTML(tablePresentation.headerHtml);
-    const rankingController = createBidEvaluationRankingController({
-      root: tbody,
-      pkg: gt,
-      bids: this.model.state.thongtinmothau,
-      isTwoEnvelope: is1G2T,
-      isReadOnly,
-    });
-    const updateAllRankings = (dirtyRow) => rankingController.schedule(dirtyRow);
     let bids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
     if (lotScope) {
       bids = filterBidsByEvaluationLotScope(bids, gt, lotScope);
@@ -174,6 +180,17 @@ export function renderDanhGiaHsdtPanel() {
     if (is1G2T && this.currentDanhGiaTab === "financial") {
       bids = bids.filter((bid) => checkBidQualified(bid, gt));
     }
+    // Ranking and progressive enablement must use the same lot projection as
+    // the rendered rows. Feeding all package bids here makes a hidden bid from
+    // another lot disable the first visible row in a partial evaluation batch.
+    const rankingController = createBidEvaluationRankingController({
+      root: tbody,
+      pkg: gt,
+      bids,
+      isTwoEnvelope: is1G2T,
+      isReadOnly,
+    });
+    const updateAllRankings = (dirtyRow) => rankingController.schedule(dirtyRow);
     if (!is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
       bids.sort((a, b) => {
         const priceA = BigInt(this.model.parseVND(a.giaSauGiamGia || a.giaDuThau) || 0);

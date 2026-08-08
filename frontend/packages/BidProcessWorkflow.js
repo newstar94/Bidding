@@ -944,11 +944,13 @@ async function performSaveThongTinMoThau() {
     await this.view.customAlert("Trùng mã số thuế", "Các thành viên liên danh không được trùng mã số thuế hoặc mã nhà thầu. Vui lòng mở danh sách thành viên liên danh để kiểm tra lại!", "alert-triangle", jvRowsValidation.invalidInputs);
     return;
   }
+  const changedContractors = [];
   const tempBids = collectOpeningBidsFromRows({
     rows,
     gtId,
     model: this.model,
-    isDirectOrSpecial
+    isDirectOrSpecial,
+    changedContractors,
   });
   const participantValidation = validateOpeningParticipantScopes(tempBids, this.model.state.nhathau);
   if (!participantValidation.valid) {
@@ -962,7 +964,15 @@ async function performSaveThongTinMoThau() {
     );
     return;
   }
-  this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId));
+  const previousBids = this.model.state.thongtinmothau.filter(
+    (bid) => String(bid.goiThauId) === String(gtId),
+  );
+  const nextBidIds = new Set(tempBids.map((bid) => String(bid.id)));
+  const deletedBids = previousBids.filter((bid) => !nextBidIds.has(String(bid.id)));
+  this.model.replaceTableState(
+    "thongtinmothau",
+    this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId)),
+  );
   this.model.state.thongtinmothau.push(...tempBids);
   gt.trangThai = "Đang chấm thầu";
   const stepKey = is1G2T ? "opening_tech" : "opening";
@@ -971,7 +981,24 @@ async function performSaveThongTinMoThau() {
   }
   stageLocalRecords(this.model, "thongtinmothau", tempBids);
   stageLocalRecords(this.model, "goithau", gt);
-  const syncResult = await persistAndSync(this, ["thongtinmothau", "goithau"]);
+  const uniqueContractors = [...new Map(
+    changedContractors.map((contractor) => [String(contractor.id), contractor]),
+  ).values()];
+  stageLocalRecords(this.model, "nhathau", uniqueContractors);
+  if (deletedBids.length > 0) this.model.markDeleted("thongtinmothau", deletedBids);
+  const openingChanges = {
+    upserts: {
+      thongtinmothau: tempBids,
+      goithau: [gt],
+      ...(uniqueContractors.length > 0 ? { nhathau: uniqueContractors } : {}),
+    },
+    deletions: deletedBids.length > 0 ? { thongtinmothau: deletedBids } : {},
+  };
+  const syncResult = await persistAndSync(
+    this,
+    ["thongtinmothau", "goithau", ...(uniqueContractors.length > 0 ? ["nhathau"] : [])],
+    { changes: openingChanges },
+  );
   if (!syncResult?.ok) {
     await this.view.customAlert(
       "Không thể lưu thông tin mở thầu",
@@ -1109,10 +1136,7 @@ export async function saveKetQuaChiDinhThau(gtId) {
       gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
     }
     gt.trangThai = "Đang chấm thầu";
-    await this.model.persistData("goithau");
     applyAutoPassedEvaluation({ gt, bids: tempBids, model: this.model });
-    await this.model.persistData("thongtinmothau");
-    await this.model.persistData("goithau");
     applyResultRowsToBids(tbodyResult, this.model);
     applyAwardResultToPackage({ gt, bids: tempBids, winnerRows, tbodyResult, model: this.model });
     applyAwardMetadata({
@@ -1135,8 +1159,10 @@ export async function saveKetQuaChiDinhThau(gtId) {
     gt.soQuyetDinhKetQua = decNo;
     gt.ngayQuyetDinhKetQua = decDate;
     gt.trangThai = "Đã có kết quả";
-    await this.model.persistData("goithau");
-    await this.model.persistData("thongtinmothau");
+    await this.model.persistChanges("goithau", { upserts: [gt] }, { throwOnError: true });
+    await this.model.persistChanges("thongtinmothau", { upserts: tempBids }, { throwOnError: true });
+    this.model.commitLocalMutation("goithau", { records: [gt] });
+    this.model.commitLocalMutation("thongtinmothau", { records: tempBids });
     this.view.renderGoiThauTable();
     const syncResult = await this.autoSync();
     if (!syncResult?.ok) return;
@@ -1153,13 +1179,28 @@ export async function saveKetQuaChiDinhThau(gtId) {
     if (gtIndex !== -1) {
       this.model.state.goithau[gtIndex] = snapshotGt;
     }
-    this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(
-      (b) => String(b.goiThauId) !== String(gtId)
+    this.model.replaceTableState(
+      "thongtinmothau",
+      this.model.state.thongtinmothau.filter(
+        (b) => String(b.goiThauId) !== String(gtId),
+      ),
     );
     this.model.state.thongtinmothau.push(...snapshotBids);
     try {
-      await this.model.persistData("goithau");
-      await this.model.persistData("thongtinmothau");
+      const snapshotBidIds = new Set(snapshotBids.map((bid) => String(bid.id)));
+      const createdBidIds = tempBids
+        .filter((bid) => !snapshotBidIds.has(String(bid.id)))
+        .map((bid) => bid.id);
+      await this.model.persistChanges(
+        "goithau",
+        { upserts: [snapshotGt] },
+        { trackMutation: false, throwOnError: true },
+      );
+      await this.model.persistChanges(
+        "thongtinmothau",
+        { upserts: snapshotBids, deletions: createdBidIds },
+        { trackMutation: false, throwOnError: true },
+      );
     } catch (rollbackErr) {
       console.error("[saveKetQuaChiDinhThau] Rollback failed:", rollbackErr);
     }

@@ -12,16 +12,18 @@ if __package__ in {None, ""}:
 from backend.shared.windows_socket_adapter import install_windows_socket_shutdown_adapter
 
 
-if hasattr(sys.stdout, 'reconfigure'):
+def _configure_utf8_stream(stream):
+    if not hasattr(stream, "reconfigure"):
+        return
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
-if hasattr(sys.stderr, 'reconfigure'):
-    try:
-        sys.stderr.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
+        stream.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError, ValueError):
+        # Some embedded/redirected streams expose reconfigure but reject it.
+        return
+
+
+_configure_utf8_stream(sys.stdout)
+_configure_utf8_stream(sys.stderr)
 
 
 install_windows_socket_shutdown_adapter()
@@ -93,7 +95,7 @@ def _split_env_list(value):
 def _is_local_origin(origin):
     try:
         parsed = urlparse(origin)
-    except Exception:
+    except (TypeError, ValueError):
         return False
     return parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
@@ -101,7 +103,7 @@ def _is_local_origin(origin):
 def _is_public_https_origin(origin):
     try:
         parsed = urlparse(origin)
-    except Exception:
+    except (TypeError, ValueError):
         return False
     return (
         parsed.scheme == "https"
@@ -511,6 +513,7 @@ from backend.shared.access_policy import (
     can_read_record,
 )
 from backend.shared.media_helper import protected_image_signature_is_valid
+from backend.db.db_helper import DatabaseError
 from backend.db.db_utils import DB_SCHEMA_VERSION
 from backend.startup import validate_startup_configuration, verify_database_responsive
 from backend.lifecycle_policy_routes import lifecycle_policy_routes
@@ -827,8 +830,10 @@ async def protected_image_api(request):
         )
     finally:
         if conn:
-            try: conn.close()
-            except Exception: pass
+            try:
+                conn.close()
+            except (DatabaseError, RuntimeError) as close_error:
+                log_error(close_error, "protected_image_connection_close", level="WARN")
 
     return FileResponse(
         file_path,

@@ -115,8 +115,11 @@ function buildJointVentureMembers(row, leadContractor) {
 
 function applyBidRows(model, pkg, command, decisionDate) {
   if (command.isDirectOrSpecial) {
-    model.state.thongtinmothau = model.state.thongtinmothau.filter(
-      (bid) => String(bid.goiThauId) !== String(pkg.id),
+    model.replaceTableState(
+      "thongtinmothau",
+      model.state.thongtinmothau.filter(
+        (bid) => String(bid.goiThauId) !== String(pkg.id),
+      ),
     );
   }
   command.rows.forEach((row) => {

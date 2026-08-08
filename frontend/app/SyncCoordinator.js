@@ -2,6 +2,19 @@ import { currentWorkspaceStorage } from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
 
 
+const ACTIONABLE_PENDING_PHASES = new Set([
+  "conflict",
+  "error",
+  "storageError",
+  "transportError",
+  "validationRejected",
+]);
+
+export function shouldShowLocalPending(currentPhase) {
+  return !ACTIONABLE_PENDING_PHASES.has(String(currentPhase || ""));
+}
+
+
 export function setupSyncUx() {
   if (this._syncUxInstalled) return;
   this._syncUxInstalled = true;
@@ -9,6 +22,8 @@ export function setupSyncUx() {
   button?.addEventListener("click", async () => {
     if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
       showSyncErrorDetails(this, this.model.syncErrors);
+    } else if (this.model?.hasStorageReadFailures?.()) {
+      await this.forceSyncData(false, true);
     } else {
       const pushed = await this.autoSync();
       if (pushed?.ok) await this.forceSyncData(false, false);
@@ -16,13 +31,27 @@ export function setupSyncUx() {
   });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
     this._pendingMutationCount = Math.max(0, Number(pendingCount) || 0);
-    if (pendingCount) this.updateSyncState({ phase: "localPending" });
+    if (pendingCount && shouldShowLocalPending(this._syncUxState?.phase)) {
+      this.updateSyncState({ phase: "localPending" });
+    }
     if (!pendingCount || this._syncImmediateTimer || this._deferImmediateSync) return;
     this._syncImmediateTimer = setTimeout(() => {
       this._syncImmediateTimer = null;
       void this.autoSync();
     }, 80);
   };
+  this._removeStorageHydrationListener = this.model.addStorageHydrationListener?.((event) => {
+    if (event.state === "failed") {
+      this.updateSyncState({
+        phase: "storageError",
+        message: "Không thể đọc dữ liệu cục bộ · Nhấn để tải lại từ máy chủ",
+      });
+      return;
+    }
+    if (event.recovered && !this.model.hasStorageReadFailures?.()) {
+      this.updateSyncState({ phase: "idle", message: "" });
+    }
+  });
   const updateOnline = () => {
     const online = navigator.onLine;
     this.updateSyncState({ online });
@@ -56,6 +85,12 @@ export function setupSyncUx() {
     event.returnValue = "";
   });
   this.updateSyncState();
+  if (this.model?.hasStorageReadFailures?.()) {
+    this.updateSyncState({
+      phase: "storageError",
+      message: "Không thể đọc dữ liệu cục bộ · Nhấn để tải lại từ máy chủ",
+    });
+  }
 }
 
 export async function prepareExportSnapshot() {

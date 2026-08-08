@@ -4,6 +4,9 @@ export function deriveSyncStatus({
   lastSyncedAt = null,
   message = ""
 } = {}) {
+  if (phase === "storageError") {
+    return { state: "storage-error", label: message || "Không thể đọc dữ liệu cục bộ", assertive: true };
+  }
   if (!online) {
     return { state: "offline", label: "Ngoại tuyến", assertive: true };
   }

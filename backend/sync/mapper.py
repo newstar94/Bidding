@@ -136,7 +136,7 @@ def map_db_to_json(table_name, row_dict):
             if val:
                 try:
                     val = json.loads(val)
-                except Exception:
+                except (TypeError, json.JSONDecodeError):
                     val = []
             else:
                 val = []
@@ -163,7 +163,7 @@ def _parse_child_list(value):
             parsed = json.loads(value)
             if isinstance(parsed, list):
                 return [item for item in parsed if isinstance(item, dict)]
-        except Exception:
+        except (TypeError, json.JSONDecodeError):
             return []
     return []
 

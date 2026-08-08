@@ -604,8 +604,7 @@ async function saveTimeline(view) {
       templateVersion: row.templateVersion
     }));
     state.package.timelineItems = preserveHiddenTimelineRows(state.package.timelineItems, persistedRows);
-    view.model.commitLocalMutation("goithau", { records: [state.package] });
-    await view.model.persistData("goithau");
+    await view.model.updateRecord("goithau", state.package);
     const controller = getAppController();
     if (typeof controller?.forceSyncData === "function") await controller.forceSyncData(false, false, true);
     state.dirty = false;

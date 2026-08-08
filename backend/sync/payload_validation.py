@@ -820,7 +820,7 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                 parsed_json_value = json.loads(raw_json_value)
                 if not isinstance(parsed_json_value, (list, dict)):
                     errors.append(f"Trường JSON '{json_key}' phải là mảng hoặc object.")
-            except Exception:
+            except (TypeError, json.JSONDecodeError):
                 errors.append(f"Trường JSON '{json_key}' không đúng định dạng JSON.")
         else:
             errors.append(f"Trường JSON '{json_key}' phải là mảng, object hoặc chuỗi JSON hợp lệ.")

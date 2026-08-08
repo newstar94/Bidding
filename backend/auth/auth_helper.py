@@ -79,7 +79,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
             return secrets.compare_digest(stored_hash, pwd_hash.hex())
 
         return False
-    except Exception:
+    except (AttributeError, TypeError, UnicodeError, ValueError):
         return False
 
 def password_needs_rehash(stored_password: str) -> bool:
@@ -91,7 +91,7 @@ def password_needs_rehash(stored_password: str) -> bool:
             return _PASSWORD_HASHER.check_needs_rehash(stored_password)
 
         return True
-    except Exception:
+    except (InvalidHashError, VerificationError, TypeError, ValueError):
         return True
 
 
