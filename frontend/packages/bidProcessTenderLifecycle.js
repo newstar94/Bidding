@@ -161,7 +161,9 @@ async function performMoThauGoiThau(id) {
   gt.thoiGianMoThau = ymdStr;
   gt.trangThai = "Đã mở thầu";
   stageLocalRecords(this.model, "goithau", gt);
-  const syncResult = await persistAndSync(this, "goithau");
+  const syncResult = await persistAndSync(this, "goithau", {
+    changes: { upserts: { goithau: [gt] } },
+  });
   if (!syncResult?.ok) return;
   this.view.renderGoiThauTable();
   const targetTab = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ"
@@ -307,7 +309,9 @@ export async function handlePhatHanhHsmtSubmit(e) {
     gt.trangThai = "Đang mời thầu";
     this.view.closeModal("modal-phathanh-hsmt");
     stageLocalRecords(this.model, "goithau", gt);
-    const syncResult = await persistAndSync(this, "goithau");
+    const syncResult = await persistAndSync(this, "goithau", {
+      changes: { upserts: { goithau: [gt] } },
+    });
     if (!syncResult?.ok) return;
     const targetTab = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ"
       ? "opening_tech"

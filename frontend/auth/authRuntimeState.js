@@ -1,4 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { invalidateServerCapabilities } from "./serverCapabilities.js";
 let flowInProgress = false;
 let sessionActive = false;
 let stateChangedAt = 0;
@@ -37,6 +38,8 @@ export function setAuthSessionActive(value, storage = globalThis.localStorage) {
     sessionTerminationHandled = false;
     clearStoredLogout(storage);
     setAuthFlowInProgress(false);
+  } else {
+    invalidateServerCapabilities();
   }
 }
 
@@ -45,6 +48,7 @@ export const isAuthSessionActive = () => sessionActive;
 
 export function beginExplicitLogout(storage = globalThis.localStorage, now = Date.now()) {
   explicitLogoutInProgress = true;
+  invalidateServerCapabilities();
   try {
     storage?.setItem?.(EXPLICIT_LOGOUT_KEY, String(now));
   } catch {

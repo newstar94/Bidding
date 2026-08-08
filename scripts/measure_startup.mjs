@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
@@ -51,6 +52,23 @@ function summarize(samples) {
   };
 }
 
+function hostCpuSnapshot() {
+  return os.cpus().reduce((summary, cpu) => {
+    const total = Object.values(cpu.times).reduce((sum, value) => sum + value, 0);
+    return {
+      idle: summary.idle + cpu.times.idle,
+      total: summary.total + total,
+    };
+  }, { idle: 0, total: 0 });
+}
+
+function hostCpuBusyPercent(before, after) {
+  const total = after.total - before.total;
+  const idle = after.idle - before.idle;
+  if (total <= 0) return null;
+  return Math.round(((total - idle) / total) * 1000) / 10;
+}
+
 async function addPerformanceObserver(context) {
   await context.addInitScript(() => {
     globalThis.__bfStartupLongTasks = [];
@@ -60,6 +78,12 @@ async function addPerformanceObserver(context) {
           globalThis.__bfStartupLongTasks.push({
             startTime: entry.startTime,
             duration: entry.duration,
+            attribution: (entry.attribution || []).map((item) => ({
+              name: item.name || "",
+              containerType: item.containerType || "",
+              containerName: item.containerName || "",
+              containerSrc: item.containerSrc || "",
+            })),
           });
         }
       });
@@ -81,6 +105,7 @@ async function authenticate(context) {
 }
 
 async function measureNavigation(page, mode, run) {
+  const cpuBefore = hostCpuSnapshot();
   const runtimeFailures = [];
   const appOrigin = new URL(baseURL).origin;
   const onPageError = (error) => runtimeFailures.push(`pageerror: ${error.message}`);
@@ -120,6 +145,27 @@ async function measureNavigation(page, mode, run) {
     const longTasks = (globalThis.__bfStartupLongTasks || []).filter(
       (entry) => entry.startTime <= loaderHiddenMs,
     );
+    const marks = {
+      appModuleStart: mark("app-module-start"),
+      sessionCheckStart: mark("session-check-start"),
+      sessionCheckEnd: mark("session-check-end"),
+      workspaceImportStart: mark("workspace-import-start"),
+      workspaceImportEnd: mark("workspace-import-end"),
+      initStart: mark("init:start"),
+      loaderHidden: mark("loader:hidden"),
+    };
+    const startupPhase = (startTime) => {
+      if (marks.appModuleStart !== null && startTime < marks.appModuleStart) return "document-bootstrap";
+      if (
+        marks.workspaceImportStart !== null
+        && marks.workspaceImportEnd !== null
+        && startTime >= marks.workspaceImportStart
+        && startTime <= marks.workspaceImportEnd
+      ) return "workspace-module-import";
+      if (marks.initStart !== null && startTime >= marks.initStart) return "controller-init-hydration";
+      if (marks.sessionCheckStart !== null && startTime >= marks.sessionCheckStart) return "session-bootstrap";
+      return "app-bootstrap";
+    };
     const serverTiming = (navigation?.serverTiming || []).map((entry) => ({
       name: entry.name,
       duration: Math.round(entry.duration * 10) / 10,
@@ -143,10 +189,24 @@ async function measureNavigation(page, mode, run) {
       serviceWorkerControlled: Boolean(navigator.serviceWorker?.controller),
       longTaskCount: longTasks.length,
       longestTaskMs: Math.round(Math.max(0, ...longTasks.map((entry) => entry.duration))),
-      longTasks: longTasks.map((entry) => ({
-        startTime: Math.round(entry.startTime),
-        duration: Math.round(entry.duration),
-      })),
+      longTasks: longTasks.map((entry) => {
+        const endTime = entry.startTime + entry.duration;
+        return {
+          startTime: Math.round(entry.startTime),
+          duration: Math.round(entry.duration),
+          phase: startupPhase(entry.startTime),
+          attribution: entry.attribution,
+          overlappingResources: resources
+            .filter((resource) => (
+              resource.startTime <= endTime
+              && resource.responseEnd >= entry.startTime
+            ))
+            .map((resource) => ({
+              name: resource.name,
+              initiatorType: resource.initiatorType,
+            })),
+        };
+      }),
       slowestResources: [...resources]
         .sort((left, right) => right.duration - left.duration)
         .slice(0, 10)
@@ -161,7 +221,11 @@ async function measureNavigation(page, mode, run) {
       serverTiming,
     };
     }, { mode, run });
-    return { ...browserMetrics, runtimeFailures };
+    return {
+      ...browserMetrics,
+      hostCpuBusyPercent: hostCpuBusyPercent(cpuBefore, hostCpuSnapshot()),
+      runtimeFailures,
+    };
   } finally {
     page.off("pageerror", onPageError);
     page.off("console", onConsole);

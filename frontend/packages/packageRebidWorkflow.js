@@ -38,6 +38,7 @@ export async function restoreCanceledPackage(id) {
   gt.trangThai = previousState;
   stageLocalRecords(this.model, "goithau", gt);
   const syncResult = await persistAndSync(this, "goithau", {
+    changes: { upserts: { goithau: [gt] } },
     afterPersist: () => this.view.renderGoiThauTable()
   });
   if (!syncResult?.ok) return;

@@ -3,6 +3,7 @@ import {
   reportAggregateVersionConflict,
   reportLegacyVersionFallback,
 } from "./releaseDiagnostics.js";
+import { resolveServerCapabilities } from "../auth/serverCapabilities.js";
 
 
 export const AGGREGATE_VERSION_CAPABILITY = "aggregate-version-v1";
@@ -18,14 +19,13 @@ const reportWithoutBreakingVersionFlow = (reporter, value) => {
 
 
 async function supportsAuthoritativeAggregateVersion(fetchImpl) {
-  const session = await postJson(
-    "/api/auth/check-session",
-    { remember: false },
-    { csrf: false, retries: 0 },
-    fetchImpl,
-  );
-  return Array.isArray(session?.serverCapabilities)
-    && session.serverCapabilities.includes(AGGREGATE_VERSION_CAPABILITY);
+  const capabilities = await resolveServerCapabilities(() => postJson(
+      "/api/auth/check-session",
+      { remember: false },
+      { csrf: false, retries: 0 },
+      fetchImpl,
+    ));
+  return capabilities.includes(AGGREGATE_VERSION_CAPABILITY);
 }
 
 

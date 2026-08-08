@@ -185,19 +185,21 @@ export async function savePackagePreparation(controller, pkg, changes, {
     clearCompetitiveQuotationAppraisal(pkg);
   }
 
-  if (createVersion) {
-    stageLocalRecords(model, "goithau", [...previousLatestPackages, savedPackage]);
-  } else {
-    stageLocalRecords(model, "goithau", savedPackage);
-  }
+  const explicitUpserts = {
+    goithau: createVersion ? [...previousLatestPackages, savedPackage] : [savedPackage],
+  };
+  stageLocalRecords(model, "goithau", explicitUpserts.goithau);
   if (createVersion) {
     ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments"].forEach((key) => {
       const records = key === "assignments"
         ? model.state.assignments.filter((record) => String(record.targetId) === String(savedPackage.id) && record.type === "goithau")
         : model.state[key].filter((record) => String(record.goiThauId) === String(savedPackage.id));
+      explicitUpserts[key] = records;
       stageLocalRecords(model, key, records);
     });
   }
-  await persistAndSync(controller, tables);
+  await persistAndSync(controller, tables, {
+    changes: { upserts: explicitUpserts },
+  });
   return savedPackage;
 }

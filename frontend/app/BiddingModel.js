@@ -9,6 +9,7 @@ import {
 import { generateUUID as createUUID } from "../shared/idUtils.js";
 import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
 import { serializeOutboundRecord } from "./outboundSerializer.js";
+import { isSyncedStateKey } from "../shared/persistencePolicy.js";
 import { BrowserDB, BrowserDBError } from "./BrowserDB.js";
 import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
@@ -29,20 +30,6 @@ const LEGACY_FIELD_ALIASES_BY_TYPE = Object.freeze({
     thongtinKhac: "thongTinKhac",
   }),
 });
-const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
-  "chudautu",
-  "kehoach",
-  "goithau",
-  "goithauhanghoa",
-  "hanghoaduthaunhathau",
-  "chuyengia",
-  "nhathau",
-  "hopdong",
-  "assignments",
-  "customcontractstatuses",
-  "thongtinmothau",
-  "permissionmatrix"
-]);
 const snakeToCamel = (key, type = null) => {
   if (!key || !key.includes("_")) return key;
   const tableName = type ? resolveSchemaTable(type) : null;
@@ -455,28 +442,35 @@ export class BiddingModel {
   }
   async trackDeletions(type) {
     this.assertStorageTablesWritable?.(type);
+    let oldData;
     try {
-      const oldData = await this.db.getTableData(type);
-      if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
-        const oldById = new Map(oldData.filter((record) => record?.id).map((record) => [String(record.id), record]));
-        const changedRecords = this.state[type].filter((record) => {
-          if (!record?.id) return false;
-          const previous = oldById.get(String(record.id));
-          return !previous || JSON.stringify(previous) !== JSON.stringify(record);
-        });
-        if (changedRecords.length > 0) await this.markRecordDirty(type, changedRecords);
-        const newIds = new Set(this.state[type].map((x) => x.id).filter(Boolean));
-        const deletedRecords = oldData.filter((record) => record?.id && !newIds.has(record.id));
-        if (deletedRecords.length > 0) {
-          await this.markDeleted(type, deletedRecords);
-        }
+      oldData = await this.db.getTableData(type);
+    } catch (error) {
+      const failure = this._recordStorageReadFailure(type, error);
+      console.error("Failed to read local workspace table before persistence", {
+        code: failure.code,
+        operation: "read",
+        table: type,
+      });
+      throw failure;
+    }
+    if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
+      const oldById = new Map(oldData.filter((record) => record?.id).map((record) => [String(record.id), record]));
+      const changedRecords = this.state[type].filter((record) => {
+        if (!record?.id) return false;
+        const previous = oldById.get(String(record.id));
+        return !previous || JSON.stringify(previous) !== JSON.stringify(record);
+      });
+      if (changedRecords.length > 0) await this.markRecordDirty(type, changedRecords);
+      const newIds = new Set(this.state[type].map((x) => x.id).filter(Boolean));
+      const deletedRecords = oldData.filter((record) => record?.id && !newIds.has(record.id));
+      if (deletedRecords.length > 0) {
+        await this.markDeleted(type, deletedRecords);
       }
-    } catch (e) {
-      console.error("Error checking deletions in trackDeletions:", e);
     }
   }
   _isSyncedStateKey(type) {
-    return SYNCED_STATE_KEYS.has(type);
+    return isSyncedStateKey(type);
   }
   getMutationQueue() {
     return this._getMutationOutbox().snapshot();

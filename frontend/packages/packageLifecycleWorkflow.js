@@ -1,6 +1,10 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  persistAndSync,
+  refreshRecordBeforeDelete,
+  stageLocalRecords,
+} from "../shared/MutationService.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { hydratePlanPackageRecords, loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
@@ -166,7 +170,7 @@ export async function deleteGoiThau(id) {
   }
   if (deleteChoice === 1) {
     deleteContext = await repairMissingPreviousPlanSnapshot(this, deleteContext);
-    deleteLatestPackageVersion(this.model, deleteContext);
+    const deleted = deleteLatestPackageVersion(this.model, deleteContext);
     deleteContext.planIds.forEach((pId) => {
       if (pId) {
         this.recalculatePlanTotal(pId);
@@ -178,8 +182,23 @@ export async function deleteGoiThau(id) {
       this.renderBreakdownPackagesList(breakdownPlanId);
       this.updateBreakdownTotal(breakdownPlanId);
     }
+    const changedPackages = this.model.state.goithau.filter(
+      (pkg) => String(pkg.rootId || pkg.id) === String(deleteContext.rootId),
+    );
+    const changedPlans = this.model.state.kehoach.filter(
+      (plan) => deleteContext.planIds.some((id) => String(id) === String(plan.id)),
+    );
+    stageLocalRecords(this.model, "goithau", changedPackages);
+    stageLocalRecords(this.model, "kehoach", changedPlans);
     try {
-      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "goithauhanghoa", "hanghoaduthaunhathau", "assignments", "kehoach"], {
+      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+        changes: {
+          upserts: { goithau: changedPackages, kehoach: changedPlans },
+          deletions: {
+            goithau: deleted.deletedPackages,
+            thongtinmothau: deleted.deletedBids,
+          },
+        },
         afterPersist: () => {
           this.view.renderGoiThauTable();
           this.view.renderKeHoachTable();
@@ -194,7 +213,7 @@ export async function deleteGoiThau(id) {
       return;
     }
   } else if (deleteChoice === 2 || deleteConfirmed) {
-    deleteAllPackageVersions(this.model, deleteContext);
+    const deleted = deleteAllPackageVersions(this.model, deleteContext);
     deleteContext.planIds.forEach((pId) => {
       if (pId) {
         this.recalculatePlanTotal(pId);
@@ -206,8 +225,19 @@ export async function deleteGoiThau(id) {
       this.renderBreakdownPackagesList(breakdownPlanId);
       this.updateBreakdownTotal(breakdownPlanId);
     }
+    const changedPlans = this.model.state.kehoach.filter(
+      (plan) => deleteContext.planIds.some((id) => String(id) === String(plan.id)),
+    );
+    stageLocalRecords(this.model, "kehoach", changedPlans);
     try {
       const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+        changes: {
+          upserts: { kehoach: changedPlans },
+          deletions: {
+            goithau: deleted.deletedPackages,
+            thongtinmothau: deleted.deletedBids,
+          },
+        },
         afterPersist: () => {
           this.view.renderGoiThauTable();
           this.view.renderKeHoachTable();

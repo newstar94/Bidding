@@ -19,6 +19,7 @@ import {
   setAuthFlowInProgress,
   setAuthSessionActive
 } from "./authRuntimeState.js";
+import { updateServerCapabilitiesFromSession } from "./serverCapabilities.js";
 import {
   hideAuthOverlay,
   reloadWithInitLoader,
@@ -236,6 +237,7 @@ export function setupAuth() {
       if (isAuthTransitionActive() || isStaleAuthResult(sessionCheckStartedAt)) {
         return;
       }
+      updateServerCapabilitiesFromSession(data);
       if (resetToken) {
         setAuthSessionActive(false);
         showLoginOverlay(sessionCheckStartedAt);

@@ -1,6 +1,7 @@
 import {
   mutatePersistAndSync,
   persistAndSync,
+  stageLocalRecords,
 } from "../shared/MutationService.js";
 import { reportOfflineQueuedMutation } from "../shared/releaseDiagnostics.js";
 
@@ -18,6 +19,8 @@ const LOCALLY_ACCEPTED_OUTCOMES = new Set([
   "transportFailed",
   "conflict",
 ]);
+
+export const COMPLETED_MUTATION_CACHE_LIMIT = 750;
 
 function classifySyncResult(result) {
   if (result?.ok !== false) {
@@ -62,14 +65,39 @@ function normalizePatch({ upserts = {}, deletions = {} } = {}) {
   return { upserts: normalizedUpserts, deletions: normalizedDeletions };
 }
 
+function transactionChanges(snapshots, draft, tables) {
+  const upserts = {};
+  const deletions = {};
+  for (const table of tables) {
+    const beforeById = new Map((snapshots[table] || [])
+      .filter((record) => record?.id !== undefined && record?.id !== null)
+      .map((record) => [String(record.id), record]));
+    const afterById = new Map((draft[table] || [])
+      .filter((record) => record?.id !== undefined && record?.id !== null)
+      .map((record) => [String(record.id), record]));
+    upserts[table] = [...afterById].flatMap(([id, record]) => {
+      const previous = beforeById.get(id);
+      return previous && sameValue(previous, record) ? [] : [record];
+    });
+    deletions[table] = [...beforeById].flatMap(([id, record]) => (
+      afterById.has(id) ? [] : [record]
+    ));
+  }
+  return { upserts, deletions };
+}
+
 export class WorkspaceDataStore {
   #controller;
   #subscriptions = new Set();
   #completed = new Map();
+  #completedMutationLimit;
+  #completedWorkspaceToken;
 
-  constructor(controller) {
+  constructor(controller, { completedMutationLimit = COMPLETED_MUTATION_CACHE_LIMIT } = {}) {
     if (!controller?.model?.state) throw new TypeError("WorkspaceDataStore requires a controller model");
     this.#controller = controller;
+    this.#completedMutationLimit = Math.max(1, Math.floor(Number(completedMutationLimit)) || 1);
+    this.#completedWorkspaceToken = this.#workspaceToken();
   }
 
   query(selector) {
@@ -91,13 +119,13 @@ export class WorkspaceDataStore {
   }
 
   async patch({ mutationId, upserts = {}, deletions = {} } = {}) {
+    this.#syncCompletedWorkspace();
     const normalizedMutationId = String(mutationId || "").trim();
     if (!normalizedMutationId) {
       return { status: "validationRejected", reason: "MUTATION_ID_REQUIRED" };
     }
-    if (this.#completed.has(normalizedMutationId)) {
-      return clone(this.#completed.get(normalizedMutationId));
-    }
+    const completedOutcome = this.#getCompleted(normalizedMutationId);
+    if (completedOutcome) return completedOutcome;
     const changes = normalizePatch({ upserts, deletions });
     const tables = [...new Set([
       ...Object.keys(changes.upserts),
@@ -142,20 +170,20 @@ export class WorkspaceDataStore {
       ...(status === "transportFailed" ? { queued: true } : {}),
     };
     if (LOCALLY_ACCEPTED_OUTCOMES.has(status)) {
-      this.#completed.set(normalizedMutationId, clone(outcome));
+      this.#rememberCompleted(normalizedMutationId, outcome);
     }
     this.#notify();
     return outcome;
   }
 
   async transaction({ tables, mutationId }, mutate) {
+    this.#syncCompletedWorkspace();
     const tableNames = [...new Set((tables || []).map(String).filter(Boolean))];
     const normalizedMutationId = String(mutationId || "").trim();
     if (!tableNames.length) return { status: "validationRejected", reason: "TABLES_REQUIRED" };
     if (!normalizedMutationId) return { status: "validationRejected", reason: "MUTATION_ID_REQUIRED" };
-    if (this.#completed.has(normalizedMutationId)) {
-      return clone(this.#completed.get(normalizedMutationId));
-    }
+    const completedOutcome = this.#getCompleted(normalizedMutationId);
+    if (completedOutcome) return completedOutcome;
     const model = this.#controller.model;
     try {
       model.assertStorageTablesWritable?.(tableNames);
@@ -178,13 +206,16 @@ export class WorkspaceDataStore {
       return { ...validation, status: "validationRejected" };
     }
 
+    const changes = transactionChanges(snapshots, draft, tableNames);
     tableNames.forEach((table) => {
       state[table] = draft[table];
+      stageLocalRecords(model, table, changes.upserts[table]);
+      model.markDeleted?.(table, changes.deletions[table]);
     });
     let syncResult;
     try {
       syncResult = typeof model.persistData === "function"
-        ? await persistAndSync(this.#controller, tableNames)
+        ? await persistAndSync(this.#controller, tableNames, { changes })
         : { ok: true };
     } catch (error) {
       const rollbackError = await this.#rollback(snapshots, mutationCheckpoint);
@@ -211,7 +242,7 @@ export class WorkspaceDataStore {
       ...(status === "transportFailed" ? { queued: true } : {}),
     };
     if (LOCALLY_ACCEPTED_OUTCOMES.has(status)) {
-      this.#completed.set(normalizedMutationId, clone(outcome));
+      this.#rememberCompleted(normalizedMutationId, outcome);
     }
     this.#notify();
     return outcome;
@@ -238,6 +269,38 @@ export class WorkspaceDataStore {
     }
     this.#notify();
     return rollbackError;
+  }
+
+  #workspaceToken() {
+    const model = this.#controller.model;
+    return String(
+      model.getWorkspaceToken?.()
+      || model.workspaceScope?.key
+      || "",
+    );
+  }
+
+  #syncCompletedWorkspace() {
+    const token = this.#workspaceToken();
+    if (token === this.#completedWorkspaceToken) return;
+    this.#completed.clear();
+    this.#completedWorkspaceToken = token;
+  }
+
+  #getCompleted(mutationId) {
+    if (!this.#completed.has(mutationId)) return null;
+    const outcome = this.#completed.get(mutationId);
+    this.#completed.delete(mutationId);
+    this.#completed.set(mutationId, outcome);
+    return clone(outcome);
+  }
+
+  #rememberCompleted(mutationId, outcome) {
+    this.#completed.delete(mutationId);
+    this.#completed.set(mutationId, clone(outcome));
+    while (this.#completed.size > this.#completedMutationLimit) {
+      this.#completed.delete(this.#completed.keys().next().value);
+    }
   }
 
   #capturePatchBefore(changes, tables) {

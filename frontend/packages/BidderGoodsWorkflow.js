@@ -948,6 +948,16 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
   const result = await persistAndSync(
     controller,
     ["hanghoaduthaunhathau", "thongtinmothau"],
+    {
+      changes: {
+        upserts: {
+          hanghoaduthaunhathau: controller.model.state.hanghoaduthaunhathau.filter(
+            (row) => scopeIds.has(String(row.id)),
+          ),
+          thongtinmothau: [detailedState.bid],
+        },
+      },
+    },
   );
   if (result?.ok === false) {
     replaceTableProjection(controller.model, "hanghoaduthaunhathau", snapshot);

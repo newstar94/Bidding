@@ -1195,7 +1195,7 @@ export async function deleteHoSoGiayStatus(id) {
   );
   if (!confirmed) return;
   this.model.state.customcontractstatuses = this.model.state.customcontractstatuses.filter((s) => s.id !== id);
-  this.model.markDeleted?.("customcontractstatuses", [id]);
+  this.model.markDeleted?.("customcontractstatuses", [status]);
   const editingId = document.getElementById("form-hosogiay-id").value;
   if (editingId === id) {
     document.getElementById("form-manager-hosogiay").reset();
@@ -1203,6 +1203,7 @@ export async function deleteHoSoGiayStatus(id) {
     document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
   }
   const syncResult = await persistAndSync(this, "customcontractstatuses", {
+    changes: { deletions: { customcontractstatuses: [status] } },
     afterPersist: () => this.view.renderManagerHoSoGiayPanel()
   });
   if (!syncResult?.ok) {

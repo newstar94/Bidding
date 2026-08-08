@@ -597,6 +597,12 @@ export async function saveDanhGiaHsdt() {
   )).filter(Boolean);
   stageBidEvaluationMutation(this.model, gt, evaluatedBids);
   const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau"], {
+    changes: {
+      upserts: {
+        goithau: [gt],
+        thongtinmothau: evaluatedBids,
+      },
+    },
     afterPersist: () => this.view.renderGoiThauTable(),
   });
   if (!syncResult?.ok) return;

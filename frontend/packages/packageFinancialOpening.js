@@ -45,6 +45,13 @@ export async function savePackageFinancialOpening(controller, pkg, bidUpdates, {
   const updatedBids = (controller.model.state.thongtinmothau || []).filter((bid) => updates.has(String(bid.id)));
   stageLocalRecords(controller.model, "thongtinmothau", updatedBids);
   stageLocalRecords(controller.model, "goithau", pkg);
-  await persistAndSync(controller, ["thongtinmothau", "goithau"]);
+  await persistAndSync(controller, ["thongtinmothau", "goithau"], {
+    changes: {
+      upserts: {
+        goithau: [pkg],
+        thongtinmothau: updatedBids,
+      },
+    },
+  });
   return pkg;
 }

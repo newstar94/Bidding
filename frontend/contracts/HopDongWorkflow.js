@@ -3,7 +3,11 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  persistAndSync,
+  refreshRecordBeforeDelete,
+  stageLocalRecords,
+} from "../shared/MutationService.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
@@ -677,7 +681,14 @@ export async function handleHopDongSubmit(e) {
   if (hasModalReturnState("hopdong-detail") && finalHdId) {
     updateModalReturnAction(finalHdId);
   }
-  const syncResult = await persistAndSync(this, ["hopdong", "assignments"]);
+  const contractRootId = String(data.rootId || data.id);
+  const changedContracts = this.model.state.hopdong.filter(
+    (contract) => String(contract.rootId || contract.id) === contractRootId,
+  );
+  stageLocalRecords(this.model, "hopdong", changedContracts);
+  const syncResult = await persistAndSync(this, "hopdong", {
+    changes: { upserts: { hopdong: changedContracts } },
+  });
   if (!syncResult?.ok) return;
   this.closeModal("modal-hopdong");
   await this.view.renderHopDongTable();

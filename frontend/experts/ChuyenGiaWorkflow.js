@@ -1,7 +1,11 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  persistAndSync,
+  refreshRecordBeforeDelete,
+  stageLocalRecords,
+} from "../shared/MutationService.js";
 import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import {
@@ -319,7 +323,10 @@ export async function handleChuyenGiaSubmit(e) {
     this.model.state.chuyengia.push(data);
   }
   rememberSelectedVersion(this.model.state, "selectedChuyenGiaVersion", data);
+  const changedExperts = getVersionFamily(this.model.state.chuyengia, data);
+  stageLocalRecords(this.model, "chuyengia", changedExperts);
   await persistAndSync(this, "chuyengia", {
+    changes: { upserts: { chuyengia: changedExperts } },
     afterPersist: async () => {
       await this.closeModal("modal-chuyengia");
       this.view.renderChuyenGiaTable();

@@ -1077,37 +1077,41 @@ export async function handleGoiThauSubmit(e) {
     updateModalReturnAction(finalGtId);
   }
   const finalPackage = this.model.state.goithau.find((item) => String(item.id) === String(finalGtId));
-  stageLocalRecords(this.model, "goithau", finalPackage);
-  stageLocalRecords(
-    this.model,
-    "goithauhanghoa",
-    this.model.state.goithauhanghoa.filter((item) => String(item.goiThauId) === String(finalGtId)),
-  );
-  stageLocalRecords(
-    this.model,
-    "thongtinmothau",
-    this.model.state.thongtinmothau.filter((item) => String(item.goiThauId) === String(finalGtId)),
-  );
-  stageLocalRecords(
-    this.model,
-    "hanghoaduthaunhathau",
-    this.model.state.hanghoaduthaunhathau.filter((item) => String(item.goiThauId) === String(finalGtId)),
-  );
+  const finalPackageRootId = String(finalPackage?.rootId || finalPackage?.id || "");
+  const explicitUpserts = {
+    goithau: this.model.state.goithau.filter(
+      (item) => String(item.rootId || item.id) === finalPackageRootId,
+    ),
+    goithauhanghoa: this.model.state.goithauhanghoa.filter(
+      (item) => String(item.goiThauId) === String(finalGtId),
+    ),
+    thongtinmothau: this.model.state.thongtinmothau.filter(
+      (item) => String(item.goiThauId) === String(finalGtId),
+    ),
+    hanghoaduthaunhathau: this.model.state.hanghoaduthaunhathau.filter(
+      (item) => String(item.goiThauId) === String(finalGtId),
+    ),
+    assignments: this.model.state.assignments.filter(
+      (item) => String(item.targetId) === String(finalGtId) && item.type === "goithau",
+    ),
+  };
+  Object.entries(explicitUpserts).forEach(([table, records]) => {
+    stageLocalRecords(this.model, table, records);
+  });
   const affectedPlanIds = new Set([oldPlanId, gtData.keHoachId].filter(Boolean).map(String));
-  stageLocalRecords(
-    this.model,
-    "kehoach",
-    this.model.state.kehoach.filter((item) => affectedPlanIds.has(String(item.id))),
+  explicitUpserts.kehoach = this.model.state.kehoach.filter(
+    (item) => affectedPlanIds.has(String(item.id)),
   );
+  stageLocalRecords(this.model, "kehoach", explicitUpserts.kehoach);
   const syncResult = await persistAndSync(this, [
     "goithau",
     "goithauhanghoa",
     "hanghoaduthaunhathau",
     "kehoach",
-    "hopdong",
     "thongtinmothau",
     "assignments",
   ], {
+    changes: { upserts: explicitUpserts },
     afterPersist: () => {
       this.view.renderGoiThauTable();
       this.view.renderKeHoachTable();

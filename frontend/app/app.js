@@ -13,6 +13,7 @@ import {
   embeddedSessionNeedsWorkspaceRefresh,
   preferredWorkspaceId
 } from "../auth/sessionBootstrapPolicy.js";
+import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
 installReleaseDiagnostics();
 const startupMark = (name) => {
   try {
@@ -141,6 +142,7 @@ const bootstrapApplication = async () => {
 
   await retryPendingWorkspacePurges();
   const initialSession = await checkInitialSession();
+  updateServerCapabilitiesFromSession(initialSession);
   if (initialSession?.valid) {
     if (window.location.pathname === "/dang-nhap") {
       window.history.replaceState({}, "", "/tong-quan");

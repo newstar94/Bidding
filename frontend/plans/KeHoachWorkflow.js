@@ -9,7 +9,11 @@ import {
   removeAllVersions,
   removeLatestVersion
 } from "../shared/VersionedEntityService.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  persistAndSync,
+  refreshRecordBeforeDelete,
+  stageLocalRecords,
+} from "../shared/MutationService.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
@@ -957,16 +961,40 @@ export async function savePlanBreakdown() {
       this.view.renderKeHoachTable(),
       this.view.renderGoiThauTable()
     ]);
+  const explicitUpserts = {};
+  if (!officialVersionCommitted) {
+    const targetPlan = this.model.state.kehoach.find(
+      (plan) => String(plan.id) === String(finalPlanId),
+    );
+    const targetPlanRootId = String(targetPlan?.rootId || targetPlan?.id || "");
+    explicitUpserts.kehoach = this.model.state.kehoach.filter(
+      (plan) => String(plan.rootId || plan.id) === targetPlanRootId,
+    );
+    if (String(finalPlanId) !== String(planId)) {
+      explicitUpserts.goithau = this.model.state.goithau.filter(
+        (pkg) => String(pkg.keHoachId) === String(finalPlanId),
+      );
+      const inheritedPackageIds = new Set(explicitUpserts.goithau.map((pkg) => String(pkg.id)));
+      for (const table of ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau"]) {
+        explicitUpserts[table] = this.model.state[table].filter(
+          (record) => inheritedPackageIds.has(String(record.goiThauId)),
+        );
+      }
+      explicitUpserts.assignments = this.model.state.assignments.filter((assignment) => (
+        (assignment.type === "kehoach" && String(assignment.targetId) === String(finalPlanId))
+        || (assignment.type === "goithau" && inheritedPackageIds.has(String(assignment.targetId)))
+      ));
+    }
+    Object.entries(explicitUpserts).forEach(([table, records]) => {
+      stageLocalRecords(this.model, table, records);
+    });
+  }
   const syncResult = officialVersionCommitted
     ? (await renderVersionTables(), { ok: true })
-    : await persistAndSync(this, [
-      "kehoach",
-      "goithau",
-      "goithauhanghoa",
-      "thongtinmothau",
-      "hanghoaduthaunhathau",
-      "assignments",
-    ], { afterPersist: renderVersionTables });
+    : await persistAndSync(this, Object.keys(explicitUpserts), {
+      afterPersist: renderVersionTables,
+      changes: { upserts: explicitUpserts },
+    });
   if (!syncResult?.ok) return;
   this.closeModal("modal-plan-breakdown");
   await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");

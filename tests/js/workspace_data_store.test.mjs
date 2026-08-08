@@ -376,3 +376,75 @@ test("workspace patch persists and rolls back only affected record ids", async (
     changes.upserts.some((record) => record.id === "unchanged")
   )), false);
 });
+
+
+test("completed mutation cache evicts the least-recently-used id at its hard cap", async () => {
+  let syncCalls = 0;
+  const model = {
+    state: { goods: [{ id: "g1", value: 0 }] },
+    normalizeRecordKeys: (record) => ({ ...record }),
+    commitLocalMutation() {},
+    markDeleted() {},
+    async persistChanges() {},
+    async flushMutationOutbox() {},
+  };
+  const target = {
+    model,
+    async autoSync() {
+      syncCalls += 1;
+      return { ok: true };
+    },
+  };
+  const store = new WorkspaceDataStore(target, { completedMutationLimit: 3 });
+  const patch = (mutationId, value) => store.patch({
+    mutationId,
+    upserts: { goods: [{ id: "g1", value }] },
+  });
+
+  await patch("m1", 1);
+  await patch("m2", 2);
+  await patch("m3", 3);
+  await patch("m1", 99); // Refresh m1; the duplicate must not execute.
+  await patch("m4", 4); // Evicts m2, now the least recently used.
+  await patch("m4", 99); // Newest entry remains deduped.
+  await patch("m2", 22); // Evicted entry safely executes as a new client attempt.
+
+  assert.equal(syncCalls, 5);
+  assert.equal(model.state.goods[0].value, 22);
+});
+
+
+test("completed mutation ids never cross a workspace boundary", async () => {
+  let workspaceToken = "workspace-a@1";
+  let syncCalls = 0;
+  const model = {
+    state: { goods: [{ id: "g1", value: 0 }] },
+    getWorkspaceToken: () => workspaceToken,
+    normalizeRecordKeys: (record) => ({ ...record }),
+    commitLocalMutation() {},
+    markDeleted() {},
+    async persistChanges() {},
+    async flushMutationOutbox() {},
+  };
+  const store = new WorkspaceDataStore({
+    model,
+    async autoSync() {
+      syncCalls += 1;
+      return { ok: true };
+    },
+  }, { completedMutationLimit: 3 });
+  const run = (value) => store.patch({
+    mutationId: "same-client-id",
+    upserts: { goods: [{ id: "g1", value }] },
+  });
+
+  await run(1);
+  await run(99);
+  workspaceToken = "workspace-b@2";
+  await run(2);
+  workspaceToken = "workspace-a@3";
+  await run(3);
+
+  assert.equal(syncCalls, 3);
+  assert.equal(model.state.goods[0].value, 3);
+});

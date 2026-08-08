@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { saveQualifiedApproval } from "../../frontend/packages/packageEvaluationProgress.js";
+import {
+  commitPackageAwardDependencies,
+  saveQualifiedApproval,
+} from "../../frontend/packages/packageEvaluationProgress.js";
 
 test("qualified approval stages a detached package before persisting and syncing", async () => {
   const canonicalPackage = {
@@ -50,4 +53,35 @@ test("qualified approval stages a detached package before persisting and syncing
   });
   assert.deepEqual(events.map(([name]) => name), ["update", "persist", "flush", "sync"]);
   assert.equal(saved, controller.model.state.goithau[0]);
+});
+
+
+test("direct-award dependencies explicitly persist the newly created contractor", async () => {
+  const persisted = [];
+  const contractor = { id: "contractor-new", tenNhaThau: "Nhà thầu mới" };
+  const bid = { id: "bid-new", goiThauId: "pkg-1", nhaThauId: contractor.id };
+  const controller = {
+    model: {
+      state: {
+        goithau: [{ id: "pkg-1" }],
+        nhathau: [contractor],
+        thongtinmothau: [bid],
+      },
+      commitLocalMutation() {},
+      async persistChanges(table, changes) {
+        persisted.push({ table, changes });
+      },
+      async flushMutationOutbox() {},
+    },
+    async autoSync() { return { ok: true }; },
+  };
+
+  await commitPackageAwardDependencies(controller, {
+    packageRecord: { id: "pkg-1" },
+  });
+
+  assert.deepEqual(persisted, [
+    { table: "nhathau", changes: { upserts: [contractor], deletions: [] } },
+    { table: "thongtinmothau", changes: { upserts: [bid], deletions: [] } },
+  ]);
 });

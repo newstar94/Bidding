@@ -3,6 +3,10 @@ import { applyAccessContext } from "./accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { claimSessionTermination, isAuthSessionActive } from "./authRuntimeState.js";
+import {
+  invalidateServerCapabilities,
+  updateServerCapabilitiesFromSession,
+} from "./serverCapabilities.js";
 
 export function getSessionTerminationNotice(reason, timeoutHours = 10) {
   if (reason === "logged_in_elsewhere" || reason === "session_revoked") {
@@ -54,6 +58,7 @@ export function checkInactivity() {
     const idleTime = Date.now() - parseInt(lastActivity, 10);
     if (idleTime > inactivityLimit) {
       if (!claimSessionTermination()) return true;
+      invalidateServerCapabilities();
       if (this._sessionInterval) clearInterval(this._sessionInterval);
       this.disconnectWebSocket?.(false);
       void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
@@ -98,6 +103,7 @@ export function startBackgroundSessionChecker() {
       if (res.ok) return res.json();
       throw new Error("Invalid session");
     }).then(async (data) => {
+      updateServerCapabilitiesFromSession(data);
       if (!data || !data.valid) {
         if (this._sessionExpiryHandled) return;
         if (!claimSessionTermination()) return;

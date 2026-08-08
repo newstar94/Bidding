@@ -1,3 +1,5 @@
+import { isSyncedStateKey } from "./persistencePolicy.js";
+
 function explicitTableChanges(changes, table) {
   if (!changes || typeof changes !== "object") return null;
   const hasUpserts = Object.prototype.hasOwnProperty.call(changes.upserts || {}, table);
@@ -17,8 +19,22 @@ function explicitTableChanges(changes, table) {
   };
 }
 
-export async function persistAndSync(controller, tableKeys, { afterPersist, changes = null } = {}) {
+export async function persistAndSync(controller, tableKeys, {
+  afterPersist,
+  allowLegacyPersistence = false,
+  changes = null,
+} = {}) {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
+  for (const key of keys) {
+    if (isSyncedStateKey(key) && !explicitTableChanges(changes, key) && !allowLegacyPersistence) {
+      const error = new Error(
+        `Explicit changes are required to persist synced table "${key}"`,
+      );
+      error.code = "EXPLICIT_CHANGES_REQUIRED";
+      error.table = key;
+      throw error;
+    }
+  }
   controller.model?.assertStorageTablesWritable?.(keys);
   controller._deferImmediateSync = true;
   if (controller._syncImmediateTimer) {

@@ -1,5 +1,6 @@
 from scripts.check_frontend_debt import (
     collect_debt_metrics,
+    find_unauthorized_persist_and_sync_calls,
     find_unauthorized_synced_persist_calls,
     validate_debt_metrics,
 )
@@ -37,4 +38,40 @@ def test_frontend_debt_gate_rejects_new_synced_persist_data_callers(tmp_path):
 
     assert find_unauthorized_synced_persist_calls(tmp_path) == [
         "feature.js:1: persistData(goithau)"
+    ]
+
+
+def test_frontend_debt_gate_rejects_implicit_synced_persist_and_sync(tmp_path):
+    (tmp_path / "feature.js").write_text(
+        'persistAndSync(controller, ["goithau", "employees"]);',
+        encoding="utf-8",
+    )
+
+    assert find_unauthorized_persist_and_sync_calls(tmp_path) == [
+        "feature.js:1: explicit changes required"
+    ]
+
+
+def test_frontend_debt_gate_accepts_explicit_changes_and_local_only_calls(tmp_path):
+    (tmp_path / "feature.js").write_text(
+        '''persistAndSync(controller, "goithau", {
+          changes: { upserts: { goithau: [record] } },
+        });
+        persistAndSync(controller, "employees");''',
+        encoding="utf-8",
+    )
+
+    assert find_unauthorized_persist_and_sync_calls(tmp_path) == []
+
+
+def test_frontend_debt_gate_rejects_legacy_opt_in_outside_allowlist(tmp_path):
+    (tmp_path / "feature.js").write_text(
+        '''persistAndSync(controller, "permissionmatrix", {
+          allowLegacyPersistence: true,
+        });''',
+        encoding="utf-8",
+    )
+
+    assert find_unauthorized_persist_and_sync_calls(tmp_path) == [
+        "feature.js:1: legacy opt-in outside allowlist"
     ]

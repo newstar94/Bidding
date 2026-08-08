@@ -47,6 +47,69 @@ _LITERAL_PERSIST_DATA = re.compile(
 _LEGACY_PERSIST_ALLOWLIST = {
     ("admin/AdminUserController.js", "permissionmatrix"),
 }
+_LEGACY_PERSIST_AND_SYNC_ALLOWLIST: set[str] = set()
+
+
+def _javascript_calls(text: str, function_name: str):
+    marker = f"{function_name}("
+    offset = 0
+    while (start := text.find(marker, offset)) >= 0:
+        prefix = text[max(0, start - 24):start]
+        offset = start + len(marker)
+        if re.search(r"(?:async\s+)?function\s+$", prefix):
+            continue
+        quote = None
+        escaped = False
+        depth = 1
+        index = offset
+        while index < len(text) and depth:
+            char = text[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+            elif char in {'"', "'", "`"}:
+                quote = char
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            index += 1
+        if depth == 0:
+            yield start, text[offset:index - 1]
+            offset = index
+
+
+def _top_level_arguments(arguments: str) -> list[str]:
+    parts = []
+    start = 0
+    quote = None
+    escaped = False
+    depths = {"(": 0, "[": 0, "{": 0}
+    closing = {")": "(", "]": "[", "}": "{"}
+    for index, char in enumerate(arguments):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {'"', "'", "`"}:
+            quote = char
+        elif char in depths:
+            depths[char] += 1
+        elif char in closing:
+            depths[closing[char]] -= 1
+        elif char == "," and all(depth == 0 for depth in depths.values()):
+            parts.append(arguments[start:index].strip())
+            start = index + 1
+    parts.append(arguments[start:].strip())
+    return parts
 
 
 def collect_debt_metrics(root: Path) -> dict[str, int]:
@@ -97,6 +160,40 @@ def find_unauthorized_synced_persist_calls(root: Path) -> list[str]:
     return failures
 
 
+def find_unauthorized_persist_and_sync_calls(root: Path) -> list[str]:
+    failures = []
+    for path in sorted(root.rglob("*.js")):
+        relative = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        for start, arguments in _javascript_calls(text, "persistAndSync"):
+            args = _top_level_arguments(arguments)
+            if len(args) < 2:
+                continue
+            options = args[2] if len(args) >= 3 else ""
+            has_changes = bool(re.search(r"\bchanges\s*(?=[:,}])", options))
+            has_legacy_opt_in = bool(re.search(
+                r"\ballowLegacyPersistence\s*:\s*true\b",
+                options,
+            ))
+            line = text.count("\n", 0, start) + 1
+            if has_legacy_opt_in and relative not in _LEGACY_PERSIST_AND_SYNC_ALLOWLIST:
+                failures.append(f"{relative}:{line}: legacy opt-in outside allowlist")
+                continue
+            if has_changes or has_legacy_opt_in:
+                continue
+            table_expression = args[1]
+            literal_tables = re.findall(r"['\"]([a-z0-9_]+)['\"]", table_expression)
+            is_known_local_literal = (
+                len(literal_tables) == 1
+                and literal_tables[0] not in _SYNCED_STATE_KEYS
+                and table_expression.strip().startswith(("'", '"'))
+            )
+            if is_known_local_literal:
+                continue
+            failures.append(f"{relative}:{line}: explicit changes required")
+    return failures
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--print", action="store_true", dest="print_only")
@@ -117,11 +214,16 @@ def main(argv: list[str] | None = None) -> int:
     legacy_persist_failures = find_unauthorized_synced_persist_calls(
         PROJECT_ROOT / "frontend",
     )
+    implicit_persist_failures = find_unauthorized_persist_and_sync_calls(
+        PROJECT_ROOT / "frontend",
+    )
     for failure in failures:
         print(f"FRONTEND_DEBT_INCREASED: {failure}")
     for failure in legacy_persist_failures:
         print(f"LEGACY_SYNCED_PERSIST_FORBIDDEN: {failure}")
-    return 1 if failures or legacy_persist_failures else 0
+    for failure in implicit_persist_failures:
+        print(f"IMPLICIT_SYNCED_PERSIST_FORBIDDEN: {failure}")
+    return 1 if failures or legacy_persist_failures or implicit_persist_failures else 0
 
 
 if __name__ == "__main__":

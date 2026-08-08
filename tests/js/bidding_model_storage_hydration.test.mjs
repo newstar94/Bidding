@@ -81,6 +81,87 @@ test("successful empty IndexedDB store is ready and never triggers a repair writ
 });
 
 
+test("compatibility full-table persistence accepts a successful empty read", async () => {
+  const { model, writes } = createModel({ readTable: () => [] });
+  model.state.goithau = [{ id: "package-created-locally", value: 1 }];
+
+  await model.persistData("goithau", { throwOnError: true });
+
+  assert.deepEqual(writes, [{
+    records: [{ id: "package-created-locally", value: 1 }],
+    table: "goithau",
+  }]);
+  assert.deepEqual(model.getMutationQueue().upserts.goithau, {
+    "package-created-locally": { id: "package-created-locally", value: 1 },
+  });
+});
+
+
+test("compatibility full-table persistence fails closed on IndexedDB read errors", async (t) => {
+  for (const code of [
+    "OPERATION_FAILED",
+    "TRANSACTION_ABORTED",
+    "CORRUPTED_OR_INCOMPATIBLE",
+    "PERMISSION_DENIED",
+  ]) {
+    await t.test(code, async () => {
+      const { model, writes } = createModel({
+        readTable: () => { throw readError(code); },
+      });
+      await model.hydrateMutationOutbox();
+      model.markRecordDirty("goithau", [{ id: "already-pending", value: 1 }]);
+      await model.flushMutationOutbox();
+      const pendingBefore = model.getMutationQueue();
+      model.state.goithau = [{ id: "replacement", value: 2 }];
+
+      await assert.rejects(
+        withoutConsoleErrors(() => model.persistData("goithau", { throwOnError: true })),
+        (error) => error instanceof BrowserDBError
+          && error.code === code
+          && error.operation === "read"
+          && error.store === "goithau",
+      );
+
+      assert.equal(model.getStorageHydrationStatus("goithau").state, "failed");
+      assert.deepEqual(writes, []);
+      assert.deepEqual(model.getMutationQueue(), pendingBefore);
+    });
+  }
+});
+
+
+test("compatibility full-table persistence succeeds after explicit read recovery", async () => {
+  let recovered = false;
+  const { model, writes } = createModel({
+    readTable: () => {
+      if (!recovered) throw readError("TRANSACTION_ABORTED");
+      return [{ id: "stored-before-retry", value: 1 }];
+    },
+  });
+  model.state.goithau = [{ id: "replacement", value: 2 }];
+
+  await assert.rejects(
+    withoutConsoleErrors(() => model.persistData("goithau", { throwOnError: true })),
+    { code: "TRANSACTION_ABORTED" },
+  );
+  recovered = true;
+  await model.loadStorageKeys(["GOITHAU"]);
+  model.state.goithau = [{ id: "replacement", value: 2 }];
+
+  await model.persistData("goithau", { throwOnError: true });
+
+  assert.equal(model.getStorageHydrationStatus("goithau").state, "ready");
+  assert.deepEqual(writes, [{
+    records: [{ id: "replacement", value: 2 }],
+    table: "goithau",
+  }]);
+  assert.deepEqual(model.getMutationQueue().deletes, [{
+    id: "stored-before-retry",
+    table: "goithau",
+  }]);
+});
+
+
 test("IndexedDB request, permission, and corruption failures preserve memory and stay retryable", async (t) => {
   for (const code of ["OPERATION_FAILED", "PERMISSION_DENIED", "CORRUPTED_OR_INCOMPATIBLE"]) {
     await t.test(code, async () => {

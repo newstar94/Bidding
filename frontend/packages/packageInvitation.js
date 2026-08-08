@@ -16,6 +16,8 @@ export async function savePackageInvitationInfo(controller, pkg, {
     pkg.thoiGianMoThau = closingTime;
   }
   stageLocalRecords(controller.model, "goithau", pkg);
-  await persistAndSync(controller, "goithau");
+  await persistAndSync(controller, "goithau", {
+    changes: { upserts: { goithau: [pkg] } },
+  });
   return pkg;
 }

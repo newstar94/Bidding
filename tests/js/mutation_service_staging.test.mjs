@@ -4,8 +4,71 @@ import test from "node:test";
 import {
   applyStateMutations,
   mutatePersistAndSync,
+  persistAndSync,
   stageLocalRecords,
 } from "../../frontend/shared/MutationService.js";
+
+function persistenceController() {
+  const calls = [];
+  const controller = {
+    model: {
+      state: {},
+      async flushMutationOutbox() {},
+      async persistChanges(table, changes) {
+        calls.push({ kind: "changes", table, changes });
+      },
+      async persistData(table) {
+        calls.push({ kind: "legacy", table });
+      },
+    },
+    async autoSync() { return { ok: true }; },
+  };
+  return { calls, controller };
+}
+
+test("synced tables reject implicit full-table persistence", async () => {
+  const { calls, controller } = persistenceController();
+
+  await assert.rejects(
+    persistAndSync(controller, "goithau"),
+    (error) => error?.code === "EXPLICIT_CHANGES_REQUIRED"
+      && /goithau/.test(error.message),
+  );
+
+  assert.deepEqual(calls, []);
+});
+
+test("synced tables use explicit record-level changes", async () => {
+  const { calls, controller } = persistenceController();
+
+  await persistAndSync(controller, "goithau", {
+    changes: { upserts: { goithau: [{ id: "pkg-1" }] } },
+  });
+
+  assert.deepEqual(calls, [{
+    kind: "changes",
+    table: "goithau",
+    changes: { deletions: [], upserts: [{ id: "pkg-1" }] },
+  }]);
+});
+
+test("local-only tables keep compatibility persistence without an opt-in", async () => {
+  const { calls, controller } = persistenceController();
+
+  await persistAndSync(controller, "employees");
+
+  assert.deepEqual(calls, [{ kind: "legacy", table: "employees" }]);
+});
+
+test("an explicit compatibility opt-in permits a synced projection write", async () => {
+  const { calls, controller } = persistenceController();
+
+  await persistAndSync(controller, "permissionmatrix", {
+    allowLegacyPersistence: true,
+  });
+
+  assert.deepEqual(calls, [{ kind: "legacy", table: "permissionmatrix" }]);
+});
 
 test("stages explicit upserts before mutatePersistAndSync persists them", () => {
   const calls = [];

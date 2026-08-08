@@ -12,6 +12,7 @@ import { apiFetch } from "../shared/apiClient.js";
 import { beginExplicitLogout, hideInitLoader } from "../auth/authRuntimeState.js";
 import { setActiveOrganizationId } from "./workspaceState.js";
 import { reportIndexedDBReadFailure } from "../shared/releaseDiagnostics.js";
+import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
 
 export function sessionHasActiveWorkspace(initialSession) {
   const user = initialSession?.user;
@@ -82,6 +83,7 @@ async function bootstrapUnassignedAccount(initialSession) {
         body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
       });
       const session = await response.json();
+      updateServerCapabilitiesFromSession(session);
       if (response.ok && session?.valid && sessionHasActiveWorkspace(session)) {
         window.location.reload();
         return;
