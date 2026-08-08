@@ -757,6 +757,13 @@ try {
   mark("joint-venture-multi-lot-opening-saved", { bids: 3, jointLots: 2 });
 
   const evaluateLot = async ({ lot, sequence, jointPrice, independentPrice = null, rejectJoint = false }) => {
+    if (await page.locator("#modal-custom-dialog.active").isVisible()) {
+      throw new Error(`[DEBUG-jv-dialog] ${JSON.stringify({
+        dialog: await page.locator("#modal-custom-dialog").innerText(),
+        httpErrors,
+        pageErrors,
+      })}`);
+    }
     await page.locator('[data-workflow-tab="eval_tech"]').click();
     if (sequence > 1) {
       await page.locator("#btn-continue-lot-evaluation").waitFor({ state: "visible", timeout: 15_000 });

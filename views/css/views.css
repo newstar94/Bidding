@@ -2808,11 +2808,16 @@ table th {
 }
 #tab-goithau-detail #mothau-table .package-contractor-code-column,
 #tab-goithau-detail #mothau-table td:has(.mt-ma-nha-thau) {
-  width: 13rem;
-  min-width: 13rem;
+  width: 10rem;
+  min-width: 10rem;
 }
 #tab-goithau-detail #mothau-table .mt-ma-nha-thau {
-  min-width: 11.75rem;
+  min-width: 8.75rem;
+}
+#tab-goithau-detail #mothau-table .package-contractor-name-column,
+#tab-goithau-detail #mothau-table td:has(.mt-ten-nha-thau) {
+  width: 18rem;
+  min-width: 18rem;
 }
 #mothau-table-tbody tr.invalid td {
   background-color: var(--danger-soft);

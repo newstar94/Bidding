@@ -14,16 +14,50 @@ function browserDBError(error, { operation, store = "", fallbackCode = "OPERATIO
   const name = String(error?.name || "");
   const code = name === "QuotaExceededError"
     ? "QUOTA_EXCEEDED"
-    : name === "SecurityError"
-      ? "PERMISSION_DENIED"
-      : ["DataError", "VersionError", "ConstraintError"].includes(name)
-        ? "CORRUPTED_OR_INCOMPATIBLE"
-        : fallbackCode;
+    : name === "AbortError"
+      ? "TRANSACTION_ABORTED"
+      : name === "SecurityError"
+        ? "PERMISSION_DENIED"
+        : ["DataError", "VersionError", "ConstraintError"].includes(name)
+          ? "CORRUPTED_OR_INCOMPATIBLE"
+          : fallbackCode;
   return new BrowserDBError(
     code,
     `IndexedDB ${operation} failed${store ? ` for ${store}` : ""}`,
     { cause: error instanceof Error ? error : null, operation, store },
   );
+}
+
+function bindWriteTransaction(transaction, {
+  operation,
+  reject,
+  resolve,
+  store = "",
+}) {
+  let settled = false;
+  const resolveOnce = () => {
+    if (settled) return;
+    settled = true;
+    resolve();
+  };
+  const rejectOnce = (error, fallbackCode = "OPERATION_FAILED") => {
+    if (settled) return;
+    settled = true;
+    reject(browserDBError(error, { operation, store, fallbackCode }));
+  };
+  transaction.oncomplete = resolveOnce;
+  transaction.onerror = (event) => rejectOnce(
+    transaction.error || event?.target?.error,
+  );
+  transaction.onabort = (event) => rejectOnce(
+    transaction.error || event?.target?.error,
+    "TRANSACTION_ABORTED",
+  );
+  return {
+    rejectRequest(request) {
+      rejectOnce(request?.error);
+    },
+  };
 }
 
 export class BrowserDB {
@@ -108,10 +142,10 @@ export class BrowserDB {
         const transaction = this.db.transaction("kv_store", "readwrite");
         const store = transaction.objectStore("kv_store");
         const request = store.put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(browserDBError(request.error, {
-          operation: "set", store: "kv_store",
-        }));
+        const write = bindWriteTransaction(transaction, {
+          operation: "set", reject, resolve, store: "kv_store",
+        });
+        request.onerror = () => write.rejectRequest(request);
       } catch (e) {
         reject(browserDBError(e, { operation: "set", store: "kv_store" }));
       }
@@ -175,6 +209,9 @@ export class BrowserDB {
       try {
         const transaction = this.db.transaction(tableName, "readwrite");
         const store = transaction.objectStore(tableName);
+        const write = bindWriteTransaction(transaction, {
+          operation: "replace", reject, resolve, store: tableName,
+        });
         const getKeysRequest = store.getAllKeys();
         getKeysRequest.onsuccess = () => {
           const existingKeys = new Set(getKeysRequest.result || []);
@@ -188,10 +225,7 @@ export class BrowserDB {
             store.put(item);
           });
         };
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (e) => reject(browserDBError(e.target.error, {
-          operation: "replace", store: tableName,
-        }));
+        getKeysRequest.onerror = () => write.rejectRequest(getKeysRequest);
       } catch (e) {
         reject(browserDBError(e, { operation: "replace", store: tableName }));
       }
@@ -209,10 +243,10 @@ export class BrowserDB {
         const transaction = this.db.transaction(tableName, "readwrite");
         const store = transaction.objectStore(tableName);
         const request = store.put(record);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(browserDBError(request.error, {
-          operation: "put", store: tableName,
-        }));
+        const write = bindWriteTransaction(transaction, {
+          operation: "put", reject, resolve, store: tableName,
+        });
+        request.onerror = () => write.rejectRequest(request);
       } catch (e) {
         reject(browserDBError(e, { operation: "put", store: tableName }));
       }
@@ -230,10 +264,10 @@ export class BrowserDB {
         const transaction = this.db.transaction(tableName, "readwrite");
         const store = transaction.objectStore(tableName);
         const request = store.delete(recordId);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(browserDBError(request.error, {
-          operation: "delete", store: tableName,
-        }));
+        const write = bindWriteTransaction(transaction, {
+          operation: "delete", reject, resolve, store: tableName,
+        });
+        request.onerror = () => write.rejectRequest(request);
       } catch (e) {
         reject(browserDBError(e, { operation: "delete", store: tableName }));
       }
@@ -250,13 +284,12 @@ export class BrowserDB {
       try {
         const transaction = this.db.transaction(tableName, "readwrite");
         const store = transaction.objectStore(tableName);
+        bindWriteTransaction(transaction, {
+          operation: "put-many", reject, resolve, store: tableName,
+        });
         (dataArray || []).forEach((item) => {
           store.put(item);
         });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (e) => reject(browserDBError(e.target.error, {
-          operation: "put-many", store: tableName,
-        }));
       } catch (e) {
         reject(browserDBError(e, { operation: "put-many", store: tableName }));
       }
@@ -273,13 +306,12 @@ export class BrowserDB {
       try {
         const transaction = this.db.transaction(tableName, "readwrite");
         const store = transaction.objectStore(tableName);
+        bindWriteTransaction(transaction, {
+          operation: "delete-many", reject, resolve, store: tableName,
+        });
         (idsArray || []).forEach((id) => {
           store.delete(id);
         });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (e) => reject(browserDBError(e.target.error, {
-          operation: "delete-many", store: tableName,
-        }));
       } catch (e) {
         reject(browserDBError(e, { operation: "delete-many", store: tableName }));
       }
@@ -311,6 +343,9 @@ export class BrowserDB {
     return new Promise((resolve, reject) => {
       try {
         const transaction = this.db.transaction(tableNames, "readwrite");
+        bindWriteTransaction(transaction, {
+          operation: "apply-sync", reject, resolve,
+        });
         tableNames.forEach((tableName) => {
           const store = transaction.objectStore(tableName);
           if (Object.prototype.hasOwnProperty.call(replacements, tableName)) {
@@ -321,13 +356,6 @@ export class BrowserDB {
           (upserts[tableName] || []).forEach((item) => store.put(item));
           (deletions[tableName] || []).forEach((id) => store.delete(id));
         });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(browserDBError(transaction.error, {
-          operation: "apply-sync",
-        }));
-        transaction.onabort = () => reject(browserDBError(transaction.error, {
-          operation: "apply-sync", fallbackCode: "TRANSACTION_ABORTED",
-        }));
       } catch (error) {
         reject(browserDBError(error, { operation: "apply-sync" }));
       }

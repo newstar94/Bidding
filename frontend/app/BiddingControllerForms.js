@@ -7,6 +7,7 @@ import { setupInlineExcelControls } from "./inlineExcelControls.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { derivePackagePrice } from "../packages/packagePricing.js";
 import { EVALUATION_METHODS, getEvaluationMethods } from "../packages/evaluationMethodRules.js";
+import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -156,30 +157,21 @@ export function setupFileUploads() {
   });
 }
 export function setupActionListeners() {
-  onById("search-kehoach", "input", debounce(() => {
-    this.model.currentPage.kehoach = 1;
-    this.view.renderKeHoachTable();
-  }));
-  onById("search-goithau", "input", debounce(() => {
-    this.model.currentPage.goithau = 1;
-    this.view.renderGoiThauTable();
-  }));
-  onById("search-chudautu", "input", debounce(() => {
-    this.model.currentPage.chudautu = 1;
-    this.view.renderChuDauTuTable();
-  }));
-  onById("search-nhathau", "input", debounce(() => {
-    this.model.currentPage.nhathau = 1;
-    this.view.renderNhaThauTable();
-  }));
-  onById("search-chuyengia", "input", debounce(() => {
-    this.model.currentPage.chuyengia = 1;
-    this.view.renderChuyenGiaTable();
-  }));
-  onById("search-hopdong", "input", debounce(() => {
-    this.model.currentPage.hopdong = 1;
-    this.view.renderHopDongTable();
-  }));
+  const bindTableSearch = (inputId, table, renderMethod) => {
+    onById(inputId, "input", debounce(() => {
+      const search = document.getElementById(inputId)?.value || "";
+      if (paginatedSearchHasChanged(this.model, table, search)) {
+        this.model.currentPage[table] = 1;
+      }
+      this.view[renderMethod]();
+    }));
+  };
+  bindTableSearch("search-kehoach", "kehoach", "renderKeHoachTable");
+  bindTableSearch("search-goithau", "goithau", "renderGoiThauTable");
+  bindTableSearch("search-chudautu", "chudautu", "renderChuDauTuTable");
+  bindTableSearch("search-nhathau", "nhathau", "renderNhaThauTable");
+  bindTableSearch("search-chuyengia", "chuyengia", "renderChuyenGiaTable");
+  bindTableSearch("search-hopdong", "hopdong", "renderHopDongTable");
   onById("filter-goithau-trangthai", "change", () => {
     this.model.currentPage.goithau = 1;
     this.view.renderGoiThauTable();

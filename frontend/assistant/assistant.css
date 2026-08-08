@@ -2,7 +2,7 @@
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 180;
+  z-index: 80;
   min-height: 54px;
   padding: 6px 15px 6px 7px;
   display: inline-flex;
@@ -132,7 +132,7 @@
   position: fixed;
   right: 24px;
   bottom: 82px;
-  z-index: 190;
+  z-index: 90;
   width: min(410px, calc(100vw - 32px));
   height: min(690px, calc(100vh - 112px));
   display: flex;

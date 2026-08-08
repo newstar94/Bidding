@@ -15,6 +15,25 @@ function contentType(pathname) {
   return "text/html; charset=utf-8";
 }
 
+test("assistant floating controls stay below business modal overlays", async () => {
+  const [assistantCss, componentCss] = await Promise.all([
+    readFile(join(projectRoot, "frontend/assistant/assistant.css"), "utf8"),
+    readFile(join(projectRoot, "views/css/components.css"), "utf8"),
+  ]);
+  const triggerLayer = Number(
+    assistantCss.match(/\.bf-assistant-trigger\s*\{[\s\S]*?z-index:\s*(\d+)/u)?.[1],
+  );
+  const panelLayer = Number(
+    assistantCss.match(/\.bf-assistant-panel\s*\{[\s\S]*?z-index:\s*(\d+)/u)?.[1],
+  );
+  const modalLayer = Number(
+    componentCss.match(/\.modal-overlay\s*\{[\s\S]*?z-index:\s*(\d+)/u)?.[1],
+  );
+
+  assert.ok(triggerLayer > 0 && panelLayer > triggerLayer);
+  assert.ok(panelLayer < modalLayer, "assistant must not intercept controls inside a modal");
+});
+
 test("assistant mode dropdown uses the shared custom select and stays synchronized", async () => {
   const server = createServer(async (request, response) => {
     try {

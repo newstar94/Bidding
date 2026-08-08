@@ -58,6 +58,17 @@ export function paginateRecords(records, currentPage, pageSize) {
   return (records || []).slice(startIndex, startIndex + pageSize);
 }
 
+function normalizedSearch(value) {
+  return String(value || "").toLocaleLowerCase("vi");
+}
+
+export function paginatedSearchHasChanged(model, table, search) {
+  if (!model?.useServerSidePagination) return true;
+  const previousSearch = model._lastPaginatedQueries?.get(table)?.search;
+  if (previousSearch === undefined) return true;
+  return normalizedSearch(previousSearch) !== normalizedSearch(search);
+}
+
 /**
  * Load every package row owned by one plan version, including historical
  * package versions. The normal package list endpoint only returns `is_latest`
@@ -120,6 +131,8 @@ export async function loadPaginatedRecords(model, table, params = {}) {
   model._paginationRequests.set(table, controller);
   try {
     const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
+    model._lastPaginatedQueries ||= new Map();
+    model._lastPaginatedQueries.set(table, { ...params });
     return {
       items: cachePaginatedRecords(model, table, data?.items || []),
       totalItems: Number(data?.totalItems || 0),

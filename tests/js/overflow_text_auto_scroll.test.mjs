@@ -66,7 +66,7 @@ test("application installs overflow scrolling during shared UI bootstrap", () =>
   assert.match(behaviorSource, /:not\(\.mt-ma-nha-thau\)/u);
 });
 
-test("package detail contractor code column is wide and does not auto-scroll", () => {
+test("package detail gives contractor names more room than contractor codes", () => {
   const workflowSource = fs.readFileSync(
     "frontend/packages/BidProcessWorkflow.js",
     "utf8",
@@ -76,8 +76,16 @@ test("package detail contractor code column is wide and does not auto-scroll", (
     (workflowSource.match(/package-contractor-code-column/g) || []).length,
     7,
   );
+  assert.equal(
+    (workflowSource.match(/package-contractor-name-column/g) || []).length,
+    7,
+  );
   assert.match(
     styles,
-    /#tab-goithau-detail #mothau-table td:has\(\.mt-ma-nha-thau\)[\s\S]*min-width: 13rem/u,
+    /#tab-goithau-detail #mothau-table td:has\(\.mt-ma-nha-thau\)[\s\S]*min-width: 10rem/u,
+  );
+  assert.match(
+    styles,
+    /#tab-goithau-detail #mothau-table td:has\(\.mt-ten-nha-thau\)[\s\S]*min-width: 18rem/u,
   );
 });
