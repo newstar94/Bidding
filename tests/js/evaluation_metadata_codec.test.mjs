@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import * as metadataCodec from "../../frontend/packages/evaluationMetadata.js";
+
 import {
   EVALUATION_METADATA_SCHEMA_VERSION,
   migrateEvaluationMetadata,
@@ -8,6 +10,17 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "../../frontend/packages/evaluationMetadata.js";
+
+test("evaluation metadata exposes only the canonical codec surface", () => {
+  assert.deepEqual(Object.keys(metadataCodec).sort(), [
+    "EVALUATION_METADATA_SCHEMA_VERSION",
+    "MAX_EVALUATION_METADATA_BYTES",
+    "migrateEvaluationMetadata",
+    "parseEvaluationMetadataForDisplay",
+    "parseEvaluationMetadataStrict",
+    "serializeEvaluationMetadata",
+  ]);
+});
 import { savePackageCancellation } from "../../frontend/packages/packageCancellation.js";
 
 

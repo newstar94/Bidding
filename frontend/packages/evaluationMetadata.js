@@ -57,15 +57,6 @@ export function parseEvaluationMetadataForDisplay(value) {
   }
 }
 
-export function parseEvaluationMetadata(value) {
-  return parseEvaluationMetadataStrict(value);
-}
-
 export function serializeEvaluationMetadata(value) {
   return JSON.stringify(parseEvaluationMetadataStrict(value));
 }
-
-export const parseStrict = parseEvaluationMetadataStrict;
-export const parseForDisplay = parseEvaluationMetadataForDisplay;
-export const serialize = serializeEvaluationMetadata;
-export const migrate = migrateEvaluationMetadata;
