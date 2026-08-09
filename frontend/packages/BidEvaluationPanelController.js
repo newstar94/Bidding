@@ -21,14 +21,21 @@ function readMetadata(pkg) {
   return parseEvaluationMetadataStrict(pkg?.danhGiaHsdtMetadata);
 }
 
+function currentPackageRecord(model, pkg) {
+  return model?.state?.goithau?.find(
+    (record) => String(record?.id) === String(pkg?.id),
+  ) || pkg;
+}
+
 function writeMetadata(appController, pkg, metadata, recordChanges = {}) {
+  const currentRecord = currentPackageRecord(appController.model, pkg);
   const nextRecord = {
-    ...pkg,
+    ...currentRecord,
     ...recordChanges,
     danhGiaHsdtMetadata: serializeEvaluationMetadata(metadata),
   };
   void appController.model.updateRecord("goithau", nextRecord).then(() => {
-    Object.assign(pkg, nextRecord);
+    Object.assign(pkg, currentPackageRecord(appController.model, nextRecord));
   }).catch((error) => {
     console.error("Failed to persist bid evaluation metadata:", error);
     appController.view?.showToast?.(
