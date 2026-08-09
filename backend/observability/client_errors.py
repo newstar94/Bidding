@@ -23,8 +23,16 @@ _REPORT_FIELDS = {
     "source": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
     "line": {"type": "integer", "required": True, "min": 0, "max": 10_000_000},
     "column": {"type": "integer", "required": True, "min": 0, "max": 10_000_000},
+    "operation": {"type": "string", "required": False, "min_length": 1, "max_length": 64},
+    "phase": {"type": "string", "required": False, "min_length": 1, "max_length": 64},
+    "retryable": {"type": "boolean", "required": False},
+    "backendStatus": {"type": "string", "required": False, "min_length": 1, "max_length": 64},
+    "workspaceHash": {"type": "string", "required": False, "min_length": 16, "max_length": 16},
+    "correlationId": {"type": "string", "required": False, "min_length": 1, "max_length": 64},
 }
 _IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,127}")
+_CORRELATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
+_WORKSPACE_HASH = re.compile(r"[0-9a-f]{16}")
 _SOURCE_PATH = re.compile(r"(?:/dist/assets/|/frontend/)[A-Za-z0-9_./-]{1,240}|unknown")
 
 
@@ -66,7 +74,14 @@ def normalize_client_error_payload(payload):
         return None, [{"field": "errorName", "code": "INVALID_IDENTIFIER", "message": "Loại lỗi không hợp lệ."}]
     if not _SOURCE_PATH.fullmatch(payload["source"]):
         return None, [{"field": "source", "code": "INVALID_SOURCE", "message": "Nguồn lỗi không hợp lệ."}]
-    return {name: payload[name] for name in _REPORT_FIELDS}, []
+    for name in ("operation", "phase", "backendStatus"):
+        if name in payload and not _IDENTIFIER.fullmatch(payload[name]):
+            return None, [{"field": name, "code": "INVALID_IDENTIFIER", "message": "Invalid telemetry dimension."}]
+    if "workspaceHash" in payload and not _WORKSPACE_HASH.fullmatch(payload["workspaceHash"]):
+        return None, [{"field": "workspaceHash", "code": "INVALID_HASH", "message": "Invalid workspace hash."}]
+    if "correlationId" in payload and not _CORRELATION_ID.fullmatch(payload["correlationId"]):
+        return None, [{"field": "correlationId", "code": "INVALID_IDENTIFIER", "message": "Invalid correlation ID."}]
+    return {name: payload[name] for name in _REPORT_FIELDS if name in payload}, []
 
 
 async def client_error_api(request):

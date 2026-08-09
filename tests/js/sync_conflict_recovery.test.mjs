@@ -31,6 +31,7 @@ test("startup does not submit the same mutation again after a conflict", async (
 
 test("startup flushes once, pulls once, and skips an empty replay", async () => {
   const calls = [];
+  const telemetry = [];
   const controller = {
     markStartup() {},
     async autoSync() {
@@ -43,14 +44,19 @@ test("startup flushes once, pulls once, and skips an empty replay", async () => 
     },
   };
 
-  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.equal(await reconcileRouteDataAtStartup(controller, {
+    reportRetry: (details) => telemetry.push(["retry", details]),
+  }), true);
   assert.deepEqual(calls, ["push", "pull"]);
+  assert.deepEqual(telemetry, []);
 });
 
 
 test("startup replays only mutations produced while reconciling the pull", async () => {
   const calls = [];
+  const telemetry = [];
   const controller = {
+    model: { workspaceScope: { key: "user:org-a" } },
     markStartup() {},
     async autoSync() {
       calls.push("push");
@@ -62,8 +68,33 @@ test("startup replays only mutations produced while reconciling the pull", async
     },
   };
 
-  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.equal(await reconcileRouteDataAtStartup(controller, {
+    reportRetry: (details) => telemetry.push(["retry", details]),
+  }), true);
   assert.deepEqual(calls, ["push", "pull", "push"]);
+  assert.deepEqual(telemetry, [["retry", { workspaceKey: "user:org-a" }]]);
+});
+
+
+test("caught startup reconciliation failure emits redacted structured context", async () => {
+  const telemetry = [];
+  const controller = {
+    model: { workspaceScope: { key: "user:org-a" } },
+    markStartup() {},
+    async autoSync() {
+      throw Object.assign(new Error("private row payload"), { requestId: "request-123" });
+    },
+  };
+
+  const result = await reconcileRouteDataAtStartup(controller, {
+    reportFailure: (details) => telemetry.push(details),
+  });
+
+  assert.equal(result, false);
+  assert.deepEqual(telemetry, [{
+    workspaceKey: "user:org-a",
+    correlationId: "request-123",
+  }]);
 });
 
 

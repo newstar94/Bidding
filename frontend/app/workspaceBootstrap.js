@@ -129,7 +129,9 @@ export async function bootstrapWorkspace(initialSession) {
   ]);
   const model = new BiddingModel();
   model.addStorageHydrationListener(({ code, state }) => {
-    if (state === "failed") void reportIndexedDBReadFailure(code);
+    if (state === "failed") {
+      void reportIndexedDBReadFailure(code, { workspaceKey: model.workspaceScope?.key });
+    }
   });
   const view = new BiddingView(model);
   const controller = new BiddingController(model, view);

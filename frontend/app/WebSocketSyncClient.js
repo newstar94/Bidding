@@ -3,6 +3,7 @@ import { getActiveOrganizationId } from "./workspaceState.js";
 import {
   reportWebSocketPollingFallback,
   reportWebSocketReconnect,
+  reportWebSocketMessageFailure,
 } from "../shared/releaseDiagnostics.js";
 
 
@@ -12,6 +13,7 @@ const CLIENTS = new WeakMap();
 function captureWorkspace(controller) {
   return {
     token: controller.model?.getWorkspaceToken?.() || "",
+    workspaceKey: controller.model?.workspaceScope?.key || "",
     organizationId: controller.model?.workspaceScope?.organizationId
       || getActiveOrganizationId(),
   };
@@ -55,7 +57,11 @@ export class WebSocketSyncClient {
     controller._wsPollingTimer = null;
     const startedAt = Number(controller._wsPollingStartedAt || 0);
     controller._wsPollingStartedAt = 0;
-    if (startedAt > 0) void reportWebSocketPollingFallback(Date.now() - startedAt);
+    if (startedAt > 0) {
+      void reportWebSocketPollingFallback(Date.now() - startedAt, {
+        workspaceKey: controller.model?.workspaceScope?.key,
+      });
+    }
   }
 
   connect() {
@@ -127,8 +133,9 @@ export class WebSocketSyncClient {
           void controller._checkSessionNow?.();
           controller.scheduleBackgroundSync(300);
         }
-      } catch (error) {
-        console.error("Error handling WebSocket message:", error);
+      } catch {
+        void reportWebSocketMessageFailure({ workspaceKey: workspace.workspaceKey });
+        console.error("WebSocket message processing failed; structured diagnostic submitted.");
       }
     };
     ws.onclose = (event) => {
@@ -160,7 +167,7 @@ export class WebSocketSyncClient {
       const currentDelay = controller._wsRetryDelay || 5e3;
       const nextDelay = Math.min(6e4, Math.round(currentDelay * 1.5));
       controller._wsRetryDelay = nextDelay;
-      void reportWebSocketReconnect();
+      void reportWebSocketReconnect({ workspaceKey: workspace.workspaceKey });
       this.startPollingFallback();
       if (debug) {
         console.log(`WebSocket connection closed (code: ${event.code || "unknown"}, reason: ${event.reason || "none"}). Reconnecting in ${Math.round(nextDelay / 1e3)}s...`);

@@ -42,8 +42,8 @@ function classifySyncResult(result) {
   return "validationRejected";
 }
 
-function observeWorkspaceOutcome(status) {
-  if (status === "offlineQueued") void reportOfflineQueuedMutation();
+function observeWorkspaceOutcome(status, workspaceKey) {
+  if (status === "offlineQueued") void reportOfflineQueuedMutation({ workspaceKey });
 }
 
 function normalizePatch({ upserts = {}, deletions = {} } = {}) {
@@ -176,7 +176,7 @@ export class WorkspaceDataStore {
       };
     }
     const status = classifySyncResult(syncResult);
-    observeWorkspaceOutcome(status);
+    observeWorkspaceOutcome(status, model.workspaceScope?.key);
     if (status === "validationRejected") {
       const rollbackError = await this.#rollbackPatch(
         before,

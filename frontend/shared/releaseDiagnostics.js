@@ -11,6 +11,18 @@ const safeErrorName = value => {
   return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(name) ? name : "Error";
 };
 
+const safeDimension = value => {
+  const dimension = String(value || "").trim();
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(dimension) ? dimension : "unknown";
+};
+
+const safeCorrelationId = value => {
+  const correlationId = String(value || "").trim();
+  return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(correlationId)
+    ? correlationId
+    : "";
+};
+
 const safeBundlePath = value => {
   try {
     const pathname = new URL(String(value || ""), globalThis.location?.origin || "http://localhost").pathname;
@@ -30,6 +42,50 @@ export const buildReleaseDiagnostic = ({ error, filename, lineno, colno, kind = 
   line: Number.isSafeInteger(lineno) && lineno > 0 ? lineno : 0,
   column: Number.isSafeInteger(colno) && colno > 0 ? colno : 0,
 });
+
+export const hashWorkspaceScope = async (workspaceKey) => {
+  const scope = String(workspaceKey || "").trim();
+  if (!scope || scope.length > 512 || !globalThis.crypto?.subtle) return null;
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(scope),
+  );
+  return [...new Uint8Array(digest)]
+    .slice(0, 8)
+    .map(value => value.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+export const buildOperationalDiagnostic = async ({
+  releaseId = RELEASE_ID,
+  errorName,
+  source,
+  operation,
+  phase,
+  retryable = false,
+  backendStatus,
+  workspaceKey,
+  correlationId,
+} = {}) => {
+  const boundedErrorName = safeErrorName(errorName);
+  const diagnostic = {
+    kind: "error",
+    releaseId: String(releaseId || RELEASE_ID).slice(0, 128),
+    errorName: boundedErrorName === "Error" ? "Operational.Unknown" : boundedErrorName,
+    source: safeBundlePath(source),
+    line: 0,
+    column: 0,
+    operation: safeDimension(operation),
+    phase: safeDimension(phase),
+    retryable: retryable === true,
+    backendStatus: safeDimension(backendStatus),
+  };
+  const workspaceHash = await hashWorkspaceScope(workspaceKey);
+  if (workspaceHash) diagnostic.workspaceHash = workspaceHash;
+  const boundedCorrelationId = safeCorrelationId(correlationId);
+  if (boundedCorrelationId) diagnostic.correlationId = boundedCorrelationId;
+  return diagnostic;
+};
 
 let reportWindowStartedAt = 0;
 let reportsInWindow = 0;
@@ -64,17 +120,18 @@ const INDEXED_DB_READ_CODES = new Set([
   "STORE_NOT_FOUND",
 ]);
 
-export const reportIndexedDBReadFailure = (code) => {
+export const reportIndexedDBReadFailure = (code, { workspaceKey } = {}) => {
   const boundedCode = INDEXED_DB_READ_CODES.has(String(code))
     ? String(code)
     : "OPERATION_FAILED";
-  return reportReleaseDiagnostic({
-    column: 0,
+  return reportOperationalSignal({
     errorName: `IndexedDBRead.${boundedCode}`,
-    kind: "error",
-    line: 0,
-    releaseId: RELEASE_ID,
     source: "/frontend/app/BiddingModel.js",
+    operation: "indexeddb-read",
+    phase: "workspace-hydration",
+    retryable: true,
+    backendStatus: "degraded",
+    workspaceKey,
   });
 };
 
@@ -94,53 +151,91 @@ export const reportLegacyVersionFallback = (reason) => {
   });
 };
 
-export const reportAggregateVersionConflict = () => reportReleaseDiagnostic({
-  column: 0,
+export const reportAggregateVersionConflict = ({ workspaceKey, correlationId } = {}) => reportOperationalSignal({
   errorName: "AggregateVersion.Conflict",
-  kind: "error",
-  line: 0,
-  releaseId: RELEASE_ID,
   source: "/frontend/shared/AggregateVersionClient.js",
+  operation: "aggregate-version",
+  phase: "commit",
+  retryable: true,
+  backendStatus: "conflict",
+  workspaceKey,
+  correlationId,
 });
 
-const reportOperationalSignal = (errorName, source) => reportReleaseDiagnostic({
-  column: 0,
-  errorName,
-  kind: "error",
-  line: 0,
-  releaseId: RELEASE_ID,
-  source,
+const reportOperationalSignal = async (details) => reportReleaseDiagnostic(
+  await buildOperationalDiagnostic(details),
+);
+
+export const reportSyncConflict = ({ workspaceKey, correlationId } = {}) => reportOperationalSignal({
+  errorName: "Sync.Conflict",
+  source: "/frontend/app/SyncPushService.js",
+  operation: "sync-push",
+  phase: "commit",
+  retryable: true,
+  backendStatus: "conflict",
+  workspaceKey,
+  correlationId,
 });
 
-export const reportSyncConflict = () => reportOperationalSignal(
-  "Sync.Conflict",
-  "/frontend/app/SyncPushService.js",
-);
+export const reportOfflineQueuedMutation = ({ workspaceKey } = {}) => reportOperationalSignal({
+  errorName: "Sync.OfflineQueued",
+  source: "/frontend/app/WorkspaceDataStore.js",
+  operation: "workspace-mutation",
+  phase: "persist",
+  retryable: true,
+  backendStatus: "offline",
+  workspaceKey,
+});
 
-export const reportOfflineQueuedMutation = () => reportOperationalSignal(
-  "Sync.OfflineQueued",
-  "/frontend/app/WorkspaceDataStore.js",
-);
+export const reportOutboxFailure = ({ workspaceKey, correlationId } = {}) => reportOperationalSignal({
+  errorName: "Outbox.TransportFailure",
+  source: "/frontend/app/SyncPushService.js",
+  operation: "sync-push",
+  phase: "transport",
+  retryable: true,
+  backendStatus: "transport-error",
+  workspaceKey,
+  correlationId,
+});
 
-export const reportOutboxFailure = () => reportOperationalSignal(
-  "Outbox.TransportFailure",
-  "/frontend/app/SyncPushService.js",
-);
+export const reportOutboxRetry = ({ workspaceKey } = {}) => reportOperationalSignal({
+  errorName: "Outbox.StartupRetry",
+  source: "/frontend/app/startupReconciliation.js",
+  operation: "sync-push",
+  phase: "startup-replay",
+  retryable: true,
+  backendStatus: "queued",
+  workspaceKey,
+});
 
-export const reportOutboxRetry = () => reportOperationalSignal(
-  "Outbox.StartupRetry",
-  "/frontend/app/startupReconciliation.js",
-);
+export const reportStartupReconciliationFailure = ({ workspaceKey, correlationId } = {}) => reportOperationalSignal({
+  errorName: "Sync.StartupReconciliationFailure",
+  source: "/frontend/app/startupReconciliation.js",
+  operation: "sync",
+  phase: "startup-reconciliation",
+  retryable: true,
+  backendStatus: "degraded",
+  workspaceKey,
+  correlationId,
+});
 
-export const reportExcelWorkerFailure = () => reportOperationalSignal(
-  "ExcelWorker.Failure",
-  "/frontend/documents/ExcelParseWorkerClient.js",
-);
+export const reportExcelWorkerFailure = () => reportOperationalSignal({
+  errorName: "ExcelWorker.Failure",
+  source: "/frontend/documents/ExcelParseWorkerClient.js",
+  operation: "excel-parse",
+  phase: "worker",
+  retryable: true,
+  backendStatus: "degraded",
+});
 
-export const reportExcelWorkerFallback = () => reportOperationalSignal(
-  "ExcelWorker.Fallback",
-  "/frontend/documents/excelFileReader.js",
-);
+export const reportExcelWorkerFallback = () => reportOperationalSignal({
+  errorName: "ExcelWorker.Fallback",
+  source: "/frontend/documents/excelFileReader.js",
+  operation: "excel-parse",
+  phase: "main-thread-fallback",
+  retryable: false,
+  backendStatus: "fallback",
+});
 
 const LOT_JSON_RECOVERY_CODES = new Map([
   ["MALFORMED_JSON", "MalformedJSON"],
@@ -162,10 +257,14 @@ const LOT_JSON_RECOVERY_CONTEXTS = new Map([
 export const reportLotJsonRecovery = ({ code, context } = {}) => {
   const boundedCode = LOT_JSON_RECOVERY_CODES.get(String(code)) || "Unknown";
   const boundedContext = LOT_JSON_RECOVERY_CONTEXTS.get(String(context)) || "Unknown";
-  return reportOperationalSignal(
-    `LotJSON.${boundedCode}.${boundedContext}`,
-    "/frontend/packages/lotJsonParser.js",
-  );
+  return reportOperationalSignal({
+    errorName: `LotJSON.${boundedCode}.${boundedContext}`,
+    source: "/frontend/packages/lotJsonParser.js",
+    operation: "lot-json",
+    phase: "display-recovery",
+    retryable: false,
+    backendStatus: "degraded",
+  });
 };
 
 export const pollingFallbackDurationBucket = (durationMs) => {
@@ -175,15 +274,35 @@ export const pollingFallbackDurationBucket = (durationMs) => {
   return "Over5m";
 };
 
-export const reportWebSocketReconnect = () => reportOperationalSignal(
-  "WebSocket.Reconnect",
-  "/frontend/app/WebSocketSyncClient.js",
-);
+export const reportWebSocketReconnect = ({ workspaceKey } = {}) => reportOperationalSignal({
+  errorName: "WebSocket.Reconnect",
+  source: "/frontend/app/WebSocketSyncClient.js",
+  operation: "realtime",
+  phase: "connect",
+  retryable: true,
+  backendStatus: "reconnecting",
+  workspaceKey,
+});
 
-export const reportWebSocketPollingFallback = (durationMs) => reportOperationalSignal(
-  `WebSocket.PollingFallback.${pollingFallbackDurationBucket(durationMs)}`,
-  "/frontend/app/WebSocketSyncClient.js",
-);
+export const reportWebSocketPollingFallback = (durationMs, { workspaceKey } = {}) => reportOperationalSignal({
+  errorName: `WebSocket.PollingFallback.${pollingFallbackDurationBucket(durationMs)}`,
+  source: "/frontend/app/WebSocketSyncClient.js",
+  operation: "realtime",
+  phase: "polling",
+  retryable: true,
+  backendStatus: "fallback",
+  workspaceKey,
+});
+
+export const reportWebSocketMessageFailure = ({ workspaceKey } = {}) => reportOperationalSignal({
+  errorName: "WebSocket.MessageFailure",
+  source: "/frontend/app/WebSocketSyncClient.js",
+  operation: "realtime",
+  phase: "message",
+  retryable: true,
+  backendStatus: "protocol-error",
+  workspaceKey,
+});
 
 export const installReleaseDiagnostics = (target = globalThis.window) => {
   if (!target?.addEventListener || target.__bfReleaseDiagnosticsInstalled) return;

@@ -2,6 +2,7 @@ import process from "node:process";
 import { existsSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
+import { isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -124,7 +125,8 @@ try {
   const httpErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
   page.on("response", async (response) => {
-    if (response.status() >= 400 && response.url().includes("/api/")) {
+    if (response.status() >= 400 && response.url().includes("/api/")
+      && !isExpectedTelemetryBackpressure(response)) {
       let body = "";
       try { body = await response.text(); } catch {}
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);

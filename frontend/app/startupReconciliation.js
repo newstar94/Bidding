@@ -1,12 +1,17 @@
-import { reportOutboxRetry } from "../shared/releaseDiagnostics.js";
+import {
+  reportOutboxRetry,
+  reportStartupReconciliationFailure,
+} from "../shared/releaseDiagnostics.js";
 
-export async function reconcileRouteDataAtStartup(controller) {
+export async function reconcileRouteDataAtStartup(controller, {
+  reportRetry = reportOutboxRetry,
+  reportFailure = reportStartupReconciliationFailure,
+} = {}) {
   controller?.markStartup?.("route-data-sync:start");
   try {
     let initialPush = { ok: true, skipped: true };
     if (typeof controller?.autoSync === "function") {
       initialPush = await controller.autoSync();
-      if (initialPush?.skipped !== true) void reportOutboxRetry();
     }
     if (initialPush?.conflict) {
       if (typeof controller?.forceSyncData === "function") {
@@ -21,12 +26,16 @@ export async function reconcileRouteDataAtStartup(controller) {
     if (!pullResult?.ok) return false;
     if (pullResult?.localMutationsPending && typeof controller?.autoSync === "function") {
       const replay = await controller.autoSync();
-      void reportOutboxRetry();
+      void reportRetry({ workspaceKey: controller?.model?.workspaceScope?.key });
       if (!replay?.ok) return false;
     }
     return true;
   } catch (error) {
-    console.warn("Initial route reconciliation failed; using the local workspace snapshot.", error);
+    void reportFailure({
+      workspaceKey: controller?.model?.workspaceScope?.key,
+      correlationId: error?.requestId,
+    });
+    console.warn("Initial route reconciliation failed; using the local workspace snapshot.");
     return false;
   } finally {
     controller?.markStartup?.("route-data-sync:end");

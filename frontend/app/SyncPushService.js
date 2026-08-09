@@ -157,7 +157,10 @@ async function applySuccessfulPush(controller, {
 async function applyFailedPush(controller, { status, data, snapshot }) {
   const validationErrors = getSyncValidationErrors(data);
   if (status === 409 || data.status === "conflict") {
-    void reportSyncConflict();
+    void reportSyncConflict({
+      workspaceKey: controller.model?.workspaceScope?.key,
+      correlationId: data.requestId,
+    });
     const resolution = await resolveRowVersionConflicts(controller, { data, snapshot });
     if (resolution.resolved) {
       controller._syncConflict = null;
@@ -277,8 +280,11 @@ export function autoSync() {
       status,
     });
   }).catch((error) => {
-    void reportOutboxFailure();
-    console.error("Error auto sync:", error);
+    void reportOutboxFailure({
+      workspaceKey: this.model?.workspaceScope?.key,
+      correlationId: error?.requestId,
+    });
+    console.error("Automatic sync transport failed; structured diagnostic submitted.");
     this.updateSyncState({ phase: "transportError", message: "Không thể kết nối máy chủ" });
     return { ok: false, error };
   });

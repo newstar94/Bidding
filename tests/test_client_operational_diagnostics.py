@@ -33,3 +33,55 @@ def test_operational_diagnostics_fit_the_pii_safe_bounded_contract(error_name, s
     assert errors == []
     assert normalized["errorName"] == error_name
     assert set(normalized) == {"kind", "releaseId", "errorName", "source", "line", "column"}
+
+
+def test_structured_operational_diagnostic_accepts_only_bounded_redacted_dimensions():
+    payload = {
+        "kind": "error",
+        "releaseId": "test-release",
+        "errorName": "Sync.TransportFailure",
+        "source": "/frontend/app/SyncPushService.js",
+        "line": 0,
+        "column": 0,
+        "operation": "sync-push",
+        "phase": "transport",
+        "retryable": True,
+        "backendStatus": "transport-error",
+        "workspaceHash": "0123456789abcdef",
+        "correlationId": "request-123",
+    }
+
+    normalized, errors = normalize_client_error_payload(payload)
+
+    assert errors == []
+    assert normalized == payload
+    assert "organizationId" not in normalized
+    assert "message" not in normalized
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("workspaceHash", "org-private-raw"),
+        ("correlationId", "request id with spaces"),
+        ("operation", "sync/prompt=private"),
+        ("message", "private contractor data"),
+        ("prompt", "raw AI prompt"),
+        ("token", "secret"),
+    ],
+)
+def test_operational_diagnostic_rejects_raw_or_unbounded_context(field, value):
+    payload = {
+        "kind": "error",
+        "releaseId": "test-release",
+        "errorName": "Sync.TransportFailure",
+        "source": "/frontend/app/SyncPushService.js",
+        "line": 0,
+        "column": 0,
+        field: value,
+    }
+
+    normalized, errors = normalize_client_error_payload(payload)
+
+    assert normalized is None
+    assert errors
