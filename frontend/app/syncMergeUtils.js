@@ -17,6 +17,24 @@ export function mergeIncomingRecords(model, key, incoming) {
     }
   });
 }
+function overlayPendingUpserts(incoming, pendingUpserts) {
+  const merged = [...incoming];
+  const indexById = new Map(
+    merged.map((record, index) => [String(record?.id || ""), index]),
+  );
+  for (const record of pendingUpserts) {
+    const id = String(record?.id || "");
+    if (!id) continue;
+    const index = indexById.get(id);
+    if (index === undefined) {
+      indexById.set(id, merged.length);
+      merged.push(record);
+    } else {
+      merged[index] = record;
+    }
+  }
+  return merged;
+}
 const hasMeaningfulValue = (value) => {
   if (Array.isArray(value)) return value.length > 0;
   if (value && typeof value === "object") return Object.keys(value).length > 0;
@@ -63,11 +81,25 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "domainContract", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
+  const overlayDeletionsByTable = {};
   const replacementsByTable = {};
   const upsertsByTable = {};
   const paginatedKeys = new Set(dbData.paginatedKeys || []);
   const useServerSidePagination = !!dbData.useServerSidePagination;
   const isFullInitialSync = !options.useVersionDelta && options.since === "0";
+  const mutationBatch = typeof model.getMutationQueue === "function"
+    ? model.getMutationQueue()
+    : null;
+  const pendingDeleteIdsByTable = new Map();
+  for (const deletion of mutationBatch?.deletes || []) {
+    const table = String(deletion?.table || "");
+    const id = String(deletion?.id || "");
+    if (!table || !id) continue;
+    if (!pendingDeleteIdsByTable.has(table)) {
+      pendingDeleteIdsByTable.set(table, new Set());
+    }
+    pendingDeleteIdsByTable.get(table).add(id);
+  }
   if (dbData.domainContract && typeof dbData.domainContract === "object") {
     model.domainContract = Object.freeze(dbData.domainContract);
   }
@@ -90,25 +122,45 @@ export function applyServerSnapshot(model, dbData, options = {}) {
       if (shouldSkipEmptyPaginatedStore(key, incoming)) {
         return;
       }
-      model.state[key] = incoming;
+      const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {});
+      const pendingDeleteIds = pendingDeleteIdsByTable.get(key) || new Set();
+      const serverRecords = incoming.filter(
+        (record) => !pendingDeleteIds.has(String(record?.id || "")),
+      );
+      const overlaid = overlayPendingUpserts(serverRecords, pendingUpserts);
+      model.state[key] = overlaid;
       changedKeys.add(key);
-      replacementsByTable[key] = incoming;
+      replacementsByTable[key] = overlaid;
       return;
     }
-    if (incoming.length === 0) return;
-    mergeIncomingRecords(model, key, incoming);
+    const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {});
+    if (incoming.length === 0 && pendingUpserts.length === 0) return;
+    const protectedIds = new Set(
+      pendingUpserts.map((record) => String(record?.id || "")),
+    );
+    for (const id of pendingDeleteIdsByTable.get(key) || []) {
+      protectedIds.add(id);
+    }
+    const serverIncoming = incoming.filter(
+      (record) => !protectedIds.has(String(record?.id || "")),
+    );
+    mergeIncomingRecords(model, key, serverIncoming);
+    mergeIncomingRecords(model, key, pendingUpserts);
     changedKeys.add(key);
-    upsertsByTable[key] = incoming;
+    upsertsByTable[key] = [...serverIncoming, ...pendingUpserts];
   });
   if (typeof model.suspendMutationTracking === "function") {
     model.suspendMutationTracking(applyIncoming);
   } else {
     applyIncoming();
   }
-  const mutationBatch = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
   const applyReferenceData = () => Object.entries(dbData.referenceData || {}).forEach(([key, records]) => {
     if (!Array.isArray(records) || records.length === 0) return;
-    const incoming = normalizeIncomingRecords(model, key, records);
+    const pendingDeleteIds = pendingDeleteIdsByTable.get(key) || new Set();
+    const incoming = normalizeIncomingRecords(model, key, records).filter(
+      (record) => !pendingDeleteIds.has(String(record?.id || "")),
+    );
+    if (incoming.length === 0) return;
     const inFlightIds = new Set(Object.keys(mutationBatch?.upserts?.[key] || {}).map((id) => String(id)));
     const mergedRecords = mergeReferenceRecords(
       model,
@@ -145,6 +197,10 @@ export function applyServerSnapshot(model, dbData, options = {}) {
     (dbData.deletions || []).forEach((del) => {
       const key = del.table;
       const id = del.id;
+      const pendingUpsertIds = new Set(
+        Object.keys(mutationBatch?.upserts?.[key] || {}).map(String),
+      );
+      if (pendingUpsertIds.has(String(id))) return;
       if (model.state[key]) {
         model.state[key] = model.state[key].filter((x) => String(x.id) !== String(id));
         changedKeys.add(key);
@@ -155,12 +211,33 @@ export function applyServerSnapshot(model, dbData, options = {}) {
       }
     });
   }
+  for (const [key, pendingDeleteIds] of pendingDeleteIdsByTable) {
+    if (!Array.isArray(model.state[key]) || pendingDeleteIds.size === 0) continue;
+    const removedIds = [];
+    const retainedRecords = model.state[key].filter((record) => {
+      const id = String(record?.id || "");
+      if (!pendingDeleteIds.has(id)) return true;
+      if (id) removedIds.push(id);
+      return false;
+    });
+    if (removedIds.length > 0) {
+      model.state[key].splice(0, model.state[key].length, ...retainedRecords);
+      changedKeys.add(key);
+      overlayDeletionsByTable[key] = removedIds;
+    }
+  }
   let persistencePromise = Promise.resolve();
   if (model.db && typeof model.db.applySyncChanges === "function") {
+    const persistenceDeletions = { ...deletionsByTable };
+    Object.entries(overlayDeletionsByTable).forEach(([key, ids]) => {
+      persistenceDeletions[key] = [
+        ...new Set([...(persistenceDeletions[key] || []), ...ids]),
+      ];
+    });
     persistencePromise = model.db.applySyncChanges({
       replacements: replacementsByTable,
       upserts: upsertsByTable,
-      deletions: deletionsByTable
+      deletions: persistenceDeletions
     });
   } else if (typeof model.persistData === "function") {
     persistencePromise = Promise.all(Array.from(changedKeys).map((key) => model.persistData(key, { trackMutation: false })));
