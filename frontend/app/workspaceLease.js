@@ -40,6 +40,26 @@ export function assertWorkspaceLeaseCurrent(model, lease) {
   return lease;
 }
 
+export function beginWorkspaceRequest(model) {
+  const controller = new AbortController();
+  const lease = captureWorkspaceLease(model, { controller });
+  model._workspaceRequestControllers ||= new Set();
+  model._workspaceRequestControllers.add(controller);
+  return Object.freeze({ controller, lease, signal: controller.signal });
+}
+
+export function finishWorkspaceRequest(model, request) {
+  model?._workspaceRequestControllers?.delete?.(request?.controller);
+}
+
+export function abortWorkspaceRequests(requests) {
+  if (!(requests instanceof Set)) return;
+  for (const controller of requests) {
+    controller?.abort?.(workspaceChangedError());
+  }
+  requests.clear();
+}
+
 export function abortWorkspaceRequestMap(requests) {
   if (!(requests instanceof Map)) return;
   for (const request of requests.values()) {

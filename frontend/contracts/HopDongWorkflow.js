@@ -9,7 +9,7 @@ import {
   stageLocalRecords,
 } from "../shared/MutationService.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
-import { apiFetch } from "../shared/apiClient.js";
+import { loadWorkspaceEmployees } from "../shared/workspaceEmployeeLoader.js";
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { getVersionLabel } from "../shared/formatters.js";
@@ -339,21 +339,11 @@ export async function editHopDong(id) {
     };
     const loadAndPopulateHdEmpDropdown = () => {
       if (!this.model.state.employees || this.model.state.employees.length === 0) {
-        apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
-          this.model.state.employees = users.map((u) => {
-            const employeeProfile = organizationEmployeeProfile(u);
-            return {
-              id: String(u.id || ""),
-              name: employeeProfile.name,
-              email: u.email || "",
-              phone: employeeProfile.phone,
-              role: u.role
-            };
-          });
-          _populateHdEmpDropdown();
-        }).catch((err) => {
-          console.error("Failed to load users:", err);
-          _populateHdEmpDropdown();
+        loadWorkspaceEmployees(this.model, { onLoaded: _populateHdEmpDropdown }).catch((err) => {
+          if (err?.code !== "WORKSPACE_CHANGED") {
+            console.error("Failed to load users:", err);
+            _populateHdEmpDropdown();
+          }
         });
       } else {
         _populateHdEmpDropdown();

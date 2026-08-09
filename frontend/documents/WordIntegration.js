@@ -11,6 +11,12 @@ import {
   canManageWorkspaceWordVariables,
   canUploadWorkspaceAssets,
 } from "../auth/accessContext.js";
+import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+  isWorkspaceLeaseCurrent,
+} from "../app/workspaceLease.js";
 
 export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   const isReadonly = !canManageWordVariables;
@@ -1007,48 +1013,68 @@ export function setupCopyVariableEvents() {
   });
 }
 export async function loadWordTemplates() {
+  const model = this.model;
+  const request = beginWorkspaceRequest(model);
+  let shouldLoadMappings = true;
   try {
-    const res = await apiFetch("/api/templates");
+    const res = await apiFetch("/api/templates", { signal: request.signal });
+    assertWorkspaceLeaseCurrent(model, request.lease);
     if (res.ok) {
       const templates = await res.json();
+      assertWorkspaceLeaseCurrent(model, request.lease);
       this.view.renderWordTemplates(templates);
       this.setupTemplateActivationEvents();
     }
   } catch (err) {
-    console.error("Failed to load templates:", err);
+    if (!isWorkspaceLeaseCurrent(model, request.lease)) {
+      shouldLoadMappings = false;
+    } else {
+      console.error("Failed to load templates:", err);
+    }
   } finally {
+    finishWorkspaceRequest(model, request);
+  }
+  if (shouldLoadMappings && isWorkspaceLeaseCurrent(model, request.lease)) {
     await this.loadWordMappings();
   }
 }
 export async function loadWordMappings() {
+  const model = this.model;
+  const request = beginWorkspaceRequest(model);
   try {
-    const res = await apiFetch("/api/word-mappings?includeDisabled=true");
+    const res = await apiFetch("/api/word-mappings?includeDisabled=true", {
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(model, request.lease);
     const payload = await res.json().catch(() => null);
+    assertWorkspaceLeaseCurrent(model, request.lease);
     if (!res.ok) {
       throw new Error(payload?.error || `HTTP ${res.status}`);
     }
     if (!Array.isArray(payload)) {
       throw new Error("Phản hồi danh sách biến Word không đúng định dạng.");
     }
-    if (!this.model.state) this.model.state = {};
-    this.model.state.wordMappings = payload.filter((mapping) => !mapping.disabled);
+    request.lease.state.wordMappings = payload.filter((mapping) => !mapping.disabled);
     this._disabledWordMappings = payload.filter((mapping) => mapping.disabled);
     if (this.view.renderWordMappingsTable) {
-      this.view.renderWordMappingsTable(this.model.state.wordMappings);
+      this.view.renderWordMappingsTable(request.lease.state.wordMappings);
     }
     const dictionarySelect = document.getElementById("dictionary-group-select");
     const group = dictionarySelect ? dictionarySelect.value : "global";
     this.view.renderDictionary(group);
     this.setupCopyVariableEvents();
   } catch (err) {
-    console.error("Failed to load word mappings:", err);
-    if (!this.model.state) this.model.state = {};
-    this.model.state.wordMappings = [];
-    this._disabledWordMappings = [];
-    const tbody = document.getElementById("dictionary-table-body");
-    if (tbody) {
-      tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Không tải được danh sách biến Word: ${escapeHtml(err.message || err)}</td></tr>`);
+    if (isWorkspaceLeaseCurrent(model, request.lease)) {
+      console.error("Failed to load word mappings:", err);
+      request.lease.state.wordMappings = [];
+      this._disabledWordMappings = [];
+      const tbody = document.getElementById("dictionary-table-body");
+      if (tbody) {
+        tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Không tải được danh sách biến Word: ${escapeHtml(err.message || err)}</td></tr>`);
+      }
     }
+  } finally {
+    finishWorkspaceRequest(model, request);
   }
 }
 export function setupTemplateActivationEvents() {

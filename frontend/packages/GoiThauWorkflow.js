@@ -12,8 +12,8 @@ import {
   getNextVersion,
   rememberSelectedVersion
 } from "../shared/VersionedEntityService.js";
-import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
+import { loadWorkspaceEmployees } from "../shared/workspaceEmployeeLoader.js";
 import {
   derivePackageAssigneeControlState,
   ensureCurrentUserAssignee,
@@ -149,21 +149,11 @@ export async function editGoiThau(id, isReadOnly = false) {
   };
   const loadAndPopulateEmpDropdown = () => {
     if (!this.model.state.employees || this.model.state.employees.length === 0) {
-      apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
-        this.model.state.employees = users.map((u) => {
-          const employeeProfile = organizationEmployeeProfile(u);
-          return {
-            id: String(u.id || ""),
-            name: employeeProfile.name,
-            email: u.email || "",
-            phone: employeeProfile.phone,
-            role: u.role
-          };
-        });
-        _populateEmpDropdown();
-      }).catch((err) => {
-        console.error("Failed to load users:", err);
-        _populateEmpDropdown();
+      loadWorkspaceEmployees(this.model, { onLoaded: _populateEmpDropdown }).catch((err) => {
+        if (err?.code !== "WORKSPACE_CHANGED") {
+          console.error("Failed to load users:", err);
+          _populateEmpDropdown();
+        }
       });
     } else {
       _populateEmpDropdown();

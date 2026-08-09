@@ -8,6 +8,11 @@ import {
   derivePlanPublishingAlerts,
   selectDashboardActionItems
 } from "./DashboardView.js";
+import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+} from "./workspaceLease.js";
 
 const EMPTY_ACTIVITY = `
   <div class="notification-empty">
@@ -182,8 +187,12 @@ export function initializeNotificationCenter(controller) {
   const refresh = async () => {
     if (state.loading) return;
     state.loading = true;
+    const request = beginWorkspaceRequest(controller.model);
     try {
-      const response = await apiFetch("/api/notifications?limit=40");
+      const response = await apiFetch("/api/notifications?limit=40", {
+        signal: request.signal,
+      });
+      assertWorkspaceLeaseCurrent(controller.model, request.lease);
       if (!response.ok) {
         state.unavailable = true;
         renderNotifications(state, controller, elements);
@@ -191,6 +200,7 @@ export function initializeNotificationCenter(controller) {
         return;
       }
       const payload = await response.json();
+      assertWorkspaceLeaseCurrent(controller.model, request.lease);
       state.unavailable = false;
       state.items = Array.isArray(payload.items) ? payload.items : [];
       state.unreadCount = Number(payload.unreadCount || 0);
@@ -198,11 +208,14 @@ export function initializeNotificationCenter(controller) {
       updateBadge(state, elements);
       window.lucide?.createIcons?.({ root: elements.panel });
     } catch (error) {
-      console.warn("Unable to refresh notifications:", error);
-      state.unavailable = true;
-      renderNotifications(state, controller, elements);
-      updateBadge(state, elements);
+      if (error?.code !== "WORKSPACE_CHANGED") {
+        console.warn("Unable to refresh notifications:", error);
+        state.unavailable = true;
+        renderNotifications(state, controller, elements);
+        updateBadge(state, elements);
+      }
     } finally {
+      finishWorkspaceRequest(controller.model, request);
       state.loading = false;
     }
   };

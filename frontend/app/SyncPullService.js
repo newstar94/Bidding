@@ -14,6 +14,11 @@ import {
 } from "./SyncWorkspaceContext.js";
 import { renderChangedState } from "./SyncRenderCoordinator.js";
 import { hideOfflineBanner } from "./SyncPresenter.js";
+import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+} from "./workspaceLease.js";
 
 
 const DETAIL_ROUTE_TABLE = {
@@ -90,25 +95,36 @@ export function storeFetchedRecord(model, tableKey, record) {
 
 export async function fetchRecordByLookup(tableKey, lookup) {
   if (!tableKey || !lookup) return null;
-  const response = await apiFetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
-    headers: { "X-Active-Org": encodeURIComponent(getActiveOrganizationId()) }
-  });
-  if (!response.ok) return null;
-  const data = await response.json();
-  if (!data || !data.item) return null;
-  const normalized = typeof this.model.normalizeRecordKeys === "function"
-    ? this.model.normalizeRecordKeys(data.item, tableKey)
-    : data.item;
-  const record = { ...normalized, referenceOnly: false };
-  storeFetchedRecord(this.model, tableKey, record);
-  if (this.model.db && typeof this.model.db.putRecord === "function") {
-    await this.model.db.putRecord(tableKey, record);
-    this.model.markStorageTablesRecovered?.([tableKey]);
-  } else if (typeof this.model.persistData === "function") {
-    await this.model.persistData(tableKey, { trackMutation: false });
-    this.model.markStorageTablesRecovered?.([tableKey]);
+  const model = this.model;
+  const request = beginWorkspaceRequest(model);
+  try {
+    const response = await apiFetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
+      headers: { "X-Active-Org": encodeURIComponent(getActiveOrganizationId()) },
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(model, request.lease);
+    if (!response.ok) return null;
+    const data = await response.json();
+    assertWorkspaceLeaseCurrent(model, request.lease);
+    if (!data || !data.item) return null;
+    const normalized = typeof model.normalizeRecordKeys === "function"
+      ? model.normalizeRecordKeys(data.item, tableKey)
+      : data.item;
+    const record = { ...normalized, referenceOnly: false };
+    storeFetchedRecord(model, tableKey, record);
+    if (request.lease.db && typeof request.lease.db.putRecord === "function") {
+      await request.lease.db.putRecord(tableKey, record);
+      assertWorkspaceLeaseCurrent(model, request.lease);
+      model.markStorageTablesRecovered?.([tableKey]);
+    } else if (request.lease.db && typeof model.persistData === "function") {
+      await model.persistData(tableKey, { trackMutation: false });
+      assertWorkspaceLeaseCurrent(model, request.lease);
+      model.markStorageTablesRecovered?.([tableKey]);
+    }
+    return record;
+  } finally {
+    finishWorkspaceRequest(model, request);
   }
-  return record;
 }
 
 export function ensureDetailRecordLoaded(tabName, action) {

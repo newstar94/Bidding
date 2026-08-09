@@ -30,6 +30,11 @@ import {
   workflowRequirementForRoute,
 } from "./WorkflowModuleLoader.js";
 import { createFeatureServices } from "./FeatureServices.js";
+import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+} from "./workspaceLease.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -588,14 +593,17 @@ export class BiddingController {
   }
   loadInitDataInBackground() {
     const load = async () => {
+      const request = beginWorkspaceRequest(this.model);
       try {
         const [usersRes, pkgsRes] = await Promise.all([
-          apiFetch("/api/auth/users"),
-          apiFetch("/api/system-packages")
+          apiFetch("/api/auth/users", { signal: request.signal }),
+          apiFetch("/api/system-packages", { signal: request.signal })
         ]);
+        assertWorkspaceLeaseCurrent(this.model, request.lease);
         if (usersRes.ok) {
           const users = await usersRes.json();
-          this.model.state.employees = users.map((u) => {
+          assertWorkspaceLeaseCurrent(this.model, request.lease);
+          request.lease.state.employees = users.map((u) => {
             const employeeProfile = organizationEmployeeProfile(u);
             return {
               id: u.id,
@@ -607,16 +615,23 @@ export class BiddingController {
               organizations: normalizeOrganizations(u)
             };
           });
-          this.model.persistData("employees");
+          await this.model.persistData("employees", { trackMutation: false });
+          assertWorkspaceLeaseCurrent(this.model, request.lease);
           this.view.populateNhanVienPhuTrachDropdowns();
         }
         if (pkgsRes.ok) {
           const pkgs = await pkgsRes.json();
-          this.model.state.systempackages = pkgs;
-          this.model.persistData("systempackages");
+          assertWorkspaceLeaseCurrent(this.model, request.lease);
+          request.lease.state.systempackages = pkgs;
+          await this.model.persistData("systempackages", { trackMutation: false });
+          assertWorkspaceLeaseCurrent(this.model, request.lease);
         }
       } catch (err) {
-        console.error("Failed to load init data (users/packages):", err);
+        if (err?.code !== "WORKSPACE_CHANGED") {
+          console.error("Failed to load init data (users/packages):", err);
+        }
+      } finally {
+        finishWorkspaceRequest(this.model, request);
       }
     };
     if ("requestIdleCallback" in window) {

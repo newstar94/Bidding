@@ -15,7 +15,10 @@ import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
 import { EntityIndexes } from "./EntityIndexes.js";
-import { abortWorkspaceRequestMap } from "./workspaceLease.js";
+import {
+  abortWorkspaceRequestMap,
+  abortWorkspaceRequests,
+} from "./workspaceLease.js";
 import {
   ScopedWorkspaceStorage,
   purgeWorkspaceLocalData,
@@ -117,6 +120,7 @@ export class BiddingModel {
     this._mutationOutboxStoreStorage = null;
     this._mutationOutboxStoreDatabase = null;
     this._workspaceEpoch = 0;
+    this._workspaceRequestControllers = new Set();
     this.workspaceScope = null;
     this.workspaceStorage = null;
     this.workspaceSessionStorage = null;
@@ -176,6 +180,7 @@ export class BiddingModel {
   beginWorkspaceTransition() {
     if (!this._workspaceWriteLocked) this._workspaceEpoch += 1;
     this._workspaceWriteLocked = true;
+    abortWorkspaceRequests(this._workspaceRequestControllers);
   }
 
   endWorkspaceTransition() {
@@ -192,6 +197,7 @@ export class BiddingModel {
   }
 
   _resetWorkspaceMemory() {
+    abortWorkspaceRequests(this._workspaceRequestControllers);
     abortWorkspaceRequestMap(this._paginationRequests);
     abortWorkspaceRequestMap(this._planPackageHydrationRequests);
     this._paginationRequests = new Map();

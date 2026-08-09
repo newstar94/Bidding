@@ -8,6 +8,11 @@ import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+} from "../app/workspaceLease.js";
+import {
   applyTimelineApplicability,
   applyAutomaticTimelineSources,
   copyTimelineForNewVersion,
@@ -235,19 +240,35 @@ function cachePlan(view, rawRecord) {
   return record;
 }
 
-async function fetchPackage(view, id) {
+export async function fetchTimelinePackage(view, id) {
   const local = (view.model.state.goithau || []).find((item) => String(item.id) === String(id));
   if (local?.timelineItems && local.referenceOnly !== true && local.hinhThucLuaChon !== undefined) return local;
-  const data = await getJson(`/api/record?table=goithau&lookup=${encodeURIComponent(id)}`);
-  return data?.item ? cachePackage(view, data.item) : null;
+  const request = beginWorkspaceRequest(view.model);
+  try {
+    const data = await getJson(`/api/record?table=goithau&lookup=${encodeURIComponent(id)}`, {
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(view.model, request.lease);
+    return data?.item ? cachePackage(view, data.item) : null;
+  } finally {
+    finishWorkspaceRequest(view.model, request);
+  }
 }
 
-async function fetchPlan(view, id) {
+export async function fetchTimelinePlan(view, id) {
   if (!id) return null;
   const local = (view.model.state.kehoach || []).find((item) => String(item.id) === String(id));
   if (local?.referenceOnly !== true && local?.pheDuyet) return local;
-  const data = await getJson(`/api/record?table=kehoach&lookup=${encodeURIComponent(id)}`);
-  return data?.item ? cachePlan(view, data.item) : local || null;
+  const request = beginWorkspaceRequest(view.model);
+  try {
+    const data = await getJson(`/api/record?table=kehoach&lookup=${encodeURIComponent(id)}`, {
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(view.model, request.lease);
+    return data?.item ? cachePlan(view, data.item) : local || null;
+  } finally {
+    finishWorkspaceRequest(view.model, request);
+  }
 }
 
 function renderPlanOptions(view) {
@@ -490,11 +511,11 @@ async function selectPackage(view, packageId) {
   setHidden("timeline-loading", false);
   setHidden("timeline-error", true);
   try {
-    const pkg = await fetchPackage(view, packageId);
+    const pkg = await fetchTimelinePackage(view, packageId);
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
     if (!pkg) throw new Error("Không tìm thấy gói thầu đã chọn.");
     state.package = pkg;
-    state.plan = await fetchPlan(view, pkg.keHoachId) || findPlan(view, pkg);
+    state.plan = await fetchTimelinePlan(view, pkg.keHoachId) || findPlan(view, pkg);
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
     state.rows = mergeTimelineRows(pkg, state.plan, findContracts(view, pkg));
     state.dirty = false;
@@ -658,7 +679,7 @@ async function copyPreviousTimeline(view) {
     "copy"
   );
   if (!confirmed) return;
-  const previousPackage = await fetchPackage(view, previous.id);
+  const previousPackage = await fetchTimelinePackage(view, previous.id);
   state.rows = copyTimelineForNewVersion(mergeTimelineRows(
     previousPackage,
     findPlan(view, previousPackage),

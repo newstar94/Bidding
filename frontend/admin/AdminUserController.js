@@ -6,6 +6,11 @@ import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+} from "../app/workspaceLease.js";
+import {
   buildProfileUpdatePayload,
   deriveEmailChangeUiState,
   emailChangeErrorMessage,
@@ -1150,11 +1155,14 @@ export async function reAddEmployee(id, actionButton = null) {
   }
 }
 export async function reloadEmployeesFromDatabase() {
+  const request = beginWorkspaceRequest(this.model);
   try {
-    const usersRes = await apiFetch("/api/auth/users");
+    const usersRes = await apiFetch("/api/auth/users", { signal: request.signal });
+    assertWorkspaceLeaseCurrent(this.model, request.lease);
     if (usersRes.ok) {
       const users = await usersRes.json();
-      this.model.state.employees = users.map((u) => {
+      assertWorkspaceLeaseCurrent(this.model, request.lease);
+      request.lease.state.employees = users.map((u) => {
         const employeeProfile = organizationEmployeeProfile(u);
         return {
           id: u.id,
@@ -1167,13 +1175,23 @@ export async function reloadEmployeesFromDatabase() {
           organizations: normalizeOrganizations(u)
         };
       });
-      this.model.persistData("employees");
+      await this.model.persistData("employees", { trackMutation: false });
+      assertWorkspaceLeaseCurrent(this.model, request.lease);
       this.view.populateNhanVienPhuTrachDropdowns();
     }
-    const formerRes = await apiFetch("/api/organizations/former-members");
-    this.model.state.formerEmployees = formerRes.ok ? await formerRes.json() : [];
+    const formerRes = await apiFetch("/api/organizations/former-members", {
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(this.model, request.lease);
+    const formerEmployees = formerRes.ok ? await formerRes.json() : [];
+    assertWorkspaceLeaseCurrent(this.model, request.lease);
+    request.lease.state.formerEmployees = formerEmployees;
   } catch (err) {
-    console.error("Failed to reload employees:", err);
+    if (err?.code !== "WORKSPACE_CHANGED") {
+      console.error("Failed to reload employees:", err);
+    }
+  } finally {
+    finishWorkspaceRequest(this.model, request);
   }
 }
 export function editHoSoGiayStatus(id) {
