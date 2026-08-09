@@ -218,6 +218,33 @@ def _subscription_payload(cursor, organization_id, *, for_update=False):
     return result
 
 
+def _lock_organization_member_quota(cursor, organization_id):
+    """Lock the subscription row and count active members in that lock scope."""
+
+    subscription = cursor.execute(
+        """
+        SELECT sub.status, sub.expires_at, sub.member_quota,
+               tc.trang_thai AS organization_status,
+               pkg.trang_thai AS package_status
+        FROM organization_subscriptions sub
+        JOIN to_chuc tc ON tc.id = sub.organization_id
+        JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
+        WHERE sub.organization_id = ?
+        FOR UPDATE OF sub
+        """,
+        (organization_id,),
+    ).fetchone()
+    if not subscription:
+        return None, 0
+    member_count = int(cursor.execute(
+        """SELECT count(*) FROM thanh_vien_to_chuc
+           WHERE organization_id = ?
+             AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
+        (organization_id,),
+    ).fetchone()[0])
+    return subscription, member_count
+
+
 async def update_organization_subscription_api(request):
     """Lock, unlock, renew or change an organization subscription atomically."""
     conn = None
@@ -512,18 +539,9 @@ async def add_user_to_org_api(request):
             conn.rollback()
             return JSONResponse({"error": "Ban khong co quyen them super_admin vao to chuc."}, status_code=403)
 
-        subscription = cursor.execute(
-            """
-            SELECT sub.status, sub.expires_at, sub.member_quota,
-                   tc.trang_thai AS organization_status,
-                   pkg.trang_thai AS package_status
-            FROM organization_subscriptions sub
-            JOIN to_chuc tc ON tc.id = sub.organization_id
-            JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
-            WHERE sub.organization_id = ?
-            """,
-            (org_id,),
-        ).fetchone()
+        subscription, member_count = _lock_organization_member_quota(
+            cursor, org_id
+        )
         now = int(time.time())
         if (
             not subscription
@@ -537,11 +555,6 @@ async def add_user_to_org_api(request):
                 {"error": "Gói dịch vụ của tổ chức không hoạt động.", "code": "ORG_SUBSCRIPTION_INACTIVE"},
                 status_code=403,
             )
-        member_count = int(cursor.execute(
-            """SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ?
-               AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
-            (org_id,),
-        ).fetchone()[0])
         member_quota = int(subscription['member_quota'])
         if member_count >= member_quota:
             conn.rollback()
