@@ -20,6 +20,7 @@ from backend.shared.membership_invariants import (
     lock_organization_membership_invariants,
     lock_organization_membership_invariants_many,
 )
+from backend.shared.platform_role_invariants import lock_platform_role_invariants
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
@@ -292,6 +293,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        lock_platform_role_invariants(cursor)
         target = cursor.execute(
             "SELECT vai_tro, email, ho_ten FROM tai_khoan WHERE id = ? LIMIT 1",
             (user_id,),
@@ -540,6 +542,7 @@ def _delete_user_sync(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN")
+        lock_platform_role_invariants(cursor)
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
         target = cursor.fetchone()
         if not target:

@@ -64,6 +64,7 @@ from backend.shared.logging_utils import log_structured_event
 from backend.shared.membership_invariants import (
     lock_organization_membership_invariants,
 )
+from backend.shared.platform_role_invariants import lock_platform_role_invariants
 from backend.security.turnstile import edge_challenge_required, enforce_turnstile
 from backend.runtime_capabilities import with_server_capabilities
 from backend.shared.email_templates import render_branded_email
@@ -1639,6 +1640,7 @@ async def update_user_role_api(request):
             if new_role not in {"super_admin", "user"}:
                 conn.rollback()
                 return JSONResponse({"error": "Vai trò nền tảng không hợp lệ."}, status_code=400)
+            lock_platform_role_invariants(cursor)
             if user_id == str(role_or_err.user_id):
                 conn.rollback()
                 return JSONResponse({"error": "Không thể tự thay đổi quyền nền tảng."}, status_code=409)
