@@ -144,25 +144,26 @@ try {
     }
     await route.continue();
   });
+  const interruptedRequestFailed = page.waitForEvent("requestfailed", {
+    predicate: (request) => (
+      request.method() === "POST"
+        && new URL(request.url()).pathname === "/api/sync"
+    ),
+    timeout: 15_000,
+  });
   await page.locator("#form-chuyengia button[type='submit']").click();
+  await interruptedRequestFailed;
   await page.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    const [{ getAppController }, { getSyncActivitySnapshot }] = await Promise.all([
+      import("/frontend/app/controllerRef.js"),
+      import("/frontend/app/SyncCoordinator.js"),
+    ]);
     const controller = getAppController();
+    const activity = getSyncActivitySnapshot(controller);
     const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
-    return !controller?._autoSyncPromise
-      && !controller?._syncImmediateTimer
-      && syncState === "transport-error"
-      && Boolean(controller?.model?.buildMutationSyncPayload?.());
-  }, null, { timeout: 15_000 });
-  // A submit can coalesce one scheduled mutation flush behind the direct flush.
-  // Wait past that 80 ms hand-off and assert the final, stable pending state.
-  await page.waitForTimeout(250);
-  await page.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
-    return !controller?._autoSyncPromise
-      && !controller?._syncImmediateTimer
+    return activity.settled
+      && activity.phase === "transportError"
+      && activity.hasPendingMutations
       && syncState === "transport-error"
       && Boolean(controller?.model?.buildMutationSyncPayload?.());
   }, null, { timeout: 15_000 });

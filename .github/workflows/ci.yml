@@ -130,7 +130,7 @@ jobs:
           npm run test:multi-assignee-e2e
           npm run test:joint-venture-e2e
           npm run test:low-price-conflict-e2e
-          npm run test:offline-sync-e2e
+          npm run test:offline-sync-e2e:soak
           npm run test:package-pairwise-e2e
           npm run test:lifecycle
           npm run test:ui-quality-e2e

@@ -15,6 +15,22 @@ export function shouldShowLocalPending(currentPhase) {
 }
 
 
+export function getSyncActivitySnapshot(controller) {
+  const outboxStatus = controller?.model?.getMutationOutboxStatus?.() || {};
+  const hasPendingMutations = Number(controller?._pendingMutationCount || 0) > 0
+    || Boolean(controller?.model?.buildMutationSyncPayload?.());
+  return {
+    settled: !controller?._autoSyncPromise
+      && !controller?._syncImmediateTimer
+      && !controller?._autoSyncQueued
+      && !controller?._deferImmediateSync
+      && outboxStatus.state !== "pending",
+    phase: String(controller?._syncUxState?.phase || "idle"),
+    hasPendingMutations,
+  };
+}
+
+
 export function setupSyncUx() {
   if (this._syncUxInstalled) return;
   this._syncUxInstalled = true;

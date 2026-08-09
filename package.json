@@ -34,6 +34,7 @@
     "test:joint-venture-e2e": "node --env-file-if-exists=.env scripts/verify_joint_venture_e2e.mjs",
     "test:low-price-conflict-e2e": "node --env-file-if-exists=.env scripts/verify_low_price_conflict_e2e.mjs",
     "test:offline-sync-e2e": "node --env-file-if-exists=.env scripts/verify_offline_sync_e2e.mjs",
+    "test:offline-sync-e2e:soak": "node --env-file-if-exists=.env scripts/run_offline_sync_soak.mjs",
     "test:package-pairwise-e2e": "node --env-file-if-exists=.env scripts/verify_package_pairwise_e2e.mjs",
     "test:lifecycle": "node --env-file-if-exists=.env scripts/verify_full_lifecycle.mjs",
     "test:performance": "node --env-file-if-exists=.env scripts/measure_startup.mjs --assert",

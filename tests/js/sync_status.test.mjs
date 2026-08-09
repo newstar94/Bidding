@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { deriveSyncStatus } from "../../frontend/app/syncStatus.js";
-import { shouldShowLocalPending } from "../../frontend/app/SyncCoordinator.js";
+import {
+  getSyncActivitySnapshot,
+  shouldShowLocalPending,
+} from "../../frontend/app/SyncCoordinator.js";
 
 
 test("sync status distinguishes durable, pending, validation, transport, and offline states", () => {
@@ -30,4 +33,46 @@ test("pending-count notifications do not erase actionable sync failures", () => 
   }
   assert.equal(shouldShowLocalPending("idle"), true);
   assert.equal(shouldShowLocalPending("serverSaved"), true);
+});
+
+
+test("sync activity is settled only after queued work and outbox durability finish", () => {
+  const controller = {
+    _autoSyncPromise: null,
+    _syncImmediateTimer: null,
+    _autoSyncQueued: false,
+    _deferImmediateSync: false,
+    _pendingMutationCount: 1,
+    _syncUxState: { phase: "transportError" },
+    model: {
+      buildMutationSyncPayload: () => ({ payload: { upserts: [{}] } }),
+      getMutationOutboxStatus: () => ({ state: "ready" }),
+    },
+  };
+
+  assert.deepEqual(getSyncActivitySnapshot(controller), {
+    settled: true,
+    phase: "transportError",
+    hasPendingMutations: true,
+  });
+
+  for (const activeState of [
+    { _autoSyncPromise: Promise.resolve() },
+    { _syncImmediateTimer: 1 },
+    { _autoSyncQueued: true },
+    { _deferImmediateSync: true },
+  ]) {
+    assert.equal(
+      getSyncActivitySnapshot({ ...controller, ...activeState }).settled,
+      false,
+    );
+  }
+
+  assert.equal(getSyncActivitySnapshot({
+    ...controller,
+    model: {
+      ...controller.model,
+      getMutationOutboxStatus: () => ({ state: "pending" }),
+    },
+  }).settled, false);
 });
