@@ -53,7 +53,6 @@
     "test:turnstile-local-matrix": "node scripts/verify_turnstile_local_matrix.mjs",
     "test:e2e:smoke": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test --config=playwright.config.mjs",
     "test:e2e:smoke:headed": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test --config=playwright.config.mjs --headed",
-    "test:e2e:business-matrix": "node e2e/generators/generate_business_matrix.mjs",
     "test:security-deploy": "python -m pytest -q tests/test_turnstile.py tests/test_http_resource_limits.py tests/test_deploy_security_templates.py tests/test_security_deployment_preflight.py tests/test_overload_recovery.py && npm run test:turnstile-local-matrix"
   },
   "devDependencies": {
