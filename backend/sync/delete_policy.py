@@ -230,6 +230,7 @@ def archive_versioned_record(
     record_id,
     archived_at,
     sync_version,
+    expected_version,
 ):
     if table_name not in ARCHIVABLE_TABLES:
         raise ValueError(f"Bảng {table_name} không hỗ trợ lưu trữ mềm.")
@@ -247,8 +248,16 @@ def archive_versioned_record(
         UPDATE {table_name}
         SET archived_at = ?{latest_assignment}, updated_at = ?, sync_version = ?
         WHERE organization_id = ? AND id = ? AND archived_at IS NULL
+          AND row_version = ?
         """,
-        (archived_at, archived_at, sync_version, organization_id, record_id),
+        (
+            archived_at,
+            archived_at,
+            sync_version,
+            organization_id,
+            record_id,
+            expected_version,
+        ),
     )
     return int(result.rowcount or 0)
 

@@ -128,6 +128,87 @@ def _is_actor_personal_scope(organization_id, actor_user_id):
     return str(organization_id or "").strip() == f"personal:{str(actor_user_id or '').strip()}"
 
 
+def _append_row_version_conflict(
+    result,
+    cursor,
+    *,
+    actor_role,
+    actor_user_id,
+    organization_id,
+    table_key,
+    table_name,
+    record_id,
+    expected_version,
+    record,
+):
+    if not can_read_record(
+        cursor,
+        actor_role,
+        actor_user_id,
+        organization_id,
+        table_key,
+        table_name,
+        record,
+    ):
+        result["errors"].append({
+            "table": table_name,
+            "id": record_id,
+            "field": "$record",
+            "code": "RECORD_ACCESS_DENIED",
+            "message": "Không có quyền thực hiện thay đổi này.",
+        })
+        return
+    result["errors"].append({
+        "table": table_name,
+        "id": record_id,
+        "field": "expectedVersion",
+        "code": "ROW_VERSION_CONFLICT",
+        "message": "Bản ghi cần xóa đã được thay đổi bởi một phiên làm việc khác.",
+        "expectedVersion": expected_version,
+        "currentVersion": int(record.get("row_version") or 1),
+        "serverRecord": project_conflict_record(
+            map_db_to_json(table_name, record)
+        ),
+    })
+
+
+def _append_current_delete_conflict(
+    result,
+    cursor,
+    *,
+    actor_role,
+    actor_user_id,
+    organization_id,
+    table_key,
+    table_name,
+    record_id,
+    expected_version,
+):
+    row = cursor.execute(
+        f"""SELECT * FROM {table_name}
+            WHERE organization_id = ? AND id = ?
+            LIMIT 1""",  # noqa: S608 - table_name comes from the fixed TABLE_KEYS registry
+        (organization_id, record_id),
+    ).fetchone()
+    if not row:
+        return
+    current_record = dict(row)
+    if table_name in ARCHIVABLE_TABLES and current_record.get("archived_at"):
+        return
+    _append_row_version_conflict(
+        result,
+        cursor,
+        actor_role=actor_role,
+        actor_user_id=actor_user_id,
+        organization_id=organization_id,
+        table_key=table_key,
+        table_name=table_name,
+        record_id=record_id,
+        expected_version=expected_version,
+        record=current_record,
+    )
+
+
 def apply_sync_deletions(
     cursor,
     deletions,
@@ -237,35 +318,18 @@ def apply_sync_deletions(
         expected_version = deletion.get("expectedVersion")
         current_version = int(record.get("row_version") or 1)
         if expected_version != current_version:
-            if not can_read_record(
+            _append_row_version_conflict(
+                result,
                 cursor,
-                actor_role,
-                actor_user_id,
-                organization_id,
-                table_key,
-                table_name,
-                record,
-            ):
-                result["errors"].append({
-                    "table": table_name,
-                    "id": record_id,
-                    "field": "$record",
-                    "code": "RECORD_ACCESS_DENIED",
-                    "message": "Không có quyền thực hiện thay đổi này.",
-                })
-                continue
-            result["errors"].append({
-                "table": table_name,
-                "id": record_id,
-                "field": "expectedVersion",
-                "code": "ROW_VERSION_CONFLICT",
-                "message": "Bản ghi cần xóa đã được thay đổi bởi một phiên làm việc khác.",
-                "expectedVersion": expected_version,
-                "currentVersion": current_version,
-                "serverRecord": project_conflict_record(
-                    map_db_to_json(table_name, record)
-                ),
-            })
+                actor_role=actor_role,
+                actor_user_id=actor_user_id,
+                organization_id=organization_id,
+                table_key=table_key,
+                table_name=table_name,
+                record_id=record_id,
+                expected_version=expected_version,
+                record=record,
+            )
             continue
         if table_name in ARCHIVABLE_TABLES and record.get("archived_at"):
             continue
@@ -310,10 +374,40 @@ def apply_sync_deletions(
         references = references_by_table[table_name][str(record_id)]
         action = "deleted"
         if (references or table_name in ALWAYS_ARCHIVE_TABLES) and table_name in ARCHIVABLE_TABLES:
-            delete_assignment_dependents(cursor, organization_id, table_name, record_id)
-            archive_versioned_record(
-                cursor, organization_id, table_name, record_id, current_time, sync_version
-            )
+            cursor.execute("SAVEPOINT sync_delete_item")
+            try:
+                delete_assignment_dependents(
+                    cursor, organization_id, table_name, record_id
+                )
+                affected_rows = archive_versioned_record(
+                    cursor,
+                    organization_id,
+                    table_name,
+                    record_id,
+                    current_time,
+                    sync_version,
+                    current_version,
+                )
+                if affected_rows != 1:
+                    cursor.execute("ROLLBACK TO SAVEPOINT sync_delete_item")
+                    cursor.execute("RELEASE SAVEPOINT sync_delete_item")
+                    _append_current_delete_conflict(
+                        result,
+                        cursor,
+                        actor_role=actor_role,
+                        actor_user_id=actor_user_id,
+                        organization_id=organization_id,
+                        table_key=table_key,
+                        table_name=table_name,
+                        record_id=record_id,
+                        expected_version=expected_version,
+                    )
+                    continue
+            except Exception:
+                cursor.execute("ROLLBACK TO SAVEPOINT sync_delete_item")
+                cursor.execute("RELEASE SAVEPOINT sync_delete_item")
+                raise
+            cursor.execute("RELEASE SAVEPOINT sync_delete_item")
             _remove_cached_assignment_dependents(
                 records_by_table,
                 table_name,
@@ -338,9 +432,25 @@ def apply_sync_deletions(
                     cursor, organization_id, table_name, record_id
                 )
                 cursor.execute(
-                    f"DELETE FROM {table_name} WHERE organization_id = ? AND id = ?",
-                    (organization_id, record_id),
+                    f"""DELETE FROM {table_name}
+                        WHERE organization_id = ? AND id = ? AND row_version = ?""",
+                    (organization_id, record_id, current_version),
                 )
+                if int(cursor.rowcount or 0) != 1:
+                    cursor.execute("ROLLBACK TO SAVEPOINT sync_delete_item")
+                    cursor.execute("RELEASE SAVEPOINT sync_delete_item")
+                    _append_current_delete_conflict(
+                        result,
+                        cursor,
+                        actor_role=actor_role,
+                        actor_user_id=actor_user_id,
+                        organization_id=organization_id,
+                        table_key=table_key,
+                        table_name=table_name,
+                        record_id=record_id,
+                        expected_version=expected_version,
+                    )
+                    continue
             except IntegrityError:
                 cursor.execute("ROLLBACK TO SAVEPOINT sync_delete_item")
                 cursor.execute("RELEASE SAVEPOINT sync_delete_item")

@@ -13,7 +13,8 @@ def test_archiving_opening_releases_participant_registry_scope():
             organization_id TEXT NOT NULL,
             archived_at TEXT,
             updated_at TEXT,
-            sync_version INTEGER
+            sync_version INTEGER,
+            row_version INTEGER NOT NULL DEFAULT 1
         );
         CREATE TABLE nha_thau_tham_du_mo_thau (
             organization_id TEXT NOT NULL,
@@ -37,6 +38,7 @@ def test_archiving_opening_releases_participant_registry_scope():
         "mt-old",
         "2026-08-07 12:00:00",
         42,
+        1,
     )
     connection.commit()
 
