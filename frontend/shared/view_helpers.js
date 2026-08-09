@@ -134,13 +134,14 @@ export function initCustomSelect(selectId) {
     || select.classList.contains("phienban-select")
     || select.classList.contains("modal-version-select")
     || select.classList.contains("version-droplist");
+  const isFullDateFilter = /^filter-(?:goithau|kehoach|hopdong)-(?:nam|thang)$/u.test(selectId);
   const emptyOptionLabel = Array.from(select.options)
     .find((option) => option.value === "")
     ?.text.trim();
   return initAccessibleCombobox(select, {
     compatibilityMode: "custom-select",
     displayEmptyOptionLabel: true,
-    formatSelectedLabel: compactMonthLabel,
+    formatSelectedLabel: isFullDateFilter ? null : compactMonthLabel,
     includeEmptyOption: true,
     placeholder: emptyOptionLabel || "Chọn dữ liệu",
     portal: select.dataset.dropdownInline !== "true",

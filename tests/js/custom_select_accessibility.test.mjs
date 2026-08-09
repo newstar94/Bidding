@@ -56,6 +56,7 @@ async function withSelectPage(run) {
           <link rel="stylesheet" href="/views/css/generated-static-styles.css">
           <link rel="stylesheet" href="/views/css/ui-redesign.css">
           <link rel="stylesheet" data-runtime-styles href="/views/css/runtime-styles.css">
+          <style>.date-filter-fixture { display: flex; width: 180px; }</style>
         </head><body>
           <main><form id="select-form">
             <label for="status-select">Trạng thái</label>
@@ -79,12 +80,48 @@ async function withSelectPage(run) {
               <option value="Đang mời thầu">Đang mời thầu</option>
             </select>
             <select id="filter-goithau-hinhthuc"><option value="">Tất cả hình thức</option></select>
-            <select id="filter-goithau-nam"><option value="">Năm</option></select>
-            <select id="filter-goithau-thang"><option value="">Tháng</option></select>
-            <select id="filter-kehoach-nam"><option value="">Năm</option></select>
-            <select id="filter-kehoach-thang"><option value="">Tháng</option></select>
-            <select id="filter-hopdong-nam"><option value="">Năm</option></select>
-            <select id="filter-hopdong-thang"><option value="">Tháng</option></select>
+            <div class="date-filter-fixture">
+              <div class="select-wrapper bf-s-29218dc346">
+                <select id="filter-goithau-nam">
+                  <option value="">Năm</option>
+                  <option value="2026">2026</option>
+                </select>
+              </div>
+              <div class="select-wrapper bf-s-29218dc346">
+                <select id="filter-goithau-thang">
+                  <option value="">Tháng</option>
+                  <option value="12">Tháng 12</option>
+                </select>
+              </div>
+            </div>
+            <div class="date-filter-fixture">
+              <div class="select-wrapper bf-s-29218dc346">
+                <select id="filter-kehoach-nam">
+                  <option value="">Năm</option>
+                  <option value="2026">2026</option>
+                </select>
+              </div>
+              <div class="select-wrapper bf-s-29218dc346">
+                <select id="filter-kehoach-thang">
+                  <option value="">Tháng</option>
+                  <option value="12">Tháng 12</option>
+                </select>
+              </div>
+            </div>
+            <div class="date-filter-fixture">
+              <div class="select-wrapper bf-s-29218dc346">
+                <select id="filter-hopdong-nam">
+                  <option value="">Năm</option>
+                  <option value="2026">2026</option>
+                </select>
+              </div>
+              <div class="select-wrapper bf-s-29218dc346">
+                <select id="filter-hopdong-thang">
+                  <option value="">Tháng</option>
+                  <option value="12">Tháng 12</option>
+                </select>
+              </div>
+            </div>
           </section>
         </body></html>`);
         return;
@@ -259,6 +296,50 @@ test("package, plan, and contract filters keep their original empty-option title
       "filter-kehoach-thang": "Tháng",
       "filter-hopdong-nam": "Năm",
       "filter-hopdong-thang": "Tháng",
+    });
+  });
+});
+
+test("year and month filters show their complete selected labels without truncation", async () => {
+  await withSelectPage(async (page) => {
+    const state = await page.evaluate(async () => {
+      const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
+      const filters = [
+        ["filter-goithau-nam", "2026"],
+        ["filter-goithau-thang", "12"],
+        ["filter-kehoach-nam", "2026"],
+        ["filter-kehoach-thang", "12"],
+        ["filter-hopdong-nam", "2026"],
+        ["filter-hopdong-thang", "12"],
+      ];
+
+      return Object.fromEntries(filters.map(([id, value]) => {
+        const select = document.getElementById(id);
+        initCustomSelect(id);
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        const input = document.getElementById(`${id}-combobox`);
+        const styles = getComputedStyle(input);
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        context.font = styles.font;
+        const requiredWidth = context.measureText(input.value).width
+          + parseFloat(styles.paddingLeft)
+          + parseFloat(styles.paddingRight);
+        return [id, {
+          label: input.value,
+          fits: input.clientWidth >= Math.ceil(requiredWidth),
+        }];
+      }));
+    });
+
+    assert.deepEqual(state, {
+      "filter-goithau-nam": { label: "2026", fits: true },
+      "filter-goithau-thang": { label: "Tháng 12", fits: true },
+      "filter-kehoach-nam": { label: "2026", fits: true },
+      "filter-kehoach-thang": { label: "Tháng 12", fits: true },
+      "filter-hopdong-nam": { label: "2026", fits: true },
+      "filter-hopdong-thang": { label: "Tháng 12", fits: true },
     });
   });
 });

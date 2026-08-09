@@ -96,7 +96,7 @@
 .bf-s-28023c7fe8{position: relative;width: 100px;height: 100px;border-radius: 50%;overflow: hidden;box-shadow: var(--shadow-sm);border: 2px solid var(--primary-soft);background: var(--bg-neutral)}
 .bf-s-2811ee8f01{width: 12%}
 .bf-s-288783d51a{width: 145px}
-.bf-s-29218dc346{width: 95px}
+.bf-s-29218dc346{width:112px;min-width:112px;flex:0 0 112px}
 .bf-s-29a92cb589{margin: 0;font-size: 0.95rem;color: var(--text-main)}
 .bf-s-2b7ccf5208{max-height: 160px;object-fit: contain}
 .bf-s-2bc05485a8{margin-bottom: 20px;display: none}
