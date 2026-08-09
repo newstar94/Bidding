@@ -27,6 +27,7 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
     cursor = _CardinalityCursor(
         (120, 100, 340, 300, 32_768, 65_536),
         (0, 0),
+        (0, 0, 0, 0, 0, 0),
     )
 
     report = inspect_database_upgrade(cursor, 35, target_version=DB_SCHEMA_VERSION)
@@ -51,8 +52,16 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
             "minimumVersionAheadRows": 0,
             "requiresDataRepair": False,
         },
+        "v45RetentionCleanupIndexes": {
+            "applies": True,
+            "deletedRecordsRows": 0,
+            "syncMutationsRows": 0,
+            "terminalPartnerJobRows": 0,
+            "relationBytes": 0,
+            "requiresTransactionalDryRun": True,
+        },
     }
-    assert len(cursor.statements) == 2
+    assert len(cursor.statements) == 3
     assert "COUNT(*) FILTER (WHERE archived_at IS NULL)" in cursor.statements[0][0]
     assert "pg_total_relation_size" in cursor.statements[0][0]
 
@@ -61,7 +70,9 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
 def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
     current_version,
 ):
-    cursor = _CardinalityCursor(*(((0, 0),) if current_version == 36 else ()))
+    cursor = _CardinalityCursor(
+        *((((0, 0), (0, 0, 0, 0, 0, 0))) if current_version == 36 else ())
+    )
 
     report = inspect_database_upgrade(
         cursor,
@@ -73,7 +84,7 @@ def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
         "applies": False,
         "requiresTransactionalDryRun": False,
     }
-    assert all("pg_total_relation_size" not in row[0] for row in cursor.statements)
+    assert all("goi_thau_phan_lo" not in row[0] for row in cursor.statements)
 
 
 def test_v44_preflight_reports_invalid_sync_metadata_rows_before_migration():
@@ -89,6 +100,24 @@ def test_v44_preflight_reports_invalid_sync_metadata_rows_before_migration():
     }
     assert "current_version < 0" in cursor.statements[0][0]
     assert "min_available_version > current_version" in cursor.statements[0][0]
+
+
+def test_v45_preflight_reports_retention_cardinality_and_relation_bytes():
+    cursor = _CardinalityCursor((120_000, 240_000, 8_000, 32_768, 65_536, 16_384))
+
+    report = inspect_database_upgrade(cursor, 44, target_version=45)
+
+    assert report["v45RetentionCleanupIndexes"] == {
+        "applies": True,
+        "deletedRecordsRows": 120_000,
+        "syncMutationsRows": 240_000,
+        "terminalPartnerJobRows": 8_000,
+        "relationBytes": 114_688,
+        "requiresTransactionalDryRun": True,
+    }
+    assert len(cursor.statements) == 1
+    assert "partner_enrichment_jobs" in cursor.statements[0][0]
+    assert "pg_total_relation_size" in cursor.statements[0][0]
 
 
 def test_database_dry_run_rolls_back_successful_upgrade(monkeypatch):

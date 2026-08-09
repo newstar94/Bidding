@@ -7,6 +7,9 @@ import threading
 import time
 from contextlib import asynccontextmanager
 
+from psycopg import Error as PostgresError
+from psycopg import sql
+
 from backend.auth.email_delivery_service import (
     fail_stale_email_deliveries,
     run_email_delivery_worker,
@@ -83,80 +86,180 @@ def _start_optional_services(delay_seconds, enable_image_cache_prewarm):
             log_error(exc, "prewarm_image_cache")
 
 
+def _retention_batch_size():
+    return max(
+        1,
+        min(10_000, int(os.environ.get("RETENTION_CLEANUP_BATCH_SIZE", "1000"))),
+    )
+
+
+def _delete_retention_batches(
+    conn,
+    *,
+    table,
+    where_sql,
+    parameters,
+    order_by,
+    batch_size,
+):
+    while True:
+        deleted = conn.execute(
+            sql.SQL(
+                """WITH candidates AS (
+                    SELECT ctid
+                      FROM {table_name}
+                     WHERE {where_clause}
+                     ORDER BY {order_clause}
+                     LIMIT %s
+                     FOR UPDATE SKIP LOCKED
+                ), deleted AS (
+                    DELETE FROM {table_name} AS target
+                     USING candidates
+                     WHERE target.ctid = candidates.ctid
+                     RETURNING 1
+                )
+                SELECT COUNT(*) FROM deleted"""
+            ).format(
+                table_name=sql.Identifier(table),
+                where_clause=sql.SQL(where_sql),
+                order_clause=sql.SQL(order_by),
+            ),
+            (*parameters, batch_size),
+        ).fetchone()
+        deleted_count = int(deleted[0] or 0) if deleted else 0
+        if not deleted_count:
+            conn.rollback()
+            return
+        conn.commit()
+
+
+def _purge_tombstone_batches(conn, retention_days, batch_size):
+    while True:
+        deleted_groups = conn.execute(
+            """WITH candidates AS (
+                    SELECT ctid
+                      FROM deleted_records
+                     WHERE deleted_at
+                           < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')
+                     ORDER BY deleted_at, organization_id, delete_version
+                     LIMIT ?
+                     FOR UPDATE SKIP LOCKED
+                ), deleted AS (
+                    DELETE FROM deleted_records AS target
+                     USING candidates
+                     WHERE target.ctid = candidates.ctid
+                     RETURNING target.organization_id, target.delete_version
+                )
+                SELECT organization_id, MAX(delete_version), COUNT(*)
+                  FROM deleted
+                 GROUP BY organization_id""",
+            (retention_days, batch_size),
+        ).fetchall()
+        if not deleted_groups:
+            conn.rollback()
+            return
+        for organization_id, max_version, _deleted_count in deleted_groups:
+            conn.execute(
+                """UPDATE sync_metadata
+                      SET min_available_version = GREATEST(min_available_version, ?),
+                          updated_at = CURRENT_TIMESTAMP
+                    WHERE organization_id = ?""",
+                (int(max_version or 0), organization_id),
+            )
+        conn.commit()
+
+
 def _purge_retained_rows(database):
     conn = None
+    retention_lock_acquired = False
     try:
         conn = database.get_connection()
         conn.execute("BEGIN")
         leader = conn.execute(
-            "SELECT pg_try_advisory_xact_lock(hashtext('biddingflow-retention-cleanup'))"
+            "SELECT pg_try_advisory_lock(hashtext('biddingflow-retention-cleanup'))"
         ).fetchone()
         if not leader or not leader[0]:
             conn.rollback()
             return
+        retention_lock_acquired = True
+        batch_size = _retention_batch_size()
         retention_days = max(1, int(os.environ.get("SYNC_TOMBSTONE_RETENTION_DAYS", "90")))
-        for organization_id, max_version in conn.execute(
-            """SELECT organization_id, MAX(delete_version)
-               FROM deleted_records
-               WHERE deleted_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')
-               GROUP BY organization_id""",
-            (retention_days,),
-        ).fetchall():
-            conn.execute(
-                """UPDATE sync_metadata
-                   SET min_available_version = GREATEST(min_available_version, %s),
-                       updated_at = CURRENT_TIMESTAMP
-                   WHERE organization_id = %s""",
-                (int(max_version or 0), organization_id),
-            )
-        conn.execute(
-            "DELETE FROM deleted_records WHERE deleted_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')",
-            (retention_days,),
-        )
+        _purge_tombstone_batches(conn, retention_days, batch_size)
         mutation_days = max(1, int(os.environ.get("SYNC_MUTATION_RETENTION_DAYS", "30")))
-        conn.execute(
-            "DELETE FROM sync_mutations WHERE created_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')",
-            (mutation_days,),
+        _delete_retention_batches(
+            conn,
+            table="sync_mutations",
+            where_sql="created_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')",
+            parameters=(mutation_days,),
+            order_by="created_at",
+            batch_size=batch_size,
         )
         idempotency_days = max(1, int(os.environ.get("API_IDEMPOTENCY_RETENTION_DAYS", "7")))
-        conn.execute("DELETE FROM api_idempotency WHERE created_at < ?", (int(time.time()) - idempotency_days * 86400,))
-        conn.execute(
-            "DELETE FROM rate_limit_buckets WHERE expires_at <= ?",
-            (int(time.time()),),
+        now = int(time.time())
+        _delete_retention_batches(
+            conn,
+            table="api_idempotency",
+            where_sql="created_at < %s",
+            parameters=(now - idempotency_days * 86400,),
+            order_by="created_at",
+            batch_size=batch_size,
         )
-        conn.execute(
-            "DELETE FROM partner_lookup_cache WHERE expires_at <= ?",
-            (int(time.time()),),
+        _delete_retention_batches(
+            conn,
+            table="rate_limit_buckets",
+            where_sql="expires_at <= %s",
+            parameters=(now,),
+            order_by="expires_at",
+            batch_size=batch_size,
+        )
+        _delete_retention_batches(
+            conn,
+            table="partner_lookup_cache",
+            where_sql="expires_at <= %s",
+            parameters=(now,),
+            order_by="expires_at",
+            batch_size=batch_size,
         )
         partner_job_retention_days = max(
             1,
             int(os.environ.get("PARTNER_JOB_RETENTION_DAYS", "30")),
         )
-        conn.execute(
-            """
-            DELETE FROM partner_enrichment_jobs
-            WHERE status IN ('completed', 'failed') AND updated_at <= ?
-            """,
-            (int(time.time()) - partner_job_retention_days * 86400,),
+        _delete_retention_batches(
+            conn,
+            table="partner_enrichment_jobs",
+            where_sql="status IN ('completed', 'failed') AND updated_at <= %s",
+            parameters=(now - partner_job_retention_days * 86400,),
+            order_by="updated_at",
+            batch_size=batch_size,
         )
         session_retention_days = max(
             1,
             int(os.environ.get("SESSION_RETENTION_DAYS", "30")),
         )
-        session_cutoff = int(time.time()) - session_retention_days * 86400
-        conn.execute(
-            """
-            DELETE FROM auth_sessions
-            WHERE (revoked_at IS NOT NULL AND revoked_at <= ?)
-               OR absolute_expires_at <= ?
-               OR idle_expires_at <= ?
-            """,
-            (session_cutoff, session_cutoff, session_cutoff),
+        session_cutoff = now - session_retention_days * 86400
+        _delete_retention_batches(
+            conn,
+            table="auth_sessions",
+            where_sql=(
+                "(revoked_at IS NOT NULL AND revoked_at <= %s) "
+                "OR absolute_expires_at <= %s OR idle_expires_at <= %s"
+            ),
+            parameters=(session_cutoff, session_cutoff, session_cutoff),
+            order_by=(
+                "LEAST(COALESCE(revoked_at, absolute_expires_at), "
+                "absolute_expires_at, idle_expires_at)"
+            ),
+            batch_size=batch_size,
         )
         # Audit history is immutable. Retention requires a separately signed
         # checkpoint/partition archival workflow and must never be a blind row
         # delete from the application cleanup loop.
-        conn.commit()
+        conn.rollback()
+        conn.execute(
+            "SELECT pg_advisory_unlock(hashtext('biddingflow-retention-cleanup'))"
+        ).fetchone()
+        conn.rollback()
+        retention_lock_acquired = False
         fail_stale_email_deliveries(database)
         purge_expired_durable_document_jobs(database)
         reconcile_asset_journal(database)
@@ -164,6 +267,15 @@ def _purge_retained_rows(database):
         log_error(exc, "retention_cleanup", level="WARN")
     finally:
         if conn is not None:
+            if retention_lock_acquired:
+                try:
+                    conn.rollback()
+                    conn.execute(
+                        "SELECT pg_advisory_unlock(hashtext('biddingflow-retention-cleanup'))"
+                    ).fetchone()
+                    conn.rollback()
+                except PostgresError as exc:
+                    log_error(exc, "retention_cleanup_unlock", level="WARN")
             conn.close()
 
 

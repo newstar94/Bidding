@@ -1002,6 +1002,13 @@
       "table": "deleted_records",
       "valid": true
     },
+    "idx_deleted_records_retention_cutoff": {
+      "definition": "CREATE INDEX idx_deleted_records_retention_cutoff ON $SCHEMA.deleted_records USING btree (deleted_at, organization_id, delete_version)",
+      "live": true,
+      "ready": true,
+      "table": "deleted_records",
+      "valid": true
+    },
     "idx_deleted_records_unique_record": {
       "definition": "CREATE UNIQUE INDEX idx_deleted_records_unique_record ON $SCHEMA.deleted_records USING btree (organization_id, table_name, record_id)",
       "live": true,
@@ -2024,6 +2031,13 @@
       "table": "partner_enrichment_jobs",
       "valid": true
     },
+    "idx_partner_enrichment_terminal_cleanup": {
+      "definition": "CREATE INDEX idx_partner_enrichment_terminal_cleanup ON $SCHEMA.partner_enrichment_jobs USING btree (updated_at) WHERE (status = ANY (ARRAY['completed'::text, 'failed'::text]))",
+      "live": true,
+      "ready": true,
+      "table": "partner_enrichment_jobs",
+      "valid": true
+    },
     "idx_partner_lookup_cache_expiry": {
       "definition": "CREATE INDEX idx_partner_lookup_cache_expiry ON $SCHEMA.partner_lookup_cache USING btree (expires_at)",
       "live": true,
@@ -2124,6 +2138,13 @@
     },
     "idx_sync_mutations_owner_created": {
       "definition": "CREATE INDEX idx_sync_mutations_owner_created ON $SCHEMA.sync_mutations USING btree (organization_id, created_at)",
+      "live": true,
+      "ready": true,
+      "table": "sync_mutations",
+      "valid": true
+    },
+    "idx_sync_mutations_retention_cutoff": {
+      "definition": "CREATE INDEX idx_sync_mutations_retention_cutoff ON $SCHEMA.sync_mutations USING btree (created_at)",
       "live": true,
       "ready": true,
       "table": "sync_mutations",
@@ -2656,7 +2677,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 44,
+  "schemaVersion": 45,
   "tables": {
     "account_subscriptions": {
       "columns": {

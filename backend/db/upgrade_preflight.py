@@ -10,6 +10,7 @@ from backend.db.upgrades import (
 
 CANONICAL_LOT_CODE_MIGRATION_VERSION = 36
 SYNC_METADATA_BOUNDS_MIGRATION_VERSION = 44
+RETENTION_CLEANUP_INDEX_MIGRATION_VERSION = 45
 
 
 def inspect_database_upgrade(
@@ -84,10 +85,49 @@ def inspect_database_upgrade(
             "requiresDataRepair": bool(negative_current or minimum_ahead),
         })
 
+    crosses_v45 = (
+        current is not None
+        and current < RETENTION_CLEANUP_INDEX_MIGRATION_VERSION <= target
+    )
+    retention_index_report: dict[str, object] = {
+        "applies": crosses_v45,
+        "requiresTransactionalDryRun": crosses_v45,
+    }
+    if crosses_v45:
+        row = cursor.execute(
+            """SELECT
+                 (SELECT COUNT(*) FROM deleted_records),
+                 (SELECT COUNT(*) FROM sync_mutations),
+                 (SELECT COUNT(*) FROM partner_enrichment_jobs
+                   WHERE status IN ('completed', 'failed')),
+                 COALESCE(
+                    pg_total_relation_size(to_regclass('deleted_records')), 0
+                 ),
+                 COALESCE(
+                    pg_total_relation_size(to_regclass('sync_mutations')), 0
+                 ),
+                 COALESCE(
+                    pg_total_relation_size(
+                        to_regclass('partner_enrichment_jobs')
+                    ), 0
+                 )"""
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(
+                "Database upgrade preflight returned no retention cardinality row."
+            )
+        retention_index_report.update({
+            "deletedRecordsRows": int(row[0]),
+            "syncMutationsRows": int(row[1]),
+            "terminalPartnerJobRows": int(row[2]),
+            "relationBytes": int(row[3]) + int(row[4]) + int(row[5]),
+        })
+
     return {
         "currentVersion": current,
         "targetVersion": target,
         "upgradeRequired": upgrade_required,
         "v36CanonicalLotCodes": lot_code_report,
         "v44SyncMetadataBounds": sync_metadata_report,
+        "v45RetentionCleanupIndexes": retention_index_report,
     }

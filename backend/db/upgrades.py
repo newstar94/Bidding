@@ -1749,6 +1749,24 @@ def _upgrade_to_v44_enforce_sync_metadata_version_bounds(cursor, _context):
     )
 
 
+def _upgrade_to_v45_add_retention_cleanup_indexes(cursor, _context):
+    """Support bounded global retention sweeps with cutoff-led plans."""
+
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_deleted_records_retention_cutoff
+             ON deleted_records (deleted_at, organization_id, delete_version)"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_sync_mutations_retention_cutoff
+             ON sync_mutations (created_at)"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_partner_enrichment_terminal_cleanup
+             ON partner_enrichment_jobs (updated_at)
+          WHERE status IN ('completed', 'failed')"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1960,6 +1978,11 @@ UPGRADES = (
         44,
         "enforce_sync_metadata_version_bounds",
         _upgrade_to_v44_enforce_sync_metadata_version_bounds,
+    ),
+    DatabaseUpgrade(
+        45,
+        "add_retention_cleanup_indexes",
+        _upgrade_to_v45_add_retention_cleanup_indexes,
     ),
 )
 

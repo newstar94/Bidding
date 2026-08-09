@@ -32,6 +32,9 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
    Database cũ đi qua schema v36 phải làm theo
    deploy/runbooks/database-upgrade-v36.md, gồm cardinality preflight và
    transactional dry-run trước maintenance window.
+   Database đi qua schema v45 phải làm theo
+   deploy/runbooks/database-upgrade-v45.md để benchmark `EXPLAIN`, kiểm tra
+   cardinality/index build và cấu hình retention batch trước maintenance.
 5. Verify document worker service account, DB role và Linux sandbox.
 6. Nếu dùng Turnstile, tạo widget `Managed`, allow đúng hostname production và
    lưu site/secret key trong secret manager. `TURNSTILE_ENABLED=auto` tự bật khi
