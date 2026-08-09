@@ -2,13 +2,17 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { chromium } from "playwright";
+import { STARTUP_LONG_TASK_LIMIT_MS } from "./profile_startup_long_tasks.mjs";
 
 const DIST_ROOT = path.resolve("dist");
 const manifest = JSON.parse(
   fs.readFileSync(path.join(DIST_ROOT, ".vite", "manifest.json"), "utf8"),
 );
 const appCss = manifest["frontend/app/app.js"]?.css?.[0];
+const appScript = manifest["frontend/app/app.js"]?.file;
 if (!appCss) throw new Error("Route CSS visual smoke requires a built app stylesheet.");
+if (!appScript) throw new Error("Route CSS visual smoke requires a built app script.");
+const landingMarkup = fs.readFileSync("views/components/landing_page.html", "utf8");
 
 const routeCss = (manifestKey) => {
   const entry = manifest[manifestKey] || {};
@@ -38,6 +42,24 @@ const routes = {
 
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+  if (pathname === "/") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      '<!doctype html><html data-bf-shell="landing"><head>'
+      + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+      + '<meta name="bf-app-debug" content="false">'
+      + '<link rel="stylesheet" href="/dist/' + appCss + '">'
+      + '<script id="bf-session-bootstrap" type="application/json">{"valid":false}</script>'
+      + '<script type="module" src="/dist/' + appScript + '"></script>'
+      + '</head><body class="bf-init-loading">' + landingMarkup + "</body></html>",
+    );
+    return;
+  }
+  if (pathname === "/api/public/packages") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end('{"packages":[]}');
+    return;
+  }
   const routeName = pathname.slice(1);
   if (routes[routeName]) {
     const route = routes[routeName];
@@ -59,8 +81,23 @@ const server = http.createServer((request, response) => {
     }
     const type = asset.endsWith(".css")
       ? "text/css"
-      : asset.endsWith(".woff2") ? "font/woff2" : "application/octet-stream";
+      : asset.endsWith(".js")
+        ? "text/javascript"
+        : asset.endsWith(".woff2") ? "font/woff2" : "application/octet-stream";
     response.writeHead(200, { "content-type": type });
+    response.end(fs.readFileSync(asset));
+    return;
+  }
+  if (pathname.startsWith("/vendor/")) {
+    const asset = path.resolve("views", pathname.slice(1));
+    const vendorRoot = path.resolve("views", "vendor");
+    if (!asset.startsWith(vendorRoot + path.sep) || !fs.existsSync(asset)) {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": asset.endsWith(".js") ? "text/javascript" : "application/octet-stream",
+    });
     response.end(fs.readFileSync(asset));
     return;
   }
@@ -77,11 +114,37 @@ const percentile = (values, ratio) => {
   return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)];
 };
 const measureNavigation = async (page) => {
-  await page.goto("http://127.0.0.1:" + port + "/landing", { waitUntil: "load" });
+  await page.goto("http://127.0.0.1:" + port + "/", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.body.classList.contains("landing-ready"));
   return page.evaluate(() => {
-    const navigation = performance.getEntriesByType("navigation")[0];
-    return Math.round((navigation?.loadEventEnd || performance.now()) * 100) / 100;
+    const readyMs = Math.round(performance.now() * 100) / 100;
+    const longestTaskMs = Math.round(
+      Math.max(0, ...(globalThis.__bfRouteLongTasks || [])) * 100,
+    ) / 100;
+    return { readyMs, longestTaskMs };
   });
+};
+const createMeasuredContext = async () => {
+  const context = await browser.newContext();
+  await context.addInitScript(() => {
+    globalThis.__bfRouteLongTasks = [];
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          globalThis.__bfRouteLongTasks.push(entry.duration);
+        }
+      });
+      observer.observe({ type: "longtask", buffered: true });
+    } catch {
+      // Unsupported browsers retain an empty long-task series.
+    }
+    try {
+      Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: undefined });
+    } catch {
+      // Service-worker availability is not required by this isolated startup harness.
+    }
+  });
+  return context;
 };
 try {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 720 }]) {
@@ -119,18 +182,28 @@ try {
     }
   }
   for (let run = 0; run < 30; run += 1) {
-    const context = await browser.newContext();
+    const context = await createMeasuredContext();
     const page = await context.newPage();
     startup.cold.push(await measureNavigation(page));
     await context.close();
   }
-  const warmContext = await browser.newContext();
+  const warmContext = await createMeasuredContext();
   const warmPage = await warmContext.newPage();
   await measureNavigation(warmPage);
   for (let run = 0; run < 30; run += 1) {
     startup.warm.push(await measureNavigation(warmPage));
   }
   await warmContext.close();
+  const measuredLongestTask = Math.max(
+    ...startup.cold.map((sample) => sample.longestTaskMs),
+    ...startup.warm.map((sample) => sample.longestTaskMs),
+  );
+  if (measuredLongestTask > STARTUP_LONG_TASK_LIMIT_MS) {
+    throw new Error(
+      "Built route startup long task is " + measuredLongestTask
+      + " ms; budget is " + STARTUP_LONG_TASK_LIMIT_MS + " ms",
+    );
+  }
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
@@ -139,7 +212,17 @@ try {
 console.log(JSON.stringify({
   visualChecks: results,
   startup: {
-    cold: { count: startup.cold.length, medianMs: percentile(startup.cold, 0.5), p95Ms: percentile(startup.cold, 0.95) },
-    warm: { count: startup.warm.length, medianMs: percentile(startup.warm, 0.5), p95Ms: percentile(startup.warm, 0.95) },
+    cold: {
+      count: startup.cold.length,
+      medianMs: percentile(startup.cold.map((sample) => sample.readyMs), 0.5),
+      p95Ms: percentile(startup.cold.map((sample) => sample.readyMs), 0.95),
+      longestTaskMs: Math.max(...startup.cold.map((sample) => sample.longestTaskMs)),
+    },
+    warm: {
+      count: startup.warm.length,
+      medianMs: percentile(startup.warm.map((sample) => sample.readyMs), 0.5),
+      p95Ms: percentile(startup.warm.map((sample) => sample.readyMs), 0.95),
+      longestTaskMs: Math.max(...startup.warm.map((sample) => sample.longestTaskMs)),
+    },
   },
 }));

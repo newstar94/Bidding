@@ -37,6 +37,7 @@
     "test:package-pairwise-e2e": "node --env-file-if-exists=.env scripts/verify_package_pairwise_e2e.mjs",
     "test:lifecycle": "node --env-file-if-exists=.env scripts/verify_full_lifecycle.mjs",
     "test:performance": "node --env-file-if-exists=.env scripts/measure_startup.mjs --assert",
+    "profile:startup-long-tasks": "node scripts/profile_startup_long_tasks.mjs",
     "benchmark:entity-indexes": "node scripts/benchmark_entity_indexes.mjs",
     "benchmark:excel": "node scripts/benchmark_excel_parsing.mjs",
     "benchmark:tables": "node scripts/profile_table_virtualization.mjs",
