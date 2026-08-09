@@ -23,6 +23,7 @@ export async function persistAndSync(controller, tableKeys, {
   afterPersist,
   allowLegacyPersistence = false,
   changes = null,
+  workspaceMutation = null,
 } = {}) {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
   for (const key of keys) {
@@ -35,7 +36,13 @@ export async function persistAndSync(controller, tableKeys, {
       throw error;
     }
   }
-  controller.model?.assertStorageTablesWritable?.(keys);
+  const model = controller.model;
+  const ownsMutation = !workspaceMutation
+    && typeof model?.beginWorkspaceMutation === "function";
+  const mutation = workspaceMutation || (ownsMutation ? model.beginWorkspaceMutation() : null);
+  if (mutation) model.assertWorkspaceMutation?.(mutation);
+  try {
+  model?.assertStorageTablesWritable?.(keys);
   controller._deferImmediateSync = true;
   if (controller._syncImmediateTimer) {
     clearTimeout(controller._syncImmediateTimer);
@@ -44,10 +51,16 @@ export async function persistAndSync(controller, tableKeys, {
   try {
     for (const key of keys) {
       const tableChanges = explicitTableChanges(changes, key);
-      if (tableChanges && typeof controller.model.persistChanges === "function") {
-        await controller.model.persistChanges(key, tableChanges, { throwOnError: true });
-      } else if (typeof controller.model.persistData === "function") {
-        await controller.model.persistData(key, { throwOnError: true });
+      if (tableChanges && typeof model.persistChanges === "function") {
+        await model.persistChanges(key, tableChanges, {
+          throwOnError: true,
+          ...(mutation ? { workspaceMutation: mutation } : {}),
+        });
+      } else if (typeof model.persistData === "function") {
+        await model.persistData(key, {
+          throwOnError: true,
+          ...(mutation ? { workspaceMutation: mutation } : {}),
+        });
       }
     }
   } finally {
@@ -57,7 +70,15 @@ export async function persistAndSync(controller, tableKeys, {
       controller._syncImmediateTimer = null;
     }
   }
-  const usesServerPagination = Boolean(controller.model?.useServerSidePagination);
+  if (
+    mutation
+    && typeof model.workspaceMutationUsesCurrentResources === "function"
+    && !model.workspaceMutationUsesCurrentResources(mutation)
+  ) {
+    await mutation.outbox?.flush?.();
+    return { ok: false, code: "WORKSPACE_CHANGED", workspaceChanged: true };
+  }
+  const usesServerPagination = Boolean(model?.useServerSidePagination);
   // The server-side mutation flow already refreshes changed tables from
   // autoSync(). Defer that refresh when the caller supplies afterPersist so
   // the view is rendered exactly once after the sync has committed. Rendering
@@ -69,7 +90,8 @@ export async function persistAndSync(controller, tableKeys, {
   if (!usesServerPagination && typeof afterPersist === "function") {
     await afterPersist();
   }
-  await controller.model?.flushMutationOutbox?.();
+  if (mutation?.outbox) await mutation.outbox.flush();
+  else await model?.flushMutationOutbox?.();
   let syncResult;
   try {
     syncResult = typeof controller.autoSync === "function"
@@ -82,6 +104,9 @@ export async function persistAndSync(controller, tableKeys, {
     await afterPersist();
   }
   return syncResult;
+  } finally {
+    if (ownsMutation) model.finishWorkspaceMutation?.(mutation);
+  }
 }
 
 /**
@@ -110,12 +135,16 @@ export async function refreshRecordBeforeMutation(controller, tableKey, recordId
   }
 }
 
-export function stageLocalRecords(model, table, records) {
+export function stageLocalRecords(model, table, records, workspaceMutation = null) {
   const staged = (Array.isArray(records) ? records : [records]).filter(
     (record) => record?.id !== undefined && record?.id !== null && String(record.id) !== "",
   );
   if (!table || !staged.length || typeof model?.commitLocalMutation !== "function") return [];
-  model.commitLocalMutation(table, { records: staged });
+  if (workspaceMutation && typeof model.commitWorkspaceMutation === "function") {
+    model.commitWorkspaceMutation(workspaceMutation, table, { records: staged });
+  } else {
+    model.commitLocalMutation(table, { records: staged });
+  }
   return staged;
 }
 
@@ -129,13 +158,17 @@ export function replaceTableProjection(model, table, records) {
   return model.state[table];
 }
 
-export function applyStateMutations(model, { upserts = {}, deletions = {}, mutate } = {}) {
+export function applyStateMutations(
+  model,
+  { upserts = {}, deletions = {}, mutate } = {},
+  workspaceMutation = null,
+) {
   const changed = new Set();
   model.assertStorageTablesWritable?.([
     ...Object.keys(upserts || {}),
     ...Object.keys(deletions || {}),
   ]);
-  const state = model.state;
+  const state = workspaceMutation?.state || model.state;
   if (typeof mutate === "function") mutate(state, model);
   Object.entries(upserts).forEach(([table, records]) => {
     state[table] = Array.isArray(state[table]) ? state[table] : [];
@@ -146,7 +179,7 @@ export function applyStateMutations(model, { upserts = {}, deletions = {}, mutat
       else state[table].push(normalized);
       return normalized;
     });
-    stageLocalRecords(model, table, staged);
+    stageLocalRecords(model, table, staged, workspaceMutation);
     changed.add(table);
   });
   Object.entries(deletions).forEach(([table, ids]) => {
@@ -154,14 +187,33 @@ export function applyStateMutations(model, { upserts = {}, deletions = {}, mutat
     const deleted = new Set(idList.map(String));
     const deletedRecords = (state[table] || []).filter((record) => deleted.has(String(record.id)));
     state[table] = (state[table] || []).filter((record) => !deleted.has(String(record.id)));
-    model.markDeleted?.(table, deletedRecords.length ? deletedRecords : idList);
+    if (workspaceMutation && typeof model.commitWorkspaceMutation === "function") {
+      model.commitWorkspaceMutation(workspaceMutation, table, {
+        deletedIds: deletedRecords.length ? deletedRecords : idList,
+      });
+    } else {
+      model.markDeleted?.(table, deletedRecords.length ? deletedRecords : idList);
+    }
     changed.add(table);
   });
   return [...changed];
 }
 
 export async function mutatePersistAndSync(controller, mutation, options = {}) {
-  const changedTables = applyStateMutations(controller.model, mutation);
-  const tableKeys = options.tableKeys || changedTables;
-  return persistAndSync(controller, tableKeys, { ...options, changes: mutation });
+  const model = controller.model;
+  const ownsMutation = !options.workspaceMutation
+    && typeof model?.beginWorkspaceMutation === "function";
+  const workspaceMutation = options.workspaceMutation
+    || (ownsMutation ? model.beginWorkspaceMutation() : null);
+  try {
+    const changedTables = applyStateMutations(model, mutation, workspaceMutation);
+    const tableKeys = options.tableKeys || changedTables;
+    return await persistAndSync(controller, tableKeys, {
+      ...options,
+      changes: mutation,
+      workspaceMutation,
+    });
+  } finally {
+    if (ownsMutation) model.finishWorkspaceMutation?.(workspaceMutation);
+  }
 }

@@ -135,18 +135,39 @@ export class WorkspaceDataStore {
       return { status: "validationRejected", reason: "CHANGES_REQUIRED" };
     }
     const model = this.#controller.model;
+    let workspaceMutation = null;
+    const ownsWorkspaceMutation = typeof model.beginWorkspaceMutation === "function";
+    try {
+      workspaceMutation = ownsWorkspaceMutation ? model.beginWorkspaceMutation() : null;
+    } catch (error) {
+      return { status: "persistenceFailed", reason: "LOCAL_STORAGE_UNAVAILABLE", error };
+    }
+    try {
     try {
       model.assertStorageTablesWritable?.(tables);
     } catch (error) {
       return { status: "persistenceFailed", reason: "LOCAL_STORAGE_UNAVAILABLE", error };
     }
-    const mutationCheckpoint = model.captureMutationCheckpoint?.() ?? null;
-    const before = this.#capturePatchBefore(changes, tables);
+    const mutationCheckpoint = workspaceMutation?.outbox?.checkpoint?.()
+      ?? model.captureMutationCheckpoint?.()
+      ?? null;
+    const before = this.#capturePatchBefore(
+      changes,
+      tables,
+      workspaceMutation?.state,
+    );
     let syncResult;
     try {
-      syncResult = await mutatePersistAndSync(this.#controller, changes, { tableKeys: tables });
+      syncResult = await mutatePersistAndSync(this.#controller, changes, {
+        tableKeys: tables,
+        workspaceMutation,
+      });
     } catch (error) {
-      const rollbackError = await this.#rollbackPatch(before, mutationCheckpoint);
+      const rollbackError = await this.#rollbackPatch(
+        before,
+        mutationCheckpoint,
+        workspaceMutation,
+      );
       return {
         status: "persistenceFailed",
         reason: "PERSISTENCE_FAILED",
@@ -157,7 +178,11 @@ export class WorkspaceDataStore {
     const status = classifySyncResult(syncResult);
     observeWorkspaceOutcome(status);
     if (status === "validationRejected") {
-      const rollbackError = await this.#rollbackPatch(before, mutationCheckpoint);
+      const rollbackError = await this.#rollbackPatch(
+        before,
+        mutationCheckpoint,
+        workspaceMutation,
+      );
       return {
         status,
         reason: syncResult?.code || "VALIDATION_REJECTED",
@@ -174,6 +199,11 @@ export class WorkspaceDataStore {
     }
     this.#notify();
     return outcome;
+    } finally {
+      if (ownsWorkspaceMutation) {
+        model.finishWorkspaceMutation?.(workspaceMutation);
+      }
+    }
   }
 
   async transaction({ tables, mutationId }, mutate) {
@@ -185,13 +215,20 @@ export class WorkspaceDataStore {
     const completedOutcome = this.#getCompleted(normalizedMutationId);
     if (completedOutcome) return completedOutcome;
     const model = this.#controller.model;
+    const ownsWorkspaceMutation = typeof model.beginWorkspaceMutation === "function";
+    const workspaceMutation = ownsWorkspaceMutation
+      ? model.beginWorkspaceMutation()
+      : null;
+    try {
     try {
       model.assertStorageTablesWritable?.(tableNames);
     } catch (error) {
       return { status: "persistenceFailed", reason: "LOCAL_STORAGE_UNAVAILABLE", error };
     }
-    const state = model.state;
-    const mutationCheckpoint = model.captureMutationCheckpoint?.() ?? null;
+    const state = workspaceMutation?.state || model.state;
+    const mutationCheckpoint = workspaceMutation?.outbox?.checkpoint?.()
+      ?? model.captureMutationCheckpoint?.()
+      ?? null;
     const snapshots = Object.fromEntries(
       tableNames.map((table) => [table, clone(state[table] || [])]),
     );
@@ -209,16 +246,29 @@ export class WorkspaceDataStore {
     const changes = transactionChanges(snapshots, draft, tableNames);
     tableNames.forEach((table) => {
       state[table] = draft[table];
-      stageLocalRecords(model, table, changes.upserts[table]);
-      model.markDeleted?.(table, changes.deletions[table]);
+      stageLocalRecords(model, table, changes.upserts[table], workspaceMutation);
+      if (workspaceMutation && typeof model.commitWorkspaceMutation === "function") {
+        model.commitWorkspaceMutation(workspaceMutation, table, {
+          deletedIds: changes.deletions[table],
+        });
+      } else {
+        model.markDeleted?.(table, changes.deletions[table]);
+      }
     });
     let syncResult;
     try {
       syncResult = typeof model.persistData === "function"
-        ? await persistAndSync(this.#controller, tableNames, { changes })
+        ? await persistAndSync(this.#controller, tableNames, {
+          changes,
+          workspaceMutation,
+        })
         : { ok: true };
     } catch (error) {
-      const rollbackError = await this.#rollback(snapshots, mutationCheckpoint);
+      const rollbackError = await this.#rollback(
+        snapshots,
+        mutationCheckpoint,
+        workspaceMutation,
+      );
       return {
         status: "persistenceFailed",
         reason: "PERSISTENCE_FAILED",
@@ -229,7 +279,11 @@ export class WorkspaceDataStore {
     const status = classifySyncResult(syncResult);
     observeWorkspaceOutcome(status);
     if (status === "validationRejected") {
-      const rollbackError = await this.#rollback(snapshots, mutationCheckpoint);
+      const rollbackError = await this.#rollback(
+        snapshots,
+        mutationCheckpoint,
+        workspaceMutation,
+      );
       return {
         status,
         reason: syncResult?.code || "VALIDATION_REJECTED",
@@ -246,21 +300,34 @@ export class WorkspaceDataStore {
     }
     this.#notify();
     return outcome;
+    } finally {
+      if (ownsWorkspaceMutation) {
+        model.finishWorkspaceMutation?.(workspaceMutation);
+      }
+    }
   }
 
-  async #rollback(snapshots, mutationCheckpoint) {
+  async #rollback(snapshots, mutationCheckpoint, workspaceMutation = null) {
     const model = this.#controller.model;
-    const state = model.state;
+    const state = workspaceMutation?.state || model.state;
+    const database = workspaceMutation?.db || model.db;
     let rollbackError = null;
     for (const [table, snapshot] of Object.entries(snapshots)) {
       state[table] = snapshot;
       try {
-        await model.db?.putTableData?.(table, snapshot);
+        await database?.putTableData?.(table, snapshot);
       } catch (error) {
         rollbackError ||= error;
       }
     }
-    if (mutationCheckpoint !== null && typeof model.restoreMutationCheckpoint === "function") {
+    if (mutationCheckpoint !== null && workspaceMutation?.outbox) {
+      try {
+        const restored = workspaceMutation.outbox.restore(mutationCheckpoint);
+        if (restored) await workspaceMutation.outbox.flush();
+      } catch (error) {
+        rollbackError ||= error;
+      }
+    } else if (mutationCheckpoint !== null && typeof model.restoreMutationCheckpoint === "function") {
       try {
         await model.restoreMutationCheckpoint(mutationCheckpoint);
       } catch (error) {
@@ -303,8 +370,8 @@ export class WorkspaceDataStore {
     }
   }
 
-  #capturePatchBefore(changes, tables) {
-    const state = this.#controller.model.state;
+  #capturePatchBefore(changes, tables, capturedState = null) {
+    const state = capturedState || this.#controller.model.state;
     const before = {};
     for (const table of tables) {
       const affectedIds = new Set([
@@ -323,9 +390,10 @@ export class WorkspaceDataStore {
     return before;
   }
 
-  async #rollbackPatch(before, mutationCheckpoint) {
+  async #rollbackPatch(before, mutationCheckpoint, workspaceMutation = null) {
     const model = this.#controller.model;
-    const state = model.state;
+    const state = workspaceMutation?.state || model.state;
+    const database = workspaceMutation?.db || model.db;
     let rollbackError = null;
     for (const [table, entries] of Object.entries(before)) {
       const affectedIds = new Set(entries.map(({ id }) => id));
@@ -348,15 +416,23 @@ export class WorkspaceDataStore {
           await model.persistChanges(table, rollbackChanges, {
             trackMutation: false,
             throwOnError: true,
+            ...(workspaceMutation ? { workspaceMutation } : {}),
           });
         } else {
-          await model.db?.putTableData?.(table, restored);
+          await database?.putTableData?.(table, restored);
         }
       } catch (error) {
         rollbackError ||= error;
       }
     }
-    if (mutationCheckpoint !== null && typeof model.restoreMutationCheckpoint === "function") {
+    if (mutationCheckpoint !== null && workspaceMutation?.outbox) {
+      try {
+        const restored = workspaceMutation.outbox.restore(mutationCheckpoint);
+        if (restored) await workspaceMutation.outbox.flush();
+      } catch (error) {
+        rollbackError ||= error;
+      }
+    } else if (mutationCheckpoint !== null && typeof model.restoreMutationCheckpoint === "function") {
       try {
         await model.restoreMutationCheckpoint(mutationCheckpoint);
       } catch (error) {

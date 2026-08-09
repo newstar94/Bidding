@@ -446,6 +446,7 @@ export class BiddingController {
     this._workspaceTransitionPromise = (async () => {
       this._workspaceSwitching = true;
       this.model.beginWorkspaceTransition?.();
+      await this.model.waitForWorkspaceMutations?.();
       if (this._backgroundSyncTimer) {
         clearTimeout(this._backgroundSyncTimer);
         this._backgroundSyncTimer = null;
