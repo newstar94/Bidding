@@ -46,7 +46,13 @@ test("custom select inside a label stays open and allows choosing an option", as
         </header>
         <div><select id="version-select" class="page-version-select" aria-label="Chọn phiên bản gói thầu">
           <option value="v00">00</option><option value="v01">01</option><option value="v02">02</option><option value="v03" selected>03</option>
-        </select></div></body></html>`);
+        </select></div>
+        <div id="table-version-cell" class="bf-s-8c8dc52ed7" style="width: 520px">
+          <a href="#">E2E-1786271582853-GT</a><span>–</span>
+          <select id="table-version-select" class="form-control version-droplist bf-s-b41ce2ea44" aria-label="Chọn phiên bản gói thầu E2E-1786271582853-GT">
+            <option value="v00" selected>00</option><option value="v01">01</option>
+          </select>
+        </div></body></html>`);
         return;
       }
       const filePath = pathname === "/css/runtime-styles.css"
@@ -72,7 +78,21 @@ test("custom select inside a label stays open and allows choosing an option", as
       const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
       initCustomSelect("lot-select");
       initCustomSelect("version-select");
+      initCustomSelect("table-version-select");
     });
+
+    const tableVersionGeometry = await page.locator('#table-version-cell').evaluate((cell) => {
+      const wrapper = cell.querySelector('.custom-select-container[data-target="table-version-select"]');
+      const trigger = wrapper?.querySelector(".custom-select-trigger");
+      return {
+        cellWidth: cell.getBoundingClientRect().width,
+        wrapperWidth: wrapper?.getBoundingClientRect().width,
+        triggerWidth: trigger?.getBoundingClientRect().width,
+      };
+    });
+    assert.equal(tableVersionGeometry.cellWidth, 520);
+    assert.equal(tableVersionGeometry.wrapperWidth, 52);
+    assert.equal(tableVersionGeometry.triggerWidth, 52);
 
     const lotTrigger = page.locator('.custom-select-container[data-target="lot-select"] .custom-select-trigger');
     const pointerTarget = await lotTrigger.evaluate((element) => {

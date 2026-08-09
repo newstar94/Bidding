@@ -1703,11 +1703,16 @@ textarea[disabled] {
   }
 }
 .custom-select-container.version-select-container {
-  width: auto !important;
+  width: 52px !important;
+  min-width: 52px;
+  max-width: 52px;
+  flex: 0 0 52px;
   display: inline-block !important;
   vertical-align: middle;
 }
 .custom-select-container.version-select-container .custom-select-trigger {
+  width: 52px !important;
+  max-width: 52px !important;
   height: 22px !important;
   padding: 0 10px !important;
   font-size: 0.72rem !important;
