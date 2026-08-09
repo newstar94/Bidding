@@ -7,7 +7,7 @@ Public production packaging is blocked until every fact in
 `npm run check:legal` command.
 
 Phiếu thông tin cần thu thập trước khi điền production nằm tại
-`docs/production-security-information.md`. Không ghi secret thật vào phiếu;
+`deploy/production-security-information.md`. Không ghi secret thật vào phiếu;
 chỉ ghi tên và nơi lưu secret.
 
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.
@@ -94,7 +94,7 @@ Các mẫu production được version-control tại:
 Trước khi reload NGINX, chạy `nginx -t`. Trước khi restart service, chạy
 `systemd-analyze verify` với unit đã cài đặt. Các ngưỡng ban đầu phải được
 điều chỉnh từ baseline thực tế theo trình tự log/dry-run → challenge → block.
-Runbook xử lý sự cố nằm tại `docs/runbooks/ddos-bot-abuse.md`.
+Runbook xử lý sự cố nằm tại `deploy/runbooks/ddos-bot-abuse.md`.
 
 ## Production security preflight
 

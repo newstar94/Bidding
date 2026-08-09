@@ -1,8 +1,15 @@
+import re
 from pathlib import Path
 
 import pytest
 
 from scripts import package_production
+
+
+PACKAGED_OPERATIONAL_REFERENCE = re.compile(
+    r"(?<![\w./-])((?:scripts|deploy|docs/runbooks)/[A-Za-z0-9_./-]+"
+    r"|docs/production-security-information\.md)"
+)
 
 
 def test_package_path_guard_allows_runtime_security_module_and_rejects_artifacts():
@@ -39,3 +46,28 @@ def test_package_smoke_child_uses_only_its_synthetic_trusted_hosts(tmp_path):
 
     assert environment["ALLOWED_HOSTS"] == "testserver,localhost,127.0.0.1"
     assert environment["PYTHONPATH"] == str(tmp_path.resolve())
+
+
+def test_packaged_deployment_readme_only_references_packaged_operational_paths():
+    readme = (package_production.PROJECT_ROOT / "deploy" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    references = set(PACKAGED_OPERATIONAL_REFERENCE.findall(readme))
+    packaged_paths = {
+        relative_path.as_posix()
+        for _, relative_path in package_production.collect_runtime_files()
+    }
+
+    assert references
+    missing = sorted(
+        reference
+        for reference in references
+        if not (
+            reference in packaged_paths
+            or (
+                reference.endswith("/")
+                and any(path.startswith(reference) for path in packaged_paths)
+            )
+        )
+    )
+    assert missing == []

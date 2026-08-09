@@ -46,6 +46,8 @@ RUNTIME_FILES = (
     "scripts/run_document_worker.py",
     "scripts/verify_document_worker_deployment.py",
     "scripts/benchmark_password_hash.py",
+    "scripts/check_security_deployment.py",
+    "scripts/verify_overload_recovery.py",
     "scripts/verify_document_sandbox.py",
 )
 
