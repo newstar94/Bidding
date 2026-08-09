@@ -68,8 +68,7 @@ export function selectContractorVersionForDate(model, contractorVersionId, busin
 
 export function resolveBidContractorName(model, bid) {
   if (!bid) return "";
-  if (isJointVentureBid(bid)) return bid.tenNhaThau || "";
-  return getExactContractorVersion(model, bid.nhaThauId)?.tenNhaThau || bid.tenNhaThau || "";
+  return bid.tenNhaThau || getExactContractorVersion(model, bid.nhaThauId)?.tenNhaThau || "";
 }
 
 export function resolveBidJointVentureMembers(model, bid) {
@@ -78,18 +77,18 @@ export function resolveBidJointVentureMembers(model, bid) {
     if (!contractor) return member;
     return {
       ...member,
-      tenNhaThau: contractor.tenNhaThau || "",
-      maNhaThau: contractor.maNhaThau || "",
-      maSoThue: contractor.maSoThue || "",
-      nguoiDaiDien: contractor.nguoiDaiDien || "",
-      danhXung: contractor.danhXung || "",
-      soDienThoai: contractor.soDienThoai || "",
-      email: contractor.email || "",
-      diaChi: contractor.diaChi || "",
-      diaChiGoc: contractor.diaChiGoc || "",
-      soTaiKhoan: contractor.soTaiKhoan || "",
-      noiMoTaiKhoan: contractor.noiMoTaiKhoan || "",
-      maNganHang: contractor.maNganHang || ""
+      tenNhaThau: member.tenNhaThau || contractor.tenNhaThau || "",
+      maNhaThau: member.maNhaThau || contractor.maNhaThau || "",
+      maSoThue: member.maSoThue || contractor.maSoThue || "",
+      nguoiDaiDien: member.nguoiDaiDien || contractor.nguoiDaiDien || "",
+      danhXung: member.danhXung || contractor.danhXung || "",
+      soDienThoai: member.soDienThoai || contractor.soDienThoai || "",
+      email: member.email || contractor.email || "",
+      diaChi: member.diaChi || contractor.diaChi || "",
+      diaChiGoc: member.diaChiGoc || contractor.diaChiGoc || "",
+      soTaiKhoan: member.soTaiKhoan || contractor.soTaiKhoan || "",
+      noiMoTaiKhoan: member.noiMoTaiKhoan || contractor.noiMoTaiKhoan || "",
+      maNganHang: member.maNganHang || contractor.maNganHang || ""
     };
   });
 }
