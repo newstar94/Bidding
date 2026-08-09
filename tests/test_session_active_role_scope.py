@@ -32,12 +32,11 @@ def test_v43_binds_selected_session_role_to_one_workspace():
     assert "auth_sessions_active_role_workspace_check" in statements
 
 
-def test_fresh_session_schema_requires_role_and_workspace_binding_as_a_pair():
+def test_fresh_session_schema_rejects_binding_without_role_but_allows_legacy_writer():
     columns = SCHEMA_DINH_NGHIA["auth_sessions"]["columns"]
 
     assert "active_role_organization_id" in columns
-    assert "active_role IS NULL" in columns["active_role_organization_id"]
-    assert "active_role_organization_id IS NOT NULL" in columns[
+    assert "active_role_organization_id IS NULL OR (active_role IS NOT NULL" in columns[
         "active_role_organization_id"
     ]
 

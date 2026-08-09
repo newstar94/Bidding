@@ -1692,10 +1692,10 @@ def _upgrade_to_v43_bind_session_active_role_to_workspace(cursor, _context):
         """ALTER TABLE auth_sessions
            ADD CONSTRAINT auth_sessions_active_role_workspace_check
            CHECK(
-               (active_role IS NULL AND active_role_organization_id IS NULL)
+               active_role_organization_id IS NULL
                OR (
                    active_role IS NOT NULL
-                   AND NULLIF(TRIM(active_role_organization_id), '') IS NOT NULL
+                   AND TRIM(active_role_organization_id) != ''
                )
            )"""
     )
