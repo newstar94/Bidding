@@ -149,6 +149,14 @@ export function ensureDetailRecordLoaded(tabName, action) {
 export async function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
+  const pullKey = workspace.token || workspace.organizationId;
+  this._workspacePullGenerations ||= new Map();
+  const pullGeneration = (this._workspacePullGenerations.get(pullKey) || 0) + 1;
+  this._workspacePullGenerations.set(pullKey, pullGeneration);
+  const pullIsCurrent = () => (
+    workspaceIsCurrent(this, workspace)
+    && this._workspacePullGenerations.get(pullKey) === pullGeneration
+  );
   const storage = currentWorkspaceStorage(this);
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
@@ -228,7 +236,9 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       throw new Error(`Không thể đồng bộ dữ liệu: HTTP ${response.status}${errorDetail ? ` - ${errorDetail}` : ""}`);
     }
     dbData ||= await response.json();
-    if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
+    if (!pullIsCurrent()) {
+      return { ok: false, stale: true, superseded: true };
+    }
     const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(
       this.model,
       dbData,
@@ -236,7 +246,9 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     );
     await persistencePromise;
     this.model?.markStorageTablesRecovered?.(changedKeys);
-    if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
+    if (!pullIsCurrent()) {
+      return { ok: false, stale: true, superseded: true };
+    }
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
     const committedCursor = commitSyncCursor(storage, dbData);
     if (committedCursor.syncVersion !== null) {
@@ -263,7 +275,9 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     const localMutationsPending = finalizePulledSyncState(this);
     return { ok: true, data: dbData, localMutationsPending };
   } catch (error) {
-    if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
+    if (!pullIsCurrent()) {
+      return { ok: false, stale: true, superseded: true };
+    }
     console.error("Failed to sync data from server:", error);
     this.updateSyncState({ phase: "error", message: "Lỗi đồng bộ" });
     if (syncStatusText) syncStatusText.textContent = "Lỗi đồng bộ";
@@ -286,7 +300,9 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     }
     return { ok: false, error };
   } finally {
-    if (syncIcon) syncIcon.classList.remove("anim-spin");
-    if (shouldShowFullLoader && this.view && this.view.hideLoader) this.view.hideLoader();
+    if (pullIsCurrent()) {
+      if (syncIcon) syncIcon.classList.remove("anim-spin");
+      if (shouldShowFullLoader && this.view && this.view.hideLoader) this.view.hideLoader();
+    }
   }
 }

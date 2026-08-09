@@ -479,6 +479,7 @@ export class BiddingController {
         organizationId,
         priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname)
       });
+      this._workspacePullGenerations?.clear?.();
       this._pendingDetailRecordLoads?.clear?.();
       this.packageWizard = { active: false, planId: null, totalCount: 0, currentCount: 0 };
       this.model.endWorkspaceTransition?.();
