@@ -1,5 +1,7 @@
 # Browser test execution report
 
+> Historical audit snapshot for the commit recorded below. Current enforced support boundaries are documented in [BROWSER_MATRIX.md](BROWSER_MATRIX.md).
+
 ## A. Code and environment
 
 - Branch: `main`

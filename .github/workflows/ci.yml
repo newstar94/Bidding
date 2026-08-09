@@ -57,7 +57,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -e ".[test]"
           npm ci
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium firefox webkit
       - name: Create isolated test databases
         env:
           PGPASSWORD: ci-database-password
@@ -117,6 +117,8 @@ jobs:
           exit 1
       - name: Performance budget
         run: npm run test:performance
+      - name: Cross-browser Playwright matrix
+        run: npm run test:e2e:smoke
       - name: Full role and workflow E2E
         run: |
           set -o pipefail
@@ -157,6 +159,9 @@ jobs:
             package-validation.log
             dependency-audit.log
             e2e-tests.log
+            playwright-report
+            test-results/e2e-junit.xml
+            test-results/e2e-results.json
             /tmp/biddingflow-e2e.log
             test-results/
             playwright-report/

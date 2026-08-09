@@ -60,12 +60,6 @@ async function fillCommonOpeningFields(row) {
 
 
 test("confirmed contractor and exact joint-venture members stay red after reload", async ({ page }) => {
-  test.skip(!password || !packageId, "Requires E2E credentials and an editable opening package fixture");
-  test.skip(
-    !process.env.VNEPS_VIOLATION_FIXTURE_PATH,
-    "The server must use the recorded VNEPS provider; live VNEPS is forbidden in CI",
-  );
-
   await login(page);
   await openOpening(page);
   const rows = page.locator("#mothau-table-tbody tr");

@@ -24,7 +24,7 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
         encoding="utf-8"
     )
 
-    install = "npx playwright install --with-deps chromium"
+    install = "npx playwright install --with-deps chromium firefox webkit"
     assert install in workflow
     required_gates = (
         "- name: Python compile",
@@ -33,6 +33,7 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
         "- name: Frontend debt gate",
         "- name: Python tests and coverage",
         "- name: JavaScript tests",
+        "- name: Cross-browser Playwright matrix",
         "- name: Secure build",
         "- name: FK and index audit",
         "- name: Production package validation",
@@ -43,6 +44,21 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
     for gate in required_gates:
         assert gate in workflow
         assert workflow.index(install) < workflow.index(gate)
+
+
+def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    config = (PROJECT_ROOT / "playwright.config.mjs").read_text(encoding="utf-8")
+    smoke = PROJECT_ROOT / "e2e" / "specs" / "browser-matrix.spec.mjs"
+
+    assert "npm run test:e2e:smoke" in workflow
+    for browser in ("chromium", "firefox", "webkit"):
+        assert f'name: "{browser}"' in config
+    assert "contractorViolationReady" in config
+    assert smoke.is_file()
+    assert "test.skip" not in smoke.read_text(encoding="utf-8")
 
 
 def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
