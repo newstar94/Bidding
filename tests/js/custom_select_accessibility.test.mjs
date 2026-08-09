@@ -138,6 +138,50 @@ test("generic custom select exposes keyboard and screen-reader combobox behavior
   });
 });
 
+
+test("global select enhancement preserves an active filter combobox", async () => {
+  await withSelectPage(async (page) => {
+    const state = await page.evaluate(async () => {
+      const [{ initCustomSelect }, { BiddingView }] = await Promise.all([
+        import("/frontend/shared/view_helpers.js"),
+        import("/frontend/app/BiddingView.js"),
+      ]);
+      const select = document.getElementById("status-select");
+      initCustomSelect(select.id);
+      const before = document.querySelectorAll(
+        '.custom-select-container[data-target="status-select"]',
+      ).length;
+
+      BiddingView.prototype.upgradeAllSelects.call({
+        isEnhancementTargetActive: () => true,
+      }, document);
+
+      const wrapper = document.querySelector(
+        '.custom-select-container[data-target="status-select"]',
+      );
+      const rect = wrapper?.getBoundingClientRect();
+      return {
+        before,
+        after: wrapper ? 1 : 0,
+        nativeHidden: select.hidden,
+        inputVisible: Boolean(
+          wrapper
+          && getComputedStyle(wrapper).display !== "none"
+          && rect.width > 0
+          && rect.height > 0
+        ),
+      };
+    });
+
+    assert.deepEqual(state, {
+      before: 1,
+      after: 1,
+      nativeHidden: true,
+      inputVisible: true,
+    });
+  });
+});
+
 test("searchable select filters, selects, and follows native option state accessibly", async () => {
   await withSelectPage(async (page) => {
     await page.evaluate(async () => {

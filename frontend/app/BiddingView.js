@@ -213,6 +213,17 @@ export class BiddingView {
       if (select.closest(".flatpickr-calendar") || select.classList.contains("flatpickr-monthDropdown-months") || select.classList.contains("flatpickr-year-select")) {
         return;
       }
+      const accessibleApi = select.__bfAccessibleCombobox;
+      if (accessibleApi) {
+        const activeWrapper = select.parentNode?.querySelector(
+          `.bf-combobox[data-select-id="${select.id}"]`,
+        );
+        if (activeWrapper?.isConnected) {
+          accessibleApi.refresh();
+          return;
+        }
+        accessibleApi.destroy();
+      }
       const hasNoCustomAttr = select.getAttribute("data-no-custom") === "true";
       const hasSearchableWrapper = select.id && select.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
       if (select.classList.contains("version-select") || select.classList.contains("phienban-select") || select.classList.contains("modal-version-select") || hasNoCustomAttr || hasSearchableWrapper) {
