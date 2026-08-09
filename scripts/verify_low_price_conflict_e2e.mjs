@@ -268,6 +268,10 @@ try {
   if (browser) await browser.close();
   if (fixtureCreated) {
     const cleanup = fixture("cleanup");
+    assert(
+      cleanup.remainingRows === 0,
+      `LP-25 fixture cleanup left rows: ${JSON.stringify(cleanup)}`,
+    );
     process.stdout.write(`[LP-25] fixture-removed ${JSON.stringify(cleanup)}\n`);
   }
 }

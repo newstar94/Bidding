@@ -8,16 +8,55 @@ from pathlib import Path
 import sys
 
 import psycopg
+from psycopg import sql
+from psycopg.conninfo import conninfo_to_dict
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.auth.auth_helper import hash_password
 
 
+ORGANIZATION_CLEANUP_TABLES = (
+    "websocket_events",
+    "nhat_ky_thuc_hien",
+    "record_edit_ownership",
+    "sync_mutations",
+    "ket_qua_danh_gia_nha_thau",
+    "thong_tin_mo_thau_lien_danh_thanh_vien",
+    "thong_tin_mo_thau",
+    "goi_thau",
+    "nha_thau",
+    "ke_hoach_lcnt",
+    "chu_dau_tu",
+    "sync_metadata",
+    "deleted_records",
+)
+DEFAULT_LP25_DATABASE_ALLOWLIST = frozenset({
+    "biddingflow_test",
+    "biddingflow_ci_test",
+    "biddingflow_ci_unit_test",
+    "biddingflow_ci_api_test",
+})
+
+
 def _database_url() -> str:
+    if str(os.environ.get("APP_ENV") or "").strip().casefold() != "test":
+        raise RuntimeError("LP-25 fixture requires APP_ENV=test")
     value = str(os.environ.get("DATABASE_URL") or "").strip()
     if not value:
         raise RuntimeError("DATABASE_URL is required")
+    database_name = str(conninfo_to_dict(value).get("dbname") or "").strip()
+    configured_allowlist = {
+        item.strip()
+        for item in str(os.environ.get("LP25_DATABASE_ALLOWLIST") or "").split(",")
+        if item.strip()
+    }
+    allowed_names = DEFAULT_LP25_DATABASE_ALLOWLIST | configured_allowlist
+    if not database_name or database_name not in allowed_names:
+        raise RuntimeError(
+            "LP-25 fixture database is outside the allowlist: "
+            f"{database_name or '<missing>'}"
+        )
     return value
 
 
@@ -156,11 +195,85 @@ def _cleanup(data: dict) -> dict:
     account_ids = [str(account["id"]) for account in data["accounts"]]
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
+            deleted_rows = 0
+            for table_name in ORGANIZATION_CLEANUP_TABLES:
+                cursor.execute(
+                    sql.SQL("DELETE FROM {} WHERE organization_id = %s").format(
+                        sql.Identifier(table_name)
+                    ),
+                    (organization_id,),
+                )
+                deleted_rows += cursor.rowcount
+            cursor.execute(
+                """DELETE FROM websocket_connection_leases
+                    WHERE organization_id = %s OR user_id = ANY(%s)""",
+                (organization_id, account_ids),
+            )
+            deleted_rows += cursor.rowcount
+            cursor.execute(
+                "DELETE FROM auth_sessions WHERE user_id = ANY(%s)",
+                (account_ids,),
+            )
+            deleted_rows += cursor.rowcount
+            cursor.execute(
+                "DELETE FROM thanh_vien_to_chuc WHERE organization_id = %s",
+                (organization_id,),
+            )
+            deleted_rows += cursor.rowcount
             cursor.execute("DELETE FROM to_chuc WHERE id = %s", (organization_id,))
             deleted_orgs = cursor.rowcount
             cursor.execute("DELETE FROM tai_khoan WHERE id = ANY(%s)", (account_ids,))
             deleted_accounts = cursor.rowcount
-    return {"deletedOrganizations": deleted_orgs, "deletedAccounts": deleted_accounts}
+
+            residue = {}
+            for table_name in ORGANIZATION_CLEANUP_TABLES:
+                residue[table_name] = cursor.execute(
+                    sql.SQL("SELECT count(*) FROM {} WHERE organization_id = %s").format(
+                        sql.Identifier(table_name)
+                    ),
+                    (organization_id,),
+                ).fetchone()[0]
+            residue.update({
+                "websocket_connection_leases": cursor.execute(
+                    """SELECT count(*) FROM websocket_connection_leases
+                        WHERE organization_id = %s OR user_id = ANY(%s)""",
+                    (organization_id, account_ids),
+                ).fetchone()[0],
+                "auth_sessions": cursor.execute(
+                    "SELECT count(*) FROM auth_sessions WHERE user_id = ANY(%s)",
+                    (account_ids,),
+                ).fetchone()[0],
+                "thanh_vien_to_chuc": cursor.execute(
+                    """SELECT count(*) FROM thanh_vien_to_chuc
+                        WHERE organization_id = %s OR user_id = ANY(%s)""",
+                    (organization_id, account_ids),
+                ).fetchone()[0],
+                "to_chuc": cursor.execute(
+                    "SELECT count(*) FROM to_chuc WHERE id = %s",
+                    (organization_id,),
+                ).fetchone()[0],
+                "tai_khoan": cursor.execute(
+                    "SELECT count(*) FROM tai_khoan WHERE id = ANY(%s)",
+                    (account_ids,),
+                ).fetchone()[0],
+            })
+            remaining_rows = sum(int(count) for count in residue.values())
+            if remaining_rows:
+                raise AssertionError(
+                    "LP-25 fixture cleanup left rows: "
+                    + json.dumps(residue, sort_keys=True)
+                )
+            retained_audit_rows = cursor.execute(
+                "SELECT count(*) FROM audit_log WHERE organization_id = %s",
+                (organization_id,),
+            ).fetchone()[0]
+    return {
+        "deletedOrganizations": deleted_orgs,
+        "deletedAccounts": deleted_accounts,
+        "deletedRows": deleted_rows + deleted_orgs + deleted_accounts,
+        "remainingRows": 0,
+        "retainedAuditRows": int(retained_audit_rows),
+    }
 
 
 def main() -> None:
