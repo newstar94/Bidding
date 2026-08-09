@@ -43,6 +43,9 @@ select = ["E9", "F63", "F7", "F82"]
 include = ["backend*"]
 namespaces = true
 
+[tool.setuptools.package-data]
+"backend.db" = ["postgres_schema_contract.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = [

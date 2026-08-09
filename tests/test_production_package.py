@@ -102,3 +102,12 @@ def test_packaged_deployment_readme_only_references_packaged_operational_paths()
         )
     )
     assert missing == []
+
+
+def test_normalized_postgres_contract_is_in_the_runtime_package():
+    packaged_paths = {
+        relative_path.as_posix()
+        for _, relative_path in package_production.collect_runtime_files()
+    }
+
+    assert "backend/db/postgres_schema_contract.json" in packaged_paths

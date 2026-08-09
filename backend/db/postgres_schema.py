@@ -958,114 +958,15 @@ def assert_foreign_key_integrity(cursor) -> None:
 
 
 def assert_schema_contract(cursor) -> None:
-    rows = cursor.execute(
-        """SELECT table_name
-           FROM information_schema.tables
-           WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'"""
-    ).fetchall()
-    actual_tables = {row[0] for row in rows}
-    missing = sorted(set(SCHEMA_DINH_NGHIA) - actual_tables)
-    if missing:
-        raise RuntimeError("Schema drift: missing tables: " + ", ".join(missing))
-    for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
-        actual_columns = {
-            row[0]
-            for row in cursor.execute(
-                """SELECT column_name FROM information_schema.columns
-                   WHERE table_schema = current_schema() AND table_name = %s""",
-                (table_name,),
-            ).fetchall()
-        }
-        expected_columns = set(table_spec.get("columns", {}))
-        if actual_columns != expected_columns:
-            missing_columns = sorted(expected_columns - actual_columns)
-            extra_columns = sorted(actual_columns - expected_columns)
-            raise RuntimeError(
-                f"Schema drift in {table_name}: missing={missing_columns}, extra={extra_columns}"
-            )
-    actual_foreign_keys = {
-        (str(row[0]), str(row[1]))
-        for row in cursor.execute(
-            """SELECT conrelid::regclass::text, conname
-               FROM pg_constraint
-               WHERE contype = 'f'
-                 AND connamespace = current_schema()::regnamespace"""
-        ).fetchall()
-    }
-    required_canonical_fk_tables = {
-        "dot_xu_ly_phan_lo",
-        "dot_xu_ly_phan_lo_chi_tiet",
-        "nhom_phu_thuoc_phan_lo",
-        "nhom_phu_thuoc_phan_lo_thanh_vien",
-        "ho_so_nghiep_vu_lcnt",
-        "ho_so_nghiep_vu_lcnt_phan_lo",
-        "tai_lieu_goi_thau",
-        "goi_thau_hang_hoa",
-        "hang_hoa_du_thau_nha_thau",
-    }
-    expected_foreign_keys = set()
-    for table_name in required_canonical_fk_tables:
-        table_spec = SCHEMA_DINH_NGHIA[table_name]
-        definitions = [
-            constraint
-            for constraint in table_spec.get("foreign_keys", ())
-            if constraint.lstrip().upper().startswith("FOREIGN KEY")
-        ]
-        expected_foreign_keys.update(
-            (
-                table_name,
-                _foreign_key_name(table_name, index, definition),
-            )
-            for index, definition in enumerate(definitions, 1)
-        )
-    missing_foreign_keys = sorted(
-        expected_foreign_keys - actual_foreign_keys
+    from backend.db.postgres_schema_contract import (
+        assert_catalog_contract,
+        load_expected_postgres_schema_catalog,
+        read_postgres_schema_catalog,
     )
-    if missing_foreign_keys:
-        sample = ", ".join(
-            f"{table_name}.{constraint_name}"
-            for table_name, constraint_name in missing_foreign_keys[:10]
-        )
-        raise RuntimeError(f"Schema drift: missing foreign keys: {sample}")
-    required_indexes = {
-        "idx_goi_thau_moc_tien_do_package",
-        "idx_goi_thau_moc_tien_do_status",
-        "idx_goi_thau_dieu_chinh_hsmt_package",
-        "idx_goi_thau_dieu_chinh_hsmt_created_by",
-        "idx_goi_thau_dieu_chinh_hsmt_updated_by",
-        "idx_pending_email_changes_expiry",
-        "idx_document_export_capabilities_user",
-        "idx_auth_sessions_one_active_per_user",
-        "idx_audit_log_single_successor",
-        "idx_goi_thau_hang_hoa_parent",
-        "idx_goi_thau_hang_hoa_lot_fk",
-        "idx_goi_thau_hang_hoa_code_no_lot",
-        "idx_goi_thau_hang_hoa_code_by_lot",
-        "idx_bidder_goods_scope",
-        "idx_bidder_goods_import_batch",
-        "idx_bidder_goods_lot_fk",
-        "idx_bidder_goods_requirement_fk",
-        "idx_bidder_goods_manual_actor_fk",
-        "idx_package_documents_batch_fk",
-        "idx_bidder_goods_requirement",
-        "idx_phan_cong_owner_target",
-        "idx_phan_cong_owner_assignee",
-        "idx_activity_target_timeline",
-        "idx_activity_actor_timeline",
-        "idx_activity_mutation_dedupe",
-    }
-    actual_indexes = {
-        row[0]
-        for row in cursor.execute(
-            """SELECT indexname FROM pg_indexes
-               WHERE schemaname = current_schema()"""
-        ).fetchall()
-    }
-    if not required_indexes <= actual_indexes:
-        raise RuntimeError(
-            "Schema drift: missing indexes: "
-            + ", ".join(sorted(required_indexes - actual_indexes))
-        )
+
+    actual_catalog = read_postgres_schema_catalog(cursor)
+    expected_catalog = load_expected_postgres_schema_catalog()
+    assert_catalog_contract(expected_catalog, actual_catalog)
 
 
 def _application_tables(cursor) -> set[str]:
