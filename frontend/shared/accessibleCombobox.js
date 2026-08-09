@@ -77,6 +77,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   if (config.compatibilityMode === "searchable-select") input.classList.add("custom-select-search");
   input.autocomplete = "off";
   input.spellcheck = false;
+  input.dataset.bfAutoScroll = "off";
   input.setAttribute("role", "combobox");
   input.setAttribute("aria-autocomplete", "list");
   input.setAttribute("aria-haspopup", "listbox");
@@ -342,7 +343,11 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   document.addEventListener("pointerdown", onDocumentPointerDown);
   wrapper.addEventListener("focusout", onWrapperFocusOut);
   const onDocumentScroll = (event) => {
-    if (event.target === list || list.contains(event.target)) return;
+    if (
+      event.target === list
+      || list.contains(event.target)
+      || wrapper.contains(event.target)
+    ) return;
     if (wrapper.classList.contains("open")) setOpen(false, { restoreSelection: true });
   };
   document.addEventListener("scroll", onDocumentScroll, { capture: true, passive: true });

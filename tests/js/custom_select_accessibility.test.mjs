@@ -201,6 +201,29 @@ test("global select enhancement preserves an active filter combobox", async () =
   });
 });
 
+test("filter click stays open and its label never uses text auto-scroll", async () => {
+  await withSelectPage(async (page) => {
+    await page.evaluate(async () => {
+      const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
+      initCustomSelect("status-select");
+    });
+
+    const combobox = page.getByRole("combobox", { name: "Trạng thái" });
+    await combobox.click();
+    assert.equal(await combobox.getAttribute("aria-expanded"), "true");
+    assert.equal(await combobox.getAttribute("data-bf-auto-scroll"), "off");
+
+    await combobox.evaluate((input) => {
+      input.scrollLeft = 8;
+      input.dispatchEvent(new Event("scroll"));
+    });
+
+    assert.equal(await combobox.getAttribute("aria-expanded"), "true");
+    const listboxId = await combobox.getAttribute("aria-controls");
+    assert.equal(await page.locator(`#${listboxId}`).isVisible(), true);
+  });
+});
+
 test("package, plan, and contract filters keep their original empty-option titles", async () => {
   await withSelectPage(async (page) => {
     const labels = await page.evaluate(async () => {
