@@ -127,6 +127,7 @@ async function startServer({ listDelayMs = 0, failMessageAttempts = 0 } = {}) {
           <link rel="stylesheet" href="/views/css/variables.css">
           <link rel="stylesheet" href="/views/css/base.css">
           <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/frontend/assistant/assistant.css">
           <link rel="stylesheet" href="/views/css/ui-redesign.css">
           <link rel="stylesheet" href="/views/css/runtime-styles.css" data-runtime-styles>
         </head><body></body></html>`);

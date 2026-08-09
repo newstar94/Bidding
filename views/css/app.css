@@ -3,8 +3,6 @@
 @import "./tokens.css" layer(tokens);
 @import "./variables.css" layer(tokens);
 @import "./base.css" layer(base);
-@import "./landing.css" layer(features);
-@import "./legal.css" layer(features);
 @import "./components.css" layer(components);
 @import "./views.css" layer(features);
 @import "./toast.css" layer(components);

@@ -132,6 +132,9 @@ export function assertSafeStyleURL(value) {
   if (/^\/(?:frontend|vendor)\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+\.css(?:\?[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*)?$/.test(source)) {
     return source;
   }
+  if (/^\/dist\/assets\/[A-Za-z0-9_.-]+\.css(?:\?[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*)?$/.test(source)) {
+    return source;
+  }
   throw new TypeError("Unapproved stylesheet URL rejected by the application security policy");
 }
 

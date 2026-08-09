@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertSafeHTML } from "../../frontend/shared/trustedTypes.js";
+import {
+  assertSafeHTML,
+  assertSafeStyleURL,
+} from "../../frontend/shared/trustedTypes.js";
 
 test("escaped user text that resembles an event handler remains renderable", () => {
   const escaped = '<span>&lt;img src=x onerror=&quot;window.__xss=1&quot;&gt;</span>';
@@ -22,4 +25,22 @@ test("escaped payloads inside ordinary attribute values are treated as text", ()
 
 test("an actual javascript URL is still rejected", () => {
   assert.throws(() => assertSafeHTML('<a href="javascript:alert(1)">bad</a>'), /Unsafe HTML rejected/);
+});
+
+test("route styles accept only first-party source or hashed dist CSS paths", () => {
+  assert.equal(
+    assertSafeStyleURL("/dist/assets/landing-DjjFFie5.css"),
+    "/dist/assets/landing-DjjFFie5.css",
+  );
+  assert.equal(
+    assertSafeStyleURL("/frontend/assistant/assistant.css"),
+    "/frontend/assistant/assistant.css",
+  );
+  for (const value of [
+    "https://example.com/style.css",
+    "/dist/assets/../private.css",
+    "/dist/assets/not-css.js",
+  ]) {
+    assert.throws(() => assertSafeStyleURL(value), /Unapproved stylesheet URL/);
+  }
 });

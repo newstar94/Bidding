@@ -4,8 +4,6 @@ import { apiFetch } from "../shared/apiClient.js";
 import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
 import { retryPendingWorkspacePurges } from "./workspaceState.js";
 import { installSemanticAccessibility } from "../shared/semanticAccessibility.js";
-import { bootstrapLandingPage, isLandingPath } from "../landing/LandingPage.js";
-import { bootstrapLegalPage, isLegalPath } from "../legal/LegalPage.js";
 import { installReleaseDiagnostics } from "../shared/releaseDiagnostics.js";
 import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
 import { installOverflowTextAutoScroll } from "../shared/overflowTextAutoScroll.js";
@@ -22,6 +20,8 @@ const startupMark = (name) => {
   }
 };
 startupMark("app-module-start");
+const isLandingPath = () => window.location.pathname === "/";
+const isLegalPath = () => window.location.pathname === "/legal";
 const readSessionBootstrap = () => {
   try {
     const node = document.getElementById("bf-session-bootstrap");
@@ -120,7 +120,8 @@ const bootstrapApplication = async () => {
   installSemanticAccessibility(document);
   installOverflowTextAutoScroll(document);
   if (isLandingPath()) {
-    bootstrapLandingPage(readSessionBootstrap());
+    const { bootstrapLandingPage } = await import("../landing/LandingPage.js");
+    await bootstrapLandingPage(readSessionBootstrap());
     requestAnimationFrame(() => {
       loadAndRenderLucideIcons().then((loaded) => {
         if (loaded) window.lucide.createIcons();
@@ -130,7 +131,8 @@ const bootstrapApplication = async () => {
     return;
   }
   if (isLegalPath()) {
-    bootstrapLegalPage();
+    const { bootstrapLegalPage } = await import("../legal/LegalPage.js");
+    await bootstrapLegalPage();
     requestAnimationFrame(() => {
       loadAndRenderLucideIcons().then((loaded) => {
         if (loaded) window.lucide.createIcons();

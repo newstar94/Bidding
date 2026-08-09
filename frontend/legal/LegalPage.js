@@ -1,3 +1,8 @@
+import { APP_DEBUG } from "../app/appConfig.js";
+import { loadStyleOnce } from "../shared/externalAssets.js";
+
+const LEGAL_STYLESHEET_URL = new URL("../../views/css/legal.css", import.meta.url).pathname;
+
 export function isLegalPath(pathname = window.location.pathname) {
   return pathname === "/legal";
 }
@@ -81,7 +86,8 @@ function installLegalTabs() {
   activateLegalPanel(panelIdFromHash() || LEGAL_PANEL_IDS[0], { scroll: Boolean(panelIdFromHash()) });
 }
 
-export function bootstrapLegalPage() {
+export async function bootstrapLegalPage() {
+  if (!APP_DEBUG) await loadStyleOnce(LEGAL_STYLESHEET_URL);
   document.body.classList.remove("bf-init-loading");
   document.body.classList.add("legal-ready");
   document.querySelectorAll("[data-legal-year]").forEach((node) => {

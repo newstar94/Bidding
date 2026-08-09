@@ -33,6 +33,7 @@ test("assistant feedback is exclusive, toggleable, and has no suggestion strip",
           <link rel="stylesheet" href="/views/css/variables.css">
           <link rel="stylesheet" href="/views/css/base.css">
           <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/frontend/assistant/assistant.css">
           <link rel="stylesheet" href="/views/css/ui-redesign.css">
           <link rel="stylesheet" href="/views/css/runtime-styles.css" data-runtime-styles>
         </head><body></body></html>`);

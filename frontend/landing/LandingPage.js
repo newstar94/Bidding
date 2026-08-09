@@ -91,7 +91,8 @@ export function isLandingPath(pathname = window.location.pathname) {
   return pathname === "/";
 }
 
-export function bootstrapLandingPage(session = { valid: false }) {
+export async function bootstrapLandingPage(session = { valid: false }) {
+  if (!APP_DEBUG) await loadStyleOnce(LANDING_STYLESHEET_URL);
   document.body.classList.remove("bf-init-loading");
   document.body.classList.add("landing-ready");
   document.querySelectorAll("[data-landing-year]").forEach((node) => {
@@ -102,3 +103,7 @@ export function bootstrapLandingPage(session = { valid: false }) {
   installSectionReveal();
   void loadPublicPackages();
 }
+import { APP_DEBUG } from "../app/appConfig.js";
+import { loadStyleOnce } from "../shared/externalAssets.js";
+
+const LANDING_STYLESHEET_URL = new URL("../../views/css/landing.css", import.meta.url).pathname;
