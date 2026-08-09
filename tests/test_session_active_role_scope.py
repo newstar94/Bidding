@@ -19,8 +19,10 @@ class RecordingCursor:
 
 
 def test_v43_binds_selected_session_role_to_one_workspace():
-    assert DB_SCHEMA_VERSION == 43
-    assert UPGRADES[-1].name == "bind_session_active_role_to_workspace"
+    assert DB_SCHEMA_VERSION >= 43
+    upgrade = next(item for item in UPGRADES if item.version == 43)
+    assert upgrade.name == "bind_session_active_role_to_workspace"
+    assert upgrade.apply is _upgrade_to_v43_bind_session_active_role_to_workspace
 
     cursor = RecordingCursor()
     _upgrade_to_v43_bind_session_active_role_to_workspace(cursor, None)

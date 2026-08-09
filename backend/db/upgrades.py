@@ -1701,6 +1701,54 @@ def _upgrade_to_v43_bind_session_active_role_to_workspace(cursor, _context):
     )
 
 
+def read_sync_metadata_version_bound_violations(cursor) -> tuple[int, int]:
+    """Count impossible sync cursors without returning tenant identifiers."""
+
+    invalid = cursor.execute(
+        """SELECT
+             COUNT(*) FILTER (WHERE current_version < 0),
+             COUNT(*) FILTER (
+                 WHERE min_available_version > current_version
+             )
+           FROM sync_metadata"""
+    ).fetchone()
+    return int(invalid[0]), int(invalid[1])
+
+
+def _upgrade_to_v44_enforce_sync_metadata_version_bounds(cursor, _context):
+    """Reject impossible sync cursors after validating all existing rows."""
+
+    negative_current, minimum_ahead = read_sync_metadata_version_bound_violations(
+        cursor
+    )
+    if negative_current or minimum_ahead:
+        raise RuntimeError(
+            "sync_metadata invariant preflight failed: "
+            f"current_version_negative={negative_current}, "
+            f"min_available_version_ahead={minimum_ahead}; "
+            "repair invalid rows with an audited procedure before retrying."
+        )
+
+    cursor.execute(
+        """ALTER TABLE sync_metadata
+           ADD CONSTRAINT sync_metadata_current_version_nonnegative_check
+           CHECK (current_version >= 0) NOT VALID"""
+    )
+    cursor.execute(
+        """ALTER TABLE sync_metadata
+           ADD CONSTRAINT sync_metadata_available_version_order_check
+           CHECK (min_available_version <= current_version) NOT VALID"""
+    )
+    cursor.execute(
+        """ALTER TABLE sync_metadata
+           VALIDATE CONSTRAINT sync_metadata_current_version_nonnegative_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE sync_metadata
+           VALIDATE CONSTRAINT sync_metadata_available_version_order_check"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1907,6 +1955,11 @@ UPGRADES = (
         43,
         "bind_session_active_role_to_workspace",
         _upgrade_to_v43_bind_session_active_role_to_workspace,
+    ),
+    DatabaseUpgrade(
+        44,
+        "enforce_sync_metadata_version_bounds",
+        _upgrade_to_v44_enforce_sync_metadata_version_bounds,
     ),
 )
 

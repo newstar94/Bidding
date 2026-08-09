@@ -11,8 +11,8 @@ from backend.db.upgrades import DB_SCHEMA_VERSION, UPGRADES
 
 
 class _CardinalityCursor:
-    def __init__(self, row):
-        self.row = row
+    def __init__(self, *rows):
+        self.rows = list(rows)
         self.statements = []
 
     def execute(self, statement, params=None):
@@ -20,11 +20,14 @@ class _CardinalityCursor:
         return self
 
     def fetchone(self):
-        return self.row
+        return self.rows[len(self.statements) - 1]
 
 
 def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
-    cursor = _CardinalityCursor((120, 100, 340, 300, 32_768, 65_536))
+    cursor = _CardinalityCursor(
+        (120, 100, 340, 300, 32_768, 65_536),
+        (0, 0),
+    )
 
     report = inspect_database_upgrade(cursor, 35, target_version=DB_SCHEMA_VERSION)
 
@@ -42,8 +45,14 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
             "relationBytes": 98_304,
             "requiresTransactionalDryRun": True,
         },
+        "v44SyncMetadataBounds": {
+            "applies": True,
+            "currentVersionNegativeRows": 0,
+            "minimumVersionAheadRows": 0,
+            "requiresDataRepair": False,
+        },
     }
-    assert len(cursor.statements) == 1
+    assert len(cursor.statements) == 2
     assert "COUNT(*) FILTER (WHERE archived_at IS NULL)" in cursor.statements[0][0]
     assert "pg_total_relation_size" in cursor.statements[0][0]
 
@@ -52,7 +61,7 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
 def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
     current_version,
 ):
-    cursor = _CardinalityCursor(None)
+    cursor = _CardinalityCursor(*(((0, 0),) if current_version == 36 else ()))
 
     report = inspect_database_upgrade(
         cursor,
@@ -64,7 +73,22 @@ def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
         "applies": False,
         "requiresTransactionalDryRun": False,
     }
-    assert cursor.statements == []
+    assert all("pg_total_relation_size" not in row[0] for row in cursor.statements)
+
+
+def test_v44_preflight_reports_invalid_sync_metadata_rows_before_migration():
+    cursor = _CardinalityCursor((2, 3))
+
+    report = inspect_database_upgrade(cursor, 43, target_version=44)
+
+    assert report["v44SyncMetadataBounds"] == {
+        "applies": True,
+        "currentVersionNegativeRows": 2,
+        "minimumVersionAheadRows": 3,
+        "requiresDataRepair": True,
+    }
+    assert "current_version < 0" in cursor.statements[0][0]
+    assert "min_available_version > current_version" in cursor.statements[0][0]
 
 
 def test_database_dry_run_rolls_back_successful_upgrade(monkeypatch):

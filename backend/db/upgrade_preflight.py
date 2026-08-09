@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from backend.db.upgrades import DB_SCHEMA_VERSION
+from backend.db.upgrades import (
+    DB_SCHEMA_VERSION,
+    read_sync_metadata_version_bound_violations,
+)
 
 
 CANONICAL_LOT_CODE_MIGRATION_VERSION = 36
+SYNC_METADATA_BOUNDS_MIGRATION_VERSION = 44
 
 
 def inspect_database_upgrade(
@@ -62,9 +66,28 @@ def inspect_database_upgrade(
             "relationBytes": int(row[4]) + int(row[5]),
         })
 
+    crosses_v44 = (
+        current is not None
+        and current < SYNC_METADATA_BOUNDS_MIGRATION_VERSION <= target
+    )
+    sync_metadata_report: dict[str, object] = {
+        "applies": crosses_v44,
+        "requiresDataRepair": False,
+    }
+    if crosses_v44:
+        negative_current, minimum_ahead = (
+            read_sync_metadata_version_bound_violations(cursor)
+        )
+        sync_metadata_report.update({
+            "currentVersionNegativeRows": negative_current,
+            "minimumVersionAheadRows": minimum_ahead,
+            "requiresDataRepair": bool(negative_current or minimum_ahead),
+        })
+
     return {
         "currentVersion": current,
         "targetVersion": target,
         "upgradeRequired": upgrade_required,
         "v36CanonicalLotCodes": lot_code_report,
+        "v44SyncMetadataBounds": sync_metadata_report,
     }

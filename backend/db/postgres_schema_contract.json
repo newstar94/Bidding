@@ -2656,7 +2656,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 43,
+  "schemaVersion": 44,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -14290,6 +14290,20 @@
         }
       },
       "constraints": {
+        "sync_metadata_available_version_order_check": {
+          "deferrable": false,
+          "definition": "CHECK (min_available_version <= current_version)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "sync_metadata_current_version_nonnegative_check": {
+          "deferrable": false,
+          "definition": "CHECK (current_version >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
         "sync_metadata_min_available_version_check": {
           "deferrable": false,
           "definition": "CHECK (min_available_version >= 0)",

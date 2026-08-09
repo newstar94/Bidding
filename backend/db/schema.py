@@ -1469,7 +1469,11 @@ SCHEMA_DINH_NGHIA = {
             "current_version": "INTEGER NOT NULL DEFAULT 0",
             "min_available_version": "INTEGER NOT NULL DEFAULT 0 CHECK(min_available_version >= 0)",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
-        }
+        },
+        "unique_constraints": [
+            "CONSTRAINT sync_metadata_current_version_nonnegative_check CHECK(current_version >= 0)",
+            "CONSTRAINT sync_metadata_available_version_order_check CHECK(min_available_version <= current_version)"
+        ]
     },
     "organization_subscriptions": {
         "columns": {
