@@ -28,7 +28,7 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.idempotency import acquire_idempotency_lock
-from backend.sync.api import broadcast_websocket_event
+from backend.sync.websocket import enqueue_websocket_event
 from backend.shared.logging_utils import log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 
@@ -396,8 +396,13 @@ async def finalize_lot_batch_api(request):
             request_digest=request_digest,
             payload=response_payload,
         )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={"event": "db_changed"},
+        )
         connection.commit()
-        broadcast_websocket_event(organization_id, {"event": "db_changed"})
         return JSONResponse(response_payload)
     except LotFinalizeIdempotencyConflict as exc:
         if connection:

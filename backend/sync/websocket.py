@@ -614,9 +614,11 @@ def broadcast_websocket_event(organization_id, message):
             organization_id=str(organization_id),
             payload=sanitized_message,
         )
-    except Exception:
+    except Exception as store_error:
         # A transient outbox failure must not suppress notifications in this worker.
+        log_error(store_error, "websocket_broker_store", level="WARN")
         _schedule_local_broadcast(organization_id, sanitized_message)
+        return False
     return True
 
 

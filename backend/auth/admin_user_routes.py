@@ -21,7 +21,7 @@ from backend.shared.membership_invariants import (
     lock_organization_membership_invariants_many,
 )
 from backend.shared.platform_role_invariants import lock_platform_role_invariants
-from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
+from backend.sync.websocket import enqueue_websocket_event
 from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
 from backend.db.schema import SCHEMA_DINH_NGHIA
@@ -479,14 +479,19 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             cursor=cursor,
             required=True,
         )
-        conn.commit()
-
-        disconnect_user_websockets(user_id)
+        enqueue_websocket_event(
+            cursor,
+            "revoke_user",
+            user_id=user_id,
+        )
         if organization_id:
-            broadcast_websocket_event(
-                organization_id,
-                {"event": "user_access_settings_changed"},
+            enqueue_websocket_event(
+                cursor,
+                "broadcast",
+                organization_id=organization_id,
+                payload={"event": "user_access_settings_changed"},
             )
+        conn.commit()
         return JSONResponse(
             {"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."}
         )
@@ -654,9 +659,12 @@ def _delete_user_sync(request):
             cursor=cursor,
             required=True,
         )
+        enqueue_websocket_event(
+            cursor,
+            "revoke_user",
+            user_id=user_id,
+        )
         conn.commit()
-
-        disconnect_user_websockets(user_id)
         return JSONResponse({
             "success": True,
             "message": "Xóa người dùng thành công!",

@@ -13,7 +13,7 @@ from backend.shared.helpers import (
     log_audit,
     OrgPermissionError
 )
-from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
+from backend.sync.websocket import enqueue_websocket_event
 from backend.sync.repository import next_sync_version
 from backend.shared.access_policy import (
     is_business_organization,
@@ -430,12 +430,20 @@ async def update_organization_subscription_api(request):
             cursor=cursor,
             required=True,
         )
+        if action == "lock":
+            for user_id in member_ids:
+                enqueue_websocket_event(
+                    cursor,
+                    "revoke_user",
+                    user_id=user_id,
+                )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={"event": "organization_subscription_changed"},
+        )
         conn.commit()
-
-        for user_id in member_ids:
-            if action == 'lock':
-                disconnect_user_websockets(user_id)
-        broadcast_websocket_event(organization_id, {"event": "organization_subscription_changed"})
         return JSONResponse(
             response_payload,
             background=build_security_notification_batch(
@@ -526,12 +534,17 @@ async def add_user_to_org_api(request):
                 cursor=cursor,
                 required=True,
             )
+            enqueue_websocket_event(
+                cursor,
+                "broadcast",
+                organization_id=org_id,
+                payload={
+                    "event": "organization_member_changed",
+                    "userId": user_id,
+                    "status": "active",
+                },
+            )
             conn.commit()
-            broadcast_websocket_event(org_id, {
-                "event": "organization_member_changed",
-                "userId": user_id,
-                "status": "active",
-            })
             return JSONResponse({"success": True, "message": "Thông tin nhân sự đã được cập nhật!"})
 
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
@@ -610,12 +623,17 @@ async def add_user_to_org_api(request):
             organization_id=org_id,
             added=True,
         )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=org_id,
+            payload={
+                "event": "organization_member_changed",
+                "userId": user_id,
+                "status": "active",
+            },
+        )
         conn.commit()
-        broadcast_websocket_event(org_id, {
-            "event": "organization_member_changed",
-            "userId": user_id,
-            "status": "active",
-        })
 
         return JSONResponse({"success": True, "message": success_message})
     except OrgPermissionError:
@@ -940,12 +958,20 @@ async def remove_user_from_org_api(request):
             organization_id=org_id,
             added=False,
         )
+        enqueue_websocket_event(
+            cursor,
+            "revoke_user",
+            user_id=user_id,
+        )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=org_id,
+            payload={"event": "db_changed"},
+        )
         conn.commit()
         conn.close()
         conn = None
-
-        disconnect_user_websockets(user_id)
-        broadcast_websocket_event(org_id, {"event": "db_changed"})
 
         return JSONResponse({
             "success": True,

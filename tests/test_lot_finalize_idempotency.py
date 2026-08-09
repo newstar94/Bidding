@@ -23,6 +23,7 @@ from backend.lot_lifecycle_routes import (
 class _IdempotencyCursor:
     def __init__(self):
         self.rows = {}
+        self.websocket_events = []
         self.current = None
         self.statements = []
 
@@ -37,6 +38,9 @@ class _IdempotencyCursor:
             actor_user_id, operation, key, response_json, _created_at = params
             self.rows[(actor_user_id, operation, key)] = (response_json,)
             self.current = None
+        elif compact.startswith("INSERT INTO websocket_events"):
+            self.websocket_events.append(tuple(params))
+            self.current = (len(self.websocket_events),)
         else:
             self.current = None
         return self
@@ -172,8 +176,8 @@ def test_finalize_route_replays_committed_result_after_response_path_fails(
     cursor = _IdempotencyCursor()
     events = []
     finalize_calls = []
-    broadcast_calls = []
     audit_calls = []
+    response_failures = []
 
     async def read_json(request):
         return request.payload, None
@@ -207,12 +211,13 @@ def test_finalize_route_replays_committed_result_after_response_path_fails(
         lambda *_args, **_kwargs: audit_calls.append("audit"),
     )
 
-    def broadcast(*_args, **_kwargs):
-        broadcast_calls.append("broadcast")
-        if len(broadcast_calls) == 1:
+    def flaky_json_response(payload, *args, **kwargs):
+        if payload.get("success") is True and not response_failures:
+            response_failures.append("failed-after-commit")
             raise RuntimeError("simulated response-path failure after commit")
+        return JSONResponse(payload, *args, **kwargs)
 
-    monkeypatch.setattr(lot_lifecycle_routes, "broadcast_websocket_event", broadcast)
+    monkeypatch.setattr(lot_lifecycle_routes, "JSONResponse", flaky_json_response)
     monkeypatch.setattr(
         lot_lifecycle_routes,
         "log_and_error",
@@ -241,7 +246,8 @@ def test_finalize_route_replays_committed_result_after_response_path_fails(
     }
     assert finalize_calls == ["finalize"]
     assert audit_calls == ["audit"]
-    assert broadcast_calls == ["broadcast"]
+    assert len(cursor.websocket_events) == 1
+    assert json.loads(cursor.websocket_events[0][3]) == {"event": "db_changed"}
     assert events.count("commit") == 2
 
 

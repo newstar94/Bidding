@@ -456,8 +456,7 @@ def _measure_organization_removal_queries(monkeypatch, item_count):
     monkeypatch.setattr(org_routes, "queue_assignment_state_changes", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(org_routes, "queue_membership_notification", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(org_routes, "log_audit", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(org_routes, "disconnect_user_websockets", lambda *_args: None)
-    monkeypatch.setattr(org_routes, "broadcast_websocket_event", lambda *_args: None)
+    monkeypatch.setattr(org_routes, "enqueue_websocket_event", lambda *_args, **_kwargs: None)
 
     response = asyncio.run(
         org_routes.remove_user_from_org_api(SimpleNamespace())

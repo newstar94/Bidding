@@ -916,6 +916,19 @@ def _apply_partner_enrichment(job, contractor, info):
                     contractor_id,
                 ),
             )
+            from backend.sync.websocket import enqueue_websocket_event
+
+            enqueue_websocket_event(
+                connection,
+                "broadcast",
+                organization_id=organization_id,
+                payload={
+                    "type": "sync_update",
+                    "table": "nhathau",
+                    "id": contractor_id,
+                    "syncVersion": new_sync_version,
+                },
+            )
         elif _is_placeholder_contractor_name(current["ten_nha_thau"]):
             connection.execute(
                 """
@@ -931,23 +944,6 @@ def _apply_partner_enrichment(job, contractor, info):
         raise
     finally:
         connection.close()
-
-    if info and info.get("name"):
-        try:
-            from backend.sync.websocket import broadcast_websocket_event
-
-            broadcast_websocket_event(
-                organization_id,
-                {
-                    "type": "sync_update",
-                    "table": "nhathau",
-                    "id": contractor_id,
-                    "syncVersion": new_sync_version,
-                },
-            )
-        except Exception as notification_error:  # noqa: BLE001 - enrichment commit must survive notification failure
-            log_error(notification_error, "partner_enrichment_notification", level="WARN")
-
 
 def _process_partner_enrichment_job(job):
     contractor = _load_partner_job_contractor(job)

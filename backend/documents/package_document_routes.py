@@ -61,7 +61,7 @@ from backend.activity.service import (
     document_activity_event,
     insert_activity_events,
 )
-from backend.sync.api import broadcast_websocket_event
+from backend.sync.websocket import enqueue_websocket_event
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -532,6 +532,12 @@ async def upload_package_document_api(request):
             payload=response_payload,
             status_code=response_status,
         )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={"event": "db_changed"},
+        )
         connection.commit()
         connection.close()
         connection = None
@@ -545,7 +551,6 @@ async def upload_package_document_api(request):
                 )
             except Exception as cleanup_error:
                 log_error(cleanup_error, "package_document_old_file_cleanup")
-        broadcast_websocket_event(organization_id, {"event": "db_changed"})
         return JSONResponse(response_payload, status_code=response_status)
     except (PackageDocumentError, DocumentWorkerInputError) as exc:
         if connection:
@@ -848,6 +853,12 @@ async def delete_package_document_api(request):
             payload=response_payload,
             status_code=200,
         )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={"event": "db_changed"},
+        )
         connection.commit()
         connection.close()
         connection = None
@@ -859,7 +870,6 @@ async def delete_package_document_api(request):
             )
         except Exception as cleanup_error:
             log_error(cleanup_error, "package_document_deleted_file_cleanup")
-        broadcast_websocket_event(organization_id, {"event": "db_changed"})
         return JSONResponse(response_payload)
     except PackageDocumentNotFoundError as exc:
         if connection:

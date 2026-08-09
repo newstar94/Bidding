@@ -50,7 +50,8 @@ from backend.auth.identity import (
 from backend.auth.password_policy import validate_new_password, validate_password_input
 from backend.auth.security_notifications import build_security_notification_tasks
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
-from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
+from backend.sync.api import disconnect_user_websockets
+from backend.sync.websocket import enqueue_websocket_event
 from backend.shared.logging_utils import error_response
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.access_policy import (
@@ -1290,14 +1291,19 @@ async def verify_email_change_api(request):
             cursor=cursor,
             required=True,
         )
-        conn.commit()
-
-        disconnect_user_websockets(role_or_err.user_id)
+        enqueue_websocket_event(
+            cursor,
+            "revoke_user",
+            user_id=role_or_err.user_id,
+        )
         for organization_id in affected_organization_ids:
-            broadcast_websocket_event(
-                organization_id,
-                {"event": "organization_member_changed"},
+            enqueue_websocket_event(
+                cursor,
+                "broadcast",
+                organization_id=organization_id,
+                payload={"event": "organization_member_changed"},
             )
+        conn.commit()
         response = JSONResponse(
             {
                 "success": True,
