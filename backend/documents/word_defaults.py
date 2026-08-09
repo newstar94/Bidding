@@ -2,7 +2,10 @@ import hashlib
 
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
-from backend.shared.workspace_scope import personal_scope_id
+from backend.shared.workspace_scope import (
+    lock_personal_workspace_mutations,
+    personal_scope_id,
+)
 
 
 WORD_DEFAULT_MAPPINGS_VERSION = 14
@@ -508,13 +511,14 @@ def ensure_personal_word_workspace(cursor, user_id):
     user_id = str(user_id or "").strip()
     if not user_id:
         return 0
+    scope_id = personal_scope_id(user_id)
+    lock_personal_workspace_mutations(cursor, scope_id)
     account = cursor.execute(
         "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'",
         (user_id,),
     ).fetchone()
     if not account:
         return 0
-    scope_id = personal_scope_id(user_id)
     cursor.execute(
         """INSERT INTO sync_metadata (organization_id, current_version)
            VALUES (?, 1)

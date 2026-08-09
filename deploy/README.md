@@ -194,6 +194,13 @@ Nếu migration làm thay đổi dữ liệu không tương thích:
 
 Migration v28 chỉ drop `nguoi_cham_id` ở ba bảng đánh giá sau preflight `IS NOT NULL = 0`; rollback dữ liệu là restore backup, còn rollback code có thể dùng release trước nếu không ghi schema cũ.
 
+## Account deletion retention
+
+Luồng xóa tài khoản phải tuân theo
+`deploy/runbooks/account-deletion-retention.md`. Khi chưa có quyết định
+retention/legal được phê duyệt, blocker tombstone bắt buộc fail closed; không
+purge hoặc anonymize audit evidence bằng SQL ad-hoc.
+
 ## Runtime boundaries
 
 - Web role: CRUD cần thiết, không DDL/role management.

@@ -62,7 +62,10 @@ from backend.sync.record_serializer import SyncRecordSerializer
 from backend.sync.record_writer import SyncRecordWriter
 from backend.sync.record_validator import SyncRecordValidator
 from backend.db.schema import MONEY_COLUMNS
-from backend.shared.workspace_scope import is_personal_scope_for_user
+from backend.shared.workspace_scope import (
+    is_personal_scope_for_user,
+    lock_personal_workspace_mutations,
+)
 from backend.sync.queries import ALLOWED_ORPHAN_TABLES
 from backend.sync.ownership import get_owner_type
 from backend.sync.deletion_service import apply_sync_deletions
@@ -443,6 +446,10 @@ def _resolve_sync_actor_context(request, envelope, log_sync_error):
 
 
 def _prepare_sync_transaction(connection, cursor, actor, envelope, log_sync_error):
+    if is_personal_scope_for_user(actor.organization_id, actor.user_id):
+        # Authorize again only after account deletion can no longer overtake
+        # this personal-workspace transaction.
+        lock_personal_workspace_mutations(cursor, actor.organization_id)
     transaction_organization_id = get_active_org(
         actor.request,
         actor.user_id,

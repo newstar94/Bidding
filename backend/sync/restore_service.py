@@ -17,6 +17,10 @@ from backend.shared.helpers import SCHEMA_DINH_NGHIA, database, get_active_org, 
 from backend.shared.idempotency import acquire_idempotency_lock
 from backend.shared.request_validation import read_json_object
 from backend.shared.database_io import run_database_write
+from backend.shared.workspace_scope import (
+    is_personal_scope_for_user,
+    lock_personal_workspace_mutations,
+)
 from backend.sync.idempotency import request_hash_matches, sync_request_hash
 from backend.sync.mapper import map_db_to_json
 from backend.sync.queries import TABLE_KEYS
@@ -79,6 +83,8 @@ def restore_tombstoned_record(
     if expected_version <= 0:
         return _result("RESTORE_VERSION_INVALID", "Phiên bản xóa không hợp lệ.")
 
+    if is_personal_scope_for_user(organization_id, actor_user_id):
+        lock_personal_workspace_mutations(cursor, organization_id)
     privileged = bool(
         is_organization_manager(
             cursor,
@@ -93,7 +99,6 @@ def restore_tombstoned_record(
             "RESTORE_PERMISSION_REQUIRED",
             "Chỉ người có quyền phục hồi hồ sơ mới được thực hiện thao tác này.",
         )
-
     command_payload = {
         "table": table_name,
         "id": record_id,

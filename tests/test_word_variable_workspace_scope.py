@@ -23,6 +23,8 @@ from backend.shared.workspace_scope import personal_scope_id
 def _database():
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
+    connection.create_function("hashtext", 1, lambda value: hash(str(value)))
+    connection.create_function("pg_advisory_xact_lock", 2, lambda _key1, _key2: None)
     connection.executescript(
         """
         CREATE TABLE tai_khoan (

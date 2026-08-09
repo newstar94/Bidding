@@ -24,6 +24,20 @@ def personal_scope_owner_id(scope_id):
     return owner_id or None
 
 
+def lock_personal_workspace_mutations(cursor, scope_id):
+    """Serialize personal workspace writes with account deletion checks."""
+
+    if personal_scope_owner_id(scope_id) is None:
+        return False
+    cursor.execute(
+        """SELECT pg_advisory_xact_lock(
+                   hashtext('biddingflow-personal-workspace'), hashtext(?)
+               )""",
+        (str(scope_id).strip(),),
+    )
+    return True
+
+
 def is_personal_scope_for_user(scope_id, user_id):
     owner_id = personal_scope_owner_id(scope_id)
     return bool(owner_id and owner_id == str(user_id or "").strip())

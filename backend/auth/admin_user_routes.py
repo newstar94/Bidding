@@ -22,7 +22,11 @@ from backend.shared.membership_invariants import (
 )
 from backend.shared.platform_role_invariants import lock_platform_role_invariants
 from backend.sync.websocket import enqueue_websocket_event
-from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
+from backend.shared.workspace_scope import (
+    lock_personal_workspace_mutations,
+    personal_scope_id,
+    personal_workspace_payload,
+)
 from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.shared.request_validation import read_json_object
@@ -598,6 +602,7 @@ def _delete_user_sync(request):
             conn.rollback()
             return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
         personal_scope = personal_scope_id(user_id)
+        lock_personal_workspace_mutations(cursor, personal_scope)
         personal_content_tables = [
             table_name
             for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
@@ -619,6 +624,23 @@ def _delete_user_sync(request):
             return JSONResponse({
                 "error": "Không thể xóa tài khoản khi không gian cá nhân còn dữ liệu.",
                 "code": "PERSONAL_WORKSPACE_NOT_EMPTY",
+            }, status_code=409)
+        retention_blockers = {
+            "personalTombstones": int(cursor.execute(
+                """SELECT COUNT(*) FROM deleted_records
+                   WHERE organization_id = ?""",
+                (personal_scope,),
+            ).fetchone()[0]),
+        }
+        if any(retention_blockers.values()):
+            conn.rollback()
+            return JSONResponse({
+                "error": (
+                    "Không thể xóa tài khoản khi còn dữ liệu lưu giữ "
+                    "chưa có quy tắc retention được phê duyệt."
+                ),
+                "code": "ACCOUNT_DELETION_RETENTION_REVIEW_REQUIRED",
+                "retentionBlockers": retention_blockers,
             }, status_code=409)
         impact = {
             "rootCount": 1,
