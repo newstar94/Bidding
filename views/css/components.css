@@ -1522,6 +1522,7 @@ textarea[disabled] {
   color: var(--text-muted);
   background: transparent;
   cursor: pointer;
+  pointer-events: none;
   transform: none;
 }
 .custom-select-container.bf-combobox .bf-combobox-chevron {

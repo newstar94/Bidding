@@ -12,7 +12,22 @@ async function waitForApp(page) {
   });
 }
 
-test("required browser renders public routes and authenticated shell", async ({ page }) => {
+async function expectFilterDropdownToOpen(page, route, selectId) {
+  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+
+  const combobox = page.locator(`${selectId}-combobox`);
+  await expect(combobox).toBeVisible();
+  await expect(combobox).toHaveAttribute("data-bf-auto-scroll", "off");
+  await combobox.click();
+  await expect(combobox).toHaveAttribute("aria-expanded", "true");
+
+  const listboxId = await combobox.getAttribute("aria-controls");
+  expect(listboxId).toBeTruthy();
+  await expect(page.locator(`#${listboxId}`)).toBeVisible();
+}
+
+test("required browser renders public routes, shell, and filter dropdowns", async ({ page }) => {
   const landing = await page.goto("/", { waitUntil: "domcontentloaded" });
   expect(landing?.ok()).toBe(true);
   await expect(page.locator('[data-bf-shell="landing"]')).toBeVisible();
@@ -36,4 +51,8 @@ test("required browser renders public routes and authenticated shell", async ({ 
   await expect(profile).toBeVisible();
   await profile.click();
   await expect(page.locator("#profile-dropdown-menu")).toHaveClass(/active/);
+
+  await expectFilterDropdownToOpen(page, "/goi-thau", "#filter-goithau-trangthai");
+  await expectFilterDropdownToOpen(page, "/ke-hoach", "#filter-kehoach-nam");
+  await expectFilterDropdownToOpen(page, "/hop-dong", "#filter-hopdong-nam");
 });
