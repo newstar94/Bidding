@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createAwardResultApprovalWorkflow } from "../../frontend/packages/detail/AwardResultApprovalWorkflow.js";
+
+const panelControllerPath = new URL(
+  "../../frontend/packages/detail/AwardResultPanelController.js",
+  import.meta.url,
+);
 
 function contractor(id, rootId, version, effectiveDate, isLatest = 0) {
   return {
@@ -12,6 +18,58 @@ function contractor(id, rootId, version, effectiveDate, isLatest = 0) {
     isLatest,
   };
 }
+
+test("direct or special approval remains routed to its legacy application command", async () => {
+  const source = await readFile(panelControllerPath, "utf8");
+  assert.match(
+    source,
+    /if \(approvalPanel\.isDirectOrSpecial\) \{\s*await executeAppCommand\("saveKetQuaChiDinhThau", pkg\.id\);\s*return;\s*\}/u,
+  );
+});
+
+test("shared award workflow rejects the legacy direct or special command path", async () => {
+  const pkg = {
+    id: "package-direct",
+    phanLo: "Không",
+    danhGiaHsdtMetadata: "{}",
+  };
+  const model = {
+    state: {
+      goithau: [pkg],
+      nhathau: [],
+      thongtinmothau: [],
+    },
+  };
+  let portCalls = 0;
+  const workflow = createAwardResultApprovalWorkflow({
+    commitDependencies: async () => { portCalls += 1; },
+    commitDecision: async () => { portCalls += 1; },
+    finalizeLotBatch: async () => { portCalls += 1; },
+  });
+
+  await assert.rejects(
+    workflow.execute({
+      view: { model },
+      pkg,
+      command: {
+        ok: true,
+        isDirectOrSpecial: true,
+        rows: [],
+        winnerRows: [],
+        decision: { number: "01/QĐ", date: "2026-08-09" },
+      },
+      viewModel: {
+        activeScopedEvaluation: null,
+        isTwoEnvelope: false,
+        officialLotState: {},
+        isEditingOfficialResult: false,
+      },
+    }),
+    /legacy direct\/special award path/u,
+  );
+  assert.equal(portCalls, 0);
+  assert.deepEqual(model.state.thongtinmothau, []);
+});
 
 test("award result keeps the contractor and joint-venture versions frozen at bid opening", async () => {
   const pkg = {

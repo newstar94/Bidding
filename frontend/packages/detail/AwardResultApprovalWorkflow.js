@@ -1,8 +1,4 @@
 import { apiFetch } from "../../shared/apiClient.js";
-import { generateRecordId, generateUUID } from "../../shared/idUtils.js";
-import {
-  getExactContractorVersion,
-} from "../../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "../packageAppraisal.js";
 import {
   commitPackageAwardDecision,
@@ -39,121 +35,15 @@ function normalizeStoredId(value) {
   return isNaN(value) ? value : parseInt(value);
 }
 
-function resolveApprovalContractor(model, row) {
-  const bound = getExactContractorVersion(model, row.contractorId);
-  if (bound) return bound;
-  return model.getLatestNhaThau().find((contractor) => (
-    contractor.maNhaThau
-      && row.contractorCode
-      && contractor.maNhaThau.toLowerCase() === row.contractorCode.toLowerCase()
-  ) || (
-    contractor.tenNhaThau
-      && row.contractorName
-      && contractor.tenNhaThau.toLowerCase() === row.contractorName.toLowerCase()
-  )) || null;
-}
-
-function createDirectAwardContractor(model, row, decisionDate) {
-  const contractorId = generateRecordId("nhathau");
-  const contractor = {
-    id: contractorId,
-    rootId: contractorId,
-    phienBan: "00",
-    isLatest: 1,
-    ngayApDung: decisionDate,
-    maNhaThau: row.contractorCode || `NT-${generateUUID().toString().substr(8)}`,
-    tenNhaThau: row.contractorName,
-    loaiNhaThau: row.contractorType,
-    maSoThue: row.contractorCode || "",
-    nguoiDaiDien: "",
-    danhXung: "Ông",
-    soDienThoai: "",
-    email: "",
-    diaChi: "",
-    soTaiKhoan: "",
-    noiMoTaiKhoan: "",
-    maNganHang: "",
-    thanhVienLienDanh: row.contractorType === "Liên danh"
-      ? row.jointVentureMembers.map((member) => ({
-        tenNhaThau: member.tenNhaThau,
-        maSoThue: member.maSoThue,
-        vaiTro: "Thành viên liên danh",
-      }))
-      : [],
-  };
-  model.state.nhathau.push(contractor);
-  return contractor;
-}
-
-function buildJointVentureMembers(row, leadContractor) {
-  if (row.contractorType !== "Liên danh") return [];
-  return [
-    {
-      thanhVienNhaThauId: leadContractor?.id || row.leadMemberContractorId,
-      tenNhaThau: leadContractor?.tenNhaThau || row.leadMemberName || row.contractorName,
-      maNhaThau: leadContractor?.maNhaThau || row.contractorCode,
-      maSoThue: leadContractor?.maSoThue || row.contractorCode,
-      vaiTro: "Đứng đầu liên danh",
-    },
-    ...row.jointVentureMembers.map((member) => ({
-      thanhVienNhaThauId: member.thanhVienNhaThauId || "",
-      tenNhaThau: member.tenNhaThau,
-      maNhaThau: member.maNhaThau || member.maSoThue,
-      maSoThue: member.maSoThue,
-      vaiTro: "Thành viên liên danh",
-    })),
-  ];
-}
-
-function applyBidRows(model, pkg, command, decisionDate) {
-  const createdContractors = [];
-  if (command.isDirectOrSpecial) {
-    model.replaceTableState(
-      "thongtinmothau",
-      model.state.thongtinmothau.filter(
-        (bid) => String(bid.goiThauId) !== String(pkg.id),
-      ),
-    );
-  }
+function applyBidRows(model, command) {
   command.rows.forEach((row) => {
-    let bid = model.state.thongtinmothau.find((item) => item.id === row.bidId);
-    if (command.isDirectOrSpecial) {
-      let contractor = resolveApprovalContractor(model, row);
-      if (!contractor && row.contractorName) {
-        contractor = createDirectAwardContractor(model, row, decisionDate);
-        createdContractors.push(contractor);
-      }
-      bid = {
-        id: row.bidId,
-        goiThauId: pkg.id,
-        nhaThauId: contractor?.id || row.bidId,
-        maNhaThau: row.contractorCode,
-        tenNhaThau: row.contractorName,
-        loaiNhaThau: row.contractorType,
-        thanhVienLienDanh: buildJointVentureMembers(row, contractor),
-        giaDuThau: row.awardPrice || 0,
-        giaSauGiamGia: row.awardPrice || 0,
-        giaXepHang: row.awardPrice || 0,
-        giaDeNghiTrungThau: row.awardPrice || 0,
-        danhGiaHopLe: "Đạt",
-        danhGiaNangLuc: "Đạt",
-        danhGiaKyThuat: "Đạt",
-        danhGiaTaiChinh: "Đạt",
-        danhGiaKetLuan: "Đạt",
-        thoiGianThucHien: row.packageDuration,
-        lyDoTruot: "",
-      };
-      if (pkg.phanLo === "Có") {
-        bid.maPhanLo = row.lotCode;
-        bid.tenPhanLo = row.lotName;
-      }
-      model.state.thongtinmothau.push(bid);
-    } else if (bid) {
+    const bid = model.state.thongtinmothau.find((item) => item.id === row.bidId);
+    if (bid) {
       bid.lyDoTruot = row.isWinner ? "" : row.rejectionReason;
       if (row.isWinner) bid.giaDeNghiTrungThau = row.awardPrice || bid.giaDeNghiTrungThau || 0;
     }
   });
-  return createdContractors;
+  return [];
 }
 
 function resolveOpeningContractorId(model, row) {
@@ -278,6 +168,9 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
       if (!view?.model || !pkg || !command?.ok || !viewModel) {
         throw new TypeError("Award approval workflow received an invalid context.");
       }
+      if (command.isDirectOrSpecial) {
+        throw new TypeError("Award approval workflow cannot execute the legacy direct/special award path.");
+      }
       const controller = appController || view;
       const {
         activeScopedEvaluation: activeScope,
@@ -287,7 +180,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
       } = viewModel;
       const { decision } = command;
 
-      const createdContractors = applyBidRows(view.model, pkg, command, decision.date);
+      const createdContractors = applyBidRows(view.model, command);
       const winnerId = applyPackageAward(
         view.model,
         pkg,
