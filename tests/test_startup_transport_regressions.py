@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from backend import app as app_module
-from backend.http_middleware import ResponseIntegrityMiddleware
+from backend.http_middleware import ResponseIntegrityMiddleware, SecurityHeadersMiddleware
 
 
 def test_development_server_serves_shared_timeline_catalog():
@@ -84,7 +84,7 @@ asyncio.run(main())
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def _response_headers_for(path: str) -> dict[str, str]:
+def _response_headers_for(path: str, query_string: bytes = b"") -> dict[str, str]:
     messages = []
 
     async def inner_app(_scope, _receive, send):
@@ -108,13 +108,14 @@ def _response_headers_for(path: str) -> dict[str, str]:
         "type": "http",
         "method": "GET",
         "path": path,
-        "query_string": b"",
+        "query_string": query_string,
         "headers": [],
         "scheme": "http",
         "server": ("testserver", 80),
         "client": ("127.0.0.1", 1234),
     }
-    asyncio.run(ResponseIntegrityMiddleware(inner_app)(scope, receive, send))
+    middleware = SecurityHeadersMiddleware(ResponseIntegrityMiddleware(inner_app))
+    asyncio.run(middleware(scope, receive, send))
     return {
         name.decode("latin-1").lower(): value.decode("latin-1")
         for name, value in messages[0]["headers"]
@@ -124,6 +125,21 @@ def _response_headers_for(path: str) -> dict[str, str]:
 def test_static_response_preserves_content_length():
     headers = _response_headers_for("/dist/assets/app-12345678.js")
     assert headers["content-length"] == "4"
+
+
+def test_manual_static_version_query_requires_revalidation():
+    headers = _response_headers_for("/vendor/route-shell.js", b"v=2.0")
+
+    assert headers["cache-control"] == "public, max-age=0, must-revalidate"
+
+
+def test_content_hash_static_version_is_immutable():
+    headers = _response_headers_for(
+        "/vendor/route-shell.js",
+        f"v={'a' * 64}".encode("ascii"),
+    )
+
+    assert headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
 def test_dynamic_response_keeps_defensive_chunked_framing():

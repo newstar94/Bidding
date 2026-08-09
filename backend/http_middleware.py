@@ -1,6 +1,7 @@
 """HTTP transport safeguards kept separate from application routing/lifecycle."""
 
 import os
+import re
 import secrets
 from urllib.parse import urlparse
 
@@ -17,6 +18,7 @@ from backend.shared.origin_policy import (
 
 
 TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
+_CONTENT_HASH_VERSION = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def _turnstile_enabled():
@@ -218,7 +220,9 @@ class SecurityHeadersMiddleware:
                 headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             elif (
                 path.startswith("/dist/assets/")
-                or request.query_params.get("v")
+                or _CONTENT_HASH_VERSION.fullmatch(
+                    request.query_params.get("v") or ""
+                )
             ) and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
                 headers["Cache-Control"] = "public, max-age=31536000, immutable"
             elif path.endswith(('.js', '.css')):

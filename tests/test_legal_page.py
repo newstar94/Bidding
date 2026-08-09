@@ -1,6 +1,7 @@
 import asyncio
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 
 from starlette.requests import Request
 
@@ -110,8 +111,13 @@ def test_workspace_response_keeps_initial_route_preload(monkeypatch):
     response = asyncio.run(app_module.index(_request("/goi-thau")))
     body = response.body.decode("utf-8")
 
-    assert '<link rel="preload" href="/vendor/initial-route.js?v=2.0" as="script">' in body
-    assert '<script src="/vendor/initial-route.js?v=2.0"></script>' in body
+    script_match = re.search(
+        r'<script src="(?P<src>/vendor/initial-route\.js\?v=[0-9a-f]{64})"></script>',
+        body,
+    )
+    assert script_match is not None
+    script_src = script_match.group("src")
+    assert f'<link rel="preload" href="{script_src}" as="script">' in body
 
 
 def test_registration_and_google_onboarding_show_all_legal_links():

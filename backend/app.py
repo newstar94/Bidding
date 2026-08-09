@@ -446,6 +446,17 @@ def _page_shell(html_content, path):
     return html_content
 
 
+def _initial_route_preload_tag(html_content):
+    script_match = re.search(
+        r'<script\s+src="(?P<src>/vendor/initial-route\.js\?v=[0-9a-f]{64})"'
+        r"\s*></script>",
+        html_content,
+    )
+    if not script_match:
+        return ""
+    return f'<link rel="preload" href="{script_match.group("src")}" as="script">'
+
+
 async def index(request):
     """Return the compiled application shell with browser ETag caching."""
     global _index_response_cache
@@ -479,7 +490,7 @@ async def index(request):
     initial_route_preload = (
         ""
         if request_path in {"/", "/legal"}
-        else '<link rel="preload" href="/vendor/initial-route.js?v=2.0" as="script">'
+        else _initial_route_preload_tag(html_content)
     )
     html_content = html_content.replace("__BF_INITIAL_ROUTE_PRELOAD__", initial_route_preload)
     bootstrap_ms = (time.perf_counter() - bootstrap_started) * 1000
