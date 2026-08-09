@@ -1,6 +1,7 @@
-import { getLotWinnersStore } from "../shared/runtimeState.js";
+import { getLotWinners } from "../shared/runtimeState.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeAttribute, escapeHtml } from "../shared/view_helpers.js";
+import { beginWorkspaceRender } from "../shared/workspaceRenderCache.js";
 import { setJvData } from "./jvDataStore.js";
 
 const MODAL_ID = "modal-lot-winners";
@@ -95,8 +96,9 @@ export function buildLotWinnersModalHtml({ packageCode = "", packageName = "", w
 }
 
 export function showLotWinnersModal({ model, view } = {}, packageId) {
-  const winnerStore = getLotWinnersStore();
-  const winners = normalizeWinners(winnerStore[String(packageId)] || winnerStore[packageId]);
+  const cacheOwner = "lot-winners-modal";
+  beginWorkspaceRender(model, cacheOwner);
+  const winners = normalizeWinners(getLotWinners(model, packageId));
   if (!winners.length) {
     view?.showToast?.(
       "Chưa có thông tin",
@@ -119,7 +121,7 @@ export function showLotWinnersModal({ model, view } = {}, packageId) {
   const winnersForView = winners.map((winner, index) => {
     if (!winner.isJV || !winner.jvData) return winner;
     const jvKey = `lot-winner:${packageId}:${winner.maPhanLo || index}`;
-    setJvData(jvKey, winner.jvData);
+    setJvData(model, jvKey, winner.jvData, { owner: cacheOwner });
     return { ...winner, jvKey };
   });
   modal.innerHTML = trustedHTML(buildLotWinnersModalHtml({

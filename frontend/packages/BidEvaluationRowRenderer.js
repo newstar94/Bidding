@@ -8,6 +8,7 @@ import {
 } from "../partners/contractorVersionBinding.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
+import { beginWorkspaceRender } from "../shared/workspaceRenderCache.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
 import {
   isProposedAwardPriceBelowHalf,
@@ -21,6 +22,7 @@ import { isViolationConfirmed } from "./openingContractorLookup.js";
 import { setJvData } from "./jvDataStore.js";
 
 const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
+const bidEvaluationCacheOwner = (pkg) => `bid-evaluation:${pkg?.id || "unknown"}`;
 
 function durationText(value, fallback = "") {
   const raw = String(value || "").trim();
@@ -44,12 +46,12 @@ export function buildContractorDisplay({ pkg, bid, model }) {
   const violationClass = violationConfirmed ? " bidder-name--violator" : "";
   if (bid.loaiNhaThau === "Liên danh") {
     const jvKey = `${pkg.id}_eval_bidder_${bid.id}`;
-    setJvData(jvKey, {
+    setJvData(model, jvKey, {
       members: resolveBidJointVentureMembers(model, bid),
       leadName: contractorName,
       leadCode: contractorCode,
       leadContractorVersionId: bid.nhaThauId || "",
-    });
+    }, { owner: bidEvaluationCacheOwner(pkg) });
     html = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${escapeHtml(jvKey)}" title="Xem thành viên liên danh">👥 ${escapeHtml(contractorName)}</a>`;
   } else {
     const contractorId = exactContractor?.id || "";
@@ -429,7 +431,8 @@ function validateRowRendererContext({
   }
 }
 
-function beginRowRender(root) {
+function beginRowRender(root, model, pkg) {
+  beginWorkspaceRender(model, bidEvaluationCacheOwner(pkg));
   const revision = Number(root.__bfBidEvaluationRowRenderRevision || 0) + 1;
   root.__bfBidEvaluationRowRenderRevision = revision;
   root.innerHTML = trustedHTML("");
@@ -506,7 +509,7 @@ export function renderBidEvaluationRows(context = {}) {
     isReadOnly = false,
     onRankingChange = () => {},
   } = context;
-  beginRowRender(root);
+  beginRowRender(root, model, pkg);
   if (renderEmptyRows(root, bids)) return [];
 
   const rows = [];
@@ -547,7 +550,7 @@ export function renderBidEvaluationRowsBatched(context = {}, options = {}) {
       }
       return globalThis.setTimeout(callback, 0);
     };
-  const revision = beginRowRender(root);
+  const revision = beginRowRender(root, model, pkg);
   if (renderEmptyRows(root, bids)) return Promise.resolve([]);
 
   const rows = [];

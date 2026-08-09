@@ -1,5 +1,6 @@
 import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
+import { beginWorkspaceRender } from "../../shared/workspaceRenderCache.js";
 import { renderBidContractorLink } from "./BidderTable.js";
 import { authFetchDownloadWithAlert, escapeHtml } from "../../shared/view_helpers.js";
 import { savePackageFinancialOpening, validateFinancialOpeningTime } from "../packageFinancialOpening.js";
@@ -21,6 +22,8 @@ import {
   serializeEvaluationMetadata,
 } from "../evaluationMetadata.js";
 
+const financialOpeningCacheOwner = (pkg) => `financial-opening:${pkg?.id || "unknown"}`;
+
 export function renderFinancialOpeningTable({
   model,
   pkg,
@@ -29,6 +32,8 @@ export function renderFinancialOpeningTable({
   canEdit = false,
   hasTechnicalScore = false
 } = {}) {
+  const cacheOwner = financialOpeningCacheOwner(pkg);
+  beginWorkspaceRender(model, cacheOwner);
   const hasLots = pkg?.phanLo === "Có";
   const isConsulting = pkg?.linhVuc === "Tư vấn";
   const rows = bids.map((bid) => {
@@ -37,7 +42,12 @@ export function renderFinancialOpeningTable({
     const finalPrice = model.formatVND(bid.giaSauGiamGia) || "";
     const validity = bid.hieuLucHsdt || "";
     const identity = escapeHtml(formatPartnerIdentityCode(bid.maNhaThau || bid.maDinhDanh, "--"));
-    const contractor = renderBidContractorLink(model, bid, `${pkg.id}_financial_${isReadOnly ? "readonly" : "edit"}_${bid.id}`);
+    const contractor = renderBidContractorLink(
+      model,
+      bid,
+      `${pkg.id}_financial_${isReadOnly ? "readonly" : "edit"}_${bid.id}`,
+      { owner: cacheOwner },
+    );
     const lotCells = hasLots ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenPhanLo || "--")}</td>` : "";
     const scoreCell = hasTechnicalScore ? `<td class="text-center">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : "";
     if (isReadOnly) {
@@ -370,6 +380,7 @@ export function renderFinancialOpeningPanel(view, {
   effectiveStatus,
   appController,
 } = {}) {
+  beginWorkspaceRender(view?.model, financialOpeningCacheOwner(pkg));
   const state = buildFinancialOpeningState({ view, pkg, effectiveStatus });
   if (!state.qualifiedBids.length) {
     contentWrapper.innerHTML = trustedHTML(`

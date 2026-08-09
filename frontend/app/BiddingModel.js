@@ -25,6 +25,7 @@ import {
   resolveWorkspaceScope,
   workspaceDatabaseName
 } from "./workspaceState.js";
+import { clearWorkspaceRenderCaches } from "../shared/workspaceRenderCache.js";
 const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
   Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
 );
@@ -286,6 +287,7 @@ export class BiddingModel {
   }
 
   _resetWorkspaceMemory() {
+    clearWorkspaceRenderCaches(this);
     abortWorkspaceRequests(this._workspaceRequestControllers);
     abortWorkspaceRequestMap(this._paginationRequests);
     abortWorkspaceRequestMap(this._planPackageHydrationRequests);

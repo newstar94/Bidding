@@ -7,7 +7,8 @@ import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js
 import { setJvData } from "./jvDataStore.js";
 import { resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { executeAppCommand } from "../app/commandBus.js";
-import { getLotWinnersStore } from "../shared/runtimeState.js";
+import { setLotWinners } from "../shared/runtimeState.js";
+import { beginWorkspaceRender } from "../shared/workspaceRenderCache.js";
 import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
 import { showLotWinnersModal } from "./lotWinnersModal.js";
 import {
@@ -28,6 +29,8 @@ function bindLotWinnerActions(tableBody, view) {
 }
 
 export async function renderGoiThauTable() {
+  const cacheOwner = "package-list";
+  beginWorkspaceRender(this.model, cacheOwner);
   const tableBody = document.getElementById("goithau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-goithau").value.toLowerCase();
   const filterTrangThai = document.getElementById("filter-goithau-trangthai").value;
@@ -141,12 +144,12 @@ export async function renderGoiThauTable() {
         const leadName = leadMember?.tenNhaThau || ntDisplayName;
         const leadCode = leadMember?.maSoThue || nt?.maSoThue || nt?.maNhaThau || matchBid.maDinhDanh || matchBid.maNhaThau || "";
         const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
-        setJvData(displayedGt.id, {
+        setJvData(this.model, displayedGt.id, {
           members: subMembers,
           leadName,
           leadCode,
           leadContractorVersionId: leadMember?.thanhVienNhaThauId || matchBid.nhaThauId || ""
-        });
+        }, { owner: cacheOwner });
         ntLink = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
       } else if (nt) {
         ntLink = `<a href="#" data-bf-action="show-contractor-modal" data-id="${esc(nt.id)}" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
@@ -160,7 +163,7 @@ export async function renderGoiThauTable() {
           const winningLots = plList.filter((pl) => pl.nhaThauTrungThauId);
           const uniqueWinnerIds = [...new Set(winningLots.map((pl) => String(pl.nhaThauTrungThauId)).filter(Boolean))];
           if (uniqueWinnerIds.length > 1) {
-            getLotWinnersStore()[displayedGt.id] = winningLots.map((pl) => {
+            const lotWinners = winningLots.map((pl) => {
               const bidderInfo = this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
               const ntInfo = this.model.state.nhathau.find((n) => n.id === pl.nhaThauTrungThauId);
               const ntName = bidderInfo ? resolveBidContractorName(this.model, bidderInfo) : ntInfo ? ntInfo.tenNhaThau : "Nhà thầu #" + pl.nhaThauTrungThauId;
@@ -189,6 +192,7 @@ export async function renderGoiThauTable() {
                 jvData
               };
             });
+            setLotWinners(this.model, displayedGt.id, lotWinners, { owner: cacheOwner });
             const totalGiaTrung = this.model.sumVND(winningLots.map((pl) => pl.giaTrungThau));
             winnerInfoHtml = `<button type="button" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" aria-controls="modal-lot-winners" class="lot-winners-link text-blue fw-bold link-hover" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</button><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
           } else if (uniqueWinnerIds.length === 1) {
@@ -204,12 +208,12 @@ export async function renderGoiThauTable() {
               const leadName = leadMember?.tenNhaThau || name;
               const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || "";
               const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
-              setJvData(displayedGt.id, {
+              setJvData(this.model, displayedGt.id, {
                 members: subMembers,
                 leadName,
                 leadCode,
                 leadContractorVersionId: leadMember?.thanhVienNhaThauId || singleWinnerBid.nhaThauId || ""
-              });
+              }, { owner: cacheOwner });
               link = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
             } else if (singleWinnerNt) {
               link = `<a href="#" data-bf-action="show-contractor-modal" data-id="${esc(singleWinnerNt.id)}" class="text-blue fw-bold link-hover">${esc(name)}</a>`;

@@ -1,14 +1,15 @@
 import { formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { resolveBidContractorName } from "../../partners/contractorVersionBinding.js";
-import { getLotWinnersStore } from "../../shared/runtimeState.js";
+import { setLotWinners } from "../../shared/runtimeState.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
+import { beginWorkspaceRender } from "../../shared/workspaceRenderCache.js";
 import { setJvData } from "../jvDataStore.js";
 import { renderBidContractorLink } from "./BidderTable.js";
 import { buildAwardJointVentureViewData } from "./AwardResultPanelController.js";
 
-function buildWinnerPresentation(model, pkg, summary, allBids) {
+function buildWinnerPresentation(model, pkg, summary, allBids, owner) {
   if (summary.hasMultipleWinners) {
-    getLotWinnersStore()[pkg.id] = summary.winningLots.map((lot) => {
+    const winners = summary.winningLots.map((lot) => {
       const bidder = allBids.find(
         (bid) => String(bid.nhaThauId) === String(lot.nhaThauTrungThauId),
       );
@@ -30,6 +31,7 @@ function buildWinnerPresentation(model, pkg, summary, allBids) {
           : null,
       };
     });
+    setLotWinners(model, pkg.id, winners, { owner });
     return `
       <h5 class="bf-s-f3bfd10216">
         <a href="#" data-bf-action="show-lot-winners" data-id="${safeAttr(pkg.id)}" class="link-hover bf-s-9be517fbf0" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a>
@@ -42,7 +44,7 @@ function buildWinnerPresentation(model, pkg, summary, allBids) {
     return '<h5 class="bf-s-f3bfd10216">Chưa xác định</h5>';
   }
   if (winnerBid.loaiNhaThau === "Liên danh") {
-    setJvData(pkg.id, buildAwardJointVentureViewData(model, winnerBid));
+    setJvData(model, pkg.id, buildAwardJointVentureViewData(model, winnerBid), { owner });
     return `
       <div class="bf-s-7d5173b171">
         <h5 class="bf-s-f3bfd10216">
@@ -68,7 +70,7 @@ function buildWinnerPresentation(model, pkg, summary, allBids) {
   `;
 }
 
-function buildBidderRows(model, pkg, summary) {
+function buildBidderRows(model, pkg, summary, owner) {
   return summary.bidderRows.map((row) => {
     const bid = row.bid;
     const awardPrice = row.isWinner
@@ -80,13 +82,14 @@ function buildBidderRows(model, pkg, summary) {
     let contractorMarkup;
     if (bid.loaiNhaThau === "Liên danh") {
       const jointVentureKey = `${pkg.id}_result_bidder_${row.index}`;
-      setJvData(jointVentureKey, buildAwardJointVentureViewData(model, bid));
+      setJvData(model, jointVentureKey, buildAwardJointVentureViewData(model, bid), { owner });
       contractorMarkup = `<a href="#" data-bf-action="show-jv" data-id="${safeAttr(jointVentureKey)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${escapeHtml(bid.tenNhaThau || "--")}</a>`;
     } else {
       contractorMarkup = renderBidContractorLink(
         model,
         bid,
         `${pkg.id}_result_contractor_${row.index}`,
+        { owner },
       );
     }
     if (summary.isLotPackage) {
@@ -152,12 +155,14 @@ export function buildAwardResultSummaryPresentation({
   if (!model?.state || !pkg || !summary || !Array.isArray(summary.bidderRows)) {
     throw new TypeError("Award result summary presentation received an invalid context.");
   }
+  const owner = `award-result:${pkg.id}`;
+  beginWorkspaceRender(model, owner);
   if (!pkg.nhaThauTrungThauId && summary.inferredPackageWinnerId) {
     pkg.nhaThauTrungThauId = summary.inferredPackageWinnerId;
   }
   return {
-    winnerHtml: buildWinnerPresentation(model, pkg, summary, allBids),
-    bidderRowsHtml: buildBidderRows(model, pkg, summary),
+    winnerHtml: buildWinnerPresentation(model, pkg, summary, allBids, owner),
+    bidderRowsHtml: buildBidderRows(model, pkg, summary, owner),
     tableHeaderHtml: buildTableHeader(summary.isLotPackage),
   };
 }

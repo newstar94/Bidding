@@ -1299,10 +1299,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         }
         case "show-contractor-close-jv":
           return call("showNhaThauDetailsAndCloseJV", id);
-        case "show-jv":
-          if (getJvData(id)) {
+        case "show-jv": {
+          const data = getJvData(this.model, id);
+          if (data) {
             event.preventDefault();
-            const data = getJvData(id);
             const openJointVenture = () => this.executeCommand("openMoThauJVViewModal", data.members, data.leadName, data.leadCode, data.leadContractorVersionId || "");
             const modalId = target.dataset.closeBefore;
             if (modalId) {
@@ -1311,6 +1311,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
             return openJointVenture();
           }
           return;
+        }
         case "show-lot-winners":
           return call("showLotWinnersModal", id);
         case "edit-contractor":

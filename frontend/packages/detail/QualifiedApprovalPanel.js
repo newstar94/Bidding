@@ -1,6 +1,7 @@
 import { formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { setFieldFeedback } from "../../app/formStateUtils.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
+import { beginWorkspaceRender } from "../../shared/workspaceRenderCache.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 import { isCompetitiveQuotationPackage } from "../packageAppraisal.js";
 import { saveQualifiedApproval } from "../packageEvaluationProgress.js";
@@ -19,6 +20,8 @@ import {
   evaluationMethodUsesTechnicalScore,
 } from "../evaluationMethodRules.js";
 import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
+
+const qualifiedApprovalCacheOwner = (pkg) => `qualified-approval:${pkg?.id || "unknown"}`;
 
 function parseMetadata(pkg) {
   const parsed = parseEvaluationMetadataForDisplay(
@@ -168,7 +171,12 @@ function renderQualifiedTable(view, state) {
           <tr>
             ${pkg.phanLo === "Có" ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenPhanLo || "--")}</td>` : ""}
             <td>${escapeHtml(formatPartnerIdentityCode(bid.maNhaThau || bid.maDinhDanh, "--"))}</td>
-            <td>${renderBidContractorLink(view.model, bid, `${pkg.id}_qualified_${bid.id}`)}</td>
+            <td>${renderBidContractorLink(
+              view.model,
+              bid,
+              `${pkg.id}_qualified_${bid.id}`,
+              { owner: qualifiedApprovalCacheOwner(pkg) },
+            )}</td>
             ${hasTechnicalScore ? `<td class="bf-s-63dbf5319a">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : ""}
             <td class="bf-s-63dbf5319a"><span class="badge badge-success bf-s-391321b535">Đạt kỹ thuật</span></td>
           </tr>`).join("")}</tbody>
@@ -242,6 +250,7 @@ export function renderQualifiedApprovalPanel(view, {
   effectiveStatus,
   appController,
 } = {}) {
+  beginWorkspaceRender(view?.model, qualifiedApprovalCacheOwner(pkg));
   const state = buildQualifiedApprovalState({ view, pkg, isTechEvalSaved, effectiveStatus });
   if (!state.isTechEvalSaved) {
     contentWrapper.innerHTML = trustedHTML(`
