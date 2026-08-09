@@ -139,6 +139,7 @@ export function initCustomSelect(selectId) {
     ?.text.trim();
   return initAccessibleCombobox(select, {
     compatibilityMode: "custom-select",
+    displayEmptyOptionLabel: true,
     formatSelectedLabel: compactMonthLabel,
     includeEmptyOption: true,
     placeholder: emptyOptionLabel || "Chọn dữ liệu",

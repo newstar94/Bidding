@@ -10,9 +10,11 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-function selectedLabel(select, formatter = null) {
+function selectedLabel(select, formatter = null, displayEmptyOptionLabel = false) {
   const option = select.options[select.selectedIndex];
-  const label = option?.value ? option.text.trim() : "";
+  const label = option && (displayEmptyOptionLabel || option.value)
+    ? option.text.trim()
+    : "";
   return typeof formatter === "function" ? formatter(label, option) : label;
 }
 
@@ -39,6 +41,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     portal: false,
     showToggle: true,
     formatSelectedLabel: null,
+    displayEmptyOptionLabel: false,
     ...initialConfig
   };
   const original = {
@@ -153,7 +156,13 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     if (!nextOpen) {
       activeIndex = -1;
       input.removeAttribute("aria-activedescendant");
-      if (restoreSelection) input.value = selectedLabel(select, config.formatSelectedLabel);
+      if (restoreSelection) {
+        input.value = selectedLabel(
+          select,
+          config.formatSelectedLabel,
+          config.displayEmptyOptionLabel,
+        );
+      }
       if (config.portal && list.parentElement !== wrapper) wrapper.appendChild(list);
     }
   };
@@ -176,7 +185,11 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   const selectOption = (option) => {
     if (!option || option.disabled) return;
     select.value = option.value;
-    input.value = selectedLabel(select, config.formatSelectedLabel);
+    input.value = selectedLabel(
+      select,
+      config.formatSelectedLabel,
+      config.displayEmptyOptionLabel,
+    );
     select.dispatchEvent(new Event("change", { bubbles: true }));
     setOpen(false);
   };
@@ -240,7 +253,11 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       : String(query || "");
     input.value = preserveQuery || query !== undefined
       ? renderedQuery
-      : selectedLabel(select, config.formatSelectedLabel);
+      : selectedLabel(
+        select,
+        config.formatSelectedLabel,
+        config.displayEmptyOptionLabel,
+      );
     renderOptions(renderedQuery);
     if (keepOpen && !select.disabled) setOpen(true);
     else if (select.disabled) setOpen(false);

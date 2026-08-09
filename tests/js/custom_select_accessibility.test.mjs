@@ -123,7 +123,15 @@ test("generic custom select exposes keyboard and screen-reader combobox behavior
     const combobox = page.getByRole("combobox", { name: "Trạng thái" });
     assert.equal(await combobox.getAttribute("aria-haspopup"), "listbox");
     assert.equal(await combobox.getAttribute("aria-expanded"), "false");
-    assert.equal(await combobox.getAttribute("placeholder"), "Tất cả");
+    assert.equal(await combobox.inputValue(), "Tất cả");
+    assert.equal(
+      await combobox.evaluate((input) => getComputedStyle(input).textOverflow),
+      "ellipsis",
+    );
+    assert.equal(
+      await combobox.evaluate((input) => getComputedStyle(input).paddingRight),
+      "36px",
+    );
 
     await combobox.focus();
     assert.equal(await combobox.getAttribute("aria-expanded"), "true");
@@ -195,7 +203,7 @@ test("global select enhancement preserves an active filter combobox", async () =
 
 test("package, plan, and contract filters keep their original empty-option titles", async () => {
   await withSelectPage(async (page) => {
-    const placeholders = await page.evaluate(async () => {
+    const labels = await page.evaluate(async () => {
       const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
       const ids = [
         "filter-goithau-trangthai",
@@ -210,11 +218,11 @@ test("package, plan, and contract filters keep their original empty-option title
       for (const id of ids) initCustomSelect(id);
       return Object.fromEntries(ids.map((id) => [
         id,
-        document.getElementById(`${id}-combobox`)?.placeholder,
+        document.getElementById(`${id}-combobox`)?.value,
       ]));
     });
 
-    assert.deepEqual(placeholders, {
+    assert.deepEqual(labels, {
       "filter-goithau-trangthai": "Tất cả trạng thái",
       "filter-goithau-hinhthuc": "Tất cả hình thức",
       "filter-goithau-nam": "Năm",

@@ -1499,11 +1499,14 @@ textarea[disabled] {
 .custom-select-container.bf-combobox > .custom-select-trigger {
   position: relative;
   z-index: 1;
-  padding-right: 42px;
+  padding-right: 36px;
   color: var(--text-main);
   background: var(--bg-card);
   cursor: pointer;
   pointer-events: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .custom-select-container.bf-combobox > .bf-combobox-toggle {
   position: absolute;
