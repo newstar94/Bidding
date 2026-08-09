@@ -36,7 +36,9 @@ const SECURE_OBFUSCATION_OPTIONS = Object.freeze({
   renameGlobals: false,
   selfDefending: false,
   simplify: true,
-  sourceMap: false,
+  sourceMap: true,
+  sourceMapMode: 'separate',
+  sourceMapSourcesMode: 'sources-content',
   splitStrings: false,
   stringArray: true,
   stringArrayCallsTransform: false,
@@ -50,6 +52,43 @@ const SECURE_OBFUSCATION_OPTIONS = Object.freeze({
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function writePrivateSymbolArchive({ releaseId, transformedFiles }) {
+  const releaseIdSha256 = sha256(releaseId);
+  const relativeArchive = `private-symbols/${releaseIdSha256}.symbols.json`;
+  const archivePath = path.resolve(__dirname, 'release', relativeArchive);
+  const archive = {
+    formatVersion: 1,
+    releaseId,
+    releaseIdSha256,
+    transformer: 'javascript-obfuscator@5.4.3',
+    files: transformedFiles.map((transformed) => ({
+      file: transformed.file,
+      inputSha256: transformed.inputSha256,
+      outputSha256: transformed.outputSha256,
+      obfuscationMap: transformed.obfuscationMap,
+      bundleMap: transformed.bundleMap
+    }))
+  };
+  const content = `${JSON.stringify(archive)}\n`;
+  fs.mkdirSync(path.dirname(archivePath), { recursive: true });
+  if (fs.existsSync(archivePath) && releaseId !== 'development') {
+    const existing = fs.readFileSync(archivePath, 'utf8');
+    if (existing !== content) {
+      throw new Error(`Immutable private symbol archive collision for ${releaseId}.`);
+    }
+  } else {
+    fs.writeFileSync(archivePath, content, { encoding: 'utf8', mode: 0o600 });
+  }
+  fs.chmodSync(archivePath, 0o600);
+  return {
+    version: 1,
+    archive: relativeArchive,
+    sha256: sha256(content),
+    bytes: Buffer.byteLength(content),
+    files: transformedFiles.length
+  };
 }
 
 function secureObfuscatorPlugin(releaseId = 'development') {
@@ -67,31 +106,52 @@ function secureObfuscatorPlugin(releaseId = 'development') {
       for (const output of Object.values(bundle)) {
         if (output.type !== 'chunk' || !output.fileName.endsWith('.js')) continue;
         const originalCode = output.code;
-        const transformedCode = JavaScriptObfuscator.obfuscate(
+        if (!output.map) {
+          throw new Error(`Secure build has no hidden bundle map for ${output.fileName}`);
+        }
+        const bundleMap = JSON.parse(output.map.toString());
+        const obfuscationResult = JavaScriptObfuscator.obfuscate(
           originalCode,
-          SECURE_OBFUSCATION_OPTIONS
-        ).getObfuscatedCode();
+          {
+            ...SECURE_OBFUSCATION_OPTIONS,
+            inputFileName: output.fileName,
+            sourceMapFileName: `${path.basename(output.fileName)}.map`
+          }
+        );
+        const transformedCode = obfuscationResult.getObfuscatedCode().replace(
+          /\n?\/\/# sourceMappingURL=[^\r\n]*\s*$/u,
+          ''
+        );
+        const obfuscationMap = JSON.parse(obfuscationResult.getSourceMap());
         if (transformedCode === originalCode) {
           throw new Error(`Secure obfuscation did not transform ${output.fileName}`);
         }
         if (transformedCode.includes('!~{')) {
           throw new Error(`Unresolved Rolldown placeholder remained in ${output.fileName}`);
         }
+        if (transformedCode.includes('sourceMappingURL=')) {
+          throw new Error(`Secure output exposes source-map metadata in ${output.fileName}`);
+        }
         output.code = transformedCode;
         output.map = null;
         transformedFiles.push({
           file: output.fileName,
           inputBytes: Buffer.byteLength(originalCode),
-          inputSha256: sha256(originalCode)
+          inputSha256: sha256(originalCode),
+          obfuscationMap,
+          bundleMap
         });
       }
       if (!transformedFiles.length) {
         throw new Error('Secure build produced no JavaScript chunks to obfuscate.');
       }
+      for (const fileName of Object.keys(bundle)) {
+        if (fileName.endsWith('.map')) delete bundle[fileName];
+      }
     },
     writeBundle(outputOptions) {
       const outputDirectory = path.resolve(outputOptions.dir || 'dist');
-      const verifiedFiles = transformedFiles.map((transformed) => {
+      const archivedFiles = transformedFiles.map((transformed) => {
         const code = fs.readFileSync(path.join(outputDirectory, transformed.file), 'utf8');
         return {
           ...transformed,
@@ -99,16 +159,26 @@ function secureObfuscatorPlugin(releaseId = 'development') {
           outputSha256: sha256(code)
         };
       });
+      const privateSymbols = writePrivateSymbolArchive({
+        releaseId,
+        transformedFiles: archivedFiles
+      });
+      const verifiedFiles = archivedFiles.map(({
+        bundleMap: _bundleMap,
+        obfuscationMap: _obfuscationMap,
+        ...transformed
+      }) => transformed);
       fs.writeFileSync(
         path.join(outputDirectory, 'secure-build.json'),
         `${JSON.stringify({
-          version: 5,
+          version: 6,
           releaseId,
           obfuscation: true,
           deadCodeInjection: true,
           deadCodeInjectionThreshold: SECURE_OBFUSCATION_OPTIONS.deadCodeInjectionThreshold,
           transformer: 'javascript-obfuscator@5.4.3',
-          transformedFiles: verifiedFiles
+          transformedFiles: verifiedFiles,
+          privateSymbols
         })}\n`,
         'utf8'
       );
@@ -146,7 +216,7 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       emptyOutDir: true,
       cssCodeSplit: true,
-      sourcemap: false,
+      sourcemap: mode === 'secure' ? 'hidden' : false,
       minify: 'esbuild',
       // Route/module loaders are now the reviewed split points. Native ESM
       // imports preserve CSP/Trusted Types without injecting script elements.

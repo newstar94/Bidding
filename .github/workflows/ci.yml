@@ -99,6 +99,13 @@ jobs:
         run: |
           set -o pipefail
           npm run build:secure 2>&1 | tee secure-build.log
+      - name: Upload private client symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: biddingflow-private-client-symbols-${{ github.sha }}
+          path: release/private-symbols/
+          if-no-files-found: error
+          retention-days: 30
       - name: FK and index audit
         run: python scripts/audit_fk_indexes.py
       - name: Production package validation

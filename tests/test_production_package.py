@@ -23,6 +23,15 @@ def test_package_path_guard_allows_runtime_security_module_and_rejects_artifacts
             package_production._assert_safe(forbidden_path)
 
 
+def test_private_client_symbols_and_public_source_maps_are_never_packageable():
+    for forbidden_path in (
+        Path("release/private-symbols/release.symbols.json"),
+        Path("dist/assets/app-deadbeef.js.map"),
+    ):
+        with pytest.raises(RuntimeError, match="Forbidden production"):
+            package_production._assert_safe(forbidden_path)
+
+
 def test_extracted_smoke_environment_cannot_inherit_another_database(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://runtime/dev")
     monkeypatch.setenv("MIGRATOR_DATABASE_URL", "postgresql://migrator/dev")

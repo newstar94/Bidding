@@ -3,11 +3,14 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { verifySymbolArchive } from "./verify_symbolication.mjs";
+
 const projectRoot = process.cwd();
 const distRoot = path.resolve(projectRoot, "dist");
 const markerPath = path.join(distRoot, "secure-build.json");
 const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
 
+assert.ok(Number(marker.version) >= 6, "Secure marker must include private symbol metadata.");
 assert.equal(marker.obfuscation, true, "Secure artifact must enable JavaScript obfuscation.");
 assert.equal(marker.deadCodeInjection, true, "Secure artifact must enable dead-code injection.");
 assert.ok(
@@ -42,4 +45,24 @@ const excelWorkerSource = fs.readFileSync(path.join(distRoot, "assets", excelWor
 assert.match(excelWorkerSource, /importScripts\(/, "Excel worker asset lost its vendored parser import.");
 assert.match(excelWorkerSource, /trustedTypes/, "Excel worker asset must enforce its TrustedScriptURL policy.");
 
-console.log(`Secure build verification passed (${marker.transformedFiles.length} obfuscated bundle).`);
+const emittedFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap(
+  (entry) => {
+    const candidate = path.join(directory, entry.name);
+    return entry.isDirectory() ? emittedFiles(candidate) : [candidate];
+  },
+);
+for (const emittedFile of emittedFiles(distRoot)) {
+  assert.notEqual(path.extname(emittedFile), ".map", `Public build contains a source map: ${emittedFile}`);
+}
+assert.doesNotMatch(
+  fs.readFileSync(markerPath, "utf8"),
+  /sourcesContent|(?:frontend|views)\//u,
+  "Public secure marker exposes private source metadata.",
+);
+
+const symbolication = verifySymbolArchive({ projectRoot, marker });
+
+console.log(
+  `Secure build verification passed (${marker.transformedFiles.length} obfuscated bundles; `
+  + `private symbolication ${symbolication.smoke.source}:${symbolication.smoke.line}).`,
+);

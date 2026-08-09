@@ -41,6 +41,7 @@
     "test:lifecycle": "node --env-file-if-exists=.env scripts/verify_full_lifecycle.mjs",
     "test:performance": "node --env-file-if-exists=.env scripts/measure_startup.mjs --assert",
     "profile:startup-long-tasks": "node scripts/profile_startup_long_tasks.mjs",
+    "symbolicate:client": "node scripts/symbolicate_client_error.mjs",
     "benchmark:entity-indexes": "node scripts/benchmark_entity_indexes.mjs",
     "benchmark:excel": "node scripts/benchmark_excel_parsing.mjs",
     "benchmark:tables": "node scripts/profile_table_virtualization.mjs",
@@ -61,6 +62,7 @@
     "esbuild": "0.28.1",
     "eslint": "10.7.0",
     "javascript-obfuscator": "5.4.3",
+    "source-map-js": "1.2.1",
     "vite": "8.1.4"
   },
   "dependencies": {
