@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 
 
 const baseUrl = process.env.TURNSTILE_E2E_BASE_URL || "http://127.0.0.1:8765";
@@ -161,13 +161,13 @@ try {
         throw new Error("Failed Turnstile must remain visible so the user can recover.");
       }
     } else if (expectation === "interactive") {
-      const deadline = Date.now() + 15_000;
-      while (
-        Date.now() < deadline
-        && !page.frames().some((frame) => frame.url().includes("challenges.cloudflare.com"))
-      ) {
-        await page.waitForTimeout(200);
-      }
+      await expect.poll(
+        () => page.frames().some((frame) => frame.url().includes("challenges.cloudflare.com")),
+        {
+          message: "Force-interactive Turnstile challenge frame did not load.",
+          timeout: 15_000,
+        },
+      ).toBe(true);
       if (!page.frames().some((frame) => frame.url().includes("challenges.cloudflare.com"))) {
         throw new Error("Force-interactive Turnstile challenge frame did not load.");
       }

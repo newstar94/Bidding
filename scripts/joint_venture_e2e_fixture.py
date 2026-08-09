@@ -48,6 +48,7 @@ def _setup(data: dict) -> dict:
     run_id = str(data["runId"])
     organization_id = str(data["organizationId"])
     package = data["package"]
+    dates = data["fixtureDates"]
     owner_id = f"{run_id}-owner"
     plan_id = f"{run_id}-plan"
     with psycopg.connect(_database_url()) as connection:
@@ -96,9 +97,12 @@ def _setup(data: dict) -> dict:
             cursor.execute(
                 """INSERT INTO chu_dau_tu (
                        id, organization_id, owner_type, id_goc,
-                       ma_chu_dau_tu, ma_so_thue, ten_chu_dau_tu
-                   ) VALUES (%s, %s, 'organization', %s, %s, %s, %s)""",
-                (owner_id, organization_id, owner_id, f"{run_id}-CDT", "0100000001", f"Chủ đầu tư {run_id}"),
+                       ma_chu_dau_tu, ma_so_thue, ten_chu_dau_tu, ngay_ap_dung
+                   ) VALUES (%s, %s, 'organization', %s, %s, %s, %s, %s)""",
+                (
+                    owner_id, organization_id, owner_id, f"{run_id}-CDT",
+                    "0100000001", f"Chủ đầu tư {run_id}", dates["ownerEffective"],
+                ),
             )
             cursor.execute(
                 """INSERT INTO ke_hoach_lcnt (
@@ -115,7 +119,7 @@ def _setup(data: dict) -> dict:
                     f"Dự toán {run_id}",
                     "Mua sắm hàng hóa",
                     owner_id,
-                    "2026-07-01",
+                    dates["planApproval"],
                     f"{run_id}/QD-KH",
                 ),
             )
@@ -123,8 +127,9 @@ def _setup(data: dict) -> dict:
                 cursor.execute(
                     """INSERT INTO nha_thau (
                            id, organization_id, owner_type, id_goc,
-                           ma_nha_thau, ten_nha_thau, ma_so_thue, loai_nha_thau
-                       ) VALUES (%s, %s, 'organization', %s, %s, %s, %s, 'Độc lập')""",
+                           ma_nha_thau, ten_nha_thau, ma_so_thue, loai_nha_thau,
+                           ngay_ap_dung
+                       ) VALUES (%s, %s, 'organization', %s, %s, %s, %s, 'Độc lập', %s)""",
                     (
                         contractor["id"],
                         organization_id,
@@ -132,6 +137,7 @@ def _setup(data: dict) -> dict:
                         contractor["code"],
                         contractor["name"],
                         f"01000000{index:02d}",
+                        dates["contractorEffective"],
                     ),
                 )
             cursor.execute(
@@ -148,9 +154,8 @@ def _setup(data: dict) -> dict:
                        %s, %s, 'organization', %s, %s, %s, %s, %s,
                        'Xây lắp', 'Đấu thầu rộng rãi',
                        'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất',
-                       '90 ngày', 'Nguồn vốn E2E', '30 ngày', '2026-07-01',
-                       '2026-07-01 08:00:00', '2026-07-05 08:00:00',
-                       '2026-07-05 08:05:00', 10000, 90, 120,
+                       '90 ngày', 'Nguồn vốn E2E', '30 ngày', %s,
+                       %s, %s, %s, 10000, 90, 120,
                        'Không', 'OPENED'
                    )""",
                 (
@@ -161,6 +166,10 @@ def _setup(data: dict) -> dict:
                     plan_id,
                     package["name"],
                     int(package["price"]),
+                    dates["packageStart"],
+                    dates["packagePublishedAt"],
+                    dates["packageClosingAt"],
+                    dates["packageOpeningAt"],
                 ),
             )
             cursor.execute(
@@ -185,13 +194,14 @@ def _setup(data: dict) -> dict:
                            %s, %s, 'organization', %s, %s, %s, %s, %s,
                            'Xây lắp', 'Đấu thầu rộng rãi',
                            'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất',
-                           '90 ngày', 'Nguồn vốn E2E', '30 ngày', '2026-07-01',
-                           '2026-07-01 08:00:00', '2026-07-05 08:00:00',
-                           '2026-07-05 08:05:00', 90, 120, 'Có', 'OPENED'
+                           '90 ngày', 'Nguồn vốn E2E', '30 ngày', %s,
+                           %s, %s, %s, 90, 120, 'Có', 'OPENED'
                        )""",
                     (
                         lot_package["id"], organization_id, lot_package["id"],
                         lot_package["code"], plan_id, lot_package["name"], int(lot_package["price"]),
+                        dates["packageStart"], dates["packagePublishedAt"],
+                        dates["packageClosingAt"], dates["packageOpeningAt"],
                     ),
                 )
                 for sort_order, lot in enumerate(lot_package["lots"]):
@@ -229,9 +239,8 @@ def _setup(data: dict) -> dict:
                            %s, %s, 'organization', %s, %s, %s, %s, %s,
                            'Xây lắp', 'Đấu thầu rộng rãi',
                            'Một giai đoạn hai túi hồ sơ', 'Giá thấp nhất',
-                           '90 ngày', 'Nguồn vốn E2E', '30 ngày', '2026-07-01',
-                           '2026-07-01 08:00:00', '2026-07-05 08:00:00',
-                           '2026-07-05 08:05:00', 10000, 90, 120,
+                           '90 ngày', 'Nguồn vốn E2E', '30 ngày', %s,
+                           %s, %s, %s, 10000, 90, 120,
                            'Không', 'OPENED'
                        )""",
                     (
@@ -239,6 +248,8 @@ def _setup(data: dict) -> dict:
                         two_envelope_package["id"], two_envelope_package["code"],
                         plan_id, two_envelope_package["name"],
                         int(two_envelope_package["price"]),
+                        dates["packageStart"], dates["packagePublishedAt"],
+                        dates["packageClosingAt"], dates["packageOpeningAt"],
                     ),
                 )
                 cursor.execute(

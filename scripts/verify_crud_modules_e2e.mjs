@@ -3,8 +3,10 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
+import { createE2ETestClock } from "./e2e_test_clock.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const testClock = createE2ETestClock();
 const runId = `crud-e2e-${Date.now()}`;
 const runDigits = String(Date.now()).slice(-9);
 const organizationId = `${runId}-org`;
@@ -210,7 +212,7 @@ try {
   if (await page.locator("#modal-chudautu.active").isHidden()) throw new Error("Investor required-field validation did not block submit");
   await page.locator("#cdt-ma").fill(crudCodes.investor);
   await page.locator("#cdt-ten").fill(`Chủ đầu tư CRUD ${runId}`);
-  await page.locator("#cdt-ngayapdung").fill("01/07/2026");
+  await page.locator("#cdt-ngayapdung").fill(testClock.date(-40));
   await page.locator("#cdt-danhxung").fill("Ông");
   await page.locator("#cdt-daidiencdt").fill("Nguyễn Văn CRUD");
   await page.locator("#cdt-chucvunguoidungdau").fill("Giám đốc");
@@ -233,7 +235,7 @@ try {
   await openCreateModal(page, "/nha-thau", "#btn-add-nhathau", "#modal-nhathau");
   await page.locator("#nt-ma").fill(crudCodes.contractor);
   await page.locator("#nt-ten").fill(`Nhà thầu CRUD ${runId}`);
-  await page.locator("#nt-ngayapdung").fill("01/07/2026");
+  await page.locator("#nt-ngayapdung").fill(testClock.date(-40));
   await page.locator("#nt-danhxung").fill("Bà");
   await page.locator("#nt-nguoidaidien").fill("Trần Thị CRUD");
   await page.locator("#nt-chucvudaidien").fill("Giám đốc");
@@ -257,10 +259,10 @@ try {
   await openCreateModal(page, "/chuyen-gia", "#btn-add-chuyengia", "#modal-chuyengia");
   await page.locator("#cg-hoten").fill(crudCodes.expert);
   await page.locator("#cg-socccd").fill(`07${runDigits}1`);
-  await page.locator("#cg-ngaycapcccd").fill("01/01/2024");
+  await page.locator("#cg-ngaycapcccd").fill(testClock.date(-3_650));
   await page.locator("#cg-noicapcccd").fill("Cục Cảnh sát QLHC về TTXH");
   await page.locator("#cg-sochungchi").fill(`${runId}-CC`);
-  await page.locator("#cg-ngaycapchungchi").fill("01/02/2024");
+  await page.locator("#cg-ngaycapchungchi").fill(testClock.date(-3_600));
   await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
   await submitModal(page, "#form-chuyengia", "#modal-chuyengia");
   await page.locator("#search-chuyengia").fill(crudCodes.expert);
@@ -283,9 +285,9 @@ try {
   await page.locator("#kh-duan").fill(`Dự toán CRUD ${runId}`);
   await select(page, "#kh-chudautuid", { index: 1 });
   await page.locator("#kh-sototrinhdutoankehoach").fill(`${runId}/TTR`);
-  await page.locator("#kh-ngaytrinhkehoach").fill("01/07/2026");
+  await page.locator("#kh-ngaytrinhkehoach").fill(testClock.date(-30));
   await page.locator("#kh-quyetdinh").fill(`${runId}/QD-KH`);
-  await page.locator("#kh-ngaypheduyet").fill("02/07/2026");
+  await page.locator("#kh-ngaypheduyet").fill(testClock.date(-29));
   await page.locator("#kh-tongmuc").fill("1000000000");
   await page.locator("#form-kehoach button[type='submit']").click();
   await page.locator("#modal-plan-breakdown.active").waitFor({ state: "visible", timeout: 10_000 });
@@ -317,7 +319,7 @@ try {
   await select(page, "#gt-phanlo", { label: "Không" });
   await page.locator("#gt-nguonvon").fill("Ngân sách nhà nước");
   await page.locator("#gt-thoigiantochuc").fill("45 ngày");
-  await page.locator("#gt-thoigianbatdautochuc").fill("Quý III/2026");
+  await page.locator("#gt-thoigianbatdautochuc").fill(testClock.quarter());
   await select(page, "#gt-nhanvienphutrach", { index: 1 });
   await page.locator('#to-chuyengia-tbody input[name="tochuyengia-select"]').first().check();
   await page.locator('#to-thamdinh-tbody input[name="tothamdinh-select"]').nth(1).check();
@@ -452,7 +454,7 @@ try {
   await openCreateModal(page, "/hop-dong", "#btn-add-hopdong", "#modal-hopdong");
   await page.locator("#hd-so").fill(crudCodes.contract);
   await page.locator("#hd-ten").fill(`Hợp đồng CRUD ${runId}`);
-  await page.locator("#hd-ngayky").fill("03/07/2026");
+  await page.locator("#hd-ngayky").fill(testClock.date(-20));
   await select(page, "#hd-chudautuid", { index: 1 });
   await select(page, "#hd-nhathauid", { label: contractorUpdated });
   await page.locator("#hd-giatri").fill("450000000");

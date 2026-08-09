@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
+import { createE2ETestClock } from "./e2e_test_clock.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const testClock = createE2ETestClock();
 const runId = `pairwise-${Date.now()}`;
 const organizationId = `${runId}-org`;
 const password = `Aa!9${randomBytes(12).toString("hex")}`;
@@ -100,7 +102,7 @@ async function createPackage(page, testCase, httpErrors) {
   }
   await page.locator("#gt-nguonvon").fill("Ngân sách nhà nước");
   await page.locator("#gt-thoigiantochuc").fill("45 ngày");
-  await page.locator("#gt-thoigianbatdautochuc").fill("Quý III/2026");
+  await page.locator("#gt-thoigianbatdautochuc").fill(testClock.quarter());
   await page.locator("#gt-nhanvienphutrach").selectOption({ index: 1 }, { force: true });
 
   const expertSectionVisible = await page.locator("#to-chuyengia-section").isVisible();

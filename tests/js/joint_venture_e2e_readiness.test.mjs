@@ -17,7 +17,10 @@ test("joint-venture relogin readiness tolerates a detached auth overlay", async 
   );
   assert.doesNotMatch(source, /waitForFunction\(async\s*\(/);
   assert.match(source, /E2E_JV_SCENARIO/);
-  assert.match(source, /while \(Date\.now\(\) < readinessDeadline\)/);
-  assert.match(source, /if \(ready\) activeButton\.click\(\)/);
+  assert.match(source, /page\.waitForFunction\(evaluationLotScopeBarrier/);
+  assert.match(source, /page\.waitForFunction\(evaluationControlsBarrier/);
+  assert.match(source, /globalThis\.__bfE2eController = getAppController\(\)/);
+  assert.match(source, /page\.locator\("#btn-danhgiahsdt-save:visible"\)\.click\(\)/);
+  assert.doesNotMatch(source, /readinessDeadline|activeButton\.click\(\)|waitForTimeout/);
   assert.match(source, /automaticRanking\.filter\(\{ hasText: "Xếp hạng" \}\)/);
 });

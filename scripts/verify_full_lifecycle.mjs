@@ -1,8 +1,10 @@
 import process from "node:process";
 import { existsSync } from "node:fs";
 import { chromium } from "@playwright/test";
+import { createE2ETestClock } from "./e2e_test_clock.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const testClock = createE2ETestClock();
 const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configured.");
@@ -140,7 +142,7 @@ try {
   await openCreateModal(page, "/chu-dau-tu", "#btn-add-chudautu", "#modal-chudautu");
   await page.locator("#cdt-ma").fill(`${runId}-CDT`);
   await page.locator("#cdt-ten").fill(`Chủ đầu tư ${runId}`);
-  await page.locator("#cdt-ngayapdung").fill("01/07/2026");
+  await page.locator("#cdt-ngayapdung").fill(testClock.date(-39));
   await page.locator("#cdt-danhxung").fill("Ông");
   await page.locator("#cdt-daidiencdt").fill("Nguyễn Văn Đại Diện");
   await page.locator("#cdt-chucvunguoidungdau").fill("Giám đốc");
@@ -155,7 +157,7 @@ try {
   await openCreateModal(page, "/nha-thau", "#btn-add-nhathau", "#modal-nhathau");
   await page.locator("#nt-ma").fill(`${runId}-NT`);
   await page.locator("#nt-ten").fill(`Nhà thầu ${runId}`);
-  await page.locator("#nt-ngayapdung").fill("01/07/2026");
+  await page.locator("#nt-ngayapdung").fill(testClock.date(-39));
   await page.locator("#nt-danhxung").fill("Bà");
   await page.locator("#nt-nguoidaidien").fill("Trần Thị Nhà Thầu");
   await page.locator("#nt-chucvudaidien").fill("Giám đốc");
@@ -170,10 +172,10 @@ try {
     await openCreateModal(page, "/chuyen-gia", "#btn-add-chuyengia", "#modal-chuyengia");
     await page.locator("#cg-hoten").fill(`Chuyên gia ${ordinal} ${runId}`);
     await page.locator("#cg-socccd").fill(`07${runDigits}${ordinal}`);
-    await page.locator("#cg-ngaycapcccd").fill("01/01/2024");
+    await page.locator("#cg-ngaycapcccd").fill(testClock.date(-3_650));
     await page.locator("#cg-noicapcccd").fill("Cục Cảnh sát QLHC về TTXH");
     await page.locator("#cg-sochungchi").fill(`${runId}-CC-${ordinal}`);
-    await page.locator("#cg-ngaycapchungchi").fill("01/02/2024");
+    await page.locator("#cg-ngaycapchungchi").fill(testClock.date(-3_600));
     await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
     await submitModal(page, "#form-chuyengia", "#modal-chuyengia");
     await page.locator("#search-chuyengia").fill(`Chuyên gia ${ordinal} ${runId}`);
@@ -191,10 +193,10 @@ try {
   await page.locator("#kh-duan").fill(`Dự toán ${runId}`);
   await select(page, "#kh-chudautuid", { label: `Chủ đầu tư ${runId}` });
   await page.locator("#kh-sototrinhdutoankehoach").fill(`${runId}/TTR`);
-  await page.locator("#kh-ngaytrinhkehoach").fill("01/07/2026");
+  await page.locator("#kh-ngaytrinhkehoach").fill(testClock.date(-39));
   await page.locator("#kh-quyetdinh").fill(`${runId}/QD-KH`);
-  await page.locator("#kh-ngaypheduyet").fill("02/07/2026");
-  await page.locator("#kh-thoigiandang").fill("03/07/2026 08:00");
+  await page.locator("#kh-ngaypheduyet").fill(testClock.date(-38));
+  await page.locator("#kh-thoigiandang").fill(testClock.dateTime(-37, "08:00"));
   await page.locator("#kh-tongmuc").fill("5000000000");
   await page.locator("#form-kehoach button[type='submit']").click();
   await page.locator("#modal-plan-breakdown.active").waitFor({ state: "visible", timeout: 10_000 });
@@ -214,7 +216,7 @@ try {
   await select(page, "#gt-phanlo", { label: "Không" });
   await page.locator("#gt-nguonvon").fill("Ngân sách nhà nước");
   await page.locator("#gt-thoigiantochuc").fill("45 ngày");
-  await page.locator("#gt-thoigianbatdautochuc").fill("Quý III/2026");
+  await page.locator("#gt-thoigianbatdautochuc").fill(testClock.quarter());
   await select(page, "#gt-nhanvienphutrach", { index: 1 });
   const specialistRows = page.locator("#to-chuyengia-tbody tr");
   const appraisalRows = page.locator("#to-thamdinh-tbody tr");
@@ -250,12 +252,12 @@ try {
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT`);
   await page.locator("#phathanh-sototrinh").fill(`${runId}/TTR-HSMT`);
-  await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
+  await page.locator("#phathanh-ngaytrinh").fill(testClock.date(-11));
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-HSMT`);
-  await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator("#phathanh-ngayquyetdinh").fill(testClock.date(-10));
   await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
-  await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
-  await page.locator("#phathanh-thoigiandongthau").fill("02/08/2026 09:00");
+  await page.locator("#phathanh-thoigiandangtai").fill(testClock.dateTime(-9, "08:00"));
+  await page.locator("#phathanh-thoigiandongthau").fill(testClock.dateTime(-7, "09:00"));
   await page.locator("#phathanh-giatribaomothau").fill("10000000");
   await page.locator("#phathanh-hieuluchsdt").fill("90");
   await page.locator("#btn-confirm-phathanh").click();
@@ -266,7 +268,7 @@ try {
 
   await page.locator('button[data-fn="moThauGoiThau"]').click();
   await page.locator("#modal-custom-dialog.active #dialog-prompt-input").waitFor({ state: "visible", timeout: 10_000 });
-  await page.locator("#dialog-prompt-input").fill("02/08/2026 10:00");
+  await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-7, "10:00"));
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-add-bid").waitFor({ state: "visible", timeout: 15_000 });
@@ -296,7 +298,7 @@ try {
   mark("opening-saved");
 
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill("03/08/2026");
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-6));
   const evaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await evaluationRow.waitFor({ state: "visible", timeout: 15_000 });
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" });
@@ -322,9 +324,9 @@ try {
   mark("evaluation-saved");
 
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-KQ`);
-  await page.locator("#award-ngay-bctd").fill("04/08/2026");
+  await page.locator("#award-ngay-bctd").fill(testClock.date(-5));
   await page.locator("#award-decision-no").fill(`${runId}/QD-KQ`);
-  await page.locator("#award-decision-date").fill("05/08/2026");
+  await page.locator("#award-decision-date").fill(testClock.date(-4));
   const awardRow = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
   await select(page, "#approve-bidders-tbody .row-status-select", "trung");
   await awardRow.locator(".row-gia-trung").fill("772200000");
@@ -371,7 +373,7 @@ try {
   await openCreateModal(page, "/hop-dong", "#btn-add-hopdong", "#modal-hopdong");
   await page.locator("#hd-so").fill(`${runId}/HD`);
   await page.locator("#hd-ten").fill(`Hợp đồng ${runId}`);
-  await page.locator("#hd-ngayky").fill("06/08/2026");
+  await page.locator("#hd-ngayky").fill(testClock.date(-3));
   await select(page, "#hd-chudautuid", { label: `Chủ đầu tư ${runId}` });
   await select(page, "#hd-nhathauid", { label: `Nhà thầu ${runId}` });
   await page.locator("#hd-giatri").fill("772200000");
@@ -401,7 +403,7 @@ try {
   };
   await advanceContractStatus("Đã hoàn thành");
   mark("contract-completed");
-  await advanceContractStatus("Đã thanh lý", "15/08/2026");
+  await advanceContractStatus("Đã thanh lý", testClock.date(6));
   mark("contract-liquidated");
 
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -437,7 +439,7 @@ try {
     }
     await page.locator("#gt-nguonvon").fill("Ngân sách nhà nước");
     await page.locator("#gt-thoigiantochuc").fill("45 ngày");
-    await page.locator("#gt-thoigianbatdautochuc").fill("Quý III/2026");
+    await page.locator("#gt-thoigianbatdautochuc").fill(testClock.quarter());
     await select(page, "#gt-nhanvienphutrach", { index: 1 });
     const specialistRows = page.locator("#to-chuyengia-tbody tr");
     const appraisalRows = page.locator("#to-thamdinh-tbody tr");
@@ -537,12 +539,12 @@ try {
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT-CANCEL`);
   await page.locator("#phathanh-sototrinh").fill(`${runId}/TTR-HUY`);
-  await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
+  await page.locator("#phathanh-ngaytrinh").fill(testClock.date(-11));
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-HUY-HSMT`);
-  await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator("#phathanh-ngayquyetdinh").fill(testClock.date(-10));
   await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
-  await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
-  await page.locator("#phathanh-thoigiandongthau").fill("02/08/2026 09:00");
+  await page.locator("#phathanh-thoigiandangtai").fill(testClock.dateTime(-9, "08:00"));
+  await page.locator("#phathanh-thoigiandongthau").fill(testClock.dateTime(-7, "09:00"));
   await page.locator("#phathanh-giatribaomothau").fill("5000000");
   await page.locator("#phathanh-hieuluchsdt").fill("90");
   await page.locator("#btn-confirm-phathanh").click();
@@ -555,7 +557,7 @@ try {
   await invitationRoot.locator("#btn-them-giahan").waitFor({ state: "visible", timeout: 10_000 });
   await invitationRoot.locator("#btn-them-giahan").click();
   const extensionRow = invitationRoot.locator("#gt-giahan-tbody tr").last();
-  await extensionRow.locator(".gh-time-input").fill("04/08/2026 09:00");
+  await extensionRow.locator(".gh-time-input").fill(testClock.dateTime(-5, "09:00"));
   await extensionRow.locator(".gh-reason-input").fill("Gia hạn để nhà thầu hoàn thiện hồ sơ dự thầu");
   await page.locator("#btn-luu-thongtinmoithau").click();
   await invitationRoot.locator("#btn-them-giahan").waitFor({ state: "hidden", timeout: 15_000 });
@@ -568,7 +570,7 @@ try {
 
   await page.locator('button[data-fn="moThauGoiThau"]').click();
   await page.locator("#modal-custom-dialog.active #dialog-prompt-input").waitFor({ state: "visible", timeout: 10_000 });
-  await page.locator("#dialog-prompt-input").fill("04/08/2026 10:00");
+  await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-5, "10:00"));
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
@@ -585,7 +587,7 @@ try {
   await page.locator("#btn-workflow-cancel-package").waitFor({ state: "visible", timeout: 20_000 });
   await page.locator("#btn-workflow-cancel-package").click();
   await page.locator("#cancel-dec-no").fill(`${runId}/QD-HUY`);
-  await page.locator("#cancel-dec-date").fill("05/08/2026");
+  await page.locator("#cancel-dec-date").fill(testClock.date(-4));
   await page.locator("#cancel-reason").fill("Thay đổi nhu cầu mua sắm theo quyết định của chủ đầu tư");
   await page.locator("#btn-save-cancel-details").click();
   await page.locator("#cancel-dec-no[disabled]").waitFor({ state: "visible", timeout: 20_000 });
@@ -614,19 +616,19 @@ try {
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT-2T`);
   await page.locator("#phathanh-sototrinh").fill(`${runId}/TTR-2T`);
-  await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
+  await page.locator("#phathanh-ngaytrinh").fill(testClock.date(-11));
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-2T-HSMT`);
-  await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator("#phathanh-ngayquyetdinh").fill(testClock.date(-10));
   await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
-  await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
-  await page.locator("#phathanh-thoigiandongthau").fill("06/08/2026 09:00");
+  await page.locator("#phathanh-thoigiandangtai").fill(testClock.dateTime(-9, "08:00"));
+  await page.locator("#phathanh-thoigiandongthau").fill(testClock.dateTime(-3, "09:00"));
   await page.locator("#phathanh-giatribaomothau").fill("5000000");
   await page.locator("#phathanh-hieuluchsdt").fill("90");
   await page.locator("#btn-confirm-phathanh").click();
   await confirmDialog(page);
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "hidden", timeout: 15_000 });
   await page.locator('button[data-fn="moThauGoiThau"]').click();
-  await page.locator("#dialog-prompt-input").fill("06/08/2026 10:00");
+  await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-3, "10:00"));
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
@@ -641,7 +643,7 @@ try {
   mark("two-envelope-technical-opening-saved");
 
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG-KT`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill("07/08/2026");
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-2));
   const technicalEvaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" });
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", { label: "Đạt" });
@@ -649,12 +651,11 @@ try {
   await page.locator("#btn-danhgiahsdt-save").click();
   await page.locator('button[data-workflow-tab="qualified"]').waitFor({ state: "visible", timeout: 20_000 });
   mark("two-envelope-technical-evaluation-saved");
-  await page.waitForTimeout(2_000);
 
   await page.locator("#qualified-so-bctd").fill(`${runId}/BC-TD-KT`);
-  await page.locator("#qualified-ngay-bctd").fill("08/08/2026");
+  await page.locator("#qualified-ngay-bctd").fill(testClock.date(-1));
   await page.locator("#qualified-so-qd").fill(`${runId}/QD-KT`);
-  await page.locator("#qualified-ngay-qd").fill("09/08/2026");
+  await page.locator("#qualified-ngay-qd").fill(testClock.date(0));
   await page.locator("#btn-save-qualified-decision").click();
   await page.locator("#op-fin-thoigianmothau").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
@@ -667,7 +668,7 @@ try {
   });
   mark("two-envelope-qualified-approved");
 
-  await page.locator("#op-fin-thoigianmothau").fill("10/08/2026 10:00");
+  await page.locator("#op-fin-thoigianmothau").fill(testClock.dateTime(1, "10:00"));
   const financialOpeningRow = page.locator("#opening-fin-table tbody tr").first();
   await financialOpeningRow.locator(".op-gia-du-thau").fill("450000000");
   await financialOpeningRow.locator(".op-ty-le-giam").fill("1");
@@ -676,7 +677,7 @@ try {
   mark("two-envelope-financial-opening-saved");
 
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG-TC`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill("11/08/2026");
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(2));
   const financialEvaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await financialEvaluationRow.locator(".mt-gia-xep-hang").fill("445500000");
   await financialEvaluationRow.locator(".mt-gia-de-nghi-trung-thau").fill("445500000");
@@ -701,9 +702,9 @@ try {
   mark("two-envelope-financial-evaluation-saved");
 
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-2T-KQ`);
-  await page.locator("#award-ngay-bctd").fill("12/08/2026");
+  await page.locator("#award-ngay-bctd").fill(testClock.date(3));
   await page.locator("#award-decision-no").fill(`${runId}/QD-2T-KQ`);
-  await page.locator("#award-decision-date").fill("13/08/2026");
+  await page.locator("#award-decision-date").fill(testClock.date(4));
   const twoEnvelopeAwardRow = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
   await select(page, "#approve-bidders-tbody .row-status-select", "trung");
   await twoEnvelopeAwardRow.locator(".row-gia-trung").fill("445500000");
@@ -722,12 +723,12 @@ try {
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT-LOT`);
   await page.locator("#phathanh-sototrinh").fill(`${runId}/TTR-LOT`);
-  await page.locator("#phathanh-ngaytrinh").fill("29/07/2026");
+  await page.locator("#phathanh-ngaytrinh").fill(testClock.date(-11));
   await page.locator("#phathanh-soquyetdinh").fill(`${runId}/QD-LOT-HSMT`);
-  await page.locator("#phathanh-ngayquyetdinh").fill("30/07/2026");
+  await page.locator("#phathanh-ngayquyetdinh").fill(testClock.date(-10));
   await page.locator('input[name="phathanh-yeucauthamdinh"][value="NOT_REQUIRED"]').check();
-  await page.locator("#phathanh-thoigiandangtai").fill("31/07/2026 08:00");
-  await page.locator("#phathanh-thoigiandongthau").fill("14/08/2026 09:00");
+  await page.locator("#phathanh-thoigiandangtai").fill(testClock.dateTime(-9, "08:00"));
+  await page.locator("#phathanh-thoigiandongthau").fill(testClock.dateTime(5, "09:00"));
   await page.locator("#phathanh-hieuluchsdt").fill("90");
   const lotSecurityRows = page.locator("#phathanh-phanlo-baodam-tbody tr");
   if (await lotSecurityRows.count() !== 2) throw new Error("Expected two lot security rows.");
@@ -737,7 +738,7 @@ try {
   await confirmDialog(page);
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "hidden", timeout: 15_000 });
   await page.locator('button[data-fn="moThauGoiThau"]').click();
-  await page.locator("#dialog-prompt-input").fill("14/08/2026 10:00");
+  await page.locator("#dialog-prompt-input").fill(testClock.dateTime(5, "10:00"));
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
@@ -791,7 +792,7 @@ try {
       if (!await lotChoice.isChecked()) await lotChoice.check();
     }
     await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-${reportSuffix}`);
-    await page.locator("#danhgiahsdt-ngay-baocao").fill(reportSuffix === "LOT-1" ? "15/08/2026" : "18/08/2026");
+    await page.locator("#danhgiahsdt-ngay-baocao").fill(reportSuffix === "LOT-1" ? testClock.date(6) : testClock.date(9));
     const row = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: lotCode }).first();
     await row.waitFor({ state: "visible", timeout: 15_000 });
     await row.locator(".mt-dg-hop-le").selectOption({ label: "Đạt" }, { force: true });
@@ -805,9 +806,9 @@ try {
 
   const approveCurrentLot = async ({ sequence, price }) => {
     await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-LOT-${sequence}`);
-    await page.locator("#award-ngay-bctd").fill(sequence === 1 ? "16/08/2026" : "19/08/2026");
+    await page.locator("#award-ngay-bctd").fill(sequence === 1 ? testClock.date(7) : testClock.date(10));
     await page.locator("#award-decision-no").fill(`${runId}/QD-LOT-${sequence}`);
-    await page.locator("#award-decision-date").fill(sequence === 1 ? "17/08/2026" : "20/08/2026");
+    await page.locator("#award-decision-date").fill(sequence === 1 ? testClock.date(8) : testClock.date(11));
     const row = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
     await row.locator(".row-status-select").selectOption("trung", { force: true });
     await row.locator(".row-gia-trung").fill(price);
@@ -845,7 +846,7 @@ try {
   const historicalPlanId = await page.locator("#fullpage-kh-version-select").inputValue();
   await page.locator("#btn-edit-kehoach-fullpage").click();
   await page.locator("#modal-kehoach.active").waitFor({ state: "visible", timeout: 10_000 });
-  await page.locator("#kh-thoigiandang").fill("04/07/2026 08:00");
+  await page.locator("#kh-thoigiandang").fill(testClock.dateTime(-36, "08:00"));
   await page.locator("#form-kehoach button[type='submit']").click();
   await page.locator("#modal-plan-breakdown.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#btn-save-plan-breakdown").click();

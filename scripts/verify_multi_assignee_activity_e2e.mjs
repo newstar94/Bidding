@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
+import { createE2ETestClock } from "./e2e_test_clock.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const testClock = createE2ETestClock();
 const runId = `multi-assignee-${Date.now()}`;
 const password = `Aa!9${randomBytes(12).toString("hex")}`;
 const account = (key, name) => ({
@@ -247,7 +249,7 @@ async function createPackage(page, employeeIds) {
       thoiGianThucHien: "90 ngày",
       nguonVon: "Ngân sách nhà nước",
       thoiGianToChuc: "45 ngày",
-      thoiGianBatDauToChuc: "Quý III/2026",
+      thoiGianBatDauToChuc: testClock.quarter(),
       trangThai: "Chuẩn bị",
     }],
     assignments: employeeIds.map((employeeId) => ({
@@ -282,7 +284,7 @@ async function updatePackageAs(browser, user, state) {
         thoiGianThucHien: "90 ngày",
         nguonVon: "Ngân sách nhà nước",
         thoiGianToChuc: "45 ngày",
-        thoiGianBatDauToChuc: "Quý III/2026",
+        thoiGianBatDauToChuc: testClock.quarter(),
         trangThai: "Chuẩn bị",
       }],
     });
@@ -312,7 +314,7 @@ async function createPackageVersion(page) {
       thoiGianThucHien: "90 ngày",
       nguonVon: "Ngân sách nhà nước",
       thoiGianToChuc: "45 ngày",
-      thoiGianBatDauToChuc: "Quý IV/2026",
+      thoiGianBatDauToChuc: testClock.quarter(100),
       trangThai: "Chuẩn bị",
     }],
   };
@@ -350,7 +352,7 @@ async function createContract(page, employeeIds) {
       rootId: contractId,
       tenHopDong: `Hợp đồng nhiều người ${runId}`,
       soHopDong: data.contractNo,
-      ngayKy: "2026-07-03",
+      ngayKy: testClock.isoDate(-37),
       chuDauTuId: `${runId}-owner`,
       nhaThauId: `${runId}-contractor`,
       keHoachId: `${runId}-plan`,
@@ -379,7 +381,7 @@ async function updateContract(page, state) {
       expectedVersion: state.contractRowVersion,
       tenHopDong: updatedName,
       soHopDong: data.contractNo,
-      ngayKy: "2026-07-03",
+      ngayKy: testClock.isoDate(-37),
       chuDauTuId: `${runId}-owner`,
       nhaThauId: `${runId}-contractor`,
       keHoachId: `${runId}-plan`,

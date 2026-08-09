@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
+import { createE2ETestClock } from "./e2e_test_clock.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const testClock = createE2ETestClock();
 const runId = `offline-e2e-${Date.now()}`;
 const organizationId = `${runId}-org`;
 const password = `Aa!9${randomBytes(12).toString("hex")}`;
@@ -44,10 +46,10 @@ async function waitForApp(page) {
 async function fillExpertForm(page, name, suffix) {
   await page.locator("#cg-hoten").fill(name);
   await page.locator("#cg-socccd").fill(`07${String(Date.now()).slice(-9)}${suffix}`);
-  await page.locator("#cg-ngaycapcccd").fill("01/01/2024");
+  await page.locator("#cg-ngaycapcccd").fill(testClock.date(-3_650));
   await page.locator("#cg-noicapcccd").fill("Cục Cảnh sát QLHC về TTXH");
   await page.locator("#cg-sochungchi").fill(`${runId}-CC-${suffix}`);
-  await page.locator("#cg-ngaycapchungchi").fill("01/02/2024");
+  await page.locator("#cg-ngaycapchungchi").fill(testClock.date(-3_600));
   await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
 }
 
@@ -86,10 +88,7 @@ try {
   await fillExpertForm(page, expertName, "1");
   await page.locator("#form-chuyengia button[type='submit']").click();
   await page.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset?.syncState === "offline", null, { timeout: 15_000 });
-  await page.waitForTimeout(500);
-  if (await page.locator("#modal-chuyengia.active").isHidden()) {
-    throw new Error("Offline save closed the modal and implied a committed server write");
-  }
+  await page.locator("#modal-chuyengia.active").waitFor({ state: "visible" });
 
   const committed = page.waitForResponse((response) => (
     response.request().method() === "POST"
@@ -97,11 +96,9 @@ try {
       && response.ok()
   ), { timeout: 20_000 });
   await context.setOffline(false);
-  const reconnectOutcome = await Promise.race([
-    committed.then(() => "committed"),
-    page.waitForTimeout(5_000).then(() => "not-retried"),
-  ]);
-  if (reconnectOutcome !== "committed") {
+  try {
+    await committed;
+  } catch (error) {
     const diagnostics = await page.evaluate(async () => {
       const { getAppController } = await import("/frontend/app/controllerRef.js");
       const controller = getAppController();
@@ -111,7 +108,10 @@ try {
         pendingBatch: Boolean(controller?.model?.buildMutationSyncPayload?.()),
       };
     });
-    throw new Error(`Network recovery did not retry the pending outbox: ${JSON.stringify({ diagnostics, syncResponses })}`);
+    throw new Error(
+      `Network recovery did not retry the pending outbox: ${JSON.stringify({ diagnostics, syncResponses })}`,
+      { cause: error },
+    );
   }
 
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -204,7 +204,7 @@ try {
       && response.ok()
   ), { timeout: 20_000 });
   allowInterruptedSync = true;
-  await page.locator("#btn-force-sync").evaluate((button) => button.click());
+  await page.locator("#btn-force-sync").click();
   await interruptedCommit;
   await page.unroute("**/api/sync");
 

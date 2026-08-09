@@ -3,8 +3,10 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
+import { createE2ETestClock } from "./e2e_test_clock.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const testClock = createE2ETestClock();
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configured.");
 const scenario = String(process.env.E2E_JV_SCENARIO || "full").trim().toLowerCase();
@@ -50,11 +52,20 @@ const twoEnvelopePackageData = {
   name: `Gói liên danh 1G2T ${runId}`,
   price: 1_000_000,
 };
+const fixtureDates = {
+  contractorEffective: testClock.isoDate(-40),
+  ownerEffective: testClock.isoDate(-40),
+  planApproval: testClock.isoDate(-39),
+  packageStart: testClock.isoDate(-39),
+  packagePublishedAt: testClock.isoDateTime(-39, "08:00"),
+  packageClosingAt: testClock.isoDateTime(-35, "08:00"),
+  packageOpeningAt: testClock.isoDateTime(-35, "08:05"),
+};
 const fixturePayload = {
   runId, organizationId, username, password, account, contractors,
   package: packageData, lotPackage: lotPackageData,
   twoEnvelopePackage: twoEnvelopePackageData,
-  wordTemplatePath,
+  fixtureDates, wordTemplatePath,
 };
 const result = { runId, steps: [] };
 const mark = (step, details = {}) => {
@@ -137,7 +148,24 @@ async function openCreateModal(page, route, buttonSelector, modalSelector) {
 
 async function submitModal(page, formSelector, modalSelector) {
   await page.locator(`${formSelector} button[type='submit']`).click();
-  await page.locator(`${modalSelector}.active`).waitFor({ state: "hidden", timeout: 15_000 });
+  try {
+    await page.locator(`${modalSelector}.active`).waitFor({ state: "hidden", timeout: 15_000 });
+  } catch (error) {
+    const diagnostics = await page.locator(modalSelector).evaluate((modal) => ({
+      invalid: [...modal.querySelectorAll(":invalid, [aria-invalid='true']")].map((field) => ({
+        id: field.id || "",
+        name: field.getAttribute("name") || "",
+        value: field.value || "",
+        message: field.validationMessage || field.closest(".form-group")?.querySelector(".error-message, .error-text")?.textContent?.trim() || "",
+      })),
+      text: modal.textContent?.trim().replace(/\s+/g, " ").slice(0, 1_000) || "",
+    }));
+    const dialog = await page.locator("#modal-custom-dialog.active").allTextContents();
+    throw new Error(
+      `Modal ${modalSelector} did not close: ${JSON.stringify({ diagnostics, dialog })}`,
+      { cause: error },
+    );
+  }
 }
 
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
@@ -243,55 +271,66 @@ async function configureJointMembers(page, row) {
 }
 
 async function selectEvaluationLot(page, lotCode) {
-  const deadline = Date.now() + 10_000;
-  let state = null;
-  while (Date.now() < deadline) {
-    state = await page.evaluate(async (expectedCode) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const controller = getAppController();
-      if (!controller || controller._evaluationLotScopeRenderQueued === true) {
-        return { settled: false, reason: "controller-rendering" };
-      }
-      const container = controller.view?.getActiveElement?.("danhgiahsdt-scope-container");
-      const options = controller.view?.getActiveElement?.("danhgiahsdt-lot-options");
-      const selected = container?.querySelector(
-        'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-      );
-      if (!selected || !options) return { settled: false, reason: "scope-controls-missing" };
-      if (!selected.checked) {
-        selected.click();
-        return { settled: false, reason: "selected-mode-requested" };
-      }
-
-      const inputs = [...options.querySelectorAll("[data-evaluation-lot-id]")];
-      const target = inputs.find((input) => input.closest("label")?.textContent?.includes(expectedCode));
-      if (!target) return { settled: false, reason: "target-lot-missing" };
-      const mismatched = inputs.find((input) => input.checked !== (input === target));
-      if (mismatched) {
-        mismatched.click();
-        return { settled: false, reason: "lot-selection-requested" };
-      }
-
-      const packageId = controller.view?._currentWorkflowPackageId
-        || controller.view?.getActiveElement?.("danhgiahsdt-goithau-select")?.value
-        || "";
-      const scopeKey = `${String(packageId)}:${String(controller.currentDanhGiaTab || "technical")}`;
-      const scope = controller._explicitEvaluationLotScopes?.[scopeKey];
-      const targetId = target.getAttribute("data-evaluation-lot-id");
-      return {
-        settled: scope?.mode === "selected"
-          && scope?.selectedLotIds?.length === 1
-          && scope.selectedLotIds[0] === targetId,
-        reason: "scope-not-committed",
-        scopeKey,
-        scope,
-        targetId,
-      };
-    }, lotCode);
-    if (state?.settled) return;
-    await page.waitForTimeout(25);
+  await page.evaluate(async () => {
+    const { getAppController } = await import("/frontend/app/controllerRef.js");
+    globalThis.__bfE2eController = getAppController();
+  });
+  const selectedMode = page.locator(
+    'input[name="danhgiahsdt-scope-mode"][value="selected"]:visible',
+  );
+  await selectedMode.check();
+  const options = page.locator(".evaluation-lot-option:visible");
+  const target = options.filter({ hasText: lotCode }).locator("[data-evaluation-lot-id]");
+  await target.waitFor({ state: "visible", timeout: 10_000 });
+  const optionCount = await options.count();
+  for (let index = 0; index < optionCount; index += 1) {
+    const option = options.nth(index);
+    if ((await option.textContent())?.includes(lotCode)) continue;
+    const input = option.locator("[data-evaluation-lot-id]");
+    if (await input.isChecked()) await input.uncheck();
   }
-  throw new Error(`Lot scope selection did not settle on ${lotCode}: ${JSON.stringify(state)}`);
+  await target.check();
+  const targetId = await target.getAttribute("data-evaluation-lot-id");
+  await page.waitForFunction(evaluationLotScopeBarrier, targetId, { timeout: 10_000 });
+}
+
+function evaluationLotScopeBarrier(expectedTargetId) {
+  const controller = globalThis.__bfE2eController;
+  if (!controller || controller._evaluationLotScopeRenderQueued === true) return false;
+  const packageId = controller.view?._currentWorkflowPackageId
+    || controller.view?.getActiveElement?.("danhgiahsdt-goithau-select")?.value
+    || "";
+  const scopeKey = `${String(packageId)}:${String(controller.currentDanhGiaTab || "technical")}`;
+  const scope = controller._explicitEvaluationLotScopes?.[scopeKey];
+  return scope?.mode === "selected"
+    && scope?.selectedLotIds?.length === 1
+    && scope.selectedLotIds[0] === expectedTargetId;
+}
+
+function evaluationControlsBarrier({ expectedCount, expectedLotCode, requiresRejection, reportUnready = false }) {
+  const view = globalThis.__bfE2eController?.view;
+  const tbody = view?.getActiveElement?.("danhgiahsdt-table-tbody");
+  const rows = [...(tbody?.querySelectorAll("tr[data-bid-id]") || [])]
+    .filter((row) => row.textContent?.includes(expectedLotCode));
+  const activeButton = view?.getActiveElement?.("btn-danhgiahsdt-save");
+  const rejectionReady = !requiresRejection || rows.some((row) => (
+    row.textContent?.includes("Liên danh")
+    && row.querySelector('.mt-low-price-acceptance[value="false"]')?.checked === true
+  ));
+  const ready = rows.length === expectedCount
+    && rows.every((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt")
+    && rejectionReady
+    && activeButton?.isConnected === true
+    && typeof activeButton.onclick === "function";
+  if (!ready && !reportUnready) return false;
+  return {
+    ready,
+    rowCount: rows.length,
+    conclusions: rows.map((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || ""),
+    rejectionReady,
+    saveConnected: activeButton?.isConnected === true,
+    saveBound: typeof activeButton?.onclick === "function",
+  };
 }
 
 async function waitForEvaluationSave(page, httpErrors, pageErrors) {
@@ -515,7 +554,7 @@ try {
 
   await activateWorkflowTab(page, "eval_tech");
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill("29/07/2026");
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-11));
   const evaluationRows = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]");
   if (await evaluationRows.count() !== 2) throw new Error("Expected two evaluation rows");
   for (const row of await evaluationRows.all()) {
@@ -721,9 +760,9 @@ try {
     ...resultExportEvidence,
   });
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD`);
-  await page.locator("#award-ngay-bctd").fill("29/07/2026");
+  await page.locator("#award-ngay-bctd").fill(testClock.date(-11));
   await page.locator("#award-decision-no").fill(`${runId}/QD-KQ`);
-  await page.locator("#award-decision-date").fill("29/07/2026");
+  await page.locator("#award-decision-date").fill(testClock.date(-11));
   const resultRows = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]");
   const jointResultRow = resultRows.filter({ hasText: contractors[0].name });
   const independentResultRow = resultRows.filter({ hasText: contractors[3].name });
@@ -733,9 +772,9 @@ try {
   await jointResultRow.locator(".row-tg-hopdong").fill("90 ngày và bảo hành");
   await independentResultRow.locator(".row-status-select").selectOption("truot", { force: true });
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD`);
-  await page.locator("#award-ngay-bctd").fill("29/07/2026");
+  await page.locator("#award-ngay-bctd").fill(testClock.date(-11));
   await page.locator("#award-decision-no").fill(`${runId}/QD-KQ`);
-  await page.locator("#award-decision-date").fill("29/07/2026");
+  await page.locator("#award-decision-date").fill(testClock.date(-11));
   const awardDraft = await page.evaluate(() => ({
     appraisalNumber: document.getElementById("award-so-bctd")?.value || "",
     appraisalDate: document.getElementById("award-ngay-bctd")?.value || "",
@@ -819,7 +858,7 @@ try {
   await openCreateModal(page, "/hop-dong", "#btn-add-hopdong", "#modal-hopdong");
   await page.locator("#hd-so").fill(`${runId}/HD-JV`);
   await page.locator("#hd-ten").fill(`Hợp đồng liên danh ${runId}`);
-  await page.locator("#hd-ngayky").fill("30/07/2026");
+  await page.locator("#hd-ngayky").fill(testClock.date(-10));
   await select(page, "#hd-chudautuid", { label: `Chủ đầu tư ${runId}` });
   await select(page, "#hd-nhathauid", { label: contractors[0].name });
   await page.locator("#hd-giatri").fill("400000");
@@ -878,7 +917,7 @@ try {
     }
     await selectEvaluationLot(page, lot.code);
     await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-LOT-${sequence}`);
-    await page.locator("#danhgiahsdt-ngay-baocao").fill(sequence === 1 ? "30/07/2026" : "02/08/2026");
+    await page.locator("#danhgiahsdt-ngay-baocao").fill(sequence === 1 ? testClock.date(-10) : testClock.date(-7));
     const scopedRows = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: lot.code });
     const expectedRows = independentPrice === null ? 1 : 2;
     if (await scopedRows.count() !== expectedRows) {
@@ -902,46 +941,32 @@ try {
     await page.evaluate(() => new Promise((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }));
-    const readinessDeadline = Date.now() + 10_000;
     let evaluationReadiness = null;
-    while (Date.now() < readinessDeadline) {
-      evaluationReadiness = await page.evaluate(async ({ expectedCount, expectedLotCode, requiresRejection }) => {
-        const { getAppController } = await import("/frontend/app/controllerRef.js");
-        const view = getAppController()?.view;
-        const tbody = view?.getActiveElement?.("danhgiahsdt-table-tbody");
-        const rows = [...(tbody?.querySelectorAll("tr[data-bid-id]") || [])]
-          .filter((row) => row.textContent?.includes(expectedLotCode));
-        const activeButton = view?.getActiveElement?.("btn-danhgiahsdt-save");
-        const rejectionReady = !requiresRejection || rows.some((row) => (
-          row.textContent?.includes("Liên danh")
-          && row.querySelector('.mt-low-price-acceptance[value="false"]')?.checked === true
-        ));
-        const ready = rows.length === expectedCount
-          && rows.every((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt")
-          && rejectionReady
-          && activeButton?.isConnected === true
-          && typeof activeButton.onclick === "function";
-        if (ready) activeButton.click();
-        return {
-          ready,
-          submitted: ready,
-          rowCount: rows.length,
-          conclusions: rows.map((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || ""),
-          rejectionReady,
-          saveConnected: activeButton?.isConnected === true,
-          saveBound: typeof activeButton?.onclick === "function",
-        };
-      }, {
+    const readinessInput = {
+      expectedCount: expectedRows,
+      expectedLotCode: lot.code,
+      requiresRejection: rejectJoint,
+    };
+    try {
+      const readinessHandle = await page.waitForFunction(evaluationControlsBarrier, {
+        ...readinessInput,
+        reportUnready: false,
+      }, { timeout: 10_000 });
+      evaluationReadiness = await readinessHandle.jsonValue();
+      await readinessHandle.dispose();
+    } catch (error) {
+      evaluationReadiness = await page.evaluate(evaluationControlsBarrier, {
         expectedCount: expectedRows,
         expectedLotCode: lot.code,
         requiresRejection: rejectJoint,
+        reportUnready: true,
       });
-      if (evaluationReadiness?.submitted) break;
-      await page.waitForTimeout(25);
+      throw new Error(
+        `Lot ${lot.code} evaluation controls did not settle: ${JSON.stringify(evaluationReadiness)}`,
+        { cause: error },
+      );
     }
-    if (!evaluationReadiness?.submitted) {
-      throw new Error(`Lot ${lot.code} evaluation controls did not settle: ${JSON.stringify(evaluationReadiness)}`);
-    }
+    await page.locator("#btn-danhgiahsdt-save:visible").click();
     try {
       await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
     } catch (error) {
@@ -976,9 +1001,9 @@ try {
 
   const approveLot = async ({ lot, sequence, winnerName, price }) => {
     await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-LOT-${sequence}`);
-    await page.locator("#award-ngay-bctd").fill(sequence === 1 ? "31/07/2026" : "03/08/2026");
+    await page.locator("#award-ngay-bctd").fill(sequence === 1 ? testClock.date(-9) : testClock.date(-6));
     await page.locator("#award-decision-no").fill(`${runId}/QD-LOT-${sequence}`);
-    await page.locator("#award-decision-date").fill(sequence === 1 ? "01/08/2026" : "04/08/2026");
+    await page.locator("#award-decision-date").fill(sequence === 1 ? testClock.date(-8) : testClock.date(-5));
     const rows = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]");
     const rowDiagnostics = await rows.evaluateAll((items) => items.map((row) => ({
       bidId: row.dataset.approveBidId || "",
@@ -1078,7 +1103,7 @@ try {
   mark("joint-venture-two-envelope-technical-opening-saved");
 
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-2T-KT`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill("05/08/2026");
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-4));
   const twoEnvelopeEvaluationRows = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]");
   if (await twoEnvelopeEvaluationRows.count() !== 2) throw new Error("Expected two 1G2T technical evaluation rows");
   for (const row of await twoEnvelopeEvaluationRows.all()) {
@@ -1094,22 +1119,22 @@ try {
     throw new Error(`1G2T technical gate is wrong: ${qualifiedText.slice(0, 1200)}`);
   }
   await page.locator("#qualified-so-bctd").fill(`${runId}/BC-TD-2T`);
-  await page.locator("#qualified-ngay-bctd").fill("06/08/2026");
+  await page.locator("#qualified-ngay-bctd").fill(testClock.date(-3));
   await page.locator("#qualified-so-qd").fill(`${runId}/QD-2T-KT`);
-  await page.locator("#qualified-ngay-qd").fill("07/08/2026");
+  await page.locator("#qualified-ngay-qd").fill(testClock.date(-2));
   await page.locator("#btn-save-qualified-decision").click();
   await page.locator("#op-fin-thoigianmothau").waitFor({ state: "visible", timeout: 20_000 });
   const financialOpeningRows = page.locator("#opening-fin-table tbody tr");
   if (await financialOpeningRows.count() !== 1 || !(await financialOpeningRows.first().innerText()).includes(contractors[0].name)) {
     throw new Error("Only the qualified joint venture should reach 1G2T financial opening");
   }
-  await page.locator("#op-fin-thoigianmothau").fill("08/08/2026 09:00");
+  await page.locator("#op-fin-thoigianmothau").fill(testClock.dateTime(-1, "09:00"));
   await financialOpeningRows.first().locator(".op-gia-du-thau").fill("400000");
   await financialOpeningRows.first().locator(".op-ty-le-giam").fill("0");
   await page.locator("#btn-save-opening-fin").click();
   await page.locator("#danhgiahsdt-table-tbody .mt-gia-xep-hang").waitFor({ state: "visible", timeout: 20_000 });
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-2T-TC`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill("09/08/2026");
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(0));
   const twoEnvelopeFinancialRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await twoEnvelopeFinancialRow.locator(".mt-gia-xep-hang").fill("400000");
   await twoEnvelopeFinancialRow.locator(".mt-gia-de-nghi-trung-thau").fill("400000");
@@ -1126,9 +1151,9 @@ try {
   await page.locator("#btn-danhgiahsdt-save").click();
   await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-2T-KQ`);
-  await page.locator("#award-ngay-bctd").fill("10/08/2026");
+  await page.locator("#award-ngay-bctd").fill(testClock.date(1));
   await page.locator("#award-decision-no").fill(`${runId}/QD-2T-KQ`);
-  await page.locator("#award-decision-date").fill("11/08/2026");
+  await page.locator("#award-decision-date").fill(testClock.date(2));
   const twoEnvelopeAwardRow = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
   await twoEnvelopeAwardRow.locator(".row-status-select").selectOption("trung", { force: true });
   await twoEnvelopeAwardRow.locator(".row-gia-trung").fill("400000");
