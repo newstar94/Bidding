@@ -12,6 +12,7 @@ import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
   finishWorkspaceRequest,
+  workspaceChangedError,
 } from "./workspaceLease.js";
 
 const EMPTY_ACTIVITY = `
@@ -172,7 +173,6 @@ function updateBadge(state, elements) {
 export function initializeNotificationCenter(controller) {
   const root = document.getElementById("notification-center");
   if (!root || root.dataset.initialized === "true") return null;
-  root.dataset.initialized = "true";
   const elements = {
     root,
     trigger: document.getElementById("notification-trigger"),
@@ -182,12 +182,16 @@ export function initializeNotificationCenter(controller) {
     list: document.getElementById("notification-list")
   };
   if (Object.values(elements).some((element) => !element)) return null;
+  root.dataset.initialized = "true";
   const state = { items: [], unreadCount: 0, loading: false, unavailable: false };
+  let activeRequest = null;
+  let disposed = false;
 
   const refresh = async () => {
-    if (state.loading) return;
+    if (disposed || state.loading) return;
     state.loading = true;
     const request = beginWorkspaceRequest(controller.model);
+    activeRequest = request;
     try {
       const response = await apiFetch("/api/notifications?limit=40", {
         signal: request.signal,
@@ -208,7 +212,7 @@ export function initializeNotificationCenter(controller) {
       updateBadge(state, elements);
       window.lucide?.createIcons?.({ root: elements.panel });
     } catch (error) {
-      if (error?.code !== "WORKSPACE_CHANGED") {
+      if (!disposed && error?.code !== "WORKSPACE_CHANGED") {
         console.warn("Unable to refresh notifications:", error);
         state.unavailable = true;
         renderNotifications(state, controller, elements);
@@ -216,11 +220,13 @@ export function initializeNotificationCenter(controller) {
       }
     } finally {
       finishWorkspaceRequest(controller.model, request);
+      if (activeRequest === request) activeRequest = null;
       state.loading = false;
     }
   };
 
   const setOpen = (open) => {
+    if (disposed) return;
     elements.panel.hidden = !open;
     elements.trigger.setAttribute("aria-expanded", String(open));
     if (open) {
@@ -229,16 +235,17 @@ export function initializeNotificationCenter(controller) {
     }
   };
 
-  elements.trigger.addEventListener("click", (event) => {
+  const onTriggerClick = (event) => {
     event.stopPropagation();
     setOpen(elements.panel.hidden);
-  });
-  elements.readAll.addEventListener("click", async () => {
-    if (!state.unreadCount) return;
+  };
+  const onReadAllClick = async () => {
+    if (disposed || !state.unreadCount) return;
     const response = await apiFetch("/api/notifications/read-all", { method: "POST" });
-    if (response.ok) await refresh();
-  });
-  elements.list.addEventListener("click", async (event) => {
+    if (!disposed && response.ok) await refresh();
+  };
+  const onListClick = async (event) => {
+    if (disposed) return;
     if (event.target.closest?.("[data-notification-retry]")) {
       await refresh();
       return;
@@ -249,6 +256,7 @@ export function initializeNotificationCenter(controller) {
       const current = state.items.find((entry) => entry.id === id);
       if (current && !current.readAt) {
         await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+        if (disposed) return;
         current.readAt = Math.floor(Date.now() / 1000);
         state.unreadCount = Math.max(0, state.unreadCount - 1);
         renderNotifications(state, controller, elements);
@@ -265,24 +273,52 @@ export function initializeNotificationCenter(controller) {
     if (!workItem) return;
     setOpen(false);
     navigateToTarget(controller, workItem.dataset.workTargetType, workItem.dataset.workTargetId);
-  });
-  document.addEventListener("click", (event) => {
+  };
+  const onDocumentClick = (event) => {
     if (!event.target.closest?.("#notification-center")) setOpen(false);
-  });
-  document.addEventListener("keydown", (event) => {
+  };
+  const onDocumentKeydown = (event) => {
     if (event.key === "Escape" && !elements.panel.hidden) {
       setOpen(false);
       elements.trigger.focus();
     }
-  });
-  document.addEventListener("visibilitychange", () => {
+  };
+  const onVisibilityChange = () => {
     if (!document.hidden) refresh();
-  });
-  window.setInterval(() => {
+  };
+  const onInterval = () => {
     if (!document.hidden) refresh();
-  }, 60000);
+  };
+
+  elements.trigger.addEventListener("click", onTriggerClick);
+  elements.readAll.addEventListener("click", onReadAllClick);
+  elements.list.addEventListener("click", onListClick);
+  document.addEventListener("click", onDocumentClick);
+  document.addEventListener("keydown", onDocumentKeydown);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  const intervalId = window.setInterval(onInterval, 60000);
+
+  const api = {
+    refresh,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      activeRequest?.controller?.abort?.(workspaceChangedError());
+      window.clearInterval(intervalId);
+      elements.trigger.removeEventListener("click", onTriggerClick);
+      elements.readAll.removeEventListener("click", onReadAllClick);
+      elements.list.removeEventListener("click", onListClick);
+      document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener("keydown", onDocumentKeydown);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      elements.panel.hidden = true;
+      elements.trigger.setAttribute("aria-expanded", "false");
+      delete root.dataset.initialized;
+      if (controller.notificationCenter === api) controller.notificationCenter = null;
+    },
+  };
 
   renderNotifications(state, controller, elements);
   refresh();
-  return { refresh };
+  return api;
 }

@@ -304,6 +304,115 @@ test("notification refresh from workspace A cannot render into workspace B", asy
   }
 });
 
+test("notification center dispose releases listeners, interval, request, and init guard", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousSanitize = DOMPurify.sanitize;
+  const previousIsSupported = DOMPurify.isSupported;
+  DOMPurify.isSupported = true;
+  DOMPurify.sanitize = (value) => String(value);
+
+  let requestCount = 0;
+  let latestSignal;
+  globalThis.fetch = (_url, options = {}) => {
+    requestCount += 1;
+    latestSignal = options.signal;
+    if (requestCount === 1) {
+      return Promise.resolve(new Response(JSON.stringify({ items: [], unreadCount: 0 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }
+    return new Promise((_resolve, reject) => {
+      latestSignal?.addEventListener("abort", () => reject(latestSignal.reason), { once: true });
+    });
+  };
+
+  const listeners = new Map();
+  const removed = [];
+  const element = (id, extra = {}) => ({
+    addEventListener(type, handler) {
+      listeners.set(`${id}:${type}`, handler);
+    },
+    removeEventListener(type, handler) {
+      removed.push(`${id}:${type}`);
+      assert.equal(listeners.get(`${id}:${type}`), handler);
+      listeners.delete(`${id}:${type}`);
+    },
+    setAttribute() {},
+    ...extra,
+  });
+  const elements = {
+    "notification-center": element("root", { dataset: {} }),
+    "notification-trigger": element("trigger"),
+    "notification-badge": element("badge", { hidden: true, textContent: "" }),
+    "notification-panel": element("panel", { hidden: true }),
+    "notification-read-all": element("read-all", { disabled: true }),
+    "notification-list": element("list", { innerHTML: "" }),
+  };
+  const documentListeners = new Map();
+  globalThis.document = {
+    hidden: false,
+    getElementById: (id) => elements[id] || null,
+    addEventListener(type, handler) {
+      documentListeners.set(type, handler);
+    },
+    removeEventListener(type, handler) {
+      assert.equal(documentListeners.get(type), handler);
+      documentListeners.delete(type);
+    },
+  };
+  const clearedIntervals = [];
+  globalThis.window = {
+    lucide: { createIcons() {} },
+    setInterval: () => 41,
+    clearInterval: (id) => clearedIntervals.push(id),
+  };
+  const model = {
+    db: { name: "db-a" },
+    state: {},
+    workspaceScope: { key: "user:org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    getFilteredGoiThau: () => [],
+    getFilteredKeHoach: () => [],
+    getFilteredHopDong: () => [],
+  };
+
+  try {
+    const center = initializeNotificationCenter({ model });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(elements["notification-center"].dataset.initialized, "true");
+    assert.equal(typeof center.dispose, "function");
+    const pendingRefresh = center.refresh();
+    assert.equal(latestSignal.aborted, false);
+
+    center.dispose();
+    center.dispose();
+    await pendingRefresh;
+
+    assert.equal(latestSignal.aborted, true);
+    assert.deepEqual(clearedIntervals, [41]);
+    assert.deepEqual(removed.sort(), ["list:click", "read-all:click", "trigger:click"]);
+    assert.deepEqual([...documentListeners.keys()], []);
+    assert.equal(elements["notification-center"].dataset.initialized, undefined);
+    assert.equal(model._workspaceRequestControllers.size, 0);
+
+    const remounted = initializeNotificationCenter({ model });
+    assert.ok(remounted);
+    remounted.dispose();
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    DOMPurify.sanitize = previousSanitize;
+    DOMPurify.isSupported = previousIsSupported;
+  }
+});
+
 test("package and contract employee loader cannot commit users after workspace switch", async () => {
   const usersResponse = deferred();
   const previousFetch = globalThis.fetch;
