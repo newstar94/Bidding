@@ -12,7 +12,7 @@
     "backend/documents/document_worker.py": 2,
     "backend/documents/document_worker_entry.py": 2,
     "backend/documents/package_document_routes.py": 6,
-    "backend/documents/routes_docx.py": 9,
+    "backend/documents/routes_docx.py": 8,
     "backend/documents/routes_excel.py": 8,
     "backend/lifecycle.py": 3,
     "backend/lot_lifecycle_routes.py": 3,

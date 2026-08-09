@@ -454,8 +454,6 @@ def list_templates(owner_id=None, *, owner_type='personal'):
     if os.path.exists(scope_dir):
         for f in sorted(os.listdir(scope_dir), key=str.casefold):
             if f.lower().endswith('.docx'):
-                if f.lower() == 'mau_timeline_goi_thau.docx':
-                    continue
                 if not owner_id and f.lower() in LEGACY_WORD_TEMPLATES:
                     continue
                 scoped_filenames.add(f.lower())

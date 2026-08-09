@@ -34,7 +34,6 @@ def _request(path="/api/templates/example.docx", method="PUT"):
 def template_root(tmp_path, monkeypatch):
     monkeypatch.setattr(custom_exporter, "TEMPLATE_DIR", str(tmp_path))
     (tmp_path / "mau_bao_cao_dau_thau.docx").write_bytes(b"legacy-default")
-    (tmp_path / "mau_timeline_goi_thau.docx").write_bytes(b"system-timeline")
     return tmp_path
 
 
@@ -146,27 +145,6 @@ def test_delete_custom_template_is_limited_to_current_scope(template_root):
 
     assert not org_a.exists()
     assert org_b.read_bytes() == b"b"
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        lambda source: _replace_scoped_template_from_path(
-            "organization", "org-a", "mau_timeline_goi_thau.docx", source
-        ),
-        lambda _source: _delete_scoped_template(
-            "organization", "org-a", "mau_timeline_goi_thau.docx"
-        ),
-    ],
-)
-def test_system_templates_cannot_be_replaced_or_deleted(template_root, tmp_path, operation):
-    upload = tmp_path / "replacement.docx"
-    upload.write_bytes(b"replacement")
-
-    with pytest.raises(ValueError):
-        operation(str(upload))
-
-    assert (template_root / "mau_timeline_goi_thau.docx").read_bytes() == b"system-timeline"
 
 
 def test_legacy_default_template_can_be_deleted(template_root):

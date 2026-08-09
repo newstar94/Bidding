@@ -14,7 +14,7 @@ TARGETS = ("backend", "scripts", "tests")
 MODULE_BASELINE_PATH = ROOT / "scripts" / "python_quality_module_baseline.json"
 MODULE_RATCHET_CODES = {"BLE001", "S608"}
 DEBT_LIMITS = {
-    "BLE001": 118,
+    "BLE001": 117,
     "F401": 0,
     "F841": 0,
     "S110": 0,

@@ -73,7 +73,7 @@ if os.path.exists(env_path):
                 else:
                     os.environ.setdefault(key, value)
 
-from backend.shared.paths import IMAGE_DIR, provision_system_word_templates
+from backend.shared.paths import IMAGE_DIR
 from backend.security.turnstile import public_turnstile_config
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
@@ -856,7 +856,6 @@ async def protected_image_api(request):
 dist_dir = os.path.join(project_root, 'dist')
 os.makedirs(dist_dir, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
-provision_system_word_templates()
 
 routes = [
     *ai_routes,

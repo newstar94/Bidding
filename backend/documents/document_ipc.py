@@ -30,7 +30,6 @@ ALLOWED_OPERATIONS = frozenset({
     "export_award_result_excel",
     "build_award_result_reconciliation",
     "render_docx",
-    "render_timeline_docx",
     "export_excel",
 })
 _FILE_MARKER = "__biddingflow_file_v1__"

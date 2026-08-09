@@ -6,7 +6,6 @@ can be mounted independently from source code and from the PostgreSQL volume.
 """
 
 import os
-import shutil
 from pathlib import Path
 
 
@@ -45,42 +44,3 @@ def resolve_runtime_path(name, *, environ=None, allow_empty=False):
 LOG_DIR = resolve_runtime_path("BIDDING_LOG_DIR")
 IMAGE_DIR = resolve_runtime_path("BIDDING_UPLOAD_DIR")
 WORD_TEMPLATE_DIR = resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")
-
-SYSTEM_WORD_TEMPLATE_DIR = (PROJECT_ROOT / "data" / "templates" / "words").resolve()
-SYSTEM_WORD_TEMPLATE_NAMES = (
-    "mau_timeline_goi_thau.docx",
-)
-
-
-def provision_system_word_templates(source_dir=None, target_dir=None):
-    """Copy available bundled Word templates into the mutable runtime directory.
-
-    Existing runtime templates are preserved so an application upgrade cannot
-    overwrite an operator-managed or customized file. Missing bundled templates
-    are tolerated so a fresh install can start before optional templates are
-    added or uploaded.
-    """
-    source = Path(source_dir or SYSTEM_WORD_TEMPLATE_DIR).resolve()
-    target = Path(target_dir or WORD_TEMPLATE_DIR).resolve()
-    target.mkdir(parents=True, exist_ok=True)
-
-    result = {"copied": [], "generated": [], "missing": []}
-    for filename in SYSTEM_WORD_TEMPLATE_NAMES:
-        source_path = source / filename
-        destination_path = target / filename
-        if destination_path.exists():
-            continue
-        if source_path.is_file():
-            shutil.copyfile(source_path, destination_path)
-            result["copied"].append(destination_path)
-            continue
-        if filename == "mau_timeline_goi_thau.docx":
-            # Production archives intentionally exclude mutable data/. Generate
-            # the system-owned timeline template when no bundled copy exists.
-            from backend.documents.timeline_document_service import create_timeline_template
-
-            create_timeline_template(destination_path)
-            result["generated"].append(destination_path)
-            continue
-        result["missing"].append(source_path)
-    return result

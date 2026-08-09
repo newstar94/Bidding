@@ -59,17 +59,13 @@ from backend.documents.word_mapping_registry import (
     resolve_word_mappings,
     save_word_mapping,
 )
-from backend.documents.timeline_context_service import build_timeline_context
 import uuid
 
 LEGACY_MANAGED_TEMPLATES = {
     'mau_bao_cao_dau_thau.docx',
     'mau_hop_dong_lcnt.docx',
 }
-SYSTEM_TEMPLATES = {
-    'mau_timeline_goi_thau.docx',
-}
-SHARED_TEMPLATES = LEGACY_MANAGED_TEMPLATES | SYSTEM_TEMPLATES
+SHARED_TEMPLATES = LEGACY_MANAGED_TEMPLATES
 MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
 
@@ -340,8 +336,6 @@ def _resolve_template_path(owner_type, owner_id, filename):
 
 def _resolve_custom_template_path(owner_type, owner_id, filename):
     safe_name = _normalize_custom_template_filename(filename)
-    if safe_name.lower() in SYSTEM_TEMPLATES:
-        raise ValueError('Không thể thay đổi biểu mẫu hệ thống')
     scope_dir = os.path.realpath(
         custom_exporter.get_scope_template_dir(owner_type, owner_id, create=False)
     )
@@ -396,8 +390,6 @@ def _update_scoped_template(
         owner_type, owner_id, filename
     )
     next_name = _normalize_custom_template_filename(new_filename or current_name)
-    if next_name.lower() in SYSTEM_TEMPLATES:
-        raise ValueError('Không thể ghi đè biểu mẫu hệ thống')
     scope_dir = os.path.realpath(
         custom_exporter.get_scope_template_dir(owner_type, owner_id)
     )
@@ -751,76 +743,6 @@ async def export_report_api(request):
     except Exception as e:
         return _docx_error(request, e, "export_report_api")
 
-
-async def export_timeline_api(request):
-    package_id = clean_id(request.path_params.get('package_id'))
-    try:
-        is_valid, role_or_err = verify_session(request)
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-        user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
-        entitlement_error = _word_export_subscription_response(role_or_err, org_name)
-        if entitlement_error is not None:
-            return entitlement_error
-        snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
-        if snapshot_error is not None:
-            return snapshot_error
-        if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
-            return JSONResponse({"error": "Bạn không có quyền xuất timeline gói thầu này."}, status_code=403)
-
-        context = await run_blocking_io(
-            build_timeline_context,
-            package_id,
-            user_id,
-            org_name,
-            timeout_seconds=10,
-        )
-        context, context_manifest = seal_docx_context("timeline", context)
-        owner_type, owner_id = _word_template_scope(user_id, org_name)
-        template_path, _template_name = _resolve_template_path(
-            owner_type,
-            owner_id,
-            'mau_timeline_goi_thau.docx',
-        )
-        docx_bytes = await run_document_job_async(
-            "render_timeline_docx",
-            {
-                "template_path": template_path,
-                "context": context,
-                "context_manifest": context_manifest,
-            },
-        )
-        snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
-        if snapshot_error is not None:
-            return snapshot_error
-
-        log_audit(
-            "document.word_exported",
-            actor_user_id=user_id,
-            organization_id=org_name,
-            target_type="goi_thau",
-            target_id=package_id,
-            request=request,
-            metadata={
-                "organization_id": org_name,
-                "document_type": "timeline",
-                "sensitive_capabilities_used": [],
-            },
-            required=True,
-        )
-
-        package_code = context.get("goi_thau", {}).get("ma_goi_thau") or "LCNT"
-        filename = f"Timeline_goi_thau_{package_code}.docx"
-        return StreamingResponse(
-            BytesIO(docx_bytes),
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": _content_disposition(filename)},
-        )
-    except (OrgPermissionError, DocumentWorkerInputError, DocumentWorkerError, ValueError) as e:
-        return _docx_error(request, e, "export_timeline_api")
-    except Exception as e:
-        return _docx_error(request, e, "export_timeline_api")
 
 async def list_templates_api(request):
     try:
