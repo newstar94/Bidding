@@ -347,6 +347,8 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       event.target === list
       || list.contains(event.target)
       || wrapper.contains(event.target)
+      // Focusing the replacement input can scroll its ancestor before the user sees the list.
+      || input.ownerDocument.activeElement === input
     ) return;
     if (wrapper.classList.contains("open")) setOpen(false, { restoreSelection: true });
   };

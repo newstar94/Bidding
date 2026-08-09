@@ -72,8 +72,12 @@ async function withSelectPage(run) {
               <option value="hcm">Thành phố Hồ Chí Minh</option>
             </select>
           </form></main>
-          <section id="filter-fixture">
-            <select id="filter-goithau-trangthai"><option value="">Tất cả trạng thái</option></select>
+          <section id="filter-fixture" class="content-viewport">
+            <select id="filter-goithau-trangthai">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Chuẩn bị">Chuẩn bị</option>
+              <option value="Đang mời thầu">Đang mời thầu</option>
+            </select>
             <select id="filter-goithau-hinhthuc"><option value="">Tất cả hình thức</option></select>
             <select id="filter-goithau-nam"><option value="">Năm</option></select>
             <select id="filter-goithau-thang"><option value="">Tháng</option></select>
@@ -201,26 +205,27 @@ test("global select enhancement preserves an active filter combobox", async () =
   });
 });
 
-test("filter click stays open and its label never uses text auto-scroll", async () => {
+test("filter click stays open through focus scrolling and never uses text auto-scroll", async () => {
   await withSelectPage(async (page) => {
     await page.evaluate(async () => {
       const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
-      initCustomSelect("status-select");
+      initCustomSelect("filter-goithau-trangthai");
     });
 
-    const combobox = page.getByRole("combobox", { name: "Trạng thái" });
+    const combobox = page.locator("#filter-goithau-trangthai-combobox");
     await combobox.click();
     assert.equal(await combobox.getAttribute("aria-expanded"), "true");
     assert.equal(await combobox.getAttribute("data-bf-auto-scroll"), "off");
 
-    await combobox.evaluate((input) => {
-      input.scrollLeft = 8;
-      input.dispatchEvent(new Event("scroll"));
+    await page.locator("#filter-fixture").evaluate((viewport) => {
+      viewport.dispatchEvent(new Event("scroll"));
     });
 
     assert.equal(await combobox.getAttribute("aria-expanded"), "true");
     const listboxId = await combobox.getAttribute("aria-controls");
     assert.equal(await page.locator(`#${listboxId}`).isVisible(), true);
+    await page.locator(`#${listboxId} [data-value="Chuẩn bị"]`).click();
+    assert.equal(await page.locator("#filter-goithau-trangthai").inputValue(), "Chuẩn bị");
   });
 });
 
