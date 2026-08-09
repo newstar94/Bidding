@@ -43,6 +43,9 @@ const RUNTIME_SCHEMA = {
     "dia_chi_goc": "diaChiGoc",
     "dia_diem_giao_hang": "diaDiemGiaoHang",
     "dia_diem_quy_mo": "diaDiemQuyMo",
+    "document_export_award_result_excel": "documentExportAwardResultExcel",
+    "document_export_excel": "documentExportExcel",
+    "document_export_word": "documentExportWord",
     "don_gia_du_thau": "donGiaDuThau",
     "don_gia_du_toan": "donGiaDuToan",
     "don_vi_cap_chung_chi": "donViCapChungChi",
@@ -109,6 +112,7 @@ const RUNTIME_SCHEMA = {
     "ma_nha_thau": "maNhaThau",
     "ma_phan_lo": "maPhanLo",
     "ma_phan_lo_nguon": "maPhanLoNguon",
+    "ma_phan_lo_normalized": "maPhanLoNormalized",
     "ma_qhns": "maQHNS",
     "ma_so_thue": "maSoThue",
     "ma_uu_dai": "maUuDai",
@@ -234,10 +238,14 @@ const RUNTIME_SCHEMA = {
     "uu_dai_source_sheet": "uuDaiSourceSheet",
     "uu_dai_tinh_luc": "uuDaiTinhLuc",
     "vai_tro": "vaiTro",
+    "violation_bid_closing_at": "violationBidClosingAt",
+    "violation_checked_at": "violationCheckedAt",
+    "violation_status": "violationStatus",
     "xuat_xu": "xuatXu",
     "xuat_xu_yeu_cau": "xuatXuYeuCau",
     "yeu_cau_ky_thuat": "yeuCauKyThuat",
-    "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt"
+    "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
+    "yeu_cau_tham_dinh_hsmt_code": "yeuCauThamDinhHsmtCode"
   },
   "fieldMapByTable": {
     "chu_dau_tu": {
@@ -307,6 +315,9 @@ const RUNTIME_SCHEMA = {
     },
     "goi_dich_vu": {
       "created_at": "createdAt",
+      "document_export_award_result_excel": "documentExportAwardResultExcel",
+      "document_export_excel": "documentExportExcel",
+      "document_export_word": "documentExportWord",
       "gia_ca": "giaCa",
       "han_muc_nhan_su": "hanMucNhanSu",
       "id": "id",
@@ -369,7 +380,8 @@ const RUNTIME_SCHEMA = {
       "tuy_chon_mua_them": "tuyChonMuaThem",
       "ty_le_bao_dam_hop_dong": "tyLeBaoDamHopDong",
       "updated_at": "updatedAt",
-      "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt"
+      "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
+      "yeu_cau_tham_dinh_hsmt_code": "yeuCauThamDinhHsmtCode"
     },
     "goi_thau_hang_hoa": {
       "created_at": "createdAt",
@@ -608,6 +620,7 @@ const RUNTIME_SCHEMA = {
       "loai_nha_thau": "loaiNhaThau",
       "ma_dinh_danh": "maDinhDanh",
       "ma_phan_lo": "maPhanLo",
+      "ma_phan_lo_normalized": "maPhanLoNormalized",
       "nha_thau_id": "nhaThauId",
       "organization_id": "organizationId",
       "owner_type": "ownerType",
@@ -621,7 +634,10 @@ const RUNTIME_SCHEMA = {
       "ty_le_giam_gia": "tyLeGiamGia",
       "updated_at": "updatedAt",
       "uu_dai_input_hash": "uuDaiInputHash",
-      "uu_dai_tinh_luc": "uuDaiTinhLuc"
+      "uu_dai_tinh_luc": "uuDaiTinhLuc",
+      "violation_bid_closing_at": "violationBidClosingAt",
+      "violation_checked_at": "violationCheckedAt",
+      "violation_status": "violationStatus"
     },
     "to_chuc": {
       "created_at": "createdAt",
