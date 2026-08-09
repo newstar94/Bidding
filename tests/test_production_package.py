@@ -42,7 +42,11 @@ def test_production_release_id_rejects_mutable_or_placeholder_values(release_id)
 
 
 @pytest.mark.parametrize("release_id", ("a" * 40, "B" * 64))
-def test_production_release_id_accepts_full_commit_or_content_hash(release_id):
+def test_production_release_id_accepts_full_commit_or_content_hash(
+    release_id, monkeypatch
+):
+    monkeypatch.delenv("APP_RELEASE_ID", raising=False)
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
     assert package_production._validate_release_id({"releaseId": release_id}) == release_id
 
 
