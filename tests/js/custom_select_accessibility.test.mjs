@@ -72,6 +72,16 @@ async function withSelectPage(run) {
               <option value="hcm">Thành phố Hồ Chí Minh</option>
             </select>
           </form></main>
+          <section id="filter-fixture">
+            <select id="filter-goithau-trangthai"><option value="">Tất cả trạng thái</option></select>
+            <select id="filter-goithau-hinhthuc"><option value="">Tất cả hình thức</option></select>
+            <select id="filter-goithau-nam"><option value="">Năm</option></select>
+            <select id="filter-goithau-thang"><option value="">Tháng</option></select>
+            <select id="filter-kehoach-nam"><option value="">Năm</option></select>
+            <select id="filter-kehoach-thang"><option value="">Tháng</option></select>
+            <select id="filter-hopdong-nam"><option value="">Năm</option></select>
+            <select id="filter-hopdong-thang"><option value="">Tháng</option></select>
+          </section>
         </body></html>`);
         return;
       }
@@ -113,6 +123,7 @@ test("generic custom select exposes keyboard and screen-reader combobox behavior
     const combobox = page.getByRole("combobox", { name: "Trạng thái" });
     assert.equal(await combobox.getAttribute("aria-haspopup"), "listbox");
     assert.equal(await combobox.getAttribute("aria-expanded"), "false");
+    assert.equal(await combobox.getAttribute("placeholder"), "Tất cả");
 
     await combobox.focus();
     assert.equal(await combobox.getAttribute("aria-expanded"), "true");
@@ -178,6 +189,40 @@ test("global select enhancement preserves an active filter combobox", async () =
       after: 1,
       nativeHidden: true,
       inputVisible: true,
+    });
+  });
+});
+
+test("package, plan, and contract filters keep their original empty-option titles", async () => {
+  await withSelectPage(async (page) => {
+    const placeholders = await page.evaluate(async () => {
+      const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
+      const ids = [
+        "filter-goithau-trangthai",
+        "filter-goithau-hinhthuc",
+        "filter-goithau-nam",
+        "filter-goithau-thang",
+        "filter-kehoach-nam",
+        "filter-kehoach-thang",
+        "filter-hopdong-nam",
+        "filter-hopdong-thang",
+      ];
+      for (const id of ids) initCustomSelect(id);
+      return Object.fromEntries(ids.map((id) => [
+        id,
+        document.getElementById(`${id}-combobox`)?.placeholder,
+      ]));
+    });
+
+    assert.deepEqual(placeholders, {
+      "filter-goithau-trangthai": "Tất cả trạng thái",
+      "filter-goithau-hinhthuc": "Tất cả hình thức",
+      "filter-goithau-nam": "Năm",
+      "filter-goithau-thang": "Tháng",
+      "filter-kehoach-nam": "Năm",
+      "filter-kehoach-thang": "Tháng",
+      "filter-hopdong-nam": "Năm",
+      "filter-hopdong-thang": "Tháng",
     });
   });
 });

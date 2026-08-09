@@ -134,11 +134,14 @@ export function initCustomSelect(selectId) {
     || select.classList.contains("phienban-select")
     || select.classList.contains("modal-version-select")
     || select.classList.contains("version-droplist");
+  const emptyOptionLabel = Array.from(select.options)
+    .find((option) => option.value === "")
+    ?.text.trim();
   return initAccessibleCombobox(select, {
     compatibilityMode: "custom-select",
     formatSelectedLabel: compactMonthLabel,
     includeEmptyOption: true,
-    placeholder: "Chọn dữ liệu",
+    placeholder: emptyOptionLabel || "Chọn dữ liệu",
     portal: select.dataset.dropdownInline !== "true",
     searchable: false,
     showToggle: !isVersionSelect,
