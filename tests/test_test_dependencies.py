@@ -28,14 +28,8 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
     install = "npx playwright install --with-deps chromium firefox webkit"
     assert install in workflow
     required_gates = (
-        "- name: Python compile",
-        "- name: Python lint and quality",
-        "- name: ESLint and Trusted Types",
-        "- name: Frontend debt gate",
-        "- name: Python tests and coverage",
-        "- name: JavaScript tests",
+        "- name: Canonical quality and secure build",
         "- name: Cross-browser Playwright matrix",
-        "- name: Secure build",
         "- name: FK and index audit",
         "- name: Production package validation",
         "- name: SBOM",
@@ -63,16 +57,50 @@ def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
 
 
 def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
-    package = (PROJECT_ROOT / "package.json").read_text(encoding="utf-8")
+    package_text = (PROJECT_ROOT / "package.json").read_text(encoding="utf-8")
+    package = json.loads(package_text)
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
 
-    assert package.count("--cov-fail-under=45") == 1
-    assert "--cov-fail-under=45" in workflow
-    assert '"test:js:coverage": "node scripts/run_js_coverage.mjs"' in package
+    assert package_text.count("--cov-fail-under=45") == 1
+    assert package["scripts"]["check:ci"] == (
+        "npm run check:static && npm test && npm run build:secure"
+    )
+    static_gate = package["scripts"]["check:static"]
+    for required in (
+        "check:schema-runtime",
+        "generate_postgres_migration_fixture.py --check",
+        "lint:python",
+        "lint:encoding",
+        "lint:modules",
+        "lint:debt",
+    ):
+        assert required in static_gate
+    assert package["scripts"]["test:js:coverage"] == "node scripts/run_js_coverage.mjs"
+    assert workflow.count("npm run check:ci") == 1
+    assert "PYTEST_ADDOPTS:" in workflow
+    assert "--junitxml=pytest-junit.xml" in workflow
+    assert "--cov-report=xml:coverage.xml" in workflow
     assert "JS_JUNIT_PATH: javascript-junit.xml" in workflow
-    assert "npm run test:js:coverage" in workflow
+    assert "npm run test:js:coverage" not in workflow
+
+
+def test_full_ci_does_not_duplicate_canonical_quality_or_build_commands():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    for duplicated_command in (
+        "python -m compileall -q backend scripts tests",
+        "npm run lint:python",
+        "npm run lint:security",
+        "npm run lint:debt",
+        "npm run build:secure",
+        "python -m pytest -q",
+    ):
+        assert duplicated_command not in workflow
+    assert "npm run package:production:from-build" in workflow
 
 
 def test_full_npm_lock_audit_is_enforced_in_ci_and_scheduled_security():
