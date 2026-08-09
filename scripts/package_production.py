@@ -176,9 +176,12 @@ def _validate_frontend_artifacts(manifest_path: Path) -> None:
         )
 
 
-def collect_runtime_files() -> list[tuple[Path, Path]]:
-    selected: dict[str, tuple[Path, Path]] = {}
-    for directory_name, predicate in RUNTIME_DIRECTORIES.items():
+def _collect_runtime_directories(
+    selected: dict[str, tuple[Path, Path]],
+    directory_names: tuple[str, ...],
+) -> None:
+    for directory_name in directory_names:
+        predicate = RUNTIME_DIRECTORIES[directory_name]
         directory = PROJECT_ROOT / directory_name
         if not directory.is_dir():
             raise RuntimeError(f"Required production directory is missing: {directory_name}")
@@ -189,6 +192,10 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
             _assert_safe(relative_path)
             selected[relative_path.as_posix()] = (source, relative_path)
 
+
+def _collect_runtime_named_files(
+    selected: dict[str, tuple[Path, Path]],
+) -> None:
     for relative_name in RUNTIME_FILES:
         source = PROJECT_ROOT / relative_name
         if not source.is_file():
@@ -196,6 +203,27 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
         relative_path = _relative(source)
         _assert_safe(relative_path)
         selected[relative_path.as_posix()] = (source, relative_path)
+
+
+def collect_runtime_source_files() -> list[tuple[Path, Path]]:
+    """Collect non-generated runtime files without requiring a frontend build."""
+    selected: dict[str, tuple[Path, Path]] = {}
+    source_directories = tuple(
+        directory_name
+        for directory_name in RUNTIME_DIRECTORIES
+        if directory_name != "dist"
+    )
+    _collect_runtime_directories(selected, source_directories)
+    _collect_runtime_named_files(selected)
+    return [selected[key] for key in sorted(selected)]
+
+
+def collect_runtime_files() -> list[tuple[Path, Path]]:
+    selected = {
+        relative_path.as_posix(): (source, relative_path)
+        for source, relative_path in collect_runtime_source_files()
+    }
+    _collect_runtime_directories(selected, ("dist",))
 
     manifest_path = PROJECT_ROOT / "dist" / ".vite" / "manifest.json"
     if manifest_path.as_posix() not in {source.as_posix() for source, _ in selected.values()}:

@@ -58,6 +58,18 @@ def test_production_release_id_must_match_the_build_environment(monkeypatch):
         package_production._validate_release_id({"releaseId": marker_release})
 
 
+def test_full_runtime_selection_still_requires_vite_manifest(
+    monkeypatch,
+    tmp_path,
+):
+    (tmp_path / "dist").mkdir()
+    monkeypatch.setattr(package_production, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(package_production, "collect_runtime_source_files", lambda: [])
+
+    with pytest.raises(RuntimeError, match="Vite manifest is missing"):
+        package_production.collect_runtime_files()
+
+
 def test_extracted_smoke_environment_cannot_inherit_another_database(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://runtime/dev")
     monkeypatch.setenv("MIGRATOR_DATABASE_URL", "postgresql://migrator/dev")
@@ -83,21 +95,14 @@ def test_package_smoke_child_uses_only_its_synthetic_trusted_hosts(tmp_path):
     assert environment["PYTHONPATH"] == str(tmp_path.resolve())
 
 
-def test_packaged_deployment_readme_only_references_packaged_operational_paths(
-    monkeypatch,
-):
-    monkeypatch.setattr(
-        package_production,
-        "_validate_release_id",
-        lambda _marker: "a" * 40,
-    )
+def test_packaged_deployment_readme_only_references_packaged_operational_paths():
     readme = (package_production.PROJECT_ROOT / "deploy" / "README.md").read_text(
         encoding="utf-8"
     )
     references = set(PACKAGED_OPERATIONAL_REFERENCE.findall(readme))
     packaged_paths = {
         relative_path.as_posix()
-        for _, relative_path in package_production.collect_runtime_files()
+        for _, relative_path in package_production.collect_runtime_source_files()
     }
 
     assert references
@@ -115,15 +120,10 @@ def test_packaged_deployment_readme_only_references_packaged_operational_paths(
     assert missing == []
 
 
-def test_normalized_postgres_contract_is_in_the_runtime_package(monkeypatch):
-    monkeypatch.setattr(
-        package_production,
-        "_validate_release_id",
-        lambda _marker: "a" * 40,
-    )
+def test_normalized_postgres_contract_is_in_the_runtime_package():
     packaged_paths = {
         relative_path.as_posix()
-        for _, relative_path in package_production.collect_runtime_files()
+        for _, relative_path in package_production.collect_runtime_source_files()
     }
 
     assert "backend/db/postgres_schema_contract.json" in packaged_paths
