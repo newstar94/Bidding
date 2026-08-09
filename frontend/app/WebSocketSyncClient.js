@@ -64,6 +64,7 @@ export class WebSocketSyncClient {
     if (!workspace.organizationId) return;
     if (controller.ws && controller._wsOrganizationId === workspace.organizationId
       && [WebSocket.OPEN, WebSocket.CONNECTING].includes(controller.ws.readyState)) {
+      if (!controller._wsReady) this.startPollingFallback();
       return;
     }
     if (controller.ws) this.disconnect(false);
@@ -71,6 +72,7 @@ export class WebSocketSyncClient {
       clearTimeout(controller._wsReconnectTimer);
       controller._wsReconnectTimer = null;
     }
+    this.startPollingFallback();
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/sync`;
     const debug = APP_DEBUG;
@@ -78,12 +80,11 @@ export class WebSocketSyncClient {
     const ws = new WebSocket(wsUrl);
     controller.ws = ws;
     controller._wsOrganizationId = workspace.organizationId;
+    controller._wsReady = false;
     controller._wsReconnectEnabled = true;
     ws.onopen = () => {
       if (debug) console.log("WebSocket connection established. Sending auth...");
       controller._wsRetryDelay = 5e3;
-      this.stopPollingFallback();
-      hideOfflineBanner();
       controller.updateSyncState?.({ online: true });
       ws.send(JSON.stringify({
         action: "auth",
@@ -93,6 +94,15 @@ export class WebSocketSyncClient {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
+        if (msg.type === "ready") {
+          if (controller.ws !== ws || !workspaceIsCurrent(controller, workspace)
+            || String(msg.organizationId || "") !== workspace.organizationId) return;
+          controller._wsReady = true;
+          this.stopPollingFallback();
+          hideOfflineBanner();
+          controller.updateSyncState?.({ online: true });
+          return;
+        }
         if (msg.type === "ping") {
           if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pong" }));
           return;
@@ -122,16 +132,26 @@ export class WebSocketSyncClient {
       }
     };
     ws.onclose = (event) => {
-      if (controller.ws === ws) controller.ws = null;
-      if (!controller._wsReconnectEnabled || !workspaceIsCurrent(controller, workspace)
-        || !shouldReconnectWebSocket(event.code)) {
+      if (controller.ws && controller.ws !== ws) return;
+      if (controller.ws === ws) {
+        controller.ws = null;
+        controller._wsOrganizationId = null;
+        controller._wsReady = false;
+      }
+      const reconnectEnabled = Boolean(controller._wsReconnectEnabled);
+      const workspaceCurrent = workspaceIsCurrent(controller, workspace);
+      const retryable = shouldReconnectWebSocket(event.code);
+      const intentionalWorkspaceChange = event.code === 1000
+        && event.reason === "workspace_changed";
+      if (!reconnectEnabled || !workspaceCurrent || !retryable) {
         if (controller._wsReconnectTimer) {
           clearTimeout(controller._wsReconnectTimer);
           controller._wsReconnectTimer = null;
         }
         controller._wsRetryDelay = 5e3;
-        const intentionalWorkspaceChange = event.code === 1000
-          && event.reason === "workspace_changed";
+        if (reconnectEnabled && workspaceCurrent && !intentionalWorkspaceChange) {
+          this.startPollingFallback();
+        }
         if (debug && !intentionalWorkspaceChange) {
           console.warn(`WebSocket connection closed permanently for this session (code: ${event.code || "unknown"}). A new login is required before reconnecting.`);
         }
@@ -170,6 +190,7 @@ export class WebSocketSyncClient {
     const socket = controller.ws;
     controller.ws = null;
     controller._wsOrganizationId = null;
+    controller._wsReady = false;
     if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) {
       socket.close(1000, "workspace_changed");
     }

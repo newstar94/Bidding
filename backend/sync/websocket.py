@@ -411,6 +411,14 @@ async def sync_websocket_endpoint(websocket):
         active_connections[organization_id].add(websocket)
         websocket_connected(user_id)
         metrics_connected = True
+        await websocket.send_text(json.dumps(
+            {
+                "type": "ready",
+                "organizationId": organization_id,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ))
         import time as _time
         _last_auth_check = _time.time()
         _AUTH_CHECK_INTERVAL = 30 * 60
