@@ -115,4 +115,42 @@ Final status must be exactly one of:
 
 ## Final acceptance
 
-Pending implementation. This section must answer the 20 mandatory conclusion questions only after every row above has a final disposition and the full technical matrix has been rerun.
+1. **Latest HEAD ban đầu?** `47629c307b1ab6289918eb638fdddf09488a7639`, bằng `origin/main` sau `git fetch origin` ngày 2026-08-09. Technical acceptance được chạy trên chuỗi remediation đến `101245b`; sau đó `origin/main` tiến thêm commit tài liệu audit-only `f93c17b`, không đổi runtime/schema/test implementation.
+
+2. **Bao nhiêu P0/P1/P2/P3 FIXED?** 51 `FIXED`: P0 3/3, P1 13/14, P2 27/31, P3 8/9. Không còn P0 active; P1 còn một external legal blocker, P2 còn ba mitigations và một external legal/product blocker, P3 còn một verified-resolved item.
+
+3. **Bao nhiêu MITIGATED?** 3, đều ở P2: BF-P2-10 startup attribution, BF-P2-12 E2E timing debt và BF-P2-23 historical v36 migration risk. Các guard/profiler/barrier/runbook tương ứng đã được triển khai; residual risk được giữ rõ trong từng row, không đổi thành `FIXED` khi evidence chưa đủ.
+
+4. **Bao nhiêu VERIFIED RESOLVED?** 1: BF-P3-06. Hai benchmark là manual diagnostics hợp lệ, có package entrypoint, ownership/safety documentation và runnable evidence; không bị xóa như dead code.
+
+5. **Bao nhiêu BLOCKED và vì sao?** 2. BF-P1-07 bị chặn bởi 27 legal facts chưa được phê duyệt và 27 public placeholders chưa được thay. BF-P2-30 bị chặn bởi quyết định authoritative về lawful basis, retention duration, legal hold, anonymization và erasure/export ordering; kỹ thuật đã fail closed account deletion thay vì purge hoặc lộ audit evidence.
+
+6. **Còn cross-tenant path đã biết không?** Không còn known active cross-tenant path trong các seams đã audit. Cross-org AI role/search/analytics, workspace switch, organization membership, Word access, document/media access và negative tenant assertions đều pass. Kết luận này bị giới hạn ở graph/routes và test matrix đã audit, không phải tuyên bố tuyệt đối cho external code chưa quan sát.
+
+7. **Còn path mất dữ liệu đã biết không?** Không còn known active data-loss path trong scope audit. Pending local mutations được overlay trước pull; pull cursor serialized; direct persistence có checkpoint/rollback; workspace A→B async/mutation leases pass; stale/offline conflict trả 409 hoặc giữ durable outbox. Account deletion có unresolved retention decision nhưng hiện fail closed, không xóa mù.
+
+8. **Word access enforce thật chưa?** Có. Stored restriction flags được enforce xuyên API/context/export, gồm all-false, từng flag, mixed, manager/employee/organization và negative DOCX assertions. Runtime không còn `allow_all()` trái với stored policy; active document worker và Word mapping/template paths vẫn được giữ.
+
+9. **Personal workspace realtime fallback thật chưa?** Có. Personal workspace luôn giữ polling khi WebSocket chưa usable; close 4003/auth rejection, reconnect, BFCache, two-tab, logout và workspace switch đều có regression. Polling chỉ dừng khi WS `ready` và resume khi reconnect/unusable.
+
+10. **Stale delete còn thắng update mới không?** Không trong paths đã audit. Hard delete/archive dùng expected `row_version`, rowcount exactly one và savepoint rollback; real PostgreSQL two-connection barriers giữ v2, trả `ROW_VERSION_CONFLICT` và không tạo tombstone/audit giả khi CAS thua.
+
+11. **Migration mới nào?** Năm append-only migrations sau baseline v42: v43 `bind_session_active_role_to_workspace`; v44 `enforce_sync_metadata_version_bounds`; v45 `add_retention_cleanup_indexes`; v46 `reconcile_historical_chain`; v47 `drop_duplicate_audit_successor_index`. Không sửa v2-v42, không drop table/column.
+
+12. **Dead code nào đã xóa?** Xóa 5 confirmed-unused `evaluationMetadata` aliases; nhánh shared award direct/special không thể tới; timeline DOCX legacy route/IPC/template chain. Active direct/special application command, timeline Excel/context, document worker và unknown modules/benchmarks được giữ. Stale business-matrix command/docs được retire có path gate thay thế.
+
+13. **DB object nào đã xóa và rollback?** Chỉ explicit duplicate unique index `idx_audit_log_single_successor` qua v47. Constraint-backed twin `audit_log_chain_id_previous_hash_key` vẫn enforce `(chain_id, previous_hash)`. Preflight fail closed nếu hai index không còn exact twins; rollback runbook tái tạo đúng explicit unique index, chấp nhận quay lại double-write/storage overhead.
+
+14. **Test counts trước/sau?** Python 633/633 → 817/817; JavaScript 522/522 → 641/641. Final Python branch-aware coverage 47.98% và critical gate pass. Final JS coverage 46.64% line, 62.07% branch, 62.53% function; 14/14 critical modules pass. Python quality giữ BLE001 117/117, S608 128/128, F401/F841/S110 0; frontend graph 263 modules, 0 cycles; debt ratchets không regression.
+
+15. **E2E/browser/soak?** Pass: auth shell; 14-step auth/RBAC/cross-workspace/session suite; CRUD; bidder goods; multi-assignee; JV multi-lot/two-envelope/Excel/Word/contract; LP-25 stale/offline conflict; offline/reconnect; pairwise 15 packages; full lifecycle; UI quality; authenticated UI matrix. Offline soak pass 5/5. Browser matrix dùng isolated manager fixture pass Chromium 5.1 s, Firefox 10.5 s, WebKit 11.8 s và cleanup 6 accounts/3 organizations; raw shared-admin attempts correctly exposed single-active-session contention and không được dùng làm pass evidence. Workspace switch/pull ordering/personal fallback/JV multi-lot soak coverage còn nằm trong deterministic JS, auth và deep-E2E regressions tương ứng.
+
+16. **Performance trước/sau?** Baseline: cold p95 539 ms, warm p95 150 ms, longest task 145 ms nên fail 100 ms budget. Final secure artifact 30 cold + 30 warm: cold median/p95 363/402 ms, warm median/p95 136/174 ms, longest task 85 ms, 0 runtime failure; pass budgets 800/325/100. Hai diagnostic runs với raw `APP_DEBUG=True` modules dao động và fail 825 ms cold hoặc 361 ms warm; chúng không được dùng thay cho secure-artifact release measurement.
+
+17. **Dependency/SBOM/release status?** `npm audit`, `npm audit --omit=dev` và `pip-audit` đều 0 known vulnerabilities. Vendored audit, SheetJS/archive guards pass. CycloneDX dependency + vendored-asset SBOMs generated. Secure build pass 267 modules/52 obfuscated bundles; production package/extracted smoke pass 409 runtime files, 2,471,403 bytes với immutable full-SHA release marker.
+
+18. **Legal gate pass hay blocked?** Development warning gate exit 0; production-public gate intentionally exit 1 với `LEGAL_FACT_UNAPPROVED=27` và `LEGAL_PLACEHOLDER_PRESENT=27`. Không có bypass hoặc fabricated approval. Production public release vẫn blocked.
+
+19. **Có finding nào chưa có disposition?** Không. Đủ 57/57 rows: 51 `FIXED`, 3 `MITIGATED`, 1 `VERIFIED RESOLVED`, 2 `BLOCKED BY EXTERNAL/LEGAL/PRODUCT DECISION`, 0 `PENDING`, 0 `DEFERRED`.
+
+20. **Có đủ điều kiện technical release không?** Phần technical remediation/package có đủ evidence trong scope audit: canonical `npm run check`, schema/FK 104/104, real upgrade/concurrency regressions, security-deploy 73/73 + Turnstile matrix, dependency audits, secure performance và isolated browser/deep-E2E đều pass. Tuy nhiên không được gọi production release-ready: BF-P1-07 legal approval chưa pass và BF-P2-30 retention/product workflow chưa có quyết định authoritative. Kết luận chính xác là: technical remediation complete where possible, but production release remains blocked by legal approval; account deletion tiếp tục fail closed pending retention decision.
