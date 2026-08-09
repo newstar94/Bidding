@@ -80,6 +80,7 @@ REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 HASHED_ASSET_PATH = re.compile(
     r"^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$"
 )
+IMMUTABLE_RELEASE_ID = re.compile(r"^(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$")
 
 
 def _relative(path: Path) -> Path:
@@ -98,6 +99,35 @@ def _assert_safe(relative_path: Path) -> None:
         raise RuntimeError(f"Forbidden production path: {relative_path.as_posix()}")
     if relative_path.name in FORBIDDEN_NAMES or relative_path.suffix.lower() in FORBIDDEN_SUFFIXES:
         raise RuntimeError(f"Forbidden production file: {relative_path.as_posix()}")
+
+
+def _validate_release_id(secure_build: dict[str, object]) -> str:
+    release_id = secure_build.get("releaseId")
+    if (
+        not isinstance(release_id, str)
+        or release_id != release_id.strip()
+        or not IMMUTABLE_RELEASE_ID.fullmatch(release_id)
+    ):
+        raise RuntimeError(
+            "Production package requires an immutable release ID: "
+            "a full 40-character commit SHA or 64-character content hash; "
+            "development, unknown and empty values are forbidden."
+        )
+
+    expected_name = ""
+    expected_release = ""
+    for environment_name in ("APP_RELEASE_ID", "GITHUB_SHA"):
+        candidate = str(os.environ.get(environment_name) or "").strip()
+        if candidate:
+            expected_name = environment_name
+            expected_release = candidate
+            break
+    if expected_release and release_id != expected_release:
+        raise RuntimeError(
+            f"Secure build release ID does not match {expected_name}: "
+            f"marker={release_id}, expected={expected_release}."
+        )
+    return release_id
 
 
 def _validate_frontend_artifacts(manifest_path: Path) -> None:
@@ -176,6 +206,7 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
             "Secure frontend marker is missing. Run `npm run build:secure` before packaging."
         )
     secure_build = json.loads(secure_build_path.read_text(encoding="utf-8"))
+    _validate_release_id(secure_build)
     transformed_files = secure_build.get("transformedFiles")
     if (
         int(secure_build.get("version", 0)) < 5

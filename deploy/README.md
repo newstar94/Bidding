@@ -6,6 +6,12 @@ Public production packaging is blocked until every fact in
 `npm run check:legal:production`; local development uses the warning-only
 `npm run check:legal` command.
 
+Production builds also require `APP_RELEASE_ID` to be the immutable full Git
+commit SHA (40 hexadecimal characters) or a 64-character content hash. The
+packager rejects `development`, `unknown`, empty, shortened and semantic-version
+values, and verifies the secure-build marker against `APP_RELEASE_ID` (or
+`GITHUB_SHA` in CI) before selecting any runtime files.
+
 Phiếu thông tin cần thu thập trước khi điền production nằm tại
 `deploy/production-security-information.md`. Không ghi secret thật vào phiếu;
 chỉ ghi tên và nơi lưu secret.

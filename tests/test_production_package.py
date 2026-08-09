@@ -32,6 +32,28 @@ def test_private_client_symbols_and_public_source_maps_are_never_packageable():
             package_production._assert_safe(forbidden_path)
 
 
+@pytest.mark.parametrize(
+    "release_id",
+    (None, "", " ", "development", "Development", "unknown", "UNKNOWN", "v2.0.0"),
+)
+def test_production_release_id_rejects_mutable_or_placeholder_values(release_id):
+    with pytest.raises(RuntimeError, match="immutable release ID"):
+        package_production._validate_release_id({"releaseId": release_id})
+
+
+@pytest.mark.parametrize("release_id", ("a" * 40, "B" * 64))
+def test_production_release_id_accepts_full_commit_or_content_hash(release_id):
+    assert package_production._validate_release_id({"releaseId": release_id}) == release_id
+
+
+def test_production_release_id_must_match_the_build_environment(monkeypatch):
+    marker_release = "a" * 40
+    monkeypatch.setenv("APP_RELEASE_ID", "b" * 40)
+
+    with pytest.raises(RuntimeError, match="does not match APP_RELEASE_ID"):
+        package_production._validate_release_id({"releaseId": marker_release})
+
+
 def test_extracted_smoke_environment_cannot_inherit_another_database(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://runtime/dev")
     monkeypatch.setenv("MIGRATOR_DATABASE_URL", "postgresql://migrator/dev")
