@@ -67,6 +67,9 @@ class AnthropicAdapter:
             request,
             timeout_seconds=self.config.request_timeout_seconds,
             parser=iter_sse,
+            allowed_hosts=self.config.provider_allowed_hosts,
+            proxy_url=self.config.provider_proxy_url,
+            allowed_proxy_hosts=self.config.provider_allowed_proxy_hosts,
         )
         yield from normalize_anthropic_stream(raw_events)
 

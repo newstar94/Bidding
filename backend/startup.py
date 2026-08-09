@@ -20,6 +20,7 @@ from backend.security.turnstile import (
     TurnstileConfigurationError,
     get_turnstile_config,
 )
+from backend.ai.configuration import get_ai_config
 
 
 class StartupValidationError(RuntimeError):
@@ -468,6 +469,10 @@ def validate_startup_configuration(database, environ=None):
     except TurnstileConfigurationError as exc:
         raise StartupValidationError(str(exc)) from exc
     validate_http_resource_limits(environ)
+    try:
+        get_ai_config(environ)
+    except ValueError as exc:
+        raise StartupValidationError(f"Invalid AI provider configuration: {exc}") from exc
     _validate_postgresql_configuration(database, environ, production=is_production)
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if is_production:

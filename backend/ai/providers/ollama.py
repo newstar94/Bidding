@@ -63,6 +63,7 @@ class OllamaAdapter:
             request,
             timeout_seconds=self.config.request_timeout_seconds,
             parser=iter_ndjson,
+            allow_loopback_http=True,
         )
         yield from normalize_ollama_stream(raw_events, request_sequence=self._request_sequence)
 

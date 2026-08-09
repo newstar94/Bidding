@@ -24,6 +24,11 @@ from backend.ai.providers.base import (
     require_api_key,
     require_model,
 )
+from backend.ai.providers.url_policy import (
+    OutboundUrlPolicyError,
+    open_outbound_request,
+    validate_outbound_url,
+)
 
 
 _DATE_RE = re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?!\d)")
@@ -312,8 +317,27 @@ class GeminiLegalSearchAdapter:
             },
         )
         try:
-            with urllib.request.urlopen(
-                request, timeout=int(self.config.request_timeout_seconds)
+            validate_outbound_url(
+                request.full_url,
+                allowed_hosts=self.config.provider_allowed_hosts,
+                label="AI web-search provider",
+            )
+            if self.config.provider_proxy_url:
+                validate_outbound_url(
+                    self.config.provider_proxy_url,
+                    allowed_hosts=self.config.provider_allowed_proxy_hosts,
+                    label="AI web-search proxy",
+                )
+        except OutboundUrlPolicyError as exc:
+            raise ai_error(
+                "AI_PROVIDER_UNAVAILABLE",
+                "AI web-search endpoint violates the outbound URL policy.",
+            ) from exc
+        try:
+            with open_outbound_request(
+                request,
+                timeout=int(self.config.request_timeout_seconds),
+                proxy_url=self.config.provider_proxy_url,
             ) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
@@ -351,6 +375,9 @@ def create_legal_search_adapter(config):
                     "base_url": config.web_search_base_url,
                     "model": config.web_search_model,
                     "request_timeout_seconds": config.web_search_timeout_seconds,
+                    "provider_allowed_hosts": config.web_search_provider_allowed_hosts,
+                    "provider_proxy_url": config.web_search_proxy_url,
+                    "provider_allowed_proxy_hosts": config.web_search_allowed_proxy_hosts,
                 },
             )()
         )

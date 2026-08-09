@@ -12,6 +12,12 @@ import urllib.request
 
 from backend.ai.configuration import AiConfig
 from backend.ai.errors import ai_error
+from backend.ai.providers.url_policy import (
+    OutboundUrlPolicyError,
+    open_outbound_request,
+    validate_loopback_url,
+    validate_outbound_url,
+)
 
 
 class ProviderAdapter(Protocol):
@@ -77,11 +83,42 @@ def stream_http(
     *,
     timeout_seconds: int,
     parser,
+    allowed_hosts: tuple[str, ...] | None = None,
+    allow_loopback_http: bool = False,
+    proxy_url: str = "",
+    allowed_proxy_hosts: tuple[str, ...] | None = None,
 ) -> Iterable[dict]:
     """Open a bounded HTTP stream and map transport errors to the public contract."""
 
+    if allowed_hosts is not None or allow_loopback_http:
+        try:
+            if allow_loopback_http:
+                validate_loopback_url(request.full_url)
+            else:
+                validate_outbound_url(request.full_url, allowed_hosts=allowed_hosts or ())
+        except OutboundUrlPolicyError as exc:
+            raise ai_error(
+                "AI_PROVIDER_UNAVAILABLE",
+                "AI provider endpoint violates the outbound URL policy.",
+            ) from exc
+    if proxy_url:
+        try:
+            validate_outbound_url(
+                proxy_url,
+                allowed_hosts=allowed_proxy_hosts or (),
+                label="AI provider proxy",
+            )
+        except OutboundUrlPolicyError as exc:
+            raise ai_error(
+                "AI_PROVIDER_UNAVAILABLE",
+                "AI provider proxy violates the outbound URL policy.",
+            ) from exc
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        with open_outbound_request(
+            request,
+            timeout=timeout_seconds,
+            proxy_url=proxy_url,
+        ) as response:
             yield from parser(response)
     except urllib.error.HTTPError as exc:
         try:

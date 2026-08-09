@@ -38,6 +38,9 @@ AI_ENABLED=true
 AI_PROVIDER=<provider trong bảng>
 AI_API_KEY=<secret chỉ ở backend>
 AI_BASE_URL=<base URL, không gồm endpoint nếu tài liệu không yêu cầu>
+AI_PROVIDER_ALLOWED_HOSTS=<các custom host chính xác, phân cách bằng dấu phẩy>
+AI_PROVIDER_PROXY_URL=<proxy HTTPS đã duyệt; mặc định để trống>
+AI_PROVIDER_ALLOWED_PROXY_HOSTS=<host proxy chính xác>
 AI_MODEL=<model hoặc deployment name>
 AI_PROVIDER_STORE_RESPONSES=false
 AI_MAX_OUTPUT_TOKENS=1200
@@ -45,6 +48,8 @@ AI_REQUEST_TIMEOUT_SECONDS=45
 ```
 
 `AI_API_KEY` và `AI_BASE_URL` là tên trung lập được ưu tiên. Cấu hình cũ `OPENAI_API_KEY` và `OPENAI_BASE_URL` vẫn hoạt động với OpenAI/OpenAI-compatible để không gây hồi quy.
+
+Endpoint hosted phải dùng HTTPS cổng 443, không chứa userinfo và phải khớp host chính xác. Host chính thức của OpenAI, Anthropic, Gemini và host resource Azure dạng `<resource>.openai.azure.com` được tích hợp sẵn. Mọi gateway tùy chỉnh phải khai báo thêm `AI_PROVIDER_ALLOWED_HOSTS`; wildcard và host gần giống không được chấp nhận. Transport không tự đi theo redirect và bỏ qua toàn bộ `HTTP_PROXY`/`HTTPS_PROXY` ambient. Proxy chỉ được dùng khi cả `AI_PROVIDER_PROXY_URL` và `AI_PROVIDER_ALLOWED_PROXY_HOSTS` được cấu hình rõ ràng.
 
 Không đưa API key vào frontend, database, log hoặc Git. Sau khi đổi env phải restart application worker.
 
@@ -68,6 +73,7 @@ AI_ENABLED=true
 AI_PROVIDER=openai_chat
 AI_API_KEY=<vendor-secret>
 AI_BASE_URL=https://<vendor-host>/<vendor-api-prefix>
+AI_PROVIDER_ALLOWED_HOSTS=<vendor-host>
 AI_MODEL=<vendor-model>
 AI_CHAT_INCLUDE_USAGE=true
 AI_CHAT_MAX_TOKENS_FIELD=max_tokens
@@ -120,6 +126,9 @@ AI_WEB_SEARCH_ENABLED=true
 AI_WEB_SEARCH_PROVIDER=gemini_grounding
 AI_WEB_SEARCH_API_KEY=<gemini-secret> # bỏ trống để dùng AI_API_KEY
 AI_WEB_SEARCH_MODEL=<gemini-model-hỗ-trợ-google-search>
+AI_WEB_SEARCH_PROVIDER_ALLOWED_HOSTS= # chỉ cần khi override host Gemini mặc định
+AI_WEB_SEARCH_PROXY_URL= # optional; proxy HTTPS đã duyệt
+AI_WEB_SEARCH_ALLOWED_PROXY_HOSTS= # bắt buộc nếu dùng proxy
 AI_WEB_SEARCH_ALLOWED_DOMAINS=vanban.chinhphu.vn,vbpl.vn,muasamcong.gov.vn
 AI_WEB_SEARCH_TIMEOUT_SECONDS=20
 ```
@@ -135,7 +144,7 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 AI_MODEL=<model đã pull trong Ollama>
 ```
 
-Ollama local không cần key. Nếu endpoint từ xa yêu cầu bearer token, đặt `OLLAMA_API_KEY` hoặc `AI_API_KEY`.
+Ollama chỉ được phép chạy qua loopback `127.0.0.1`, `::1` hoặc `localhost` (HTTP/HTTPS). Không dùng adapter Ollama để gọi endpoint từ xa; một dịch vụ hosted phải đi qua adapter HTTPS phù hợp và host allowlist rõ ràng. Ollama local không cần key.
 
 ### Azure OpenAI
 

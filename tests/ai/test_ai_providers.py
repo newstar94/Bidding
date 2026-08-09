@@ -1,4 +1,6 @@
 from dataclasses import replace
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import threading
 import urllib.error
 import urllib.request
 
@@ -27,6 +29,7 @@ from backend.ai.providers.ollama import OllamaAdapter, normalize_ollama_stream
 from backend.ai.providers.openai_chat import OpenAIChatAdapter, normalize_chat_stream
 from backend.ai.providers.openai_responses import OpenAIResponsesAdapter
 from backend.ai.providers.registry import create_provider
+from backend.startup import StartupValidationError, validate_startup_configuration
 
 
 TOOL = {
@@ -48,6 +51,7 @@ def config(provider: str, **changes):
         "provider": provider,
         "api_key": "secret",
         "base_url": "https://provider.example/v1",
+        "provider_allowed_hosts": ("provider.example",),
         "model": "test-model",
         "api_version": "",
         "provider_version": "",
@@ -62,6 +66,7 @@ def completed(events):
 
 
 def test_config_supports_generic_and_vendor_specific_credentials(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "false")
     for name in (
         "AI_API_KEY",
         "AI_BASE_URL",
@@ -97,6 +102,7 @@ def test_config_normalizes_hyphenated_provider_alias(monkeypatch):
 
 
 def test_openai_environment_names_remain_backwards_compatible(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "false")
     monkeypatch.setenv("AI_PROVIDER", "openai")
     monkeypatch.delenv("AI_API_KEY", raising=False)
     monkeypatch.delenv("AI_BASE_URL", raising=False)
@@ -105,6 +111,181 @@ def test_openai_environment_names_remain_backwards_compatible(monkeypatch):
     value = get_ai_config()
     assert value.api_key == "legacy-secret"
     assert value.base_url == "https://legacy.example/v1"
+
+
+def test_enabled_hosted_provider_rejects_plain_http_base_url(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_BASE_URL", "http://api.openai.com/v1")
+
+    with pytest.raises(ValueError, match="HTTPS"):
+        get_ai_config()
+
+
+def test_enabled_hosted_provider_rejects_host_outside_allowlist(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_BASE_URL", "https://collector.example/v1")
+    monkeypatch.delenv("AI_PROVIDER_ALLOWED_HOSTS", raising=False)
+
+    with pytest.raises(ValueError, match="allowlist"):
+        get_ai_config()
+
+
+def test_enabled_custom_gateway_accepts_explicit_exact_host(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai_chat")
+    monkeypatch.setenv("AI_BASE_URL", "https://gateway.example/v1")
+    monkeypatch.setenv("AI_PROVIDER_ALLOWED_HOSTS", "gateway.example")
+
+    value = get_ai_config()
+
+    assert value.base_url == "https://gateway.example/v1"
+    assert "gateway.example" in value.provider_allowed_hosts
+
+
+def test_enabled_hosted_provider_rejects_userinfo_even_on_allowlisted_host(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_BASE_URL", "https://api.openai.com@api.openai.com/v1")
+
+    with pytest.raises(ValueError, match="userinfo"):
+        get_ai_config()
+
+
+def test_enabled_hosted_provider_rejects_non_default_https_port(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_BASE_URL", "https://api.openai.com:8443/v1")
+
+    with pytest.raises(ValueError, match="port"):
+        get_ai_config()
+
+
+def test_enabled_ollama_rejects_non_loopback_endpoint(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "ollama")
+    monkeypatch.setenv("AI_BASE_URL", "http://collector.example:11434")
+
+    with pytest.raises(ValueError, match="loopback"):
+        get_ai_config()
+
+
+def test_enabled_azure_accepts_canonical_resource_host(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "azure_openai")
+    monkeypatch.setenv("AI_BASE_URL", "https://biddingflow.openai.azure.com")
+    monkeypatch.delenv("AI_PROVIDER_ALLOWED_HOSTS", raising=False)
+
+    assert get_ai_config().base_url == "https://biddingflow.openai.azure.com"
+
+
+def test_enabled_azure_requires_endpoint_at_startup(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "azure_openai")
+    monkeypatch.delenv("AI_BASE_URL", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    with pytest.raises(ValueError, match="Azure.*URL"):
+        get_ai_config()
+
+
+def test_startup_rejects_unsafe_ai_provider_configuration(monkeypatch):
+    monkeypatch.setattr(
+        "backend.startup.database_requires_admin_bootstrap",
+        lambda _database: False,
+    )
+    environ = {
+        "APP_ENV": "development",
+        "DATABASE_URL": "postgresql://runtime:secret@127.0.0.1/biddingflow",
+        "AI_ENABLED": "true",
+        "AI_PROVIDER": "openai",
+        "AI_BASE_URL": "https://collector.example/v1",
+    }
+
+    with pytest.raises(StartupValidationError, match="AI provider"):
+        validate_startup_configuration(object(), environ)
+
+
+def test_enabled_provider_rejects_proxy_without_proxy_allowlist(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_PROVIDER_PROXY_URL", "https://proxy.example")
+    monkeypatch.delenv("AI_PROVIDER_ALLOWED_PROXY_HOSTS", raising=False)
+
+    with pytest.raises(ValueError, match="proxy.*allowlist"):
+        get_ai_config()
+
+
+def test_transport_uses_only_explicit_proxy_policy(monkeypatch):
+    captured = {}
+
+    class EmptyResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(())
+
+    def safe_open(request, *, timeout, proxy_url=""):
+        captured.update(
+            url=request.full_url,
+            timeout=timeout,
+            proxy_url=proxy_url,
+        )
+        return EmptyResponse()
+
+    monkeypatch.setattr(
+        "backend.ai.providers.base.open_outbound_request",
+        safe_open,
+    )
+    monkeypatch.setenv("HTTPS_PROXY", "https://ambient-proxy.example")
+
+    request = urllib.request.Request("https://api.openai.com/v1/responses")
+    list(
+        stream_http(
+            request,
+            timeout_seconds=10,
+            parser=iter_sse,
+            allowed_hosts=("api.openai.com",),
+            proxy_url="https://approved-proxy.example",
+            allowed_proxy_hosts=("approved-proxy.example",),
+        )
+    )
+
+    assert captured == {
+        "url": "https://api.openai.com/v1/responses",
+        "timeout": 10,
+        "proxy_url": "https://approved-proxy.example",
+    }
+
+
+def test_transport_rejects_proxy_host_before_network(monkeypatch):
+    def must_not_open(*_args, **_kwargs):
+        raise AssertionError("unapproved proxy reached the network")
+
+    monkeypatch.setattr(
+        "backend.ai.providers.base.open_outbound_request",
+        must_not_open,
+    )
+    request = urllib.request.Request("https://api.openai.com/v1/responses")
+
+    with pytest.raises(AiError) as error:
+        list(
+            stream_http(
+                request,
+                timeout_seconds=10,
+                parser=iter_sse,
+                allowed_hosts=("api.openai.com",),
+                proxy_url="https://collector.example",
+                allowed_proxy_hosts=("approved-proxy.example",),
+            )
+        )
+    assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
 
 
 @pytest.mark.parametrize(
@@ -361,11 +542,11 @@ def test_stream_parsers_fail_closed_on_malformed_payloads():
 
 
 def test_http_429_maps_to_public_rate_limit_error(monkeypatch):
-    def fail(_request, timeout):
-        del timeout
+    def fail(_request, *, timeout, proxy_url=""):
+        del timeout, proxy_url
         raise urllib.error.HTTPError("https://provider.example", 429, "limited", {}, None)
 
-    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    monkeypatch.setattr("backend.ai.providers.base.open_outbound_request", fail)
     request = urllib.request.Request("https://provider.example")
     with pytest.raises(AiError) as error:
         list(stream_http(request, timeout_seconds=10, parser=iter_sse))
@@ -373,12 +554,234 @@ def test_http_429_maps_to_public_rate_limit_error(monkeypatch):
 
 
 def test_transport_timeout_maps_to_public_timeout_error(monkeypatch):
-    def fail(_request, timeout):
-        del timeout
+    def fail(_request, *, timeout, proxy_url=""):
+        del timeout, proxy_url
         raise TimeoutError("slow provider")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    monkeypatch.setattr("backend.ai.providers.base.open_outbound_request", fail)
     request = urllib.request.Request("https://provider.example")
     with pytest.raises(AiError) as error:
         list(stream_http(request, timeout_seconds=10, parser=iter_sse))
     assert error.value.code == "AI_PROVIDER_TIMEOUT"
+
+
+def test_transport_rejects_request_host_before_network(monkeypatch):
+    def must_not_open(*_args, **_kwargs):
+        raise AssertionError("unsafe provider request reached the network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", must_not_open)
+    request = urllib.request.Request("https://collector.example/v1/responses")
+    with pytest.raises(AiError) as error:
+        list(
+            stream_http(
+                request,
+                timeout_seconds=10,
+                parser=iter_sse,
+                allowed_hosts=("api.openai.com",),
+            )
+        )
+    assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_provider_adapter_applies_configured_host_policy(monkeypatch):
+    def must_not_open(*_args, **_kwargs):
+        raise AssertionError("unsafe adapter request reached the network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", must_not_open)
+    adapter = OpenAIResponsesAdapter(
+        config(
+            "openai",
+            base_url="https://collector.example/v1",
+            provider_allowed_hosts=("api.openai.com",),
+        )
+    )
+
+    with pytest.raises(AiError) as error:
+        list(
+            adapter.stream_response(
+                input_items=[{"role": "user", "content": "hello"}],
+                instructions="policy",
+                tools=[],
+            )
+        )
+    assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_provider_adapter_passes_approved_proxy_to_transport(monkeypatch):
+    captured = {}
+
+    class EmptyResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(())
+
+    def safe_open(request, *, timeout, proxy_url=""):
+        captured.update(url=request.full_url, timeout=timeout, proxy_url=proxy_url)
+        return EmptyResponse()
+
+    monkeypatch.setattr(
+        "backend.ai.providers.base.open_outbound_request",
+        safe_open,
+    )
+    adapter = OpenAIResponsesAdapter(
+        config(
+            "openai",
+            base_url="https://api.openai.com/v1",
+            provider_allowed_hosts=("api.openai.com",),
+            provider_proxy_url="https://approved-proxy.example",
+            provider_allowed_proxy_hosts=("approved-proxy.example",),
+        )
+    )
+
+    list(
+        adapter.stream_response(
+            input_items=[{"role": "user", "content": "hello"}],
+            instructions="policy",
+            tools=[],
+        )
+    )
+
+    assert captured["proxy_url"] == "https://approved-proxy.example"
+
+
+@pytest.mark.parametrize(
+    "provider",
+    (
+        "openai_chat",
+        "anthropic",
+        "gemini_interactions",
+        "gemini_generate_content",
+        "azure_openai",
+        "azure_openai_chat",
+    ),
+)
+def test_every_hosted_provider_adapter_applies_host_policy(monkeypatch, provider):
+    def must_not_open(*_args, **_kwargs):
+        raise AssertionError("unsafe adapter request reached the network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", must_not_open)
+    adapter = create_provider(
+        config(
+            provider,
+            base_url="https://collector.example/v1",
+            provider_allowed_hosts=("provider.example",),
+        )
+    )
+
+    with pytest.raises(AiError) as error:
+        list(
+            adapter.stream_response(
+                input_items=[{"role": "user", "content": "hello"}],
+                instructions="policy",
+                tools=[],
+            )
+        )
+    assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_ollama_adapter_rechecks_loopback_policy_at_request_time(monkeypatch):
+    def must_not_open(*_args, **_kwargs):
+        raise AssertionError("unsafe Ollama request reached the network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", must_not_open)
+    adapter = OllamaAdapter(
+        config("ollama", base_url="http://collector.example:11434")
+    )
+
+    with pytest.raises(AiError) as error:
+        list(
+            adapter.stream_response(
+                input_items=[{"role": "user", "content": "hello"}],
+                instructions="policy",
+                tools=[],
+            )
+        )
+    assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_transport_blocks_redirect_before_reaching_redirected_host():
+    class RedirectHandler(BaseHTTPRequestHandler):
+        redirected_target_reached = False
+
+        def do_GET(self):
+            if self.path == "/start":
+                self.send_response(302)
+                self.send_header(
+                    "Location",
+                    f"http://localhost:{self.server.server_port}/target",
+                )
+                self.end_headers()
+                return
+            type(self).redirected_target_reached = True
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/start"
+        )
+        with pytest.raises(AiError) as error:
+            list(
+                stream_http(
+                    request,
+                    timeout_seconds=10,
+                    parser=lambda _response: (),
+                    allow_loopback_http=True,
+                )
+            )
+        assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
+        assert RedirectHandler.redirected_target_reached is False
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_transport_ignores_ambient_proxy_environment(monkeypatch):
+    class OkHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            return
+
+    monkeypatch.setenv("HTTP_PROXY", "http://ambient-proxy.invalid")
+    monkeypatch.setenv("HTTPS_PROXY", "https://ambient-proxy.invalid")
+    monkeypatch.setattr(
+        urllib.request,
+        "getproxies",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("ambient proxy discovery must remain disabled")
+        ),
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), OkHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/health"
+        )
+        assert list(
+            stream_http(
+                request,
+                timeout_seconds=10,
+                parser=lambda _response: (),
+                allow_loopback_http=True,
+            )
+        ) == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

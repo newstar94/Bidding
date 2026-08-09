@@ -6,9 +6,11 @@
 
 ## Cấu hình
 
-Biến chung: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `AI_API_VERSION`, `AI_PROVIDER_VERSION`, `AI_AUTH_TYPE`, `AI_MAX_OUTPUT_TOKENS`, `AI_REQUEST_TIMEOUT_SECONDS`, `AI_TOOL_TIMEOUT_SECONDS`, `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_CONVERSATION_RETENTION_DAYS`, `AI_PROVIDER_STORE_RESPONSES`, `AI_KNOWLEDGE_ENABLED`, `AI_KNOWLEDGE_TOP_K`, `AI_KNOWLEDGE_MIN_SCORE`, `AI_KNOWLEDGE_MAX_CONTEXT_CHARS`, `AI_KNOWLEDGE_CANDIDATE_LIMIT`.
+Biến chung: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_PROVIDER_ALLOWED_HOSTS`, `AI_PROVIDER_PROXY_URL`, `AI_PROVIDER_ALLOWED_PROXY_HOSTS`, `AI_MODEL`, `AI_API_VERSION`, `AI_PROVIDER_VERSION`, `AI_AUTH_TYPE`, `AI_MAX_OUTPUT_TOKENS`, `AI_REQUEST_TIMEOUT_SECONDS`, `AI_TOOL_TIMEOUT_SECONDS`, `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_CONVERSATION_RETENTION_DAYS`, `AI_PROVIDER_STORE_RESPONSES`, `AI_KNOWLEDGE_ENABLED`, `AI_KNOWLEDGE_TOP_K`, `AI_KNOWLEDGE_MIN_SCORE`, `AI_KNOWLEDGE_MAX_CONTEXT_CHARS`, `AI_KNOWLEDGE_CANDIDATE_LIMIT`.
 
 `OPENAI_API_KEY`/`OPENAI_BASE_URL` tiếp tục là fallback tương thích ngược. Anthropic, Gemini, Ollama và Azure cũng chấp nhận các tên env riêng được liệt kê trong [AI_PROVIDER_ADAPTERS.md](AI_PROVIDER_ADAPTERS.md).
+
+Startup fail-closed nếu AI hoặc web search đang bật nhưng endpoint/proxy vi phạm policy. Hosted endpoint phải là HTTPS cổng 443 và host chính xác trong allowlist; Ollama chỉ được dùng trên loopback. Redirect bị chặn. Proxy môi trường bị bỏ qua; chỉ proxy URL và host allowlist khai báo riêng mới được dùng. Sau khi thay host/proxy phải restart toàn bộ worker và kiểm tra readiness trước khi mở traffic.
 
 ## Sự cố provider
 
