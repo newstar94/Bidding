@@ -1,5 +1,8 @@
+import pytest
+
 from backend import app as app_module
 from backend.lifecycle import database_auto_migration_enabled
+from scripts import manage_database
 
 
 def test_auto_migration_defaults_to_enabled_outside_production():
@@ -101,3 +104,83 @@ def test_production_startup_skips_absent_local_postgres_setup(monkeypatch, tmp_p
     monkeypatch.setattr(app_module, "project_root", str(tmp_path))
 
     assert app_module._start_local_database_if_managed() is False
+
+
+def test_manage_database_preflight_is_read_only(monkeypatch, capsys):
+    events = []
+    report = {
+        "currentVersion": 35,
+        "targetVersion": 43,
+        "upgradeRequired": True,
+        "v36CanonicalLotCodes": {
+            "applies": True,
+            "rowsLoadedIntoPython": 9000,
+            "requiresTransactionalDryRun": True,
+        },
+    }
+
+    class FakeDatabase:
+        def __init__(self, database_url):
+            events.append(("open", database_url))
+
+        def close(self):
+            events.append(("close", None))
+
+    monkeypatch.setenv("MIGRATOR_DATABASE_URL", "postgresql://migrator/database")
+    monkeypatch.setattr("backend.db.db_helper.PostgresDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        manage_database,
+        "_read_upgrade_preflight",
+        lambda database: events.append(("preflight", database)) or report,
+    )
+    monkeypatch.setattr(
+        "backend.db.postgres_schema.initialize_postgres_database",
+        lambda *_args, **_kwargs: pytest.fail("preflight must not run migrations"),
+    )
+
+    assert manage_database.main(["--preflight"]) == 0
+    output = capsys.readouterr().out
+
+    assert '"rowsLoadedIntoPython": 9000' in output
+    assert events[0] == ("open", "postgresql://migrator/database")
+    assert events[-1] == ("close", None)
+
+
+def test_manage_database_dry_run_executes_then_rolls_back(monkeypatch, capsys):
+    events = []
+
+    class FakeDatabase:
+        def __init__(self, _database_url):
+            pass
+
+        def close(self):
+            events.append("close")
+
+    monkeypatch.setenv("MIGRATOR_DATABASE_URL", "postgresql://migrator/database")
+    monkeypatch.setattr("backend.db.db_helper.PostgresDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        manage_database,
+        "_read_upgrade_preflight",
+        lambda _database: {
+            "currentVersion": 35,
+            "targetVersion": 43,
+            "upgradeRequired": True,
+            "v36CanonicalLotCodes": {
+                "applies": True,
+                "requiresTransactionalDryRun": True,
+            },
+        },
+    )
+
+    def initialize(_database, *, dry_run=False):
+        events.append(("initialize", dry_run))
+        return 43
+
+    monkeypatch.setattr(
+        "backend.db.postgres_schema.initialize_postgres_database",
+        initialize,
+    )
+
+    assert manage_database.main(["--dry-run"]) == 0
+    assert events == [("initialize", True), "close"]
+    assert "rolled back" in capsys.readouterr().out

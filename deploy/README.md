@@ -29,6 +29,9 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
 2. Chạy dependency/secret scan, full test, fresh DB, upgrade và restore drill.
 3. Verify `APP_PUBLIC_URL` HTTPS exact-origin, trusted proxy/host allowlist và cookie secure.
 4. Verify PostgreSQL backup có thể restore; ghi checkpoint migration.
+   Database cũ đi qua schema v36 phải làm theo
+   deploy/runbooks/database-upgrade-v36.md, gồm cardinality preflight và
+   transactional dry-run trước maintenance window.
 5. Verify document worker service account, DB role và Linux sandbox.
 6. Nếu dùng Turnstile, tạo widget `Managed`, allow đúng hostname production và
    lưu site/secret key trong secret manager. `TURNSTILE_ENABLED=auto` tự bật khi

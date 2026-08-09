@@ -1071,7 +1071,7 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
     return DB_SCHEMA_VERSION
 
 
-def initialize_postgres_database(database) -> int:
+def initialize_postgres_database(database, *, dry_run: bool = False) -> int:
     connection = None
     try:
         connection = database.get_connection()
@@ -1097,7 +1097,10 @@ def initialize_postgres_database(database) -> int:
             )
         assert_schema_contract(cursor)
         assert_foreign_key_integrity(cursor)
-        connection.commit()
+        if dry_run:
+            connection.rollback()
+        else:
+            connection.commit()
         return version
     except Exception:
         if connection is not None:
