@@ -11,6 +11,7 @@ from backend.db.upgrades import (
 CANONICAL_LOT_CODE_MIGRATION_VERSION = 36
 SYNC_METADATA_BOUNDS_MIGRATION_VERSION = 44
 RETENTION_CLEANUP_INDEX_MIGRATION_VERSION = 45
+HISTORICAL_CHAIN_RECONCILIATION_VERSION = 46
 
 
 def inspect_database_upgrade(
@@ -123,6 +124,16 @@ def inspect_database_upgrade(
             "relationBytes": int(row[3]) + int(row[4]) + int(row[5]),
         })
 
+    crosses_v46 = (
+        current is not None
+        and current < HISTORICAL_CHAIN_RECONCILIATION_VERSION <= target
+    )
+    historical_chain_report = {
+        "applies": crosses_v46,
+        "requiresTransactionalDryRun": crosses_v46,
+        "requiresCatalogReconciliation": crosses_v46,
+    }
+
     return {
         "currentVersion": current,
         "targetVersion": target,
@@ -130,4 +141,5 @@ def inspect_database_upgrade(
         "v36CanonicalLotCodes": lot_code_report,
         "v44SyncMetadataBounds": sync_metadata_report,
         "v45RetentionCleanupIndexes": retention_index_report,
+        "v46HistoricalChain": historical_chain_report,
     }

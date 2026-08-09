@@ -7,6 +7,9 @@ import re
 import time
 from hashlib import sha256
 
+from psycopg import sql
+from psycopg.errors import UndefinedColumn, UndefinedObject, UndefinedTable
+
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
 from backend.db.upgrades import (
@@ -170,11 +173,16 @@ def postgres_column_definition(table_name: str, column_name: str, definition: st
     return re.sub(r"\s+", " ", result).strip()
 
 
-def postgres_table_constraint(table_name: str, constraint: str) -> str:
+def postgres_table_constraint(
+    table_name: str,
+    constraint: str,
+    table_columns=None,
+) -> str:
     """Translate date/time checks that relied on SQLite coercion functions."""
 
     result = str(constraint)
-    table_columns = SCHEMA_DINH_NGHIA[table_name]["columns"]
+    if table_columns is None:
+        table_columns = SCHEMA_DINH_NGHIA[table_name]["columns"]
     date_columns = {
         name for name in table_columns if name.startswith("ngay_")
     }
@@ -226,11 +234,19 @@ def build_create_table_sql(table_name: str, table_spec: dict) -> str:
     if primary_keys:
         columns.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
     columns.extend(
-        postgres_table_constraint(table_name, constraint)
+        postgres_table_constraint(
+            table_name,
+            constraint,
+            table_spec["columns"],
+        )
         for constraint in table_spec.get("unique_constraints", ())
     )
     columns.extend(
-        postgres_table_constraint(table_name, constraint)
+        postgres_table_constraint(
+            table_name,
+            constraint,
+            table_spec["columns"],
+        )
         for constraint in table_spec.get("foreign_keys", ())
         if not constraint.lstrip().upper().startswith("FOREIGN KEY")
     )
@@ -942,9 +958,38 @@ def _create_triggers(cursor) -> None:
     )
 
 
+class _HistoricalSchemaCursor:
+    """Skip only latest objects whose table/column is not migrated yet."""
+
+    _SAVEPOINT = "bf_historical_schema_object"
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, statement, parameters=None):
+        self._cursor.execute(f"SAVEPOINT {self._SAVEPOINT}")
+        try:
+            result = self._cursor.execute(statement, parameters)
+        except (UndefinedColumn, UndefinedTable):
+            self._cursor.execute(f"ROLLBACK TO SAVEPOINT {self._SAVEPOINT}")
+            self._cursor.execute(f"RELEASE SAVEPOINT {self._SAVEPOINT}")
+            return self
+        except UndefinedObject as exc:
+            self._cursor.execute(f"ROLLBACK TO SAVEPOINT {self._SAVEPOINT}")
+            self._cursor.execute(f"RELEASE SAVEPOINT {self._SAVEPOINT}")
+            if "gin_trgm_ops" in str(exc):
+                return self
+            raise
+        self._cursor.execute(f"RELEASE SAVEPOINT {self._SAVEPOINT}")
+        return result
+
+
 def create_indexes_and_triggers(cursor) -> None:
-    _create_indexes(cursor)
-    _create_triggers(cursor)
+    target = cursor
+    if _application_tables(cursor) != set(SCHEMA_DINH_NGHIA):
+        target = _HistoricalSchemaCursor(cursor)
+    _create_indexes(target)
+    _create_triggers(target)
 
 
 def assert_foreign_key_integrity(cursor) -> None:
@@ -970,6 +1015,181 @@ def assert_schema_contract(cursor) -> None:
     actual_catalog = read_postgres_schema_catalog(cursor)
     expected_catalog = load_expected_postgres_schema_catalog()
     assert_catalog_contract(expected_catalog, actual_catalog)
+
+
+def _schema_object_drift(expected_catalog, actual_catalog):
+    from backend.db.postgres_schema_contract import schema_catalog_drift
+
+    comparable_actual = dict(actual_catalog)
+    comparable_actual["schemaVersion"] = expected_catalog.get("schemaVersion")
+    return schema_catalog_drift(expected_catalog, comparable_actual)
+
+
+def _drop_application_constraints(cursor) -> None:
+    rows = cursor.execute(
+        """SELECT relation.relname, constraint_row.conname,
+                  constraint_row.contype
+             FROM pg_constraint AS constraint_row
+             JOIN pg_class AS relation
+               ON relation.oid = constraint_row.conrelid
+            WHERE constraint_row.connamespace = current_schema()::regnamespace
+            ORDER BY CASE constraint_row.contype WHEN 'f' THEN 0 ELSE 1 END,
+                     relation.relname, constraint_row.conname"""
+    ).fetchall()
+    application_tables = set(SCHEMA_DINH_NGHIA)
+    for table_name, constraint_name, _kind in rows:
+        if str(table_name) not in application_tables:
+            continue
+        cursor.execute(
+            sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
+                sql.Identifier(str(table_name)),
+                sql.Identifier(str(constraint_name)),
+            )
+        )
+
+
+def _drop_application_indexes(cursor) -> None:
+    rows = cursor.execute(
+        """SELECT table_row.relname, index_row.relname
+             FROM pg_index AS index_meta
+             JOIN pg_class AS index_row ON index_row.oid = index_meta.indexrelid
+             JOIN pg_class AS table_row ON table_row.oid = index_meta.indrelid
+            WHERE index_row.relnamespace = current_schema()::regnamespace
+            ORDER BY table_row.relname, index_row.relname"""
+    ).fetchall()
+    application_tables = set(SCHEMA_DINH_NGHIA)
+    for table_name, index_name in rows:
+        if str(table_name) not in application_tables:
+            continue
+        cursor.execute(
+            sql.SQL("DROP INDEX {}").format(sql.Identifier(str(index_name)))
+        )
+
+
+def _reconcile_application_columns(cursor, expected_catalog, actual_catalog) -> None:
+    for table_name, expected_table in expected_catalog["tables"].items():
+        actual_table = actual_catalog["tables"][table_name]
+        for column_name, expected_column in expected_table["columns"].items():
+            actual_column = actual_table["columns"].get(column_name)
+            if actual_column is None:
+                raise RuntimeError(
+                    "Historical schema reconciliation requires an explicit "
+                    f"backfill for missing column {table_name}.{column_name}."
+                )
+            table_identifier = sql.Identifier(table_name)
+            column_identifier = sql.Identifier(column_name)
+            expected_type = str(expected_column["type"])
+            if actual_column["type"] != expected_type:
+                cursor.execute(
+                    sql.SQL(
+                        "ALTER TABLE {} ALTER COLUMN {} TYPE {} USING {}::{}"
+                    ).format(
+                        table_identifier,
+                        column_identifier,
+                        sql.SQL(expected_type),
+                        column_identifier,
+                        sql.SQL(expected_type),
+                    )
+                )
+            expected_default = expected_column["default"]
+            if actual_column["default"] != expected_default:
+                if expected_default is None:
+                    cursor.execute(
+                        sql.SQL("ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT").format(
+                            table_identifier,
+                            column_identifier,
+                        )
+                    )
+                else:
+                    cursor.execute(
+                        sql.SQL(
+                            "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}"
+                        ).format(
+                            table_identifier,
+                            column_identifier,
+                            sql.SQL(str(expected_default)),
+                        )
+                    )
+            if bool(actual_column["notNull"]) != bool(expected_column["notNull"]):
+                action = "SET NOT NULL" if expected_column["notNull"] else "DROP NOT NULL"
+                cursor.execute(
+                    sql.SQL("ALTER TABLE {} ALTER COLUMN {} {}").format(
+                        table_identifier,
+                        column_identifier,
+                        sql.SQL(action),
+                    )
+                )
+
+
+def _recreate_application_constraints(cursor, expected_catalog) -> None:
+    constraints = []
+    for table_name, table_spec in expected_catalog["tables"].items():
+        for constraint_name, constraint_spec in table_spec["constraints"].items():
+            constraints.append((
+                str(constraint_spec["kind"]),
+                table_name,
+                constraint_name,
+                str(constraint_spec["definition"]),
+            ))
+    order = {"p": 0, "u": 1, "c": 2, "x": 3, "f": 4}
+    constraints.sort(key=lambda item: (order.get(item[0], 3), item[1], item[2]))
+    for _kind, table_name, constraint_name, definition in constraints:
+        cursor.execute(
+            sql.SQL("ALTER TABLE {} ADD CONSTRAINT {} {}").format(
+                sql.Identifier(table_name),
+                sql.Identifier(constraint_name),
+                sql.SQL(definition),
+            )
+        )
+
+
+def reconcile_historical_postgres_schema(cursor) -> tuple[str, ...]:
+    """Reconcile a replayed historical chain to the immutable latest catalog."""
+
+    from backend.db.postgres_schema_contract import (
+        load_expected_postgres_schema_catalog,
+        read_postgres_schema_catalog,
+    )
+
+    expected_catalog = load_expected_postgres_schema_catalog()
+    actual_catalog = read_postgres_schema_catalog(cursor)
+    initial_drift = _schema_object_drift(expected_catalog, actual_catalog)
+    if not initial_drift:
+        return ()
+
+    for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
+        if table_name in actual_catalog["tables"]:
+            continue
+        cursor.execute(build_create_table_sql(table_name, table_spec))
+
+    actual_catalog = read_postgres_schema_catalog(cursor)
+    _drop_application_constraints(cursor)
+    _drop_application_indexes(cursor)
+    _reconcile_application_columns(cursor, expected_catalog, actual_catalog)
+    _recreate_application_constraints(cursor, expected_catalog)
+    schema_name = str(cursor.execute("SELECT current_schema()").fetchone()[0])
+    cursor.execute(
+        sql.SQL("SET LOCAL search_path TO {}, public").format(
+            sql.Identifier(schema_name)
+        )
+    )
+    create_indexes_and_triggers(cursor)
+    cursor.execute(
+        sql.SQL("SET LOCAL search_path TO {}").format(
+            sql.Identifier(schema_name)
+        )
+    )
+
+    remaining_drift = _schema_object_drift(
+        expected_catalog,
+        read_postgres_schema_catalog(cursor),
+    )
+    if remaining_drift:
+        raise RuntimeError(
+            "Historical schema reconciliation remained incomplete: "
+            + "; ".join(remaining_drift[:12])
+        )
+    return initial_drift
 
 
 def _application_tables(cursor) -> set[str]:

@@ -7,7 +7,7 @@ append a ``DatabaseUpgrade`` entry to ``UPGRADES``. Upgrade versions must remain
 contiguous and must never be rewritten after release.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import uuid
 
 
@@ -28,6 +28,53 @@ class DatabaseUpgradeContext:
     create_indexes_and_triggers: object
     assert_foreign_key_integrity: object
     create_foreign_keys: object = None
+
+
+def _context_for_historical_upgrade(context, version):
+    """Restore transient DDL inputs retired from the latest schema registry."""
+
+    if int(version) != 17:
+        return context
+    canonical_builder = context.build_create_table_sql
+
+    def build_v17_table(table_name, table_spec):
+        if table_name != "bao_cao_danh_gia_nha_thau":
+            return canonical_builder(table_name, table_spec)
+        historical_spec = dict(table_spec)
+        historical_spec["columns"] = {
+            **table_spec["columns"],
+            "nguoi_cham_id": "TEXT",
+        }
+        return canonical_builder(table_name, historical_spec)
+
+    return replace(context, build_create_table_sql=build_v17_table)
+
+
+def _prepare_historical_upgrade(cursor, context, version):
+    """Create prerequisite tables assumed by released historical upgrades."""
+
+    prerequisites = {
+        7: ("email_delivery_status",),
+        31: ("document_jobs",),
+        45: ("partner_enrichment_jobs",),
+    }.get(int(version), ())
+    if not prerequisites:
+        return
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    for table_name in prerequisites:
+        exists = cursor.execute(
+            "SELECT to_regclass(?) IS NOT NULL",
+            (table_name,),
+        ).fetchone()
+        if exists and bool(exists[0]):
+            continue
+        cursor.execute(
+            context.build_create_table_sql(
+                table_name,
+                SCHEMA_DINH_NGHIA[table_name],
+            )
+        )
 
 
 def _upgrade_to_v2_remove_mfa(cursor, context):
@@ -1767,6 +1814,14 @@ def _upgrade_to_v45_add_retention_cleanup_indexes(cursor, _context):
     )
 
 
+def _upgrade_to_v46_reconcile_historical_chain(cursor, _context):
+    """Align replayed historical installs with the normalized latest catalog."""
+
+    from backend.db.postgres_schema import reconcile_historical_postgres_schema
+
+    reconcile_historical_postgres_schema(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1984,6 +2039,11 @@ UPGRADES = (
         "add_retention_cleanup_indexes",
         _upgrade_to_v45_add_retention_cleanup_indexes,
     ),
+    DatabaseUpgrade(
+        46,
+        "reconcile_historical_chain",
+        _upgrade_to_v46_reconcile_historical_chain,
+    ),
 )
 
 
@@ -2023,13 +2083,24 @@ def record_database_version(cursor, version, *, baseline=BASELINE_NAME):
     )
 
 
-def apply_database_upgrades(cursor, current_version, context):
+def apply_database_upgrades(
+    cursor,
+    current_version,
+    context,
+    *,
+    target_version=None,
+):
     """Apply future upgrades registered in this file inside the caller transaction."""
     current_version = int(current_version)
+    target_version = DB_SCHEMA_VERSION if target_version is None else int(target_version)
     if current_version < BASELINE_SCHEMA_VERSION:
         raise RuntimeError(
             f"Unsupported database schema version: {current_version}."
         )
+    if target_version < BASELINE_SCHEMA_VERSION or target_version > DB_SCHEMA_VERSION:
+        raise RuntimeError("Database upgrade target is outside this application version.")
+    if current_version > target_version:
+        raise RuntimeError("Database schema is newer than the requested target.")
     if current_version > DB_SCHEMA_VERSION:
         raise RuntimeError(
             "Database schema is newer than this application version."
@@ -2044,13 +2115,23 @@ def apply_database_upgrades(cursor, current_version, context):
         expected_version += 1
         if upgrade.version <= current_version:
             continue
-        upgrade.apply(cursor, context)
+        if upgrade.version > target_version:
+            break
+        _prepare_historical_upgrade(
+            cursor,
+            context,
+            upgrade.version,
+        )
+        upgrade.apply(
+            cursor,
+            _context_for_historical_upgrade(context, upgrade.version),
+        )
         record_database_version(cursor, upgrade.version)
         current_version = upgrade.version
 
-    if current_version != DB_SCHEMA_VERSION:
+    if current_version != target_version:
         raise RuntimeError(
             f"No upgrade path from schema version {current_version} "
-            f"to {DB_SCHEMA_VERSION}."
+            f"to {target_version}."
         )
     return current_version

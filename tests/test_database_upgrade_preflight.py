@@ -60,6 +60,11 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
             "relationBytes": 0,
             "requiresTransactionalDryRun": True,
         },
+        "v46HistoricalChain": {
+            "applies": True,
+            "requiresTransactionalDryRun": True,
+            "requiresCatalogReconciliation": True,
+        },
     }
     assert len(cursor.statements) == 3
     assert "COUNT(*) FILTER (WHERE archived_at IS NULL)" in cursor.statements[0][0]
@@ -118,6 +123,19 @@ def test_v45_preflight_reports_retention_cardinality_and_relation_bytes():
     assert len(cursor.statements) == 1
     assert "partner_enrichment_jobs" in cursor.statements[0][0]
     assert "pg_total_relation_size" in cursor.statements[0][0]
+
+
+def test_v46_preflight_requires_historical_catalog_reconciliation():
+    cursor = _CardinalityCursor()
+
+    report = inspect_database_upgrade(cursor, 45, target_version=46)
+
+    assert report["v46HistoricalChain"] == {
+        "applies": True,
+        "requiresTransactionalDryRun": True,
+        "requiresCatalogReconciliation": True,
+    }
+    assert cursor.statements == []
 
 
 def test_database_dry_run_rolls_back_successful_upgrade(monkeypatch):

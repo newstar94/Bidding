@@ -1,0 +1,1354 @@
+{
+  "catalogSql": {
+    "indexes": [
+      "CREATE INDEX IF NOT EXISTS idx_chu_dau_tu_owner_updated ON chu_dau_tu (organization_id, updated_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_chu_dau_tu_owner_latest ON chu_dau_tu (organization_id, is_latest, archived_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_chu_dau_tu_owner_root ON chu_dau_tu (organization_id, id_goc)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_owner_updated ON ke_hoach_lcnt (organization_id, updated_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_owner_latest ON ke_hoach_lcnt (organization_id, is_latest, archived_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_owner_root ON ke_hoach_lcnt (organization_id, id_goc)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_owner_updated ON goi_thau (organization_id, updated_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_owner_latest ON goi_thau (organization_id, is_latest, archived_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_owner_root ON goi_thau (organization_id, id_goc)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_owner_updated ON nha_thau (organization_id, updated_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_owner_latest ON nha_thau (organization_id, is_latest, archived_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_owner_root ON nha_thau (organization_id, id_goc)",
+      "CREATE INDEX IF NOT EXISTS idx_chuyen_gia_owner_updated ON chuyen_gia (organization_id, updated_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_chuyen_gia_owner_latest ON chuyen_gia (organization_id, is_latest, archived_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_chuyen_gia_owner_root ON chuyen_gia (organization_id, id_goc)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_owner_updated ON hop_dong (organization_id, updated_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_owner_latest ON hop_dong (organization_id, is_latest, archived_at, id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_owner_root ON hop_dong (organization_id, id_goc)",
+      "CREATE INDEX IF NOT EXISTS idx_chu_dau_tu_owner_sync_version ON chu_dau_tu (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_owner_sync_version ON ke_hoach_lcnt (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_owner_sync_version ON goi_thau (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_owner_sync_version ON nha_thau (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_chuyen_gia_owner_sync_version ON chuyen_gia (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_owner_sync_version ON hop_dong (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_phan_cong_nhan_su_owner_sync_version ON phan_cong_nhan_su (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_trang_thai_ho_so_giay_owner_sync_version ON trang_thai_ho_so_giay (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_owner_sync_version ON thong_tin_mo_thau (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_ma_tran_phan_quyen_owner_sync_version ON ma_tran_phan_quyen (organization_id, sync_version, id)",
+      "CREATE INDEX IF NOT EXISTS idx_chu_dau_tu_owner_type_owner ON chu_dau_tu (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_owner_type_owner ON ke_hoach_lcnt (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_owner_type_owner ON ke_hoach_cong_viec (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_owner_type_owner ON nha_thau (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_thanh_vien_owner_type_owner ON nha_thau_lien_danh_thanh_vien (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_owner_type_owner ON goi_thau (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_owner_type_owner ON goi_thau_phan_lo (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_tuy_chon_mua_them_owner_type_owner ON goi_thau_tuy_chon_mua_them (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_gia_han_owner_type_owner ON goi_thau_gia_han (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_owner_type_owner ON goi_thau_lam_ro (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_chuyen_gia_owner_type_owner ON chuyen_gia (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_owner_type_owner ON hop_dong (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_type_owner ON hop_dong_goi_thau (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_phan_cong_nhan_su_owner_type_owner ON phan_cong_nhan_su (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_trang_thai_ho_so_giay_owner_type_owner ON trang_thai_ho_so_giay (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_owner_type_owner ON thong_tin_mo_thau (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_lien_danh_thanh_vien_owner_type_owner ON thong_tin_mo_thau_lien_danh_thanh_vien (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_mo_thau_owner_type_owner ON nha_thau_tham_du_mo_thau (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_type_owner ON goi_thau_chuyen_gia (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_cau_hinh_bien_word_owner_type_owner ON cau_hinh_bien_word (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ma_tran_phan_quyen_owner_type_owner ON ma_tran_phan_quyen (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_vong_danh_gia_owner_type_owner ON vong_danh_gia (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_tieu_chi_danh_gia_owner_type_owner ON tieu_chi_danh_gia (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ket_qua_danh_gia_nha_thau_owner_type_owner ON ket_qua_danh_gia_nha_thau (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_owner_type_owner ON goi_thau_moc_tien_do (owner_type, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_latest_date ON ke_hoach_lcnt (organization_id, ngay_phe_duyet, id) WHERE is_latest = 1 AND archived_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_latest_date ON goi_thau (organization_id, ngay_quyet_dinh, id) WHERE is_latest = 1 AND archived_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_latest_date ON hop_dong (organization_id, ngay_ky, id) WHERE is_latest = 1 AND archived_at IS NULL",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chu_dau_tu_unique_version ON chu_dau_tu (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chu_dau_tu_unique_latest ON chu_dau_tu (organization_id, COALESCE(NULLIF(id_goc, ''), id)) WHERE is_latest = 1",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_unique_version ON ke_hoach_lcnt (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_unique_latest ON ke_hoach_lcnt (organization_id, COALESCE(NULLIF(id_goc, ''), id)) WHERE is_latest = 1",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_nha_thau_unique_version ON nha_thau (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_nha_thau_unique_latest ON nha_thau (organization_id, COALESCE(NULLIF(id_goc, ''), id)) WHERE is_latest = 1",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chuyen_gia_unique_version ON chuyen_gia (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chuyen_gia_unique_latest ON chuyen_gia (organization_id, COALESCE(NULLIF(id_goc, ''), id)) WHERE is_latest = 1",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_hop_dong_unique_version ON hop_dong (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_hop_dong_unique_latest ON hop_dong (organization_id, COALESCE(NULLIF(id_goc, ''), id)) WHERE is_latest = 1",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_plan_snapshot_version\n           ON goi_thau (\n               organization_id, COALESCE(NULLIF(id_goc, ''), id),\n               phien_ban, ke_hoach_id\n           )",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_latest\n           ON goi_thau (\n               organization_id, COALESCE(NULLIF(id_goc, ''), id),\n               COALESCE(ke_hoach_id, '')\n           ) WHERE is_latest = 1",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chu_dau_tu_ma_chu_dau_tu_owner_latest_unique ON chu_dau_tu (organization_id, lower(trim(ma_chu_dau_tu))) WHERE is_latest = 1 AND ma_chu_dau_tu IS NOT NULL AND trim(ma_chu_dau_tu) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chu_dau_tu_ma_so_thue_owner_latest_unique ON chu_dau_tu (organization_id, lower(trim(ma_so_thue))) WHERE is_latest = 1 AND ma_so_thue IS NOT NULL AND trim(ma_so_thue) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_ma_ke_hoach_owner_latest_unique ON ke_hoach_lcnt (organization_id, lower(trim(ma_ke_hoach))) WHERE is_latest = 1 AND ma_ke_hoach IS NOT NULL AND trim(ma_ke_hoach) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_nha_thau_ma_nha_thau_owner_latest_unique ON nha_thau (organization_id, lower(trim(ma_nha_thau))) WHERE is_latest = 1 AND ma_nha_thau IS NOT NULL AND trim(ma_nha_thau) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_nha_thau_ma_so_thue_owner_latest_unique ON nha_thau (organization_id, lower(trim(ma_so_thue))) WHERE is_latest = 1 AND ma_so_thue IS NOT NULL AND trim(ma_so_thue) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_chuyen_gia_so_cccd_owner_latest_unique ON chuyen_gia (organization_id, lower(trim(so_cccd))) WHERE is_latest = 1 AND so_cccd IS NOT NULL AND trim(so_cccd) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_hop_dong_so_hop_dong_owner_latest_unique ON hop_dong (organization_id, lower(trim(so_hop_dong))) WHERE is_latest = 1 AND so_hop_dong IS NOT NULL AND trim(so_hop_dong) <> ''",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_ma_goi_thau_owner_plan_latest_unique\n           ON goi_thau (\n               organization_id, COALESCE(ke_hoach_id, ''), lower(trim(ma_goi_thau))\n           ) WHERE is_latest = 1 AND ma_goi_thau IS NOT NULL\n             AND trim(ma_goi_thau) <> ''",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (organization_id, ke_hoach_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (organization_id, nha_thau_trung_thau_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_tuy_chon_parent ON goi_thau_tuy_chon_mua_them (organization_id, goi_thau_id, sort_order)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_gia_han_parent ON goi_thau_gia_han (organization_id, goi_thau_id, sort_order)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (organization_id, goi_thau_id, loai, sort_order)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_parent ON nha_thau_lien_danh_thanh_vien (organization_id, nha_thau_id, sort_order)",
+      "CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_parent ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thong_tin_mo_thau_id, sort_order)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_one_leader ON nha_thau_lien_danh_thanh_vien (organization_id, nha_thau_id) WHERE vai_tro = 'Đứng đầu liên danh'",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_one_leader ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thong_tin_mo_thau_id) WHERE vai_tro = 'Đứng đầu liên danh'",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_mo_thau_bid ON nha_thau_tham_du_mo_thau (organization_id, thong_tin_mo_thau_id)",
+      "CREATE INDEX IF NOT EXISTS idx_vong_danh_gia_package ON vong_danh_gia (organization_id, goi_thau_id, thu_tu)",
+      "CREATE INDEX IF NOT EXISTS idx_tieu_chi_danh_gia_round ON tieu_chi_danh_gia (organization_id, vong_danh_gia_id, thu_tu)",
+      "CREATE INDEX IF NOT EXISTS idx_ket_qua_danh_gia_opening ON ket_qua_danh_gia_nha_thau (organization_id, thong_tin_mo_thau_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_ke_hoach ON hop_dong (organization_id, ke_hoach_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu ON hop_dong (organization_id, chu_dau_tu_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau ON hop_dong (organization_id, nha_thau_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_hd ON hop_dong_goi_thau (organization_id, hop_dong_id)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_gt ON hop_dong_goi_thau (organization_id, goi_thau_id)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_gt ON goi_thau_chuyen_gia (organization_id, goi_thau_id, loai)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_cg ON goi_thau_chuyen_gia (organization_id, chuyen_gia_id)",
+      "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_goi_thau ON thong_tin_mo_thau (organization_id, goi_thau_id)",
+      "CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_nha_thau ON thong_tin_mo_thau (organization_id, nha_thau_id)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_active_business_key ON thong_tin_mo_thau (organization_id, goi_thau_id, nha_thau_id, ma_phan_lo) WHERE archived_at IS NULL",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)",
+      "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_id, revoked_at, absolute_expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions (idle_expires_at, absolute_expires_at, revoked_at)",
+      "CREATE INDEX IF NOT EXISTS idx_dinh_danh_ngoai_user ON dinh_danh_ngoai (user_id)",
+      "CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id, user_id)",
+      "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_status_expiry ON organization_subscriptions (status, expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_status_expiry ON account_subscriptions (status, expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_api_idempotency_created ON api_idempotency (created_at)",
+      "CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (organization_id, deleted_at)",
+      "CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (organization_id, delete_version)",
+      "CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_table ON deleted_records (organization_id, table_name)",
+      "CREATE INDEX IF NOT EXISTS idx_sync_mutations_owner_created ON sync_mutations (organization_id, created_at)",
+      "CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (organization_id, created_at)",
+      "CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)",
+      "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created ON audit_log (action, created_at)",
+      "CREATE INDEX IF NOT EXISTS idx_record_edit_ownership_user ON record_edit_ownership (organization_id, user_id, table_name)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_package ON goi_thau_moc_tien_do (organization_id, goi_thau_id, sort_order, ma_moc)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_status ON goi_thau_moc_tien_do (organization_id, trang_thai, ngay_du_kien)",
+      "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
+      "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_log_single_successor ON audit_log (chain_id, previous_hash)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record ON deleted_records (organization_id, table_name, record_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ke_hoach_lcnt_search_trgm ON ke_hoach_lcnt USING GIN ((bf_unaccent(lower(COALESCE(ma_ke_hoach, '') || ' ' || COALESCE(ten_ke_hoach, '') || ' ' || COALESCE(ten_du_an_du_toan, '')))) gin_trgm_ops)",
+      "CREATE INDEX IF NOT EXISTS idx_goi_thau_search_trgm ON goi_thau USING GIN ((bf_unaccent(lower(COALESCE(ma_goi_thau, '') || ' ' || COALESCE(ten_goi_thau, '')))) gin_trgm_ops)",
+      "CREATE INDEX IF NOT EXISTS idx_chu_dau_tu_search_trgm ON chu_dau_tu USING GIN ((bf_unaccent(lower(COALESCE(ma_chu_dau_tu, '') || ' ' || COALESCE(ten_chu_dau_tu, '') || ' ' || COALESCE(ten_viet_tat, '') || ' ' || COALESCE(ma_so_thue, '')))) gin_trgm_ops)",
+      "CREATE INDEX IF NOT EXISTS idx_nha_thau_search_trgm ON nha_thau USING GIN ((bf_unaccent(lower(COALESCE(ma_nha_thau, '') || ' ' || COALESCE(ten_nha_thau, '') || ' ' || COALESCE(ten_viet_tat, '') || ' ' || COALESCE(ma_so_thue, '')))) gin_trgm_ops)",
+      "CREATE INDEX IF NOT EXISTS idx_chuyen_gia_search_trgm ON chuyen_gia USING GIN ((bf_unaccent(lower(COALESCE(ho_ten, '') || ' ' || COALESCE(so_cccd, '') || ' ' || COALESCE(so_chung_chi, '')))) gin_trgm_ops)",
+      "CREATE INDEX IF NOT EXISTS idx_hop_dong_search_trgm ON hop_dong USING GIN ((bf_unaccent(lower(COALESCE(so_hop_dong, '') || ' ' || COALESCE(ten_hop_dong, '')))) gin_trgm_ops)"
+    ],
+    "triggers": [
+      "CREATE OR REPLACE FUNCTION bf_validate_workspace_owner()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF NEW.owner_type = 'organization' AND NOT EXISTS (\n               SELECT 1 FROM to_chuc WHERE id = NEW.organization_id\n             ) THEN\n               RAISE EXCEPTION 'organization workspace does not exist'\n                 USING ERRCODE = '23514';\n             ELSIF NEW.owner_type = 'personal' AND NOT EXISTS (\n               SELECT 1 FROM tai_khoan\n               WHERE id = substring(NEW.organization_id FROM 10)\n                 AND vai_tro <> 'super_admin'\n             ) THEN\n               RAISE EXCEPTION 'personal workspace owner does not exist'\n                 USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_set_lineage()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF TG_OP = 'INSERT' AND (NEW.id_goc IS NULL OR btrim(NEW.id_goc) = '') THEN\n               NEW.id_goc := NEW.id;\n             ELSIF TG_OP = 'UPDATE'\n               AND OLD.id_goc IS NOT NULL AND btrim(OLD.id_goc) <> ''\n               AND NEW.id_goc IS DISTINCT FROM OLD.id_goc THEN\n               RAISE EXCEPTION 'LINEAGE_IMMUTABLE' USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_touch_synced_row()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           DECLARE next_version BIGINT;\n           BEGIN\n             IF NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at\n                AND COALESCE(NEW.sync_version, 0) = COALESCE(OLD.sync_version, 0)\n                AND NEW.organization_id IS NOT NULL AND NEW.organization_id <> '' THEN\n               INSERT INTO sync_metadata (organization_id, current_version)\n               VALUES (NEW.organization_id, 0)\n               ON CONFLICT (organization_id) DO NOTHING;\n               UPDATE sync_metadata\n               SET current_version = current_version + 1,\n                   updated_at = CURRENT_TIMESTAMP\n               WHERE organization_id = NEW.organization_id\n               RETURNING current_version INTO next_version;\n               NEW.sync_version := next_version;\n               NEW.updated_at := CURRENT_TIMESTAMP;\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_log_synced_delete()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           DECLARE next_version BIGINT;\n           BEGIN\n             IF OLD.organization_id IS NULL OR OLD.organization_id = '' THEN\n               RETURN OLD;\n             END IF;\n             INSERT INTO sync_metadata (organization_id, current_version)\n             VALUES (OLD.organization_id, 0)\n             ON CONFLICT (organization_id) DO NOTHING;\n             UPDATE sync_metadata\n             SET current_version = current_version + 1,\n                 updated_at = CURRENT_TIMESTAMP\n             WHERE organization_id = OLD.organization_id\n             RETURNING current_version INTO next_version;\n             INSERT INTO deleted_records (\n               table_name, record_id, organization_id, deleted_at, delete_version\n             ) VALUES (TG_TABLE_NAME, OLD.id, OLD.organization_id, CURRENT_TIMESTAMP, next_version)\n             ON CONFLICT (organization_id, table_name, record_id) DO UPDATE SET\n               deleted_at = EXCLUDED.deleted_at,\n               delete_version = GREATEST(\n                 COALESCE(deleted_records.delete_version, 0),\n                 COALESCE(EXCLUDED.delete_version, 0)\n               );\n             RETURN OLD;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_validate_record_edit_owner()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF NOT EXISTS (SELECT 1 FROM to_chuc WHERE id = NEW.organization_id)\n                AND NOT (\n                  NEW.organization_id = 'personal:' || NEW.user_id\n                  AND EXISTS (\n                    SELECT 1 FROM tai_khoan\n                    WHERE id = NEW.user_id AND vai_tro <> 'super_admin'\n                  )\n                ) THEN\n               RAISE EXCEPTION 'record ownership workspace does not exist'\n                 USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_validate_verified_email_change()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF OLD.email_norm IS DISTINCT FROM NEW.email_norm AND NOT EXISTS (\n               SELECT 1 FROM pending_email_changes pending\n               WHERE pending.user_id = OLD.id\n                 AND pending.current_email_norm = OLD.email_norm\n                 AND pending.pending_email_norm = NEW.email_norm\n                 AND pending.pending_email = NEW.email\n                 AND pending.verified_at IS NOT NULL\n                 AND pending.verified_at <= pending.expires_at\n                 AND extract(epoch FROM CURRENT_TIMESTAMP)::BIGINT < pending.expires_at\n             ) THEN\n               RAISE EXCEPTION 'verified email change required'\n                 USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_validate_assignment_target()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF NEW.loai_doi_tuong NOT IN ('kehoach', 'goithau', 'hopdong')\n                OR (NEW.loai_doi_tuong = 'kehoach' AND NOT EXISTS (\n                  SELECT 1 FROM ke_hoach_lcnt WHERE organization_id = NEW.organization_id AND id = NEW.id_muc_tieu\n                ))\n                OR (NEW.loai_doi_tuong = 'goithau' AND NOT EXISTS (\n                  SELECT 1 FROM goi_thau WHERE organization_id = NEW.organization_id AND id = NEW.id_muc_tieu\n                ))\n                OR (NEW.loai_doi_tuong = 'hopdong' AND NOT EXISTS (\n                  SELECT 1 FROM hop_dong WHERE organization_id = NEW.organization_id AND id = NEW.id_muc_tieu\n                )) THEN\n               RAISE EXCEPTION 'ASSIGNMENT_TENANT_MISMATCH' USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_validate_evaluation_actor()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF NEW.nguoi_cham_id IS NOT NULL AND NOT EXISTS (\n               SELECT 1 FROM thanh_vien_to_chuc\n               WHERE organization_id = NEW.organization_id\n                 AND user_id = NEW.nguoi_cham_id\n                 AND trang_thai_thanh_vien = 'active'\n             ) THEN\n               RAISE EXCEPTION 'EVALUATION_ACTOR_TENANT_MISMATCH' USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_validate_contract_package()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             IF NOT EXISTS (\n               SELECT 1\n               FROM hop_dong hd\n               JOIN ke_hoach_lcnt hdkh\n                 ON hdkh.organization_id = hd.organization_id AND hdkh.id = hd.ke_hoach_id\n               JOIN goi_thau gt\n                 ON gt.organization_id = NEW.organization_id AND gt.id = NEW.goi_thau_id\n               JOIN ke_hoach_lcnt gtkh\n                 ON gtkh.organization_id = gt.organization_id AND gtkh.id = gt.ke_hoach_id\n               WHERE hd.organization_id = NEW.organization_id\n                 AND hd.id = NEW.hop_dong_id\n                 AND hd.archived_at IS NULL AND gt.archived_at IS NULL\n                 AND COALESCE(NULLIF(hdkh.id_goc, ''), hdkh.id)\n                   = COALESCE(NULLIF(gtkh.id_goc, ''), gtkh.id)\n                 AND (\n                   hd.co_qd_chi_dinh = 1\n                   OR (\n                     gt.trang_thai = 'AWARDED'\n                     AND gt.nha_thau_trung_thau_id IS NOT NULL\n                     AND gt.nha_thau_trung_thau_id = hd.nha_thau_id\n                   )\n                 )\n             ) THEN\n               RAISE EXCEPTION 'CONTRACT_PACKAGE_BUSINESS_MISMATCH' USING ERRCODE = '23514';\n             END IF;\n             RETURN NEW;\n           END $$",
+      "CREATE OR REPLACE FUNCTION bf_forbid_audit_mutation()\n           RETURNS trigger LANGUAGE plpgsql AS $$\n           BEGIN\n             RAISE EXCEPTION 'AUDIT_LOG_IMMUTABLE' USING ERRCODE = '23514';\n           END $$",
+      "CREATE TRIGGER trg_chu_dau_tu_workspace_owner BEFORE INSERT OR UPDATE ON chu_dau_tu FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_ke_hoach_lcnt_workspace_owner BEFORE INSERT OR UPDATE ON ke_hoach_lcnt FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_ke_hoach_cong_viec_workspace_owner BEFORE INSERT OR UPDATE ON ke_hoach_cong_viec FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_nha_thau_workspace_owner BEFORE INSERT OR UPDATE ON nha_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_nha_thau_lien_danh_thanh_vien_workspace_owner BEFORE INSERT OR UPDATE ON nha_thau_lien_danh_thanh_vien FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_phan_lo_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau_phan_lo FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_tuy_chon_mua_them_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau_tuy_chon_mua_them FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_gia_han_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau_gia_han FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_lam_ro_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau_lam_ro FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_chuyen_gia_workspace_owner BEFORE INSERT OR UPDATE ON chuyen_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_hop_dong_workspace_owner BEFORE INSERT OR UPDATE ON hop_dong FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_hop_dong_goi_thau_workspace_owner BEFORE INSERT OR UPDATE ON hop_dong_goi_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_phan_cong_nhan_su_workspace_owner BEFORE INSERT OR UPDATE ON phan_cong_nhan_su FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_trang_thai_ho_so_giay_workspace_owner BEFORE INSERT OR UPDATE ON trang_thai_ho_so_giay FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_thong_tin_mo_thau_workspace_owner BEFORE INSERT OR UPDATE ON thong_tin_mo_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_thong_tin_mo_thau_lien_danh_thanh_vien_workspace_owner BEFORE INSERT OR UPDATE ON thong_tin_mo_thau_lien_danh_thanh_vien FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_nha_thau_tham_du_mo_thau_workspace_owner BEFORE INSERT OR UPDATE ON nha_thau_tham_du_mo_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_chuyen_gia_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau_chuyen_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_cau_hinh_bien_word_workspace_owner BEFORE INSERT OR UPDATE ON cau_hinh_bien_word FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_ma_tran_phan_quyen_workspace_owner BEFORE INSERT OR UPDATE ON ma_tran_phan_quyen FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_vong_danh_gia_workspace_owner BEFORE INSERT OR UPDATE ON vong_danh_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_tieu_chi_danh_gia_workspace_owner BEFORE INSERT OR UPDATE ON tieu_chi_danh_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_ket_qua_danh_gia_nha_thau_workspace_owner BEFORE INSERT OR UPDATE ON ket_qua_danh_gia_nha_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_goi_thau_moc_tien_do_workspace_owner BEFORE INSERT OR UPDATE ON goi_thau_moc_tien_do FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "CREATE TRIGGER trg_chu_dau_tu_lineage BEFORE INSERT OR UPDATE ON chu_dau_tu FOR EACH ROW EXECUTE FUNCTION bf_set_lineage()",
+      "CREATE TRIGGER trg_ke_hoach_lcnt_lineage BEFORE INSERT OR UPDATE ON ke_hoach_lcnt FOR EACH ROW EXECUTE FUNCTION bf_set_lineage()",
+      "CREATE TRIGGER trg_goi_thau_lineage BEFORE INSERT OR UPDATE ON goi_thau FOR EACH ROW EXECUTE FUNCTION bf_set_lineage()",
+      "CREATE TRIGGER trg_nha_thau_lineage BEFORE INSERT OR UPDATE ON nha_thau FOR EACH ROW EXECUTE FUNCTION bf_set_lineage()",
+      "CREATE TRIGGER trg_chuyen_gia_lineage BEFORE INSERT OR UPDATE ON chuyen_gia FOR EACH ROW EXECUTE FUNCTION bf_set_lineage()",
+      "CREATE TRIGGER trg_hop_dong_lineage BEFORE INSERT OR UPDATE ON hop_dong FOR EACH ROW EXECUTE FUNCTION bf_set_lineage()",
+      "CREATE TRIGGER trg_chu_dau_tu_updated_at BEFORE UPDATE ON chu_dau_tu FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_chu_dau_tu_deleted_log AFTER DELETE ON chu_dau_tu FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_ke_hoach_lcnt_updated_at BEFORE UPDATE ON ke_hoach_lcnt FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_ke_hoach_lcnt_deleted_log AFTER DELETE ON ke_hoach_lcnt FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_goi_thau_updated_at BEFORE UPDATE ON goi_thau FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_goi_thau_deleted_log AFTER DELETE ON goi_thau FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_nha_thau_updated_at BEFORE UPDATE ON nha_thau FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_nha_thau_deleted_log AFTER DELETE ON nha_thau FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_chuyen_gia_updated_at BEFORE UPDATE ON chuyen_gia FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_chuyen_gia_deleted_log AFTER DELETE ON chuyen_gia FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_hop_dong_updated_at BEFORE UPDATE ON hop_dong FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_hop_dong_deleted_log AFTER DELETE ON hop_dong FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_phan_cong_nhan_su_updated_at BEFORE UPDATE ON phan_cong_nhan_su FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_phan_cong_nhan_su_deleted_log AFTER DELETE ON phan_cong_nhan_su FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_trang_thai_ho_so_giay_updated_at BEFORE UPDATE ON trang_thai_ho_so_giay FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_trang_thai_ho_so_giay_deleted_log AFTER DELETE ON trang_thai_ho_so_giay FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_thong_tin_mo_thau_updated_at BEFORE UPDATE ON thong_tin_mo_thau FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_thong_tin_mo_thau_deleted_log AFTER DELETE ON thong_tin_mo_thau FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_ma_tran_phan_quyen_updated_at BEFORE UPDATE ON ma_tran_phan_quyen FOR EACH ROW EXECUTE FUNCTION bf_touch_synced_row()",
+      "CREATE TRIGGER trg_ma_tran_phan_quyen_deleted_log AFTER DELETE ON ma_tran_phan_quyen FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
+      "CREATE TRIGGER trg_record_edit_ownership_workspace\n           BEFORE INSERT OR UPDATE ON record_edit_ownership\n           FOR EACH ROW EXECUTE FUNCTION bf_validate_record_edit_owner()",
+      "CREATE TRIGGER trg_tai_khoan_verified_email_update\n           BEFORE UPDATE OF email, email_norm ON tai_khoan\n           FOR EACH ROW EXECUTE FUNCTION bf_validate_verified_email_change()",
+      "CREATE TRIGGER trg_phan_cong_tenant\n           BEFORE INSERT OR UPDATE ON phan_cong_nhan_su\n           FOR EACH ROW EXECUTE FUNCTION bf_validate_assignment_target()",
+      "CREATE TRIGGER trg_vong_danh_gia_actor BEFORE INSERT OR UPDATE ON vong_danh_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_evaluation_actor()",
+      "CREATE TRIGGER trg_ket_qua_danh_gia_nha_thau_actor BEFORE INSERT OR UPDATE ON ket_qua_danh_gia_nha_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_evaluation_actor()",
+      "CREATE TRIGGER trg_hop_dong_goi_thau_business\n           BEFORE INSERT OR UPDATE ON hop_dong_goi_thau\n           FOR EACH ROW EXECUTE FUNCTION bf_validate_contract_package()",
+      "CREATE TRIGGER trg_audit_log_immutable\n           BEFORE UPDATE OR DELETE ON audit_log\n           FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+    ]
+  },
+  "fixtureVersion": 1,
+  "postgresSourceBlobSha256": "88c6de73a61f5631c49572fbe30aef246dd46769df74d305434c3bdc111cc778",
+  "postgresSourcePath": "backend/db/postgres_schema.py",
+  "schemaVersion": 1,
+  "sourceBlobSha256": "da1003067e0f7375f45341a0d6f69a90333f8d72d08c909ba2c71fe0c9aa059b",
+  "sourceCommit": "1fe7dd42",
+  "sourcePath": "backend/db/schema.py",
+  "tables": {
+    "account_subscriptions": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "expires_at": "INTEGER CHECK(expires_at IS NULL OR expires_at > starts_at)",
+        "package_id": "TEXT NOT NULL",
+        "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",
+        "starts_at": "INTEGER NOT NULL CHECK(starts_at > 0)",
+        "status": "TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'cancelled'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "user_id": "TEXT PRIMARY KEY"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+        "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
+      ]
+    },
+    "api_idempotency": {
+      "columns": {
+        "actor_user_id": "TEXT NOT NULL",
+        "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+        "idempotency_key": "TEXT NOT NULL",
+        "operation": "TEXT NOT NULL",
+        "response_json": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ],
+      "primary_keys": [
+        "actor_user_id",
+        "operation",
+        "idempotency_key"
+      ]
+    },
+    "audit_chain_heads": {
+      "columns": {
+        "chain_id": "TEXT PRIMARY KEY CHECK(chain_id != '')",
+        "last_hash": "TEXT NOT NULL CHECK(length(last_hash) = 64)",
+        "last_log_id": "INTEGER",
+        "last_sequence": "INTEGER NOT NULL DEFAULT 0 CHECK(last_sequence >= 0)",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      }
+    },
+    "audit_log": {
+      "columns": {
+        "action": "TEXT NOT NULL",
+        "actor_user_id": "TEXT",
+        "chain_id": "TEXT NOT NULL CHECK(chain_id != '')",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "entry_hash": "TEXT NOT NULL CHECK(length(entry_hash) = 64)",
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "ip_address": "TEXT",
+        "metadata_json": "TEXT",
+        "organization_id": "TEXT",
+        "previous_hash": "TEXT NOT NULL CHECK(length(previous_hash) = 64)",
+        "sequence": "INTEGER NOT NULL CHECK(sequence > 0)",
+        "target_id": "TEXT",
+        "target_type": "TEXT"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (chain_id) REFERENCES audit_chain_heads(chain_id) ON DELETE RESTRICT"
+      ],
+      "unique_constraints": [
+        "UNIQUE(chain_id, sequence)",
+        "UNIQUE(chain_id, previous_hash)",
+        "UNIQUE(chain_id, entry_hash)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "auth_sessions": {
+      "columns": {
+        "absolute_expires_at": "INTEGER NOT NULL CHECK(absolute_expires_at > 0)",
+        "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+        "device_info": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "idle_expires_at": "INTEGER NOT NULL CHECK(idle_expires_at > 0)",
+        "last_seen_at": "INTEGER NOT NULL CHECK(last_seen_at > 0)",
+        "privileged_reauth_at": "INTEGER",
+        "remember_me": "INTEGER NOT NULL DEFAULT 0 CHECK(remember_me IN (0,1))",
+        "revoked_at": "INTEGER",
+        "token_hash": "TEXT NOT NULL UNIQUE CHECK(token_hash != '')",
+        "user_id": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ]
+    },
+    "cau_hinh_bien_word": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "id": "TEXT PRIMARY KEY",
+        "mo_ta": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "source_column": "TEXT NOT NULL",
+        "source_table": "TEXT NOT NULL",
+        "ten_bien": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, ten_bien)",
+        "UNIQUE(organization_id, source_table, source_column)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "chu_dau_tu": {
+      "columns": {
+        "archived_at": "TEXT",
+        "chuc_vu_dai_dien": "TEXT",
+        "chuc_vu_nguoi_dung_dau": "TEXT",
+        "co_quan_chu_quan": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "dai_dien_cdt": "TEXT",
+        "danh_xung": "TEXT DEFAULT 'Ông'",
+        "dia_chi": "TEXT",
+        "dia_chi_goc": "TEXT",
+        "email": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "id_goc": "TEXT",
+        "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
+        "ma_chu_dau_tu": "TEXT",
+        "ma_qhns": "TEXT",
+        "ma_so_thue": "TEXT",
+        "ngay_ap_dung": "TEXT NOT NULL DEFAULT (date('now'))",
+        "noi_mo_tai_khoan": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "phien_ban": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "so_dien_thoai": "TEXT",
+        "so_tai_khoan": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_chu_dau_tu": "TEXT NOT NULL",
+        "ten_viet_tat": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "chuyen_gia": {
+      "columns": {
+        "anh_chu_ky": "TEXT",
+        "anh_chung_chi": "TEXT",
+        "archived_at": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "don_vi_cap_chung_chi": "TEXT",
+        "ho_ten": "TEXT NOT NULL",
+        "id": "TEXT PRIMARY KEY",
+        "id_goc": "TEXT",
+        "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
+        "ngay_cap_cccd": "TEXT",
+        "ngay_cap_chung_chi": "TEXT",
+        "noi_cap_cccd": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "phien_ban": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "so_cccd": "TEXT",
+        "so_chung_chi": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_anh_chu_ky": "TEXT",
+        "ten_anh_chung_chi": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "database_metadata": {
+      "columns": {
+        "baseline": "TEXT NOT NULL CHECK(baseline != '')",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "id": "INTEGER PRIMARY KEY CHECK(id = 1)",
+        "installation_id": "TEXT NOT NULL CHECK(installation_id != '')",
+        "schema_version": "INTEGER NOT NULL CHECK(schema_version > 0)",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      }
+    },
+    "deleted_records": {
+      "columns": {
+        "delete_version": "INTEGER DEFAULT 0",
+        "deleted_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "record_id": "TEXT NOT NULL",
+        "table_name": "TEXT NOT NULL"
+      },
+      "foreign_keys": [],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "dinh_danh_ngoai": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "email_norm": "TEXT NOT NULL",
+        "issuer": "TEXT NOT NULL",
+        "subject": "TEXT NOT NULL",
+        "user_id": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ],
+      "primary_keys": [
+        "issuer",
+        "subject"
+      ],
+      "unique_constraints": [
+        "UNIQUE (user_id, issuer)"
+      ]
+    },
+    "document_export_capabilities": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "financial": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(financial) = 'integer' AND financial IN (0, 1))",
+        "identity": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(identity) = 'integer' AND identity IN (0, 1))",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "signature": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(signature) = 'integer' AND signature IN (0, 1))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "user_id": "TEXT NOT NULL CHECK(user_id != '')"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id, organization_id) REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
+      ],
+      "primary_keys": [
+        "organization_id",
+        "user_id"
+      ]
+    },
+    "goi_dich_vu": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "gia_ca": "INTEGER NOT NULL CHECK(typeof(gia_ca) = 'integer' AND gia_ca >= 0)",
+        "han_muc_nhan_su": "INTEGER NOT NULL CHECK(han_muc_nhan_su > 0)",
+        "id": "TEXT PRIMARY KEY",
+        "mo_ta": "TEXT",
+        "ten_goi": "TEXT",
+        "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'inactive'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      }
+    },
+    "goi_thau": {
+      "columns": {
+        "archived_at": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "gia_goi_thau": "INTEGER NOT NULL CHECK(typeof(gia_goi_thau) = 'integer' AND gia_goi_thau >= 0)",
+        "gia_tri_dam_bao_du_thau": "INTEGER CHECK(gia_tri_dam_bao_du_thau IS NULL OR (typeof(gia_tri_dam_bao_du_thau) = 'integer' AND gia_tri_dam_bao_du_thau >= 0))",
+        "gia_trung_thau": "INTEGER CHECK(gia_trung_thau IS NULL OR (typeof(gia_trung_thau) = 'integer' AND gia_trung_thau >= 0))",
+        "hieu_luc_dam_bao_du_thau": "INTEGER CHECK(hieu_luc_dam_bao_du_thau IS NULL OR hieu_luc_dam_bao_du_thau >= 0)",
+        "hieu_luc_hsdt": "INTEGER CHECK(hieu_luc_hsdt IS NULL OR hieu_luc_hsdt >= 0)",
+        "hinh_thuc_lua_chon": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "id_goc": "TEXT",
+        "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
+        "is_rebid": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_rebid) = 'integer' AND is_rebid IN (0,1))",
+        "is_thuoc": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_thuoc) = 'integer' AND is_thuoc IN (0,1))",
+        "ke_hoach_id": "TEXT NOT NULL CHECK(trim(ke_hoach_id) != '')",
+        "linh_vuc": "TEXT",
+        "loai_hop_dong": "TEXT",
+        "ma_goi_thau": "TEXT",
+        "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
+        "ngay_quyet_dinh": "TEXT",
+        "ngay_quyet_dinh_ket_qua": "TEXT",
+        "ngay_trinh_hsmt": "TEXT",
+        "nguon_von": "TEXT NOT NULL CHECK(trim(nguon_von) != '')",
+        "nha_thau_trung_thau_id": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "phan_lo": "TEXT DEFAULT 'Không' CHECK(phan_lo IN ('Có', 'Không') OR phan_lo IS NULL)",
+        "phien_ban": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)",
+        "phuong_phap_danh_gia": "TEXT",
+        "phuong_thuc_lua_chon": "TEXT",
+        "qua_mang": "TEXT NOT NULL DEFAULT 'Qua mạng' CHECK(qua_mang IN ('Qua mạng', 'Không qua mạng'))",
+        "rebid_from_package_id": "TEXT",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "so_bao_cao_tham_dinh_hsmt": "TEXT",
+        "so_quyet_dinh": "TEXT",
+        "so_quyet_dinh_ket_qua": "TEXT",
+        "so_to_trinh_hsmt": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_goi_thau": "TEXT NOT NULL",
+        "thoi_gian_bat_dau_to_chuc": "TEXT NOT NULL CHECK(trim(thoi_gian_bat_dau_to_chuc) != '')",
+        "thoi_gian_dang_tai": "TEXT",
+        "thoi_gian_dong_thau": "TEXT",
+        "thoi_gian_goi_thau": "TEXT",
+        "thoi_gian_hop_dong": "TEXT",
+        "thoi_gian_mo_ehsdxtc": "TEXT",
+        "thoi_gian_mo_thau": "TEXT",
+        "thoi_gian_thuc_hien": "TEXT NOT NULL CHECK(trim(thoi_gian_thuc_hien) != '')",
+        "thoi_gian_to_chuc": "TEXT NOT NULL CHECK(trim(thoi_gian_to_chuc) != '')",
+        "trang_thai": "TEXT NOT NULL DEFAULT 'PREPARING' CHECK(trang_thai IN ('PREPARING', 'INVITED', 'OPENED', 'EVALUATING', 'AWARDED', 'CANCELLED'))",
+        "trong_nuoc_quoc_te": "TEXT NOT NULL DEFAULT 'Trong nước' CHECK(trong_nuoc_quoc_te IN ('Trong nước', 'Quốc tế'))",
+        "trong_so_ky_thuat": "INTEGER CHECK(trong_so_ky_thuat IS NULL OR (typeof(trong_so_ky_thuat) = 'integer' AND trong_so_ky_thuat BETWEEN 0 AND 100))",
+        "tuy_chon_mua_them": "TEXT DEFAULT 'Không' CHECK(tuy_chon_mua_them IN ('Có', 'Không') OR tuy_chon_mua_them IS NULL)",
+        "ty_le_bao_dam_hop_dong": "REAL CHECK(ty_le_bao_dam_hop_dong IS NULL OR (typeof(ty_le_bao_dam_hop_dong) IN ('integer', 'real') AND ty_le_bao_dam_hop_dong BETWEEN 0 AND 100 AND ty_le_bao_dam_hop_dong = round(ty_le_bao_dam_hop_dong, 4)))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không' CHECK(yeu_cau_tham_dinh_hsmt IN ('Có', 'Không') OR yeu_cau_tham_dinh_hsmt IS NULL)"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, ke_hoach_id) REFERENCES ke_hoach_lcnt(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, nha_thau_trung_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, rebid_from_package_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "CHECK(NULLIF(thoi_gian_dang_tai, '') IS NULL OR NULLIF(thoi_gian_dong_thau, '') IS NULL OR (datetime(thoi_gian_dang_tai) IS NOT NULL AND datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_dong_thau) > datetime(thoi_gian_dang_tai)))",
+        "CHECK(NULLIF(thoi_gian_dong_thau, '') IS NULL OR NULLIF(thoi_gian_mo_thau, '') IS NULL OR (datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) >= datetime(thoi_gian_dong_thau)))",
+        "CHECK((is_rebid = 0 AND rebid_from_package_id IS NULL) OR (is_rebid = 1 AND rebid_from_package_id IS NOT NULL AND rebid_from_package_id != id))",
+        "CHECK(trang_thai != 'AWARDED' OR (nha_thau_trung_thau_id IS NOT NULL AND trim(nha_thau_trung_thau_id) != '' AND gia_trung_thau IS NOT NULL AND so_quyet_dinh_ket_qua IS NOT NULL AND trim(so_quyet_dinh_ket_qua) != '' AND ngay_quyet_dinh_ket_qua IS NOT NULL AND date(ngay_quyet_dinh_ket_qua) IS NOT NULL))",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "goi_thau_chuyen_gia": {
+      "columns": {
+        "chuc_vu": "TEXT",
+        "chuyen_gia_id": "TEXT NOT NULL",
+        "cong_viec": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "loai": "TEXT NOT NULL DEFAULT 'chuyen_gia'",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id, chuyen_gia_id) REFERENCES chuyen_gia(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "primary_keys": [
+        "organization_id",
+        "goi_thau_id",
+        "chuyen_gia_id",
+        "loai"
+      ]
+    },
+    "goi_thau_gia_han": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "id": "TEXT PRIMARY KEY",
+        "ly_do_gia_han": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "thoi_gian_dong_thau": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "goi_thau_lam_ro": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "id": "TEXT PRIMARY KEY",
+        "loai": "TEXT NOT NULL CHECK(loai IN ('yeu_cau', 'tra_loi'))",
+        "noi_dung": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "thoi_gian": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "goi_thau_moc_tien_do": {
+      "columns": {
+        "cong_viec": "TEXT NOT NULL CHECK(length(trim(cong_viec)) BETWEEN 1 AND 300)",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "don_vi_ban_hanh": "TEXT NOT NULL DEFAULT '' CHECK(length(don_vi_ban_hanh) <= 300)",
+        "ghi_chu": "TEXT NOT NULL DEFAULT '' CHECK(length(ghi_chu) <= 2000)",
+        "goi_thau_id": "TEXT NOT NULL CHECK(trim(goi_thau_id) != '')",
+        "id": "TEXT PRIMARY KEY",
+        "is_optional": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_optional) = 'integer' AND is_optional IN (0, 1))",
+        "ma_moc": "TEXT NOT NULL CHECK(length(trim(ma_moc)) BETWEEN 3 AND 10)",
+        "ma_nhom": "TEXT NOT NULL CHECK(ma_nhom IN ('I', 'II', 'III', 'IV', 'V'))",
+        "ngay_du_kien": "TEXT CHECK(ngay_du_kien IS NULL OR (length(ngay_du_kien) = 10 AND date(ngay_du_kien) IS NOT NULL))",
+        "ngay_thuc_te": "TEXT CHECK(ngay_thuc_te IS NULL OR (length(ngay_thuc_te) = 10 AND date(ngay_thuc_te) IS NOT NULL))",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "so_van_ban": "TEXT NOT NULL DEFAULT '' CHECK(length(so_van_ban) <= 300)",
+        "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sort_order) = 'integer' AND sort_order BETWEEN 0 AND 499)",
+        "source_key": "TEXT NOT NULL DEFAULT '' CHECK(length(source_key) <= 160)",
+        "source_mode": "TEXT NOT NULL DEFAULT 'MANUAL' CHECK(source_mode IN ('AUTO', 'MANUAL'))",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "template_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(template_version) = 'integer' AND template_version >= 1)",
+        "ten_nhom": "TEXT NOT NULL CHECK(length(trim(ten_nhom)) BETWEEN 1 AND 160)",
+        "trang_thai": "TEXT NOT NULL DEFAULT 'PENDING' CHECK(trang_thai IN ('PENDING', 'IN_PROGRESS', 'DONE', 'NOT_APPLICABLE'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, goi_thau_id, ma_moc)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "goi_thau_phan_lo": {
+      "columns": {
+        "bao_dam_du_thau": "INTEGER CHECK(bao_dam_du_thau IS NULL OR (typeof(bao_dam_du_thau) = 'integer' AND bao_dam_du_thau >= 0))",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "gia_tri_phan_lo": "INTEGER CHECK(gia_tri_phan_lo IS NULL OR (typeof(gia_tri_phan_lo) = 'integer' AND gia_tri_phan_lo >= 0))",
+        "gia_trung_thau": "INTEGER CHECK(gia_trung_thau IS NULL OR (typeof(gia_trung_thau) = 'integer' AND gia_trung_thau >= 0))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "id": "TEXT PRIMARY KEY",
+        "ma_phan_lo": "TEXT",
+        "nha_thau_trung_thau_id": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_phan_lo": "TEXT",
+        "thoi_gian_goi_thau": "TEXT",
+        "thoi_gian_hop_dong": "TEXT",
+        "thoi_gian_thuc_hien": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, nha_thau_trung_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "goi_thau_tuy_chon_mua_them": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "don_vi": "TEXT",
+        "gia_tri_uoc_tinh": "INTEGER CHECK(gia_tri_uoc_tinh IS NULL OR (typeof(gia_tri_uoc_tinh) = 'integer' AND gia_tri_uoc_tinh >= 0))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "hang_muc": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "so_luong": "REAL CHECK(so_luong IS NULL OR (typeof(so_luong) IN ('integer', 'real') AND so_luong >= 0))",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ty_le": "REAL CHECK(ty_le IS NULL OR (typeof(ty_le) IN ('integer', 'real') AND ty_le BETWEEN 0 AND 100 AND ty_le = round(ty_le, 4)))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "hop_dong": {
+      "columns": {
+        "archived_at": "TEXT",
+        "chu_dau_tu_id": "TEXT NOT NULL CHECK(trim(chu_dau_tu_id) != '')",
+        "chu_dau_tu_thanh_ly_id": "TEXT",
+        "co_qd_chi_dinh": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(co_qd_chi_dinh) = 'integer' AND co_qd_chi_dinh IN (0,1))",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "gia_tri": "INTEGER NOT NULL CHECK(typeof(gia_tri) = 'integer' AND gia_tri >= 0)",
+        "id": "TEXT PRIMARY KEY",
+        "id_goc": "TEXT",
+        "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
+        "ke_hoach_id": "TEXT NOT NULL CHECK(trim(ke_hoach_id) != '')",
+        "loai_hop_dong": "TEXT NOT NULL CHECK(trim(loai_hop_dong) != '')",
+        "ngay_ky": "TEXT NOT NULL CHECK(date(ngay_ky) IS NOT NULL)",
+        "ngay_qd_chi_dinh": "TEXT",
+        "ngay_thanh_ly": "TEXT",
+        "nha_thau_id": "TEXT NOT NULL CHECK(trim(nha_thau_id) != '')",
+        "nha_thau_thanh_ly_id": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "phan_loai": "TEXT",
+        "phien_ban": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "so_hop_dong": "TEXT NOT NULL CHECK(trim(so_hop_dong) != '')",
+        "so_qd_chi_dinh": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_hop_dong": "TEXT NOT NULL CHECK(trim(ten_hop_dong) != '')",
+        "thoi_gian_thuc_hien": "TEXT NOT NULL CHECK(trim(thoi_gian_thuc_hien) != '')",
+        "trang_thai_ho_so": "TEXT",
+        "trang_thai_hop_dong": "TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(trang_thai_hop_dong IN ('NOT_EFFECTIVE','ACTIVE','SUSPENDED','COMPLETED','LIQUIDATED','CANCELLED'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, chu_dau_tu_id) REFERENCES chu_dau_tu(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, nha_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, chu_dau_tu_thanh_ly_id) REFERENCES chu_dau_tu(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, nha_thau_thanh_ly_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, ke_hoach_id) REFERENCES ke_hoach_lcnt(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, trang_thai_ho_so) REFERENCES trang_thai_ho_so_giay(organization_id, name) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "CHECK(NULLIF(ngay_ky, '') IS NULL OR NULLIF(ngay_thanh_ly, '') IS NULL OR (date(ngay_ky) IS NOT NULL AND date(ngay_thanh_ly) IS NOT NULL AND date(ngay_thanh_ly) >= date(ngay_ky)))",
+        "CHECK((co_qd_chi_dinh = 0 AND COALESCE(trim(so_qd_chi_dinh), '') = '' AND COALESCE(trim(ngay_qd_chi_dinh), '') = '') OR (co_qd_chi_dinh = 1 AND COALESCE(trim(so_qd_chi_dinh), '') != '' AND date(ngay_qd_chi_dinh) IS NOT NULL AND date(ngay_qd_chi_dinh) <= date(ngay_ky)))",
+        "CHECK((trang_thai_hop_dong = 'LIQUIDATED' AND date(ngay_thanh_ly) IS NOT NULL) OR (trang_thai_hop_dong != 'LIQUIDATED' AND COALESCE(trim(ngay_thanh_ly), '') = ''))",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "hop_dong_goi_thau": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "hop_dong_id": "TEXT NOT NULL",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, hop_dong_id) REFERENCES hop_dong(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "primary_keys": [
+        "organization_id",
+        "hop_dong_id",
+        "goi_thau_id"
+      ]
+    },
+    "ke_hoach_cong_viec": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "don_vi_thuc_hien": "TEXT",
+        "gia_tri": "INTEGER CHECK(gia_tri IS NULL OR (typeof(gia_tri) = 'integer' AND gia_tri >= 0))",
+        "id": "TEXT PRIMARY KEY",
+        "ke_hoach_id": "TEXT NOT NULL",
+        "loai": "TEXT NOT NULL CHECK(loai IN ('da_thuc_hien', 'khong_ap_dung', 'chua_du_dieu_kien'))",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_cong_viec": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "van_ban_phe_duyet": "TEXT"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, ke_hoach_id) REFERENCES ke_hoach_lcnt(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "ke_hoach_lcnt": {
+      "columns": {
+        "archived_at": "TEXT",
+        "chu_dau_tu_id": "TEXT NOT NULL CHECK(trim(chu_dau_tu_id) != '')",
+        "co_quan_phe_duyet_du_an": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "dia_diem_quy_mo": "TEXT",
+        "don_vi_trinh_cdt": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "id_goc": "TEXT",
+        "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
+        "is_tong_muc_tu_dong": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_tong_muc_tu_dong) = 'integer' AND is_tong_muc_tu_dong IN (0,1))",
+        "loai_hinh_mua_sam": "TEXT NOT NULL CHECK(trim(loai_hinh_mua_sam) != '')",
+        "ma_du_an": "TEXT",
+        "ma_ke_hoach": "TEXT",
+        "ngay_phe_duyet": "TEXT NOT NULL CHECK(date(ngay_phe_duyet) IS NOT NULL)",
+        "ngay_phe_duyet_du_toan": "TEXT",
+        "ngay_qd_phe_duyet_du_an": "TEXT",
+        "ngay_trinh_du_toan": "TEXT",
+        "ngay_trinh_ke_hoach": "TEXT",
+        "nguon_von": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "phe_duyet": "TEXT",
+        "phien_ban": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)",
+        "quyet_dinh_phe_duyet": "TEXT NOT NULL CHECK(trim(quyet_dinh_phe_duyet) != '')",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "so_qd_phe_duyet_du_an": "TEXT",
+        "so_qd_phe_duyet_du_toan": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_du_an_du_toan": "TEXT NOT NULL CHECK(trim(ten_du_an_du_toan) != '')",
+        "ten_ke_hoach": "TEXT NOT NULL",
+        "ten_viet_tat_don_vi_trinh": "TEXT",
+        "thoi_gian_dang_tai": "TEXT",
+        "thoi_gian_du_an": "TEXT",
+        "thong_tin_khac": "TEXT",
+        "tong_muc_dau_tu": "INTEGER CHECK(tong_muc_dau_tu IS NULL OR (typeof(tong_muc_dau_tu) = 'integer' AND tong_muc_dau_tu >= 0))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, chu_dau_tu_id) REFERENCES chu_dau_tu(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "ket_qua_danh_gia_nha_thau": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "danh_gia_hop_le": "TEXT",
+        "danh_gia_ket_luan": "TEXT",
+        "danh_gia_ky_thuat": "TEXT",
+        "danh_gia_luc": "TEXT",
+        "danh_gia_nang_luc": "TEXT",
+        "danh_gia_tai_chinh": "TEXT",
+        "diem": "REAL CHECK(diem IS NULL OR (diem >= 0 AND diem = round(diem, 4)))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "id": "TEXT PRIMARY KEY",
+        "lam_ro_hop_le": "TEXT",
+        "lam_ro_ky_thuat": "TEXT",
+        "lam_ro_nang_luc": "TEXT",
+        "lam_ro_tai_chinh": "TEXT",
+        "ly_do_loai": "TEXT",
+        "nguoi_cham_id": "TEXT",
+        "nguyen_nhan_khong_dat_hop_le": "TEXT",
+        "nguyen_nhan_khong_dat_ky_thuat": "TEXT",
+        "nguyen_nhan_khong_dat_nang_luc": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "thong_tin_mo_thau_id": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id, goi_thau_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, goi_thau_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, thong_tin_mo_thau_id)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "ma_tran_phan_quyen": {
+      "columns": {
+        "chudautu": "TEXT NOT NULL DEFAULT '' CHECK(chudautu IN ('', 'view', 'edit'))",
+        "chuyengia": "TEXT NOT NULL DEFAULT '' CHECK(chuyengia IN ('', 'view', 'edit'))",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "emp_id": "TEXT NOT NULL",
+        "goithau": "TEXT NOT NULL DEFAULT '' CHECK(goithau IN ('', 'view', 'edit'))",
+        "hopdong": "TEXT NOT NULL DEFAULT '' CHECK(hopdong IN ('', 'view', 'edit'))",
+        "id": "TEXT PRIMARY KEY",
+        "kehoach": "TEXT NOT NULL DEFAULT '' CHECK(kehoach IN ('', 'view', 'edit'))",
+        "nhathau": "TEXT NOT NULL DEFAULT '' CHECK(nhathau IN ('', 'view', 'edit'))",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "thongtinmothau": "TEXT NOT NULL DEFAULT '' CHECK(thongtinmothau IN ('', 'view', 'edit'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, emp_id)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "nha_thau": {
+      "columns": {
+        "anh_dau": "TEXT",
+        "archived_at": "TEXT",
+        "chuc_vu_dai_dien": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "danh_xung": "TEXT DEFAULT 'Ông'",
+        "dia_chi": "TEXT",
+        "dia_chi_goc": "TEXT",
+        "email": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "id_goc": "TEXT",
+        "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
+        "loai_nha_thau": "TEXT",
+        "ma_ngan_hang": "TEXT",
+        "ma_nha_thau": "TEXT",
+        "ma_so_thue": "TEXT",
+        "ngay_ap_dung": "TEXT NOT NULL DEFAULT (date('now'))",
+        "nguoi_dai_dien": "TEXT",
+        "noi_mo_tai_khoan": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "phien_ban": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "so_dien_thoai": "TEXT",
+        "so_tai_khoan": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_anh_dau": "TEXT",
+        "ten_nha_thau": "TEXT NOT NULL",
+        "ten_viet_tat": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "nha_thau_lien_danh_thanh_vien": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "danh_xung": "TEXT",
+        "dia_chi": "TEXT",
+        "dia_chi_goc": "TEXT",
+        "email": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "ma_ngan_hang": "TEXT",
+        "ma_nha_thau": "TEXT",
+        "ma_so_thue": "TEXT",
+        "nguoi_dai_dien": "TEXT",
+        "nha_thau_id": "TEXT NOT NULL",
+        "noi_mo_tai_khoan": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "so_dien_thoai": "TEXT",
+        "so_tai_khoan": "TEXT",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_nha_thau": "TEXT",
+        "thanh_vien_nha_thau_id": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "vai_tro": "TEXT NOT NULL CHECK(vai_tro IN ('Đứng đầu liên danh', 'Thành viên liên danh'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, nha_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, thanh_vien_nha_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, nha_thau_id, thanh_vien_nha_thau_id)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "nha_thau_tham_du_mo_thau": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "id": "TEXT PRIMARY KEY",
+        "lot_scope": "TEXT NOT NULL CHECK(trim(lot_scope) != '')",
+        "nha_thau_goc_id": "TEXT NOT NULL",
+        "nha_thau_phien_ban_id": "TEXT NOT NULL",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "thong_tin_mo_thau_id": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id, nha_thau_goc_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, nha_thau_phien_ban_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, thong_tin_mo_thau_id, nha_thau_goc_id)",
+        "UNIQUE(organization_id, goi_thau_id, lot_scope, nha_thau_goc_id)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "organization_subscriptions": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "expires_at": "INTEGER CHECK(expires_at IS NULL OR expires_at > starts_at)",
+        "member_quota": "INTEGER NOT NULL CHECK(member_quota > 0)",
+        "organization_id": "TEXT PRIMARY KEY",
+        "package_id": "TEXT NOT NULL",
+        "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",
+        "starts_at": "INTEGER NOT NULL CHECK(starts_at > 0)",
+        "status": "TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'cancelled'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
+        "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
+      ]
+    },
+    "password_reset_tokens": {
+      "columns": {
+        "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+        "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+        "id": "TEXT PRIMARY KEY",
+        "requested_ip": "TEXT",
+        "token_hash": "TEXT NOT NULL UNIQUE",
+        "used_at": "INTEGER",
+        "user_id": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ]
+    },
+    "pending_email_changes": {
+      "columns": {
+        "current_email_norm": "TEXT NOT NULL CHECK(current_email_norm != '')",
+        "expires_at": "INTEGER NOT NULL CHECK(expires_at > requested_at)",
+        "otp_hash": "TEXT NOT NULL CHECK(otp_hash != '')",
+        "pending_email": "TEXT NOT NULL CHECK(pending_email != '')",
+        "pending_email_norm": "TEXT NOT NULL UNIQUE CHECK(pending_email_norm != '')",
+        "requested_at": "INTEGER NOT NULL CHECK(requested_at > 0)",
+        "requested_ip": "TEXT",
+        "user_id": "TEXT PRIMARY KEY",
+        "verified_at": "INTEGER"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ],
+      "unique_constraints": [
+        "CHECK(pending_email_norm != current_email_norm)",
+        "CHECK(verified_at IS NULL OR (verified_at >= requested_at AND verified_at <= expires_at))"
+      ]
+    },
+    "phan_cong_nhan_su": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "id": "TEXT PRIMARY KEY",
+        "id_muc_tieu": "TEXT NOT NULL",
+        "id_nhan_vien": "TEXT NOT NULL",
+        "loai_doi_tuong": "TEXT NOT NULL CHECK(loai_doi_tuong IN ('kehoach', 'goithau', 'hopdong'))",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (id_nhan_vien) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "phan_cong_nhan_su_lich_su": {
+      "columns": {
+        "assigned_at": "TEXT",
+        "assignment_id": "TEXT NOT NULL",
+        "ended_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "ended_by": "TEXT",
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "id_muc_tieu": "TEXT NOT NULL",
+        "id_nhan_vien": "TEXT NOT NULL",
+        "loai_doi_tuong": "TEXT NOT NULL CHECK(loai_doi_tuong IN ('kehoach', 'goithau', 'hopdong'))",
+        "organization_id": "TEXT NOT NULL",
+        "reason": "TEXT NOT NULL DEFAULT 'member_left'",
+        "successor_user_id": "TEXT"
+      },
+      "foreign_keys": [],
+      "unique_constraints": [
+        "UNIQUE(organization_id, assignment_id, ended_at)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "rate_limit_buckets": {
+      "columns": {
+        "attempt_count": "INTEGER NOT NULL CHECK(attempt_count >= 0)",
+        "bucket_key": "TEXT PRIMARY KEY",
+        "expires_at": "INTEGER NOT NULL",
+        "window_started_at": "INTEGER NOT NULL"
+      }
+    },
+    "record_edit_ownership": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "organization_id": "TEXT NOT NULL",
+        "record_id": "TEXT NOT NULL",
+        "table_name": "TEXT NOT NULL CHECK(table_name IN ('chu_dau_tu', 'nha_thau'))",
+        "user_id": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ],
+      "primary_keys": [
+        "organization_id",
+        "table_name",
+        "record_id"
+      ]
+    },
+    "sync_metadata": {
+      "columns": {
+        "current_version": "INTEGER NOT NULL DEFAULT 0",
+        "min_available_version": "INTEGER NOT NULL DEFAULT 0 CHECK(min_available_version >= 0)",
+        "organization_id": "TEXT PRIMARY KEY CHECK(organization_id != '')",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": []
+    },
+    "sync_mutations": {
+      "columns": {
+        "actor_user_id": "TEXT NOT NULL",
+        "client_mutation_id": "TEXT NOT NULL",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "response_json": "TEXT"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+      ],
+      "primary_keys": [
+        "organization_id",
+        "actor_user_id",
+        "client_mutation_id"
+      ]
+    },
+    "tai_khoan": {
+      "columns": {
+        "anh_dai_dien": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "da_xac_minh": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(da_xac_minh) = 'integer' AND da_xac_minh IN (0,1))",
+        "email": "TEXT NOT NULL",
+        "email_norm": "TEXT NOT NULL UNIQUE CHECK(email_norm != '')",
+        "han_xac_minh": "INTEGER",
+        "ho_ten": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "ma_xac_minh": "TEXT",
+        "mat_khau": "TEXT NOT NULL",
+        "ten_dang_nhap": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "username_da_dat": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(username_da_dat) = 'integer' AND username_da_dat IN (0,1))",
+        "username_norm": "TEXT UNIQUE",
+        "vai_tro": "TEXT NOT NULL DEFAULT 'user' CHECK(vai_tro IN ('super_admin', 'user'))"
+      }
+    },
+    "thanh_vien_to_chuc": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "left_at": "TEXT",
+        "left_by": "TEXT",
+        "organization_id": "TEXT NOT NULL",
+        "so_dien_thoai": "TEXT",
+        "ten_nhan_su": "TEXT",
+        "trang_thai_thanh_vien": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai_thanh_vien IN ('active', 'left'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "user_id": "TEXT NOT NULL",
+        "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('manager', 'employee'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE"
+      ],
+      "primary_keys": [
+        "user_id",
+        "organization_id"
+      ]
+    },
+    "thong_tin_mo_thau": {
+      "columns": {
+        "archived_at": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "gia_du_thau": "INTEGER CHECK(gia_du_thau IS NULL OR (typeof(gia_du_thau) = 'integer' AND gia_du_thau >= 0))",
+        "gia_sau_giam_gia": "INTEGER CHECK(gia_sau_giam_gia IS NULL OR (typeof(gia_sau_giam_gia) = 'integer' AND gia_sau_giam_gia >= 0))",
+        "gia_tri_dam_bao": "INTEGER CHECK(gia_tri_dam_bao IS NULL OR (typeof(gia_tri_dam_bao) = 'integer' AND gia_tri_dam_bao >= 0))",
+        "goi_thau_id": "TEXT NOT NULL",
+        "hieu_luc_bao_dam_ngay": "INTEGER CHECK(hieu_luc_bao_dam_ngay IS NULL OR hieu_luc_bao_dam_ngay >= 0)",
+        "hieu_luc_hsdt": "INTEGER CHECK(hieu_luc_hsdt IS NULL OR hieu_luc_hsdt >= 0)",
+        "id": "TEXT PRIMARY KEY",
+        "loai_nha_thau": "TEXT",
+        "ma_dinh_danh": "TEXT",
+        "ma_phan_lo": "TEXT NOT NULL DEFAULT ''",
+        "nha_thau_id": "TEXT NOT NULL",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_nha_thau": "TEXT",
+        "ten_phan_lo": "TEXT",
+        "thoi_gian_thuc_hien": "TEXT",
+        "ty_le_giam_gia": "REAL CHECK(ty_le_giam_gia IS NULL OR (typeof(ty_le_giam_gia) IN ('integer', 'real') AND ty_le_giam_gia BETWEEN 0 AND 100 AND ty_le_giam_gia = round(ty_le_giam_gia, 4)))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+        "FOREIGN KEY (organization_id, nha_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, goi_thau_id, id)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "thong_tin_mo_thau_lien_danh_thanh_vien": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "danh_xung": "TEXT",
+        "dia_chi": "TEXT",
+        "dia_chi_goc": "TEXT",
+        "email": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "ma_ngan_hang": "TEXT",
+        "ma_nha_thau": "TEXT",
+        "ma_so_thue": "TEXT",
+        "nguoi_dai_dien": "TEXT",
+        "noi_mo_tai_khoan": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "so_dien_thoai": "TEXT",
+        "so_tai_khoan": "TEXT",
+        "sort_order": "INTEGER DEFAULT 0",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "ten_nha_thau": "TEXT",
+        "thanh_vien_nha_thau_id": "TEXT NOT NULL",
+        "thong_tin_mo_thau_id": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "vai_tro": "TEXT NOT NULL CHECK(vai_tro IN ('Đứng đầu liên danh', 'Thành viên liên danh'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (organization_id, thanh_vien_nha_thau_id) REFERENCES nha_thau(organization_id, id) ON DELETE RESTRICT",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, thong_tin_mo_thau_id, thanh_vien_nha_thau_id)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "tieu_chi_danh_gia": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "diem_toi_da": "REAL CHECK(diem_toi_da IS NULL OR (diem_toi_da >= 0 AND diem_toi_da = round(diem_toi_da, 4)))",
+        "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
+        "id": "TEXT PRIMARY KEY",
+        "ma_tieu_chi": "TEXT NOT NULL",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "ten_tieu_chi": "TEXT NOT NULL",
+        "thu_tu": "INTEGER NOT NULL DEFAULT 0 CHECK(thu_tu >= 0)",
+        "trong_so": "REAL CHECK(trong_so IS NULL OR (trong_so >= 0 AND trong_so <= 100 AND trong_so = round(trong_so, 4)))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "vong_danh_gia_id": "TEXT NOT NULL"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, vong_danh_gia_id) REFERENCES vong_danh_gia(organization_id, id) ON DELETE CASCADE",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, vong_danh_gia_id, ma_tieu_chi)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "to_chuc": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "id": "TEXT PRIMARY KEY",
+        "ten_to_chuc": "TEXT NOT NULL",
+        "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'suspended'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      }
+    },
+    "trang_thai_ho_so_giay": {
+      "columns": {
+        "color": "TEXT NOT NULL DEFAULT '#64748b'",
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "id": "TEXT PRIMARY KEY",
+        "name": "TEXT NOT NULL",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(row_version) = 'integer' AND row_version > 0)",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, name)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "vong_danh_gia": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "da_luu_danh_sach_dat": "INTEGER NOT NULL DEFAULT 0 CHECK(da_luu_danh_sach_dat IN (0,1))",
+        "extension_json": "TEXT NOT NULL DEFAULT '{\"schemaVersion\":1}' CHECK(json_valid(extension_json) AND length(CAST(extension_json AS BLOB)) <= 65536)",
+        "goi_thau_id": "TEXT NOT NULL",
+        "hoan_thanh_luc": "TEXT",
+        "id": "TEXT PRIMARY KEY",
+        "loai_vong": "TEXT NOT NULL CHECK(loai_vong IN ('single', 'technical', 'financial'))",
+        "ngay_bao_cao": "TEXT",
+        "nguoi_cham_id": "TEXT",
+        "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+        "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+        "so_bao_cao": "TEXT",
+        "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+        "thu_tu": "INTEGER NOT NULL DEFAULT 0 CHECK(thu_tu >= 0)",
+        "trang_thai": "TEXT NOT NULL DEFAULT 'draft' CHECK(trang_thai IN ('draft', 'completed', 'approved'))",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": [
+        "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE",
+        "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+        "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
+      ],
+      "unique_constraints": [
+        "UNIQUE(organization_id, goi_thau_id, loai_vong)",
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "websocket_events": {
+      "columns": {
+        "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+        "event_type": "TEXT NOT NULL CHECK(event_type IN ('broadcast', 'revoke_user'))",
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "organization_id": "TEXT",
+        "payload_json": "TEXT",
+        "user_id": "TEXT"
+      },
+      "foreign_keys": [],
+      "unique_constraints": [
+        "UNIQUE(organization_id, id)"
+      ]
+    },
+    "word_default_seeds": {
+      "columns": {
+        "mappings_version": "INTEGER NOT NULL CHECK(mappings_version > 0)",
+        "organization_id": "TEXT PRIMARY KEY CHECK(organization_id != '')",
+        "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+      },
+      "foreign_keys": []
+    }
+  }
+}

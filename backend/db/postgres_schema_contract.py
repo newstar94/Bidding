@@ -105,6 +105,7 @@ def _normalize_schema_qualifier(
     normalized = str(definition)
     for qualifier in (f"{quoted_schema_name}.", f"{schema_name}."):
         normalized = normalized.replace(qualifier, "$SCHEMA.")
+    normalized = normalized.replace(" public.gin_trgm_ops", " gin_trgm_ops")
     return normalized
 
 
