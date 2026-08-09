@@ -80,6 +80,23 @@ def load_package(cursor, organization_id, package_id):
     return dict(row)
 
 
+def load_package_for_document_mutation(cursor, organization_id, package_id):
+    """Load and lock the package row for a document write transaction."""
+
+    row = cursor.execute(
+        """SELECT id, organization_id, owner_type, trang_thai, phan_lo,
+                  phuong_thuc_lua_chon, yeu_cau_tham_dinh_hsmt
+           FROM goi_thau
+           WHERE organization_id = ? AND id = ? AND archived_at IS NULL
+           LIMIT 1
+           FOR UPDATE""",
+        (organization_id, package_id),
+    ).fetchone()
+    if not row:
+        raise PackageDocumentNotFoundError("Không tìm thấy gói thầu.")
+    return dict(row)
+
+
 def list_package_documents(cursor, organization_id, package_id):
     rows = cursor.execute(
         """SELECT d.id, d.evaluation_batch_id, d.document_type,
@@ -148,6 +165,28 @@ def get_evaluation_batch(cursor, organization_id, package_id, batch_id):
            FROM dot_xu_ly_phan_lo
            WHERE organization_id = ? AND goi_thau_id = ? AND id = ?
            LIMIT 1""",
+        (organization_id, package_id, normalized_batch_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_evaluation_batch_for_document_mutation(
+    cursor,
+    organization_id,
+    package_id,
+    batch_id,
+):
+    """Load and lock an evaluation batch in the package write transaction."""
+
+    normalized_batch_id = str(batch_id or "").strip()
+    if not normalized_batch_id:
+        return None
+    row = cursor.execute(
+        """SELECT id, sequence_no, procedure_kind, status
+           FROM dot_xu_ly_phan_lo
+           WHERE organization_id = ? AND goi_thau_id = ? AND id = ?
+           LIMIT 1
+           FOR UPDATE""",
         (organization_id, package_id, normalized_batch_id),
     ).fetchone()
     return dict(row) if row else None

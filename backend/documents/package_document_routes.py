@@ -28,10 +28,12 @@ from backend.documents.package_document_service import (
     create_storage_key,
     delete_package_document,
     get_evaluation_batch,
+    get_evaluation_batch_for_document_mutation,
     get_package_document,
     list_package_evaluation_batches,
     list_package_documents,
     load_package,
+    load_package_for_document_mutation,
     media_for_filename,
     persist_upload_path,
     remove_storage_key,
@@ -187,6 +189,8 @@ def _validate_mutation_scope(
     package,
     document_type,
     evaluation_batch_id,
+    *,
+    lock_for_mutation=False,
 ):
     is_evaluation = is_evaluation_document_type(document_type)
     has_lots = str(package.get("phan_lo") or "").strip() == "Có"
@@ -206,7 +210,12 @@ def _validate_mutation_scope(
         raise PackageDocumentError(
             "Phải chọn đúng đợt đánh giá khi tải BCĐG hoặc BCTĐ."
         )
-    batch = get_evaluation_batch(
+    batch_loader = (
+        get_evaluation_batch_for_document_mutation
+        if lock_for_mutation
+        else get_evaluation_batch
+    )
+    batch = batch_loader(
         cursor,
         organization_id,
         package["id"],
@@ -417,7 +426,9 @@ async def upload_package_document_api(request):
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
-        package = load_package(cursor, organization_id, package_id)
+        package = load_package_for_document_mutation(
+            cursor, organization_id, package_id
+        )
         decision = _package_write_decision(
             cursor,
             session,
@@ -459,6 +470,7 @@ async def upload_package_document_api(request):
             package,
             document_type,
             evaluation_batch_id,
+            lock_for_mutation=True,
         )
         document, previous = upsert_package_document(
             cursor,
@@ -745,7 +757,9 @@ async def delete_package_document_api(request):
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
-        package = load_package(cursor, organization_id, package_id)
+        package = load_package_for_document_mutation(
+            cursor, organization_id, package_id
+        )
         decision = _package_write_decision(
             cursor,
             session,
@@ -784,6 +798,7 @@ async def delete_package_document_api(request):
             package,
             document_type,
             evaluation_batch_id,
+            lock_for_mutation=True,
         )
         deleted = delete_package_document(
             cursor,
