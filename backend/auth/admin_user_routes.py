@@ -16,6 +16,10 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.logging_utils import error_response
+from backend.shared.membership_invariants import (
+    lock_organization_membership_invariants,
+    lock_organization_membership_invariants_many,
+)
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
@@ -352,6 +356,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             )
 
         if organization_id:
+            lock_organization_membership_invariants(cursor, organization_id)
             membership = cursor.execute(
                 """SELECT lower(trim(vai_tro_trong_to_chuc))
                    FROM thanh_vien_to_chuc
@@ -545,6 +550,21 @@ def _delete_user_sync(request):
             if int(cursor.fetchone()[0]) <= 1:
                 conn.rollback()
                 return JSONResponse({"error": "Không thể xóa quản trị viên nền tảng cuối cùng."}, status_code=409)
+        manager_organization_ids = [
+            str(row[0])
+            for row in cursor.execute(
+                """SELECT organization_id
+                   FROM thanh_vien_to_chuc
+                   WHERE user_id = ?
+                     AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
+                     AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'
+                   ORDER BY organization_id""",
+                (user_id,),
+            ).fetchall()
+        ]
+        lock_organization_membership_invariants_many(
+            cursor, manager_organization_ids
+        )
         cursor.execute(
             """
             SELECT membership.organization_id
@@ -553,12 +573,14 @@ def _delete_user_sync(request):
               ON organization.id = membership.organization_id
             WHERE membership.user_id = ?
               AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'manager'
+              AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
               AND NOT EXISTS (
                   SELECT 1
                   FROM thanh_vien_to_chuc AS other_owner
                   WHERE other_owner.organization_id = membership.organization_id
                     AND other_owner.user_id != membership.user_id
                     AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'manager'
+                    AND COALESCE(other_owner.trang_thai_thanh_vien, 'active') = 'active'
               )
             LIMIT 1
             """,

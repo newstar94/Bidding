@@ -61,6 +61,9 @@ from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.logging_utils import log_structured_event
+from backend.shared.membership_invariants import (
+    lock_organization_membership_invariants,
+)
 from backend.security.turnstile import edge_challenge_required, enforce_turnstile
 from backend.runtime_capabilities import with_server_capabilities
 from backend.shared.email_templates import render_branded_email
@@ -1661,6 +1664,7 @@ async def update_user_role_api(request):
                     "error": "Không thể thay đổi membership của không gian cá nhân.",
                     "code": "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN",
                 }, status_code=409)
+            lock_organization_membership_invariants(cursor, org_id)
             cursor.execute(
                 "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
                 (role_or_err.user_id, org_id),

@@ -23,6 +23,9 @@ from backend.shared.access_policy import (
 )
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.idempotency import acquire_idempotency_lock
+from backend.shared.membership_invariants import (
+    lock_organization_membership_invariants,
+)
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import vietnam_date_from_epoch, vietnam_now_sql
 from backend.notifications.service import (
@@ -301,6 +304,7 @@ async def update_organization_subscription_api(request):
             conn.commit()
             return JSONResponse(json.loads(replay[0]))
 
+        lock_organization_membership_invariants(cursor, organization_id)
         current = _subscription_payload(
             cursor, organization_id, for_update=True
         )
@@ -717,6 +721,7 @@ async def remove_user_from_org_api(request):
         ):
             conn.close()
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
+        lock_organization_membership_invariants(cursor, org_id)
         sync_version = next_sync_version(cursor, org_id)
 
         cursor.execute(
