@@ -151,7 +151,7 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
           composerChildCount: composer?.children.length || 0,
         },
         value: select?.value,
-        triggerText: trigger?.textContent?.trim(),
+        triggerText: trigger?.value || trigger?.textContent?.trim(),
         selected: [...(options?.querySelectorAll(".custom-option-item") || [])]
           .filter((item) => item.classList.contains("selected"))
           .map((item) => item.dataset.value),

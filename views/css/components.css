@@ -1358,13 +1358,13 @@ textarea:not([readonly]):not([disabled]) {
   background: white !important;
   color: #0f172a !important;
 }
-.form-group input[readonly],
+.form-group input[readonly]:not(.bf-combobox-input),
 .form-group select[readonly],
 .form-group textarea[readonly],
 .form-group input[disabled],
 .form-group select[disabled],
 .form-group textarea[disabled],
-input[readonly],
+input[readonly]:not(.bf-combobox-input),
 select[readonly],
 textarea[readonly],
 input[disabled],
@@ -1497,6 +1497,71 @@ textarea[disabled] {
   width: 100%;
   user-select: none;
   font-family: inherit;
+}
+.custom-select-container.bf-combobox > .custom-select-trigger {
+  position: relative;
+  z-index: 1;
+  padding-right: 42px;
+  color: var(--text-main);
+  background: var(--bg-card);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.custom-select-container.bf-combobox > .bf-combobox-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transform: none;
+}
+.custom-select-container.bf-combobox .bf-combobox-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--transition-fast);
+}
+.custom-select-wrapper.bf-combobox > .bf-combobox-toggle.custom-select-arrow {
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: none;
+}
+.custom-select-wrapper.bf-combobox .bf-combobox-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--transition-fast);
+}
+.custom-select-wrapper.bf-combobox.open .bf-combobox-chevron {
+  transform: translateY(2px) rotate(225deg);
+}
+.custom-select-wrapper.bf-combobox .custom-select-options[hidden] {
+  display: none;
+}
+.custom-select-container.bf-combobox.open .bf-combobox-chevron {
+  transform: translateY(2px) rotate(225deg);
+}
+.custom-select-container.bf-combobox .custom-select-options[hidden] {
+  display: none;
 }
 .custom-select-trigger {
   display: flex;

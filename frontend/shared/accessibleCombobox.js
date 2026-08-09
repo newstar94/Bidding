@@ -1,3 +1,5 @@
+import { setRuntimeStyles } from "./runtimeStyles.js";
+
 function normalizeSearchText(value) {
   return String(value || "")
     .normalize("NFD")
@@ -8,9 +10,10 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-function selectedLabel(select) {
+function selectedLabel(select, formatter = null) {
   const option = select.options[select.selectedIndex];
-  return option?.value ? option.text.trim() : "";
+  const label = option?.value ? option.text.trim() : "";
+  return typeof formatter === "function" ? formatter(label, option) : label;
 }
 
 function optionSearchText(option) {
@@ -32,16 +35,43 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     placeholder: "Chọn dữ liệu",
     noResultsText: "Không tìm thấy dữ liệu phù hợp",
     onQuery: null,
+    compatibilityMode: "",
+    portal: false,
+    showToggle: true,
+    formatSelectedLabel: null,
     ...initialConfig
+  };
+  const original = {
+    ariaHidden: select.getAttribute("aria-hidden"),
+    dataNoCustom: select.getAttribute("data-no-custom"),
+    hidden: select.hidden,
+    label: document.querySelector(`label[for="${select.id}"]`),
+    tabIndex: select.tabIndex,
   };
   const wrapper = document.createElement("div");
   wrapper.className = "bf-combobox";
   wrapper.dataset.selectId = select.id;
+  if (config.compatibilityMode === "custom-select") {
+    wrapper.classList.add("custom-select-container");
+    wrapper.dataset.target = select.id;
+    if (select.closest("table")) wrapper.classList.add("table-select");
+    const isVersionSelect = select.classList.contains("page-version-select")
+      || select.classList.contains("version-select")
+      || select.classList.contains("phienban-select")
+      || select.classList.contains("modal-version-select")
+      || select.classList.contains("version-droplist");
+    if (isVersionSelect) wrapper.classList.add("version-select-container");
+    if (select.classList.contains("page-version-select")) wrapper.classList.add("page-version-select");
+  } else if (config.compatibilityMode === "searchable-select") {
+    wrapper.classList.add("custom-select-wrapper");
+  }
 
   const input = document.createElement("input");
   input.id = `${select.id}-combobox`;
   input.type = "text";
   input.className = "bf-combobox-input";
+  if (config.compatibilityMode === "custom-select") input.classList.add("custom-select-trigger");
+  if (config.compatibilityMode === "searchable-select") input.classList.add("custom-select-search");
   input.autocomplete = "off";
   input.spellcheck = false;
   input.setAttribute("role", "combobox");
@@ -52,8 +82,11 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "bf-combobox-toggle";
+  if (config.compatibilityMode === "custom-select") toggle.classList.add("custom-select-trigger-arrow");
+  if (config.compatibilityMode === "searchable-select") toggle.classList.add("custom-select-arrow");
   toggle.setAttribute("aria-label", "Mở danh sách lựa chọn");
   toggle.tabIndex = -1;
+  toggle.hidden = config.showToggle === false;
   const chevron = document.createElement("span");
   chevron.className = "bf-combobox-chevron";
   chevron.setAttribute("aria-hidden", "true");
@@ -62,6 +95,14 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   const list = document.createElement("ul");
   list.id = `${select.id}-listbox`;
   list.className = "bf-combobox-list";
+  if (config.compatibilityMode) list.classList.add("custom-select-options");
+  if (
+    config.compatibilityMode === "custom-select"
+    && wrapper.classList.contains("version-select-container")
+  ) {
+    list.classList.add("version-select-options");
+  }
+  if (config.compatibilityMode) list.dataset.parent = select.id;
   list.setAttribute("role", "listbox");
   list.hidden = true;
   input.setAttribute("aria-controls", list.id);
@@ -80,15 +121,40 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   let visibleOptions = [];
   let activeIndex = -1;
 
+  const positionPortalList = () => {
+    if (!config.portal) return;
+    if (list.parentElement !== document.body) document.body.appendChild(list);
+    const rect = input.getBoundingClientRect();
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+    const dropdownHeight = list.offsetHeight || 220;
+    const placeAbove = window.innerHeight - rect.bottom < dropdownHeight
+      && rect.top > dropdownHeight;
+    wrapper.classList.toggle("drop-up", placeAbove);
+    setRuntimeStyles(list, {
+      position: "absolute",
+      minWidth: `${rect.width}px`,
+      left: `${rect.left + scrollX}px`,
+      top: `${placeAbove ? rect.top + scrollY - dropdownHeight - 4 : rect.bottom + scrollY + 4}px`,
+    });
+  };
+
   const setOpen = (open, { restoreSelection = false } = {}) => {
     const nextOpen = Boolean(open) && !select.disabled;
     wrapper.classList.toggle("open", nextOpen);
     list.hidden = !nextOpen;
+    setRuntimeStyles(list, { display: nextOpen ? "block" : "none" });
     input.setAttribute("aria-expanded", String(nextOpen));
+    toggle.setAttribute(
+      "aria-label",
+      nextOpen ? "Đóng danh sách lựa chọn" : "Mở danh sách lựa chọn",
+    );
+    if (nextOpen) positionPortalList();
     if (!nextOpen) {
       activeIndex = -1;
       input.removeAttribute("aria-activedescendant");
-      if (restoreSelection) input.value = selectedLabel(select);
+      if (restoreSelection) input.value = selectedLabel(select, config.formatSelectedLabel);
+      if (config.portal && list.parentElement !== wrapper) wrapper.appendChild(list);
     }
   };
 
@@ -108,9 +174,9 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   };
 
   const selectOption = (option) => {
-    if (!option) return;
+    if (!option || option.disabled) return;
     select.value = option.value;
-    input.value = option.value ? option.text.trim() : "";
+    input.value = selectedLabel(select, config.formatSelectedLabel);
     select.dispatchEvent(new Event("change", { bubbles: true }));
     setOpen(false);
   };
@@ -130,7 +196,9 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       const item = document.createElement("li");
       item.id = `${select.id}-option-${index}`;
       item.className = "bf-combobox-option";
+      if (config.compatibilityMode === "custom-select") item.classList.add("custom-option-item");
       item.dataset.value = option.value;
+      item.option = option;
       item.textContent = option.text.trim();
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", String(option.value === select.value));
@@ -142,6 +210,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     if (!options.length) {
       const empty = document.createElement("li");
       empty.className = "bf-combobox-empty";
+      if (config.compatibilityMode) empty.classList.add("custom-select-no-results");
       empty.textContent = config.noResultsText;
       empty.setAttribute("role", "option");
       empty.setAttribute("aria-disabled", "true");
@@ -156,14 +225,22 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     input.setAttribute("aria-autocomplete", config.searchable ? "list" : "none");
     input.placeholder = config.placeholder;
     toggle.disabled = select.disabled;
+    toggle.hidden = config.showToggle === false;
     wrapper.classList.toggle("disabled", select.disabled);
     wrapper.classList.toggle("is-searchable", config.searchable);
+    for (const attribute of ["aria-describedby", "aria-invalid", "aria-label", "aria-labelledby", "aria-required"]) {
+      const value = select.getAttribute(attribute);
+      if (value === null) input.removeAttribute(attribute);
+      else input.setAttribute(attribute, value);
+    }
+    if (select.required) input.setAttribute("aria-required", "true");
+    input.setAttribute("aria-disabled", String(select.disabled));
     const renderedQuery = query === undefined
       ? preserveQuery ? input.value : ""
       : String(query || "");
     input.value = preserveQuery || query !== undefined
       ? renderedQuery
-      : selectedLabel(select);
+      : selectedLabel(select, config.formatSelectedLabel);
     renderOptions(renderedQuery);
     if (keepOpen && !select.disabled) setOpen(true);
     else if (select.disabled) setOpen(false);
@@ -194,9 +271,18 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       event.preventDefault();
       setOpen(true);
       setActiveIndex(activeIndex < 0 ? visibleOptions.length - 1 : activeIndex - 1);
+    } else if (event.key === "Home" && wrapper.classList.contains("open")) {
+      event.preventDefault();
+      setActiveIndex(0);
+    } else if (event.key === "End" && wrapper.classList.contains("open")) {
+      event.preventDefault();
+      setActiveIndex(visibleOptions.length - 1);
     } else if (event.key === "Enter" && wrapper.classList.contains("open")) {
       event.preventDefault();
-      selectOption(visibleOptions[activeIndex >= 0 ? activeIndex : 0]);
+      selectOption(visibleOptions[activeIndex >= 0 ? activeIndex : 0]?.option);
+    } else if (event.key === " " && !config.searchable) {
+      event.preventDefault();
+      setOpen(!wrapper.classList.contains("open"));
     } else if (event.key === "Escape") {
       event.preventDefault();
       setOpen(false, { restoreSelection: true });
@@ -224,7 +310,9 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   });
   const onSelectChange = () => refresh();
   const onDocumentPointerDown = (event) => {
-    if (!wrapper.contains(event.target)) setOpen(false, { restoreSelection: true });
+    if (!wrapper.contains(event.target) && !list.contains(event.target)) {
+      setOpen(false, { restoreSelection: true });
+    }
   };
   const onWrapperFocusOut = () => {
     setTimeout(() => {
@@ -236,6 +324,24 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   select.addEventListener("change", onSelectChange);
   document.addEventListener("pointerdown", onDocumentPointerDown);
   wrapper.addEventListener("focusout", onWrapperFocusOut);
+  const onDocumentScroll = (event) => {
+    if (event.target === list || list.contains(event.target)) return;
+    if (wrapper.classList.contains("open")) setOpen(false, { restoreSelection: true });
+  };
+  document.addEventListener("scroll", onDocumentScroll, { capture: true, passive: true });
+  const parentForm = select.closest("form");
+  const onFormReset = () => setTimeout(() => refresh(), 0);
+  parentForm?.addEventListener("reset", onFormReset);
+  const observer = new MutationObserver(() => refresh({
+    preserveQuery: config.searchable && document.activeElement === input,
+    keepOpen: wrapper.classList.contains("open"),
+  }));
+  observer.observe(select, {
+    attributes: true,
+    attributeFilter: ["disabled", "required", "aria-describedby", "aria-invalid"],
+    childList: true,
+    subtree: true,
+  });
 
   const api = {
     configure,
@@ -245,7 +351,19 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       setOpen(false);
       select.removeEventListener("change", onSelectChange);
       document.removeEventListener("pointerdown", onDocumentPointerDown);
+      document.removeEventListener("scroll", onDocumentScroll, { capture: true });
       wrapper.removeEventListener("focusout", onWrapperFocusOut);
+      parentForm?.removeEventListener("reset", onFormReset);
+      observer.disconnect();
+      select.classList.remove("bf-combobox-native");
+      select.hidden = original.hidden;
+      select.tabIndex = original.tabIndex;
+      if (original.ariaHidden === null) select.removeAttribute("aria-hidden");
+      else select.setAttribute("aria-hidden", original.ariaHidden);
+      if (original.dataNoCustom === null) select.removeAttribute("data-no-custom");
+      else select.setAttribute("data-no-custom", original.dataNoCustom);
+      if (original.label) original.label.htmlFor = select.id;
+      wrapper.remove();
       if (select.__bfAccessibleCombobox === api) {
         select.__bfAccessibleCombobox = null;
       }

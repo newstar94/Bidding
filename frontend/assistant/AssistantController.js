@@ -215,6 +215,7 @@ class AssistantController {
   }
 
   enhanceModeSelect(select, wrapper) {
+    if (select?.__bfAccessibleCombobox) return;
     const trigger = wrapper?.querySelector(".custom-select-trigger");
     const options = wrapper?.querySelector(".custom-select-options");
     if (!trigger || !options) return;

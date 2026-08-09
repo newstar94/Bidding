@@ -1,11 +1,10 @@
-import { setRuntimeStyle } from "./runtimeStyles.js";
 export {
   getAuthDownloadUrl,
   authFetchDownload,
   authFetchDownloadWithAlert,
 } from "./workflow_helpers.js";
 import { formatCurrency as formatVndCurrency, formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "./formatters.js";
-import { hasUnifiedSelectListener, markUnifiedSelectListenerRegistered } from "./runtimeState.js";
+import { initAccessibleCombobox } from "./accessibleCombobox.js";
 export function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -98,65 +97,15 @@ export function formatDateOnly(dateStr) {
   return formatDisplayDateOnly(dateStr);
 }
 
-function customSelectOptionsSignature(options) {
-  return JSON.stringify(options.map((option) => [
-    String(option.value ?? ""),
-    String(option.text ?? ""),
-    Boolean(option.selected)
-  ]));
-}
-
-function renderCustomSelectOptions(optionsList, options, isVersionSelect) {
-  const signature = customSelectOptionsSignature(options);
-  if (optionsList.dataset.optionsSignature === signature) return false;
-  const fragment = document.createDocumentFragment();
-  options.forEach((option) => {
-    const item = document.createElement("li");
-    item.dataset.value = String(option.value ?? "");
-    item.className = `custom-option-item${option.selected ? " selected" : ""}`;
-    item.textContent = String(option.text ?? "");
-    setRuntimeStyle(item, "padding", isVersionSelect ? "4px 14px" : "8px 14px");
-    setRuntimeStyle(item, "fontSize", "0.85rem");
-    setRuntimeStyle(item, "cursor", "pointer");
-    setRuntimeStyle(item, "whiteSpace", "nowrap");
-    setRuntimeStyle(item, "color", "var(--text-main)");
-    fragment.appendChild(item);
-  });
-  optionsList.replaceChildren(fragment);
-  optionsList.dataset.optionsSignature = signature;
-  return true;
-}
-
-function bindCustomSelectOptions(optionsList) {
-  if (optionsList.__bfCustomSelectEventsBound) return;
-  optionsList.__bfCustomSelectEventsBound = true;
-  optionsList.addEventListener("mouseover", (event) => {
-    const item = event.target.closest?.(".custom-option-item");
-    if (!item || !optionsList.contains(item) || item.classList.contains("selected")) return;
-    setRuntimeStyle(item, "backgroundColor", "var(--neutral-soft)");
-    setRuntimeStyle(item, "color", "var(--primary)");
-  });
-  optionsList.addEventListener("mouseout", (event) => {
-    const item = event.target.closest?.(".custom-option-item");
-    if (!item || !optionsList.contains(item) || item.classList.contains("selected")) return;
-    setRuntimeStyle(item, "backgroundColor", "");
-    setRuntimeStyle(item, "color", "var(--text-main)");
-  });
-  optionsList.addEventListener("click", (event) => {
-    const item = event.target.closest?.(".custom-option-item");
-    if (!item || !optionsList.contains(item)) return;
-    event.stopPropagation();
-    const targetId = optionsList.dataset.parent;
-    const targetSelect = document.getElementById(targetId);
-    const targetWrapper = document.querySelector(`.custom-select-container[data-target="${targetId}"]`);
-    if (!targetSelect || !targetWrapper) return;
-    targetSelect.value = item.dataset.value || "";
-    targetSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    targetWrapper.classList.remove("open");
-    setRuntimeStyle(optionsList, "display", "none");
-    targetWrapper.appendChild(optionsList);
-    initCustomSelect(targetId);
-  });
+function compactMonthLabel(label) {
+  if (!label.startsWith("Tháng ")) return label;
+  let coreText = label.substring(6).trim();
+  const monthMap = {
+    "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5", "sáu": "6",
+    "bảy": "7", "tám": "8", "chín": "9", "mười": "10", "mười một": "11", "mười hai": "12",
+  };
+  coreText = monthMap[coreText.toLowerCase()] || coreText;
+  return `Th${coreText}`;
 }
 
 export function initCustomSelect(selectId) {
@@ -166,170 +115,37 @@ export function initCustomSelect(selectId) {
     console.warn(`[BiddingFlow legacy UI] initCustomSelect(${selectId})`);
   }
   const select = document.getElementById(selectId);
-  if (!select) return;
-  setRuntimeStyle(select, "display", "none");
-  if (!hasUnifiedSelectListener()) {
-    document.addEventListener("click", (e) => {
-      document.querySelectorAll(".custom-select-container.open").forEach((w) => {
-        const targetId = w.getAttribute("data-target");
-        const absoluteDropdown = document.querySelector(`.custom-select-options[data-parent="${targetId}"]`) || w.querySelector(".custom-select-options");
-        if (!w.contains(e.target) && !(absoluteDropdown && absoluteDropdown.contains(e.target))) {
-          w.classList.remove("open");
-          if (absoluteDropdown) {
-            setRuntimeStyle(absoluteDropdown, "display", "none");
-            w.appendChild(absoluteDropdown);
-          }
-        }
-      });
-    });
-    document.addEventListener("scroll", (e) => {
-      if (e.target && e.target.classList && e.target.classList.contains("custom-select-options")) return;
-      document.querySelectorAll(".custom-select-container.open").forEach((w) => {
-        const targetId = w.getAttribute("data-target");
-        const absoluteDropdown = document.querySelector(`.custom-select-options[data-parent="${targetId}"]`);
-        w.classList.remove("open");
-        if (absoluteDropdown) {
-          setRuntimeStyle(absoluteDropdown, "display", "none");
-          w.appendChild(absoluteDropdown);
-        }
-      });
-    }, { capture: true, passive: true });
-    markUnifiedSelectListenerRegistered();
+  if (!select) return null;
+  const activeWrapper = select.parentElement?.querySelector(
+    `.bf-combobox[data-select-id="${selectId}"]`,
+  );
+  if (activeWrapper && !activeWrapper.classList.contains("custom-select-container")) {
+    select.__bfAccessibleCombobox?.destroy();
   }
-  let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
-  const options = Array.from(select.options);
-  const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: "", value: "" };
-  let triggerText = selectedOption.text.trim();
-  if (triggerText.startsWith("Tháng ")) {
-    let coreText = triggerText.substring(6).trim();
-    const monthMap = { "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5", "sáu": "6", "bảy": "7", "tám": "8", "chín": "9", "mười": "10", "mười một": "11", "mười hai": "12" };
-    if (monthMap[coreText.toLowerCase()]) coreText = monthMap[coreText.toLowerCase()];
-    triggerText = "Th" + coreText;
-  }
-  const isVersionSelect = select.classList.contains("page-version-select") || select.classList.contains("version-select") || select.classList.contains("phienban-select") || select.classList.contains("modal-version-select") || select.classList.contains("version-droplist");
-  const keepDropdownInline = select.dataset.dropdownInline === "true";
-  if (!wrapper) {
+  if (!select.__bfAccessibleCombobox) {
+    const staleWrapper = select.parentElement?.querySelector(
+      `.custom-select-container[data-target="${selectId}"]:not(.bf-combobox)`,
+    );
+    staleWrapper?.remove();
     document.querySelectorAll(`body > .custom-select-options[data-parent="${selectId}"]`).forEach((stale) => stale.remove());
-    wrapper = document.createElement("div");
-    wrapper.className = "custom-select-container";
-    if (select.closest("table")) wrapper.classList.add("table-select");
-    if (isVersionSelect) wrapper.classList.add("version-select-container");
-    if (select.classList.contains("page-version-select")) wrapper.classList.add("page-version-select");
-    wrapper.setAttribute("data-target", selectId);
-    setRuntimeStyle(wrapper, "position", "relative");
-    select.parentNode.insertBefore(wrapper, select.nextSibling);
-    const trigger = document.createElement("div");
-    trigger.className = "custom-select-trigger";
-    const triggerLabel = document.createElement("span");
-    triggerLabel.textContent = triggerText;
-    trigger.appendChild(triggerLabel);
-    if (!isVersionSelect) {
-      const arrow = document.createElement("div");
-      arrow.className = "custom-select-trigger-arrow";
-      const icon = document.createElement("i");
-      icon.dataset.lucide = "chevron-down";
-      icon.className = "bf-s-58050124fc";
-      arrow.appendChild(icon);
-      trigger.appendChild(arrow);
-    }
-    const optionsList = document.createElement("ul");
-    optionsList.className = "custom-select-options";
-    if (isVersionSelect) optionsList.classList.add("version-select-options");
-    optionsList.dataset.parent = selectId;
-    setRuntimeStyle(optionsList, "display", "none");
-    setRuntimeStyle(optionsList, "backgroundColor", "var(--bg-card)");
-    setRuntimeStyle(optionsList, "border", "1px solid var(--border-color)");
-    setRuntimeStyle(optionsList, "borderRadius", isVersionSelect ? "4px" : "var(--radius-md)");
-    setRuntimeStyle(optionsList, "boxShadow", "var(--shadow-lg)");
-    setRuntimeStyle(optionsList, "zIndex", "999999");
-    setRuntimeStyle(optionsList, "listStyle", "none");
-    setRuntimeStyle(optionsList, "padding", "6px 0");
-    setRuntimeStyle(optionsList, "margin", "0");
-    setRuntimeStyle(optionsList, "maxHeight", "220px");
-    setRuntimeStyle(optionsList, "overflowY", "auto");
-    renderCustomSelectOptions(optionsList, options, isVersionSelect);
-    bindCustomSelectOptions(optionsList);
-    wrapper.append(trigger, optionsList);
-    if (select.disabled) {
-      wrapper.classList.add("disabled");
-    }
-    trigger.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (select.disabled || wrapper.classList.contains("disabled")) return;
-      const wasOpen = wrapper.classList.contains("open");
-      const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector(".custom-select-options");
-      document.dispatchEvent(new Event("click"));
-      if (!wasOpen && optionsList) {
-        wrapper.classList.add("open");
-        setRuntimeStyle(optionsList, "display", "block");
-        if (keepDropdownInline) {
-          if (optionsList.parentElement !== wrapper) wrapper.appendChild(optionsList);
-          return;
-        }
-        document.body.appendChild(optionsList);
-        const rect = trigger.getBoundingClientRect();
-        const scrollX = window.scrollX || window.pageXOffset;
-        const scrollY = window.scrollY || window.pageYOffset;
-        setRuntimeStyle(optionsList, "position", "absolute");
-        setRuntimeStyle(optionsList, "minWidth", rect.width + "px");
-        setRuntimeStyle(optionsList, "left", rect.left + scrollX + "px");
-        const dropdownHeight = optionsList.offsetHeight || 200;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
-          wrapper.classList.add("drop-up");
-          setRuntimeStyle(optionsList, "top", rect.top + scrollY - dropdownHeight - 4 + "px");
-        } else {
-          wrapper.classList.remove("drop-up");
-        setRuntimeStyle(optionsList, "top", rect.bottom + scrollY + 4 + "px");
-        }
-      }
-    });
-    if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons({ root: wrapper });
-    }
-  } else {
-    const existingTrigger = wrapper.querySelector(".custom-select-trigger");
-    if (!existingTrigger) {
-      wrapper.remove();
-      setRuntimeStyle(select, "display", "");
-      return initCustomSelect(selectId);
-    }
-    if (isVersionSelect && !wrapper.classList.contains("version-select-container")) wrapper.classList.add("version-select-container");
-    if (select.classList.contains("page-version-select") && !wrapper.classList.contains("page-version-select")) wrapper.classList.add("page-version-select");
-    wrapper.classList.toggle("disabled", !!select.disabled);
-    const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector(".custom-select-options");
-    if (optionsList) {
-      renderCustomSelectOptions(optionsList, options, isVersionSelect);
-      bindCustomSelectOptions(optionsList);
-    }
-    const activeSelectedOption = select.options[select.selectedIndex] || select.options[0] || { text: "", value: "" };
-    let activeTriggerText = activeSelectedOption.text.trim();
-    if (activeTriggerText.startsWith("Tháng ")) {
-      let coreText = activeTriggerText.substring(6).trim();
-      const monthMap = { "một": "1", "hai": "2", "ba": "3", "bốn": "4", "năm": "5", "sáu": "6", "bảy": "7", "tám": "8", "chín": "9", "mười": "10", "mười một": "11", "mười hai": "12" };
-      if (monthMap[coreText.toLowerCase()]) coreText = monthMap[coreText.toLowerCase()];
-      activeTriggerText = "Th" + coreText;
-    }
-    const triggerSpan = wrapper.querySelector(".custom-select-trigger span");
-    if (triggerSpan && triggerSpan.textContent !== activeTriggerText) {
-      triggerSpan.textContent = activeTriggerText;
-    }
   }
-  const activeOptionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector(".custom-select-options");
-  if (activeOptionsList) bindCustomSelectOptions(activeOptionsList);
+  const isVersionSelect = select.classList.contains("page-version-select")
+    || select.classList.contains("version-select")
+    || select.classList.contains("phienban-select")
+    || select.classList.contains("modal-version-select")
+    || select.classList.contains("version-droplist");
+  return initAccessibleCombobox(select, {
+    compatibilityMode: "custom-select",
+    formatSelectedLabel: compactMonthLabel,
+    includeEmptyOption: true,
+    placeholder: "Chọn dữ liệu",
+    portal: select.dataset.dropdownInline !== "true",
+    searchable: false,
+    showToggle: !isVersionSelect,
+  });
 }
+
 export function syncCustomSelectDisabled(selectEl) {
   if (!selectEl || !selectEl.id) return;
-  const wrapper = selectEl.closest(".custom-select-container") || selectEl.parentNode && selectEl.parentNode.querySelector(`.custom-select-container[data-target="${selectEl.id}"]`);
-  if (!wrapper) return;
-  wrapper.classList.toggle("disabled", !!selectEl.disabled);
-  if (selectEl.disabled && wrapper.classList.contains("open")) {
-    wrapper.classList.remove("open");
-    const optionsList = document.body.querySelector(`.custom-select-options[data-parent="${selectEl.id}"]`) || wrapper.querySelector(".custom-select-options");
-    if (optionsList) {
-      setRuntimeStyle(optionsList, "display", "none");
-      wrapper.appendChild(optionsList);
-    }
-  }
+  selectEl.__bfAccessibleCombobox?.refresh();
 }

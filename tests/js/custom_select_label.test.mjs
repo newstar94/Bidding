@@ -74,7 +74,19 @@ test("custom select inside a label stays open and allows choosing an option", as
       initCustomSelect("version-select");
     });
 
-    await page.locator('.custom-select-container[data-target="lot-select"] .custom-select-trigger').click();
+    const lotTrigger = page.locator('.custom-select-container[data-target="lot-select"] .custom-select-trigger');
+    const pointerTarget = await lotTrigger.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return {
+        hitClass: hit?.className || "",
+        hitTag: hit?.tagName || "",
+        pointerEvents: getComputedStyle(element).pointerEvents,
+        rect: [rect.left, rect.top, rect.width, rect.height],
+      };
+    });
+    assert.equal(pointerTarget.hitTag, "INPUT", JSON.stringify(pointerTarget));
+    await lotTrigger.click();
     const openState = await page.locator('.custom-select-options[data-parent="lot-select"]').evaluate((element) => ({
       display: getComputedStyle(element).display,
       wrapperOpen: document.querySelector('.custom-select-container[data-target="lot-select"]')?.classList.contains("open"),

@@ -3,10 +3,11 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 test("package detail version selector uses the shared styled dropdown", async () => {
-  const [template, coordinator, helper, components, index] = await Promise.all([
+  const [template, coordinator, helper, combobox, components, index] = await Promise.all([
     readFile(new URL("../../views/tabs/tab_goithau_detail.html", import.meta.url), "utf8"),
     readFile(new URL("../../frontend/packages/detail/PackageDetailCoordinator.js", import.meta.url), "utf8"),
     readFile(new URL("../../frontend/shared/view_helpers.js", import.meta.url), "utf8"),
+    readFile(new URL("../../frontend/shared/accessibleCombobox.js", import.meta.url), "utf8"),
     readFile(new URL("../../views/css/components.css", import.meta.url), "utf8"),
     readFile(new URL("../../views/index.html", import.meta.url), "utf8"),
   ]);
@@ -26,7 +27,11 @@ test("package detail version selector uses the shared styled dropdown", async ()
   );
   assert.match(
     helper,
-    /if \(isVersionSelect\) optionsList\.classList\.add\("version-select-options"\)/u,
+    /showToggle:\s*!isVersionSelect/u,
+  );
+  assert.match(
+    combobox,
+    /wrapper\.classList\.contains\("version-select-container"\)[\s\S]*list\.classList\.add\("version-select-options"\)/u,
   );
   assert.match(
     components,

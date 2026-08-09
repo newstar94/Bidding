@@ -38,7 +38,7 @@ export function classForRuntimeDeclarations(value) {
   return classForDeclaration("css-text", value);
 }
 
-export function setRuntimeStyle(element, property, value) {
+function applyRuntimeStyle(element, property, value) {
   if (!(element instanceof Element)) return value;
   const normalized = normalizeProperty(property);
   const key = normalized === "css-text" ? "css-text" : normalized;
@@ -58,6 +58,17 @@ export function setRuntimeStyle(element, property, value) {
     applied.delete(key);
   }
   return value;
+}
+
+export function setRuntimeStyle(element, property, value) {
+  return applyRuntimeStyle(element, property, value);
+}
+
+export function setRuntimeStyles(element, declarations = {}) {
+  for (const [property, value] of Object.entries(declarations)) {
+    applyRuntimeStyle(element, property, value);
+  }
+  return declarations;
 }
 
 export function getRuntimeStyle(element, property) {

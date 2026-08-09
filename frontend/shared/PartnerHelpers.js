@@ -1,6 +1,6 @@
 import { trustedHTML } from "./trustedTypes.js";
-import { setRuntimeStyle } from "./runtimeStyles.js";
 import { apiFetch } from "./apiClient.js";
+import { initAccessibleCombobox } from "./accessibleCombobox.js";
 
 function addressCacheRoot() {
   return typeof window !== "undefined" ? window : globalThis;
@@ -43,19 +43,7 @@ function renderWardOptions(wards) {
 }
 function syncCustomSelectDisplay(select) {
   if (!select) return;
-  const wrapper = select.parentNode?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
-  const input = wrapper?.querySelector(".custom-select-search");
-  if (input) {
-    const selectedOpt = select.options[select.selectedIndex];
-    input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-  }
-  const optionsList = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`) || wrapper?.querySelector(".custom-select-options");
-  if (optionsList) {
-    optionsList.querySelectorAll("li").forEach((li) => {
-      li.className = li.getAttribute("data-value") === select.value ? "selected" : "";
-      setRuntimeStyle(li, "display", "");
-    });
-  }
+  select.__bfAccessibleCombobox?.refresh();
 }
 async function ensureVietnamProvinces() {
   const root = addressCacheRoot();
@@ -303,210 +291,29 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   makeSearchableSelect(xaSelect, "Tìm kiếm Xã/Phường...");
 }
 export function makeSearchableSelect(select, placeholder) {
-  if (!select) return;
-  select.setAttribute("data-no-custom", "true");
-  const genericContainer = select.parentNode.querySelector(`.custom-select-container[data-target="${select.id}"]`);
-  if (genericContainer) genericContainer.remove();
-  document.querySelectorAll(`body > .custom-select-options[data-parent="${select.id}"]`).forEach((stale) => stale.remove());
-  let wrapper = select.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
-  if (wrapper) {
-    refreshCustomOptions(select, wrapper);
-    return;
+  if (!select?.id) return null;
+  const activeWrapper = select.parentNode?.querySelector(
+    `.bf-combobox[data-select-id="${select.id}"]`,
+  );
+  if (activeWrapper && !activeWrapper.classList.contains("custom-select-wrapper")) {
+    select.__bfAccessibleCombobox?.destroy();
   }
-  wrapper = document.createElement("div");
-  wrapper.className = "custom-select-wrapper";
-  wrapper.setAttribute("data-select-id", select.id);
-  setRuntimeStyle(select, "display", "none");
-  select.parentNode.insertBefore(wrapper, select.nextSibling);
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "custom-select-search";
-  input.placeholder = placeholder;
-  input.autocomplete = "off";
-  input.disabled = select.disabled;
-  const arrow = document.createElement("div");
-  arrow.className = "custom-select-arrow";
-  arrow.innerHTML = trustedHTML(`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down bf-s-bd877e16c3"><path d="m6 9 6 6 6-6"/></svg>`);
-  const optionsList = document.createElement("ul");
-  optionsList.className = "custom-select-options";
-  optionsList.setAttribute("data-parent", select.id);
-  wrapper.appendChild(input);
-  wrapper.appendChild(arrow);
-  wrapper.appendChild(optionsList);
-  refreshCustomOptions(select, wrapper);
-  const toggleDropdown = (show) => {
-    if (input.disabled) return;
-    const wasOpen = wrapper.classList.contains("open");
-    let nextOpen = wasOpen;
-    if (show === void 0) {
-      nextOpen = !wasOpen;
-    } else {
-      nextOpen = show;
-    }
-    if (nextOpen === wasOpen) return;
-    if (nextOpen) {
-      document.dispatchEvent(new Event("click"));
-      wrapper.classList.add("open");
-      document.body.appendChild(optionsList);
-      setRuntimeStyle(optionsList, "display", "block");
-      setRuntimeStyle(optionsList, "zIndex", "999999");
-      const rect = input.getBoundingClientRect();
-      const scrollX = window.scrollX || window.pageXOffset;
-      const scrollY = window.scrollY || window.pageYOffset;
-      setRuntimeStyle(optionsList, "position", "absolute");
-      setRuntimeStyle(optionsList, "minWidth", rect.width + "px");
-      setRuntimeStyle(optionsList, "left", rect.left + scrollX + "px");
-      const dropdownHeight = optionsList.offsetHeight || 200;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
-        wrapper.classList.add("drop-up");
-        setRuntimeStyle(optionsList, "top", rect.top + scrollY - dropdownHeight - 4 + "px");
-      } else {
-        wrapper.classList.remove("drop-up");
-        setRuntimeStyle(optionsList, "top", rect.bottom + scrollY + 4 + "px");
-      }
-      const selectedItem = optionsList.querySelector(".selected");
-      if (selectedItem) {
-        selectedItem.scrollIntoView({ block: "nearest" });
-      }
-    } else {
-      wrapper.classList.remove("open");
-      setRuntimeStyle(optionsList, "display", "none");
-      wrapper.appendChild(optionsList);
-    }
-  };
-  input.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleDropdown(true);
-  });
-  input.addEventListener("focus", () => {
-    toggleDropdown(true);
-    input.select();
-  });
-  arrow.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleDropdown();
-  });
-  input.addEventListener("input", () => {
-    const query = input.value.toLowerCase().trim();
-    const items = optionsList.querySelectorAll("li:not(.custom-select-no-results)");
-    let hasResults = false;
-    items.forEach((item) => {
-      const val = item.getAttribute("data-value");
-      const opt = Array.from(select.options).find((o) => o.value === val);
-      const searchAttr = opt ? opt.getAttribute("data-search") || "" : "";
-      const text = (item.textContent + " " + searchAttr).toLowerCase();
-      if (text.includes(query)) {
-        setRuntimeStyle(item, "display", "");
-        hasResults = true;
-      } else {
-        setRuntimeStyle(item, "display", "none");
-      }
-    });
-    let noResultsMsg = optionsList.querySelector(".custom-select-no-results");
-    if (!hasResults) {
-      if (!noResultsMsg) {
-        noResultsMsg = document.createElement("li");
-        noResultsMsg.className = "custom-select-no-results";
-        noResultsMsg.textContent = "Không tìm thấy kết quả";
-        optionsList.appendChild(noResultsMsg);
-      }
-    } else if (noResultsMsg) {
-      noResultsMsg.remove();
-    }
-  });
-  document.addEventListener("click", (e) => {
-    if (!wrapper.contains(e.target) && !optionsList.contains(e.target)) {
-      toggleDropdown(false);
-      const selectedOpt = select.options[select.selectedIndex];
-      input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-      optionsList.querySelectorAll("li").forEach((item) => setRuntimeStyle(item, "display", ""));
-      const noResultsMsg = optionsList.querySelector(".custom-select-no-results");
-      if (noResultsMsg) noResultsMsg.remove();
-    }
-  });
-  document.addEventListener("scroll", (e) => {
-    if (e.target && e.target.classList && e.target.classList.contains("custom-select-options")) return;
-    if (wrapper.classList.contains("open")) {
-      toggleDropdown(false);
-      const selectedOpt = select.options[select.selectedIndex];
-      input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-      optionsList.querySelectorAll("li").forEach((item) => setRuntimeStyle(item, "display", ""));
-    }
-  }, { capture: true, passive: true });
-  select.addEventListener("change", () => {
-    const selectedOpt = select.options[select.selectedIndex];
-    input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-    optionsList.querySelectorAll("li").forEach((li) => {
-      if (li.getAttribute("data-value") === select.value) {
-        li.className = "selected";
-      } else {
-        li.className = "";
-      }
-    });
-  });
-  const parentForm = select.closest("form");
-  if (parentForm) {
-    parentForm.addEventListener("reset", () => {
-      setTimeout(() => {
-        const selectedOpt = select.options[select.selectedIndex];
-        input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-        optionsList.querySelectorAll("li").forEach((li) => {
-          if (li.getAttribute("data-value") === (select.value || "")) {
-            li.className = "selected";
-          } else {
-            li.className = "";
-          }
-        });
-      }, 0);
-    });
+  if (!select.__bfAccessibleCombobox) {
+    select.parentNode
+      ?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]:not(.bf-combobox)`)
+      ?.remove();
+    select.parentNode
+      ?.querySelector(`.custom-select-container[data-target="${select.id}"]:not(.bf-combobox)`)
+      ?.remove();
+    document.querySelectorAll(`body > .custom-select-options[data-parent="${select.id}"]`).forEach((stale) => stale.remove());
   }
-  const observer = new MutationObserver(() => {
-    refreshCustomOptions(select, wrapper);
+  return initAccessibleCombobox(select, {
+    compatibilityMode: "searchable-select",
+    includeEmptyOption: true,
+    noResultsText: "Không tìm thấy kết quả",
+    placeholder,
+    portal: true,
+    searchable: true,
+    showToggle: true,
   });
-  observer.observe(select, { childList: true, attributes: true, attributeFilter: ["disabled"] });
-}
-function searchableSelectSignature(select) {
-  return JSON.stringify({
-    disabled: Boolean(select.disabled),
-    options: Array.from(select.options).map((option) => [
-      String(option.value ?? ""),
-      String(option.text ?? ""),
-      String(option.getAttribute("data-search") || ""),
-      Boolean(option.selected)
-    ])
-  });
-}
-function refreshCustomOptions(select, wrapper) {
-  const input = wrapper.querySelector(".custom-select-search");
-  const optionsList = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`) || wrapper.querySelector(".custom-select-options");
-  if (!input || !optionsList) return false;
-  input.disabled = select.disabled;
-  const signature = searchableSelectSignature(select);
-  if (wrapper.dataset.optionsSignature === signature) return false;
-  optionsList.innerHTML = trustedHTML("");
-  const options = Array.from(select.options);
-  options.forEach((opt) => {
-    const li = document.createElement("li");
-    li.textContent = opt.text;
-    li.setAttribute("data-value", opt.value);
-    if (opt.selected) {
-      li.className = "selected";
-      input.value = opt.value ? opt.text : "";
-    }
-    li.addEventListener("click", (e) => {
-      e.stopPropagation();
-      select.value = opt.value;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      optionsList.querySelectorAll("li").forEach((item) => item.classList.remove("selected"));
-      li.classList.add("selected");
-      input.value = opt.value ? opt.text : "";
-      wrapper.classList.remove("open");
-      setRuntimeStyle(optionsList, "display", "none");
-      wrapper.appendChild(optionsList);
-    });
-    optionsList.appendChild(li);
-  });
-  wrapper.dataset.optionsSignature = signature;
-  return true;
 }
