@@ -7,6 +7,9 @@ import {
 import {
   reconcileEvaluationLotScopeControls,
 } from "../../frontend/packages/bidEvaluationActions.js";
+import {
+  finalizeEvaluationLotBatch,
+} from "../../frontend/packages/lotEvaluationScope.js";
 
 
 test("lot scope controls commit state before a deferred coalesced rerender", () => {
@@ -71,4 +74,39 @@ test("save reconciles the visible lot selection when a deferred render left stal
 
   assert.equal(scope.mode, "selected");
   assert.deepEqual(scope.selectedLotIds, ["lot-1"]);
+});
+
+
+test("lot finalize sends a stable idempotency key bound to expected package version", async () => {
+  const calls = [];
+  const fetcher = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({ success: true, packageRowVersion: 8 }),
+    };
+  };
+  const command = {
+    packageId: "package-1",
+    batchId: "batch-1",
+    outcomes: { "lot-1": "AWARDED" },
+    packageAward: {
+      expectedVersion: 7,
+      decisionNumber: "QD-01",
+      decisionDate: "2026-08-09",
+      metadata: {},
+      lotResults: [{ lotId: "lot-1", winnerId: "bidder-1", awardPrice: 10 }],
+    },
+    fetcher,
+  };
+
+  await finalizeEvaluationLotBatch(command);
+  await finalizeEvaluationLotBatch(command);
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].options.headers["Idempotency-Key"], "lot-finalize:v7");
+  assert.equal(
+    calls[1].options.headers["Idempotency-Key"],
+    calls[0].options.headers["Idempotency-Key"],
+  );
 });

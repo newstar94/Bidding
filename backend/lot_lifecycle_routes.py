@@ -1,5 +1,11 @@
 """HTTP boundary for lot-scoped procurement lifecycle commands."""
 
+from hashlib import sha256
+import json
+import re
+import secrets
+import time
+
 from starlette.responses import JSONResponse
 
 from backend.lot_lifecycle_service import (
@@ -21,9 +27,107 @@ from backend.shared.helpers import (
     log_audit,
     verify_session,
 )
+from backend.shared.idempotency import acquire_idempotency_lock
 from backend.sync.api import broadcast_websocket_event
 from backend.shared.logging_utils import log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
+
+
+_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+
+
+class LotFinalizeIdempotencyConflict(RuntimeError):
+    """One finalize key was reused for a different semantic command."""
+
+
+def lot_finalize_request_digest(payload) -> str:
+    """Hash the canonical finalize body independently of JSON key ordering."""
+
+    canonical = json.dumps(
+        payload if isinstance(payload, dict) else {},
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return sha256(canonical).hexdigest()
+
+
+def _lot_finalize_operation(organization_id, package_id, batch_id) -> str:
+    scope = json.dumps(
+        [str(organization_id), str(package_id), str(batch_id)],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "lot_batch_finalize:" + sha256(scope).hexdigest()
+
+
+def _lot_finalize_idempotency_replay(
+    cursor,
+    *,
+    actor_user_id,
+    operation,
+    idempotency_key,
+    request_digest,
+):
+    acquire_idempotency_lock(
+        cursor,
+        "lot_batch_finalize",
+        actor_user_id,
+        operation,
+        idempotency_key,
+    )
+    row = cursor.execute(
+        """SELECT response_json FROM api_idempotency
+           WHERE actor_user_id = ? AND operation = ? AND idempotency_key = ?""",
+        (actor_user_id, operation, idempotency_key),
+    ).fetchone()
+    if not row:
+        return None
+    stored = json.loads(row[0] or "{}")
+    if not isinstance(stored, dict):
+        raise RuntimeError("Stored lot-finalize idempotency result is invalid.")
+    stored_digest = str(stored.pop("_requestDigest", ""))
+    if (
+        not stored_digest
+        or not secrets.compare_digest(stored_digest, str(request_digest))
+    ):
+        raise LotFinalizeIdempotencyConflict(
+            "Idempotency-Key đã được dùng cho dữ liệu phê duyệt khác."
+        )
+    if stored.get("success") is not True:
+        raise RuntimeError("Stored lot-finalize idempotency result is invalid.")
+    return stored
+
+
+def _store_lot_finalize_idempotency(
+    cursor,
+    *,
+    actor_user_id,
+    operation,
+    idempotency_key,
+    request_digest,
+    payload,
+):
+    stored = {**payload, "_requestDigest": str(request_digest)}
+    cursor.execute(
+        """INSERT INTO api_idempotency (
+               actor_user_id, operation, idempotency_key,
+               response_json, created_at
+           ) VALUES (?, ?, ?, ?, ?)""",
+        (
+            actor_user_id,
+            operation,
+            idempotency_key,
+            json.dumps(
+                stored,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            int(time.time()),
+        ),
+    )
 
 
 async def get_lot_lifecycle_api(request):
@@ -184,6 +288,17 @@ async def finalize_lot_batch_api(request):
         data, json_error = await read_json_object(request)
         if json_error:
             return json_error
+        idempotency_key = str(
+            request.headers.get("Idempotency-Key") or ""
+        ).strip()
+        if not _IDEMPOTENCY_KEY_RE.fullmatch(idempotency_key):
+            return JSONResponse(
+                {
+                    "error": "Thiếu Idempotency-Key hợp lệ.",
+                    "code": "INVALID_IDEMPOTENCY_KEY",
+                },
+                status_code=400,
+            )
         outcomes = data.get("outcomes")
         if not isinstance(outcomes, dict) or not outcomes:
             return JSONResponse(
@@ -196,6 +311,22 @@ async def finalize_lot_batch_api(request):
                 {
                     "error": "Thiếu dữ liệu kết quả chính thức của gói thầu.",
                     "code": "INVALID_PACKAGE_AWARD",
+                },
+                status_code=400,
+            )
+        canonical_outcomes = {
+            str(key): str(value) for key, value in outcomes.items()
+        }
+        try:
+            request_digest = lot_finalize_request_digest({
+                "outcomes": canonical_outcomes,
+                "packageAward": package_award,
+            })
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {
+                    "error": "Dữ liệu phê duyệt không thể chuẩn hóa.",
+                    "code": "LOT_BATCH_FINALIZE_INVALID",
                 },
                 status_code=400,
             )
@@ -217,12 +348,27 @@ async def finalize_lot_batch_api(request):
         if not write_decision.allowed:
             connection.rollback()
             return JSONResponse({"error": write_decision.reason}, status_code=403)
+        operation = _lot_finalize_operation(
+            organization_id,
+            package_id,
+            batch_id,
+        )
+        replay = _lot_finalize_idempotency_replay(
+            cursor,
+            actor_user_id=session.user_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            request_digest=request_digest,
+        )
+        if replay is not None:
+            connection.commit()
+            return JSONResponse(replay)
         lifecycle = finalize_batch_award(
             cursor,
             organization_id,
             package_id,
             batch_id,
-            {str(key): str(value) for key, value in outcomes.items()},
+            canonical_outcomes,
             package_award,
             actor_user_id=session.user_id,
         )
@@ -235,15 +381,31 @@ async def finalize_lot_batch_api(request):
             request=request,
             metadata={
                 "packageId": package_id,
-                "outcomes": outcomes,
+                "outcomes": canonical_outcomes,
                 "packageResult": lifecycle.get("packageResult"),
             },
             cursor=cursor,
             required=True,
         )
+        response_payload = {"success": True, **lifecycle}
+        _store_lot_finalize_idempotency(
+            cursor,
+            actor_user_id=session.user_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            request_digest=request_digest,
+            payload=response_payload,
+        )
         connection.commit()
         broadcast_websocket_event(organization_id, {"event": "db_changed"})
-        return JSONResponse({"success": True, **lifecycle})
+        return JSONResponse(response_payload)
+    except LotFinalizeIdempotencyConflict as exc:
+        if connection:
+            connection.rollback()
+        return JSONResponse(
+            {"error": str(exc), "code": "IDEMPOTENCY_KEY_REUSED"},
+            status_code=409,
+        )
     except LotLifecyclePolicyError as exc:
         if connection:
             connection.rollback()

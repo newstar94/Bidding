@@ -443,11 +443,22 @@ export async function finalizeEvaluationLotBatch({
   ) {
     throw new Error("Không thể xác nhận kết quả chính thức của đợt phần lô.");
   }
+  const expectedVersion = packageAward.expectedVersion;
+  if (
+    !Number.isInteger(expectedVersion)
+    || expectedVersion < 1
+  ) {
+    throw new Error("Phiên bản gói thầu không hợp lệ.");
+  }
+  const idempotencyKey = `lot-finalize:v${expectedVersion}`;
   const response = await fetcher(
     `/api/packages/${encodeURIComponent(packageId)}/lot-batches/${encodeURIComponent(normalizedBatchId)}/finalize`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify({
         outcomes: outcomes || {},
         packageAward,
