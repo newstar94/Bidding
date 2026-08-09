@@ -45,6 +45,19 @@ def test_full_ci_installs_chromium_before_running_browser_tests():
         assert workflow.index(install) < workflow.index(gate)
 
 
+def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
+    package = (PROJECT_ROOT / "package.json").read_text(encoding="utf-8")
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert package.count("--cov-fail-under=45") == 1
+    assert "--cov-fail-under=45" in workflow
+    assert '"test:js:coverage": "node scripts/run_js_coverage.mjs"' in package
+    assert "JS_JUNIT_PATH: javascript-junit.xml" in workflow
+    assert "npm run test:js:coverage" in workflow
+
+
 def test_full_ci_keeps_runtime_and_integration_databases_isolated():
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"

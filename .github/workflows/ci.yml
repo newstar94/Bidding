@@ -87,14 +87,12 @@ jobs:
           --cov-report=term
           --cov-report=xml:coverage.xml
           --cov-report=json:coverage.json
-          --cov-fail-under=28
+          --cov-fail-under=45
           && python scripts/check_critical_coverage.py coverage.json
       - name: JavaScript tests
-        run: >-
-          node --test --test-concurrency=1 --test-timeout=60000
-          --test-reporter=junit
-          --test-reporter-destination=javascript-junit.xml
-          tests/js/*.test.mjs
+        env:
+          JS_JUNIT_PATH: javascript-junit.xml
+        run: npm run test:js:coverage
       - name: Secure build
         run: |
           set -o pipefail

@@ -10,21 +10,21 @@ import sys
 # Owner: platform/security. Values are the reviewed 2026-07-30 baseline and
 # may only move upward as route-level integration coverage expands.
 THRESHOLDS = {
-    "backend/shared/access_policy.py": (40.0, 30.0),
-    "backend/sync/service.py": (30.0, 20.0),
-    "backend/sync/restore_service.py": (55.0, 40.0),
-    "backend/shared/audit_monitor.py": (8.0, 0.0),
-    "backend/sync/websocket.py": (12.0, 2.0),
-    "backend/lot_lifecycle_routes.py": (5.0, 0.0),
-    "backend/documents/document_worker.py": (20.0, 5.0),
-    "backend/documents/package_document_routes.py": (10.0, 1.0),
-    "backend/shared/media_helper.py": (35.0, 20.0),
-    "backend/sync/conflict_projection.py": (95.0, 90.0),
-    "backend/sync/delta_paging.py": (40.0, 25.0),
-    "backend/versioning/aggregate_snapshot.py": (70.0, 55.0),
-    "backend/versioning/command.py": (80.0, 60.0),
-    "backend/versioning/repository.py": (90.0, 55.0),
-    "backend/versioning/service.py": (60.0, 40.0),
+    "backend/shared/access_policy.py": (55.0, 40.0),
+    "backend/sync/service.py": (35.0, 25.0),
+    "backend/sync/restore_service.py": (65.0, 45.0),
+    "backend/shared/audit_monitor.py": (10.0, 0.0),
+    "backend/sync/websocket.py": (30.0, 20.0),
+    "backend/lot_lifecycle_routes.py": (8.0, 0.0),
+    "backend/documents/document_worker.py": (40.0, 15.0),
+    "backend/documents/package_document_routes.py": (12.0, 3.0),
+    "backend/shared/media_helper.py": (45.0, 30.0),
+    "backend/sync/conflict_projection.py": (100.0, 100.0),
+    "backend/sync/delta_paging.py": (45.0, 30.0),
+    "backend/versioning/aggregate_snapshot.py": (80.0, 60.0),
+    "backend/versioning/command.py": (85.0, 70.0),
+    "backend/versioning/repository.py": (92.0, 65.0),
+    "backend/versioning/service.py": (65.0, 45.0),
 }
 
 

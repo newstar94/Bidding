@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=28 && python scripts/check_critical_coverage.py coverage.json && npm run test:js",
+    "test": "python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=45 && python scripts/check_critical_coverage.py coverage.json && npm run test:js:coverage",
     "test:js": "node --test --test-concurrency=1 --test-timeout=60000 tests/js/*.test.mjs",
+    "test:js:coverage": "node scripts/run_js_coverage.mjs",
     "generate:schema-runtime": "python scripts/generate_schema_runtime.py",
     "check:schema-runtime": "python scripts/generate_schema_runtime.py --check",
     "generate:bootstrap-assets": "python scripts/generate_bootstrap_asset_urls.py",
