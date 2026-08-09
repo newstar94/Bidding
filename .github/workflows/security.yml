@@ -11,6 +11,18 @@ permissions:
   contents: read
 
 jobs:
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Audit full and production npm lock
+        run: npm run audit:npm
+
   secret-scan:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

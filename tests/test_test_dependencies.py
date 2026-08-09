@@ -1,3 +1,4 @@
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -72,6 +73,22 @@ def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
     assert '"test:js:coverage": "node scripts/run_js_coverage.mjs"' in package
     assert "JS_JUNIT_PATH: javascript-junit.xml" in workflow
     assert "npm run test:js:coverage" in workflow
+
+
+def test_full_npm_lock_audit_is_enforced_in_ci_and_scheduled_security():
+    package = json.loads((PROJECT_ROOT / "package.json").read_text(encoding="utf-8"))
+    ci_workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    security_workflow = (
+        PROJECT_ROOT / ".github" / "workflows" / "security.yml"
+    ).read_text(encoding="utf-8")
+
+    assert package["scripts"]["audit:npm"] == "npm audit && npm audit --omit=dev"
+    assert "npm run audit:npm" in package["scripts"]["audit:dependencies"]
+    assert "npm run audit:dependencies" in ci_workflow
+    assert 'cron: "41 3 * * 1"' in security_workflow
+    assert "npm run audit:npm" in security_workflow
 
 
 def test_full_ci_keeps_runtime_and_integration_databases_isolated():
