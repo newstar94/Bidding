@@ -46,6 +46,8 @@
     "profile:startup-long-tasks": "node scripts/profile_startup_long_tasks.mjs",
     "symbolicate:client": "node scripts/symbolicate_client_error.mjs",
     "benchmark:entity-indexes": "node scripts/benchmark_entity_indexes.mjs",
+    "benchmark:persistence": "node scripts/benchmark_explicit_persistence.mjs",
+    "benchmark:n-plus-one": "python scripts/benchmark_n_plus_one.py",
     "benchmark:excel": "node scripts/benchmark_excel_parsing.mjs",
     "benchmark:tables": "node scripts/profile_table_virtualization.mjs",
     "benchmark:obfuscation": "node scripts/benchmark_obfuscation.mjs",

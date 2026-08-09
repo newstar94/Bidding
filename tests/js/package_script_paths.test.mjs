@@ -30,3 +30,30 @@ test("package scripts reference existing local Node entrypoints", async () => {
 
   assert.deepEqual(missing, []);
 });
+
+test("manual performance benchmarks are owned and discoverable", async () => {
+  const packageJson = JSON.parse(
+    await readFile(resolve(projectRoot, "package.json"), "utf8"),
+  );
+  assert.equal(
+    packageJson.scripts["benchmark:persistence"],
+    "node scripts/benchmark_explicit_persistence.mjs",
+  );
+  assert.equal(
+    packageJson.scripts["benchmark:n-plus-one"],
+    "python scripts/benchmark_n_plus_one.py",
+  );
+
+  const documentation = await readFile(
+    resolve(projectRoot, "docs/performance/BENCHMARKS.md"),
+    "utf8",
+  );
+  for (const contract of [
+    "npm run benchmark:persistence",
+    "npm run benchmark:n-plus-one",
+    "rollback",
+    "không phải CI pass/fail gate",
+  ]) {
+    assert.match(documentation, new RegExp(contract, "u"));
+  }
+});
