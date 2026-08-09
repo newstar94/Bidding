@@ -89,7 +89,8 @@ SCHEMA_DINH_NGHIA = {
             "remember_me": "INTEGER NOT NULL DEFAULT 0 CHECK(remember_me IN (0,1))",
             "device_info": "TEXT",
             "privileged_reauth_at": "INTEGER",
-            "active_role": "TEXT CHECK(active_role IS NULL OR active_role IN ('super_admin', 'manager', 'employee'))"
+            "active_role": "TEXT CHECK(active_role IS NULL OR active_role IN ('super_admin', 'manager', 'employee'))",
+            "active_role_organization_id": "TEXT CHECK((active_role IS NULL AND active_role_organization_id IS NULL) OR (active_role IS NOT NULL AND active_role_organization_id IS NOT NULL AND TRIM(active_role_organization_id) != ''))"
         },
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"

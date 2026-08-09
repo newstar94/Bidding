@@ -6,6 +6,7 @@ from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext
 from backend.auth.session_utils import get_active_org
 from backend.auth.auth_helper import verify_session
+from backend.auth.roles import resolve_workspace_active_role
 from backend.shared.access_policy import has_module_permission
 from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.helpers import database
@@ -20,6 +21,28 @@ MODULES = {
     "investors": "chudautu",
     "experts": "chuyengia",
 }
+
+
+def effective_workspace_role(
+    session,
+    organization_id: str,
+    membership_role: str,
+    scope_type: str,
+) -> str:
+    """Resolve a selected role only inside the workspace that granted it."""
+
+    return resolve_workspace_active_role(
+        platform_role=getattr(session, "platform_role", str(session)),
+        membership_role=membership_role,
+        scope_type=scope_type,
+        organization_id=organization_id,
+        selected_role=getattr(session, "active_role", None),
+        selected_organization_id=getattr(
+            session,
+            "active_role_organization_id",
+            None,
+        ),
+    )
 
 
 def build_request_context(request) -> AiRequestContext:
@@ -42,8 +65,13 @@ def build_request_context(request) -> AiRequestContext:
             ).fetchone()
             organization_name = str(row[0] if row else organization_id)
         platform_role = str(getattr(session_or_error, "platform_role", str(session_or_error)) or "")
-        active_role = str(getattr(session_or_error, "active_role", "") or platform_role).strip().lower()
-        manager_context = membership_role == "manager" or active_role in {"manager", "super_admin"}
+        active_role = effective_workspace_role(
+            session_or_error,
+            str(organization_id),
+            membership_role,
+            scope_type,
+        )
+        manager_context = active_role in {"manager", "super_admin"}
         permissions = {}
         for module in MODULES.values():
             if module == "assignments":

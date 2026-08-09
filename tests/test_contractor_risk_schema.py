@@ -11,7 +11,7 @@ from backend.sync.record_serializer import SyncRecordSerializer
 
 
 def test_contractor_risk_schema_is_current_and_timezone_aware():
-    assert DB_SCHEMA_VERSION == 42
+    assert DB_SCHEMA_VERSION >= 42
     assert "contractor_violation_cache" in SCHEMA_DINH_NGHIA
     assert "contractor_violation_checks" in SCHEMA_DINH_NGHIA
     sql = build_create_table_sql(

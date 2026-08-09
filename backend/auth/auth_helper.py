@@ -2,6 +2,7 @@ import hashlib
 import os
 import secrets
 import time
+import urllib.parse
 from backend.db.db_helper import database
 from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
 from backend.auth.roles import effective_access_roles, normalize_platform_role
@@ -123,12 +124,14 @@ class SessionRole(str):
         *,
         platform_role=None,
         active_role=None,
+        active_role_organization_id=None,
     ):
         instance = super().__new__(cls, role)
         instance.user_id = user_id
         instance.session_id = session_id
         instance.platform_role = platform_role or role
         instance.active_role = active_role
+        instance.active_role_organization_id = active_role_organization_id
         return instance
 
 
@@ -190,6 +193,17 @@ def verify_session(request, required_role=None):
 
     platform_role = normalize_platform_role(user['vai_tro'])
     requested_active_role = str(user.get('active_role') or '').strip().lower()
+    selected_role_organization_id = str(
+        user.get('active_role_organization_id') or ''
+    ).strip()
+    encoded_request_organization = str(
+        getattr(request, "headers", {}).get("X-Active-Org") or ""
+    ).strip()
+    request_organization_id = (
+        urllib.parse.unquote(encoded_request_organization)
+        if encoded_request_organization
+        else ""
+    )
     allowed_active_roles = (
         {'super_admin', 'manager', 'employee'}
         if platform_role == 'super_admin'
@@ -197,7 +211,11 @@ def verify_session(request, required_role=None):
     )
     active_role = (
         requested_active_role
-        if requested_active_role in allowed_active_roles
+        if (
+            requested_active_role in allowed_active_roles
+            and selected_role_organization_id
+            and selected_role_organization_id == request_organization_id
+        )
         else None
     )
     effective_role = active_role or platform_role
@@ -224,4 +242,5 @@ def verify_session(request, required_role=None):
         user.get('session_id'),
         platform_role=platform_role,
         active_role=active_role,
+        active_role_organization_id=selected_role_organization_id or None,
     )

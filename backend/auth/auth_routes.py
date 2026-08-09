@@ -29,6 +29,7 @@ from backend.auth.auth_helper import (
     verify_super_admin_controls,
     verify_recent_reauthentication,
 )
+from backend.auth.roles import resolve_workspace_active_role
 from backend.auth.session_store import (
     create_session,
     load_session_user,
@@ -235,6 +236,7 @@ def _commit_successful_login(
             active_org_hint,
             user.get("ho_ten"),
         )
+        access_payload = _attach_effective_session_role(user, access_payload)
         log_audit(
             "auth.login_success",
             actor_user_id=user["id"],
@@ -467,7 +469,7 @@ async def login_api(request):
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
             **access_payload,
-            "active_role": user.get('active_role'),
+            "active_role": access_payload.get('active_role'),
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
@@ -517,9 +519,31 @@ def _get_access_for_session(user, request):
             user.get('ho_ten'),
         )
         conn.commit()
-        return access
+        return _attach_effective_session_role(user, access)
     finally:
         conn.close()
+
+
+def _attach_effective_session_role(user, access_payload):
+    access = dict(access_payload or {})
+    active_organization_id = str(access.get("active_org_id") or "").strip()
+    selected_workspace = next(
+        (
+            workspace
+            for workspace in access.get("organizations", [])
+            if str(workspace.get("id") or "").strip() == active_organization_id
+        ),
+        {},
+    )
+    access["active_role"] = resolve_workspace_active_role(
+        platform_role=user.get("vai_tro"),
+        membership_role=access.get("membership_role"),
+        scope_type=selected_workspace.get("scope_type", "organization"),
+        organization_id=active_organization_id,
+        selected_role=user.get("active_role"),
+        selected_organization_id=user.get("active_role_organization_id"),
+    )
+    return access
 
 
 def _get_username_setup_state(user):
@@ -563,7 +587,7 @@ def build_session_bootstrap(request):
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
             **access_payload,
-            "active_role": user.get('active_role'),
+            "active_role": access_payload.get('active_role'),
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
@@ -675,6 +699,7 @@ def _set_active_role_sync(request, active_role):
             session.session_id,
             session.user_id,
             active_role,
+            organization_id,
         ):
             conn.rollback()
             return JSONResponse(

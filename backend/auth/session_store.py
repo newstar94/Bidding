@@ -89,7 +89,8 @@ def load_session_user(database, token):
                    sessions.last_seen_at, sessions.idle_expires_at,
                    sessions.absolute_expires_at, sessions.revoked_at,
                    sessions.remember_me, sessions.device_info,
-                   sessions.privileged_reauth_at, sessions.active_role
+                   sessions.privileged_reauth_at, sessions.active_role,
+                   sessions.active_role_organization_id
             FROM auth_sessions AS sessions
             JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
             WHERE sessions.token_hash = ?
@@ -192,13 +193,24 @@ def set_session_reauthentication(cursor, token, reauthenticated_at):
     return cursor.rowcount == 1
 
 
-def set_session_active_role(cursor, session_id, user_id, active_role):
+def set_session_active_role(
+    cursor,
+    session_id,
+    user_id,
+    active_role,
+    active_role_organization_id,
+):
     """Persist the authorization mode selected for one active session."""
 
     cursor.execute(
         """UPDATE auth_sessions
-           SET active_role = ?
+           SET active_role = ?, active_role_organization_id = ?
            WHERE id = ? AND user_id = ? AND revoked_at IS NULL""",
-        (active_role, session_id, user_id),
+        (
+            active_role,
+            active_role_organization_id,
+            session_id,
+            user_id,
+        ),
     )
     return cursor.rowcount == 1

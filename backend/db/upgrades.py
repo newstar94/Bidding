@@ -1663,6 +1663,44 @@ def _upgrade_to_v42_recheck_failed_violation_snapshots(cursor, _context):
     )
 
 
+def _upgrade_to_v43_bind_session_active_role_to_workspace(cursor, _context):
+    """Bind a selected role to the workspace that authorized the selection."""
+
+    cursor.execute(
+        """ALTER TABLE auth_sessions
+           ADD COLUMN IF NOT EXISTS active_role_organization_id TEXT"""
+    )
+    # Existing role selections have no trustworthy workspace provenance. Clear
+    # them so the next request safely re-derives authority from live membership.
+    cursor.execute(
+        """UPDATE auth_sessions
+              SET active_role = NULL,
+                  active_role_organization_id = NULL
+            WHERE active_role IS NOT NULL
+              AND NULLIF(TRIM(active_role_organization_id), '') IS NULL"""
+    )
+    cursor.execute(
+        """UPDATE auth_sessions
+              SET active_role_organization_id = NULL
+            WHERE active_role IS NULL"""
+    )
+    cursor.execute(
+        """ALTER TABLE auth_sessions
+           DROP CONSTRAINT IF EXISTS auth_sessions_active_role_workspace_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE auth_sessions
+           ADD CONSTRAINT auth_sessions_active_role_workspace_check
+           CHECK(
+               (active_role IS NULL AND active_role_organization_id IS NULL)
+               OR (
+                   active_role IS NOT NULL
+                   AND NULLIF(TRIM(active_role_organization_id), '') IS NOT NULL
+               )
+           )"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -1864,6 +1902,11 @@ UPGRADES = (
         42,
         "recheck_failed_violation_snapshots",
         _upgrade_to_v42_recheck_failed_violation_snapshots,
+    ),
+    DatabaseUpgrade(
+        43,
+        "bind_session_active_role_to_workspace",
+        _upgrade_to_v43_bind_session_active_role_to_workspace,
     ),
 )
 

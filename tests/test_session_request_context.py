@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from backend.auth import auth_helper
 
 
-def _session_user(*, revoked=False):
+def _session_user(*, revoked=False, active_role=None, active_role_organization_id=None):
     now = int(time.time())
     return {
         "id": "user-1",
@@ -14,15 +14,17 @@ def _session_user(*, revoked=False):
         "idle_expires_at": now + 3_600,
         "absolute_expires_at": now + 7_200,
         "revoked_at": now if revoked else None,
-        "active_role": None,
+        "active_role": active_role,
+        "active_role_organization_id": active_role_organization_id,
     }
 
 
-def _request():
+def _request(*, organization_id=None):
     return SimpleNamespace(
         cookies={"session_token": "token-1"},
         state=SimpleNamespace(),
         method="GET",
+        headers={"X-Active-Org": organization_id} if organization_id else {},
     )
 
 
@@ -68,3 +70,39 @@ def test_process_session_and_organization_caches_are_removed():
 
     assert not hasattr(session_utils, "_org_cache_cleanup")
     assert not hasattr(session_utils, "_org_cache_invalidate_by_user_id")
+
+
+def test_verify_session_ignores_role_bound_to_another_workspace(monkeypatch):
+    monkeypatch.setattr(
+        auth_helper,
+        "load_session_user",
+        lambda *_args: _session_user(
+            active_role="manager",
+            active_role_organization_id="org-a",
+        ),
+    )
+
+    valid, role = auth_helper.verify_session(_request(organization_id="org-b"))
+
+    assert valid is True
+    assert str(role) == "user"
+    assert role.active_role is None
+    assert role.active_role_organization_id == "org-a"
+
+
+def test_verify_session_accepts_role_bound_to_requested_workspace(monkeypatch):
+    monkeypatch.setattr(
+        auth_helper,
+        "load_session_user",
+        lambda *_args: _session_user(
+            active_role="manager",
+            active_role_organization_id="org-a",
+        ),
+    )
+
+    valid, role = auth_helper.verify_session(_request(organization_id="org-a"))
+
+    assert valid is True
+    assert str(role) == "manager"
+    assert role.active_role == "manager"
+    assert role.active_role_organization_id == "org-a"
