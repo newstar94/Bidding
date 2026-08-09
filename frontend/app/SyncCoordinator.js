@@ -24,6 +24,7 @@ export function getSyncActivitySnapshot(controller) {
       && !controller?._syncImmediateTimer
       && !controller?._autoSyncQueued
       && !controller?._deferImmediateSync
+      && Number(controller?.model?._workspaceMutations?.size || 0) === 0
       && outboxStatus.state !== "pending",
     phase: String(controller?._syncUxState?.phase || "idle"),
     hasPendingMutations,

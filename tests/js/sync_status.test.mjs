@@ -75,4 +75,12 @@ test("sync activity is settled only after queued work and outbox durability fini
       getMutationOutboxStatus: () => ({ state: "pending" }),
     },
   }).settled, false);
+
+  assert.equal(getSyncActivitySnapshot({
+    ...controller,
+    model: {
+      ...controller.model,
+      _workspaceMutations: new Set([{}]),
+    },
+  }).settled, false);
 });
