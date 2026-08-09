@@ -11,6 +11,7 @@ import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import { getAppController } from "../app/controllerRef.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
+import { selectVersionRepresentatives, versionRootId } from "../shared/versionResolver.js";
 export async function renderKeHoachTable() {
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
@@ -64,8 +65,10 @@ export async function renderKeHoachTable() {
   } else {
     const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (kh) => {
-      const root = kh.rootId || kh.id;
-      const allVersions = kh.allVersions || this.model.state.kehoach.filter((k) => (k.rootId || k.id) === root).sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
+      const root = versionRootId(kh);
+      const allVersions = selectVersionRepresentatives(
+        kh.allVersions || this.model.state.kehoach.filter((plan) => versionRootId(plan) === root),
+      );
       if (!this.model.state.selectedPlanVersion) {
         this.model.state.selectedPlanVersion = {};
       }
@@ -170,21 +173,9 @@ export async function renderPlanVersionDetails(versionId) {
       setRuntimeStyle(editBtn, "display", "none");
     }
   }
-  const rootId = kh.rootId || kh.id;
-  const allRelated = this.model.state.kehoach.filter((k) => (k.rootId || k.id) === rootId);
-  const verMap = {};
-  allRelated.forEach((k) => {
-    const ver = k.phienBan || "00";
-    if (!verMap[ver] || k.isLatest == 1) {
-      verMap[ver] = k;
-    }
-  });
-  const allVersions = Object.values(verMap);
-  allVersions.sort((a, b) => {
-    const valA = parseInt(a.phienBan) || 0;
-    const valB = parseInt(b.phienBan) || 0;
-    return valA - valB;
-  });
+  const rootId = versionRootId(kh);
+  const allRelated = this.model.state.kehoach.filter((plan) => versionRootId(plan) === rootId);
+  const allVersions = selectVersionRepresentatives(allRelated).reverse();
   const cdt = this.model.state.chudautu.find((c) => c.id === kh.chuDauTuId);
   let linkedPackages = this.model.getLatestPackagesForPlan(kh.id);
   if (this.model.useServerSidePagination && linkedPackages.length === 0) {

@@ -8,6 +8,7 @@ import { renderTableEmpty, renderTableError, renderTableLoading } from "../share
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+import { sortVersionsDescending, versionFamily } from "../shared/versionResolver.js";
 export async function renderChuDauTuTable() {
   const tableBody = document.getElementById("chudautu-table").querySelector("tbody");
   const searchVal = document.getElementById("search-chudautu").value.toLowerCase();
@@ -112,9 +113,7 @@ export function showChuDauTuDetails(id) {
 export function renderChuDauTuVersionDetails(versionId) {
   const cdt = this.model.state.chudautu.find((c) => c.id === versionId);
   if (!cdt) return;
-  const root = cdt.rootId || cdt.id;
-  const allRelated = (this.model.state.chudautu || []).filter((c) => c.rootId === root || c.id === root);
-  allRelated.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
+  const allRelated = sortVersionsDescending(versionFamily(this.model.state.chudautu, cdt));
   const isLatest = allRelated[0] && allRelated[0].id === versionId;
   const editBtn = document.getElementById("btn-edit-chudautu-fullpage");
   if (editBtn) {

@@ -3,6 +3,7 @@ import { consumeModalReturnState } from "./modalReturnState.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
+import { resolveLatestVersion } from "../shared/versionResolver.js";
 import {
   createCompactSidebarMediaQuery,
   createSidebarMediaQuery,
@@ -194,8 +195,7 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
     }
     if (targetId) {
       const cdt = (this.model.state.chudautu || []).find((c) => c.id === targetId);
-      const root = cdt ? cdt.rootId || cdt.id : targetId;
-      const latest = (this.model.state.chudautu || []).find((c) => (c.rootId === root || c.id === root) && c.isLatest == 1);
+      const latest = resolveLatestVersion(this.model.state.chudautu, cdt || targetId);
       action = latest ? latest.id : targetId;
     }
   }
@@ -215,8 +215,7 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
     }
     if (targetId) {
       const nt = (this.model.state.nhathau || []).find((n) => n.id === targetId);
-      const root = nt ? nt.rootId || nt.id : targetId;
-      const latest = (this.model.state.nhathau || []).find((n) => (n.rootId === root || n.id === root) && n.isLatest == 1);
+      const latest = resolveLatestVersion(this.model.state.nhathau, nt || targetId);
       action = latest ? latest.id : targetId;
     }
   }

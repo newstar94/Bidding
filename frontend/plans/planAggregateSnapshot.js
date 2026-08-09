@@ -1,21 +1,11 @@
 import { generateRecordId } from "../shared/idUtils.js";
 import { snapshotPackageAggregate } from "../packages/packageAggregateSnapshot.js";
-
-function versionNumber(record) {
-  return Number.parseInt(record?.phienBan || "0", 10) || 0;
-}
+import { selectLatestVersionsByRoot } from "../shared/versionResolver.js";
 
 function latestPackagesInPlan(packages, planId) {
-  const latestByRoot = new Map();
-  (packages || []).filter((pkg) => String(pkg.keHoachId) === String(planId)).forEach((pkg) => {
-    const root = String(pkg.rootId || pkg.id);
-    const current = latestByRoot.get(root);
-    if (!current || versionNumber(pkg) > versionNumber(current)
-      || (versionNumber(pkg) === versionNumber(current) && pkg.isLatest == 1 && current.isLatest != 1)) {
-      latestByRoot.set(root, pkg);
-    }
-  });
-  return [...latestByRoot.values()];
+  return selectLatestVersionsByRoot(
+    (packages || []).filter((pkg) => String(pkg.keHoachId) === String(planId)),
+  );
 }
 
 export function snapshotPlanAggregate(state, {

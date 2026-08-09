@@ -1,3 +1,8 @@
+import {
+  packageVersionResolutionOptions,
+  resolveLatestVersion,
+} from "../../shared/versionResolver.js";
+
 export function resolvePackageDetailState({ tabs, currentTab, currentPackageId, packageId }) {
   const tabExists = (tabs || []).some((tab) => tab.id === currentTab);
   const samePackage = String(currentPackageId || "") === String(packageId || "");
@@ -5,11 +10,6 @@ export function resolvePackageDetailState({ tabs, currentTab, currentPackageId, 
     packageId,
     activeTab: tabExists && samePackage ? currentTab : (tabs?.[0]?.id || "preparation")
   };
-}
-
-function packageVersionNumber(pkg) {
-  const value = Number.parseInt(pkg?.phienBan, 10);
-  return Number.isFinite(value) ? value : 0;
 }
 
 export function resolveLatestPackage(model, packageRef) {
@@ -24,15 +24,11 @@ export function resolveLatestPackage(model, packageRef) {
     : null;
   if (modelLatest) return modelLatest;
 
-  const rootId = String(requested?.rootId || requested?.id || requestedId);
-  const candidates = packages.filter((pkg) => (
-    String(pkg?.rootId || pkg?.id || "") === rootId
-  ));
-  if (!candidates.length) return requested || null;
-  return [...candidates].sort((left, right) => {
-    const latestDelta = Number(right?.isLatest == 1) - Number(left?.isLatest == 1);
-    return latestDelta || packageVersionNumber(right) - packageVersionNumber(left);
-  })[0];
+  return resolveLatestVersion(
+    packages,
+    requested || requestedId,
+    packageVersionResolutionOptions(model?.state?.kehoach),
+  ) || requested || null;
 }
 
 export function selectPackageDetailTab(target, tabId, packageRef, model = null) {

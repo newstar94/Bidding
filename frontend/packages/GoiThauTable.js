@@ -16,6 +16,11 @@ import {
   formatAssigneeSummary,
 } from "../shared/MultiAssigneeSelect.js";
 import { parseLotListForDisplay } from "./lotJsonParser.js";
+import {
+  packageVersionResolutionOptions,
+  selectVersionRepresentatives,
+  versionRootId,
+} from "../shared/versionResolver.js";
 
 function bindLotWinnerActions(tableBody, view) {
   tableBody?.querySelectorAll('[data-bf-action="show-lot-winners"]').forEach((action) => {
@@ -96,25 +101,12 @@ export async function renderGoiThauTable() {
     const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (gt) => {
       const assigneeLabels = assigneeLabelsForTarget(this.model, gt.id, "goithau");
-      const root = gt.rootId || gt.id;
-      const allRelated = this.model.state.goithau.filter((g) => (g.rootId || g.id) === root);
-      const verMap = {};
-      allRelated.forEach((g) => {
-        const ver = g.phienBan || "00";
-        if (!verMap[ver]) {
-          verMap[ver] = g;
-        } else {
-          const p1 = (this.model.state.kehoach || []).find((k) => String(k.id) === String(g.keHoachId));
-          const p2 = (this.model.state.kehoach || []).find((k) => String(k.id) === String(verMap[ver].keHoachId));
-          const v1 = p1 ? parseInt(p1.phienBan) || 0 : 0;
-          const v2 = p2 ? parseInt(p2.phienBan) || 0 : 0;
-          if (v1 > v2) {
-            verMap[ver] = g;
-          }
-        }
-      });
-      const uniqueVersions = Object.values(verMap);
-      uniqueVersions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
+      const root = versionRootId(gt);
+      const allRelated = this.model.state.goithau.filter((pkg) => versionRootId(pkg) === root);
+      const uniqueVersions = selectVersionRepresentatives(
+        allRelated,
+        packageVersionResolutionOptions(this.model.state.kehoach),
+      );
       if (!this.model.state.selectedPackageVersion) {
         this.model.state.selectedPackageVersion = {};
       }

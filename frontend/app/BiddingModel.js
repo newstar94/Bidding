@@ -26,6 +26,12 @@ import {
   workspaceDatabaseName
 } from "./workspaceState.js";
 import { clearWorkspaceRenderCaches } from "../shared/workspaceRenderCache.js";
+import {
+  packageVersionResolutionOptions,
+  selectLatestVersion,
+  selectLatestVersionsByRoot,
+  versionRootId,
+} from "../shared/versionResolver.js";
 const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
   Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
 );
@@ -1276,146 +1282,33 @@ export class BiddingModel {
   }
   // --- Format Utilities imported from ../shared/formatters.js ---
   getLatestPlans() {
-    const latestMap = {};
-    (this.state.kehoach || []).forEach((kh) => {
-      const root = kh.rootId || kh.id;
-      const verNum = parseInt(kh.phienBan) || 0;
-      const isLatest = kh.isLatest == 1;
-      if (!latestMap[root]) {
-        latestMap[root] = kh;
-      } else {
-        const existingVer = parseInt(latestMap[root].phienBan) || 0;
-        const existingLatest = latestMap[root].isLatest == 1;
-        if (isLatest && !existingLatest) {
-          latestMap[root] = kh;
-        } else if (verNum > existingVer) {
-          latestMap[root] = kh;
-        }
-      }
-    });
-    return Object.values(latestMap);
+    return selectLatestVersionsByRoot(this.state.kehoach);
   }
   getLatestPackages() {
-    const rootMap = {};
-    (this.state.goithau || []).forEach((gt) => {
-      const root = gt.rootId || gt.id;
-      if (!rootMap[root]) rootMap[root] = [];
-      rootMap[root].push(gt);
-    });
-    const result = [];
-    Object.values(rootMap).forEach((candidates) => {
-      const maxVer = Math.max(...candidates.map((g) => parseInt(g.phienBan) || 0));
-      const topVersionCandidates = candidates.filter((g) => (parseInt(g.phienBan) || 0) === maxVer);
-      let best = topVersionCandidates[0];
-      if (topVersionCandidates.length > 1) {
-        let maxPlanVer = -1;
-        topVersionCandidates.forEach((c) => {
-          const plan = (this.state.kehoach || []).find((k) => k.id === c.keHoachId);
-          if (plan) {
-            const ver = parseInt(plan.phienBan) || 0;
-            if (ver > maxPlanVer) {
-              maxPlanVer = ver;
-              best = c;
-            }
-          }
-        });
-      }
-      if (best) result.push(best);
-    });
-    return result;
+    return selectLatestVersionsByRoot(
+      this.state.goithau,
+      packageVersionResolutionOptions(this.state.kehoach),
+    );
   }
   getLatestContracts() {
-    const latestMap = {};
-    (this.state.hopdong || []).forEach((contract) => {
-      const root = contract.rootId || contract.id;
-      const current = latestMap[root];
-      if (!current ||
-        (contract.isLatest == 1 && current.isLatest != 1) ||
-        (contract.isLatest == current.isLatest && (parseInt(contract.phienBan) || 0) > (parseInt(current.phienBan) || 0))) {
-        latestMap[root] = contract;
-      }
-    });
-    return Object.values(latestMap);
+    return selectLatestVersionsByRoot(this.state.hopdong);
   }
   getLatestPackagesForPlan(planId) {
     if (!planId) return [];
-    const rootMap = {};
-    (this.state.goithau || []).filter((gt) => String(gt.keHoachId) === String(planId)).forEach((gt) => {
-      const root = gt.rootId || gt.id;
-      if (!rootMap[root]) rootMap[root] = [];
-      rootMap[root].push(gt);
-    });
-    return Object.values(rootMap).map((candidates) => {
-      return candidates.reduce((best, current) => {
-        const currentVer = parseInt(current.phienBan || 0);
-        const bestVer = parseInt(best.phienBan || 0);
-        if (currentVer !== bestVer) return currentVer > bestVer ? current : best;
-        return current.isLatest == 1 && best.isLatest != 1 ? current : best;
-      }, candidates[0]);
-    }).filter(Boolean);
+    return selectLatestVersionsByRoot(
+      (this.state.goithau || []).filter(
+        (pkg) => String(pkg.keHoachId) === String(planId),
+      ),
+    );
   }
   getLatestChuDauTu() {
-    const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
-    const latestMap = {};
-    chudautuList.forEach((c) => {
-      const root = c.rootId || c.id;
-      const verNum = parseInt(c.phienBan) || 0;
-      const isLatest = c.isLatest == 1;
-      if (!latestMap[root]) {
-        latestMap[root] = c;
-      } else {
-        const existingVer = parseInt(latestMap[root].phienBan) || 0;
-        const existingLatest = latestMap[root].isLatest == 1;
-        if (isLatest && !existingLatest) {
-          latestMap[root] = c;
-        } else if (verNum > existingVer) {
-          latestMap[root] = c;
-        }
-      }
-    });
-    return Object.values(latestMap);
+    return selectLatestVersionsByRoot(this.state.chudautu);
   }
   getLatestNhaThau() {
-    const nhathauList = Array.isArray(this.state.nhathau) ? this.state.nhathau : [];
-    const latestMap = {};
-    nhathauList.forEach((n) => {
-      const root = n.rootId || n.id;
-      const verNum = parseInt(n.phienBan) || 0;
-      const isLatest = n.isLatest == 1;
-      if (!latestMap[root]) {
-        latestMap[root] = n;
-      } else {
-        const existingVer = parseInt(latestMap[root].phienBan) || 0;
-        const existingLatest = latestMap[root].isLatest == 1;
-        if (isLatest && !existingLatest) {
-          latestMap[root] = n;
-        } else if (verNum > existingVer) {
-          latestMap[root] = n;
-        }
-      }
-    });
-    return Object.values(latestMap);
+    return selectLatestVersionsByRoot(this.state.nhathau);
   }
   getLatestChuyenGia() {
-    const chuyengiaList = Array.isArray(this.state.chuyengia) ? this.state.chuyengia : [];
-    const latestMap = {};
-    chuyengiaList.forEach((c) => {
-      const root = c.rootId || c.id;
-      const verNum = parseInt(c.phienBan) || 0;
-      const isLatest = c.isLatest == 1;
-      if (!latestMap[root]) {
-        latestMap[root] = c;
-      } else {
-        const existingVer = parseInt(latestMap[root].phienBan) || 0;
-        const existingLatest = latestMap[root].isLatest == 1;
-        if (isLatest && !existingLatest) {
-          latestMap[root] = c;
-        } else if (verNum > existingVer) {
-          latestMap[root] = c;
-        }
-      }
-    });
-    return Object.values(latestMap);
+    return selectLatestVersionsByRoot(this.state.chuyengia);
   }
   getLatestHopDong() {
     const latestPkgs = this.getLatestPackages();
@@ -1450,65 +1343,36 @@ export class BiddingModel {
         return latestPkgs.some((g) => g.rootId === root || g.id === root);
       });
     });
-    const latestMap = {};
-    validContracts.forEach((h) => {
-      const root = h.rootId || h.id;
-      const verNum = parseInt(h.phienBan) || 0;
-      const isLatest = h.isLatest == 1;
-      if (!latestMap[root]) {
-        latestMap[root] = h;
-      } else {
-        const existingVer = parseInt(latestMap[root].phienBan) || 0;
-        const existingLatest = latestMap[root].isLatest == 1;
-        if (isLatest && !existingLatest) {
-          latestMap[root] = h;
-        } else if (verNum > existingVer) {
-          latestMap[root] = h;
-        }
-      }
-    });
-    return Object.values(latestMap);
+    return selectLatestVersionsByRoot(validContracts);
   }
   getLatestPlan(planId) {
     if (!planId) return null;
-    const plan = this.entityIndexes.byId("kehoach").get(String(planId));
-    if (!plan) return null;
-    const root = String(plan.rootId || plan.id);
-    const latest = (this.entityIndexes.byRootId("kehoach").get(root) || [])
-      .find((candidate) => candidate.isLatest == 1);
-    return latest || plan;
+    const planIndex = this.entityIndexes.byId("kehoach");
+    const rootIndex = this.entityIndexes.byRootId("kehoach");
+    const plan = planIndex.get(String(planId));
+    const family = rootIndex.get(plan ? versionRootId(plan) : String(planId)) || [];
+    if (!plan && family.length === 0) return null;
+    return selectLatestVersion(family) || plan;
   }
   getLatestPackage(packageId) {
     if (!packageId) return null;
-    const pkg = this.entityIndexes.byId("goithau").get(String(packageId));
-    if (!pkg) return null;
-    const root = String(pkg.rootId || pkg.id);
-    const all = this.entityIndexes.byRootId("goithau").get(root) || [];
-    if (all.length === 0) return pkg;
-    if (all.length === 1) return all[0];
-    const maxVer = Math.max(...all.map((g) => parseInt(g.phienBan) || 0));
-    const topVersionCandidates = all.filter((g) => (parseInt(g.phienBan) || 0) === maxVer);
-    if (topVersionCandidates.length === 1) return topVersionCandidates[0];
-    let best = topVersionCandidates[0];
-    let maxPlanVer = -1;
-    topVersionCandidates.forEach((c) => {
-      const plan = (this.state.kehoach || []).find((k) => k.id === c.keHoachId);
-      if (plan) {
-        const ver = parseInt(plan.phienBan) || 0;
-        if (ver > maxPlanVer) {
-          maxPlanVer = ver;
-          best = c;
-        }
-      }
-    });
-    return best;
+    const packageIndex = this.entityIndexes.byId("goithau");
+    const rootIndex = this.entityIndexes.byRootId("goithau");
+    const pkg = packageIndex.get(String(packageId));
+    const family = rootIndex.get(pkg ? versionRootId(pkg) : String(packageId)) || [];
+    if (!pkg && family.length === 0) return null;
+    return selectLatestVersion(
+      family,
+      packageVersionResolutionOptions(this.state.kehoach),
+    ) || pkg;
   }
   getLatestContract(contractId) {
     if (!contractId) return null;
-    const hd = (this.state.hopdong || []).find((h) => h.id === contractId);
-    if (!hd) return null;
-    const root = hd.rootId || hd.id;
-    const latest = (this.state.hopdong || []).find((h) => (h.rootId === root || h.id === root) && h.isLatest == 1);
-    return latest || hd;
+    const contractIndex = this.entityIndexes.byId("hopdong");
+    const rootIndex = this.entityIndexes.byRootId("hopdong");
+    const hd = contractIndex.get(String(contractId));
+    const family = rootIndex.get(hd ? versionRootId(hd) : String(contractId)) || [];
+    if (!hd && family.length === 0) return null;
+    return selectLatestVersion(family) || hd;
   }
 }

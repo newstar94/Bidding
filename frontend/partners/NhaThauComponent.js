@@ -9,20 +9,17 @@ import { renderTableEmpty, renderTableError, renderTableLoading } from "../share
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
+import {
+  resolveLatestVersion,
+  sortVersionsDescending,
+  versionFamily,
+} from "../shared/versionResolver.js";
 
 export function resolveLatestNhaThauVersionId(model, versionId) {
   const records = Array.isArray(model?.state?.nhathau) ? model.state.nhathau : [];
   const selected = records.find((record) => String(record.id) === String(versionId));
   if (!selected) return versionId;
-  const rootId = selected.rootId || selected.id;
-  const family = records.filter((record) => (record.rootId || record.id) === rootId);
-  const latest = family.find((record) => record.isLatest == 1)
-    || family.reduce((winner, record) => {
-      if (!winner) return record;
-      const winnerVersion = Number.parseInt(winner.phienBan || "0", 10) || 0;
-      const recordVersion = Number.parseInt(record.phienBan || "0", 10) || 0;
-      return recordVersion > winnerVersion ? record : winner;
-    }, null);
+  const latest = resolveLatestVersion(records, selected);
   return latest?.id || versionId;
 }
 
@@ -173,9 +170,7 @@ export function showNhaThauDetails(id, { skipDetailLoad = false } = {}) {
 export function renderNhaThauVersionDetails(versionId) {
   const nt = this.model.state.nhathau.find((n) => n.id === versionId);
   if (!nt) return;
-  const root = nt.rootId || nt.id;
-  const allRelated = (this.model.state.nhathau || []).filter((n) => n.rootId === root || n.id === root);
-  allRelated.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
+  const allRelated = sortVersionsDescending(versionFamily(this.model.state.nhathau, nt));
   const isLatest = allRelated[0] && allRelated[0].id === versionId;
   const editBtn = document.getElementById("btn-edit-nhathau-fullpage");
   if (editBtn) {

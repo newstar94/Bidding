@@ -22,6 +22,7 @@ import {
   normalizeAssigneeIds,
   selectedAssigneeIds,
 } from "../shared/MultiAssigneeSelect.js";
+import { sortVersionsDescending, versionFamily } from "../shared/versionResolver.js";
 export async function deleteHopDong(id) {
   const targetHd = await refreshRecordBeforeDelete(this, "hopdong", id);
   if (!targetHd) return;
@@ -172,9 +173,7 @@ export async function editHopDong(id) {
       }
       const cdt = this.model.state.chudautu.find((c) => c.id === selectedCdtId);
       if (!cdt) return;
-      const rootId = cdt.rootId || cdt.id;
-      const versions = this.model.state.chudautu.filter((c) => c.rootId === rootId || c.id === rootId);
-      versions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
+      const versions = sortVersionsDescending(versionFamily(this.model.state.chudautu, cdt));
       if (versionSelect && versionGroup) {
         versionSelect.disabled = false;
         versionSelect.innerHTML = trustedHTML(versions.map((v) => {
@@ -235,9 +234,7 @@ export async function editHopDong(id) {
       }
       const nt = this.model.state.nhathau.find((n) => n.id === selectedNtId);
       if (!nt) return;
-      const rootId = nt.rootId || nt.id;
-      const versions = this.model.state.nhathau.filter((n) => n.rootId === rootId || n.id === rootId);
-      versions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
+      const versions = sortVersionsDescending(versionFamily(this.model.state.nhathau, nt));
       if (versionSelect && versionGroup) {
         versionSelect.disabled = false;
         versionSelect.innerHTML = trustedHTML(versions.map((v) => {

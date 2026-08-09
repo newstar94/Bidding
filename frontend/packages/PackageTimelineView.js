@@ -7,6 +7,7 @@ import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
+import { sortVersionsDescending } from "../shared/versionResolver.js";
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
@@ -344,10 +345,9 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
 function renderVersionOptions(pkg) {
   const select = element("timeline-version-select");
   if (!select) return;
-  const versions = Array.isArray(pkg?.allVersions) && pkg.allVersions.length
+  const versions = sortVersionsDescending(Array.isArray(pkg?.allVersions) && pkg.allVersions.length
     ? [...pkg.allVersions]
-    : pkg ? [{ id: pkg.id, phienBan: pkg.phienBan || "00" }] : [];
-  versions.sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0));
+    : pkg ? [{ id: pkg.id, phienBan: pkg.phienBan || "00" }] : []);
   select.innerHTML = trustedHTML(versions.map((version) => (
     `<option value="${safeAttr(version.id)}">Phiên bản ${escapeHtml(getVersionLabel(version.phienBan))}</option>`
   )).join("") || `<option value="">--</option>`);
@@ -672,7 +672,7 @@ async function exportTimeline(view) {
 async function copyPreviousTimeline(view) {
   const state = timelineState(view);
   const pkg = state.package;
-  const versions = [...(pkg?.allVersions || [])].sort((a, b) => Number(b.phienBan || 0) - Number(a.phienBan || 0));
+  const versions = sortVersionsDescending(pkg?.allVersions || []);
   const currentIndex = versions.findIndex((version) => String(version.id) === String(pkg?.id));
   const previous = currentIndex >= 0 ? versions[currentIndex + 1] : null;
   if (!previous) {

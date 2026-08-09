@@ -1,6 +1,4 @@
-function versionNumber(record) {
-  return Number.parseInt(record?.phienBan || "0", 10) || 0;
-}
+import { versionFamily, versionNumber } from "./versionResolver.js";
 
 const NEW_RECORD_SERVER_FIELDS = [
   "rowVersion",
@@ -107,9 +105,7 @@ export function preserveRowVersion(record, current) {
 }
 
 export function getVersionFamily(records, target) {
-  if (!target) return [];
-  const rootId = target.rootId || target.id;
-  return (records || []).filter((record) => String(record.rootId || record.id) === String(rootId));
+  return versionFamily(records, target);
 }
 
 export function getNextVersion(records, target) {
