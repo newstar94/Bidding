@@ -56,7 +56,7 @@ test("qualified approval stages a detached package before persisting and syncing
 });
 
 
-test("direct-award dependencies explicitly persist the newly created contractor", async () => {
+test("award dependencies do not restage existing contractors", async () => {
   const persisted = [];
   const contractor = { id: "contractor-new", tenNhaThau: "Nhà thầu mới" };
   const bid = { id: "bid-new", goiThauId: "pkg-1", nhaThauId: contractor.id };
@@ -77,6 +77,35 @@ test("direct-award dependencies explicitly persist the newly created contractor"
   };
 
   await commitPackageAwardDependencies(controller, {
+    packageRecord: { id: "pkg-1" },
+  });
+
+  assert.deepEqual(persisted, [
+    { table: "thongtinmothau", changes: { upserts: [bid], deletions: [] } },
+  ]);
+});
+
+
+test("direct-award dependencies explicitly persist a newly created contractor", async () => {
+  const persisted = [];
+  const contractor = { id: "contractor-new", tenNhaThau: "Nhà thầu mới" };
+  const bid = { id: "bid-new", goiThauId: "pkg-1", nhaThauId: contractor.id };
+  const controller = {
+    model: {
+      state: {
+        goithau: [{ id: "pkg-1" }],
+        nhathau: [contractor],
+        thongtinmothau: [bid],
+      },
+      commitLocalMutation() {},
+      async persistChanges(table, changes) { persisted.push({ table, changes }); },
+      async flushMutationOutbox() {},
+    },
+    async autoSync() { return { ok: true }; },
+  };
+
+  await commitPackageAwardDependencies(controller, {
+    contractorRecords: [contractor],
     packageRecord: { id: "pkg-1" },
   });
 

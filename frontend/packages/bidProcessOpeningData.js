@@ -65,20 +65,27 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
   };
 }
 function mergeContractorLookupData(target, source = {}) {
-  if (!target || !source) return;
+  if (!target || !source) return false;
+  let changed = false;
+  const assign = (key, value) => {
+    if (target[key] === value) return;
+    target[key] = value;
+    changed = true;
+  };
   if (Object.prototype.hasOwnProperty.call(source, "maSoThue")) {
-    target.maSoThue = normalizeTaxCodeForStorage(source.maSoThue);
+    assign("maSoThue", normalizeTaxCodeForStorage(source.maSoThue));
   }
   if (source.tenNhaThau && (!target.tenNhaThau || String(target.tenNhaThau).startsWith("Thành viên đứng đầu"))) {
-    target.tenNhaThau = source.tenNhaThau;
+    assign("tenNhaThau", source.tenNhaThau);
   }
-  if (source.tenVietTat && !target.tenVietTat) target.tenVietTat = source.tenVietTat;
-  if (source.diaChi && !target.diaChi) target.diaChi = source.diaChi;
-  if (source.diaChiGoc && !target.diaChiGoc) target.diaChiGoc = source.diaChiGoc;
-  if (source.nguoiDaiDien && !target.nguoiDaiDien) target.nguoiDaiDien = normalizePersonName(source.nguoiDaiDien);
-  if (source.chucVuDaiDien && !target.chucVuDaiDien) target.chucVuDaiDien = source.chucVuDaiDien;
-  if (source.soDienThoai && !target.soDienThoai) target.soDienThoai = source.soDienThoai;
-  if (source.email && !target.email) target.email = source.email;
+  if (source.tenVietTat && !target.tenVietTat) assign("tenVietTat", source.tenVietTat);
+  if (source.diaChi && !target.diaChi) assign("diaChi", source.diaChi);
+  if (source.diaChiGoc && !target.diaChiGoc) assign("diaChiGoc", source.diaChiGoc);
+  if (source.nguoiDaiDien && !target.nguoiDaiDien) assign("nguoiDaiDien", normalizePersonName(source.nguoiDaiDien));
+  if (source.chucVuDaiDien && !target.chucVuDaiDien) assign("chucVuDaiDien", source.chucVuDaiDien);
+  if (source.soDienThoai && !target.soDienThoai) assign("soDienThoai", source.soDienThoai);
+  if (source.email && !target.email) assign("email", source.email);
+  return changed;
 }
 function ensureContractor({
   model,
@@ -114,8 +121,9 @@ function ensureContractor({
       }
     } else {
       const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id) || foundNt;
-      mergeContractorLookupData(dbNt, { ...row._leadMemberLookupData || {}, tenNhaThau });
-      changedContractors.push(dbNt);
+      if (mergeContractorLookupData(dbNt, { ...row._leadMemberLookupData || {}, tenNhaThau })) {
+        changedContractors.push(dbNt);
+      }
     }
     return foundNt;
   }
@@ -135,20 +143,20 @@ function ensureContractor({
   } else if (row._leadMemberName && !isJointVentureType(foundNt.loaiNhaThau)) {
     const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id);
     if (dbNt) {
-      dbNt.tenNhaThau = row._leadMemberName;
-      mergeContractorLookupData(dbNt, {
+      const nameChanged = dbNt.tenNhaThau !== row._leadMemberName;
+      if (nameChanged) dbNt.tenNhaThau = row._leadMemberName;
+      const lookupChanged = mergeContractorLookupData(dbNt, {
         ...row._leadMemberLookupData || {},
         tenNhaThau: row._leadMemberName
       });
-      changedContractors.push(dbNt);
+      if (nameChanged || lookupChanged) changedContractors.push(dbNt);
     }
   } else {
     const dbNt = model.state.nhathau.find((n) => n.id === foundNt.id) || foundNt;
-    mergeContractorLookupData(dbNt, {
+    if (mergeContractorLookupData(dbNt, {
       ...row._leadMemberLookupData || {},
       tenNhaThau: row._leadMemberName
-    });
-    changedContractors.push(dbNt);
+    })) changedContractors.push(dbNt);
   }
   (row._thanhVienLienDanh || []).forEach((member) => {
     const memberCode = member.maNhaThau || member.maSoThue;
@@ -166,8 +174,7 @@ function ensureContractor({
       latestNhaThauList.push(subNt);
     } else {
       const dbSubNt = model.state.nhathau.find((n) => n.id === subNt.id) || subNt;
-      mergeContractorLookupData(dbSubNt, member);
-      changedContractors.push(dbSubNt);
+      if (mergeContractorLookupData(dbSubNt, member)) changedContractors.push(dbSubNt);
     }
   });
   return foundNt;

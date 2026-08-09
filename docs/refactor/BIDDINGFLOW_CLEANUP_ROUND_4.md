@@ -2,10 +2,13 @@
 
 Ngày thực hiện: 2026-08-08  
 Nhánh: `main`  
-HEAD sau `git fetch origin`: `75361acc3b13978f62b3bc4476fb2b9a556f5355`  
-`origin/main`: `75361acc3b13978f62b3bc4476fb2b9a556f5355`
+Mốc audit/baseline: `75361acc3b13978f62b3bc4476fb2b9a556f5355`
+Implementation commit/HEAD sau revalidation 2026-08-09: `79443371b91dbc3156facfacb533d96c6bf6c321`
+`origin/main`: `79443371b91dbc3156facfacb533d96c6bf6c321`
 
 `git rebase origin/main` đã được gọi nhưng Git từ chối vì worktree đang có bốn deletion tài liệu từ người dùng. Vì HEAD và `origin/main` trùng SHA, không có commit upstream cần rebase; các deletion đó được giữ nguyên và không thuộc cleanup vòng 4.
+
+Lần revalidation 2026-08-09 đã chạy lại `git fetch origin main`; HEAD và `origin/main` tiếp tục trùng tuyệt đối (`0/0` ahead/behind), nên không có commit để rebase.
 
 ## Baseline
 
@@ -109,3 +112,15 @@ Long Task vẫn mang attribution `unknown/window` như vòng 3 nhưng ở dướ
 
 Không còn blocker đã biết trong phạm vi storage hydration recovery.  
 Có thể đóng giai đoạn cleanup nền tảng và chuyển sang lựa chọn feature backlog.
+
+## Revalidation 2026-08-09
+
+- Repro tối thiểu trên mốc audit `75361acc`: đỏ đúng lifecycle với `2 !== 3` IndexedDB reads; targeted retry bị loaded-key cache skip.
+- Regression tại implementation commit `79443371`: storage hydration 24/24; workspace data store + mutation staging 20/20.
+- `npm run check`: pass; Python 633/633, critical coverage 15 modules, JavaScript 522/522, quality/encoding/security/modules/debt, secure build 46 bundles, FK 104/104, production-package smoke 384 files và SBOM đều pass.
+- Debt giữ nguyên: frontend `59/421/842/541/6`; Python `BLE001=118`, `F401=0`, `F841=0`, `S110=0`, `S608=128`.
+- Performance trên fresh isolated uvicorn: cold p95 651 ms, warm p95 286 ms, longest task 0/0 ms; pass budget 800/325/100. Hai phép đo trên shared server cổng 8000 sống lâu có warm p95 336/339 ms và fail; fresh-server control pass xác định đây là nhiễu môi trường/server state, không có evidence của storage-path regression. Số before/after của implementation vẫn là 466/179/94 và 485/209/94 ms như phần Performance.
+- Full CI E2E chain trên cùng worktree: 11/11 pass trong 382,1 giây, gồm toàn bộ sáu E2E bắt buộc và cả bidder goods, JV, package pairwise do follow-up worktree có chạm package/evaluation. Multi-lot soak 10/10 và full JV soak 5/5.
+- `git diff --check`: pass; không còn instrumentation `[DEBUG-jv-race]` hay throwaway repro/worktree.
+
+Không phát hiện blocker mới trong phạm vi storage hydration recovery. Kết luận Definition of Done không thay đổi; không tuyên bố “hết lỗi”.

@@ -7,6 +7,8 @@ import { chromium } from "@playwright/test";
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configured.");
+const scenario = String(process.env.E2E_JV_SCENARIO || "full").trim().toLowerCase();
+const multiLotOnly = scenario === "multi-lot";
 
 const runId = `jv-e2e-${Date.now()}`;
 const organizationId = `__${runId}-org`;
@@ -86,6 +88,45 @@ async function waitForApp(page) {
   }, null, { timeout: 20_000 });
 }
 
+const workflowTabReadySelectors = {
+  opening: ["#btn-mothau-save"],
+  opening_tech: ["#btn-mothau-save"],
+  eval_tech: ["#danhgiahsdt-so-baocao", "#btn-continue-lot-evaluation"],
+  eval_fin: ["#danhgiahsdt-so-baocao", "#btn-continue-lot-evaluation"],
+  result: ["#award-so-bctd", ".award-result-card", ".evaluation-round-card"],
+};
+
+async function activateWorkflowTab(page, tabId, { activate = true } = {}) {
+  const tab = page.locator(`[data-workflow-tab="${tabId}"]`);
+  await tab.waitFor({ state: "visible", timeout: 20_000 });
+  if (activate && await tab.getAttribute("aria-selected") !== "true") await tab.click();
+  const readySelectors = workflowTabReadySelectors[tabId] || ["#detail-workflow-content-wrapper"];
+  try {
+    await page.waitForFunction(({ expectedTab, selectors }) => {
+      const tabButton = document.querySelector(`[data-workflow-tab="${expectedTab}"]`);
+      const root = document.getElementById("detail-workflow-content-wrapper");
+      return tabButton?.getAttribute("aria-selected") === "true"
+        && selectors.some((selector) => Boolean(root?.querySelector(selector)));
+    }, { expectedTab: tabId, selectors: readySelectors }, { timeout: 20_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(({ expectedTab, selectors }) => {
+      const root = document.getElementById("detail-workflow-content-wrapper");
+      return {
+        expectedTab,
+        selectors,
+        currentWorkflowTab: globalThis.app?.view?._currentWorkflowTab || "",
+        tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => ({
+          id: item.getAttribute("data-workflow-tab"),
+          ariaSelected: item.getAttribute("aria-selected"),
+          className: item.className,
+        })),
+        contentIds: [...(root?.querySelectorAll("[id]") || [])].slice(0, 40).map((item) => item.id),
+      };
+    }, { expectedTab: tabId, selectors: readySelectors });
+    throw new Error(`Workflow tab ${tabId} did not become ready: ${JSON.stringify(diagnostics)}; ${error.message}`);
+  }
+}
+
 async function openCreateModal(page, route, buttonSelector, modalSelector) {
   const response = await page.goto(`${baseURL}${route}`, { waitUntil: "domcontentloaded" });
   if (!response?.ok()) throw new Error(`${route} returned HTTP ${response?.status() || "unknown"}`);
@@ -107,7 +148,7 @@ async function loginAndSelectWorkspace(page) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 20_000 });
+  await page.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
   await waitForApp(page);
   await page.setExtraHTTPHeaders({ "X-Active-Org": encodeURIComponent(organizationId) });
   const activation = await page.evaluate(async (orgId) => {
@@ -162,9 +203,7 @@ async function openPackage(page, tabId, targetPackage = packageData) {
     throw new Error(`Package link missing: ${JSON.stringify(diagnostics)}; ${error.message}`);
   }
   await link.click();
-  const tab = page.locator(`[data-workflow-tab="${tabId}"]`);
-  await tab.waitFor({ state: "visible", timeout: 20_000 });
-  await tab.click();
+  await activateWorkflowTab(page, tabId);
 }
 
 async function fillOpeningRow(page, row, { type, contractor, price }) {
@@ -204,67 +243,55 @@ async function configureJointMembers(page, row) {
 }
 
 async function selectEvaluationLot(page, lotCode) {
-  await page.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    const container = controller?.view?.getActiveElement?.("danhgiahsdt-scope-container");
-    const options = controller?.view?.getActiveElement?.("danhgiahsdt-lot-options");
-    return controller?._evaluationLotScopeRenderQueued !== true
-      && Boolean(container?.querySelector(
+  const deadline = Date.now() + 10_000;
+  let state = null;
+  while (Date.now() < deadline) {
+    state = await page.evaluate(async (expectedCode) => {
+      const { getAppController } = await import("/frontend/app/controllerRef.js");
+      const controller = getAppController();
+      if (!controller || controller._evaluationLotScopeRenderQueued === true) {
+        return { settled: false, reason: "controller-rendering" };
+      }
+      const container = controller.view?.getActiveElement?.("danhgiahsdt-scope-container");
+      const options = controller.view?.getActiveElement?.("danhgiahsdt-lot-options");
+      const selected = container?.querySelector(
         'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-      ))
-      && Boolean(options?.querySelector("[data-evaluation-lot-id]"));
-  }, null, { timeout: 10_000 });
-  const result = await page.evaluate(async (expectedCode) => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    const getContainer = () => controller?.view?.getActiveElement?.("danhgiahsdt-scope-container");
-    const getOptions = () => controller?.view?.getActiveElement?.("danhgiahsdt-lot-options");
-    const selected = getContainer()?.querySelector(
-      'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-    );
-    if (!selected) return { error: "selected mode missing" };
-    if (!selected.checked) selected.click();
+      );
+      if (!selected || !options) return { settled: false, reason: "scope-controls-missing" };
+      if (!selected.checked) {
+        selected.click();
+        return { settled: false, reason: "selected-mode-requested" };
+      }
 
-    const identities = [...(getOptions()?.querySelectorAll("[data-evaluation-lot-id]") || [])]
-      .map((input) => ({
-        id: input.getAttribute("data-evaluation-lot-id"),
-        matches: input.closest("label")?.textContent?.includes(expectedCode) || false,
-      }));
-    for (const identity of identities) {
-      const input = [...(getOptions()?.querySelectorAll("[data-evaluation-lot-id]") || [])]
-        .find((candidate) => candidate.getAttribute("data-evaluation-lot-id") === identity.id);
-      if (input && input.checked !== identity.matches) input.click();
-    }
-    const checked = [...(getOptions()?.querySelectorAll("[data-evaluation-lot-id]:checked") || [])];
-    return {
-      checkedCodes: checked.map((input) => input.closest("label")?.textContent?.trim() || ""),
-      explicitStore: controller?._explicitEvaluationLotScopes || {},
-      selectedMode: getContainer()?.querySelector(
-        'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-      )?.checked || false,
-    };
-  }, lotCode);
-  const committed = Object.values(result.explicitStore || {}).some((scope) => (
-    scope?.mode === "selected" && scope?.selectedLotIds?.length === 1
-  ));
-  if (!result.selectedMode || result.checkedCodes?.length !== 1 || !committed) {
-    throw new Error(`Lot scope selection did not settle on ${lotCode}: ${JSON.stringify(result)}`);
+      const inputs = [...options.querySelectorAll("[data-evaluation-lot-id]")];
+      const target = inputs.find((input) => input.closest("label")?.textContent?.includes(expectedCode));
+      if (!target) return { settled: false, reason: "target-lot-missing" };
+      const mismatched = inputs.find((input) => input.checked !== (input === target));
+      if (mismatched) {
+        mismatched.click();
+        return { settled: false, reason: "lot-selection-requested" };
+      }
+
+      const packageId = controller.view?._currentWorkflowPackageId
+        || controller.view?.getActiveElement?.("danhgiahsdt-goithau-select")?.value
+        || "";
+      const scopeKey = `${String(packageId)}:${String(controller.currentDanhGiaTab || "technical")}`;
+      const scope = controller._explicitEvaluationLotScopes?.[scopeKey];
+      const targetId = target.getAttribute("data-evaluation-lot-id");
+      return {
+        settled: scope?.mode === "selected"
+          && scope?.selectedLotIds?.length === 1
+          && scope.selectedLotIds[0] === targetId,
+        reason: "scope-not-committed",
+        scopeKey,
+        scope,
+        targetId,
+      };
+    }, lotCode);
+    if (state?.settled) return;
+    await page.waitForTimeout(25);
   }
-  await page.waitForFunction(async (expectedCode) => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    const container = controller?.view?.getActiveElement?.("danhgiahsdt-scope-container");
-    const options = controller?.view?.getActiveElement?.("danhgiahsdt-lot-options");
-    const selected = container?.querySelector(
-      'input[name="danhgiahsdt-scope-mode"][value="selected"]',
-    );
-    const checked = [...(options?.querySelectorAll("[data-evaluation-lot-id]:checked") || [])];
-    return controller?._evaluationLotScopeRenderQueued !== true
-      && selected?.checked === true
-      && checked.length === 1
-      && checked[0].closest("label")?.textContent?.includes(expectedCode);
-  }, lotCode, { timeout: 10_000 });
+  throw new Error(`Lot scope selection did not settle on ${lotCode}: ${JSON.stringify(state)}`);
 }
 
 async function waitForEvaluationSave(page, httpErrors, pageErrors) {
@@ -314,31 +341,18 @@ async function waitForEvaluationSave(page, httpErrors, pageErrors) {
 }
 
 async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
-  const evaluationTab = page.locator('[data-workflow-tab="eval_tech"]');
   const dialog = page.locator("#modal-custom-dialog.active");
   const successToast = page.locator(".bf-toast.toast-success:not(.toast-hiding)").last();
-  const outcome = await Promise.race([
-    evaluationTab.waitFor({ state: "visible", timeout: 20_000 }).then(() => "advanced").catch(() => null),
-    dialog.waitFor({ state: "visible", timeout: 20_000 }).then(() => "dialog").catch(() => null),
-    successToast.waitFor({ state: "visible", timeout: 20_000 }).then(() => "saved").catch(() => null),
-  ]);
-
-  if (outcome === "dialog") {
-    const dialogText = await page.locator("#modal-custom-dialog").innerText();
-    if (!/Thành công/i.test(dialogText)) {
+  try {
+    const outcome = await Promise.race([
+      successToast.waitFor({ state: "visible", timeout: 20_000 }).then(() => "success"),
+      dialog.waitFor({ state: "visible", timeout: 20_000 }).then(() => "dialog"),
+    ]);
+    if (outcome === "dialog") {
+      const dialogText = await page.locator("#modal-custom-dialog").innerText();
       throw new Error(`${label} blocked: ${dialogText}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}`);
     }
-    await page.locator("#btn-dialog-ok").click();
-    await dialog.waitFor({ state: "hidden", timeout: 10_000 });
-  }
-
-  if (outcome !== "advanced") {
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await waitForApp(page);
-  }
-
-  try {
-    await evaluationTab.waitFor({ state: "visible", timeout: 20_000 });
+    await activateWorkflowTab(page, "eval_tech", { activate: false });
   } catch (error) {
     const diagnostics = await page.evaluate(() => ({
       dialogClass: document.getElementById("modal-custom-dialog")?.className || "",
@@ -350,9 +364,9 @@ async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
         visibility: getComputedStyle(item).visibility,
       })),
     }));
-    throw new Error(`${label} did not advance to eval_tech: ${JSON.stringify(diagnostics)}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}; ${error.message}`);
+    throw new Error(`${label} did not complete and advance to eval_tech: ${JSON.stringify(diagnostics)}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}; ${error.message}`);
   }
-  return evaluationTab;
+  return page.locator('[data-workflow-tab="eval_tech"]');
 }
 
 let browser;
@@ -376,6 +390,7 @@ try {
   });
   await loginAndSelectWorkspace(page);
 
+  if (!multiLotOnly) {
   await page.goto(`${baseURL}/bieu-mau`, { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.locator("#word-file-input").setInputFiles(wordTemplatePath);
@@ -485,7 +500,7 @@ try {
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.locator('[data-workflow-tab="opening"]').click();
+  await activateWorkflowTab(page, "opening");
   const jvLink = page.locator("#mothau-table-tbody .mt-jv-view-link").first();
   await jvLink.waitFor({ state: "visible", timeout: 20_000 });
   await jvLink.click();
@@ -498,7 +513,7 @@ try {
   await viewModal.locator("#btn-ok-mothau-jv-view").click();
   mark("joint-venture-reloaded");
 
-  await page.locator('[data-workflow-tab="eval_tech"]').click();
+  await activateWorkflowTab(page, "eval_tech");
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG`);
   await page.locator("#danhgiahsdt-ngay-baocao").fill("29/07/2026");
   const evaluationRows = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]");
@@ -545,7 +560,7 @@ try {
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.locator('[data-workflow-tab="eval_tech"]').click();
+  await activateWorkflowTab(page, "eval_tech");
   const reloadedRejectedRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: "Liên danh" });
   const rejectedRadio = reloadedRejectedRow.locator('.mt-low-price-acceptance[value="false"]');
   if (!await rejectedRadio.isChecked()) throw new Error("Rejected low-price decision was lost after reload");
@@ -562,7 +577,7 @@ try {
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.locator('[data-workflow-tab="eval_tech"]').click();
+  await activateWorkflowTab(page, "eval_tech");
   const reloadedAcceptedRadio = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]")
     .filter({ hasText: "Liên danh" })
     .locator('.mt-low-price-acceptance[value="true"]');
@@ -594,7 +609,7 @@ try {
   mark("low-price-general-and-detailed-reports-verified");
   await page.locator("#btn-detailed-evaluation-back").click();
   await page.locator("#danhgiahsdt-table-tbody").waitFor({ state: "visible", timeout: 10_000 });
-  await page.locator('[data-workflow-tab="eval_tech"]').click();
+  await activateWorkflowTab(page, "eval_tech");
   if (!await page.locator("#danhgiahsdt-table-tbody .mt-gia-xep-hang").count()) {
     await page.locator("#btn-danhgiahsdt-save").click();
   }
@@ -618,7 +633,7 @@ try {
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.locator('[data-workflow-tab="eval_tech"]').click();
+  await activateWorkflowTab(page, "eval_tech");
   boundaryRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: "Liên danh" });
   if (!await boundaryRow.locator(".evaluation-low-price-decision").isHidden()) {
     throw new Error("Exactly 50% warning returned after reload");
@@ -669,7 +684,7 @@ try {
   httpErrors.length = 0;
   mark("primary-context-reauthenticated-after-session-replacement");
 
-  await page.locator('[data-workflow-tab="eval_tech"]').click();
+  await activateWorkflowTab(page, "eval_tech");
   await page.locator("#btn-danhgiahsdt-save").click();
   const exportButton = page.locator("#btn-danhgiahsdt-download-excel");
   await exportButton.waitFor({ state: "visible", timeout: 10_000 });
@@ -688,7 +703,7 @@ try {
     ...exportEvidence,
   });
 
-  await page.locator('[data-workflow-tab="result"]').click();
+  await activateWorkflowTab(page, "result");
   const resultExportButton = page.locator("#btn-result-export-excel-template");
   await resultExportButton.waitFor({ state: "visible", timeout: 10_000 });
   const [resultDownload] = await Promise.all([
@@ -825,6 +840,7 @@ try {
   await contractRow.waitFor({ state: "visible", timeout: 15_000 });
   const contractEvidence = fixture("verify_contract");
   mark("joint-venture-contract-created-and-reloaded", contractEvidence);
+  }
 
   await openPackage(page, "opening", lotPackageData);
   const lotAddButton = page.locator("#btn-mothau-add-bid");
@@ -854,7 +870,7 @@ try {
         pageErrors,
       })}`);
     }
-    await page.locator('[data-workflow-tab="eval_tech"]').click();
+    await activateWorkflowTab(page, "eval_tech");
     if (sequence > 1) {
       await page.locator("#btn-continue-lot-evaluation").waitFor({ state: "visible", timeout: 15_000 });
       await page.locator("#btn-continue-lot-evaluation").click();
@@ -886,28 +902,46 @@ try {
     await page.evaluate(() => new Promise((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }));
-    await page.waitForFunction(async ({ expectedCount, expectedLotCode, requiresRejection }) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const view = getAppController()?.view;
-      const tbody = view?.getActiveElement?.("danhgiahsdt-table-tbody");
-      const rows = [...(tbody?.querySelectorAll("tr[data-bid-id]") || [])]
-        .filter((row) => row.textContent?.includes(expectedLotCode));
-      const activeButton = view?.getActiveElement?.("btn-danhgiahsdt-save");
-      const rejectionReady = !requiresRejection || rows.some((row) => (
-        row.textContent?.includes("Liên danh")
-        && row.querySelector('.mt-low-price-acceptance[value="false"]')?.checked === true
-      ));
-      return rows.length === expectedCount
-        && rows.every((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt")
-        && rejectionReady
-        && activeButton?.isConnected === true
-        && typeof activeButton.onclick === "function";
-    }, {
-      expectedCount: expectedRows,
-      expectedLotCode: lot.code,
-      requiresRejection: rejectJoint,
-    }, { timeout: 10_000 });
-    await page.locator("#btn-danhgiahsdt-save").click();
+    const readinessDeadline = Date.now() + 10_000;
+    let evaluationReadiness = null;
+    while (Date.now() < readinessDeadline) {
+      evaluationReadiness = await page.evaluate(async ({ expectedCount, expectedLotCode, requiresRejection }) => {
+        const { getAppController } = await import("/frontend/app/controllerRef.js");
+        const view = getAppController()?.view;
+        const tbody = view?.getActiveElement?.("danhgiahsdt-table-tbody");
+        const rows = [...(tbody?.querySelectorAll("tr[data-bid-id]") || [])]
+          .filter((row) => row.textContent?.includes(expectedLotCode));
+        const activeButton = view?.getActiveElement?.("btn-danhgiahsdt-save");
+        const rejectionReady = !requiresRejection || rows.some((row) => (
+          row.textContent?.includes("Liên danh")
+          && row.querySelector('.mt-low-price-acceptance[value="false"]')?.checked === true
+        ));
+        const ready = rows.length === expectedCount
+          && rows.every((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt")
+          && rejectionReady
+          && activeButton?.isConnected === true
+          && typeof activeButton.onclick === "function";
+        if (ready) activeButton.click();
+        return {
+          ready,
+          submitted: ready,
+          rowCount: rows.length,
+          conclusions: rows.map((row) => row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || ""),
+          rejectionReady,
+          saveConnected: activeButton?.isConnected === true,
+          saveBound: typeof activeButton?.onclick === "function",
+        };
+      }, {
+        expectedCount: expectedRows,
+        expectedLotCode: lot.code,
+        requiresRejection: rejectJoint,
+      });
+      if (evaluationReadiness?.submitted) break;
+      await page.waitForTimeout(25);
+    }
+    if (!evaluationReadiness?.submitted) {
+      throw new Error(`Lot ${lot.code} evaluation controls did not settle: ${JSON.stringify(evaluationReadiness)}`);
+    }
     try {
       await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
     } catch (error) {
@@ -1013,6 +1047,7 @@ try {
   const multiLotEvidence = fixture("verify_lot_outcomes");
   mark("joint-venture-multi-lot-outcomes-verified", multiLotEvidence);
 
+  if (!multiLotOnly) {
   await openPackage(page, "opening_tech", twoEnvelopePackageData);
   const twoEnvelopeRows = page.locator("#mothau-table-tbody tr");
   while (await twoEnvelopeRows.count() < 2) await page.locator("#btn-mothau-add-bid").click();
@@ -1084,9 +1119,8 @@ try {
     if (["INPUT", "SELECT", "TEXTAREA"].includes(tagName)) {
       throw new Error("Automatic ranking must be display-only");
     }
-    if (!(await automaticRanking.innerText()).includes("Xếp hạng")) {
-      throw new Error("Automatic ranking was not calculated");
-    }
+    await automaticRanking.filter({ hasText: "Xếp hạng" })
+      .waitFor({ state: "visible", timeout: 10_000 });
   }
   await twoEnvelopeFinancialRow.locator('.mt-low-price-acceptance[value="true"]').check();
   await page.locator("#btn-danhgiahsdt-save").click();
@@ -1104,6 +1138,7 @@ try {
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
   const twoEnvelopeEvidence = fixture("verify_two_envelope");
   mark("joint-venture-two-envelope-outcome-verified", twoEnvelopeEvidence);
+  }
 
   if (pageErrors.length) throw new Error(`Page errors: ${pageErrors.join(" | ")}`);
   if (httpErrors.length) throw new Error(`HTTP errors: ${httpErrors.join(" | ")}`);

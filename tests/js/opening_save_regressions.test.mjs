@@ -46,8 +46,8 @@ test("opening rows without a bid-price field remain valid", () => {
 
 test("opening bids use child identities distinct from contractor identities across lots", () => {
   const contractors = [
-    { id: "contractor-1", rootId: "contractor-1", maNhaThau: "NT-01", tenNhaThau: "Lead", isLatest: 1 },
-    { id: "contractor-2", rootId: "contractor-2", maNhaThau: "NT-02", tenNhaThau: "Member", isLatest: 1 },
+    { id: "contractor-1", rootId: "contractor-1", maNhaThau: "NT-01", tenNhaThau: "Lead", loaiNhaThau: "Độc lập", isLatest: 1 },
+    { id: "contractor-2", rootId: "contractor-2", maNhaThau: "NT-02", tenNhaThau: "Member", loaiNhaThau: "Độc lập", isLatest: 1 },
   ];
   const makeJointRow = (bidId, lotCode) => {
     const fields = new Map([
@@ -87,17 +87,20 @@ test("opening bids use child identities distinct from contractor identities acro
     parseVND: (value) => Number(value || 0),
     persistData() {},
   };
+  const changedContractors = [];
 
   const bids = collectOpeningBidsFromRows({
     rows: [makeJointRow("bid-l1", "L1"), makeJointRow("bid-l2", "L2")],
     gtId: "package-1",
     model,
     isDirectOrSpecial: false,
+    changedContractors,
   });
 
   const childIds = bids.map((bid) => bid.thanhVienLienDanh.map((member) => member.id));
   assert.equal(childIds.flat().some((id) => contractors.some((contractor) => contractor.id === id)), false);
   assert.equal(new Set(childIds.flat()).size, childIds.flat().length);
+  assert.deepEqual(changedContractors, [], "unchanged existing contractors were restaged");
 });
 
 test("discounted bid price stays blank until a positive bid price exists", () => {

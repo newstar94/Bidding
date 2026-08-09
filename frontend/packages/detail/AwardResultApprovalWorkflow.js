@@ -114,6 +114,7 @@ function buildJointVentureMembers(row, leadContractor) {
 }
 
 function applyBidRows(model, pkg, command, decisionDate) {
+  const createdContractors = [];
   if (command.isDirectOrSpecial) {
     model.replaceTableState(
       "thongtinmothau",
@@ -128,6 +129,7 @@ function applyBidRows(model, pkg, command, decisionDate) {
       let contractor = resolveApprovalContractor(model, row);
       if (!contractor && row.contractorName) {
         contractor = createDirectAwardContractor(model, row, decisionDate);
+        createdContractors.push(contractor);
       }
       bid = {
         id: row.bidId,
@@ -159,6 +161,7 @@ function applyBidRows(model, pkg, command, decisionDate) {
       if (row.isWinner) bid.giaDeNghiTrungThau = row.awardPrice || bid.giaDeNghiTrungThau || 0;
     }
   });
+  return createdContractors;
 }
 
 function resolveOpeningContractorId(model, row) {
@@ -292,7 +295,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
       } = viewModel;
       const { decision } = command;
 
-      applyBidRows(view.model, pkg, command, decision.date);
+      const createdContractors = applyBidRows(view.model, pkg, command, decision.date);
       const winnerId = applyPackageAward(
         view.model,
         pkg,
@@ -360,7 +363,10 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
         let lifecycle = null;
         if (shouldFinalize) {
           try {
-            const dependencySync = await ports.commitDependencies(controller, { packageRecord: pkg });
+            const dependencySync = await ports.commitDependencies(controller, {
+              contractorRecords: createdContractors,
+              packageRecord: pkg,
+            });
             if (!dependencySync?.ok) return { ok: false, kind: "sync_failed" };
             const lots = parseLots(pkg.phanLoList);
             const lotsById = new Map(lots.map((lot) => [String(lot.id || ""), lot]));
@@ -420,6 +426,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
           await view.renderGoiThauTable();
         } else {
           const syncResult = await ports.commitDecision(controller, {
+            contractorRecords: createdContractors,
             packageRecord: pkg,
             afterPersist: () => view.renderGoiThauTable(),
           });
@@ -458,6 +465,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
         pkg.soQuyetDinhKetQua = decision.number;
         pkg.ngayQuyetDinhKetQua = decision.date;
         const syncResult = await ports.commitDecision(controller, {
+          contractorRecords: createdContractors,
           packageRecord: pkg,
           afterPersist: () => view.renderGoiThauTable(),
         });
@@ -479,6 +487,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
       pkg.ngayQuyetDinhKetQua = decision.date;
       pkg.trangThai = "Đã có kết quả";
       const syncResult = await ports.commitDecision(controller, {
+        contractorRecords: createdContractors,
         packageRecord: pkg,
         afterPersist: () => view.renderGoiThauTable(),
       });

@@ -20,15 +20,6 @@ async function stagePackageRecord(controller, packageRecord) {
   return canonical || packageRecord;
 }
 
-function contractorsForBids(model, bids) {
-  const contractorIds = new Set(
-    (bids || []).map((bid) => String(bid?.nhaThauId || "")).filter(Boolean),
-  );
-  return (model.state.nhathau || []).filter(
-    (contractor) => contractorIds.has(String(contractor?.id || "")),
-  );
-}
-
 export async function saveQualifiedApproval(controller, pkg, metadata) {
   const packageId = pkg?.id;
   const stagedPackage = {
@@ -44,7 +35,11 @@ export async function saveQualifiedApproval(controller, pkg, metadata) {
   ) || stagedPackage;
 }
 
-export async function commitPackageAwardDecision(controller, { afterPersist, packageRecord } = {}) {
+export async function commitPackageAwardDecision(controller, {
+  afterPersist,
+  contractorRecords = [],
+  packageRecord,
+} = {}) {
   const activeController = typeof controller?.autoSync === "function"
     ? controller
     : getAppController();
@@ -55,14 +50,18 @@ export async function commitPackageAwardDecision(controller, { afterPersist, pac
   const packageBids = (activeController.model.state.thongtinmothau || []).filter(
     (bid) => String(bid?.goiThauId || "") === String(packageRecord?.id || ""),
   );
-  const packageContractors = contractorsForBids(activeController.model, packageBids);
+  const packageContractors = (contractorRecords || []).filter(Boolean);
   stageLocalRecords(activeController.model, "nhathau", packageContractors);
   stageLocalRecords(activeController.model, "thongtinmothau", packageBids);
-  const syncResult = await persistAndSync(activeController, ["nhathau", "goithau", "thongtinmothau"], {
+  const syncResult = await persistAndSync(activeController, [
+    ...(packageContractors.length ? ["nhathau"] : []),
+    "goithau",
+    "thongtinmothau",
+  ], {
     changes: {
       upserts: {
         goithau: [persistedPackage],
-        nhathau: packageContractors,
+        ...(packageContractors.length ? { nhathau: packageContractors } : {}),
         thongtinmothau: packageBids,
       },
     },
@@ -73,7 +72,10 @@ export async function commitPackageAwardDecision(controller, { afterPersist, pac
   return syncResult;
 }
 
-export async function commitPackageAwardDependencies(controller, { packageRecord } = {}) {
+export async function commitPackageAwardDependencies(controller, {
+  contractorRecords = [],
+  packageRecord,
+} = {}) {
   const activeController = typeof controller?.autoSync === "function"
     ? controller
     : getAppController();
@@ -83,13 +85,16 @@ export async function commitPackageAwardDependencies(controller, { packageRecord
   const packageBids = (activeController.model.state.thongtinmothau || []).filter(
     (bid) => String(bid?.goiThauId || "") === String(packageRecord?.id || ""),
   );
-  const packageContractors = contractorsForBids(activeController.model, packageBids);
+  const packageContractors = (contractorRecords || []).filter(Boolean);
   stageLocalRecords(activeController.model, "nhathau", packageContractors);
   stageLocalRecords(activeController.model, "thongtinmothau", packageBids);
-  return persistAndSync(activeController, ["nhathau", "thongtinmothau"], {
+  return persistAndSync(activeController, [
+    ...(packageContractors.length ? ["nhathau"] : []),
+    "thongtinmothau",
+  ], {
     changes: {
       upserts: {
-        nhathau: packageContractors,
+        ...(packageContractors.length ? { nhathau: packageContractors } : {}),
         thongtinmothau: packageBids,
       },
     },
