@@ -79,7 +79,14 @@ def test_package_smoke_child_uses_only_its_synthetic_trusted_hosts(tmp_path):
     assert environment["PYTHONPATH"] == str(tmp_path.resolve())
 
 
-def test_packaged_deployment_readme_only_references_packaged_operational_paths():
+def test_packaged_deployment_readme_only_references_packaged_operational_paths(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        package_production,
+        "_validate_release_id",
+        lambda _marker: "a" * 40,
+    )
     readme = (package_production.PROJECT_ROOT / "deploy" / "README.md").read_text(
         encoding="utf-8"
     )
@@ -104,7 +111,12 @@ def test_packaged_deployment_readme_only_references_packaged_operational_paths()
     assert missing == []
 
 
-def test_normalized_postgres_contract_is_in_the_runtime_package():
+def test_normalized_postgres_contract_is_in_the_runtime_package(monkeypatch):
+    monkeypatch.setattr(
+        package_production,
+        "_validate_release_id",
+        lambda _marker: "a" * 40,
+    )
     packaged_paths = {
         relative_path.as_posix()
         for _, relative_path in package_production.collect_runtime_files()
