@@ -844,8 +844,66 @@ export class BiddingModel {
       if (ownsMutation) this.finishWorkspaceMutation(mutation);
     }
   }
+  async _rollbackLegacyRecordMutation({
+    mutation,
+    type,
+    recordId,
+    stateSnapshot,
+    outboxCheckpoint,
+    durableWriteCompleted,
+  }, error) {
+    const normalizedId = String(recordId);
+    const currentRecords = Array.isArray(mutation.state[type])
+      ? mutation.state[type]
+      : [];
+    const previousIndex = stateSnapshot.findIndex(
+      (item) => String(item.id) === normalizedId,
+    );
+    const restoredRecords = currentRecords.filter(
+      (item) => String(item.id) !== normalizedId,
+    );
+    if (previousIndex >= 0) {
+      restoredRecords.splice(
+        Math.min(previousIndex, restoredRecords.length),
+        0,
+        stateSnapshot[previousIndex],
+      );
+    }
+    mutation.state[type] = restoredRecords;
+    this.entityIndexes.invalidate(type);
+    const rollbackErrors = [];
+    if (durableWriteCompleted) {
+      try {
+        const previousRecord = stateSnapshot.find(
+          (item) => String(item.id) === String(recordId),
+        );
+        if (mutation.db.stores.includes(type)) {
+          if (previousRecord) await mutation.db.putRecord(type, previousRecord);
+          else await mutation.db.deleteRecord(type, recordId);
+        } else {
+          await this.persistData(type, {
+            trackMutation: false,
+            throwOnError: true,
+            workspaceMutation: mutation,
+          });
+        }
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    try {
+      mutation.outbox.restore(outboxCheckpoint);
+      await mutation.outbox.flush();
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError);
+    }
+    if (rollbackErrors.length > 0) error.rollbackErrors = rollbackErrors;
+  }
   async addRecord(type, record) {
     const mutation = this.beginWorkspaceMutation();
+    const stateSnapshot = structuredClone(mutation.state[type] || []);
+    const outboxCheckpoint = mutation.outbox.checkpoint();
+    let durableWriteCompleted = false;
     try {
       this.assertStorageTablesWritable(type);
       const normalizedRecord = upsertEntity(
@@ -856,19 +914,36 @@ export class BiddingModel {
       );
       if (mutation.db.stores.includes(type)) {
         await mutation.db.putRecord(type, normalizedRecord);
+        durableWriteCompleted = true;
       } else {
         await this.persistData(type, {
           trackMutation: false,
+          throwOnError: true,
           workspaceMutation: mutation,
         });
+        durableWriteCompleted = true;
       }
       this.commitWorkspaceMutation(mutation, type, { records: normalizedRecord });
+      await mutation.outbox.flush();
+    } catch (error) {
+      await this._rollbackLegacyRecordMutation({
+        mutation,
+        type,
+        recordId: record?.id,
+        stateSnapshot,
+        outboxCheckpoint,
+        durableWriteCompleted,
+      }, error);
+      throw error;
     } finally {
       this.finishWorkspaceMutation(mutation);
     }
   }
   async updateRecord(type, record) {
     const mutation = this.beginWorkspaceMutation();
+    const stateSnapshot = structuredClone(mutation.state[type] || []);
+    const outboxCheckpoint = mutation.outbox.checkpoint();
+    let durableWriteCompleted = false;
     try {
       this.assertStorageTablesWritable(type);
       const normalizedRecord = upsertEntity(
@@ -879,36 +954,67 @@ export class BiddingModel {
       );
       if (mutation.db.stores.includes(type)) {
         await mutation.db.putRecord(type, normalizedRecord);
+        durableWriteCompleted = true;
       } else {
         await this.persistData(type, {
           trackMutation: false,
+          throwOnError: true,
           workspaceMutation: mutation,
         });
+        durableWriteCompleted = true;
       }
       this.commitWorkspaceMutation(mutation, type, { records: normalizedRecord });
+      await mutation.outbox.flush();
+    } catch (error) {
+      await this._rollbackLegacyRecordMutation({
+        mutation,
+        type,
+        recordId: record?.id,
+        stateSnapshot,
+        outboxCheckpoint,
+        durableWriteCompleted,
+      }, error);
+      throw error;
     } finally {
       this.finishWorkspaceMutation(mutation);
     }
   }
   async deleteRecord(type, recordId) {
     const mutation = this.beginWorkspaceMutation();
+    const stateSnapshot = structuredClone(mutation.state[type] || []);
+    const outboxCheckpoint = mutation.outbox.checkpoint();
+    let durableWriteCompleted = false;
     try {
       this.assertStorageTablesWritable(type);
       const deletedRecord = (mutation.state[type] || []).find(
         (record) => String(record.id) === String(recordId)
       );
       removeEntity(mutation.state, type, recordId);
-      this.commitWorkspaceMutation(mutation, type, {
-        deletedIds: deletedRecord || { id: recordId },
-      });
       if (mutation.db.stores.includes(type)) {
         await mutation.db.deleteRecord(type, recordId);
+        durableWriteCompleted = true;
       } else {
         await this.persistData(type, {
           trackMutation: false,
+          throwOnError: true,
           workspaceMutation: mutation,
         });
+        durableWriteCompleted = true;
       }
+      this.commitWorkspaceMutation(mutation, type, {
+        deletedIds: deletedRecord || { id: recordId },
+      });
+      await mutation.outbox.flush();
+    } catch (error) {
+      await this._rollbackLegacyRecordMutation({
+        mutation,
+        type,
+        recordId,
+        stateSnapshot,
+        outboxCheckpoint,
+        durableWriteCompleted,
+      }, error);
+      throw error;
     } finally {
       this.finishWorkspaceMutation(mutation);
     }

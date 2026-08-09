@@ -21,9 +21,23 @@ function readMetadata(pkg) {
   return parseEvaluationMetadataStrict(pkg?.danhGiaHsdtMetadata);
 }
 
-function writeMetadata(appController, pkg, metadata) {
-  pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(metadata);
-  void appController.model.updateRecord("goithau", pkg);
+function writeMetadata(appController, pkg, metadata, recordChanges = {}) {
+  const nextRecord = {
+    ...pkg,
+    ...recordChanges,
+    danhGiaHsdtMetadata: serializeEvaluationMetadata(metadata),
+  };
+  void appController.model.updateRecord("goithau", nextRecord).then(() => {
+    Object.assign(pkg, nextRecord);
+  }).catch((error) => {
+    console.error("Failed to persist bid evaluation metadata:", error);
+    appController.view?.showToast?.(
+      "Không thể lưu",
+      "Thay đổi vừa thực hiện không thể lưu trên thiết bị. Vui lòng thử lại.",
+      "error",
+    );
+    appController.renderDanhGiaHsdtPanel?.();
+  });
 }
 
 function setDisabled(control, disabled) {
@@ -32,8 +46,8 @@ function setDisabled(control, disabled) {
   else control.removeAttribute("disabled");
 }
 
-function processTwoEligibility(appController, pkg) {
-  const metadata = readMetadata(pkg);
+function processTwoEligibility(appController, pkg, metadataOverride = null) {
+  const metadata = metadataOverride || readMetadata(pkg);
   const bids = appController.model.state.thongtinmothau.filter(
     (bid) => String(bid.goiThauId) === String(pkg.id),
   );
@@ -65,17 +79,18 @@ function bindProcessControls({ appController, pkg, panelState, onRerender }) {
   const processTwo = container.querySelector('input[value="quytrinh2"]');
   const preference = container.querySelector("#eval-co-uu-dai");
   const warning = container.querySelector("#quytrinh2-warning-msg");
-  const updateEligibility = () => {
+  const updateEligibility = (metadataOverride = null) => {
     if (!processOne || !processTwo) return;
-    const result = processTwoEligibility(appController, pkg);
+    const result = processTwoEligibility(appController, pkg, metadataOverride);
     if (!result.eligible) {
       setDisabled(processTwo, true);
       if (processTwo.checked) {
         processOne.checked = true;
         processTwo.checked = false;
-        pkg.quyTrinhDanhGia = "quytrinh1";
         result.metadata.quyTrinhDanhGia = "quytrinh1";
-        writeMetadata(appController, pkg, result.metadata);
+        writeMetadata(appController, pkg, result.metadata, {
+          quyTrinhDanhGia: "quytrinh1",
+        });
         queueMicrotask(onRerender);
       }
       if (warning) {
@@ -96,7 +111,7 @@ function bindProcessControls({ appController, pkg, panelState, onRerender }) {
       const current = readMetadata(pkg);
       current.coUuDai = preference.checked;
       writeMetadata(appController, pkg, current);
-      updateEligibility();
+      updateEligibility(current);
     };
   }
   if (!processOne || !processTwo) return;
@@ -106,10 +121,9 @@ function bindProcessControls({ appController, pkg, panelState, onRerender }) {
   setDisabled(processOne, panelState.isReadOnly);
   setDisabled(processTwo, panelState.isReadOnly);
   const selectProcess = (value) => {
-    pkg.quyTrinhDanhGia = value;
     const current = readMetadata(pkg);
     current.quyTrinhDanhGia = value;
-    writeMetadata(appController, pkg, current);
+    writeMetadata(appController, pkg, current, { quyTrinhDanhGia: value });
     onRerender();
   };
   processOne.onchange = () => selectProcess("quytrinh1");

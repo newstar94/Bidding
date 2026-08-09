@@ -624,8 +624,14 @@ async function saveTimeline(view) {
       sortOrder: Math.trunc(Number(row.sortOrder) || 0),
       templateVersion: row.templateVersion
     }));
-    state.package.timelineItems = preserveHiddenTimelineRows(state.package.timelineItems, persistedRows);
-    await view.model.updateRecord("goithau", state.package);
+    const packageRecord = {
+      ...state.package,
+      timelineItems: preserveHiddenTimelineRows(state.package.timelineItems, persistedRows),
+    };
+    await view.model.updateRecord("goithau", packageRecord);
+    state.package = view.model.state.goithau.find(
+      (item) => String(item.id) === String(packageRecord.id),
+    ) || packageRecord;
     const controller = getAppController();
     if (typeof controller?.forceSyncData === "function") await controller.forceSyncData(false, false, true);
     state.dirty = false;

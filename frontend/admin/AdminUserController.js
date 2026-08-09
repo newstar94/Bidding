@@ -521,12 +521,6 @@ export function setupRBACEvents() {
         name,
         color
       };
-      if (id) {
-        const idx = this.model.state.customcontractstatuses.findIndex((s) => s.id === id);
-        if (idx !== -1) this.model.state.customcontractstatuses[idx] = data;
-      } else {
-        this.model.state.customcontractstatuses.push(data);
-      }
       await this.model.updateRecord("customcontractstatuses", data);
       this.view.renderManagerHoSoGiayPanel();
       const syncResult = await this.autoSync();
