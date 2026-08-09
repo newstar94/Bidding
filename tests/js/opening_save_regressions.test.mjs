@@ -211,6 +211,46 @@ test("opening save always reports unexpected failures and restores the button", 
   assert.equal(button.dataset.openingSaveBusy, undefined);
 });
 
+test("opening save reports a pre-effective contractor version actionably", async () => {
+  const originalDocument = globalThis.document;
+  const originalConsoleError = console.error;
+  const button = {
+    dataset: {},
+    disabled: false,
+    textContent: "Lưu thông tin mở thầu",
+    setAttribute(name, value) { this[name] = value; },
+    removeAttribute(name) { delete this[name]; },
+  };
+  const alerts = [];
+  const versionError = Object.assign(new Error("no effective contractor"), {
+    code: "PARTNER_VERSION_NO_EFFECTIVE_MATCH",
+    firstEffectiveDate: "2026-01-01",
+  });
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "btn-mothau-save") return button;
+      throw versionError;
+    },
+  };
+  console.error = () => assert.fail("expected business no-match must not be logged as an app failure");
+  try {
+    await saveThongTinMoThau.call({
+      view: {
+        async customAlert(...args) { alerts.push(args); },
+      },
+    });
+  } finally {
+    globalThis.document = originalDocument;
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0][0], "Không có phiên bản nhà thầu có hiệu lực");
+  assert.match(alerts[0][1], /2026-01-01/);
+  assert.equal(button.disabled, false);
+  assert.equal(button.dataset.openingSaveBusy, undefined);
+});
+
 test("opening save partner lookup has a bounded timeout", () => {
   const source = fs.readFileSync("frontend/packages/openingContractorLookup.js", "utf8");
   assert.match(source, /OPENING_SAVE_LOOKUP_TIMEOUT_MS = 3000/);

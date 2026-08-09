@@ -192,3 +192,36 @@ test("joint-venture lookup details survive reload on member snapshots without re
     email: "member@opening.example",
   }]);
 });
+
+test("opening before the first contractor version fails before mutating state", () => {
+  const contractors = [{
+    id: "contractor-v1",
+    rootId: "contractor-v1",
+    phienBan: "01",
+    isLatest: 1,
+    ngayApDung: "2026-01-01",
+    maNhaThau: "NT-FUTURE",
+    tenNhaThau: "Future contractor",
+  }];
+  const before = structuredClone(contractors);
+  const model = contractorModel(contractors, "2025-12-31 09:00:00");
+  const changedContractors = [];
+
+  const row = openingRow({
+    bidId: "bid-future",
+    code: "NT-FUTURE",
+    name: "Future contractor",
+  });
+  row.dataset.contractorVersionId = "contractor-v1";
+  row.dataset.contractorBindingSource = "lookup";
+
+  assert.throws(() => collectOpeningBidsFromRows({
+    rows: [row],
+    gtId: "package-1",
+    model,
+    isDirectOrSpecial: false,
+    changedContractors,
+  }), (error) => error?.code === "PARTNER_VERSION_NO_EFFECTIVE_MATCH");
+  assert.deepEqual(model.state.nhathau, before);
+  assert.deepEqual(changedContractors, []);
+});

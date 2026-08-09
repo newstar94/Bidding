@@ -1,7 +1,9 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
-import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
+import {
+  resolvePartnerVersionForDate,
+} from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
 import {
   persistAndSync,
@@ -493,6 +495,37 @@ export function resolveContractPackageIds(
     .map((checkbox) => checkbox.value);
 }
 
+function resolveDatedContractPartnerBindings({
+  investors,
+  contractors,
+  selectedInvestorId,
+  selectedContractorId,
+  businessDate,
+  preserveInvestor = false,
+  preserveContractor = false,
+  emptyWithoutDate = false,
+}) {
+  if (emptyWithoutDate && !businessDate) {
+    return { investorId: "", contractorId: "", unavailable: null };
+  }
+  const investorResolution = preserveInvestor
+    ? null
+    : resolvePartnerVersionForDate(investors, selectedInvestorId, businessDate);
+  const contractorResolution = preserveContractor
+    ? null
+    : resolvePartnerVersionForDate(contractors, selectedContractorId, businessDate);
+  return {
+    investorId: preserveInvestor
+      ? selectedInvestorId
+      : investorResolution?.record?.id || selectedInvestorId,
+    contractorId: preserveContractor
+      ? selectedContractorId
+      : contractorResolution?.record?.id || selectedContractorId,
+    unavailable: [investorResolution, contractorResolution]
+      .find((resolution) => resolution?.status === "no_effective_version") || null,
+  };
+}
+
 export async function handleHopDongSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-hopdong");
@@ -509,10 +542,43 @@ export async function handleHopDongSubmit(e) {
   const preserveNtBinding = currentHdForBinding && currentHdForBinding.ngayKy === ngayKyYmd && currentHdForBinding.nhaThauId === selectedNhaThauId;
   const cdtManualOverride = document.getElementById("hd-chudautu-version-select").dataset.manualOverride === "1";
   const ntManualOverride = document.getElementById("hd-nhathau-version-select").dataset.manualOverride === "1";
-  const chuDauTuId = preserveCdtBinding || cdtManualOverride ? selectedChuDauTuId : selectPartnerVersionForDate(this.model.state.chudautu || [], selectedChuDauTuId, ngayKyYmd)?.id || selectedChuDauTuId;
-  const nhaThauId = preserveNtBinding || ntManualOverride ? selectedNhaThauId : selectPartnerVersionForDate(this.model.state.nhathau || [], selectedNhaThauId, ngayKyYmd)?.id || selectedNhaThauId;
+  const signingBindings = resolveDatedContractPartnerBindings({
+    investors: this.model.state.chudautu || [],
+    contractors: this.model.state.nhathau || [],
+    selectedInvestorId: selectedChuDauTuId,
+    selectedContractorId: selectedNhaThauId,
+    businessDate: ngayKyYmd,
+    preserveInvestor: Boolean(preserveCdtBinding || cdtManualOverride),
+    preserveContractor: Boolean(preserveNtBinding || ntManualOverride),
+  });
+  if (signingBindings.unavailable) {
+    await this.view.customAlert(
+      "Không có phiên bản có hiệu lực",
+      `Ngày ký hợp đồng ${ngayKyYmd} trước ngày hiệu lực đầu tiên ${signingBindings.unavailable.firstEffectiveDate}. Vui lòng chọn rõ một phiên bản hoặc điều chỉnh ngày ký.`,
+      "alert-triangle",
+    );
+    return;
+  }
+  const chuDauTuId = signingBindings.investorId;
+  const nhaThauId = signingBindings.contractorId;
   const ngayThanhLyRaw = document.getElementById("hd-ngaythanhly").value;
   const ngayThanhLy = ngayThanhLyRaw ? this.model.convertDMYToYMD(ngayThanhLyRaw) : "";
+  const liquidationBindings = resolveDatedContractPartnerBindings({
+    investors: this.model.state.chudautu || [],
+    contractors: this.model.state.nhathau || [],
+    selectedInvestorId: chuDauTuId,
+    selectedContractorId: nhaThauId,
+    businessDate: ngayThanhLy,
+    emptyWithoutDate: true,
+  });
+  if (liquidationBindings.unavailable) {
+    await this.view.customAlert(
+      "Không có phiên bản có hiệu lực",
+      `Ngày thanh lý ${ngayThanhLy} trước ngày hiệu lực đầu tiên ${liquidationBindings.unavailable.firstEffectiveDate}. Vui lòng điều chỉnh ngày thanh lý.`,
+      "alert-triangle",
+    );
+    return;
+  }
   const keHoachId = document.getElementById("hd-kehoachid").value;
   const giaTri = this.model.parseVND(document.getElementById("hd-giatri").value);
   if (giaTri < 0) {
@@ -603,8 +669,8 @@ export async function handleHopDongSubmit(e) {
     chuDauTuId,
     nhaThauId,
     ngayThanhLy,
-    chuDauTuThanhLyId: ngayThanhLy ? selectPartnerVersionForDate(this.model.state.chudautu || [], chuDauTuId, ngayThanhLy)?.id || chuDauTuId : "",
-    nhaThauThanhLyId: ngayThanhLy ? selectPartnerVersionForDate(this.model.state.nhathau || [], nhaThauId, ngayThanhLy)?.id || nhaThauId : "",
+    chuDauTuThanhLyId: liquidationBindings.investorId,
+    nhaThauThanhLyId: liquidationBindings.contractorId,
     keHoachId,
     giaTri,
     loaiHopDong,

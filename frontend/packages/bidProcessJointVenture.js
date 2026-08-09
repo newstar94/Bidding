@@ -165,8 +165,14 @@ export function openMoThauJVManager(tr) {
         tenVietTat: localContractor?.tenVietTat || "",
         thanhVienNhaThauId: localContractor?.id || ""
       };
-      tr._leadMemberContractorId = localContractor?.id || "";
-      tr.dataset.contractorVersionId = localContractor?.id || "";
+      const previousBoundId = tr.dataset.contractorVersionId || "";
+      const nextBoundId = localContractor?.id || "";
+      tr._leadMemberContractorId = nextBoundId;
+      tr.dataset.contractorVersionId = nextBoundId;
+      tr.dataset.contractorBindingSource = (
+        tr.dataset.contractorBindingSource === "saved"
+        && String(previousBoundId) === String(nextBoundId)
+      ) ? "saved" : nextBoundId ? "lookup" : "";
       tr._leadMemberCode = normalizeContractorLookupCode(leadCode);
       return;
     }
@@ -183,6 +189,7 @@ export function openMoThauJVManager(tr) {
       tr._leadMemberLookupData = apiInfo;
       tr._leadMemberContractorId = "";
       tr.dataset.contractorVersionId = "";
+      tr.dataset.contractorBindingSource = "";
       tr._leadMemberCode = normalizeContractorLookupCode(leadCode);
     }
   };

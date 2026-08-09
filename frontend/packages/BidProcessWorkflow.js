@@ -361,6 +361,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", bidData.id || generateRecordId("thongtinmothau"));
   tr.dataset.contractorVersionId = bidData.nhaThauId || "";
+  tr.dataset.contractorBindingSource = bidData.nhaThauId ? "saved" : "";
   let ntCode = bidData.maDinhDanh || bidData.maNhaThau || "";
   let ntName = resolveBidContractorName(this.model, bidData) || "";
   let ntType = bidData.loaiNhaThau || "Độc lập";
@@ -688,6 +689,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
           tr._leadMemberLookupData = lookupData;
           tr._leadMemberContractorId = "";
           tr.dataset.contractorVersionId = "";
+          tr.dataset.contractorBindingSource = "";
           tr._leadMemberCode = normalizeContractorLookupCode(inputMa.value);
           const names = resolveOpeningLookupNames(
             tr.querySelector(".mt-loai-nha-thau")?.value,
@@ -725,6 +727,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         tr._leadMemberLookupData = null;
         tr._leadMemberContractorId = "";
         tr.dataset.contractorVersionId = "";
+        tr.dataset.contractorBindingSource = "";
         tr._leadMemberCode = normalizedCode;
         tr._leadMemberViolationStatus = VIOLATION_NOT_CHECKED;
         tr._violationStatus = VIOLATION_NOT_CHECKED;
@@ -739,6 +742,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (matched) {
         tr._leadMemberContractorId = matched.id || "";
         tr.dataset.contractorVersionId = matched.id || "";
+        tr.dataset.contractorBindingSource = matched.id ? "lookup" : "";
         tr._leadMemberLookupData = matched;
         const names = resolveOpeningLookupNames(
           tr.querySelector(".mt-loai-nha-thau")?.value,
@@ -1037,6 +1041,14 @@ export async function saveThongTinMoThau() {
   try {
     await performSaveThongTinMoThau.call(this);
   } catch (error) {
+    if (error?.code === "PARTNER_VERSION_NO_EFFECTIVE_MATCH") {
+      await this.view.customAlert(
+        "Không có phiên bản nhà thầu có hiệu lực",
+        `Ngày mở thầu trước ngày hiệu lực đầu tiên ${error.firstEffectiveDate}. Vui lòng chọn rõ phiên bản lịch sử hoặc điều chỉnh ngày mở thầu.`,
+        "alert-triangle",
+      );
+      return;
+    }
     console.error("Saving bid opening information failed:", error);
     await this.view.customAlert(
       "Không thể lưu thông tin mở thầu",

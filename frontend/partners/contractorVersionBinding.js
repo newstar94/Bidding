@@ -40,14 +40,20 @@ function dateOnly(value) {
   return dmy ? `${dmy[3]}-${dmy[2]}-${dmy[1]}` : "";
 }
 
-export function selectPartnerVersionForDate(records, partnerVersionId, businessDate) {
+export function resolvePartnerVersionForDate(records, partnerVersionId, businessDate) {
   const selected = (records || []).find((item) => String(item.id) === String(partnerVersionId));
-  if (!selected) return null;
+  if (!selected) {
+    return { status: "partner_not_found", record: null, firstEffectiveDate: "" };
+  }
   const rootId = selected.rootId || selected.id;
   const family = (records || []).filter((item) => String(item.rootId || item.id) === String(rootId));
-  if (!family.length) return selected;
+  if (!family.length) {
+    return { status: "matched", record: selected, firstEffectiveDate: "" };
+  }
   const target = dateOnly(businessDate);
-  if (!target) return selected;
+  if (!target) {
+    return { status: "business_date_unavailable", record: selected, firstEffectiveDate: "" };
+  }
   const ranked = family.map((item) => ({
     item,
     effectiveDate: dateOnly(item.ngayApDung) || dateOnly(item.createdAt) || dateOnly(item.updatedAt),
@@ -56,10 +62,26 @@ export function selectPartnerVersionForDate(records, partnerVersionId, businessD
   const applicable = ranked.filter((entry) => entry.effectiveDate && entry.effectiveDate <= target);
   if (applicable.length) {
     applicable.sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate) || b.version - a.version);
-    return applicable[0].item;
+    return {
+      status: "matched",
+      record: applicable[0].item,
+      firstEffectiveDate: applicable[0].effectiveDate,
+    };
   }
-  ranked.sort((a, b) => a.version - b.version || a.effectiveDate.localeCompare(b.effectiveDate));
-  return ranked[0].item;
+  const dated = ranked.filter((entry) => entry.effectiveDate)
+    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate) || a.version - b.version);
+  if (dated.length) {
+    return {
+      status: "no_effective_version",
+      record: null,
+      firstEffectiveDate: dated[0].effectiveDate,
+    };
+  }
+  return { status: "effective_date_unavailable", record: selected, firstEffectiveDate: "" };
+}
+
+export function selectPartnerVersionForDate(records, partnerVersionId, businessDate) {
+  return resolvePartnerVersionForDate(records, partnerVersionId, businessDate).record;
 }
 
 export function selectContractorVersionForDate(model, contractorVersionId, businessDate) {

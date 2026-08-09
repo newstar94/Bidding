@@ -1,5 +1,8 @@
 ﻿import { normalizePersonName, normalizeTaxCodeForCompare, normalizeVietnamTaxCode } from "../app/domUtils.js";
-import { getExactContractorVersion, selectContractorVersionForDate } from "../partners/contractorVersionBinding.js";
+import {
+  getExactContractorVersion,
+  resolvePartnerVersionForDate,
+} from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion } from "../shared/VersionedEntityService.js";
 function normalizeOpeningCode(value) {
   return normalizeTaxCodeForCompare(value);
@@ -64,6 +67,25 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
     createdAt: `${today} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`
   };
 }
+function selectEffectiveOpeningPartner(model, candidate, businessDate) {
+  if (!candidate) return null;
+  const resolution = resolvePartnerVersionForDate(
+    model?.state?.nhathau || [],
+    candidate.id,
+    businessDate,
+  );
+  if (resolution.status === "no_effective_version") {
+    const error = new Error(
+      `Không có phiên bản nhà thầu có hiệu lực tại ${businessDate || "ngày nghiệp vụ"}.`,
+    );
+    error.code = "PARTNER_VERSION_NO_EFFECTIVE_MATCH";
+    error.businessDate = businessDate;
+    error.firstEffectiveDate = resolution.firstEffectiveDate;
+    error.partnerVersionId = candidate.id;
+    throw error;
+  }
+  return resolution.record;
+}
 function ensureContractor({
   model,
   latestNhaThauList,
@@ -76,8 +98,12 @@ function ensureContractor({
 }) {
   const bound = getExactContractorVersion(model, row.dataset.contractorVersionId);
   const boundMatchesCode = bound && normalizeOpeningCode(bound.maNhaThau || bound.maSoThue) === normalizeOpeningCode(maNhaThau);
+  const preserveSavedBinding = boundMatchesCode
+    && row.dataset.contractorBindingSource === "saved";
   const candidate = boundMatchesCode ? bound : findLatestContractorByCode(latestNhaThauList, maNhaThau);
-  let foundNt = boundMatchesCode ? bound : candidate ? selectContractorVersionForDate(model, candidate.id, businessDate) : null;
+  let foundNt = preserveSavedBinding
+    ? bound
+    : selectEffectiveOpeningPartner(model, candidate, businessDate);
   if (!isJointVentureType(loaiNhaThau)) {
     if (!foundNt) {
       foundNt = createIndependentContractor({
@@ -157,7 +183,8 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, bu
     seenCodes.add(normalizedMemberCode);
     const exactMember = getExactContractorVersion(model, m.thanhVienNhaThauId);
     const candidate = exactMember || findLatestContractorByCode(contractorVersions, m.maNhaThau || m.maSoThue);
-    const memberContractor = exactMember || (candidate ? selectContractorVersionForDate(model, candidate.id, businessDate) : null);
+    const memberContractor = exactMember
+      || selectEffectiveOpeningPartner(model, candidate, businessDate);
     bidJvMembers.push({
       id: memberChildId(m.id, memberContractor?.id),
       thanhVienNhaThauId: memberContractor?.id || "",
