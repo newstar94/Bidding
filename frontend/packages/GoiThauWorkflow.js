@@ -25,6 +25,7 @@ import {
   selectedAssigneeIds,
 } from "../shared/MultiAssigneeSelect.js";
 import { derivePackagePrice } from "./packagePricing.js";
+import { parseLotListForDisplay } from "./lotJsonParser.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
@@ -321,9 +322,9 @@ export async function editGoiThau(id, isReadOnly = false) {
         document.getElementById("gt-thoigian-hopdong").value = gt.thoiGianHopDong || "";
       }
     }
-    let defaultAwardedList = typeof gt.awardedPhanLoList === "string" ? JSON.parse(gt.awardedPhanLoList || "[]") : gt.awardedPhanLoList || [];
+    let defaultAwardedList = parseLotListForDisplay(gt.awardedPhanLoList, { context: "package_form" });
     if ((!defaultAwardedList || defaultAwardedList.length === 0) && gt.phanLoList) {
-      const plList = typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [];
+      const plList = parseLotListForDisplay(gt.phanLoList, { context: "package_form" });
       defaultAwardedList = plList.map((pl) => ({
         tenPhanLo: pl.tenPhanLo,
         nhaThauTrungThauId: pl.nhaThauTrungThauId,

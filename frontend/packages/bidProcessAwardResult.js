@@ -3,6 +3,7 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
+import { parseLotListStrict } from "./lotJsonParser.js";
 
 export function getWinnerRows(tbodyResult, { isDirectOrSpecial }) {
   if (!tbodyResult) return [];
@@ -48,9 +49,12 @@ export function applyResultRowsToBids(tbodyResult, model) {
   });
 }
 export function applyAwardResultToPackage({ gt, bids, winnerRows, tbodyResult, model }) {
+  const lotList = gt.phanLo === "Có"
+    ? parseLotListStrict(gt.phanLoList, { context: "legacy_award_command" })
+    : null;
   const winner = resolveWinner({ gt, bids, winnerRows, model });
   if (gt.phanLo === "Có") {
-    const plList = typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [];
+    const plList = lotList;
     if (tbodyResult) {
       plList.forEach((pl) => {
         const lotWinnerRow = winnerRows.find((row) => row.cells[0]?.textContent.trim() === pl.maPhanLo);

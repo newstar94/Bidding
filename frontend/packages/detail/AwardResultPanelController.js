@@ -14,6 +14,7 @@ import { generateRecordId } from "../../shared/idUtils.js";
 import { clearPackageResultEditState } from "../lotEvaluationScope.js";
 import { prepareAwardApprovalCommand } from "./AwardResultApprovalCommand.js";
 import { awardResultApprovalWorkflow } from "./AwardResultApprovalWorkflow.js";
+import { parseLotListForDisplay } from "../lotJsonParser.js";
 
 function isLeadJointVentureMember(member) {
   return String(member?.vaiTro || "").trim().toLocaleLowerCase("vi-VN") === "đứng đầu liên danh";
@@ -21,17 +22,6 @@ function isLeadJointVentureMember(member) {
 
 function normalizeContractorCode(value) {
   return String(value || "").trim().toLocaleLowerCase("vi-VN");
-}
-
-function parseLots(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 export function initializeAwardResultBidderRow(view, tr) {
@@ -269,7 +259,7 @@ function bindDecisionFields(root) {
 
 function appendDirectBidRow(view, root, pkg, tbody, bidData = {}) {
   const rowId = bidData.id || generateRecordId("thongtinmothau");
-  const lots = parseLots(pkg.phanLoList);
+  const lots = parseLotListForDisplay(pkg.phanLoList, { context: "award_panel" });
   const lotOptions = lots.map((lot) => (
     `<option value="${safeAttr(lot.maPhanLo)}" data-name="${safeAttr(lot.tenPhanLo)}" ${bidData.maPhanLo === lot.maPhanLo ? "selected" : ""}>${escapeHtml(lot.maPhanLo)}</option>`
   )).join("");
@@ -352,7 +342,9 @@ function appendApprovalBidderRow(view, root, pkg) {
   tr.setAttribute("data-approve-bid-id", newId);
   tr.setAttribute("data-is-qualified", "true");
   tr.setAttribute("data-nt-id", newId);
-  const lots = pkg.phanLo === "Có" ? parseLots(pkg.phanLoList) : [];
+  const lots = pkg.phanLo === "Có"
+    ? parseLotListForDisplay(pkg.phanLoList, { context: "award_panel" })
+    : [];
   const lotCells = pkg.phanLo === "Có" ? `
     <td><select class="form-control row-ma-phan-lo bf-s-3f107fe5ee">${lots.map((lot) => `<option value="${safeAttr(lot.maPhanLo)}" data-name="${safeAttr(lot.tenPhanLo)}">${escapeHtml(lot.maPhanLo)}</option>`).join("")}</select></td>
     <td><input type="text" class="form-control row-ten-phan-lo bf-s-97e02f4332" value="${safeAttr(lots[0]?.tenPhanLo || "")}" readonly></td>

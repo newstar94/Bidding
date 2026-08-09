@@ -1,18 +1,8 @@
 import { parseVND } from "../shared/formatters.js";
+import { parseLotListForDisplay } from "./lotJsonParser.js";
 
 export const LOW_PRICE_REJECTION_REASON_PACKAGE = "Nhà thầu có giá đề nghị trúng thầu nhỏ hơn 50% giá gói thầu. Tuy nhiên nhà thầu không chứng minh được các yếu tố cấu thành chi phí chào thầu.";
 export const LOW_PRICE_REJECTION_REASON_LOT = "Nhà thầu có giá đề nghị trúng thầu nhỏ hơn 50% giá phần lô. Tuy nhiên nhà thầu không chứng minh được các yếu tố cấu thành chi phí chào thầu.";
-
-function parseLots(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 function moneyBigInt(value) {
   const parsed = parseVND(value);
@@ -36,7 +26,7 @@ export function getProposedAwardReferencePrice(pkg, bid) {
   if (pkg?.phanLo !== "Có") return pkg?.giaGoiThau ?? null;
   const bidLotCode = normalizeLotCode(bid?.maPhanLo || bid?.ma_phan_lo);
   if (!bidLotCode) return null;
-  const lot = parseLots(pkg?.phanLoList).find((item) => (
+  const lot = parseLotListForDisplay(pkg?.phanLoList, { context: "low_price_rules" }).find((item) => (
     normalizeLotCode(item?.maPhanLo || item?.ma_phan_lo || item?.code) === bidLotCode
   ));
   return lot?.giaTriPhanLo ?? lot?.gia_tri_phan_lo ?? lot?.price ?? null;

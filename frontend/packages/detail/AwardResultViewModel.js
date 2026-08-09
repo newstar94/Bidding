@@ -7,6 +7,7 @@ import {
   resolvePackageResultStatus,
 } from "../lotEvaluationScope.js";
 import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
+import { parseLotListForDisplay } from "../lotJsonParser.js";
 
 const TWO_ENVELOPE_METHOD = "Một giai đoạn hai túi hồ sơ";
 const AWARDED_STATUS = "Đã có kết quả";
@@ -77,15 +78,7 @@ function bindFrozenContractorVersions(bids, resultMetadata) {
 }
 
 function parsePackageLots(pkg) {
-  const value = pkg?.phanLoList;
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return parseLotListForDisplay(pkg?.phanLoList, { context: "award_view_model" });
 }
 
 function deriveRejectionReason(pkg, bid, isWinner) {

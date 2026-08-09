@@ -11,6 +11,7 @@ import {
   evaluationMethodDisplay,
   isCombinedEvaluationMethod,
 } from "../evaluationMethodRules.js";
+import { parseLotListForDisplay } from "../lotJsonParser.js";
 
 // eslint-disable-next-line complexity -- Legacy approval markup is isolated for a dedicated refactor.
 export function buildAwardResultApprovalMarkup(view, {
@@ -92,7 +93,7 @@ export function buildAwardResultApprovalMarkup(view, {
         const getIsQualified = (bidItem) => {
           return checkBidQualified(bidItem, gt);
         };
-        const lots = typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [];
+        const lots = parseLotListForDisplay(gt.phanLoList, { context: "award_approval_markup" });
         let allBiddersHtml = "";
         if (isDirectOrSpecial && allBids.length === 0) {
           allBiddersHtml = `

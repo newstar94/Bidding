@@ -18,6 +18,7 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "../evaluationMetadata.js";
+import { parseLotListStrict } from "../lotJsonParser.js";
 
 const CANCEL_REASON = "Tất cả các hồ sơ dự thầu không đáp ứng yêu cầu của hồ sơ mời thầu. Hủy thầu theo quy định tại Điểm a Khoản 1 Điều 17 Luật Đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023, sửa đổi, bổ sung tại Luật số 57/2024/QH15, Luật số 90/2025/QH15.";
 
@@ -31,16 +32,7 @@ function parseMetadata(value) {
   return parseEvaluationMetadataStrict(value);
 }
 
-function parseLots(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+const parseCommandLots = (value) => parseLotListStrict(value, { context: "award_command" });
 
 function normalizeStoredId(value) {
   if (!value) return "";
@@ -174,7 +166,7 @@ function resolveOpeningContractorId(model, row) {
 function applyPackageAward(model, pkg, command, activeScope) {
   let winnerId = "none";
   if (pkg.phanLo === "Có") {
-    const lots = parseLots(pkg.phanLoList);
+    const lots = parseCommandLots(pkg.phanLoList);
     const scopedLotResults = command.winnerRows.map((row) => {
       const lot = lots.find((item) => String(item.maPhanLo || "") === String(row.lotCode));
       const contractorId = resolveOpeningContractorId(model, row);
@@ -368,7 +360,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
               packageRecord: pkg,
             });
             if (!dependencySync?.ok) return { ok: false, kind: "sync_failed" };
-            const lots = parseLots(pkg.phanLoList);
+            const lots = parseCommandLots(pkg.phanLoList);
             const lotsById = new Map(lots.map((lot) => [String(lot.id || ""), lot]));
             lifecycle = await ports.finalizeLotBatch({
               packageId: pkg.id,
@@ -452,7 +444,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
       }
 
       const hasActualWinner = pkg.phanLo === "Có"
-        ? parseLots(pkg.phanLoList).some((lot) => lot.nhaThauTrungThauId)
+        ? parseCommandLots(pkg.phanLoList).some((lot) => lot.nhaThauTrungThauId)
         : winnerId !== "none" && Boolean(pkg.nhaThauTrungThauId);
       if (!hasActualWinner) {
         clearResultEditState(metadata);

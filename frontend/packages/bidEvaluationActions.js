@@ -14,7 +14,7 @@ import {
 import {
   ensureEvaluationLotBatch,
   getEvaluationLotScopeDetails,
-  getPackageEvaluationLots,
+  getPackageEvaluationLotsStrict,
   initializeEvaluationLotScope,
   isPartialEvaluationLotScope,
   resolvePackageResultStatus,
@@ -70,7 +70,7 @@ export function reconcileEvaluationLotScopeControls(view, pkg, scope) {
   const selectedLotIds = Array.from(
     options?.querySelectorAll?.("[data-evaluation-lot-id]:checked") || [],
   ).map((input) => input.getAttribute("data-evaluation-lot-id"));
-  return updateEvaluationLotScope(scope, getPackageEvaluationLots(pkg), {
+  return updateEvaluationLotScope(scope, getPackageEvaluationLotsStrict(pkg), {
     mode: "selected",
     selectedLotIds,
   });
@@ -289,7 +289,7 @@ export async function saveDanhGiaHsdt() {
   let evaluationLotScope = null;
   let evaluationLotDetails = null;
   let evaluationBatch = null;
-  const packageLots = getPackageEvaluationLots(gt);
+  const packageLots = getPackageEvaluationLotsStrict(gt);
   if (packageLots.length > 0) {
     const parsedMetadata = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
     const scopeBlock = is1G2T

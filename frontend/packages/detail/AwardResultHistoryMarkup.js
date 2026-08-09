@@ -1,18 +1,8 @@
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { isBidWithinEvaluationLotDetails } from "../lotEvaluationScope.js";
+import { parseLotListForDisplay } from "../lotJsonParser.js";
 
 const TWO_ENVELOPE_METHOD = "Một giai đoạn hai túi hồ sơ";
-
-function parseLots(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 export function buildOfficialResultHistoryMarkup(
   view,
@@ -26,7 +16,7 @@ export function buildOfficialResultHistoryMarkup(
   const packageBids = (view?.model?.state?.thongtinmothau || []).filter(
     (bid) => String(bid.goiThauId) === String(pkg?.id),
   );
-  const lots = parseLots(pkg?.phanLoList);
+  const lots = parseLotListForDisplay(pkg?.phanLoList, { context: "award_history" });
   const pendingLots = Array.isArray(state.pendingLots) ? state.pendingLots : [];
 
   return `<div class="official-result-history">

@@ -15,6 +15,7 @@ import {
   assigneeLabelsForTarget,
   formatAssigneeSummary,
 } from "../shared/MultiAssigneeSelect.js";
+import { parseLotListForDisplay } from "./lotJsonParser.js";
 
 function bindLotWinnerActions(tableBody, view) {
   tableBody?.querySelectorAll('[data-bf-action="show-lot-winners"]').forEach((action) => {
@@ -159,7 +160,7 @@ export async function renderGoiThauTable() {
       let winnerInfoHtml = "--";
       if (["Đã có kết quả một phần", "Đã có kết quả"].includes(displayedStatus)) {
         if (displayedGt.phanLo === "Có") {
-          const plList = typeof displayedGt.phanLoList === "string" ? JSON.parse(displayedGt.phanLoList || "[]") : displayedGt.phanLoList || [];
+          const plList = parseLotListForDisplay(displayedGt.phanLoList, { context: "package_table" });
           const winningLots = plList.filter((pl) => pl.nhaThauTrungThauId);
           const uniqueWinnerIds = [...new Set(winningLots.map((pl) => String(pl.nhaThauTrungThauId)).filter(Boolean))];
           if (uniqueWinnerIds.length > 1) {

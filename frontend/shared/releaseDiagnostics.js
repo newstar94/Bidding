@@ -142,6 +142,32 @@ export const reportExcelWorkerFallback = () => reportOperationalSignal(
   "/frontend/documents/excelFileReader.js",
 );
 
+const LOT_JSON_RECOVERY_CODES = new Map([
+  ["MALFORMED_JSON", "MalformedJSON"],
+  ["EXPECTED_ARRAY", "ExpectedArray"],
+  ["UNSUPPORTED_TYPE", "UnsupportedType"],
+]);
+
+const LOT_JSON_RECOVERY_CONTEXTS = new Map([
+  ["award_approval_markup", "AwardApprovalMarkup"],
+  ["award_history", "AwardHistory"],
+  ["award_view_model", "AwardViewModel"],
+  ["award_panel", "AwardPanel"],
+  ["package_table", "PackageTable"],
+  ["package_form", "PackageForm"],
+  ["evaluation_scope", "EvaluationScope"],
+  ["low_price_rules", "LowPriceRules"],
+]);
+
+export const reportLotJsonRecovery = ({ code, context } = {}) => {
+  const boundedCode = LOT_JSON_RECOVERY_CODES.get(String(code)) || "Unknown";
+  const boundedContext = LOT_JSON_RECOVERY_CONTEXTS.get(String(context)) || "Unknown";
+  return reportOperationalSignal(
+    `LotJSON.${boundedCode}.${boundedContext}`,
+    "/frontend/packages/lotJsonParser.js",
+  );
+};
+
 export const pollingFallbackDurationBucket = (durationMs) => {
   const duration = Math.max(0, Number(durationMs) || 0);
   if (duration < 30_000) return "Under30s";

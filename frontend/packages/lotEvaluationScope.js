@@ -2,20 +2,10 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
+import { parseLotListForDisplay, parseLotListStrict } from "./lotJsonParser.js";
 
 const MODE_ALL = "all";
 const MODE_SELECTED = "selected";
-
-function parseList(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 function parseMetadataRecord(value) {
   try {
@@ -160,9 +150,8 @@ export function clearPackageResultEditState(pkg) {
   return true;
 }
 
-export function getPackageEvaluationLots(pkg) {
-  if (pkg?.phanLo !== "Có") return [];
-  return parseList(pkg?.phanLoList).map((lot, index) => ({
+function normalizePackageEvaluationLots(lots) {
+  return lots.map((lot, index) => ({
     ...lot,
     id: String(lot?.id || "").trim(),
     code: String(lot?.maPhanLo || lot?.ma_phan_lo || "").trim(),
@@ -171,6 +160,20 @@ export function getPackageEvaluationLots(pkg) {
   })).filter((lot) => lot.id && lot.code).sort((a, b) => (
     a.sortOrder - b.sortOrder || a.code.localeCompare(b.code, "vi", { numeric: true })
   ));
+}
+
+export function getPackageEvaluationLots(pkg) {
+  if (pkg?.phanLo !== "Có") return [];
+  return normalizePackageEvaluationLots(parseLotListForDisplay(pkg?.phanLoList, {
+    context: "evaluation_scope",
+  }));
+}
+
+export function getPackageEvaluationLotsStrict(pkg) {
+  if (pkg?.phanLo !== "Có") return [];
+  return normalizePackageEvaluationLots(parseLotListStrict(pkg?.phanLoList, {
+    context: "evaluation_scope_command",
+  }));
 }
 
 export function findScopedEvaluationMetadata(block, selectedLotIds) {
