@@ -103,6 +103,7 @@ export const reportReleaseDiagnostic = async (diagnostic, now = Date.now()) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(diagnostic),
       timeoutMs: 5_000,
+      handleHttpErrors: false,
     });
     return response.ok;
   } catch {

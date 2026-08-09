@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
+import { configureApiClient } from "../../frontend/shared/apiClient.js";
 import {
   buildOperationalDiagnostic,
   hashWorkspaceScope,
+  reportReleaseDiagnostic,
 } from "../../frontend/shared/releaseDiagnostics.js";
 
 test("operational diagnostics hash workspace scope and retain only bounded dimensions", async () => {
@@ -62,4 +64,46 @@ test("operational dimensions fail closed to bounded fallback values", async () =
   assert.equal(diagnostic.backendStatus, "unknown");
   assert.equal("correlationId" in diagnostic, false);
   assert.equal("workspaceHash" in diagnostic, false);
+});
+
+test("expired-session telemetry does not invoke the global 403 UI handler", async () => {
+  const originalFetch = globalThis.fetch;
+  const httpErrors = [];
+  let request = null;
+  configureApiClient({
+    activeOrganization: () => "",
+    onHttpError: async (details) => {
+      httpErrors.push(details);
+      return null;
+    },
+  });
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response(JSON.stringify({
+      code: "AUTH_REQUIRED",
+      error: "Cần đăng nhập để gửi báo cáo lỗi.",
+    }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const accepted = await reportReleaseDiagnostic({
+      kind: "error",
+      releaseId: "test-release",
+      errorName: "Session.Revoked",
+      source: "/frontend/auth/AuthSessionController.js",
+      line: 0,
+      column: 0,
+    }, 120_000);
+
+    assert.equal(accepted, false);
+    assert.equal(request?.url, "/api/client-errors");
+    assert.equal(request?.options?.method, "POST");
+    assert.deepEqual(httpErrors, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    configureApiClient({ activeOrganization: () => "", onHttpError: null });
+  }
 });
