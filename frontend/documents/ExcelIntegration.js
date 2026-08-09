@@ -591,6 +591,10 @@ export async function saveExcelImport() {
     );
   }
 }
+export function buildPhanLoExportPayload(rows) {
+  return { phanLoList: rows };
+}
+
 export function exportPhatHanhPhanLoExcel(gt) {
   const rows = [];
   document.querySelectorAll("#phathanh-phanlo-baodam-tbody tr").forEach((tr) => {
@@ -613,10 +617,7 @@ export function exportPhatHanhPhanLoExcel(gt) {
   apiFetch("/api/export-phanlo-excel", {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      package_name: gt.maGoiThau || "GoiThau",
-      rows
-    })
+    body: JSON.stringify(buildPhanLoExportPayload(rows))
   }).then((res) => {
     if (!res.ok) throw new Error("Không thể xuất Excel");
     return res.blob();
@@ -642,10 +643,7 @@ export function exportEditPhanLoExcel() {
   apiFetch("/api/export-phanlo-excel", {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      package_name: finalName,
-      rows: list
-    })
+    body: JSON.stringify(buildPhanLoExportPayload(list))
   }).then((res) => {
     if (!res.ok) throw new Error("Không thể tải Excel mẫu");
     return res.blob();
@@ -660,6 +658,10 @@ export function exportEditPhanLoExcel() {
     window.URL.revokeObjectURL(url);
   }).catch((err) => this.view.customAlert("Lỗi tải mẫu", "Không thể tải Excel mẫu: " + err.message, "x-circle"));
 }
+export function buildTuyChonMuaThemExportPayload(rows) {
+  return { tuyChonList: rows };
+}
+
 export function exportEditTuyChonMuaThemExcel() {
   const list = this._collectTuyChonMuaThemRows();
   const pkgCodeInput = document.getElementById("gt-ma");
@@ -671,10 +673,7 @@ export function exportEditTuyChonMuaThemExcel() {
   apiFetch("/api/export-tuychonmuathem-excel", {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      package_name: finalName,
-      rows: list
-    })
+    body: JSON.stringify(buildTuyChonMuaThemExportPayload(list))
   }).then((res) => {
     if (!res.ok) throw new Error("Không thể tải Excel mẫu");
     return res.blob();

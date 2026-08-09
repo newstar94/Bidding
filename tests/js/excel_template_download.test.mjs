@@ -2,8 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { triggerExcelTemplateDownload } from "../../frontend/documents/excelTemplateAdapter.js";
-import { triggerExcelTemplateDownload as triggerExcelDownloadWorkflow } from "../../frontend/documents/ExcelIntegration.js";
+import {
+  buildPhanLoExportPayload,
+  buildTuyChonMuaThemExportPayload,
+  triggerExcelTemplateDownload as triggerExcelDownloadWorkflow,
+} from "../../frontend/documents/ExcelIntegration.js";
 import * as workflowHelpers from "../../frontend/shared/workflow_helpers.js";
+
+
+test("lot Excel export uses the backend phanLoList contract", () => {
+  const rows = [{ maPhanLo: "L01", tenPhanLo: "Lot 01" }];
+
+  assert.deepEqual(buildPhanLoExportPayload(rows), { phanLoList: rows });
+});
+
+
+test("optional-purchase Excel export uses the backend tuyChonList contract", () => {
+  const rows = [{ hangMuc: "Option 01", soLuong: 1 }];
+
+  assert.deepEqual(buildTuyChonMuaThemExportPayload(rows), { tuyChonList: rows });
+});
 
 
 test("evaluation template download returns its promise to the UI caller", async () => {
