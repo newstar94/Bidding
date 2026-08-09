@@ -571,11 +571,13 @@ export class BiddingModel {
     }
   }
   async trackDeletions(type, workspaceMutation = null) {
-    const ownsMutation = !workspaceMutation;
-    const mutation = workspaceMutation || this.beginWorkspaceMutation();
-    this.assertWorkspaceMutation(mutation);
-    const database = mutation.db;
-    const state = mutation.state;
+    const canCoordinate = typeof this.beginWorkspaceMutation === "function";
+    const ownsMutation = !workspaceMutation && canCoordinate;
+    const mutation = workspaceMutation
+      || (canCoordinate ? this.beginWorkspaceMutation() : null);
+    if (mutation) this.assertWorkspaceMutation(mutation);
+    const database = mutation?.db || this.db;
+    const state = mutation?.state || this.state;
     try {
     this.assertStorageTablesWritable?.(type);
     let oldData;
@@ -598,12 +600,20 @@ export class BiddingModel {
         return !previous || JSON.stringify(previous) !== JSON.stringify(record);
       });
       if (changedRecords.length > 0) {
-        this.commitWorkspaceMutation(mutation, type, { records: changedRecords });
+        if (mutation) {
+          this.commitWorkspaceMutation(mutation, type, { records: changedRecords });
+        } else {
+          await this.markRecordDirty(type, changedRecords);
+        }
       }
       const newIds = new Set(state[type].map((x) => x.id).filter(Boolean));
       const deletedRecords = oldData.filter((record) => record?.id && !newIds.has(record.id));
       if (deletedRecords.length > 0) {
-        this.commitWorkspaceMutation(mutation, type, { deletedIds: deletedRecords });
+        if (mutation) {
+          this.commitWorkspaceMutation(mutation, type, { deletedIds: deletedRecords });
+        } else {
+          await this.markDeleted(type, deletedRecords);
+        }
       }
     }
     } finally {
