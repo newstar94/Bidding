@@ -604,7 +604,6 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_log_single_successor ON audit_log (chain_id, previous_hash)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record ON deleted_records (organization_id, table_name, record_id)",
     )
     for statement in statements:

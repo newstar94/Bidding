@@ -1822,6 +1822,72 @@ def _upgrade_to_v46_reconcile_historical_chain(cursor, _context):
     reconcile_historical_postgres_schema(cursor)
 
 
+def read_audit_successor_index_state(cursor) -> tuple[bool, bool, bool]:
+    """Return explicit/twin presence and whether their index semantics match."""
+
+    row = cursor.execute(
+        """SELECT
+             explicit_index.indexrelid IS NOT NULL,
+             constraint_index.indexrelid IS NOT NULL,
+             COALESCE(
+                 explicit_index.indrelid = constraint_index.indrelid
+                 AND explicit_index.indisunique
+                 AND explicit_index.indisunique = constraint_index.indisunique
+                 AND explicit_index.indnkeyatts = constraint_index.indnkeyatts
+                 AND explicit_index.indnatts = constraint_index.indnatts
+                 AND explicit_index.indkey = constraint_index.indkey
+                 AND explicit_index.indclass = constraint_index.indclass
+                 AND explicit_index.indcollation = constraint_index.indcollation
+                 AND explicit_index.indoption = constraint_index.indoption
+                 AND explicit_index.indexprs IS NOT DISTINCT FROM
+                     constraint_index.indexprs
+                 AND explicit_index.indpred IS NOT DISTINCT FROM
+                     constraint_index.indpred
+                 AND explicit_relation.relam = constraint_relation.relam,
+                 FALSE
+             )
+           FROM (
+               SELECT current_schema()::regnamespace AS oid
+           ) AS current_namespace
+      LEFT JOIN pg_class AS explicit_relation
+             ON explicit_relation.relnamespace = current_namespace.oid
+            AND explicit_relation.relname = 'idx_audit_log_single_successor'
+      LEFT JOIN pg_index AS explicit_index
+             ON explicit_index.indexrelid = explicit_relation.oid
+      LEFT JOIN pg_constraint AS constraint_record
+             ON constraint_record.connamespace = current_namespace.oid
+            AND constraint_record.conname =
+                'audit_log_chain_id_previous_hash_key'
+            AND constraint_record.contype = 'u'
+      LEFT JOIN pg_index AS constraint_index
+             ON constraint_index.indexrelid = constraint_record.conindid
+      LEFT JOIN pg_class AS constraint_relation
+             ON constraint_relation.oid = constraint_index.indexrelid"""
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("Audit successor index preflight returned no catalog row.")
+    return bool(row[0]), bool(row[1]), bool(row[2])
+
+
+def _upgrade_to_v47_drop_duplicate_audit_successor_index(cursor, _context):
+    """Keep the constraint-backed audit successor index as the sole twin."""
+
+    explicit_present, constraint_present, exact_duplicate = (
+        read_audit_successor_index_state(cursor)
+    )
+    if not constraint_present:
+        raise RuntimeError(
+            "audit successor index preflight failed: constraint-backed twin "
+            "audit_log_chain_id_previous_hash_key is missing."
+        )
+    if explicit_present and not exact_duplicate:
+        raise RuntimeError(
+            "audit successor index preflight failed: explicit index is not an "
+            "exact duplicate of the constraint-backed twin."
+        )
+    cursor.execute("DROP INDEX IF EXISTS idx_audit_log_single_successor")
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2043,6 +2109,11 @@ UPGRADES = (
         46,
         "reconcile_historical_chain",
         _upgrade_to_v46_reconcile_historical_chain,
+    ),
+    DatabaseUpgrade(
+        47,
+        "drop_duplicate_audit_successor_index",
+        _upgrade_to_v47_drop_duplicate_audit_successor_index,
     ),
 )
 

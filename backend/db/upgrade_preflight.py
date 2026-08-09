@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
+    read_audit_successor_index_state,
     read_sync_metadata_version_bound_violations,
 )
 
@@ -12,6 +13,7 @@ CANONICAL_LOT_CODE_MIGRATION_VERSION = 36
 SYNC_METADATA_BOUNDS_MIGRATION_VERSION = 44
 RETENTION_CLEANUP_INDEX_MIGRATION_VERSION = 45
 HISTORICAL_CHAIN_RECONCILIATION_VERSION = 46
+DUPLICATE_AUDIT_INDEX_MIGRATION_VERSION = 47
 
 
 def inspect_database_upgrade(
@@ -134,6 +136,24 @@ def inspect_database_upgrade(
         "requiresCatalogReconciliation": crosses_v46,
     }
 
+    crosses_v47 = (
+        current is not None
+        and current < DUPLICATE_AUDIT_INDEX_MIGRATION_VERSION <= target
+    )
+    duplicate_audit_index_report: dict[str, object] = {
+        "applies": crosses_v47,
+        "requiresTransactionalDryRun": crosses_v47,
+    }
+    if crosses_v47:
+        explicit_present, constraint_present, exact_duplicate = (
+            read_audit_successor_index_state(cursor)
+        )
+        duplicate_audit_index_report.update({
+            "explicitIndexPresent": explicit_present,
+            "constraintBackedIndexPresent": constraint_present,
+            "exactDuplicate": exact_duplicate,
+        })
+
     return {
         "currentVersion": current,
         "targetVersion": target,
@@ -142,4 +162,5 @@ def inspect_database_upgrade(
         "v44SyncMetadataBounds": sync_metadata_report,
         "v45RetentionCleanupIndexes": retention_index_report,
         "v46HistoricalChain": historical_chain_report,
+        "v47DuplicateAuditIndex": duplicate_audit_index_report,
     }

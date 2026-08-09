@@ -38,6 +38,9 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
    Historical database replay và schema v46 phải làm theo
    deploy/runbooks/database-upgrade-v46.md, gồm v1/v35 PostgreSQL rehearsal,
    catalog/FK assertion và rollback rehearsal.
+   Việc loại bỏ duplicate audit index ở schema v47 phải làm theo
+   deploy/runbooks/database-upgrade-v47.md, gồm preflight, dry-run, hậu kiểm
+   constraint-backed uniqueness và rollback có kiểm soát.
 5. Verify document worker service account, DB role và Linux sandbox.
 6. Nếu dùng Turnstile, tạo widget `Managed`, allow đúng hostname production và
    lưu site/secret key trong secret manager. `TURNSTILE_ENABLED=auto` tự bật khi

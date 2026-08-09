@@ -28,6 +28,7 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
         (120, 100, 340, 300, 32_768, 65_536),
         (0, 0),
         (0, 0, 0, 0, 0, 0),
+        (True, True, True),
     )
 
     report = inspect_database_upgrade(cursor, 35, target_version=DB_SCHEMA_VERSION)
@@ -65,8 +66,15 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
             "requiresTransactionalDryRun": True,
             "requiresCatalogReconciliation": True,
         },
+        "v47DuplicateAuditIndex": {
+            "applies": True,
+            "requiresTransactionalDryRun": True,
+            "explicitIndexPresent": True,
+            "constraintBackedIndexPresent": True,
+            "exactDuplicate": True,
+        },
     }
-    assert len(cursor.statements) == 3
+    assert len(cursor.statements) == 4
     assert "COUNT(*) FILTER (WHERE archived_at IS NULL)" in cursor.statements[0][0]
     assert "pg_total_relation_size" in cursor.statements[0][0]
 
@@ -76,7 +84,11 @@ def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
     current_version,
 ):
     cursor = _CardinalityCursor(
-        *((((0, 0), (0, 0, 0, 0, 0, 0))) if current_version == 36 else ())
+        *((
+            ((0, 0), (0, 0, 0, 0, 0, 0), (True, True, True))
+            if current_version == 36
+            else ()
+        ))
     )
 
     report = inspect_database_upgrade(
@@ -136,6 +148,23 @@ def test_v46_preflight_requires_historical_catalog_reconciliation():
         "requiresCatalogReconciliation": True,
     }
     assert cursor.statements == []
+
+
+def test_v47_preflight_verifies_exact_duplicate_audit_index_before_drop():
+    cursor = _CardinalityCursor((True, True, True))
+
+    report = inspect_database_upgrade(cursor, 46, target_version=47)
+
+    assert report["v47DuplicateAuditIndex"] == {
+        "applies": True,
+        "requiresTransactionalDryRun": True,
+        "explicitIndexPresent": True,
+        "constraintBackedIndexPresent": True,
+        "exactDuplicate": True,
+    }
+    assert len(cursor.statements) == 1
+    assert "idx_audit_log_single_successor" in cursor.statements[0][0]
+    assert "audit_log_chain_id_previous_hash_key" in cursor.statements[0][0]
 
 
 def test_database_dry_run_rolls_back_successful_upgrade(monkeypatch):

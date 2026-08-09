@@ -15,6 +15,7 @@ from backend.db.postgres_schema import (
     assert_foreign_key_integrity,
     assert_schema_contract,
     build_create_table_sql,
+    create_fresh_database,
     create_indexes_and_triggers,
 )
 from backend.db.upgrades import (
@@ -326,6 +327,51 @@ def test_real_postgres_v1_chain_reaches_latest_catalog_and_preserves_data():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
+def test_fresh_v47_catalog_keeps_only_constraint_backed_audit_successor_index(
+    monkeypatch,
+):
+    database_url = _test_database_url()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    try:
+        connection = psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            row_factory=compat_row_factory,
+        )
+    except psycopg.Error as error:
+        pytest.skip(f"PostgreSQL test database is unavailable: {type(error).__name__}")
+
+    schema_name = f"bf_fresh_v47_{uuid.uuid4().hex}"
+    cursor = PostgresCursor(connection.cursor())
+    try:
+        cursor.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+        cursor.execute(
+            sql.SQL("SET LOCAL search_path TO {}, public").format(
+                sql.Identifier(schema_name)
+            )
+        )
+        monkeypatch.setenv("ADMIN_PASSWORD", "Test-only!Schema47Password")
+
+        assert create_fresh_database(cursor, _upgrade_context()) == DB_SCHEMA_VERSION
+        assert_schema_contract(cursor)
+        names = {
+            row[0]
+            for row in cursor.execute(
+                """SELECT indexname
+                     FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = 'audit_log'
+                      AND indexdef LIKE '%(chain_id, previous_hash)%'"""
+            ).fetchall()
+        }
+        assert names == {"audit_log_chain_id_previous_hash_key"}
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
 def test_real_postgres_v35_checkpoint_reaches_latest_catalog():
     connection, cursor, schema_name = _open_fixture_connection()
     try:
@@ -374,6 +420,130 @@ def test_v46_exact_catalog_only_advances_version_without_rebuilding_objects():
         assert_schema_contract(cursor)
     finally:
         _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_v47_removes_only_explicit_duplicate_audit_successor_index():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor,
+            1,
+            context,
+            target_version=45,
+        ) == 45
+        # Simulate the already-installed v46 catalog from the previous release.
+        # Replaying the v46 reconciler here would intentionally compare against
+        # the latest generated catalog rather than that historical checkpoint.
+        cursor.execute(
+            "UPDATE database_metadata SET schema_version = 46 WHERE id = 1"
+        )
+        before = {
+            row[0]
+            for row in cursor.execute(
+                """SELECT indexname
+                     FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = 'audit_log'
+                      AND indexdef LIKE '%(chain_id, previous_hash)%'"""
+            ).fetchall()
+        }
+        assert before == {
+            "audit_log_chain_id_previous_hash_key",
+            "idx_audit_log_single_successor",
+        }
+
+        assert apply_database_upgrades(cursor, 46, context) == DB_SCHEMA_VERSION
+
+        after = {
+            row[0]
+            for row in cursor.execute(
+                """SELECT indexname
+                     FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = 'audit_log'
+                      AND indexdef LIKE '%(chain_id, previous_hash)%'"""
+            ).fetchall()
+        }
+        assert after == {"audit_log_chain_id_previous_hash_key"}
+
+        cursor.execute(
+            """INSERT INTO audit_chain_heads
+                   (chain_id, last_sequence, last_hash)
+               VALUES ('fixture-chain', 0, ?)""",
+            ("0" * 64,),
+        )
+        cursor.execute(
+            """INSERT INTO audit_log
+                   (chain_id, sequence, action, previous_hash, entry_hash)
+               VALUES ('fixture-chain', 1, 'fixture', ?, ?)""",
+            ("a" * 64, "b" * 64),
+        )
+        with pytest.raises(psycopg.errors.UniqueViolation), connection.transaction():
+            cursor.execute(
+                """INSERT INTO audit_log
+                       (chain_id, sequence, action, previous_hash, entry_hash)
+                   VALUES ('fixture-chain', 2, 'fixture', ?, ?)""",
+                ("a" * 64, "c" * 64),
+            )
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_v47_fails_closed_when_named_audit_index_is_not_the_exact_twin():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor,
+            1,
+            context,
+            target_version=45,
+        ) == 45
+        cursor.execute(
+            "UPDATE database_metadata SET schema_version = 46 WHERE id = 1"
+        )
+        cursor.execute("DROP INDEX idx_audit_log_single_successor")
+        cursor.execute(
+            """CREATE UNIQUE INDEX idx_audit_log_single_successor
+                   ON audit_log (chain_id, sequence)"""
+        )
+
+        with pytest.raises(RuntimeError, match="not an exact duplicate"), (
+            connection.transaction()
+        ):
+            apply_database_upgrades(cursor, 46, context)
+
+        assert cursor.execute(
+            "SELECT schema_version FROM database_metadata WHERE id = 1"
+        ).fetchone()[0] == 46
+        assert cursor.execute(
+            "SELECT to_regclass('idx_audit_log_single_successor') IS NOT NULL"
+        ).fetchone()[0]
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_v47_migration_runbook_limits_drop_and_documents_rollback():
+    runbook = (
+        Path(__file__).resolve().parents[1]
+        / "deploy"
+        / "runbooks"
+        / "database-upgrade-v47.md"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "--preflight",
+        "--dry-run",
+        "backup",
+        "append-only",
+        "DROP INDEX IF EXISTS idx_audit_log_single_successor",
+        "audit_log_chain_id_previous_hash_key",
+        "CREATE UNIQUE INDEX idx_audit_log_single_successor",
+        "rollback",
+        "không sửa migration v1–v46",
+    ):
+        assert required.casefold() in runbook.casefold()
 
 
 def test_v46_failed_type_conversion_rolls_back_catalog_and_version():

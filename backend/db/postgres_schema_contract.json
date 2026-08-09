@@ -659,13 +659,6 @@
       "table": "audit_log",
       "valid": true
     },
-    "idx_audit_log_single_successor": {
-      "definition": "CREATE UNIQUE INDEX idx_audit_log_single_successor ON $SCHEMA.audit_log USING btree (chain_id, previous_hash)",
-      "live": true,
-      "ready": true,
-      "table": "audit_log",
-      "valid": true
-    },
     "idx_auth_sessions_active_absolute_expiry": {
       "definition": "CREATE INDEX idx_auth_sessions_active_absolute_expiry ON $SCHEMA.auth_sessions USING btree (absolute_expires_at) WHERE (revoked_at IS NULL)",
       "live": true,
@@ -2677,7 +2670,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 46,
+  "schemaVersion": 47,
   "tables": {
     "account_subscriptions": {
       "columns": {
