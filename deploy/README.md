@@ -201,6 +201,10 @@ Luồng xóa tài khoản phải tuân theo
 retention/legal được phê duyệt, blocker tombstone bắt buộc fail closed; không
 purge hoặc anonymize audit evidence bằng SQL ad-hoc.
 
+Organization decommission chưa phải feature được hỗ trợ. Không xóa trực tiếp
+`to_chuc`; ownership dry-run và postcondition contract được mô tả tại
+`deploy/runbooks/organization-decommission.md`.
+
 ## Runtime boundaries
 
 - Web role: CRUD cần thiết, không DDL/role management.
