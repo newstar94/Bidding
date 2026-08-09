@@ -1,4 +1,8 @@
 import { getJson } from "./apiClient.js";
+import {
+  assertWorkspaceLeaseCurrent,
+  captureWorkspaceLease,
+} from "../app/workspaceLease.js";
 
 const PLAN_SCOPED_PACKAGE_CHILD_TABLES = new Set([
   "goithauhanghoa",
@@ -81,8 +85,10 @@ export async function hydratePlanPackageRecords(model, planId) {
 
   model._planPackageHydrationRequests ||= new Map();
   const existing = model._planPackageHydrationRequests.get(normalizedPlanId);
-  if (existing) return existing;
+  if (existing) return existing.promise || existing;
 
+  const controller = new AbortController();
+  const lease = captureWorkspaceLease(model, { controller });
   const request = (async () => {
     const hydrated = [];
     let cursor = "";
@@ -96,20 +102,21 @@ export async function hydratePlanPackageRecords(model, planId) {
         keHoachId: normalizedPlanId,
       });
       if (cursor) query.set("cursor", cursor);
-      const data = await getJson(`/api/paginate?${query}`);
-      hydrated.push(...cachePaginatedRecords(model, "goithau", data?.items || []));
+      const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
+      assertWorkspaceLeaseCurrent(model, lease);
+      hydrated.push(...cachePaginatedRecords(model, "goithau", data?.items || [], lease));
       const nextCursor = String(data?.nextCursor || "");
       if (!data?.hasMore || !nextCursor || nextCursor === cursor) break;
       cursor = nextCursor;
     } while (cursor);
     return hydrated;
   })().finally(() => {
-    if (model._planPackageHydrationRequests.get(normalizedPlanId) === request) {
+    if (model._planPackageHydrationRequests.get(normalizedPlanId)?.promise === request) {
       model._planPackageHydrationRequests.delete(normalizedPlanId);
     }
   });
 
-  model._planPackageHydrationRequests.set(normalizedPlanId, request);
+  model._planPackageHydrationRequests.set(normalizedPlanId, { controller, lease, promise: request });
   return request;
 }
 
@@ -128,13 +135,15 @@ export async function loadPaginatedRecords(model, table, params = {}) {
   model._paginationRequests ||= new Map();
   model._paginationRequests.get(table)?.abort();
   const controller = new AbortController();
+  const lease = captureWorkspaceLease(model, { controller });
   model._paginationRequests.set(table, controller);
   try {
     const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
+    assertWorkspaceLeaseCurrent(model, lease);
     model._lastPaginatedQueries ||= new Map();
     model._lastPaginatedQueries.set(table, { ...params });
     return {
-      items: cachePaginatedRecords(model, table, data?.items || []),
+      items: cachePaginatedRecords(model, table, data?.items || [], lease),
       totalItems: Number(data?.totalItems || 0),
       nextCursor: data?.nextCursor || null,
       hasMore: Boolean(data?.hasMore)
@@ -159,25 +168,27 @@ export function sortRecords(records, field, order = "asc") {
   });
   return records;
 }
-export function cachePaginatedRecords(model, key, records) {
+export function cachePaginatedRecords(model, key, records, workspaceLease = null) {
+  const lease = workspaceLease || captureWorkspaceLease(model);
+  assertWorkspaceLeaseCurrent(model, lease);
   const normalized = (typeof model?.normalizeRecordKeys === "function"
     ? (records || []).map((record) => model.normalizeRecordKeys(record, key))
     : records || []
   ).map((record) => ({ ...record, referenceOnly: false }));
-  if (!Array.isArray(model.state[key])) {
-    model.state[key] = [];
+  if (!Array.isArray(lease.state[key])) {
+    lease.state[key] = [];
   }
   normalized.forEach((record) => {
-    const index = model.state[key].findIndex((item) => String(item.id) === String(record.id));
+    const index = lease.state[key].findIndex((item) => String(item.id) === String(record.id));
     if (index >= 0) {
-      model.state[key][index] = record;
+      lease.state[key][index] = record;
     } else {
-      model.state[key].push(record);
+      lease.state[key].push(record);
     }
   });
   if (normalized.length > 0) model.entityIndexes?.invalidate?.(key);
-  if (normalized.length > 0 && model.db && typeof model.db.putRecords === "function") {
-    model.db.putRecords(key, normalized).catch((err) => {
+  if (normalized.length > 0 && lease.db && typeof lease.db.putRecords === "function") {
+    lease.db.putRecords(key, normalized).catch((err) => {
       console.error(`Failed to cache paginated ${key} records:`, err);
     });
   }

@@ -15,6 +15,7 @@ import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
 import { EntityIndexes } from "./EntityIndexes.js";
+import { abortWorkspaceRequestMap } from "./workspaceLease.js";
 import {
   ScopedWorkspaceStorage,
   purgeWorkspaceLocalData,
@@ -191,6 +192,10 @@ export class BiddingModel {
   }
 
   _resetWorkspaceMemory() {
+    abortWorkspaceRequestMap(this._paginationRequests);
+    abortWorkspaceRequestMap(this._planPackageHydrationRequests);
+    this._paginationRequests = new Map();
+    this._planPackageHydrationRequests = new Map();
     Object.keys(this.STORAGE_KEYS).forEach((key) => {
       if (["THEME", "ACTIVEROLE", "ACTIVEUSER"].includes(key)) return;
       const stateKey = key.toLowerCase();
