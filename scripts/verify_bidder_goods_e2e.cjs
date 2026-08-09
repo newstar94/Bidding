@@ -510,6 +510,7 @@ async function importAndPersist(page, packageData, workflowTab) {
 }
 
 (async () => {
+  const { isExpectedTelemetryBackpressure } = await import("./lib/e2eHttpErrors.mjs");
   const parser = await import(pathToFileURL(
     path.join(root, "frontend", "packages", "BidderGoodsExcel.js"),
   ));
@@ -555,7 +556,11 @@ async function importAndPersist(page, packageData, workflowTab) {
     const httpErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
     page.on("response", async (response) => {
-      if (response.status() < 400 || !response.url().includes("/api/")) return;
+      if (
+        response.status() < 400
+        || !response.url().includes("/api/")
+        || isExpectedTelemetryBackpressure(response)
+      ) return;
       let body = "";
       try { body = await response.text(); } catch {}
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);

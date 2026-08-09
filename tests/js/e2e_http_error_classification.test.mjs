@@ -20,6 +20,7 @@ test("E2E classification ignores only exact client telemetry backpressure", () =
 
 test("canonical deep E2E suites share the telemetry classifier", () => {
   for (const script of [
+    "scripts/verify_bidder_goods_e2e.cjs",
     "scripts/verify_crud_modules_e2e.mjs",
     "scripts/verify_package_pairwise_e2e.mjs",
     "scripts/verify_joint_venture_e2e.mjs",
