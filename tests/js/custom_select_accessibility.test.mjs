@@ -10,6 +10,32 @@ import { chromium } from "playwright";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 
+function parseRgb(value) {
+  return String(value).match(/[\d.]+/gu)?.slice(0, 3).map(Number) || [0, 0, 0];
+}
+
+function blendRgb(foreground, background, opacity) {
+  return foreground.map((channel, index) => (
+    channel * opacity + background[index] * (1 - opacity)
+  ));
+}
+
+function relativeLuminance(rgb) {
+  const channels = rgb.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrastRatio(foreground, background) {
+  const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background));
+  const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function contentType(pathname) {
   if ([".js", ".mjs"].includes(extname(pathname))) return "text/javascript; charset=utf-8";
   if (extname(pathname) === ".css") return "text/css; charset=utf-8";
@@ -23,6 +49,12 @@ async function withSelectPage(run) {
       if (pathname === "/") {
         response.writeHead(200, { "content-type": contentType(".html") });
         response.end(`<!doctype html><html lang="vi"><head><title>Custom select</title>
+          <link rel="stylesheet" href="/views/css/tokens.css">
+          <link rel="stylesheet" href="/views/css/variables.css">
+          <link rel="stylesheet" href="/views/css/base.css">
+          <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/views/css/generated-static-styles.css">
+          <link rel="stylesheet" href="/views/css/ui-redesign.css">
           <link rel="stylesheet" data-runtime-styles href="/views/css/runtime-styles.css">
         </head><body>
           <main><form id="select-form">
@@ -145,5 +177,40 @@ test("searchable select filters, selects, and follows native option state access
     await combobox.fill("thua thien hue");
     assert.equal(await options.count(), 1);
     assert.equal(await options.first().textContent(), "Thừa Thiên Huế");
+  });
+});
+
+test("disabled custom select text meets WCAG AA at 320 pixels", async () => {
+  await withSelectPage(async (page) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.evaluate(async () => {
+      const { initCustomSelect } = await import("/frontend/shared/view_helpers.js");
+      const select = document.getElementById("status-select");
+      select.value = "active";
+      select.disabled = true;
+      initCustomSelect(select.id);
+    });
+    await page.waitForFunction(() => document.getElementById("status-select-combobox")?.disabled);
+
+    const result = await new AxeBuilder({ page })
+      .include('.custom-select-container[data-target="status-select"]')
+      .withRules(["color-contrast"])
+      .analyze();
+
+    assert.deepEqual(result.violations, []);
+    const rendered = await page.locator("#status-select-combobox").evaluate((input) => {
+      const wrapper = input.closest(".custom-select-container");
+      return {
+        background: getComputedStyle(input).backgroundColor,
+        backdrop: getComputedStyle(document.body).backgroundColor,
+        foreground: getComputedStyle(input).color,
+        opacity: Number(getComputedStyle(wrapper).opacity || 1),
+      };
+    });
+    const backdrop = parseRgb(rendered.backdrop);
+    const effectiveForeground = blendRgb(parseRgb(rendered.foreground), backdrop, rendered.opacity);
+    const effectiveBackground = blendRgb(parseRgb(rendered.background), backdrop, rendered.opacity);
+    const ratio = contrastRatio(effectiveForeground, effectiveBackground);
+    assert.ok(ratio >= 4.5, `disabled select contrast ${ratio.toFixed(2)}:1 is below 4.5:1`);
   });
 });

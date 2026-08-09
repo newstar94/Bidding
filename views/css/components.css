@@ -1586,13 +1586,12 @@ textarea[disabled] {
 .custom-select-container.disabled {
   pointer-events: none !important;
   cursor: not-allowed !important;
-  opacity: 0.7;
 }
 .custom-select-container.disabled .custom-select-trigger {
-  background-color: #e2e8f0 !important;
-  background: #e2e8f0 !important;
-  border-color: var(--border-color, #cbd5e1) !important;
-  color: #64748b !important;
+  background-color: var(--neutral-soft) !important;
+  background: var(--neutral-soft) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-main) !important;
   pointer-events: none !important;
   cursor: not-allowed !important;
 }
@@ -1746,13 +1745,13 @@ textarea[disabled] {
   color: var(--text-main);
 }
 .custom-select-container.disabled {
-  opacity: 0.6;
+  opacity: 1;
   cursor: not-allowed;
   pointer-events: none;
 }
 .custom-select-container.disabled .custom-select-trigger {
-  background-color: var(--neutral-soft, #f1f5f9);
-  color: var(--text-muted, #94a3b8);
+  background-color: var(--neutral-soft);
+  color: var(--text-main);
   cursor: not-allowed;
   border-color: var(--border-color);
 }
