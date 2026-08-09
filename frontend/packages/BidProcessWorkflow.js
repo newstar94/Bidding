@@ -33,6 +33,7 @@ import {
   mapPartnerLookupToContractor,
   normalizeContractorLookupCode,
   refreshSavedOpeningViolationChecks,
+  isViolationConfirmed,
   resolveBidOpeningContractor,
   resolveLeadMemberName,
   shouldRefreshSavedOpeningViolationCheck,
@@ -354,6 +355,20 @@ export function calculateOpeningDiscountedPrice(model, bidPriceValue, discountVa
   return model.formatVND(price * (1 - discountPercent / 100));
 }
 
+export function buildOpeningContractorIdentity({
+  value,
+  className,
+  contractorVersionId = "",
+  violationStatus = VIOLATION_NOT_CHECKED,
+} = {}) {
+  const violationConfirmed = isViolationConfirmed(violationStatus);
+  const violationClass = violationConfirmed ? " bidder-name--violator" : "";
+  const linkColorClass = violationConfirmed ? "" : " text-blue";
+  return contractorVersionId
+    ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorVersionId)}" class="${className} link-hover${linkColorClass}${violationClass}">${value}</a>`
+    : `<span class="${className}${violationClass}">${value}</span>`;
+}
+
 // eslint-disable-next-line complexity -- Legacy row orchestration is isolated for a dedicated refactor.
 export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tbody = document.getElementById("mothau-table-tbody");
@@ -411,9 +426,12 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const contractorNameDisplay = escapeHtml(ntName || "--");
   const contractorNameValue = escapeHtml(ntName);
   const contractorVersionId = foundNt?.id || bidData.nhaThauId || "";
-  const readOnlyContractorIdentity = (value, className) => contractorVersionId
-    ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorVersionId)}" class="${className} text-blue link-hover">${value}</a>`
-    : `<span class="${className}">${value}</span>`;
+  const readOnlyContractorIdentity = (value, className) => buildOpeningContractorIdentity({
+    value,
+    className,
+    contractorVersionId,
+    violationStatus: tr._violationStatus,
+  });
   const lotCodeDisplay = escapeHtml(bidData.maPhanLo || "--");
   const lotNameDisplay = escapeHtml(bidData.tenPhanLo || "--");
   const lotNameValue = escapeHtml(bidData.tenPhanLo || "");

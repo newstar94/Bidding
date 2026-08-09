@@ -16,7 +16,11 @@ export function isViolationConfirmed(status) {
 }
 
 export function applyViolationNameClass(element, status) {
-  element?.classList?.toggle("bidder-name--violator", isViolationConfirmed(status));
+  const violationConfirmed = isViolationConfirmed(status);
+  element?.classList?.toggle("bidder-name--violator", violationConfirmed);
+  if (String(element?.tagName || "").toUpperCase() === "A") {
+    element.classList.toggle("text-blue", !violationConfirmed);
+  }
 }
 
 // A saved row is re-checked when its stored state carries no verdict.

@@ -9,10 +9,11 @@ import {
   updateOpeningViolationPresentation,
 } from "../../frontend/packages/openingContractorLookup.js";
 import { buildContractorDisplay } from "../../frontend/packages/BidEvaluationRowRenderer.js";
+import { buildOpeningContractorIdentity } from "../../frontend/packages/BidProcessWorkflow.js";
 
 
-function fakeClassList() {
-  const values = new Set();
+function fakeClassList(initial = []) {
+  const values = new Set(initial);
   return {
     toggle(name, enabled) {
       if (enabled) values.add(name);
@@ -37,6 +38,40 @@ test("only VIOLATION_CONFIRMED adds the violator name class", () => {
   }
   applyViolationNameClass(element, "VIOLATION_CONFIRMED");
   assert.equal(element.classList.contains("bidder-name--violator"), true);
+});
+
+
+test("refreshed read-only opening links swap neutral blue for confirmed violation red", () => {
+  const link = { tagName: "A", classList: fakeClassList(["text-blue"]) };
+
+  applyViolationNameClass(link, "VIOLATION_CONFIRMED");
+  assert.equal(link.classList.contains("bidder-name--violator"), true);
+  assert.equal(link.classList.contains("text-blue"), false);
+
+  applyViolationNameClass(link, "NO_ACTIVE_VIOLATION");
+  assert.equal(link.classList.contains("bidder-name--violator"), false);
+  assert.equal(link.classList.contains("text-blue"), true);
+});
+
+
+test("read-only opening contractor links give confirmed violation color precedence", () => {
+  const violating = buildOpeningContractorIdentity({
+    contractorVersionId: "contractor-1",
+    value: "Violating contractor",
+    className: "mt-ten-nha-thau",
+    violationStatus: "VIOLATION_CONFIRMED",
+  });
+  assert.match(violating, /bidder-name--violator/u);
+  assert.doesNotMatch(violating, /\btext-blue\b/u);
+
+  const clean = buildOpeningContractorIdentity({
+    contractorVersionId: "contractor-1",
+    value: "Clean contractor",
+    className: "mt-ten-nha-thau",
+    violationStatus: "NO_ACTIVE_VIOLATION",
+  });
+  assert.match(clean, /\btext-blue\b/u);
+  assert.doesNotMatch(clean, /bidder-name--violator/u);
 });
 
 
