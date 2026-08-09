@@ -146,9 +146,33 @@ export function ensureDetailRecordLoaded(tabName, action) {
   return promise;
 }
 
+async function settleOutboxBeforeAuthoritativePull(controller) {
+  let status = controller.model?.getMutationOutboxStatus?.();
+  if (status?.state === "pending" && typeof controller.model?.flushMutationOutbox === "function") {
+    try {
+      await controller.model.flushMutationOutbox();
+    } catch {
+      // Status below carries the bounded durability failure without exposing queue contents.
+    }
+    status = controller.model?.getMutationOutboxStatus?.();
+  }
+  if (status?.trusted !== false) return null;
+  const error = controller.model?.getMutationOutboxFailure?.()
+    || Object.assign(new Error("Mutation outbox durability is degraded"), {
+      code: status.code || "OUTBOX_DURABILITY_PENDING",
+    });
+  controller.updateSyncState?.({
+    phase: "storageError",
+    message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
+  });
+  return { ok: false, error, storageDegraded: true };
+}
+
 export async function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
+  const outboxFailure = await settleOutboxBeforeAuthoritativePull(this);
+  if (outboxFailure) return outboxFailure;
   const pullKey = workspace.token || workspace.organizationId;
   this._workspacePullGenerations ||= new Map();
   const pullGeneration = (this._workspacePullGenerations.get(pullKey) || 0) + 1;

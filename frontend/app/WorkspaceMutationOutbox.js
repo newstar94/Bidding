@@ -74,10 +74,11 @@ export class WorkspaceMutationOutbox {
     return true;
   }
 
-  async hydrate() {
+  async hydrate(options = {}) {
     const hydrated = await this.store.hydrate({
       baseSyncVersion: this.getBaseSyncVersion(),
       createId: this.createId,
+      ...options,
     });
     this.queue = normalizeMutationQueue(hydrated.queue, {
       baseSyncVersion: this.getBaseSyncVersion(),

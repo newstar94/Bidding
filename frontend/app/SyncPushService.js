@@ -217,6 +217,34 @@ export function autoSync() {
   if (!workspace.organizationId) {
     return Promise.resolve({ ok: false, error: new Error("No active workspace") });
   }
+  const outboxStatus = this.model?.getMutationOutboxStatus?.();
+  if (outboxStatus?.state === "pending" && typeof this.model?.flushMutationOutbox === "function") {
+    return this.model.flushMutationOutbox().then(() => {
+      const settledStatus = this.model?.getMutationOutboxStatus?.();
+      if (settledStatus?.trusted !== false) return this.autoSync();
+      const error = Object.assign(new Error("Mutation outbox durability is pending"), {
+        code: settledStatus?.code || "OUTBOX_DURABILITY_PENDING",
+      });
+      return { ok: false, error, storageDegraded: true };
+    }).catch((error) => {
+      this.updateSyncState?.({
+        phase: "storageError",
+        message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
+      });
+      return { ok: false, error, storageDegraded: true };
+    });
+  }
+  if (outboxStatus?.trusted === false) {
+    const error = this.model?.getMutationOutboxFailure?.()
+      || Object.assign(new Error("Mutation outbox durability is degraded"), {
+        code: outboxStatus.code || "OUTBOX_DURABILITY_PENDING",
+      });
+    this.updateSyncState?.({
+      phase: "storageError",
+      message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
+    });
+    return Promise.resolve({ ok: false, error, storageDegraded: true });
+  }
   const mutationBatch = this.model?.buildMutationSyncPayload?.() || null;
   if (!mutationBatch) {
     this.updateSyncState({ phase: "idle" });

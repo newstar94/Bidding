@@ -22,12 +22,28 @@ export function setupSyncUx() {
   button?.addEventListener("click", async () => {
     if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
       showSyncErrorDetails(this, this.model.syncErrors);
-    } else if (this.model?.hasStorageReadFailures?.()) {
-      await this.forceSyncData(false, true);
-    } else {
-      const pushed = await this.autoSync();
-      if (pushed?.ok) await this.forceSyncData(false, false);
+      return;
     }
+    if (this.model?.hasMutationOutboxDurabilityFailure?.()) {
+      try {
+        await this.model.recoverMutationOutbox?.();
+      } catch (error) {
+        console.error("Mutation outbox recovery failed:", error);
+      }
+      if (this.model.hasMutationOutboxDurabilityFailure()) {
+        this.updateSyncState({
+          phase: "storageError",
+          message: "Chưa thể khôi phục thay đổi cục bộ · Vui lòng thử lại",
+        });
+        return;
+      }
+    }
+    if (this.model?.hasStorageReadFailures?.()) {
+      await this.forceSyncData(false, true);
+      return;
+    }
+    const pushed = await this.autoSync();
+    if (pushed?.ok) await this.forceSyncData(false, false);
   });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
     this._pendingMutationCount = Math.max(0, Number(pendingCount) || 0);

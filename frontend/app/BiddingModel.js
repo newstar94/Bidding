@@ -427,6 +427,15 @@ export class BiddingModel {
   }
   getStorageHydrationStatus(type) {
     const table = String(type || "").toLowerCase();
+    if (table === "mutation_outbox") {
+      const status = this.getMutationOutboxStatus();
+      return {
+        code: status.code,
+        recoverable: status.state === "degraded",
+        state: status.state === "degraded" ? "failed" : status.state,
+        table,
+      };
+    }
     const failure = this._storageReadFailures.get(table);
     if (failure) {
       return { code: failure.code || "OPERATION_FAILED", recoverable: true, state: "failed", table };
@@ -450,10 +459,17 @@ export class BiddingModel {
     }));
   }
   hasStorageReadFailures() {
-    return this._storageReadFailures.size > 0;
+    return this._storageReadFailures.size > 0 || this.hasMutationOutboxDurabilityFailure();
   }
   assertStorageTablesWritable(types) {
-    for (const type of Array.isArray(types) ? types : [types]) {
+    const requestedTypes = Array.isArray(types) ? types : [types];
+    if (
+      requestedTypes.some((type) => this._isSyncedStateKey(String(type || "").toLowerCase()))
+      && this.hasMutationOutboxDurabilityFailure()
+    ) {
+      throw this.getMutationOutboxFailure();
+    }
+    for (const type of requestedTypes) {
       const table = String(type || "").toLowerCase();
       const failure = this._storageReadFailures.get(table);
       if (failure) throw failure;
@@ -634,7 +650,8 @@ export class BiddingModel {
     ) {
       this._mutationOutboxStore = new WorkspaceMutationOutboxStore({
         storage: this.workspaceStorage,
-        database: this.db
+        database: this.db,
+        onStatusChange: (status) => this._applyMutationOutboxStatus(status),
       });
       this._mutationOutboxStoreStorage = this.workspaceStorage;
       this._mutationOutboxStoreDatabase = this.db;
@@ -667,8 +684,59 @@ export class BiddingModel {
   async flushMutationOutbox() {
     await this._getMutationOutbox().flush();
   }
-  async hydrateMutationOutbox() {
-    return this._getMutationOutbox().hydrate();
+  async hydrateMutationOutbox(options = {}) {
+    const snapshot = await this._getMutationOutbox().hydrate(options);
+    this._applyMutationOutboxStatus(this._getMutationOutboxStore().getStatus());
+    return snapshot;
+  }
+  async recoverMutationOutbox() {
+    await this.hydrateMutationOutbox({ repairCorrupt: true });
+    return !this.hasMutationOutboxDurabilityFailure();
+  }
+  getMutationOutboxStatus() {
+    return this._getMutationOutboxStore().getStatus();
+  }
+  hasMutationOutboxDurabilityFailure() {
+    return this.getMutationOutboxStatus().state === "degraded";
+  }
+  getMutationOutboxFailure() {
+    const existing = this._storageReadFailures.get("mutation_outbox");
+    if (existing) return existing;
+    const error = new Error("Mutation outbox durability is degraded");
+    error.code = "OUTBOX_DURABILITY_DEGRADED";
+    error.recoverable = true;
+    error.status = this.getMutationOutboxStatus();
+    return error;
+  }
+  _applyMutationOutboxStatus(status) {
+    if (!status || status.state === "pending") return;
+    const table = "mutation_outbox";
+    if (status.state === "degraded") {
+      const previous = this._storageReadFailures.get(table);
+      const error = new Error("Mutation outbox durability is degraded");
+      error.code = status.code || "OUTBOX_DURABILITY_DEGRADED";
+      error.recoverable = true;
+      error.status = { ...status };
+      this._storageReadFailures.set(table, error);
+      if (!previous || JSON.stringify(previous.status) !== JSON.stringify(error.status)) {
+        this._notifyStorageHydration({
+          code: error.code,
+          recovered: false,
+          state: "failed",
+          table,
+        });
+      }
+      return;
+    }
+    const recovered = this._storageReadFailures.delete(table);
+    if (recovered) {
+      this._notifyStorageHydration({
+        code: null,
+        recovered: true,
+        state: "ready",
+        table,
+      });
+    }
   }
   captureMutationCheckpoint() {
     return this._getMutationOutbox().checkpoint();
