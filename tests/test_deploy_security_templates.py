@@ -209,7 +209,7 @@ def test_monitoring_and_runbook_cover_security_failure_modes():
     alerts = (ROOT / "deploy/monitoring/security-alerts.yml.example").read_text(
         encoding="utf-8"
     )
-    runbook = (ROOT / "docs/runbooks/ddos-bot-abuse.md").read_text(
+    runbook = (ROOT / "deploy/runbooks/ddos-bot-abuse.md").read_text(
         encoding="utf-8"
     )
 
