@@ -91,6 +91,44 @@ def test_full_npm_lock_audit_is_enforced_in_ci_and_scheduled_security():
     assert "npm run audit:npm" in security_workflow
 
 
+def test_python_ci_installs_hashed_locks_before_the_project_without_resolution():
+    workflows = {
+        "ci.yml": "requirements-test.txt",
+        "n-plus-one-regressions.yml": "requirements-test.txt",
+        "startup-performance.yml": "requirements.txt",
+    }
+
+    for workflow_name, lock_name in workflows.items():
+        workflow = (
+            PROJECT_ROOT / ".github" / "workflows" / workflow_name
+        ).read_text(encoding="utf-8")
+        lock_install = (
+            "python -m pip install --disable-pip-version-check "
+            f"--require-hashes -r {lock_name}"
+        )
+        project_install = (
+            "python -m pip install --disable-pip-version-check "
+            "--no-build-isolation --no-deps -e ."
+        )
+
+        assert lock_install in workflow
+        assert project_install in workflow
+        assert workflow.index(lock_install) < workflow.index(project_install)
+
+    test_lock = (PROJECT_ROOT / "requirements-test.txt").read_text(encoding="utf-8")
+    assert "--generate-hashes" in test_lock
+    assert "--all-build-deps" in test_lock
+    assert "--extra=test" in test_lock
+    assert "pytest==9.1.1" in test_lock
+    assert "setuptools==83.0.0" in test_lock
+
+    runtime_lock = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    pinned_requirement = re.compile(r"^([a-z0-9][a-z0-9._-]*==[^\\s;]+)", re.MULTILINE)
+    assert set(pinned_requirement.findall(runtime_lock)) <= set(
+        pinned_requirement.findall(test_lock)
+    )
+
+
 def test_full_ci_keeps_runtime_and_integration_databases_isolated():
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
