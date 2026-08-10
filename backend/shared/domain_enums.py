@@ -3,6 +3,7 @@
 import unicodedata
 
 PACKAGE_STATUS_LABELS = {
+    "UNKNOWN": "Chưa xác định",
     "PREPARING": "Chuẩn bị", "INVITED": "Đang mời thầu",
     "OPENED": "Đã mở thầu", "EVALUATING": "Đang chấm thầu",
     "PARTIALLY_AWARDED": "Đã có kết quả một phần",

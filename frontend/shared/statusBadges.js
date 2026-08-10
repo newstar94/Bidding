@@ -1,6 +1,7 @@
 import { escapeHtml } from "./view_helpers.js";
 
 const PACKAGE_STATUS_PRESENTATION = Object.freeze({
+  "Chưa xác định": ["badge-neutral", "circle-help"],
   "Chuẩn bị": ["badge-neutral", "circle-dot"],
   "Đang mời thầu": ["badge-info", "megaphone"],
   "Đã mở thầu": ["badge-opened", "folder-open"],

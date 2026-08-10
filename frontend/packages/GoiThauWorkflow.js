@@ -79,6 +79,15 @@ export async function editGoiThau(id, isReadOnly = false) {
   }
   const form = document.getElementById("form-goithau");
   const gt = id ? this.model.state.goithau.find((g) => String(g.id) === String(id)) : null;
+  const procurementNoticeButton = document.getElementById(
+    "btn-open-procurement-notice-import",
+  );
+  if (procurementNoticeButton) {
+    procurementNoticeButton.hidden = !gt || isReadOnly;
+    procurementNoticeButton.onclick = gt
+      ? () => this.openProcurementNoticeImportWizard?.(gt.id)
+      : null;
+  }
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
   const khSelect = document.getElementById("gt-kehoachid");

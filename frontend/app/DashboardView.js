@@ -6,6 +6,7 @@ import { apiFetch } from "../shared/apiClient.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 const PACKAGE_STATUS_COLORS = {
+  "Chưa xác định": "var(--text-muted)",
   "Chuẩn bị": "#74829a",
   "Đang mời thầu": "var(--dashboard-blue)",
   "Đã mở thầu": "var(--dashboard-amber)",

@@ -1,0 +1,67 @@
+<div class="modal-overlay" id="modal-procurement-import">
+    <div class="modal-card modal-lg procurement-import" aria-describedby="procurement-import-description">
+        <div class="modal-header">
+            <div>
+                <p class="procurement-import__eyebrow">Mua Sắm Công · Bundle import</p>
+                <h3 id="modal-procurement-import-title">Nhập KHLCNT và gói thầu</h3>
+            </div>
+            <button type="button" class="modal-close" data-close="modal-procurement-import" aria-label="Đóng trình nhập">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p id="procurement-import-description" class="helper-text">
+                Dữ liệu chỉ được lưu sau khi bạn xem preview và xác nhận. Phiên bản nguồn và phiên bản BiddingFlow được quản lý độc lập.
+            </p>
+            <section class="procurement-import__controls" aria-label="Chọn dữ liệu nguồn">
+                <div class="form-group">
+                    <label for="procurement-import-code">Mã KHLCNT</label>
+                    <input id="procurement-import-code" data-procurement-code autocomplete="off" inputmode="text" placeholder="PL2600163819 hoặc PL2600163819-01">
+                </div>
+                <div class="form-group">
+                    <label for="procurement-import-mode">Phạm vi phiên bản</label>
+                    <select id="procurement-import-mode" data-procurement-mode>
+                        <option value="LATEST">Phiên bản mới nhất</option>
+                        <option value="SELECTED">Phiên bản được chọn</option>
+                        <option value="ALL">Toàn bộ lịch sử</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="procurement-import-revision">Phiên bản nguồn</label>
+                    <select id="procurement-import-revision" data-procurement-revision>
+                        <option value="">Tự xác định</option>
+                    </select>
+                </div>
+                <button type="button" class="btn btn-outline procurement-import__prepare" data-procurement-prepare>Chuẩn bị preview</button>
+            </section>
+            <div class="procurement-import__status" data-procurement-status aria-live="polite" aria-atomic="true">Nhập mã KHLCNT để bắt đầu.</div>
+            <ul class="procurement-import__issues" data-procurement-issues hidden></ul>
+            <div class="procurement-import__preview-grid">
+                <section class="procurement-import__panel" aria-labelledby="procurement-plan-heading">
+                    <div class="procurement-import__panel-heading">
+                        <h4 id="procurement-plan-heading">Kế hoạch nguồn</h4>
+                        <span data-procurement-summary>Chưa có preview</span>
+                    </div>
+                    <dl class="procurement-import__facts" data-procurement-plan-preview></dl>
+                    <div class="form-group">
+                        <label for="procurement-import-investor">Chủ đầu tư BiddingFlow <span class="required">*</span></label>
+                        <select id="procurement-import-investor" data-procurement-investor required>
+                            <option value="">-- Chọn chủ đầu tư hiện hữu --</option>
+                        </select>
+                    </div>
+                </section>
+                <section class="procurement-import__panel procurement-import__packages" aria-labelledby="procurement-packages-heading">
+                    <h4 id="procurement-packages-heading">Các gói thầu trong snapshot</h4>
+                    <div class="procurement-import__table-wrap" tabindex="0" aria-label="Bảng preview gói thầu">
+                        <table>
+                            <thead><tr><th>Số hiệu</th><th>Tên gói</th><th>Thông báo liên kết</th><th>Hành động</th></tr></thead>
+                            <tbody data-procurement-packages></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close="modal-procurement-import">Hủy</button>
+            <button type="button" class="btn btn-primary" data-procurement-apply disabled>Nhập kế hoạch và gói thầu</button>
+        </div>
+    </div>
+</div>

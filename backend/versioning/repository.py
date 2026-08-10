@@ -21,7 +21,16 @@ class AggregateVersionRepository:
         self.attach_children = attach_children
 
     def _mapped_rows(self, table_name, rows):
-        return [self.map_record(table_name, dict(row)) for row in rows]
+        return [self.map_record(table_name, self._row_dict(row)) for row in rows]
+
+    def _row_dict(self, row):
+        if hasattr(row, "keys"):
+            return {key: row[key] for key in row.keys()}
+        columns = [
+            getattr(column, "name", column[0])
+            for column in (self.cursor.description or ())
+        ]
+        return dict(zip(columns, row))
 
     def _attach_package_expert_relations(self, organization_id, packages):
         for package in packages:
@@ -42,7 +51,7 @@ class AggregateVersionRepository:
         ).fetchall()
         packages_by_id = {str(package["id"]): package for package in packages}
         for raw_row in rows:
-            row = dict(raw_row)
+            row = self._row_dict(raw_row)
             package = packages_by_id.get(str(row.get("goi_thau_id")))
             if not package:
                 continue
@@ -123,7 +132,20 @@ class AggregateVersionRepository:
             organization_id=organization_id,
         )
         self._attach_package_expert_relations(organization_id, packages)
-        state = {"kehoach": [], "goithau": packages}
+        plans = []
+        if packages:
+            plan_id = packages[0].get("keHoachId")
+            plan_row = self.cursor.execute(
+                """SELECT * FROM ke_hoach_lcnt
+                   WHERE organization_id = ? AND id = ?
+                     AND archived_at IS NULL
+                   FOR UPDATE""",
+                (organization_id, plan_id),
+            ).fetchone()
+            plans = self._mapped_rows(
+                "ke_hoach_lcnt", [plan_row] if plan_row else []
+            )
+        state = {"kehoach": plans, "goithau": packages}
         state.update(
             self._load_package_relations(
                 organization_id,

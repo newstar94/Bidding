@@ -1,0 +1,4 @@
+{
+  "schemaVersion": "vneps-procurement-fixture-v1",
+  "plans": [{"familyNo":"PL2600000001","revisions":[{"revisionId":"fixture-plan-revision-00","revisionNumber":"00","name":"Kế hoạch 00","planType":"Dự toán mua sắm","projectName":"Dự toán fixture","investorCode":"INV-FIXTURE","approvalDecisionNo":"01/QĐ","approvalDecisionDate":"2026-01-05","packages":[{"planDetailRevisionId":"fixture-package-a-00","symbol":"A","name":"Gói A","priceVnd":100000000,"executionPeriod":"30 ngày","capitalDetail":"Ngân sách nhà nước","selectionDuration":"30 ngày","selectionStart":"2026-02","expectedNotice":true}]}]}]
+}

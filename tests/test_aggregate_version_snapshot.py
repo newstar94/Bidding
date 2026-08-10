@@ -1,4 +1,7 @@
+from copy import deepcopy
+
 from backend.versioning.aggregate_snapshot import (
+    PACKAGE_CHILD_CLONE_POLICY,
     snapshot_package_aggregate,
     snapshot_plan_aggregate,
 )
@@ -63,6 +66,9 @@ def _state():
             "id": "opening-source",
             "goiThauId": package["id"],
             "phanLoId": "lot-source",
+            "danhGiaHopLe": "pass",
+            "danhGiaKetLuan": "qualified",
+            "giaDeNghiTrungThau": 900,
             "thanhVienLienDanh": [{"id": "member-source", "thanhVienNhaThauId": "contractor-1"}],
             "baoCaoDanhGiaChiTietList": [{
                 "id": "report-source",
@@ -128,6 +134,9 @@ def test_package_snapshot_remaps_full_aggregate_without_server_fields():
     bidder_goods = snapshot["hanghoaduthaunhathau"][0]
     assert goods["phanLoId"] == lot_id
     assert opening["phanLoId"] == lot_id
+    assert opening["danhGiaHopLe"] == "pass"
+    assert opening["danhGiaKetLuan"] == "qualified"
+    assert opening["giaDeNghiTrungThau"] == 900
     assert opening["thanhVienLienDanh"][0]["id"] != "member-source"
     report = opening["baoCaoDanhGiaChiTietList"][0]
     criterion = package["danhGiaHsdtMetadata"]["technical"]["criteria"][0]
@@ -136,6 +145,30 @@ def test_package_snapshot_remaps_full_aggregate_without_server_fields():
     assert bidder_goods["thongTinMoThauId"] == opening["id"]
     assert bidder_goods["goiThauHangHoaId"] == goods["id"]
     assert snapshot["assignments"][0]["targetId"] == "package-target"
+
+
+def test_operational_evidence_remains_on_the_historical_package_snapshot():
+    state = _state()
+    retained_tables = PACKAGE_CHILD_CLONE_POLICY["retain_on_historical_snapshot"]
+    for table in retained_tables:
+        state[table] = [{"id": f"{table}-source", "goiThauId": "package-source"}]
+    original_evidence = {
+        table: deepcopy(state[table]) for table in retained_tables
+    }
+
+    snapshot = snapshot_package_aggregate(
+        state,
+        state["goithau"][0],
+        target_package_id="package-target",
+        target_plan_id="plan-target",
+        package_version=3,
+        timestamp="2026-08-08 10:00:00",
+        create_id=_ids(),
+    )
+
+    for table in retained_tables:
+        assert table not in snapshot
+        assert state[table] == original_evidence[table]
 
 
 def test_plan_snapshot_uses_complete_server_state_without_browser_hydration():
@@ -158,3 +191,25 @@ def test_plan_snapshot_uses_complete_server_state_without_browser_hydration():
     assert inherited_package["timelineItems"][0]["sourceEntityId"] == inherited_package["phanLoList"][0]["id"]
     assert inherited_package["yeuCauLamRoList"][0]["id"] != "clarification-source"
     assert inherited_package["giaHanList"][0]["id"] != "extension-source"
+
+
+def test_plan_snapshot_can_exclude_removed_package_roots():
+    state = _state()
+    state["goithau"].append({
+        **state["goithau"][0],
+        "id": "package-removed",
+        "rootId": "package-removed-root",
+        "phanLoList": [],
+        "awardedPhanLoList": [],
+    })
+    aggregate = snapshot_plan_aggregate(
+        state,
+        source_plan_id="plan-source",
+        target_plan_id="plan-target",
+        timestamp="2026-08-08 10:00:00",
+        create_id=_ids(),
+        exclude_package_roots={"package-removed-root"},
+    )
+
+    assert len(aggregate["goithau"]) == 1
+    assert aggregate["goithau"][0]["rootId"] == "package-root"

@@ -41,6 +41,22 @@ from backend.sync.validator import validate_sync_item
 
 
 _QUERY_CHUNK_SIZE = 500
+_VERSIONED_IMMUTABLE_HISTORY_TABLES = frozenset({"ke_hoach_lcnt", "goi_thau"})
+
+
+def historical_record_mutation_error(table_name, current_record):
+    if (
+        table_name in _VERSIONED_IMMUTABLE_HISTORY_TABLES
+        and current_record
+        and "is_latest" in current_record
+        and int(current_record.get("is_latest") or 0) != 1
+    ):
+        return {
+            "field": "$record",
+            "code": "HISTORICAL_RECORD_IMMUTABLE",
+            "message": "Phiên bản lịch sử là ảnh chụp bất biến.",
+        }
+    return None
 
 
 class SyncRecordValidator:
@@ -221,6 +237,11 @@ class SyncRecordValidator:
                             record_id,
                             current_record,
                         )
+                        history_error = historical_record_mutation_error(
+                            table_name, current_record
+                        )
+                        if history_error:
+                            item_errors.append(history_error)
                         expected_version = item.get(
                             "expectedVersion",
                             item.get("rowVersion"),

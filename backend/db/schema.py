@@ -665,7 +665,7 @@ SCHEMA_DINH_NGHIA = {
             "is_thuoc": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_thuoc) = 'integer' AND is_thuoc IN (0,1))",
             "is_rebid": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_rebid) = 'integer' AND is_rebid IN (0,1))",
             "rebid_from_package_id": "TEXT",
-            "trang_thai": "TEXT NOT NULL DEFAULT 'PREPARING' CHECK(trang_thai IN ('PREPARING', 'INVITED', 'OPENED', 'EVALUATING', 'PARTIALLY_AWARDED', 'AWARDED', 'CANCELLED'))",
+            "trang_thai": "TEXT NOT NULL DEFAULT 'PREPARING' CHECK(trang_thai IN ('UNKNOWN', 'PREPARING', 'INVITED', 'OPENED', 'EVALUATING', 'PARTIALLY_AWARDED', 'AWARDED', 'CANCELLED'))",
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không' CHECK(yeu_cau_tham_dinh_hsmt IN ('Có', 'Không') OR yeu_cau_tham_dinh_hsmt IS NULL)",
             "yeu_cau_tham_dinh_hsmt_code": "TEXT NOT NULL DEFAULT 'UNDETERMINED' CHECK(yeu_cau_tham_dinh_hsmt_code IN ('UNDETERMINED', 'REQUIRED', 'NOT_REQUIRED'))",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
@@ -1867,6 +1867,89 @@ SCHEMA_DINH_NGHIA = {
         ],
         "foreign_keys": [
             "FOREIGN KEY (chain_id) REFERENCES audit_chain_heads(chain_id) ON DELETE RESTRICT"
+        ]
+    },
+    "procurement_source_revision": {
+        "columns": {
+            "id": "TEXT NOT NULL CHECK(trim(id) != '')",
+            "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE'))",
+            "entity_kind": "TEXT NOT NULL CHECK(entity_kind IN ('PLAN', 'PACKAGE', 'NOTICE'))",
+            "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
+            "revision_uuid": "TEXT NOT NULL CHECK(trim(revision_uuid) != '')",
+            "revision_no": "TEXT",
+            "parent_plan_revision_uuid": "TEXT",
+            "id_detail": "TEXT",
+            "aliases_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(aliases_json) <= 32768)",
+            "canonical_snapshot_json": "TEXT NOT NULL CHECK(length(canonical_snapshot_json) BETWEEN 2 AND 262144)",
+            "digest": "TEXT NOT NULL CHECK(length(digest) = 71 AND digest LIKE 'sha256:%')",
+            "schema_version": "TEXT NOT NULL CHECK(trim(schema_version) != '')",
+            "disposition": "TEXT NOT NULL CHECK(disposition IN ('APPLIED', 'OBSERVED_NOT_APPLIED', 'NOOP'))",
+            "fetched_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "applied_at": "TEXT",
+            "public_url": "TEXT",
+            "local_entity_type": "TEXT",
+            "local_root_id": "TEXT",
+            "local_snapshot_id": "TEXT",
+            "match_method": "TEXT",
+            "match_confidence": "TEXT",
+            "confirmed_by": "TEXT",
+            "operation_id": "TEXT",
+            "idempotency_key": "TEXT NOT NULL CHECK(trim(idempotency_key) != '')",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, provider, entity_kind, revision_uuid)",
+            "UNIQUE(organization_id, provider, idempotency_key, revision_uuid)"
+        ]
+    },
+    "procurement_source_binding": {
+        "columns": {
+            "id": "TEXT NOT NULL CHECK(trim(id) != '')",
+            "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE'))",
+            "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
+            "plan_revision_uuid": "TEXT NOT NULL CHECK(trim(plan_revision_uuid) != '')",
+            "id_detail": "TEXT NOT NULL CHECK(trim(id_detail) != '')",
+            "stable_external_id": "TEXT",
+            "symbol": "TEXT",
+            "notify_no": "TEXT",
+            "local_entity_type": "TEXT NOT NULL CHECK(local_entity_type IN ('goithau', 'kehoach'))",
+            "local_root_id": "TEXT NOT NULL CHECK(trim(local_root_id) != '')",
+            "local_snapshot_id": "TEXT NOT NULL CHECK(trim(local_snapshot_id) != '')",
+            "match_method": "TEXT NOT NULL CHECK(trim(match_method) != '')",
+            "match_confidence": "TEXT NOT NULL DEFAULT 'EXACT' CHECK(match_confidence IN ('EXACT', 'USER_CONFIRMED'))",
+            "confirmed_by": "TEXT",
+            "canonical_fields_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(canonical_fields_json) <= 131072)",
+            "digest": "TEXT NOT NULL CHECK(length(digest) = 71 AND digest LIKE 'sha256:%')",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "CONSTRAINT procurement_source_binding_snapshot_unique "
+            "UNIQUE(organization_id, provider, plan_revision_uuid, id_detail, local_snapshot_id)"
+        ]
+    },
+    "procurement_import_operation": {
+        "columns": {
+            "id": "TEXT NOT NULL CHECK(trim(id) != '')",
+            "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE'))",
+            "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
+            "mode": "TEXT NOT NULL CHECK(mode IN ('LATEST', 'SELECTED', 'ALL'))",
+            "status": "TEXT NOT NULL CHECK(status IN ('PENDING', 'RUNNING', 'PARTIAL', 'COMPLETED', 'FAILED'))",
+            "next_revision_index": "INTEGER NOT NULL DEFAULT 0 CHECK(next_revision_index >= 0)",
+            "total_revisions": "INTEGER NOT NULL CHECK(total_revisions > 0)",
+            "bundle_digest": "TEXT NOT NULL CHECK(length(bundle_digest) = 71 AND bundle_digest LIKE 'sha256:%')",
+            "revision_results_json": "TEXT NOT NULL DEFAULT '[]' CHECK(length(revision_results_json) <= 262144)",
+            "idempotency_key": "TEXT NOT NULL CHECK(trim(idempotency_key) != '')",
+            "request_hash": "TEXT NOT NULL CHECK(length(request_hash) = 64)",
+            "actor_user_id": "TEXT NOT NULL CHECK(trim(actor_user_id) != '')",
+            "error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, provider, idempotency_key)"
         ]
     }
 }

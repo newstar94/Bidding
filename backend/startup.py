@@ -464,6 +464,16 @@ def validate_startup_configuration(database, environ=None):
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
     is_production = app_env in {"prod", "production"}
+    procurement_provider = str(
+        environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
+    ).strip().casefold()
+    procurement_fixture = str(
+        environ.get("VNEPS_PROCUREMENT_FIXTURE_PATH", "")
+    ).strip()
+    if is_production and (procurement_provider == "fixture" or procurement_fixture):
+        raise StartupValidationError(
+            "VNEPS procurement fixture provider is forbidden in production."
+        )
     try:
         get_turnstile_config(environ)
     except TurnstileConfigurationError as exc:

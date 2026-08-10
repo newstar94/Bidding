@@ -12,6 +12,7 @@ import {
 
 test("lifecycle policy normalizes legacy labels and presents stable codes", () => {
   assert.equal(normalizeStatus("Chuẩn bị"), "PREPARING");
+  assert.equal(normalizeStatus("Chưa xác định"), "UNKNOWN");
   assert.equal(normalizeStatus("Huỷ thầu"), "CANCELLED");
   assert.equal(normalizeStatus("AWARDED"), "AWARDED");
   assert.deepEqual(presentStatus("PARTIALLY_AWARDED"), {
@@ -24,6 +25,8 @@ test("lifecycle policy normalizes legacy labels and presents stable codes", () =
 
 test("lifecycle policy owns transitions fields and workflow steps", () => {
   assert.deepEqual(allowedTransitions("PREPARING"), ["CANCELLED", "INVITED"]);
+  assert.deepEqual(allowedTransitions("UNKNOWN"), ["CANCELLED", "PREPARING"]);
+  assert.equal(fieldPolicy("UNKNOWN", "goods").editable, true);
   assert.equal(fieldPolicy("PREPARING", "goods").editable, true);
   assert.equal(fieldPolicy("INVITED", "goods").editable, false);
   assert.equal(workflowStep("EVALUATING", "ONE_STAGE_TWO_ENVELOPE", null), "evaluation");

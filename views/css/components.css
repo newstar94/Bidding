@@ -2969,3 +2969,206 @@ body.excel-import-is-busy {
     transform: none;
   }
 }
+.plan-procurement-import-trigger {
+    align-self: flex-start;
+    min-height: 44px;
+    margin-top: 0.45rem;
+}
+
+.procurement-import {
+    width: min(1120px, calc(100vw - 2rem));
+    max-height: min(92vh, 900px);
+}
+
+.procurement-import__eyebrow {
+    margin: 0 0 0.25rem;
+    color: var(--primary);
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.procurement-import__controls {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1.4fr) repeat(2, minmax(10rem, 1fr)) auto;
+    gap: 0.75rem;
+    align-items: end;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.8rem;
+    background: var(--surface-subtle);
+}
+
+.procurement-import__prepare {
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+.procurement-import__status {
+    margin: 0.85rem 0;
+    padding: 0.75rem 0.9rem;
+    border-left: 3px solid var(--primary);
+    background: var(--surface-subtle);
+    color: var(--text-main);
+}
+
+.procurement-import__issues {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0 0 0.85rem;
+    padding: 0;
+    list-style: none;
+}
+
+.procurement-import__issue {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--warning);
+    border-radius: 0.55rem;
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+
+.procurement-import__issue.is-blocking {
+    border-color: var(--danger);
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+.procurement-import__preview-grid {
+    display: grid;
+    grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.7fr);
+    gap: 0.85rem;
+}
+
+.procurement-import__panel {
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.8rem;
+    background: var(--surface);
+}
+
+.procurement-import__panel h4 {
+    margin: 0 0 0.8rem;
+}
+
+.procurement-import__panel-heading {
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.procurement-import__panel-heading span {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.procurement-import__facts {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0 0 1rem;
+}
+
+.procurement-import__fact {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 0.8fr) minmax(0, 1.2fr);
+    gap: 0.6rem;
+}
+
+.procurement-import__fact dt {
+    color: var(--text-muted);
+}
+
+.procurement-import__fact dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-weight: 650;
+}
+
+.procurement-import__table-wrap {
+    max-height: 340px;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 0.55rem;
+}
+
+.procurement-import__table-wrap:focus-visible,
+.procurement-import button:focus-visible,
+.procurement-import input:focus-visible,
+.procurement-import select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
+    outline-offset: 2px;
+}
+
+.procurement-import__table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+}
+
+.procurement-import__table-wrap th,
+.procurement-import__table-wrap td {
+    padding: 0.7rem;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    vertical-align: top;
+}
+
+.procurement-import__table-wrap th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-subtle);
+    z-index: 1;
+}
+
+.procurement-import__action {
+    font-weight: 750;
+}
+
+@media (max-width: 800px) {
+    .procurement-import__controls,
+    .procurement-import__preview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .procurement-import__prepare {
+        width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    .procurement-import {
+        width: calc(100vw - 0.75rem);
+        max-height: 96vh;
+    }
+
+    .procurement-import .modal-body,
+    .procurement-import__panel,
+    .procurement-import__controls {
+        padding: 0.75rem;
+    }
+
+    .procurement-import__fact {
+        grid-template-columns: 1fr;
+        gap: 0.15rem;
+    }
+
+    .procurement-import .modal-footer {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .procurement-import .modal-footer .btn {
+        width: 100%;
+        min-height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .procurement-import * {
+        scroll-behavior: auto;
+        transition-duration: 0.01ms;
+    }
+}

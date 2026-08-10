@@ -640,3 +640,60 @@ def test_migration_chain_fixtures_leave_public_schema_unchanged():
     finally:
         connection.rollback()
         connection.close()
+
+
+def test_procurement_binding_history_is_unique_per_local_snapshot():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        assert apply_database_upgrades(
+            cursor, 1, _upgrade_context()
+        ) == DB_SCHEMA_VERSION
+        digest = "sha256:" + "a" * 64
+        cursor.execute(
+            """INSERT INTO procurement_source_binding (
+                   id, organization_id, provider, family_key,
+                   plan_revision_uuid, id_detail, local_entity_type,
+                   local_root_id, local_snapshot_id, match_method,
+                   canonical_fields_json, digest)
+               VALUES ('binding-1', 'org-binding-history', 'VNEPS',
+                       'PL2600000001', 'plan-revision-01', 'detail-a',
+                       'goithau', 'root-a', 'snapshot-a', 'EXACT', '{}', ?)""",
+            (digest,),
+        )
+        cursor.execute(
+            """INSERT INTO procurement_source_binding (
+                   id, organization_id, provider, family_key,
+                   plan_revision_uuid, id_detail, local_entity_type,
+                   local_root_id, local_snapshot_id, match_method,
+                   canonical_fields_json, digest)
+               VALUES ('binding-2', 'org-binding-history', 'VNEPS',
+                       'PL2600000001', 'plan-revision-01', 'detail-a',
+                       'goithau', 'root-a', 'snapshot-b', 'EXACT', '{}', ?)""",
+            (digest,),
+        )
+        assert cursor.execute(
+            """SELECT COUNT(*) FROM procurement_source_binding
+                WHERE organization_id = 'org-binding-history'
+                  AND plan_revision_uuid = 'plan-revision-01'
+                  AND id_detail = 'detail-a'"""
+        ).fetchone()[0] == 2
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_unknown_package_status_is_available_after_upgrade_chain():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        assert apply_database_upgrades(
+            cursor, 1, _upgrade_context()
+        ) == DB_SCHEMA_VERSION
+        definition = cursor.execute(
+            """SELECT pg_get_constraintdef(oid)
+                 FROM pg_constraint
+                WHERE connamespace = current_schema()::regnamespace
+                  AND conrelid = 'goi_thau'::regclass
+                  AND conname = 'goi_thau_trang_thai_check'"""
+        ).fetchone()[0]
+        assert "'UNKNOWN'::text" in definition
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)

@@ -2,9 +2,9 @@
 
 ## Kết luận ngắn
 
-Thời điểm kiểm tra: **2026-08-10, múi giờ Asia/Saigon**.
+Thời điểm kiểm tra gốc: **2026-08-10, múi giờ Asia/Saigon**. Đối chiếu bổ sung theo tài liệu hướng dẫn kỹ thuật: **2026-08-11**.
 
-Phạm vi nguồn: chỉ trang, HTML/JavaScript và endpoint first-party thuộc `muasamcong.mpi.gov.vn`. Không dùng blog, bản tổng hợp của bên thứ ba và không gọi các endpoint chi tiết theo cách bỏ qua reCAPTCHA.
+Phạm vi nguồn kỹ thuật: trang, HTML/JavaScript và endpoint first-party thuộc `muasamcong.mpi.gov.vn`; phạm vi pháp lý: CSDL quốc gia về văn bản pháp luật và Cổng Thông tin điện tử Chính phủ. Không dùng blog, bản tổng hợp của bên thứ ba và không gọi các endpoint chi tiết theo cách bỏ qua reCAPTCHA.
 
 Kết luận cho BiddingFlow:
 
@@ -13,6 +13,7 @@ Kết luận cho BiddingFlow:
 3. **Có liên kết thì nên enrichment vào đúng gói đã có, không tạo gói trùng.** `Số thông báo liên kết` lấy từ `linkNotifyInfo.notifyNo`. Khi bấm, portal tìm thông báo theo `notifyNo`, ưu tiên loại TBMT (`es-notify-contractor`), rồi thử loại thông báo sơ tuyển/mời quan tâm (`es-pre-notify-contractor`). Vì vậy cần lưu cả `notice_no` và `notice_kind`, không mặc định mọi liên kết đều là TBMT.
 4. **Phiên bản KHLCNT và phiên bản TBMT là hai dòng phiên bản độc lập.** KHLCNT dùng `planNo` + `planVersion` + UUID `id`; TBMT dùng `notifyNo` + `notifyVersion` + UUID `id`. Không có bằng chứng primary-source cho quy tắc “KHLCNT tăng 00 → 01 thì TBMT hoặc gói tự động tăng 00 → 01”.
 5. **Quy tắc hiện tại của BiddingFlow giữ hai trục phiên bản độc lập.** Khi kế hoạch nội bộ 00 lên 01, hệ thống tạo một row snapshot mới cho gói dưới kế hoạch 01 nhưng giữ nguyên `phienBan` của gói. Gói chỉ tăng 00 → 01 khi có một package-version command riêng; gói mới ở kế hoạch 01 bắt đầu ở 00. Command kế hoạch hiện tại còn sao chép toàn bộ gói nguồn, nên chưa xử lý đúng gói bị loại khỏi revision mới.
+6. **Thông tin được pháp luật yêu cầu công khai không đồng nghĩa endpoint là API tích hợp được cấp quyền.** Hai version-list đang gọi được công khai, nhưng các detail endpoint vẫn dùng reCAPTCHA và chưa có tài liệu chính thức về contract/SLA/quyền tự động hóa cho bên thứ ba. Production connector phải giữ external authorization gate.
 
 ## Quy ước mức độ bằng chứng
 
@@ -429,7 +430,158 @@ Nguồn: [JavaScript first-party trang KHLCNT](https://muasamcong.mpi.gov.vn/web
 
 **FACT.** Hai endpoint version-list nêu ở mục 4 và 5 được frontend gọi không có token và đã trả dữ liệu công khai trong lần kiểm tra này.
 
-**UNKNOWN.** Nghiên cứu không xác nhận một API chính thức, ổn định và được phép cho backend bên thứ ba lấy toàn bộ detail payload không qua CAPTCHA. Tên path `services/expose` không tự nó là cam kết về SLA, tính ổn định hay điều khoản sử dụng.
+### 8.1. Kiểm chứng lại endpoint và đường dẫn thực tế ngày 2026-08-10
+
+**OBSERVATION.** Gọi trực tiếp hai endpoint version-list bằng `POST`, `Content-Type: application/json`, không cookie và không token vẫn trả HTTP thành công trong lần kiểm tra ngày 2026-08-10:
+
+- `get-version-list` của KHLCNT với `{"planNo":"PL2400213559"}` trả đúng ba revision `02`, `01`, `00` và ba UUID đã ghi ở mục 4;
+- `get-version-list` của TBMT với `{"notifyNo":"IB2400040053"}` trả đúng hai revision `01`, `00` và hai UUID đã ghi ở mục 5.
+
+Nguồn: [KHLCNT version-list first-party](https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/bid-po-bidp-plan-project-view/get-version-list) và [TBMT version-list first-party](https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/bid-po-bido-notify-contractor-view/get-version-list).
+
+**FACT.** HTML/JavaScript first-party hiện khai báo đường dẫn chi tiết KHLCNT là `.../services/expose/lcnt/.../get-by-id`, còn chi tiết gói là `.../services/lcnt/.../get-bidp-plan-detail-by-id`; cả hai lời gọi đều nối `?token=` lấy từ `grecaptcha.execute(...)`. Vì vậy không được suy từ chữ `expose` rằng endpoint chi tiết là API backend-to-backend không cần CAPTCHA, và cũng không được tự thêm/bỏ đoạn `expose` khi hiện thực adapter.
+
+Nguồn: [JavaScript first-party trang KHLCNT PL2400239107](https://muasamcong.mpi.gov.vn/web/guest/contractor-selection?_egpportalcontractorselectionv2_WAR_egpportalcontractorselectionv2_render=detail-v2&id=f55c73ab-ed0f-4427-8ce4-15e57d5ed7f5&planNo=PL2400239107&step=tbmt&stepCode=plan-step-1&type=es-plan-project-p).
+
+### 8.2. Phạm vi công khai theo pháp luật không đồng nghĩa quyền dùng API
+
+**FACT PHÁP LÝ.** Điều 7 và Điều 8 Luật Đấu thầu số 22/2023/QH15, theo nội dung hiện hành sau các luật sửa đổi có liên quan, quy định các nhóm thông tin lựa chọn nhà thầu, trong đó có kế hoạch lựa chọn nhà thầu và thông báo mời thầu, được đăng tải trên Hệ thống mạng đấu thầu quốc gia (trừ thông tin thuộc bí mật nhà nước), đồng thời xác định trách nhiệm của chủ đầu tư/bên mời thầu đối với việc đăng tải và tính chính xác của thông tin. Nghị định 214/2025/NĐ-CP, Điều 22 tiếp tục quy định việc công khai thông tin lựa chọn nhà thầu trên Hệ thống. Tại thời điểm kiểm tra, Thông tư 79/2025/TT-BTC có hiệu lực từ 04/08/2025 và là văn bản hiện hành hướng dẫn việc cung cấp, đăng tải thông tin và mẫu hồ sơ trên Hệ thống.
+
+Nguồn chính thức: [Luật Đấu thầu 22/2023/QH15 trên CSDL quốc gia về VBPL](https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx?ItemID=166581), [toàn văn Luật trên Cổng Thông tin điện tử Chính phủ](https://xaydungchinhsach.chinhphu.vn/toan-van-luat-dau-thau-119230728060101267.htm), [Luật sửa đổi 90/2025/QH15 trên CSDL quốc gia về VBPL](https://vbpl.vn/tw/Pages/vbpq-thuoctinh.aspx?ItemID=179382), [Nghị định 214/2025/NĐ-CP trên Cổng Thông tin điện tử Chính phủ](https://xaydungchinhsach.chinhphu.vn/toan-van-nghi-dinh-so-214-2025-nd-cp-quy-dinh-chi-tiet-luat-dau-thau-ve-lua-chon-nha-thau-119250807102704793.htm), [trạng thái hiệu lực Thông tư 79/2025/TT-BTC trên CSDL quốc gia về VBPL](https://vbpl.vn/tw/Pages/vbpq-thuoctinh.aspx?ItemID=180735).
+
+**INFERENCE.** Các quy định về công khai là cơ sở để xem trang public là nguồn quan sát chính thức cho dữ liệu đã đăng tải, nhưng không tự tạo ra một hợp đồng API, hạn mức truy cập, SLA hoặc quyền tự động hóa endpoint nội bộ cho BiddingFlow.
+
+**UNKNOWN / GATE.** Trong phạm vi các trang portal, JavaScript first-party và văn bản chính thức đã kiểm tra, chưa tìm thấy tài liệu cấp quyền cho ứng dụng bên thứ ba gọi tự động các endpoint chi tiết đang được bảo vệ bằng reCAPTCHA. Vì vậy production connector vẫn phải ở trạng thái `BLOCKED BY EXTERNAL/API AUTHORIZATION` cho đến khi có tài liệu API/quyền truy cập hoặc xác nhận bằng văn bản từ đơn vị vận hành. Đây là ràng buộc tích hợp, không phải kết luận rằng dữ liệu công khai bị cấm sử dụng.
+
+### 8.3. Đối chiếu các gợi ý trong hướng dẫn nghiên cứu ngày 2026-08-11
+
+Nguồn gợi ý được đối chiếu: [Hướng dẫn nghiên cứu dữ liệu Mua Sắm Công](../HUONG_DAN_NGHIEN_CUU_DU_LIEU_MUASAMCONG.md). Kết quả dưới đây phân biệt việc endpoint xuất hiện trong frontend với việc endpoint được cấp quyền cho backend bên thứ ba.
+
+#### `services/smart/search`
+
+**FACT.** JavaScript first-party hiện khai báo:
+
+```text
+elasticSearch = /o/egp-portal-contractor-selection-v2/services/smart/search
+```
+
+Hàm `renderNotifyPage(notifyNo)` tạo payload tra TBMT chính xác như sau rồi gửi **một mảng chứa payload**:
+
+```json
+[
+  {
+    "pageSize": 1,
+    "pageNumber": 0,
+    "query": [
+      {
+        "index": "es-contractor-selection",
+        "keyWord": "<notifyNo>",
+        "matchType": "exact",
+        "matchFields": ["notifyNo", "bidName"],
+        "filters": [
+          {
+            "fieldName": "type",
+            "searchType": "in",
+            "fieldValues": ["es-notify-contractor"]
+          }
+        ]
+      }
+    ]
+  }
+]
+```
+
+Nếu không có kết quả, frontend tạo payload thứ hai với `fieldValues: ["es-pre-notify-contractor"]`. Điều này xác nhận shape TBMT trong hướng dẫn, ngoại trừ `pageSize` là tham số phân trang chứ không phải hằng số bắt buộc.
+
+**FACT.** Frontend đọc kết quả tại `response.data.page.content[]` và dùng các field sau để điều hướng:
+
+```text
+isInternet, type, stepCode, id, notifyId,
+inputResultId, bidOpenId, techReqId,
+bidPreNotifyResultId, bidPreOpenId,
+processApply, bidMode, notifyNo, planNo, pno, bidForm
+```
+
+Các field này là routing/discriminator metadata quan sát được; không phải tất cả đều luôn có giá trị và không phải package identity. `id`, `notifyId`, `bidOpenId`, `inputResultId` phải được giữ tách biệt. `stepCode`, `processApply`, `bidMode`, `type` dùng để chọn luồng/endpoint, không được dùng một mình làm khóa nghiệp vụ.
+
+**FACT / AUTHORIZATION.** Cùng hàm luôn gọi `grecaptcha.execute(...)` rồi POST tới `this.elasticSearch + "?token=" + token`. POST kiểm tra ngày 2026-08-11 bằng payload TBMT hợp lệ và cả các header `Origin`/`Referer` như ví dụ hướng dẫn, nhưng không cookie/không token, trả **HTTP 400** với HTML chuyển hướng, không trả JSON tìm kiếm. Do đó ví dụ Python gọi `smart/search` không token trong tài liệu hướng dẫn không phải connector khả dụng ở trạng thái portal hiện tại.
+
+Nguồn: [JavaScript first-party trang KHLCNT PL2400239107, hàm `renderNotifyPage`](https://muasamcong.mpi.gov.vn/web/guest/contractor-selection?_egpportalcontractorselectionv2_WAR_egpportalcontractorselectionv2_render=detail-v2&id=f55c73ab-ed0f-4427-8ce4-15e57d5ed7f5&planNo=PL2400239107&step=tbmt&stepCode=plan-step-1&type=es-plan-project-p).
+
+**UNKNOWN.** Payload tìm KHLCNT bằng `smart/search` với `matchFields: ["planNo"]` và type `es-plan-project-p` trong hướng dẫn là giả thuyết hợp lý, nhưng chưa được xác nhận từ request first-party đã quan sát trong lần kiểm tra này. Không đưa payload đó vào production contract. Bootstrap PL đã xác nhận vẫn là version-list theo `planNo`; detail kế hoạch/gói tiếp tục phụ thuộc quyền truy cập hợp lệ.
+
+#### `services/lcnt_tbmt_ttc_ldt`
+
+**FACT.** Alias TBMT nêu trong hướng dẫn vẫn xuất hiện trong JavaScript hiện tại:
+
+```text
+urlTtcTbmt = /o/egp-portal-contractor-selection-v2/services/lcnt_tbmt_ttc_ldt
+```
+
+Hàm `loadTtcTbmt()` gọi `POST {"id": this.notifyId}` nhưng cũng chỉ sau `grecaptcha.execute(...)` và nối `?token=`. Frontend hiện đọc các nhánh/field tối thiểu sau từ response:
+
+```text
+bidoNotifyContractorM
+bidoNotifyContractorM.getVersionDTOS[]  # phần tử dùng id + version
+bidoBidStatus.status
+bidpPlanDetail
+bidoPreNotifyContractorResult
+cancelBidHistoryList
+bidCancelingResponse
+```
+
+Đây là shape của alias tổng hợp, khác standalone TBMT version-list (`versionList[].id`, `notifyNo`, `notifyVersion`). Adapter không được trộn hai schema hoặc giả định `getVersionDTOS[].version == versionList[].notifyVersion` nếu chưa có contract test.
+
+**FACT / AUTHORIZATION.** POST kiểm tra ngày 2026-08-11 tới alias với UUID TBMT công khai và các header `Origin`/`Referer` như ví dụ hướng dẫn, nhưng không cookie/không token, cũng trả **HTTP 400** với HTML chuyển hướng. Trang hiện đồng thời khai báo endpoint chi tiết khác `.../services/expose/lcnt/bid-po-bido-notify-contractor-view/get-by-id`; sự tồn tại của nhiều route càng không tạo thành quyền chọn route nào để bỏ kiểm soát truy cập.
+
+Nguồn: [JavaScript first-party trang TBMT IB2400040053, `urlTtcTbmt` và `loadTtcTbmt`](https://muasamcong.mpi.gov.vn/vi/web/portaloldv1/contractor-selection?_egpportalcontractorselectionv2_WAR_egpportalcontractorselectionv2_render=detail-v2&bidMode=1_MTHS&id=cbd7af22-0469-402b-8583-ec9dc325f533&isInternet=1&notifyId=cbd7af22-0469-402b-8583-ec9dc325f533&notifyNo=IB2400040053&planNo=PL2400020327&processApply=LDT&step=tbmt&stepCode=notify-contractor-step-1-tbmt&type=es-notify-contractor).
+
+#### Hai mã mẫu trong hướng dẫn và shape version-list
+
+**OBSERVATION.** Hai mã mẫu của hướng dẫn được kiểm tra qua các version-list không token đã xác nhận:
+
+```json
+{
+  "versionList": [
+    {
+      "id": "385ad2fd-1b66-49d5-93cc-abf119fa5f4e",
+      "planNo": "PL2600076058",
+      "planVersion": "00"
+    }
+  ]
+}
+```
+
+```json
+{
+  "versionList": [
+    {
+      "id": "20107d78-5c96-4771-9d83-8c92c160839d",
+      "notifyNo": "IB2600026487",
+      "notifyVersion": "01"
+    },
+    {
+      "id": "8bf0759f-e8e6-4663-9b85-0d733d10f349",
+      "notifyNo": "IB2600026487",
+      "notifyVersion": "00"
+    }
+  ]
+}
+```
+
+**FACT.** Response TBMT version-list có thể chứa thêm các mảng top-level về kiến nghị, hội nghị tiền đấu thầu hoặc yêu cầu làm rõ ngoài `versionList`. Những dữ liệu phụ này không thuộc contract tối thiểu của chức năng import revision.
+
+**FACT.** Với các mẫu đã kiểm tra, `versionList[].id` của TBMT là UUID revision được portal đặt vào `notifyId` khi chọn phiên bản và gọi detail. Điều này không cho phép đồng nhất trường `id` và `notifyId` trong mọi response `smart/search`: frontend vẫn truyền hai field đó riêng biệt. Canonical mapping an toàn là `versionList[].id -> external_notice_revision_id`; chỉ dùng làm request `notifyId` khi provider detail đã được cấp quyền và contract-test.
+
+**KHUYẾN NGHỊ PARSER.** Chỉ allowlist `versionList[].id`, `versionList[].notifyNo`, `versionList[].notifyVersion`; áp dụng giới hạn kích thước cho toàn response và bỏ qua phần top-level không cần thiết. Không log, cache hoặc lưu provenance đối với nội dung phụ chỉ vì nó đi kèm version-list.
+
+Nguồn: [KHLCNT version-list first-party](https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/bid-po-bidp-plan-project-view/get-version-list) và [TBMT version-list first-party](https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/bid-po-bido-notify-contractor-view/get-version-list).
+
+#### Ranh giới lưu raw JSON và các gợi ý client
+
+**RÀNG BUỘC BIDDINGFLOW.** Gợi ý lưu `raw_response.json`, cache raw JSON hoặc dùng “Copy as cURL” trong hướng dẫn chỉ phù hợp cho quan sát thủ công có kiểm soát. Nó không thay đổi đặc tả BiddingFlow: không commit captured response/cURL, không lưu raw upstream payload vào database/cache/provenance/fixture, và không ghi cookie, token, mã đầy đủ hoặc nội dung phụ vào log. Fixture phải là dữ liệu tổng hợp tối thiểu theo canonical contract.
+
+**INFERENCE.** `pageSize`, `pageNumber`, timeout, bounded retry, cache TTL và User-Agent trong hướng dẫn là lựa chọn client cần được policy hóa, không phải SLA/rate-limit do portal cam kết. Nếu nhận 400/401/403/429, redirect HTML, CAPTCHA challenge hoặc schema ngoài allowlist thì fail closed; không retry để tìm cách vượt kiểm soát.
 
 **KHUYẾN NGHỊ.** Trước khi code production:
 
@@ -451,6 +603,11 @@ Nguồn: [JavaScript first-party trang KHLCNT](https://muasamcong.mpi.gov.vn/web
 | Không có link nghĩa là “chuẩn bị”? | Portal có thể nói “Chưa có TBMT”; “chuẩn bị” là mapping nghiệp vụ có điều kiện | FACT + INFERENCE |
 | Plan 00/01 được biểu diễn thế nào? | Cùng `planNo`, khác `planVersion` và UUID `id` | FACT — cao |
 | TBMT 00/01 được biểu diễn thế nào? | Cùng `notifyNo`, khác `notifyVersion` và UUID `id` | FACT — cao |
+| Shape `smart/search` tra TBMT trong hướng dẫn có đúng không? | Đúng với JavaScript hiện tại, gồm mảng payload, exact match và fallback pre-notify | FACT — cao |
+| Có thể gọi `smart/search` bằng ví dụ Python không token không? | Không trong lần kiểm tra: portal frontend dùng reCAPTCHA, request không token trả HTTP 400 HTML | FACT — cao cho mẫu kiểm tra; không phải API contract |
+| Alias `lcnt_tbmt_ttc_ldt` còn tồn tại không? | Có trong JavaScript và nhận `{id: notifyId}`, nhưng cũng bị bọc reCAPTCHA | FACT — cao |
+| `notifyId`, `bidOpenId`, `inputResultId` có thể đồng nhất không? | Không; portal truyền riêng từng field và chúng có thể nullable | FACT — cao về cấu trúc |
+| Payload `smart/search` tra PL trong hướng dẫn đã được xác nhận chưa? | Chưa; chỉ version-list PL được xác nhận không token | UNKNOWN |
 | Plan version tăng có tự làm package/TBMT tăng version không? | Không có bằng chứng; hai version stream là độc lập | UNKNOWN + FACT về cấu trúc |
 | Có áp dụng rule kế thừa hiện có được không? | Dùng lại được primitive clone/version, nhưng command hiện tại chưa đủ cho changed/new/removed trong một transaction | FACT từ code |
 | `idDetail` có ổn định xuyên plan version không? | Chưa xác nhận | UNKNOWN |

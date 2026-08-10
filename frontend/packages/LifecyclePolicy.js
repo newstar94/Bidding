@@ -1,6 +1,7 @@
 const CONTRACT = Object.freeze({
-  version: 1,
+  version: 2,
   statuses: Object.freeze({
+    UNKNOWN: Object.freeze({ label: "Chưa xác định", tone: "neutral", icon: "circle-help" }),
     PREPARING: Object.freeze({ label: "Chuẩn bị", tone: "neutral", icon: "clipboard-list" }),
     INVITED: Object.freeze({ label: "Đang mời thầu", tone: "info", icon: "send" }),
     OPENED: Object.freeze({ label: "Đã mở thầu", tone: "warning", icon: "folder-open" }),
@@ -10,6 +11,7 @@ const CONTRACT = Object.freeze({
     CANCELLED: Object.freeze({ label: "Hủy thầu", tone: "danger", icon: "circle-x" }),
   }),
   aliases: Object.freeze({
+    "Chưa xác định": "UNKNOWN",
     "Chuẩn bị": "PREPARING",
     "Đang mời thầu": "INVITED",
     "Đã mở thầu": "OPENED",
@@ -20,6 +22,7 @@ const CONTRACT = Object.freeze({
     "Huỷ thầu": "CANCELLED",
   }),
   transitions: Object.freeze({
+    UNKNOWN: Object.freeze(["CANCELLED", "PREPARING"]),
     PREPARING: Object.freeze(["CANCELLED", "INVITED"]),
     INVITED: Object.freeze(["CANCELLED", "OPENED"]),
     OPENED: Object.freeze(["CANCELLED", "EVALUATING"]),
@@ -51,7 +54,7 @@ export function allowedTransitions(status) {
 
 export function fieldPolicy(status, packageType) {
   const code = normalizeStatus(status);
-  const editable = code === "PREPARING";
+  const editable = code === "UNKNOWN" || code === "PREPARING";
   return {
     editable,
     required: packageType === "goods" ? ["linhVuc", "giaGoiThau"] : ["giaGoiThau"],
@@ -61,7 +64,7 @@ export function fieldPolicy(status, packageType) {
 
 export function workflowStep(status, method, lotState) {
   const code = normalizeStatus(status);
-  if (code === "PREPARING") return "preparation";
+  if (code === "UNKNOWN" || code === "PREPARING") return "preparation";
   if (code === "INVITED") return "invitation";
   if (code === "OPENED") return "opening";
   if (code === "EVALUATING" || code === "PARTIALLY_AWARDED") return "evaluation";

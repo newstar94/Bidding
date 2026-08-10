@@ -36,6 +36,8 @@ _SYSTEM_TIMESTAMP_COLUMNS = frozenset(
         "finalized_at",
         "voided_at",
         "occurred_at",
+        "fetched_at",
+        "applied_at",
     }
 )
 
@@ -85,6 +87,8 @@ _BIGINT_COLUMNS = frozenset(
         "chunk_index",
         "page_number",
         "char_count",
+        "next_revision_index",
+        "total_revisions",
     }
 )
 
@@ -602,6 +606,12 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_package ON goi_thau_dieu_chinh_hsmt (organization_id, goi_thau_id, sequence)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_created_by ON goi_thau_dieu_chinh_hsmt (created_by_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_dieu_chinh_hsmt_updated_by ON goi_thau_dieu_chinh_hsmt (updated_by_id)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_revision_family ON procurement_source_revision (organization_id, provider, family_key, entity_kind, revision_no)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_revision_local_root ON procurement_source_revision (organization_id, local_root_id) WHERE local_root_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_revision_operation ON procurement_source_revision (organization_id, operation_id) WHERE operation_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_binding_family ON procurement_source_binding (organization_id, provider, family_key, symbol, notify_no)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_binding_local_root ON procurement_source_binding (organization_id, local_root_id)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_operation_status ON procurement_import_operation (organization_id, status, updated_at)",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
@@ -961,6 +971,15 @@ def _create_triggers(cursor) -> None:
            BEFORE UPDATE OR DELETE ON nhat_ky_thuc_hien
            FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"""
     )
+    for table_name in ("procurement_source_revision", "procurement_source_binding"):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable "
+            f"BEFORE UPDATE OR DELETE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
     cursor.execute(
         "DROP TRIGGER IF EXISTS trg_goi_thau_violation_stale ON goi_thau"
     )
@@ -1175,6 +1194,23 @@ def _historical_v46_catalog(latest_catalog):
     account = catalog["tables"]["tai_khoan"]
     account["columns"].pop("trang_thai", None)
     account["constraints"].pop("tai_khoan_trang_thai_check", None)
+    post_v46_tables = {
+        "procurement_source_revision",
+        "procurement_source_binding",
+        "procurement_import_operation",
+    }
+    for table_name in post_v46_tables:
+        catalog["tables"].pop(table_name, None)
+    catalog["indexes"] = {
+        name: spec
+        for name, spec in catalog["indexes"].items()
+        if spec.get("table") not in post_v46_tables
+    }
+    catalog["triggers"] = {
+        name: spec
+        for name, spec in catalog["triggers"].items()
+        if spec.get("table") not in post_v46_tables
+    }
     catalog["schemaVersion"] = 46
     return catalog
 
@@ -1196,6 +1232,8 @@ def reconcile_historical_postgres_schema(cursor) -> tuple[str, ...]:
         return ()
 
     for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
+        if table_name not in expected_catalog["tables"]:
+            continue
         if table_name in actual_catalog["tables"]:
             continue
         cursor.execute(build_create_table_sql(table_name, table_spec))

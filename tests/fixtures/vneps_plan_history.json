@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "vneps-procurement-fixture-v1",
+  "plans": [
+    {
+      "familyNo": "PL2600000001",
+      "revisions": [
+        {
+          "revisionId": "fixture-plan-revision-00",
+          "revisionNumber": "00",
+          "name": "Kế hoạch mua sắm thiết bị năm 2026",
+          "planType": "Dự toán mua sắm",
+          "projectName": "Dự toán mua sắm thiết bị năm 2026",
+          "investorCode": "INV-FIXTURE",
+          "investorName": "Chủ đầu tư fixture",
+          "approvalDecisionNo": "01/QĐ-FIXTURE",
+          "approvalDecisionDate": "2026-01-05",
+          "packages": [
+            {
+              "planDetailRevisionId": "fixture-package-a-00",
+              "symbol": "A",
+              "name": "Gói A",
+              "priceVnd": 100000000,
+              "executionPeriod": "30 ngày",
+              "capitalDetail": "Ngân sách nhà nước",
+              "selectionDuration": "30 ngày",
+              "selectionStart": "2026-02",
+              "expectedNotice": true,
+              "noticeLink": {"state": "UNLINKED", "noticeNo": null, "kind": "UNKNOWN"}
+            }
+          ]
+        },
+        {
+          "revisionId": "fixture-plan-revision-01",
+          "revisionNumber": "01",
+          "name": "Kế hoạch mua sắm thiết bị năm 2026",
+          "planType": "Dự toán mua sắm",
+          "projectName": "Dự toán mua sắm thiết bị năm 2026",
+          "investorCode": "INV-FIXTURE",
+          "investorName": "Chủ đầu tư fixture",
+          "approvalDecisionNo": "02/QĐ-FIXTURE",
+          "approvalDecisionDate": "2026-02-05",
+          "packages": [
+            {
+              "planDetailRevisionId": "fixture-package-a-01",
+              "symbol": "A",
+              "name": "Gói A",
+              "priceVnd": 100000000,
+              "executionPeriod": "30 ngày",
+              "capitalDetail": "Ngân sách nhà nước",
+              "selectionDuration": "30 ngày",
+              "selectionStart": "2026-02",
+              "expectedNotice": true,
+              "noticeLink": {"state": "UNLINKED", "noticeNo": null, "kind": "UNKNOWN"}
+            },
+            {
+              "planDetailRevisionId": "fixture-package-b-01",
+              "symbol": "B",
+              "name": "Gói B",
+              "priceVnd": 200000000,
+              "executionPeriod": "60 ngày",
+              "capitalDetail": "Ngân sách nhà nước",
+              "selectionDuration": "30 ngày",
+              "selectionStart": "2026-03",
+              "expectedNotice": true,
+              "noticeLink": {"state": "LINKED", "noticeNo": "IB2600000002", "kind": "UNKNOWN"}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "noticeNo": "IB2600000002",
+      "revisions": [
+        {"revisionId": "fixture-notice-00", "revisionNumber": "00", "kind": "TBMT"},
+        {"revisionId": "fixture-notice-01", "revisionNumber": "01", "kind": "TBMT"}
+      ]
+    }
+  ]
+}

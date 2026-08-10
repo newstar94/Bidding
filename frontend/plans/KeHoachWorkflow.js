@@ -156,6 +156,11 @@ export async function editKeHoach(id) {
     await this.ensureLazyModal?.("modal-kehoach");
   }
   const form = document.getElementById("form-kehoach");
+  const procurementImportButton = document.getElementById("btn-open-procurement-import");
+  if (procurementImportButton) {
+    procurementImportButton.hidden = Boolean(id);
+    procurementImportButton.onclick = () => this.openProcurementImportWizard?.();
+  }
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];

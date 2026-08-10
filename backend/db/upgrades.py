@@ -1932,6 +1932,119 @@ def _upgrade_to_v48_add_account_status(cursor, context):
         context.create_trigger_functions(cursor)
 
 
+def _upgrade_to_v49_add_procurement_import_provenance(cursor, context):
+    """Add append-only source evidence and resumable import operations."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    tables = (
+        "procurement_source_revision",
+        "procurement_source_binding",
+        "procurement_import_operation",
+    )
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name,
+            SCHEMA_DINH_NGHIA[table_name],
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_procurement_revision_family ON procurement_source_revision (organization_id, provider, family_key, entity_kind, revision_no)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_revision_local_root ON procurement_source_revision (organization_id, local_root_id) WHERE local_root_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_revision_operation ON procurement_source_revision (organization_id, operation_id) WHERE operation_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_binding_family ON procurement_source_binding (organization_id, provider, family_key, symbol, notify_no)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_binding_local_root ON procurement_source_binding (organization_id, local_root_id)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_operation_status ON procurement_import_operation (organization_id, status, updated_at)",
+    ):
+        cursor.execute(statement)
+    if callable(context.create_trigger_functions):
+        context.create_trigger_functions(cursor)
+    for table_name in (
+        "procurement_source_revision",
+        "procurement_source_binding",
+    ):
+        cursor.execute(
+            f"""DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1 FROM pg_trigger
+                     WHERE tgrelid = '{table_name}'::regclass
+                       AND tgname = 'trg_{table_name}_immutable'
+                       AND NOT tgisinternal
+                  ) THEN
+                    CREATE TRIGGER trg_{table_name}_immutable
+                    BEFORE UPDATE OR DELETE ON {table_name}
+                    FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation();
+                  END IF;
+                END $$"""  # noqa: S608 - identifiers come from the fixed tuple above.
+        )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v50_version_procurement_binding_snapshots(cursor, _context):
+    """Allow immutable bindings for every later local package snapshot."""
+
+    cursor.execute(
+        """ALTER TABLE procurement_source_binding
+           DROP CONSTRAINT IF EXISTS
+           procurement_source_binding_organization_id_provider_plan_re_key"""
+    )
+    cursor.execute(
+        """DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                 WHERE connamespace = current_schema()::regnamespace
+                   AND conrelid = 'procurement_source_binding'::regclass
+                   AND conname = 'procurement_source_binding_snapshot_unique'
+              ) THEN
+                ALTER TABLE procurement_source_binding
+                  ADD CONSTRAINT procurement_source_binding_snapshot_unique
+                  UNIQUE (
+                    organization_id, provider, plan_revision_uuid,
+                    id_detail, local_snapshot_id
+                  );
+              END IF;
+            END $$"""
+    )
+
+
+def _upgrade_to_v51_add_unknown_package_status(cursor, _context):
+    """Represent an imported package whose lifecycle cannot be inferred."""
+
+    existing_constraint = cursor.execute(
+        """SELECT pg_get_constraintdef(oid), convalidated
+             FROM pg_constraint
+            WHERE connamespace = current_schema()::regnamespace
+              AND conrelid = 'goi_thau'::regclass
+              AND conname = 'goi_thau_trang_thai_check'"""
+    ).fetchone()
+    if existing_constraint:
+        definition = str(existing_constraint[0] or "").casefold()
+        if bool(existing_constraint[1]) and "unknown" in definition:
+            return
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           DROP CONSTRAINT IF EXISTS goi_thau_trang_thai_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           ADD CONSTRAINT goi_thau_trang_thai_check
+           CHECK (trang_thai IN (
+             'UNKNOWN', 'PREPARING', 'INVITED', 'OPENED', 'EVALUATING',
+             'PARTIALLY_AWARDED', 'AWARDED', 'CANCELLED'
+           )) NOT VALID"""
+    )
+    cursor.execute(
+        """ALTER TABLE goi_thau
+           VALIDATE CONSTRAINT goi_thau_trang_thai_check"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2163,6 +2276,21 @@ UPGRADES = (
         48,
         "add_account_status",
         _upgrade_to_v48_add_account_status,
+    ),
+    DatabaseUpgrade(
+        49,
+        "add_procurement_import_provenance",
+        _upgrade_to_v49_add_procurement_import_provenance,
+    ),
+    DatabaseUpgrade(
+        50,
+        "version_procurement_binding_snapshots",
+        _upgrade_to_v50_version_procurement_binding_snapshots,
+    ),
+    DatabaseUpgrade(
+        51,
+        "add_unknown_package_status",
+        _upgrade_to_v51_add_unknown_package_status,
     ),
 )
 

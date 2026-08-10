@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "vneps-procurement-fixture-v1",
+  "plans": [],
+  "notices": [{"noticeNo":"IB2600000001","revisions":[{"revisionId":"fixture-notice-00","revisionNumber":"00","kind":"TBMT"},{"revisionId":"fixture-notice-01","revisionNumber":"01","kind":"TBMT"}]}]
+}

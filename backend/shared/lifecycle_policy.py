@@ -5,17 +5,21 @@ from __future__ import annotations
 from backend.shared.domain_enums import PACKAGE_STATUS_CODES, PACKAGE_STATUS_LABELS
 
 
-LIFECYCLE_CONTRACT_VERSION = 1
+LIFECYCLE_CONTRACT_VERSION = 2
 PACKAGE_TRANSITIONS = {
+    "UNKNOWN": ("CANCELLED", "PREPARING"),
     "PREPARING": ("CANCELLED", "INVITED"),
     "INVITED": ("CANCELLED", "OPENED"),
     "OPENED": ("CANCELLED", "EVALUATING"),
     "EVALUATING": ("AWARDED", "CANCELLED", "PARTIALLY_AWARDED"),
     "PARTIALLY_AWARDED": ("AWARDED", "CANCELLED", "EVALUATING"),
     "AWARDED": ("CANCELLED", "EVALUATING", "PARTIALLY_AWARDED"),
-    "CANCELLED": tuple(sorted(set(PACKAGE_STATUS_LABELS) - {"CANCELLED"})),
+    "CANCELLED": tuple(
+        sorted(set(PACKAGE_STATUS_LABELS) - {"CANCELLED", "UNKNOWN"})
+    ),
 }
 PACKAGE_PRESENTATION = {
+    "UNKNOWN": {"label": "Chưa xác định", "tone": "neutral", "icon": "circle-help"},
     "PREPARING": {"label": "Chuẩn bị", "tone": "neutral", "icon": "clipboard-list"},
     "INVITED": {"label": "Đang mời thầu", "tone": "info", "icon": "send"},
     "OPENED": {"label": "Đã mở thầu", "tone": "warning", "icon": "folder-open"},

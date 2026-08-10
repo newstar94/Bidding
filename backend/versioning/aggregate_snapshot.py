@@ -33,6 +33,40 @@ OWNED_CHILDREN = (
     ("ehsmtAdjustments", "ehsmtadjustment"),
 )
 
+# Snapshot policy for package-owned relations.  Operational evidence must stay
+# attached to the historical snapshot that produced it; copying it would make
+# a later plan/package revision appear to have rerun an already completed
+# lifecycle.  The repository therefore loads only the clone-and-remap group.
+PACKAGE_CHILD_CLONE_POLICY = {
+    "clone_and_remap": (
+        "goi_thau_phan_lo",
+        "goi_thau_hang_hoa",
+        "thong_tin_mo_thau",
+        "vong_danh_gia",
+        "tieu_chi_danh_gia",
+        "ket_qua_danh_gia_nha_thau",
+        "bao_cao_danh_gia_nha_thau",
+        "chi_tiet_danh_gia_nha_thau",
+        "hang_hoa_du_thau_nha_thau",
+        "goi_thau_tuy_chon_mua_them",
+        "goi_thau_gia_han",
+        "goi_thau_lam_ro",
+        "goi_thau_moc_tien_do",
+        "goi_thau_dieu_chinh_hsmt",
+        "phan_cong_nhan_su",
+    ),
+    "retain_on_historical_snapshot": (
+        "dot_xu_ly_phan_lo",
+        "dot_xu_ly_phan_lo_chi_tiet",
+        "nhom_phu_thuoc_phan_lo",
+        "nhom_phu_thuoc_phan_lo_thanh_vien",
+        "ho_so_nghiep_vu_lcnt",
+        "ho_so_nghiep_vu_lcnt_phan_lo",
+        "tai_lieu_goi_thau",
+        "hop_dong_goi_thau",
+    ),
+}
+
 
 def _rows(value):
     return value if isinstance(value, list) else []
@@ -320,14 +354,22 @@ def snapshot_plan_aggregate(
     target_plan_id,
     timestamp,
     create_id,
+    include_package_roots=None,
+    exclude_package_roots=None,
 ):
     if not source_plan_id or not target_plan_id:
         raise ValueError("Không đủ dữ liệu để kế thừa phiên bản kế hoạch.")
+    include_roots = None if include_package_roots is None else {
+        str(value) for value in include_package_roots
+    }
+    exclude_roots = {str(value) for value in (exclude_package_roots or ())}
     latest_by_root = {}
     for package in _rows(state.get("goithau")):
         if str(package.get("keHoachId")) != str(source_plan_id):
             continue
         root = str(package.get("rootId") or package.get("id"))
+        if (include_roots is not None and root not in include_roots) or root in exclude_roots:
+            continue
         current = latest_by_root.get(root)
         if current is None or (
             _version_number(package), int(package.get("isLatest") == 1)

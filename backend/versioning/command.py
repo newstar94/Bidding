@@ -37,6 +37,10 @@ class AggregateVersionConflict(Exception):
         super().__init__("The source aggregate changed before version creation.")
 
 
+class HistoricalAggregateError(ValueError):
+    """Raised when a command would derive a new version from historical state."""
+
+
 def _rows(value):
     return value if isinstance(value, list) else []
 
@@ -114,7 +118,30 @@ def _validate_command(command):
         if canonical_key not in normalized_changes or key == canonical_key:
             normalized_changes[canonical_key] = deepcopy(value)
     changes = normalized_changes
-    return kind, source_id, mutation_id, expected_version, changes
+    def root_ids(field):
+        values = command.get(field)
+        if values is None:
+            return None
+        if not isinstance(values, list) or len(values) > 500:
+            raise ValueError(f"{field} must be a bounded list.")
+        normalized = {str(value).strip() for value in values if str(value).strip()}
+        if len(normalized) != len(values):
+            raise ValueError(f"{field} contains an invalid or duplicate root id.")
+        return normalized
+
+    include_roots = root_ids("includePackageRootIds")
+    exclude_roots = root_ids("excludePackageRootIds") or set()
+    if include_roots is not None and include_roots & exclude_roots:
+        raise ValueError("Package root cannot be both included and excluded.")
+    return (
+        kind,
+        source_id,
+        mutation_id,
+        expected_version,
+        changes,
+        include_roots,
+        exclude_roots,
+    )
 
 
 def _assert_current_source(source, expected_version):
@@ -148,7 +175,15 @@ def build_aggregate_version_payload(
 ):
     """Load authoritative state and build one idempotent sync mutation payload."""
 
-    kind, source_id, mutation_id, expected_version, changes = _validate_command(command)
+    (
+        kind,
+        source_id,
+        mutation_id,
+        expected_version,
+        changes,
+        include_roots,
+        exclude_roots,
+    ) = _validate_command(command)
     load_state = (
         repository.load_package_state
         if kind == "package"
@@ -165,6 +200,15 @@ def build_aggregate_version_payload(
     create_id = _id_factory(mutation_id, kind)
     payload = _base_payload(repository, organization_id, mutation_id)
     if kind == "package":
+        owning_plan = _source_record(
+            state,
+            "kehoach",
+            str(source.get("keHoachId") or ""),
+        )
+        if owning_plan is None or owning_plan.get("isLatest") != 1:
+            raise HistoricalAggregateError(
+                "Package version command requires the owning plan to be latest."
+            )
         target_id = create_id("goithau")
         snapshot = snapshot_package_aggregate(
             state,
@@ -203,6 +247,8 @@ def build_aggregate_version_payload(
         target_plan_id=target_plan_id,
         timestamp=timestamp,
         create_id=create_id,
+        include_package_roots=include_roots,
+        exclude_package_roots=exclude_roots,
     )
     payload["kehoach"] = [_demote_source(source), created_plan]
     for key in (

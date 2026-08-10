@@ -4,6 +4,7 @@ import pytest
 
 from backend.versioning.command import (
     AggregateVersionConflict,
+    HistoricalAggregateError,
     build_aggregate_version_payload,
 )
 
@@ -190,3 +191,44 @@ def test_plan_version_command_migrates_legacy_plan_field_names():
     assert created["thongTinKhac"] == "Thông tin kế thừa"
     assert "diadiemQuymo" not in created
     assert "thongtinKhac" not in created
+
+
+def test_package_version_command_rejects_package_owned_by_historical_plan():
+    state = _state()
+    state["kehoach"][0]["isLatest"] = 0
+    with pytest.raises(HistoricalAggregateError, match="owning plan"):
+        build_aggregate_version_payload(
+            FakeRepository(state),
+            "org-1",
+            {
+                "kind": "package",
+                "sourceId": "package-1",
+                "expectedRowVersion": 5,
+                "changes": {},
+                "clientMutationId": "historical-plan-package",
+            },
+            timestamp="2026-08-08 10:00:00",
+        )
+
+
+def test_plan_version_command_can_exclude_removed_package_roots():
+    state = _state()
+    state["goithau"].append({
+        **state["goithau"][0],
+        "id": "package-removed",
+        "rootId": "removed-root",
+    })
+    payload = build_aggregate_version_payload(
+        FakeRepository(state),
+        "org-1",
+        {
+            "kind": "plan",
+            "sourceId": "plan-1",
+            "expectedRowVersion": 3,
+            "changes": {},
+            "excludePackageRootIds": ["removed-root"],
+            "clientMutationId": "plan-with-removal",
+        },
+        timestamp="2026-08-08 10:00:00",
+    )
+    assert [row["rootId"] for row in payload["goithau"]] == ["package-root"]

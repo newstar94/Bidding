@@ -91,8 +91,39 @@ def main() -> int:
     )
 
     with psycopg.connect(database_url, connect_timeout=10) as connection:
-        with connection.cursor() as cursor:
-            catalog = read_postgres_schema_catalog(cursor)
+        with connection.cursor() as raw_cursor:
+            catalog = read_postgres_schema_catalog(raw_cursor)
+            if args.write:
+                from backend.db.db_helper import PostgresCursor
+                from backend.db.postgres_schema import (
+                    _create_foreign_keys,
+                    _create_trigger_functions,
+                    assert_foreign_key_integrity,
+                    build_create_table_sql,
+                    create_indexes_and_triggers,
+                )
+                from backend.db.upgrades import (
+                    DB_SCHEMA_VERSION,
+                    DatabaseUpgradeContext,
+                    apply_database_upgrades,
+                )
+
+                installed = int(catalog.get("schemaVersion") or 0)
+                if installed < DB_SCHEMA_VERSION:
+                    cursor = PostgresCursor(raw_cursor)
+                    apply_database_upgrades(
+                        cursor,
+                        installed,
+                        DatabaseUpgradeContext(
+                            build_create_table_sql=build_create_table_sql,
+                            create_indexes_and_triggers=create_indexes_and_triggers,
+                            assert_foreign_key_integrity=assert_foreign_key_integrity,
+                            create_foreign_keys=_create_foreign_keys,
+                            create_trigger_functions=_create_trigger_functions,
+                        ),
+                    )
+                    catalog = read_postgres_schema_catalog(raw_cursor)
+                    connection.rollback()
     _validate_generation_source(catalog)
 
     if args.write:
