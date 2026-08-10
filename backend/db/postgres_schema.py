@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from copy import deepcopy
 from hashlib import sha256
 
 from psycopg import sql
@@ -617,7 +618,11 @@ def _create_trigger_functions(cursor) -> None:
            RETURNS trigger LANGUAGE plpgsql AS $$
            BEGIN
              IF NEW.owner_type = 'organization' AND NOT EXISTS (
-               SELECT 1 FROM to_chuc WHERE id = NEW.organization_id
+               SELECT 1 FROM to_chuc
+               WHERE id = NEW.organization_id
+                 AND COALESCE(
+                       to_jsonb(to_chuc)->>'trang_thai', 'active'
+                     ) = 'active'
              ) THEN
                RAISE EXCEPTION 'organization workspace does not exist'
                  USING ERRCODE = '23514';
@@ -625,6 +630,9 @@ def _create_trigger_functions(cursor) -> None:
                SELECT 1 FROM tai_khoan
                WHERE id = substring(NEW.organization_id FROM 10)
                  AND vai_tro <> 'super_admin'
+                 AND COALESCE(
+                       to_jsonb(tai_khoan)->>'trang_thai', 'active'
+                     ) = 'active'
              ) THEN
                RAISE EXCEPTION 'personal workspace owner does not exist'
                  USING ERRCODE = '23514';
@@ -700,12 +708,21 @@ def _create_trigger_functions(cursor) -> None:
         """CREATE OR REPLACE FUNCTION bf_validate_record_edit_owner()
            RETURNS trigger LANGUAGE plpgsql AS $$
            BEGIN
-             IF NOT EXISTS (SELECT 1 FROM to_chuc WHERE id = NEW.organization_id)
+             IF NOT EXISTS (
+                  SELECT 1 FROM to_chuc
+                  WHERE id = NEW.organization_id
+                    AND COALESCE(
+                          to_jsonb(to_chuc)->>'trang_thai', 'active'
+                        ) = 'active'
+                )
                 AND NOT (
                   NEW.organization_id = 'personal:' || NEW.user_id
                   AND EXISTS (
                     SELECT 1 FROM tai_khoan
                     WHERE id = NEW.user_id AND vai_tro <> 'super_admin'
+                      AND COALESCE(
+                            to_jsonb(tai_khoan)->>'trang_thai', 'active'
+                          ) = 'active'
                   )
                 ) THEN
                RAISE EXCEPTION 'record ownership workspace does not exist'
@@ -1019,7 +1036,11 @@ def assert_schema_contract(cursor) -> None:
 def _schema_object_drift(expected_catalog, actual_catalog):
     from backend.db.postgres_schema_contract import schema_catalog_drift
 
-    comparable_actual = dict(actual_catalog)
+    comparable_actual = (
+        _historical_v46_catalog(actual_catalog)
+        if int(expected_catalog.get("schemaVersion") or 0) == 46
+        else dict(actual_catalog)
+    )
     comparable_actual["schemaVersion"] = expected_catalog.get("schemaVersion")
     return schema_catalog_drift(expected_catalog, comparable_actual)
 
@@ -1142,15 +1163,33 @@ def _recreate_application_constraints(cursor, expected_catalog) -> None:
         )
 
 
+def _historical_v46_catalog(latest_catalog):
+    """Project the latest contract back to the catalog v46 is allowed to build.
+
+    V46 intentionally reconciles the released v1-v45 chain. Later append-only
+    migrations must remain owned by their own upgrade step rather than being
+    pulled backward into v46 whenever the generated latest contract changes.
+    """
+
+    catalog = deepcopy(latest_catalog)
+    account = catalog["tables"]["tai_khoan"]
+    account["columns"].pop("trang_thai", None)
+    account["constraints"].pop("tai_khoan_trang_thai_check", None)
+    catalog["schemaVersion"] = 46
+    return catalog
+
+
 def reconcile_historical_postgres_schema(cursor) -> tuple[str, ...]:
-    """Reconcile a replayed historical chain to the immutable latest catalog."""
+    """Reconcile a replayed historical chain to the immutable v46 catalog."""
 
     from backend.db.postgres_schema_contract import (
         load_expected_postgres_schema_catalog,
         read_postgres_schema_catalog,
     )
 
-    expected_catalog = load_expected_postgres_schema_catalog()
+    expected_catalog = _historical_v46_catalog(
+        load_expected_postgres_schema_catalog()
+    )
     actual_catalog = read_postgres_schema_catalog(cursor)
     initial_drift = _schema_object_drift(expected_catalog, actual_catalog)
     if not initial_drift:
@@ -1307,6 +1346,7 @@ def initialize_postgres_database(database, *, dry_run: bool = False) -> int:
             create_indexes_and_triggers=create_indexes_and_triggers,
             assert_foreign_key_integrity=assert_foreign_key_integrity,
             create_foreign_keys=_create_foreign_keys,
+            create_trigger_functions=_create_trigger_functions,
         )
         installed_version = read_database_version(cursor)
         if installed_version is None:

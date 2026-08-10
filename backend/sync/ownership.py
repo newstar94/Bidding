@@ -209,7 +209,8 @@ def build_owner_reference_context(
                   ON membership.user_id = account.id
                  AND membership.organization_id = ?
                  AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
-                WHERE account.id IN ({placeholders})""",
+                WHERE account.id IN ({placeholders})
+                  AND account.trang_thai = 'active'""",
             (organization_id, *chunk),
         ).fetchall()
         for row in rows:
@@ -384,7 +385,8 @@ def get_owner_type(cursor, organization_id):
         return "organization"
     owner_id = personal_scope_owner_id(organization_id)
     if owner_id and cursor.execute(
-        "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'",
+        """SELECT 1 FROM tai_khoan
+           WHERE id = ? AND vai_tro != 'super_admin' AND trang_thai = 'active'""",
         (owner_id,),
     ).fetchone():
         return "personal"
@@ -483,6 +485,7 @@ def validate_owner_scoped_references(
                        LEFT JOIN thanh_vien_to_chuc tvtc
                          ON tvtc.user_id = tk.id AND tvtc.organization_id = ?
                        WHERE tk.id = ?
+                         AND tk.trang_thai = 'active'
                          AND (tvtc.user_id IS NOT NULL
                               OR (? = 1 AND lower(trim(tk.vai_tro)) = 'super_admin'))
                        LIMIT 1""",

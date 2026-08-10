@@ -107,7 +107,7 @@ export async function loadSystemUsers() {
   }
 }
 export async function deleteSystemUser(userId, username) {
-  const confirmed = await this.view.customConfirm("Xác nhận xóa tài khoản", `Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản "${username}" khỏi hệ thống?`, "user-x");
+  const confirmed = await this.view.customConfirm("Ngừng hoạt động tài khoản", `Tài khoản "${username}" sẽ bị khóa đăng nhập và ẩn khỏi danh sách đang hoạt động. Toàn bộ lịch sử vẫn được giữ nguyên. Bạn có muốn tiếp tục?`, "user-x");
   if (confirmed) {
     try {
       const res = await apiFetch(`/api/auth/users/${userId}`, {
@@ -115,10 +115,10 @@ export async function deleteSystemUser(userId, username) {
       });
       const data = await res.json();
       if (res.ok) {
-        await this.view.customAlert("Thành công", "Đã xóa tài khoản người dùng thành công!", "check-circle");
+        await this.view.customAlert("Thành công", data.message || "Tài khoản đã ngừng hoạt động.", "check-circle");
         this.loadSystemUsers();
       } else {
-        await this.view.customAlert("Thất bại", data.error || "Không thể xóa tài khoản này.", "alert-triangle");
+        await this.view.customAlert("Thất bại", data.error || "Không thể ngừng hoạt động tài khoản này.", "alert-triangle");
       }
     } catch (err) {
       await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");

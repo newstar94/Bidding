@@ -12,6 +12,7 @@ from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.db.postgres_schema import (
     _create_extensions,
     _create_foreign_keys,
+    _create_trigger_functions,
     assert_foreign_key_integrity,
     assert_schema_contract,
     build_create_table_sql,
@@ -200,6 +201,7 @@ def _upgrade_context():
         create_indexes_and_triggers=create_indexes_and_triggers,
         assert_foreign_key_integrity=assert_foreign_key_integrity,
         create_foreign_keys=_create_foreign_keys,
+        create_trigger_functions=_create_trigger_functions,
     )
 
 

@@ -1,43 +1,40 @@
-# Runbook: organization decommission
+# Runbook: ngừng hoạt động tổ chức
 
-Organization decommission **không phải feature đang được hỗ trợ**. Backend
-không có endpoint hoặc production SQL `DELETE FROM to_chuc`; không được xóa tổ
-chức trực tiếp bằng console, migration ad-hoc hay fixture production.
+Luồng được hỗ trợ là khóa/ngừng hoạt động có thể đảo ngược. Super Admin dùng
+action `lock` để chuyển `to_chuc.trang_thai` và subscription sang `suspended`.
+Tổ chức suspended bị ẩn khỏi danh sách workspace thường, không thể được chọn làm
+`X-Active-Org` và không nhận write hoặc thành viên mới. Dữ liệu, membership,
+audit và artifact vẫn được giữ nguyên; Super Admin vẫn quản lý được trạng thái
+để dùng action `unlock` khi đủ điều kiện gói dịch vụ.
 
-`backend.shared.organization_decommission` cung cấp ownership dry-run chỉ đếm
-row và postcondition fail-closed. Registry được sinh từ canonical schema, hiện
-bao phủ toàn bộ 62 bảng có `organization_id`, gồm 39 bảng có `owner_type`. Nó
-không trả payload, snapshot hoặc khóa tenant ra log.
+## Quy trình vận hành
 
-## Boundary hiện tại
+1. Gọi cập nhật subscription với action `lock` và `Idempotency-Key` hợp lệ.
+2. Xác nhận cả organization và subscription có trạng thái `suspended`.
+3. Xác nhận audit `organization.subscription_lock` và sự kiện thu hồi kết nối
+   đã được enqueue cho thành viên.
+4. Xác nhận người dùng thường không thấy tổ chức trong workspace list và request
+   chỉ định tổ chức bị từ chối.
+5. Không xóa bất kỳ owner row nào.
 
-- Không thêm cascade FK hàng loạt. Nhiều bảng dùng owner polymorphic và một số
-  bảng audit/retention có lifecycle khác dữ liệu nghiệp vụ.
-- Không thêm endpoint xóa trước khi có product lifecycle, retention/legal rule,
-  legal hold, export/erasure order và operator/audit ownership được phê duyệt.
-- CI phải fail nếu backend xuất hiện `DELETE FROM to_chuc` trước khi finding này
-  được mở lại với service và test transaction đầy đủ.
-- Dry-run và postcondition chỉ là primitive read-only; chúng không cấp quyền và
-  không phải decommission service.
+## Xóa vật lý tiếp tục bị chặn
 
-## Yêu cầu nếu sản phẩm bổ sung feature
+Organization decommission theo nghĩa xóa vật lý không phải feature đang được hỗ trợ.
+Backend không có `DELETE FROM to_chuc`; không xóa bằng console,
+migration ad-hoc hoặc fixture production. Không thêm cascade FK hàng loạt.
 
-1. Chốt authoritative retention/legal policy cho business rows, tombstone,
-   audit, WebSocket, document job và artifact storage.
-2. Chọn one-transaction flow hoặc resumable state machine có idempotency,
-   lock-order, retry và crash recovery rõ ràng.
-3. Chạy ownership dry-run trong cùng authorization boundary; response/log chỉ
-   chứa aggregate count.
-4. Quiesce writer và background worker của organization trước destructive step.
-5. Chỉ cho phép retained table bằng allowlist đã review; không tự suy diễn từ FK.
-6. Sau commit cuối, chạy postcondition: root không tồn tại và mọi table không
-   được phê duyệt retention phải có count bằng 0.
-7. Test real PostgreSQL cho rollback, concurrent write, partial failure, retry,
-   retained evidence và artifact cleanup trước khi mở endpoint.
+`backend.shared.organization_decommission` giữ ownership dry-run count-only và
+postcondition fail-closed cho một workflow xóa vật lý tương lai. Registry sinh
+từ canonical schema, bao phủ 62 bảng `organization_id`, gồm 39 bảng có
+`owner_type`. Các primitive này không cấp quyền và không thay thế lifecycle
+khóa/ngừng hoạt động hiện tại.
+
+Mọi feature xóa vật lý tương lai vẫn phải có retention/legal và legal-hold
+policy, export/erasure order, writer quiescence, transaction hoặc resumable state
+machine, artifact cleanup, recovery test PostgreSQL và postcondition rõ ràng.
 
 ## Sự cố
 
-Nếu phát hiện organization root bị xóa nhưng còn owner rows, dừng mọi cleanup tự
-động, cô lập writer, giữ forensic backup và mở incident. Không sửa bằng cascade
-hoặc SQL xóa hàng loạt; dùng ownership inventory count-only để xác định phạm vi,
-sau đó thực hiện workflow recovery đã được product/privacy/security phê duyệt.
+Nếu phát hiện root tổ chức bị xóa nhưng còn owner rows, dừng cleanup, cô lập
+writer, giữ forensic backup và mở incident. Dùng ownership dry-run để xác định
+phạm vi; không sửa bằng cascade hoặc SQL xóa hàng loạt.

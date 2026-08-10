@@ -34,7 +34,7 @@
     "backend/activity/routes.py": 2,
     "backend/activity/service.py": 2,
     "backend/api/org_routes.py": 7,
-    "backend/auth/admin_user_routes.py": 4,
+    "backend/auth/admin_user_routes.py": 3,
     "backend/auth/auth_routes.py": 1,
     "backend/db/db_utils.py": 3,
     "backend/db/postgres_schema.py": 1,

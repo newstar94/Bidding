@@ -28,6 +28,7 @@ class DatabaseUpgradeContext:
     create_indexes_and_triggers: object
     assert_foreign_key_integrity: object
     create_foreign_keys: object = None
+    create_trigger_functions: object = None
 
 
 def _context_for_historical_upgrade(context, version):
@@ -1888,6 +1889,49 @@ def _upgrade_to_v47_drop_duplicate_audit_successor_index(cursor, _context):
     cursor.execute("DROP INDEX IF EXISTS idx_audit_log_single_successor")
 
 
+def _upgrade_to_v48_add_account_status(cursor, context):
+    """Add a reversible account lifecycle without rewriting prior migrations."""
+
+    existing_constraint = cursor.execute(
+        """SELECT pg_get_constraintdef(oid), convalidated
+             FROM pg_constraint
+            WHERE connamespace = current_schema()::regnamespace
+              AND conrelid = 'tai_khoan'::regclass
+              AND conname = 'tai_khoan_trang_thai_check'"""
+    ).fetchone()
+    if existing_constraint:
+        definition = str(existing_constraint[0] or "").casefold()
+        if (
+            bool(existing_constraint[1])
+            and "trang_thai" in definition
+            and "active" in definition
+            and "inactive" in definition
+        ):
+            if context is not None and context.create_trigger_functions is not None:
+                context.create_trigger_functions(cursor)
+            return
+
+    cursor.execute(
+        """ALTER TABLE tai_khoan
+           ADD COLUMN IF NOT EXISTS trang_thai TEXT NOT NULL DEFAULT 'active'"""
+    )
+    cursor.execute(
+        """ALTER TABLE tai_khoan
+           DROP CONSTRAINT IF EXISTS tai_khoan_trang_thai_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE tai_khoan
+           ADD CONSTRAINT tai_khoan_trang_thai_check
+           CHECK (trang_thai IN ('active', 'inactive')) NOT VALID"""
+    )
+    cursor.execute(
+        """ALTER TABLE tai_khoan
+           VALIDATE CONSTRAINT tai_khoan_trang_thai_check"""
+    )
+    if context is not None and context.create_trigger_functions is not None:
+        context.create_trigger_functions(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2114,6 +2158,11 @@ UPGRADES = (
         47,
         "drop_duplicate_audit_successor_index",
         _upgrade_to_v47_drop_duplicate_audit_successor_index,
+    ),
+    DatabaseUpgrade(
+        48,
+        "add_account_status",
+        _upgrade_to_v48_add_account_status,
     ),
 )
 

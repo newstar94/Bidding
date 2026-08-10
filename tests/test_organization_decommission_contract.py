@@ -1,9 +1,15 @@
 import re
+import os
 from pathlib import Path
+import uuid
 
+import psycopg
 import pytest
 
 from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.db.db_helper import PostgresCursor, compat_row_factory
+from backend.auth.auth_service import get_user_organizations
+from backend.auth.session_utils import OrgPermissionError, get_active_org
 from backend.shared.organization_decommission import (
     OrganizationDecommissionPostconditionError,
     assert_organization_decommission_postcondition,
@@ -31,6 +37,21 @@ class _InventoryCursor:
 
     def fetchone(self):
         return self._row
+
+
+def _test_database_url():
+    if value := os.environ.get("TEST_DATABASE_URL"):
+        return value
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.is_file():
+        return None
+    for line in env_path.read_text(encoding="utf-8-sig").splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "TEST_DATABASE_URL":
+            return value.strip().strip('"').strip("'") or None
+    return None
 
 
 def test_organization_ownership_registry_covers_schema_without_manual_allowlist():
@@ -119,3 +140,104 @@ def test_decommission_runbook_keeps_destructive_workflow_blocked():
         "retention/legal",
     ):
         assert required_contract.casefold() in runbook
+
+
+class _SuspendedWorkspaceCursor:
+    def __init__(self):
+        self.statements = []
+
+    def execute(self, sql, params=()):
+        self.statements.append((sql, params))
+        if "FROM tai_khoan" in sql:
+            self._row = ("user", "active")
+        elif "FROM thanh_vien_to_chuc" in sql and "organization_id = ?" in sql:
+            self._row = {
+                "id": "org-suspended",
+                "trang_thai": "suspended",
+                "vai_tro_trong_to_chuc": "manager",
+            }
+        else:
+            self._row = None
+        return self
+
+    def fetchone(self):
+        return self._row
+
+    def fetchall(self):
+        return []
+
+
+def test_suspended_organization_is_hidden_from_normal_workspace_list():
+    cursor = _SuspendedWorkspaceCursor()
+
+    assert get_user_organizations(cursor, "user-a") == []
+    query = next(
+        sql for sql, _params in cursor.statements
+        if "FROM thanh_vien_to_chuc AS tvtc" in sql
+    )
+    assert "tc.trang_thai = 'active'" in query
+
+
+def test_suspended_organization_cannot_be_selected_for_new_writes():
+    cursor = _SuspendedWorkspaceCursor()
+    request = type(
+        "Request",
+        (),
+        {"headers": {"X-Active-Org": "org-suspended"}, "state": object()},
+    )()
+
+    with pytest.raises(OrgPermissionError, match="tạm ngưng"):
+        get_active_org(request, "user-a", cursor=cursor)
+
+
+def test_canonical_workspace_trigger_rejects_suspended_organization_writes():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "backend"
+        / "db"
+        / "postgres_schema.py"
+    ).read_text(encoding="utf-8")
+
+    workspace_function = source.split(
+        "CREATE OR REPLACE FUNCTION bf_validate_workspace_owner()", 1
+    )[1].split("CREATE OR REPLACE FUNCTION", 1)[0]
+    assert "to_jsonb(to_chuc)->>'trang_thai'" in workspace_function
+    assert "= 'active'" in workspace_function
+
+
+def test_real_postgres_rejects_new_business_rows_for_suspended_organization():
+    database_url = _test_database_url()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    try:
+        connection = psycopg.connect(database_url, row_factory=compat_row_factory)
+    except psycopg.Error as error:
+        pytest.skip(f"PostgreSQL test database is unavailable: {type(error).__name__}")
+
+    cursor = PostgresCursor(connection.cursor())
+    organization_id = f"suspended-org-{uuid.uuid4().hex}"
+    owner_id = f"suspended-owner-{uuid.uuid4().hex}"
+    try:
+        cursor.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            (organization_id, "Suspended Organization"),
+        )
+        cursor.execute(
+            "UPDATE to_chuc SET trang_thai = 'suspended' WHERE id = ?",
+            (organization_id,),
+        )
+        connection.commit()
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            cursor.execute(
+                """INSERT INTO chu_dau_tu
+                       (id, organization_id, owner_type, ma_chu_dau_tu, ten_chu_dau_tu)
+                   VALUES (?, ?, 'organization', 'LOCKED', 'Blocked write')""",
+                (owner_id, organization_id),
+            )
+        connection.rollback()
+    finally:
+        connection.rollback()
+        cursor.execute("DELETE FROM to_chuc WHERE id = ?", (organization_id,))
+        connection.commit()
+        connection.close()

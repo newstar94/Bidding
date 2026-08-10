@@ -149,7 +149,9 @@ def is_personal_workspace_owner(cursor, user_id, organization_id):
     if not is_personal_scope_for_user(organization_id, user_id):
         return False
     cursor.execute(
-        "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin' LIMIT 1",
+        """SELECT 1 FROM tai_khoan
+           WHERE id = ? AND vai_tro != 'super_admin'
+             AND trang_thai = 'active' LIMIT 1""",
         (user_id,),
     )
     return cursor.fetchone() is not None

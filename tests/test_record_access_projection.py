@@ -64,7 +64,8 @@ def _word_policy_database():
         );
         CREATE TABLE tai_khoan (
             id TEXT PRIMARY KEY,
-            vai_tro TEXT NOT NULL DEFAULT 'user'
+            vai_tro TEXT NOT NULL DEFAULT 'user',
+            trang_thai TEXT NOT NULL DEFAULT 'active'
         );
         CREATE TABLE thanh_vien_to_chuc (
             user_id TEXT NOT NULL,

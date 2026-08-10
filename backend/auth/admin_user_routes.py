@@ -22,13 +22,13 @@ from backend.shared.membership_invariants import (
 )
 from backend.shared.platform_role_invariants import lock_platform_role_invariants
 from backend.sync.websocket import enqueue_websocket_event
+from backend.auth.session_store import revoke_user_sessions
 from backend.shared.workspace_scope import (
     lock_personal_workspace_mutations,
     personal_scope_id,
     personal_workspace_payload,
 )
 from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
-from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.shared.request_validation import read_json_object
 
 
@@ -62,7 +62,10 @@ def _list_users_sync(request):
         conn = database.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
+        cursor.execute(
+            "SELECT vai_tro FROM tai_khoan WHERE id = ? AND trang_thai = 'active'",
+            (role_or_err.user_id,),
+        )
         requester = cursor.fetchone()
         if not requester:
             return JSONResponse({"error": "Không tìm thấy thông tin tài khoản yêu cầu!"}, status_code=404)
@@ -81,14 +84,14 @@ def _list_users_sync(request):
                 )
             role_or_err = elevated_role_or_err
 
-        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar FROM tai_khoan"
+        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar FROM tai_khoan WHERE trang_thai = 'active'"
 
         email_query = (request.query_params.get('email') or '').strip().lower()
         email_filter_tk_sql = " AND tk.email_norm = ?" if email_query else ""
 
         if 'super_admin' in effective_roles:
             if email_query:
-                cursor.execute(sql_base + " WHERE email_norm = ?", (email_query,))
+                cursor.execute(sql_base + " AND email_norm = ?", (email_query,))
             else:
                 cursor.execute(sql_base)
             users_raw = cursor.fetchall()
@@ -114,6 +117,7 @@ def _list_users_sync(request):
                     FROM tai_khoan AS tk
                     JOIN thanh_vien_to_chuc AS tvtc ON tvtc.user_id = tk.id
                     WHERE tk.id = ? AND tvtc.organization_id = ?
+                      AND tk.trang_thai = 'active'
                       AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'{email_filter_tk_sql}
                 """, tuple([role_or_err.user_id, active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
@@ -126,6 +130,7 @@ def _list_users_sync(request):
                     FROM tai_khoan tk
                     JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
                     WHERE tvtc.organization_id = ?
+                      AND tk.trang_thai = 'active'
                       AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'{email_filter_tk_sql}
                 """, tuple([active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
@@ -299,7 +304,8 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         cursor = conn.cursor()
         lock_platform_role_invariants(cursor)
         target = cursor.execute(
-            "SELECT vai_tro, email, ho_ten FROM tai_khoan WHERE id = ? LIMIT 1",
+            """SELECT vai_tro, email, ho_ten FROM tai_khoan
+               WHERE id = ? AND trang_thai = 'active' LIMIT 1""",
             (user_id,),
         ).fetchone()
         if not target:
@@ -315,7 +321,8 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             )
         if current_platform_role == "super_admin" and platform_role != "super_admin":
             admin_count = int(cursor.execute(
-                "SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'"
+                """SELECT count(*) FROM tai_khoan
+                   WHERE vai_tro = 'super_admin' AND trang_thai = 'active'"""
             ).fetchone()[0])
             if admin_count <= 1:
                 conn.rollback()
@@ -547,21 +554,42 @@ def _delete_user_sync(request):
 
         user_id = request.path_params.get('user_id')
         if str(user_id) == str(role_or_err.user_id):
-            return JSONResponse({"error": "Không thể tự xóa tài khoản quản trị."}, status_code=409)
+            return JSONResponse(
+                {"error": "Không thể tự ngừng hoạt động tài khoản quản trị."},
+                status_code=409,
+            )
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN")
         lock_platform_role_invariants(cursor)
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+        cursor.execute(
+            """SELECT vai_tro, trang_thai FROM tai_khoan
+               WHERE id = ? FOR UPDATE""",
+            (user_id,),
+        )
         target = cursor.fetchone()
         if not target:
             conn.rollback()
             return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
+        if str(target[1] or '').strip().lower() == 'inactive':
+            conn.commit()
+            return JSONResponse({
+                "success": True,
+                "code": "ACCOUNT_DEACTIVATED",
+                "message": "Tài khoản đã ngừng hoạt động.",
+                "changed": False,
+            })
         if str(target[0] or '').strip().lower() == 'super_admin':
-            cursor.execute("SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'")
+            cursor.execute(
+                """SELECT count(*) FROM tai_khoan
+                   WHERE vai_tro = 'super_admin' AND trang_thai = 'active'"""
+            )
             if int(cursor.fetchone()[0]) <= 1:
                 conn.rollback()
-                return JSONResponse({"error": "Không thể xóa quản trị viên nền tảng cuối cùng."}, status_code=409)
+                return JSONResponse(
+                    {"error": "Không thể ngừng hoạt động quản trị viên nền tảng cuối cùng."},
+                    status_code=409,
+                )
         manager_organization_ids = [
             str(row[0])
             for row in cursor.execute(
@@ -589,10 +617,13 @@ def _delete_user_sync(request):
               AND NOT EXISTS (
                   SELECT 1
                   FROM thanh_vien_to_chuc AS other_owner
+                  JOIN tai_khoan AS other_account
+                    ON other_account.id = other_owner.user_id
                   WHERE other_owner.organization_id = membership.organization_id
                     AND other_owner.user_id != membership.user_id
                     AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'manager'
                     AND COALESCE(other_owner.trang_thai_thanh_vien, 'active') = 'active'
+                    AND other_account.trang_thai = 'active'
               )
             LIMIT 1
             """,
@@ -600,51 +631,13 @@ def _delete_user_sync(request):
         )
         if cursor.fetchone():
             conn.rollback()
-            return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
+            return JSONResponse(
+                {"error": "Không thể ngừng hoạt động Quản lý cuối cùng của tổ chức."},
+                status_code=409,
+            )
         personal_scope = personal_scope_id(user_id)
         lock_personal_workspace_mutations(cursor, personal_scope)
-        personal_content_tables = [
-            table_name
-            for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
-            if "owner_type" in table_spec.get("columns", {})
-            and table_name not in {
-                "cau_hinh_bien_word",
-                "word_mapping_overrides",
-            }
-        ]
-        personal_record_count = sum(
-            int(cursor.execute(
-                f"SELECT COUNT(*) FROM {table_name} WHERE organization_id = ? AND owner_type = 'personal'",
-                (personal_scope,),
-            ).fetchone()[0])
-            for table_name in personal_content_tables
-        )
-        if personal_record_count:
-            conn.rollback()
-            return JSONResponse({
-                "error": "Không thể xóa tài khoản khi không gian cá nhân còn dữ liệu.",
-                "code": "PERSONAL_WORKSPACE_NOT_EMPTY",
-            }, status_code=409)
-        retention_blockers = {
-            "personalTombstones": int(cursor.execute(
-                """SELECT COUNT(*) FROM deleted_records
-                   WHERE organization_id = ?""",
-                (personal_scope,),
-            ).fetchone()[0]),
-        }
-        if any(retention_blockers.values()):
-            conn.rollback()
-            return JSONResponse({
-                "error": (
-                    "Không thể xóa tài khoản khi còn dữ liệu lưu giữ "
-                    "chưa có quy tắc retention được phê duyệt."
-                ),
-                "code": "ACCOUNT_DELETION_RETENTION_REVIEW_REQUIRED",
-                "retentionBlockers": retention_blockers,
-            }, status_code=409)
-        impact = {
-            "rootCount": 1,
-            "personalRecords": personal_record_count,
+        preserved_data = {
             "memberships": int(cursor.execute(
                 "SELECT COUNT(*) FROM thanh_vien_to_chuc WHERE user_id = ?",
                 (user_id,),
@@ -661,23 +654,25 @@ def _delete_user_sync(request):
                 "SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = ?",
                 (user_id,),
             ).fetchone()[0]),
+            "personalTombstones": int(cursor.execute(
+                "SELECT COUNT(*) FROM deleted_records WHERE organization_id = ?",
+                (personal_scope,),
+            ).fetchone()[0]),
         }
-        impact["totalCount"] = impact["rootCount"] + sum(
-            value for key, value in impact.items() if key not in {"rootCount", "totalCount"}
+        cursor.execute(
+            """UPDATE tai_khoan
+               SET trang_thai = 'inactive', updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND trang_thai = 'active'""",
+            (user_id,),
         )
-        cursor.execute("DELETE FROM cau_hinh_bien_word WHERE organization_id = ?", (personal_scope,))
-        cursor.execute("DELETE FROM word_mapping_overrides WHERE organization_id = ?", (personal_scope,))
-        cursor.execute("DELETE FROM word_default_seeds WHERE organization_id = ?", (personal_scope,))
-        cursor.execute("DELETE FROM sync_metadata WHERE organization_id = ?", (personal_scope,))
-        cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE emp_id = ?", (user_id,))
-        cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
+        revoke_user_sessions(cursor, user_id)
         log_audit(
-            "admin.user_deleted",
+            "admin.user_deactivated",
             actor_user_id=role_or_err.user_id,
             target_type="tai_khoan",
             target_id=user_id,
             request=request,
-            metadata={"impact": impact},
+            metadata={"preservedData": preserved_data},
             cursor=cursor,
             required=True,
         )
@@ -689,14 +684,18 @@ def _delete_user_sync(request):
         conn.commit()
         return JSONResponse({
             "success": True,
-            "message": "Xóa người dùng thành công!",
-            "deleteImpact": impact,
+            "code": "ACCOUNT_DEACTIVATED",
+            "message": "Tài khoản đã ngừng hoạt động.",
+            "changed": True,
         })
     except Exception as e:
         if conn:
             conn.rollback()
-        log_error(e, "delete_user_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi xóa tài khoản."}, status_code=500)
+        log_error(e, "deactivate_user_api")
+        return JSONResponse(
+            {"error": "Đã xảy ra lỗi khi ngừng hoạt động tài khoản."},
+            status_code=500,
+        )
     finally:
         if conn:
             conn.close()

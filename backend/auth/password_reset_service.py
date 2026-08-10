@@ -42,6 +42,7 @@ def create_password_reset(database, username, email, requested_ip, now=None):
             SELECT id, ho_ten, ten_dang_nhap, email
             FROM tai_khoan
             WHERE username_norm = ? AND email_norm = ?
+              AND trang_thai = 'active'
             LIMIT 1
             """,
             (normalized_username, normalized_email),
@@ -128,7 +129,8 @@ def redeem_password_reset(
         user_id = row["user_id"]
         replacement_password_hash = password_hash or hash_password(new_password)
         updated = conn.execute(
-            "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
+            """UPDATE tai_khoan SET mat_khau = ?
+               WHERE id = ? AND trang_thai = 'active'""",
             (replacement_password_hash, user_id),
         )
         if updated.rowcount != 1:

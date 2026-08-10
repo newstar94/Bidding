@@ -50,9 +50,13 @@ def replace_user_session(cursor, *, user_id, token, absolute_expires_at,
 
     current = int(time.time() if now is None else now)
     cursor.execute(
-        "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE",
+        """SELECT id FROM tai_khoan
+           WHERE id = ? AND trang_thai = 'active'
+           FOR UPDATE""",
         (user_id,),
     )
+    if cursor.fetchone() is None:
+        raise ValueError("Account is not active.")
     revoke_user_sessions(cursor, user_id, now=current)
     return create_session(
         cursor,
@@ -79,6 +83,7 @@ def load_session_user(database, token):
             SELECT accounts.id, accounts.ten_dang_nhap, accounts.mat_khau,
                    accounts.ho_ten, accounts.vai_tro, accounts.email,
                    accounts.anh_dai_dien,
+                   accounts.trang_thai AS account_status,
                    EXISTS (
                        SELECT 1
                        FROM dinh_danh_ngoai AS identities
@@ -118,6 +123,8 @@ def load_session_user(database, token):
 def session_invalid_reason(user, now=None):
     if not user:
         return "user_not_found"
+    if str(user.get("account_status") or "active").strip().lower() != "active":
+        return "account_inactive"
     current = int(time.time() if now is None else now)
     if user.get("revoked_at") is not None:
         return "session_revoked"

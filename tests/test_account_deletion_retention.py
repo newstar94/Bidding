@@ -4,11 +4,14 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from pathlib import Path
 from types import SimpleNamespace
 import uuid
+import time
 
 import psycopg
 import pytest
 
-from backend.auth import admin_user_routes
+from backend.auth import admin_user_routes, auth_routes
+from backend.auth.auth_helper import SessionRole
+from backend.auth.session_store import hash_session_token
 from backend.auth.session_utils import OrgPermissionError
 from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.sync.command import SyncActorContext, SyncMutationEnvelope
@@ -34,7 +37,7 @@ def _test_database_url():
     return None
 
 
-def test_account_deletion_runbook_keeps_legal_decisions_external():
+def test_account_deactivation_runbook_preserves_history_and_blocks_physical_erasure():
     runbook = (
         Path(__file__).resolve().parents[1]
         / "deploy"
@@ -43,7 +46,7 @@ def test_account_deletion_runbook_keeps_legal_decisions_external():
     ).read_text(encoding="utf-8")
 
     for required_contract in (
-        "ACCOUNT_DELETION_RETENTION_REVIEW_REQUIRED",
+        "Ngừng hoạt động",
         "record_snapshot_json",
         "legal hold",
         "không tự purge",
@@ -58,6 +61,9 @@ class _ConnectionProxy:
 
     def cursor(self):
         return PostgresCursor(self._raw_connection.cursor())
+
+    def execute(self, sql, params=()):
+        return self.cursor().execute(sql, params)
 
     def commit(self):
         self._raw_connection.commit()
@@ -196,7 +202,7 @@ def test_personal_sync_rechecks_account_after_waiting_for_deletion_lock():
 
 
 @pytest.mark.parametrize("has_personal_tombstone", (True, False))
-def test_account_deletion_enforces_personal_tombstone_retention_contract(
+def test_account_deactivation_preserves_personal_tombstones_and_account_history(
     monkeypatch,
     has_personal_tombstone,
 ):
@@ -238,6 +244,22 @@ def test_account_deletion_enforces_personal_tombstone_retention_contract(
                 f"{target_user_id}@example.test",
             ),
         )
+        session_id = f"session-{uuid.uuid4().hex}"
+        setup_cursor.execute(
+            """INSERT INTO auth_sessions
+                   (id, user_id, token_hash, created_at, last_seen_at,
+                    idle_expires_at, absolute_expires_at, remember_me)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
+            (
+                session_id,
+                target_user_id,
+                hash_session_token(session_id),
+                int(time.time()),
+                int(time.time()),
+                int(time.time()) + 3600,
+                int(time.time()) + 7200,
+            ),
+        )
         if has_personal_tombstone:
             setup_cursor.execute(
                 """INSERT INTO deleted_records
@@ -259,15 +281,21 @@ def test_account_deletion_enforces_personal_tombstone_retention_contract(
             "database",
             _DatabaseProxy(database_url),
         )
+        actor_session = SessionRole("super_admin", actor_user_id)
         monkeypatch.setattr(
             admin_user_routes,
             "verify_session",
             lambda _request, required_role=None: (
                 True,
-                SimpleNamespace(user_id=actor_user_id),
+                actor_session,
             ),
         )
-        monkeypatch.setattr(admin_user_routes, "log_audit", lambda *args, **kwargs: None)
+        audit_events = []
+        monkeypatch.setattr(
+            admin_user_routes,
+            "log_audit",
+            lambda action, *args, **kwargs: audit_events.append((action, kwargs)),
+        )
         monkeypatch.setattr(
             admin_user_routes,
             "enqueue_websocket_event",
@@ -280,21 +308,43 @@ def test_account_deletion_enforces_personal_tombstone_retention_contract(
         payload = json.loads(response.body.decode("utf-8"))
 
         target_row = setup_cursor.execute(
-            "SELECT id FROM tai_khoan WHERE id = ?", (target_user_id,)
+            "SELECT id, trang_thai FROM tai_khoan WHERE id = ?", (target_user_id,)
         ).fetchone()
-        if has_personal_tombstone:
-            assert response.status_code == 409
-            assert payload["code"] == "ACCOUNT_DELETION_RETENTION_REVIEW_REQUIRED"
-            assert payload["retentionBlockers"]["personalTombstones"] == 1
-            assert target_row[0] == target_user_id
-            assert setup_cursor.execute(
-                "SELECT COUNT(*) FROM deleted_records WHERE organization_id = ?",
-                (personal_scope,),
-            ).fetchone()[0] == 1
-        else:
-            assert response.status_code == 200
-            assert payload["success"] is True
-            assert target_row is None
+        assert response.status_code == 200
+        assert payload == {
+            "success": True,
+            "code": "ACCOUNT_DEACTIVATED",
+            "message": "Tài khoản đã ngừng hoạt động.",
+            "changed": True,
+        }
+        assert tuple(target_row) == (target_user_id, "inactive")
+        assert setup_cursor.execute(
+            "SELECT COUNT(*) FROM deleted_records WHERE organization_id = ?",
+            (personal_scope,),
+        ).fetchone()[0] == int(has_personal_tombstone)
+        assert [event[0] for event in audit_events] == ["admin.user_deactivated"]
+        assert setup_cursor.execute(
+            "SELECT revoked_at FROM auth_sessions WHERE id = ?", (session_id,)
+        ).fetchone()[0] is not None
+
+        monkeypatch.setattr(auth_routes, "database", _DatabaseProxy(database_url))
+        assert auth_routes._load_login_user(target_user_id) is None
+
+        list_response = admin_user_routes._list_users_sync(
+            SimpleNamespace(query_params={}, headers={})
+        )
+        listed_users = json.loads(list_response.body.decode("utf-8"))
+        assert list_response.status_code == 200
+        assert target_user_id not in {user["id"] for user in listed_users}
+
+        repeated = admin_user_routes._delete_user_sync(
+            SimpleNamespace(path_params={"user_id": target_user_id})
+        )
+        repeated_payload = json.loads(repeated.body.decode("utf-8"))
+        assert repeated.status_code == 200
+        assert repeated_payload["code"] == "ACCOUNT_DEACTIVATED"
+        assert repeated_payload["changed"] is False
+        assert [event[0] for event in audit_events] == ["admin.user_deactivated"]
     finally:
         setup_connection.rollback()
         setup_cursor.execute(

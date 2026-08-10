@@ -514,7 +514,8 @@ def ensure_personal_word_workspace(cursor, user_id):
     scope_id = personal_scope_id(user_id)
     lock_personal_workspace_mutations(cursor, scope_id)
     account = cursor.execute(
-        "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'",
+        """SELECT 1 FROM tai_khoan
+           WHERE id = ? AND vai_tro != 'super_admin' AND trang_thai = 'active'""",
         (user_id,),
     ).fetchone()
     if not account:

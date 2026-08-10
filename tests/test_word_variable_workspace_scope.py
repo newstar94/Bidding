@@ -29,7 +29,8 @@ def _database():
         """
         CREATE TABLE tai_khoan (
             id TEXT PRIMARY KEY,
-            vai_tro TEXT NOT NULL
+            vai_tro TEXT NOT NULL,
+            trang_thai TEXT NOT NULL DEFAULT 'active'
         );
         CREATE TABLE to_chuc (
             id TEXT PRIMARY KEY,

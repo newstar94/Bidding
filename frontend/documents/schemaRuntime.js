@@ -600,6 +600,7 @@ const RUNTIME_SCHEMA = {
       "ma_xac_minh": "maXacMinh",
       "mat_khau": "matKhau",
       "ten_dang_nhap": "tenDangNhap",
+      "trang_thai": "trangThai",
       "updated_at": "updatedAt",
       "username_da_dat": "usernameDaDat",
       "username_norm": "usernameNorm",

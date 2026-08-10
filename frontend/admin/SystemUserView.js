@@ -635,7 +635,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     const isSelf = user.username === currentUsername;
     const detailArgsKey = registerCommandArgs([String(user.id || "")]);
     const deleteArgsKey = registerCommandArgs([String(user.id || ""), String(user.username || "")]);
-    const deleteBtn = isSelf ? `<span class="text-muted bf-s-09c7718479">(Tài khoản hiện tại)</span>` : `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-arg-key="${deleteArgsKey}" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
+    const deleteBtn = isSelf ? `<span class="text-muted bf-s-09c7718479">(Tài khoản hiện tại)</span>` : `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-arg-key="${deleteArgsKey}" title="Ngừng hoạt động tài khoản"><i data-lucide="user-x"></i></button>`;
     const detailBtn = `<button class="action-btn btn-edit" data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}" title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
     return `
             <tr data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}" class="bf-s-ecfbb78629">

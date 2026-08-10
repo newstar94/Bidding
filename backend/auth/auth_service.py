@@ -161,6 +161,7 @@ def get_user_organizations(cursor, user_id):
         LEFT JOIN goi_dich_vu AS pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
           AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
+          AND tc.trang_thai = 'active'
         ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
                     WHEN 'manager' THEN 0
                     WHEN 'employee' THEN 1

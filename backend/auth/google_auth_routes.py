@@ -237,23 +237,42 @@ async def google_login_api(request):
             FROM dinh_danh_ngoai dd
             JOIN tai_khoan tk ON tk.id = dd.user_id
             WHERE dd.issuer = ? AND dd.subject = ?
+            FOR UPDATE OF tk
             """,
             ("https://accounts.google.com", google_id),
         )
         row = cursor.fetchone()
         if row:
             user = dict(row)
+            if str(user.get("trang_thai") or "active").strip().lower() != "active":
+                conn.rollback()
+                return JSONResponse(
+                    {
+                        "error": "Tài khoản đã ngừng hoạt động.",
+                        "code": "ACCOUNT_INACTIVE",
+                    },
+                    status_code=403,
+                )
 
 
         account_linked = False
         if not user:
             cursor.execute(
-                "SELECT * FROM tai_khoan WHERE email_norm = ?",
+                "SELECT * FROM tai_khoan WHERE email_norm = ? FOR UPDATE",
                 (email,),
             )
             row = cursor.fetchone()
             if row:
                 user = dict(row)
+                if str(user.get("trang_thai") or "active").strip().lower() != "active":
+                    conn.rollback()
+                    return JSONResponse(
+                        {
+                            "error": "Tài khoản đã ngừng hoạt động.",
+                            "code": "ACCOUNT_INACTIVE",
+                        },
+                        status_code=403,
+                    )
                 account_linked = True
 
 

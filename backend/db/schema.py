@@ -65,6 +65,7 @@ SCHEMA_DINH_NGHIA = {
             "mat_khau": "TEXT NOT NULL",
             "ho_ten": "TEXT",
             "vai_tro": "TEXT NOT NULL DEFAULT 'user' CHECK(vai_tro IN ('super_admin', 'user'))",
+            "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'inactive'))",
             "email": "TEXT NOT NULL",
             "email_norm": "TEXT NOT NULL UNIQUE CHECK(email_norm != '')",
             "anh_dai_dien": "TEXT",

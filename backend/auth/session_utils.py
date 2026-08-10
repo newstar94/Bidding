@@ -64,12 +64,16 @@ def get_active_org(request, user_id, *, cursor=None):
 
     try:
         account_row = cursor.execute(
-            "SELECT vai_tro FROM tai_khoan WHERE id = ? LIMIT 1",
+            "SELECT vai_tro, trang_thai FROM tai_khoan WHERE id = ? LIMIT 1",
             (user_id,),
         ).fetchone()
+        if (
+            not account_row
+            or str(account_row[1] or "").strip().lower() != "active"
+        ):
+            raise OrgPermissionError("Tài khoản đã ngừng hoạt động!")
         personal_scope_allowed = bool(
-            account_row
-            and str(account_row[0] or "").strip().lower() != "super_admin"
+            str(account_row[0] or "").strip().lower() != "super_admin"
         )
         implicit_scope_id = personal_scope_id(user_id)
 

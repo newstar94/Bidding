@@ -178,7 +178,8 @@ def _load_login_user(username):
             """SELECT id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
                       anh_dai_dien, da_xac_minh
                FROM tai_khoan
-               WHERE username_norm = ? OR email_norm = ?""",
+               WHERE trang_thai = 'active'
+                 AND (username_norm = ? OR email_norm = ?)""",
             (username, username),
         ).fetchone()
         return dict(row) if row else None
@@ -1650,14 +1651,20 @@ async def update_user_role_api(request):
             if user_id == str(role_or_err.user_id):
                 conn.rollback()
                 return JSONResponse({"error": "Không thể tự thay đổi quyền nền tảng."}, status_code=409)
-            cursor.execute("SELECT 1 FROM tai_khoan WHERE id = ?", (user_id,))
+            cursor.execute(
+                "SELECT 1 FROM tai_khoan WHERE id = ? AND trang_thai = 'active'",
+                (user_id,),
+            )
             if not cursor.fetchone():
                 conn.rollback()
                 return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
             cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
             target_platform_role = str(cursor.fetchone()[0] or '').strip().lower()
             if target_platform_role == 'super_admin' and new_role != 'super_admin':
-                cursor.execute("SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'")
+                cursor.execute(
+                    """SELECT count(*) FROM tai_khoan
+                       WHERE vai_tro = 'super_admin' AND trang_thai = 'active'"""
+                )
                 if int(cursor.fetchone()[0]) <= 1:
                     conn.rollback()
                     return JSONResponse({"error": "Không thể hạ quyền quản trị viên nền tảng cuối cùng."}, status_code=409)
@@ -1777,7 +1784,11 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
         conn.execute("BEGIN")
         cursor = conn.cursor()
         db_field = field_map[field]
-        cursor.execute(f"UPDATE tai_khoan SET {db_field} = ? WHERE id = ?", (value, user_id))
+        cursor.execute(
+            f"""UPDATE tai_khoan SET {db_field} = ?
+                WHERE id = ? AND trang_thai = 'active'""",
+            (value, user_id),
+        )
         if cursor.rowcount != 1:
             conn.rollback()
             return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)

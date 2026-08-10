@@ -2670,7 +2670,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 47,
+  "schemaVersion": 48,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -14493,6 +14493,13 @@
           "notNull": false,
           "type": "text"
         },
+        "trang_thai": {
+          "default": "'active'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
         "updated_at": {
           "default": "CURRENT_TIMESTAMP",
           "generated": "",
@@ -14549,6 +14556,13 @@
           "definition": "PRIMARY KEY (id)",
           "initiallyDeferred": false,
           "kind": "p",
+          "validated": true
+        },
+        "tai_khoan_trang_thai_check": {
+          "deferrable": false,
+          "definition": "CHECK (trang_thai = ANY (ARRAY['active'::text, 'inactive'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         },
         "tai_khoan_username_da_dat_check": {

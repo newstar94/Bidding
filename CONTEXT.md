@@ -27,3 +27,11 @@ _Avoid_: Gói thầu rỗng, khởi tạo lại quy trình
 **Kế thừa phiên bản**:
 Việc tạo ảnh chụp mới từ toàn bộ trạng thái của phiên bản mới nhất mà không làm thay đổi ảnh chụp nguồn.
 _Avoid_: Reset dữ liệu, sửa đè lịch sử
+
+**Tài khoản ngừng hoạt động**:
+Tài khoản được bảo toàn cùng toàn bộ lịch sử nhưng bị khóa đăng nhập, không được ghi mới và không xuất hiện trong danh sách tài khoản đang hoạt động.
+_Avoid_: Tài khoản đã xóa, purge người dùng
+
+**Tổ chức ngừng hoạt động**:
+Tổ chức được bảo toàn cùng toàn bộ lịch sử nhưng bị khóa truy cập, không nhận ghi mới và không xuất hiện trong danh sách workspace đang hoạt động.
+_Avoid_: Tổ chức đã xóa, decommission vật lý

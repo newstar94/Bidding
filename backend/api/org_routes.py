@@ -547,11 +547,18 @@ async def add_user_to_org_api(request):
             conn.commit()
             return JSONResponse({"success": True, "message": "Thông tin nhân sự đã được cập nhật!"})
 
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+        cursor.execute(
+            """SELECT vai_tro FROM tai_khoan
+               WHERE id = ? AND trang_thai = 'active'""",
+            (user_id,),
+        )
         u_row = cursor.fetchone()
         if not u_row:
             conn.rollback()
-            return JSONResponse({"error": "Nguoi dung khong ton tai."}, status_code=404)
+            return JSONResponse(
+                {"error": "Người dùng không tồn tại hoặc đã ngừng hoạt động."},
+                status_code=404,
+            )
         if 'super_admin' not in effective_roles and 'super_admin' in get_effective_roles(u_row['vai_tro'] or ''):
             conn.rollback()
             return JSONResponse({"error": "Ban khong co quyen them super_admin vao to chuc."}, status_code=403)
