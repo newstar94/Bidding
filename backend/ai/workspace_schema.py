@@ -18,6 +18,7 @@ from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.ai.workspace_search import ENTITY_SPECS, _optional_filter, _scope, _value
 from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.shared.domain_enums import enum_code
 
 
 _FOREIGN_KEY_PATTERN = re.compile(
@@ -124,6 +125,7 @@ def query_workspace_records(cursor, context: AiRequestContext, arguments: dict[s
     if spec.archived:
         where.append(f"{alias}.archived_at IS NULL")
     if status and spec.status_column:
+        status = enum_code(spec.table, spec.status_column, status)
         where.append(f"{alias}.{spec.status_column} = ?")
         params.append(status)
     if package_id and spec.parent_column:

@@ -93,6 +93,28 @@ def test_query_workspace_selects_allowlisted_columns_and_keeps_organization_scop
     assert cursor.parameters == ("org-1", 20)
 
 
+def test_query_workspace_normalizes_vietnamese_cancelled_package_status():
+    cursor = Cursor([{"record_count": 4}])
+
+    result = query_workspace_records(
+        cursor,
+        _context(),
+        {
+            "entity": "packages",
+            "operation": "count",
+            "fields": [],
+            "query": "",
+            "status": "Hủy thầu",
+            "packageId": "",
+            "limit": 20,
+        },
+    )
+
+    assert result.summary["recordCount"] == 4
+    assert "CANCELLED" in cursor.parameters
+    assert "Hủy thầu" not in cursor.parameters
+
+
 def test_query_workspace_rejects_fields_outside_schema():
     with pytest.raises(AiError) as error:
         query_workspace_records(

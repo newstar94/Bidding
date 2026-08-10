@@ -17,6 +17,7 @@ from typing import Any
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.analytics.query_scope import visibility_clause
+from backend.shared.domain_enums import enum_code
 
 
 @dataclass(frozen=True)
@@ -328,6 +329,7 @@ def search_workspace_records(cursor, context: AiRequestContext, arguments: dict[
     if spec.archived:
         where.append(f"{alias}.archived_at IS NULL")
     if status and spec.status_column:
+        status = enum_code(spec.table, spec.status_column, status)
         where.append(f"{alias}.{spec.status_column} = ?")
         params.append(status)
     if package_id and spec.parent_column:

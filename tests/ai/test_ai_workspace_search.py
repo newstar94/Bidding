@@ -62,6 +62,28 @@ def test_workspace_search_counts_experts_in_current_workspace():
     assert "org-1" in cursor.parameters
 
 
+def test_workspace_search_counts_cancelled_packages_from_vietnamese_status_label():
+    cursor = Cursor([{"record_count": 4}])
+
+    result = search_workspace_records(
+        cursor,
+        context(),
+        {
+            "entity": "packages",
+            "operation": "count",
+            "query": "",
+            "status": "Hủy thầu",
+            "packageId": "",
+            "limit": 20,
+        },
+    )
+
+    assert result.summary["recordCount"] == 4
+    assert "record.trang_thai = ?" in cursor.statement
+    assert "CANCELLED" in cursor.parameters
+    assert "Hủy thầu" not in cursor.parameters
+
+
 def test_workspace_search_treats_provider_wildcards_as_empty_filters():
     cursor = Cursor([{"record_count": 7}])
 

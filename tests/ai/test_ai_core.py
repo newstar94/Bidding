@@ -197,6 +197,48 @@ def test_aggregate_without_group_returns_summary_without_group_key_lookup():
     assert result.records == []
 
 
+def test_aggregate_packages_normalizes_vietnamese_cancelled_status_label():
+    class Cursor:
+        def __init__(self):
+            self.parameters = ()
+
+        def execute(self, _query, parameters):
+            self.parameters = tuple(parameters)
+            return self
+
+        def fetchall(self):
+            return [{"record_count": 4, "aggregate_value": 0}]
+
+    cursor = Cursor()
+    result = aggregate_entity(
+        cursor,
+        AiRequestContext(
+            user_id="user-1",
+            organization_id="org-1",
+            organization_name="HTD",
+            platform_role="user",
+            membership_role="manager",
+            scope_type="organization",
+            active_role="manager",
+            permissions={"goithau": "view"},
+        ),
+        "packages",
+        {
+            "metric": "count",
+            "dateField": None,
+            "dateFrom": None,
+            "dateTo": None,
+            "statuses": ["Hủy thầu"],
+            "groupBy": "none",
+            "limit": 20,
+        },
+    )
+
+    assert result.summary["recordCount"] == 4
+    assert "CANCELLED" in cursor.parameters
+    assert "Hủy thầu" not in cursor.parameters
+
+
 def test_ai_metrics_expose_required_duration_series():
     metrics = "\n".join(render_prometheus_lines())
     assert "ai_request_duration_seconds" in metrics

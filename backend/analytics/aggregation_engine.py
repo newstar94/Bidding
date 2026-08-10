@@ -12,6 +12,7 @@ from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.analytics.query_scope import table_for_entity, visibility_clause
 from backend.analytics.semantic_registry import get_metric
+from backend.shared.domain_enums import enum_code
 
 
 MAX_DATE_RANGE_DAYS = 366 * 5
@@ -120,9 +121,10 @@ def aggregate_entity(cursor, context: AiRequestContext, entity: str, arguments: 
         if not isinstance(statuses, list) or len(statuses) > 12 or not all(isinstance(item, str) and item.strip() for item in statuses):
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "Danh sách trạng thái không hợp lệ.")
         status_column = _STATUS_FIELDS[entity]
+        statuses = [enum_code(table_name, status_column, item) for item in statuses]
         placeholders = ", ".join("?" for _ in statuses)
         where.append(f"{table_name}.{status_column} IN ({placeholders})")
-        params += tuple(item.strip() for item in statuses)
+        params += tuple(statuses)
 
     date_from, date_to = _date_window(arguments)
     if date_from or date_to:
@@ -236,6 +238,7 @@ def list_entity(cursor, context: AiRequestContext, entity: str, arguments: dict[
     status = str(arguments.get("status") or "").strip()
     if status:
         column = _STATUS_FIELDS[entity]
+        status = enum_code(table_name, column, status)
         where.append(f"{table_name}.{column} = ?")
         params += (status,)
     limit = arguments.get("limit", MAX_RECORDS)
