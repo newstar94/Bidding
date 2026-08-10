@@ -28,6 +28,18 @@ _Avoid_: Gói thầu rỗng, khởi tạo lại quy trình
 Việc tạo ảnh chụp mới từ toàn bộ trạng thái của phiên bản mới nhất mà không làm thay đổi ảnh chụp nguồn.
 _Avoid_: Reset dữ liệu, sửa đè lịch sử
 
+**Phiên bản nguồn**:
+Một lần công bố hoặc thay đổi của đối tượng trên hệ thống nguồn ngoài, được nhận diện bằng mã dòng, số phiên bản nguồn và định danh revision của nguồn. `planVersion` và `notifyVersion` nguồn độc lập với cả phiên bản kế hoạch và phiên bản gói nội bộ của BiddingFlow.
+_Avoid_: Đồng nhất `planVersion`, `notifyVersion` với phiên bản nội bộ
+
+**Đối chiếu phiên bản nguồn**:
+Việc so sánh một snapshot nguồn với binding đã lưu để phân loại đối tượng thành giữ nguyên, thay đổi, mới, bị loại hoặc mơ hồ trước khi áp dụng quy tắc phiên bản nội bộ.
+_Avoid_: Ghép tự động bằng tên hoặc số thứ tự
+
+**Thông báo liên kết**:
+Thông báo trên Mua Sắm Công được nối từ một gói trong KHLCNT để bổ sung dữ liệu ở giai đoạn thông báo. Liên kết này là nguồn làm giàu dữ liệu, không thay thế định danh dòng gói thầu.
+_Avoid_: Gói thầu mới, khóa duy nhất của gói
+
 **Tài khoản ngừng hoạt động**:
 Tài khoản được bảo toàn cùng toàn bộ lịch sử nhưng bị khóa đăng nhập, không được ghi mới và không xuất hiện trong danh sách tài khoản đang hoạt động.
 _Avoid_: Tài khoản đã xóa, purge người dùng
