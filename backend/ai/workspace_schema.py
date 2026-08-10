@@ -18,7 +18,7 @@ from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.ai.workspace_search import ENTITY_SPECS, _optional_filter, _scope, _value
 from backend.db.schema import SCHEMA_DINH_NGHIA
-from backend.shared.domain_enums import enum_code
+from backend.shared.domain_enums import enum_filter_value, is_user_defined_enum_filter
 
 
 _FOREIGN_KEY_PATTERN = re.compile(
@@ -125,8 +125,11 @@ def query_workspace_records(cursor, context: AiRequestContext, arguments: dict[s
     if spec.archived:
         where.append(f"{alias}.archived_at IS NULL")
     if status and spec.status_column:
-        status = enum_code(spec.table, spec.status_column, status)
-        where.append(f"{alias}.{spec.status_column} = ?")
+        status = enum_filter_value(spec.table, spec.status_column, status)
+        if is_user_defined_enum_filter(spec.table, spec.status_column):
+            where.append(f"LOWER({alias}.{spec.status_column}) = LOWER(?)")
+        else:
+            where.append(f"{alias}.{spec.status_column} = ?")
         params.append(status)
     if package_id and spec.parent_column:
         where.append(f"{alias}.{spec.parent_column} = ?")
@@ -255,7 +258,7 @@ def workspace_query_tool_definitions() -> list[dict]:
                 "operation": {"type": "string", "enum": ["count", "list"]},
                 "fields": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
                 "query": {"type": "string"},
-                "status": {"type": "string"},
+                "status": {"type": "string", "description": "Nhãn trạng thái hiển thị trong workspace; trạng thái hợp đồng có thể do người dùng tự đặt, nên giữ nguyên nhãn được hỏi."},
                 "packageId": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50},
             },

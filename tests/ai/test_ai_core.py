@@ -13,6 +13,7 @@ from backend.analytics.aggregation_engine import aggregate_entity
 from backend.ai.types import AiRequestContext
 from backend.ai.metrics import render_prometheus_lines
 from backend.ai.tools.reports import execute_report_tool
+from backend.shared.domain_enums import CONTRACT_STATUS_LABELS, PACKAGE_STATUS_LABELS
 
 
 def test_ai_disabled_by_default(monkeypatch):
@@ -35,6 +36,20 @@ def test_tool_schemas_are_strict_and_read_only():
     assert definitions
     assert all(item["parameters"]["additionalProperties"] is False for item in definitions)
     assert not any(item["name"].startswith(("create_", "update_", "delete_")) for item in definitions)
+
+
+def test_contract_status_tools_preserve_workspace_defined_labels():
+    definitions = {item["name"]: item for item in tool_definitions("data")}
+
+    aggregate_statuses = definitions["aggregate_contracts"]["parameters"]["properties"]["statuses"]
+    list_status = definitions["list_contracts"]["parameters"]["properties"]["status"]
+    search_status = definitions["search_workspace"]["parameters"]["properties"]["status"]
+    query_status = definitions["query_workspace"]["parameters"]["properties"]["status"]
+
+    assert all(
+        "người dùng tự đặt" in schema["description"]
+        for schema in (aggregate_statuses, list_status, search_status, query_status)
+    )
 
 
 def test_tool_arguments_reject_unknown_scope_fields():
@@ -197,12 +212,33 @@ def test_aggregate_without_group_returns_summary_without_group_key_lookup():
     assert result.records == []
 
 
-def test_aggregate_packages_normalizes_vietnamese_cancelled_status_label():
+@pytest.mark.parametrize(
+    ("entity", "permission", "provided_status", "query_status"),
+    [
+        *(("packages", "goithau", label, code) for code, label in PACKAGE_STATUS_LABELS.items()),
+        *(("packages", "goithau", label.lower(), code) for code, label in PACKAGE_STATUS_LABELS.items()),
+        *(("packages", "goithau", code.lower(), code) for code in PACKAGE_STATUS_LABELS),
+        *(("contracts", "hopdong", label, label) for label in CONTRACT_STATUS_LABELS.values()),
+        *(("contracts", "hopdong", label.lower(), label.lower()) for label in CONTRACT_STATUS_LABELS.values()),
+        ("contracts", "hopdong", "Chờ nghiệm thu nội bộ", "Chờ nghiệm thu nội bộ"),
+        ("plans", "kehoach", "kế hoạch", "Kế hoạch"),
+        ("plans", "kehoach", "DỰ TOÁN VÀ KẾ HOẠCH", "Dự toán và kế hoạch"),
+        ("packages", "goithau", "huy thau", "CANCELLED"),
+    ],
+)
+def test_aggregate_normalizes_every_supported_status(
+    entity,
+    permission,
+    provided_status,
+    query_status,
+):
     class Cursor:
         def __init__(self):
             self.parameters = ()
+            self.query = ""
 
-        def execute(self, _query, parameters):
+        def execute(self, query, parameters):
+            self.query = " ".join(str(query).split())
             self.parameters = tuple(parameters)
             return self
 
@@ -220,23 +256,24 @@ def test_aggregate_packages_normalizes_vietnamese_cancelled_status_label():
             membership_role="manager",
             scope_type="organization",
             active_role="manager",
-            permissions={"goithau": "view"},
+            permissions={permission: "view"},
         ),
-        "packages",
+        entity,
         {
             "metric": "count",
             "dateField": None,
             "dateFrom": None,
             "dateTo": None,
-            "statuses": ["Hủy thầu"],
+            "statuses": [provided_status],
             "groupBy": "none",
             "limit": 20,
         },
     )
 
     assert result.summary["recordCount"] == 4
-    assert "CANCELLED" in cursor.parameters
-    assert "Hủy thầu" not in cursor.parameters
+    assert query_status in cursor.parameters
+    if entity == "contracts":
+        assert "LOWER(hop_dong.trang_thai_hop_dong) IN (LOWER(?))" in cursor.query
 
 
 def test_ai_metrics_expose_required_duration_series():

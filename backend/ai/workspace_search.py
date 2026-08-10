@@ -17,7 +17,7 @@ from typing import Any
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.analytics.query_scope import visibility_clause
-from backend.shared.domain_enums import enum_code
+from backend.shared.domain_enums import enum_filter_value, is_user_defined_enum_filter
 
 
 @dataclass(frozen=True)
@@ -281,7 +281,7 @@ def workspace_search_tool_definitions() -> list[dict]:
                 "entity": {"type": "string", "enum": list(ENTITY_SPECS)},
                 "operation": {"type": "string", "enum": ["count", "list"]},
                 "query": {"type": "string"},
-                "status": {"type": "string"},
+                "status": {"type": "string", "description": "Nhãn trạng thái hiển thị trong workspace; trạng thái hợp đồng có thể do người dùng tự đặt, nên giữ nguyên nhãn được hỏi."},
                 "packageId": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20},
             },
@@ -329,8 +329,11 @@ def search_workspace_records(cursor, context: AiRequestContext, arguments: dict[
     if spec.archived:
         where.append(f"{alias}.archived_at IS NULL")
     if status and spec.status_column:
-        status = enum_code(spec.table, spec.status_column, status)
-        where.append(f"{alias}.{spec.status_column} = ?")
+        status = enum_filter_value(spec.table, spec.status_column, status)
+        if is_user_defined_enum_filter(spec.table, spec.status_column):
+            where.append(f"LOWER({alias}.{spec.status_column}) = LOWER(?)")
+        else:
+            where.append(f"{alias}.{spec.status_column} = ?")
         params.append(status)
     if package_id and spec.parent_column:
         where.append(f"{alias}.{spec.parent_column} = ?")

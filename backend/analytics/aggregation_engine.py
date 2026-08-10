@@ -12,7 +12,7 @@ from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.analytics.query_scope import table_for_entity, visibility_clause
 from backend.analytics.semantic_registry import get_metric
-from backend.shared.domain_enums import enum_code
+from backend.shared.domain_enums import enum_filter_value, is_user_defined_enum_filter
 
 
 MAX_DATE_RANGE_DAYS = 366 * 5
@@ -121,9 +121,15 @@ def aggregate_entity(cursor, context: AiRequestContext, entity: str, arguments: 
         if not isinstance(statuses, list) or len(statuses) > 12 or not all(isinstance(item, str) and item.strip() for item in statuses):
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "Danh sách trạng thái không hợp lệ.")
         status_column = _STATUS_FIELDS[entity]
-        statuses = [enum_code(table_name, status_column, item) for item in statuses]
-        placeholders = ", ".join("?" for _ in statuses)
-        where.append(f"{table_name}.{status_column} IN ({placeholders})")
+        statuses = [enum_filter_value(table_name, status_column, item) for item in statuses]
+        user_defined_status = is_user_defined_enum_filter(table_name, status_column)
+        placeholders = ", ".join("LOWER(?)" if user_defined_status else "?" for _ in statuses)
+        status_expression = (
+            f"LOWER({table_name}.{status_column})"
+            if user_defined_status
+            else f"{table_name}.{status_column}"
+        )
+        where.append(f"{status_expression} IN ({placeholders})")
         params += tuple(statuses)
 
     date_from, date_to = _date_window(arguments)
@@ -238,8 +244,11 @@ def list_entity(cursor, context: AiRequestContext, entity: str, arguments: dict[
     status = str(arguments.get("status") or "").strip()
     if status:
         column = _STATUS_FIELDS[entity]
-        status = enum_code(table_name, column, status)
-        where.append(f"{table_name}.{column} = ?")
+        status = enum_filter_value(table_name, column, status)
+        if is_user_defined_enum_filter(table_name, column):
+            where.append(f"LOWER({table_name}.{column}) = LOWER(?)")
+        else:
+            where.append(f"{table_name}.{column} = ?")
         params += (status,)
     limit = arguments.get("limit", MAX_RECORDS)
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_RECORDS:

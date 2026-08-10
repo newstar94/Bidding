@@ -93,26 +93,39 @@ def test_query_workspace_selects_allowlisted_columns_and_keeps_organization_scop
     assert cursor.parameters == ("org-1", 20)
 
 
-def test_query_workspace_normalizes_vietnamese_cancelled_package_status():
+@pytest.mark.parametrize(
+    ("entity", "provided_status", "persisted_status"),
+    [
+        ("packages", "đã có kết quả", "AWARDED"),
+        ("contracts", "Đang xử lý hồ sơ", "Đang xử lý hồ sơ"),
+        ("plans", "dự toán và kế hoạch", "Dự toán và kế hoạch"),
+    ],
+)
+def test_query_workspace_normalizes_every_supported_business_status(
+    entity,
+    provided_status,
+    persisted_status,
+):
     cursor = Cursor([{"record_count": 4}])
 
     result = query_workspace_records(
         cursor,
         _context(),
         {
-            "entity": "packages",
+            "entity": entity,
             "operation": "count",
             "fields": [],
             "query": "",
-            "status": "Hủy thầu",
+            "status": provided_status,
             "packageId": "",
             "limit": 20,
         },
     )
 
     assert result.summary["recordCount"] == 4
-    assert "CANCELLED" in cursor.parameters
-    assert "Hủy thầu" not in cursor.parameters
+    assert persisted_status in cursor.parameters
+    if entity == "contracts":
+        assert "LOWER(record.trang_thai_hop_dong) = LOWER(?)" in cursor.statement
 
 
 def test_query_workspace_rejects_fields_outside_schema():

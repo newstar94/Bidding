@@ -62,26 +62,38 @@ def test_workspace_search_counts_experts_in_current_workspace():
     assert "org-1" in cursor.parameters
 
 
-def test_workspace_search_counts_cancelled_packages_from_vietnamese_status_label():
+@pytest.mark.parametrize(
+    ("entity", "provided_status", "persisted_status"),
+    [
+        ("packages", "đang mời thầu", "INVITED"),
+        ("contracts", "Chờ nghiệm thu nội bộ", "Chờ nghiệm thu nội bộ"),
+        ("plans", "kế hoạch", "Kế hoạch"),
+    ],
+)
+def test_workspace_search_normalizes_every_supported_business_status(
+    entity,
+    provided_status,
+    persisted_status,
+):
     cursor = Cursor([{"record_count": 4}])
 
     result = search_workspace_records(
         cursor,
         context(),
         {
-            "entity": "packages",
+            "entity": entity,
             "operation": "count",
             "query": "",
-            "status": "Hủy thầu",
+            "status": provided_status,
             "packageId": "",
             "limit": 20,
         },
     )
 
     assert result.summary["recordCount"] == 4
-    assert "record.trang_thai = ?" in cursor.statement
-    assert "CANCELLED" in cursor.parameters
-    assert "Hủy thầu" not in cursor.parameters
+    assert persisted_status in cursor.parameters
+    if entity == "contracts":
+        assert "LOWER(record.trang_thai_hop_dong) = LOWER(?)" in cursor.statement
 
 
 def test_workspace_search_treats_provider_wildcards_as_empty_filters():
