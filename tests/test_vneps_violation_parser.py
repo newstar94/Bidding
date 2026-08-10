@@ -2,7 +2,7 @@ from backend.contractor_risk.types import ViolationCategory
 from backend.integrations.vneps.response_parser import parse_violation_response
 
 
-def test_parser_keeps_only_the_three_approved_categories():
+def test_parser_keeps_only_approved_categories():
     result = parse_violation_response(
         {
             "items": [
@@ -19,6 +19,26 @@ def test_parser_keeps_only_the_three_approved_categories():
     )
     assert len(result.records) == 1
     assert result.records[0].category == ViolationCategory.BIDDING_BAN
+
+
+def test_parser_normalizes_administrative_warning_or_other_action():
+    result = parse_violation_response(
+        {
+            "items": [{
+                "category": "xử lý hành chính, cảnh báo, hình thức khác",
+                "contractorIdentifier": "vn001",
+                "issuedDate": "2025-01-01",
+            }]
+        },
+        provider="fixture",
+    )
+
+    assert len(result.records) == 1
+    assert (
+        result.records[0].category
+        == ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION
+    )
+    assert result.records[0].issued_date.isoformat() == "2025-01-01"
 
 
 def test_reputation_parser_does_not_replace_missing_behavior_date_with_public_date():

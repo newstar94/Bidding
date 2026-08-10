@@ -57,8 +57,8 @@ def test_provider_transport_uses_verified_ecdhe_tls_context(monkeypatch):
 
 def test_provider_exact_filters_and_maps_all_supported_sources():
     def violation_search(payload):
-        category = payload["penType"]["contains"]
-        if category == "CT":
+        category = payload["penType"]
+        if category.get("contains") == "CT":
             return {
                 "page": {
                     "content": [
@@ -83,14 +83,25 @@ def test_provider_exact_filters_and_maps_all_supported_sources():
                     ]
                 }
             }
+        if category.get("contains") == "CD":
+            return {
+                "content": [{
+                    "orgCode": "vn001",
+                    "idType": "MST",
+                    "idNo": "0012345678",
+                    "issuedDate": "2025-01-01",
+                    "methodType": "NTHD_140",
+                    "decisionNo": "TERM-1",
+                    "status": "PUBLISH",
+                }]
+            }
         return {
             "content": [{
                 "orgCode": "vn001",
                 "idType": "MST",
                 "idNo": "0012345678",
                 "issuedDate": "2025-01-01",
-                "methodType": "NTHD_140",
-                "decisionNo": "TERM-1",
+                "decisionNo": "ADMIN-1",
                 "status": "PUBLISH",
             }]
         }
@@ -134,12 +145,22 @@ def test_provider_exact_filters_and_maps_all_supported_sources():
     assert [record.category for record in result.records] == [
         ViolationCategory.BIDDING_BAN,
         ViolationCategory.CONTRACT_TERMINATION_BY_CONTRACTOR_FAULT,
+        ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION,
         ViolationCategory.UNRELIABLE_BID_PARTICIPATION,
     ]
     assert result.records[0].effective_from.isoformat() == "2026-01-01"
     assert result.records[1].requires_review is True
-    assert result.records[2].behavior_date.isoformat() == "2025-02-01"
+    assert result.records[2].issued_date.isoformat() == "2025-01-01"
+    assert result.records[2].requires_review is False
+    assert result.records[3].behavior_date.isoformat() == "2025-02-01"
     assert all(record.contractor_identifier == "vn001" for record in result.records)
+    other_request = next(
+        payload
+        for path, payload in provider.requests
+        if path == "get-list-violate"
+        and payload.get("penType", {}).get("doesNotContain") == "CT"
+    )
+    assert other_request["penTypeSecondFilter"] == {"doesNotContain": "CD"}
 
 
 def test_provider_uses_detail_cancellation_and_never_public_date_as_behavior_date():

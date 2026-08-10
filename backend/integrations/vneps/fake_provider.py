@@ -15,7 +15,7 @@ from backend.integrations.vneps.response_parser import parse_violation_response
 
 class FixtureViolationProvider:
     name = "MuaSamCongFixture"
-    schema_version = "fixture-2026.1"
+    schema_version = "fixture-2026.2"
 
     def __init__(self, fixture_path: str):
         self.fixture_path = Path(fixture_path).resolve()

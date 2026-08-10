@@ -195,6 +195,36 @@ def test_unreliable_participation_revocation_is_not_active():
     assert result.status == ViolationStatus.NO_ACTIVE_VIOLATION
 
 
+@pytest.mark.parametrize(
+    ("closing", "expected"),
+    [
+        ("2021-08-14 23:59:59", ViolationStatus.NO_ACTIVE_VIOLATION),
+        ("2026-08-14 23:59:59", ViolationStatus.VIOLATION_CONFIRMED),
+        ("2026-08-15 00:00:00", ViolationStatus.NO_ACTIVE_VIOLATION),
+    ],
+)
+def test_administrative_warning_or_other_action_uses_five_calendar_years(
+    closing,
+    expected,
+):
+    result = evaluate_violation_records(
+        [record(
+            ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION,
+            issued_date=date(2021, 8, 15),
+        )],
+        closing,
+    )
+    assert result.status == expected
+
+
+def test_administrative_action_missing_issue_date_needs_review():
+    result = evaluate_violation_records(
+        [record(ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION)],
+        "2026-01-01",
+    )
+    assert result.status == ViolationStatus.REVIEW_REQUIRED
+
+
 def test_any_confirmed_record_wins_over_review_required_record():
     result = evaluate_violation_records(
         [

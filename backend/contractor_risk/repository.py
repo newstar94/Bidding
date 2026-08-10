@@ -20,6 +20,7 @@ from backend.contractor_risk.types import (
     ViolationStatus,
 )
 from backend.contractor_risk.violation_rules import (
+    VIOLATION_RULE_VERSION,
     normalize_identity_code,
     normalize_tax_code,
 )
@@ -350,6 +351,7 @@ class ContractorRiskRepository:
             return None
         row = self.cursor.execute(
             """SELECT contractor_identifier, tax_code, bid_closing_at, status,
+                      rule_version,
                       source_provider, source_payload_hash, source_records_json
                FROM contractor_violation_checks
                WHERE organization_id = ? AND bid_opening_record_id = ?
@@ -370,6 +372,8 @@ class ContractorRiskRepository:
             in {ViolationStatus.LOOKUP_FAILED.value, ViolationStatus.NOT_CHECKED.value}
             or not str(row.get("source_payload_hash") or "").strip()
         ):
+            return None
+        if str(row.get("rule_version") or "") != VIOLATION_RULE_VERSION:
             return None
         if (
             normalize_identity_code(row["contractor_identifier"])

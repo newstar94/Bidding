@@ -2,6 +2,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from backend.contractor_risk.repository import ContractorRiskRepository, ResolutionContext
+from backend.contractor_risk.violation_rules import VIOLATION_RULE_VERSION
 from backend.shared.date_utils import VIETNAM_TIMEZONE
 
 
@@ -75,3 +76,30 @@ def test_latest_snapshot_never_turns_failed_lookup_into_clean_result():
         contractor_identifier="vn001",
         tax_code="0012345678",
     ) is None
+
+
+def test_latest_snapshot_is_reused_only_for_current_rule_version():
+    closing_at = datetime(2026, 6, 1, tzinfo=VIETNAM_TIMEZONE)
+    values = {
+        "contractor_identifier": "vn001",
+        "tax_code": "0012345678",
+        "bid_closing_at": closing_at,
+        "status": "NO_ACTIVE_VIOLATION",
+        "source_provider": "MuaSamCong",
+        "source_payload_hash": "hash",
+        "source_records_json": "[]",
+    }
+
+    stale = repository_for({**values, "rule_version": "2026.1"})
+    assert stale.latest_snapshot_result(
+        context(closing_at),
+        contractor_identifier="vn001",
+        tax_code="0012345678",
+    ) is None
+
+    current = repository_for({**values, "rule_version": VIOLATION_RULE_VERSION})
+    assert current.latest_snapshot_result(
+        context(closing_at),
+        contractor_identifier="vn001",
+        tax_code="0012345678",
+    ) is not None

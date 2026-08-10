@@ -42,6 +42,15 @@ _CATEGORY_MAP = {
     "khong_bao_dam_uy_tin_khi_tham_du_thau": (
         ViolationCategory.UNRELIABLE_BID_PARTICIPATION
     ),
+    "administrative_warning_or_other_action": (
+        ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION
+    ),
+    "xu_ly_hanh_chinh_canh_bao_hinh_thuc_khac": (
+        ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION
+    ),
+    "xu_ly_hanh_chinh_canh_cao_hinh_thuc_khac": (
+        ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION
+    ),
 }
 
 _REVOKED_STATUSES = {

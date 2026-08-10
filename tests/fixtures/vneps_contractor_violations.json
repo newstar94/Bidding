@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "fixture-2026.1",
+  "schemaVersion": "fixture-2026.2",
   "records": [
     {
       "category": "BIDDING_BAN",
@@ -37,6 +37,15 @@
       "decisionNumber": "FIXTURE-MISSING-DATE",
       "publicDate": "2025-06-01",
       "sourceStatus": "01",
+      "isRevoked": false
+    },
+    {
+      "category": "ADMINISTRATIVE_WARNING_OR_OTHER_ACTION",
+      "contractorIdentifier": "vn000000005",
+      "taxCode": "0000000005",
+      "decisionNumber": "FIXTURE-ADMIN-1",
+      "issuedDate": "2024-06-01",
+      "sourceStatus": "PUBLISH",
       "isRevoked": false
     }
   ]

@@ -168,7 +168,7 @@ _OUTBOUND_SLOTS = threading.BoundedSemaphore(
 
 class VnepsViolationProvider:
     name = "MuaSamCong"
-    schema_version = "vneps-public-ui-2026.2"
+    schema_version = "vneps-public-ui-2026.3"
 
     def __init__(self, service_base: str | None = None):
         self.service_base = str(
@@ -209,6 +209,15 @@ class VnepsViolationProvider:
                 )
             )
             normalized_items.extend(
+                self._lookup_legacy_violations(
+                    contractor_identifier,
+                    tax_code,
+                    excluded_pen_types=("CT", "CD"),
+                    category="ADMINISTRATIVE_WARNING_OR_OTHER_ACTION",
+                    require_verified_detail=False,
+                )
+            )
+            normalized_items.extend(
                 self._lookup_reputation(contractor_identifier, tax_code)
             )
             result = parse_violation_response(
@@ -228,18 +237,28 @@ class VnepsViolationProvider:
         contractor_identifier,
         tax_code,
         *,
-        pen_type,
+        pen_type=None,
+        excluded_pen_types=(),
         category,
+        require_verified_detail=True,
     ):
         payload = {
             "orgNameVioOrOrgCode": {"contains": contractor_identifier or ""},
             "idNo": {"contains": tax_code or ""},
-            "penType": {"contains": pen_type},
             "status": {"in": ["PUBLISH"]},
             "cqctqCreate": {"notEquals": 1, "specified": True},
             "pageSize": MAX_SEARCH_RESULTS,
             "pageNumber": 0,
         }
+        if pen_type:
+            payload["penType"] = {"contains": pen_type}
+        elif tuple(excluded_pen_types) == ("CT", "CD"):
+            # Exact filters used by the official VNEPS section for
+            # administrative, warning and other actions.
+            payload["penType"] = {"doesNotContain": "CT"}
+            payload["penTypeSecondFilter"] = {"doesNotContain": "CD"}
+        else:
+            raise ValueError("A supported VNEPS penalty filter is required")
         search_items = _items(self._post("get-list-violate", payload))
         exact = [
             item
@@ -279,7 +298,9 @@ class VnepsViolationProvider:
                 "durationUnit": item.get("bannedTimeUnit"),
                 "sourceStatus": item.get("status") or "",
                 "isRevoked": cancelled,
-                "requiresReview": not detail_verified,
+                "requiresReview": (
+                    require_verified_detail and not detail_verified
+                ),
             }
             if category == "CONTRACT_TERMINATION_BY_CONTRACTOR_FAULT":
                 # Public schema documents termination records but not enough

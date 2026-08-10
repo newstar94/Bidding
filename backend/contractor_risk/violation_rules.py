@@ -25,7 +25,8 @@ from backend.shared.date_utils import VIETNAM_TIMEZONE, parse_datetime_value
 
 CONTRACT_TERMINATION_LOOKBACK_YEARS = 5
 UNRELIABLE_BID_LOOKBACK_YEARS = 2
-VIOLATION_RULE_VERSION = "2026.1"
+ADMINISTRATIVE_ACTION_LOOKBACK_YEARS = 5
+VIOLATION_RULE_VERSION = "2026.2"
 
 
 def normalize_identity_code(value: object) -> str:
@@ -202,6 +203,15 @@ def evaluate_violation_records(
                 record.behavior_date,
                 closing,
                 UNRELIABLE_BID_LOOKBACK_YEARS,
+            )
+        elif (
+            record.category
+            == ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION
+        ):
+            status = _evaluate_calendar_lookback(
+                record.issued_date,
+                closing,
+                ADMINISTRATIVE_ACTION_LOOKBACK_YEARS,
             )
         else:  # Defensive for deserialized/forward-compatible values.
             continue
