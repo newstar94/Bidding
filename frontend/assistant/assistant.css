@@ -128,6 +128,11 @@
   outline-offset: 2px;
 }
 .bf-assistant-trigger svg, .bf-assistant-send svg, .bf-assistant-context svg { width: 17px; height: 17px; }
+body:has(> .bf-assistant-trigger) .pagination-container {
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-inline-end: 196px;
+}
 .bf-assistant-panel {
   position: fixed;
   right: 24px;
@@ -310,6 +315,7 @@
 .bf-assistant-feedback-button:disabled { opacity: .65; cursor: wait; }
 @media (max-width: 640px) {
   .bf-assistant-trigger { right: 16px; bottom: 16px; width: 54px; min-height: 54px; padding: 6px; gap: 0; border-radius: 18px; }
+  body:has(> .bf-assistant-trigger) .pagination-container { padding-inline-end: 86px; }
   .bf-assistant-trigger-copy { display: none; }
   .bf-assistant-trigger-mark { flex-basis: 40px; }
   .bf-assistant-panel { right: 8px; bottom: 72px; width: calc(100vw - 16px); height: calc(100vh - 88px); border-radius: 16px; }

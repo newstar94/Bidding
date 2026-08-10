@@ -34,6 +34,86 @@ test("assistant floating controls stay below business modal overlays", async () 
   assert.ok(panelLayer < modalLayer, "assistant must not intercept controls inside a modal");
 });
 
+test("assistant launcher does not cover table pagination at the end of a long list", async () => {
+  const server = createServer(async (request, response) => {
+    try {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      if (pathname === "/") {
+        response.writeHead(200, { "content-type": contentType(".html") });
+        response.end(`<!doctype html><html><head>
+          <link rel="stylesheet" href="/views/css/tokens.css">
+          <link rel="stylesheet" href="/views/css/variables.css">
+          <link rel="stylesheet" href="/views/css/base.css">
+          <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/frontend/assistant/assistant.css">
+        </head><body>
+          <main style="min-height: 1600px; display: flex; flex-direction: column;">
+            <div style="flex: 1"></div>
+            <nav class="pagination-container" aria-label="Phân trang danh sách">
+              <span class="pagination-info">Hiển thị 91-100 trên 100 bản ghi</span>
+              <div class="pagination-buttons">
+                <button class="pagination-btn" aria-label="Trang trước">‹</button>
+                <button class="pagination-btn active" aria-label="Trang 10">10</button>
+                <button class="pagination-btn" aria-label="Trang sau">›</button>
+              </div>
+            </nav>
+          </main>
+        </body></html>`);
+        return;
+      }
+      const filePath = join(projectRoot, pathname.replace(/^\//, ""));
+      const payload = await readFile(filePath);
+      response.writeHead(200, { "content-type": contentType(pathname) });
+      response.end(payload);
+    } catch {
+      if (!response.headersSent) response.writeHead(404);
+      if (!response.writableEnded) response.end("Not Found");
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await page.goto(`http://127.0.0.1:${address.port}/`);
+    const geometry = await page.evaluate(async () => {
+      window.lucide = { createIcons() {} };
+      const { mountAssistant } = await import("/frontend/assistant/AssistantController.js");
+      mountAssistant(
+        { model: { state: { activeuser: { organizations: [] } } } },
+        { enabled: true },
+      );
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+      const trigger = document.getElementById("bf-assistant-trigger").getBoundingClientRect();
+      const pagination = document.querySelector(".pagination-buttons").getBoundingClientRect();
+      const overlapWidth = Math.max(0, Math.min(trigger.right, pagination.right) - Math.max(trigger.left, pagination.left));
+      const overlapHeight = Math.max(0, Math.min(trigger.bottom, pagination.bottom) - Math.max(trigger.top, pagination.top));
+      return {
+        overlapArea: Math.round(overlapWidth * overlapHeight),
+        trigger: { left: trigger.left, top: trigger.top, right: trigger.right, bottom: trigger.bottom },
+        pagination: {
+          left: pagination.left,
+          top: pagination.top,
+          right: pagination.right,
+          bottom: pagination.bottom,
+        },
+      };
+    });
+
+    assert.equal(
+      geometry.overlapArea,
+      0,
+      `assistant launcher must not cover pagination controls: ${JSON.stringify(geometry)}`,
+    );
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("assistant mode dropdown uses the shared custom select and stays synchronized", async () => {
   const server = createServer(async (request, response) => {
     try {

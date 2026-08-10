@@ -127,6 +127,17 @@ def test_fixture_database_guard_accepts_explicitly_allowlisted_database(monkeypa
     assert fixture._database_url() == database_url
 
 
+def test_isolated_audit_runner_uses_test_environment_for_guarded_fixtures():
+    runner = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_isolated_audit_e2e.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert '$env:DATABASE_URL = $testUrl' in runner
+    assert '$env:APP_ENV = "test"' in runner
+
+
 def test_cleanup_removes_all_lp25_business_rows(monkeypatch):
     database_url = _test_database_url()
     if not database_url:

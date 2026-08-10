@@ -115,6 +115,19 @@ Final status must be exactly one of:
 - 2026-08-10: closed BF-P2-10 after the previously missing authenticated production-mode 30+30 run passed cold/warm/long-task budgets with zero runtime failures. Master status is 52 `FIXED`, 2 `MITIGATED`, 1 `VERIFIED RESOLVED`, 2 external/legal/product blockers and 0 pending findings.
 - 2026-08-10: theo quyết định product, closed BF-P2-30/31 bằng lifecycle “Ngừng hoạt động” bảo toàn lịch sử, khóa session/write và ẩn khỏi active lists; physical erasure tiếp tục unsupported. BF-P2-23 được chấp nhận `MITIGATED` và v36 giữ nguyên; BF-P1-07 để sau. Master status là 54 `FIXED`, 1 `MITIGATED`, 1 `VERIFIED RESOLVED`, 1 external legal blocker và 0 pending.
 
+## Revalidation bổ sung trên latest HEAD — 2026-08-10
+
+- Sau `git fetch origin`, revalidation base là `3afd6b6a91a9a1012e9dca673f4ffbc965815946`, bằng `origin/main`. Trạng thái 57 finding không đổi: 54 `FIXED`, 1 `MITIGATED`, 1 `VERIFIED RESOLVED`, 1 `BLOCKED BY EXTERNAL/LEGAL/PRODUCT DECISION`, 0 `PENDING` và 0 `DEFERRED`.
+- Bổ sung regression browser cho trường hợp danh sách dài: hit-box nút trợ lý AI không còn giao với `.pagination-buttons`. Safe area chỉ áp dụng khi launcher đã mount, có kích thước riêng cho desktop/mobile và cho phép pagination wrap.
+- Đồng bộ auth E2E với ADR lifecycle đã chấp nhận: organization `suspended` bị ẩn khỏi active workspace list, login fallback sang personal workspace và request cố chọn organization suspended trả 403.
+- Runner E2E cô lập nay đặt `APP_ENV=test` khi dùng `TEST_DATABASE_URL`, có entrypoint riêng cho low-price/CRUD/pairwise/offline-soak; LP-25 tiếp tục fail closed ngoài database allowlist. CRUD delete dùng `/api/sync` response barrier trước PostgreSQL postcondition thay cho DOM-hidden timing.
+- Full suites cuối: Python 876/876; JavaScript 644/644; Python branch coverage 48,19% với 15 critical modules pass; JavaScript line/branch/function 46,65%/62,07%/62,57% với 14 critical modules pass. Static/schema-runtime/historical-fixture/encoding/module/debt/security/vendor gates pass; frontend 263 modules, 0 cycle; FK 104/104.
+- Secure build pass 267 modules/52 obfuscated bundles. Vì worktree có change chưa commit, package dùng immutable change-set SHA-256 `6b622024fdd34f7f690990ba7aa37b83778a51df000bab6e0559c197bc855e0f` thay vì gắn sai SHA HEAD; production package/extracted-runtime smoke pass 410 files, 2.479.076 bytes. CycloneDX dependency/vendor SBOMs generated; `npm audit` và `pip-audit` đều 0 known vulnerability.
+- Isolated E2E pass: auth/RBAC 14 bước; offline/reconnect; multi-assignee; JV; LP-25 conflict + zero-row cleanup; CRUD + PostgreSQL postcondition; pairwise 15 packages; full lifecycle; Chromium/Firefox/WebKit; auth shell; UI quality; authenticated 320/375/414/768/1280 matrix. Offline soak pass 5/5.
+- Performance 30 cold + 30 warm pass: cold p95 441 ms, warm p95 208 ms, longest task cold/warm 89/54 ms, không runtime failure; dưới budget 800/325/100 ms.
+- Legal gate giữ nguyên: development exit 0 với warning; production-public exit 1 với `LEGAL_FACT_UNAPPROVED=27` và `LEGAL_PLACEHOLDER_PRESENT=27`. Không bypass và không tự tạo phê duyệt.
+- Revalidation không thêm migration, không drop DB object, không thay status/disposition của finding nào. Các thay đổi bổ sung ở worktree cần được commit riêng sau khi review.
+
 ## Final acceptance
 
 1. **Latest HEAD ban đầu?** `47629c307b1ab6289918eb638fdddf09488a7639`, bằng `origin/main` sau `git fetch origin` ngày 2026-08-09. Technical acceptance được chạy trên chuỗi remediation đến `101245b`; sau đó `origin/main` tiến thêm commit tài liệu audit-only `f93c17b`, không đổi runtime/schema/test implementation.

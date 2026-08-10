@@ -580,9 +580,28 @@ try {
   const suspendedContext = await browser.newContext();
   auth = await apiLogin(suspendedContext, accounts.suspended, password, suspendedOrganizationId);
   assert(auth.response.ok(), "Suspended-workspace member could not authenticate to account");
-  const suspendedWorkspace = (auth.body.organizations || []).find((item) => item.id === suspendedOrganizationId);
-  assert(suspendedWorkspace?.status === "suspended", `Suspended workspace status was not returned: ${JSON.stringify(auth.body.organizations || [])}`);
-  assert(suspendedWorkspace?.entitlements?.word_export === false, "Suspended workspace kept Word export enabled");
+  const suspendedWorkspaces = auth.body.organizations || [];
+  assert(
+    !suspendedWorkspaces.some((item) => item.id === suspendedOrganizationId),
+    `Suspended workspace remained in the active workspace list: ${JSON.stringify(suspendedWorkspaces)}`,
+  );
+  const personalWorkspaceId = `personal:${accounts.suspended.id}`;
+  const personalWorkspace = suspendedWorkspaces.find((item) => item.id === personalWorkspaceId);
+  assert(
+    auth.body.active_org_id === personalWorkspaceId && personalWorkspace?.status === "active",
+    `Login did not fall back to the active personal workspace: ${JSON.stringify(auth.body)}`,
+  );
+  assert(
+    personalWorkspace?.entitlements?.word_export === false,
+    "Personal fallback unexpectedly inherited the suspended organization's Word entitlement",
+  );
+  response = await suspendedContext.request.get(`${baseURL}/api/get-all-data?since=0`, {
+    headers: { "X-Active-Org": encodeURIComponent(suspendedOrganizationId) },
+  });
+  assert(
+    response.status() === 403,
+    `Suspended organization accepted a data request: ${response.status()}`,
+  );
   await suspendedContext.close();
   mark("membership-left-and-workspace-suspended");
 

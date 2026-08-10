@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "offline", "joint-venture", "ui", "domain", "lifecycle", "bidder-goods", "all")]
+    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "offline", "offline-soak", "joint-venture", "low-price", "crud", "pairwise", "ui", "domain", "lifecycle", "bidder-goods", "all")]
     [string]$Suite = "all",
     [int]$Port = 8010
 )
@@ -17,7 +17,7 @@ $baseUrl = "http://127.0.0.1:$Port"
 $env:DATABASE_URL = $testUrl
 $env:MIGRATOR_DATABASE_URL = $testUrl
 $env:TEST_DATABASE_URL = $testUrl
-$env:APP_ENV = "development"
+$env:APP_ENV = "test"
 $env:APP_DEBUG = if ($Suite -eq "performance") { "false" } else { "true" }
 $env:DATABASE_AUTO_MIGRATE = "false"
 $env:APP_PUBLIC_URL = $baseUrl
@@ -53,8 +53,16 @@ $commands = if ($Suite -eq "smoke") {
     @("test:auth-roles-e2e")
 } elseif ($Suite -eq "offline") {
     @("test:offline-sync-e2e")
+} elseif ($Suite -eq "offline-soak") {
+    @("test:offline-sync-e2e:soak")
 } elseif ($Suite -eq "joint-venture") {
     @("test:joint-venture-e2e")
+} elseif ($Suite -eq "low-price") {
+    @("test:low-price-conflict-e2e")
+} elseif ($Suite -eq "crud") {
+    @("test:crud-modules-e2e")
+} elseif ($Suite -eq "pairwise") {
+    @("test:package-pairwise-e2e")
 } elseif ($Suite -eq "ui") {
     $uiCommands
 } elseif ($Suite -eq "domain") {

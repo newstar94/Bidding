@@ -131,8 +131,17 @@ async function savePlanBreakdown(page) {
 
 async function deleteSearchedRow(page, tableSelector, expectedText) {
   const row = page.locator(`${tableSelector} tbody tr`).filter({ hasText: expectedText });
+  const syncResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/sync" && response.request().method() === "POST";
+  }, { timeout: 20_000 });
   await row.locator('[data-bf-action^="delete-"]').click();
   await confirmDeleteAll(page);
+  const syncResponse = await syncResponsePromise;
+  if (!syncResponse.ok()) {
+    const body = await syncResponse.text().catch(() => "");
+    throw new Error(`Delete sync returned ${syncResponse.status()}: ${body}`);
+  }
   await row.waitFor({ state: "hidden", timeout: 20_000 });
 }
 
