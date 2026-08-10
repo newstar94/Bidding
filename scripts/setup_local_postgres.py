@@ -72,7 +72,11 @@ def _read_env() -> tuple[list[str], dict[str, str]]:
     return lines, values
 
 
-def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str,
+    env: dict[str, str] | None = None,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
         check=True,
@@ -81,6 +85,7 @@ def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
         encoding="utf-8",
         errors="replace",
         env=env,
+        input=input_text,
     )
 
 
@@ -423,8 +428,10 @@ def main() -> None:
             "postgres",
             "-v",
             f"database_name={database_name}",
-            "-tAc",
-            "SELECT 1 FROM pg_database WHERE datname = :'database_name'",
+            "-tA",
+            "-f",
+            "-",
+            input_text="SELECT 1 FROM pg_database WHERE datname = :'database_name'",
             env=child_env,
         ).stdout.strip()
         if exists != "1":

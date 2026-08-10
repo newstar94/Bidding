@@ -10,14 +10,16 @@ from scripts.setup_local_postgres import (
 )
 
 
-def test_database_existence_probe_uses_psql_value_binding():
+def test_database_existence_probe_uses_psql_value_binding_via_stdin():
     source = (
         __import__("inspect").getsource(main)
     )
 
     assert "database_name={database_name}" in source
-    assert "datname = :'database_name'" in source
-    assert "datname='{database_name}'" not in source
+    assert '"-tA",' in source
+    assert '"-f",' in source
+    assert '"-",' in source
+    assert "input_text=\"SELECT 1 FROM pg_database WHERE datname = :'database_name'\"" in source
 
 
 def test_reset_accepts_only_repository_managed_local_development_databases():
