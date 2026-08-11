@@ -89,5 +89,5 @@ data/e2e-artifacts/
 *.local
 *.egg-info/
 .idea/
-.codex
+.codex*
 .hallmark
