@@ -52,10 +52,13 @@ export class MscSessionProvider {
     ttlMs = 30 * 60 * 1000,
     navigationTimeoutMs = 20_000,
     sessionTimeoutMs = 60_000,
+    refreshAheadMs = 5 * 60 * 1000,
     headless = true,
     clock = () => Date.now(),
     fetchImpl = globalThis.fetch,
     sleep = delay,
+    setTimer = setTimeout,
+    clearTimer = clearTimeout,
   }) {
     if (!puppeteer || typeof puppeteer.launch !== "function") {
       throw new Error("PROCUREMENT_BROWSER_FAILED");
@@ -72,12 +75,22 @@ export class MscSessionProvider {
       this.navigationTimeoutMs,
       Math.min(Number(sessionTimeoutMs) || 60_000, 120_000),
     );
+    this.refreshAheadMs = Math.max(
+      1_000,
+      Math.min(
+        Number(refreshAheadMs) || 300_000,
+        Math.max(1_000, Math.floor(this.ttlMs / 2)),
+      ),
+    );
     this.headless = headless === false ? false : "new";
     this.clock = clock;
     this.fetchImpl = fetchImpl;
     this.sleep = sleep;
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
     this.cached = null;
     this.refreshPromise = null;
+    this.refreshTimer = null;
     this.lastError = null;
     this.refreshCount = 0;
     this.lastBrowserStartupMs = 0;
@@ -110,7 +123,26 @@ export class MscSessionProvider {
   }
 
   invalidate() {
+    if (this.refreshTimer !== null) {
+      this.clearTimer(this.refreshTimer);
+      this.refreshTimer = null;
+    }
     this.cached = null;
+  }
+
+  _scheduleRefresh() {
+    if (this.refreshTimer !== null) this.clearTimer(this.refreshTimer);
+    const delayMs = Math.max(1_000, this.ttlMs - this.refreshAheadMs);
+    this.refreshTimer = this.setTimer(async () => {
+      this.refreshTimer = null;
+      try {
+        await this.acquire({ forceRefresh: true });
+      } catch {
+        // A foreground caller can still use the unexpired cached session and
+        // will retry refresh through the normal bounded policy if needed.
+      }
+    }, delayMs);
+    this.refreshTimer?.unref?.();
   }
 
   health() {
@@ -139,15 +171,25 @@ export class MscSessionProvider {
     let browser = null;
     let foundToken = "";
     let foundCookie = "";
+    let resolveCapturedToken;
+    const capturedToken = new Promise((resolve) => {
+      resolveCapturedToken = resolve;
+    });
+    const waitForCapturedToken = async (milliseconds) => {
+      if (foundToken) return;
+      await Promise.race([capturedToken, this.sleep(milliseconds)]);
+    };
     const startupStarted = this.clock();
     try {
-      const reachability = await this.fetchImpl(MSC_PORTAL_URL, {
-        method: "GET",
-        redirect: "manual",
-        signal: AbortSignal.timeout(8_000),
-        headers: { "user-agent": MSC_USER_AGENT },
-      });
-      await reachability.body?.cancel?.().catch(() => {});
+      void Promise.resolve()
+        .then(() => this.fetchImpl(MSC_PORTAL_URL, {
+          method: "GET",
+          redirect: "manual",
+          signal: AbortSignal.timeout(8_000),
+          headers: { "user-agent": MSC_USER_AGENT },
+        }))
+        .then((response) => response.body?.cancel?.().catch(() => {}))
+        .catch(() => null);
 
       const launchOptions = {
         headless: this.headless,
@@ -168,7 +210,10 @@ export class MscSessionProvider {
         try {
           const parsed = new URL(request.url());
           const token = parsed.searchParams.get("token") || "";
-          if (token.length > 20) foundToken = token;
+          if (token.length > 20) {
+            foundToken = token;
+            resolveCapturedToken();
+          }
         } catch {
           // Ignore malformed third-party request URLs.
         }
@@ -179,12 +224,11 @@ export class MscSessionProvider {
         timeout: this.navigationTimeoutMs,
       }).catch(() => null);
       await page.evaluate(() => window.stop()).catch(() => null);
-      await this.sleep(3_000);
 
       if (!foundToken) {
         try {
           await page.waitForSelector("button, .btn-search, [type='submit']", {
-            timeout: 5_000,
+            timeout: 1_000,
           });
           await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll("button"));
@@ -194,9 +238,9 @@ export class MscSessionProvider {
             ));
             search?.click();
           });
-          await this.sleep(3_000);
+          await waitForCapturedToken(3_000);
         } catch {
-          await this.sleep(3_000);
+          await waitForCapturedToken(3_000);
         }
       }
 
@@ -240,6 +284,7 @@ export class MscSessionProvider {
         cookie: foundCookie,
         fetchedAt: this.clock(),
       };
+      this._scheduleRefresh();
       this.refreshCount += 1;
       this.lastError = null;
       return this.cached;

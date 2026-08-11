@@ -52,6 +52,54 @@ test("lookup client sends only code and workspace lease with cancellation", asyn
 });
 
 
+test("manual lookup cancels the pending debounced lookup", async () => {
+  const element = (value = "") => ({
+    value,
+    hidden: false,
+    disabled: false,
+    listeners: {},
+    addEventListener(type, callback) { this.listeners[type] = callback; },
+    replaceChildren() {},
+    setAttribute() {},
+  });
+  const code = element("PL2600000001");
+  const status = element();
+  const run = element();
+  const apply = element();
+  const body = element();
+  const warnings = element();
+  const packages = element();
+  const modal = {
+    addEventListener() {},
+    querySelector(selector) {
+      return {
+        "[data-procurement-lookup-code]": code,
+        "[data-procurement-lookup-status]": status,
+        "[data-procurement-lookup-run]": run,
+        "[data-procurement-lookup-apply]": apply,
+        "[data-procurement-lookup-body]": body,
+        "[data-procurement-lookup-warnings]": warnings,
+        "[data-procurement-lookup-packages]": packages,
+      }[selector] || null;
+    },
+    querySelectorAll() { return []; },
+  };
+  const wizard = new ProcurementLookupWizard({
+    controller: {},
+    modal,
+    document: { getElementById: () => null },
+  });
+  let lookupCount = 0;
+  wizard.lookup = () => { lookupCount += 1; };
+
+  code.listeners.input();
+  run.listeners.click();
+  await new Promise((resolve) => setTimeout(resolve, 650));
+
+  assert.equal(lookupCount, 1);
+});
+
+
 test("lookup controls follow the server-owned procurement capability", () => {
   invalidateServerCapabilities();
   updateServerCapabilitiesFromSession({

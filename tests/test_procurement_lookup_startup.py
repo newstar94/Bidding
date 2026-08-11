@@ -1,9 +1,19 @@
 import pytest
 
+from backend.lifecycle import _procurement_source_initialization_enabled
 from backend.startup import (
     StartupValidationError,
     validate_procurement_lookup_configuration,
 )
+
+
+def test_procurement_source_initializes_only_when_lookup_is_enabled():
+    assert _procurement_source_initialization_enabled({
+        "PROCUREMENT_LOOKUP_ENABLED": "true",
+    }) is True
+    assert _procurement_source_initialization_enabled({
+        "PROCUREMENT_LOOKUP_ENABLED": "false",
+    }) is False
 
 
 def test_disabled_procurement_lookup_does_not_require_browser_runtime():

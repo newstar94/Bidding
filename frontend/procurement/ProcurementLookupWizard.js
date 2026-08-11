@@ -89,7 +89,10 @@ export class ProcurementLookupWizard {
       this.lookup();
     });
     this.modal.querySelector("[data-procurement-lookup-run]")
-      .addEventListener("click", () => this.lookup());
+      .addEventListener("click", () => {
+        this.debouncedLookup.cancel();
+        this.lookup();
+      });
     this.modal.querySelector("[data-procurement-lookup-apply]")
       .addEventListener("click", () => this.apply());
     this.modal.addEventListener("change", (event) => {

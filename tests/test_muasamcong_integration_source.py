@@ -388,6 +388,11 @@ def test_unified_source_exposes_all_revisions_opening_and_lookup_contracts():
     assert "raw" not in result
     assert complete["schemaFingerprint"] == "complete-bundle:v1:fixture"
     assert lookup["source"]["provider"] == "MUASAMCONG"
+    assert lookup["metrics"]["listMs"] >= 0
+    assert lookup["metrics"]["detailMs"] >= 0
+    assert lookup["metrics"]["totalMs"] >= (
+        lookup["metrics"]["listMs"] + lookup["metrics"]["detailMs"]
+    )
     assert "raw" not in lookup
 
 
@@ -438,6 +443,7 @@ def test_import_source_observer_emits_complete_secret_free_dimensions():
         "semanticOperation",
         "totalMs",
         "browserStartupMs",
+        "sessionAcquireMs",
         "navigationMs",
         "networkWaitMs",
         "extractMs",

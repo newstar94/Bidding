@@ -86,6 +86,21 @@ def _start_optional_services(delay_seconds, enable_image_cache_prewarm):
             log_error(exc, "prewarm_image_cache")
 
 
+def _procurement_source_initialization_enabled(environ=None):
+    environment = os.environ if environ is None else environ
+    return str(
+        environment.get("PROCUREMENT_LOOKUP_ENABLED", "false")
+    ).strip().casefold() == "true"
+
+
+def _initialize_procurement_source():
+    from backend.integrations.muasamcong_browser.registry import (
+        get_muasamcong_source,
+    )
+
+    get_muasamcong_source()
+
+
 def _retention_batch_size():
     return max(
         1,
@@ -350,6 +365,26 @@ async def application_lifespan(
                 ).strip(),
             )
         await verify_audit_chain_before_ready(database)
+        if _procurement_source_initialization_enabled():
+            from backend.procurement_import.source import ProcurementSourceError
+            from backend.procurement_lookup.domain import ProcurementLookupError
+
+            try:
+                await run_blocking_io(
+                    _initialize_procurement_source,
+                    timeout_seconds=10.0,
+                )
+            except (
+                OSError,
+                ProcurementLookupError,
+                ProcurementSourceError,
+                RuntimeError,
+                ValueError,
+            ) as exc:
+                # Procurement is an optional upstream integration. Keep the
+                # application available and let the normal bounded request
+                # policy retry if startup prewarm could not reach it.
+                log_error(exc, "initialize_procurement_source", level="WARN")
     except Exception as exc:
         log_error(exc, "startup_database_init")
         raise
@@ -426,4 +461,10 @@ async def application_lifespan(
                     await task
         application.state.ready = False
         application.state.startup_complete = False
+        if _procurement_source_initialization_enabled():
+            from backend.integrations.muasamcong_browser.registry import (
+                close_muasamcong_source,
+            )
+
+            close_muasamcong_source()
         database.close()

@@ -263,6 +263,7 @@ class MuaSamCongProcurementSource:
             )[:64],
             "totalMs": metrics.get("totalMs", 0),
             "browserStartupMs": metrics.get("browserStartupMs", 0),
+            "sessionAcquireMs": metrics.get("sessionAcquireMs", 0),
             "navigationMs": metrics.get("navigationMs", 0),
             "networkWaitMs": metrics.get("networkWaitMs", 0),
             "extractMs": metrics.get("extractMs", 0),
@@ -523,11 +524,16 @@ class MuaSamCongProcurementSource:
     def lookup(self, code: str, kind: str) -> dict:
         """Expose the same source through the existing lookup contract."""
 
+        lookup_started = self.clock()
+        list_ms = 0.0
+        detail_ms = 0.0
         try:
             normalized_kind = str(kind or "").strip().upper()
             if normalized_kind == "PLAN":
                 family_no = _canonical_code(code, _PLAN_PATTERN)
+                list_started = self.clock()
                 revisions = self.list_plan_revisions(family_no)
+                list_ms = max(0, self.clock() - list_started) * 1000
                 latest = max(
                     revisions,
                     key=lambda row: (
@@ -537,9 +543,11 @@ class MuaSamCongProcurementSource:
                         row["revisionNumber"],
                     ),
                 )
+                detail_started = self.clock()
                 revision = self.get_plan_revision(
                     family_no, latest["revisionId"]
                 )
+                detail_ms = max(0, self.clock() - detail_started) * 1000
                 data = {
                     "planNo": family_no,
                     "planName": revision.get("name"),
@@ -571,7 +579,9 @@ class MuaSamCongProcurementSource:
                 }
             elif normalized_kind == "PACKAGE":
                 notice_no = _canonical_code(code, _NOTICE_PATTERN)
+                list_started = self.clock()
                 revisions = self.list_notice_revisions(notice_no)
+                list_ms = max(0, self.clock() - list_started) * 1000
                 latest = max(
                     revisions,
                     key=lambda row: (
@@ -581,9 +591,11 @@ class MuaSamCongProcurementSource:
                         row["revisionNumber"],
                     ),
                 )
+                detail_started = self.clock()
                 revision = self.get_notice_revision(
                     notice_no, latest["revisionId"]
                 )
+                detail_ms = max(0, self.clock() - detail_started) * 1000
                 data = {
                     "notifyNo": notice_no,
                     "notifyId": revision.get("notifyId"),
@@ -621,6 +633,15 @@ class MuaSamCongProcurementSource:
             }
             return fallback
         source = revision.get("source") or {}
+        metrics = {
+            **(source.get("metrics") or {}),
+            "listMs": round(list_ms, 3),
+            "detailMs": round(detail_ms, 3),
+            "totalMs": round(
+                max(0, self.clock() - lookup_started) * 1000,
+                3,
+            ),
+        }
         return {
             "schemaVersion": "biddingflow-procurement-preview-v1",
             "found": True,
@@ -638,7 +659,7 @@ class MuaSamCongProcurementSource:
                 "schemaFingerprint": source.get("schemaFingerprint"),
             },
             "data": data,
-            "metrics": {},
+            "metrics": metrics,
             "classification": str(classify_upstream_error()),
         }
 

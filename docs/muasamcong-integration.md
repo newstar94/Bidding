@@ -42,6 +42,9 @@ không có adapter lookup song song ở tầng nghiệp vụ.
 Refresh dùng Puppeteer/Chromium với cấu hình đã port từ nguồn, đóng browser ở
 `finally`, và không trả secret qua JSONL health metadata. Khi protected API trả
 400/401/403, client invalidate session, refresh đúng một lần rồi gọi lại.
+Khi lookup được bật, startup khởi tạo worker và bắt đầu prewarm phiên ở nền trước
+khi nhận traffic; provider tiếp tục làm mới ở nền trước khi TTL hết hạn để
+request người dùng không phải chờ Puppeteer bootstrap.
 
 ## Endpoint profile và parser
 

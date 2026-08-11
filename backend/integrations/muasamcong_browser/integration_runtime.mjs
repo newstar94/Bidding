@@ -11,6 +11,7 @@ export class MscIntegrationRuntime {
     this.sessionProvider = null;
     this.client = null;
     this.collectors = null;
+    this.prewarmPromise = null;
     this.profileId = MSC_PROFILE_ID;
   }
 
@@ -43,6 +44,7 @@ export class MscIntegrationRuntime {
       queueTimeoutMs: Number(configuration.apiQueueTimeoutMs) || 5_000,
     });
     this.collectors = new MscCollectors({ client: this.client });
+    this.prewarmPromise = this.sessionProvider.acquire().catch(() => null);
     return { ready: true, profile: this.profileId, sessionProvider: "BrowserSessionV1" };
   }
 
@@ -113,6 +115,7 @@ export class MscIntegrationRuntime {
     this.sessionProvider = null;
     this.client = null;
     this.collectors = null;
+    this.prewarmPromise = null;
     this.profileId = MSC_PROFILE_ID;
   }
 }

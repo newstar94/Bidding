@@ -9,6 +9,7 @@ import {
   resolveEndpoint,
 } from "../../backend/integrations/muasamcong_browser/endpoint_catalog.mjs";
 import { MscSessionProvider } from "../../backend/integrations/muasamcong_browser/session_provider.mjs";
+import { MscIntegrationRuntime } from "../../backend/integrations/muasamcong_browser/integration_runtime.mjs";
 
 
 function response(status, body) {
@@ -24,11 +25,13 @@ function response(status, body) {
 
 function browserHarness({
   networkToken = "network-token-value-1234567890",
+  searchToken = "",
   fallbackToken = "fallback-token-value-1234567890",
   navigationError = null,
 } = {}) {
   let requestHandler = null;
   let closeCount = 0;
+  const selectorTimeouts = [];
   const page = {
     on(event, callback) {
       if (event === "request") requestHandler = callback;
@@ -46,9 +49,16 @@ function browserHarness({
     evaluate: async (fn, argument) => {
       if (argument) return fallbackToken;
       if (String(fn).includes("typeof window.grecaptcha")) return false;
+      if (searchToken && String(fn).includes("querySelectorAll")) {
+        requestHandler?.({
+          url: () => `https://muasamcong.mpi.gov.vn/api?token=${searchToken}`,
+        });
+      }
       return undefined;
     },
-    waitForSelector: async () => {
+    waitForSelector: async (_selector, options = {}) => {
+      selectorTimeouts.push(options.timeout);
+      if (searchToken) return true;
       throw new Error("missing search UI");
     },
     addScriptTag: async () => ({ loaded: true }),
@@ -70,6 +80,7 @@ function browserHarness({
       },
     },
     closeCount: () => closeCount,
+    selectorTimeouts: () => selectorTimeouts,
   };
 }
 
@@ -107,6 +118,41 @@ test("session provider coalesces callers, caches token/cookie, and closes browse
 });
 
 
+test("session provider skips fixed sleeps when navigation already captured a token", async () => {
+  const harness = browserHarness();
+  const sleeps = [];
+  const provider = new MscSessionProvider({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+  });
+
+  await provider.acquire();
+
+  assert.deepEqual(sleeps, []);
+});
+
+
+test("session provider stops waiting as soon as the search action captures a token", async () => {
+  const harness = browserHarness({
+    networkToken: "",
+    searchToken: "search-token-value-1234567890",
+  });
+  const sleeps = [];
+  const provider = new MscSessionProvider({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+  });
+
+  const session = await provider.acquire();
+
+  assert.equal(session.token, "search-token-value-1234567890");
+  assert.deepEqual(sleeps, []);
+  assert.deepEqual(harness.selectorTimeouts(), [1_000]);
+});
+
+
 test("session TTL and forceRefresh both replace the cached browser session", async () => {
   const harness = browserHarness();
   let now = 1_000;
@@ -136,6 +182,60 @@ test("session TTL and forceRefresh both replace the cached browser session", asy
 });
 
 
+test("session provider refreshes in the background before the cached token expires", async () => {
+  const harness = browserHarness();
+  let launches = 0;
+  const launch = harness.puppeteer.launch;
+  harness.puppeteer.launch = async (...args) => {
+    launches += 1;
+    return launch(...args);
+  };
+  const scheduled = [];
+  const cleared = [];
+  const provider = new MscSessionProvider({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
+    sleep: async () => undefined,
+    ttlMs: 120_000,
+    refreshAheadMs: 60_000,
+    setTimer(callback, milliseconds) {
+      const timer = { callback, milliseconds, unref() {} };
+      scheduled.push(timer);
+      return timer;
+    },
+    clearTimer(timer) { cleared.push(timer); },
+  });
+
+  await provider.acquire();
+  assert.equal(launches, 1);
+  assert.equal(scheduled[0].milliseconds, 60_000);
+
+  await scheduled[0].callback();
+  assert.equal(launches, 2);
+  assert.equal(scheduled.length, 2);
+
+  provider.invalidate();
+  assert.equal(cleared.at(-1), scheduled[1]);
+});
+
+
+test("integration runtime starts session prewarm without blocking initialization", async () => {
+  const harness = browserHarness();
+  const runtime = new MscIntegrationRuntime({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
+  });
+
+  const initialized = runtime.initialize();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(initialized.ready, true);
+  assert.equal(runtime.health().session.cached, true);
+  assert.equal(harness.closeCount(), 1);
+  runtime.close();
+});
+
+
 test("session provider keeps the source fallback when portal UI cannot emit a token", async () => {
   const harness = browserHarness({
     networkToken: "",
@@ -150,6 +250,21 @@ test("session provider keeps the source fallback when portal UI cannot emit a to
   const session = await provider.acquire();
 
   assert.match(session.token, /^fallback-token/);
+  assert.equal(harness.closeCount(), 1);
+});
+
+
+test("session provider still uses the browser when the reachability probe fails", async () => {
+  const harness = browserHarness();
+  const provider = new MscSessionProvider({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => { throw new Error("probe unavailable"); },
+    sleep: async () => undefined,
+  });
+
+  const session = await provider.acquire();
+
+  assert.match(session.token, /^network-token/);
   assert.equal(harness.closeCount(), 1);
 });
 
