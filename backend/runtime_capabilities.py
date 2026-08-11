@@ -10,23 +10,31 @@ SERVER_CAPABILITIES = (AGGREGATE_VERSION_V1,)
 
 def _procurement_import_available(environ):
     enabled = str(
-        environ.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false")
+        environ.get(
+            "PROCUREMENT_IMPORT_ENABLED",
+            environ.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"),
+        )
     ).strip().casefold() == "true"
     provider = str(
-        environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
+        environ.get(
+            "PROCUREMENT_PROVIDER",
+            environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
+        )
     ).strip().casefold()
     app_env = str(environ.get("APP_ENV", "development")).strip().casefold()
     fixture_path = str(
         environ.get("VNEPS_PROCUREMENT_FIXTURE_PATH", "")
     ).strip()
-    # The checked-in VNEPS connector deliberately fails closed until an
-    # official detail contract exists. Only the deterministic test fixture is
-    # currently a usable implementation of the richer revision-import port.
     return bool(
         enabled
-        and provider == "fixture"
-        and app_env in {"test", "testing"}
-        and fixture_path
+        and (
+            provider in {"muasamcong", "web_dau_thau"}
+            or (
+                provider == "fixture"
+                and app_env in {"test", "testing"}
+                and fixture_path
+            )
+        )
     )
 
 

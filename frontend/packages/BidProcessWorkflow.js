@@ -1,5 +1,9 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import {
+  hasServerCapability,
+  PROCUREMENT_IMPORT_CAPABILITY,
+} from "../auth/serverCapabilities.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { bindCurrencyElement, debounce } from "../app/domUtils.js";
 import { setFieldFeedback } from "../app/formStateUtils.js";
@@ -168,6 +172,7 @@ export function renderMoThauPanel() {
     const saveBtn2 = document.getElementById("btn-mothau-save");
     const importExcelBtnTop = document.getElementById("btn-mothau-import-excel");
     const downloadExcelBtnTop = document.getElementById("btn-mothau-download-excel");
+    const importMscBtn = document.getElementById("btn-mothau-import-msc");
     if (addBidBtn2) {
       setWorkflowActionVisibility(addBidBtn2, isEditable);
       addBidBtn2.innerHTML = trustedHTML(`<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`);
@@ -177,6 +182,15 @@ export function renderMoThauPanel() {
     }
     if (downloadExcelBtnTop) {
       setWorkflowActionVisibility(downloadExcelBtnTop, isEditable);
+    }
+    if (importMscBtn) {
+      const canImportMsc = isEditable
+        && !isDirectOrSpecial
+        && hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
+      setWorkflowActionVisibility(importMscBtn, canImportMsc);
+      importMscBtn.onclick = canImportMsc
+        ? () => this.importOpeningFromMuasamcong()
+        : null;
     }
     if (saveBtn2) {
       delete saveBtn2.dataset.openingSaveBusy;

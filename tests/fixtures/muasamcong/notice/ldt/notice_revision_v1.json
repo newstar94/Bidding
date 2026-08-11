@@ -1,0 +1,19 @@
+{
+  "bidoNotifyContractorM": {
+    "id": "notice-01",
+    "notifyId": "notice-01",
+    "notifyNo": "IB2600000002",
+    "notifyVersion": "01",
+    "bidNo": "B",
+    "bidName": "Gói B",
+    "planNo": "PL2600000001",
+    "bidMode": "1_HTHS",
+    "bidForm": "DTRR",
+    "processApply": "LDT",
+    "status": "OPEN_DXKT",
+    "publicDate": "2026-02-01T08:00:00",
+    "bidCloseDate": "2026-03-01T09:00:00",
+    "bidOpenDate": "2026-03-01T09:15:00",
+    "bidOpenId": "opening-01"
+  }
+}

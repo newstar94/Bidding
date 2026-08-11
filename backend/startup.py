@@ -491,7 +491,10 @@ def validate_startup_configuration(database, environ=None):
     is_production = app_env in {"prod", "production"}
     validate_procurement_lookup_configuration(environ)
     procurement_provider = str(
-        environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
+        environ.get(
+            "PROCUREMENT_PROVIDER",
+            environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
+        )
     ).strip().casefold()
     procurement_fixture = str(
         environ.get("VNEPS_PROCUREMENT_FIXTURE_PATH", "")

@@ -1,0 +1,23 @@
+{
+  "opening_lot_0": {
+    "lotNoValueDTOList": [
+      {
+        "lotNo": "01",
+        "lotName": "Lô 1",
+        "bidOpenView": [
+          {
+            "contractorCode": "0100000002",
+            "contractorName": "Nhà thầu lô 1",
+            "lotNo": "01",
+            "bidPrice": 50000000
+          }
+        ]
+      },
+      {
+        "lotNo": "02",
+        "lotName": "Lô 2",
+        "bidOpenView": []
+      }
+    ]
+  }
+}

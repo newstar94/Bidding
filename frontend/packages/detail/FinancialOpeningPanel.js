@@ -21,6 +21,11 @@ import {
   parseEvaluationMetadataForDisplay,
   serializeEvaluationMetadata,
 } from "../evaluationMetadata.js";
+import { importFinancialOpeningFromMuasamcong } from "../../procurement/OpeningImportWizard.js";
+import {
+  hasServerCapability,
+  PROCUREMENT_IMPORT_CAPABILITY,
+} from "../../auth/serverCapabilities.js";
 
 const financialOpeningCacheOwner = (pkg) => `financial-opening:${pkg?.id || "unknown"}`;
 
@@ -298,6 +303,14 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
     });
     const importButton = contentWrapper.querySelector("#btn-opening-fin-import-excel");
     if (importButton) importButton.onclick = () => appController?.triggerExcelImport("opening_fin");
+    const importMscButton = contentWrapper.querySelector("#btn-opening-fin-import-msc");
+    if (importMscButton) {
+      importMscButton.onclick = () => importFinancialOpeningFromMuasamcong({
+        view,
+        pkg: state.pkg,
+        contentWrapper,
+      });
+    }
 
     const saveButton = contentWrapper.querySelector("#btn-save-opening-fin");
     if (saveButton) {
@@ -382,6 +395,7 @@ export function renderFinancialOpeningPanel(view, {
 } = {}) {
   beginWorkspaceRender(view?.model, financialOpeningCacheOwner(pkg));
   const state = buildFinancialOpeningState({ view, pkg, effectiveStatus });
+  const canImportMsc = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
   if (!state.qualifiedBids.length) {
     contentWrapper.innerHTML = trustedHTML(`
       <div class="bf-s-71ff99332d">
@@ -395,7 +409,7 @@ export function renderFinancialOpeningPanel(view, {
   contentWrapper.innerHTML = trustedHTML(`
     <div class="bf-s-175e7e1f51">
       <h4 class="bf-s-ff3bca23d8">Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)</h4>
-      ${state.isReadOnly ? "" : '<div class="bf-s-9c40389b4a"><button class="btn-excel-action btn-download-excel-template-direct" data-type="opening_fin" id="btn-opening-fin-export-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button><button class="btn-excel-action btn-import-excel-direct" data-type="opening_fin" id="btn-opening-fin-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button></div>'}
+      ${state.isReadOnly ? "" : `<div class="bf-s-9c40389b4a"><button class="btn-excel-action btn-download-excel-template-direct" data-type="opening_fin" id="btn-opening-fin-export-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button><button class="btn-excel-action btn-import-excel-direct" data-type="opening_fin" id="btn-opening-fin-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>${canImportMsc ? '<button class="btn btn-outline btn-sm" type="button" id="btn-opening-fin-import-msc"><i data-lucide="cloud-download"></i> Lấy từ Mua Sắm Công</button>' : ""}</div>`}
     </div>
     ${renderFinancialOpeningFacts(view, state)}
     ${renderFinancialOpeningTable({

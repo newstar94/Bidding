@@ -9,6 +9,8 @@ import {
   findExactRoutingCandidate,
   hasExactIdentifier,
   inspectVueState,
+  inspectVue3State,
+  inspectReactState,
   isInteractionRequired,
   redactResponseUrl,
 } from "../../backend/integrations/muasamcong_browser/runtime_support.mjs";
@@ -75,10 +77,13 @@ test("capability detector and Vue inspector discover renamed exact state safely"
 
   assert.deepEqual(await detectCapabilities(page), {
     vue2: true,
+    vue3: false,
+    react: false,
     vueInstanceCount: 1,
     knownSearchRoot: true,
     knownRuntimeShape: true,
     genericSearchUi: true,
+    semanticDom: true,
   });
   assert.deepEqual(
     await inspectVueState(page, "IB2600000002", "PACKAGE"),
@@ -101,6 +106,42 @@ test("capability detector recognizes the current KHLCNT search placeholder", asy
 
   assert.equal(capabilities.vue2, false);
   assert.equal(capabilities.genericSearchUi, true);
+});
+
+
+test("Vue3 and React state extractors recover exact bounded procurement payloads", async () => {
+  const vuePayload = {
+    planNo: "PL2600000001",
+    planName: "Kế hoạch từ Vue3",
+    packages: [],
+  };
+  const reactPayload = {
+    notifyNo: "IB2600000002",
+    bidName: "Gói thầu từ React",
+    notifyVersion: "01",
+  };
+  const vueElement = {
+    __vueParentComponent: { setupState: { currentPlan: vuePayload } },
+  };
+  const reactElement = {
+    "__reactFiber$fixture": { memoizedProps: { detail: reactPayload } },
+  };
+  const document = {
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [vueElement, reactElement],
+    body: { innerText: "" },
+  };
+  const page = fakePage(document);
+
+  assert.deepEqual(
+    await inspectVue3State(page, "PL2600000001", "PLAN"),
+    [vuePayload],
+  );
+  assert.deepEqual(
+    await inspectReactState(page, "IB2600000002", "PACKAGE"),
+    [reactPayload],
+  );
 });
 
 
@@ -536,6 +577,26 @@ test("versioned driver and extractor registries preserve ordered fallbacks", asy
   });
   assert.equal(vue.strategy, "vue-state");
   assert.deepEqual(calls, ["vue"]);
+
+  const frameworkCalls = [];
+  const frameworkExtractors = new ExtractorRegistry({
+    vueInspector: async () => { frameworkCalls.push("vue2"); return []; },
+    vue3Inspector: async () => {
+      frameworkCalls.push("vue3");
+      return [{ planNo: "PL2600000001" }];
+    },
+    reactInspector: async () => {
+      frameworkCalls.push("react");
+      return [{ planNo: "PL2600000001" }];
+    },
+    domExtractor: async () => { frameworkCalls.push("dom"); return []; },
+  });
+  const vue3 = await frameworkExtractors.extract({
+    page: {}, code: "PL2600000001", kind: "PLAN", networkPayload: null,
+    flags: { network: true, vue: true, vue3: true, react: true, dom: true },
+  });
+  assert.equal(vue3.strategy, "vue3-state");
+  assert.deepEqual(frameworkCalls, ["vue2", "vue3"]);
 });
 
 

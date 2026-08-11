@@ -2761,7 +2761,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 51,
+  "schemaVersion": 52,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -14437,7 +14437,7 @@
         },
         "procurement_import_operation_provider_check": {
           "deferrable": false,
-          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text]))",
+          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text, 'MUASAMCONG'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
@@ -14697,7 +14697,7 @@
         },
         "procurement_source_binding_provider_check": {
           "deferrable": false,
-          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text]))",
+          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text, 'MUASAMCONG'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
@@ -14985,7 +14985,7 @@
         },
         "procurement_source_revision_provider_check": {
           "deferrable": false,
-          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text]))",
+          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text, 'MUASAMCONG'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

@@ -412,27 +412,31 @@ class ProcurementImportPreparer:
         if normalized.kind is not ProcurementCodeKind.NOTICE:
             raise ValueError("PROCUREMENT_CODE_INVALID")
         mode = str(revision_mode or "LATEST").upper()
-        if mode == "ALL":
-            raise ValueError("PROCUREMENT_REVISION_INVALID")
         available = self.source.list_notice_revisions(normalized.base_code)
         selected = self._select_revisions(
             available, mode, normalized.requested_revision, selected_revision
         )
+        revisions = []
+        relationships = []
+        for selected_row in selected:
+            revision = self.source.get_notice_revision(
+                normalized.base_code, selected_row["revisionId"]
+            )
+            relationship = self.source.resolve_notice_package(
+                normalized.base_code, selected_row["revisionId"]
+            )
+            revision = {
+                **deepcopy(revision),
+                "noticeNo": normalized.base_code,
+                "revisionId": selected_row["revisionId"],
+                "revisionNumber": str(selected_row.get("revisionNumber")),
+                "relationship": deepcopy(relationship or {}),
+            }
+            revision["revisionDigest"] = canonical_digest(revision)
+            revisions.append(revision)
+            relationships.append(relationship or {})
         selected_row = selected[-1]
-        revision = self.source.get_notice_revision(
-            normalized.base_code, selected_row["revisionId"]
-        )
-        revision = {
-            **deepcopy(revision),
-            "noticeNo": normalized.base_code,
-            "revisionId": selected_row["revisionId"],
-            "revisionNumber": str(selected_row.get("revisionNumber")),
-        }
-        relationship = self.source.resolve_notice_package(
-            normalized.base_code, selected_row["revisionId"]
-        )
-        revision["relationship"] = deepcopy(relationship or {})
-        revision["revisionDigest"] = canonical_digest(revision)
+        relationship = relationships[-1]
         target = (
             resolve_local_target(
                 normalized.base_code,
@@ -443,6 +447,21 @@ class ProcurementImportPreparer:
             else None
         )
         blocking_issues = []
+        relationship_identities = {
+            (
+                str(row.get("planNo") or "").upper(),
+                str(row.get("stablePackageId") or "")
+                or str(row.get("planDetailRevisionId") or "")
+                or str(row.get("symbol") or "").casefold(),
+            )
+            for row in relationships
+            if row
+        }
+        if len(relationship_identities) > 1:
+            blocking_issues.append({
+                "code": "PROCUREMENT_MATCH_AMBIGUOUS",
+                "noticeNo": normalized.base_code,
+            })
         if target is None:
             blocking_issues.append({
                 "code": "PROCUREMENT_NOTICE_PACKAGE_UNRESOLVED",
@@ -472,6 +491,9 @@ class ProcurementImportPreparer:
                     )
                 ],
                 "selectedRevision": revision["revisionNumber"],
+                "selectedRevisions": [
+                    str(row["revisionNumber"]) for row in revisions
+                ],
                 "expectedPackageRowVersion": (
                     None if target is None else target_preview["rowVersion"]
                 ),
@@ -479,11 +501,20 @@ class ProcurementImportPreparer:
                 "relationship": deepcopy(relationship or {}),
                 "preview": {
                     key: deepcopy(value)
-                    for key, value in revision.items()
+                    for key, value in revisions[-1].items()
                     if key not in {"revisionDigest", "relationship"}
                 },
             },
-            "revision": revision,
+            "revisions": revisions,
+            "revisionPreviews": [
+                {
+                    "revisionId": row["revisionId"],
+                    "revisionNumber": row["revisionNumber"],
+                    "revisionDigest": row["revisionDigest"],
+                    "disposition": "MATERIALIZE",
+                }
+                for row in revisions
+            ],
             "targetPackageRootId": (
                 None if target is None else target_preview["rootId"]
             ),
@@ -498,7 +529,7 @@ class ProcurementImportPreparer:
         )
         response = {
             key: deepcopy(value) for key, value in bundle.items()
-            if key != "revision"
+            if key != "revisions"
         }
         response.update({
             "previewId": stored.preview_id,

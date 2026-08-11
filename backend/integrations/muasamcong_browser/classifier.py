@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from backend.integrations.muasamcong_browser.artifacts import (
     same_procurement_family,
@@ -16,6 +17,35 @@ class ClassifiedPayload:
     payload: dict
     strategy: str
     score: int
+
+
+class UpstreamClassification(StrEnum):
+    FOUND_SUPPORTED = "FOUND_SUPPORTED"
+    FOUND_SCHEMA_CHANGED = "FOUND_SCHEMA_CHANGED"
+    NOT_FOUND = "NOT_FOUND"
+    SESSION_FAILED = "SESSION_FAILED"
+    UPSTREAM_CHANGED = "UPSTREAM_CHANGED"
+    ENDPOINT_CHANGED = "ENDPOINT_CHANGED"
+    PARTIAL_DATA = "PARTIAL_DATA"
+
+
+def classify_upstream_error(error_code=None, *, partial=False):
+    """Map stable provider errors to the complete public upstream taxonomy."""
+
+    if partial:
+        return UpstreamClassification.PARTIAL_DATA
+    code = str(error_code or "").strip().upper()
+    if not code:
+        return UpstreamClassification.FOUND_SUPPORTED
+    if code == "PROCUREMENT_SCHEMA_CHANGED":
+        return UpstreamClassification.FOUND_SCHEMA_CHANGED
+    if code == "PROCUREMENT_NOT_FOUND":
+        return UpstreamClassification.NOT_FOUND
+    if code in {"PROCUREMENT_SESSION_FAILED", "PROCUREMENT_BROWSER_FAILED"}:
+        return UpstreamClassification.SESSION_FAILED
+    if code == "PROCUREMENT_ENDPOINT_CHANGED":
+        return UpstreamClassification.ENDPOINT_CHANGED
+    return UpstreamClassification.UPSTREAM_CHANGED
 
 
 def _has_exact(value, field, expected):
@@ -81,7 +111,13 @@ class PayloadClassifier:
                     and int(row.get("status") or 0) < 400
                 ],
             ),
-            ("vue-state", artifact.get("vueStateCandidates", [])),
+            (
+                str(artifact.get("frameworkStrategy") or "vue-state"),
+                artifact.get(
+                    "frameworkStateCandidates",
+                    artifact.get("vueStateCandidates", []),
+                ),
+            ),
             ("semantic-dom", artifact.get("domCandidates", [])),
         )
         for strategy, payloads in groups:

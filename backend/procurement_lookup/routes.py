@@ -7,11 +7,8 @@ from threading import RLock
 from starlette.responses import JSONResponse
 
 from backend.auth.auth_service import get_client_ip, get_rate_limit_decision
-from backend.integrations.muasamcong_browser.launchers import (
-    BrowserLauncherFactory,
-)
-from backend.integrations.muasamcong_browser.source import (
-    MuaSamCongBrowserSource,
+from backend.integrations.muasamcong_browser.registry import (
+    get_muasamcong_source,
 )
 from backend.procurement_lookup.domain import ProcurementLookupError
 from backend.procurement_lookup.cache import PostgresProcurementLookupCache
@@ -35,6 +32,15 @@ _REQUEST_FIELDS = {"code", "workspaceLease"}
 _SERVICE_LOCK = RLock()
 _SERVICE = None
 _SERVICE_FINGERPRINT = None
+_HEALTH_STATUSES = {
+    "UP", "SESSION_DEGRADED", "API_CHANGED", "SCHEMA_CHANGED",
+    "FRONTEND_CHANGED", "PARTIAL", "DOWN",
+}
+_HEALTH_FAILURES = {
+    "PROCUREMENT_SESSION_FAILED", "PROCUREMENT_ENDPOINT_CHANGED",
+    "PROCUREMENT_SCHEMA_CHANGED", "PROCUREMENT_UPSTREAM_UNAVAILABLE",
+    "PROCUREMENT_TIMEOUT",
+}
 
 
 def _observe_lookup(event):
@@ -54,12 +60,7 @@ def build_lookup_service():
     with _SERVICE_LOCK:
         if _SERVICE is not None and _SERVICE_FINGERPRINT == fingerprint:
             return _SERVICE
-        previous = _SERVICE
-        launcher = BrowserLauncherFactory.create(
-            config.mode,
-            **config.launcher_options,
-        )
-        source = MuaSamCongBrowserSource(launcher=launcher)
+        source = get_muasamcong_source()
         shared_cache = (
             PostgresProcurementLookupCache(database=database)
             if config.shared_cache_enabled
@@ -74,9 +75,6 @@ def build_lookup_service():
             observer=_observe_lookup,
         )
         _SERVICE_FINGERPRINT = fingerprint
-    old_launcher = getattr(getattr(previous, "source", None), "launcher", None)
-    if old_launcher is not None:
-        old_launcher.close()
     return _SERVICE
 
 
@@ -116,6 +114,75 @@ def _lookup_blocking(request, payload):
     )
     _enforce_rate_limit(request, session.user_id, organization_id)
     return build_lookup_service().lookup(payload.get("code"))
+
+
+def _public_health(result):
+    """Return a closed health contract so process-boundary secrets cannot leak."""
+
+    result = result if isinstance(result, dict) else {}
+    session = result.get("session") if isinstance(result.get("session"), dict) else {}
+    api = result.get("api") if isinstance(result.get("api"), dict) else {}
+    frontend = (
+        result.get("frontend")
+        if isinstance(result.get("frontend"), dict)
+        else {}
+    )
+    status = str(result.get("status") or "DOWN")
+    session_status = str(session.get("status") or "PARTIAL")
+    api_status = str(api.get("status") or "PARTIAL")
+    return {
+        "profile": str(result.get("profile") or "unknown")[:32],
+        "status": status if status in _HEALTH_STATUSES else "DOWN",
+        "session": {
+            "status": (
+                session_status if session_status in _HEALTH_STATUSES else "PARTIAL"
+            ),
+            "cached": bool(session.get("cached")),
+            "refreshing": bool(session.get("refreshing")),
+            "refreshCount": max(0, int(session.get("refreshCount") or 0)),
+            "browserStartupMs": max(
+                0, int(float(session.get("browserStartupMs") or 0))
+            ),
+            "lastError": (
+                session.get("lastError")
+                if session.get("lastError") in _HEALTH_FAILURES
+                else None
+            ),
+        },
+        "api": {
+            "status": api_status if api_status in _HEALTH_STATUSES else "PARTIAL",
+            "circuitOpen": bool(api.get("circuitOpen")),
+            "activeRequests": max(0, int(api.get("activeRequests") or 0)),
+            "queuedRequests": max(0, int(api.get("queuedRequests") or 0)),
+            "maxConcurrency": max(1, int(api.get("maxConcurrency") or 1)),
+            "lastFailure": (
+                api.get("lastFailure")
+                if api.get("lastFailure") in _HEALTH_FAILURES
+                else None
+            ),
+        },
+        "frontend": {
+            "status": (
+                frontend.get("status")
+                if frontend.get("status") in _HEALTH_STATUSES
+                else "PARTIAL"
+            ),
+            "framework": str(frontend.get("framework") or "unknown")[:32],
+            "driverCandidate": (
+                str(frontend.get("driverCandidate"))[:32]
+                if frontend.get("driverCandidate")
+                else None
+            ),
+            "interactionRequired": bool(frontend.get("interactionRequired")),
+            "capabilities": {
+                key: bool((frontend.get("capabilities") or {}).get(key))
+                for key in (
+                    "protectedApi", "networkJson", "vue2", "vue3",
+                    "react", "semanticDom", "genericSearchUi",
+                )
+            },
+        },
+    }
 
 
 def _public_error(request, error):
@@ -201,5 +268,32 @@ async def lookup_procurement(request):
         )
 
 
+async def procurement_health(request):
+    try:
+        session, organization_id = _request_context(request, None)
+        _enforce_rate_limit(request, session.user_id, organization_id)
+        result = await run_blocking_io(
+            lambda: get_muasamcong_source().health(),
+            timeout_seconds=30,
+        )
+        return JSONResponse(_public_health(result))
+    except ProcurementLookupError as error:
+        return _public_error(request, error)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _public_error(
+            request, ProcurementLookupError("PROCUREMENT_LOOKUP_BUSY")
+        )
+    except Exception as error:  # noqa: BLE001 - sanitized HTTP adapter.
+        return log_and_error(
+            request,
+            error,
+            "procurement_health",
+            "PROCUREMENT_UPSTREAM_UNAVAILABLE",
+            "Không thể đọc trạng thái Mua Sắm Công.",
+            status_code=502,
+        )
 def procurement_lookup_routes(Route):
-    return [Route("/api/procurement/lookup", lookup_procurement, methods=["POST"])]
+    return [
+        Route("/api/procurement/lookup", lookup_procurement, methods=["POST"]),
+        Route("/api/procurement/health", procurement_health, methods=["GET"]),
+    ]

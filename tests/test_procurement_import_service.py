@@ -310,6 +310,47 @@ def test_prepare_standalone_notice_targets_existing_package_without_orphan(tmp_p
     assert preview["previewId"]
 
 
+def test_prepare_notice_all_keeps_every_revision_in_chronological_order(tmp_path):
+    source = _source(tmp_path)
+    source._notices["IB2600000002"] = {
+        "noticeNo": "IB2600000002",
+        "revisions": [{
+            "revisionId": "notice-rev-01",
+            "revisionNumber": "01",
+            "kind": "TBMT",
+            "status": "OPENED",
+        },
+        {
+            "revisionId": "notice-rev-00",
+            "revisionNumber": "00",
+            "kind": "TBMT",
+            "status": "PUBLISHED",
+        }],
+    }
+    target = {
+        "id": "package-b",
+        "rootId": "root-b",
+        "planSnapshotId": "plan-1",
+        "localVersion": 0,
+        "rowVersion": 3,
+    }
+
+    preview = ProcurementImportPreparer(source, PreviewStore()).prepare_notice(
+        code="IB2600000002",
+        revision_mode="ALL",
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+        resolve_local_target=lambda *_args, **_kwargs: target,
+    )
+
+    assert preview["notice"]["selectedRevisions"] == ["00", "01"]
+    assert [row["revisionNumber"] for row in preview["revisionPreviews"]] == [
+        "00",
+        "01",
+    ]
+
+
 def test_prepare_all_orders_revisions_numerically_even_when_provider_is_unsorted(tmp_path):
     preview = ProcurementImportPreparer(_source(tmp_path), PreviewStore()).prepare_plan(
         code="PL2600000001",

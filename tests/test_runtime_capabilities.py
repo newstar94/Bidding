@@ -74,3 +74,14 @@ def test_procurement_import_capability_is_advertised_for_test_fixture(
     ]
 
     assert PROCUREMENT_IMPORT_V2 in capabilities
+
+
+def test_procurement_import_capability_is_advertised_for_muasamcong(monkeypatch):
+    monkeypatch.setenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true")
+    monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "muasamcong")
+
+    capabilities = with_server_capabilities({"valid": True})[
+        "serverCapabilities"
+    ]
+
+    assert PROCUREMENT_IMPORT_V2 in capabilities

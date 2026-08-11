@@ -1,0 +1,57 @@
+{
+  "noticeDetail": {
+    "data": {
+      "notifyNo": "IB2600000002-01",
+      "notifyId": "notice-01",
+      "notifyVersion": "01",
+      "status": "PUB_KQLCNT",
+      "inputResultId": "result-01",
+      "techReqId": "technical-01"
+    }
+  },
+  "selectionResult": {
+    "data": {
+      "resultStatus": "APPROVED",
+      "decisionNo": "123/QD-CDT",
+      "decisionDate": "2026-04-15",
+      "contractorList": [
+        {
+          "contractorCode": "0100000001",
+          "contractorName": "Cong ty Trung thau",
+          "lotNo": "01",
+          "rank": 1,
+          "isWinner": true,
+          "bidPrice": 95000000,
+          "evaluatedPrice": 92500000
+        },
+        {
+          "contractorCode": "0100000002",
+          "contractorName": "Cong ty Xep hang hai",
+          "lotNo": "01",
+          "rank": 2,
+          "isWinner": false,
+          "bidPrice": 97000000,
+          "evaluatedPrice": 96000000
+        }
+      ]
+    }
+  },
+  "technicalResult": {
+    "data": {
+      "contractors": [
+        {
+          "taxCode": "0100000001",
+          "orgName": "Cong ty Trung thau",
+          "lotCode": "01",
+          "techStatus": "PASS"
+        },
+        {
+          "taxCode": "0100000002",
+          "orgName": "Cong ty Xep hang hai",
+          "lotCode": "01",
+          "techStatus": "PASS"
+        }
+      ]
+    }
+  }
+}

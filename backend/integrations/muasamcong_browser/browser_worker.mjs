@@ -1,8 +1,10 @@
 import readline from "node:readline";
 
 import { chromium } from "playwright";
+import puppeteer from "puppeteer";
 
 import { BrowserLookupRuntime } from "./browser_runtime.mjs";
+import { MscIntegrationRuntime } from "./integration_runtime.mjs";
 
 
 const ALLOWED_ERRORS = new Set([
@@ -14,9 +16,12 @@ const ALLOWED_ERRORS = new Set([
   "PROCUREMENT_SCHEMA_CHANGED",
   "PROCUREMENT_ADAPTER_UNSUPPORTED",
   "PROCUREMENT_LOOKUP_BUSY",
+  "PROCUREMENT_SESSION_FAILED",
+  "PROCUREMENT_ENDPOINT_CHANGED",
 ]);
 
 let runtime = null;
+let integration = null;
 
 
 function publicError(error) {
@@ -39,9 +44,14 @@ async function handle(request) {
   switch (request.operation) {
     case "initialize": {
       await runtime?.close();
+      integration?.close();
       runtime = new BrowserLookupRuntime({ chromium });
-      const result = await runtime.initialize(request.configuration || {});
-      return { requestId, ok: true, result };
+      integration = new MscIntegrationRuntime({ puppeteer });
+      const configuration = { ...(request.configuration || {}) };
+      configuration.fallbackBrowserExecutablePath = chromium.executablePath();
+      const result = await runtime.initialize(configuration);
+      const msc = integration.initialize(configuration);
+      return { requestId, ok: true, result: { ...result, integration: msc } };
     }
     case "lookup": {
       if (!runtime) throw new Error("PROCUREMENT_BROWSER_FAILED");
@@ -61,9 +71,132 @@ async function handle(request) {
       if (!runtime) throw new Error("PROCUREMENT_BROWSER_FAILED");
       return { requestId, ok: true, result: await runtime.probe() };
     }
+    case "listPlanRevisions": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.listPlanRevisions(String(request.planNo || "")),
+      };
+    }
+    case "getPlanRevision": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.getPlanRevision(
+          String(request.planNo || ""),
+          String(request.revisionId || ""),
+        ),
+      };
+    }
+    case "listNoticeRevisions": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.listNoticeRevisions(String(request.noticeNo || "")),
+      };
+    }
+    case "getNoticeRevision": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.getNoticeRevision(
+          String(request.noticeNo || ""),
+          String(request.revisionId || ""),
+        ),
+      };
+    }
+    case "getOpeningBundle": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.getOpeningBundle(
+          String(request.noticeNo || ""),
+          String(request.revisionId || ""),
+        ),
+      };
+    }
+    case "getResultBundle": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.getResultBundle(
+          String(request.noticeNo || ""),
+          String(request.revisionId || ""),
+        ),
+      };
+    }
+    case "collectCompleteBundle": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      const record = request.record;
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        throw new Error("PROCUREMENT_ADAPTER_UNSUPPORTED");
+      }
+      return {
+        requestId,
+        ok: true,
+        result: await integration.collectCompleteBundle(record),
+      };
+    }
+    case "refreshSession": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return { requestId, ok: true, result: await integration.refreshSession() };
+    }
+    case "integrationHealth": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      const health = integration.health();
+      try {
+        const probe = await runtime?.probe();
+        const frontendStatus = probe?.driverCandidate
+          ? (probe.interactionRequired ? "PARTIAL" : "UP")
+          : "FRONTEND_CHANGED";
+        return {
+          requestId,
+          ok: true,
+          result: {
+            ...health,
+            status: health.status === "UP" ? frontendStatus : health.status,
+            frontend: {
+              status: frontendStatus,
+              framework: probe?.framework || "unknown",
+              driverCandidate: probe?.driverCandidate || null,
+              interactionRequired: Boolean(probe?.interactionRequired),
+              capabilities: {
+                ...(probe?.capabilities || {}),
+                protectedApi: health.api?.status === "UP",
+                networkJson: true,
+              },
+            },
+          },
+        };
+      } catch {
+        return {
+          requestId,
+          ok: true,
+          result: {
+            ...health,
+            status: health.status === "UP" ? "FRONTEND_CHANGED" : health.status,
+            frontend: {
+              status: "FRONTEND_CHANGED",
+              framework: "unknown",
+              driverCandidate: null,
+              interactionRequired: false,
+              capabilities: {},
+            },
+          },
+        };
+      }
+    }
     case "shutdown": {
       await runtime?.close();
+      integration?.close();
       runtime = null;
+      integration = null;
       return { requestId, ok: true, result: { closed: true } };
     }
     default:
@@ -98,4 +231,5 @@ input.on("line", async (line) => {
 
 input.on("close", async () => {
   await runtime?.close();
+  integration?.close();
 });

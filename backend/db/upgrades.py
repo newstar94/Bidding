@@ -2031,6 +2031,8 @@ def _upgrade_to_v51_add_unknown_package_status(cursor, _context):
         """ALTER TABLE goi_thau
            DROP CONSTRAINT IF EXISTS goi_thau_trang_thai_check"""
     )
+
+
     cursor.execute(
         """ALTER TABLE goi_thau
            ADD CONSTRAINT goi_thau_trang_thai_check
@@ -2043,6 +2045,39 @@ def _upgrade_to_v51_add_unknown_package_status(cursor, _context):
         """ALTER TABLE goi_thau
            VALIDATE CONSTRAINT goi_thau_trang_thai_check"""
     )
+
+
+def _upgrade_to_v52_add_muasamcong_provider(cursor, _context):
+    """Allow the unified production Mua Sắm Công source in provenance tables."""
+
+    for table_name in (
+        "procurement_source_revision",
+        "procurement_source_binding",
+        "procurement_import_operation",
+    ):
+        constraint_name = f"{table_name}_provider_check"
+        existing = cursor.execute(
+            """SELECT pg_get_constraintdef(oid), convalidated
+                 FROM pg_constraint
+                WHERE connamespace = current_schema()::regnamespace
+                  AND conrelid = ?::regclass
+                  AND conname = ?""",
+            (table_name, constraint_name),
+        ).fetchone()
+        if (
+            existing
+            and bool(existing[1])
+            and "MUASAMCONG" in str(existing[0] or "").upper()
+        ):
+            continue
+        cursor.execute(
+            f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS {constraint_name}"
+        )
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                  ADD CONSTRAINT {constraint_name}
+                  CHECK (provider IN ('VNEPS', 'VNEPS_FIXTURE', 'MUASAMCONG'))"""
+        )
 
 
 UPGRADES = (
@@ -2291,6 +2326,11 @@ UPGRADES = (
         51,
         "add_unknown_package_status",
         _upgrade_to_v51_add_unknown_package_status,
+    ),
+    DatabaseUpgrade(
+        52,
+        "add_muasamcong_provider",
+        _upgrade_to_v52_add_muasamcong_provider,
     ),
 )
 

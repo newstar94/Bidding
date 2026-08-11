@@ -49,11 +49,17 @@ export async function detectCapabilities(page) {
     const runtime = searchRoot?.__vue__;
     const vueInstances = new WeakSet();
     let vueInstanceCount = 0;
+    let vue3 = false;
+    let react = false;
     for (const element of Array.from(document.querySelectorAll?.("*") || []).slice(0, 1000)) {
       if (element?.__vue__ && !vueInstances.has(element.__vue__)) {
         vueInstances.add(element.__vue__);
         vueInstanceCount += 1;
       }
+      if (element?.__vue_app__) vue3 = true;
+      if (Object.keys(element || {}).some(
+        (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactProps$"),
+      )) react = true;
     }
     if (runtime && !vueInstances.has(runtime)) vueInstanceCount += 1;
     const genericSearchUi = Boolean(document.querySelector?.(
@@ -65,6 +71,8 @@ export async function detectCapabilities(page) {
     ));
     return {
       vue2: Boolean(runtime),
+      vue3,
+      react,
       vueInstanceCount,
       knownSearchRoot: Boolean(searchRoot),
       knownRuntimeShape: Boolean(
@@ -76,6 +84,7 @@ export async function detectCapabilities(page) {
         )
       ),
       genericSearchUi,
+      semanticDom: genericSearchUi,
     };
   });
 }
@@ -172,6 +181,132 @@ export async function inspectVueState(page, code, kind, limits = {}) {
     }
     return candidates;
   }, { exactCode: code, lookupKind: kind, requestedLimits: limits });
+}
+
+
+export async function inspectFrameworkState(
+  page,
+  code,
+  kind,
+  framework,
+  limits = {},
+) {
+  return page.evaluate(({
+    exactCode,
+    lookupKind,
+    requestedFramework,
+    requestedLimits,
+  }) => {
+    const maxDepth = Math.max(1, Math.min(requestedLimits.maxDepth || 7, 12));
+    const maxObjects = Math.max(10, Math.min(requestedLimits.maxObjects || 2000, 5000));
+    const maxArrayItems = Math.max(1, Math.min(requestedLimits.maxArrayItems || 200, 500));
+    const maxPayloadBytes = Math.max(
+      1024,
+      Math.min(requestedLimits.maxPayloadBytes || 524288, 1048576),
+    );
+    const identifier = lookupKind === "PLAN" ? "planNo" : "notifyNo";
+    const exactFamily = (value) => {
+      const prefix = lookupKind === "PLAN" ? "PL" : "IB";
+      const actual = String(value || "").trim().toUpperCase();
+      const expected = String(exactCode || "").trim().toUpperCase();
+      const pattern = new RegExp(`^${prefix}\\d{10}(?:-\\d{2})?$`);
+      return pattern.test(actual)
+        && pattern.test(expected)
+        && actual.slice(0, 12) === expected.slice(0, 12);
+    };
+    const roots = [];
+    for (const element of Array.from(document.querySelectorAll?.("*") || []).slice(0, 1000)) {
+      if (requestedFramework === "vue3") {
+        const component = element?.__vueParentComponent;
+        const instance = element?.__vue_app__?._instance;
+        for (const candidate of [
+          component?.setupState,
+          component?.data,
+          component?.props,
+          instance?.setupState,
+          instance?.data,
+          instance?.proxy,
+        ]) {
+          if (candidate && typeof candidate === "object") roots.push(candidate);
+        }
+      } else if (requestedFramework === "react") {
+        const key = Object.keys(element || {}).find(
+          (name) => name.startsWith("__reactFiber$") || name.startsWith("__reactProps$"),
+        );
+        const fiber = key ? element[key] : null;
+        for (const candidate of [
+          fiber?.memoizedProps,
+          fiber?.memoizedState,
+          fiber?.stateNode?.state,
+        ]) {
+          if (candidate && typeof candidate === "object") roots.push(candidate);
+        }
+      }
+    }
+
+    const seen = new WeakSet();
+    const pending = roots.map((value) => ({ value, depth: 0 }));
+    const candidates = [];
+    const signatures = new Set();
+    let visited = 0;
+    let outputBytes = 0;
+    const clean = (root) => {
+      const cleanSeen = new WeakSet();
+      const copy = (value, depth) => {
+        if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
+          return value;
+        }
+        if (typeof value !== "object" || depth > maxDepth || cleanSeen.has(value)) return null;
+        cleanSeen.add(value);
+        if (Array.isArray(value)) {
+          return value.slice(0, maxArrayItems).map((item) => copy(item, depth + 1));
+        }
+        const result = {};
+        for (const [key, item] of Object.entries(value)) {
+          if (key.startsWith("$") || typeof item === "function") continue;
+          result[key] = copy(item, depth + 1);
+        }
+        return result;
+      };
+      return copy(root, 0);
+    };
+
+    while (pending.length && visited < maxObjects && outputBytes < maxPayloadBytes) {
+      const { value, depth } = pending.pop();
+      if (!value || typeof value !== "object" || depth > maxDepth || seen.has(value)) continue;
+      seen.add(value);
+      visited += 1;
+      if (!Array.isArray(value) && exactFamily(value[identifier])) {
+        const candidate = clean(value);
+        const encoded = JSON.stringify(candidate);
+        if (!signatures.has(encoded) && outputBytes + encoded.length <= maxPayloadBytes) {
+          signatures.add(encoded);
+          outputBytes += encoded.length;
+          candidates.push(candidate);
+        }
+      }
+      const children = Array.isArray(value)
+        ? value.slice(0, maxArrayItems)
+        : Object.values(value).filter((item) => typeof item !== "function");
+      for (const child of children) pending.push({ value: child, depth: depth + 1 });
+    }
+    return candidates;
+  }, {
+    exactCode: code,
+    lookupKind: kind,
+    requestedFramework: framework,
+    requestedLimits: limits,
+  });
+}
+
+
+export function inspectVue3State(page, code, kind, limits = {}) {
+  return inspectFrameworkState(page, code, kind, "vue3", limits);
+}
+
+
+export function inspectReactState(page, code, kind, limits = {}) {
+  return inspectFrameworkState(page, code, kind, "react", limits);
 }
 
 

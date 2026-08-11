@@ -613,19 +613,21 @@ class ProcurementImportRepository:
             """INSERT INTO procurement_source_revision (
                    id, organization_id, provider, entity_kind, family_key,
                    revision_uuid, revision_no, canonical_snapshot_json, digest,
-                   schema_version, disposition, applied_at, idempotency_key,
+                   schema_version, disposition, applied_at, operation_id,
+                   idempotency_key,
                    public_url, local_entity_type, local_root_id,
                    local_snapshot_id, match_method, confirmed_by)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        CASE WHEN ? = 'APPLIED' THEN CURRENT_TIMESTAMP ELSE NULL END,
-                       ?, ?, ?, ?, ?, ?, ?)
+                       ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT DO NOTHING""",
             (
                 revision_row_id, organization_id, evidence["provider"], evidence["kind"],
                 evidence["familyNo"], evidence["revisionId"], evidence["revisionNumber"],
                 _json(evidence["normalizedSnapshot"]), evidence["digest"],
                 evidence["schemaVersion"], evidence["disposition"],
-                evidence["disposition"], evidence["idempotencyKey"],
+                evidence["disposition"], evidence.get("operationId"),
+                evidence["idempotencyKey"],
                 evidence.get("publicUrl"), evidence.get("localEntityType"),
                 evidence.get("localRootId"), evidence.get("localSnapshotId"),
                 evidence.get("matchMethod"), evidence.get("confirmedBy"),
@@ -658,10 +660,10 @@ class ProcurementImportRepository:
                        canonical_snapshot_json, digest, schema_version,
                        disposition, applied_at, local_entity_type,
                        local_root_id, local_snapshot_id, match_method,
-                       idempotency_key, public_url)
+                       operation_id, idempotency_key, public_url)
                    VALUES (?, ?, ?, 'NOTICE', ?, ?, ?, ?, ?, ?, ?, 'APPLIED',
                            CURRENT_TIMESTAMP, 'goithau', ?, ?,
-                           'LINKED_NOTICE_EXACT', ?, ?)
+                           'LINKED_NOTICE_EXACT', ?, ?, ?)
                    ON CONFLICT DO NOTHING""",
                 (
                     _stable_id(
@@ -672,6 +674,7 @@ class ProcurementImportRepository:
                     notice_revision_id, str(notice_version), evidence["revisionId"],
                     _json(notice_snapshot), canonical_digest(notice_snapshot),
                     evidence["schemaVersion"], package["rootId"], package["id"],
+                    evidence.get("operationId"),
                     f"{evidence['idempotencyKey']}:notice:{notice_revision_id}",
                     (package.get("noticeFields") or {}).get("publicUrl"),
                 ),

@@ -52,6 +52,7 @@ RUNTIME_FILES = (
     "scripts/check_security_deployment.py",
     "scripts/verify_overload_recovery.py",
     "scripts/verify_document_sandbox.py",
+    "scripts/research_muasamcong.py",
 )
 
 FORBIDDEN_TOP_LEVEL_PARTS = {

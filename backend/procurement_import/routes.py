@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 import os
+import re
 from uuid import NAMESPACE_URL, uuid5
 
 from starlette.responses import JSONResponse
@@ -14,6 +15,9 @@ from starlette.responses import JSONResponse
 from backend.auth.auth_service import get_client_ip, get_rate_limit_decision
 from backend.integrations.vneps.fake_procurement_provider import FixtureProcurementSource
 from backend.integrations.vneps.procurement_provider import VnepsProcurementSource
+from backend.integrations.muasamcong_browser.registry import (
+    get_muasamcong_source,
+)
 from backend.procurement_import.command import (
     ProcurementNoticeReconciler,
     ProcurementPlanReconciler,
@@ -32,12 +36,16 @@ from backend.shared.async_io import (
     run_blocking_io,
 )
 from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
+from backend.shared.access_policy import has_module_permission
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object
 
 
 PREVIEW_STORE = PreviewStore(
-    ttl_seconds=int(os.environ.get("VNEPS_PROCUREMENT_PREVIEW_TTL_SECONDS", "300"))
+    ttl_seconds=int(os.environ.get(
+        "PROCUREMENT_IMPORT_PREVIEW_TTL_SECONDS",
+        os.environ.get("VNEPS_PROCUREMENT_PREVIEW_TTL_SECONDS", "300"),
+    ))
 )
 _PREPARE_FIELDS = {
     "code", "revisionMode", "selectedRevision", "includeLinkedNotices",
@@ -55,6 +63,12 @@ _NOTICE_APPLY_FIELDS = {
     "previewId", "idempotencyKey", "expectedPackageRowVersion",
     "workspaceLease",
 }
+_OPENING_PREPARE_FIELDS = {
+    "packageId", "noticeNo", "selectedRevision", "workspaceLease",
+}
+_OPENING_APPLY_FIELDS = {
+    "previewId", "expectedPackageRowVersion", "workspaceLease",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,8 +83,35 @@ class ProcurementRouteError(RuntimeError):
 
 def _enabled():
     return os.environ.get(
-        "VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"
+        "PROCUREMENT_IMPORT_ENABLED",
+        os.environ.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"),
     ).strip().casefold() == "true"
+
+
+def _source_timeout_seconds():
+    provider = os.environ.get(
+        "PROCUREMENT_PROVIDER",
+        os.environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
+    ).strip().casefold()
+    if provider in {"muasamcong", "web_dau_thau"}:
+        return max(
+            20.0,
+            min(
+                float(
+                    os.environ.get(
+                        "MUASAMCONG_REQUEST_TIMEOUT_SECONDS", "60"
+                    )
+                ),
+                120.0,
+            ),
+        )
+    return max(
+        1.0,
+        min(
+            float(os.environ.get("VNEPS_PROCUREMENT_TIMEOUT_SECONDS", "8")),
+            120.0,
+        ),
+    )
 
 
 def build_procurement_source():
@@ -81,7 +122,8 @@ def build_procurement_source():
             503,
         )
     provider = os.environ.get(
-        "VNEPS_PROCUREMENT_PROVIDER", "disabled"
+        "PROCUREMENT_PROVIDER",
+        os.environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
     ).strip().casefold()
     if provider == "fixture":
         if os.environ.get("APP_ENV", "").strip().casefold() not in {
@@ -100,6 +142,8 @@ def build_procurement_source():
         return FixtureProcurementSource(path)
     if provider == "vneps":
         return VnepsProcurementSource()
+    if provider in {"muasamcong", "web_dau_thau"}:
+        return get_muasamcong_source()
     raise ProcurementRouteError(
         "PROCUREMENT_LOOKUP_DISABLED",
         "Connector procurement chưa được cấu hình.",
@@ -205,6 +249,203 @@ def _prepare_notice_blocking(request, payload):
         workspace_lease=lease,
         resolve_local_target=resolve_local_target,
     )
+
+
+def _prepare_opening_blocking(request, payload):
+    session, organization_id, lease = _request_context(
+        request, payload.get("workspaceLease")
+    )
+    _enforce_rate_limit(request, session.user_id, organization_id, "prepare")
+    package_id = str(payload.get("packageId") or "").strip()
+    if not package_id or len(package_id) > 128:
+        raise ProcurementRouteError(
+            "PROCUREMENT_CODE_INVALID", "Gói thầu không hợp lệ.", 400
+        )
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        if not has_module_permission(
+            cursor,
+            session,
+            session.user_id,
+            organization_id,
+            "thongtinmothau",
+            "edit",
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền cập nhật thông tin mở thầu.",
+                403,
+            )
+        package = cursor.execute(
+            """SELECT id, COALESCE(NULLIF(id_goc, ''), id), row_version,
+                      ma_goi_thau, ten_goi_thau
+                 FROM goi_thau
+                WHERE organization_id = ? AND id = ?
+                  AND is_latest = 1 AND archived_at IS NULL""",
+            (organization_id, package_id),
+        ).fetchone()
+        if package is None:
+            raise ProcurementRouteError(
+                "PROCUREMENT_NOTICE_PACKAGE_UNRESOLVED",
+                "Không tìm thấy gói thầu trong workspace hiện tại.",
+                404,
+            )
+        binding = cursor.execute(
+            """SELECT notify_no
+                 FROM procurement_source_binding
+                WHERE organization_id = ?
+                  AND (local_snapshot_id = ? OR local_root_id = ?)
+                  AND NULLIF(trim(notify_no), '') IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT 1""",
+            (organization_id, package[0], package[1]),
+        ).fetchone()
+    finally:
+        connection.rollback()
+        connection.close()
+    requested_notice = str(payload.get("noticeNo") or "").strip().upper()
+    bound_notice = str(binding[0] if binding else "").strip().upper()
+    fallback_notice = str(package[3] or "").strip().upper()
+    notice_no = bound_notice or requested_notice
+    if not notice_no and fallback_notice.startswith("IB"):
+        notice_no = fallback_notice
+    if not re.fullmatch(r"IB\d{10}", notice_no):
+        raise ProcurementRouteError(
+            "PROCUREMENT_NOTICE_PACKAGE_UNRESOLVED",
+            "Gói thầu chưa có liên kết mã TBMT hợp lệ.",
+            422,
+        )
+    if bound_notice and requested_notice and bound_notice != requested_notice:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE",
+            "Mã TBMT không khớp liên kết nguồn của gói thầu.",
+            409,
+        )
+    source = build_procurement_source()
+    available = sorted(
+        source.list_notice_revisions(notice_no),
+        key=lambda row: str(row.get("revisionNumber") or "").zfill(12),
+    )
+    if not available:
+        raise ProcurementRouteError(
+            "PROCUREMENT_NOT_FOUND", "Không tìm thấy TBMT trên Mua Sắm Công.", 404
+        )
+    requested_revision = str(payload.get("selectedRevision") or "").strip()
+    selected = (
+        next(
+            (
+                row
+                for row in available
+                if str(row.get("revisionNumber")) == requested_revision
+            ),
+            None,
+        )
+        if requested_revision
+        else available[-1]
+    )
+    if selected is None:
+        raise ProcurementRouteError(
+            "PROCUREMENT_REVISION_INVALID", "Phiên bản TBMT không hợp lệ.", 400
+        )
+    opening = source.get_opening_bundle(notice_no, selected["revisionId"])
+    canonical = {
+        "schemaVersion": "biddingflow-opening-import-preview-v1",
+        "importKind": "OPENING",
+        "provider": source.name,
+        "package": {
+            "id": str(package[0]),
+            "rootId": str(package[1]),
+            "rowVersion": int(package[2] or 1),
+            "name": package[4],
+        },
+        "notice": {
+            "noticeNo": notice_no,
+            "availableRevisions": [
+                str(row.get("revisionNumber")) for row in available
+            ],
+            "selectedRevision": str(selected.get("revisionNumber")),
+            "revisionId": str(selected["revisionId"]),
+        },
+        "opening": opening,
+        "warnings": (
+            [{"code": "PROCUREMENT_PARTIAL_DATA"}]
+            if opening.get("partial")
+            else []
+        ),
+    }
+    stored = PREVIEW_STORE.put(
+        canonical,
+        organization_id=organization_id,
+        user_id=session.user_id,
+        workspace_lease=lease,
+    )
+    return {
+        **deepcopy(canonical),
+        "previewId": stored.preview_id,
+        "expiresAt": stored.expires_at.isoformat(),
+        "bundleDigest": stored.bundle_digest,
+    }
+
+
+def _apply_opening_blocking(request, payload):
+    session, organization_id, lease = _request_context(
+        request, payload.get("workspaceLease")
+    )
+    _enforce_rate_limit(request, session.user_id, organization_id, "apply")
+    stored = PREVIEW_STORE.get(
+        payload.get("previewId"),
+        organization_id=organization_id,
+        user_id=session.user_id,
+        workspace_lease=lease,
+    )
+    bundle = deepcopy(stored.canonical_bundle)
+    if bundle.get("importKind") != "OPENING":
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE", "Preview không thuộc luồng mở thầu.", 409
+        )
+    expected = payload.get("expectedPackageRowVersion")
+    canonical_expected = int((bundle.get("package") or {}).get("rowVersion") or 0)
+    if expected != canonical_expected:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE", "Gói thầu đã thay đổi sau preview.", 409
+        )
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        if not has_module_permission(
+            cursor,
+            session,
+            session.user_id,
+            organization_id,
+            "thongtinmothau",
+            "edit",
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền cập nhật thông tin mở thầu.",
+                403,
+            )
+        row = cursor.execute(
+            """SELECT row_version FROM goi_thau
+                WHERE organization_id = ? AND id = ?
+                  AND is_latest = 1 AND archived_at IS NULL""",
+            (organization_id, bundle["package"]["id"]),
+        ).fetchone()
+    finally:
+        connection.rollback()
+        connection.close()
+    if row is None or int(row[0] or 0) != canonical_expected:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE", "Gói thầu đã thay đổi sau preview.", 409
+        )
+    return {
+        "ok": True,
+        "package": bundle["package"],
+        "notice": bundle["notice"],
+        "opening": bundle["opening"],
+        "warnings": bundle.get("warnings", []),
+    }
 
 
 def _validate_investor(cursor, organization_id, investor_id):
@@ -362,6 +603,7 @@ def _apply_one(
     expected_plan_row_version,
     investor_id,
     package_decisions=None,
+    operation_id=None,
 ):
     connection = database.get_connection()
     try:
@@ -380,6 +622,7 @@ def _apply_one(
             idempotency_key=idempotency_key,
             expected_plan_row_version=expected_plan_row_version,
             package_decisions=package_decisions,
+            operation_id=operation_id,
         )
         connection.commit()
         return result
@@ -398,6 +641,7 @@ def _apply_notice_one(
     idempotency_key,
     expected_package_row_version,
     target_package_root_id,
+    operation_id=None,
 ):
     connection = database.get_connection()
     try:
@@ -412,6 +656,7 @@ def _apply_notice_one(
             idempotency_key=idempotency_key,
             expected_package_row_version=expected_package_row_version,
             target_package_root_id=target_package_root_id,
+            operation_id=operation_id,
         )
         connection.commit()
         return result
@@ -469,6 +714,73 @@ def _create_operation(
             "provider": bundle["provider"],
             "familyNo": bundle["plan"]["familyNo"],
             "totalRevisions": len(resolved_revisions),
+            "bundleDigest": stored.bundle_digest,
+            "idempotencyKey": idempotency_key,
+            "requestHash": request_hash,
+            "actorUserId": actor_user_id,
+            "revisionResults": manifest,
+        })
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return (
+        operation_id,
+        operation["revisionResults"],
+        operation["status"],
+        operation["nextRevisionIndex"],
+    )
+
+
+def _create_notice_operation(
+    organization_id,
+    actor_user_id,
+    bundle,
+    stored,
+    idempotency_key,
+    expected_package_row_version,
+):
+    family_no = bundle["notice"]["noticeNo"]
+    operation_id = _operation_id(
+        organization_id, bundle["provider"], family_no, idempotency_key
+    )
+    request_hash = sha256(
+        json.dumps(
+            {
+                "previewId": stored.preview_id,
+                "expectedPackageRowVersion": expected_package_row_version,
+                "bundleDigest": stored.bundle_digest,
+                "importKind": "NOTICE",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    manifest = [
+        {
+            "importKind": "NOTICE",
+            "revisionId": revision["revisionId"],
+            "revisionDigest": revision["revisionDigest"],
+            "status": "PENDING",
+            "canonicalRevision": deepcopy(revision),
+            "targetPackageRootId": bundle.get("targetPackageRootId"),
+            "expectedPackageRowVersion": (
+                expected_package_row_version if index == 0 else None
+            ),
+        }
+        for index, revision in enumerate(bundle["revisions"])
+    ]
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        operation = ProcurementImportRepository(connection.cursor()).create_operation({
+            "id": operation_id,
+            "organizationId": organization_id,
+            "provider": bundle["provider"],
+            "familyNo": family_no,
+            "totalRevisions": len(bundle["revisions"]),
             "bundleDigest": stored.bundle_digest,
             "idempotencyKey": idempotency_key,
             "requestHash": request_hash,
@@ -577,6 +889,7 @@ def _apply_blocking(request, payload):
                 organization_id, session.user_id, bundle["provider"], revision,
                 per_revision_key, expected, decisions["investorId"],
                 package_decision_maps[index],
+                operation_id,
             )
             public_result = {
                 "revisionId": revision["revisionId"],
@@ -659,20 +972,115 @@ def _apply_notice_blocking(request, payload):
         raise ProcurementRouteError(
             "PROCUREMENT_PREVIEW_STALE", "Package đã thay đổi sau preview.", 409
         )
-    result = _apply_notice_one(
-        organization_id,
-        session.user_id,
-        bundle["provider"],
-        bundle["revision"],
-        idempotency_key,
-        expected,
-        bundle.get("targetPackageRootId"),
-    )
-    package_ids = [row["id"] for row in result.get("createdPackages", [])]
+    revisions = bundle.get("revisions") or []
+    if not revisions:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE", "Preview không còn revision hợp lệ.", 409
+        )
+    operation_id = None
+    results = []
+    start_index = 0
+    operation_status = None
+    if bundle.get("revisionMode") == "ALL":
+        operation_id, results, operation_status, start_index = (
+            _create_notice_operation(
+                organization_id,
+                session.user_id,
+                bundle,
+                stored,
+                idempotency_key,
+                expected,
+            )
+        )
+        if operation_status == "COMPLETED":
+            return {
+                "statusCode": 202,
+                "operationId": operation_id,
+                "status": "COMPLETED",
+                "nextRevisionIndex": start_index,
+                "revisionResults": [
+                    _public_operation_result(row) for row in results
+                ],
+            }
+    current_index = start_index
+    if start_index:
+        expected = results[start_index - 1].get(
+            "nextExpectedPackageRowVersion", expected
+        )
+    try:
+        for index in range(start_index, len(revisions)):
+            current_index = index
+            revision = revisions[index]
+            per_revision_key = (
+                f"{idempotency_key}:{revision['revisionId']}:"
+                f"{revision['revisionDigest']}"
+            )
+            result = _apply_notice_one(
+                organization_id,
+                session.user_id,
+                bundle["provider"],
+                revision,
+                per_revision_key,
+                expected,
+                bundle.get("targetPackageRootId"),
+                operation_id,
+            )
+            package_ids = [
+                row["id"] for row in result.get("createdPackages", [])
+            ]
+            next_expected = 1 if package_ids else expected
+            public_result = {
+                "revisionId": revision["revisionId"],
+                "revisionDigest": revision["revisionDigest"],
+                "outcome": result["operation"],
+                "createdPlanIds": [],
+                "createdPackageIds": package_ids,
+                "nextExpectedPackageRowVersion": next_expected,
+            }
+            if operation_id:
+                results[index].update(public_result)
+                results[index]["status"] = "COMPLETED"
+                _update_operation(
+                    organization_id,
+                    operation_id,
+                    index + 1,
+                    results,
+                    "COMPLETED" if index + 1 == len(revisions) else "RUNNING",
+                )
+            else:
+                results.append(public_result)
+            expected = next_expected
+    except Exception as error:
+        if operation_id:
+            results[current_index]["status"] = "FAILED"
+            results[current_index]["errorCode"] = (
+                str(error)
+                if isinstance(error, ImportConflict)
+                else "PROCUREMENT_APPLY_FAILED"
+            )
+            _update_operation(
+                organization_id,
+                operation_id,
+                current_index,
+                results,
+                "FAILED",
+            )
+        raise
+    if operation_id:
+        return {
+            "statusCode": 202,
+            "operationId": operation_id,
+            "status": "COMPLETED",
+            "nextRevisionIndex": len(results),
+            "revisionResults": [_public_operation_result(row) for row in results],
+        }
+    package_ids = [
+        value for row in results for value in row.get("createdPackageIds", [])
+    ]
     return {
         "statusCode": 200,
         "ok": True,
-        "operation": result["operation"],
+        "operation": results[-1]["outcome"] if results else "NOOP",
         "created": {"planIds": [], "packageIds": package_ids},
         "authoritativeDelta": {"kehoachIds": [], "goithauIds": package_ids},
         "warnings": bundle.get("warnings", []),
@@ -707,6 +1115,8 @@ def _public_operation_result(row):
         if key not in {
             "canonicalRevision", "investorId", "expectedPlanRowVersion",
             "packageDecisions",
+            "targetPackageRootId",
+            "expectedPackageRowVersion",
         }
     }
 
@@ -753,16 +1163,41 @@ def _resume_blocking(request, operation_id):
                 f"{operation_id}:{revision['revisionId']}:"
                 f"{revision['revisionDigest']}"
             )
-            result = _apply_one(
-                organization_id, session.user_id, operation["provider"], revision,
-                key, entry.get("expectedPlanRowVersion"), entry.get("investorId"),
-                entry.get("packageDecisions") or {},
-            )
+            if entry.get("importKind") == "NOTICE":
+                expected = entry.get("expectedPackageRowVersion")
+                if index > 0:
+                    expected = results[index - 1].get(
+                        "nextExpectedPackageRowVersion", expected
+                    )
+                result = _apply_notice_one(
+                    organization_id,
+                    session.user_id,
+                    operation["provider"],
+                    revision,
+                    key,
+                    expected,
+                    entry.get("targetPackageRootId"),
+                    operation_id,
+                )
+            else:
+                result = _apply_one(
+                    organization_id, session.user_id, operation["provider"], revision,
+                    key, entry.get("expectedPlanRowVersion"), entry.get("investorId"),
+                    entry.get("packageDecisions") or {},
+                    operation_id,
+                )
+            created_package_ids = [
+                row["id"] for row in result["createdPackages"]
+            ]
             entry.update({
                 "status": "COMPLETED", "outcome": result["operation"],
                 "createdPlanIds": [row["id"] for row in result["createdPlans"]],
-                "createdPackageIds": [row["id"] for row in result["createdPackages"]],
+                "createdPackageIds": created_package_ids,
             })
+            if entry.get("importKind") == "NOTICE":
+                entry["nextExpectedPackageRowVersion"] = (
+                    1 if created_package_ids else expected
+                )
             entry.pop("errorCode", None)
             _update_operation(
                 organization_id, operation_id, index + 1, results,
@@ -860,7 +1295,7 @@ async def prepare_plan_import(request):
     try:
         result = await run_blocking_io(
             _prepare_blocking, request, payload,
-            timeout_seconds=float(os.environ.get("VNEPS_PROCUREMENT_TIMEOUT_SECONDS", "8")),
+            timeout_seconds=_source_timeout_seconds(),
         )
         return JSONResponse(result)
     except Exception as error:  # noqa: BLE001 - sanitized boundary.
@@ -905,9 +1340,7 @@ async def prepare_notice_import(request):
     try:
         result = await run_blocking_io(
             _prepare_notice_blocking, request, payload,
-            timeout_seconds=float(
-                os.environ.get("VNEPS_PROCUREMENT_TIMEOUT_SECONDS", "8")
-            ),
+            timeout_seconds=_source_timeout_seconds(),
         )
         return JSONResponse(result)
     except Exception as error:  # noqa: BLE001 - sanitized boundary.
@@ -945,6 +1378,63 @@ async def apply_notice_import(request):
         )
 
 
+async def prepare_opening_import(request):
+    payload, invalid = await read_json_object(request)
+    if invalid:
+        return invalid
+    if set(payload) - _OPENING_PREPARE_FIELDS:
+        return error_response(
+            request,
+            "PROCUREMENT_CODE_INVALID",
+            "Request chứa field không được hỗ trợ.",
+            status_code=400,
+        )
+    try:
+        result = await run_blocking_io(
+            _prepare_opening_blocking,
+            request,
+            payload,
+            timeout_seconds=_source_timeout_seconds(),
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request,
+            error,
+            "prepare_procurement_opening_import",
+            "PROCUREMENT_UPSTREAM_UNAVAILABLE",
+            "Không thể chuẩn bị dữ liệu mở thầu.",
+            status_code=502,
+        )
+
+
+async def apply_opening_import(request):
+    payload, invalid = await read_json_object(request)
+    if invalid:
+        return invalid
+    if set(payload) - _OPENING_APPLY_FIELDS:
+        return error_response(
+            request,
+            "PROCUREMENT_CODE_INVALID",
+            "Apply không nhận canonical source payload.",
+            status_code=400,
+        )
+    try:
+        result = await run_blocking_io(
+            _apply_opening_blocking, request, payload, timeout_seconds=30
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request,
+            error,
+            "apply_procurement_opening_import",
+            "PROCUREMENT_APPLY_FAILED",
+            "Không thể áp dụng dữ liệu mở thầu.",
+            status_code=500,
+        )
 async def get_import_operation(request):
     try:
         result = await run_blocking_io(
@@ -981,6 +1471,8 @@ def procurement_import_routes(Route):
         Route("/api/procurement/imports/plan/apply", apply_plan_import, methods=["POST"]),
         Route("/api/procurement/imports/notice/prepare", prepare_notice_import, methods=["POST"]),
         Route("/api/procurement/imports/notice/apply", apply_notice_import, methods=["POST"]),
+        Route("/api/procurement/imports/opening/prepare", prepare_opening_import, methods=["POST"]),
+        Route("/api/procurement/imports/opening/apply", apply_opening_import, methods=["POST"]),
         Route("/api/procurement/imports/operations/{operation_id}", get_import_operation, methods=["GET"]),
         Route("/api/procurement/imports/operations/{operation_id}/resume", resume_import_operation, methods=["POST"]),
     ]

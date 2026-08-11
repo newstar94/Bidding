@@ -1,0 +1,56 @@
+{
+  "bidPoBidpPlanProjectDetailView": {
+    "id": "sanitized-plan-01",
+    "planVersion": "01",
+    "name": "Kế hoạch mua sắm thiết bị",
+    "investorName": "Chủ đầu tư mẫu",
+    "investorCode": "INV-SANITIZED",
+    "investTotal": 300000000,
+    "decisionNo": "01/QĐ-MẪU",
+    "decisionDate": "2026-01-05T00:00:00",
+    "publicDate": "2026-01-06T08:00:00",
+    "bidPack": 2,
+    "planNo": "PL2600000001",
+    "planType": "TX"
+  },
+  "bidpPlanDetailToProjectList": [
+    {
+      "id": "detail-a-01",
+      "idDetail": "detail-a-01",
+      "bidNo": "A",
+      "planNo": "PL2600000001",
+      "bidName": "Gói A",
+      "bidPrice": 100000000,
+      "capitalDetail": "Ngân sách nhà nước",
+      "bidTime": "30 ngày",
+      "bidStartYear": 2026,
+      "bidStartMonth": 2,
+      "ctype": "TG",
+      "cperiod": 30,
+      "cperiodUnit": "D",
+      "isInternet": 1,
+      "isDomestic": 1
+    },
+    {
+      "id": "detail-b-01",
+      "idDetail": "detail-b-01",
+      "bidNo": "B",
+      "planNo": "PL2600000001",
+      "bidName": "Gói B",
+      "bidPrice": 200000000,
+      "capitalDetail": "Ngân sách nhà nước",
+      "bidTime": "30 ngày",
+      "bidStartYear": 2026,
+      "bidStartQuarter": "I",
+      "ctype": "TG",
+      "cperiod": 60,
+      "cperiodUnit": "D",
+      "isInternet": 1,
+      "isDomestic": 1,
+      "notifyNo": "IB2600000002",
+      "notifyId": "notice-01",
+      "notifyVersion": "01",
+      "status": "PUBLISHED"
+    }
+  ]
+}

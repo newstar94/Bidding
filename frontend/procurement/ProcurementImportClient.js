@@ -13,6 +13,11 @@ const APPLY_NOTICE_FIELDS = new Set([
   "expectedPackageRowVersion",
   "workspaceLease",
 ]);
+const APPLY_OPENING_FIELDS = new Set([
+  "previewId",
+  "expectedPackageRowVersion",
+  "workspaceLease",
+]);
 
 export class ProcurementImportClient {
   constructor({ get = getJson, post = postJson } = {}) {
@@ -82,6 +87,33 @@ export class ProcurementImportClient {
         headers: { "Idempotency-Key": request.idempotencyKey },
         timeoutMs: 120_000,
       },
+    );
+  }
+
+  prepareOpening(request, { signal } = {}) {
+    return this.post(
+      "/api/procurement/imports/opening/prepare",
+      {
+        packageId: request.packageId,
+        noticeNo: request.noticeNo || null,
+        selectedRevision: request.selectedRevision || null,
+        workspaceLease: request.workspaceLease || null,
+      },
+      { signal, retries: 0, timeoutMs: 120_000 },
+    );
+  }
+
+  applyOpening(request, { signal } = {}) {
+    const untrustedFields = Object.keys(request).filter(
+      (key) => !APPLY_OPENING_FIELDS.has(key),
+    );
+    if (untrustedFields.length) {
+      throw new TypeError("Apply chỉ nhận previewId và package CAS metadata.");
+    }
+    return this.post(
+      "/api/procurement/imports/opening/apply",
+      request,
+      { signal, retries: 0, timeoutMs: 30_000 },
     );
   }
 

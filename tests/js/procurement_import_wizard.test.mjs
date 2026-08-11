@@ -3,6 +3,11 @@ import test from "node:test";
 
 import { ProcurementImportClient } from "../../frontend/procurement/ProcurementImportClient.js";
 import {
+  canApplyOpeningPreview,
+  mapOpeningBidder,
+  reconcileOpeningDrafts,
+} from "../../frontend/procurement/OpeningImportWizard.js";
+import {
   PlanImportWizard,
   canApplyPreview,
   createDebouncedPreparer,
@@ -108,6 +113,90 @@ test("standalone notice client keeps canonical notice data server-side", async (
     () => client.applyNotice({ ...request, canonicalNotice: { status: "PUBLISHED" } }),
     /previewId/,
   );
+});
+
+
+test("opening client keeps canonical opening payload server-side", async () => {
+  const calls = [];
+  const client = new ProcurementImportClient({
+    post: async (url, body) => {
+      calls.push({ url, body });
+      return { ok: true };
+    },
+  });
+  await client.prepareOpening({
+    packageId: "package-1",
+    noticeNo: "IB2600000002",
+    workspaceLease: "org-1",
+  });
+  const request = {
+    previewId: "opening-preview",
+    expectedPackageRowVersion: 3,
+    workspaceLease: "org-1",
+  };
+  await client.applyOpening(request);
+
+  assert.equal(calls[0].url, "/api/procurement/imports/opening/prepare");
+  assert.equal(calls[1].url, "/api/procurement/imports/opening/apply");
+  assert.deepEqual(calls[1].body, request);
+  assert.throws(
+    () => client.applyOpening({ ...request, bidders: [{ bidPrice: 1 }] }),
+    /previewId/,
+  );
+});
+
+
+test("opening mapper preserves lot, joint venture, and bid values", () => {
+  const mapped = mapOpeningBidder({
+    contractorCode: "0100000001",
+    contractorName: "Liên danh mẫu",
+    contractorType: "JOINT_VENTURE",
+    lotNo: "01",
+    bidPrice: 100,
+    priceAfterDiscount: 90,
+    jointVentureMembers: [
+      { contractorCode: "0100000001", contractorName: "A", isLeader: true },
+      { contractorCode: "0100000002", contractorName: "B" },
+    ],
+  });
+
+  assert.equal(mapped.loaiNhaThau, "Liên danh");
+  assert.equal(mapped.maPhanLo, "01");
+  assert.equal(mapped.giaDuThau, 100);
+  assert.equal(mapped.giaSauGiamGia, 90);
+  assert.deepEqual(
+    mapped.thanhVienLienDanh.map((row) => row.vaiTro),
+    ["Đứng đầu liên danh", "Thành viên liên danh"],
+  );
+  assert.equal(
+    canApplyOpeningPreview(
+      { previewId: "p", package: { id: "package-1", rowVersion: 3 } },
+      { id: "package-1", rowVersion: 3 },
+    ),
+    true,
+  );
+});
+
+
+test("opening draft merge preserves local rows while overwrite replaces them", () => {
+  const local = [{
+    maNhaThau: "0100000001", tenNhaThau: "Tên đã sửa local",
+    maPhanLo: "01", giaDuThau: 95,
+  }];
+  const source = [
+    { contractorCode: "0100000001", contractorName: "Tên nguồn", lotNo: "01", bidPrice: 100 },
+    { contractorCode: "0100000002", contractorName: "Nhà thầu mới", lotNo: "01", bidPrice: 90 },
+  ];
+
+  const merged = reconcileOpeningDrafts(local, source, "MERGE");
+  const overwritten = reconcileOpeningDrafts(local, source, "OVERWRITE");
+
+  assert.equal(merged.conflicts, 1);
+  assert.equal(merged.added, 1);
+  assert.equal(merged.rows[0].tenNhaThau, "Tên đã sửa local");
+  assert.deepEqual(overwritten.rows.map((row) => row.tenNhaThau), [
+    "Tên nguồn", "Nhà thầu mới",
+  ]);
 });
 
 

@@ -6,7 +6,9 @@ import {
   detectCapabilities,
   extractSemanticDomCandidates,
   findExactRoutingCandidate,
+  inspectReactState,
   inspectVueState,
+  inspectVue3State,
   isInteractionRequired,
 } from "./runtime_support.mjs";
 
@@ -40,6 +42,8 @@ export class BrowserLookupRuntime {
     driverSelector = selectDriver,
     collectorFactory = (options) => new NetworkCollector(options),
     vueInspector = inspectVueState,
+    vue3Inspector = inspectVue3State,
+    reactInspector = inspectReactState,
     domExtractor = extractSemanticDomCandidates,
     interactionDetector = isInteractionRequired,
     upstreamFailureDetector = isKnownUpstreamFailure,
@@ -56,6 +60,8 @@ export class BrowserLookupRuntime {
     this.upstreamFailureDetector = upstreamFailureDetector;
     this.extractorRegistry = extractorRegistry || new ExtractorRegistry({
       vueInspector,
+      vue3Inspector,
+      reactInspector,
       domExtractor,
     });
     this.clock = clock;
@@ -70,7 +76,7 @@ export class BrowserLookupRuntime {
   async initialize(configuration) {
     const startupStarted = this.clock();
     const safe = {
-      headless: configuration?.headless === true,
+      headless: configuration?.headless !== false,
       browserMode: String(configuration?.browserMode || "standard"),
       targetHost: String(configuration?.targetHost || ""),
       chromiumArgs: Array.isArray(configuration?.chromiumArgs)
@@ -83,6 +89,8 @@ export class BrowserLookupRuntime {
       extractors: {
         network: configuration?.extractors?.network !== false,
         vue: configuration?.extractors?.vue !== false,
+        vue3: configuration?.extractors?.vue3 !== false,
+        react: configuration?.extractors?.react !== false,
         dom: configuration?.extractors?.dom !== false,
       },
       maxResponseBytes: Math.max(
@@ -98,8 +106,7 @@ export class BrowserLookupRuntime {
         Math.min(Number(configuration?.actionTimeoutMs) || 15_000, 60_000),
       ),
     };
-    if (!safe.headless
-      || !["standard", "research-stealth"].includes(safe.browserMode)
+    if (!["standard", "research-stealth"].includes(safe.browserMode)
       || safe.targetHost !== OFFICIAL_HOST
       || safe.chromiumArgs.length !== 0
       || !Object.values(safe.drivers).some(Boolean)
@@ -107,7 +114,7 @@ export class BrowserLookupRuntime {
       throw new Error("PROCUREMENT_ADAPTER_UNSUPPORTED");
     }
     this.configuration = safe;
-    this.browser = await this.chromium.launch({ headless: true, args: [] });
+    this.browser = await this.chromium.launch({ headless: safe.headless, args: [] });
     this.context = await this.browser.newContext({
       locale: "vi-VN",
       serviceWorkers: "block",
@@ -254,6 +261,8 @@ export class BrowserLookupRuntime {
             : []),
         ],
         vueStateCandidates,
+        frameworkStateCandidates: vueStateCandidates,
+        frameworkStrategy: extraction.strategy,
         domCandidates,
         metrics: {
           browserStartupMs: this.pendingBrowserStartupMs,

@@ -121,6 +121,7 @@ class ProcurementNoticeReconciler:
         idempotency_key,
         expected_package_row_version,
         target_package_root_id=None,
+        operation_id=None,
     ):
         notice_no = str(notice.get("noticeNo") or "").strip().upper()
         revision_id = str(notice.get("revisionId") or "").strip()
@@ -173,6 +174,7 @@ class ProcurementNoticeReconciler:
             "normalizedSnapshot": deepcopy(notice),
             "actorUserId": actor_user_id,
             "idempotencyKey": str(idempotency_key),
+            "operationId": str(operation_id) if operation_id else None,
             "disposition": disposition,
             "localEntityType": "goithau",
             "localRootId": target.get("rootId") or target["id"],
@@ -266,6 +268,7 @@ class ProcurementPlanReconciler:
         idempotency_key,
         expected_plan_row_version,
         package_decisions=None,
+        operation_id=None,
     ):
         family_no = str(revision.get("familyNo") or "").strip().upper()
         revision_id = str(revision.get("revisionId") or "").strip()
@@ -309,6 +312,7 @@ class ProcurementPlanReconciler:
             "normalizedSnapshot": normalized_snapshot,
             "actorUserId": actor_user_id,
             "idempotencyKey": str(idempotency_key),
+            "operationId": str(operation_id) if operation_id else None,
             "disposition": disposition,
         }
         if provenance_only:

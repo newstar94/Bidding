@@ -1,0 +1,25 @@
+{
+  "opening_bid_1": {
+    "bidOpenView": [
+      {
+        "contractorCode": "0100000003",
+        "contractorName": "Liên danh mẫu",
+        "contractorType": "JOINT_VENTURE",
+        "jointVentureMembers": [
+          {"contractorCode": "0100000003", "contractorName": "Thành viên A", "isLeader": true},
+          {"contractorCode": "0100000004", "contractorName": "Thành viên B"}
+        ]
+      }
+    ]
+  },
+  "opening_bid_2": {
+    "bidOpenView": [
+      {
+        "contractorCode": "0100000003",
+        "contractorName": "Liên danh mẫu",
+        "contractorType": "JOINT_VENTURE",
+        "bidPrice": 175000000
+      }
+    ]
+  }
+}

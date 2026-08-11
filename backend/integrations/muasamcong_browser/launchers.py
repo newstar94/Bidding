@@ -105,6 +105,8 @@ class NodeBrowserRuntime:
                     "PROCUREMENT_SCHEMA_CHANGED",
                     "PROCUREMENT_ADAPTER_UNSUPPORTED",
                     "PROCUREMENT_LOOKUP_BUSY",
+                    "PROCUREMENT_SESSION_FAILED",
+                    "PROCUREMENT_ENDPOINT_CHANGED",
                 }
                 raise ProcurementLookupError(
                     code if code in allowed else "PROCUREMENT_BROWSER_FAILED"
@@ -149,6 +151,49 @@ class NodeBrowserRuntime:
 
     def probe(self):
         return self._exchange("probe")
+
+    def list_plan_revisions(self, plan_no):
+        return self._exchange("listPlanRevisions", planNo=str(plan_no))
+
+    def get_plan_revision(self, plan_no, revision_id):
+        return self._exchange(
+            "getPlanRevision", planNo=str(plan_no), revisionId=str(revision_id)
+        )
+
+    def list_notice_revisions(self, notice_no):
+        return self._exchange("listNoticeRevisions", noticeNo=str(notice_no))
+
+    def get_notice_revision(self, notice_no, revision_id):
+        return self._exchange(
+            "getNoticeRevision",
+            noticeNo=str(notice_no),
+            revisionId=str(revision_id),
+        )
+
+    def get_opening_bundle(self, notice_no, revision_id):
+        return self._exchange(
+            "getOpeningBundle",
+            noticeNo=str(notice_no),
+            revisionId=str(revision_id),
+        )
+
+    def get_result_bundle(self, notice_no, revision_id):
+        return self._exchange(
+            "getResultBundle",
+            noticeNo=str(notice_no),
+            revisionId=str(revision_id),
+        )
+
+    def collect_complete_bundle(self, record):
+        if not isinstance(record, dict):
+            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+        return self._exchange("collectCompleteBundle", record=record)
+
+    def refresh_session(self):
+        return self._exchange("refreshSession")
+
+    def integration_health(self):
+        return self._exchange("integrationHealth")
 
     def is_healthy(self):
         return not self._closed and self._process.poll() is None

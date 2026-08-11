@@ -12,6 +12,7 @@ def test_procurement_lookup_route_is_registered_as_on_demand_post():
     routes = procurement_lookup_routes(Route)
     assert [(route.path, route.methods) for route in routes] == [
         ("/api/procurement/lookup", {"POST"}),
+        ("/api/procurement/health", {"GET", "HEAD"}),
     ]
 
 
@@ -101,11 +102,57 @@ def test_lookup_route_rejects_browser_or_canonical_payload_from_client(
     assert called is False
 
 
+def test_health_response_uses_closed_contract_and_never_exposes_secrets(monkeypatch):
+    class Source:
+        def health(self):
+            return {
+                "profile": "2026.08",
+                "status": "UP",
+                "token": "top-secret-token",
+                "cookie": "top-secret-cookie",
+                "session": {
+                    "status": "UP",
+                    "cached": True,
+                    "refreshing": False,
+                    "refreshCount": 2,
+                    "browserStartupMs": 10,
+                    "lastError": None,
+                    "token": "nested-token",
+                },
+                "api": {"status": "UP", "lastFailure": None, "cookie": "nested-cookie"},
+            }
+
+    async def inline(function, *args, **kwargs):
+        kwargs.pop("timeout_seconds", None)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", inline)
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (type("Session", (), {"user_id": "user-1"})(), "org-1"),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(routes_module, "get_muasamcong_source", Source)
+    app = Starlette(routes=procurement_lookup_routes(Route))
+
+    with TestClient(app) as client:
+        response = client.get("/api/procurement/health")
+
+    assert response.status_code == 200
+    encoded = response.text.casefold()
+    assert "token" not in encoded
+    assert "cookie" not in encoded
+    assert response.json()["session"]["refreshCount"] == 2
+
+
 def test_browser_driver_and_extractor_flags_are_server_owned(monkeypatch):
     monkeypatch.setenv("MUASAMCONG_DRIVER_VUE2", "false")
     monkeypatch.setenv("MUASAMCONG_DRIVER_GENERIC", "true")
     monkeypatch.setenv("MUASAMCONG_EXTRACT_NETWORK", "true")
     monkeypatch.setenv("MUASAMCONG_EXTRACT_VUE", "false")
+    monkeypatch.setenv("MUASAMCONG_EXTRACT_VUE3", "true")
+    monkeypatch.setenv("MUASAMCONG_EXTRACT_REACT", "true")
     monkeypatch.setenv("MUASAMCONG_EXTRACT_DOM", "true")
     monkeypatch.setenv("PROCUREMENT_BROWSER_IDLE_TTL_SECONDS", "720")
     monkeypatch.setenv("PROCUREMENT_BROWSER_WORKER_TIMEOUT_SECONDS", "18")
@@ -123,6 +170,7 @@ def test_browser_driver_and_extractor_flags_are_server_owned(monkeypatch):
     assert config.driver_flags == {"vue2": False, "generic": True}
     assert config.extractor_flags == {
         "network": True, "vue": False, "dom": True,
+        "vue3": True, "react": True,
     }
     assert config.idle_ttl_seconds == 720
     assert config.worker_timeout_seconds == 18

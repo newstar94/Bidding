@@ -163,6 +163,7 @@ def test_plan_00_to_01_keeps_unchanged_package_version_and_adds_b_at_00():
         organization_id="org-1", actor_user_id="user-1", provider="VNEPS",
         revision=_revision("00", "rev-00", [_package("A")]),
         idempotency_key="operation:rev-00", expected_plan_row_version=None,
+        operation_id="operation-all-1",
     )
     second = command.reconcile_revision(
         organization_id="org-1", actor_user_id="user-1", provider="VNEPS",
@@ -171,6 +172,7 @@ def test_plan_00_to_01_keeps_unchanged_package_version_and_adds_b_at_00():
     )
 
     assert first["createdPlans"][0]["localVersion"] == 0
+    assert first["provenance"]["operationId"] == "operation-all-1"
     assert second["createdPlans"][0]["localVersion"] == 1
     packages = {row["symbol"]: row for row in second["createdPackages"]}
     old_a = first["createdPackages"][0]

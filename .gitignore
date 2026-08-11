@@ -21,6 +21,7 @@ data/backups/
 data/backup-corruption-test-*/
 data/audit-checkpoints/
 data/document-worker-temp/
+data/procurement-diagnostics/
 data/postgresql*/
 data/tools/
 

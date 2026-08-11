@@ -64,6 +64,8 @@ class ProcurementLookupSettings:
     driver_generic: bool
     extract_network: bool
     extract_vue: bool
+    extract_vue3: bool
+    extract_react: bool
     extract_dom: bool
 
     @classmethod
@@ -98,6 +100,16 @@ class ProcurementLookupSettings:
         extract_vue = _boolean(
             environ, "MUASAMCONG_EXTRACT_VUE", "true"
         )
+        extract_vue3 = _boolean(
+            environ,
+            "MUASAMCONG_EXTRACT_VUE3",
+            str(extract_vue).lower(),
+        )
+        extract_react = _boolean(
+            environ,
+            "MUASAMCONG_EXTRACT_REACT",
+            str(extract_vue).lower(),
+        )
         extract_dom = _boolean(
             environ, "MUASAMCONG_EXTRACT_DOM", "true"
         )
@@ -121,7 +133,13 @@ class ProcurementLookupSettings:
             raise ProcurementLookupConfigurationError(
                 "At least one Mua Sam Cong browser driver must be enabled."
             )
-        if enabled and not (extract_network or extract_vue or extract_dom):
+        if enabled and not (
+            extract_network
+            or extract_vue
+            or extract_vue3
+            or extract_react
+            or extract_dom
+        ):
             raise ProcurementLookupConfigurationError(
                 "At least one Mua Sam Cong extractor must be enabled."
             )
@@ -234,6 +252,8 @@ class ProcurementLookupSettings:
             driver_generic=driver_generic,
             extract_network=extract_network,
             extract_vue=extract_vue,
+            extract_vue3=extract_vue3,
+            extract_react=extract_react,
             extract_dom=extract_dom,
         )
 
@@ -246,6 +266,8 @@ class ProcurementLookupSettings:
         return {
             "network": self.extract_network,
             "vue": self.extract_vue,
+            "vue3": self.extract_vue3,
+            "react": self.extract_react,
             "dom": self.extract_dom,
         }
 

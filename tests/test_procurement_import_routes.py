@@ -13,6 +13,7 @@ from backend.procurement_import.routes import (
     build_procurement_source,
     procurement_import_routes,
 )
+from backend.procurement_import.service import PreviewStore
 
 
 def test_procurement_import_routes_are_registered():
@@ -22,6 +23,8 @@ def test_procurement_import_routes_are_registered():
         ("/api/procurement/imports/plan/apply", {"POST"}),
         ("/api/procurement/imports/notice/prepare", {"POST"}),
         ("/api/procurement/imports/notice/apply", {"POST"}),
+        ("/api/procurement/imports/opening/prepare", {"POST"}),
+        ("/api/procurement/imports/opening/apply", {"POST"}),
         ("/api/procurement/imports/operations/{operation_id}", {"GET", "HEAD"}),
         ("/api/procurement/imports/operations/{operation_id}/resume", {"POST"}),
     ]
@@ -134,6 +137,163 @@ def test_prepare_notice_returns_only_server_preview_authority(monkeypatch):
     assert response.status_code == 200
     assert response.json()["previewId"] == "opaque-notice-preview"
     assert "revision" not in response.json()
+
+
+class _OpeningCursor:
+    def __init__(self, state):
+        self.state = state
+        self.query = ""
+
+    def execute(self, query, _parameters=()):
+        self.query = query
+        return self
+
+    def fetchone(self):
+        if "FROM goi_thau" in self.query and "SELECT id" in self.query:
+            return (
+                "package-1", "package-root-1", self.state["row_version"],
+                "IB2600000002", "Gói thầu kiểm thử",
+            )
+        if "FROM procurement_source_binding" in self.query:
+            return ("IB2600000002",)
+        if "SELECT row_version FROM goi_thau" in self.query:
+            return (self.state["row_version"],)
+        return None
+
+
+class _OpeningConnection:
+    def __init__(self, state):
+        self.state = state
+
+    def cursor(self):
+        return _OpeningCursor(self.state)
+
+    def rollback(self):
+        return None
+
+    def close(self):
+        return None
+
+
+class _OpeningSource:
+    name = "MUASAMCONG"
+
+    def list_notice_revisions(self, notice_no):
+        assert notice_no == "IB2600000002"
+        return [
+            {"revisionId": "notice-00", "revisionNumber": "00"},
+            {"revisionId": "notice-01", "revisionNumber": "01"},
+        ]
+
+    def get_opening_bundle(self, notice_no, revision_id):
+        assert (notice_no, revision_id) == ("IB2600000002", "notice-01")
+        return {
+            "schemaVersion": "biddingflow-opening-bundle-v1",
+            "bidders": [{"contractorName": "Nhà thầu A", "bidPrice": 100}],
+            "lots": [],
+            "partial": False,
+        }
+
+
+def _install_opening_http_harness(monkeypatch, *, allowed=True):
+    state = {"row_version": 3}
+
+    async def inline(function, *args, **kwargs):
+        kwargs.pop("timeout_seconds", None)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", inline)
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="user-1"), "org-1", "workspace-1"
+        ),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: allowed)
+    monkeypatch.setattr(
+        routes_module.database,
+        "get_connection",
+        lambda: _OpeningConnection(state),
+    )
+    monkeypatch.setattr(routes_module, "build_procurement_source", _OpeningSource)
+    monkeypatch.setattr(routes_module, "PREVIEW_STORE", PreviewStore())
+    return state
+
+
+def test_opening_prepare_requires_edit_authority(monkeypatch):
+    _install_opening_http_harness(monkeypatch, allowed=False)
+    app = Starlette(routes=procurement_import_routes(Route))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/procurement/imports/opening/prepare",
+            json={"packageId": "package-1", "workspaceLease": "workspace-1"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "ORGANIZATION_ACCESS_DENIED"
+
+
+def test_opening_prepare_and_apply_use_server_preview_and_reject_stale_package(
+    monkeypatch,
+):
+    state = _install_opening_http_harness(monkeypatch)
+    app = Starlette(routes=procurement_import_routes(Route))
+
+    with TestClient(app) as client:
+        prepared = client.post(
+            "/api/procurement/imports/opening/prepare",
+            json={"packageId": "package-1", "workspaceLease": "workspace-1"},
+        )
+        assert prepared.status_code == 200
+        preview = prepared.json()
+        assert preview["notice"]["selectedRevision"] == "01"
+        assert preview["opening"]["bidders"][0]["contractorName"] == "Nhà thầu A"
+
+        injected = client.post(
+            "/api/procurement/imports/opening/apply",
+            json={
+                "previewId": preview["previewId"],
+                "expectedPackageRowVersion": 3,
+                "workspaceLease": "workspace-1",
+                "opening": {"bidders": [{"contractorName": "Untrusted"}]},
+            },
+        )
+        assert injected.status_code == 400
+
+        first_apply = client.post(
+            "/api/procurement/imports/opening/apply",
+            json={
+                "previewId": preview["previewId"],
+                "expectedPackageRowVersion": 3,
+                "workspaceLease": "workspace-1",
+            },
+        )
+        second_apply = client.post(
+            "/api/procurement/imports/opening/apply",
+            json={
+                "previewId": preview["previewId"],
+                "expectedPackageRowVersion": 3,
+                "workspaceLease": "workspace-1",
+            },
+        )
+        assert first_apply.status_code == second_apply.status_code == 200
+        assert first_apply.json() == second_apply.json()
+
+        state["row_version"] = 4
+        stale = client.post(
+            "/api/procurement/imports/opening/apply",
+            json={
+                "previewId": preview["previewId"],
+                "expectedPackageRowVersion": 3,
+                "workspaceLease": "workspace-1",
+            },
+        )
+
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "PROCUREMENT_PREVIEW_STALE"
 
 
 def test_apply_notice_rejects_browser_supplied_canonical_payload(monkeypatch):
@@ -385,3 +545,105 @@ def test_resume_persists_failed_cursor_before_returning_conflict(monkeypatch):
     assert updates[0][3][0]["status"] == "FAILED"
     assert updates[0][3][0]["errorCode"] == "PROCUREMENT_PREVIEW_STALE"
     assert updates[0][4] == "FAILED"
+
+
+def test_notice_all_resume_continues_from_durable_cursor(monkeypatch):
+    operation = {
+        "operationId": "notice-operation-1", "provider": "MUASAMCONG",
+        "familyNo": "IB2600000002", "mode": "ALL", "status": "FAILED",
+        "nextRevisionIndex": 1, "totalRevisions": 2,
+        "bundleDigest": "sha256:" + "a" * 64,
+        "revisionResults": [
+            {
+                "importKind": "NOTICE", "revisionId": "notice-00",
+                "revisionDigest": "sha256:" + "b" * 64,
+                "status": "COMPLETED", "outcome": "UPDATED",
+                "createdPackageIds": [], "nextExpectedPackageRowVersion": 4,
+                "canonicalRevision": {
+                    "revisionId": "notice-00", "revisionDigest": "sha256:" + "b" * 64,
+                },
+                "expectedPackageRowVersion": 3,
+                "targetPackageRootId": "package-root-1",
+            },
+            {
+                "importKind": "NOTICE", "revisionId": "notice-01",
+                "revisionDigest": "sha256:" + "c" * 64,
+                "status": "FAILED", "errorCode": "PROCUREMENT_APPLY_FAILED",
+                "canonicalRevision": {
+                    "revisionId": "notice-01", "revisionDigest": "sha256:" + "c" * 64,
+                },
+                "expectedPackageRowVersion": None,
+                "targetPackageRootId": "package-root-1",
+            },
+        ],
+        "idempotencyKey": "notice-all-1", "actorUserId": "owner-user",
+        "requestHash": "d" * 64,
+    }
+    applied = []
+    updates = []
+
+    class FakeConnection:
+        def cursor(self):
+            return object()
+
+        def close(self):
+            return None
+
+    class FakeRepository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, _organization_id, _operation_id):
+            return deepcopy(operation)
+
+    async def inline(function, *args, **kwargs):
+        kwargs.pop("timeout_seconds", None)
+        return function(*args, **kwargs)
+
+    def apply_notice(
+        organization_id, actor_user_id, provider, revision, idempotency_key,
+        expected_row_version, target_root_id, operation_id,
+    ):
+        applied.append(
+            (
+                organization_id, actor_user_id, provider, revision["revisionId"],
+                idempotency_key, expected_row_version, target_root_id,
+                operation_id,
+            )
+        )
+        return {
+            "operation": "UPDATED", "createdPlans": [], "createdPackages": [],
+        }
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", inline)
+    monkeypatch.setattr(
+        routes_module, "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="owner-user"), "org-1", "org-1"
+        ),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", FakeConnection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", FakeRepository)
+    monkeypatch.setattr(routes_module, "_apply_notice_one", apply_notice)
+    monkeypatch.setattr(
+        routes_module, "_update_operation",
+        lambda organization_id, operation_id, cursor, results, status: updates.append(
+            (organization_id, operation_id, cursor, deepcopy(results), status)
+        ),
+    )
+    app = Starlette(routes=procurement_import_routes(Route))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/procurement/imports/operations/notice-operation-1/resume"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "COMPLETED"
+    assert [row[3] for row in applied] == ["notice-01"]
+    assert applied[0][5] == 4
+    assert applied[0][4].startswith("notice-operation-1:notice-01:")
+    assert applied[0][7] == "notice-operation-1"
+    assert updates[-1][2] == 2
+    assert updates[-1][3][1]["status"] == "COMPLETED"
+    assert updates[-1][4] == "COMPLETED"

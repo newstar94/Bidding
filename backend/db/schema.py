@@ -1873,7 +1873,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT NOT NULL CHECK(trim(id) != '')",
             "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
-            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE'))",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE', 'MUASAMCONG'))",
             "entity_kind": "TEXT NOT NULL CHECK(entity_kind IN ('PLAN', 'PACKAGE', 'NOTICE'))",
             "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
             "revision_uuid": "TEXT NOT NULL CHECK(trim(revision_uuid) != '')",
@@ -1907,7 +1907,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT NOT NULL CHECK(trim(id) != '')",
             "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
-            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE'))",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE', 'MUASAMCONG'))",
             "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
             "plan_revision_uuid": "TEXT NOT NULL CHECK(trim(plan_revision_uuid) != '')",
             "id_detail": "TEXT NOT NULL CHECK(trim(id_detail) != '')",
@@ -1933,7 +1933,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT NOT NULL CHECK(trim(id) != '')",
             "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
-            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE'))",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE', 'MUASAMCONG'))",
             "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
             "mode": "TEXT NOT NULL CHECK(mode IN ('LATEST', 'SELECTED', 'ALL'))",
             "status": "TEXT NOT NULL CHECK(status IN ('PENDING', 'RUNNING', 'PARTIAL', 'COMPLETED', 'FAILED'))",
