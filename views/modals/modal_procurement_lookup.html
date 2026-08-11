@@ -1,0 +1,56 @@
+<div class="modal-overlay" id="modal-procurement-lookup">
+    <div class="modal-card modal-lg procurement-import procurement-lookup" role="dialog" aria-modal="true"
+        aria-labelledby="modal-procurement-lookup-title" aria-describedby="procurement-lookup-description">
+        <div class="modal-header">
+            <div>
+                <p class="procurement-import__eyebrow">Mua Sắm Công · Tra cứu on-demand</p>
+                <h3 id="modal-procurement-lookup-title">Tra cứu dữ liệu vào draft</h3>
+            </div>
+            <button type="button" class="modal-close" data-close="modal-procurement-lookup"
+                aria-label="Đóng tra cứu">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p id="procurement-lookup-description" class="helper-text">
+                Kết quả chỉ được áp dụng vào biểu mẫu đang mở sau khi bạn chọn field. Chức năng này không lưu,
+                không tạo phiên bản, không đổi trạng thái, người phụ trách hoặc quyền truy cập.
+            </p>
+            <p class="procurement-lookup__kind">Đích: <strong data-procurement-lookup-kind></strong></p>
+            <section class="procurement-import__controls procurement-lookup__controls" aria-label="Mã cần tra cứu">
+                <div class="form-group">
+                    <label for="procurement-lookup-code">Mã PL/IB</label>
+                    <input id="procurement-lookup-code" data-procurement-lookup-code autocomplete="off"
+                        inputmode="text" placeholder="PL2600123456 hoặc IB2600123456">
+                </div>
+                <button type="button" class="btn btn-outline procurement-import__prepare"
+                    data-procurement-lookup-run>Tra cứu</button>
+            </section>
+            <div class="procurement-import__status" data-procurement-lookup-status aria-live="polite"
+                aria-atomic="true">Nhập mã PL/IB để bắt đầu.</div>
+            <ul class="procurement-import__issues" data-procurement-lookup-warnings hidden></ul>
+            <section class="procurement-import__panel" aria-labelledby="procurement-lookup-comparison-heading">
+                <h4 id="procurement-lookup-comparison-heading">So sánh với draft hiện tại</h4>
+                <div class="procurement-import__table-wrap" tabindex="0" aria-label="Bảng so sánh dữ liệu tra cứu">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Hiện tại</th>
+                                <th>Mua Sắm Công</th>
+                                <th>Áp dụng?</th>
+                            </tr>
+                        </thead>
+                        <tbody data-procurement-lookup-body></tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="procurement-import__panel procurement-lookup__packages"
+                data-procurement-lookup-packages aria-label="Các gói thầu trong kế hoạch" hidden></section>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close="modal-procurement-lookup">Hủy</button>
+            <button type="button" class="btn btn-primary" data-procurement-lookup-apply disabled>
+                Áp dụng field đã chọn vào draft
+            </button>
+        </div>
+    </div>
+</div>

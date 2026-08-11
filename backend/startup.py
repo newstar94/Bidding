@@ -21,6 +21,10 @@ from backend.security.turnstile import (
     get_turnstile_config,
 )
 from backend.ai.configuration import get_ai_config
+from backend.procurement_lookup.config import (
+    ProcurementLookupConfigurationError,
+    ProcurementLookupSettings,
+)
 
 
 class StartupValidationError(RuntimeError):
@@ -56,6 +60,27 @@ def _bounded_configuration_int(
             f"{name} must be between {minimum} and {maximum}."
         )
     return value
+
+
+def _configuration_bool(environ, name, default):
+    value = str(environ.get(name, default)).strip().casefold()
+    if value not in {"true", "false"}:
+        raise StartupValidationError(f"{name} must be true or false.")
+    return value == "true"
+
+
+def validate_procurement_lookup_configuration(environ=None):
+    """Fail startup on an enabled but unusable browser lookup profile."""
+
+    environ = os.environ if environ is None else environ
+    if str(environ.get(
+        "PROCUREMENT_LOOKUP_ENABLED", "false"
+    )).strip().casefold() == "false":
+        return
+    try:
+        ProcurementLookupSettings.from_environ(environ)
+    except ProcurementLookupConfigurationError as error:
+        raise StartupValidationError(str(error)) from error
 
 
 def calculate_database_connection_budget(environ=None):
@@ -464,6 +489,7 @@ def validate_startup_configuration(database, environ=None):
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
     is_production = app_env in {"prod", "production"}
+    validate_procurement_lookup_configuration(environ)
     procurement_provider = str(
         environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
     ).strip().casefold()

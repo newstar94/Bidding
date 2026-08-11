@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "generic",
+  "driverVersion": "2026.1",
+  "networkResponses": [],
+  "vueStateCandidates": [],
+  "domCandidates": [],
+  "metrics": {}
+}

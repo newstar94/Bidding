@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "generic",
+  "driverVersion": "2026.1",
+  "networkResponses": [
+    {
+      "url": "https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/notice-detail",
+      "method": "POST",
+      "status": 200,
+      "contentType": "application/json",
+      "durationMs": 37,
+      "body": {
+        "renamedNoticeState": {
+          "id": "notice-revision-00",
+          "notifyId": "notice-revision-00",
+          "notifyNo": "IB2600000002",
+          "notifyVersion": "00",
+          "planNo": "PL2600000001",
+          "bidName": "Gói B",
+          "investorName": "Chủ đầu tư nội bộ",
+          "procuringEntityName": "Bên mời thầu nội bộ",
+          "bidPrice": 2000000000,
+          "bidPriceUnit": "VND",
+          "capitalDetail": "Ngân sách nhà nước",
+          "bidField": "XL",
+          "bidForm": "DTRR",
+          "bidMode": "1_MTHS",
+          "processApply": "LDT",
+          "contractType": "TRON_GOI",
+          "implementationPeriod": "6 tháng",
+          "bidCloseDate": "2026-09-01T09:00:00+07:00",
+          "bidOpenDate": "2026-09-01T09:15:00+07:00",
+          "bidOpenId": "bid-open-00",
+          "inputResultId": null
+        }
+      }
+    }
+  ],
+  "vueStateCandidates": [],
+  "domCandidates": [],
+  "metrics": {
+    "browserStartupMs": 0,
+    "navigationMs": 70,
+    "lookupActionMs": 35,
+    "networkWaitMs": 37,
+    "extractMs": 2
+  }
+}

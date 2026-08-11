@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "generic",
+  "driverVersion": "2026.1",
+  "networkResponses": [],
+  "vueStateCandidates": [],
+  "domCandidates": [
+    {
+      "notifyNo": "IB2600000005",
+      "notifyId": "notice-05",
+      "planNo": "PL2600000004",
+      "bidName": "Gói chia lô",
+      "investorName": "Chủ đầu tư nội bộ",
+      "bidPrice": 300,
+      "bidPriceUnit": "VND",
+      "lots": [
+        {"lotNo": "01", "lotName": "Lô 1", "lotPrice": 100},
+        {"lotNo": "02", "lotName": "Lô 2", "lotPrice": 200}
+      ]
+    }
+  ],
+  "metrics": {}
+}

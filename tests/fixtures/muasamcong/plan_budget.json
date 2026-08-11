@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "vue2",
+  "driverVersion": "2026.1",
+  "networkResponses": [],
+  "vueStateCandidates": [
+    {
+      "planNo": "PL2600000003",
+      "planName": "Kế hoạch dự toán mua sắm",
+      "projectName": "Dự toán hoạt động thường xuyên",
+      "investorName": "Chủ đầu tư nội bộ",
+      "totalInvestment": 500000000,
+      "capitalDetail": "Nguồn thu hợp pháp",
+      "decisionNo": "03/QĐ-CT",
+      "decisionDate": "2026-07-01",
+      "publicDate": "2026-07-02T08:00:00+07:00",
+      "renamedPackages": []
+    }
+  ],
+  "domCandidates": [],
+  "metrics": {}
+}

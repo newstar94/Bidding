@@ -18,6 +18,11 @@ import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import {
+  hasServerCapability,
+  PROCUREMENT_IMPORT_CAPABILITY,
+  PROCUREMENT_LOOKUP_CAPABILITY,
+} from "../auth/serverCapabilities.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
@@ -156,10 +161,26 @@ export async function editKeHoach(id) {
     await this.ensureLazyModal?.("modal-kehoach");
   }
   const form = document.getElementById("form-kehoach");
+  const procurementLookupButton = document.getElementById("btn-open-procurement-lookup-plan");
+  if (procurementLookupButton) {
+    const lookupEnabled = hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY);
+    procurementLookupButton.hidden = !lookupEnabled;
+    procurementLookupButton.onclick = lookupEnabled
+      ? () => this.openProcurementLookupWizard?.({
+        kind: "PLAN",
+        formId: "form-kehoach",
+        codeInputId: "kh-ma",
+        opener: procurementLookupButton,
+      })
+      : null;
+  }
   const procurementImportButton = document.getElementById("btn-open-procurement-import");
   if (procurementImportButton) {
-    procurementImportButton.hidden = Boolean(id);
-    procurementImportButton.onclick = () => this.openProcurementImportWizard?.();
+    const importEnabled = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
+    procurementImportButton.hidden = Boolean(id) || !importEnabled;
+    procurementImportButton.onclick = !id && importEnabled
+      ? () => this.openProcurementImportWizard?.()
+      : null;
   }
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");

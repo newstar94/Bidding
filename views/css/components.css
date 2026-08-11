@@ -3127,6 +3127,35 @@ body.excel-import-is-busy {
     font-weight: 750;
 }
 
+.procurement-lookup__controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.procurement-lookup__kind {
+    margin: 0.75rem 0;
+    color: var(--text-muted);
+}
+
+.procurement-lookup__packages {
+    margin-top: 0.85rem;
+}
+
+.procurement-lookup__packages ul {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.procurement-lookup [data-warning="true"] {
+    color: var(--warning);
+}
+
+.procurement-lookup input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+}
+
 @media (max-width: 800px) {
     .procurement-import__controls,
     .procurement-import__preview-grid {

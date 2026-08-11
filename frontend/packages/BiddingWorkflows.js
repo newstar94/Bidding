@@ -10,6 +10,7 @@ export {
 export * from "../plans/KeHoachWorkflow.js";
 export * from "../procurement/PlanImportWizard.js";
 export * from "../procurement/NoticeImportWizard.js";
+export * from "../procurement/ProcurementLookupWizard.js";
 export * from "./GoiThauWorkflow.js";
 export * from "./BidProcessWorkflow.js";
 export * from "../shared/FormSubTables.js";

@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "vue2",
+  "driverVersion": "2026.1",
+  "networkResponses": [
+    {
+      "url": "https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/plan-detail",
+      "method": "POST",
+      "status": 200,
+      "contentType": "application/json",
+      "durationMs": 42,
+      "body": {
+        "renamedPlanState": {
+          "id": "plan-revision-01",
+          "planNo": "PL2600000001",
+          "planVersion": "01",
+          "name": "Kế hoạch mua sắm thiết bị năm 2026",
+          "projectName": "Dự toán mua sắm năm 2026",
+          "investorName": "Chủ đầu tư nội bộ",
+          "investTotal": 3000000000,
+          "investTotalUnit": "VND",
+          "capitalDetail": "Ngân sách nhà nước",
+          "decisionNo": "12/QĐ-CT",
+          "decisionDate": "2026-08-01",
+          "publicDate": "2026-08-02T08:30:00+07:00"
+        },
+        "renamedPackageCollection": [
+          {
+            "idDetail": "plan-detail-a-01",
+            "bidNo": "A",
+            "planNo": "PL2600000001",
+            "bidName": "Gói A",
+            "bidPrice": 1000000000,
+            "bidPriceUnit": "VND",
+            "investorName": "Chủ đầu tư nội bộ",
+            "capitalDetail": "Ngân sách nhà nước",
+            "bidField": "HH",
+            "bidForm": "DTRR",
+            "bidMode": "1_MTHS",
+            "processApply": "LDT",
+            "ctype": "TRON_GOI",
+            "cperiod": 90,
+            "cperiodUnit": "D",
+            "linkNotifyInfo": null
+          },
+          {
+            "idDetail": "plan-detail-b-01",
+            "bidNo": "B",
+            "planNo": "PL2600000001",
+            "bidName": "Gói B",
+            "bidPrice": 2000000000,
+            "bidPriceUnit": "VND",
+            "investorName": "Chủ đầu tư nội bộ",
+            "capitalDetail": "Ngân sách nhà nước",
+            "bidField": "XL",
+            "bidForm": "DTRR",
+            "bidMode": "1_MTHS",
+            "processApply": "LDT",
+            "ctype": "TRON_GOI",
+            "cperiod": 6,
+            "cperiodUnit": "M",
+            "linkNotifyInfo": "{\"notifyNo\":\"IB2600000002\"}"
+          }
+        ]
+      }
+    }
+  ],
+  "vueStateCandidates": [],
+  "domCandidates": [],
+  "metrics": {
+    "browserStartupMs": 0,
+    "navigationMs": 80,
+    "lookupActionMs": 40,
+    "networkWaitMs": 42,
+    "extractMs": 3
+  }
+}

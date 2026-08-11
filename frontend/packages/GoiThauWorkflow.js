@@ -15,6 +15,11 @@ import {
 import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { loadWorkspaceEmployees } from "../shared/workspaceEmployeeLoader.js";
 import {
+  hasServerCapability,
+  PROCUREMENT_IMPORT_CAPABILITY,
+  PROCUREMENT_LOOKUP_CAPABILITY,
+} from "../auth/serverCapabilities.js";
+import {
   derivePackageAssigneeControlState,
   ensureCurrentUserAssignee,
   resolvePackageAssigneeIds,
@@ -79,12 +84,28 @@ export async function editGoiThau(id, isReadOnly = false) {
   }
   const form = document.getElementById("form-goithau");
   const gt = id ? this.model.state.goithau.find((g) => String(g.id) === String(id)) : null;
+  const procurementLookupButton = document.getElementById(
+    "btn-open-procurement-lookup-package",
+  );
+  if (procurementLookupButton) {
+    const lookupEnabled = hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY);
+    procurementLookupButton.hidden = isReadOnly || !lookupEnabled;
+    procurementLookupButton.onclick = isReadOnly || !lookupEnabled
+      ? null
+      : () => this.openProcurementLookupWizard?.({
+        kind: "PACKAGE",
+        formId: "form-goithau",
+        codeInputId: "gt-ma",
+        opener: procurementLookupButton,
+      });
+  }
   const procurementNoticeButton = document.getElementById(
     "btn-open-procurement-notice-import",
   );
   if (procurementNoticeButton) {
-    procurementNoticeButton.hidden = !gt || isReadOnly;
-    procurementNoticeButton.onclick = gt
+    const importEnabled = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
+    procurementNoticeButton.hidden = !gt || isReadOnly || !importEnabled;
+    procurementNoticeButton.onclick = gt && !isReadOnly && importEnabled
       ? () => this.openProcurementNoticeImportWizard?.(gt.id)
       : null;
   }

@@ -1,6 +1,7 @@
 from backend.documents.document_job_routes import document_job_routes
 from backend.documents.package_document_routes import package_document_routes
 from backend.lifecycle_policy_routes import lifecycle_policy_routes
+from backend.procurement_lookup.routes import procurement_lookup_routes
 from backend.sync.api import sync_http_routes
 
 
@@ -17,6 +18,7 @@ def test_feature_route_registries_keep_critical_endpoints_registered():
         *package_document_routes(Route),
         *document_job_routes(Route),
         *lifecycle_policy_routes(Route),
+        *procurement_lookup_routes(Route),
     ]
     registrations = {(route.path, route.methods) for route in routes}
 
@@ -27,3 +29,4 @@ def test_feature_route_registries_keep_critical_endpoints_registered():
     assert ("/api/packages/{package_id}/documents", ("GET",)) in registrations
     assert ("/api/document-jobs/{job_id}/download", ("GET",)) in registrations
     assert ("/api/contracts/package-lifecycle", ("GET",)) in registrations
+    assert ("/api/procurement/lookup", ("POST",)) in registrations

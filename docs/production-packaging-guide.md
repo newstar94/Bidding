@@ -72,6 +72,22 @@ npm ci
 `npm ci` dùng đúng lockfile và không thay đổi phiên bản dependency. Không commit `.env`,
 `node_modules` hoặc artifact được sinh ra.
 
+### Browser worker Mua Sắm Công (khi bật)
+
+Production ZIP chứa các file `.mjs`, `package.json` và `package-lock.json`, nhưng vẫn không nhúng
+`node_modules` hay browser binary. Trên image/runtime được phép dùng browser lookup, cài dependency
+production và Chromium theo đúng lockfile/version:
+
+```powershell
+npm ci --omit=dev
+npx playwright install chromium
+```
+
+Browser binary nên được bake vào image bất biến và chạy bằng service account không đặc quyền. Chỉ đặt
+`PROCUREMENT_LOOKUP_ENABLED=true` sau khi xác minh binary, allowlist hostname, live probe và benchmark.
+Nếu không bật lookup, không cần cài Chromium. Không thêm `--no-sandbox`, `--disable-web-security`,
+cookie/token tĩnh hoặc cơ chế giải/né challenge vào image.
+
 ## 5. Cấu hình database smoke cô lập
 
 `npm run check` và `scripts/package_production.py --check` cần một PostgreSQL database có

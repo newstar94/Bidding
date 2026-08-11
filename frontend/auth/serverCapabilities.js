@@ -2,6 +2,9 @@ let cachedSession = null;
 let capabilityRequest = null;
 let sessionGeneration = 0;
 
+export const PROCUREMENT_IMPORT_CAPABILITY = "procurement-import-v2";
+export const PROCUREMENT_LOOKUP_CAPABILITY = "procurement-lookup-v1";
+
 function normalizedCapabilities(session) {
   return Array.isArray(session?.serverCapabilities)
     ? [...new Set(session.serverCapabilities.map(String).filter(Boolean))]
@@ -17,6 +20,12 @@ export function invalidateServerCapabilities() {
   cachedSession = null;
   capabilityRequest = null;
   sessionGeneration += 1;
+}
+
+export function hasServerCapability(capability) {
+  return Boolean(
+    cachedSession?.capabilities.includes(String(capability || "")),
+  );
 }
 
 export function updateServerCapabilitiesFromSession(session) {

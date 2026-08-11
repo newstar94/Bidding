@@ -1,0 +1,9 @@
+[
+  {"code": "PL2600000001", "category": "plan-normal", "fixture": "plan_project.json"},
+  {"code": "PL2600000003", "category": "plan-budget", "fixture": "plan_budget.json"},
+  {"code": "PL2600000004", "category": "plan-many-packages", "fixture": "plan_many_packages.json"},
+  {"code": "IB2600000002", "category": "package-open", "fixture": "package_normal.json"},
+  {"code": "IB2600000005", "category": "package-lots", "fixture": "package_lots.json"},
+  {"code": "IB2600000006", "category": "schema-changed", "fixture": "schema_changed.json"},
+  {"code": "IB2600000007", "category": "not-found", "fixture": "not_found.json"}
+]

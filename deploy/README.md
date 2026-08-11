@@ -47,6 +47,20 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
    đủ cấu hình; dùng `true` chỉ khi muốn fail closed.
 7. Verify Cloudflare Tunnel là đường public duy nhất đến origin; firewall không
    mở các cổng loopback `8000`/`8080` ra Internet.
+8. Nếu bật Mua Sắm Công browser lookup, chạy `npm ci --omit=dev`, cài đúng Chromium
+   bằng `npx playwright install chromium`, xác minh service account không đặc quyền,
+   hostname allowlist và các flag trong `.env.example`. Challenge phải trả
+   `PROCUREMENT_INTERACTION_REQUIRED`; không triển khai solver/token replay/bypass.
+   Kiểm tra TLS bằng chính service account/process chạy Uvicorn; Edge extension tải
+   được trang không phải bằng chứng worker có cùng egress. Network policy phải cho
+   phép TLS theo SNI `muasamcong.mpi.gov.vn`. Giữ
+   `PROCUREMENT_BROWSER_WORKER_TIMEOUT_SECONDS` thấp hơn
+   `PROCUREMENT_LOOKUP_TIMEOUT_SECONDS` ít nhất 5 giây (startup sẽ fail nếu sai), rồi
+   chạy một mã thật bằng `python scripts/research_muasamcong.py --live PL...` trước
+   benchmark 50–100 mã.
+   TLS terminator phía Mua Sắm Công phải disable DHE parameter yếu (tối thiểu 2048-bit
+   nếu còn dùng DHE) và ưu tiên ECDHE-AES-GCM. Không hạ OpenSSL/Chromium security
+   level ở BiddingFlow để chấp nhận `DH_KEY_TOO_SMALL`.
 
 ## Local Turnstile verification
 

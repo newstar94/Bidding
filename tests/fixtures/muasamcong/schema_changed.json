@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "generic",
+  "driverVersion": "2026.1",
+  "networkResponses": [
+    {
+      "url": "https://muasamcong.mpi.gov.vn/unknown",
+      "method": "POST",
+      "status": 200,
+      "contentType": "application/json",
+      "durationMs": 10,
+      "body": {"unknownShape": {"notifyNo": "IB2600000006"}}
+    }
+  ],
+  "vueStateCandidates": [],
+  "domCandidates": [],
+  "metrics": {}
+}

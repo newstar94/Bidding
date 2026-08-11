@@ -52,6 +52,7 @@
     "benchmark:tables": "node scripts/profile_table_virtualization.mjs",
     "benchmark:obfuscation": "node scripts/benchmark_obfuscation.mjs",
     "test:ui-quality-e2e": "node --env-file-if-exists=.env scripts/verify_ui_quality_e2e.mjs",
+    "test:procurement-lookup-ui": "node scripts/verify_procurement_lookup_ui.mjs",
     "test:route-css-visual": "node scripts/verify_route_css_visual.mjs",
     "test:authenticated-ui-matrix": "node --env-file-if-exists=.env scripts/verify_authenticated_ui_matrix.mjs",
     "test:turnstile-local": "node scripts/verify_turnstile_local_e2e.mjs",
@@ -70,7 +71,8 @@
     "vite": "8.1.4"
   },
   "dependencies": {
-    "dompurify": "3.4.13"
+    "dompurify": "3.4.13",
+    "playwright": "1.62.0"
   },
   "overrides": {
     "brace-expansion": "5.0.9",

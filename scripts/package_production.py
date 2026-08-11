@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from scripts.env_utils import load_env
 
 RUNTIME_DIRECTORIES = {
-    "backend": lambda path: path.suffix == ".py"
+    "backend": lambda path: path.suffix in {".py", ".mjs"}
     or path.name == "postgres_schema_contract.json",
     "shared": lambda path: path.suffix == ".json",
     "dist": lambda path: path.is_file(),
@@ -39,6 +39,8 @@ RUNTIME_FILES = (
     "README.md",
     "holidays.json",
     "pyproject.toml",
+    "package.json",
+    "package-lock.json",
     "requirements.txt",
     "scripts/backup.py",
     "scripts/configure_database_roles.py",

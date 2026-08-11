@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, apiFetch, requestJson } from "../../frontend/shared/apiClient.js";
+import {
+  ApiError,
+  apiFetch,
+  configureApiClient,
+  requestJson,
+} from "../../frontend/shared/apiClient.js";
 
 
 class CountingSignal {
@@ -19,6 +24,31 @@ class CountingSignal {
     if (type === "abort") this.listeners.delete(listener);
   }
 }
+
+
+test("storage access failure omits the active organization header safely", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("storage blocked", "SecurityError");
+    },
+  });
+  configureApiClient({ activeOrganization: null });
+  try {
+    const response = await apiFetch("/api/probe", {
+      csrf: false,
+      timeoutMs: 0,
+    }, async (_url, options) => {
+      assert.equal(options.headers.has("X-Active-Org"), false);
+      return new Response("ok", { status: 200 });
+    });
+    assert.equal(response.status, 200);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "sessionStorage", original);
+    else delete globalThis.sessionStorage;
+  }
+});
 
 
 test("retry wait removes its abort listener after the timer resolves", async () => {

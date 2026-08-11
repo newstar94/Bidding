@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "muasamcong-browser-fixture-v1",
+  "browserMode": "standard",
+  "driver": "generic",
+  "driverVersion": "2026.1",
+  "networkResponses": [
+    {
+      "url": "https://muasamcong.mpi.gov.vn/plan/detail",
+      "method": "POST",
+      "status": 200,
+      "contentType": "application/json",
+      "durationMs": 20,
+      "body": {
+        "plan": {
+          "planNo": "PL2600000004",
+          "name": "Kế hoạch nhiều gói",
+          "investorName": "Chủ đầu tư nội bộ",
+          "decisionNo": "04/QĐ-CT"
+        },
+        "packageRows": [
+          {"idDetail": "d-1", "planNo": "PL2600000004", "bidName": "Gói 1", "bidPrice": 1},
+          {"idDetail": "d-2", "planNo": "PL2600000004", "bidName": "Gói 2", "bidPrice": 2},
+          {"idDetail": "d-3", "planNo": "PL2600000004", "bidName": "Gói 3", "bidPrice": 3}
+        ]
+      }
+    }
+  ],
+  "vueStateCandidates": [],
+  "domCandidates": [],
+  "metrics": {}
+}
