@@ -29,6 +29,7 @@ export class MscIntegrationRuntime {
       navigationTimeoutMs: Number(configuration.navigationTimeoutMs) || 20_000,
       sessionTimeoutMs: Number(configuration.sessionTimeoutMs) || 60_000,
       headless: configuration.headless !== false,
+      recaptchaSiteKey: String(configuration.recaptchaSiteKey || ""),
       fetchImpl: this.fetchImpl,
     });
     this.client = new MscApiClient({

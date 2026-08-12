@@ -2,7 +2,6 @@ import fs from "node:fs";
 
 
 export const MSC_PORTAL_URL = "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection";
-export const RECAPTCHA_SITE_KEY = "6LfXhdcpAAAAAIb2GV9eRkJcf8clrHAOVOIseJdT";
 export const MSC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const LAUNCH_ARGS = Object.freeze([
@@ -54,6 +53,7 @@ export class MscSessionProvider {
     sessionTimeoutMs = 60_000,
     refreshAheadMs = 5 * 60 * 1000,
     headless = true,
+    recaptchaSiteKey = "",
     clock = () => Date.now(),
     fetchImpl = globalThis.fetch,
     sleep = delay,
@@ -83,6 +83,7 @@ export class MscSessionProvider {
       ),
     );
     this.headless = headless === false ? false : "new";
+    this.recaptchaSiteKey = String(recaptchaSiteKey || "").trim();
     this.clock = clock;
     this.fetchImpl = fetchImpl;
     this.sleep = sleep;
@@ -246,12 +247,13 @@ export class MscSessionProvider {
 
       if (!foundToken) {
         try {
+          if (!this.recaptchaSiteKey) throw new Error("Missing reCAPTCHA site key");
           const hasRecaptcha = await page.evaluate(
             () => typeof window.grecaptcha !== "undefined",
           );
           if (!hasRecaptcha) {
             await timeout(page.addScriptTag({
-              url: `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`,
+              url: `https://www.google.com/recaptcha/api.js?render=${this.recaptchaSiteKey}`,
             }), 15_000, "PROCUREMENT_SESSION_FAILED");
           }
           await page.waitForFunction(
@@ -265,7 +267,7 @@ export class MscSessionProvider {
                   .then(resolve)
                   .catch(reject);
               });
-            }), RECAPTCHA_SITE_KEY),
+            }), this.recaptchaSiteKey),
             20_000,
             "PROCUREMENT_SESSION_FAILED",
           );

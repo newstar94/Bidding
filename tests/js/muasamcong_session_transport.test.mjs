@@ -249,6 +249,7 @@ test("session provider keeps the source fallback when portal UI cannot emit a to
     puppeteer: harness.puppeteer,
     fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
     sleep: async () => undefined,
+    recaptchaSiteKey: "test-recaptcha-site-key",
   });
 
   const session = await provider.acquire();

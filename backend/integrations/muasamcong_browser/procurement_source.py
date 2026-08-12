@@ -145,6 +145,9 @@ class MuaSamCongProcurementSource:
             "browserExecutablePath": os.environ.get(
                 "MUASAMCONG_BROWSER_EXECUTABLE_PATH", ""
             ).strip(),
+            "recaptchaSiteKey": os.environ.get(
+                "MUASAMCONG_RECAPTCHA_SITE_KEY", ""
+            ).strip(),
             "endpointProfile": os.environ.get(
                 "MUASAMCONG_ENDPOINT_PROFILE", "2026.08"
             ).strip(),
