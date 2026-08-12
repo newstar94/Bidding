@@ -271,6 +271,21 @@ test("plan preview carries the source total investment into the draft field", ()
 });
 
 
+test("plan preview applies the normalized Bidding plan type", () => {
+  const planType = control("", ["Dự án", "Dự toán mua sắm"]);
+  const rows = buildComparisonRows("PLAN", {
+    planType: "Dự án",
+    sourcePlanType: "DTPT",
+  }, { getControl: (id) => (id === "kh-loaihinh" ? planType : null) });
+  const mapped = rows.find((row) => row.field === "planType");
+
+  assert.equal(mapped.sourceValue, "Dự án");
+  assert.equal(mapped.draftValue, "Dự án");
+  assert.equal(mapped.warning, null);
+  assert.equal(mapped.apply, true);
+});
+
+
 test("apply mutates only selected controls and never submits the form", () => {
   const name = control("Tên nội bộ");
   const price = control("");

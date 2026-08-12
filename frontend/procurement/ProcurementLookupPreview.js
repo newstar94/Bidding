@@ -1,6 +1,7 @@
 const PLAN_FIELDS = [
   ["planNo", "Mã kế hoạch", "kh-ma", "text"],
   ["planName", "Tên kế hoạch", "kh-ten", "text"],
+  ["planType", "Loại kế hoạch", "kh-loaihinh", "text"],
   ["projectName", "Tên dự án/dự toán", "kh-duan", "text"],
   ["investorName", "Chủ đầu tư", "kh-chudautuid", "optionText"],
   ["totalInvestment", "Tổng dự toán/Tổng mức đầu tư", "kh-tongmuc", "money"],

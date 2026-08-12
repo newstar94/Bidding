@@ -13,6 +13,7 @@ from backend.integrations.muasamcong_browser.artifacts import (
 from backend.integrations.muasamcong_browser.code_mapping import (
     map_contract_type,
     map_package_field,
+    map_plan_type,
     map_selection_form,
     map_selection_mode,
 )
@@ -159,6 +160,8 @@ class PlanParserV1:
         return {
             "planNo": code,
             "planName": plan.get("planName") or plan.get("name"),
+            "sourcePlanType": plan.get("planType"),
+            "planType": map_plan_type(plan.get("planType")),
             "projectName": plan.get("projectName") or plan.get("pname"),
             "investorName": plan.get("investorName"),
             "totalInvestment": _first_money(

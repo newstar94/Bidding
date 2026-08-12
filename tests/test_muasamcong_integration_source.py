@@ -80,6 +80,33 @@ def test_plan_canonical_revision_keeps_total_investment_provenance():
     assert revision["totalAmountVnd"] == 300_000_000
 
 
+@pytest.mark.parametrize(
+    ("source_plan_type", "bidding_plan_type"),
+    (
+        ("DTPT", "Dự án"),
+        ("DTMS", "Dự án"),
+        ("TX", "Dự toán mua sắm"),
+        ("KHAC", "Dự toán mua sắm"),
+    ),
+)
+def test_plan_canonical_revision_maps_source_classification_to_bidding_type(
+    source_plan_type,
+    bidding_plan_type,
+):
+    raw = fixture("plan", "plan_revision_v1.json")
+    raw["bidPoBidpPlanProjectDetailView"]["planType"] = source_plan_type
+
+    revision = normalize_plan_revision(
+        raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+
+    assert revision["sourcePlanType"] == source_plan_type
+    assert revision["planType"] == bidding_plan_type
+
+
 def test_notice_fixture_maps_revision_and_package_relationship():
     raw = fixture("notice", "ldt", "notice_revision_v1.json")
     assert classify_upstream_error() is UpstreamClassification.FOUND_SUPPORTED
@@ -873,6 +900,7 @@ def test_plan_summary_lookup_exposes_total_investment_alias():
                     "planNo": code,
                     "name": "Kế hoạch mẫu",
                     "investTotal": 3_000_000_000,
+                    "planType": "DTPT",
                 },
                 "metadata": {},
             }
@@ -885,6 +913,8 @@ def test_plan_summary_lookup_exposes_total_investment_alias():
     )
 
     assert result["data"]["totalInvestment"] == 3_000_000_000
+    assert result["data"]["sourcePlanType"] == "DTPT"
+    assert result["data"]["planType"] == "Dự án"
 
 
 def test_import_source_observer_emits_complete_secret_free_dimensions():

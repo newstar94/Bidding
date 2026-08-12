@@ -3,6 +3,7 @@ export function planPreviewFields(preview) {
   return [
     ["Mã kế hoạch", preview?.plan?.familyNo],
     ["Tên kế hoạch", source.name],
+    ["Loại kế hoạch", source.planType],
     ["Dự án / dự toán", source.projectName],
     ["Chủ đầu tư nguồn", source.investorName || source.investorCode],
     ["Quyết định phê duyệt", source.approvalDecisionNo],

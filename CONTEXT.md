@@ -51,3 +51,7 @@ _Avoid_: Tài khoản đã xóa, purge người dùng
 **Tổ chức ngừng hoạt động**:
 Tổ chức được bảo toàn cùng toàn bộ lịch sử nhưng bị khóa truy cập, không nhận ghi mới và không xuất hiện trong danh sách workspace đang hoạt động.
 _Avoid_: Tổ chức đã xóa, decommission vật lý
+
+**Loại kế hoạch Bidding**:
+Phân loại kế hoạch nội bộ chỉ gồm “Dự án” và “Dự toán mua sắm”. Phân loại Mua Sắm Công `DTPT` hoặc `DTMS` thuộc “Dự án”; `TX` hoặc `KHAC` thuộc “Dự toán mua sắm”.
+_Avoid_: Lưu trực tiếp mã phân loại nguồn vào loại kế hoạch nội bộ

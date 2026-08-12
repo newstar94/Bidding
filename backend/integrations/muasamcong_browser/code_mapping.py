@@ -70,6 +70,11 @@ CONTRACT_TYPES = _table(
     (("HON_HOP", "Hợp đồng hỗn hợp"), "Hỗn hợp"),
 )
 
+PLAN_TYPES = _table(
+    (("DTPT", "DTMS"), "Dự án"),
+    (("TX", "KHAC"), "Dự toán mua sắm"),
+)
+
 
 def _map_open(value: object, table: dict[str, str]):
     if value is None:
@@ -94,6 +99,17 @@ def map_selection_mode(value: object):
 
 def map_contract_type(value: object):
     return _map_open(value, CONTRACT_TYPES)
+
+
+def map_plan_type(value: object):
+    """Map a Mua Sắm Công classification to Bidding's two plan types."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return PLAN_TYPES.get(_key(text))
 
 
 def _map_flag(value: object, *, true_label: str, false_label: str):

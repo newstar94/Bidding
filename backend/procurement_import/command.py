@@ -483,7 +483,8 @@ class ProcurementPlanReconciler:
             plan_fields = {
                 key: deepcopy(revision.get(key))
                 for key in (
-                    "name", "planType", "projectCode", "projectName",
+                    "name", "sourcePlanType", "planType", "projectCode",
+                    "projectName",
                     "capitalDetail", "totalAmountVnd", "investorCode",
                     "investorName", "investorId", "approvalDecisionNo",
                     "approvalDecisionDate", "publishedAt", "publicUrl",

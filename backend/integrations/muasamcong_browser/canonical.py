@@ -13,6 +13,7 @@ from backend.integrations.muasamcong_browser.code_mapping import (
     map_online_mode,
     map_optional_boolean,
     map_package_field,
+    map_plan_type,
     map_selection_form,
     map_selection_mode,
 )
@@ -265,12 +266,14 @@ def normalize_plan_revision(
         )
     if not packages and int(pick(plan, "bidPack", default=0) or 0) > 0:
         raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+    source_plan_type = pick(plan, "planType")
     return {
         "familyNo": family_no,
         "revisionId": str(revision_id),
         "revisionNumber": str(revision_number).zfill(2),
         "name": pick(plan, "planName", "name"),
-        "planType": pick(plan, "planType"),
+        "sourcePlanType": source_plan_type,
+        "planType": map_plan_type(source_plan_type),
         "projectName": pick(plan, "projectName", "pname", "name"),
         "investorCode": pick(plan, "investorCode", "newInvestorCode"),
         "investorName": pick(plan, "investorName", "newInvestorName"),
@@ -938,7 +941,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         }
     return {
         "schemaVersion": "biddingflow-procurement-canonical-v2",
-        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v4",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v5",
         "kind": "NOTICE",
         "canonicalCode": notice_no,
         "revisions": revisions,

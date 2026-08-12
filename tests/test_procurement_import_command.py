@@ -276,6 +276,41 @@ def test_plan_reconciler_persists_total_amount_from_lookup_alias():
     assert result["createdPlans"][0]["totalAmountVnd"] == 3_000_000_000
 
 
+@pytest.mark.parametrize(
+    ("source_plan_type", "bidding_plan_type"),
+    (
+        ("DTPT", "Dự án"),
+        ("DTMS", "Dự án"),
+        ("TX", "Dự toán mua sắm"),
+        ("KHAC", "Dự toán mua sắm"),
+    ),
+)
+def test_plan_reconciler_persists_normalized_muasamcong_plan_type(
+    source_plan_type,
+    bidding_plan_type,
+):
+    repository = MemoryRepository()
+    result = ProcurementPlanReconciler(repository).reconcile_revision(
+        organization_id="org-1",
+        actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision={
+            **_revision("00", f"rev-{source_plan_type}", [_package("A")]),
+            "plan": {},
+            "name": "Kế hoạch phân loại",
+            "projectName": "Dự án hoặc dự toán",
+            "sourcePlanType": source_plan_type,
+            "planType": bidding_plan_type,
+        },
+        idempotency_key=f"operation:{source_plan_type}",
+        expected_plan_row_version=None,
+    )
+
+    stored = result["createdPlans"][0]
+    assert stored["sourcePlanType"] == source_plan_type
+    assert stored["planType"] == bidding_plan_type
+
+
 def test_changed_later_linked_removed_and_initial_linked_semantics():
     repository = MemoryRepository()
     command = ProcurementPlanReconciler(repository)
