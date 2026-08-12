@@ -202,6 +202,21 @@ test("package preview maps bid guarantee into the package form", () => {
 });
 
 
+test("package preview maps the Mua Sam Cong online mode", () => {
+  const onlineMode = control("", ["Qua mạng", "Không qua mạng"]);
+  const rows = buildComparisonRows("PACKAGE", {
+    onlineMode: "Không qua mạng",
+  }, {
+    getControl: (id) => (id === "gt-quatmang" ? onlineMode : null),
+  });
+  const mapped = rows.find((row) => row.field === "onlineMode");
+
+  assert.equal(mapped.controlId, "gt-quatmang");
+  assert.equal(mapped.draftValue, "Không qua mạng");
+  assert.equal(mapped.apply, true);
+});
+
+
 test("package preview maps linked plan scheduling fields", () => {
   const controls = new Map([
     ["gt-tuychonmuathem", control("Không", ["Không", "Có"])],

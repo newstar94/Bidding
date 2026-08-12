@@ -4,32 +4,26 @@ function normalizeId(value) {
   return String(value || "").trim();
 }
 
-export function resolvePackageAssigneeIds(selectedAssigneeIds, creatorId) {
-  const selected = normalizeAssigneeIds(selectedAssigneeIds);
-  return selected.length ? selected : normalizeAssigneeIds(creatorId);
+export function resolvePackageAssigneeIds(selectedAssigneeIds) {
+  return normalizeAssigneeIds(selectedAssigneeIds);
 }
 
 export function resolveInitialPackageAssigneeIds({
   packageId,
   assignedEmpIds,
-  creatorId,
 } = {}) {
-  return normalizeId(packageId)
-    ? normalizeAssigneeIds(assignedEmpIds)
-    : normalizeAssigneeIds(creatorId);
+  return normalizeId(packageId) ? normalizeAssigneeIds(assignedEmpIds) : [];
 }
 
 export function derivePackageAssigneeControlState({
   activeRole,
   packageId,
   assignedEmpIds,
-  creatorId,
 } = {}) {
   return {
     values: resolveInitialPackageAssigneeIds({
       packageId,
       assignedEmpIds,
-      creatorId,
     }),
     disabled: String(activeRole || "").trim().toLowerCase() === "employee",
   };

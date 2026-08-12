@@ -147,7 +147,6 @@ export async function editGoiThau(id, isReadOnly = false) {
         activeRole: this.model.state.activerole,
         packageId: id,
         assignedEmpIds,
-        creatorId: currentUserId,
       });
       initializeMultiAssigneeSelect(empSelect, {
         selectedIds: controlState.values,
@@ -638,22 +637,7 @@ export async function handleGoiThauSubmit(e) {
   await waitForPackageInheritance(this);
   const form = document.getElementById("form-goithau");
   const assignedEmpSelect = document.getElementById("gt-nhanvienphutrach");
-  const isNewPackage = !String(document.getElementById("form-goithau-id")?.value || "").trim();
-  const currentUserId = String(this.model.state.activeuser?.id || globalThis.sessionStorage?.getItem("bf_user_id") || "").trim();
-  const creatorFallbackId = isNewPackage ? currentUserId : "";
-  const assignedEmpIds = resolvePackageAssigneeIds(
-    selectedAssigneeIds(assignedEmpSelect),
-    creatorFallbackId,
-  );
-  if (!assignedEmpIds.length) {
-    await this.view.customAlert(
-      "Chưa chọn người tiếp quản",
-      "Gói thầu bắt buộc phải có chuyên viên phụ trách. Muốn thay đổi phân công, hãy chọn một nhân sự khác tiếp quản.",
-      "alert-triangle",
-      assignedEmpSelect
-    );
-    return;
-  }
+  const assignedEmpIds = resolvePackageAssigneeIds(selectedAssigneeIds(assignedEmpSelect));
   if (!this.view.validateForm(form)) return;
   const formVals = this.view.getGoiThauFormInputValues(this.model);
   if (formVals.giaGoiThau < 0) {

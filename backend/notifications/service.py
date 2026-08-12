@@ -194,49 +194,9 @@ def find_unreplaced_assignment_removals(
     before: dict,
     after: dict,
 ) -> list[dict]:
-    """Return active work targets whose assignee was removed without replacement."""
+    """Assignments are optional; removing the final membership is valid."""
 
-    candidates = []
-    remaining_targets = {
-        (item["target_type"], item["target_id"])
-        for item in after.values()
-    }
-    seen_targets = set()
-    candidates_by_type = {"goithau": [], "hopdong": []}
-    for key, old in before.items():
-        target = (old["target_type"], old["target_id"])
-        if key in after or target in remaining_targets or target in seen_targets:
-            continue
-        seen_targets.add(target)
-        candidates.append(old)
-        candidates_by_type[old["target_type"]].append(old)
-
-    active_ids_by_type = {"goithau": set(), "hopdong": set()}
-    for target_type, table_name in (
-        ("goithau", "goi_thau"),
-        ("hopdong", "hop_dong"),
-    ):
-        typed_candidates = candidates_by_type[target_type]
-        target_ids = list(
-            dict.fromkeys(item["target_id"] for item in typed_candidates)
-        )
-        for offset in range(0, len(target_ids), _QUERY_CHUNK_SIZE):
-            chunk = target_ids[offset:offset + _QUERY_CHUNK_SIZE]
-            placeholders = ", ".join("?" for _ in chunk)
-            rows = cursor.execute(
-                f"""SELECT id FROM {table_name}
-                    WHERE organization_id = ?
-                      AND id IN ({placeholders})
-                      AND archived_at IS NULL""",
-                (organization_id, *chunk),
-            ).fetchall()
-            active_ids_by_type[target_type].update(str(row[0]) for row in rows)
-
-    return [
-        old
-        for old in candidates
-        if str(old["target_id"]) in active_ids_by_type[old["target_type"]]
-    ]
+    return []
 
 
 def _target_copy(item: dict) -> tuple[str, str, str]:

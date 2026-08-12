@@ -111,6 +111,10 @@ export const ENDPOINTS = Object.freeze({
     protected: true,
   },
   NOTICE_TENDER_INFO: { path: "/lcnt_tbmt_ttc_ldt", protected: true },
+  NOTICE_TENDER_INFO_OTHER: {
+    path: "/lcnt_tbmt_ttc_vk_adb",
+    protected: true,
+  },
   NOTICE_HSMT: { path: "/lcnt_tbmt_hsmt", protected: true },
   NOTICE_PETITION: { path: "/lcnt_tbmt_kn", protected: true },
   NOTICE_CLARIFICATION: { path: "/lcnt_tbmt_yclr", protected: true },

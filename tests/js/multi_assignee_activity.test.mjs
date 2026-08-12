@@ -74,9 +74,15 @@ test("compact assignee summary renders the first name and remaining count", () =
 });
 
 
-test("explicit assignee set does not inject creator", () => {
+test("package assignees stay empty until explicitly selected", () => {
   assert.deepEqual(resolvePackageAssigneeIds(["a", "b"], "creator"), ["a", "b"]);
-  assert.deepEqual(resolvePackageAssigneeIds([], "creator"), ["creator"]);
+  assert.deepEqual(resolvePackageAssigneeIds([], "creator"), []);
+  assert.deepEqual(derivePackageAssigneeControlState({
+    activeRole: "manager",
+    packageId: "",
+    assignedEmpIds: [],
+    creatorId: "creator",
+  }), { values: [], disabled: false });
 });
 
 

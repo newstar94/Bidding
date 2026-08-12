@@ -105,7 +105,7 @@ def test_removing_one_of_two_assignees_does_not_require_replacement():
     ) == []
 
 
-def test_organization_removal_only_requires_successor_for_last_assignee():
+def test_organization_removal_does_not_require_successor_for_optional_assignment():
     rows = [
         {"id": "a-1", "id_muc_tieu": "package-shared", "loai_doi_tuong": "goithau"},
         {"id": "a-2", "id_muc_tieu": "contract-single", "loai_doi_tuong": "hopdong"},
@@ -119,9 +119,8 @@ def test_organization_removal_only_requires_successor_for_last_assignee():
         rows,
     )
 
-    assert [row["id"] for row in requiring] == ["a-2"]
-    assert len(cursor.calls) == 1
-    assert "assignment.id_nhan_vien != ?" in cursor.calls[0][0]
+    assert requiring == []
+    assert cursor.calls == []
 
 
 def test_assignment_delta_activity_only_contains_changed_memberships():
@@ -243,7 +242,26 @@ def test_explicit_multi_assignee_create_does_not_add_creator():
     assert [item["empId"] for item in payload["assignments"]] == ["user-a", "user-b"]
 
 
-def test_new_version_inherits_complete_assignee_set():
+def test_new_business_record_without_assignee_stays_unassigned():
+    cursor = _AugmentationCursor()
+    payload = {
+        "goithau": [{"id": "package-1"}],
+        "assignments": [],
+    }
+
+    added = augment_default_assignments(
+        cursor,
+        _organization_transaction(),
+        payload,
+        batch_limit=100,
+        measure_batch=lambda value: sum(len(items) for items in value.values()),
+    )
+
+    assert added == 0
+    assert payload["assignments"] == []
+
+
+def test_new_version_without_explicit_assignees_stays_unassigned():
     cursor = _AugmentationCursor()
     payload = {
         "goithau": [{"id": "package-v2", "rootId": "root-1"}],
@@ -258,49 +276,9 @@ def test_new_version_inherits_complete_assignee_set():
         measure_batch=lambda value: sum(len(items) for items in value.values()),
     )
 
-    assert added == 3
-    assert {item["empId"] for item in payload["assignments"]} == {
-        "user-a", "user-b", "user-c",
-    }
-    assert all(item["targetId"] == "package-v2" for item in payload["assignments"])
-    assert any("record.is_latest = 1" in sql for sql, _params in cursor.calls)
-
-
-def _measure_version_inheritance_queries(assignee_count):
-    class InheritanceCursor(_AnswerCursor):
-        def execute(self, sql, params=()):
-            normalized = " ".join(str(sql).split())
-            self.calls.append((normalized, tuple(params)))
-            if normalized.startswith("SELECT id FROM"):
-                self.rows = []
-            elif "JOIN phan_cong_nhan_su AS assignment" in normalized:
-                self.rows = [
-                    ("root-1", f"user-{index}")
-                    for index in range(assignee_count)
-                ]
-            else:
-                self.rows = []
-            return self
-
-    cursor = InheritanceCursor()
-    payload = {
-        "goithau": [{"id": "package-v2", "rootId": "root-1"}],
-        "assignments": [],
-    }
-    augment_default_assignments(
-        cursor,
-        _organization_transaction(),
-        payload,
-        batch_limit=100,
-        measure_batch=lambda value: sum(len(items) for items in value.values()),
-    )
-    assert len(payload["assignments"]) == assignee_count
-    return len(cursor.calls)
-
-
-def test_version_inheritance_query_count_is_constant_for_one_and_fifty_assignees():
-    assert _measure_version_inheritance_queries(1) == 2
-    assert _measure_version_inheritance_queries(50) == 2
+    assert added == 0
+    assert payload["assignments"] == []
+    assert cursor.calls == []
 
 
 class _NotificationCursor(_AnswerCursor):

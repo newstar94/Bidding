@@ -880,6 +880,10 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                                     "bidPrice": 987654321,
                                     "bidEstimatePrice": 900000000,
                                     "capitalDetail": "Nguồn vốn sidecar",
+                                    "cPeriod": 5,
+                                    "cPeriodUnit": "M",
+                                    "isInternet": 0,
+                                    "bidGuaranteeValue": 45_000_000,
                                     "isMedicine": 1,
                                     "isMultiLot": None,
                                     "lotDTOList": [
@@ -1008,6 +1012,8 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert revision["sourceBidPriceVnd"] == 987654321
     assert revision["estimatePriceVnd"] == 900000000
     assert revision["capitalDetail"] == "Nguồn vốn sidecar"
+    assert revision["onlineMode"] == "Không qua mạng"
+    assert revision["bidGuaranteeVnd"] == 45_000_000
     assert revision["isMedicinePackage"] is True
     assert revision["isMultiLot"] is True
     assert revision["additionalPurchaseOption"] is True
@@ -1043,6 +1049,8 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert projected["data"]["bidPrice"] == 900000000
     assert projected["data"]["sourceBidPrice"] == 987654321
     assert projected["data"]["bidEstimatePrice"] == 900000000
+    assert projected["data"]["onlineMode"] == "Không qua mạng"
+    assert projected["data"]["bidGuarantee"] == 45_000_000
     assert projected["data"]["isMedicinePackage"] is True
     assert projected["data"]["isMultiLot"] is True
     assert projected["data"]["additionalPurchaseOption"] is True

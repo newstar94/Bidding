@@ -80,7 +80,6 @@ class SyncRecordValidator:
         self.schema_definition = schema_definition
         self.iter_payloads = iter_payloads
         self.canonicalize_item = canonicalize_item
-        self.existing_assignment_targets: set[tuple[str, str]] = set()
 
     def validate_payload(self) -> list[dict[str, Any]]:
         cursor = self.transaction.cursor
@@ -180,10 +179,6 @@ class SyncRecordValidator:
             actor.user_id,
             organization_id,
             records_by_table,
-        )
-        self.existing_assignment_targets = self._load_existing_assignment_targets(
-            payloads,
-            organization_id,
         )
         uniqueness_context = build_domain_uniqueness_context(
             cursor,
@@ -355,11 +350,6 @@ class SyncRecordValidator:
                         current_record,
                         item,
                     ))
-                item_errors.extend(self._assignment_errors(
-                    table_name,
-                    item,
-                    record_id,
-                ))
                 reference_errors = validate_owner_scoped_references(
                     cursor,
                     organization_id,
@@ -549,76 +539,6 @@ class SyncRecordValidator:
                     if row_id:
                         table_records[row_id] = row
         return records_by_table
-
-    def _assignment_errors(
-        self,
-        table_name: str,
-        item: dict[str, Any],
-        record_id: str | None,
-    ) -> list[str]:
-        if (
-            self.transaction.owner_type != "organization"
-            or table_name not in {"ke_hoach_lcnt", "goi_thau", "hop_dong"}
-            or not record_id
-        ):
-            return []
-        target_type = {
-            "ke_hoach_lcnt": "kehoach",
-            "goi_thau": "goithau",
-            "hop_dong": "hopdong",
-        }[table_name]
-        has_incoming = any(
-            clean_id(
-                assignment.get("targetId") or assignment.get("id_muc_tieu")
-            ) == record_id
-            and str(
-                assignment.get("type")
-                or assignment.get("loai_doi_tuong")
-                or ""
-            ).strip() == target_type
-            for assignment in self.payload.get("assignments", [])
-            if isinstance(assignment, dict)
-        )
-        has_stored = (target_type, record_id) in self.existing_assignment_targets
-        if not has_incoming and not has_stored:
-            return ["Bản ghi phải có một chuyên viên phụ trách chính."]
-        return []
-
-    def _load_existing_assignment_targets(
-        self,
-        payloads,
-        organization_id: str,
-    ) -> set[tuple[str, str]]:
-        target_tables = {"ke_hoach_lcnt", "goi_thau", "hop_dong"}
-        target_ids = list(dict.fromkeys(
-            record_id
-            for _payload_key, table_name, items in payloads
-            if table_name in target_tables
-            for item in items
-            if (
-                record_id := self.clean_record_id(
-                    table_name,
-                    item.get("id"),
-                )
-            )
-        ))
-        existing_targets = set()
-        for offset in range(0, len(target_ids), _QUERY_CHUNK_SIZE):
-            chunk = target_ids[offset:offset + _QUERY_CHUNK_SIZE]
-            placeholders = ", ".join("?" for _ in chunk)
-            rows = self.transaction.cursor.execute(
-                f"""SELECT id_muc_tieu, loai_doi_tuong
-                    FROM phan_cong_nhan_su
-                    WHERE organization_id = ?
-                      AND id_muc_tieu IN ({placeholders})
-                      AND loai_doi_tuong IN ('kehoach', 'goithau', 'hopdong')""",
-                (organization_id, *chunk),
-            ).fetchall()
-            existing_targets.update(
-                (str(row[1]), str(row[0]))
-                for row in rows
-            )
-        return existing_targets
 
     @staticmethod
     def _format_errors(

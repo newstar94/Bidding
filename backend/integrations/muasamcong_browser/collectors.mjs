@@ -1002,6 +1002,14 @@ export class MscCollectors {
           capture(node.sources, "clarification", "NOTICE_CLARIFICATION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
           capture(node.sources, "prebidConference", "NOTICE_PREBID_CONFERENCE", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
         ]);
+      } else if (["KHAC", "ADB", "WB"].includes(processApply)) {
+        await capture(
+          node.sources,
+          "tenderInfo",
+          "NOTICE_TENDER_INFO_OTHER",
+          { id: notifyId },
+          { revision: label },
+        );
       }
       const planNo = usableIdentifier(merged.planNo || findFirstValue(detail, "planNo"));
       const planReference = linkedPlanReference(detail, merged, planNo);

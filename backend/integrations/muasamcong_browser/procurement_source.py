@@ -796,6 +796,7 @@ class MuaSamCongProcurementSource:
             "bidMode": revision.get("selectionMode"),
             "processApply": revision.get("processApply"),
             "contractType": revision.get("contractType"),
+            "onlineMode": revision.get("onlineMode"),
             "isMedicinePackage": revision.get("isMedicinePackage"),
             "isMultiLot": revision.get("isMultiLot"),
             "additionalPurchaseOption": revision.get(

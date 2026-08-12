@@ -92,11 +92,25 @@ def _period(row):
     explicit = pick(row, "implementationPeriod", "executionPeriod")
     if explicit not in (None, ""):
         return str(explicit)
-    value = pick(row, "cperiod", "contractPeriodDT", "bidContractPeriod")
+    value = pick(
+        row,
+        "cperiod",
+        "cPeriod",
+        "contractPeriod",
+        "contractPeriodDT",
+        "bidContractPeriod",
+    )
     if value in (None, ""):
         return None
     raw_unit = str(
-        pick(row, "cperiodUnit", "contractPeriodDTUnit", default="")
+        pick(
+            row,
+            "cperiodUnit",
+            "cPeriodUnit",
+            "contractPeriodUnit",
+            "contractPeriodDTUnit",
+            default="",
+        )
     ).strip().upper()
     return f"{value} {_PERIOD_UNITS.get(raw_unit, raw_unit)}".strip()
 
@@ -1057,6 +1071,13 @@ def normalize_notice_complete_bundle(bundle: dict):
                 "contractType": map_contract_type(
                     sidecar_pick("ctype", "contractType")
                 ),
+                "bidGuaranteeVnd": _money(sidecar_pick(
+                    "bidGuarantee",
+                    "bidGuaranteed",
+                    "bidGuaranteeValue",
+                    "guaranteeValue",
+                )),
+                "onlineMode": map_online_mode(sidecar_pick("isInternet")),
             }
             period_row = next(
                 (item for item in tender_objects if _period(item)), None

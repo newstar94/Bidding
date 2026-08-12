@@ -130,45 +130,9 @@ def _assignments_requiring_successor(
     removed_user_id,
     assignment_rows,
 ):
-    """Only singleton package/contract memberships require a handover."""
+    """Assignments are optional, so offboarding never requires a successor."""
 
-    candidates = [
-        row for row in assignment_rows
-        if str(row["loai_doi_tuong"] or "") in {"goithau", "hopdong"}
-    ]
-    target_pairs = list(dict.fromkeys(
-        (str(row["loai_doi_tuong"]), str(row["id_muc_tieu"]))
-        for row in candidates
-    ))
-    if not target_pairs:
-        return []
-    value_sql = ", ".join("(?, ?)" for _ in target_pairs)
-    remaining_pairs = {
-        (str(row[0]), str(row[1]))
-        for row in cursor.execute(
-            f"""SELECT DISTINCT assignment.loai_doi_tuong, assignment.id_muc_tieu
-                FROM phan_cong_nhan_su AS assignment
-                JOIN (VALUES {value_sql}) AS target(loai_doi_tuong, id_muc_tieu)
-                  ON target.loai_doi_tuong = assignment.loai_doi_tuong
-                 AND target.id_muc_tieu = assignment.id_muc_tieu
-                JOIN thanh_vien_to_chuc AS membership
-                  ON membership.organization_id = assignment.organization_id
-                 AND membership.user_id = assignment.id_nhan_vien
-                 AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
-                WHERE assignment.organization_id = ?
-                  AND assignment.id_nhan_vien != ?""",
-            (
-                *(value for pair in target_pairs for value in pair),
-                organization_id,
-                removed_user_id,
-            ),
-        ).fetchall()
-    }
-    return [
-        row for row in candidates
-        if (str(row["loai_doi_tuong"]), str(row["id_muc_tieu"]))
-        not in remaining_pairs
-    ]
+    return []
 
 def _delete_member_permissions(
     cursor,

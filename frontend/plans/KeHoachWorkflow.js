@@ -935,9 +935,7 @@ export async function savePlanBreakdown() {
           .filter((assignment) => String(assignment.targetId) === String(oldKh.id) && assignment.type === "kehoach")
           .map((assignment) => assignment.empId)
           .filter(Boolean);
-        const planAssigneeIds = previousPlanAssigneeIds.length
-          ? [...new Set(previousPlanAssigneeIds)]
-          : [this.model.state.activeuser.id].filter(Boolean);
+        const planAssigneeIds = [...new Set(previousPlanAssigneeIds)];
         for (const activeUserId of planAssigneeIds) {
           this.model.state.assignments.push({
             id: generateRecordId("assignments"),
@@ -961,15 +959,6 @@ export async function savePlanBreakdown() {
       currentKh.cvDaThucHienList = cvDaThucHien;
       currentKh.cvKhongApDungList = cvKhongApDung;
       currentKh.cvChuaDuDieuKienList = cvChuaDuDieuKien;
-    }
-    const activeUserId = this.model.state.activeuser.id;
-    if (activeUserId) {
-      await this.model.addRecord("assignments", {
-        id: generateRecordId("assignments"),
-        empId: activeUserId,
-        targetId: finalPlanId,
-        type: "kehoach"
-      });
     }
   }
   const targetKh = this.model.state.kehoach.find((k) => k.id === finalPlanId);

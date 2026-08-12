@@ -1011,7 +1011,7 @@ export async function deleteEmployee(id) {
   if (assignmentsCount > 0) {
     warningText += `
 
-⚠️ CHÚ Ý: Nhân sự này đang phụ trách ${assignmentsCount} gói thầu/hợp đồng. Công việc vẫn còn người phụ trách khác sẽ được giữ nguyên; chỉ công việc mà họ là người phụ trách cuối cùng mới yêu cầu chọn người tiếp quản.`;
+⚠️ CHÚ Ý: Nhân sự này đang phụ trách ${assignmentsCount} gói thầu/hợp đồng. Các phân công của họ sẽ được gỡ; bản ghi vẫn được giữ nguyên và có thể ở trạng thái chưa phân công.`;
   }
   const confirmed = await this.view.customConfirm(
     "Xác nhận gỡ nhân sự",

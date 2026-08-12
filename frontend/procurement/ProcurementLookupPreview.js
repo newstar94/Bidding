@@ -21,6 +21,7 @@ const PACKAGE_FIELDS = [
   ["bidField", "Lĩnh vực", "gt-linhvuc", "bidField"],
   ["bidForm", "Hình thức lựa chọn", "gt-hinhthuc", "bidForm"],
   ["bidMode", "Phương thức lựa chọn", "gt-phuongthuc", "bidMode"],
+  ["onlineMode", "Đấu thầu qua mạng", "gt-quatmang", "text"],
   ["contractType", "Loại hợp đồng", "gt-loaihopdong", "contractType"],
   ["additionalPurchaseOption", "Tùy chọn mua thêm", "gt-tuychonmuathem", "yesNo"],
   ["selectionDuration", "Thời gian tổ chức LCNT", "gt-thoigiantochuc", "text"],

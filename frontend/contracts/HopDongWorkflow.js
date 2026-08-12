@@ -305,7 +305,7 @@ export async function editHopDong(id) {
           ? this.model.state.assignments
             .filter((a) => String(a.targetId) === String(id) && a.type === "hopdong")
             .map((assignment) => assignment.empId)
-          : [currentUserId];
+          : [];
         initializeMultiAssigneeSelect(empSelect, {
           selectedIds: assignedEmpIds,
           disabled: this.model.state.activerole === "employee",
@@ -640,25 +640,7 @@ export async function handleHopDongSubmit(e) {
   }
   let finalHdId = id;
   const assignedEmpSelect = document.getElementById("hd-nhanvienphutrach");
-  const currentContractAssigneeIds = id
-    ? (this.model.state.assignments || [])
-      .filter((assignment) => String(assignment.targetId) === String(id) && assignment.type === "hopdong")
-      .map((assignment) => assignment.empId)
-    : [];
-  const assignedEmpIds = normalizeAssigneeIds(
-    selectedAssigneeIds(assignedEmpSelect).length
-      ? selectedAssigneeIds(assignedEmpSelect)
-      : (currentContractAssigneeIds.length ? currentContractAssigneeIds : this.model.state.activeuser?.id),
-  );
-  if (!assignedEmpIds.length) {
-    await this.view.customAlert(
-      "Dữ liệu không hợp lệ",
-      "Vui lòng chọn chuyên viên phụ trách hợp đồng.",
-      "alert-triangle",
-      assignedEmpSelect
-    );
-    return;
-  }
+  const assignedEmpIds = normalizeAssigneeIds(selectedAssigneeIds(assignedEmpSelect));
   let data = {
     tenHopDong,
     soHopDong,

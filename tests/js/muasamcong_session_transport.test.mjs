@@ -741,8 +741,10 @@ test("complete KHAC notice uses the exact search revision when version lists are
 
 
 test("complete KHAC notice falls back to its exact search record when detail is unavailable", async () => {
+  const calls = [];
   const client = {
     request: async (operation, payload) => {
+      calls.push([operation, payload]);
       if ([
         "NOTICE_LDT_VERSION_LIST",
         "NOTICE_OTHER_VERSION_LIST",
@@ -750,6 +752,20 @@ test("complete KHAC notice falls back to its exact search record when detail is 
         "NOTICE_OTHER_DETAIL",
         "NOTICE_ADB_DETAIL",
       ].includes(operation)) throw new Error("PROCUREMENT_UPSTREAM_UNAVAILABLE");
+      if (operation === "NOTICE_TENDER_INFO_OTHER") return {
+        data: {
+          bidoNotifyContractorP: {
+            notifyNo: "IB2600433562",
+            notifyId: "notice-00",
+            cPeriod: 5,
+            cPeriodUnit: "M",
+            isInternet: 0,
+            bidGuaranteeValue: 45_000_000,
+            ctype: "TG",
+          },
+        },
+        metadata: { operation },
+      };
       if (operation === "PLAN_VERSION_LIST") return {
         data: { versionList: [{
           id: "plan-00", planNo: "PL2600248518", planVersion: "00",
@@ -794,6 +810,12 @@ test("complete KHAC notice falls back to its exact search record when detail is 
   assert.equal(revision.sources.noticeDetail.operation, "SEARCH");
   assert.equal(revision.sources.noticeDetail.fallback, true);
   assert.equal(revision.sources.noticeDetail.success, true);
+  assert.equal(revision.sources.tenderInfo.operation, "NOTICE_TENDER_INFO_OTHER");
+  assert.equal(revision.sources.tenderInfo.success, true);
+  assert.deepEqual(
+    calls.find(([operation]) => operation === "NOTICE_TENDER_INFO_OTHER"),
+    ["NOTICE_TENDER_INFO_OTHER", { id: "notice-00" }],
+  );
   assert.equal(
     bundle.failures.some((failure) => failure.operation === "NOTICE_OTHER_DETAIL"),
     true,
