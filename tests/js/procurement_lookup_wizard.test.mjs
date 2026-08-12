@@ -215,6 +215,25 @@ test("package preview maps Mua Sam Cong TG contract code", () => {
 });
 
 
+test("package preview maps current Mua Sam Cong catalog codes", () => {
+  const controls = new Map([
+    ["gt-hinhthuc", control("", ["Lựa chọn nhà thầu trong trường hợp đặc biệt"])],
+    ["gt-loaihopdong", control("", ["Theo đơn giá cố định"])],
+  ]);
+  const rows = buildComparisonRows("PACKAGE", {
+    bidForm: "LCNT_DB",
+    contractType: "DGCD",
+  }, { getControl: (id) => controls.get(id) || null });
+  const mapped = Object.fromEntries(rows.map((row) => [row.field, row]));
+
+  assert.equal(
+    mapped.bidForm.draftValue,
+    "Lựa chọn nhà thầu trong trường hợp đặc biệt",
+  );
+  assert.equal(mapped.contractType.draftValue, "Theo đơn giá cố định");
+});
+
+
 test("plan investor maps only by exact existing option text", () => {
   const investor = control("");
   investor.options = [

@@ -59,6 +59,15 @@ snapshot trùng; response thay đổi tạo snapshot mới. Trigger immutable ch
 update/delete. Canonical v2 chỉ là projection và có thể được tạo lại bằng
 `MuaSamCongProcurementSource.map_plan_raw_bundle()` mà không gọi upstream.
 
+Mapping enum nghiệp vụ được tập trung ở `code_mapping.py` và dùng chung cho
+PLAN, NOTICE, protected API và browser fallback. Canonical projection dùng đúng
+nhãn Bidding (`Hàng hóa`, `Đấu thầu rộng rãi`, `Một giai đoạn một túi hồ sơ`,
+`Trọn gói`, `Qua mạng`, `Trong nước`); raw bundle vẫn giữ code gốc. Code danh
+mục chưa có đích Bidding được giữ nguyên để remap, không đoán sang giá trị gần
+nhất. Riêng flag bị ràng buộc CHECK ở DB trả `null` khi không nhận diện. Bảng mã
+đã đối chiếu nguồn first-party nằm trong
+`docs/research/MUASAMCONG_ENUM_MAPPING_2026-08-12.md`.
+
 Lookup COMPLETE dùng thứ tự `L1 -> L2 -> RAW_SNAPSHOT -> upstream`. Cache key
 được namespace theo organization; raw snapshot chỉ được dùng khi còn fresh,
 search/version-list chứng minh đủ revision được yêu cầu và mọi package quan sát

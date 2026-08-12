@@ -313,6 +313,42 @@ def test_standalone_notice_versions_same_package_without_creating_plan_version()
     assert package["noticeRevisionId"] == "notice-rev-00"
 
 
+def test_notice_authoritative_business_fields_replace_plan_values():
+    repository = MemoryRepository()
+    plan_result = ProcurementPlanReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        revision=_revision("00", "plan-00", [_package("A")]),
+        idempotency_key="plan:00:mapping", expected_plan_row_version=None,
+    )
+    notice = {
+        **_notice("00"),
+        "field": "Hàng hóa",
+        "selectionForm": "Đấu thầu rộng rãi",
+        "selectionMode": "Một giai đoạn một túi hồ sơ",
+        "contractType": "Trọn gói",
+        "onlineMode": "Qua mạng",
+        "domesticOrInternational": "Trong nước",
+    }
+
+    result = ProcurementNoticeReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        notice=notice, idempotency_key="notice:00:mapping",
+        expected_package_row_version=1,
+    )
+
+    assert plan_result["createdPackages"][0]["localVersion"] == 0
+    source_fields = result["createdPackages"][0]["sourceFields"]
+    expected = {
+        "field": "Hàng hóa",
+        "selectionForm": "Đấu thầu rộng rãi",
+        "selectionMode": "Một giai đoạn một túi hồ sơ",
+        "contractType": "Trọn gói",
+        "onlineMode": "Qua mạng",
+        "domesticOrInternational": "Trong nước",
+    }
+    assert {field: source_fields[field] for field in expected} == expected
+
+
 def test_standalone_notice_reimport_is_noop_and_digest_drift_conflicts():
     repository = MemoryRepository()
     ProcurementPlanReconciler(repository).reconcile_revision(

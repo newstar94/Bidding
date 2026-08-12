@@ -10,6 +10,12 @@ from backend.integrations.muasamcong_browser.artifacts import (
     artifact_objects,
     same_procurement_family,
 )
+from backend.integrations.muasamcong_browser.code_mapping import (
+    map_contract_type,
+    map_package_field,
+    map_selection_form,
+    map_selection_mode,
+)
 from backend.procurement_lookup.domain import ProcurementLookupError
 
 
@@ -105,11 +111,13 @@ def parse_package_row(row):
         "bidPrice": _first_money(row.get("bidPrice")),
         "bidPriceUnit": row.get("bidPriceUnit") or "VND",
         "capitalDetail": row.get("capitalDetail"),
-        "bidField": row.get("bidField"),
-        "bidForm": row.get("bidForm"),
-        "bidMode": row.get("bidMode"),
+        "bidField": map_package_field(row.get("bidField")),
+        "bidForm": map_selection_form(row.get("bidForm")),
+        "bidMode": map_selection_mode(row.get("bidMode")),
         "processApply": row.get("processApply"),
-        "contractType": row.get("contractType") or row.get("ctype"),
+        "contractType": map_contract_type(
+            row.get("contractType") or row.get("ctype")
+        ),
         "implementationPeriod": _period(row),
         "bidCloseDate": row.get("bidCloseDate"),
         "bidOpenDate": row.get("bidOpenDate"),

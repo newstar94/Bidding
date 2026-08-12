@@ -7,6 +7,15 @@ import json
 from typing import Iterable
 
 from backend.procurement_import.source import ProcurementSourceError
+from backend.integrations.muasamcong_browser.code_mapping import (
+    map_contract_type,
+    map_domestic_scope,
+    map_online_mode,
+    map_optional_boolean,
+    map_package_field,
+    map_selection_form,
+    map_selection_mode,
+)
 
 
 _PERIOD_UNITS = {"D": "ngày", "M": "tháng", "Y": "năm"}
@@ -202,21 +211,38 @@ def normalize_plan_revision(
                 "estimatePriceVnd": _money(
                     pick(row, "bidEstimatePrice", "estimatePriceVnd")
                 ),
-                "field": pick(row, "bidField", "investField", "field"),
+                "field": map_package_field(
+                    pick(row, "bidField", "investField", "field")
+                ),
                 "capitalDetail": pick(row, "capitalDetail", "investmentFunds"),
-                "selectionForm": pick(row, "bidForm", "selectionForm"),
-                "selectionMode": pick(row, "bidMode", "selectionMode"),
+                "selectionForm": map_selection_form(
+                    pick(row, "bidForm", "selectionForm")
+                ),
+                "selectionMode": map_selection_mode(
+                    pick(row, "bidMode", "selectionMode")
+                ),
                 "evaluationMethod": pick(row, "evaluationMethod"),
                 "selectionDuration": str(pick(row, "bidTime", "selectionDuration", default=""))
                 or None,
                 "selectionStart": _selection_start(row),
-                "contractType": pick(row, "ctype", "contractType"),
+                "contractType": map_contract_type(
+                    pick(row, "ctype", "contractType")
+                ),
                 "executionPeriod": _period(row),
-                "onlineMode": "ONLINE" if int(pick(row, "isInternet", default=0) or 0) == 1 else "OFFLINE",
-                "domesticOrInternational": "DOMESTIC"
-                if int(pick(row, "isDomestic", default=1) or 0) == 1
-                else "INTERNATIONAL",
+                "onlineMode": map_online_mode(pick(row, "isInternet")),
+                "domesticOrInternational": map_domestic_scope(
+                    pick(row, "isDomestic")
+                ),
                 "lots": _lots(row),
+                "isMultiLot": map_optional_boolean(
+                    pick(row, "isMultiLot")
+                ),
+                "isPrequalification": map_optional_boolean(
+                    pick(row, "isPrequalification")
+                ),
+                "isConcentrateShopping": map_optional_boolean(
+                    pick(row, "isConcentrateShopping")
+                ),
                 "additionalPurchaseOption": pick(
                     row, "additionalChoise", "additionalPurchaseOption"
                 ),
@@ -337,15 +363,27 @@ def normalize_notice_revision(
         "publishedAt": pick(notice, "publicDate", "publishedAt"),
         "bidClosingAt": pick(notice, "bidCloseDate", "bidClosingAt"),
         "bidOpeningAt": pick(notice, "bidOpenDate", "bidOpeningAt"),
-        "selectionForm": pick(notice, "bidForm", "selectionForm"),
-        "selectionMode": pick(notice, "bidMode", "selectionMode"),
+        "selectionForm": map_selection_form(
+            pick(notice, "bidForm", "selectionForm")
+        ),
+        "selectionMode": map_selection_mode(
+            pick(notice, "bidMode", "selectionMode")
+        ),
         "priceVnd": _money(related_pick("bidPrice", "priceVnd")),
         "capitalDetail": related_pick(
             "capitalDetail", "investmentFunds"
         ),
-        "field": related_pick("bidField", "investField", "field"),
+        "field": map_package_field(
+            related_pick("bidField", "investField", "field")
+        ),
         "executionPeriod": execution_period,
-        "contractType": related_pick("ctype", "contractType"),
+        "contractType": map_contract_type(
+            related_pick("ctype", "contractType")
+        ),
+        "onlineMode": map_online_mode(related_pick("isInternet")),
+        "domesticOrInternational": map_domestic_scope(
+            related_pick("isDomestic")
+        ),
         "processApply": process_apply,
         "bidOpenId": pick(notice, "bidOpenId"),
         "inputResultId": pick(notice, "inputResultId"),
@@ -794,8 +832,12 @@ def normalize_notice_complete_bundle(bundle: dict):
                 "capitalDetail": sidecar_pick(
                     "capitalDetail", "investmentFunds"
                 ),
-                "field": sidecar_pick("bidField", "investField", "field"),
-                "contractType": sidecar_pick("ctype", "contractType"),
+                "field": map_package_field(
+                    sidecar_pick("bidField", "investField", "field")
+                ),
+                "contractType": map_contract_type(
+                    sidecar_pick("ctype", "contractType")
+                ),
             }
             period_row = next(
                 (item for item in tender_objects if _period(item)), None
@@ -891,7 +933,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         }
     return {
         "schemaVersion": "biddingflow-procurement-canonical-v2",
-        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v3",
         "kind": "NOTICE",
         "canonicalCode": notice_no,
         "revisions": revisions,

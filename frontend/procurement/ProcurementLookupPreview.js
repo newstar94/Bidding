@@ -38,7 +38,7 @@ const ENUMS = {
     CDT: "Chỉ định thầu",
     CDTRG: "Chỉ định thầu rút gọn",
     CHCT: "Chào hàng cạnh tranh",
-    DB: "Lựa chọn nhà thầu trong trường hợp đặc biệt",
+    LCNT_DB: "Lựa chọn nhà thầu trong trường hợp đặc biệt",
   },
   bidMode: {
     "1_MTHS": "Một giai đoạn một túi hồ sơ",
@@ -50,8 +50,11 @@ const ENUMS = {
   contractType: {
     TG: "Trọn gói",
     TRON_GOI: "Trọn gói",
+    DGCD: "Theo đơn giá cố định",
     DON_GIA_CO_DINH: "Theo đơn giá cố định",
+    DGDC: "Theo đơn giá điều chỉnh",
     DON_GIA_DIEU_CHINH: "Theo đơn giá điều chỉnh",
+    TTG: "Theo thời gian",
     THEO_THOI_GIAN: "Theo thời gian",
     HON_HOP: "Hỗn hợp",
   },

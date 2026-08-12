@@ -13,7 +13,18 @@ import time
 
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
+    _walk,
     normalize_notice_complete_bundle,
+    pick,
+)
+from backend.integrations.muasamcong_browser.code_mapping import (
+    map_contract_type,
+    map_domestic_scope,
+    map_online_mode,
+    map_optional_boolean,
+    map_package_field,
+    map_selection_form,
+    map_selection_mode,
 )
 from backend.integrations.muasamcong_browser.classifier import (
     classify_upstream_error,
@@ -628,6 +639,90 @@ class MuaSamCongProcurementSource:
                     "retrievedAt": source.get("retrievedAt"),
                 },
             )
+            package_nodes = (node or {}).get("packages") or {}
+            by_identity = {}
+            for package_key, package_node in package_nodes.items():
+                package_source = (
+                    ((package_node or {}).get("sources") or {}).get(
+                        "planPackageDetail"
+                    ) or {}
+                )
+                response = package_source.get("response")
+                if (
+                    package_source.get("success") is not True
+                    or not isinstance(response, dict)
+                ):
+                    continue
+                aliases = {
+                    "bidField", "investField", "field", "bidForm",
+                    "selectionForm", "bidMode", "selectionMode", "ctype",
+                    "contractType", "isInternet", "isDomestic", "isMultiLot",
+                    "isPrequalification", "isConcentrateShopping",
+                }
+                response = max(
+                    (
+                        item
+                        for item in _walk(response)
+                        if isinstance(item, dict)
+                    ),
+                    key=lambda item: sum(alias in item for alias in aliases),
+                    default=response,
+                )
+                identifiers = (package_node or {}).get("identifiers") or {}
+                for identity in (
+                    package_key,
+                    identifiers.get("idDetail"),
+                    identifiers.get("id"),
+                    identifiers.get("bidNo"),
+                ):
+                    if identity not in (None, ""):
+                        by_identity[str(identity)] = (
+                            response,
+                            package_source,
+                        )
+            package_mapping = {
+                "field": (map_package_field, ("bidField", "investField", "field")),
+                "selectionForm": (map_selection_form, ("bidForm", "selectionForm")),
+                "selectionMode": (map_selection_mode, ("bidMode", "selectionMode")),
+                "contractType": (map_contract_type, ("ctype", "contractType")),
+                "onlineMode": (map_online_mode, ("isInternet",)),
+                "domesticOrInternational": (map_domestic_scope, ("isDomestic",)),
+                "isMultiLot": (map_optional_boolean, ("isMultiLot",)),
+                "isPrequalification": (map_optional_boolean, ("isPrequalification",)),
+                "isConcentrateShopping": (
+                    map_optional_boolean,
+                    ("isConcentrateShopping",),
+                ),
+            }
+            for package in canonical.get("packages") or []:
+                sidecar = next((
+                    by_identity.get(str(identity))
+                    for identity in (
+                        package.get("planDetailRevisionId"),
+                        package.get("stablePackageId"),
+                        package.get("symbol"),
+                    )
+                    if identity not in (None, "")
+                    and str(identity) in by_identity
+                ), None)
+                if sidecar is None:
+                    continue
+                response, package_source = sidecar
+                for field, (mapper, aliases) in package_mapping.items():
+                    value = pick(response, *aliases)
+                    if value not in (None, ""):
+                        package[field] = mapper(value)
+                        field_sources[
+                            f"revisions.{revision_number}.packages."
+                            f"{package.get('planDetailRevisionId')}.{field}"
+                        ] = {
+                            "operation": "PLAN_PACKAGE_DETAIL",
+                            "revision": str(revision_number),
+                            "sourcePath": "/".join(aliases),
+                            "schemaFingerprint": package_source.get(
+                                "schemaFingerprint"
+                            ),
+                        }
             revisions.append(canonical)
             for field in (
                 "name", "projectName", "investorName",
@@ -641,7 +736,7 @@ class MuaSamCongProcurementSource:
                     }
         return {
             "schemaVersion": "biddingflow-procurement-canonical-v2",
-            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
+            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v3",
             "kind": "PLAN",
             "canonicalCode": family_no,
             "revisions": revisions,
@@ -886,7 +981,7 @@ class MuaSamCongProcurementSource:
                 ]
                 canonical = {
                     "schemaVersion": "biddingflow-procurement-canonical-v2",
-                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
+                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v3",
                     "kind": normalized_kind,
                     "canonicalCode": family_no,
                     "revisions": selected,

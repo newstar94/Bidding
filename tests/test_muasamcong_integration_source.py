@@ -11,6 +11,15 @@ from backend.integrations.muasamcong_browser.canonical import (
     normalize_plan_revision,
     normalize_result_bundle,
 )
+from backend.integrations.muasamcong_browser.code_mapping import (
+    map_contract_type,
+    map_domestic_scope,
+    map_online_mode,
+    map_optional_boolean,
+    map_package_field,
+    map_selection_form,
+    map_selection_mode,
+)
 from backend.integrations.muasamcong_browser.classifier import (
     UpstreamClassification,
     classify_upstream_error,
@@ -71,7 +80,10 @@ def test_notice_fixture_maps_revision_and_package_relationship():
 
     assert revision["planNo"] == "PL2600000001"
     assert revision["stablePackageId"] == "B"
-    assert revision["selectionMode"] == "1_HTHS"
+    assert revision["selectionMode"] == "Một giai đoạn hai túi hồ sơ"
+    assert revision["selectionForm"] == "Đấu thầu rộng rãi"
+    assert revision["field"] == "Hàng hóa"
+    assert revision["contractType"] == "Trọn gói"
     assert revision["bidOpeningAt"] == "2026-03-01T09:15:00"
 
 
@@ -88,16 +100,103 @@ def test_package_lookup_maps_complete_notice_fields_into_preview():
         "bidPrice": 1_400_000_000,
         "implementationPeriod": "30 ngày",
         "capitalDetail": "Ngân sách nhà nước",
-        "bidField": "HH",
-        "bidForm": "DTRR",
-        "bidMode": "1_HTHS",
+        "bidField": "Hàng hóa",
+        "bidForm": "Đấu thầu rộng rãi",
+        "bidMode": "Một giai đoạn hai túi hồ sơ",
         "processApply": "LDT",
-        "contractType": "TG",
+        "contractType": "Trọn gói",
         "bidCloseDate": "2026-03-01T09:00:00",
         "bidOpenDate": "2026-03-01T09:15:00",
         "bidOpenId": "opening-01",
         "inputResultId": None,
     }
+
+
+@pytest.mark.parametrize(
+    ("mapper", "source", "expected"),
+    [
+        (map_package_field, "HH", "Hàng hóa"),
+        (map_package_field, "XL", "Xây lắp"),
+        (map_package_field, "TV", "Tư vấn"),
+        (map_package_field, "PTV", "Phi tư vấn"),
+        (map_package_field, "HON_HOP", "Hỗn hợp"),
+        (map_selection_form, "DTRR", "Đấu thầu rộng rãi"),
+        (map_selection_form, "DTHC", "Đấu thầu hạn chế"),
+        (map_selection_form, "CDT", "Chỉ định thầu"),
+        (map_selection_form, "CDTRG", "Chỉ định thầu rút gọn"),
+        (map_selection_form, "CHCT", "Chào hàng cạnh tranh"),
+        (map_selection_form, "LCNT_DB", "Lựa chọn nhà thầu trong trường hợp đặc biệt"),
+        (map_selection_mode, "1_MTHS", "Một giai đoạn một túi hồ sơ"),
+        (map_selection_mode, "1_HTHS", "Một giai đoạn hai túi hồ sơ"),
+        (map_selection_mode, "2_MTHS", "Hai giai đoạn một túi hồ sơ"),
+        (map_selection_mode, "2_HTHS", "Hai giai đoạn hai túi hồ sơ"),
+        (map_selection_mode, "NONE", "Không có"),
+        (map_contract_type, "TG", "Trọn gói"),
+        (map_contract_type, "TRON_GOI", "Trọn gói"),
+        (map_contract_type, "DGCD", "Theo đơn giá cố định"),
+        (map_contract_type, "DON_GIA_CO_DINH", "Theo đơn giá cố định"),
+        (map_contract_type, "DGDC", "Theo đơn giá điều chỉnh"),
+        (map_contract_type, "DON_GIA_DIEU_CHINH", "Theo đơn giá điều chỉnh"),
+        (map_contract_type, "TTG", "Theo thời gian"),
+        (map_contract_type, "THEO_THOI_GIAN", "Theo thời gian"),
+        (map_contract_type, "HON_HOP", "Hỗn hợp"),
+        (map_online_mode, 1, "Qua mạng"),
+        (map_online_mode, 0, "Không qua mạng"),
+        (map_domestic_scope, 1, "Trong nước"),
+        (map_domestic_scope, 0, "Quốc tế"),
+    ],
+)
+def test_muasamcong_codes_map_to_bidding_domain_values(mapper, source, expected):
+    assert mapper(source) == expected
+
+
+def test_mapping_accepts_bidding_labels_and_preserves_unknown_open_code():
+    assert map_package_field("hàng hóa") == "Hàng hóa"
+    assert map_selection_form("Đấu thầu rộng rãi") == "Đấu thầu rộng rãi"
+    assert map_selection_mode("Một giai đoạn một túi hồ sơ") == (
+        "Một giai đoạn một túi hồ sơ"
+    )
+    assert map_contract_type("Trọn gói") == "Trọn gói"
+    assert map_selection_form("FUTURE_FORM_2027") == "FUTURE_FORM_2027"
+    assert map_online_mode("FUTURE_FLAG") is None
+    assert map_optional_boolean(1) is True
+    assert map_optional_boolean(0) is False
+    assert map_optional_boolean("FUTURE_FLAG") is None
+
+
+def test_plan_and_notice_use_the_same_business_code_mapping():
+    plan_raw = fixture("plan", "plan_revision_v1.json")
+    plan_raw["bidpPlanDetailToProjectList"][0].update({
+        "bidField": "HH",
+        "bidForm": "DTRR",
+        "bidMode": "1_MTHS",
+    })
+    plan = normalize_plan_revision(
+        plan_raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+    notice_raw = fixture("notice", "ldt", "notice_revision_v1.json")
+    notice_raw["bidoNotifyContractorM"].update({
+        "isInternet": 1,
+        "isDomestic": 1,
+    })
+    notice = ImportParserRegistry().parse(
+        "package-notice:v1:fixture",
+        notice_raw,
+        notice_no="IB2600000002",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+
+    assert plan["packages"][0]["field"] == notice["field"] == "Hàng hóa"
+    assert plan["packages"][0]["selectionForm"] == notice["selectionForm"]
+    assert plan["packages"][0]["selectionMode"] == (
+        "Một giai đoạn một túi hồ sơ"
+    )
+    assert notice["onlineMode"] == "Qua mạng"
+    assert notice["domesticOrInternational"] == "Trong nước"
 
 
 def test_opening_fixtures_cover_normal_lots_and_two_envelope_phases():
@@ -521,6 +620,67 @@ def test_complete_lookup_maps_from_raw_bundle_and_can_reprocess_without_refetch(
     )
     assert runtime.calls[0] == ("search", "PL2600000001", "PLAN")
     assert len(runtime.calls) == 2
+
+
+def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
+    raw_revision = fixture("plan", "plan_revision_v1.json")
+    bundle = {
+        "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+        "provider": "MUASAMCONG",
+        "entity": {"kind": "PLAN", "planNo": "PL2600000001"},
+        "revisions": {
+            "01": {
+                "revisionId": "sanitized-plan-01",
+                "sources": {"planDetail": {
+                    "success": True,
+                    "response": raw_revision,
+                    "schemaFingerprint": "plan:v1:fixture",
+                    "retrievedAt": "2026-08-12T00:00:00Z",
+                }},
+                "packages": {
+                    "detail-a-01": {
+                        "identifiers": {
+                            "id": "detail-a-01",
+                            "idDetail": "detail-a-01",
+                            "bidNo": "A",
+                        },
+                        "sources": {"planPackageDetail": {
+                            "success": True,
+                            "response": {"bidpPlanDetailDTO": {
+                                "idDetail": "detail-a-01",
+                                "bidField": "HH",
+                                "bidForm": "LCNT_DB",
+                                "bidMode": "1_HTHS",
+                                "ctype": "DGCD",
+                                "isInternet": 0,
+                                "isDomestic": 0,
+                                "isMultiLot": 1,
+                            }},
+                            "schemaFingerprint": "plan-package:v1:fixture",
+                        }},
+                    }
+                },
+            }
+        },
+    }
+
+    canonical = MuaSamCongProcurementSource(FakeRuntime()).map_plan_raw_bundle(
+        bundle
+    )
+    package = canonical["revisions"][0]["packages"][0]
+
+    assert package["field"] == "Hàng hóa"
+    assert package["selectionForm"] == (
+        "Lựa chọn nhà thầu trong trường hợp đặc biệt"
+    )
+    assert package["selectionMode"] == "Một giai đoạn hai túi hồ sơ"
+    assert package["contractType"] == "Theo đơn giá cố định"
+    assert package["onlineMode"] == "Không qua mạng"
+    assert package["domesticOrInternational"] == "Quốc tế"
+    assert package["isMultiLot"] is True
+    assert canonical["fieldSources"][
+        "revisions.01.packages.detail-a-01.field"
+    ]["operation"] == "PLAN_PACKAGE_DETAIL"
 
 
 def test_complete_notice_bundle_maps_opening_result_and_contract_sources():

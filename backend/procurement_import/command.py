@@ -125,13 +125,26 @@ def _package_notice_material_snapshot(package):
     source_fields = package.get("sourceFields") or {}
     link = source_fields.get("noticeLink") or {}
     notice_fields = package.get("noticeFields") or source_fields.get("noticeFields") or {}
+
+    def value(field):
+        if package.get(field) is not None:
+            return package.get(field)
+        if notice_fields.get(field) is not None:
+            return notice_fields.get(field)
+        return source_fields.get(field)
+
     return {
         "noticeNo": package.get("noticeNo") or link.get("noticeNo"),
         "kind": package.get("noticeKind") or link.get("kind") or "UNKNOWN",
-        "status": notice_fields.get("status"),
-        "publishedAt": notice_fields.get("publishedAt"),
-        "bidClosingAt": notice_fields.get("bidClosingAt"),
-        "bidOpeningAt": notice_fields.get("bidOpeningAt"),
+        **{
+            field: value(field)
+            for field in (
+                "status", "publishedAt", "bidClosingAt", "bidOpeningAt",
+                "field", "selectionForm", "selectionMode", "contractType",
+                "onlineMode", "domesticOrInternational", "priceVnd",
+                "capitalDetail", "executionPeriod",
+            )
+        },
     }
 
 
@@ -272,6 +285,13 @@ class ProcurementNoticeReconciler:
             if notice.get(field) is not None
         }
         source_fields = deepcopy(target.get("sourceFields") or {})
+        for field in (
+            "field", "selectionForm", "selectionMode", "contractType",
+            "onlineMode", "domesticOrInternational", "priceVnd",
+            "capitalDetail", "executionPeriod",
+        ):
+            if notice.get(field) not in (None, ""):
+                source_fields[field] = deepcopy(notice[field])
         source_fields["noticeLink"] = {
             "state": "LINKED", "noticeNo": notice_no,
             "kind": str(notice.get("kind") or "UNKNOWN").upper(),
