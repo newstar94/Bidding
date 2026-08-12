@@ -10,10 +10,20 @@
     "bidMode": "1_HTHS",
     "bidForm": "DTRR",
     "processApply": "LDT",
+    "bidPrice": 1400000000,
+    "capitalDetail": "Ngân sách nhà nước",
+    "investField": "HH",
+    "contractType": "TG",
+    "bidTime": "30 ngày",
     "status": "OPEN_DXKT",
     "publicDate": "2026-02-01T08:00:00",
     "bidCloseDate": "2026-03-01T09:00:00",
     "bidOpenDate": "2026-03-01T09:15:00",
     "bidOpenId": "opening-01"
+  },
+  "bidpPlanDetail": {
+    "bidNo": "B",
+    "cperiod": 30,
+    "cperiodUnit": "D"
   }
 }

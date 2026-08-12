@@ -75,6 +75,31 @@ def test_notice_fixture_maps_revision_and_package_relationship():
     assert revision["bidOpeningAt"] == "2026-03-01T09:15:00"
 
 
+def test_package_lookup_maps_complete_notice_fields_into_preview():
+    source = MuaSamCongProcurementSource(FakeRuntime())
+
+    result = source.lookup("IB2600000002", "PACKAGE")
+
+    assert result["data"] == {
+        "notifyNo": "IB2600000002",
+        "notifyId": "notice-01",
+        "planNo": "PL2600000001",
+        "bidName": "Gói B",
+        "bidPrice": 1_400_000_000,
+        "implementationPeriod": "30 ngày",
+        "capitalDetail": "Ngân sách nhà nước",
+        "bidField": "HH",
+        "bidForm": "DTRR",
+        "bidMode": "1_HTHS",
+        "processApply": "LDT",
+        "contractType": "TG",
+        "bidCloseDate": "2026-03-01T09:00:00",
+        "bidOpenDate": "2026-03-01T09:15:00",
+        "bidOpenId": "opening-01",
+        "inputResultId": None,
+    }
+
+
 def test_opening_fixtures_cover_normal_lots_and_two_envelope_phases():
     registry = ImportParserRegistry()
     assert classify_upstream_error() is UpstreamClassification.FOUND_SUPPORTED
@@ -496,6 +521,138 @@ def test_complete_lookup_maps_from_raw_bundle_and_can_reprocess_without_refetch(
     )
     assert runtime.calls[0] == ("search", "PL2600000001", "PLAN")
     assert len(runtime.calls) == 2
+
+
+def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
+    raw_notice = fixture("notice", "ldt", "notice_revision_v1.json")
+    bundle = {
+        "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+        "provider": "MUASAMCONG",
+        "entity": {
+            "kind": "NOTICE",
+            "canonicalCode": "IB2600000002",
+            "noticeNo": "IB2600000002",
+        },
+        "status": "FOUND_COMPLETE",
+        "complete": True,
+        "retrievedAt": "2026-08-12T00:00:00Z",
+        "sources": {
+            "contractList": {
+                "operation": "NOTICE_CONTRACT_LIST",
+                "success": True,
+                "response": [{
+                    "id": "contract-1",
+                    "contractCode": "HD2600000001",
+                    "contractDate": "2026-04-10",
+                    "contractValue": 123456789,
+                    "contractorCode": "vn0100000001",
+                    "contractorName": "Nhà thầu A",
+                }],
+            }
+        },
+        "revisions": {
+            "01": {
+                "revisionId": "notice-01",
+                "sources": {
+                    "noticeDetail": {
+                        "operation": "NOTICE_LDT_DETAIL",
+                        "success": True,
+                        "response": raw_notice,
+                        "schemaFingerprint": "package-notice:v1:fixture",
+                        "retrievedAt": "2026-08-12T00:00:00Z",
+                    },
+                    "tenderInfo": {
+                        "operation": "NOTICE_TENDER_INFO",
+                        "success": True,
+                        "response": {
+                            "notifyNo": "IB2600000002",
+                            "bidPrice": 987654321,
+                            "capitalDetail": "Nguồn vốn sidecar",
+                        },
+                    },
+                    "opening_bid_0": {
+                        "operation": "OPENING_BID",
+                        "success": True,
+                        "response": {
+                            "bidSubmissionByContractorViewResponse": {
+                                "bidSubmissionDTOList": [{
+                                    "contractorCode": "vn0100000001",
+                                    "contractorName": "Nhà thầu A",
+                                    "bidPrice": 900000000,
+                                    "bidValidity": 90,
+                                }]
+                            }
+                        },
+                    },
+                    "opening_lot_detail_0": {
+                        "operation": "OPENING_LOT_DETAIL",
+                        "success": True,
+                        "response": [{
+                            "contractorCode": "vn0100000001",
+                            "contractorName": "Nhà thầu A",
+                            "lotNo": "PP01",
+                            "lotName": "Lô 1",
+                            "lotFinalPrice": 900000000,
+                        }],
+                    },
+                    "technicalResult": {
+                        "operation": "TECHNICAL_RESULT",
+                        "success": True,
+                        "response": {
+                            "contractors": [{
+                                "contractorCode": "vn0100000001",
+                                "contractorName": "Nhà thầu A",
+                                "technicalStatus": "Đạt",
+                            }]
+                        },
+                    },
+                    "selectionResult": {
+                        "operation": "SELECTION_RESULT",
+                        "success": True,
+                        "response": {
+                            "decisionNo": "QD-01",
+                            "contractors": [{
+                                "contractorCode": "vn0100000001",
+                                "contractorName": "Nhà thầu A",
+                                "isWinner": True,
+                                "winningPrice": 880000000,
+                            }]
+                        },
+                    },
+                },
+            }
+        },
+        "failures": [],
+        "manifest": {"revisions": ["01"]},
+        "metrics": {"upstream": {"requestCount": 10}},
+    }
+    source = MuaSamCongProcurementSource(FakeRuntime())
+
+    canonical = source.map_notice_raw_bundle(bundle)
+    projected = source.lookup_from_raw_bundle(
+        "IB2600000002", bundle, revision_mode="ALL"
+    )
+
+    revision = canonical["revisions"][0]
+    assert revision["priceVnd"] == 987654321
+    assert revision["capitalDetail"] == "Nguồn vốn sidecar"
+    assert revision["opening"]["bidders"][0]["contractorCode"] == (
+        "vn0100000001"
+    )
+    assert revision["opening"]["bidders"][1]["lotNo"] == "PP01"
+    assert revision["result"]["hasSelectionResult"] is True
+    assert revision["result"]["hasTechnicalResult"] is True
+    assert canonical["contracts"][0]["contractCode"] == "HD2600000001"
+    assert canonical["contracts"][0]["contractValue"] == 123456789
+    assert projected["kind"] == "PACKAGE"
+    assert projected["data"]["bidPrice"] == 987654321
+    assert projected["data"]["contracts"][0]["contractCode"] == (
+        "HD2600000001"
+    )
+    assert projected["metrics"]["upstream"] == {
+        "requestCount": 0,
+        "networkMs": 0,
+    }
 
 
 def test_unified_lookup_falls_back_to_browser_extractors_when_api_is_unavailable():

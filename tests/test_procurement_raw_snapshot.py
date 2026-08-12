@@ -140,6 +140,90 @@ def raw_bundle(price=100):
     }
 
 
+def notice_raw_bundle():
+    bundle = {
+        "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+        "provider": "MUASAMCONG",
+        "entity": {
+            "kind": "NOTICE",
+            "noticeNo": "IB2600000002",
+            "canonicalCode": "IB2600000002",
+        },
+        "retrievedAt": "2026-08-12T00:00:00Z",
+        "sources": {
+            "search": {
+                "operation": "SEARCH",
+                "endpoint": "/smart/search",
+                "request": {"code": "IB2600000002"},
+                "response": {"page": {"content": [{
+                    "notifyNo": "IB2600000002"
+                }]}},
+                "success": True,
+                "retrievedAt": "2026-08-12T00:00:00Z",
+            },
+            "ldtVersionList": {
+                "operation": "NOTICE_LDT_VERSION_LIST",
+                "endpoint": "/notice/get-version-list",
+                "request": {"notifyNo": "IB2600000002"},
+                "response": {"versionList": [{
+                    "id": "notice-01",
+                    "notifyNo": "IB2600000002",
+                    "notifyVersion": "01",
+                }]},
+                "success": True,
+                "retrievedAt": "2026-08-12T00:00:00Z",
+            },
+            "contractList": {
+                "operation": "NOTICE_CONTRACT_LIST",
+                "endpoint": "/contract/list-contract-for-po",
+                "request": {"notifyNo": "IB2600000002"},
+                "response": [{"contractCode": "HD-01"}],
+                "success": True,
+                "retrievedAt": "2026-08-12T00:00:00Z",
+            },
+        },
+        "revisions": {
+            "01": {
+                "revisionId": "notice-01",
+                "sources": {
+                    "noticeDetail": {
+                        "operation": "NOTICE_LDT_DETAIL",
+                        "endpoint": "/notice/get-by-id",
+                        "request": {"id": "notice-01"},
+                        "response": {
+                            "notifyNo": "IB2600000002",
+                            "notifyId": "notice-01",
+                            "notifyVersion": "01",
+                            "bidName": "Gói thầu A",
+                        },
+                        "success": True,
+                        "retrievedAt": "2026-08-12T00:00:00Z",
+                    },
+                    "openingBid": {
+                        "operation": "OPENING_BID",
+                        "endpoint": "/opening/bid-open",
+                        "request": {
+                            "notifyNo": "IB2600000002", "packType": 0,
+                        },
+                        "response": {"bidders": [{"contractorCode": "A"}]},
+                        "success": True,
+                        "retrievedAt": "2026-08-12T00:00:00Z",
+                    },
+                    "selectionResult": {
+                        "operation": "SELECTION_RESULT",
+                        "endpoint": "/result/get",
+                        "request": {"id": "result-1"},
+                        "response": {"decisionNo": "QD-01"},
+                        "success": True,
+                        "retrievedAt": "2026-08-12T00:00:00Z",
+                    },
+                },
+            }
+        },
+    }
+    return bundle
+
+
 class CursorResult:
     def __init__(self, row=None, rows=None):
         self.row = row
@@ -281,6 +365,39 @@ def test_fresh_raw_snapshot_reassembles_complete_bundle_and_every_package_field(
         "planDetail"
     ]["response"]["bidpPlanDetailToProjectList"][0]
     assert package["unknownFuturePackageField"] == {"kept": True}
+    assert loaded["metrics"]["upstream"]["requestCount"] == 0
+
+
+def test_fresh_notice_snapshot_reassembles_sources_for_mapping_without_refetch():
+    database = Database()
+    repository = ProcurementRawSnapshotRepository(database=database)
+    original = notice_raw_bundle()
+    repository.save_bundle("org-1", original)
+
+    loaded = repository.load_fresh_notice_bundle(
+        "org-1",
+        "ib2600000002",
+        revision_mode="ALL",
+        max_age_seconds=900,
+        now=datetime(2026, 8, 12, 0, 5, tzinfo=timezone.utc),
+    )
+
+    assert loaded["status"] == "FOUND_COMPLETE"
+    assert loaded["entity"] == {
+        "kind": "NOTICE",
+        "canonicalCode": "IB2600000002",
+        "noticeNo": "IB2600000002",
+    }
+    assert list(loaded["revisions"]) == ["01"]
+    sources = loaded["revisions"]["01"]["sources"]
+    assert sources["noticeDetail"]["response"]["bidName"] == "Gói thầu A"
+    assert sources["opening_bid_0"]["response"]["bidders"] == [
+        {"contractorCode": "A"}
+    ]
+    assert sources["selectionResult"]["response"]["decisionNo"] == "QD-01"
+    assert loaded["sources"]["contractList"]["response"] == [
+        {"contractCode": "HD-01"}
+    ]
     assert loaded["metrics"]["upstream"]["requestCount"] == 0
 
 

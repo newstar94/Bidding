@@ -48,6 +48,7 @@ const ENUMS = {
     NONE: "Không có",
   },
   contractType: {
+    TG: "Trọn gói",
     TRON_GOI: "Trọn gói",
     DON_GIA_CO_DINH: "Theo đơn giá cố định",
     DON_GIA_DIEU_CHINH: "Theo đơn giá điều chỉnh",

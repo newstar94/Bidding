@@ -201,6 +201,20 @@ test("package preview protects existing draft values and rejects unknown enums",
 });
 
 
+test("package preview maps Mua Sam Cong TG contract code", () => {
+  const contract = control("", ["Trọn gói", "Theo đơn giá cố định"]);
+  const rows = buildComparisonRows("PACKAGE", {
+    contractType: "TG",
+  }, { getControl: (id) => (id === "gt-loaihopdong" ? contract : null) });
+  const mapped = rows.find((row) => row.field === "contractType");
+
+  assert.equal(mapped.sourceValue, "Trọn gói");
+  assert.equal(mapped.draftValue, "Trọn gói");
+  assert.equal(mapped.warning, null);
+  assert.equal(mapped.apply, true);
+});
+
+
 test("plan investor maps only by exact existing option text", () => {
   const investor = control("");
   investor.options = [

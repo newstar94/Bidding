@@ -27,6 +27,32 @@ source envelope gồm operation, endpoint, request đã sanitize, response nguy�
 vẹn, content hash, schema fingerprint, timestamp và success/error metadata.
 Các request revision/package độc lập chạy bounded concurrency.
 
+NOTICE/PACKAGE `COMPLETE` đi theo graph có điều kiện:
+
+```text
+SEARCH -> NOTICE_VERSION_LIST -> NOTICE_DETAIL
+                              -> NOTICE_TENDER_INFO / HSMT / sidecars
+                              -> linked PLAN / PLAN_PACKAGE_DETAIL
+                              -> OPENING_NOTIFY / ROUND / BID
+                                   -> LOT / LOT_DETAIL khi isMultiLot
+                                   -> FINANCIAL_DETAIL khi 1_HTHS đã mở tài chính
+                              -> TECHNICAL_RESULT / SELECTION_RESULT khi có ID
+       -> NOTICE_CONTRACT_LIST
+```
+
+`packType=0` dùng cho một túi, `packType=1` cho hồ sơ kỹ thuật và
+`packType=2` cho hồ sơ tài chính. API lô không được gọi cho gói không có lô;
+nhánh tài chính không được gọi trước khi trạng thái vòng thầu cho phép. Các
+sidecar rỗng hợp lệ được ghi nhận là nguồn đã kiểm tra, không làm bundle thành
+`FOUND_PARTIAL`.
+
+Canonical NOTICE được map lại hoàn toàn từ raw bundle: thông tin TBMT, giá và
+nguồn vốn, bidder/lô và các giai đoạn mở thầu, danh sách đạt kỹ thuật, KQLCNT,
+cùng hợp đồng. Mỗi nhóm field có provenance theo operation/revision. Raw response
+không được trộn trực tiếp vào canonical và vẫn được giữ nguyên trong source
+envelope để có thể remap khi parser thay đổi. Snapshot NOTICE fresh được ráp lại
+theo `L1 -> L2 -> RAW_SNAPSHOT -> upstream` giống PLAN.
+
 Bundle complete được lưu server-side thành các row append-only trong
 `procurement_raw_snapshot`. Unique `(organization, provider, dedup_key)` tránh
 snapshot trùng; response thay đổi tạo snapshot mới. Trigger immutable chặn

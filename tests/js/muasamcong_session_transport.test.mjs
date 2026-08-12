@@ -448,9 +448,14 @@ test("endpoint profile covers the complete WEB_DAU_THAU semantic catalog", () =>
     "SEARCH", "PLAN_VERSION_LIST", "PLAN_DETAIL", "NOTICE_LDT_VERSION_LIST",
     "PROJECT_VERSION_LIST", "PROJECT_DETAIL", "NOTICE_LDT_DETAIL",
     "NOTICE_OTHER_VERSION_LIST", "NOTICE_OTHER_DETAIL", "NOTICE_ADB_DETAIL",
-    "OPENING_NOTIFY", "OPENING_ROUND", "OPENING_BID", "OPENING_LOT",
-    "OPENING_LOT_DETAIL", "OPENING_OTHER", "OPENING_ADB", "SELECTION_RESULT",
+    "OPENING_NOTIFY", "OPENING_ROUND", "OPENING_SUBMISSION", "OPENING_BID", "OPENING_LOT",
+    "OPENING_LOT_DETAIL", "OPENING_FINANCIAL_DETAIL", "OPENING_FINANCIAL_AVAILABLE",
+    "OPENING_OTHER", "OPENING_ADB", "SELECTION_RESULT",
     "SELECTION_RESULT_OTHER", "TECHNICAL_RESULT", "CONTRACT_DETAIL",
+    "SELECTION_RESULT_BY_BID_ID", "SELECTION_RESULT_DECISION",
+    "SELECTION_RESULT_REPLACEMENT", "NOTICE_TENDER_INFO", "NOTICE_HSMT",
+    "NOTICE_PETITION", "NOTICE_CLARIFICATION", "NOTICE_PREBID_CONFERENCE",
+    "NOTICE_PHASE_TWO", "NOTICE_HSMT_PHASE_TWO", "NOTICE_CONTRACT_LIST",
     "CONTRACT_LINKED", "CONTRACT_TENDER", "CONTRACT_HSMT",
     "PLAN_OVERALL_DETAIL", "QUOTE_REQUEST_DETAIL",
     "PREQUALIFICATION_NOTICE_DETAIL", "INTEREST_NOTICE_DETAIL",
@@ -520,7 +525,7 @@ test("collector assembles selection and technical result data", async () => {
 });
 
 
-test("two-envelope opening loads the financial pack only after the source round allows it", async () => {
+test("two-envelope opening loads financial data only after the source round allows it", async () => {
   const calls = [];
   const client = {
     request: async (operation, payload) => {
@@ -542,6 +547,9 @@ test("two-envelope opening loads the financial pack only after the source round 
           metadata: { operation },
         };
       }
+      if (operation === "OPENING_FINANCIAL_AVAILABLE") {
+        return { data: true, metadata: { operation } };
+      }
       return { data: { operation, packType: payload.packType }, metadata: { operation } };
     },
   };
@@ -550,48 +558,105 @@ test("two-envelope opening loads the financial pack only after the source round 
   const result = await collector.getOpeningBundle("IB2600000002", "notice-01");
 
   const openingCalls = calls.filter(([operation]) => operation.startsWith("OPENING_"));
-  assert.equal(openingCalls.length, 10);
-  assert.deepEqual(new Set(openingCalls.map(([, payload]) => payload.packType)), new Set([1, 2]));
+  assert.equal(openingCalls.length, 8);
+  assert.deepEqual(
+    new Set(openingCalls.map(([, payload]) => payload.packType).filter((value) => value != null)),
+    new Set([1, 2]),
+  );
   assert.ok(result.raw.opening_bid_2);
+  assert.ok(result.raw.opening_financial_detail_2);
+  assert.deepEqual(
+    calls.find(([operation]) => operation === "OPENING_FINANCIAL_AVAILABLE"),
+    ["OPENING_FINANCIAL_AVAILABLE", { id: "notice-01" }],
+  );
 });
 
 
-test("complete tender bundle includes revision details plus eligible opening and result data", async () => {
-  const collector = new MscCollectors({ client: {} });
-  const openings = [];
-  const results = [];
-  collector.listNoticeRevisions = async () => ({ revisions: [
-    { revisionId: "notice-00", revisionNumber: "00" },
-    { revisionId: "notice-01", revisionNumber: "01" },
-  ] });
-  collector.getNoticeRevision = async (_noticeNo, revisionId) => ({
-    raw: revisionId === "notice-01"
-      ? { status: "OPEN_DXTC" }
-      : { status: "PUBLISHED" },
-  });
-  collector.getOpeningBundle = async (_noticeNo, revisionId) => {
-    openings.push(revisionId);
-    return { raw: { opening: revisionId } };
-  };
-  collector.getResultBundle = async (_noticeNo, revisionId, hints) => {
-    results.push([revisionId, hints.inputResultId]);
-    return { raw: { result: revisionId } };
+test("opening calls lot endpoints only when the source marks the package multi-lot", async () => {
+  const calls = [];
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      if (operation === "NOTICE_LDT_DETAIL") return {
+        data: {
+          notifyNo: "IB2600000003", notifyId: "notice-01",
+          bidMode: "1_MTHS", processApply: "LDT",
+        },
+        metadata: { operation },
+      };
+      if (operation === "OPENING_ROUND") return {
+        data: { bidoBidroundMngViewDTO: { isMultiLot: 1, bidStatus: "OPEN_BID" } },
+        metadata: { operation },
+      };
+      return { data: { operation }, metadata: { operation } };
+    },
   };
 
-  const bundle = await collector.collectCompleteBundle({
-    type: "es-notify-contractor",
-    id: "notice-01",
-    notifyId: "notice-01",
-    notifyNo: "IB2600000002",
-    inputResultId: "result-1",
+  const result = await new MscCollectors({ client }).getOpeningBundle(
+    "IB2600000003", "notice-01",
+  );
+
+  assert.ok(result.raw.opening_lot_0);
+  assert.ok(result.raw.opening_lot_detail_0);
+  assert.deepEqual(calls.filter(([operation]) => [
+    "OPENING_LOT", "OPENING_LOT_DETAIL",
+  ].includes(operation)).map(([operation]) => operation).sort(), [
+    "OPENING_LOT", "OPENING_LOT_DETAIL",
+  ]);
+});
+
+
+test("complete tender bundle captures sidecars, opening, result and contracts per revision", async () => {
+  const calls = [];
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      if (operation === "NOTICE_LDT_VERSION_LIST") return {
+        data: { versionList: [{
+          id: "notice-01", notifyNo: "IB2600000002", notifyVersion: "01", processApply: "LDT",
+        }] }, metadata: { operation },
+      };
+      if (operation === "NOTICE_OTHER_VERSION_LIST") throw new Error("PROCUREMENT_NOT_FOUND");
+      if (operation === "NOTICE_LDT_DETAIL") return {
+        data: {
+          notifyNo: "IB2600000002", notifyId: "notice-01", notifyVersion: "01",
+          bidMode: "1_MTHS", processApply: "LDT", status: "PUB_KQLCNT",
+          bidOpenId: "opening-1", inputResultId: "result-1", planNo: "PL2600000001",
+        }, metadata: { operation },
+      };
+      if (operation === "PLAN_VERSION_LIST") return {
+        data: { versionList: [{ id: "plan-01", planVersion: "01" }] }, metadata: { operation },
+      };
+      if (["NOTICE_PETITION", "NOTICE_CLARIFICATION", "NOTICE_PREBID_CONFERENCE"].includes(operation)) {
+        throw new Error("PROCUREMENT_NOT_FOUND");
+      }
+      if (operation === "OPENING_ROUND") return {
+        data: { bidoBidroundMngViewDTO: { isMultiLot: 0, bidStatus: "PUB_KQLCNT" } },
+        metadata: { operation },
+      };
+      if (operation === "NOTICE_CONTRACT_LIST") return {
+        data: [{ contractCode: "HD-01", contractDate: "2026-01-01" }], metadata: { operation },
+      };
+      return { data: { operation, ...payload }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-notify-contractor", id: "notice-01", notifyId: "notice-01",
+    notifyNo: "IB2600000002", inputResultId: "result-1", bidOpenId: "opening-1",
+    processApply: "LDT", bidMode: "1_MTHS",
   });
 
-  assert.ok(bundle.sources.noticeDetail_00);
-  assert.ok(bundle.sources.noticeDetail_01);
-  assert.deepEqual(openings, ["notice-01"]);
-  assert.deepEqual(results, [["notice-01", "result-1"]]);
-  assert.deepEqual(bundle.sources.noticeOpening_01, { opening: "notice-01" });
-  assert.deepEqual(bundle.sources.noticeResult_01, { result: "notice-01" });
+  assert.equal(bundle.schemaVersion, "biddingflow-muasamcong-raw-bundle-v2");
+  assert.equal(bundle.entity.kind, "NOTICE");
+  assert.equal(bundle.revisions["01"].sources.tenderInfo.success, true);
+  assert.equal(bundle.revisions["01"].sources.hsmt.success, true);
+  assert.equal(bundle.revisions["01"].sources.petition.absent, true);
+  assert.equal(bundle.revisions["01"].sources.opening_bid_0.success, true);
+  assert.equal(bundle.revisions["01"].sources.selectionResult.success, true);
+  assert.equal(bundle.sources.contractList.response[0].contractCode, "HD-01");
+  assert.equal(bundle.status, "FOUND_COMPLETE");
+  assert.equal(calls.some(([operation]) => operation === "OPENING_LOT"), false);
 });
 
 

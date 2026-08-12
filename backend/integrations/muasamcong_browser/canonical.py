@@ -277,6 +277,48 @@ def normalize_notice_revision(
             "processApply",
         },
     )
+
+    identity = [
+        (field, notice.get(field))
+        for field in ("notifyNo", "bidNo")
+        if notice.get(field) not in (None, "")
+    ]
+    related = [notice]
+    candidates = [
+        item
+        for item in _walk(raw)
+        if isinstance(item, dict)
+        and item is not notice
+        and any(
+            _same_family(item.get(field), expected)
+            for field, expected in identity
+        )
+    ]
+    candidates.sort(
+        key=lambda row: sum(
+            field in row
+            for field in (
+                "bidPrice", "capitalDetail", "bidField", "investField",
+                "ctype", "contractType", "cperiod", "cperiodUnit",
+                "implementationPeriod", "executionPeriod",
+            )
+        ),
+        reverse=True,
+    )
+    related.extend(candidates)
+
+    def related_pick(*aliases, default=None):
+        for row in related:
+            value = pick(row, *aliases)
+            if value not in (None, ""):
+                return value
+        return default
+
+    execution_period = None
+    for row in related:
+        execution_period = _period(row)
+        if execution_period not in (None, ""):
+            break
     process_apply = str(pick(notice, "processApply", default="LDT")).upper()
     return {
         "noticeNo": notice_no,
@@ -297,7 +339,13 @@ def normalize_notice_revision(
         "bidOpeningAt": pick(notice, "bidOpenDate", "bidOpeningAt"),
         "selectionForm": pick(notice, "bidForm", "selectionForm"),
         "selectionMode": pick(notice, "bidMode", "selectionMode"),
-        "contractType": pick(notice, "ctype", "contractType"),
+        "priceVnd": _money(related_pick("bidPrice", "priceVnd")),
+        "capitalDetail": related_pick(
+            "capitalDetail", "investmentFunds"
+        ),
+        "field": related_pick("bidField", "investField", "field"),
+        "executionPeriod": execution_period,
+        "contractType": related_pick("ctype", "contractType"),
         "processApply": process_apply,
         "bidOpenId": pick(notice, "bidOpenId"),
         "inputResultId": pick(notice, "inputResultId"),
@@ -376,13 +424,32 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             "contractorName": name or None,
             "contractorType": pick(item, "contractorType", "typeName", default="INDEPENDENT"),
             "bidPrice": _money(
-                pick(item, "bidPrice", "bidValue", "bidPriceAfterDiscount", "price")
+                pick(
+                    item,
+                    "bidPrice",
+                    "bidValue",
+                    "lotPrice",
+                    "bidFinalPrice",
+                    "bidPriceAfterDiscount",
+                    "lotFinalPrice",
+                    "price",
+                )
             ),
-            "discountRate": pick(item, "discountRate", "discountPercent"),
+            "discountRate": pick(
+                item, "discountRate", "discountPercent", "discount"
+            ),
             "priceAfterDiscount": _money(
-                pick(item, "bidPriceAfterDiscount", "priceAfterDiscount")
+                pick(
+                    item,
+                    "bidPriceAfterDiscount",
+                    "priceAfterDiscount",
+                    "bidFinalPrice",
+                    "lotFinalPrice",
+                )
             ),
-            "bidValidityDays": pick(item, "bidValidity", "bidValidityDays"),
+            "bidValidityDays": pick(
+                item, "bidValidity", "bidValidityDays", "bidValidityNum"
+            ),
             "bidGuarantee": _money(
                 pick(item, "bidGuarantee", "bidGuaranteed", "totalGuaranteeValue")
             ),
@@ -406,13 +473,25 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             "phase": phase,
         }
             bidders.append(bidder)
+    lot_rows.extend(
+        item
+        for source_payload in raw_bundle.values()
+        for item in opening_objects(source_payload)
+        if isinstance(item, dict)
+        and pick(item, "lotNo", "lotCode", "_inheritedLotNo") not in (None, "")
+    )
     lots = []
+    seen_lots = set()
     for index, row in enumerate(lot_rows):
         if not isinstance(row, dict):
             continue
+        lot_no = str(pick(row, "lotNo", "lotCode", default=index + 1))
+        if lot_no in seen_lots:
+            continue
+        seen_lots.add(lot_no)
         lots.append(
             {
-                "lotNo": str(pick(row, "lotNo", "lotCode", default=index + 1)),
+                "lotNo": lot_no,
                 "lotName": pick(row, "lotName", "name"),
             }
         )
@@ -431,9 +510,15 @@ def _result_boolean(value):
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return value == 1
     normalized = str(value or "").strip().upper()
-    if normalized in {"1", "TRUE", "YES", "Y", "WIN", "WINNER", "TRUNG_THAU"}:
+    if normalized in {
+        "1", "TRUE", "YES", "Y", "WIN", "WINNER", "TRUNG_THAU",
+        "TRUNG THAU", "TRÚNG THẦU",
+    }:
         return True
-    if normalized in {"0", "FALSE", "NO", "N", "LOSE", "FAILED", "KHONG_TRUNG_THAU"}:
+    if normalized in {
+        "0", "FALSE", "NO", "N", "LOSE", "FAILED", "KHONG_TRUNG_THAU",
+        "KHONG TRUNG THAU", "KHÔNG TRÚNG THẦU",
+    }:
         return False
     return None
 
@@ -520,6 +605,7 @@ def normalize_result_bundle(raw_bundle: dict, *, notice_no: str, revision_id: st
                             "winner",
                             "winStatus",
                             "isSelected",
+                            "result",
                         )
                     ),
                     "technicalStatus": pick(
@@ -582,6 +668,235 @@ def normalize_result_bundle(raw_bundle: dict, *, notice_no: str, revision_id: st
         "contractors": contractors,
         "hasSelectionResult": has_selection,
         "hasTechnicalResult": has_technical,
+    }
+
+
+def normalize_contract_list(raw_contracts):
+    """Map contract list rows while retaining stable upstream identifiers."""
+
+    rows = raw_contracts if isinstance(raw_contracts, list) else []
+    contracts = []
+    seen = set()
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        code = str(pick(item, "contractCode", "contractNo", default="") or "").strip()
+        contract_id = str(pick(item, "id", "contractId", default="") or "").strip()
+        identity = code or contract_id
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        contracts.append(
+            {
+                "contractId": contract_id or None,
+                "contractCode": code or None,
+                "signedAt": pick(item, "contractDate", "signDate", "signedDate"),
+                "status": pick(item, "status", "contractStatus", "statusName"),
+                "contractValue": _money(
+                    pick(item, "contractValue", "contractPrice", "totalValue")
+                ),
+                "processApply": pick(item, "processApply"),
+                "type": pick(item, "type"),
+                "contractorCode": pick(
+                    item, "contractorCode", "winningContractorCode"
+                ),
+                "contractorName": pick(
+                    item, "contractorName", "winningContractorName"
+                ),
+            }
+        )
+    return contracts
+
+
+def normalize_notice_complete_bundle(bundle: dict):
+    """Project a NOTICE Complete Raw Bundle into a stable aggregate."""
+
+    if not isinstance(bundle, dict):
+        raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+    entity = bundle.get("entity") or {}
+    notice_no = str(
+        entity.get("noticeNo") or entity.get("canonicalCode") or ""
+    ).strip().upper()
+    if not notice_no:
+        raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+    revisions = []
+    field_sources = {}
+    for revision_number, node in sorted(
+        (bundle.get("revisions") or {}).items(),
+        key=lambda item: str(item[0]),
+    ):
+        sources = (node or {}).get("sources") or {}
+        detail_source = sources.get("noticeDetail") or {}
+        raw_detail = detail_source.get("response")
+        if detail_source.get("success") is not True or not isinstance(
+            raw_detail, dict
+        ):
+            continue
+        revision_id = str(node.get("revisionId") or "")
+        notice = normalize_notice_revision(
+            raw_detail,
+            notice_no=notice_no,
+            revision_id=revision_id,
+            revision_number=str(revision_number).zfill(2),
+            source={
+                "provider": "MUASAMCONG",
+                "semanticOperation": detail_source.get("operation"),
+                "schemaFingerprint": detail_source.get("schemaFingerprint"),
+                "retrievedAt": detail_source.get("retrievedAt"),
+            },
+        )
+        sidecars = {}
+        for key in (
+            "tenderInfo",
+            "hsmt",
+            "petition",
+            "clarification",
+            "prebidConference",
+            "planVersionList",
+            "planDetail",
+            "planPackageDetail",
+            "phaseTwo",
+            "hsmtPhaseTwo",
+        ):
+            source = sources.get(key) or {}
+            if source.get("success") is True and source.get("response") is not None:
+                sidecars[key] = deepcopy(source.get("response"))
+        related_notice_raw = {
+            "noticeDetail": raw_detail,
+            **sidecars,
+        }
+        notice = normalize_notice_revision(
+            related_notice_raw,
+            notice_no=notice_no,
+            revision_id=revision_id,
+            revision_number=str(revision_number).zfill(2),
+            source=notice["source"],
+        )
+        tender_info_source = sources.get("tenderInfo") or {}
+        tender_info = tender_info_source.get("response")
+        sidecar_override_fields = set()
+        if tender_info_source.get("success") is True and isinstance(
+            tender_info, dict
+        ):
+            tender_objects = [
+                item for item in _walk(tender_info) if isinstance(item, dict)
+            ]
+
+            def sidecar_pick(*aliases):
+                for item in tender_objects:
+                    value = pick(item, *aliases)
+                    if value not in (None, ""):
+                        return value
+                return None
+
+            sidecar_values = {
+                "priceVnd": _money(sidecar_pick("bidPrice", "priceVnd")),
+                "capitalDetail": sidecar_pick(
+                    "capitalDetail", "investmentFunds"
+                ),
+                "field": sidecar_pick("bidField", "investField", "field"),
+                "contractType": sidecar_pick("ctype", "contractType"),
+            }
+            period_row = next(
+                (item for item in tender_objects if _period(item)), None
+            )
+            sidecar_values["executionPeriod"] = (
+                _period(period_row) if period_row else None
+            )
+            for field, value in sidecar_values.items():
+                if value not in (None, ""):
+                    notice[field] = value
+                    sidecar_override_fields.add(field)
+        opening_raw = {
+            key: source.get("response")
+            for key, source in sources.items()
+            if key.startswith("opening_") and source.get("success") is True
+        }
+        result_raw = {
+            mapped: (sources.get(key) or {}).get("response")
+            for key, mapped in (
+                ("selectionResult", "selectionResult"),
+                ("technicalResult", "technicalResult"),
+            )
+            if (sources.get(key) or {}).get("success") is True
+        }
+        revision = {
+            **notice,
+            "availableSources": sorted(sidecars),
+            "opening": (
+                normalize_opening_bundle(
+                    opening_raw,
+                    notice_no=notice_no,
+                    revision_id=revision_id,
+                )
+                if opening_raw
+                else None
+            ),
+            "result": (
+                normalize_result_bundle(
+                    {"noticeDetail": raw_detail, **result_raw},
+                    notice_no=notice_no,
+                    revision_id=revision_id,
+                )
+                if result_raw
+                else None
+            ),
+        }
+        revisions.append(revision)
+        for field in (
+            "name", "planNo", "priceVnd", "capitalDetail", "field",
+            "executionPeriod", "contractType", "selectionMode",
+        ):
+            if revision.get(field) is not None:
+                operation = detail_source.get("operation")
+                if (
+                    field in sidecar_override_fields
+                ):
+                    operation = tender_info_source.get("operation")
+                field_sources[f"revisions.{revision_number}.{field}"] = {
+                    "operation": operation,
+                    "revision": str(revision_number),
+                    "sourcePath": field,
+                }
+        if revision.get("opening") is not None:
+            field_sources[f"revisions.{revision_number}.opening"] = {
+                "operations": sorted(
+                    {
+                        source.get("operation")
+                        for key, source in sources.items()
+                        if key.startswith("opening_") and source.get("success") is True
+                    }
+                ),
+                "revision": str(revision_number),
+            }
+        if revision.get("result") is not None:
+            field_sources[f"revisions.{revision_number}.result"] = {
+                "operations": [
+                    (sources.get(key) or {}).get("operation")
+                    for key in ("technicalResult", "selectionResult")
+                    if (sources.get(key) or {}).get("success") is True
+                ],
+                "revision": str(revision_number),
+            }
+    contract_source = (bundle.get("sources") or {}).get("contractList") or {}
+    contracts = normalize_contract_list(
+        contract_source.get("response")
+        if contract_source.get("success") is True
+        else []
+    )
+    if contracts:
+        field_sources["contracts"] = {
+            "operation": contract_source.get("operation"),
+            "sourcePath": "response",
+        }
+    return {
+        "schemaVersion": "biddingflow-procurement-canonical-v2",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
+        "kind": "NOTICE",
+        "canonicalCode": notice_no,
+        "revisions": revisions,
+        "contracts": contracts,
+        "fieldSources": field_sources,
     }
 
 

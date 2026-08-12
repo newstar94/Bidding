@@ -246,6 +246,38 @@ function findFirstValue(value, field) {
 }
 
 
+function usableIdentifier(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized && normalized.toLowerCase() !== "undefined" ? normalized : null;
+}
+
+
+function flagEnabled(value) {
+  if (value === true || value === 1) return true;
+  return ["1", "TRUE", "YES", "Y", "CO", "CÓ"].includes(
+    String(value ?? "").trim().toUpperCase(),
+  );
+}
+
+
+function sourceMetrics(metadata) {
+  return Object.fromEntries(Object.entries(metadata || {})
+    .filter(([, value]) => ["number", "boolean"].includes(typeof value)));
+}
+
+
+const OPENING_OPERATIONS = new Set([
+  "OPENING_NOTIFY",
+  "OPENING_ROUND",
+  "OPENING_SUBMISSION",
+  "OPENING_BID",
+  "OPENING_LOT",
+  "OPENING_LOT_DETAIL",
+  "OPENING_FINANCIAL_AVAILABLE",
+  "OPENING_FINANCIAL_DETAIL",
+]);
+
+
 const GENERIC_DETAIL_OPERATIONS = Object.freeze({
   "es-plan-overall-p": "PLAN_OVERALL_DETAIL",
   "es-ycbg": "QUOTE_REQUEST_DETAIL",
@@ -422,9 +454,8 @@ export class MscCollectors {
     } else {
       const collectPackType = async (packType) => {
         const tasks = [];
-        for (const openingOperation of [
-          "OPENING_NOTIFY", "OPENING_ROUND", "OPENING_BID", "OPENING_LOT", "OPENING_LOT_DETAIL",
-        ]) {
+        const baseOperations = ["OPENING_NOTIFY", "OPENING_ROUND", "OPENING_BID"];
+        for (const openingOperation of baseOperations) {
           tasks.push((async () => {
             try {
             const key = `${openingOperation.toLowerCase()}_${packType}`;
@@ -437,7 +468,23 @@ export class MscCollectors {
           })());
         }
         await Promise.all(tasks);
-        return sources[`opening_round_${packType}`];
+        const roundData = sources[`opening_round_${packType}`];
+        const bidData = sources[`opening_bid_${packType}`];
+        const isMultiLot = flagEnabled(findFirstValue(roundData, "isMultiLot"))
+          || flagEnabled(findFirstValue(bidData, "isMultiLot"));
+        if (isMultiLot) {
+          await Promise.all(["OPENING_LOT", "OPENING_LOT_DETAIL"].map(async (openingOperation) => {
+            try {
+              const key = `${openingOperation.toLowerCase()}_${packType}`;
+              sources[key] = (
+                await this.client.request(openingOperation, { ...payload, packType })
+              ).data;
+            } catch (error) {
+              failures.push({ operation: openingOperation, packType, error: String(error.message) });
+            }
+          }));
+        }
+        return roundData;
       };
       const technicalPackType = bidMode === "1_MTHS" ? 0 : 1;
       const roundData = await collectPackType(technicalPackType);
@@ -446,7 +493,23 @@ export class MscCollectors {
         bidMode === "1_HTHS"
         && ["OPEN_DXTC", "PUB_KQLCNT"].includes(bidStatus)
       ) {
+        try {
+          sources.opening_financial_available = (
+            await this.client.request("OPENING_FINANCIAL_AVAILABLE", { id: payload.notifyId })
+          ).data;
+        } catch (error) {
+          failures.push({ operation: "OPENING_FINANCIAL_AVAILABLE", error: String(error.message) });
+        }
         await collectPackType(2);
+        try {
+          sources.opening_financial_detail_2 = (
+            await this.client.request("OPENING_FINANCIAL_DETAIL", {
+              ...payload, packType: 2, viewType: 0,
+            })
+          ).data;
+        } catch (error) {
+          failures.push({ operation: "OPENING_FINANCIAL_DETAIL", packType: 2, error: String(error.message) });
+        }
       }
     }
     if (Object.keys(sources).length === 1 && failures.length) {
@@ -576,6 +639,14 @@ export class MscCollectors {
         return result.data;
       } catch (error) {
         const code = String(error?.message || "PROCUREMENT_UPSTREAM_UNAVAILABLE");
+        if (context.optional && code === "PROCUREMENT_NOT_FOUND") {
+          source.response = null;
+          source.success = true;
+          source.absent = true;
+          source.contentHash = contentHash(null);
+          source.schemaFingerprint = `${operation.toLowerCase()}:absent`;
+          return null;
+        }
         source.error = { code };
         failures.push({ operation, ...context, error: code });
         return null;
@@ -721,10 +792,305 @@ export class MscCollectors {
     return bundle;
   }
 
+  async _collectNoticeCompleteBundle(record, options = {}) {
+    const canonicalNoticeNo = String(record?.notifyNo || "").trim().toUpperCase();
+    const retrievedAt = this.clock();
+    const failures = [];
+    const bundle = {
+      schemaVersion: "biddingflow-muasamcong-raw-bundle-v2",
+      provider: "MUASAMCONG",
+      entity: {
+        kind: "NOTICE",
+        canonicalCode: canonicalNoticeNo,
+        noticeNo: canonicalNoticeNo,
+      },
+      detailLevel: "COMPLETE",
+      revisionMode: String(options.revisionMode || "ALL").toUpperCase(),
+      retrievedAt,
+      sources: {},
+      revisions: {},
+      failures,
+    };
+    const envelope = (operation, payload, attempted = true) => ({
+      operation,
+      endpoint: resolveEndpoint(operation).path,
+      request: sanitizedRequest(payload),
+      response: null,
+      success: false,
+      attempted,
+      retrievedAt: this.clock(),
+    });
+    const capture = async (target, key, operation, payload, context = {}) => {
+      const source = envelope(operation, payload);
+      target[key] = source;
+      try {
+        const result = await this.client.request(operation, payload);
+        source.response = sanitizedRequest(result.data);
+        source.success = true;
+        source.contentHash = contentHash(source.response);
+        source.schemaFingerprint = fingerprint(result.data, operation.toLowerCase());
+        source.metrics = sourceMetrics(result.metadata);
+        return result.data;
+      } catch (error) {
+        const code = String(error?.message || "PROCUREMENT_UPSTREAM_UNAVAILABLE");
+        if (context.optional && code === "PROCUREMENT_NOT_FOUND") {
+          source.response = null;
+          source.success = true;
+          source.absent = true;
+          source.contentHash = contentHash(null);
+          source.schemaFingerprint = `${operation.toLowerCase()}:absent`;
+          return null;
+        }
+        source.error = { code };
+        failures.push({ operation, ...context, error: code });
+        return null;
+      }
+    };
+    const searchSource = options.searchSource || {};
+    const search = envelope("SEARCH", searchSource.request || null, Boolean(searchSource.raw));
+    search.response = sanitizedRequest(searchSource.raw || record);
+    search.success = true;
+    search.contentHash = contentHash(search.response);
+    search.schemaFingerprint = searchSource.fingerprint || fingerprint(search.response, "search");
+    search.metrics = sourceMetrics(searchSource.metadata);
+    bundle.sources.search = search;
+
+    const versionResponses = await Promise.all(
+      ["NOTICE_LDT_VERSION_LIST", "NOTICE_OTHER_VERSION_LIST"].map(async (operation) => capture(
+        bundle.sources,
+        operation === "NOTICE_LDT_VERSION_LIST" ? "ldtVersionList" : "otherVersionList",
+        operation,
+        { notifyNo: canonicalNoticeNo },
+        { optional: true },
+      )),
+    );
+    if (!versionResponses.some((data) => data && responseVersions(data).length)) {
+      throw new Error("PROCUREMENT_NOT_FOUND");
+    }
+    const listed = { revisions: [] };
+    for (const [key, processApply] of [["ldtVersionList", "LDT"], ["otherVersionList", "KHAC"]]) {
+      for (const row of responseVersions(bundle.sources[key]?.response)) {
+        if (!row?.id) continue;
+        const revision = canonicalRevision(row, "notifyVersion", "notifyNo", canonicalNoticeNo);
+        revision.processApply = String(row.processApply || processApply);
+        listed.revisions.push(revision);
+        this.noticeRevisionHints.set(revision.revisionId, revision.processApply);
+      }
+    }
+    const revisions = listed.revisions;
+    const currentId = usableIdentifier(record?.notifyId || record?.id);
+    if (currentId && !revisions.some((row) => row.revisionId === currentId)) {
+      revisions.push({
+        revisionId: currentId,
+        revisionNumber: String(record?.notifyVersion ?? "").padStart(2, "0"),
+        familyNo: canonicalNoticeNo,
+        processApply: String(record?.processApply || "LDT"),
+      });
+    }
+    const selected = selectRevisions(
+      [...new Map(revisions.map((row) => [row.revisionId, row])).values()],
+      options,
+    );
+    if (!selected.length) {
+      failures.push({ operation: "NOTICE_VERSION_SELECTION", error: "PROCUREMENT_REVISION_INVALID" });
+    }
+
+    const contractPromise = capture(
+      bundle.sources,
+      "contractList",
+      "NOTICE_CONTRACT_LIST",
+      { notifyNo: canonicalNoticeNo },
+    );
+    await Promise.all([mapConcurrent(selected, this.collectionConcurrency, async (revision) => {
+      const label = revision.revisionNumber || revision.revisionId;
+      const node = {
+        revisionId: revision.revisionId,
+        revisionNumber: label,
+        processApply: revision.processApply,
+        sources: {},
+      };
+      bundle.revisions[label] = node;
+      let detail;
+      let detailOperation;
+      try {
+        const found = await this._noticeDetail(canonicalNoticeNo, revision.revisionId);
+        detail = found.response.data;
+        detailOperation = found.operation;
+      } catch (error) {
+        const operation = revision.processApply === "LDT" ? "NOTICE_LDT_DETAIL" : "NOTICE_OTHER_DETAIL";
+        const source = envelope(operation, { id: revision.revisionId });
+        source.error = { code: String(error.message) };
+        node.sources.noticeDetail = source;
+        failures.push({ operation, revision: label, error: String(error.message) });
+        return;
+      }
+      const detailSource = envelope(detailOperation, { id: revision.revisionId });
+      detailSource.response = sanitizedRequest(detail);
+      detailSource.success = true;
+      detailSource.contentHash = contentHash(detailSource.response);
+      detailSource.schemaFingerprint = fingerprint(detail, "package-notice");
+      node.sources.noticeDetail = detailSource;
+
+      const notice = findBestObject(
+        detail,
+        ["notifyNo", "notifyVersion", "notifyId", "bidMode", "processApply", "isMultiLot"],
+        "notifyNo",
+        canonicalNoticeNo,
+      ) || {};
+      const merged = {
+        ...notice,
+        ...(String(revision.revisionId) === String(currentId) ? asObject(record) : {}),
+      };
+      const processApply = String(merged.processApply || revision.processApply || "LDT").toUpperCase();
+      const bidMode = String(merged.bidMode || "").toUpperCase();
+      const notifyId = usableIdentifier(merged.notifyId || merged.id) || revision.revisionId;
+      if (processApply === "LDT") {
+        await Promise.all([
+          capture(node.sources, "tenderInfo", "NOTICE_TENDER_INFO", { id: notifyId }, { revision: label }),
+          capture(node.sources, "hsmt", "NOTICE_HSMT", { id: notifyId, processApply }, { revision: label }),
+          capture(node.sources, "petition", "NOTICE_PETITION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
+          capture(node.sources, "clarification", "NOTICE_CLARIFICATION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
+          capture(node.sources, "prebidConference", "NOTICE_PREBID_CONFERENCE", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
+        ]);
+      }
+      const planNo = usableIdentifier(merged.planNo || findFirstValue(detail, "planNo"));
+      const packageDetailId = usableIdentifier(
+        merged.idDetail
+        || merged.bidPlanDetailId
+        || findFirstValue(detail, "idDetail")
+        || findFirstValue(detail, "bidPlanDetailId"),
+      );
+      if (planNo) {
+        const planVersions = await capture(
+          node.sources, "planVersionList", "PLAN_VERSION_LIST", { planNo }, { revision: label },
+        );
+        const planRevisionId = usableIdentifier(findFirstValue(planVersions, "id"));
+        if (planRevisionId) {
+          await capture(
+            node.sources, "planDetail", "PLAN_DETAIL", { id: planRevisionId }, { revision: label },
+          );
+        }
+      }
+      if (packageDetailId) {
+        await capture(
+          node.sources, "planPackageDetail", "PLAN_PACKAGE_DETAIL", { id: packageDetailId }, { revision: label },
+        );
+      }
+
+      const status = String(findFirstValue(detail, "status") || merged.status || "").toUpperCase();
+      const hasOpening = Boolean(findFirstValue(detail, "successBidOpenDate"))
+        || ["OPEN_BID", "OPEN_DXKT", "OPEN_DXTC", "PUB_KQLCNT"].includes(status)
+        || Boolean(usableIdentifier(merged.bidOpenId));
+      if (hasOpening) {
+        let opening;
+        try {
+          opening = await this.getOpeningBundle(canonicalNoticeNo, revision.revisionId);
+        } catch (error) {
+          failures.push({
+            operation: "OPENING_BUNDLE",
+            revision: label,
+            error: String(error.message),
+          });
+          opening = { raw: {}, failures: [] };
+        }
+        const failuresByKey = new Map((opening.failures || []).map((failure) => [
+          `${failure.operation}:${failure.packType ?? ""}`, failure,
+        ]));
+        for (const [key, response] of Object.entries(opening.raw || {})) {
+          if (key === "noticeDetail") continue;
+          const matched = key.match(/^(opening_[a-z_]+?)(?:_(\d))?$/);
+          if (!matched) continue;
+          const operation = matched[1].toUpperCase();
+          if (!OPENING_OPERATIONS.has(operation)) continue;
+          const packType = matched[2] == null ? null : Number(matched[2]);
+          const payload = operation === "OPENING_FINANCIAL_AVAILABLE"
+            ? { id: notifyId }
+            : { notifyNo: canonicalNoticeNo, notifyId, type: "TBMT", ...(packType == null ? {} : { packType }) };
+          const source = envelope(operation, payload);
+          source.response = sanitizedRequest(response);
+          source.success = true;
+          source.contentHash = contentHash(source.response);
+          source.schemaFingerprint = fingerprint(response, operation.toLowerCase());
+          node.sources[key] = source;
+          failuresByKey.delete(`${operation}:${packType ?? ""}`);
+        }
+        for (const failure of failuresByKey.values()) {
+          const packType = failure.packType == null ? null : Number(failure.packType);
+          const key = `${failure.operation.toLowerCase()}${packType == null ? "" : `_${packType}`}`;
+          const payload = failure.operation === "OPENING_FINANCIAL_AVAILABLE"
+            ? { id: notifyId }
+            : { notifyNo: canonicalNoticeNo, notifyId, type: "TBMT", ...(packType == null ? {} : { packType }) };
+          const source = envelope(failure.operation, payload);
+          source.error = { code: failure.error };
+          node.sources[key] = source;
+          failures.push({ ...failure, revision: label });
+        }
+      }
+
+      node.identifiers = {
+        notifyId,
+        planNo,
+        bidMode,
+        processApply,
+        isMultiLot: flagEnabled(
+          merged.isMultiLot || findFirstValue(detail, "isMultiLot"),
+        ),
+      };
+
+      const inputResultId = usableIdentifier(merged.inputResultId || findFirstValue(detail, "inputResultId"));
+      const techReqId = usableIdentifier(merged.techReqId || findFirstValue(detail, "techReqId"));
+      await Promise.all([
+        inputResultId && capture(
+          node.sources,
+          "selectionResult",
+          processApply === "KHAC" ? "SELECTION_RESULT_OTHER" : "SELECTION_RESULT",
+          { id: inputResultId },
+          { revision: label },
+        ),
+        techReqId && capture(
+          node.sources, "technicalResult", "TECHNICAL_RESULT", { id: techReqId }, { revision: label },
+        ),
+      ].filter(Boolean));
+
+      if (bidMode.startsWith("2_")) {
+        const phaseTwo = await capture(
+          node.sources, "phaseTwo", "NOTICE_PHASE_TWO", { notifyNo: canonicalNoticeNo }, { revision: label },
+        );
+        const phaseTwoId = usableIdentifier(findFirstValue(phaseTwo, "id"));
+        if (phaseTwoId) {
+          await capture(
+            node.sources, "hsmtPhaseTwo", "NOTICE_HSMT_PHASE_TWO", { id: phaseTwoId }, { revision: label },
+          );
+        }
+      }
+    }), contractPromise]);
+    const envelopes = rawBundleSourceEnvelopes(bundle);
+    bundle.complete = failures.length === 0;
+    bundle.status = bundle.complete ? "FOUND_COMPLETE" : "FOUND_PARTIAL";
+    bundle.manifest = buildRawSourceManifest(bundle);
+    bundle.fingerprint = fingerprint(bundle, "complete-bundle");
+    bundle.metrics = {
+      upstream: {
+        requestCount: envelopes.filter((source) => source.attempted).length,
+        networkMs: envelopes.reduce((sum, source) => sum + Number(source.metrics?.networkWaitMs || 0), 0),
+      },
+      collector: {
+        revisions: bundle.manifest.revisions.length,
+        openings: envelopes.filter((source) => source.operation.startsWith("OPENING_")).length,
+        results: envelopes.filter((source) => ["SELECTION_RESULT", "TECHNICAL_RESULT"].includes(source.operation)).length,
+        contracts: asArray(bundle.sources.contractList?.response).length,
+      },
+    };
+    return bundle;
+  }
+
   async collectCompleteBundle(record, options = {}) {
     const type = String(record?.type || "");
     if (type === "es-plan-project-p") {
       return this._collectPlanCompleteBundle(record, options);
+    }
+    if (type === "es-notify-contractor") {
+      return this._collectNoticeCompleteBundle(record, options);
     }
     const sources = { searchRecord: record };
     const failures = [];
@@ -748,53 +1114,6 @@ export class MscCollectors {
         sources[`projectDetail_${version.pversion || version.id}`] = (
           await this.client.request("PROJECT_DETAIL", { id: version.id })
         ).data;
-      }
-    } else if (type === "es-notify-contractor") {
-      const revisions = await this.listNoticeRevisions(String(record.notifyNo || ""));
-      for (const revision of revisions.revisions) {
-        const label = revision.revisionNumber || revision.revisionId;
-        const detail = await this.getNoticeRevision(record.notifyNo, revision.revisionId);
-        sources[`noticeDetail_${label}`] = detail.raw;
-        const status = String(findFirstValue(detail.raw, "status") || "").toUpperCase();
-        const hasOpening = Boolean(findFirstValue(detail.raw, "successBidOpenDate"))
-          || ["OPEN_BID", "OPEN_DXKT", "OPEN_DXTC", "PUB_KQLCNT"].includes(status)
-          || (
-            String(revision.revisionId) === String(record.notifyId || record.id || "")
-            && Boolean(record.bidOpenId)
-          );
-        if (hasOpening) {
-          try {
-            sources[`noticeOpening_${label}`] = (
-              await this.getOpeningBundle(record.notifyNo, revision.revisionId)
-            ).raw;
-          } catch (error) {
-            failures.push({
-              operation: "OPENING_BUNDLE",
-              revisionId: revision.revisionId,
-              error: String(error.message),
-            });
-          }
-        }
-        if (
-          String(revision.revisionId) === String(record.notifyId || record.id || "")
-          && (record.inputResultId || record.techReqId)
-        ) {
-          try {
-            sources[`noticeResult_${label}`] = (
-              await this.getResultBundle(
-                record.notifyNo,
-                revision.revisionId,
-                record,
-              )
-            ).raw;
-          } catch (error) {
-            failures.push({
-              operation: "RESULT_BUNDLE",
-              revisionId: revision.revisionId,
-              error: String(error.message),
-            });
-          }
-        }
       }
     } else if (type === "es-ct-contract") {
       const contractDetail = await capture(

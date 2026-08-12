@@ -104,6 +104,7 @@ def _revision_numbers(value):
                 and (row.get("id") or row.get("revisionId"))
                 and (
                     row.get("planVersion") is not None
+                    or row.get("notifyVersion") is not None
                     or row.get("revisionNumber") is not None
                 )
             ]
@@ -116,7 +117,11 @@ def _revision_numbers(value):
         str(
             row.get("planVersion")
             if row.get("planVersion") is not None
-            else row.get("revisionNumber")
+            else (
+                row.get("notifyVersion")
+                if row.get("notifyVersion") is not None
+                else row.get("revisionNumber")
+            )
         ).strip().zfill(2)
         for row in candidates
     }
@@ -468,4 +473,225 @@ class ProcurementRawSnapshotRepository:
             },
         }
         bundle["fingerprint"] = f"complete-bundle:cached:{_digest(bundle)[:12]}"
+        return bundle
+
+    def load_fresh_notice_bundle(
+        self,
+        organization_id,
+        canonical_code,
+        *,
+        revision_mode="ALL",
+        revision_numbers=None,
+        max_age_seconds=900,
+        now=None,
+    ):
+        """Reassemble a fresh NOTICE graph for canonical remapping."""
+
+        code = str(canonical_code or "").strip().upper()
+        if not organization_id or not code:
+            return None
+        current = now or datetime.now(timezone.utc)
+        cutoff = current - timedelta(
+            seconds=max(1, min(float(max_age_seconds), 86400.0))
+        )
+        connection = self.database.get_connection()
+        try:
+            rows = connection.execute(
+                """SELECT revision_id, revision_number, child_entity_kind,
+                          child_entity_id, operation, endpoint, request_json,
+                          response_json, error_json, content_hash,
+                          schema_fingerprint, success, retrieved_at, created_at
+                     FROM procurement_raw_snapshot
+                    WHERE organization_id = ?
+                      AND provider = 'MUASAMCONG'
+                      AND entity_kind = 'NOTICE'
+                      AND canonical_code = ?
+                      AND retrieved_at >= ?
+                    ORDER BY retrieved_at DESC, created_at DESC
+                    LIMIT 5000""",
+                (str(organization_id), code, cutoff.isoformat()),
+            ).fetchall()
+        finally:
+            connection.close()
+        if not rows:
+            return None
+        newest = {}
+        for row in rows:
+            revision_number = _row_value(row, "revision_number", 1)
+            operation = str(_row_value(row, "operation", 4) or "")
+            key = (
+                str(revision_number)
+                if revision_number is not None else None,
+                operation,
+            )
+            newest.setdefault(key, row)
+
+        def envelope(row):
+            return {
+                "operation": str(_row_value(row, "operation", 4) or ""),
+                "endpoint": str(_row_value(row, "endpoint", 5) or ""),
+                "request": _loads(_row_value(row, "request_json", 6)),
+                "response": _loads(_row_value(row, "response_json", 7)),
+                "error": _loads(_row_value(row, "error_json", 8)),
+                "contentHash": str(_row_value(row, "content_hash", 9) or ""),
+                "schemaFingerprint": str(
+                    _row_value(row, "schema_fingerprint", 10) or "unknown"
+                ),
+                "success": bool(_row_value(row, "success", 11)),
+                "retrievedAt": str(_row_value(row, "retrieved_at", 12) or ""),
+                "metrics": {},
+            }
+
+        top_keys = {
+            "SEARCH": "search",
+            "NOTICE_LDT_VERSION_LIST": "ldtVersionList",
+            "NOTICE_OTHER_VERSION_LIST": "otherVersionList",
+            "NOTICE_CONTRACT_LIST": "contractList",
+        }
+        sources = {
+            top_keys.get(operation, operation.lower()): envelope(row)
+            for (revision, operation), row in newest.items()
+            if revision is None
+        }
+        version_sources = [
+            sources.get("ldtVersionList"), sources.get("otherVersionList")
+        ]
+        advertised = set().union(*(
+            _revision_numbers(source.get("response"))
+            for source in version_sources
+            if source and source.get("success") is True
+        ))
+        detail_rows = {
+            revision: row
+            for (revision, operation), row in newest.items()
+            if revision is not None
+            and operation in {
+                "NOTICE_LDT_DETAIL", "NOTICE_OTHER_DETAIL", "NOTICE_ADB_DETAIL"
+            }
+        }
+        available = sorted(detail_rows, key=_revision_sort_key)
+        mode = str(revision_mode or "ALL").strip().upper()
+        if mode == "LATEST":
+            selected = available[-1:] if available else []
+        elif mode == "SELECTED":
+            requested = {
+                str(value).strip().zfill(2)
+                for value in (revision_numbers or [])
+                if str(value).strip()
+            }
+            selected = [value for value in available if value in requested]
+            if requested != set(selected):
+                return None
+        elif mode == "ALL":
+            selected = available
+        else:
+            return None
+        if (
+            not selected
+            or not sources.get("search")
+            or sources["search"].get("success") is not True
+            or not advertised
+            or (mode == "ALL" and not advertised.issubset(set(selected)))
+            or (
+                mode == "LATEST"
+                and selected != [max(advertised, key=_revision_sort_key)]
+            )
+        ):
+            return None
+
+        source_keys = {
+            "NOTICE_TENDER_INFO": "tenderInfo",
+            "NOTICE_HSMT": "hsmt",
+            "NOTICE_PETITION": "petition",
+            "NOTICE_CLARIFICATION": "clarification",
+            "NOTICE_PREBID_CONFERENCE": "prebidConference",
+            "PLAN_VERSION_LIST": "planVersionList",
+            "PLAN_DETAIL": "planDetail",
+            "PLAN_PACKAGE_DETAIL": "planPackageDetail",
+            "SELECTION_RESULT": "selectionResult",
+            "SELECTION_RESULT_OTHER": "selectionResult",
+            "TECHNICAL_RESULT": "technicalResult",
+            "NOTICE_PHASE_TWO": "phaseTwo",
+            "NOTICE_HSMT_PHASE_TWO": "hsmtPhaseTwo",
+        }
+        revisions = {}
+        failures = []
+        envelopes = list(sources.values())
+        for revision_number in selected:
+            detail_row = detail_rows[revision_number]
+            revision_id = str(_row_value(detail_row, "revision_id", 0) or "")
+            detail_source = envelope(detail_row)
+            node_sources = {"noticeDetail": detail_source}
+            for (row_revision, operation), row in newest.items():
+                if row_revision != revision_number or row is detail_row:
+                    continue
+                key = source_keys.get(operation)
+                if operation.startswith("OPENING_"):
+                    request = _loads(_row_value(row, "request_json", 6), {})
+                    pack_type = request.get("packType")
+                    key = operation.lower() + (
+                        f"_{pack_type}" if pack_type is not None else ""
+                    )
+                if key:
+                    node_sources[key] = envelope(row)
+            node = {
+                "revisionId": revision_id,
+                "revisionNumber": revision_number,
+                "sources": node_sources,
+            }
+            revisions[revision_number] = node
+            envelopes.extend(node_sources.values())
+            for source in node_sources.values():
+                if source.get("success") is not True:
+                    failures.append({
+                        "operation": source.get("operation"),
+                        "revision": revision_number,
+                        "error": (source.get("error") or {}).get(
+                            "code", "PROCUREMENT_UPSTREAM_UNAVAILABLE"
+                        ),
+                    })
+        retrieved_at = max(
+            (source.get("retrievedAt") or "" for source in envelopes),
+            default=current.isoformat(),
+        )
+        complete = not failures and all(
+            source.get("success") is True for source in envelopes
+        )
+        bundle = {
+            "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+            "provider": "MUASAMCONG",
+            "entity": {
+                "kind": "NOTICE", "canonicalCode": code, "noticeNo": code,
+            },
+            "detailLevel": "COMPLETE",
+            "revisionMode": mode,
+            "retrievedAt": retrieved_at,
+            "sources": sources,
+            "revisions": revisions,
+            "failures": failures,
+            "complete": complete,
+            "status": "FOUND_COMPLETE" if complete else "FOUND_PARTIAL",
+            "manifest": {
+                "sourceCount": len(envelopes),
+                "successCount": sum(
+                    source.get("success") is True for source in envelopes
+                ),
+                "failedCount": sum(
+                    source.get("success") is not True for source in envelopes
+                ),
+                "revisions": list(selected),
+                "packages": 0,
+                "operations": list(dict.fromkeys(
+                    source.get("operation") for source in envelopes
+                )),
+            },
+            "metrics": {
+                "cache": {"hit": True, "layer": "RAW_SNAPSHOT"},
+                "upstream": {"requestCount": 0, "networkMs": 0},
+                "collector": {"revisions": len(revisions)},
+            },
+        }
+        bundle["fingerprint"] = (
+            f"complete-bundle:cached:{_digest(bundle)[:12]}"
+        )
         return bundle

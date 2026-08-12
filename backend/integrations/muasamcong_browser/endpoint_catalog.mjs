@@ -54,6 +54,10 @@ export const ENDPOINTS = Object.freeze({
     path: "/expose/ldtkqmt/bid-notification-p/roundmng",
     protected: true,
   },
+  OPENING_SUBMISSION: {
+    path: "/expose/ldtkqmt/bid-notification-p/submission",
+    protected: true,
+  },
   OPENING_BID: {
     path: "/expose/ldtkqmt/bid-notification-p/bid-open",
     protected: true,
@@ -65,6 +69,14 @@ export const ENDPOINTS = Object.freeze({
   OPENING_LOT_DETAIL: {
     path: "/expose/ldtkqmt/bid-notification-p/lotOpenDetail",
     protected: true,
+  },
+  OPENING_FINANCIAL_DETAIL: {
+    path: "/expose/ldtkqmt/bid-notification-p/get-by-id-v2",
+    protected: true,
+  },
+  OPENING_FINANCIAL_AVAILABLE: {
+    path: "/hsdxtc/is-opened",
+    protected: false,
   },
   OPENING_OTHER: {
     path: "/expose/kqmt/bid-notify-contractor-out/get-by-id",
@@ -86,6 +98,29 @@ export const ENDPOINTS = Object.freeze({
     path: "/ldtdsnt/tech-req-approval/get-by-id",
     protected: true,
   },
+  SELECTION_RESULT_BY_BID_ID: {
+    path: "/expose/contractor-input-result/get-by-bid-id",
+    protected: true,
+  },
+  SELECTION_RESULT_DECISION: {
+    path: "/expose/contractor-input-result/get-decision",
+    protected: true,
+  },
+  SELECTION_RESULT_REPLACEMENT: {
+    path: "/input-result-replace/get-result-replace",
+    protected: true,
+  },
+  NOTICE_TENDER_INFO: { path: "/lcnt_tbmt_ttc_ldt", protected: true },
+  NOTICE_HSMT: { path: "/lcnt_tbmt_hsmt", protected: true },
+  NOTICE_PETITION: { path: "/lcnt_tbmt_kn", protected: true },
+  NOTICE_CLARIFICATION: { path: "/lcnt_tbmt_yclr", protected: true },
+  NOTICE_PREBID_CONFERENCE: { path: "/lcnt_tbmt_hntdt", protected: true },
+  NOTICE_PHASE_TWO: { path: "/get-notify-phase-two", protected: false },
+  NOTICE_HSMT_PHASE_TWO: { path: "/get-hsmt-phase-two", protected: false },
+  NOTICE_CONTRACT_LIST: {
+    path: "/econsign/contract-info/list-contract-for-po",
+    protected: true,
+  },
   CONTRACT_DETAIL: {
     path: "/econsign/contract-info/detail-by-id-for-po",
     protected: true,
@@ -94,6 +129,7 @@ export const ENDPOINTS = Object.freeze({
     path: "/get-linked-list-contract-po",
     protected: false,
   },
+  // Compatibility aliases used by the standalone contract collector.
   CONTRACT_TENDER: { path: "/lcnt_tbmt_ttc_ldt", protected: true },
   CONTRACT_HSMT: { path: "/lcnt_tbmt_hsmt", protected: true },
   PLAN_OVERALL_DETAIL: {

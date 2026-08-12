@@ -131,7 +131,11 @@ def _lookup_blocking(request, payload):
         detail_level=payload.get("detailLevel") or "CANONICAL",
         revision_mode=payload.get("revisionMode") or "LATEST",
         revision_numbers=payload.get("revisionNumbers"),
-        raw_bundle_loader=lambda: raw_repository.load_fresh_plan_bundle(
+        raw_bundle_loader=lambda: (
+            raw_repository.load_fresh_plan_bundle
+            if str(payload.get("code") or "").strip().upper().startswith("PL")
+            else raw_repository.load_fresh_notice_bundle
+        )(
             organization_id,
             payload.get("code"),
             revision_mode=payload.get("revisionMode") or "LATEST",

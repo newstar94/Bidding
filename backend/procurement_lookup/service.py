@@ -406,7 +406,6 @@ class ProcurementLookupService:
                 raw_bundle = None
                 if (
                     detail_level == "COMPLETE"
-                    and kind == "PLAN"
                     and callable(raw_bundle_loader)
                 ):
                     raw_bundle = raw_bundle_loader()

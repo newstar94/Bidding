@@ -13,6 +13,7 @@ import time
 
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
+    normalize_notice_complete_bundle,
 )
 from backend.integrations.muasamcong_browser.classifier import (
     classify_upstream_error,
@@ -65,7 +66,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08"
+    parser_version = "2026.08.12"
 
     def __init__(
         self,
@@ -232,8 +233,7 @@ class MuaSamCongProcurementSource:
             )
             raise
 
-    @staticmethod
-    def _source_metadata(result):
+    def _source_metadata(self, result):
         metadata = result.get("metadata") or {}
         metrics = {
             key: value
@@ -253,7 +253,7 @@ class MuaSamCongProcurementSource:
         return {
             "provider": "MUASAMCONG",
             "profile": str(metadata.get("profile") or "2026.08"),
-            "parserVersion": "2026.08",
+            "parserVersion": self.parser_version,
             "schemaFingerprint": result.get("fingerprint"),
             "extractionStrategy": "protected-api",
             "retrievedAt": result.get("retrievedAt"),
@@ -648,6 +648,47 @@ class MuaSamCongProcurementSource:
             "fieldSources": field_sources,
         }
 
+    @staticmethod
+    def map_notice_raw_bundle(bundle: dict) -> dict:
+        """Reprocess a stored NOTICE bundle without calling upstream."""
+
+        if not isinstance(bundle, dict) or bundle.get("schemaVersion") != (
+            "biddingflow-muasamcong-raw-bundle-v2"
+        ):
+            raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+        entity = bundle.get("entity") or {}
+        if str(entity.get("kind") or "").upper() != "NOTICE":
+            raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+        return normalize_notice_complete_bundle(bundle)
+
+    @staticmethod
+    def _notice_lookup_data(notice_no, revision, contracts=None):
+        opening = revision.get("opening") or {}
+        result = revision.get("result") or {}
+        return {
+            "notifyNo": notice_no,
+            "notifyId": revision.get("notifyId"),
+            "planNo": revision.get("planNo"),
+            "bidName": revision.get("name"),
+            "bidPrice": revision.get("priceVnd"),
+            "implementationPeriod": revision.get("executionPeriod"),
+            "capitalDetail": revision.get("capitalDetail"),
+            "bidField": revision.get("field"),
+            "bidForm": revision.get("selectionForm"),
+            "bidMode": revision.get("selectionMode"),
+            "processApply": revision.get("processApply"),
+            "contractType": revision.get("contractType"),
+            "bidCloseDate": revision.get("bidClosingAt"),
+            "bidOpenDate": revision.get("bidOpeningAt"),
+            "bidOpenId": revision.get("bidOpenId"),
+            "inputResultId": revision.get("inputResultId"),
+            "techReqId": revision.get("techReqId"),
+            "bidders": deepcopy(opening.get("bidders") or []),
+            "lots": deepcopy(opening.get("lots") or []),
+            "result": deepcopy(result) if result else None,
+            "contracts": deepcopy(contracts or []),
+        }
+
     def lookup_from_raw_bundle(
         self,
         code: str,
@@ -658,18 +699,25 @@ class MuaSamCongProcurementSource:
         """Project a stored COMPLETE bundle without any upstream request."""
 
         started = self.clock()
-        family_no = _canonical_code(code, _PLAN_PATTERN)
         entity = bundle.get("entity") if isinstance(bundle, dict) else {}
+        entity_kind = str((entity or {}).get("kind") or "").upper()
+        pattern = _PLAN_PATTERN if entity_kind == "PLAN" else _NOTICE_PATTERN
+        family_no = _canonical_code(code, pattern)
         bundle_code = str(
             (entity or {}).get("canonicalCode")
             or (entity or {}).get("planNo")
+            or (entity or {}).get("noticeNo")
             or ""
         ).strip().upper()
         if bundle_code != family_no:
             raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
         mapping_started = self.clock()
         try:
-            canonical = self.map_plan_raw_bundle(bundle)
+            canonical = (
+                self.map_plan_raw_bundle(bundle)
+                if entity_kind == "PLAN"
+                else self.map_notice_raw_bundle(bundle)
+            )
         except ProcurementSourceError as error:
             raise ProcurementLookupError(str(error)) from error
         mapping_ms = max(0, self.clock() - mapping_started) * 1000
@@ -684,10 +732,17 @@ class MuaSamCongProcurementSource:
             max(0, self.clock() - started) * 1000, 3
         )
         status = str(raw_bundle.get("status") or "FOUND_PARTIAL")
+        data = (
+            self._plan_lookup_data(family_no, revisions[-1])
+            if entity_kind == "PLAN"
+            else self._notice_lookup_data(
+                family_no, revisions[-1], canonical.get("contracts")
+            )
+        )
         return {
             "schemaVersion": "biddingflow-procurement-preview-v1",
             "found": True,
-            "kind": "PLAN",
+            "kind": "PLAN" if entity_kind == "PLAN" else "PACKAGE",
             "inputCode": str(code or "").strip(),
             "canonicalCode": family_no,
             "detailLevel": "COMPLETE",
@@ -702,7 +757,7 @@ class MuaSamCongProcurementSource:
                 "parserVersion": self.parser_version,
                 "retrievedAt": raw_bundle.get("retrievedAt"),
             },
-            "data": self._plan_lookup_data(family_no, revisions[-1]),
+            "data": data,
             "canonical": canonical,
             "rawBundle": raw_bundle,
             "manifest": deepcopy(raw_bundle.get("manifest") or {}),
@@ -743,28 +798,41 @@ class MuaSamCongProcurementSource:
 
         started = self.clock()
         normalized_kind = str(kind or "").strip().upper()
-        if normalized_kind != "PLAN":
+        if normalized_kind not in {"PLAN", "PACKAGE"}:
             raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
-        family_no = _canonical_code(code, _PLAN_PATTERN)
+        family_no = _canonical_code(
+            code,
+            _PLAN_PATTERN if normalized_kind == "PLAN" else _NOTICE_PATTERN,
+        )
         numbers = list(revision_numbers or [])
         try:
             if detail_level == "SUMMARY":
-                search = self._call(self.runtime.search, family_no, "PLAN")
+                search = self._call(self.runtime.search, family_no, normalized_kind)
                 record = search.get("record") or {}
-                data = {
-                    "planNo": family_no,
-                    "planName": record.get("name") or record.get("planName"),
-                    "investorName": record.get("investorName"),
-                    "planVersion": record.get("planVersion"),
-                    "status": record.get("status"),
-                }
+                data = (
+                    {
+                        "planNo": family_no,
+                        "planName": record.get("name") or record.get("planName"),
+                        "investorName": record.get("investorName"),
+                        "planVersion": record.get("planVersion"),
+                        "status": record.get("status"),
+                    }
+                    if normalized_kind == "PLAN"
+                    else {
+                        "notifyNo": family_no,
+                        "bidName": record.get("bidName") or record.get("name"),
+                        "investorName": record.get("investorName"),
+                        "notifyVersion": record.get("notifyVersion"),
+                        "status": record.get("status"),
+                    }
+                )
                 canonical = None
                 raw_bundle = None
                 status = "FOUND_COMPLETE"
                 metrics = deepcopy(search.get("metadata") or {})
             elif detail_level == "COMPLETE":
                 collection_started = self.clock()
-                search = self._call(self.runtime.search, family_no, "PLAN")
+                search = self._call(self.runtime.search, family_no, normalized_kind)
                 record = search.get("record")
                 if not isinstance(record, dict):
                     raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
@@ -775,12 +843,22 @@ class MuaSamCongProcurementSource:
                     search_source=search,
                 )
                 mapping_started = self.clock()
-                canonical = self.map_plan_raw_bundle(raw_bundle)
+                canonical = (
+                    self.map_plan_raw_bundle(raw_bundle)
+                    if normalized_kind == "PLAN"
+                    else self.map_notice_raw_bundle(raw_bundle)
+                )
                 mapping_ms = max(0, self.clock() - mapping_started) * 1000
                 selected = canonical.get("revisions") or []
                 if not selected:
                     raise ProcurementSourceError("PROCUREMENT_REVISION_INVALID")
-                data = self._plan_lookup_data(family_no, selected[-1])
+                data = (
+                    self._plan_lookup_data(family_no, selected[-1])
+                    if normalized_kind == "PLAN"
+                    else self._notice_lookup_data(
+                        family_no, selected[-1], canonical.get("contracts")
+                    )
+                )
                 status = str(raw_bundle.get("status") or "FOUND_PARTIAL")
                 metrics = deepcopy(raw_bundle.get("metrics") or {})
                 metrics["collectionMs"] = round(
@@ -788,25 +866,37 @@ class MuaSamCongProcurementSource:
                 )
                 metrics["mappingMs"] = round(mapping_ms, 3)
             else:
-                available = self.list_plan_revisions(family_no)
+                available = (
+                    self.list_plan_revisions(family_no)
+                    if normalized_kind == "PLAN"
+                    else self.list_notice_revisions(family_no)
+                )
                 hints = self._select_canonical_revisions(
                     available, revision_mode, numbers
                 )
                 if not hints:
                     raise ProcurementSourceError("PROCUREMENT_REVISION_INVALID")
                 selected = [
-                    self.get_plan_revision(family_no, row["revisionId"])
+                    (
+                        self.get_plan_revision(family_no, row["revisionId"])
+                        if normalized_kind == "PLAN"
+                        else self.get_notice_revision(family_no, row["revisionId"])
+                    )
                     for row in hints
                 ]
                 canonical = {
                     "schemaVersion": "biddingflow-procurement-canonical-v2",
                     "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
-                    "kind": "PLAN",
+                    "kind": normalized_kind,
                     "canonicalCode": family_no,
                     "revisions": selected,
                 }
                 raw_bundle = None
-                data = self._plan_lookup_data(family_no, selected[-1])
+                data = (
+                    self._plan_lookup_data(family_no, selected[-1])
+                    if normalized_kind == "PLAN"
+                    else self._notice_lookup_data(family_no, selected[-1])
+                )
                 status = "FOUND_COMPLETE"
                 metrics = {}
         except ProcurementSourceError as error:
@@ -817,7 +907,7 @@ class MuaSamCongProcurementSource:
         response = {
             "schemaVersion": "biddingflow-procurement-preview-v1",
             "found": True,
-            "kind": "PLAN",
+            "kind": normalized_kind,
             "inputCode": str(code or "").strip(),
             "canonicalCode": family_no,
             "detailLevel": detail_level,
@@ -896,6 +986,12 @@ class MuaSamCongProcurementSource:
                     "notifyId": revision.get("notifyId"),
                     "planNo": revision.get("planNo"),
                     "bidName": revision.get("name"),
+                    "bidPrice": revision.get("priceVnd"),
+                    "implementationPeriod": revision.get(
+                        "executionPeriod"
+                    ),
+                    "capitalDetail": revision.get("capitalDetail"),
+                    "bidField": revision.get("field"),
                     "bidForm": revision.get("selectionForm"),
                     "bidMode": revision.get("selectionMode"),
                     "processApply": revision.get("processApply"),
