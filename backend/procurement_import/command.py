@@ -490,6 +490,14 @@ class ProcurementPlanReconciler:
                 )
                 if key in revision
             }
+        if plan_fields.get("totalAmountVnd") in (None, ""):
+            for alias in ("totalAmountVnd", "totalInvestment", "investTotal"):
+                value = plan_fields.get(alias)
+                if value in (None, ""):
+                    value = revision.get(alias)
+                if value not in (None, ""):
+                    plan_fields["totalAmountVnd"] = value
+                    break
         created_plan = {
             "id": plan_id,
             "rootId": plan_root,

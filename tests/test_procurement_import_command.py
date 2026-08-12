@@ -262,6 +262,20 @@ def test_plan_00_to_01_keeps_unchanged_package_version_and_adds_b_at_00():
     assert packages["B"]["localVersion"] == 0
 
 
+def test_plan_reconciler_persists_total_amount_from_lookup_alias():
+    repository = MemoryRepository()
+    result = ProcurementPlanReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        revision={
+            **_revision("01", "rev-total", [_package("A")]),
+            "totalInvestment": 3_000_000_000,
+        },
+        idempotency_key="operation:rev-total", expected_plan_row_version=None,
+    )
+
+    assert result["createdPlans"][0]["totalAmountVnd"] == 3_000_000_000
+
+
 def test_changed_later_linked_removed_and_initial_linked_semantics():
     repository = MemoryRepository()
     command = ProcurementPlanReconciler(repository)

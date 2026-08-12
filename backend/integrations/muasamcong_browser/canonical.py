@@ -182,6 +182,8 @@ def normalize_plan_revision(
             "investorName",
             "decisionNo",
             "investTotal",
+            "totalInvestment",
+            "totalAmountVnd",
         },
     )
     packages = []
@@ -272,6 +274,9 @@ def normalize_plan_revision(
         "projectName": pick(plan, "projectName", "pname", "name"),
         "investorCode": pick(plan, "investorCode", "newInvestorCode"),
         "investorName": pick(plan, "investorName", "newInvestorName"),
+        "totalAmountVnd": _money(
+            pick(plan, "totalAmountVnd", "totalInvestment", "investTotal")
+        ),
         "approvalDecisionNo": pick(plan, "decisionNo", "approvalDecisionNo"),
         "approvalDecisionDate": pick(
             plan, "decisionDate", "approvalDecisionDate"
@@ -933,7 +938,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         }
     return {
         "schemaVersion": "biddingflow-procurement-canonical-v2",
-        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v3",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v4",
         "kind": "NOTICE",
         "canonicalCode": notice_no,
         "revisions": revisions,
@@ -945,7 +950,7 @@ def normalize_notice_complete_bundle(bundle: dict):
 class ImportParserRegistry:
     """Select immutable parser versions by schema fingerprint family."""
 
-    version = "2026.08"
+    version = "2026.08.1"
 
     def __init__(self, *, shadow_enabled=False):
         self._parsers = {

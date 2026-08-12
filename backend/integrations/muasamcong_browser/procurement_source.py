@@ -53,6 +53,14 @@ _ALLOWED_ERRORS = {
 }
 
 
+def _first_present(mapping, *keys):
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def _bounded_int(name, default, minimum, maximum):
     try:
         value = int(os.environ.get(name, default))
@@ -77,7 +85,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.12"
+    parser_version = "2026.08.12.1"
 
     def __init__(
         self,
@@ -584,6 +592,7 @@ class MuaSamCongProcurementSource:
             "planName": revision.get("name"),
             "projectName": revision.get("projectName"),
             "investorName": revision.get("investorName"),
+            "totalInvestment": revision.get("totalAmountVnd"),
             "decisionNo": revision.get("approvalDecisionNo"),
             "decisionDate": revision.get("approvalDecisionDate"),
             "publicDate": revision.get("publishedAt"),
@@ -725,7 +734,7 @@ class MuaSamCongProcurementSource:
                         }
             revisions.append(canonical)
             for field in (
-                "name", "projectName", "investorName",
+                "name", "projectName", "investorName", "totalAmountVnd",
                 "approvalDecisionNo", "approvalDecisionDate", "publishedAt",
             ):
                 if canonical.get(field) is not None:
@@ -736,7 +745,7 @@ class MuaSamCongProcurementSource:
                     }
         return {
             "schemaVersion": "biddingflow-procurement-canonical-v2",
-            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v3",
+            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v4",
             "kind": "PLAN",
             "canonicalCode": family_no,
             "revisions": revisions,
@@ -909,6 +918,12 @@ class MuaSamCongProcurementSource:
                         "planNo": family_no,
                         "planName": record.get("name") or record.get("planName"),
                         "investorName": record.get("investorName"),
+                        "totalInvestment": _first_present(
+                            record,
+                            "totalInvestment",
+                            "totalAmountVnd",
+                            "investTotal",
+                        ),
                         "planVersion": record.get("planVersion"),
                         "status": record.get("status"),
                     }
@@ -981,7 +996,7 @@ class MuaSamCongProcurementSource:
                 ]
                 canonical = {
                     "schemaVersion": "biddingflow-procurement-canonical-v2",
-                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v3",
+                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v4",
                     "kind": normalized_kind,
                     "canonicalCode": family_no,
                     "revisions": selected,

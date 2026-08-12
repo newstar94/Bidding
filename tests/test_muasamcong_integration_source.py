@@ -53,6 +53,7 @@ def test_plan_fixture_maps_packages_without_conflating_plan_symbol_and_tbmt():
     )
 
     assert revision["revisionNumber"] == "01"
+    assert revision["totalAmountVnd"] == 300_000_000
     assert [row["symbol"] for row in revision["packages"]] == ["A", "B"]
     assert revision["packages"][0]["noticeLink"]["state"] == "UNLINKED"
     assert revision["packages"][1]["noticeLink"] == {
@@ -65,6 +66,18 @@ def test_plan_fixture_maps_packages_without_conflating_plan_symbol_and_tbmt():
     assert revision["packages"][1]["symbol"] != (
         revision["packages"][1]["noticeLink"]["noticeNo"]
     )
+
+
+def test_plan_canonical_revision_keeps_total_investment_provenance():
+    raw = fixture("plan", "plan_revision_v1.json")
+    revision = normalize_plan_revision(
+        raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+
+    assert revision["totalAmountVnd"] == 300_000_000
 
 
 def test_notice_fixture_maps_revision_and_package_relationship():
@@ -385,7 +398,7 @@ def test_shadow_parser_reports_diff_without_replacing_active_result():
     assert events == [{
         "status": "DIFF",
         "fingerprint": "plan:v1:fixture",
-        "activeParserVersion": "2026.08",
+        "activeParserVersion": "2026.08.1",
         "shadowParserVersion": "2026.09-candidate",
     }]
 
@@ -504,6 +517,7 @@ def test_unified_source_exposes_all_revisions_opening_and_lookup_contracts():
     lookup = source.lookup("PL2600000001", "PLAN")
 
     assert plan["source"]["schemaFingerprint"] == "plan:v1:fixture"
+    assert plan["totalAmountVnd"] == 300_000_000
     assert notice["source"]["semanticOperation"] == "NOTICE_LDT_DETAIL"
     assert opening["schemaVersion"] == "biddingflow-opening-bundle-v1"
     assert result["schemaVersion"] == "biddingflow-result-bundle-v1"
@@ -512,6 +526,7 @@ def test_unified_source_exposes_all_revisions_opening_and_lookup_contracts():
     assert "raw" not in result
     assert complete["schemaFingerprint"] == "complete-bundle:v1:fixture"
     assert lookup["source"]["provider"] == "MUASAMCONG"
+    assert lookup["data"]["totalInvestment"] == 300_000_000
     assert lookup["metrics"]["listMs"] >= 0
     assert lookup["metrics"]["detailMs"] >= 0
     assert lookup["metrics"]["totalMs"] >= (
@@ -612,6 +627,7 @@ def test_complete_lookup_maps_from_raw_bundle_and_can_reprocess_without_refetch(
     ] == {"abc": 123}
     assert canonical_again == result["canonical"]
     assert projected["canonical"] == result["canonical"]
+    assert projected["data"]["totalInvestment"] == 300_000_000
     assert projected["metrics"]["upstream"] == {
         "requestCount": 0, "networkMs": 0,
     }
@@ -846,6 +862,29 @@ def test_unified_lookup_falls_back_to_browser_extractors_when_api_is_unavailable
 
     assert result["source"]["provider"] == "MUASAMCONG"
     assert result["source"]["extractionStrategy"] == "semantic-dom"
+
+
+def test_plan_summary_lookup_exposes_total_investment_alias():
+    class SummaryRuntime(FakeRuntime):
+        def search(self, code, kind):
+            assert (code, kind) == ("PL2600000001", "PLAN")
+            return {
+                "record": {
+                    "planNo": code,
+                    "name": "Kế hoạch mẫu",
+                    "investTotal": 3_000_000_000,
+                },
+                "metadata": {},
+            }
+
+    result = MuaSamCongProcurementSource(SummaryRuntime()).lookup_with_options(
+        "PL2600000001",
+        "PLAN",
+        detail_level="SUMMARY",
+        revision_mode="LATEST",
+    )
+
+    assert result["data"]["totalInvestment"] == 3_000_000_000
 
 
 def test_import_source_observer_emits_complete_secret_free_dimensions():

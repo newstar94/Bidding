@@ -258,6 +258,19 @@ test("plan investor maps only by exact existing option text", () => {
 });
 
 
+test("plan preview carries the source total investment into the draft field", () => {
+  const total = control("");
+  const rows = buildComparisonRows("PLAN", {
+    totalInvestment: 3_000_000_000,
+  }, { getControl: (id) => (id === "kh-tongmuc" ? total : null) });
+  const mapped = rows.find((row) => row.field === "totalInvestment");
+
+  assert.equal(mapped.sourceValue, "3.000.000.000");
+  assert.equal(mapped.draftValue, "3.000.000.000");
+  assert.equal(mapped.apply, true);
+});
+
+
 test("apply mutates only selected controls and never submits the form", () => {
   const name = control("Tên nội bộ");
   const price = control("");
