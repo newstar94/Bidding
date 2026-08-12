@@ -18,3 +18,7 @@ b9385b666b496ecb0ee5346959d64de98f8c6a8c:dist/assets/BiddingControllerForms-fd1d
 c45644dd4b8f6542e30e2b46561e751360348de1:dist/controllers/app.bundle.js:generic-api-key:32
 0985ee63fc8d43a590a1ecb94efd894a4b154120:dist/controllers/app.bundle.js:generic-api-key:797
 ffefd5fc30dfb4f01d7c779b6918f191d8f48ec5:dist/controllers/app.bundle.js:generic-api-key:846
+
+# Reviewed false positive: historical public Google reCAPTCHA site key.
+# It was removed from runtime source and is not a private server credential.
+b2ebe0b1753b372eb92b6a35559191063c6bde5d:backend/integrations/muasamcong_browser/session_provider.mjs:generic-api-key:5

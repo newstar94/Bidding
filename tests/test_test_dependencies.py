@@ -119,6 +119,23 @@ def test_full_npm_lock_audit_is_enforced_in_ci_and_scheduled_security():
     assert "npm run audit:npm" in security_workflow
 
 
+def test_gitleaks_suppresses_only_the_reviewed_historical_recaptcha_finding():
+    security_workflow = (
+        PROJECT_ROOT / ".github" / "workflows" / "security.yml"
+    ).read_text(encoding="utf-8")
+    ignore_entries = (
+        PROJECT_ROOT / ".gitleaksignore"
+    ).read_text(encoding="utf-8").splitlines()
+    fingerprint = (
+        "b2ebe0b1753b372eb92b6a35559191063c6bde5d:"
+        "backend/integrations/muasamcong_browser/session_provider.mjs:"
+        "generic-api-key:5"
+    )
+
+    assert "--gitleaks-ignore-path=/repo/.gitleaksignore" in security_workflow
+    assert fingerprint in ignore_entries
+
+
 def test_python_ci_installs_hashed_locks_before_the_project_without_resolution():
     workflows = {
         "ci.yml": "requirements-test.txt",
