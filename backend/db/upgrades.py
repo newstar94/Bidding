@@ -2120,6 +2120,59 @@ def _upgrade_to_v53_add_procurement_raw_snapshots(cursor, context):
               END IF;
             END $$"""
     )
+
+
+def _upgrade_to_v54_allow_authoritative_procurement_resync(cursor, _context):
+    """Keep changed observations for one upstream revision append-only."""
+
+    expected_constraints = {
+        "procurement_source_revision_observation_unique": (
+            "UNIQUE (organization_id, provider, entity_kind, revision_uuid, digest)"
+        ),
+        "procurement_source_revision_idempotent_observation_unique": (
+            "UNIQUE (organization_id, provider, idempotency_key, revision_uuid, digest)"
+        ),
+    }
+    existing = {
+        str(row[0]): str(row[1])
+        for row in cursor.execute(
+            """SELECT conname, pg_get_constraintdef(oid, true)
+                 FROM pg_constraint
+                WHERE connamespace = current_schema()::regnamespace
+                  AND conrelid = 'procurement_source_revision'::regclass
+                  AND conname IN (
+                    'procurement_source_revision_observation_unique',
+                    'procurement_source_revision_idempotent_observation_unique'
+                  )"""
+        ).fetchall()
+    }
+    if all(
+        existing.get(name, "").replace("  ", " ") == definition
+        for name, definition in expected_constraints.items()
+    ):
+        return
+    for constraint_name in (
+        "procurement_source_revision_organization_id_provider_entity_key",
+        "procurement_source_revision_organization_id_provider_idempo_key",
+        "procurement_source_revision_observation_unique",
+        "procurement_source_revision_idempotent_observation_unique",
+    ):
+        cursor.execute(
+            f"ALTER TABLE procurement_source_revision "
+            f"DROP CONSTRAINT IF EXISTS {constraint_name}"
+        )
+    cursor.execute(
+        """ALTER TABLE procurement_source_revision
+             ADD CONSTRAINT procurement_source_revision_observation_unique
+             UNIQUE (organization_id, provider, entity_kind, revision_uuid, digest)"""
+    )
+    cursor.execute(
+        """ALTER TABLE procurement_source_revision
+             ADD CONSTRAINT procurement_source_revision_idempotent_observation_unique
+             UNIQUE (
+               organization_id, provider, idempotency_key, revision_uuid, digest
+             )"""
+    )
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2376,6 +2429,11 @@ UPGRADES = (
         53,
         "add_procurement_raw_snapshots",
         _upgrade_to_v53_add_procurement_raw_snapshots,
+    ),
+    DatabaseUpgrade(
+        54,
+        "allow_authoritative_procurement_resync",
+        _upgrade_to_v54_allow_authoritative_procurement_resync,
     ),
 )
 

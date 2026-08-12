@@ -196,6 +196,15 @@ def build_aggregate_version_payload(
     table = "goithau" if kind == "package" else "kehoach"
     source = _source_record(state, table, source_id)
     _assert_current_source(source, expected_version)
+    source_authority = getattr(repository, "source_version_authority", None)
+    if callable(source_authority):
+        authority = source_authority(
+            organization_id, kind, source.get("rootId") or source["id"]
+        )
+        if authority == "MUASAMCONG":
+            raise HistoricalAggregateError(
+                "MUASAMCONG-managed lineages receive versions only from source revisions."
+            )
 
     create_id = _id_factory(mutation_id, kind)
     payload = _base_payload(repository, organization_id, mutation_id)

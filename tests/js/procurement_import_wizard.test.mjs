@@ -9,6 +9,7 @@ import {
 } from "../../frontend/procurement/OpeningImportWizard.js";
 import {
   PlanImportWizard,
+  PlanImportDraftStore,
   canApplyPreview,
   createDebouncedPreparer,
   renderIssues,
@@ -35,6 +36,30 @@ class FakeElement {
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
 }
+
+
+test("plan import recovery draft is local UI state, not a Bidding version", () => {
+  const values = new Map();
+  const storage = {
+    setItem(key, value) { values.set(key, value); },
+    getItem(key) { return values.get(key) ?? null; },
+    removeItem(key) { values.delete(key); },
+  };
+  const store = new PlanImportDraftStore(storage);
+  store.save({
+    code: "PL2600000001", revisionMode: "ALL", selectedRevision: "01",
+    investorId: "investor-1", bundleDigest: "sha256:bundle",
+    decisions: { packageMatches: {}, fieldConflicts: {}, fieldValues: {} },
+  });
+
+  const draft = store.load();
+  assert.equal(draft.code, "PL2600000001");
+  assert.equal(draft.selectedRevision, "01");
+  assert.equal(draft.phienBan, undefined);
+  assert.equal(draft.canonicalRevision, undefined);
+  store.clear();
+  assert.equal(store.load(), null);
+});
 
 
 function fakeDocument() {

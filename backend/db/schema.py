@@ -1899,8 +1899,10 @@ SCHEMA_DINH_NGHIA = {
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
         "unique_constraints": [
-            "UNIQUE(organization_id, provider, entity_kind, revision_uuid)",
-            "UNIQUE(organization_id, provider, idempotency_key, revision_uuid)"
+            "CONSTRAINT procurement_source_revision_observation_unique "
+            "UNIQUE(organization_id, provider, entity_kind, revision_uuid, digest)",
+            "CONSTRAINT procurement_source_revision_idempotent_observation_unique "
+            "UNIQUE(organization_id, provider, idempotency_key, revision_uuid, digest)"
         ]
     },
     "procurement_source_binding": {

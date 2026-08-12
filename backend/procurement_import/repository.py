@@ -25,6 +25,7 @@ from backend.sync.mutation_tracker import clean_sync_record_id
 from backend.sync.record_serializer import SyncRecordSerializer
 from backend.versioning.aggregate_snapshot import snapshot_package_aggregate
 from backend.versioning.repository import AggregateVersionRepository
+from backend.shared.logging_utils import log_audit
 
 
 def _json(value):
@@ -49,12 +50,15 @@ class ProcurementImportRepository:
         self.cursor.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (lock_key,))
         return lock_key
 
-    def load_family(self, organization_id, provider, family_no):
+    def load_family(
+        self, organization_id, provider, family_no, plan_snapshot_id=None
+    ):
         revision_rows = self.cursor.execute(
             """SELECT revision_uuid, revision_no, disposition, digest
                  FROM procurement_source_revision
                 WHERE organization_id = ? AND provider = ?
-                  AND entity_kind = 'PLAN' AND family_key = ?""",
+                  AND entity_kind = 'PLAN' AND family_key = ?
+                 ORDER BY created_at, id""",
             (organization_id, provider, family_no),
         ).fetchall()
         observed_revisions = {
@@ -77,20 +81,32 @@ class ProcurementImportRepository:
             "observedRevisions": observed_revisions,
             "latestAppliedExternalRevision": latest_external,
         }
-        plan = self.cursor.execute(
-            """SELECT id, COALESCE(NULLIF(id_goc, ''), id) AS root_id,
-                      phien_ban, row_version
-                 FROM ke_hoach_lcnt
-                WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
-                  AND is_latest = 1 AND archived_at IS NULL
-                ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
-            (organization_id, family_no.upper()),
-        ).fetchone()
+        if plan_snapshot_id is None:
+            plan = self.cursor.execute(
+                """SELECT id, COALESCE(NULLIF(id_goc, ''), id) AS root_id,
+                          phien_ban, row_version, is_latest
+                     FROM ke_hoach_lcnt
+                    WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+                      AND archived_at IS NULL AND is_latest = 1
+                    ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
+                (organization_id, family_no.upper()),
+            ).fetchone()
+        else:
+            plan = self.cursor.execute(
+                """SELECT id, COALESCE(NULLIF(id_goc, ''), id) AS root_id,
+                          phien_ban, row_version, is_latest
+                     FROM ke_hoach_lcnt
+                    WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+                      AND id = ? AND archived_at IS NULL
+                    LIMIT 1 FOR UPDATE""",
+                (organization_id, family_no.upper(), plan_snapshot_id),
+            ).fetchone()
         if plan is None:
             return family_state
         latest_plan = {
             "id": plan[0], "rootId": plan[1], "localVersion": int(plan[2] or 0),
             "rowVersion": int(plan[3] or 1), "familyNo": family_no,
+            "isLatest": bool(plan[4]),
         }
         rows = self.cursor.execute(
             """SELECT package.id,
@@ -177,45 +193,160 @@ class ProcurementImportRepository:
 
     def find_revision(self, organization_id, provider, revision_id):
         row = self.cursor.execute(
-            """SELECT family_key, revision_no, digest, disposition,
-                      schema_version, canonical_snapshot_json,
-                      idempotency_key
+            """SELECT id, family_key, revision_no, digest, disposition,
+                       schema_version, canonical_snapshot_json,
+                       idempotency_key, local_root_id, local_snapshot_id
                  FROM procurement_source_revision
                 WHERE organization_id = ? AND provider = ?
-                  AND entity_kind = 'PLAN' AND revision_uuid = ?""",
+                   AND entity_kind = 'PLAN' AND revision_uuid = ?
+                 ORDER BY created_at DESC, id DESC LIMIT 1""",
             (organization_id, provider, revision_id),
         ).fetchone()
         if row is None:
             return None
         return {
-            "organizationId": organization_id, "provider": provider, "kind": "PLAN",
-            "familyNo": row[0], "revisionNumber": row[1], "revisionId": revision_id,
-            "digest": row[2], "disposition": row[3], "schemaVersion": row[4],
-            "normalizedSnapshot": json.loads(row[5]), "idempotencyKey": row[6],
+            "evidenceId": row[0], "organizationId": organization_id,
+            "provider": provider, "kind": "PLAN", "familyNo": row[1],
+            "revisionNumber": row[2], "revisionId": revision_id,
+            "digest": row[3], "disposition": row[4], "schemaVersion": row[5],
+            "normalizedSnapshot": json.loads(row[6]), "idempotencyKey": row[7],
+            "localRootId": row[8], "localSnapshotId": row[9],
         }
 
     def find_notice_revision(self, organization_id, provider, revision_id):
         row = self.cursor.execute(
-            """SELECT family_key, revision_no, digest, disposition,
-                      schema_version, canonical_snapshot_json,
-                      idempotency_key, local_root_id, local_snapshot_id,
+            """SELECT id, family_key, revision_no, digest, disposition,
+                       schema_version, canonical_snapshot_json,
+                       idempotency_key, local_root_id, local_snapshot_id,
                       match_method
                  FROM procurement_source_revision
                 WHERE organization_id = ? AND provider = ?
-                  AND entity_kind = 'NOTICE' AND revision_uuid = ?""",
+                   AND entity_kind = 'NOTICE' AND revision_uuid = ?
+                 ORDER BY created_at DESC, id DESC LIMIT 1""",
             (organization_id, provider, revision_id),
         ).fetchone()
         if row is None:
             return None
         return {
-            "organizationId": organization_id, "provider": provider,
-            "kind": "NOTICE", "familyNo": row[0],
-            "revisionNumber": row[1], "revisionId": revision_id,
-            "digest": row[2], "disposition": row[3],
-            "schemaVersion": row[4], "normalizedSnapshot": json.loads(row[5]),
-            "idempotencyKey": row[6], "localRootId": row[7],
-            "localSnapshotId": row[8], "matchMethod": row[9],
+            "evidenceId": row[0], "organizationId": organization_id,
+            "provider": provider, "kind": "NOTICE", "familyNo": row[1],
+            "revisionNumber": row[2], "revisionId": revision_id,
+            "digest": row[3], "disposition": row[4],
+            "schemaVersion": row[5], "normalizedSnapshot": json.loads(row[6]),
+            "idempotencyKey": row[7], "localRootId": row[8],
+            "localSnapshotId": row[9], "matchMethod": row[10],
         }
+
+    def find_revision_by_number(
+        self, organization_id, provider, kind, family_no, revision_number,
+        *, local_root_id=None,
+    ):
+        conditions = [
+            "organization_id = ?", "provider = ?", "entity_kind = ?",
+            "family_key = ?", "revision_no = ?",
+        ]
+        params = [
+            organization_id, provider, kind, family_no, str(revision_number),
+        ]
+        if local_root_id is not None:
+            conditions.append("local_root_id = ?")
+            params.append(local_root_id)
+        row = self.cursor.execute(
+            f"""SELECT revision_uuid, digest, local_root_id, local_snapshot_id
+                  FROM procurement_source_revision
+                 WHERE {' AND '.join(conditions)}
+                 ORDER BY created_at DESC, id DESC LIMIT 1""",  # noqa: S608 - fixed clauses.
+            tuple(params),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "revisionId": row[0], "digest": row[1],
+            "localRootId": row[2], "localSnapshotId": row[3],
+        }
+
+    def load_package_snapshot(
+        self, organization_id, provider, local_snapshot_id
+    ):
+        row = self.cursor.execute(
+            """SELECT package.id,
+                      COALESCE(NULLIF(package.id_goc, ''), package.id),
+                      package.phien_ban, package.ma_goi_thau,
+                      package.ten_goi_thau, package.row_version,
+                      package.ke_hoach_id, package.is_latest,
+                      binding.symbol, binding.canonical_fields_json,
+                      binding.stable_external_id, binding.family_key,
+                      binding.plan_revision_uuid, binding.id_detail,
+                      binding.match_method, binding.confirmed_by,
+                      (SELECT assignment.id_nhan_vien
+                         FROM phan_cong_nhan_su AS assignment
+                        WHERE assignment.organization_id = package.organization_id
+                          AND assignment.loai_doi_tuong = 'goithau'
+                          AND assignment.id_muc_tieu = package.id
+                        ORDER BY assignment.id LIMIT 1)
+                 FROM goi_thau AS package
+            LEFT JOIN procurement_source_binding AS binding
+                   ON binding.organization_id = package.organization_id
+                  AND binding.provider = ?
+                  AND binding.local_snapshot_id = package.id
+                WHERE package.organization_id = ? AND package.id = ?
+                  AND package.archived_at IS NULL
+                LIMIT 1 FOR UPDATE OF package""",
+            (provider, organization_id, local_snapshot_id),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            source_fields = json.loads(row[9] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            source_fields = {}
+        return {
+            "id": row[0], "rootId": row[1], "localVersion": int(row[2] or 0),
+            "noticeNo": row[3], "name": row[4], "rowVersion": int(row[5] or 1),
+            "planSnapshotId": row[6], "isLatest": bool(row[7]),
+            "symbol": row[8], "sourceFields": source_fields,
+            "noticeKind": (source_fields.get("noticeLink") or {}).get("kind") or "UNKNOWN",
+            "noticeFields": deepcopy(source_fields.get("noticeFields") or {}),
+            "stableExternalId": row[10], "assigneeUserId": row[16],
+            "binding": {
+                "familyNo": row[11], "planRevisionId": row[12],
+                "idDetail": row[13], "stableExternalId": row[10],
+                "symbol": row[8], "noticeNo": row[3],
+                "matchMethod": row[14], "confirmedBy": row[15],
+            } if row[12] and row[13] else None,
+        }
+
+    def find_local_plan_version(self, organization_id, family_no, version):
+        row = self.cursor.execute(
+            """SELECT id FROM ke_hoach_lcnt
+                WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+                  AND phien_ban = ? AND archived_at IS NULL
+                ORDER BY id LIMIT 1 FOR UPDATE""",
+            (organization_id, family_no.upper(), int(version)),
+        ).fetchone()
+        return None if row is None else {"id": row[0]}
+
+    def find_local_package_version(
+        self, organization_id, local_root_id, plan_snapshot_id, version,
+        *, provider,
+    ):
+        row = self.cursor.execute(
+            """SELECT id FROM goi_thau
+                WHERE organization_id = ?
+                  AND COALESCE(NULLIF(id_goc, ''), id) = ?
+                  AND ke_hoach_id = ? AND phien_ban = ?
+                  AND archived_at IS NULL
+                ORDER BY id LIMIT 1 FOR UPDATE""",
+            (
+                organization_id, local_root_id, plan_snapshot_id,
+                int(version),
+            ),
+        ).fetchone()
+        if row is None:
+            return None
+        return self.load_package_snapshot(
+            organization_id, provider, row[0]
+        )
 
     def latest_notice_revision_for_package(
         self, organization_id, provider, local_root_id
@@ -349,13 +480,46 @@ class ProcurementImportRepository:
         return row is not None
 
     def _insert_plan(self, organization_id, row):
-        self.cursor.execute(
-            """UPDATE ke_hoach_lcnt SET is_latest = 0,
-                      row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
-                WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
-                  AND is_latest = 1""",
-            (organization_id, row["familyNo"]),
-        )
+        replacement = bool(row.get("replaceSourceVersion"))
+        if replacement:
+            self.cursor.execute(
+                """UPDATE goi_thau
+                      SET archived_at = CURRENT_TIMESTAMP, is_latest = 0,
+                          row_version = row_version + 1,
+                          updated_at = CURRENT_TIMESTAMP
+                    WHERE organization_id = ? AND ke_hoach_id IN (
+                      SELECT id FROM ke_hoach_lcnt
+                       WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+                         AND COALESCE(NULLIF(id_goc, ''), id) = ?
+                         AND phien_ban = ? AND archived_at IS NULL
+                    ) AND archived_at IS NULL""",
+                (
+                    organization_id, organization_id, row["familyNo"],
+                    row["rootId"], row["localVersion"],
+                ),
+            )
+            self.cursor.execute(
+                """UPDATE ke_hoach_lcnt
+                      SET archived_at = CURRENT_TIMESTAMP, is_latest = 0,
+                          row_version = row_version + 1,
+                          updated_at = CURRENT_TIMESTAMP
+                    WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+                      AND COALESCE(NULLIF(id_goc, ''), id) = ?
+                      AND phien_ban = ? AND archived_at IS NULL""",
+                (
+                    organization_id, row["familyNo"], row["rootId"],
+                    row["localVersion"],
+                ),
+            )
+        if row.get("isLatest", True):
+            self.cursor.execute(
+                """UPDATE ke_hoach_lcnt SET is_latest = 0,
+                          row_version = row_version + 1,
+                          updated_at = CURRENT_TIMESTAMP
+                    WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+                      AND is_latest = 1""",
+                (organization_id, row["familyNo"]),
+            )
         self.cursor.execute(
             """INSERT INTO ke_hoach_lcnt (
                    id, organization_id, owner_type, id_goc, ma_ke_hoach,
@@ -363,11 +527,12 @@ class ProcurementImportRepository:
                    loai_hinh_mua_sam, chu_dau_tu_id, ngay_phe_duyet,
                    quyet_dinh_phe_duyet, tong_muc_dau_tu, nguon_von,
                    thoi_gian_dang_tai, row_version)
-               VALUES (?, ?, 'organization', ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+               VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
-                row["familyNo"], row["localVersion"], row.get("name") or row["familyNo"],
+                row["familyNo"], row["localVersion"], int(row.get("isLatest", True)),
+                row.get("name") or row["familyNo"],
                 row.get("projectName") or row.get("name") or row["familyNo"],
                 row.get("planType") or "Dự toán mua sắm", row.get("investorId"),
                 row.get("approvalDecisionDate"), row.get("approvalDecisionNo"),
@@ -397,12 +562,13 @@ class ProcurementImportRepository:
                    thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc,
                    phuong_phap_danh_gia, thoi_gian_dong_thau,
                    thoi_gian_mo_thau, trang_thai, row_version)
-               VALUES (?, ?, 'organization', ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?,
+               VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
-                row.get("noticeNo"), row["localVersion"], row["planSnapshotId"],
+                row.get("noticeNo"), row["localVersion"],
+                int(row.get("isLatest", True)), row["planSnapshotId"],
                 row.get("name") or fields.get("name"), fields.get("priceVnd"),
                 fields.get("contractType"), fields.get("selectionForm"),
                 fields.get("selectionMode"), fields.get("onlineMode") or "Qua mạng",
@@ -565,6 +731,12 @@ class ProcurementImportRepository:
     def persist_revision(self, result):
         evidence = result["provenance"]
         organization_id = evidence["organizationId"]
+        inherited_by_package_id = {
+            package["id"]: self._build_inherited_package_snapshot(
+                organization_id, package
+            )
+            for package in result.get("createdPackages", [])
+        }
         for plan in result.get("createdPlans", []):
             self._insert_plan(organization_id, plan)
             self._insert_assignment(
@@ -572,19 +744,28 @@ class ProcurementImportRepository:
             )
         for package in result.get("createdPackages", []):
             superseded_id = package.get("supersedeSnapshotId")
+            inherited = inherited_by_package_id[package["id"]]
             if superseded_id:
-                self.cursor.execute(
-                    """UPDATE goi_thau
-                          SET is_latest = 0, row_version = row_version + 1,
-                              updated_at = CURRENT_TIMESTAMP
-                        WHERE organization_id = ? AND id = ? AND is_latest = 1""",
-                    (organization_id, superseded_id),
-                )
+                if package.get("replaceSourceVersion"):
+                    self.cursor.execute(
+                        """UPDATE goi_thau
+                              SET archived_at = CURRENT_TIMESTAMP, is_latest = 0,
+                                  row_version = row_version + 1,
+                                  updated_at = CURRENT_TIMESTAMP
+                            WHERE organization_id = ? AND id = ?
+                              AND archived_at IS NULL""",
+                        (organization_id, superseded_id),
+                    )
+                else:
+                    self.cursor.execute(
+                        """UPDATE goi_thau
+                              SET is_latest = 0, row_version = row_version + 1,
+                                  updated_at = CURRENT_TIMESTAMP
+                            WHERE organization_id = ? AND id = ? AND is_latest = 1""",
+                        (organization_id, superseded_id),
+                    )
                 if self.cursor.rowcount != 1:
                     raise ImportConflict("PROCUREMENT_PREVIEW_STALE")
-            inherited = self._build_inherited_package_snapshot(
-                organization_id, package
-            )
             self._insert_package(organization_id, package)
             if inherited:
                 self._inherit_package_base(
@@ -607,7 +788,8 @@ class ProcurementImportRepository:
                 package.get("assigneeUserId") or evidence.get("actorUserId"),
             )
         revision_row_id = _stable_id(
-            organization_id, evidence["provider"], evidence["kind"], evidence["revisionId"]
+            organization_id, evidence["provider"], evidence["kind"],
+            evidence["revisionId"], evidence["digest"],
         )
         self.cursor.execute(
             """INSERT INTO procurement_source_revision (
@@ -633,6 +815,24 @@ class ProcurementImportRepository:
                 evidence.get("matchMethod"), evidence.get("confirmedBy"),
             ),
         )
+        if evidence.get("previousDigest"):
+            log_audit(
+                "procurement.source_revision_resynced",
+                actor_user_id=evidence.get("actorUserId"),
+                organization_id=organization_id,
+                target_type=str(evidence.get("kind") or "").lower(),
+                target_id=evidence.get("localRootId"),
+                metadata={
+                    "provider": evidence["provider"],
+                    "revisionId": evidence["revisionId"],
+                    "revisionNumber": evidence["revisionNumber"],
+                    "previousDigest": evidence["previousDigest"],
+                    "newDigest": evidence["digest"],
+                    "supersededEvidenceId": evidence.get("resyncOfEvidenceId"),
+                },
+                cursor=self.cursor,
+                required=True,
+            )
         for package in (
             result.get("createdPackages", [])
             if evidence.get("kind") != "NOTICE" else []
@@ -668,7 +868,7 @@ class ProcurementImportRepository:
                 (
                     _stable_id(
                         organization_id, evidence["provider"], "NOTICE",
-                        notice_revision_id,
+                        notice_revision_id, canonical_digest(notice_snapshot),
                     ),
                     organization_id, evidence["provider"], notice_no,
                     notice_revision_id, str(notice_version), evidence["revisionId"],

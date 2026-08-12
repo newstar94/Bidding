@@ -2584,15 +2584,15 @@
       "table": "procurement_source_binding",
       "valid": true
     },
-    "procurement_source_revision_organization_id_provider_entity_key": {
-      "definition": "CREATE UNIQUE INDEX procurement_source_revision_organization_id_provider_entity_key ON $SCHEMA.procurement_source_revision USING btree (organization_id, provider, entity_kind, revision_uuid)",
+    "procurement_source_revision_idempotent_observation_unique": {
+      "definition": "CREATE UNIQUE INDEX procurement_source_revision_idempotent_observation_unique ON $SCHEMA.procurement_source_revision USING btree (organization_id, provider, idempotency_key, revision_uuid, digest)",
       "live": true,
       "ready": true,
       "table": "procurement_source_revision",
       "valid": true
     },
-    "procurement_source_revision_organization_id_provider_idempo_key": {
-      "definition": "CREATE UNIQUE INDEX procurement_source_revision_organization_id_provider_idempo_key ON $SCHEMA.procurement_source_revision USING btree (organization_id, provider, idempotency_key, revision_uuid)",
+    "procurement_source_revision_observation_unique": {
+      "definition": "CREATE UNIQUE INDEX procurement_source_revision_observation_unique ON $SCHEMA.procurement_source_revision USING btree (organization_id, provider, entity_kind, revision_uuid, digest)",
       "live": true,
       "ready": true,
       "table": "procurement_source_revision",
@@ -2789,7 +2789,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 53,
+  "schemaVersion": 54,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -15264,25 +15264,25 @@
           "kind": "c",
           "validated": true
         },
+        "procurement_source_revision_idempotent_observation_unique": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, provider, idempotency_key, revision_uuid, digest)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "procurement_source_revision_observation_unique": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, provider, entity_kind, revision_uuid, digest)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
         "procurement_source_revision_organization_id_check": {
           "deferrable": false,
           "definition": "CHECK (TRIM(BOTH FROM organization_id) <> ''::text)",
           "initiallyDeferred": false,
           "kind": "c",
-          "validated": true
-        },
-        "procurement_source_revision_organization_id_provider_entity_key": {
-          "deferrable": false,
-          "definition": "UNIQUE (organization_id, provider, entity_kind, revision_uuid)",
-          "initiallyDeferred": false,
-          "kind": "u",
-          "validated": true
-        },
-        "procurement_source_revision_organization_id_provider_idempo_key": {
-          "deferrable": false,
-          "definition": "UNIQUE (organization_id, provider, idempotency_key, revision_uuid)",
-          "initiallyDeferred": false,
-          "kind": "u",
           "validated": true
         },
         "procurement_source_revision_pkey": {

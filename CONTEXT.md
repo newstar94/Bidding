@@ -29,8 +29,12 @@ Việc tạo ảnh chụp mới từ toàn bộ trạng thái của phiên bản
 _Avoid_: Reset dữ liệu, sửa đè lịch sử
 
 **Phiên bản nguồn**:
-Một lần công bố hoặc thay đổi của đối tượng trên hệ thống nguồn ngoài, được nhận diện bằng mã dòng, số phiên bản nguồn và định danh revision của nguồn. `planVersion` và `notifyVersion` nguồn độc lập với cả phiên bản kế hoạch và phiên bản gói nội bộ của BiddingFlow.
-_Avoid_: Đồng nhất `planVersion`, `notifyVersion` với phiên bản nội bộ
+Một lần công bố hoặc thay đổi của đối tượng trên hệ thống nguồn ngoài, được nhận diện bằng mã dòng, số phiên bản nguồn và định danh revision. Với dòng do Mua Sắm Công quản lý, `planVersion` là phiên bản kế hoạch Bidding và `notifyVersion` là phiên bản gói thầu Bidding theo quan hệ một-một; hai dòng phiên bản này độc lập với nhau.
+_Avoid_: Tăng phiên bản Bidding độc lập giữa hai revision Mua Sắm Công
+
+**Bản nháp nhập liệu**:
+Trạng thái phục hồi cục bộ của màn hình nhập, chỉ chứa lựa chọn chưa commit và không thuộc dòng phiên bản nghiệp vụ.
+_Avoid_: Phiên bản tạm, revision cục bộ
 
 **Đối chiếu phiên bản nguồn**:
 Việc so sánh một snapshot nguồn với binding đã lưu để phân loại đối tượng thành giữ nguyên, thay đổi, mới, bị loại hoặc mơ hồ trước khi áp dụng quy tắc phiên bản nội bộ.

@@ -26,14 +26,43 @@ class MemoryRepository:
     def lock_family(self, organization_id, provider, family_no):
         return (organization_id, provider, family_no)
 
-    def load_family(self, organization_id, provider, family_no):
+    def load_family(
+        self, organization_id, provider, family_no, plan_snapshot_id=None
+    ):
         del organization_id, provider
         plans = [row for row in self.plans if row["familyNo"] == family_no]
-        latest = max(plans, key=lambda row: row["localVersion"], default=None)
+        latest = next(
+            (row for row in plans if row["id"] == plan_snapshot_id), None
+        ) if plan_snapshot_id else max(
+            plans, key=lambda row: row["localVersion"], default=None
+        )
         packages = [] if latest is None else [
             row for row in self.packages if row["planSnapshotId"] == latest["id"]
         ]
         return {"latestPlan": deepcopy(latest), "packages": deepcopy(packages)}
+
+    def find_revision_by_number(
+        self, organization_id, provider, kind, family_no, revision_number,
+        *, local_root_id=None,
+    ):
+        rows = [
+            row for (org, source, _revision_id), row in self.revisions.items()
+            if org == organization_id and source == provider
+            and row.get("kind") == kind and row.get("familyNo") == family_no
+            and str(row.get("revisionNumber")) == str(revision_number)
+            and (
+                local_root_id is None
+                or row.get("localRootId") == local_root_id
+            )
+        ]
+        if not rows:
+            return None
+        row = rows[-1]
+        return {
+            "revisionId": row.get("revisionId"), "digest": row.get("digest"),
+            "localRootId": row.get("localRootId"),
+            "localSnapshotId": row.get("localSnapshotId"),
+        }
 
     def find_revision(self, organization_id, provider, revision_id):
         return deepcopy(self.revisions.get((organization_id, provider, revision_id)))
@@ -41,6 +70,36 @@ class MemoryRepository:
     def find_notice_revision(self, organization_id, provider, revision_id):
         row = self.revisions.get((organization_id, provider, revision_id))
         return deepcopy(row) if row and row.get("kind") == "NOTICE" else None
+
+    def load_package_snapshot(
+        self, organization_id, provider, local_snapshot_id
+    ):
+        del organization_id, provider
+        return deepcopy(next((
+            row for row in self.packages if row["id"] == local_snapshot_id
+        ), None))
+
+    def find_local_plan_version(self, organization_id, family_no, version):
+        del organization_id
+        return deepcopy(next((
+            row for row in self.plans
+            if row["familyNo"] == family_no
+            and row["localVersion"] == int(version)
+            and not row.get("archived")
+        ), None))
+
+    def find_local_package_version(
+        self, organization_id, local_root_id, plan_snapshot_id, version,
+        *, provider,
+    ):
+        del organization_id, provider
+        return deepcopy(next((
+            row for row in self.packages
+            if (row.get("rootId") or row["id"]) == local_root_id
+            and row["planSnapshotId"] == plan_snapshot_id
+            and row["localVersion"] == int(version)
+            and not row.get("archived")
+        ), None))
 
     def latest_notice_revision_for_package(
         self, organization_id, provider, local_root_id
@@ -100,13 +159,31 @@ class MemoryRepository:
         revision = result["provenance"]
         key = (revision["organizationId"], revision["provider"], revision["revisionId"])
         self.revisions[key] = deepcopy(revision)
-        self.plans.extend(deepcopy(result["createdPlans"]))
+        stored_plans = deepcopy(result["createdPlans"])
+        for plan in stored_plans:
+            if plan.get("replaceSourceVersion"):
+                for existing in self.plans:
+                    if (
+                        existing.get("rootId", existing["id"])
+                        == plan.get("rootId", plan["id"])
+                        and existing["localVersion"] == plan["localVersion"]
+                    ):
+                        existing["archived"] = True
+                        existing["isLatest"] = False
+            if plan.get("isLatest", True):
+                for existing in self.plans:
+                    if existing["familyNo"] == plan["familyNo"]:
+                        existing["isLatest"] = False
+            plan["isLatest"] = bool(plan.get("isLatest", True))
+        self.plans.extend(stored_plans)
         stored_packages = deepcopy(result["createdPackages"])
         for package in stored_packages:
             superseded_id = package.get("supersedeSnapshotId")
             for existing in self.packages:
                 if superseded_id and existing["id"] == superseded_id:
                     existing["isLatest"] = False
+                    if package.get("replaceSourceVersion"):
+                        existing["archived"] = True
             package["isLatest"] = True
             package["sourceFields"] = deepcopy(
                 package.get("canonicalSourceFields") or package.get("sourceFields") or {}
@@ -114,6 +191,9 @@ class MemoryRepository:
         self.packages.extend(stored_packages)
         for binding in result["bindings"]:
             self.bindings[binding["observationKey"]] = deepcopy(binding)
+            for package in self.packages:
+                if package["id"] == binding["localSnapshotId"]:
+                    package["binding"] = deepcopy(binding)
 
 
 def _notice(number="00", *, status="PUBLISHED", public_url=None):
@@ -320,6 +400,129 @@ def test_same_revision_digest_is_noop_and_digest_change_is_conflict():
             organization_id="org-1", actor_user_id="user-1", provider="VNEPS",
             revision=changed_digest, idempotency_key="rev-03-changed",
             expected_plan_row_version=1,
+        )
+
+
+def test_muasamcong_plan_revision_numbers_are_bidding_versions_one_to_one():
+    repository = MemoryRepository()
+    command = ProcurementPlanReconciler(repository)
+
+    first = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision=_revision("00", "msc-rev-00", [_package("A")]),
+        idempotency_key="msc:00", expected_plan_row_version=None,
+    )
+    second = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision=_revision("01", "msc-rev-01", [_package("A")]),
+        idempotency_key="msc:01", expected_plan_row_version=1,
+    )
+    third = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision=_revision("02", "msc-rev-02", [_package("A")]),
+        idempotency_key="msc:02", expected_plan_row_version=1,
+    )
+
+    assert [
+        first["createdPlans"][0]["localVersion"],
+        second["createdPlans"][0]["localVersion"],
+        third["createdPlans"][0]["localVersion"],
+    ] == [0, 1, 2]
+    assert third["createdPlans"][0]["sourceRevisionNumber"] == "02"
+
+
+def test_muasamcong_first_revision_03_is_bidding_version_03():
+    result = ProcurementPlanReconciler(MemoryRepository()).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision=_revision("03", "msc-rev-03", [_package("A")]),
+        idempotency_key="msc:03", expected_plan_row_version=None,
+    )
+
+    assert result["createdPlans"][0]["localVersion"] == 3
+
+
+def test_muasamcong_same_plan_revision_changed_digest_is_authoritative_resync():
+    repository = MemoryRepository()
+    command = ProcurementPlanReconciler(repository)
+    original = _revision("00", "msc-rev-00", [_package("A", price=1000)])
+    first = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG", revision=original,
+        idempotency_key="msc:00:first", expected_plan_row_version=None,
+    )
+    changed = _revision("00", "msc-rev-00", [_package("A", price=2000)])
+    changed["revisionDigest"] = "sha256:changed"
+    result = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG", revision=changed,
+        idempotency_key="msc:00:resync", expected_plan_row_version=1,
+    )
+
+    assert result["operation"] == "APPLIED"
+    assert result["createdPlans"][0]["localVersion"] == 0
+    assert result["createdPlans"][0]["id"] != first["createdPlans"][0]["id"]
+    assert result["provenance"]["previousDigest"] == original["revisionDigest"]
+    assert result["createdPackages"][0]["sourceFields"]["priceVnd"] == 2000
+
+
+def test_muasamcong_notice_revision_00_replaces_plan_placeholder_version_00():
+    repository = MemoryRepository()
+    plan = ProcurementPlanReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision=_revision("00", "msc-plan-00", [_package("A")]),
+        idempotency_key="msc:plan:00", expected_plan_row_version=None,
+    )
+    original = plan["createdPackages"][0]
+    notice = ProcurementNoticeReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG", notice=_notice("00"),
+        idempotency_key="msc:notice:00", expected_package_row_version=1,
+    )
+
+    package = notice["createdPackages"][0]
+    assert package["localVersion"] == 0
+    assert package["replaceSourceVersion"] is True
+    assert package["rootId"] == original["rootId"]
+
+
+def test_muasamcong_rejects_two_revision_ids_claiming_one_source_number():
+    repository = MemoryRepository()
+    command = ProcurementPlanReconciler(repository)
+    command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1",
+        provider="MUASAMCONG",
+        revision=_revision("00", "msc-rev-a", [_package("A")]),
+        idempotency_key="msc:a", expected_plan_row_version=None,
+    )
+
+    with pytest.raises(ImportConflict, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        command.reconcile_revision(
+            organization_id="org-1", actor_user_id="user-1",
+            provider="MUASAMCONG",
+            revision=_revision("00", "msc-rev-b", [_package("A")]),
+            idempotency_key="msc:b", expected_plan_row_version=1,
+        )
+
+
+def test_muasamcong_rejects_local_plan_version_without_source_provenance():
+    repository = MemoryRepository()
+    repository.plans.append({
+        "id": "local-plan-00", "rootId": "local-plan-00",
+        "familyNo": "PL2600000001", "localVersion": 0, "rowVersion": 1,
+        "isLatest": True,
+    })
+
+    with pytest.raises(ImportConflict, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        ProcurementPlanReconciler(repository).reconcile_revision(
+            organization_id="org-1", actor_user_id="user-1",
+            provider="MUASAMCONG",
+            revision=_revision("00", "msc-rev-00", [_package("A")]),
+            idempotency_key="msc:00", expected_plan_row_version=1,
         )
 
 

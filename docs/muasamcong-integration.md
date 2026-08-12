@@ -136,12 +136,21 @@ Nếu diagnostics được bật, artifact chỉ chứa JSON shape/type đã san
 
 ## Versioning và import
 
-- Plan `ALL` được sắp xếp cũ → mới và dùng reconciler hiện hữu.
-- Package không đổi giữ nguyên version; package đổi tăng version; package mới
-  bắt đầu `00`; package bị bỏ không xuất hiện trong snapshot mới nhưng lịch sử
-  không bị xóa.
-- Source revision và local version độc lập. Backfill được ghi
-  `OBSERVED_NOT_APPLIED` và không rollback latest.
+- Plan `ALL` được sắp xếp cũ → mới. Với provider `MUASAMCONG`, Bidding dùng đúng
+  số revision nguồn: `00 ↔ 00`, `01 ↔ 01`, `02 ↔ 02`; không chèn phiên bản nội bộ
+  vào giữa revision nguồn.
+- `planVersion` và `notifyVersion` là hai lineage độc lập. Snapshot gói trong một
+  revision kế hoạch giữ ngữ cảnh kế hoạch nhưng không tự tăng phiên bản TBMT;
+  đồng bộ NOTICE đặt phiên bản gói bằng đúng `notifyVersion`.
+- Cùng `revisionId` và cùng digest là NOOP. Nếu Mua Sắm Công trả cùng revision với
+  digest mới, projection cùng số version được thay thế theo nguồn chính xác; raw
+  snapshot và source observation cũ vẫn append-only, đồng thời audit lưu old/new digest.
+- Field do nguồn sở hữu luôn lấy từ đúng một canonical revision, không merge chéo
+  revision. Assignment, workflow và dữ liệu nghiệp vụ nội bộ được clone qua seam
+  riêng, không trở thành authority của field nguồn.
+- Bản nháp wizard chỉ là recovery state theo workspace ở local storage. Nó không
+  chứa raw/canonical authority, không tạo version, và luôn phải prepare lại với server
+  trước khi commit DB.
 - TBMT `ALL` dùng durable operation có cursor/resume/idempotency như plan.
 - Mỗi provenance revision lưu liên kết `operation_id` của durable operation;
   resume tiếp tục dùng cùng operation này.

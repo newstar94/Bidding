@@ -11,6 +11,7 @@ from backend.procurement_import.domain import (
     derive_import_lifecycle_status,
     package_source_fields,
     revision_sort_key,
+    source_revision_version,
 )
 
 
@@ -32,6 +33,35 @@ def _latest_applied_number(repository, organization_id, provider, family_no):
     if not rows:
         return None
     return max(rows, key=lambda row: revision_sort_key(row.get("revisionNumber"))).get("revisionNumber")
+
+
+def _authoritative_version(provider, revision_number, fallback):
+    source_version = source_revision_version(provider, revision_number)
+    return int(fallback) if source_version is None else source_version
+
+
+def _same_source_revision_resync(provider, observed, digest):
+    return (
+        str(provider or "").strip().upper() == "MUASAMCONG"
+        and observed is not None
+        and observed.get("digest") != digest
+    )
+
+
+def _revision_number_conflict(
+    repository, organization_id, provider, kind, family_no,
+    revision_number, revision_id, local_root_id=None,
+):
+    method = getattr(repository, "find_revision_by_number", None)
+    if not callable(method):
+        return None
+    row = method(
+        organization_id, provider, kind, family_no, revision_number,
+        local_root_id=local_root_id,
+    )
+    if row and str(row.get("revisionId") or "") != str(revision_id):
+        raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    return row
 
 
 def _match_package(observation, current_packages, decision=None):
@@ -134,31 +164,68 @@ class ProcurementNoticeReconciler:
             organization_id, provider, revision_id
         )
         if observed:
-            if observed.get("digest") != digest:
+            if observed.get("digest") == digest:
+                return {
+                    "operation": "NOOP", "createdPlans": [], "createdPackages": [],
+                    "bindings": [], "provenance": observed,
+                }
+            if not _same_source_revision_resync(provider, observed, digest):
                 raise ImportConflict("PROCUREMENT_REVISION_CONFLICT")
-            return {
-                "operation": "NOOP", "createdPlans": [], "createdPackages": [],
-                "bindings": [], "provenance": observed,
-            }
+        resync = _same_source_revision_resync(provider, observed, digest)
         relationship = deepcopy(notice.get("relationship") or {})
-        target = self.repository.resolve_notice_target(
+        current_target = self.repository.resolve_notice_target(
             organization_id, provider, notice_no, relationship,
             target_root_id=target_package_root_id,
         )
-        if target is None:
+        if current_target is None:
             raise ImportConflict("PROCUREMENT_NOTICE_PACKAGE_UNRESOLVED")
-        if int(target.get("rowVersion") or 1) != int(expected_package_row_version or 0):
+        if int(current_target.get("rowVersion") or 1) != int(expected_package_row_version or 0):
             raise ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        _revision_number_conflict(
+            self.repository, organization_id, provider, "NOTICE", notice_no,
+            revision_number, revision_id,
+            local_root_id=current_target.get("rootId") or current_target["id"],
+        )
+        target = current_target
+        source_version = source_revision_version(provider, revision_number)
+        local_version = None
+        local_version_loader = getattr(
+            self.repository, "find_local_package_version", None
+        )
+        if source_version is not None and callable(local_version_loader):
+            local_version = local_version_loader(
+                organization_id,
+                current_target.get("rootId") or current_target["id"],
+                current_target["planSnapshotId"],
+                source_version,
+                provider=provider,
+            )
+        placeholder_replacement = False
+        if observed is None and local_version is not None:
+            if not local_version.get("binding"):
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+            target = local_version
+            placeholder_replacement = True
+        if resync and observed.get("localSnapshotId"):
+            loader = getattr(self.repository, "load_package_snapshot", None)
+            if callable(loader):
+                target = loader(
+                    organization_id, provider, observed["localSnapshotId"]
+                )
+            if target is None:
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
 
         previous_notice = self.repository.latest_notice_revision_for_package(
             organization_id, provider, target.get("rootId") or target["id"]
         )
         previous_material = (
-            _notice_material_snapshot(previous_notice["normalizedSnapshot"])
+            _notice_material_snapshot(
+                (observed if resync else previous_notice)["normalizedSnapshot"]
+            )
             if previous_notice is not None
             else _package_notice_material_snapshot(target)
         )
-        material = previous_material != _notice_material_snapshot(
+        material = resync or previous_material != _notice_material_snapshot(
             {**notice, "noticeNo": notice_no}
         )
         disposition = "APPLIED" if material else "OBSERVED_NOT_APPLIED"
@@ -184,6 +251,8 @@ class ProcurementNoticeReconciler:
                 else "EXACT_PLAN_PACKAGE"
             ),
             "publicUrl": notice.get("publicUrl"),
+            "resyncOfEvidenceId": observed.get("evidenceId") if resync else None,
+            "previousDigest": observed.get("digest") if resync else None,
         }
         if not material:
             provenance["localSnapshotId"] = target["id"]
@@ -210,11 +279,24 @@ class ProcurementNoticeReconciler:
             "noticeVersion": revision_number,
         }
         source_fields["noticeFields"] = deepcopy(notice_fields)
+        previous_number = (
+            previous_notice.get("revisionNumber")
+            if previous_notice is not None else None
+        )
+        is_latest_source_revision = (
+            previous_number is None
+            or revision_sort_key(revision_number)
+            >= revision_sort_key(previous_number)
+        )
+        replace_source_version = resync or placeholder_replacement
         package = {
             "id": package_id,
             "rootId": target.get("rootId") or target["id"],
             "planSnapshotId": target["planSnapshotId"],
-            "localVersion": int(target.get("localVersion") or 0) + 1,
+            "localVersion": _authoritative_version(
+                provider, revision_number,
+                int(target.get("localVersion") or 0) + 1,
+            ),
             "rowVersion": 1,
             "symbol": target.get("symbol"),
             "name": target.get("name"),
@@ -227,7 +309,16 @@ class ProcurementNoticeReconciler:
             "canonicalSourceFields": source_fields,
             "assigneeUserId": target.get("assigneeUserId"),
             "cloneFromSnapshotId": target["id"],
-            "supersedeSnapshotId": target["id"],
+            "supersedeSnapshotId": (
+                target["id"]
+                if replace_source_version or is_latest_source_revision
+                else None
+            ),
+            "replaceSourceVersion": replace_source_version,
+            "isLatest": (
+                bool(target.get("isLatest", True))
+                if resync else is_latest_source_revision
+            ),
         }
         provenance["localSnapshotId"] = package_id
         bindings = []
@@ -278,22 +369,42 @@ class ProcurementPlanReconciler:
         self.repository.lock_family(organization_id, provider, family_no)
         observed = self.repository.find_revision(organization_id, provider, revision_id)
         if observed:
-            if observed.get("digest") != digest:
+            if observed.get("digest") == digest:
+                return {
+                    "operation": "NOOP", "createdPlans": [], "createdPackages": [],
+                    "bindings": [], "provenance": observed,
+                }
+            if not _same_source_revision_resync(provider, observed, digest):
                 raise ImportConflict("PROCUREMENT_REVISION_CONFLICT")
-            return {
-                "operation": "NOOP", "createdPlans": [], "createdPackages": [],
-                "bindings": [], "provenance": observed,
-            }
-        family = self.repository.load_family(organization_id, provider, family_no)
-        latest_plan = family.get("latestPlan")
-        if latest_plan is not None and int(latest_plan.get("rowVersion") or 1) != int(expected_plan_row_version or 0):
+        resync = _same_source_revision_resync(provider, observed, digest)
+        current_family = self.repository.load_family(
+            organization_id, provider, family_no
+        )
+        current_latest_plan = current_family.get("latestPlan")
+        if current_latest_plan is not None and int(current_latest_plan.get("rowVersion") or 1) != int(expected_plan_row_version or 0):
             raise ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        _revision_number_conflict(
+            self.repository, organization_id, provider, "PLAN", family_no,
+            revision.get("revisionNumber"), revision_id,
+        )
+        family = current_family
+        if resync and observed.get("localSnapshotId"):
+            family = self.repository.load_family(
+                organization_id, provider, family_no,
+                plan_snapshot_id=observed["localSnapshotId"],
+            )
+            if family.get("latestPlan") is None:
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        latest_plan = family.get("latestPlan")
         latest_external = _latest_applied_number(
             self.repository, organization_id, provider, family_no
         )
-        provenance_only = latest_external is not None and (
+        provenance_only = (
+            str(provider or "").strip().upper() != "MUASAMCONG"
+            and not resync and latest_external is not None and (
             revision_sort_key(revision.get("revisionNumber"))
             < revision_sort_key(latest_external)
+            )
         )
         disposition = "OBSERVED_NOT_APPLIED" if provenance_only else "APPLIED"
         normalized_snapshot = deepcopy(revision)
@@ -314,6 +425,8 @@ class ProcurementPlanReconciler:
             "idempotencyKey": str(idempotency_key),
             "operationId": str(operation_id) if operation_id else None,
             "disposition": disposition,
+            "resyncOfEvidenceId": observed.get("evidenceId") if resync else None,
+            "previousDigest": observed.get("digest") if resync else None,
         }
         if provenance_only:
             result = {
@@ -322,8 +435,29 @@ class ProcurementPlanReconciler:
             }
             self.repository.persist_revision(result)
             return result
-        plan_id = _id(idempotency_key, "plan", revision_id)
+        plan_id = _id(idempotency_key, "plan", revision_id, digest)
         plan_root = plan_id if latest_plan is None else latest_plan.get("rootId", latest_plan["id"])
+        source_version = source_revision_version(
+            provider, revision.get("revisionNumber")
+        )
+        local_plan_version = getattr(
+            self.repository, "find_local_plan_version", None
+        )
+        if source_version is not None and observed is None:
+            collision = (
+                local_plan_version(
+                    organization_id, family_no, source_version
+                )
+                if callable(local_plan_version) else None
+            )
+            if collision is not None:
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        replace_source_version = resync
+        is_latest_source_revision = (
+            latest_external is None
+            or revision_sort_key(revision.get("revisionNumber"))
+            >= revision_sort_key(latest_external)
+        )
         plan_fields = deepcopy(revision.get("plan") or {})
         if not plan_fields:
             plan_fields = {
@@ -340,11 +474,24 @@ class ProcurementPlanReconciler:
             "id": plan_id,
             "rootId": plan_root,
             "familyNo": family_no,
-            "localVersion": 0 if latest_plan is None else int(latest_plan.get("localVersion") or 0) + 1,
+            "localVersion": _authoritative_version(
+                provider,
+                revision.get("revisionNumber"),
+                0 if latest_plan is None else int(latest_plan.get("localVersion") or 0) + 1,
+            ),
             "rowVersion": 1,
             "sourceRevisionId": revision_id,
+            "sourceRevisionNumber": str(revision.get("revisionNumber")),
+            "replaceSourceVersion": replace_source_version,
+            "isLatest": (
+                bool(latest_plan.get("isLatest", True))
+                if resync else is_latest_source_revision
+            ),
             **plan_fields,
         }
+        provenance["localRootId"] = plan_root
+        provenance["localSnapshotId"] = plan_id
+        provenance["localEntityType"] = "kehoach"
         created_packages = []
         bindings = []
         package_decisions = package_decisions or {}
@@ -366,10 +513,19 @@ class ProcurementPlanReconciler:
                     and source_fields != (matched.get("sourceFields") or {})
                 )
             )
-            package_id = _id(idempotency_key, "package", revision_id, index)
+            package_id = _id(idempotency_key, "package", revision_id, digest, index)
             root_id = package_id if matched is None else matched.get("rootId", matched["id"])
             local_version = 0 if matched is None else int(matched.get("localVersion") or 0) + int(changed)
             notice = observation.get("noticeLink") or {}
+            notice_source_version = source_revision_version(
+                provider, notice.get("noticeVersion")
+            ) if notice.get("noticeVersion") is not None else None
+            if notice_source_version is not None:
+                local_version = notice_source_version
+            elif str(provider or "").strip().upper() == "MUASAMCONG" and matched is not None:
+                # A plan revision snapshots package context; it is not a TBMT
+                # revision and therefore cannot advance the package lineage.
+                local_version = int(matched.get("localVersion") or 0)
             package = {
                 "id": package_id,
                 "rootId": root_id,

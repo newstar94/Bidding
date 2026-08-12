@@ -485,8 +485,12 @@ def test_raw_snapshot_schema_and_migration_are_append_only():
     assert "content_hash" in table["columns"]
     assert "dedup_key" in table["columns"]
     assert any("dedup_key" in item for item in table["unique_constraints"])
-    assert UPGRADES[-1].version == 53
-    assert UPGRADES[-1].name == "add_procurement_raw_snapshots"
+    assert any(
+        upgrade.version == 53
+        and upgrade.name == "add_procurement_raw_snapshots"
+        for upgrade in UPGRADES
+    )
+    assert UPGRADES[-1].version == 54
 
 
 def test_real_postgres_raw_snapshot_round_trip_dedup_and_immutability():

@@ -47,6 +47,11 @@ _VERSION_FAMILY_SQL = {
         WHERE organization_id = ? AND archived_at IS NULL
           AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
                OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
+          AND ke_hoach_id = (
+              SELECT current_package.ke_hoach_id FROM goi_thau AS current_package
+               WHERE current_package.organization_id = goi_thau.organization_id
+                 AND current_package.id = ?
+          )
         ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
     """,
     "ke_hoach_lcnt": """
@@ -695,7 +700,12 @@ def _read_single_record_blocking(request):
         version_family_sql = _VERSION_FAMILY_SQL.get(table_name)
         if version_family_sql:
             root_id = row_dict.get("id_goc") or row_dict.get("id")
-            cursor.execute(version_family_sql, (org_name, root_id, root_id))
+            version_params = (
+                (org_name, root_id, root_id, row_dict["id"])
+                if table_name == "goi_thau"
+                else (org_name, root_id, root_id)
+            )
+            cursor.execute(version_family_sql, version_params)
             item["allVersions"] = [
                 {"id": version_row[0], "phienBan": version_row[1]}
                 for version_row in cursor.fetchall()

@@ -211,6 +211,29 @@ def test_package_version_command_rejects_package_owned_by_historical_plan():
         )
 
 
+def test_manual_version_command_rejects_muasamcong_managed_lineage():
+    class ManagedRepository(FakeRepository):
+        def source_version_authority(self, organization_id, kind, root_id):
+            assert organization_id == "org-1"
+            assert kind == "plan"
+            assert root_id == "plan-root"
+            return "MUASAMCONG"
+
+    with pytest.raises(HistoricalAggregateError, match="MUASAMCONG-managed"):
+        build_aggregate_version_payload(
+            ManagedRepository(_state()),
+            "org-1",
+            {
+                "kind": "plan",
+                "sourceId": "plan-1",
+                "expectedRowVersion": 3,
+                "changes": {},
+                "clientMutationId": "managed-plan-version",
+            },
+            timestamp="2026-08-08 10:00:00",
+        )
+
+
 def test_plan_version_command_can_exclude_removed_package_roots():
     state = _state()
     state["goithau"].append({

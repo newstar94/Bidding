@@ -2,6 +2,43 @@ import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { packageNoticeLabel, planPreviewFields } from "./fieldMapping.js";
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
+const DRAFT_KEY = "procurement_plan_import_draft_v1";
+
+export class PlanImportDraftStore {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  save(value) {
+    if (!this.storage) return;
+    this.storage.setItem(DRAFT_KEY, JSON.stringify({
+      schemaVersion: 1,
+      savedAt: new Date().toISOString(),
+      code: String(value?.code || ""),
+      revisionMode: String(value?.revisionMode || "LATEST"),
+      selectedRevision: value?.selectedRevision || null,
+      investorId: value?.investorId || null,
+      bundleDigest: value?.bundleDigest || null,
+      decisions: value?.decisions || {
+        packageMatches: {}, fieldConflicts: {}, fieldValues: {},
+      },
+    }));
+  }
+
+  load() {
+    if (!this.storage) return null;
+    try {
+      const value = JSON.parse(this.storage.getItem(DRAFT_KEY) || "null");
+      return value?.schemaVersion === 1 ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  clear() {
+    this.storage?.removeItem(DRAFT_KEY);
+  }
+}
 
 export function summarizePreview(preview) {
   const packages = Array.isArray(preview?.packages) ? preview.packages : [];
@@ -192,6 +229,9 @@ export class PlanImportWizard {
     this.applyController = null;
     this.requestGeneration = 0;
     this.workspaceLease = String(controller?.model?.activeWorkspaceLease || "");
+    this.draftStore = new PlanImportDraftStore(
+      controller?.model?.workspaceStorage || null,
+    );
     this.debouncedPrepare = createDebouncedPreparer(() => this.prepare(), 600);
     this.bind();
   }
@@ -219,6 +259,31 @@ export class PlanImportWizard {
     this.modal.addEventListener("input", (event) => this.captureDecision(event));
   }
 
+  saveDraft() {
+    this.draftStore.save({
+      code: this.modal.querySelector("[data-procurement-code]")?.value,
+      revisionMode: this.modal.querySelector("[data-procurement-mode]")?.value,
+      selectedRevision: this.modal.querySelector("[data-procurement-revision]")?.value || null,
+      investorId: this.modal.querySelector("[data-procurement-investor]")?.value || null,
+      bundleDigest: this.preview?.bundleDigest || null,
+      decisions: this.decisions,
+    });
+  }
+
+  restoreDraft() {
+    const draft = this.draftStore.load();
+    if (!draft) return null;
+    const code = this.modal.querySelector("[data-procurement-code]");
+    const mode = this.modal.querySelector("[data-procurement-mode]");
+    const revision = this.modal.querySelector("[data-procurement-revision]");
+    const investor = this.modal.querySelector("[data-procurement-investor]");
+    if (code && draft.code) code.value = draft.code;
+    if (mode && draft.revisionMode) mode.value = draft.revisionMode;
+    if (revision && draft.selectedRevision) revision.value = draft.selectedRevision;
+    if (investor && draft.investorId) investor.value = draft.investorId;
+    return draft;
+  }
+
   captureDecision(event) {
     const target = event.target;
     if (!(target instanceof globalThis.HTMLElement)) return;
@@ -238,6 +303,7 @@ export class PlanImportWizard {
       const key = `${target.dataset.procurementFieldValue}:${target.dataset.field || ""}`;
       this.decisions.fieldValues[key] = target.value;
     }
+    this.saveDraft();
     this.refreshApplyGate();
   }
 
@@ -285,7 +351,12 @@ export class PlanImportWizard {
         return;
       }
       this.preview = preview;
-      this.decisions = { packageMatches: {}, fieldConflicts: {}, fieldValues: {} };
+      const draft = this.draftStore.load();
+      this.decisions = (
+        draft?.bundleDigest === preview.bundleDigest && draft?.decisions
+      ) ? draft.decisions : {
+        packageMatches: {}, fieldConflicts: {}, fieldValues: {},
+      };
       renderPlan(this.modal, preview);
       renderPackages(this.modal, preview);
       renderIssues(this.modal, preview);
@@ -294,6 +365,7 @@ export class PlanImportWizard {
       this.modal.querySelector("[data-procurement-summary]").textContent =
         `${summary.total} gói · ${preview.plan?.selectedRevisions?.length || 0} phiên bản nguồn`;
       this.refreshApplyGate();
+      this.saveDraft();
       this.setStatus(canApplyPreview(preview, this.decisions)
         ? "Preview đã sẵn sàng. Kiểm tra và xác nhận trước khi nhập."
         : "Preview còn xung đột hoặc trường bắt buộc cần xử lý.",
@@ -354,6 +426,7 @@ export class PlanImportWizard {
       this.controller?.view?.renderKeHoachTable?.();
       this.controller?.view?.renderGoiThauTable?.();
       this.setStatus("Đã nhập kế hoạch và gói thầu thành công.");
+      this.draftStore.clear();
       this.controller?.view?.closeModal?.("modal-procurement-import");
     } catch (error) {
       if (error?.name === "AbortError") return;
@@ -397,6 +470,9 @@ export async function openProcurementImportWizard() {
   if (wizard.workspaceLease !== activeWorkspaceLease) {
     wizard.cleanup();
     wizard.workspaceLease = activeWorkspaceLease;
+    wizard.draftStore = new PlanImportDraftStore(
+      this.model?.workspaceStorage || null,
+    );
   }
   const sourceCode = globalThis.document.getElementById("kh-ma")?.value?.trim();
   if (sourceCode) modal.querySelector("[data-procurement-code]").value = sourceCode;
@@ -414,6 +490,7 @@ export async function openProcurementImportWizard() {
   });
   const selectedInvestor = globalThis.document.getElementById("kh-chudautuid")?.value;
   if (selectedInvestor) investor.value = selectedInvestor;
+  const restoredDraft = wizard.restoreDraft();
   this.view.openModal("modal-procurement-import");
-  if (sourceCode) wizard.debouncedPrepare.schedule();
+  if (sourceCode || restoredDraft?.code) wizard.debouncedPrepare.schedule();
 }

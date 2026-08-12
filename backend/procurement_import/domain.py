@@ -91,6 +91,20 @@ def revision_sort_key(value: object) -> tuple[int, str]:
         return -1, text
 
 
+def source_revision_version(provider: object, value: object) -> int | None:
+    """Return the Bidding version owned by an authoritative source revision."""
+
+    if str(provider or "").strip().upper() != "MUASAMCONG":
+        return None
+    text = str(value or "").strip()
+    if not text.isdigit():
+        raise ValueError("PROCUREMENT_REVISION_INVALID")
+    number = int(text)
+    if number < 0:
+        raise ValueError("PROCUREMENT_REVISION_INVALID")
+    return number
+
+
 def required_package_issues(package: dict) -> list[dict]:
     required = (
         (RequiredFieldIssue.NAME, package.get("name") not in (None, "")),

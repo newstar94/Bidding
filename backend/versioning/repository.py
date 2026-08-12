@@ -213,3 +213,33 @@ class AggregateVersionRepository:
 
     def current_sync_version(self, organization_id):
         return get_current_sync_version(self.cursor, organization_id)
+
+    def source_version_authority(self, organization_id, kind, root_id):
+        entity_kind = "PLAN" if kind == "plan" else "NOTICE"
+        local_entity_type = "kehoach" if kind == "plan" else "goithau"
+        if kind == "plan":
+            row = self.cursor.execute(
+                """SELECT source.provider
+                     FROM procurement_source_revision AS source
+                     JOIN ke_hoach_lcnt AS plan
+                       ON plan.organization_id = source.organization_id
+                      AND plan.id = source.local_snapshot_id
+                    WHERE source.organization_id = ?
+                      AND source.provider = 'MUASAMCONG'
+                      AND source.entity_kind = ?
+                      AND source.local_entity_type = ?
+                      AND COALESCE(NULLIF(plan.id_goc, ''), plan.id) = ?
+                      AND source.disposition = 'APPLIED'
+                    ORDER BY source.created_at DESC LIMIT 1""",
+                (organization_id, entity_kind, local_entity_type, root_id),
+            ).fetchone()
+        else:
+            row = self.cursor.execute(
+                """SELECT provider FROM procurement_source_revision
+                    WHERE organization_id = ? AND provider = 'MUASAMCONG'
+                      AND entity_kind = ? AND local_entity_type = ?
+                      AND local_root_id = ? AND disposition = 'APPLIED'
+                    ORDER BY created_at DESC LIMIT 1""",
+                (organization_id, entity_kind, local_entity_type, root_id),
+            ).fetchone()
+        return None if row is None else row[0]

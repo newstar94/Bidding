@@ -342,14 +342,22 @@ class ProcurementImportPreparer:
             revision["revisionDigest"] = revision_digest
             observed = observed_revisions.get(str(revision["revisionId"]))
             if observed:
-                disposition = "ALREADY_IMPORTED"
-                if observed.get("digest") and observed.get("digest") != revision_digest:
+                digest_changed = (
+                    observed.get("digest")
+                    and observed.get("digest") != revision_digest
+                )
+                disposition = (
+                    "RESYNC"
+                    if digest_changed and self.source.name == "MUASAMCONG"
+                    else "ALREADY_IMPORTED"
+                )
+                if digest_changed and self.source.name != "MUASAMCONG":
                     blocking_issues.append({
                         "code": "PROCUREMENT_REVISION_CONFLICT",
                         "sourceRevisionId": revision["revisionId"],
                         "sourceRevisionNumber": revision["revisionNumber"],
                     })
-            elif latest_external is not None and (
+            elif self.source.name != "MUASAMCONG" and latest_external is not None and (
                 revision_sort_key(revision.get("revisionNumber"))
                 < revision_sort_key(latest_external)
             ):
