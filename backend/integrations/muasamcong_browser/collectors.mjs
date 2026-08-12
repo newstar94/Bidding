@@ -252,6 +252,47 @@ function usableIdentifier(value) {
 }
 
 
+function linkedPlanReference(detail, merged, planNo) {
+  const normalizedPlanNo = String(planNo || "").trim().toUpperCase();
+  const bidNo = usableIdentifier(merged?.bidNo || findFirstValue(detail, "bidNo"));
+  const candidates = [];
+  walk(detail, (item) => {
+    if (Array.isArray(item)) return;
+    const itemPlanNo = String(item?.planNo || "").trim().toUpperCase();
+    const itemBidNo = String(item?.bidNo || "").trim().toUpperCase();
+    if (itemPlanNo && itemPlanNo !== normalizedPlanNo) return;
+    if (bidNo && itemBidNo && itemBidNo !== bidNo.toUpperCase()) return;
+    const idPlan = usableIdentifier(item?.idPlan || item?.planRevisionId);
+    const planVersion = usableIdentifier(item?.planVersion);
+    if (idPlan || planVersion) candidates.push({ idPlan, planVersion });
+  });
+  const exact = candidates.find((item) => item.idPlan) || candidates[0] || {};
+  return {
+    idPlan: usableIdentifier(merged?.idPlan || merged?.planRevisionId) || exact.idPlan || null,
+    planVersion: usableIdentifier(merged?.planVersion) || exact.planVersion || null,
+  };
+}
+
+
+function resolveLinkedPlanRevision(planVersions, reference) {
+  const versions = responseVersions(planVersions);
+  const idPlan = usableIdentifier(reference?.idPlan);
+  if (idPlan) {
+    const matches = versions.filter((row) => String(row?.id || "") === idPlan);
+    if (matches.length === 1) return matches[0];
+  }
+  const planVersion = usableIdentifier(reference?.planVersion);
+  if (planVersion) {
+    const normalized = String(planVersion).padStart(2, "0");
+    const matches = versions.filter((row) => (
+      String(row?.planVersion ?? "").padStart(2, "0") === normalized
+    ));
+    if (matches.length === 1) return matches[0];
+  }
+  return versions.length === 1 ? versions[0] : null;
+}
+
+
 function flagEnabled(value) {
   if (value === true || value === 1) return true;
   return ["1", "TRUE", "YES", "Y", "CO", "CÓ"].includes(
@@ -954,7 +995,8 @@ export class MscCollectors {
         ]);
       }
       const planNo = usableIdentifier(merged.planNo || findFirstValue(detail, "planNo"));
-      const packageDetailId = usableIdentifier(
+      const planReference = linkedPlanReference(detail, merged, planNo);
+      let packageDetailId = usableIdentifier(
         merged.idDetail
         || merged.bidPlanDetailId
         || findFirstValue(detail, "idDetail")
@@ -964,11 +1006,32 @@ export class MscCollectors {
         const planVersions = await capture(
           node.sources, "planVersionList", "PLAN_VERSION_LIST", { planNo }, { revision: label },
         );
-        const planRevisionId = usableIdentifier(findFirstValue(planVersions, "id"));
+        const linkedPlanRevision = resolveLinkedPlanRevision(
+          planVersions, planReference,
+        );
+        const planRevisionId = usableIdentifier(linkedPlanRevision?.id);
         if (planRevisionId) {
-          await capture(
+          const planDetail = await capture(
             node.sources, "planDetail", "PLAN_DETAIL", { id: planRevisionId }, { revision: label },
           );
+          if (!packageDetailId) {
+            const bidNo = usableIdentifier(merged.bidNo || findFirstValue(detail, "bidNo"));
+            const matches = packageRows(planDetail).filter((row) => (
+              bidNo && String(row?.bidNo || "").trim().toUpperCase() === bidNo.toUpperCase()
+            ));
+            if (matches.length === 1) {
+              packageDetailId = usableIdentifier(matches[0].idDetail || matches[0].id);
+            }
+          }
+        } else if (responseVersions(planVersions).length > 1) {
+          const source = envelope("PLAN_DETAIL", { id: null });
+          source.error = { code: "PROCUREMENT_REVISION_INVALID" };
+          node.sources.planDetail = source;
+          failures.push({
+            operation: "PLAN_DETAIL",
+            revision: label,
+            error: "PROCUREMENT_REVISION_INVALID",
+          });
         }
       }
       if (packageDetailId) {
@@ -1030,6 +1093,8 @@ export class MscCollectors {
       node.identifiers = {
         notifyId,
         planNo,
+        planRevisionId: planReference.idPlan || null,
+        planVersion: planReference.planVersion || null,
         bidMode,
         processApply,
         isMultiLot: flagEnabled(

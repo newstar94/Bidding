@@ -623,10 +623,22 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
           notifyNo: "IB2600000002", notifyId: "notice-01", notifyVersion: "01",
           bidMode: "1_MTHS", processApply: "LDT", status: "PUB_KQLCNT",
           bidOpenId: "opening-1", inputResultId: "result-1", planNo: "PL2600000001",
+          bidNo: "BP2600000001",
         }, metadata: { operation },
       };
       if (operation === "PLAN_VERSION_LIST") return {
         data: { versionList: [{ id: "plan-01", planVersion: "01" }] }, metadata: { operation },
+      };
+      if (operation === "PLAN_DETAIL") return {
+        data: {
+          planNo: "PL2600000001",
+          packages: [{
+            idDetail: "plan-package-1",
+            bidNo: "BP2600000001",
+            bidName: "Gói từ kế hoạch",
+          }],
+        },
+        metadata: { operation },
       };
       if (["NOTICE_PETITION", "NOTICE_CLARIFICATION", "NOTICE_PREBID_CONFERENCE"].includes(operation)) {
         throw new Error("PROCUREMENT_NOT_FOUND");
@@ -652,12 +664,182 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
   assert.equal(bundle.entity.kind, "NOTICE");
   assert.equal(bundle.revisions["01"].sources.tenderInfo.success, true);
   assert.equal(bundle.revisions["01"].sources.hsmt.success, true);
+  assert.equal(bundle.revisions["01"].sources.planPackageDetail.success, true);
+  assert.deepEqual(
+    calls.find(([operation]) => operation === "PLAN_PACKAGE_DETAIL"),
+    ["PLAN_PACKAGE_DETAIL", { id: "plan-package-1" }],
+  );
   assert.equal(bundle.revisions["01"].sources.petition.absent, true);
   assert.equal(bundle.revisions["01"].sources.opening_bid_0.success, true);
   assert.equal(bundle.revisions["01"].sources.selectionResult.success, true);
   assert.equal(bundle.sources.contractList.response[0].contractCode, "HD-01");
   assert.equal(bundle.status, "FOUND_COMPLETE");
   assert.equal(calls.some(([operation]) => operation === "OPENING_LOT"), false);
+});
+
+
+test("notice revisions enrich from their explicitly linked plan versions", async () => {
+  const calls = [];
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      if (operation === "NOTICE_LDT_VERSION_LIST") return {
+        data: { versionList: [
+          { id: "notice-00", notifyNo: "IB2600000008", notifyVersion: "00", processApply: "LDT" },
+          { id: "notice-01", notifyNo: "IB2600000008", notifyVersion: "01", processApply: "LDT" },
+        ] },
+        metadata: { operation },
+      };
+      if (operation === "NOTICE_OTHER_VERSION_LIST") throw new Error("PROCUREMENT_NOT_FOUND");
+      if (operation === "NOTICE_LDT_DETAIL") {
+        const version = payload.id.slice(-2);
+        return {
+          data: {
+            notice: {
+              id: payload.id,
+              notifyId: payload.id,
+              notifyNo: "IB2600000008",
+              notifyVersion: version,
+              planNo: "PL2600000008",
+              bidNo: "BP2600000008",
+              processApply: "LDT",
+              bidMode: "1_MTHS",
+            },
+            linkedPlanPackage: {
+              planNo: "PL2600000008",
+              planVersion: version,
+              bidNo: "BP2600000008",
+            },
+          },
+          metadata: { operation },
+        };
+      }
+      if (operation === "PLAN_VERSION_LIST") return {
+        // Deliberately latest-first: array position must not choose the revision.
+        data: { versionList: [
+          { id: "plan-01", planNo: "PL2600000008", planVersion: "01" },
+          { id: "plan-00", planNo: "PL2600000008", planVersion: "00" },
+        ] },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_DETAIL") {
+        const version = payload.id.slice(-2);
+        return {
+          data: {
+            plan: {
+              id: payload.id,
+              planNo: "PL2600000008",
+              planVersion: version,
+            },
+            packages: [{
+              idDetail: `package-${version}`,
+              idPlan: payload.id,
+              planNo: "PL2600000008",
+              bidNo: "BP2600000008",
+              bidTime: version === "00" ? "15 ngày" : "45 ngày",
+            }],
+          },
+          metadata: { operation },
+        };
+      }
+      if (operation === "PLAN_PACKAGE_DETAIL") return {
+        data: { idDetail: payload.id },
+        metadata: { operation },
+      };
+      if (["NOTICE_PETITION", "NOTICE_CLARIFICATION", "NOTICE_PREBID_CONFERENCE"].includes(operation)) {
+        throw new Error("PROCUREMENT_NOT_FOUND");
+      }
+      if (operation === "NOTICE_CONTRACT_LIST") return { data: [], metadata: { operation } };
+      return { data: { operation, ...payload }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-notify-contractor",
+    id: "notice-01",
+    notifyId: "notice-01",
+    notifyNo: "IB2600000008",
+    notifyVersion: "01",
+    processApply: "LDT",
+    bidMode: "1_MTHS",
+  }, { revisionMode: "ALL" });
+
+  assert.equal(
+    bundle.revisions["00"].sources.planDetail.response.plan.planVersion,
+    "00",
+  );
+  assert.equal(
+    bundle.revisions["01"].sources.planDetail.response.plan.planVersion,
+    "01",
+  );
+  assert.deepEqual(
+    calls.filter(([operation]) => operation === "PLAN_DETAIL")
+      .map(([, payload]) => payload.id).sort(),
+    ["plan-00", "plan-01"],
+  );
+  assert.deepEqual(
+    calls.filter(([operation]) => operation === "PLAN_PACKAGE_DETAIL")
+      .map(([, payload]) => payload.id).sort(),
+    ["package-00", "package-01"],
+  );
+});
+
+
+test("notice enrichment fails closed when multiple plan versions are ambiguous", async () => {
+  const client = {
+    request: async (operation, payload) => {
+      if (operation === "NOTICE_LDT_VERSION_LIST") return {
+        data: { versionList: [{
+          id: "notice-01",
+          notifyNo: "IB2600000009",
+          notifyVersion: "01",
+          processApply: "LDT",
+        }] },
+        metadata: { operation },
+      };
+      if (operation === "NOTICE_OTHER_VERSION_LIST") throw new Error("PROCUREMENT_NOT_FOUND");
+      if (operation === "NOTICE_LDT_DETAIL") return {
+        data: {
+          notifyNo: "IB2600000009",
+          notifyId: "notice-01",
+          notifyVersion: "01",
+          planNo: "PL2600000009",
+          bidNo: "BP2600000009",
+          processApply: "LDT",
+          bidMode: "1_MTHS",
+        },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_VERSION_LIST") return {
+        data: { versionList: [
+          { id: "plan-01", planNo: "PL2600000009", planVersion: "01" },
+          { id: "plan-00", planNo: "PL2600000009", planVersion: "00" },
+        ] },
+        metadata: { operation },
+      };
+      if (["NOTICE_PETITION", "NOTICE_CLARIFICATION", "NOTICE_PREBID_CONFERENCE"].includes(operation)) {
+        throw new Error("PROCUREMENT_NOT_FOUND");
+      }
+      if (operation === "NOTICE_CONTRACT_LIST") return { data: [], metadata: { operation } };
+      return { data: { operation, ...payload }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-notify-contractor",
+    id: "notice-01",
+    notifyId: "notice-01",
+    notifyNo: "IB2600000009",
+    notifyVersion: "01",
+    processApply: "LDT",
+    bidMode: "1_MTHS",
+  });
+
+  assert.equal(bundle.status, "FOUND_PARTIAL");
+  assert.equal(
+    bundle.revisions["01"].sources.planDetail.error.code,
+    "PROCUREMENT_REVISION_INVALID",
+  );
 });
 
 

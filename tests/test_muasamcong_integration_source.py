@@ -294,6 +294,40 @@ def test_opening_fixtures_cover_normal_lots_and_two_envelope_phases():
     assert len(technical["jointVentureMembers"]) == 2
 
 
+def test_opening_excludes_package_bid_number_from_lots_and_lot_scopes():
+    opening = normalize_opening_bundle(
+        {
+            "opening_lot_0": [{
+                "bidNo": "BP2600291019",
+                "lotNo": "BP2600291019",
+                "lotName": "Số hiệu gói thầu",
+                "contractorCode": "vn0100000001",
+                "contractorName": "Nhà thầu A",
+                "bidOpenView": [
+                    {
+                        "lotNo": "PP2600198304",
+                        "lotName": "Atropin sulfat",
+                        "lotPrice": 1_014_000,
+                    },
+                    {
+                        "lotNo": "PP2600198307",
+                        "lotName": "Propofol",
+                        "lotPrice": 2_100_000,
+                    },
+                ],
+            }],
+        },
+        notice_no="IB2600212155",
+        revision_id="notice-01",
+    )
+
+    assert [lot["lotNo"] for lot in opening["lots"]] == [
+        "PP2600198304",
+        "PP2600198307",
+    ]
+    assert opening["bidders"][0]["lotNo"] is None
+
+
 def test_opening_parser_preserves_zero_and_missing_optional_prices():
     opening = normalize_opening_bundle(
         {
@@ -782,9 +816,69 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                         "operation": "NOTICE_TENDER_INFO",
                         "success": True,
                         "response": {
-                            "notifyNo": "IB2600000002",
-                            "bidPrice": 987654321,
-                            "capitalDetail": "Nguồn vốn sidecar",
+                            "bidNoContractorResponse": {
+                                "bidNotification": {
+                                    "notifyNo": "IB2600000002",
+                                    "bidPrice": 987654321,
+                                    "capitalDetail": "Nguồn vốn sidecar",
+                                    "isMedicine": 1,
+                                    "isMultiLot": None,
+                                    "lotDTOList": [
+                                        {
+                                            "lotNo": "PP2600000001",
+                                            "lotName": "Thuốc A",
+                                            "lotEstimatePrice": 400000000,
+                                            "lotGuaranteeValue": 4000000,
+                                        },
+                                        {
+                                            "lotNo": "PP2600000002",
+                                            "lotName": "Thuốc B",
+                                            "lotEstimatePrice": 587654321,
+                                            "lotGuaranteeValue": 5000000,
+                                        },
+                                    ],
+                                }
+                            },
+                        },
+                    },
+                    "hsmt": {
+                        "operation": "NOTICE_HSMT",
+                        "success": True,
+                        "response": {
+                            "bidaInvChapterConfList": [{"isMultiLot": 1}],
+                        },
+                    },
+                    "planDetail": {
+                        "operation": "PLAN_DETAIL",
+                        "success": True,
+                        "response": {
+                            "plan": {
+                                "id": "plan-revision-00",
+                                "planNo": "PL2600000001",
+                                "planVersion": "00",
+                            },
+                            "bidpPlanDetailToProjectList": [
+                                {
+                                    "idDetail": "other-package",
+                                    "planNo": "PL2600000001",
+                                    "bidNo": "A",
+                                    "bidName": "Gói khác",
+                                    "additionalChoise": 0,
+                                    "bidTime": "15 ngày",
+                                    "bidStartQuarter": "I",
+                                    "bidStartYear": 2026,
+                                },
+                                {
+                                    "idDetail": "notice-package",
+                                    "planNo": "PL2600000001",
+                                    "bidNo": "B",
+                                    "bidName": "Gói B",
+                                    "additionalChoise": 1,
+                                    "bidTime": "45 ngày",
+                                    "bidStartQuarter": "II",
+                                    "bidStartYear": 2026,
+                                },
+                            ],
                         },
                     },
                     "opening_bid_0": {
@@ -853,6 +947,29 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     revision = canonical["revisions"][0]
     assert revision["priceVnd"] == 987654321
     assert revision["capitalDetail"] == "Nguồn vốn sidecar"
+    assert revision["isMedicinePackage"] is True
+    assert revision["isMultiLot"] is True
+    assert revision["additionalPurchaseOption"] is True
+    assert revision["selectionDuration"] == "45 ngày"
+    assert revision["selectionStart"] == "Quý II/2026"
+    assert revision["linkedPlanRevisionId"] == "plan-revision-00"
+    assert revision["linkedPlanVersion"] == "00"
+    assert revision["lots"] == [
+        {
+            "lotNo": "PP2600000001",
+            "lotName": "Thuốc A",
+            "lotPrice": 400000000,
+            "bidGuarantee": 4000000,
+            "executionPeriod": None,
+        },
+        {
+            "lotNo": "PP2600000002",
+            "lotName": "Thuốc B",
+            "lotPrice": 587654321,
+            "bidGuarantee": 5000000,
+            "executionPeriod": None,
+        },
+    ]
     assert revision["opening"]["bidders"][0]["contractorCode"] == (
         "vn0100000001"
     )
@@ -863,6 +980,14 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert canonical["contracts"][0]["contractValue"] == 123456789
     assert projected["kind"] == "PACKAGE"
     assert projected["data"]["bidPrice"] == 987654321
+    assert projected["data"]["isMedicinePackage"] is True
+    assert projected["data"]["isMultiLot"] is True
+    assert projected["data"]["additionalPurchaseOption"] is True
+    assert projected["data"]["selectionDuration"] == "45 ngày"
+    assert projected["data"]["selectionStart"] == "Quý II/2026"
+    assert projected["data"]["linkedPlanRevisionId"] == "plan-revision-00"
+    assert projected["data"]["linkedPlanVersion"] == "00"
+    assert len(projected["data"]["lots"]) == 2
     assert projected["data"]["contracts"][0]["contractCode"] == (
         "HD2600000001"
     )

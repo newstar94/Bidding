@@ -1,5 +1,6 @@
 import { ProcurementLookupClient } from "./ProcurementLookupClient.js";
 import {
+  applyPackageDetails,
   applySelectedRows,
   buildComparisonRows,
 } from "./ProcurementLookupPreview.js";
@@ -76,7 +77,12 @@ export class ProcurementInlineLookup {
     this.setStatus(status, "Đang lấy dữ liệu từ Mua Sắm Công…", "loading");
     try {
       const preview = await this.client.lookup(
-        { code, workspaceLease: workspaceLease || null },
+        {
+          code,
+          workspaceLease: workspaceLease || null,
+          detailLevel: "COMPLETE",
+          revisionMode: "LATEST",
+        },
         { signal: this.lookupController.signal },
       );
       if (generation !== this.requestGeneration) return null;
@@ -117,6 +123,14 @@ export class ProcurementInlineLookup {
         row.apply = Boolean(control && row.draftValue !== null);
       });
       const result = applySelectedRows(rows, { document: this.document });
+      if (normalizedKind === "PACKAGE") {
+        const details = applyPackageDetails(preview.data, {
+          document: this.document,
+          controller: this.controller,
+        });
+        result.applied += details.applied;
+        result.skipped += details.skipped;
+      }
       const warningCount = rows.filter((row) => row.warning).length;
       const warningText = warningCount
         ? ` ${warningCount} trường chưa thể đối chiếu tự động.`

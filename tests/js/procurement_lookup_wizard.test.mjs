@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { ProcurementLookupClient } from "../../frontend/procurement/ProcurementLookupClient.js";
 import {
+  applyPackageDetails,
   applySelectedRows,
   buildComparisonRows,
 } from "../../frontend/procurement/ProcurementLookupPreview.js";
@@ -201,6 +202,25 @@ test("package preview maps bid guarantee into the package form", () => {
 });
 
 
+test("package preview maps linked plan scheduling fields", () => {
+  const controls = new Map([
+    ["gt-tuychonmuathem", control("Không", ["Không", "Có"])],
+    ["gt-thoigiantochuc", control("")],
+    ["gt-thoigianbatdautochuc", control("")],
+  ]);
+  const rows = buildComparisonRows("PACKAGE", {
+    additionalPurchaseOption: true,
+    selectionDuration: "45 ngày",
+    selectionStart: "Quý II/2026",
+  }, { getControl: (id) => controls.get(id) || null });
+  const mapped = Object.fromEntries(rows.map((row) => [row.field, row]));
+
+  assert.equal(mapped.additionalPurchaseOption.draftValue, "Có");
+  assert.equal(mapped.selectionDuration.draftValue, "45 ngày");
+  assert.equal(mapped.selectionStart.draftValue, "Quý II/2026");
+});
+
+
 test("inline package lookup fills bid guarantee without saving", async () => {
   const identity = { value: "package-a" };
   const form = {
@@ -243,6 +263,89 @@ test("inline package lookup fills bid guarantee without saving", async () => {
   assert.equal(guarantee.value, "28.000.000");
   assert.equal(result.applied, 2);
   assert.match(status.textContent, /dữ liệu chưa được lưu/i);
+});
+
+
+test("package details select medicine and multi-lot then load authoritative lots", () => {
+  const medicineYes = control("1");
+  medicineYes.checked = false;
+  const multiLot = control("Không", ["Không", "Có"]);
+  const packagePrice = control("987.654.321");
+  const packageGuarantee = control("9.000.000");
+  const originalMultiLotDispatch = multiLot.dispatchEvent.bind(multiLot);
+  multiLot.dispatchEvent = (event) => {
+    originalMultiLotDispatch(event);
+    if (event.type === "change") packagePrice.value = "0";
+  };
+  const loaded = [];
+  const document = {
+    getElementById(id) {
+      return {
+        "gt-phanlo": multiLot,
+        "gt-gia": packagePrice,
+        "gt-giatribaomothau": packageGuarantee,
+      }[id] || null;
+    },
+    querySelector(selector) {
+      return selector === 'input[name="gt-goithauthuoc"][value="1"]'
+        ? medicineYes
+        : null;
+    },
+  };
+
+  const result = applyPackageDetails({
+    isMedicinePackage: true,
+    isMultiLot: true,
+    lots: [
+      {
+        lotNo: "PP2600000001",
+        lotName: "Thuốc A",
+        lotPrice: 400_000_000,
+        bidGuarantee: 4_000_000,
+        executionPeriod: "220 ngày",
+      },
+      {
+        lotNo: "PP2600000002",
+        lotName: "Thuốc B",
+        lotPrice: 587_654_321,
+        bidGuarantee: 5_000_000,
+        executionPeriod: "220 ngày",
+      },
+    ],
+  }, {
+    document,
+    controller: {
+      _loadPhanLoRows(rows) {
+        loaded.push(...rows);
+        packagePrice.value = "0";
+        packageGuarantee.value = "0";
+      },
+    },
+  });
+
+  assert.equal(medicineYes.checked, true);
+  assert.deepEqual(medicineYes.events, ["input", "change"]);
+  assert.equal(multiLot.value, "Có");
+  assert.deepEqual(multiLot.events, ["input", "change"]);
+  assert.equal(packagePrice.value, "987.654.321");
+  assert.equal(packageGuarantee.value, "9.000.000");
+  assert.deepEqual(loaded, [
+    {
+      maPhanLo: "PP2600000001",
+      tenPhanLo: "Thuốc A",
+      giaTriPhanLo: 400_000_000,
+      baoDamDuThau: 4_000_000,
+      thoiGianThucHien: "220 ngày",
+    },
+    {
+      maPhanLo: "PP2600000002",
+      tenPhanLo: "Thuốc B",
+      giaTriPhanLo: 587_654_321,
+      baoDamDuThau: 5_000_000,
+      thoiGianThucHien: "220 ngày",
+    },
+  ]);
+  assert.deepEqual(result, { applied: 4, skipped: 0 });
 });
 
 
@@ -387,6 +490,7 @@ test("inline lookup fills the open plan form without opening another modal", asy
   const total = control("");
   const button = inlineButton();
   const status = inlineStatus();
+  let lookupRequest;
   const controls = {
     "form-kehoach": form,
     "kh-ma": code,
@@ -400,7 +504,8 @@ test("inline lookup fills the open plan form without opening another modal", asy
   const lookup = new ProcurementInlineLookup({
     controller: { model: { activeWorkspaceLease: "org-1" } },
     client: {
-      async lookup() {
+      async lookup(request) {
+        lookupRequest = request;
         return {
           schemaVersion: "biddingflow-procurement-preview-v1",
           kind: "PLAN",
@@ -435,6 +540,12 @@ test("inline lookup fills the open plan form without opening another modal", asy
   assert.equal(status.dataset.state, "success");
   assert.equal(button.textContent, "Lấy dữ liệu từ Mua Sắm Công");
   assert.equal(button.disabled, false);
+  assert.deepEqual(lookupRequest, {
+    code: "PL2600000001",
+    workspaceLease: "org-1",
+    detailLevel: "COMPLETE",
+    revisionMode: "LATEST",
+  });
 });
 
 

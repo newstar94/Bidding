@@ -22,6 +22,9 @@ const PACKAGE_FIELDS = [
   ["bidForm", "Hình thức lựa chọn", "gt-hinhthuc", "bidForm"],
   ["bidMode", "Phương thức lựa chọn", "gt-phuongthuc", "bidMode"],
   ["contractType", "Loại hợp đồng", "gt-loaihopdong", "contractType"],
+  ["additionalPurchaseOption", "Tùy chọn mua thêm", "gt-tuychonmuathem", "yesNo"],
+  ["selectionDuration", "Thời gian tổ chức LCNT", "gt-thoigiantochuc", "text"],
+  ["selectionStart", "Thời gian bắt đầu tổ chức", "gt-thoigianbatdautochuc", "text"],
   ["bidCloseDate", "Thời gian đóng thầu", "gt-thoigiandongthau", "datetime"],
   ["bidOpenDate", "Thời gian mở thầu", "gt-thoigianmothau", "datetime"],
 ];
@@ -104,6 +107,12 @@ function transformValue(kind, rawValue) {
     return value === null
       ? { value: null, warning: "Giá trị tiền từ nguồn không hợp lệ." }
       : { value, warning: null };
+  }
+  if (kind === "yesNo") {
+    if (typeof rawValue !== "boolean") {
+      return { value: null, warning: "Nguồn không có dữ liệu Có/Không hợp lệ." };
+    }
+    return { value: rawValue ? "Có" : "Không", warning: null };
   }
   if (kind === "date") return { value: formatPortalDate(rawValue), warning: null };
   if (kind === "datetime") {
@@ -222,6 +231,63 @@ function formEvent(type) {
     return new globalThis.Event(type, { bubbles: true });
   }
   return { type, bubbles: true };
+}
+
+function dispatchFormValue(control, value) {
+  if (!control || control.disabled) return false;
+  control.value = String(value);
+  control.dispatchEvent(formEvent("input"));
+  control.dispatchEvent(formEvent("change"));
+  return true;
+}
+
+export function applyPackageDetails(data, {
+  document = globalThis.document,
+  controller,
+} = {}) {
+  let applied = 0;
+  let skipped = 0;
+  const packagePrice = document?.getElementById?.("gt-gia");
+  const packageGuarantee = document?.getElementById?.("gt-giatribaomothau");
+  const preservedPrice = packagePrice?.value;
+  const preservedGuarantee = packageGuarantee?.value;
+  const medicine = data?.isMedicinePackage;
+  if (typeof medicine === "boolean") {
+    const radio = document?.querySelector?.(
+      `input[name="gt-goithauthuoc"][value="${medicine ? "1" : "0"}"]`,
+    );
+    if (radio && !radio.disabled) {
+      radio.checked = true;
+      radio.dispatchEvent(formEvent("input"));
+      radio.dispatchEvent(formEvent("change"));
+      applied += 1;
+    } else skipped += 1;
+  }
+
+  const isMultiLot = data?.isMultiLot;
+  const multiLot = document?.getElementById?.("gt-phanlo");
+  if (typeof isMultiLot === "boolean") {
+    if (dispatchFormValue(multiLot, isMultiLot ? "Có" : "Không")) applied += 1;
+    else skipped += 1;
+  }
+
+  const lots = Array.isArray(data?.lots) ? data.lots : [];
+  if (isMultiLot === true && lots.length && typeof controller?._loadPhanLoRows === "function") {
+    controller._loadPhanLoRows(lots.map((lot) => ({
+      maPhanLo: lot?.lotNo || "",
+      tenPhanLo: lot?.lotName || "",
+      giaTriPhanLo: lot?.lotPrice || 0,
+      baoDamDuThau: lot?.bidGuarantee || 0,
+      thoiGianThucHien: lot?.executionPeriod || data?.implementationPeriod || "",
+    })));
+    if (packagePrice && preservedPrice) packagePrice.value = preservedPrice;
+    if (packageGuarantee && preservedGuarantee) {
+      packageGuarantee.value = preservedGuarantee;
+    }
+    applied += lots.length;
+  } else if (lots.length) skipped += lots.length;
+
+  return { applied, skipped };
 }
 
 export function applySelectedRows(rows, { document = globalThis.document } = {}) {

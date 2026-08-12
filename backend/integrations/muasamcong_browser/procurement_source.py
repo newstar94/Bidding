@@ -87,7 +87,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.12.4"
+    parser_version = "2026.08.12.8"
 
     def __init__(
         self,
@@ -782,6 +782,8 @@ class MuaSamCongProcurementSource:
             "notifyNo": notice_no,
             "notifyId": revision.get("notifyId"),
             "planNo": revision.get("planNo"),
+            "linkedPlanRevisionId": revision.get("linkedPlanRevisionId"),
+            "linkedPlanVersion": revision.get("linkedPlanVersion"),
             "bidName": revision.get("name"),
             "bidPrice": revision.get("priceVnd"),
             "bidGuarantee": revision.get("bidGuaranteeVnd"),
@@ -792,13 +794,22 @@ class MuaSamCongProcurementSource:
             "bidMode": revision.get("selectionMode"),
             "processApply": revision.get("processApply"),
             "contractType": revision.get("contractType"),
+            "isMedicinePackage": revision.get("isMedicinePackage"),
+            "isMultiLot": revision.get("isMultiLot"),
+            "additionalPurchaseOption": revision.get(
+                "additionalPurchaseOption"
+            ),
+            "selectionDuration": revision.get("selectionDuration"),
+            "selectionStart": revision.get("selectionStart"),
             "bidCloseDate": revision.get("bidClosingAt"),
             "bidOpenDate": revision.get("bidOpeningAt"),
             "bidOpenId": revision.get("bidOpenId"),
             "inputResultId": revision.get("inputResultId"),
             "techReqId": revision.get("techReqId"),
             "bidders": deepcopy(opening.get("bidders") or []),
-            "lots": deepcopy(opening.get("lots") or []),
+            "lots": deepcopy(
+                revision.get("lots") or opening.get("lots") or []
+            ),
             "result": deepcopy(result) if result else None,
             "contracts": deepcopy(contracts or []),
         }

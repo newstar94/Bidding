@@ -123,7 +123,13 @@ def _notice_number(row):
 
 
 def _lots(row):
-    candidates = pick(row, "lots", "lotList", "bidpPlanDetailLotList")
+    candidates = pick(
+        row,
+        "lotDTOList",
+        "lots",
+        "lotList",
+        "bidpPlanDetailLotList",
+    )
     if not isinstance(candidates, list):
         return None
     result = []
@@ -134,10 +140,48 @@ def _lots(row):
             {
                 "lotNo": str(pick(lot, "lotNo", "lotCode", default=index + 1)),
                 "lotName": pick(lot, "lotName", "name"),
-                "lotPrice": _money(pick(lot, "lotPrice", "bidPrice", "price")),
+                "lotPrice": _money(pick(
+                    lot,
+                    "lotEstimatePrice",
+                    "lotPrice",
+                    "bidPrice",
+                    "price",
+                )),
+                "bidGuarantee": _money(pick(
+                    lot,
+                    "lotGuaranteeValue",
+                    "bidGuarantee",
+                    "bidGuaranteeValue",
+                    "guaranteeValue",
+                )),
+                "executionPeriod": _period(lot),
             }
         )
     return result or None
+
+
+def _notice_lots(raw):
+    """Return the fullest authoritative tender lot list in notice sidecars."""
+
+    candidates = [
+        lots
+        for item in _walk(raw)
+        if isinstance(item, dict)
+        and (lots := _lots(item))
+    ]
+    return max(candidates, key=len, default=None)
+
+
+def _source_flag(raw, *aliases):
+    for item in _walk(raw):
+        if not isinstance(item, dict):
+            continue
+        value = pick(item, *aliases)
+        if value not in (None, ""):
+            mapped = map_optional_boolean(value)
+            if mapped is not None:
+                return mapped
+    return None
 
 
 def _package_rows(payload):
@@ -371,6 +415,20 @@ def normalize_notice_revision(
         if execution_period not in (None, ""):
             break
     process_apply = str(pick(notice, "processApply", default="LDT")).upper()
+    lots = _notice_lots(raw)
+    is_multi_lot = _source_flag(raw, "isMultiLot")
+    if lots and len(lots) > 1:
+        is_multi_lot = True
+    selection_row = next((
+        row
+        for row in related
+        if pick(
+            row,
+            "bidStartDate",
+            "selectionStart",
+            "bidStartYear",
+        ) not in (None, "")
+    ), None)
     return {
         "noticeNo": notice_no,
         "revisionId": str(revision_id),
@@ -419,6 +477,18 @@ def normalize_notice_revision(
             related_pick("isDomestic")
         ),
         "processApply": process_apply,
+        "additionalPurchaseOption": map_optional_boolean(related_pick(
+            "additionalChoise", "additionalPurchaseOption"
+        )),
+        "selectionDuration": str(related_pick(
+            "bidTime", "selectionDuration", default=""
+        ) or "") or None,
+        "selectionStart": _selection_start(selection_row) if selection_row else None,
+        "isMedicinePackage": _source_flag(
+            raw, "isMedicine", "isThuoc", "isMedicinePackage"
+        ),
+        "isMultiLot": is_multi_lot,
+        "lots": lots,
         "bidOpenId": pick(notice, "bidOpenId"),
         "inputResultId": pick(notice, "inputResultId"),
         "techReqId": pick(notice, "techReqId"),
@@ -431,6 +501,19 @@ def normalize_notice_revision(
 
 
 def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: str):
+    package_bid_numbers = {
+        str(item.get("bidNo") or "").strip()
+        for item in _walk(raw_bundle)
+        if isinstance(item, dict) and item.get("bidNo") not in (None, "")
+    }
+
+    def lot_scope(item):
+        lot_no = str(
+            pick(item, "lotNo", "lotCode", "_inheritedLotNo", default="")
+            or ""
+        ).strip()
+        return None if not lot_no or lot_no in package_bid_numbers else lot_no
+
     def opening_objects(value, inherited_lot=None, depth=0):
         if depth > 10:
             return
@@ -485,7 +568,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             identity = (
                 code.casefold(),
                 name.casefold(),
-                str(pick(item, "lotNo", "lotCode", "_inheritedLotNo", default="")),
+                lot_scope(item) or "",
                 phase,
             )
             if identity in seen:
@@ -529,11 +612,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
             ),
             "executionPeriod": _period(item),
-            "lotNo": str(
-                pick(item, "lotNo", "lotCode", "_inheritedLotNo", default="")
-                or ""
-            )
-            or None,
+            "lotNo": lot_scope(item),
             "jointVentureMembers": deepcopy(
                 pick(item, "jointVentureMembers", "ventureMembers", "memberList")
                 if isinstance(
@@ -550,14 +629,16 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
         for source_payload in raw_bundle.values()
         for item in opening_objects(source_payload)
         if isinstance(item, dict)
-        and pick(item, "lotNo", "lotCode", "_inheritedLotNo") not in (None, "")
+        and lot_scope(item) is not None
     )
     lots = []
     seen_lots = set()
     for index, row in enumerate(lot_rows):
         if not isinstance(row, dict):
             continue
-        lot_no = str(pick(row, "lotNo", "lotCode", default=index + 1))
+        lot_no = lot_scope(row)
+        if lot_no is None:
+            continue
         if lot_no in seen_lots:
             continue
         seen_lots.add(lot_no)
@@ -844,6 +925,83 @@ def normalize_notice_complete_bundle(bundle: dict):
             revision_number=str(revision_number).zfill(2),
             source=notice["source"],
         )
+        plan_detail_source = sources.get("planDetail") or {}
+        plan_detail = plan_detail_source.get("response")
+        plan_package = None
+        if plan_detail_source.get("success") is True and isinstance(
+            plan_detail, dict
+        ):
+            plan_revision = max(
+                (
+                    item
+                    for item in _walk(plan_detail)
+                    if isinstance(item, dict)
+                    and _same_family(item.get("planNo"), notice.get("planNo"))
+                ),
+                key=lambda item: sum(
+                    key in item for key in ("id", "planNo", "planVersion")
+                ),
+                default={},
+            )
+            notice["linkedPlanRevisionId"] = pick(
+                plan_revision, "id", "revisionId"
+            )
+            linked_plan_version = pick(
+                plan_revision, "planVersion", "revisionNumber"
+            )
+            notice["linkedPlanVersion"] = (
+                str(linked_plan_version).zfill(2)
+                if linked_plan_version not in (None, "")
+                else None
+            )
+            package_rows = _package_rows(plan_detail)
+            notice_identities = {
+                str(value)
+                for value in (
+                    notice.get("planDetailRevisionId"),
+                    notice.get("stablePackageId"),
+                    notice.get("symbol"),
+                )
+                if value not in (None, "")
+            }
+            plan_package = next((
+                row
+                for row in package_rows
+                if isinstance(row, dict)
+                and any(
+                    str(row.get(key)) in notice_identities
+                    for key in ("idDetail", "id", "bidNo", "stablePackageId")
+                    if row.get(key) not in (None, "")
+                )
+            ), None)
+            if plan_package is None and notice.get("name"):
+                name_matches = [
+                    row
+                    for row in package_rows
+                    if isinstance(row, dict)
+                    and str(pick(row, "bidName", "name", default="")).strip()
+                    == str(notice.get("name")).strip()
+                ]
+                if len(name_matches) == 1:
+                    plan_package = name_matches[0]
+        if plan_package is not None:
+            plan_values = {
+                "additionalPurchaseOption": map_optional_boolean(pick(
+                    plan_package,
+                    "additionalChoise",
+                    "additionalPurchaseOption",
+                )),
+                "selectionDuration": str(pick(
+                    plan_package,
+                    "bidTime",
+                    "selectionDuration",
+                    default="",
+                ) or "") or None,
+                "selectionStart": _selection_start(plan_package),
+            }
+            for field, value in plan_values.items():
+                if value is not None:
+                    notice[field] = value
         tender_info_source = sources.get("tenderInfo") or {}
         tender_info = tender_info_source.get("response")
         sidecar_override_fields = set()
@@ -922,6 +1080,9 @@ def normalize_notice_complete_bundle(bundle: dict):
         for field in (
             "name", "planNo", "priceVnd", "capitalDetail", "field",
             "executionPeriod", "contractType", "selectionMode",
+            "isMedicinePackage", "isMultiLot", "lots",
+            "additionalPurchaseOption", "selectionDuration", "selectionStart",
+            "linkedPlanRevisionId", "linkedPlanVersion",
         ):
             if revision.get(field) is not None:
                 operation = detail_source.get("operation")
@@ -929,6 +1090,12 @@ def normalize_notice_complete_bundle(bundle: dict):
                     field in sidecar_override_fields
                 ):
                     operation = tender_info_source.get("operation")
+                if field in {
+                    "additionalPurchaseOption",
+                    "selectionDuration",
+                    "selectionStart",
+                } and plan_package is not None:
+                    operation = plan_detail_source.get("operation")
                 field_sources[f"revisions.{revision_number}.{field}"] = {
                     "operation": operation,
                     "revision": str(revision_number),

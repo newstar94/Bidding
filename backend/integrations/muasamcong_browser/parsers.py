@@ -12,6 +12,7 @@ from backend.integrations.muasamcong_browser.artifacts import (
 )
 from backend.integrations.muasamcong_browser.code_mapping import (
     map_contract_type,
+    map_optional_boolean,
     map_package_field,
     map_plan_type,
     map_selection_form,
@@ -42,6 +43,8 @@ PACKAGE_FIELDS = (
     "bidOpenDate",
     "bidOpenId",
     "inputResultId",
+    "isMedicinePackage",
+    "isMultiLot",
     "lots",
 )
 
@@ -108,6 +111,41 @@ def _period(row):
 
 
 def parse_package_row(row):
+    raw_lots = (
+        row.get("lotDTOList")
+        if isinstance(row.get("lotDTOList"), list)
+        else row.get("lots")
+    )
+    lots = None
+    if isinstance(raw_lots, list):
+        lots = []
+        for index, lot in enumerate(raw_lots):
+            if not isinstance(lot, dict):
+                continue
+            normalized_lot = {
+                "lotNo": str(lot.get("lotNo") or lot.get("lotCode") or index + 1),
+                "lotName": lot.get("lotName") or lot.get("name"),
+                "lotPrice": _first_money_field(
+                    lot, "lotEstimatePrice", "lotPrice", "bidPrice", "price"
+                ),
+            }
+            bid_guarantee = _first_money_field(
+                lot,
+                "lotGuaranteeValue",
+                "bidGuarantee",
+                "bidGuaranteeValue",
+                "guaranteeValue",
+            )
+            execution_period = _period(lot)
+            if bid_guarantee is not None:
+                normalized_lot["bidGuarantee"] = bid_guarantee
+            if execution_period is not None:
+                normalized_lot["executionPeriod"] = execution_period
+            lots.append(normalized_lot)
+        lots = lots or None
+    is_multi_lot = map_optional_boolean(row.get("isMultiLot"))
+    if is_multi_lot is None and lots and len(lots) > 1:
+        is_multi_lot = True
     values = {
         "notifyNo": _notice_no(row),
         "notifyId": row.get("notifyId") or row.get("id"),
@@ -144,7 +182,11 @@ def parse_package_row(row):
         "bidOpenDate": row.get("bidOpenDate"),
         "bidOpenId": row.get("bidOpenId"),
         "inputResultId": row.get("inputResultId"),
-        "lots": row.get("lots") if isinstance(row.get("lots"), list) else None,
+        "isMedicinePackage": map_optional_boolean(
+            row.get("isMedicine", row.get("isThuoc"))
+        ),
+        "isMultiLot": is_multi_lot,
+        "lots": lots,
     }
     return {field: deepcopy(values.get(field)) for field in PACKAGE_FIELDS}
 

@@ -105,6 +105,8 @@ def test_package_lookup_uses_exact_identifier_and_stable_package_contract():
         "bidOpenDate": "2026-09-01T09:15:00+07:00",
         "bidOpenId": "bid-open-00",
         "inputResultId": None,
+        "isMedicinePackage": None,
+        "isMultiLot": None,
         "lots": None,
     }
 
