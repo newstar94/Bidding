@@ -4,6 +4,7 @@ const PARTNER_CREATE_ROUTES = new Set(["chudautu", "nhathau", "chuyengia", "hopd
 
 const BIDDING_METHODS = new Set([
   "addBreakdownRow",
+  "backToPlanDraft",
   "addGiaHanRow",
   "deleteGoiThau",
   "deleteKeHoach",

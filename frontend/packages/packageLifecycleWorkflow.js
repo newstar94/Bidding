@@ -8,6 +8,10 @@ import {
 import { generateRecordId } from "../shared/idUtils.js";
 import { hydratePlanPackageRecords, loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
+import {
+  isPlanBreakdownDraftActive,
+  removeDraftPackageAggregate,
+} from "../plans/planBreakdownDraft.js";
 
 function versionNumber(record) {
   return Number.parseInt(record?.phienBan || "0", 10) || 0;
@@ -141,6 +145,21 @@ export async function refreshPackageDeleteDependencies(controller, deleteContext
   );
 }
 export async function deleteGoiThau(id) {
+  const localTarget = this.model.state.goithau.find((pkg) => String(pkg.id) === String(id));
+  if (localTarget && isPlanBreakdownDraftActive(this, localTarget.keHoachId)) {
+    const confirmed = await this.view.customConfirm(
+      "Xóa gói thầu khỏi bản nháp",
+      `Bạn có chắc muốn xóa gói thầu "${localTarget.tenGoiThau || ""}" khỏi kế hoạch đang nhập?`,
+      "trash-2",
+    );
+    if (!confirmed) return;
+    removeDraftPackageAggregate(this.model, id);
+    this.recalculatePlanTotal(localTarget.keHoachId);
+    this.renderBreakdownPackagesList(localTarget.keHoachId);
+    this.updateBreakdownTotal(localTarget.keHoachId);
+    globalThis.lucide?.createIcons?.();
+    return { ok: true, draft: true };
+  }
   const refreshedTarget = await refreshRecordBeforeDelete(this, "goithau", id);
   if (refreshedTarget?.keHoachId) {
     await hydratePlanPackageRecords(this.model, refreshedTarget.keHoachId);

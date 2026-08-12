@@ -39,7 +39,32 @@ import {
   isCombinedEvaluationMethod,
 } from "./evaluationMethodRules.js";
 import { waitForPackageInheritance } from "./packageRebidWorkflow.js";
+import {
+  applyDraftAssignmentSelection,
+  isPlanBreakdownDraftActive,
+} from "../plans/planBreakdownDraft.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
+
+export async function persistPackageFormChanges(controller, explicitUpserts, {
+  draft = false,
+  afterPersist,
+} = {}) {
+  if (draft) return { ok: true, draft: true };
+  Object.entries(explicitUpserts).forEach(([table, records]) => {
+    stageLocalRecords(controller.model, table, records);
+  });
+  return persistAndSync(controller, [
+    "goithau",
+    "goithauhanghoa",
+    "hanghoaduthaunhathau",
+    "kehoach",
+    "thongtinmothau",
+    "assignments",
+  ], {
+    changes: { upserts: explicitUpserts },
+    afterPersist,
+  });
+}
 
 export async function createOfficialPackageVersionFromForm(
   controller,
@@ -901,6 +926,22 @@ export async function handleGoiThauSubmit(e) {
   const selectedPlanId = formVals.keHoachId;
   const latestPlan = this.model.getLatestPlan(selectedPlanId);
   const planIdToSave = latestPlan ? latestPlan.id : selectedPlanId;
+  const draftPackageSave = isPlanBreakdownDraftActive(this, planIdToSave);
+  const updateAssignments = async (targetId) => {
+    if (draftPackageSave) {
+      applyDraftAssignmentSelection(this.model, {
+        targetId,
+        type: "goithau",
+        selectedIds: assignedEmpIds,
+      });
+      return;
+    }
+    await applyAssignmentDelta(this.model, {
+      targetId,
+      type: "goithau",
+      selectedIds: assignedEmpIds,
+    });
+  };
   const gtData = {
     keHoachId: planIdToSave,
     tenGoiThau: formVals.tenGoiThau,
@@ -988,11 +1029,13 @@ export async function handleGoiThauSubmit(e) {
     }
     if (saveAsNewVersion) {
       const requestedChanges = { maGoiThau: inputCode, ...gtData };
-      const officialVersion = await createOfficialPackageVersionFromForm(
-        this,
-        oldGt,
-        requestedChanges,
-      );
+      const officialVersion = draftPackageSave
+        ? { authoritative: false, fallbackRequired: true }
+        : await createOfficialPackageVersionFromForm(
+          this,
+          oldGt,
+          requestedChanges,
+        );
       if (officialVersion?.authoritative) {
         finalGtId = officialVersion.packageRecord.id;
       } else {
@@ -1020,21 +1063,13 @@ export async function handleGoiThauSubmit(e) {
         });
         rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
       }
-      await applyAssignmentDelta(this.model, {
-        targetId: finalGtId,
-        type: "goithau",
-        selectedIds: assignedEmpIds,
-      });
+      await updateAssignments(finalGtId);
     } else {
       oldGt.maGoiThau = inputCode;
       Object.assign(oldGt, gtData);
       clearCompetitiveQuotationAppraisal(oldGt);
       oldGt.updatedAt = this.model.getCurrentDateTimeString();
-      await applyAssignmentDelta(this.model, {
-        targetId: id,
-        type: "goithau",
-        selectedIds: assignedEmpIds,
-      });
+      await updateAssignments(id);
     }
   } else {
     const newGtId = generateRecordId("goithau");
@@ -1061,11 +1096,7 @@ export async function handleGoiThauSubmit(e) {
     }
     clearCompetitiveQuotationAppraisal(newPackage);
     this.model.state.goithau.push(newPackage);
-    await applyAssignmentDelta(this.model, {
-      targetId: newGtId,
-      type: "goithau",
-      selectedIds: assignedEmpIds,
-    });
+    await updateAssignments(newGtId);
   }
   if (oldPlanId) {
     this.recalculatePlanTotal(oldPlanId);
@@ -1101,27 +1132,16 @@ export async function handleGoiThauSubmit(e) {
       (item) => String(item.targetId) === String(finalGtId) && item.type === "goithau",
     ),
   };
-  Object.entries(explicitUpserts).forEach(([table, records]) => {
-    stageLocalRecords(this.model, table, records);
-  });
   const affectedPlanIds = new Set([oldPlanId, gtData.keHoachId].filter(Boolean).map(String));
   explicitUpserts.kehoach = this.model.state.kehoach.filter(
     (item) => affectedPlanIds.has(String(item.id)),
   );
-  stageLocalRecords(this.model, "kehoach", explicitUpserts.kehoach);
-  const syncResult = await persistAndSync(this, [
-    "goithau",
-    "goithauhanghoa",
-    "hanghoaduthaunhathau",
-    "kehoach",
-    "thongtinmothau",
-    "assignments",
-  ], {
-    changes: { upserts: explicitUpserts },
+  const syncResult = await persistPackageFormChanges(this, explicitUpserts, {
+    draft: draftPackageSave,
     afterPersist: () => {
       this.view.renderGoiThauTable();
       this.view.renderKeHoachTable();
-    }
+    },
   });
   if (syncResult && syncResult.ok === false) {
     await this.view.customAlert(
@@ -1145,6 +1165,12 @@ export async function handleGoiThauSubmit(e) {
       this.packageWizard.currentCount = 0;
       await this.view.customAlert("Thành công", "Đã thêm toàn bộ các gói thầu theo kế hoạch thành công!", "check-circle");
     }
+  } else if (draftPackageSave) {
+    await this.view.customAlert(
+      "Đã thêm vào bản nháp",
+      "Gói thầu chỉ được lưu tạm. Dữ liệu sẽ được ghi chính thức khi bạn bấm Lưu kế hoạch.",
+      "check-circle",
+    );
   } else {
     await this.view.customAlert("Thành công", "Đã lưu thông tin gói thầu thành công!", "check-circle");
   }

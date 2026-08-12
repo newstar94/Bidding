@@ -1,6 +1,7 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
+import { restorePlanBreakdownDraft } from "../plans/planBreakdownDraft.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
@@ -685,7 +686,12 @@ export async function closeModal(modalId, options = {}) {
     if (planSelect) planSelect.disabled = false;
   }
   if (modalId === "modal-plan-breakdown") {
-    if (this.backupKeHoachState) {
+    if (this.planBreakdownDraft?.active) {
+      restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+      this.planBreakdownDraft = null;
+      this.backupKeHoachState = null;
+      this.backupGoiThauState = null;
+    } else if (this.backupKeHoachState) {
       this.model.replaceTableState(
         "kehoach",
         restoreRecordSnapshot(this.model.state.kehoach, this.backupKeHoachState),
@@ -703,6 +709,19 @@ export async function closeModal(modalId, options = {}) {
     this.tempPlanAction = null;
     this.view.renderKeHoachTable();
     this.view.renderGoiThauTable();
+  }
+  if (modalId === "modal-kehoach" && this.planBreakdownDraft?.active) {
+    const formPlanId = document.getElementById("form-kehoach-id")?.value;
+    if (String(formPlanId || "") === String(this.planBreakdownDraft.planId || "")) {
+      restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+      this.planBreakdownDraft = null;
+      this.backupKeHoachState = null;
+      this.backupGoiThauState = null;
+      this.tempPlanData = null;
+      this.tempPlanAction = null;
+      this.view.renderKeHoachTable();
+      this.view.renderGoiThauTable();
+    }
   }
   this.view.closeModal(modalId);
   if (!restoreRoute) return;

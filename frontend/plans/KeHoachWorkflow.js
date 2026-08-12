@@ -27,6 +27,11 @@ import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
+import {
+  capturePlanBreakdownDraft,
+  collectPlanBreakdownDraftChanges,
+  isPlanBreakdownDraftActive,
+} from "./planBreakdownDraft.js";
 
 /**
  * Load every package attached to the given plan versions so reference guards
@@ -527,8 +532,14 @@ export async function handleKeHoachSubmit(e) {
     await this.view.customAlert("Dữ liệu không hợp lệ", `${totalFieldName} không được nhỏ hơn 0.`, "alert-triangle", tmInput);
     return;
   }
-  this.backupKeHoachState = JSON.parse(JSON.stringify(this.model.state.kehoach));
-  this.backupGoiThauState = JSON.parse(JSON.stringify(this.model.state.goithau));
+  const resumingPlanDraft = isPlanBreakdownDraftActive(this, id);
+  if (!resumingPlanDraft) {
+    this.backupKeHoachState = JSON.parse(JSON.stringify(this.model.state.kehoach));
+    this.backupGoiThauState = JSON.parse(JSON.stringify(this.model.state.goithau));
+    this.planBreakdownDraft = id
+      ? null
+      : capturePlanBreakdownDraft(this.model.state, { action: "create" });
+  }
   const loaiHinhVal = document.getElementById("kh-loaihinh").value;
   this.tempPlanData = {
     maKeHoach: inputCode,
@@ -561,7 +572,7 @@ export async function handleKeHoachSubmit(e) {
     soQdPheDuyetDuToan: pheDuyet === "Kế hoạch" ? soQdPheDuyetDuToan : ""
   };
   if (id) {
-    this.tempPlanAction = "edit";
+    this.tempPlanAction = resumingPlanDraft ? "create" : "edit";
     this.tempPlanData.id = id;
     const oldKh = this.model.state.kehoach.find((k) => k.id === id);
     if (oldKh) {
@@ -573,6 +584,7 @@ export async function handleKeHoachSubmit(e) {
     const planId = generateRecordId("kehoach");
     targetPlanId = planId;
     this.tempPlanData.id = planId;
+    this.planBreakdownDraft.planId = planId;
     this.model.state.kehoach.push({
       id: planId,
       phienBan: "00",
@@ -642,6 +654,8 @@ export async function openPlanBreakdownModal(planId) {
   }
   const btnSave = document.getElementById("btn-save-plan-breakdown");
   btnSave.onclick = () => this.savePlanBreakdown();
+  const btnBack = document.getElementById("btn-back-plan-breakdown");
+  if (btnBack) btnBack.onclick = () => this.backToPlanDraft();
   const tabBtns = document.querySelectorAll(".breakdown-tab-btn");
   const panes = document.querySelectorAll(".breakdown-pane");
   tabBtns.forEach((btn) => {
@@ -729,7 +743,10 @@ export function renderBreakdownPackagesList(planId) {
                 <td class="bf-s-c6760d4ab4">${escapeHtml(hinhThuc)}</td>
                 <td class="bf-s-69a042494b">${trangThaiBadge}</td>
                 <td class="bf-s-59809c145b">
-                    ${["Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(effectiveStatus) ? `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}">Sửa</button>`}
+                    <div class="action-btn-group">
+                      ${["Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(effectiveStatus) ? `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}"><i data-lucide="eye" aria-hidden="true"></i>Xem</button>` : `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}"><i data-lucide="pencil" aria-hidden="true"></i>Sửa</button>`}
+                      <button type="button" class="btn btn-danger btn-sm" data-bf-action="delete-package" data-id="${escapeHtml(gt.id)}"><i data-lucide="trash-2" aria-hidden="true"></i>Xóa</button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -826,6 +843,56 @@ export function recalculatePlanTotal(planId) {
   kh.tongMucDauTu = this.model.sumVND(isProject ? [sumI, sumII, sumIII, sumIV] : [sumII, sumIII, sumIV]);
   kh.isTongMucTuDong = true;
 }
+
+function collectBreakdownRows(controller, type) {
+  const tbody = document.getElementById(`tbody-breakdown-${type}`);
+  if (!tbody) return [];
+  const rows = [];
+  tbody.querySelectorAll("tr").forEach((tr) => {
+    const name = tr.querySelector(".breakdown-name")?.value.trim();
+    if (!name) return;
+    const giaTri = controller.model.parseVND(
+      tr.querySelector(".breakdown-value")?.value || "0",
+    );
+    if (type === "dathuchien") {
+      rows.push({
+        tenCongViec: name,
+        giaTri,
+        donViThucHien: tr.querySelector(".breakdown-unit")?.value.trim() || "",
+        vanBanPheDuyet: tr.querySelector(".breakdown-doc")?.value.trim() || "",
+      });
+    } else if (type === "khongapdung") {
+      rows.push({
+        tenCongViec: name,
+        giaTri,
+        donViThucHien: tr.querySelector(".breakdown-unit")?.value.trim() || "",
+      });
+    } else {
+      rows.push({ tenCongViec: name, giaTri });
+    }
+  });
+  return rows;
+}
+
+function updatePlanBreakdownDraftRows(controller, planId) {
+  const plan = controller.model.state.kehoach.find(
+    (candidate) => String(candidate.id) === String(planId),
+  );
+  if (!plan) return null;
+  plan.cvDaThucHienList = collectBreakdownRows(controller, "dathuchien");
+  plan.cvKhongApDungList = collectBreakdownRows(controller, "khongapdung");
+  plan.cvChuaDuDieuKienList = collectBreakdownRows(controller, "chuadudieuKien");
+  return plan;
+}
+
+export async function backToPlanDraft() {
+  const planId = document.getElementById("breakdown-plan-id")?.value;
+  if (!planId) return;
+  updatePlanBreakdownDraftRows(this, planId);
+  this.view.closeModal("modal-plan-breakdown");
+  await this.plans.edit(planId);
+}
+
 export async function savePlanBreakdown() {
   const planId = document.getElementById("breakdown-plan-id").value;
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
@@ -833,31 +900,10 @@ export async function savePlanBreakdown() {
   if (typeof this.loadBreakdownPackageDetails === "function") {
     await this.loadBreakdownPackageDetails(planId);
   }
-  const parseRows = (type) => {
-    const tbody = document.getElementById(`tbody-breakdown-${type}`);
-    if (!tbody) return [];
-    const rows = [];
-    tbody.querySelectorAll("tr").forEach((tr) => {
-      const name = tr.querySelector(".breakdown-name")?.value.trim();
-      const valStr = tr.querySelector(".breakdown-value")?.value || "0";
-      const value = this.model.parseVND(valStr);
-      if (!name) return;
-      if (type === "dathuchien") {
-        const donViThucHien = tr.querySelector(".breakdown-unit")?.value.trim() || "";
-        const vanBanPheDuyet = tr.querySelector(".breakdown-doc")?.value.trim() || "";
-        rows.push({ tenCongViec: name, giaTri: value, donViThucHien, vanBanPheDuyet });
-      } else if (type === "khongapdung") {
-        const donViThucHien = tr.querySelector(".breakdown-unit")?.value.trim() || "";
-        rows.push({ tenCongViec: name, giaTri: value, donViThucHien });
-      } else {
-        rows.push({ tenCongViec: name, giaTri: value });
-      }
-    });
-    return rows;
-  };
-  const cvDaThucHien = parseRows("dathuchien");
-  const cvKhongApDung = parseRows("khongapdung");
-  const cvChuaDuDieuKien = parseRows("chuadudieuKien");
+  const currentDraftPlan = updatePlanBreakdownDraftRows(this, planId);
+  const cvDaThucHien = currentDraftPlan?.cvDaThucHienList || [];
+  const cvKhongApDung = currentDraftPlan?.cvKhongApDungList || [];
+  const cvChuaDuDieuKien = currentDraftPlan?.cvChuaDuDieuKienList || [];
   let finalPlanId = planId;
   let officialVersionCommitted = false;
   if (this.tempPlanAction === "edit") {
@@ -966,10 +1012,6 @@ export async function savePlanBreakdown() {
     this.recalculatePlanTotal(finalPlanId);
   }
   this.updateBreakdownTotal(finalPlanId);
-  this.backupKeHoachState = null;
-  this.backupGoiThauState = null;
-  this.tempPlanData = null;
-  this.tempPlanAction = null;
   if (hasModalReturnState("kehoach-detail") && finalPlanId) {
     updateModalReturnAction(finalPlanId);
   }
@@ -977,41 +1019,59 @@ export async function savePlanBreakdown() {
       this.view.renderKeHoachTable(),
       this.view.renderGoiThauTable()
     ]);
-  const explicitUpserts = {};
+  let explicitChanges = { upserts: {}, deletions: {} };
   if (!officialVersionCommitted) {
     const targetPlan = this.model.state.kehoach.find(
       (plan) => String(plan.id) === String(finalPlanId),
     );
     const targetPlanRootId = String(targetPlan?.rootId || targetPlan?.id || "");
-    explicitUpserts.kehoach = this.model.state.kehoach.filter(
+    explicitChanges.upserts.kehoach = this.model.state.kehoach.filter(
       (plan) => String(plan.rootId || plan.id) === targetPlanRootId,
     );
-    if (String(finalPlanId) !== String(planId)) {
-      explicitUpserts.goithau = this.model.state.goithau.filter(
+    if (this.planBreakdownDraft?.active && this.planBreakdownDraft.action === "create") {
+      explicitChanges = collectPlanBreakdownDraftChanges(this.model.state, {
+        planId: finalPlanId,
+        snapshot: this.planBreakdownDraft.snapshot,
+      });
+    } else if (String(finalPlanId) !== String(planId)) {
+      explicitChanges.upserts.goithau = this.model.state.goithau.filter(
         (pkg) => String(pkg.keHoachId) === String(finalPlanId),
       );
-      const inheritedPackageIds = new Set(explicitUpserts.goithau.map((pkg) => String(pkg.id)));
+      const inheritedPackageIds = new Set(explicitChanges.upserts.goithau.map((pkg) => String(pkg.id)));
       for (const table of ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau"]) {
-        explicitUpserts[table] = this.model.state[table].filter(
+        explicitChanges.upserts[table] = this.model.state[table].filter(
           (record) => inheritedPackageIds.has(String(record.goiThauId)),
         );
       }
-      explicitUpserts.assignments = this.model.state.assignments.filter((assignment) => (
+      explicitChanges.upserts.assignments = this.model.state.assignments.filter((assignment) => (
         (assignment.type === "kehoach" && String(assignment.targetId) === String(finalPlanId))
         || (assignment.type === "goithau" && inheritedPackageIds.has(String(assignment.targetId)))
       ));
     }
-    Object.entries(explicitUpserts).forEach(([table, records]) => {
+    Object.entries(explicitChanges.upserts).forEach(([table, records]) => {
       stageLocalRecords(this.model, table, records);
+    });
+    Object.entries(explicitChanges.deletions).forEach(([table, records]) => {
+      this.model.markDeleted?.(table, records);
     });
   }
   const syncResult = officialVersionCommitted
     ? (await renderVersionTables(), { ok: true })
-    : await persistAndSync(this, Object.keys(explicitUpserts), {
+    : await persistAndSync(this, [
+      ...new Set([
+        ...Object.keys(explicitChanges.upserts),
+        ...Object.keys(explicitChanges.deletions),
+      ]),
+    ], {
       afterPersist: renderVersionTables,
-      changes: { upserts: explicitUpserts },
+      changes: explicitChanges,
     });
   if (!syncResult?.ok) return;
+  this.backupKeHoachState = null;
+  this.backupGoiThauState = null;
+  this.tempPlanData = null;
+  this.tempPlanAction = null;
+  this.planBreakdownDraft = null;
   this.closeModal("modal-plan-breakdown");
   await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");
 }
