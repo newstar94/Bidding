@@ -48,8 +48,11 @@ def _fingerprint():
 
 
 def _observe_source(event):
+    event = dict(event or {})
+    request_id = event.pop("lookupRequestId", None)
     log_structured_event(
         "procurement.source.completed",
+        request_id=request_id,
         fields=event,
         nonblocking=True,
     )

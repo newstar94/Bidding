@@ -11,7 +11,6 @@ export class MscIntegrationRuntime {
     this.sessionProvider = null;
     this.client = null;
     this.collectors = null;
-    this.prewarmPromise = null;
     this.profileId = MSC_PROFILE_ID;
   }
 
@@ -43,8 +42,10 @@ export class MscIntegrationRuntime {
       maxConcurrency: Number(configuration.apiMaxConcurrency) || 6,
       queueTimeoutMs: Number(configuration.apiQueueTimeoutMs) || 5_000,
     });
-    this.collectors = new MscCollectors({ client: this.client });
-    this.prewarmPromise = this.sessionProvider.acquire().catch(() => null);
+    this.collectors = new MscCollectors({
+      client: this.client,
+      collectionConcurrency: Number(configuration.collectionConcurrency) || 4,
+    });
     return { ready: true, profile: this.profileId, sessionProvider: "BrowserSessionV1" };
   }
 
@@ -82,9 +83,9 @@ export class MscIntegrationRuntime {
     return this.collectors.getResultBundle(noticeNo, revisionId);
   }
 
-  async collectCompleteBundle(record) {
+  async collectCompleteBundle(record, options = {}) {
     this._ready();
-    return this.collectors.collectCompleteBundle(record);
+    return this.collectors.collectCompleteBundle(record, options);
   }
 
   async search(code, kind) {
@@ -115,7 +116,6 @@ export class MscIntegrationRuntime {
     this.sessionProvider = null;
     this.client = null;
     this.collectors = null;
-    this.prewarmPromise = null;
     this.profileId = MSC_PROFILE_ID;
   }
 }

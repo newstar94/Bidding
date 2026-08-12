@@ -2080,6 +2080,46 @@ def _upgrade_to_v52_add_muasamcong_provider(cursor, _context):
         )
 
 
+def _upgrade_to_v53_add_procurement_raw_snapshots(cursor, context):
+    """Add append-only, content-deduplicated upstream source evidence."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "procurement_raw_snapshot",
+        SCHEMA_DINH_NGHIA["procurement_raw_snapshot"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace(
+            "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+        )
+    cursor.execute(create_sql)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_procurement_raw_entity "
+        "ON procurement_raw_snapshot "
+        "(organization_id, provider, entity_kind, canonical_code, retrieved_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_procurement_raw_content "
+        "ON procurement_raw_snapshot (organization_id, content_hash)"
+    )
+    if callable(context.create_trigger_functions):
+        context.create_trigger_functions(cursor)
+    cursor.execute(
+        """DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_trigger
+                 WHERE tgrelid = 'procurement_raw_snapshot'::regclass
+                   AND tgname = 'trg_procurement_raw_snapshot_immutable'
+                   AND NOT tgisinternal
+              ) THEN
+                CREATE TRIGGER trg_procurement_raw_snapshot_immutable
+                BEFORE UPDATE OR DELETE ON procurement_raw_snapshot
+                FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation();
+              END IF;
+            END $$"""
+    )
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2331,6 +2371,11 @@ UPGRADES = (
         52,
         "add_muasamcong_provider",
         _upgrade_to_v52_add_muasamcong_provider,
+    ),
+    DatabaseUpgrade(
+        53,
+        "add_procurement_raw_snapshots",
+        _upgrade_to_v53_add_procurement_raw_snapshots,
     ),
 )
 

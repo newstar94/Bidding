@@ -10,10 +10,14 @@ from backend.auth.auth_service import get_client_ip, get_rate_limit_decision
 from backend.integrations.muasamcong_browser.registry import (
     get_muasamcong_source,
 )
-from backend.procurement_lookup.domain import ProcurementLookupError
+from backend.procurement_lookup.domain import (
+    ProcurementLookupError,
+    normalize_lookup_options,
+)
 from backend.procurement_lookup.cache import PostgresProcurementLookupCache
 from backend.procurement_lookup.config import ProcurementLookupSettings
 from backend.procurement_lookup.service import ProcurementLookupService
+from backend.procurement_raw import ProcurementRawSnapshotRepository
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOTimeoutError,
@@ -22,13 +26,17 @@ from backend.shared.async_io import (
 from backend.shared.helpers import database, get_active_org, verify_session
 from backend.shared.logging_utils import (
     error_response,
+    get_request_id,
     log_and_error,
     log_structured_event,
 )
 from backend.shared.request_validation import read_json_object
 
 
-_REQUEST_FIELDS = {"code", "workspaceLease"}
+_REQUEST_FIELDS = {
+    "code", "workspaceLease", "detailLevel", "revisionMode",
+    "revisionNumbers",
+}
 _SERVICE_LOCK = RLock()
 _SERVICE = None
 _SERVICE_FINGERPRINT = None
@@ -44,8 +52,11 @@ _HEALTH_FAILURES = {
 
 
 def _observe_lookup(event):
+    event = dict(event or {})
+    request_id = event.pop("lookupRequestId", None)
     log_structured_event(
         "procurement.lookup.completed",
+        request_id=request_id,
         fields=event,
         nonblocking=True,
     )
@@ -113,7 +124,32 @@ def _lookup_blocking(request, payload):
         request, payload.get("workspaceLease")
     )
     _enforce_rate_limit(request, session.user_id, organization_id)
-    return build_lookup_service().lookup(payload.get("code"))
+    settings = ProcurementLookupSettings.from_environ()
+    raw_repository = ProcurementRawSnapshotRepository(database=database)
+    result = build_lookup_service().lookup(
+        payload.get("code"),
+        detail_level=payload.get("detailLevel") or "CANONICAL",
+        revision_mode=payload.get("revisionMode") or "LATEST",
+        revision_numbers=payload.get("revisionNumbers"),
+        raw_bundle_loader=lambda: raw_repository.load_fresh_plan_bundle(
+            organization_id,
+            payload.get("code"),
+            revision_mode=payload.get("revisionMode") or "LATEST",
+            revision_numbers=payload.get("revisionNumbers"),
+            max_age_seconds=settings.raw_cache_ttl_seconds,
+        ),
+        cache_scope=str(organization_id),
+        lookup_request_id=get_request_id(request),
+    )
+    raw_bundle = result.get("rawBundle") if isinstance(result, dict) else None
+    cache_layer = ((result.get("metrics") or {}).get("cache") or {}).get(
+        "layer"
+    ) if isinstance(result, dict) else None
+    if isinstance(raw_bundle, dict) and cache_layer != "RAW_SNAPSHOT":
+        result["rawSnapshot"] = raw_repository.save_bundle(
+            organization_id, raw_bundle
+        )
+    return result
 
 
 def _public_health(result):
@@ -189,6 +225,7 @@ def _public_error(request, error):
     code = str(error)
     statuses = {
         "PROCUREMENT_CODE_INVALID": 400,
+        "PROCUREMENT_REVISION_INVALID": 400,
         "AUTHENTICATION_REQUIRED": 401,
         "ORGANIZATION_ACCESS_DENIED": 403,
         "PROCUREMENT_NOT_FOUND": 404,
@@ -216,6 +253,9 @@ def _public_error(request, error):
         "PROCUREMENT_NOT_FOUND": (
             "Không tìm thấy chính xác mã PL/IB trên Mua Sắm Công."
         ),
+        "PROCUREMENT_REVISION_INVALID": (
+            "Không tìm thấy revision Mua Sắm Công đã chọn."
+        ),
     }
     return error_response(
         request,
@@ -234,6 +274,19 @@ async def lookup_procurement(request):
             request,
             "PROCUREMENT_CODE_INVALID",
             "Request chứa field không được hỗ trợ.",
+            status_code=400,
+        )
+    try:
+        normalize_lookup_options(
+            payload.get("detailLevel") or "CANONICAL",
+            payload.get("revisionMode") or "LATEST",
+            payload.get("revisionNumbers"),
+        )
+    except ValueError:
+        return error_response(
+            request,
+            "PROCUREMENT_CODE_INVALID",
+            "Tùy chọn lookup không hợp lệ.",
             status_code=400,
         )
     try:

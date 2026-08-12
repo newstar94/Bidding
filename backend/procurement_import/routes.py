@@ -29,6 +29,7 @@ from backend.procurement_import.domain import (
 )
 from backend.procurement_import.repository import ProcurementImportRepository
 from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
+from backend.procurement_raw import ProcurementRawSnapshotRepository
 from backend.procurement_import.source import ProcurementSourceError
 from backend.shared.async_io import (
     BlockingIOBusyError,
@@ -207,7 +208,13 @@ def _prepare_blocking(request, payload):
     finally:
         connection.rollback()
         connection.close()
-    return ProcurementImportPreparer(source, PREVIEW_STORE).prepare_plan(
+    return ProcurementImportPreparer(
+        source,
+        PREVIEW_STORE,
+        raw_snapshot_repository=ProcurementRawSnapshotRepository(
+            database=database
+        ),
+    ).prepare_plan(
         code=payload.get("code"),
         revision_mode=payload.get("revisionMode") or "LATEST",
         selected_revision=payload.get("selectedRevision"),

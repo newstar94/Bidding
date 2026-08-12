@@ -14,6 +14,10 @@ export const ENDPOINTS = Object.freeze({
     path: "/expose/lcnt/bid-po-bidp-plan-project-view/get-by-id",
     protected: true,
   },
+  PLAN_PACKAGE_DETAIL: {
+    path: "/lcnt/bid-po-bidp-plan-project-view/get-bidp-plan-detail-by-id",
+    protected: true,
+  },
   PROJECT_VERSION_LIST: {
     path: "/expose/lcnt/bid-po-bidp-project-view/get-version-list",
     protected: false,

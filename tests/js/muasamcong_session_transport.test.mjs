@@ -100,12 +100,16 @@ test("session provider coalesces callers, caches token/cookie, and closes browse
     clock: () => 1_000,
   });
 
-  const [first, second] = await Promise.all([provider.acquire(), provider.acquire()]);
+  const concurrent = await Promise.all(
+    Array.from({ length: 10 }, () => provider.acquire()),
+  );
+  const [first, second] = concurrent;
   const cached = await provider.acquire();
 
   assert.equal(launches, 1);
   assert.equal(harness.closeCount(), 1);
   assert.equal(first.token, second.token);
+  assert.equal(new Set(concurrent.map((session) => session.token)).size, 1);
   assert.equal(cached.cookie, "COOKIE_SUPPORT=true; GUEST_LANGUAGE_ID=vi_VN");
   assert.deepEqual(provider.metadata(), {
     provider: "BrowserSessionV1",
@@ -219,7 +223,7 @@ test("session provider refreshes in the background before the cached token expir
 });
 
 
-test("integration runtime starts session prewarm without blocking initialization", async () => {
+test("integration runtime leaves session bootstrap lazy until a protected request", async () => {
   const harness = browserHarness();
   const runtime = new MscIntegrationRuntime({
     puppeteer: harness.puppeteer,
@@ -230,8 +234,8 @@ test("integration runtime starts session prewarm without blocking initialization
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(initialized.ready, true);
-  assert.equal(runtime.health().session.cached, true);
-  assert.equal(harness.closeCount(), 1);
+  assert.equal(runtime.health().session.cached, false);
+  assert.equal(harness.closeCount(), 0);
   runtime.close();
 });
 
@@ -680,4 +684,222 @@ test("collector returns every plan revision in the upstream version list", async
   const result = await collector.listPlanRevisions("PL2600000001");
 
   assert.deepEqual(result.revisions.map((row) => row.revisionNumber), ["01", "00"]);
+});
+
+
+test("PL2600244105 complete ALL preserves revision-scoped raw package details", async () => {
+  const calls = [];
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      if (operation === "PLAN_VERSION_LIST") {
+        return {
+          data: { versionList: [
+            { id: "revision-00", planNo: "PL2600244105", planVersion: "00" },
+            { id: "revision-01", planNo: "PL2600244105", planVersion: "01" },
+          ] },
+          metadata: { operation, totalMs: 1 },
+        };
+      }
+      if (operation === "PLAN_DETAIL") {
+        const revision = payload.id.slice(-2);
+        return {
+          data: {
+            bidPoBidpPlanProjectDetailView: {
+              id: payload.id, planNo: "PL2600244105", planVersion: revision,
+              name: `Plan ${revision}`,
+            },
+            bidpPlanDetailToProjectList: [{
+              id: `package-${revision}`,
+              idDetail: "stable-package-a",
+              idPlan: payload.id,
+              planNo: "PL2600244105",
+              bidNo: "A",
+              bidName: "Package A",
+              isInternet: 1,
+              isMultiLot: 0,
+              isDomestic: 1,
+              isPrequalification: 0,
+              isConcentrateShopping: 0,
+              bidPrice: revision === "00" ? 100 : 200,
+              bidPriceUnit: "VND",
+              bidForm: "DTRR",
+              bidField: "HH",
+              bidMode: "1_MTHS",
+              processApply: "LDT",
+              capitalDetail: "State budget",
+              bidStartUnit: "MONTH",
+              bidStartYear: 2026,
+              bidStartMonth: 8,
+              bidStartQuarter: 3,
+              createdDate: "2026-08-01",
+              planDecisionDate: "2026-07-30",
+              bidTime: 30,
+              ctype: "TG",
+              cperiod: 12,
+              cperiodUnit: "M",
+              unknownFutureField2027: { abc: 123 },
+            }],
+          },
+          metadata: { operation, totalMs: 2 },
+        };
+      }
+      if (operation === "PLAN_PACKAGE_DETAIL") {
+        return {
+          data: {
+            idDetail: payload.id,
+            ctype: "TG",
+            unknownPackageField2027: { preserved: true },
+            accessToken: "must-not-cross-raw-boundary",
+          },
+          metadata: { operation, totalMs: 3 },
+        };
+      }
+      throw new Error(`unexpected ${operation}`);
+    },
+  };
+  const collector = new MscCollectors({
+    client,
+    clock: () => "2026-08-11T00:00:00Z",
+  });
+
+  const bundle = await collector.collectCompleteBundle({
+    type: "es-plan-project-p",
+    id: "revision-01",
+    planNo: "PL2600244105",
+    planVersion: "01",
+  }, { revisionMode: "ALL" });
+
+  assert.equal(bundle.schemaVersion, "biddingflow-muasamcong-raw-bundle-v2");
+  assert.equal(bundle.status, "FOUND_COMPLETE");
+  assert.deepEqual(Object.keys(bundle.revisions).sort(), ["00", "01"]);
+  assert.equal(
+    bundle.revisions["00"].sources.planDetail.response
+      .bidpPlanDetailToProjectList[0].unknownFutureField2027.abc,
+    123,
+  );
+  assert.equal(
+    bundle.revisions["00"].packages["stable-package-a"]
+      .sources.planPackageDetail.response.unknownPackageField2027.preserved,
+    true,
+  );
+  assert.equal(
+    bundle.revisions["00"].packages["stable-package-a"]
+      .sources.planPackageDetail.response.accessToken,
+    "[REDACTED]",
+  );
+  assert.equal(
+    JSON.stringify(bundle).includes("must-not-cross-raw-boundary"),
+    false,
+  );
+  assert.equal(
+    bundle.revisions["00"].sources.planDetail.response
+      .bidpPlanDetailToProjectList[0].bidPrice,
+    100,
+  );
+  assert.equal(
+    bundle.revisions["01"].sources.planDetail.response
+      .bidpPlanDetailToProjectList[0].bidPrice,
+    200,
+  );
+  assert.equal(
+    calls.filter(([operation]) => operation === "PLAN_PACKAGE_DETAIL").length,
+    2,
+  );
+  assert.deepEqual(bundle.manifest.revisions, ["00", "01"]);
+  assert.equal(bundle.manifest.failedCount, 0);
+  assert.equal(bundle.manifest.sourceCount, 6);
+  assert.equal(bundle.metrics.upstream.requestCount, 5);
+  const preserved = bundle.revisions["00"].sources.planDetail.response
+    .bidpPlanDetailToProjectList[0];
+  for (const field of [
+    "id", "idDetail", "idPlan", "bidNo", "planNo", "bidName",
+    "isInternet", "isMultiLot", "isDomestic", "isPrequalification",
+    "isConcentrateShopping", "bidPrice", "bidPriceUnit", "bidForm",
+    "bidField", "bidMode", "processApply", "capitalDetail",
+    "bidStartUnit", "bidStartYear", "bidStartMonth", "bidStartQuarter",
+    "createdDate", "planDecisionDate", "bidTime", "ctype", "cperiod",
+    "cperiodUnit", "unknownFutureField2027",
+  ]) assert.ok(Object.hasOwn(preserved, field), `missing raw field ${field}`);
+});
+
+
+test("complete plan keeps successful raw sources when one package detail fails", async () => {
+  const client = {
+    request: async (operation, payload) => {
+      if (operation === "PLAN_VERSION_LIST") {
+        return { data: { versionList: [
+          { id: "revision-00", planNo: "PL2600244105", planVersion: "00" },
+          { id: "revision-01", planNo: "PL2600244105", planVersion: "01" },
+        ] }, metadata: { operation } };
+      }
+      if (operation === "PLAN_DETAIL") {
+        const revision = payload.id.slice(-2);
+        return { data: {
+          plan: { id: payload.id, planNo: "PL2600244105", planVersion: revision },
+          packages: [{ idDetail: `package-${revision}`, bidName: `Package ${revision}` }],
+        }, metadata: { operation } };
+      }
+      if (operation === "PLAN_PACKAGE_DETAIL" && payload.id === "package-01") {
+        throw new Error("PROCUREMENT_TIMEOUT");
+      }
+      return { data: { idDetail: payload.id, ok: true }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-plan-project-p",
+    id: "revision-01",
+    planNo: "PL2600244105",
+    planVersion: "01",
+  }, { revisionMode: "ALL" });
+
+  assert.equal(bundle.status, "FOUND_PARTIAL");
+  assert.equal(bundle.complete, false);
+  assert.equal(bundle.revisions["00"].packages["package-00"]
+    .sources.planPackageDetail.success, true);
+  assert.equal(bundle.revisions["01"].packages["package-01"]
+    .sources.planPackageDetail.success, false);
+  assert.equal(bundle.revisions["01"].packages["package-01"]
+    .sources.planPackageDetail.error.code, "PROCUREMENT_TIMEOUT");
+  assert.equal(bundle.manifest.failedCount, 1);
+});
+
+
+test("complete manifest records a failed envelope when package id is missing", async () => {
+  const client = {
+    request: async (operation) => {
+      if (operation === "PLAN_VERSION_LIST") return {
+        data: { versionList: [
+          { id: "revision-00", planNo: "PL2600244105", planVersion: "00" },
+        ] },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_DETAIL") return {
+        data: {
+          plan: { planNo: "PL2600244105", planVersion: "00" },
+          packages: [{ bidNo: "A", bidName: "Package without detail id" }],
+        },
+        metadata: { operation },
+      };
+      throw new Error(`unexpected ${operation}`);
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-plan-project-p",
+    id: "revision-00",
+    planNo: "PL2600244105",
+    planVersion: "00",
+  }, { revisionMode: "ALL" });
+
+  const failed = bundle.revisions["00"].packages.A
+    .sources.planPackageDetail;
+  assert.equal(failed.success, false);
+  assert.equal(failed.attempted, false);
+  assert.equal(failed.error.code, "PROCUREMENT_ADAPTER_UNSUPPORTED");
+  assert.equal(bundle.manifest.failedCount, 1);
+  assert.equal(bundle.failures.length, bundle.manifest.failedCount);
+  assert.equal(bundle.manifest.sourceCount, 4);
+  assert.equal(bundle.metrics.upstream.requestCount, 2);
 });

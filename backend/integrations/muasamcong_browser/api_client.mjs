@@ -172,6 +172,9 @@ export class MscApiClient {
     let refreshCount = 0;
     let retryCount = 0;
     let session = null;
+    const sessionCacheHit = Boolean(
+      endpoint.protected && this.sessionProvider.health?.().cached
+    );
     if (endpoint.protected) {
       session = await this.sessionProvider.acquire({ forceRefresh });
     }
@@ -254,6 +257,7 @@ export class MscApiClient {
             this.sessionProvider.health?.().browserStartupMs || 0
           ),
           sessionAcquireMs,
+          sessionCacheHit,
           networkWaitMs: Math.max(0, this.clock() - networkStarted),
           totalMs: Math.max(0, this.clock() - started),
         },

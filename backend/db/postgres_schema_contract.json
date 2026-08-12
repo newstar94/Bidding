@@ -2122,6 +2122,20 @@
       "table": "procurement_import_operation",
       "valid": true
     },
+    "idx_procurement_raw_content": {
+      "definition": "CREATE INDEX idx_procurement_raw_content ON $SCHEMA.procurement_raw_snapshot USING btree (organization_id, content_hash)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_raw_snapshot",
+      "valid": true
+    },
+    "idx_procurement_raw_entity": {
+      "definition": "CREATE INDEX idx_procurement_raw_entity ON $SCHEMA.procurement_raw_snapshot USING btree (organization_id, provider, entity_kind, canonical_code, retrieved_at DESC)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_raw_snapshot",
+      "valid": true
+    },
     "idx_procurement_revision_family": {
       "definition": "CREATE INDEX idx_procurement_revision_family ON $SCHEMA.procurement_source_revision USING btree (organization_id, provider, family_key, entity_kind, revision_no)",
       "live": true,
@@ -2542,6 +2556,20 @@
       "table": "procurement_import_operation",
       "valid": true
     },
+    "procurement_raw_snapshot_organization_id_provider_dedup_key_key": {
+      "definition": "CREATE UNIQUE INDEX procurement_raw_snapshot_organization_id_provider_dedup_key_key ON $SCHEMA.procurement_raw_snapshot USING btree (organization_id, provider, dedup_key)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_raw_snapshot",
+      "valid": true
+    },
+    "procurement_raw_snapshot_pkey": {
+      "definition": "CREATE UNIQUE INDEX procurement_raw_snapshot_pkey ON $SCHEMA.procurement_raw_snapshot USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_raw_snapshot",
+      "valid": true
+    },
     "procurement_source_binding_pkey": {
       "definition": "CREATE UNIQUE INDEX procurement_source_binding_pkey ON $SCHEMA.procurement_source_binding USING btree (organization_id, id)",
       "live": true,
@@ -2761,7 +2789,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 52,
+  "schemaVersion": 53,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -14474,6 +14502,287 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "procurement_raw_snapshot": {
+      "columns": {
+        "bundle_schema_version": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "canonical_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "child_entity_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "child_entity_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "content_hash": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "dedup_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "endpoint": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "entity_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "error_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "operation": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "request_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "response_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "retrieved_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "revision_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "revision_number": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "schema_fingerprint": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "success": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        }
+      },
+      "constraints": {
+        "procurement_raw_snapshot_bundle_schema_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM bundle_schema_version) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_canonical_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM canonical_code) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_child_entity_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (child_entity_kind = ANY (ARRAY['PACKAGE'::text, 'LOT'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_content_hash_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(content_hash) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_dedup_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(dedup_key) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_endpoint_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM endpoint) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_entity_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (entity_kind = ANY (ARRAY['PLAN'::text, 'NOTICE'::text, 'OPENING'::text, 'RESULT'::text, 'CONTRACT'::text, 'PROJECT'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_error_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(error_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_operation_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM operation) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM organization_id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_organization_id_provider_dedup_key_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, provider, dedup_key)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "procurement_raw_snapshot_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "procurement_raw_snapshot_provider_check": {
+          "deferrable": false,
+          "definition": "CHECK (provider = 'MUASAMCONG'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_request_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(request_json) <= 262144)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_response_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(response_json) <= 8388608)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_schema_fingerprint_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM schema_fingerprint) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_raw_snapshot_success_check": {
+          "deferrable": false,
+          "definition": "CHECK (success = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "procurement_source_binding": {
       "columns": {
         "canonical_fields_json": {
@@ -17778,6 +18087,11 @@
       "definition": "CREATE TRIGGER trg_phan_cong_tenant BEFORE INSERT OR UPDATE ON phan_cong_nhan_su FOR EACH ROW EXECUTE FUNCTION bf_validate_assignment_target()",
       "enabled": "O",
       "table": "phan_cong_nhan_su"
+    },
+    "procurement_raw_snapshot.trg_procurement_raw_snapshot_immutable": {
+      "definition": "CREATE TRIGGER trg_procurement_raw_snapshot_immutable BEFORE DELETE OR UPDATE ON procurement_raw_snapshot FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "procurement_raw_snapshot"
     },
     "procurement_source_binding.trg_procurement_source_binding_immutable": {
       "definition": "CREATE TRIGGER trg_procurement_source_binding_immutable BEFORE DELETE OR UPDATE ON procurement_source_binding FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",

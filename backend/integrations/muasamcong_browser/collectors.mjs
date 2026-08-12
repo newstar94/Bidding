@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import { resolveEndpoint } from "./endpoint_catalog.mjs";
+
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -107,6 +109,132 @@ function buildSearchPayload(code, type) {
 }
 
 
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => (
+      `${JSON.stringify(key)}:${stableJson(value[key])}`
+    )).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+
+function contentHash(value) {
+  return crypto.createHash("sha256").update(stableJson(value)).digest("hex");
+}
+
+
+const SECRET_KEY = /authorization|cookie|token|captcha|secret/i;
+
+
+function sanitizedRequest(value) {
+  if (Array.isArray(value)) return value.map(sanitizedRequest);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    SECRET_KEY.test(key) ? "[REDACTED]" : sanitizedRequest(child),
+  ]));
+}
+
+
+function packageRows(value) {
+  let best = [];
+  walk(value, (candidate) => {
+    if (!Array.isArray(candidate)) return;
+    const rows = candidate.filter((row) => (
+      row && typeof row === "object" && !Array.isArray(row)
+      && (row.idDetail || row.bidName || row.bidNo)
+    ));
+    if (rows.length > best.length) best = rows;
+  });
+  return best;
+}
+
+
+function packageKey(row, index) {
+  return String(
+    row?.idDetail || row?.id || row?.bidNo || `package-${index + 1}`,
+  );
+}
+
+
+function sortRevisions(rows) {
+  return [...rows].sort((left, right) => String(left.revisionNumber || "")
+    .localeCompare(String(right.revisionNumber || ""), "vi", { numeric: true }));
+}
+
+
+function selectRevisions(rows, options) {
+  const ordered = sortRevisions(rows);
+  const mode = String(options?.revisionMode || "ALL").toUpperCase();
+  if (mode === "ALL") return ordered;
+  if (mode === "LATEST") return ordered.length ? [ordered.at(-1)] : [];
+  if (mode === "SELECTED") {
+    const selected = new Set(asArray(options?.revisionNumbers).map((value) => (
+      String(value).padStart(2, "0")
+    )));
+    return ordered.filter((row) => selected.has(row.revisionNumber));
+  }
+  throw new Error("PROCUREMENT_ADAPTER_UNSUPPORTED");
+}
+
+
+export function rawBundleSourceEnvelopes(bundle) {
+  const isEnvelope = (source) => (
+    source && typeof source.operation === "string" && typeof source.success === "boolean"
+  );
+  const envelopes = Object.values(asObject(bundle?.sources)).filter(isEnvelope);
+  for (const revision of Object.values(asObject(bundle?.revisions))) {
+    envelopes.push(...Object.values(asObject(revision?.sources)).filter(isEnvelope));
+    for (const childGroup of ["packages", "lots", "children"]) {
+      for (const child of Object.values(asObject(revision?.[childGroup]))) {
+        envelopes.push(...Object.values(asObject(child?.sources)).filter(isEnvelope));
+      }
+    }
+  }
+  return envelopes;
+}
+
+
+export function buildRawSourceManifest(bundle) {
+  const envelopes = rawBundleSourceEnvelopes(bundle);
+  const revisions = Object.keys(asObject(bundle?.revisions)).sort((left, right) => (
+    left.localeCompare(right, "vi", { numeric: true })
+  ));
+  return {
+    sourceCount: envelopes.length,
+    successCount: envelopes.filter((source) => source.success).length,
+    failedCount: envelopes.filter((source) => !source.success).length,
+    revisions,
+    packages: Object.values(asObject(bundle?.revisions)).reduce(
+      (total, revision) => total + Object.keys(asObject(revision?.packages)).length,
+      0,
+    ),
+    operations: [...new Set(envelopes.map((source) => source.operation))],
+  };
+}
+
+
+async function mapConcurrent(values, concurrency, iteratee) {
+  const items = [...values];
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(items.length, Math.max(1, Number(concurrency) || 1)) },
+    async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await iteratee(items[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+
 function findFirstValue(value, field) {
   let result;
   walk(value, (candidate) => {
@@ -147,19 +275,34 @@ function exactSearchRecord(response, code, field) {
 
 
 export class MscCollectors {
-  constructor({ client, clock = () => new Date().toISOString() }) {
+  constructor({
+    client,
+    clock = () => new Date().toISOString(),
+    collectionConcurrency = 4,
+  }) {
     this.client = client;
     this.clock = clock;
+    this.collectionConcurrency = Math.max(
+      1, Math.min(Number(collectionConcurrency) || 4, 16),
+    );
     this.noticeRevisionHints = new Map();
   }
 
   async search(code, kind) {
     const type = kind === "PLAN" ? "es-plan-project-p" : "es-notify-contractor";
     const field = kind === "PLAN" ? "planNo" : "notifyNo";
-    const response = await this.client.request("SEARCH", buildSearchPayload(code, type));
+    const request = buildSearchPayload(code, type);
+    const response = await this.client.request("SEARCH", request);
     const record = exactSearchRecord(response.data, code, field);
     if (!record) throw new Error("PROCUREMENT_NOT_FOUND");
-    return { record, metadata: response.metadata };
+    return {
+      record,
+      raw: response.data,
+      request,
+      fingerprint: fingerprint(response.data, "search"),
+      retrievedAt: this.clock(),
+      metadata: response.metadata,
+    };
   }
 
   async listPlanRevisions(planNo) {
@@ -372,8 +515,217 @@ export class MscCollectors {
     };
   }
 
-  async collectCompleteBundle(record) {
+  async _collectPlanCompleteBundle(record, options = {}) {
+    const retrievedAt = this.clock();
+    const failures = [];
+    const bundle = {
+      schemaVersion: "biddingflow-muasamcong-raw-bundle-v2",
+      provider: "MUASAMCONG",
+      entity: {
+        kind: "PLAN",
+        canonicalCode: String(record?.planNo || "").trim().toUpperCase(),
+        planNo: String(record?.planNo || "").trim().toUpperCase(),
+      },
+      detailLevel: "COMPLETE",
+      revisionMode: String(options.revisionMode || "ALL").toUpperCase(),
+      retrievedAt,
+      sources: {},
+      revisions: {},
+      failures,
+    };
+    const makeEnvelope = (operation, payload) => {
+      const endpoint = resolveEndpoint(operation);
+      return {
+        operation,
+        endpoint: endpoint.path,
+        request: sanitizedRequest(payload),
+        response: null,
+        success: false,
+        attempted: true,
+        retrievedAt: this.clock(),
+      };
+    };
+    const makeFailureEnvelope = (operation, payload, code) => ({
+      operation,
+      endpoint: operation === "PLAN_VERSION_SELECTION"
+        ? "internal:revision-selection"
+        : resolveEndpoint(operation).path,
+      request: sanitizedRequest(payload),
+      response: null,
+      success: false,
+      attempted: false,
+      error: { code },
+      retrievedAt: this.clock(),
+    });
+    const capture = async (target, key, operation, payload, context = {}) => {
+      const source = makeEnvelope(operation, payload);
+      target[key] = source;
+      try {
+        const result = await this.client.request(operation, payload);
+        source.response = sanitizedRequest(result.data);
+        source.success = true;
+        source.contentHash = contentHash(source.response);
+        const fingerprintKind = operation === "PLAN_DETAIL"
+          ? "plan"
+          : operation === "PLAN_PACKAGE_DETAIL"
+            ? "plan-package"
+            : operation.toLowerCase();
+        source.schemaFingerprint = fingerprint(result.data, fingerprintKind);
+        source.metrics = Object.fromEntries(Object.entries(result.metadata || {})
+          .filter(([, value]) => ["number", "boolean"].includes(typeof value)));
+        return result.data;
+      } catch (error) {
+        const code = String(error?.message || "PROCUREMENT_UPSTREAM_UNAVAILABLE");
+        source.error = { code };
+        failures.push({ operation, ...context, error: code });
+        return null;
+      }
+    };
+
+    const searchSource = options.searchSource || {};
+    const searchEnvelope = makeEnvelope("SEARCH", searchSource.request || null);
+    searchEnvelope.response = sanitizedRequest(searchSource.raw || record);
+    searchEnvelope.success = true;
+    searchEnvelope.attempted = Boolean(searchSource.raw);
+    searchEnvelope.contentHash = contentHash(searchEnvelope.response);
+    searchEnvelope.schemaFingerprint = searchSource.fingerprint
+      || fingerprint(searchEnvelope.response, "search");
+    searchEnvelope.metrics = Object.fromEntries(
+      Object.entries(searchSource.metadata || {})
+        .filter(([, value]) => ["number", "boolean"].includes(typeof value)),
+    );
+    bundle.sources.search = searchEnvelope;
+
+    const versionResponse = await capture(
+      bundle.sources,
+      "versionList",
+      "PLAN_VERSION_LIST",
+      { planNo: bundle.entity.planNo },
+    );
+    const revisions = responseVersions(versionResponse)
+      .filter((row) => row?.id)
+      .map((row) => canonicalRevision(
+        row, "planVersion", "planNo", bundle.entity.planNo,
+      ));
+    const currentId = String(record?.id || "");
+    if (currentId && !revisions.some((row) => row.revisionId === currentId)) {
+      revisions.push({
+        revisionId: currentId,
+        revisionNumber: String(record?.planVersion ?? "").padStart(2, "0"),
+        familyNo: bundle.entity.planNo,
+        processApply: String(record?.processApply || ""),
+      });
+    }
+    const unique = [...new Map(revisions.map((row) => [row.revisionId, row])).values()];
+    const selected = selectRevisions(unique, options);
+    if (!selected.length) {
+      const failure = {
+        operation: "PLAN_VERSION_SELECTION",
+        error: unique.length ? "PROCUREMENT_REVISION_INVALID" : "PROCUREMENT_NOT_FOUND",
+      };
+      failures.push(failure);
+      bundle.sources.revisionSelection = makeFailureEnvelope(
+        failure.operation,
+        {
+          revisionMode: bundle.revisionMode,
+          revisionNumbers: asArray(options.revisionNumbers),
+        },
+        failure.error,
+      );
+    }
+
+    await mapConcurrent(selected, this.collectionConcurrency, async (revision) => {
+      const label = revision.revisionNumber || revision.revisionId;
+      const revisionNode = {
+        revisionId: revision.revisionId,
+        revisionNumber: label,
+        sources: {},
+        packages: {},
+      };
+      bundle.revisions[label] = revisionNode;
+      const detail = await capture(
+        revisionNode.sources,
+        "planDetail",
+        "PLAN_DETAIL",
+        { id: revision.revisionId },
+        { revision: label, revisionId: revision.revisionId },
+      );
+      if (!detail) return;
+      const packages = packageRows(detail);
+      await mapConcurrent(packages, this.collectionConcurrency, async (row, index) => {
+        const stableKey = packageKey(row, index);
+        const packageNode = {
+          stableKey,
+          identifiers: {
+            id: row.id == null ? null : String(row.id),
+            idDetail: row.idDetail == null ? null : String(row.idDetail),
+            idPlan: row.idPlan == null ? null : String(row.idPlan),
+            bidNo: row.bidNo == null ? null : String(row.bidNo),
+          },
+          sources: {},
+        };
+        revisionNode.packages[stableKey] = packageNode;
+        const detailId = row.idDetail || row.id;
+        if (!detailId) {
+          const failure = {
+            operation: "PLAN_PACKAGE_DETAIL",
+            revision: label,
+            package: stableKey,
+            error: "PROCUREMENT_ADAPTER_UNSUPPORTED",
+          };
+          failures.push(failure);
+          packageNode.sources.planPackageDetail = makeFailureEnvelope(
+            failure.operation,
+            { id: null },
+            failure.error,
+          );
+          return;
+        }
+        await capture(
+          packageNode.sources,
+          "planPackageDetail",
+          "PLAN_PACKAGE_DETAIL",
+          { id: detailId },
+          { revision: label, revisionId: revision.revisionId, package: stableKey },
+        );
+      });
+    });
+
+    const envelopes = rawBundleSourceEnvelopes(bundle);
+    bundle.complete = failures.length === 0;
+    bundle.status = bundle.complete ? "FOUND_COMPLETE" : "FOUND_PARTIAL";
+    bundle.manifest = buildRawSourceManifest(bundle);
+    bundle.fingerprint = fingerprint(bundle, "complete-bundle");
+    bundle.metrics = {
+      upstream: {
+        requestCount: envelopes.filter((source) => source.attempted).length,
+        networkMs: envelopes.reduce(
+          (total, source) => total + Number(source.metrics?.networkWaitMs || 0),
+          0,
+        ),
+      },
+      browserStartupMs: Math.max(
+        0,
+        ...envelopes.map((source) => Number(source.metrics?.browserStartupMs || 0)),
+      ),
+      sessionAcquireMs: envelopes.reduce(
+        (total, source) => total + Number(source.metrics?.sessionAcquireMs || 0),
+        0,
+      ),
+      sessionCacheHit: envelopes.some((source) => source.metrics?.sessionCacheHit === true),
+      collector: {
+        revisions: bundle.manifest.revisions.length,
+        packageDetails: bundle.manifest.packages,
+      },
+    };
+    return bundle;
+  }
+
+  async collectCompleteBundle(record, options = {}) {
     const type = String(record?.type || "");
+    if (type === "es-plan-project-p") {
+      return this._collectPlanCompleteBundle(record, options);
+    }
     const sources = { searchRecord: record };
     const failures = [];
     const capture = async (key, operation, payload) => {
@@ -386,14 +738,7 @@ export class MscCollectors {
         return null;
       }
     };
-    if (type === "es-plan-project-p") {
-      const versions = await this.listPlanRevisions(String(record.planNo || ""));
-      for (const revision of versions.revisions) {
-        sources[`planDetail_${revision.revisionNumber}`] = (
-          await this.getPlanRevision(record.planNo, revision.revisionId)
-        ).raw;
-      }
-    } else if (type === "es-bidp-project-p") {
+    if (type === "es-bidp-project-p") {
       const versionResponse = await this.client.request(
         "PROJECT_VERSION_LIST",
         { pno: record.pno },

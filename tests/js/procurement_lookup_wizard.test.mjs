@@ -52,6 +52,30 @@ test("lookup client sends only code and workspace lease with cancellation", asyn
 });
 
 
+test("lookup client forwards explicit complete revision options", async () => {
+  const calls = [];
+  const client = new ProcurementLookupClient({
+    post: async (url, payload, options) => {
+      calls.push({ url, payload, options });
+      return { found: true };
+    },
+  });
+
+  await client.lookup({
+    code: "pl2600244105",
+    detailLevel: "complete",
+    revisionMode: "all",
+  });
+
+  assert.deepEqual(calls[0].payload, {
+    code: "PL2600244105",
+    workspaceLease: null,
+    detailLevel: "COMPLETE",
+    revisionMode: "ALL",
+  });
+});
+
+
 test("manual lookup cancels the pending debounced lookup", async () => {
   const element = (value = "") => ({
     value,

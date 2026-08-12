@@ -160,6 +160,9 @@ class NodeBrowserRuntime:
             "getPlanRevision", planNo=str(plan_no), revisionId=str(revision_id)
         )
 
+    def search(self, code, kind):
+        return self._exchange("search", code=str(code), kind=str(kind))
+
     def list_notice_revisions(self, notice_no):
         return self._exchange("listNoticeRevisions", noticeNo=str(notice_no))
 
@@ -184,10 +187,23 @@ class NodeBrowserRuntime:
             revisionId=str(revision_id),
         )
 
-    def collect_complete_bundle(self, record):
+    def collect_complete_bundle(
+        self,
+        record,
+        *,
+        revision_mode="ALL",
+        revision_numbers=None,
+        search_source=None,
+    ):
         if not isinstance(record, dict):
             raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
-        return self._exchange("collectCompleteBundle", record=record)
+        return self._exchange(
+            "collectCompleteBundle",
+            record=record,
+            revisionMode=str(revision_mode or "ALL"),
+            revisionNumbers=list(revision_numbers or []),
+            searchSource=search_source if isinstance(search_source, dict) else None,
+        )
 
     def refresh_session(self):
         return self._exchange("refreshSession")

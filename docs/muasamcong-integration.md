@@ -1,5 +1,48 @@
 # Tích hợp Mua Sắm Công
 
+## Complete Raw Bundle v2
+
+`POST /api/procurement/lookup` giữ tương thích request cũ và nhận thêm các
+field được server kiểm tra:
+
+```json
+{
+  "code": "PL2600244105",
+  "detailLevel": "COMPLETE",
+  "revisionMode": "ALL",
+  "revisionNumbers": []
+}
+```
+
+- `detailLevel`: `SUMMARY`, `CANONICAL`, hoặc `COMPLETE`; mặc định `CANONICAL`.
+- `revisionMode`: `LATEST`, `SELECTED`, hoặc `ALL`; mặc định `LATEST`.
+- `revisionNumbers` chỉ được dùng và là bắt buộc với `SELECTED`.
+- Caller cũ chỉ gửi `code` vẫn nhận normalized preview như trước và không nhận
+  raw JSON.
+
+PLAN `COMPLETE` đi theo endpoint graph
+`SEARCH -> PLAN_VERSION_LIST -> PLAN_DETAIL -> PLAN_PACKAGE_DETAIL`. Edge cuối
+dùng `idDetail` thuộc revision, fallback sang `id`. Mỗi response nằm trong
+source envelope gồm operation, endpoint, request đã sanitize, response nguyên
+vẹn, content hash, schema fingerprint, timestamp và success/error metadata.
+Các request revision/package độc lập chạy bounded concurrency.
+
+Bundle complete được lưu server-side thành các row append-only trong
+`procurement_raw_snapshot`. Unique `(organization, provider, dedup_key)` tránh
+snapshot trùng; response thay đổi tạo snapshot mới. Trigger immutable chặn
+update/delete. Canonical v2 chỉ là projection và có thể được tạo lại bằng
+`MuaSamCongProcurementSource.map_plan_raw_bundle()` mà không gọi upstream.
+
+Lookup COMPLETE dùng thứ tự `L1 -> L2 -> RAW_SNAPSHOT -> upstream`. Cache key
+được namespace theo organization; raw snapshot chỉ được dùng khi còn fresh,
+search/version-list chứng minh đủ revision được yêu cầu và mọi package quan sát
+được có source package-detail. Snapshot thiếu hoặc stale luôn rơi xuống upstream.
+
+Browser được lazy-load: worker initialization không khởi chạy Playwright
+fallback hoặc Puppeteer session bootstrap. Public endpoint không cần session;
+protected request đầu tiên acquire session qua single-flight provider hiện có.
+Playwright chỉ khởi chạy sau khi protected-API lookup cần fallback.
+
 ## Kiến trúc
 
 ```text
@@ -42,9 +85,10 @@ không có adapter lookup song song ở tầng nghiệp vụ.
 Refresh dùng Puppeteer/Chromium với cấu hình đã port từ nguồn, đóng browser ở
 `finally`, và không trả secret qua JSONL health metadata. Khi protected API trả
 400/401/403, client invalidate session, refresh đúng một lần rồi gọi lại.
-Khi lookup được bật, startup khởi tạo worker và bắt đầu prewarm phiên ở nền trước
-khi nhận traffic; provider tiếp tục làm mới ở nền trước khi TTL hết hạn để
-request người dùng không phải chờ Puppeteer bootstrap.
+Khi lookup được bật, startup chỉ khởi tạo worker IPC; không launch Playwright và
+không prewarm Puppeteer. Protected request đầu tiên bootstrap session; các
+request sau reuse session đó. Provider tiếp tục làm mới ở nền trước khi TTL hết
+hạn và coalesce concurrent refresh bằng cùng một promise.
 
 ## Endpoint profile và parser
 
@@ -86,6 +130,7 @@ Nếu diagnostics được bật, artifact chỉ chứa JSON shape/type đã san
 Các biến chính nằm trong `.env.example`:
 
 - `PROCUREMENT_LOOKUP_ENABLED=true`
+- `PROCUREMENT_RAW_CACHE_TTL_SECONDS` (freshness window before COMPLETE refetches)
 - `PROCUREMENT_IMPORT_ENABLED=true`
 - `PROCUREMENT_PROVIDER=muasamcong`
 - `MUASAMCONG_BROWSER_EXECUTABLE_PATH` (tùy chọn; worker dùng Chromium của
@@ -138,6 +183,29 @@ python -m pytest -q tests/test_procurement_import_service.py tests/test_procurem
 npm run check:static
 npm run test:e2e:smoke
 ```
+
+Benchmark fixture xác định (không gọi mạng):
+
+```powershell
+python scripts/benchmark_muasamcong.py `
+  --input tests/fixtures/muasamcong/benchmark_sample.json `
+  --fixtures --concurrency 4
+```
+
+Benchmark live dùng đúng `MuaSamCongProcurementSource` production và chỉ nhận
+50-100 mã do operator cung cấp. Bật lookup trong môi trường non-production rồi
+chạy với file input riêng:
+
+```powershell
+python scripts/benchmark_muasamcong.py `
+  --input .\tmp\muasamcong-live-codes.json `
+  --live --concurrency 4 --output .\tmp\muasamcong-live-report.json
+```
+
+Report v2 luôn tách các scenario `coldWorkerColdSession`,
+`warmWorkerColdSession`, `warmSession`, `l1Hit`, `l2Hit`, `completeLatest`,
+`completeAll` và `concurrentX<N>`; mỗi record có cache layer, browser/session
+counter, upstream request/network, normalize/mapping duration và partial count.
 
 E2E import fixture cần cấu hình tài khoản test, bật provider `fixture` và đặt
 `VNEPS_PROCUREMENT_FIXTURE_PATH`; CI không gọi live reCAPTCHA/WAF. Luồng opening

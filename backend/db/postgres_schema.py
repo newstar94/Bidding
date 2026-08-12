@@ -612,6 +612,8 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_procurement_binding_family ON procurement_source_binding (organization_id, provider, family_key, symbol, notify_no)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_binding_local_root ON procurement_source_binding (organization_id, local_root_id)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_operation_status ON procurement_import_operation (organization_id, status, updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_raw_entity ON procurement_raw_snapshot (organization_id, provider, entity_kind, canonical_code, retrieved_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_raw_content ON procurement_raw_snapshot (organization_id, content_hash)",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
@@ -971,7 +973,11 @@ def _create_triggers(cursor) -> None:
            BEFORE UPDATE OR DELETE ON nhat_ky_thuc_hien
            FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"""
     )
-    for table_name in ("procurement_source_revision", "procurement_source_binding"):
+    for table_name in (
+        "procurement_source_revision",
+        "procurement_source_binding",
+        "procurement_raw_snapshot",
+    ):
         cursor.execute(
             f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
         )
@@ -1198,6 +1204,7 @@ def _historical_v46_catalog(latest_catalog):
         "procurement_source_revision",
         "procurement_source_binding",
         "procurement_import_operation",
+        "procurement_raw_snapshot",
     }
     for table_name in post_v46_tables:
         catalog["tables"].pop(table_name, None)

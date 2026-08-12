@@ -1951,6 +1951,37 @@ SCHEMA_DINH_NGHIA = {
         "unique_constraints": [
             "UNIQUE(organization_id, provider, idempotency_key)"
         ]
+    },
+    "procurement_raw_snapshot": {
+        "columns": {
+            "id": "TEXT NOT NULL CHECK(trim(id) != '')",
+            "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
+            "provider": "TEXT NOT NULL CHECK(provider = 'MUASAMCONG')",
+            "bundle_schema_version": "TEXT NOT NULL CHECK(trim(bundle_schema_version) != '')",
+            "entity_kind": "TEXT NOT NULL CHECK(entity_kind IN ('PLAN', 'NOTICE', 'OPENING', 'RESULT', 'CONTRACT', 'PROJECT'))",
+            "canonical_code": "TEXT NOT NULL CHECK(trim(canonical_code) != '')",
+            "revision_id": "TEXT",
+            "revision_number": "TEXT",
+            "child_entity_kind": "TEXT CHECK(child_entity_kind IN ('PACKAGE', 'LOT'))",
+            "child_entity_id": "TEXT",
+            "operation": "TEXT NOT NULL CHECK(trim(operation) != '')",
+            "endpoint": "TEXT NOT NULL CHECK(trim(endpoint) != '')",
+            "request_json": "TEXT NOT NULL CHECK(length(request_json) <= 262144)",
+            "response_json": "TEXT NOT NULL CHECK(length(response_json) <= 8388608)",
+            "error_json": "TEXT CHECK(length(error_json) <= 32768)",
+            "content_hash": "TEXT NOT NULL CHECK(length(content_hash) = 64)",
+            "dedup_key": "TEXT NOT NULL CHECK(length(dedup_key) = 64)",
+            "schema_fingerprint": "TEXT NOT NULL CHECK(trim(schema_fingerprint) != '')",
+            "success": "INTEGER NOT NULL CHECK(success IN (0, 1))",
+            "retrieved_at": "TEXT NOT NULL",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": [
+            "PRIMARY KEY (organization_id, id)"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, provider, dedup_key)"
+        ]
     }
 }
 

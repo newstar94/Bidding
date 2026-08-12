@@ -51,6 +51,7 @@ class ProcurementLookupSettings:
     plan_cache_ttl_seconds: float
     open_package_cache_ttl_seconds: float
     closed_package_cache_ttl_seconds: float
+    raw_cache_ttl_seconds: float
     shared_cache_enabled: bool
     coalesce_timeout_seconds: float
     idle_ttl_seconds: float
@@ -194,6 +195,13 @@ class ProcurementLookupSettings:
                 environ,
                 "PROCUREMENT_LOOKUP_CLOSED_PACKAGE_CACHE_TTL_SECONDS",
                 ttl_seconds,
+                1,
+                86400,
+            ),
+            raw_cache_ttl_seconds=_number(
+                environ,
+                "PROCUREMENT_RAW_CACHE_TTL_SECONDS",
+                900,
                 1,
                 86400,
             ),

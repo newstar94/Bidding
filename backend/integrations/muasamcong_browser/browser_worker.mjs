@@ -22,6 +22,15 @@ const ALLOWED_ERRORS = new Set([
 
 let runtime = null;
 let integration = null;
+let runtimeConfiguration = null;
+
+
+async function fallbackRuntime() {
+  if (runtime) return runtime;
+  runtime = new BrowserLookupRuntime({ chromium });
+  await runtime.initialize(runtimeConfiguration || {});
+  return runtime;
+}
 
 
 function publicError(error) {
@@ -45,13 +54,22 @@ async function handle(request) {
     case "initialize": {
       await runtime?.close();
       integration?.close();
-      runtime = new BrowserLookupRuntime({ chromium });
+      runtime = null;
       integration = new MscIntegrationRuntime({ puppeteer });
       const configuration = { ...(request.configuration || {}) };
       configuration.fallbackBrowserExecutablePath = chromium.executablePath();
-      const result = await runtime.initialize(configuration);
+      runtimeConfiguration = configuration;
       const msc = integration.initialize(configuration);
-      return { requestId, ok: true, result: { ...result, integration: msc } };
+      return {
+        requestId,
+        ok: true,
+        result: {
+          ready: true,
+          browserStartupMs: 0,
+          browserFallback: "lazy",
+          integration: msc,
+        },
+      };
     }
     case "lookup": {
       if (!runtime) throw new Error("PROCUREMENT_BROWSER_FAILED");
@@ -61,15 +79,16 @@ async function handle(request) {
       if (!pattern.test(code) || !["PLAN", "PACKAGE"].includes(kind)) {
         throw new Error("PROCUREMENT_ADAPTER_UNSUPPORTED");
       }
+      const browser = await fallbackRuntime();
       return {
         requestId,
         ok: true,
-        result: await runtime.lookup(code, kind),
+        result: await browser.lookup(code, kind),
       };
     }
     case "probe": {
-      if (!runtime) throw new Error("PROCUREMENT_BROWSER_FAILED");
-      return { requestId, ok: true, result: await runtime.probe() };
+      const browser = await fallbackRuntime();
+      return { requestId, ok: true, result: await browser.probe() };
     }
     case "listPlanRevisions": {
       if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
@@ -120,6 +139,17 @@ async function handle(request) {
         ),
       };
     }
+    case "search": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return {
+        requestId,
+        ok: true,
+        result: await integration.search(
+          String(request.code || ""),
+          String(request.kind || ""),
+        ),
+      };
+    }
     case "getResultBundle": {
       if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
       return {
@@ -140,7 +170,11 @@ async function handle(request) {
       return {
         requestId,
         ok: true,
-        result: await integration.collectCompleteBundle(record),
+        result: await integration.collectCompleteBundle(record, {
+          revisionMode: request.revisionMode,
+          revisionNumbers: request.revisionNumbers,
+          searchSource: request.searchSource,
+        }),
       };
     }
     case "refreshSession": {
@@ -151,16 +185,17 @@ async function handle(request) {
       if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
       const health = integration.health();
       try {
-        const probe = await runtime?.probe();
+        const probe = runtime ? await runtime.probe() : null;
         const frontendStatus = probe?.driverCandidate
           ? (probe.interactionRequired ? "PARTIAL" : "UP")
-          : "FRONTEND_CHANGED";
+          : "NOT_PROBED";
         return {
           requestId,
           ok: true,
           result: {
             ...health,
-            status: health.status === "UP" ? frontendStatus : health.status,
+            status: health.status === "UP" ? "UP" : health.status,
+            browserFallback: { launched: Boolean(runtime) },
             frontend: {
               status: frontendStatus,
               framework: probe?.framework || "unknown",
@@ -181,6 +216,7 @@ async function handle(request) {
           result: {
             ...health,
             status: health.status === "UP" ? "FRONTEND_CHANGED" : health.status,
+            browserFallback: { launched: Boolean(runtime) },
             frontend: {
               status: "FRONTEND_CHANGED",
               framework: "unknown",
@@ -197,6 +233,7 @@ async function handle(request) {
       integration?.close();
       runtime = null;
       integration = null;
+      runtimeConfiguration = null;
       return { requestId, ok: true, result: { closed: true } };
     }
     default:

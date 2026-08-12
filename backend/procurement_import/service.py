@@ -75,9 +75,16 @@ class PreviewStore:
 
 
 class ProcurementImportPreparer:
-    def __init__(self, source, preview_store: PreviewStore):
+    def __init__(
+        self,
+        source,
+        preview_store: PreviewStore,
+        *,
+        raw_snapshot_repository=None,
+    ):
         self.source = source
         self.preview_store = preview_store
+        self.raw_snapshot_repository = raw_snapshot_repository
 
     def _select_revisions(self, available, mode, requested, selected):
         ordered = sorted(
@@ -260,17 +267,50 @@ class ProcurementImportPreparer:
         normalized = normalize_procurement_code(code)
         if normalized.kind is not ProcurementCodeKind.PLAN:
             raise ValueError("PROCUREMENT_CODE_INVALID")
-        available = self.source.list_plan_revisions(normalized.base_code)
-        selected = self._select_revisions(
-            available,
-            str(revision_mode or "LATEST").upper(),
-            normalized.requested_revision,
-            selected_revision,
-        )
-        revisions = [
-            self.source.get_plan_revision(normalized.base_code, row["revisionId"])
-            for row in selected
-        ]
+        mode = str(revision_mode or "LATEST").upper()
+        complete_lookup = getattr(self.source, "lookup_with_options", None)
+        if mode == "ALL" and callable(complete_lookup):
+            complete = complete_lookup(
+                normalized.base_code,
+                "PLAN",
+                detail_level="COMPLETE",
+                revision_mode="ALL",
+                revision_numbers=[],
+            )
+            raw_bundle = complete.get("rawBundle")
+            canonical = complete.get("canonical") or {}
+            revisions = deepcopy(canonical.get("revisions") or [])
+            available = [
+                {
+                    "revisionId": row.get("revisionId"),
+                    "revisionNumber": row.get("revisionNumber"),
+                }
+                for row in revisions
+            ]
+            selected = available
+            if not revisions:
+                raise LookupError("PROCUREMENT_REVISION_INVALID")
+            if (
+                self.raw_snapshot_repository is not None
+                and isinstance(raw_bundle, dict)
+            ):
+                self.raw_snapshot_repository.save_bundle(
+                    organization_id, raw_bundle
+                )
+        else:
+            available = self.source.list_plan_revisions(normalized.base_code)
+            selected = self._select_revisions(
+                available,
+                mode,
+                normalized.requested_revision,
+                selected_revision,
+            )
+            revisions = [
+                self.source.get_plan_revision(
+                    normalized.base_code, row["revisionId"]
+                )
+                for row in selected
+            ]
         source_revision_digests = {
             str(revision["revisionId"]): canonical_digest(revision)
             for revision in revisions
@@ -345,7 +385,6 @@ class ProcurementImportPreparer:
                 if package.get("action") != PackageAction.REMOVED.value:
                     package["action"] = PackageAction.ALREADY_IMPORTED.value
         warnings = lifecycle_warnings
-        mode = str(revision_mode or "LATEST").upper()
         if local_state is None and mode != "ALL" and len(available) > 1:
             warnings.append({
                 "code": "OLDER_REVISIONS_PROVENANCE_ONLY_AFTER_APPLY",

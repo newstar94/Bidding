@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 import os
 from pathlib import Path
@@ -35,6 +37,7 @@ _ALLOWED_ERRORS = {
     "PROCUREMENT_LOOKUP_TIMEOUT",
     "PROCUREMENT_LOOKUP_BUSY",
     "PROCUREMENT_BROWSER_FAILED",
+    "PROCUREMENT_ADAPTER_UNSUPPORTED",
 }
 
 
@@ -87,6 +90,19 @@ class MuaSamCongProcurementSource:
         )
         self.observer = observer
         self.clock = clock
+        self._lookup_request_id = ContextVar(
+            f"muasamcong_lookup_request_id_{id(self)}", default=""
+        )
+
+    @contextmanager
+    def lookup_request_context(self, request_id):
+        """Correlate nested source operations without cross-thread leakage."""
+
+        token = self._lookup_request_id.set(str(request_id or ""))
+        try:
+            yield
+        finally:
+            self._lookup_request_id.reset(token)
 
     @classmethod
     def from_environ(cls, *, observer=None):
@@ -226,6 +242,7 @@ class MuaSamCongProcurementSource:
                 "totalMs",
                 "browserStartupMs",
                 "sessionAcquireMs",
+                "sessionCacheHit",
                 "networkWaitMs",
                 "normalizeMs",
                 "retries",
@@ -257,6 +274,7 @@ class MuaSamCongProcurementSource:
         metrics = source.get("metrics") or {}
         event = {
             "provider": self.name,
+            "lookupRequestId": self._lookup_request_id.get(),
             "kind": str(kind or "UNKNOWN")[:32],
             "semanticOperation": str(
                 source.get("semanticOperation") or "UNKNOWN"
@@ -264,6 +282,7 @@ class MuaSamCongProcurementSource:
             "totalMs": metrics.get("totalMs", 0),
             "browserStartupMs": metrics.get("browserStartupMs", 0),
             "sessionAcquireMs": metrics.get("sessionAcquireMs", 0),
+            "sessionCacheHit": bool(metrics.get("sessionCacheHit", False)),
             "navigationMs": metrics.get("navigationMs", 0),
             "networkWaitMs": metrics.get("networkWaitMs", 0),
             "extractMs": metrics.get("extractMs", 0),
@@ -285,9 +304,9 @@ class MuaSamCongProcurementSource:
             return
 
     @staticmethod
-    def _call(callback, *args):
+    def _call(callback, *args, **kwargs):
         try:
-            result = callback(*args)
+            result = callback(*args, **kwargs)
         except Exception as error:  # noqa: BLE001 - process boundary normalization.
             code = str(error)
             if code not in _ALLOWED_ERRORS:
@@ -496,13 +515,42 @@ class MuaSamCongProcurementSource:
         self._observe("RESULT", result, canonical)
         return canonical
 
-    def collect_complete_bundle(self, record: dict) -> dict:
+    def collect_complete_bundle(
+        self,
+        record: dict,
+        *,
+        revision_mode="ALL",
+        revision_numbers=None,
+        search_source=None,
+    ) -> dict:
         if not isinstance(record, dict):
             raise ProcurementSourceError("PROCUREMENT_CODE_INVALID")
-        result = self._call(self.runtime.collect_complete_bundle, deepcopy(record))
+        options_are_default = (
+            str(revision_mode or "ALL").upper() == "ALL"
+            and not revision_numbers
+            and search_source is None
+        )
+        if options_are_default:
+            result = self._call(
+                self.runtime.collect_complete_bundle, deepcopy(record)
+            )
+        else:
+            result = self._call(
+                self.runtime.collect_complete_bundle,
+                deepcopy(record),
+                revision_mode=str(revision_mode or "ALL").upper(),
+                revision_numbers=list(revision_numbers or []),
+                search_source=deepcopy(search_source),
+            )
         sources = result.get("sources")
         if not isinstance(sources, dict):
             raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+        if result.get("schemaVersion") == (
+            "biddingflow-muasamcong-raw-bundle-v2"
+        ):
+            bundle = deepcopy(result)
+            self._observe("COMPLETE_BUNDLE", result, bundle)
+            return bundle
         canonical = {
             "schemaVersion": "biddingflow-muasamcong-complete-bundle-v1",
             "type": str(result.get("type") or ""),
@@ -517,6 +565,281 @@ class MuaSamCongProcurementSource:
         }
         self._observe("COMPLETE_BUNDLE", result, canonical)
         return canonical
+
+    @staticmethod
+    def _plan_lookup_data(family_no, revision):
+        return {
+            "planNo": family_no,
+            "planName": revision.get("name"),
+            "projectName": revision.get("projectName"),
+            "investorName": revision.get("investorName"),
+            "decisionNo": revision.get("approvalDecisionNo"),
+            "decisionDate": revision.get("approvalDecisionDate"),
+            "publicDate": revision.get("publishedAt"),
+            "packages": [
+                {
+                    "notifyNo": (package.get("noticeLink") or {}).get(
+                        "noticeNo"
+                    ),
+                    "planNo": family_no,
+                    "bidName": package.get("name"),
+                    "bidPrice": package.get("priceVnd"),
+                    "capitalDetail": package.get("capitalDetail"),
+                    "bidField": package.get("field"),
+                    "bidForm": package.get("selectionForm"),
+                    "bidMode": package.get("selectionMode"),
+                    "contractType": package.get("contractType"),
+                    "implementationPeriod": package.get("executionPeriod"),
+                    "lots": package.get("lots"),
+                }
+                for package in revision.get("packages") or []
+            ],
+        }
+
+    def map_plan_raw_bundle(self, bundle: dict) -> dict:
+        """Reprocess a stored v2 raw bundle without calling upstream."""
+
+        if not isinstance(bundle, dict) or bundle.get("schemaVersion") != (
+            "biddingflow-muasamcong-raw-bundle-v2"
+        ):
+            raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+        entity = bundle.get("entity") or {}
+        family_no = _canonical_code(entity.get("planNo"), _PLAN_PATTERN)
+        revisions = []
+        field_sources = {}
+        for revision_number, node in sorted(
+            (bundle.get("revisions") or {}).items(),
+            key=lambda item: str(item[0]),
+        ):
+            source = ((node or {}).get("sources") or {}).get("planDetail") or {}
+            raw = source.get("response")
+            if source.get("success") is not True or not isinstance(raw, dict):
+                continue
+            canonical = self.parser_registry.parse(
+                source.get("schemaFingerprint") or "plan:v1:unknown",
+                raw,
+                family_no=family_no,
+                revision_id=str(node.get("revisionId") or ""),
+                revision_number=str(revision_number).zfill(2),
+                source={
+                    "provider": self.name,
+                    "semanticOperation": "PLAN_DETAIL",
+                    "schemaFingerprint": source.get("schemaFingerprint"),
+                    "retrievedAt": source.get("retrievedAt"),
+                },
+            )
+            revisions.append(canonical)
+            for field in (
+                "name", "projectName", "investorName",
+                "approvalDecisionNo", "approvalDecisionDate", "publishedAt",
+            ):
+                if canonical.get(field) is not None:
+                    field_sources[f"revisions.{revision_number}.{field}"] = {
+                        "operation": "PLAN_DETAIL",
+                        "revision": str(revision_number),
+                        "sourcePath": field,
+                    }
+        return {
+            "schemaVersion": "biddingflow-procurement-canonical-v2",
+            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
+            "kind": "PLAN",
+            "canonicalCode": family_no,
+            "revisions": revisions,
+            "fieldSources": field_sources,
+        }
+
+    def lookup_from_raw_bundle(
+        self,
+        code: str,
+        bundle: dict,
+        *,
+        revision_mode="ALL",
+    ) -> dict:
+        """Project a stored COMPLETE bundle without any upstream request."""
+
+        started = self.clock()
+        family_no = _canonical_code(code, _PLAN_PATTERN)
+        entity = bundle.get("entity") if isinstance(bundle, dict) else {}
+        bundle_code = str(
+            (entity or {}).get("canonicalCode")
+            or (entity or {}).get("planNo")
+            or ""
+        ).strip().upper()
+        if bundle_code != family_no:
+            raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
+        mapping_started = self.clock()
+        try:
+            canonical = self.map_plan_raw_bundle(bundle)
+        except ProcurementSourceError as error:
+            raise ProcurementLookupError(str(error)) from error
+        mapping_ms = max(0, self.clock() - mapping_started) * 1000
+        revisions = canonical.get("revisions") or []
+        if not revisions:
+            raise ProcurementLookupError("PROCUREMENT_REVISION_INVALID")
+        raw_bundle = deepcopy(bundle)
+        metrics = deepcopy(raw_bundle.get("metrics") or {})
+        metrics["mappingMs"] = round(mapping_ms, 3)
+        metrics["upstream"] = {"requestCount": 0, "networkMs": 0}
+        metrics["totalMs"] = round(
+            max(0, self.clock() - started) * 1000, 3
+        )
+        status = str(raw_bundle.get("status") or "FOUND_PARTIAL")
+        return {
+            "schemaVersion": "biddingflow-procurement-preview-v1",
+            "found": True,
+            "kind": "PLAN",
+            "inputCode": str(code or "").strip(),
+            "canonicalCode": family_no,
+            "detailLevel": "COMPLETE",
+            "revisionMode": str(revision_mode or "ALL").upper(),
+            "status": status,
+            "classification": status,
+            "source": {
+                "provider": self.name,
+                "driver": "raw-snapshot",
+                "browserMode": "not-launched",
+                "extractionStrategy": "stored-raw-projection",
+                "parserVersion": self.parser_version,
+                "retrievedAt": raw_bundle.get("retrievedAt"),
+            },
+            "data": self._plan_lookup_data(family_no, revisions[-1]),
+            "canonical": canonical,
+            "rawBundle": raw_bundle,
+            "manifest": deepcopy(raw_bundle.get("manifest") or {}),
+            "metrics": metrics,
+        }
+
+    @staticmethod
+    def _select_canonical_revisions(rows, mode, numbers):
+        ordered = sorted(
+            rows,
+            key=lambda row: (
+                int(row.get("revisionNumber") or -1)
+                if str(row.get("revisionNumber") or "").isdigit()
+                else -1,
+                str(row.get("revisionNumber") or ""),
+            ),
+        )
+        if mode == "ALL":
+            return ordered
+        if mode == "LATEST":
+            return ordered[-1:] if ordered else []
+        selected = {str(number).zfill(2) for number in numbers}
+        return [
+            row for row in ordered
+            if str(row.get("revisionNumber") or "").zfill(2) in selected
+        ]
+
+    def lookup_with_options(
+        self,
+        code: str,
+        kind: str,
+        *,
+        detail_level,
+        revision_mode,
+        revision_numbers=None,
+    ) -> dict:
+        """Fetch only the endpoint graph required by the requested detail."""
+
+        started = self.clock()
+        normalized_kind = str(kind or "").strip().upper()
+        if normalized_kind != "PLAN":
+            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+        family_no = _canonical_code(code, _PLAN_PATTERN)
+        numbers = list(revision_numbers or [])
+        try:
+            if detail_level == "SUMMARY":
+                search = self._call(self.runtime.search, family_no, "PLAN")
+                record = search.get("record") or {}
+                data = {
+                    "planNo": family_no,
+                    "planName": record.get("name") or record.get("planName"),
+                    "investorName": record.get("investorName"),
+                    "planVersion": record.get("planVersion"),
+                    "status": record.get("status"),
+                }
+                canonical = None
+                raw_bundle = None
+                status = "FOUND_COMPLETE"
+                metrics = deepcopy(search.get("metadata") or {})
+            elif detail_level == "COMPLETE":
+                collection_started = self.clock()
+                search = self._call(self.runtime.search, family_no, "PLAN")
+                record = search.get("record")
+                if not isinstance(record, dict):
+                    raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+                raw_bundle = self.collect_complete_bundle(
+                    record,
+                    revision_mode=revision_mode,
+                    revision_numbers=numbers,
+                    search_source=search,
+                )
+                mapping_started = self.clock()
+                canonical = self.map_plan_raw_bundle(raw_bundle)
+                mapping_ms = max(0, self.clock() - mapping_started) * 1000
+                selected = canonical.get("revisions") or []
+                if not selected:
+                    raise ProcurementSourceError("PROCUREMENT_REVISION_INVALID")
+                data = self._plan_lookup_data(family_no, selected[-1])
+                status = str(raw_bundle.get("status") or "FOUND_PARTIAL")
+                metrics = deepcopy(raw_bundle.get("metrics") or {})
+                metrics["collectionMs"] = round(
+                    max(0, self.clock() - collection_started) * 1000, 3
+                )
+                metrics["mappingMs"] = round(mapping_ms, 3)
+            else:
+                available = self.list_plan_revisions(family_no)
+                hints = self._select_canonical_revisions(
+                    available, revision_mode, numbers
+                )
+                if not hints:
+                    raise ProcurementSourceError("PROCUREMENT_REVISION_INVALID")
+                selected = [
+                    self.get_plan_revision(family_no, row["revisionId"])
+                    for row in hints
+                ]
+                canonical = {
+                    "schemaVersion": "biddingflow-procurement-canonical-v2",
+                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v2",
+                    "kind": "PLAN",
+                    "canonicalCode": family_no,
+                    "revisions": selected,
+                }
+                raw_bundle = None
+                data = self._plan_lookup_data(family_no, selected[-1])
+                status = "FOUND_COMPLETE"
+                metrics = {}
+        except ProcurementSourceError as error:
+            raise ProcurementLookupError(str(error)) from error
+        metrics["totalMs"] = round(
+            max(0, self.clock() - started) * 1000, 3
+        )
+        response = {
+            "schemaVersion": "biddingflow-procurement-preview-v1",
+            "found": True,
+            "kind": "PLAN",
+            "inputCode": str(code or "").strip(),
+            "canonicalCode": family_no,
+            "detailLevel": detail_level,
+            "revisionMode": revision_mode,
+            "status": status,
+            "classification": status,
+            "source": {
+                "provider": self.name,
+                "driver": "protected-api",
+                "browserMode": "lazy-session-bootstrap",
+                "extractionStrategy": "protected-api",
+                "parserVersion": self.parser_version,
+            },
+            "data": data,
+            "metrics": metrics,
+        }
+        if canonical is not None:
+            response["canonical"] = canonical
+        if raw_bundle is not None:
+            response["rawBundle"] = raw_bundle
+            response["manifest"] = deepcopy(raw_bundle.get("manifest") or {})
+        return response
 
     def health(self):
         return self._call(self.runtime.integration_health)
@@ -548,35 +871,7 @@ class MuaSamCongProcurementSource:
                     family_no, latest["revisionId"]
                 )
                 detail_ms = max(0, self.clock() - detail_started) * 1000
-                data = {
-                    "planNo": family_no,
-                    "planName": revision.get("name"),
-                    "projectName": revision.get("projectName"),
-                    "investorName": revision.get("investorName"),
-                    "decisionNo": revision.get("approvalDecisionNo"),
-                    "decisionDate": revision.get("approvalDecisionDate"),
-                    "publicDate": revision.get("publishedAt"),
-                    "packages": [
-                        {
-                            "notifyNo": (
-                                package.get("noticeLink") or {}
-                            ).get("noticeNo"),
-                            "planNo": family_no,
-                            "bidName": package.get("name"),
-                            "bidPrice": package.get("priceVnd"),
-                            "capitalDetail": package.get("capitalDetail"),
-                            "bidField": package.get("field"),
-                            "bidForm": package.get("selectionForm"),
-                            "bidMode": package.get("selectionMode"),
-                            "contractType": package.get("contractType"),
-                            "implementationPeriod": package.get(
-                                "executionPeriod"
-                            ),
-                            "lots": package.get("lots"),
-                        }
-                        for package in revision.get("packages") or []
-                    ],
-                }
+                data = self._plan_lookup_data(family_no, revision)
             elif normalized_kind == "PACKAGE":
                 notice_no = _canonical_code(code, _NOTICE_PATTERN)
                 list_started = self.clock()
@@ -637,6 +932,7 @@ class MuaSamCongProcurementSource:
             **(source.get("metrics") or {}),
             "listMs": round(list_ms, 3),
             "detailMs": round(detail_ms, 3),
+            "upstreamRequestCount": 2,
             "totalMs": round(
                 max(0, self.clock() - lookup_started) * 1000,
                 3,

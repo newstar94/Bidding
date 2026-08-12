@@ -164,7 +164,15 @@ def test_lookup_service_is_cache_first_and_coalesces_same_key_requests():
         assert entered.wait(timeout=1)
         second = pool.submit(service.lookup, "ib2600000002")
         release.set()
-        assert first.result(timeout=2) == second.result(timeout=2)
+        first_result = first.result(timeout=2)
+        second_result = second.result(timeout=2)
+        assert first_result["data"] == second_result["data"]
+        assert first_result["metrics"]["cache"] == {
+            "hit": False, "layer": "NONE",
+        }
+        assert second_result["metrics"]["cache"] == {
+            "hit": True, "layer": "IN_FLIGHT",
+        }
 
     assert service.lookup("IB2600000002")["data"]["notifyNo"] == (
         "IB2600000002"
@@ -609,21 +617,103 @@ def test_lookup_service_observer_distinguishes_source_and_cache_results():
             }
 
     service = ProcurementLookupService(Source(), observer=events.append)
-    service.lookup("IB2600000002")
-    service.lookup("IB2600000002")
+    service.lookup("IB2600000002", lookup_request_id="request-1")
+    service.lookup("IB2600000002", lookup_request_id="request-1")
 
     assert [event["cache"] for event in events] == ["miss", "hit"]
     assert events[0] == {
+        "provider": "MUASAMCONG_BROWSER",
+        "lookupRequestId": "request-1",
         "kind": "PACKAGE",
         "canonicalCode": "IB2600000002",
         "driver": "generic",
         "browserMode": "standard",
         "extractor": "network-json",
         "cache": "miss",
+        "cacheLayer": "NONE",
+        "detailLevel": "CANONICAL",
+        "revisionMode": "LATEST",
         "durationMs": 42,
+        "browserStartupMs": 0,
+        "sessionAcquireMs": 0,
+        "sessionCacheHit": False,
+        "upstreamDurationMs": 0,
+        "collectionDurationMs": 0,
+        "mappingDurationMs": 0,
+        "normalizeDurationMs": 0,
+        "upstreamRequestCount": 0,
+        "partialFailureCount": 0,
         "resultClass": "success",
         "parserVersion": "2026.1",
     }
+
+
+def test_lookup_service_checks_l1_before_shared_l2_cache():
+    class Source:
+        name = "MUASAMCONG_BROWSER"
+        parser_version = "2026.1"
+
+        def lookup(self, code, kind):
+            return {
+                "schemaVersion": "biddingflow-procurement-preview-v1",
+                "kind": kind,
+                "canonicalCode": code,
+                "source": {"parserVersion": self.parser_version},
+                "metrics": {},
+                "data": {},
+            }
+
+    class SharedCache:
+        def __init__(self):
+            self.get_calls = 0
+            self.value = None
+
+        def get(self, _key):
+            self.get_calls += 1
+            return self.value
+
+        def put(self, _key, value, _ttl_seconds):
+            self.value = value
+
+    shared = SharedCache()
+    service = ProcurementLookupService(Source(), shared_cache=shared)
+
+    service.lookup("PL2600244105")
+    service.lookup("PL2600244105")
+
+    assert shared.get_calls == 1
+
+
+def test_lookup_service_l2_hit_never_calls_upstream_source():
+    cached = {
+        "schemaVersion": "biddingflow-procurement-preview-v1",
+        "kind": "PLAN",
+        "canonicalCode": "PL2600244105",
+        "source": {"parserVersion": "2026.1"},
+        "metrics": {},
+        "data": {"planNo": "PL2600244105"},
+    }
+
+    class Source:
+        name = "MUASAMCONG_BROWSER"
+        parser_version = "2026.1"
+
+        def lookup(self, _code, _kind):
+            raise AssertionError("L2 hit must not call upstream")
+
+    class SharedCache:
+        def get(self, _key):
+            return cached
+
+        def put(self, *_args):
+            raise AssertionError("L2 hit must not rewrite cache")
+
+    result = ProcurementLookupService(
+        Source(), shared_cache=SharedCache()
+    ).lookup("PL2600244105")
+
+    assert result["data"] == cached["data"]
+    assert result["metrics"]["cache"] == {"hit": True, "layer": "L2"}
 
 
 def test_lookup_service_uses_separate_plan_open_and_closed_package_ttls():
@@ -689,17 +779,103 @@ def test_lookup_service_observes_sanitized_failure_class():
         service.lookup("IB2600000002")
 
     assert events == [{
+        "provider": "MUASAMCONG_BROWSER",
+        "lookupRequestId": "",
         "kind": "PACKAGE",
         "canonicalCode": "IB2600000002",
         "driver": "unknown",
         "browserMode": "unknown",
         "extractor": "unknown",
         "cache": "miss",
+        "cacheLayer": "NONE",
+        "detailLevel": "CANONICAL",
+        "revisionMode": "LATEST",
         "durationMs": events[0]["durationMs"],
+        "browserStartupMs": 0,
+        "sessionAcquireMs": 0,
+        "sessionCacheHit": False,
+        "upstreamDurationMs": 0,
+        "collectionDurationMs": 0,
+        "mappingDurationMs": 0,
+        "normalizeDurationMs": 0,
+        "upstreamRequestCount": 0,
+        "partialFailureCount": 0,
         "resultClass": "PROCUREMENT_INTERACTION_REQUIRED",
         "parserVersion": "2026.1",
     }]
     assert isinstance(events[0]["durationMs"], (int, float))
+
+
+def test_lookup_service_uses_raw_snapshot_before_upstream_and_projects_once():
+    calls = []
+    raw_bundle = {
+        "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+        "entity": {"kind": "PLAN", "planNo": "PL2600244105"},
+    }
+
+    class Source:
+        name = "MUASAMCONG"
+        parser_version = "2026.08"
+
+        def lookup(self, *_args):
+            raise AssertionError("raw hit must not call upstream")
+
+        def lookup_from_raw_bundle(self, code, bundle, *, revision_mode):
+            calls.append((code, bundle, revision_mode))
+            return {
+                "schemaVersion": "biddingflow-procurement-preview-v1",
+                "kind": "PLAN",
+                "canonicalCode": code,
+                "detailLevel": "COMPLETE",
+                "revisionMode": revision_mode,
+                "source": {"provider": self.name},
+                "metrics": {"upstream": {"requestCount": 0}},
+                "data": {"planNo": code},
+                "rawBundle": bundle,
+            }
+
+    service = ProcurementLookupService(Source())
+    result = service.lookup(
+        "PL2600244105",
+        detail_level="COMPLETE",
+        revision_mode="ALL",
+        raw_bundle_loader=lambda: raw_bundle,
+        cache_scope="org-1",
+    )
+
+    assert calls == [("PL2600244105", raw_bundle, "ALL")]
+    assert result["metrics"]["cache"] == {
+        "hit": True, "layer": "RAW_SNAPSHOT",
+    }
+    assert result["metrics"]["upstream"]["requestCount"] == 0
+
+
+def test_lookup_cache_scope_prevents_cross_organization_complete_hits():
+    calls = []
+
+    class Source:
+        name = "MUASAMCONG_BROWSER"
+        parser_version = "2026.1"
+
+        def lookup(self, code, kind):
+            calls.append((code, kind))
+            return {
+                "schemaVersion": "biddingflow-procurement-preview-v1",
+                "kind": kind,
+                "canonicalCode": code,
+                "source": {"parserVersion": self.parser_version},
+                "metrics": {},
+                "data": {},
+            }
+
+    service = ProcurementLookupService(Source())
+    service.lookup("PL2600244105", cache_scope="org-1")
+    service.lookup("PL2600244105", cache_scope="org-2")
+
+    assert calls == [
+        ("PL2600244105", "PLAN"),
+        ("PL2600244105", "PLAN"),
+    ]
 
 
 def test_postgres_shared_cache_namespaces_and_validates_stable_contract():

@@ -396,6 +396,108 @@ def test_unified_source_exposes_all_revisions_opening_and_lookup_contracts():
     assert "raw" not in lookup
 
 
+def test_complete_lookup_maps_from_raw_bundle_and_can_reprocess_without_refetch():
+    raw_revision = fixture("plan", "plan_revision_v1.json")
+    raw_revision["bidpPlanDetailToProjectList"][0][
+        "unknownFutureField2027"
+    ] = {"abc": 123}
+
+    class CompleteRuntime(FakeRuntime):
+        def __init__(self):
+            self.calls = []
+
+        def search(self, code, kind):
+            self.calls.append(("search", code, kind))
+            return {
+                "record": {
+                    "type": "es-plan-project-p",
+                    "id": "sanitized-plan-01",
+                    "planNo": code,
+                    "planVersion": "01",
+                },
+                "raw": {"page": {"content": [{"planNo": code}]}},
+                "request": [{"query": [{"keyWord": code}]}],
+                "fingerprint": "search:v1:fixture",
+                "metadata": {"operation": "SEARCH"},
+            }
+
+        def collect_complete_bundle(self, record, **options):
+            self.calls.append(("complete", record["planNo"], options))
+            return {
+                "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+                "provider": "MUASAMCONG",
+                "entity": {"kind": "PLAN", "planNo": record["planNo"]},
+                "status": "FOUND_COMPLETE",
+                "complete": True,
+                "sources": {"search": {"success": True}},
+                "revisions": {
+                    "00": {
+                        "revisionId": "sanitized-plan-00",
+                        "sources": {"planDetail": {
+                            "success": True,
+                            "response": raw_revision,
+                            "schemaFingerprint": "plan:v1:fixture",
+                            "retrievedAt": "2026-08-11T00:00:00Z",
+                        }},
+                        "packages": {},
+                    },
+                    "01": {
+                        "revisionId": "sanitized-plan-01",
+                        "sources": {"planDetail": {
+                            "success": True,
+                            "response": raw_revision,
+                            "schemaFingerprint": "plan:v1:fixture",
+                            "retrievedAt": "2026-08-11T00:00:00Z",
+                        }},
+                        "packages": {},
+                    },
+                },
+                "failures": [],
+                "manifest": {
+                    "sourceCount": 3,
+                    "successCount": 3,
+                    "failedCount": 0,
+                    "revisions": ["00", "01"],
+                    "packages": 2,
+                    "operations": ["SEARCH", "PLAN_DETAIL"],
+                },
+                "metrics": {"upstream": {"requestCount": 3}},
+            }
+
+    runtime = CompleteRuntime()
+    source = MuaSamCongProcurementSource(runtime)
+
+    result = source.lookup_with_options(
+        "PL2600000001",
+        "PLAN",
+        detail_level="COMPLETE",
+        revision_mode="ALL",
+    )
+    canonical_again = source.map_plan_raw_bundle(result["rawBundle"])
+    projected = source.lookup_from_raw_bundle(
+        "PL2600000001", result["rawBundle"], revision_mode="ALL"
+    )
+
+    assert [
+        row["revisionNumber"] for row in result["canonical"]["revisions"]
+    ] == ["00", "01"]
+    assert result["rawBundle"]["revisions"]["00"]["sources"][
+        "planDetail"
+    ]["response"]["bidpPlanDetailToProjectList"][0][
+        "unknownFutureField2027"
+    ] == {"abc": 123}
+    assert canonical_again == result["canonical"]
+    assert projected["canonical"] == result["canonical"]
+    assert projected["metrics"]["upstream"] == {
+        "requestCount": 0, "networkMs": 0,
+    }
+    assert projected["source"]["extractionStrategy"] == (
+        "stored-raw-projection"
+    )
+    assert runtime.calls[0] == ("search", "PL2600000001", "PLAN")
+    assert len(runtime.calls) == 2
+
+
 def test_unified_lookup_falls_back_to_browser_extractors_when_api_is_unavailable():
     class FailedApiRuntime(FakeRuntime):
         def list_plan_revisions(self, _plan_no):
@@ -433,17 +535,20 @@ def test_import_source_observer_emits_complete_secret_free_dimensions():
     events = []
     source = MuaSamCongProcurementSource(FakeRuntime(), observer=events.append)
 
-    source.get_plan_revision("PL2600000001", "sanitized-plan-01")
+    with source.lookup_request_context("lookup-request-1"):
+        source.get_plan_revision("PL2600000001", "sanitized-plan-01")
 
     assert len(events) == 1
     event = events[0]
     assert set(event) == {
         "provider",
+        "lookupRequestId",
         "kind",
         "semanticOperation",
         "totalMs",
         "browserStartupMs",
         "sessionAcquireMs",
+        "sessionCacheHit",
         "navigationMs",
         "networkWaitMs",
         "extractMs",
@@ -456,6 +561,8 @@ def test_import_source_observer_emits_complete_secret_free_dimensions():
         "classification",
     }
     assert event["provider"] == "MUASAMCONG"
+    assert event["lookupRequestId"] == "lookup-request-1"
+    assert event["sessionCacheHit"] is False
     assert event["semanticOperation"] == "PLAN_DETAIL"
     assert event["schemaFingerprint"] == "plan:v1:fixture"
     assert event["classification"] == "FOUND_SUPPORTED"

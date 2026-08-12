@@ -56,6 +56,75 @@ def test_lookup_route_returns_only_stable_normalized_contract(monkeypatch):
     assert "raw" not in response.json()
 
 
+def test_lookup_route_accepts_complete_all_without_changing_legacy_defaults(
+    monkeypatch,
+):
+    calls = []
+
+    async def fake_run(function, request, payload, **_kwargs):
+        calls.append(payload)
+        return {
+            "schemaVersion": "biddingflow-procurement-preview-v1",
+            "found": True,
+            "kind": "PLAN",
+            "canonicalCode": "PL2600244105",
+            "detailLevel": payload.get("detailLevel", "CANONICAL"),
+            "revisionMode": payload.get("revisionMode", "LATEST"),
+            "data": {},
+            "rawBundle": {"schemaVersion": "biddingflow-muasamcong-raw-bundle-v2"},
+        }
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", fake_run)
+    app = Starlette(routes=procurement_lookup_routes(Route))
+    with TestClient(app) as client:
+        legacy = client.post(
+            "/api/procurement/lookup",
+            json={"code": "PL2600244105"},
+        )
+        complete = client.post(
+            "/api/procurement/lookup",
+            json={
+                "code": "PL2600244105",
+                "detailLevel": "COMPLETE",
+                "revisionMode": "ALL",
+            },
+        )
+
+    assert legacy.status_code == 200
+    assert complete.status_code == 200
+    assert calls[0] == {"code": "PL2600244105"}
+    assert calls[1] == {
+        "code": "PL2600244105",
+        "detailLevel": "COMPLETE",
+        "revisionMode": "ALL",
+    }
+    assert "rawBundle" in complete.json()
+
+
+def test_lookup_route_rejects_invalid_detail_or_revision_modes(monkeypatch):
+    called = False
+
+    async def should_not_run(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", should_not_run)
+    app = Starlette(routes=procurement_lookup_routes(Route))
+    with TestClient(app) as client:
+        invalid_detail = client.post(
+            "/api/procurement/lookup",
+            json={"code": "PL2600244105", "detailLevel": "EVERYTHING"},
+        )
+        invalid_revision = client.post(
+            "/api/procurement/lookup",
+            json={"code": "PL2600244105", "revisionMode": "OLDEST"},
+        )
+
+    assert invalid_detail.status_code == 400
+    assert invalid_revision.status_code == 400
+    assert called is False
+
+
 def test_lookup_timeout_explains_the_server_egress_action(monkeypatch):
     async def timeout(*_args, **_kwargs):
         raise BlockingIOTimeoutError
@@ -164,6 +233,7 @@ def test_browser_driver_and_extractor_flags_are_server_owned(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_LOOKUP_OPEN_PACKAGE_CACHE_TTL_SECONDS", "120")
     monkeypatch.setenv("PROCUREMENT_LOOKUP_CLOSED_PACKAGE_CACHE_TTL_SECONDS", "3600")
     monkeypatch.setenv("PROCUREMENT_BROWSER_QUEUE_TIMEOUT_MS", "400")
+    monkeypatch.setenv("PROCUREMENT_RAW_CACHE_TTL_SECONDS", "450")
 
     config = ProcurementLookupSettings.from_environ()
 
@@ -184,3 +254,69 @@ def test_browser_driver_and_extractor_flags_are_server_owned(monkeypatch):
         "CLOSED_PACKAGE": 3600,
     }
     assert config.worker_queue_timeout_ms == 400
+    assert config.raw_cache_ttl_seconds == 450
+
+
+def test_blocking_lookup_wires_tenant_raw_cache_and_skips_duplicate_save(
+    monkeypatch,
+):
+    captured = {}
+
+    class Service:
+        def lookup(self, code, **options):
+            captured.update({"code": code, **options})
+            bundle = options["raw_bundle_loader"]()
+            return {
+                "schemaVersion": "biddingflow-procurement-preview-v1",
+                "kind": "PLAN",
+                "canonicalCode": code,
+                "rawBundle": bundle,
+                "metrics": {
+                    "cache": {"hit": True, "layer": "RAW_SNAPSHOT"},
+                },
+            }
+
+    class RawRepository:
+        def __init__(self, *, database):
+            captured["database"] = database
+
+        def load_fresh_plan_bundle(self, organization_id, code, **options):
+            captured["rawLoad"] = (organization_id, code, options)
+            return {
+                "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+                "entity": {"kind": "PLAN", "planNo": code},
+            }
+
+        def save_bundle(self, *_args):
+            raise AssertionError("raw-cache hit must not save the same bundle")
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda *_args: (
+            type("Session", (), {"user_id": "user-1"})(), "org-1"
+        ),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_: None)
+    monkeypatch.setattr(routes_module, "build_lookup_service", Service)
+    monkeypatch.setattr(
+        routes_module, "ProcurementRawSnapshotRepository", RawRepository
+    )
+    monkeypatch.setattr(routes_module, "get_request_id", lambda _: "req-1")
+
+    result = routes_module._lookup_blocking(
+        object(),
+        {
+            "code": "PL2600244105",
+            "detailLevel": "COMPLETE",
+            "revisionMode": "SELECTED",
+            "revisionNumbers": ["00"],
+        },
+    )
+
+    assert result["metrics"]["cache"]["layer"] == "RAW_SNAPSHOT"
+    assert captured["cache_scope"] == "org-1"
+    assert captured["lookup_request_id"] == "req-1"
+    assert captured["rawLoad"][0:2] == ("org-1", "PL2600244105")
+    assert captured["rawLoad"][2]["revision_mode"] == "SELECTED"
+    assert captured["rawLoad"][2]["revision_numbers"] == ["00"]
