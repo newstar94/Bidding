@@ -20,6 +20,7 @@
       "bidNo": "A",
       "planNo": "PL2600000001",
       "bidName": "Gói A",
+      "createdBy": "INV-CREATOR-00",
       "bidPrice": 100000000,
       "capitalDetail": "Ngân sách nhà nước",
       "bidTime": "30 ngày",

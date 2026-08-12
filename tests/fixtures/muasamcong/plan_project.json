@@ -31,6 +31,7 @@
             "bidNo": "A",
             "planNo": "PL2600000001",
             "bidName": "Gói A",
+            "createdBy": "INV-CREATOR-01",
             "bidPrice": 1000000000,
             "bidPriceUnit": "VND",
             "investorName": "Chủ đầu tư nội bộ",

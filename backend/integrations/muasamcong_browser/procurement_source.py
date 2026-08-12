@@ -26,6 +26,7 @@ from backend.integrations.muasamcong_browser.code_mapping import (
     map_plan_type,
     map_selection_form,
     map_selection_mode,
+    normalize_investor_code,
 )
 from backend.integrations.muasamcong_browser.classifier import (
     classify_upstream_error,
@@ -86,7 +87,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.12.2"
+    parser_version = "2026.08.12.4"
 
     def __init__(
         self,
@@ -597,6 +598,7 @@ class MuaSamCongProcurementSource:
             "sourcePlanType": revision.get("sourcePlanType"),
             "planType": revision.get("planType"),
             "projectName": revision.get("projectName"),
+            "investorCode": revision.get("investorCode"),
             "investorName": revision.get("investorName"),
             "totalInvestment": revision.get("totalAmountVnd"),
             "decisionNo": revision.get("approvalDecisionNo"),
@@ -741,7 +743,7 @@ class MuaSamCongProcurementSource:
             revisions.append(canonical)
             for field in (
                 "name", "sourcePlanType", "planType", "projectName",
-                "investorName", "totalAmountVnd",
+                "investorCode", "investorName", "totalAmountVnd",
                 "approvalDecisionNo", "approvalDecisionDate", "publishedAt",
             ):
                 if canonical.get(field) is not None:
@@ -782,6 +784,7 @@ class MuaSamCongProcurementSource:
             "planNo": revision.get("planNo"),
             "bidName": revision.get("name"),
             "bidPrice": revision.get("priceVnd"),
+            "bidGuarantee": revision.get("bidGuaranteeVnd"),
             "implementationPeriod": revision.get("executionPeriod"),
             "capitalDetail": revision.get("capitalDetail"),
             "bidField": revision.get("field"),
@@ -926,6 +929,11 @@ class MuaSamCongProcurementSource:
                         "planName": record.get("name") or record.get("planName"),
                         "sourcePlanType": record.get("planType"),
                         "planType": map_plan_type(record.get("planType")),
+                        "investorCode": normalize_investor_code(
+                            record.get("createdBy")
+                            or record.get("investorCode")
+                            or record.get("newInvestorCode")
+                        ),
                         "investorName": record.get("investorName"),
                         "totalInvestment": _first_present(
                             record,
@@ -1106,6 +1114,7 @@ class MuaSamCongProcurementSource:
                     "planNo": revision.get("planNo"),
                     "bidName": revision.get("name"),
                     "bidPrice": revision.get("priceVnd"),
+                    "bidGuarantee": revision.get("bidGuaranteeVnd"),
                     "implementationPeriod": revision.get(
                         "executionPeriod"
                     ),

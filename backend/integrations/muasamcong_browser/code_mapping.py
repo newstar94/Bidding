@@ -8,6 +8,7 @@ stored raw bundle without having guessed a business meaning.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 
@@ -110,6 +111,15 @@ def map_plan_type(value: object):
     if not text:
         return None
     return PLAN_TYPES.get(_key(text))
+
+
+def normalize_investor_code(value: object):
+    """Use the creator identity as investor code, without its revision suffix."""
+
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return None
+    return re.sub(r"-\d{2}$", "", text).strip() or None
 
 
 def _map_flag(value: object, *, true_label: str, false_label: str):

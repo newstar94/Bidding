@@ -42,7 +42,7 @@ Mọi citation local Bidding áp dụng cho commit Bidding đã khóa ở trên.
 
 ```text
 KeHoachWorkflow / package workflow
-  → ProcurementLookupWizard
+  → ProcurementInlineLookup
   → ProcurementLookupClient.lookup({code, workspaceLease})
   → POST /api/procurement/lookup
   → authentication + active organization + rate limit
@@ -60,7 +60,7 @@ KeHoachWorkflow / package workflow
   → muasamcong.mpi.gov.vn
 ```
 
-**Frontend → route.** Client chỉ allow `code` và `workspaceLease`; không thể gửi `kind`, `detailLevel` hoặc `revisionMode`. Wizard validate prefix `PL`/`IB`, abort request cũ và gọi client ([client](../../frontend/procurement/ProcurementLookupClient.js#L4), [wizard](../../frontend/procurement/ProcurementLookupWizard.js#L172)). Backend cũng chỉ allow đúng hai field, xác thực session, active organization/workspace và rate-limit theo IP/user/org trước khi gọi service ([route fields/context](../../backend/procurement_lookup/routes.py#L31), [rate limit](../../backend/procurement_lookup/routes.py#L98), [handler](../../backend/procurement_lookup/routes.py#L228)).
+**Frontend → route.** Client chỉ allow `code` và `workspaceLease`; không thể gửi `kind`, `detailLevel` hoặc `revisionMode`. Inline lookup validate prefix `PL`/`IB`, abort request cũ, gọi client rồi điền dữ liệu vào biểu mẫu đang mở mà không tự lưu ([client](../../frontend/procurement/ProcurementLookupClient.js#L4), [inline lookup](../../frontend/procurement/ProcurementInlineLookup.js#L29)). Backend cũng chỉ allow đúng hai field, xác thực session, active organization/workspace và rate-limit theo IP/user/org trước khi gọi service ([route fields/context](../../backend/procurement_lookup/routes.py#L31), [rate limit](../../backend/procurement_lookup/routes.py#L98), [handler](../../backend/procurement_lookup/routes.py#L228)).
 
 **Route → service → source.** `build_lookup_service()` giữ singleton service theo config fingerprint và inject singleton source cùng PostgreSQL cache ([route factory](../../backend/procurement_lookup/routes.py#L54)). Service normalize code thành PLAN/PACKAGE, tạo cache key `(provider, kind, code, parserVersion)`, coalesce miss, rồi gọi `source.lookup()` ([service](../../backend/procurement_lookup/service.py#L163), [lookup](../../backend/procurement_lookup/service.py#L219)).
 

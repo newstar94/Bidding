@@ -2969,10 +2969,32 @@ body.excel-import-is-busy {
     transform: none;
   }
 }
-.plan-procurement-import-trigger {
+.plan-procurement-import-trigger,
+.package-notice-import-trigger {
     align-self: flex-start;
     min-height: 44px;
     margin-top: 0.45rem;
+}
+
+.procurement-inline-status {
+    display: block;
+    margin-top: 0.45rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    text-wrap: pretty;
+}
+
+.procurement-inline-status[data-state="loading"] {
+    color: var(--primary);
+}
+
+.procurement-inline-status[data-state="success"] {
+    color: var(--success);
+}
+
+.procurement-inline-status[data-state="error"] {
+    color: var(--danger);
 }
 
 .procurement-import {
@@ -3125,35 +3147,6 @@ body.excel-import-is-busy {
 
 .procurement-import__action {
     font-weight: 750;
-}
-
-.procurement-lookup__controls {
-    grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.procurement-lookup__kind {
-    margin: 0.75rem 0;
-    color: var(--text-muted);
-}
-
-.procurement-lookup__packages {
-    margin-top: 0.85rem;
-}
-
-.procurement-lookup__packages ul {
-    display: grid;
-    gap: 0.35rem;
-    margin: 0;
-    padding-left: 1.25rem;
-}
-
-.procurement-lookup [data-warning="true"] {
-    color: var(--warning);
-}
-
-.procurement-lookup input[type="checkbox"] {
-    width: 1.1rem;
-    height: 1.1rem;
 }
 
 @media (max-width: 800px) {

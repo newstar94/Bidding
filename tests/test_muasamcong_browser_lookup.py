@@ -65,6 +65,7 @@ def test_plan_lookup_returns_stable_dto_and_packages_from_one_browser_load():
     }
     assert result["data"]["planNo"] == "PL2600000001"
     assert result["data"]["planName"] == "Kế hoạch mua sắm thiết bị năm 2026"
+    assert result["data"]["investorCode"] == "INV-CREATOR"
     assert result["data"]["totalInvestment"] == 3_000_000_000
     assert [row["bidName"] for row in result["data"]["packages"]] == [
         "Gói A",
@@ -92,6 +93,7 @@ def test_package_lookup_uses_exact_identifier_and_stable_package_contract():
         "procuringEntityName": "Bên mời thầu nội bộ",
         "bidPrice": 2_000_000_000,
         "bidPriceUnit": "VND",
+        "bidGuarantee": 40_000_000,
         "capitalDetail": "Ngân sách nhà nước",
         "bidField": "Xây lắp",
         "bidForm": "Đấu thầu rộng rãi",

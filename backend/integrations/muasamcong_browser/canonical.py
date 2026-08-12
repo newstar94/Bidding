@@ -16,6 +16,7 @@ from backend.integrations.muasamcong_browser.code_mapping import (
     map_plan_type,
     map_selection_form,
     map_selection_mode,
+    normalize_investor_code,
 )
 
 
@@ -187,8 +188,9 @@ def normalize_plan_revision(
             "totalAmountVnd",
         },
     )
+    package_rows = _package_rows(raw)
     packages = []
-    for index, row in enumerate(_package_rows(raw)):
+    for index, row in enumerate(package_rows):
         if not isinstance(row, dict):
             continue
         notice_no = _notice_number(row)
@@ -275,7 +277,22 @@ def normalize_plan_revision(
         "sourcePlanType": source_plan_type,
         "planType": map_plan_type(source_plan_type),
         "projectName": pick(plan, "projectName", "pname", "name"),
-        "investorCode": pick(plan, "investorCode", "newInvestorCode"),
+        "investorCode": normalize_investor_code(
+            pick(plan, "createdBy")
+            or next((
+                pick(row, "createdBy")
+                for row in package_rows
+                if isinstance(row, dict)
+                and pick(row, "createdBy")
+            ), None)
+            or pick(plan, "investorCode", "newInvestorCode")
+            or next((
+                pick(row, "investorCode", "newInvestorCode")
+                for row in package_rows
+                if isinstance(row, dict)
+                and pick(row, "investorCode", "newInvestorCode")
+            ), None)
+        ),
         "investorName": pick(plan, "investorName", "newInvestorName"),
         "totalAmountVnd": _money(
             pick(plan, "totalAmountVnd", "totalInvestment", "investTotal")
@@ -378,6 +395,15 @@ def normalize_notice_revision(
             pick(notice, "bidMode", "selectionMode")
         ),
         "priceVnd": _money(related_pick("bidPrice", "priceVnd")),
+        "bidGuaranteeVnd": _money(related_pick(
+            "bidGuarantee",
+            "bidGuaranteed",
+            "bidGuaranteeValue",
+            "totalGuaranteeValue",
+            "bidSecurity",
+            "bidSecurityValue",
+            "guaranteeValue",
+        )),
         "capitalDetail": related_pick(
             "capitalDetail", "investmentFunds"
         ),

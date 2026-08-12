@@ -13,10 +13,11 @@
                         <div class="form-group">
                             <label for="kh-ma">Mã kế hoạch</label>
                             <input type="text" id="kh-ma" placeholder="Ví dụ: PL2600146586">
-                            <span class="helper-text">Hậu tố phiên bản (-00, -01...) được quản lý tự động.</span>
                             <button type="button" class="btn btn-outline plan-procurement-import-trigger" id="btn-open-procurement-lookup-plan">
-                                Tra cứu PL vào draft hiện tại
+                                Lấy dữ liệu từ Mua Sắm Công
                             </button>
+                            <span class="procurement-inline-status" id="procurement-lookup-plan-status"
+                                role="status" aria-live="polite" hidden></span>
                             <button type="button" class="btn btn-outline plan-procurement-import-trigger" id="btn-open-procurement-import">
                                 Nhập kế hoạch và các gói từ Mua Sắm Công
                             </button>
@@ -43,7 +44,7 @@
                         <select id="kh-pheduyet" required>
                             <option value="">-- Chọn hình thức phê duyệt --</option>
                             <option value="Kế hoạch">Kế hoạch</option>
-                            <option value="Dự toán và kế hoạch">Dự toán và kế hoạch</option>
+                            <option value="Dự toán và kế hoạch" selected>Kế hoạch và dự toán</option>
                         </select>
                         <span class="error-text">Vui lòng chọn hình thức phê duyệt</span>
                     </div>

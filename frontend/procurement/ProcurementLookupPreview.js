@@ -3,7 +3,7 @@ const PLAN_FIELDS = [
   ["planName", "Tên kế hoạch", "kh-ten", "text"],
   ["planType", "Loại kế hoạch", "kh-loaihinh", "text"],
   ["projectName", "Tên dự án/dự toán", "kh-duan", "text"],
-  ["investorName", "Chủ đầu tư", "kh-chudautuid", "optionText"],
+  ["investorCode", "Chủ đầu tư", "kh-chudautuid", "investor"],
   ["totalInvestment", "Tổng dự toán/Tổng mức đầu tư", "kh-tongmuc", "money"],
   ["capitalDetail", "Nguồn vốn", "kh-nguonvon", "text"],
   ["decisionNo", "Số quyết định phê duyệt", "kh-quyetdinh", "text"],
@@ -15,6 +15,7 @@ const PACKAGE_FIELDS = [
   ["notifyNo", "Mã thông báo mời thầu", "gt-ma", "text"],
   ["bidName", "Tên gói thầu", "gt-ten", "text"],
   ["bidPrice", "Giá gói thầu", "gt-gia", "money"],
+  ["bidGuarantee", "Giá trị bảo đảm dự thầu", "gt-giatribaomothau", "money"],
   ["implementationPeriod", "Thời gian thực hiện", "gt-thoigian", "text"],
   ["capitalDetail", "Nguồn vốn", "gt-nguonvon", "text"],
   ["bidField", "Lĩnh vực", "gt-linhvuc", "bidField"],
@@ -128,6 +129,37 @@ function exactOptionText(control, rawValue) {
     };
 }
 
+function investorOption(control, data) {
+  const investorCode = String(data?.investorCode || "").trim();
+  const investorName = String(data?.investorName || "").trim();
+  const options = Array.from(control?.options || []);
+  const codeMatch = investorCode
+    ? options.find((item) => (
+      String(item.dataset?.investorCode || "").trim().toLocaleLowerCase("vi")
+      === investorCode.toLocaleLowerCase("vi")
+    ))
+    : null;
+  if (codeMatch) {
+    return {
+      sourceValue: investorCode,
+      draftValue: String(codeMatch.value),
+      warning: null,
+    };
+  }
+  const nameMatch = investorName
+    ? exactOptionText(control, investorName)
+    : { sourceValue: investorCode || null, draftValue: null };
+  return nameMatch.draftValue !== null
+    ? nameMatch
+    : {
+      sourceValue: investorCode || investorName || null,
+      draftValue: null,
+      warning: investorCode
+        ? "Không có chủ đầu tư nội bộ khớp mã hoặc tên từ nguồn."
+        : nameMatch.warning || "Nguồn không có dữ liệu chủ đầu tư.",
+    };
+}
+
 function validateControlOption(control, value, warning) {
   if (!control?.options || value === null) return { value, warning };
   const supported = Array.from(control.options).some(
@@ -144,6 +176,19 @@ export function buildComparisonRows(kind, data, { getControl } = {}) {
   return definitions.map(([field, label, controlId, valueKind]) => {
     const control = resolveControl(controlId);
     const currentValue = String(control?.value ?? "");
+    if (valueKind === "investor") {
+      const matched = investorOption(control, data);
+      return {
+        field,
+        label,
+        controlId,
+        currentValue,
+        ...matched,
+        apply: Boolean(
+          control && matched.draftValue !== null && !currentValue.trim()
+        ),
+      };
+    }
     if (valueKind === "optionText") {
       const matched = exactOptionText(control, data?.[field]);
       return {

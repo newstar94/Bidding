@@ -92,11 +92,12 @@ export async function editGoiThau(id, isReadOnly = false) {
     procurementLookupButton.hidden = isReadOnly || !lookupEnabled;
     procurementLookupButton.onclick = isReadOnly || !lookupEnabled
       ? null
-      : () => this.openProcurementLookupWizard?.({
+      : () => this.runProcurementInlineLookup?.({
         kind: "PACKAGE",
         formId: "form-goithau",
         codeInputId: "gt-ma",
-        opener: procurementLookupButton,
+        buttonId: "btn-open-procurement-lookup-package",
+        statusId: "procurement-lookup-package-status",
       });
   }
   const procurementNoticeButton = document.getElementById(

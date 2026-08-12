@@ -11,6 +11,7 @@
     "bidForm": "DTRR",
     "processApply": "LDT",
     "bidPrice": 1400000000,
+    "bidGuarantee": 28000000,
     "capitalDetail": "Ngân sách nhà nước",
     "investField": "HH",
     "contractType": "TG",

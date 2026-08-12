@@ -166,11 +166,12 @@ export async function editKeHoach(id) {
     const lookupEnabled = hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY);
     procurementLookupButton.hidden = !lookupEnabled;
     procurementLookupButton.onclick = lookupEnabled
-      ? () => this.openProcurementLookupWizard?.({
+      ? () => this.runProcurementInlineLookup?.({
         kind: "PLAN",
         formId: "form-kehoach",
         codeInputId: "kh-ma",
-        opener: procurementLookupButton,
+        buttonId: "btn-open-procurement-lookup-plan",
+        statusId: "procurement-lookup-plan-status",
       })
       : null;
   }
@@ -185,7 +186,7 @@ export async function editKeHoach(id) {
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];
-  cdtSelect.innerHTML = trustedHTML('<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>');
+  cdtSelect.innerHTML = trustedHTML('<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-investor-code="${escapeHtml(c.maChuDauTu || "")}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>');
   // The plan modal is lazy-loaded, so this select does not exist when the
   // application's one-time conditional handlers are registered.
   cdtSelect.onchange = handlePlanInvestorChange.bind(this);
@@ -351,7 +352,7 @@ export async function editKeHoach(id) {
     tmInput.removeAttribute("data-initial-val");
     tmInput.removeAttribute("data-was-auto");
     tmInput.disabled = false;
-    document.getElementById("kh-pheduyet").value = "";
+    document.getElementById("kh-pheduyet").value = "Dự toán và kế hoạch";
     togglePheDuyetFields();
     document.getElementById("kh-ngaytrinhkehoach").value = "";
     document.getElementById("kh-sototrinhkehoach").value = "";

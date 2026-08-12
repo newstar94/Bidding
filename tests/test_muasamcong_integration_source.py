@@ -80,6 +80,18 @@ def test_plan_canonical_revision_keeps_total_investment_provenance():
     assert revision["totalAmountVnd"] == 300_000_000
 
 
+def test_plan_creator_is_the_investor_code_without_revision_suffix():
+    raw = fixture("plan", "plan_revision_v1.json")
+    revision = normalize_plan_revision(
+        raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+
+    assert revision["investorCode"] == "INV-CREATOR"
+
+
 @pytest.mark.parametrize(
     ("source_plan_type", "bidding_plan_type"),
     (
@@ -124,6 +136,7 @@ def test_notice_fixture_maps_revision_and_package_relationship():
     assert revision["selectionForm"] == "Đấu thầu rộng rãi"
     assert revision["field"] == "Hàng hóa"
     assert revision["contractType"] == "Trọn gói"
+    assert revision["bidGuaranteeVnd"] == 28_000_000
     assert revision["bidOpeningAt"] == "2026-03-01T09:15:00"
 
 
@@ -138,6 +151,7 @@ def test_package_lookup_maps_complete_notice_fields_into_preview():
         "planNo": "PL2600000001",
         "bidName": "Gói B",
         "bidPrice": 1_400_000_000,
+        "bidGuarantee": 28_000_000,
         "implementationPeriod": "30 ngày",
         "capitalDetail": "Ngân sách nhà nước",
         "bidField": "Hàng hóa",

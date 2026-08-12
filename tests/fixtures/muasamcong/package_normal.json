@@ -22,6 +22,7 @@
           "procuringEntityName": "Bên mời thầu nội bộ",
           "bidPrice": 2000000000,
           "bidPriceUnit": "VND",
+          "bidGuarantee": 40000000,
           "capitalDetail": "Ngân sách nhà nước",
           "bidField": "XL",
           "bidForm": "DTRR",

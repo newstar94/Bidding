@@ -16,6 +16,7 @@ from backend.integrations.muasamcong_browser.code_mapping import (
     map_plan_type,
     map_selection_form,
     map_selection_mode,
+    normalize_investor_code,
 )
 from backend.procurement_lookup.domain import ProcurementLookupError
 
@@ -29,6 +30,7 @@ PACKAGE_FIELDS = (
     "procuringEntityName",
     "bidPrice",
     "bidPriceUnit",
+    "bidGuarantee",
     "capitalDetail",
     "bidField",
     "bidForm",
@@ -65,6 +67,14 @@ def _first_money(value):
         return value
     if isinstance(value, list) and value:
         return _first_money(value[0])
+    return None
+
+
+def _first_money_field(row, *fields):
+    for field in fields:
+        value = row.get(field)
+        if value not in (None, ""):
+            return _first_money(value)
     return None
 
 
@@ -111,6 +121,16 @@ def parse_package_row(row):
         "procuringEntityName": row.get("procuringEntityName"),
         "bidPrice": _first_money(row.get("bidPrice")),
         "bidPriceUnit": row.get("bidPriceUnit") or "VND",
+        "bidGuarantee": _first_money_field(
+            row,
+            "bidGuarantee",
+            "bidGuaranteed",
+            "bidGuaranteeValue",
+            "totalGuaranteeValue",
+            "bidSecurity",
+            "bidSecurityValue",
+            "guaranteeValue",
+        ),
         "capitalDetail": row.get("capitalDetail"),
         "bidField": map_package_field(row.get("bidField")),
         "bidForm": map_selection_form(row.get("bidForm")),
@@ -163,6 +183,21 @@ class PlanParserV1:
             "sourcePlanType": plan.get("planType"),
             "planType": map_plan_type(plan.get("planType")),
             "projectName": plan.get("projectName") or plan.get("pname"),
+            "investorCode": normalize_investor_code(
+                plan.get("createdBy")
+                or next((
+                    row.get("createdBy")
+                    for row in package_rows
+                    if row.get("createdBy")
+                ), None)
+                or plan.get("investorCode")
+                or plan.get("newInvestorCode")
+                or next((
+                    row.get("investorCode") or row.get("newInvestorCode")
+                    for row in package_rows
+                    if row.get("investorCode") or row.get("newInvestorCode")
+                ), None)
+            ),
             "investorName": plan.get("investorName"),
             "totalInvestment": _first_money(
                 plan.get("totalInvestment", plan.get("investTotal"))

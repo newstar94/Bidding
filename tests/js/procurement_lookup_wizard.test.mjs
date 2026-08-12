@@ -8,8 +8,8 @@ import {
   buildComparisonRows,
 } from "../../frontend/procurement/ProcurementLookupPreview.js";
 import {
-  ProcurementLookupWizard,
-} from "../../frontend/procurement/ProcurementLookupWizard.js";
+  ProcurementInlineLookup,
+} from "../../frontend/procurement/ProcurementInlineLookup.js";
 import {
   hasServerCapability,
   invalidateServerCapabilities,
@@ -73,54 +73,6 @@ test("lookup client forwards explicit complete revision options", async () => {
     detailLevel: "COMPLETE",
     revisionMode: "ALL",
   });
-});
-
-
-test("manual lookup cancels the pending debounced lookup", async () => {
-  const element = (value = "") => ({
-    value,
-    hidden: false,
-    disabled: false,
-    listeners: {},
-    addEventListener(type, callback) { this.listeners[type] = callback; },
-    replaceChildren() {},
-    setAttribute() {},
-  });
-  const code = element("PL2600000001");
-  const status = element();
-  const run = element();
-  const apply = element();
-  const body = element();
-  const warnings = element();
-  const packages = element();
-  const modal = {
-    addEventListener() {},
-    querySelector(selector) {
-      return {
-        "[data-procurement-lookup-code]": code,
-        "[data-procurement-lookup-status]": status,
-        "[data-procurement-lookup-run]": run,
-        "[data-procurement-lookup-apply]": apply,
-        "[data-procurement-lookup-body]": body,
-        "[data-procurement-lookup-warnings]": warnings,
-        "[data-procurement-lookup-packages]": packages,
-      }[selector] || null;
-    },
-    querySelectorAll() { return []; },
-  };
-  const wizard = new ProcurementLookupWizard({
-    controller: {},
-    modal,
-    document: { getElementById: () => null },
-  });
-  let lookupCount = 0;
-  wizard.lookup = () => { lookupCount += 1; };
-
-  code.listeners.input();
-  run.listeners.click();
-  await new Promise((resolve) => setTimeout(resolve, 650));
-
-  assert.equal(lookupCount, 1);
 });
 
 
@@ -234,6 +186,66 @@ test("package preview maps current Mua Sam Cong catalog codes", () => {
 });
 
 
+test("package preview maps bid guarantee into the package form", () => {
+  const guarantee = control("");
+  const rows = buildComparisonRows("PACKAGE", {
+    bidGuarantee: 28_000_000,
+  }, {
+    getControl: (id) => (id === "gt-giatribaomothau" ? guarantee : null),
+  });
+  const mapped = rows.find((row) => row.field === "bidGuarantee");
+
+  assert.equal(mapped.controlId, "gt-giatribaomothau");
+  assert.equal(mapped.draftValue, "28.000.000");
+  assert.equal(mapped.apply, true);
+});
+
+
+test("inline package lookup fills bid guarantee without saving", async () => {
+  const identity = { value: "package-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("IB2600000002");
+  const guarantee = control("");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const controls = {
+    "form-goithau": form,
+    "gt-ma": code,
+    "gt-giatribaomothau": guarantee,
+    "btn-open-procurement-lookup-package": button,
+    "procurement-lookup-package-status": status,
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller: { model: { activeWorkspaceLease: "org-1" } },
+    client: {
+      async lookup() {
+        return {
+          schemaVersion: "biddingflow-procurement-preview-v1",
+          kind: "PACKAGE",
+          canonicalCode: "IB2600000002",
+          data: { notifyNo: "IB2600000002", bidGuarantee: 28_000_000 },
+        };
+      },
+    },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const result = await lookup.run({
+    kind: "PACKAGE",
+    formId: "form-goithau",
+    codeInputId: "gt-ma",
+    buttonId: "btn-open-procurement-lookup-package",
+    statusId: "procurement-lookup-package-status",
+  });
+
+  assert.equal(guarantee.value, "28.000.000");
+  assert.equal(result.applied, 2);
+  assert.match(status.textContent, /dữ liệu chưa được lưu/i);
+});
+
+
 test("plan investor maps only by exact existing option text", () => {
   const investor = control("");
   investor.options = [
@@ -243,7 +255,7 @@ test("plan investor maps only by exact existing option text", () => {
   const rows = buildComparisonRows("PLAN", {
     investorName: "Chủ đầu tư nội bộ",
   }, { getControl: (id) => (id === "kh-chudautuid" ? investor : null) });
-  const matched = rows.find((row) => row.field === "investorName");
+  const matched = rows.find((row) => row.field === "investorCode");
 
   assert.equal(matched.sourceValue, "Chủ đầu tư nội bộ");
   assert.equal(matched.draftValue, "investor-1");
@@ -252,9 +264,35 @@ test("plan investor maps only by exact existing option text", () => {
   const unmatchedRows = buildComparisonRows("PLAN", {
     investorName: "Tên gần giống nhưng không trùng",
   }, { getControl: (id) => (id === "kh-chudautuid" ? investor : null) });
-  const unmatched = unmatchedRows.find((row) => row.field === "investorName");
+  const unmatched = unmatchedRows.find((row) => row.field === "investorCode");
   assert.equal(unmatched.draftValue, null);
   assert.match(unmatched.warning, /khớp chính xác/i);
+});
+
+
+test("plan investor prefers the normalized creator code over its name", () => {
+  const investor = control("");
+  investor.options = [
+    { value: "", textContent: "-- Chọn Chủ đầu tư --", dataset: {} },
+    {
+      value: "investor-by-name",
+      textContent: "Chủ đầu tư nguồn",
+      dataset: { investorCode: "OTHER-CODE" },
+    },
+    {
+      value: "investor-by-code",
+      textContent: "Tên chủ đầu tư nội bộ",
+      dataset: { investorCode: "INV-CREATOR" },
+    },
+  ];
+  const rows = buildComparisonRows("PLAN", {
+    investorCode: "INV-CREATOR",
+    investorName: "Chủ đầu tư nguồn",
+  }, { getControl: (id) => (id === "kh-chudautuid" ? investor : null) });
+  const matched = rows.find((row) => row.field === "investorCode");
+
+  assert.equal(matched.draftValue, "investor-by-code");
+  assert.equal(matched.warning, null);
 });
 
 
@@ -310,157 +348,204 @@ test("apply mutates only selected controls and never submits the form", () => {
 });
 
 
-test("wizard discards lookup response after the active form changes", async () => {
-  let resolveLookup;
-  const status = { textContent: "", setAttribute() {} };
-  const code = { value: "PL2600000001" };
-  const formIdentity = { value: "plan-a" };
-  const modal = {
-    querySelector(selector) {
-      return {
-        "[data-procurement-lookup-code]": code,
-        "[data-procurement-lookup-status]": status,
-        "[data-procurement-lookup-apply]": { disabled: false },
-      }[selector] || null;
-    },
+function inlineButton() {
+  return {
+    textContent: "Lấy dữ liệu từ Mua Sắm Công",
+    disabled: false,
+    dataset: {},
+    setAttribute() {},
+    removeAttribute() {},
   };
-  const form = {
-    querySelector(selector) {
-      return selector === "input[type='hidden']" ? formIdentity : null;
-    },
-  };
-  const wizard = Object.create(ProcurementLookupWizard.prototype);
-  Object.assign(wizard, {
-    controller: { model: { activeWorkspaceLease: "org-1" } },
-    modal,
-    document: { getElementById: (id) => (id === "form-kehoach" ? form : null) },
-    client: { lookup: () => new Promise((resolve) => { resolveLookup = resolve; }) },
-    context: { kind: "PLAN", formId: "form-kehoach", workspaceLease: "org-1" },
-    requestGeneration: 0,
-    lookupController: null,
-    preview: null,
-    rows: [],
-  });
-  wizard.renderPreview = () => { throw new Error("stale response was rendered"); };
+}
 
-  const pending = wizard.lookup();
-  formIdentity.value = "plan-b";
+
+function inlineStatus() {
+  return {
+    textContent: "",
+    hidden: true,
+    dataset: {},
+    setAttribute(name, value) { this[name] = value; },
+  };
+}
+
+
+test("inline lookup fills the open plan form without opening another modal", async () => {
+  const identity = { value: "plan-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600000001");
+  const name = control("Tên cũ");
+  const planType = control("", ["Dự án", "Dự toán mua sắm"]);
+  const projectName = control("");
+  projectName.disabled = true;
+  const originalDispatch = planType.dispatchEvent.bind(planType);
+  planType.dispatchEvent = (event) => {
+    originalDispatch(event);
+    if (event.type === "change") projectName.disabled = false;
+  };
+  const total = control("");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "kh-ten": name,
+    "kh-loaihinh": planType,
+    "kh-duan": projectName,
+    "kh-tongmuc": total,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller: { model: { activeWorkspaceLease: "org-1" } },
+    client: {
+      async lookup() {
+        return {
+          schemaVersion: "biddingflow-procurement-preview-v1",
+          kind: "PLAN",
+          canonicalCode: "PL2600000001",
+          data: {
+            planNo: "PL2600000001",
+            planName: "Kế hoạch từ nguồn",
+            planType: "Dự án",
+            projectName: "Dự án từ nguồn",
+            totalInvestment: 3_000_000_000,
+          },
+        };
+      },
+    },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const result = await lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.equal(result.applied, 5);
+  assert.equal(name.value, "Kế hoạch từ nguồn");
+  assert.equal(planType.value, "Dự án");
+  assert.equal(projectName.value, "Dự án từ nguồn");
+  assert.equal(total.value, "3.000.000.000");
+  assert.match(status.textContent, /đã điền 5 trường/i);
+  assert.equal(status.dataset.state, "success");
+  assert.equal(button.textContent, "Lấy dữ liệu từ Mua Sắm Công");
+  assert.equal(button.disabled, false);
+});
+
+
+test("inline lookup discards a response after the active form changes", async () => {
+  let resolveLookup;
+  const status = inlineStatus();
+  const code = control("PL2600000001");
+  const identity = { value: "plan-a" };
+  const button = inlineButton();
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller: { model: { activeWorkspaceLease: "org-1" } },
+    client: { lookup: () => new Promise((resolve) => { resolveLookup = resolve; }) },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const pending = lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
+  identity.value = "plan-b";
   resolveLookup({
     schemaVersion: "biddingflow-procurement-preview-v1",
     kind: "PLAN",
     canonicalCode: "PL2600000001",
     data: { planNo: "PL2600000001" },
   });
-  await pending;
+  const result = await pending;
 
-  assert.equal(wizard.preview, null);
+  assert.equal(result, null);
   assert.match(status.textContent, /biểu mẫu.*thay đổi/i);
 });
 
 
-test("wizard blocks apply when a mapped draft field changed after preview", () => {
-  const status = { textContent: "", setAttribute() {} };
-  const code = { value: "IB2600000002" };
-  const identity = { value: "package-a" };
-  const price = control("2.100.000.000");
-  let closeCount = 0;
-  const form = {
-    querySelector: () => identity,
+test("inline lookup reports an invalid code beside the form control", async () => {
+  let calls = 0;
+  let focused = false;
+  const code = {
+    value: "123",
+    focus() { focused = true; },
   };
-  const wizard = Object.create(ProcurementLookupWizard.prototype);
-  Object.assign(wizard, {
-    controller: {
-      model: { activeWorkspaceLease: "org-1" },
-      view: { closeModal() { closeCount += 1; } },
-    },
-    modal: {
-      querySelector(selector) {
-        return {
-          "[data-procurement-lookup-code]": code,
-          "[data-procurement-lookup-status]": status,
-        }[selector] || null;
-      },
-    },
+  const status = inlineStatus();
+  const lookup = new ProcurementInlineLookup({
+    controller: { model: {} },
+    client: { async lookup() { calls += 1; } },
     document: {
       getElementById(id) {
-        return { "form-goithau": form, "gt-gia": price }[id] || null;
+        return {
+          "kh-ma": code,
+          "procurement-lookup-plan-status": status,
+        }[id] || null;
       },
     },
-    context: {
-      kind: "PACKAGE", formId: "form-goithau", identity: "package-a",
-      workspaceLease: "org-1",
-    },
-    preview: { canonicalCode: "IB2600000002" },
-    rows: [{ controlId: "gt-gia", draftValue: "2.000.000.000", apply: true }],
-    draftFingerprint: JSON.stringify([["gt-gia", ""]]),
   });
 
-  wizard.apply();
+  const result = await lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
 
-  assert.equal(price.value, "2.100.000.000");
-  assert.match(status.textContent, /draft.*thay đổi/i);
-  assert.equal(closeCount, 0);
+  assert.equal(result, null);
+  assert.equal(calls, 0);
+  assert.equal(focused, true);
+  assert.equal(status.dataset.state, "error");
+  assert.match(status.textContent, /nhập mã PL/i);
 });
 
 
-test("lookup dialog traps tab focus and Escape closes with focus return", () => {
-  const focusCalls = [];
-  const first = { hidden: false, focus() { focusCalls.push("first"); } };
-  const last = { hidden: false, focus() { focusCalls.push("last"); } };
-  let cleanupCount = 0;
-  let closeCount = 0;
-  const wizard = Object.create(ProcurementLookupWizard.prototype);
-  Object.assign(wizard, {
-    modal: { querySelectorAll: () => [first, last] },
-    document: { activeElement: last },
-    controller: { view: { closeModal() { closeCount += 1; } } },
-    opener: { focus() { focusCalls.push("opener"); } },
-    cleanup() { cleanupCount += 1; },
-  });
-  const tab = {
-    key: "Tab", shiftKey: false, prevented: false,
-    preventDefault() { this.prevented = true; },
-  };
-  wizard.handleModalKeydown(tab);
-  assert.equal(tab.prevented, true);
-  assert.deepEqual(focusCalls, ["first"]);
-
-  const escape = {
-    key: "Escape", prevented: false,
-    preventDefault() { this.prevented = true; },
-  };
-  wizard.handleModalKeydown(escape);
-  assert.equal(escape.prevented, true);
-  assert.equal(cleanupCount, 1);
-  assert.equal(closeCount, 1);
-  assert.deepEqual(focusCalls, ["first", "opener"]);
-});
-
-
-test("plan and package forms expose draft lookup without replacing import flows", () => {
+test("plan and package forms expose inline lookup without a comparison modal", () => {
   const planModal = fs.readFileSync("views/modals/modal_kehoach.html", "utf8");
   const packageModal = fs.readFileSync("views/modals/modal_goithau.html", "utf8");
-  const lookupModal = fs.readFileSync(
-    "views/modals/modal_procurement_lookup.html", "utf8",
-  );
   const controller = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
   const workflows = fs.readFileSync("frontend/packages/BiddingWorkflows.js", "utf8");
+  const planWorkflow = fs.readFileSync("frontend/plans/KeHoachWorkflow.js", "utf8");
 
   assert.match(planModal, /id="btn-open-procurement-lookup-plan"/);
   assert.match(planModal, /id="btn-open-procurement-import"/);
+  assert.match(planModal, /id="procurement-lookup-plan-status"/);
+  assert.match(
+    planModal,
+    /value="Dự toán và kế hoạch" selected>Kế hoạch và dự toán<\/option>/,
+  );
+  assert.match(
+    planWorkflow,
+    /getElementById\("kh-pheduyet"\)\.value = "Dự toán và kế hoạch"/,
+  );
   assert.match(packageModal, /id="btn-open-procurement-lookup-package"/);
   assert.match(packageModal, /id="btn-open-procurement-notice-import"/);
-  assert.match(lookupModal, /id="modal-procurement-lookup"/);
-  assert.match(lookupModal, /aria-modal="true"/);
-  assert.match(lookupModal, /data-procurement-lookup-body/);
-  assert.match(controller, /"modal-procurement-lookup"/);
-  assert.match(workflows, /ProcurementLookupWizard\.js/);
+  assert.match(packageModal, /id="procurement-lookup-package-status"/);
+  assert.doesNotMatch(controller, /"modal-procurement-lookup"/);
+  assert.match(workflows, /ProcurementInlineLookup\.js/);
   assert.match(
-    fs.readFileSync("frontend/plans/KeHoachWorkflow.js", "utf8"),
+    planWorkflow,
     /hasServerCapability\(PROCUREMENT_LOOKUP_CAPABILITY\)/,
   );
   assert.match(
-    fs.readFileSync("frontend/plans/KeHoachWorkflow.js", "utf8"),
+    planWorkflow,
     /hasServerCapability\(PROCUREMENT_IMPORT_CAPABILITY\)/,
   );
   assert.match(

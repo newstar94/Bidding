@@ -96,7 +96,6 @@ export class BiddingController {
       "modal-kehoach": "/modals/modal_kehoach.html",
       "modal-procurement-import": "/modals/modal_procurement_import.html",
       "modal-procurement-notice-import": "/modals/modal_procurement_notice_import.html",
-      "modal-procurement-lookup": "/modals/modal_procurement_lookup.html",
       "modal-plan-breakdown": "/modals/modal_plan_breakdown.html",
       "modal-phathanh-hsmt": "/modals/modal_phathanh_hsmt.html",
       "modal-goithau": "/modals/modal_goithau.html",
