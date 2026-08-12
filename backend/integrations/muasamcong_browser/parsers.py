@@ -30,6 +30,8 @@ PACKAGE_FIELDS = (
     "investorName",
     "procuringEntityName",
     "bidPrice",
+    "sourceBidPrice",
+    "bidEstimatePrice",
     "bidPriceUnit",
     "bidGuarantee",
     "capitalDetail",
@@ -146,6 +148,10 @@ def parse_package_row(row):
     is_multi_lot = map_optional_boolean(row.get("isMultiLot"))
     if is_multi_lot is None and lots and len(lots) > 1:
         is_multi_lot = True
+    source_bid_price = _first_money(row.get("bidPrice"))
+    estimate_price = _first_money_field(
+        row, "bidEstimatePrice", "estimatePriceVnd"
+    )
     values = {
         "notifyNo": _notice_no(row),
         "notifyId": row.get("notifyId") or row.get("id"),
@@ -157,7 +163,11 @@ def parse_package_row(row):
         ),
         "investorName": row.get("investorName"),
         "procuringEntityName": row.get("procuringEntityName"),
-        "bidPrice": _first_money(row.get("bidPrice")),
+        "bidPrice": (
+            estimate_price if estimate_price is not None else source_bid_price
+        ),
+        "sourceBidPrice": source_bid_price,
+        "bidEstimatePrice": estimate_price,
         "bidPriceUnit": row.get("bidPriceUnit") or "VND",
         "bidGuarantee": _first_money_field(
             row,

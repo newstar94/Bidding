@@ -92,6 +92,8 @@ def test_package_lookup_uses_exact_identifier_and_stable_package_contract():
         "investorName": "Chủ đầu tư nội bộ",
         "procuringEntityName": "Bên mời thầu nội bộ",
         "bidPrice": 2_000_000_000,
+        "sourceBidPrice": 2_000_000_000,
+        "bidEstimatePrice": None,
         "bidPriceUnit": "VND",
         "bidGuarantee": 40_000_000,
         "capitalDetail": "Ngân sách nhà nước",

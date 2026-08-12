@@ -441,7 +441,7 @@ export async function extractSemanticDomCandidates(page, code, kind) {
       ["bên mời thầu", "procuringEntityName"],
       ["chi tiết nguồn vốn", "capitalDetail"],
       ["giá gói thầu", "bidPrice"],
-      ["dự toán gói thầu", "bidPrice"],
+      ["dự toán gói thầu", "bidEstimatePrice"],
       ["nguồn vốn", "capitalDetail"],
       ["lĩnh vực", "bidField"],
       ["hình thức lựa chọn nhà thầu", "bidForm"],
@@ -473,7 +473,7 @@ export async function extractSemanticDomCandidates(page, code, kind) {
       for (const [label, field] of labelMap) {
         if (normalizedLabel.includes(label) && result[field] === undefined) {
           const value = values.slice(1).join(" ").trim();
-          if (field === "bidPrice") {
+          if (["bidPrice", "bidEstimatePrice"].includes(field)) {
             const digits = value.replace(/[^0-9]/g, "");
             const amount = digits ? Number(digits) : Number.NaN;
             if (Number.isSafeInteger(amount)) {

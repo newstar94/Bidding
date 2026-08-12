@@ -32,6 +32,14 @@ def pick(row: dict, *aliases, default=None):
     return default
 
 
+def _source_scalar(value):
+    """Unwrap singleton search arrays used for scalar procurement fields."""
+
+    while isinstance(value, list) and len(value) == 1:
+        value = value[0]
+    return value
+
+
 def _walk(value, *, max_depth=10, max_nodes=10_000) -> Iterable[object]:
     pending = [(value, 0)]
     visited = 0
@@ -406,7 +414,7 @@ def normalize_notice_revision(
         for row in related:
             value = pick(row, *aliases)
             if value not in (None, ""):
-                return value
+                return _source_scalar(value)
         return default
 
     execution_period = None
@@ -437,11 +445,15 @@ def normalize_notice_revision(
         "notifyId": str(pick(notice, "notifyId", "id", default=revision_id)),
         "planNo": str(pick(notice, "planNo", default="") or "").upper() or None,
         "planDetailRevisionId": pick(
-            notice, "planDetailRevisionId", "idDetail", "bidPlanDetailId"
+            notice,
+            "planDetailRevisionId",
+            "idDetail",
+            "bidPlanDetailId",
+            "bidId",
         ),
         "stablePackageId": pick(notice, "bidNo", "stablePackageId"),
         "symbol": pick(notice, "bidNo", "symbol"),
-        "name": pick(notice, "bidName", "name"),
+        "name": _source_scalar(pick(notice, "bidName", "name")),
         "status": str(pick(notice, "status", default="") or "").upper() or None,
         "publishedAt": pick(notice, "publicDate", "publishedAt"),
         "bidClosingAt": pick(notice, "bidCloseDate", "bidClosingAt"),
@@ -452,7 +464,17 @@ def normalize_notice_revision(
         "selectionMode": map_selection_mode(
             pick(notice, "bidMode", "selectionMode")
         ),
-        "priceVnd": _money(related_pick("bidPrice", "priceVnd")),
+        "sourceBidPriceVnd": _money(related_pick("bidPrice", "priceVnd")),
+        "estimatePriceVnd": _money(related_pick(
+            "bidEstimatePrice", "estimatePriceVnd"
+        )),
+        "priceVnd": (
+            _money(related_pick("bidEstimatePrice", "estimatePriceVnd"))
+            if _money(related_pick(
+                "bidEstimatePrice", "estimatePriceVnd"
+            )) is not None
+            else _money(related_pick("bidPrice", "priceVnd"))
+        ),
         "bidGuaranteeVnd": _money(related_pick(
             "bidGuarantee",
             "bidGuaranteed",
@@ -1020,7 +1042,12 @@ def normalize_notice_complete_bundle(bundle: dict):
                 return None
 
             sidecar_values = {
-                "priceVnd": _money(sidecar_pick("bidPrice", "priceVnd")),
+                "sourceBidPriceVnd": _money(sidecar_pick(
+                    "bidPrice", "priceVnd"
+                )),
+                "estimatePriceVnd": _money(sidecar_pick(
+                    "bidEstimatePrice", "estimatePriceVnd"
+                )),
                 "capitalDetail": sidecar_pick(
                     "capitalDetail", "investmentFunds"
                 ),
@@ -1036,6 +1063,11 @@ def normalize_notice_complete_bundle(bundle: dict):
             )
             sidecar_values["executionPeriod"] = (
                 _period(period_row) if period_row else None
+            )
+            sidecar_values["priceVnd"] = (
+                sidecar_values["estimatePriceVnd"]
+                if sidecar_values["estimatePriceVnd"] is not None
+                else sidecar_values["sourceBidPriceVnd"]
             )
             for field, value in sidecar_values.items():
                 if value not in (None, ""):
@@ -1079,6 +1111,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         revisions.append(revision)
         for field in (
             "name", "planNo", "priceVnd", "capitalDetail", "field",
+            "sourceBidPriceVnd", "estimatePriceVnd",
             "executionPeriod", "contractType", "selectionMode",
             "isMedicinePackage", "isMultiLot", "lots",
             "additionalPurchaseOption", "selectionDuration", "selectionStart",

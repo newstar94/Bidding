@@ -905,9 +905,6 @@ export class MscCollectors {
         { optional: true },
       )),
     );
-    if (!versionResponses.some((data) => data && responseVersions(data).length)) {
-      throw new Error("PROCUREMENT_NOT_FOUND");
-    }
     const listed = { revisions: [] };
     for (const [key, processApply] of [["ldtVersionList", "LDT"], ["otherVersionList", "KHAC"]]) {
       for (const row of responseVersions(bundle.sources[key]?.response)) {
@@ -927,6 +924,9 @@ export class MscCollectors {
         familyNo: canonicalNoticeNo,
         processApply: String(record?.processApply || "LDT"),
       });
+    }
+    if (!revisions.length) {
+      throw new Error("PROCUREMENT_NOT_FOUND");
     }
     const selected = selectRevisions(
       [...new Map(revisions.map((row) => [row.revisionId, row])).values()],
@@ -959,15 +959,24 @@ export class MscCollectors {
         detailOperation = found.operation;
       } catch (error) {
         const operation = revision.processApply === "LDT" ? "NOTICE_LDT_DETAIL" : "NOTICE_OTHER_DETAIL";
-        const source = envelope(operation, { id: revision.revisionId });
-        source.error = { code: String(error.message) };
-        node.sources.noticeDetail = source;
         failures.push({ operation, revision: label, error: String(error.message) });
-        return;
+        const isExactCurrentRevision = (
+          String(revision.revisionId) === String(currentId)
+          && exactSearchRecord(record, canonicalNoticeNo, "notifyNo") === record
+        );
+        if (!isExactCurrentRevision) {
+          const source = envelope(operation, { id: revision.revisionId });
+          source.error = { code: String(error.message) };
+          node.sources.noticeDetail = source;
+          return;
+        }
+        detail = asObject(record);
+        detailOperation = "SEARCH";
       }
       const detailSource = envelope(detailOperation, { id: revision.revisionId });
       detailSource.response = sanitizedRequest(detail);
       detailSource.success = true;
+      if (detailOperation === "SEARCH") detailSource.fallback = true;
       detailSource.contentHash = contentHash(detailSource.response);
       detailSource.schemaFingerprint = fingerprint(detail, "package-notice");
       node.sources.noticeDetail = detailSource;
@@ -999,6 +1008,7 @@ export class MscCollectors {
       let packageDetailId = usableIdentifier(
         merged.idDetail
         || merged.bidPlanDetailId
+        || merged.bidId
         || findFirstValue(detail, "idDetail")
         || findFirstValue(detail, "bidPlanDetailId"),
       );

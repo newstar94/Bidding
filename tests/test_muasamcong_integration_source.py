@@ -140,6 +140,64 @@ def test_notice_fixture_maps_revision_and_package_relationship():
     assert revision["bidOpeningAt"] == "2026-03-01T09:15:00"
 
 
+def test_notice_price_prefers_package_estimate_and_falls_back_to_bid_price():
+    raw = fixture("notice", "ldt", "notice_revision_v1.json")
+    raw["bidoNotifyContractorM"].update({
+        "bidPrice": 100_000_000,
+        "bidEstimatePrice": 120_000_000,
+    })
+
+    with_estimate = ImportParserRegistry().parse(
+        "package-notice:v1:fixture",
+        raw,
+        notice_no="IB2600000002",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+    del raw["bidoNotifyContractorM"]["bidEstimatePrice"]
+    without_estimate = ImportParserRegistry().parse(
+        "package-notice:v1:fixture",
+        raw,
+        notice_no="IB2600000002",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+
+    assert with_estimate["priceVnd"] == 120_000_000
+    assert with_estimate["sourceBidPriceVnd"] == 100_000_000
+    assert with_estimate["estimatePriceVnd"] == 120_000_000
+    assert without_estimate["priceVnd"] == 100_000_000
+    assert without_estimate["sourceBidPriceVnd"] == 100_000_000
+    assert without_estimate["estimatePriceVnd"] is None
+
+
+def test_notice_normalizes_single_value_search_arrays():
+    raw = {
+        "notifyNo": "IB2600433562",
+        "notifyId": "notice-00",
+        "notifyVersion": "00",
+        "planNo": "PL2600248518",
+        "bidName": ["Gói chào hàng cạnh tranh"],
+        "investField": ["PTV"],
+        "bidPrice": [4_484_923_803],
+        "bidForm": "CHCT",
+        "bidMode": "1_MTHS",
+        "processApply": "KHAC",
+    }
+
+    revision = ImportParserRegistry().parse(
+        "package-notice:v1:search-fallback",
+        raw,
+        notice_no="IB2600433562",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["name"] == "Gói chào hàng cạnh tranh"
+    assert revision["field"] == "Phi tư vấn"
+    assert revision["priceVnd"] == 4_484_923_803
+
+
 def test_package_lookup_maps_complete_notice_fields_into_preview():
     source = MuaSamCongProcurementSource(FakeRuntime())
 
@@ -820,6 +878,7 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                                 "bidNotification": {
                                     "notifyNo": "IB2600000002",
                                     "bidPrice": 987654321,
+                                    "bidEstimatePrice": 900000000,
                                     "capitalDetail": "Nguồn vốn sidecar",
                                     "isMedicine": 1,
                                     "isMultiLot": None,
@@ -945,7 +1004,9 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     )
 
     revision = canonical["revisions"][0]
-    assert revision["priceVnd"] == 987654321
+    assert revision["priceVnd"] == 900000000
+    assert revision["sourceBidPriceVnd"] == 987654321
+    assert revision["estimatePriceVnd"] == 900000000
     assert revision["capitalDetail"] == "Nguồn vốn sidecar"
     assert revision["isMedicinePackage"] is True
     assert revision["isMultiLot"] is True
@@ -979,7 +1040,9 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert canonical["contracts"][0]["contractCode"] == "HD2600000001"
     assert canonical["contracts"][0]["contractValue"] == 123456789
     assert projected["kind"] == "PACKAGE"
-    assert projected["data"]["bidPrice"] == 987654321
+    assert projected["data"]["bidPrice"] == 900000000
+    assert projected["data"]["sourceBidPrice"] == 987654321
+    assert projected["data"]["bidEstimatePrice"] == 900000000
     assert projected["data"]["isMedicinePackage"] is True
     assert projected["data"]["isMultiLot"] is True
     assert projected["data"]["additionalPurchaseOption"] is True

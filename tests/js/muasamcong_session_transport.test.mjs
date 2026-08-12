@@ -678,6 +678,129 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
 });
 
 
+test("complete KHAC notice uses the exact search revision when version lists are absent", async () => {
+  const calls = [];
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      if (["NOTICE_LDT_VERSION_LIST", "NOTICE_OTHER_VERSION_LIST"].includes(operation)) {
+        throw new Error("PROCUREMENT_NOT_FOUND");
+      }
+      if (operation === "NOTICE_LDT_DETAIL") throw new Error("PROCUREMENT_NOT_FOUND");
+      if (operation === "NOTICE_OTHER_DETAIL") return {
+        data: {
+          notifyNo: "IB2600433562",
+          notifyId: "notice-00",
+          notifyVersion: "00",
+          processApply: "KHAC",
+          bidMode: "1_MTHS",
+          bidName: "Gói chào hàng cạnh tranh",
+          planNo: "PL2600248518",
+        },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_VERSION_LIST") return {
+        data: { versionList: [{
+          id: "plan-00",
+          planNo: "PL2600248518",
+          planVersion: "00",
+        }] },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_DETAIL") return {
+        data: {
+          plan: { id: "plan-00", planNo: "PL2600248518", planVersion: "00" },
+          packages: [{ idDetail: "package-00", bidNo: "BP2600000001" }],
+        },
+        metadata: { operation },
+      };
+      if (operation === "NOTICE_CONTRACT_LIST") return { data: [], metadata: { operation } };
+      return { data: { operation, ...payload }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-notify-contractor",
+    id: "notice-00",
+    notifyId: "notice-00",
+    notifyNo: "IB2600433562",
+    notifyVersion: "00",
+    processApply: "KHAC",
+    bidMode: "1_MTHS",
+    planNo: "PL2600248518",
+  }, { revisionMode: "LATEST" });
+
+  assert.deepEqual(Object.keys(bundle.revisions), ["00"]);
+  assert.equal(bundle.revisions["00"].sources.noticeDetail.operation, "NOTICE_OTHER_DETAIL");
+  assert.equal(bundle.revisions["00"].sources.noticeDetail.success, true);
+  assert.equal(
+    calls.some(([operation]) => operation === "NOTICE_OTHER_DETAIL"),
+    true,
+  );
+});
+
+
+test("complete KHAC notice falls back to its exact search record when detail is unavailable", async () => {
+  const client = {
+    request: async (operation, payload) => {
+      if ([
+        "NOTICE_LDT_VERSION_LIST",
+        "NOTICE_OTHER_VERSION_LIST",
+        "NOTICE_LDT_DETAIL",
+        "NOTICE_OTHER_DETAIL",
+        "NOTICE_ADB_DETAIL",
+      ].includes(operation)) throw new Error("PROCUREMENT_UPSTREAM_UNAVAILABLE");
+      if (operation === "PLAN_VERSION_LIST") return {
+        data: { versionList: [{
+          id: "plan-00", planNo: "PL2600248518", planVersion: "00",
+        }] },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_DETAIL") return {
+        data: {
+          plan: { id: "plan-00", planNo: "PL2600248518", planVersion: "00" },
+          packages: [{
+            idDetail: "package-00",
+            planNo: "PL2600248518",
+            bidName: "Gói chào hàng cạnh tranh",
+          }],
+        },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_PACKAGE_DETAIL") return {
+        data: { idDetail: payload.id }, metadata: { operation },
+      };
+      if (operation === "NOTICE_CONTRACT_LIST") return { data: [], metadata: { operation } };
+      return { data: { operation, ...payload }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-notify-contractor",
+    id: "notice-00",
+    notifyId: "notice-00",
+    notifyNo: "IB2600433562",
+    notifyVersion: "00",
+    processApply: "KHAC",
+    bidMode: "1_MTHS",
+    bidName: ["Gói chào hàng cạnh tranh"],
+    investField: ["PTV"],
+    bidPrice: [4_484_923_803],
+    planNo: "PL2600248518",
+  }, { revisionMode: "LATEST" });
+
+  const revision = bundle.revisions["00"];
+  assert.equal(bundle.status, "FOUND_PARTIAL");
+  assert.equal(revision.sources.noticeDetail.operation, "SEARCH");
+  assert.equal(revision.sources.noticeDetail.fallback, true);
+  assert.equal(revision.sources.noticeDetail.success, true);
+  assert.equal(
+    bundle.failures.some((failure) => failure.operation === "NOTICE_OTHER_DETAIL"),
+    true,
+  );
+});
+
+
 test("notice revisions enrich from their explicitly linked plan versions", async () => {
   const calls = [];
   const client = {

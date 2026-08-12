@@ -87,7 +87,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.12.8"
+    parser_version = "2026.08.13.1"
 
     def __init__(
         self,
@@ -786,6 +786,8 @@ class MuaSamCongProcurementSource:
             "linkedPlanVersion": revision.get("linkedPlanVersion"),
             "bidName": revision.get("name"),
             "bidPrice": revision.get("priceVnd"),
+            "sourceBidPrice": revision.get("sourceBidPriceVnd"),
+            "bidEstimatePrice": revision.get("estimatePriceVnd"),
             "bidGuarantee": revision.get("bidGuaranteeVnd"),
             "implementationPeriod": revision.get("executionPeriod"),
             "capitalDetail": revision.get("capitalDetail"),
