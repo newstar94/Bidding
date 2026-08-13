@@ -401,6 +401,28 @@ def test_fresh_notice_snapshot_reassembles_sources_for_mapping_without_refetch()
     assert loaded["metrics"]["upstream"]["requestCount"] == 0
 
 
+def test_invitation_notice_snapshot_excludes_post_opening_sources():
+    database = Database()
+    repository = ProcurementRawSnapshotRepository(database=database)
+    repository.save_bundle("org-1", notice_raw_bundle())
+
+    loaded = repository.load_fresh_notice_bundle(
+        "org-1",
+        "IB2600000002",
+        detail_level="INVITATION",
+        revision_mode="ALL",
+        max_age_seconds=900,
+        now=datetime(2026, 8, 12, 0, 5, tzinfo=timezone.utc),
+    )
+
+    assert loaded["detailLevel"] == "INVITATION"
+    assert "contractList" not in loaded["sources"]
+    sources = loaded["revisions"]["01"]["sources"]
+    assert "opening_bid_0" not in sources
+    assert "selectionResult" not in sources
+    assert "technicalResult" not in sources
+
+
 def test_raw_snapshot_cache_is_tenant_scoped_stale_safe_and_requires_package_detail():
     database = Database()
     repository = ProcurementRawSnapshotRepository(database=database)

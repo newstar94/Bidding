@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import json
 import re
+import unicodedata
 from hashlib import sha256
 
 
@@ -136,17 +137,59 @@ def derive_import_lifecycle_status(package: dict) -> str:
     kind = str(link.get("kind") or "UNKNOWN").upper()
     complete = not required_package_issues(package)
     exact_tbmt = bool(
-        link_state == "LINKED"
-        and str(link.get("noticeNo") or "").strip()
-        and kind == "TBMT"
-        and str(link.get("noticeRevisionId") or "").strip()
-        and link.get("noticeVersion") is not None
+        (
+            link_state == "LINKED"
+            and str(link.get("noticeNo") or "").strip()
+            and kind == "TBMT"
+            and str(link.get("noticeRevisionId") or "").strip()
+            and link.get("noticeVersion") is not None
+        )
+        or (
+            str(package.get("kind") or "").upper() == "TBMT"
+            and str(package.get("noticeNo") or "").strip()
+            and str(package.get("revisionId") or "").strip()
+            and package.get("revisionNumber") is not None
+        )
     )
+    notice_fields = package.get("noticeFields") or {}
+    status_for_notify = str(
+        notice_fields.get("statusForNotify")
+        or package.get("statusForNotify")
+        or ""
+    ).strip().upper()
     source_status = str(
-        (package.get("noticeFields") or {}).get("status")
+        notice_fields.get("status")
         or package.get("sourceStatus")
         or ""
-    ).upper()
+    ).strip().upper()
+    source_status_text = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", source_status)
+        if unicodedata.category(character) != "Mn"
+    ).replace("Đ", "D")
+    if exact_tbmt and source_status_text in {"DANG XET THAU", "DANG CHAM THAU"}:
+        return "EVALUATING"
+    if exact_tbmt and status_for_notify == "DXT":
+        return "EVALUATING"
+    if exact_tbmt and status_for_notify in {"DHTBMT", "DHT", "DHKQLCNT"}:
+        return "CANCELLED"
+    status_mapping = {
+        "INIT_MT": "PREPARING",
+        "NEW": "PREPARING",
+        "01": "INVITED",
+        "PUBLISHED": "INVITED",
+        "PUB_TBMT": "INVITED",
+        "PUB_MT": "INVITED",
+        "OPEN_BID": "OPENED",
+        "OPEN_DXKT": "OPENED",
+        "PUB_DSNTKT": "EVALUATING",
+        "OPEN_DXTC": "OPENED",
+        "CANCEL_BID": "CANCELLED",
+        "03": "CANCELLED",
+    }
+    mapped = status_mapping.get(source_status)
+    if exact_tbmt and mapped and (mapped != "INVITED" or complete):
+        return mapped
     if exact_tbmt and complete and source_status == "PUBLISHED":
         return "INVITED"
     contrary = source_status in {
@@ -184,6 +227,12 @@ SOURCE_OWNED_PACKAGE_FIELDS = (
     "isPrequalification",
     "isConcentrateShopping",
     "additionalPurchaseOption",
+    "bidGuaranteeVnd",
+    "approvalDecisionNo",
+    "approvalDecisionDate",
+    "actualOpeningAt",
+    "financialActualOpeningAt",
+    "lifecycleStatus",
     "noticeLink",
     "noticeFields",
     "expectedNotice",

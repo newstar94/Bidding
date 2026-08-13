@@ -191,6 +191,7 @@ class NodeBrowserRuntime:
         self,
         record,
         *,
+        detail_level="COMPLETE",
         revision_mode="ALL",
         revision_numbers=None,
         search_source=None,
@@ -200,6 +201,7 @@ class NodeBrowserRuntime:
         return self._exchange(
             "collectCompleteBundle",
             record=record,
+            detailLevel=str(detail_level or "COMPLETE").upper(),
             revisionMode=str(revision_mode or "ALL"),
             revisionNumbers=list(revision_numbers or []),
             searchSource=search_source if isinstance(search_source, dict) else None,

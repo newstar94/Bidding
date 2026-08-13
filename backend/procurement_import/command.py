@@ -108,9 +108,15 @@ _NOTICE_MATERIAL_FIELDS = (
     "noticeNo",
     "kind",
     "status",
+    "statusForNotify",
     "publishedAt",
     "bidClosingAt",
     "bidOpeningAt",
+    "actualOpeningAt",
+    "financialActualOpeningAt",
+    "bidGuaranteeVnd",
+    "approvalDecisionNo",
+    "approvalDecisionDate",
 )
 
 
@@ -139,7 +145,9 @@ def _package_notice_material_snapshot(package):
         **{
             field: value(field)
             for field in (
-                "status", "publishedAt", "bidClosingAt", "bidOpeningAt",
+                "status", "statusForNotify", "publishedAt", "bidClosingAt",
+                "bidOpeningAt", "actualOpeningAt", "financialActualOpeningAt",
+                "bidGuaranteeVnd", "approvalDecisionNo", "approvalDecisionDate",
                 "field", "selectionForm", "selectionMode", "contractType",
                 "onlineMode", "domesticOrInternational", "priceVnd",
                 "capitalDetail", "executionPeriod",
@@ -280,7 +288,9 @@ class ProcurementNoticeReconciler:
         notice_fields = {
             field: deepcopy(notice.get(field))
             for field in (
-                "status", "publishedAt", "bidClosingAt", "bidOpeningAt", "publicUrl"
+                "status", "statusForNotify", "publishedAt", "bidClosingAt",
+                "bidOpeningAt", "actualOpeningAt",
+                "financialActualOpeningAt", "publicUrl",
             )
             if notice.get(field) is not None
         }
@@ -289,6 +299,9 @@ class ProcurementNoticeReconciler:
             "field", "selectionForm", "selectionMode", "contractType",
             "onlineMode", "domesticOrInternational", "priceVnd",
             "capitalDetail", "executionPeriod",
+            "bidGuaranteeVnd", "approvalDecisionNo",
+            "approvalDecisionDate", "actualOpeningAt",
+            "financialActualOpeningAt",
         ):
             if notice.get(field) not in (None, ""):
                 source_fields[field] = deepcopy(notice[field])
@@ -325,6 +338,11 @@ class ProcurementNoticeReconciler:
             "noticeRevisionId": revision_id,
             "noticeVersion": revision_number,
             "noticeFields": notice_fields,
+            "initialStatus": derive_import_lifecycle_status({
+                **notice,
+                "noticeLink": source_fields["noticeLink"],
+                "noticeFields": notice_fields,
+            }),
             "sourceFields": source_fields,
             "canonicalSourceFields": source_fields,
             "assigneeUserId": target.get("assigneeUserId"),

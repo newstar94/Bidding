@@ -21,6 +21,7 @@ import {
   restorePlanBreakdownDraft,
 } from "../../frontend/plans/planBreakdownDraft.js";
 import {
+  fillPackageFormFromProcurementDraft,
   fillPlanFormFromProcurementDraft,
   materializeProcurementRevisionDraft,
   materializeProcurementRevisionFromPrevious,
@@ -31,6 +32,44 @@ import {
   startProcurementPlanImport,
 } from "../../frontend/procurement/PlanImportWizard.js";
 import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
+
+test("package procurement draft fills lifecycle and tender milestone controls", () => {
+  const controls = new Map([
+    "gt-ma", "gt-ten", "gt-gia", "gt-thoigian", "gt-linhvuc",
+    "gt-hinhthuc", "gt-phuongthuc", "gt-phuongphapdanhgia", "gt-nguonvon",
+    "gt-loaihopdong", "gt-thoigiantochuc", "gt-thoigianbatdautochuc",
+    "gt-quatmang", "gt-trongnuocquocte", "gt-tuychonmuathem", "gt-phanlo",
+    "gt-giatribaomothau", "gt-soquyetdinh", "gt-ngayquyetdinh",
+    "gt-thoigiandangtai", "gt-thoigiandongthau", "gt-thoigianmothau",
+    "gt-thoigianmoehsdxtc", "gt-trangthai",
+  ].map((id) => [id, { id, value: "", disabled: false, dispatchEvent() {} }]));
+  const document = { getElementById: (id) => controls.get(id) || null };
+  fillPackageFormFromProcurementDraft(document, {
+    maGoiThau: "IB2600374868",
+    trangThai: "Đang chấm thầu",
+    giaTriBaoDamDuThau: 52_183_040,
+    soQuyetDinh: "123/QĐ-E-HSMT",
+    ngayQuyetDinh: "2026-07-15T00:00:00",
+    thoiGianDangTai: "2026-07-16T09:00:00",
+    thoiGianDongThau: "2026-08-03T13:00:00",
+    thoiGianMoThau: "2026-08-03T13:08:42",
+    thoiGianMoEhsdxtc: "2026-08-03T16:20:00",
+  }, {
+    model: {
+      formatVND: (value) => String(value),
+      formatForDateInput: (value) => `DATE:${value}`,
+      formatForDatetimeLocal: (value) => `DATETIME:${value}`,
+    },
+  });
+
+  assert.equal(controls.get("gt-trangthai").value, "Đang chấm thầu");
+  assert.equal(controls.get("gt-giatribaomothau").value, "52183040");
+  assert.equal(controls.get("gt-soquyetdinh").value, "123/QĐ-E-HSMT");
+  assert.equal(controls.get("gt-ngayquyetdinh").value, "DATE:2026-07-15T00:00:00");
+  assert.equal(controls.get("gt-thoigiandangtai").value, "DATETIME:2026-07-16T09:00:00");
+  assert.equal(controls.get("gt-thoigianmothau").value, "DATETIME:2026-08-03T13:08:42");
+  assert.equal(controls.get("gt-thoigianmoehsdxtc").value, "DATETIME:2026-08-03T16:20:00");
+});
 
 test("prepared plan revision materializes source packages into one memory-only breakdown draft", () => {
   const state = {
@@ -857,6 +896,52 @@ test("pending imported investor is part of plan breakdown commit and rollback bo
   assert.deepEqual(changes.upserts.chudautu.map((row) => row.id), ["investor-draft"]);
   restorePlanBreakdownDraft({ state }, { snapshot });
   assert.deepEqual(state.chudautu, []);
+});
+
+test("next plan revision reuses its investor without deleting the master record", () => {
+  const investor = {
+    id: "investor-existing", rootId: "investor-existing", phienBan: "00",
+    isLatest: 1, rowVersion: 1, maChuDauTu: "INV-1",
+  };
+  const snapshot = {
+    chudautu: [structuredClone(investor)],
+    kehoach: [{ id: "plan-00", rootId: "plan-root", chuDauTuId: investor.id }],
+    goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  const state = structuredClone(snapshot);
+  state.kehoach.push({
+    id: "plan-01", rootId: "plan-root", phienBan: "01",
+    chuDauTuId: investor.id,
+  });
+
+  const changes = collectPlanBreakdownDraftChanges(state, {
+    planId: "plan-01", snapshot,
+  });
+
+  assert.deepEqual(changes.upserts.chudautu, []);
+  assert.equal(changes.deletions.chudautu, undefined);
+});
+
+test("an unsynced investor already present in the draft snapshot remains an upsert", () => {
+  const investor = {
+    id: "investor-pending", rootId: "investor-pending", phienBan: "00",
+    isLatest: 1, maChuDauTu: "INV-PENDING",
+  };
+  const snapshot = {
+    chudautu: [structuredClone(investor)],
+    kehoach: [], goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  const state = structuredClone(snapshot);
+  state.kehoach.push({ id: "plan-01", rootId: "plan-root", chuDauTuId: investor.id });
+
+  const changes = collectPlanBreakdownDraftChanges(state, {
+    planId: "plan-01", snapshot,
+  });
+
+  assert.deepEqual(changes.upserts.chudautu.map((row) => row.id), [investor.id]);
+  assert.equal(changes.deletions.chudautu, undefined);
 });
 
 test("plan breakdown package row exposes accessible icon-only actions", () => {

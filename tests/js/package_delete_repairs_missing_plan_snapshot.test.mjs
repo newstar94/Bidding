@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { deleteGoiThau } from "../../frontend/packages/packageLifecycleWorkflow.js";
 
-test("deleting -02 repairs a missing -01 snapshot inside the current plan", async () => {
+test("deleting -02 removes its complete package family instead of repairing history", async () => {
   const previousDocument = globalThis.document;
   globalThis.document = { getElementById: () => null };
 
@@ -52,7 +52,9 @@ test("deleting -02 repairs a missing -01 snapshot inside the current plan", asyn
   const controller = {
     model,
     view: {
-      customVersionDeleteChoice: async () => 1,
+      customVersionDeleteChoice: async () => assert.fail(
+        "package deletion must not offer a latest-version-only choice",
+      ),
       customConfirm: async () => true,
       customAlert: async () => {},
       renderGoiThauTable: async () => {},
@@ -74,23 +76,14 @@ test("deleting -02 repairs a missing -01 snapshot inside the current plan", asyn
     else globalThis.document = previousDocument;
   }
 
-  assert.deepEqual(deleted, ["goithau:pkg-v02-plan01"]);
-  assert.equal(
-    model.state.goithau.some((pkg) => pkg.id === target.id),
-    false,
-    "-02 must be deleted",
-  );
-  const restored = model.state.goithau.find((pkg) => (
-    pkg.rootId === "pkg-root"
-    && pkg.keHoachId === "plan-01"
-    && pkg.phienBan === "01"
-  ));
-  assert.ok(restored, "the current plan must receive a repaired -01 snapshot");
-  assert.equal(restored.isLatest, 1, "the repaired -01 becomes current after -02 is deleted");
-  assert.equal(restored.trangThai, source.trangThai, "business state must be inherited from the predecessor");
+  assert.deepEqual(deleted, [
+    "goithau:pkg-v01-plan00",
+    "goithau:pkg-v02-plan01",
+  ]);
+  assert.deepEqual(model.state.goithau, []);
 });
 
-test("deleting a package from the newest plan removes only that plan snapshot", async () => {
+test("deleting a package from the newest plan removes its snapshots from every plan version", async () => {
   const previousDocument = globalThis.document;
   globalThis.document = { getElementById: () => null };
 
@@ -110,6 +103,7 @@ test("deleting a package from the newest plan removes only that plan snapshot", 
     keHoachId: "plan-01",
   };
   const deleted = [];
+  const persisted = [];
   const state = {
     goithau: [historical, current],
     kehoach: [
@@ -131,12 +125,17 @@ test("deleting a package from the newest plan removes only that plan snapshot", 
       }
     },
     persistData: async () => {},
+    persistChanges: async (table, changes) => {
+      persisted.push({ table, changes });
+    },
     flushMutationOutbox: async () => {},
   };
   const controller = {
     model,
     view: {
-      customVersionDeleteChoice: async () => 1,
+      customVersionDeleteChoice: async () => assert.fail(
+        "package deletion must not offer a latest-version-only choice",
+      ),
       customConfirm: async () => true,
       customAlert: async () => {},
       renderGoiThauTable: async () => {},
@@ -158,10 +157,100 @@ test("deleting a package from the newest plan removes only that plan snapshot", 
     else globalThis.document = previousDocument;
   }
 
-  assert.deepEqual(deleted, ["goithau:pkg-v00-plan01"]);
+  assert.deepEqual(deleted, [
+    "goithau:pkg-v00-plan00",
+    "goithau:pkg-v00-plan01",
+  ]);
+  assert.deepEqual(model.state.goithau, [], "no historical snapshot may reappear");
+  const planMutation = persisted.find((mutation) => mutation.table === "kehoach");
   assert.deepEqual(
-    model.state.goithau.map((pkg) => pkg.id),
-    ["pkg-v00-plan00"],
-    "the historical plan snapshot must remain available",
+    planMutation?.changes?.upserts?.map((plan) => plan.id),
+    ["plan-01"],
+    "deletion may recalculate only the latest plan; historical plans stay frozen",
   );
+});
+
+test("paginated package deletion hydrates and removes snapshots from older plan versions", async () => {
+  const previousDocument = globalThis.document;
+  const previousFetch = globalThis.fetch;
+  globalThis.document = { getElementById: () => null };
+
+  const historical = {
+    id: "pkg-plan00", rootId: "pkg-root", phienBan: "00", isLatest: 1,
+    keHoachId: "plan-00", tenGoiThau: "Goi thau",
+  };
+  const current = {
+    ...historical, id: "pkg-plan01", keHoachId: "plan-01",
+  };
+  const requestedPlans = [];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url), "http://localhost");
+    const table = parsed.searchParams.get("table");
+    const planId = parsed.searchParams.get("keHoachId");
+    if (table === "goithau") requestedPlans.push(planId);
+    const items = table === "goithau"
+      ? (planId === "plan-00" ? [historical] : [current])
+      : [];
+    return new Response(JSON.stringify({
+      items, totalItems: items.length, hasMore: false, nextCursor: null,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const deleted = [];
+  const latestPlan = {
+    id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1,
+    allVersions: [
+      { id: "plan-01", phienBan: "01" },
+      { id: "plan-00", phienBan: "00" },
+    ],
+  };
+  const model = {
+    useServerSidePagination: true,
+    state: {
+      goithau: [current], kehoach: [latestPlan], thongtinmothau: [],
+    },
+    normalizeRecordKeys: (record) => record,
+    markDeleted(table, records) {
+      for (const record of Array.isArray(records) ? records : [records]) {
+        deleted.push(`${table}:${record?.id ?? record}`);
+      }
+    },
+    persistData: async () => {},
+    persistChanges: async () => {},
+    flushMutationOutbox: async () => {},
+  };
+  const controller = {
+    model,
+    view: {
+      customVersionDeleteChoice: async () => assert.fail(
+        "package deletion must not offer a latest-version-only choice",
+      ),
+      customConfirm: async () => true,
+      customAlert: async () => {},
+      renderGoiThauTable: async () => {},
+      renderKeHoachTable: async () => {},
+    },
+    fetchRecordByLookup: async (table, id) => (
+      model.state[table]?.find((record) => String(record.id) === String(id)) || null
+    ),
+    recalculatePlanTotal() {},
+    renderBreakdownPackagesList() {},
+    updateBreakdownTotal() {},
+    autoSync: async () => ({ ok: true }),
+  };
+
+  try {
+    await deleteGoiThau.call(controller, current.id);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+
+  assert.deepEqual(new Set(requestedPlans), new Set(["plan-00", "plan-01"]));
+  assert.deepEqual(new Set(deleted), new Set([
+    "goithau:pkg-plan00", "goithau:pkg-plan01",
+  ]));
+  assert.deepEqual(model.state.goithau, []);
 });

@@ -171,6 +171,7 @@ async function handle(request) {
         requestId,
         ok: true,
         result: await integration.collectCompleteBundle(record, {
+          detailLevel: request.detailLevel,
           revisionMode: request.revisionMode,
           revisionNumbers: request.revisionNumbers,
           searchSource: request.searchSource,

@@ -6,6 +6,7 @@ from copy import deepcopy
 import re
 
 from backend.shared.domain_enums import PACKAGE_STATUS_LABELS
+from backend.procurement_import.domain import derive_import_lifecycle_status
 
 
 _BIDDING_PACKAGE_CODE = re.compile(r"^IB[0-9]{10}(?:-[0-9]{2})?$", re.I)
@@ -70,7 +71,9 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
     source["packageObservationId"] = package.get("planDetailRevisionId")
     source["stablePackageId"] = package.get("stablePackageId")
     effective = deepcopy(package.get("effectiveFields") or package)
-    notice = effective.get("noticeFields") or {}
+    # A package enriched while importing a plan keeps notice milestones nested,
+    # while a direct IB revision owns the same canonical fields at its root.
+    notice = effective.get("noticeFields") or effective
     link = effective.get("noticeLink") or {}
     notice_version = link.get("noticeVersion")
     if notice_version not in (None, ""):
@@ -106,10 +109,22 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         "muaSamTapTrung": effective.get("isConcentrateShopping"),
         "tuyChonMuaThem": effective.get("additionalPurchaseOption"),
         "giaTriBaoDamDuThau": effective.get("bidGuaranteeVnd"),
+        "soQuyetDinh": effective.get("approvalDecisionNo") or "",
+        "ngayQuyetDinh": effective.get("approvalDecisionDate") or "",
+        "thoiGianDangTai": notice.get("publishedAt"),
         "thoiGianDongThau": notice.get("bidClosingAt"),
-        "thoiGianMoThau": notice.get("bidOpeningAt"),
+        "thoiGianMoThau": (
+            notice.get("actualOpeningAt")
+            or effective.get("actualOpeningAt")
+            or notice.get("bidOpeningAt")
+        ),
+        "thoiGianMoEhsdxtc": (
+            notice.get("financialActualOpeningAt")
+            or effective.get("financialActualOpeningAt")
+        ),
         "trangThai": _bidding_package_status(
-            effective.get("lifecycleStatus") or "UNKNOWN"
+            effective.get("lifecycleStatus")
+            or derive_import_lifecycle_status(effective)
         ),
         "sourceStatus": effective.get("sourceStatus"),
         "noticeLink": deepcopy(link),

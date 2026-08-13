@@ -480,6 +480,7 @@ class ProcurementRawSnapshotRepository:
         organization_id,
         canonical_code,
         *,
+        detail_level="COMPLETE",
         revision_mode="ALL",
         revision_numbers=None,
         max_age_seconds=900,
@@ -542,6 +543,8 @@ class ProcurementRawSnapshotRepository:
                 "metrics": {},
             }
 
+        requested_detail = str(detail_level or "COMPLETE").strip().upper()
+        invitation_only = requested_detail == "INVITATION"
         top_keys = {
             "SEARCH": "search",
             "NOTICE_LDT_VERSION_LIST": "ldtVersionList",
@@ -552,6 +555,7 @@ class ProcurementRawSnapshotRepository:
             top_keys.get(operation, operation.lower()): envelope(row)
             for (revision, operation), row in newest.items()
             if revision is None
+            and not (invitation_only and operation == "NOTICE_CONTRACT_LIST")
         }
         version_sources = [
             sources.get("ldtVersionList"), sources.get("otherVersionList")
@@ -626,6 +630,14 @@ class ProcurementRawSnapshotRepository:
                 if row_revision != revision_number or row is detail_row:
                     continue
                 key = source_keys.get(operation)
+                if invitation_only and (
+                    operation.startswith("OPENING_")
+                    or operation in {
+                        "SELECTION_RESULT", "SELECTION_RESULT_OTHER",
+                        "TECHNICAL_RESULT",
+                    }
+                ):
+                    continue
                 if operation.startswith("OPENING_"):
                     request = _loads(_row_value(row, "request_json", 6), {})
                     pack_type = request.get("packType")
@@ -663,7 +675,7 @@ class ProcurementRawSnapshotRepository:
             "entity": {
                 "kind": "NOTICE", "canonicalCode": code, "noticeNo": code,
             },
-            "detailLevel": "COMPLETE",
+            "detailLevel": requested_detail,
             "revisionMode": mode,
             "retrievedAt": retrieved_at,
             "sources": sources,

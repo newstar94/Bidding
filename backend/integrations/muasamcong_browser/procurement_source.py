@@ -88,7 +88,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.13.2"
+    parser_version = "2026.08.13.3"
 
     def __init__(
         self,
@@ -544,6 +544,7 @@ class MuaSamCongProcurementSource:
         self,
         record: dict,
         *,
+        detail_level="COMPLETE",
         revision_mode="ALL",
         revision_numbers=None,
         search_source=None,
@@ -551,6 +552,8 @@ class MuaSamCongProcurementSource:
         if not isinstance(record, dict):
             raise ProcurementSourceError("PROCUREMENT_CODE_INVALID")
         options_are_default = (
+            str(detail_level or "COMPLETE").upper() == "COMPLETE"
+            and
             str(revision_mode or "ALL").upper() == "ALL"
             and not revision_numbers
             and search_source is None
@@ -563,6 +566,7 @@ class MuaSamCongProcurementSource:
             result = self._call(
                 self.runtime.collect_complete_bundle,
                 deepcopy(record),
+                detail_level=str(detail_level or "COMPLETE").upper(),
                 revision_mode=str(revision_mode or "ALL").upper(),
                 revision_numbers=list(revision_numbers or []),
                 search_source=deepcopy(search_source),
@@ -766,7 +770,7 @@ class MuaSamCongProcurementSource:
                     }
         return {
             "schemaVersion": "biddingflow-procurement-canonical-v2",
-            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v5",
+            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v6",
             "kind": "PLAN",
             "canonicalCode": family_no,
             "revisions": revisions,
@@ -801,6 +805,12 @@ class MuaSamCongProcurementSource:
             "sourceBidPrice": revision.get("sourceBidPriceVnd"),
             "bidEstimatePrice": revision.get("estimatePriceVnd"),
             "bidGuarantee": revision.get("bidGuaranteeVnd"),
+            **({
+                "approvalDecisionNo": revision.get("approvalDecisionNo"),
+            } if revision.get("approvalDecisionNo") not in (None, "") else {}),
+            **({
+                "approvalDecisionDate": revision.get("approvalDecisionDate"),
+            } if revision.get("approvalDecisionDate") not in (None, "") else {}),
             "implementationPeriod": revision.get("executionPeriod"),
             "capitalDetail": revision.get("capitalDetail"),
             "bidField": revision.get("field"),
@@ -817,7 +827,7 @@ class MuaSamCongProcurementSource:
             "selectionDuration": revision.get("selectionDuration"),
             "selectionStart": revision.get("selectionStart"),
             "bidCloseDate": revision.get("bidClosingAt"),
-            "bidOpenDate": revision.get("bidOpeningAt"),
+            "bidOpenDate": revision.get("actualOpeningAt") or revision.get("bidOpeningAt"),
             "bidOpenId": revision.get("bidOpenId"),
             "inputResultId": revision.get("inputResultId"),
             "techReqId": revision.get("techReqId"),
@@ -835,6 +845,7 @@ class MuaSamCongProcurementSource:
         bundle: dict,
         *,
         revision_mode="ALL",
+        detail_level=None,
     ) -> dict:
         """Project a stored COMPLETE bundle without any upstream request."""
 
@@ -885,7 +896,9 @@ class MuaSamCongProcurementSource:
             "kind": "PLAN" if entity_kind == "PLAN" else "PACKAGE",
             "inputCode": str(code or "").strip(),
             "canonicalCode": family_no,
-            "detailLevel": "COMPLETE",
+            "detailLevel": str(
+                detail_level or bundle.get("detailLevel") or "COMPLETE"
+            ).upper(),
             "revisionMode": str(revision_mode or "ALL").upper(),
             "status": status,
             "classification": status,
@@ -983,7 +996,9 @@ class MuaSamCongProcurementSource:
                 raw_bundle = None
                 status = "FOUND_COMPLETE"
                 metrics = deepcopy(search.get("metadata") or {})
-            elif detail_level == "COMPLETE":
+            elif detail_level in {"COMPLETE", "INVITATION"}:
+                if detail_level == "INVITATION" and normalized_kind != "PACKAGE":
+                    raise ProcurementSourceError("PROCUREMENT_ADAPTER_UNSUPPORTED")
                 collection_started = self.clock()
                 search = self._call(self.runtime.search, family_no, normalized_kind)
                 record = search.get("record")
@@ -991,6 +1006,7 @@ class MuaSamCongProcurementSource:
                     raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
                 raw_bundle = self.collect_complete_bundle(
                     record,
+                    detail_level=detail_level,
                     revision_mode=revision_mode,
                     revision_numbers=numbers,
                     search_source=search,
@@ -1039,7 +1055,7 @@ class MuaSamCongProcurementSource:
                 ]
                 canonical = {
                     "schemaVersion": "biddingflow-procurement-canonical-v2",
-                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v5",
+                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v6",
                     "kind": normalized_kind,
                     "canonicalCode": family_no,
                     "revisions": selected,
@@ -1141,6 +1157,12 @@ class MuaSamCongProcurementSource:
                     "bidName": revision.get("name"),
                     "bidPrice": revision.get("priceVnd"),
                     "bidGuarantee": revision.get("bidGuaranteeVnd"),
+                    **({
+                        "approvalDecisionNo": revision.get("approvalDecisionNo"),
+                    } if revision.get("approvalDecisionNo") not in (None, "") else {}),
+                    **({
+                        "approvalDecisionDate": revision.get("approvalDecisionDate"),
+                    } if revision.get("approvalDecisionDate") not in (None, "") else {}),
                     "implementationPeriod": revision.get(
                         "executionPeriod"
                     ),
@@ -1151,7 +1173,7 @@ class MuaSamCongProcurementSource:
                     "processApply": revision.get("processApply"),
                     "contractType": revision.get("contractType"),
                     "bidCloseDate": revision.get("bidClosingAt"),
-                    "bidOpenDate": revision.get("bidOpeningAt"),
+                    "bidOpenDate": revision.get("actualOpeningAt") or revision.get("bidOpeningAt"),
                     "bidOpenId": revision.get("bidOpenId"),
                     "inputResultId": revision.get("inputResultId"),
                 }

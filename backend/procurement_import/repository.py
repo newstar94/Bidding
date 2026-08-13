@@ -556,10 +556,19 @@ class ProcurementImportRepository:
             and row.get("noticeRevisionId") and row.get("noticeVersion") is not None
         )
         mapped_status = str(row.get("initialStatus") or "UNKNOWN").upper()
-        if mapped_status not in {"UNKNOWN", "PREPARING", "INVITED"}:
+        allowed_statuses = {
+            "UNKNOWN", "PREPARING", "INVITED", "OPENED", "EVALUATING",
+            "PARTIALLY_AWARDED", "AWARDED", "CANCELLED",
+        }
+        if mapped_status not in allowed_statuses:
             mapped_status = "UNKNOWN"
-        if not exact_tbmt and mapped_status == "INVITED":
+        if not exact_tbmt and mapped_status not in {"UNKNOWN", "PREPARING"}:
             mapped_status = "UNKNOWN"
+        actual_opening_at = (
+            notice_fields.get("actualOpeningAt")
+            or notice_fields.get("bidOpeningAt")
+        )
+        financial_opening_at = notice_fields.get("financialActualOpeningAt")
         self.cursor.execute(
             """INSERT INTO goi_thau (
                    id, organization_id, owner_type, id_goc, ma_goi_thau,
@@ -568,10 +577,13 @@ class ProcurementImportRepository:
                    phuong_thuc_lua_chon, qua_mang, trong_nuoc_quoc_te,
                    thoi_gian_thuc_hien, nguon_von, linh_vuc,
                    thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc,
-                   phuong_phap_danh_gia, thoi_gian_dong_thau,
-                   thoi_gian_mo_thau, trang_thai, row_version)
+                   phuong_phap_danh_gia, thoi_gian_dang_tai,
+                   thoi_gian_dong_thau, thoi_gian_mo_thau,
+                   thoi_gian_mo_ehsdxtc, so_quyet_dinh,
+                   ngay_quyet_dinh, gia_tri_dam_bao_du_thau,
+                   trang_thai, row_version)
                VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
@@ -584,8 +596,13 @@ class ProcurementImportRepository:
                 fields.get("executionPeriod"), fields.get("capitalDetail"),
                 fields.get("field"), fields.get("selectionDuration"),
                 fields.get("selectionStart"), fields.get("evaluationMethod"),
+                normalize_datetime_value(notice_fields.get("publishedAt")),
                 normalize_datetime_value(notice_fields.get("bidClosingAt")),
-                normalize_datetime_value(notice_fields.get("bidOpeningAt")),
+                normalize_datetime_value(actual_opening_at),
+                normalize_datetime_value(financial_opening_at),
+                fields.get("approvalDecisionNo"),
+                fields.get("approvalDecisionDate"),
+                fields.get("bidGuaranteeVnd"),
                 mapped_status,
             ),
         )
@@ -598,18 +615,23 @@ class ProcurementImportRepository:
         )
         if not exact_tbmt:
             return
-        status = str(notice_fields.get("status") or "").upper()
         closing_at = normalize_datetime_value(notice_fields.get("bidClosingAt"))
-        opening_at = normalize_datetime_value(notice_fields.get("bidOpeningAt"))
+        opening_at = normalize_datetime_value(
+            notice_fields.get("actualOpeningAt")
+            or notice_fields.get("bidOpeningAt")
+        )
+        mapped_status = str(row.get("initialStatus") or "UNKNOWN").upper()
         self.cursor.execute(
             """UPDATE goi_thau
                   SET thoi_gian_dong_thau = COALESCE(?, thoi_gian_dong_thau),
                       thoi_gian_mo_thau = COALESCE(?, thoi_gian_mo_thau),
                       trang_thai = CASE
-                          WHEN ? = 'PUBLISHED' AND trang_thai = 'PREPARING'
-                          THEN 'INVITED' ELSE trang_thai END
+                          WHEN ? != 'UNKNOWN' THEN ? ELSE trang_thai END
                 WHERE organization_id = ? AND id = ?""",
-            (closing_at, opening_at, status, organization_id, row["id"]),
+            (
+                closing_at, opening_at, mapped_status, mapped_status,
+                organization_id, row["id"],
+            ),
         )
 
     def _build_inherited_package_snapshot(self, organization_id, row):
@@ -648,7 +670,10 @@ class ProcurementImportRepository:
             "hinh_thuc_lua_chon", "phuong_thuc_lua_chon", "qua_mang",
             "trong_nuoc_quoc_te", "thoi_gian_thuc_hien", "nguon_von",
             "linh_vuc", "thoi_gian_to_chuc", "thoi_gian_bat_dau_to_chuc",
-            "phuong_phap_danh_gia",
+            "phuong_phap_danh_gia", "thoi_gian_dang_tai",
+            "thoi_gian_dong_thau", "thoi_gian_mo_thau",
+            "thoi_gian_mo_ehsdxtc", "so_quyet_dinh",
+            "ngay_quyet_dinh", "gia_tri_dam_bao_du_thau",
         }
         protected = {
             "id", "organization_id", "owner_type", "id_goc", "phien_ban",

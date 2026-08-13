@@ -1,21 +1,15 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
-import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
+import { deleteAllPackageVersions, getPackageDeleteContext } from "./packageDeleteHelpers.js";
 import {
   persistAndSync,
   refreshRecordBeforeDelete,
   stageLocalRecords,
 } from "../shared/MutationService.js";
-import { generateRecordId } from "../shared/idUtils.js";
 import { hydratePlanPackageRecords, loadPaginatedRecords } from "../shared/tableDataUtils.js";
-import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import {
   isPlanBreakdownDraftActive,
   removeDraftPackageAggregate,
 } from "../plans/planBreakdownDraft.js";
-
-function versionNumber(record) {
-  return Number.parseInt(record?.phienBan || "0", 10) || 0;
-}
 
 async function hydratePackageOwnedRows(controller, planId) {
   if (!controller.model?.useServerSidePagination || !planId) return;
@@ -43,60 +37,32 @@ async function hydratePackageOwnedRows(controller, planId) {
   }));
 }
 
-/**
- * Older data may have been created while the plan-version workflow only had a
- * partial package cache. In that case the new plan contains package -02 but is
- * missing the inherited -01 snapshot. Deleting -02 would therefore leave the
- * plan with no package at all.
- *
- * Repair that broken lineage just-in-time by cloning the closest predecessor
- * into the current plan before deleting the newest package version.
- */
-async function repairMissingPreviousPlanSnapshot(controller, context) {
-  const target = context?.targetPackage;
-  const targetPlanId = String(target?.keHoachId || "");
-  const targetVersion = versionNumber(target);
-  if (!targetPlanId || targetVersion <= 0) return context;
+async function hydratePackageFamilyAcrossPlanVersions(controller, target) {
+  const model = controller.model;
+  const targetPlanId = String(target?.keHoachId || "").trim();
+  if (!model?.useServerSidePagination || !targetPlanId) return;
 
-  await hydratePlanPackageRecords(controller.model, targetPlanId);
-  let refreshed = getPackageDeleteContext(controller.model.state.goithau, target.id);
-  if (!refreshed) return context;
-
-  const samePlanPredecessor = refreshed.relatedPackages.some((record) => (
-    String(record?.keHoachId || "") === targetPlanId
-    && versionNumber(record) < targetVersion
-  ));
-  if (samePlanPredecessor) return refreshed;
-
-  const candidates = refreshed.relatedPackages
-    .filter((record) => String(record?.id) !== String(target.id))
-    .filter((record) => versionNumber(record) < targetVersion)
-    .sort((a, b) => versionNumber(b) - versionNumber(a));
-  const source = candidates[0];
-  if (!source) return refreshed;
-
-  await hydratePackageOwnedRows(controller, source.keHoachId);
-  const hydratedSource = controller.model.state.goithau.find(
-    (record) => String(record?.id) === String(source.id),
-  ) || source;
-  const timestamp = controller.model.getCurrentDateTimeString();
-  const snapshot = snapshotPackageAggregate(controller.model.state, hydratedSource, {
-    targetPackageId: generateRecordId("goithau"),
-    targetPlanId,
-    packageVersion: hydratedSource.phienBan || "00",
-    timestamp,
-    createId: generateRecordId,
+  let targetPlan = (model.state.kehoach || []).find(
+    (plan) => String(plan?.id) === targetPlanId,
+  );
+  if (typeof controller.fetchRecordByLookup === "function") {
+    targetPlan = await controller.fetchRecordByLookup("kehoach", targetPlanId)
+      || targetPlan;
+  }
+  const planIds = new Set([targetPlanId]);
+  (targetPlan?.allVersions || []).forEach((plan) => {
+    if (plan?.id) planIds.add(String(plan.id));
   });
-  // -02 remains latest until it is deleted in the same mutation. The backend
-  // then recalculates the current plan family and promotes this restored -01.
-  snapshot.packageRecord.isLatest = 0;
-  controller.model.state.goithau.push(snapshot.packageRecord);
-  ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments"].forEach((key) => {
-    controller.model.state[key] ||= [];
-    controller.model.state[key].push(...snapshot[key]);
+  const planRootId = String(targetPlan?.rootId || targetPlan?.id || "");
+  (model.state.kehoach || []).forEach((plan) => {
+    if (planRootId && String(plan?.rootId || plan?.id || "") === planRootId) {
+      planIds.add(String(plan.id));
+    }
   });
 
-  return getPackageDeleteContext(controller.model.state.goithau, target.id) || refreshed;
+  await Promise.all([...planIds].map((planId) => (
+    hydratePlanPackageRecords(model, planId)
+  )));
 }
 
 export function openPackageWizardStep() {
@@ -161,114 +127,58 @@ export async function deleteGoiThau(id) {
     return { ok: true, draft: true };
   }
   const refreshedTarget = await refreshRecordBeforeDelete(this, "goithau", id);
-  if (refreshedTarget?.keHoachId) {
-    await hydratePlanPackageRecords(this.model, refreshedTarget.keHoachId);
-  }
+  await hydratePackageFamilyAcrossPlanVersions(this, refreshedTarget);
   let deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
+  if (!deleteContext) return;
+  for (const planId of deleteContext.planIds.filter(Boolean)) {
+    await hydratePackageOwnedRows(this, planId);
+  }
+  deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
   if (!deleteContext) return;
   deleteContext = await refreshPackageDeleteDependencies(this, deleteContext);
   if (!deleteContext) return;
-  let deleteConfirmed = false;
-  let deleteChoice = null;
-  if (deleteContext.versionCount >= 2) {
-    deleteChoice = await this.view.customVersionDeleteChoice(
-      "Xác nhận xóa",
-      `Gói thầu "${deleteContext.targetPackage.tenGoiThau}" có ${deleteContext.versionCount} phiên bản. Vui lòng chọn cách thức xóa:`,
-      "Xóa phiên bản gần nhất",
-      "Xóa toàn bộ"
-    );
-    if (deleteChoice === null) return;
-  } else {
-    const confirmed = await this.view.customConfirm(
-      "Xác nhận xóa",
-      "Bạn có chắc muốn xóa gói thầu này? Mọi phiên bản lịch sử liên quan sẽ bị xóa bỏ.",
-      "trash-2"
-    );
-    if (!confirmed) return;
-    deleteConfirmed = true;
+  const confirmed = await this.view.customConfirm(
+    "Xác nhận xóa",
+    `Bạn có chắc muốn xóa gói thầu "${deleteContext.targetPackage.tenGoiThau || ""}"? Gói thầu và tất cả snapshot của gói trong mọi phiên bản kế hoạch sẽ bị xóa.`,
+    "trash-2",
+  );
+  if (!confirmed) return;
+
+  const deleted = deleteAllPackageVersions(this.model, deleteContext);
+  const changedPlans = this.model.state.kehoach.filter(
+    (plan) => (
+      Number(plan?.isLatest) === 1
+      && deleteContext.planIds.some((id) => String(id) === String(plan.id))
+    ),
+  );
+  changedPlans.forEach((plan) => this.recalculatePlanTotal(plan.id));
+  const breakdownPlanId = document.getElementById("breakdown-plan-id")?.value;
+  const modalBreakdown = document.getElementById("modal-plan-breakdown");
+  if (modalBreakdown && modalBreakdown.classList.contains("active") && breakdownPlanId) {
+    this.renderBreakdownPackagesList(breakdownPlanId);
+    this.updateBreakdownTotal(breakdownPlanId);
   }
-  if (deleteChoice === 1) {
-    deleteContext = await repairMissingPreviousPlanSnapshot(this, deleteContext);
-    const deleted = deleteLatestPackageVersion(this.model, deleteContext);
-    deleteContext.planIds.forEach((pId) => {
-      if (pId) {
-        this.recalculatePlanTotal(pId);
+  stageLocalRecords(this.model, "kehoach", changedPlans);
+  try {
+    const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+      changes: {
+        upserts: { kehoach: changedPlans },
+        deletions: {
+          goithau: deleted.deletedPackages,
+          thongtinmothau: deleted.deletedBids,
+        },
+      },
+      afterPersist: () => {
+        this.view.renderGoiThauTable();
+        this.view.renderKeHoachTable();
       }
     });
-    const breakdownPlanId = document.getElementById("breakdown-plan-id")?.value;
-    const modalBreakdown = document.getElementById("modal-plan-breakdown");
-    if (modalBreakdown && modalBreakdown.classList.contains("active") && breakdownPlanId) {
-      this.renderBreakdownPackagesList(breakdownPlanId);
-      this.updateBreakdownTotal(breakdownPlanId);
-    }
-    const changedPackages = this.model.state.goithau.filter(
-      (pkg) => String(pkg.rootId || pkg.id) === String(deleteContext.rootId),
-    );
-    const changedPlans = this.model.state.kehoach.filter(
-      (plan) => deleteContext.planIds.some((id) => String(id) === String(plan.id)),
-    );
-    stageLocalRecords(this.model, "goithau", changedPackages);
-    stageLocalRecords(this.model, "kehoach", changedPlans);
-    try {
-      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
-        changes: {
-          upserts: { goithau: changedPackages, kehoach: changedPlans },
-          deletions: {
-            goithau: deleted.deletedPackages,
-            thongtinmothau: deleted.deletedBids,
-          },
-        },
-        afterPersist: () => {
-          this.view.renderGoiThauTable();
-          this.view.renderKeHoachTable();
-        }
-      });
-      if (!syncResult?.ok) {
-        await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
-        return;
-      }
-    } catch {
-      await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
+    if (!syncResult?.ok) {
+      await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
       return;
     }
-  } else if (deleteChoice === 2 || deleteConfirmed) {
-    const deleted = deleteAllPackageVersions(this.model, deleteContext);
-    deleteContext.planIds.forEach((pId) => {
-      if (pId) {
-        this.recalculatePlanTotal(pId);
-      }
-    });
-    const breakdownPlanId = document.getElementById("breakdown-plan-id")?.value;
-    const modalBreakdown = document.getElementById("modal-plan-breakdown");
-    if (modalBreakdown && modalBreakdown.classList.contains("active") && breakdownPlanId) {
-      this.renderBreakdownPackagesList(breakdownPlanId);
-      this.updateBreakdownTotal(breakdownPlanId);
-    }
-    const changedPlans = this.model.state.kehoach.filter(
-      (plan) => deleteContext.planIds.some((id) => String(id) === String(plan.id)),
-    );
-    stageLocalRecords(this.model, "kehoach", changedPlans);
-    try {
-      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
-        changes: {
-          upserts: { kehoach: changedPlans },
-          deletions: {
-            goithau: deleted.deletedPackages,
-            thongtinmothau: deleted.deletedBids,
-          },
-        },
-        afterPersist: () => {
-          this.view.renderGoiThauTable();
-          this.view.renderKeHoachTable();
-        }
-      });
-      if (!syncResult?.ok) {
-        await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
-        return;
-      }
-    } catch {
-      await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
-      return;
-    }
+  } catch {
+    await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
+    return;
   }
 }

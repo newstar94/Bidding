@@ -1494,9 +1494,12 @@ textarea[disabled] {
 }
 .custom-select-options li {
   padding: 8px 14px;
+  min-width: 0;
+  overflow: hidden;
   font-size: 0.85rem;
   color: var(--text-main);
   cursor: pointer;
+  text-overflow: ellipsis;
   transition: background-color var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
 }

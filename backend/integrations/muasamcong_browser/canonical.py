@@ -207,6 +207,42 @@ def _source_flag(raw, *aliases):
     return None
 
 
+def _first_nested_value(raw, *aliases):
+    """Return the first non-empty scalar alias anywhere in a bounded payload."""
+
+    for item in _walk(raw):
+        if not isinstance(item, dict):
+            continue
+        value = pick(item, *aliases)
+        if value not in (None, ""):
+            return _source_scalar(value)
+    return None
+
+
+def _approval_decision(raw_detail, hsmt):
+    """Read E-HSMT approval without confusing cancellation/result decisions."""
+
+    approved = None
+    if isinstance(raw_detail, dict):
+        approved = raw_detail.get("bidInvContractorOfflineDTO")
+    if not isinstance(approved, dict):
+        approved = {}
+    return {
+        "number": pick(
+            approved, "approvalDecisionNo", "decisionNo", "approveNo",
+            default=_first_nested_value(
+                hsmt, "approvalDecisionNo", "decisionNo", "approveNo"
+            ),
+        ),
+        "date": pick(
+            approved, "approvalDecisionDate", "decisionDate", "approveDate",
+            default=_first_nested_value(
+                hsmt, "approvalDecisionDate", "decisionDate", "approveDate"
+            ),
+        ),
+    }
+
+
 def _package_rows(payload):
     named = []
     if isinstance(payload, dict):
@@ -468,7 +504,12 @@ def normalize_notice_revision(
         "stablePackageId": pick(notice, "bidNo", "stablePackageId"),
         "symbol": pick(notice, "bidNo", "symbol"),
         "name": _source_scalar(pick(notice, "bidName", "name")),
-        "status": str(pick(notice, "status", default="") or "").upper() or None,
+        "status": str(
+            related_pick("bidStatus", "status", default="") or ""
+        ).upper() or None,
+        "statusForNotify": str(
+            related_pick("statusForNotify", default="") or ""
+        ).upper() or None,
         "publishedAt": pick(notice, "publicDate", "publishedAt"),
         "bidClosingAt": pick(notice, "bidCloseDate", "bidClosingAt"),
         "bidOpeningAt": pick(notice, "bidOpenDate", "bidOpeningAt"),
@@ -565,14 +606,20 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
     bidders = []
     seen = set()
     lot_rows = []
-    opening_at = None
+    opening_at_by_phase = {"TECHNICAL": None, "FINANCIAL": None}
     for source_key, source_payload in raw_bundle.items():
         phase = "FINANCIAL" if str(source_key).endswith("_2") else "TECHNICAL"
         for item in opening_objects(source_payload):
             if not isinstance(item, dict):
                 continue
-            opening_at = opening_at or pick(
-                item, "bidOpenDate", "bidOpeningAt", "bidRealityOpenDate"
+            opening_at_by_phase[phase] = opening_at_by_phase[phase] or pick(
+                item,
+                "successBidOpenDate",
+                "successBidOpenDateTc",
+                "bidRealityOpenDate",
+                "actualOpeningAt",
+                "bidOpenDate",
+                "bidOpeningAt",
             )
             if isinstance(item.get("lotNoValueDTOList"), list):
                 lot_rows.extend(item["lotNoValueDTOList"])
@@ -687,7 +734,11 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
     return {
         "noticeNo": notice_no,
         "revisionId": str(revision_id),
-        "openingAt": opening_at,
+        "openingAt": (
+            opening_at_by_phase["TECHNICAL"]
+            or opening_at_by_phase["FINANCIAL"]
+        ),
+        "financialOpeningAt": opening_at_by_phase["FINANCIAL"],
         "bidders": bidders,
         "lots": lots,
     }
@@ -961,6 +1012,15 @@ def normalize_notice_complete_bundle(bundle: dict):
             revision_number=str(revision_number).zfill(2),
             source=notice["source"],
         )
+        notice["status"] = str(
+            node.get("sourceStatus") or notice.get("status") or ""
+        ).upper() or None
+        notice["statusForNotify"] = str(
+            node.get("statusForNotify") or notice.get("statusForNotify") or ""
+        ).upper() or None
+        approval = _approval_decision(raw_detail, sidecars.get("hsmt"))
+        notice["approvalDecisionNo"] = approval["number"]
+        notice["approvalDecisionDate"] = approval["date"]
         plan_detail_source = sources.get("planDetail") or {}
         plan_detail = plan_detail_source.get("response")
         plan_package = None
@@ -1107,18 +1167,23 @@ def normalize_notice_complete_bundle(bundle: dict):
             )
             if (sources.get(key) or {}).get("success") is True
         }
+        opening = (
+            normalize_opening_bundle(
+                opening_raw,
+                notice_no=notice_no,
+                revision_id=revision_id,
+            )
+            if opening_raw
+            else None
+        )
         revision = {
             **notice,
             "availableSources": sorted(sidecars),
-            "opening": (
-                normalize_opening_bundle(
-                    opening_raw,
-                    notice_no=notice_no,
-                    revision_id=revision_id,
-                )
-                if opening_raw
-                else None
+            "actualOpeningAt": (opening or {}).get("openingAt"),
+            "financialActualOpeningAt": (opening or {}).get(
+                "financialOpeningAt"
             ),
+            "opening": opening,
             "result": (
                 normalize_result_bundle(
                     {"noticeDetail": raw_detail, **result_raw},
@@ -1137,6 +1202,8 @@ def normalize_notice_complete_bundle(bundle: dict):
             "isMedicinePackage", "isMultiLot", "lots",
             "additionalPurchaseOption", "selectionDuration", "selectionStart",
             "linkedPlanRevisionId", "linkedPlanVersion",
+            "approvalDecisionNo", "approvalDecisionDate", "actualOpeningAt",
+            "financialActualOpeningAt",
         ):
             if revision.get(field) is not None:
                 operation = detail_source.get("operation")
@@ -1188,7 +1255,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         }
     return {
         "schemaVersion": "biddingflow-procurement-canonical-v2",
-        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v5",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v6",
         "kind": "NOTICE",
         "canonicalCode": notice_no,
         "revisions": revisions,
@@ -1200,7 +1267,7 @@ def normalize_notice_complete_bundle(bundle: dict):
 class ImportParserRegistry:
     """Select immutable parser versions by schema fingerprint family."""
 
-    version = "2026.08.1"
+    version = "2026.08.2"
 
     def __init__(self, *, shadow_enabled=False):
         self._parsers = {

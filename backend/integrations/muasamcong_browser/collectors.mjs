@@ -837,6 +837,8 @@ export class MscCollectors {
     const canonicalNoticeNo = String(record?.notifyNo || "").trim().toUpperCase();
     const retrievedAt = this.clock();
     const failures = [];
+    const detailLevel = String(options.detailLevel || "COMPLETE").trim().toUpperCase();
+    const invitationOnly = detailLevel === "INVITATION";
     const bundle = {
       schemaVersion: "biddingflow-muasamcong-raw-bundle-v2",
       provider: "MUASAMCONG",
@@ -845,7 +847,7 @@ export class MscCollectors {
         canonicalCode: canonicalNoticeNo,
         noticeNo: canonicalNoticeNo,
       },
-      detailLevel: "COMPLETE",
+      detailLevel,
       revisionMode: String(options.revisionMode || "ALL").toUpperCase(),
       retrievedAt,
       sources: {},
@@ -936,12 +938,14 @@ export class MscCollectors {
       failures.push({ operation: "NOTICE_VERSION_SELECTION", error: "PROCUREMENT_REVISION_INVALID" });
     }
 
-    const contractPromise = capture(
-      bundle.sources,
-      "contractList",
-      "NOTICE_CONTRACT_LIST",
-      { notifyNo: canonicalNoticeNo },
-    );
+    const contractPromise = invitationOnly
+      ? Promise.resolve(null)
+      : capture(
+        bundle.sources,
+        "contractList",
+        "NOTICE_CONTRACT_LIST",
+        { notifyNo: canonicalNoticeNo },
+      );
     await Promise.all([mapConcurrent(selected, this.collectionConcurrency, async (revision) => {
       const label = revision.revisionNumber || revision.revisionId;
       const node = {
@@ -991,17 +995,30 @@ export class MscCollectors {
         ...notice,
         ...(String(revision.revisionId) === String(currentId) ? asObject(record) : {}),
       };
+      const statusEvidence = asObject(
+        findFirstValue(detail, "bidoBidStatus")
+        || findFirstValue(detail, "bidoBidStatusDTO"),
+      );
+      node.sourceStatus = String(
+        merged.bidStatus || statusEvidence.status || merged.status || "",
+      ).toUpperCase() || null;
+      node.statusForNotify = String(merged.statusForNotify || "").toUpperCase() || null;
       const processApply = String(merged.processApply || revision.processApply || "LDT").toUpperCase();
       const bidMode = String(merged.bidMode || "").toUpperCase();
       const notifyId = usableIdentifier(merged.notifyId || merged.id) || revision.revisionId;
       if (processApply === "LDT") {
-        await Promise.all([
+        const invitationSources = [
           capture(node.sources, "tenderInfo", "NOTICE_TENDER_INFO", { id: notifyId }, { revision: label }),
           capture(node.sources, "hsmt", "NOTICE_HSMT", { id: notifyId, processApply }, { revision: label }),
-          capture(node.sources, "petition", "NOTICE_PETITION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
-          capture(node.sources, "clarification", "NOTICE_CLARIFICATION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
-          capture(node.sources, "prebidConference", "NOTICE_PREBID_CONFERENCE", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
-        ]);
+        ];
+        if (!invitationOnly) {
+          invitationSources.push(
+            capture(node.sources, "petition", "NOTICE_PETITION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
+            capture(node.sources, "clarification", "NOTICE_CLARIFICATION", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
+            capture(node.sources, "prebidConference", "NOTICE_PREBID_CONFERENCE", { notifyNo: canonicalNoticeNo, processApply }, { revision: label, optional: true }),
+          );
+        }
+        await Promise.all(invitationSources);
       } else if (["KHAC", "ADB", "WB"].includes(processApply)) {
         await capture(
           node.sources,
@@ -1062,7 +1079,7 @@ export class MscCollectors {
       const hasOpening = Boolean(findFirstValue(detail, "successBidOpenDate"))
         || ["OPEN_BID", "OPEN_DXKT", "OPEN_DXTC", "PUB_KQLCNT"].includes(status)
         || Boolean(usableIdentifier(merged.bidOpenId));
-      if (hasOpening) {
+      if (!invitationOnly && hasOpening) {
         let opening;
         try {
           opening = await this.getOpeningBundle(canonicalNoticeNo, revision.revisionId);
@@ -1122,18 +1139,20 @@ export class MscCollectors {
 
       const inputResultId = usableIdentifier(merged.inputResultId || findFirstValue(detail, "inputResultId"));
       const techReqId = usableIdentifier(merged.techReqId || findFirstValue(detail, "techReqId"));
-      await Promise.all([
-        inputResultId && capture(
-          node.sources,
-          "selectionResult",
-          processApply === "KHAC" ? "SELECTION_RESULT_OTHER" : "SELECTION_RESULT",
-          { id: inputResultId },
-          { revision: label },
-        ),
-        techReqId && capture(
-          node.sources, "technicalResult", "TECHNICAL_RESULT", { id: techReqId }, { revision: label },
-        ),
-      ].filter(Boolean));
+      if (!invitationOnly) {
+        await Promise.all([
+          inputResultId && capture(
+            node.sources,
+            "selectionResult",
+            processApply === "KHAC" ? "SELECTION_RESULT_OTHER" : "SELECTION_RESULT",
+            { id: inputResultId },
+            { revision: label },
+          ),
+          techReqId && capture(
+            node.sources, "technicalResult", "TECHNICAL_RESULT", { id: techReqId }, { revision: label },
+          ),
+        ].filter(Boolean));
+      }
 
       if (bidMode.startsWith("2_")) {
         const phaseTwo = await capture(

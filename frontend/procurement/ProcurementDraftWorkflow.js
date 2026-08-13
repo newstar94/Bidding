@@ -258,6 +258,12 @@ export function fillPlanFormFromProcurementDraft(document, planDraft, model) {
 
 export function fillPackageFormFromProcurementDraft(document, packageDraft, controller) {
   const money = (value) => value == null ? "" : controller?.model?.formatVND?.(value) ?? String(value);
+  const date = (value) => value
+    ? controller?.model?.formatForDateInput?.(value) ?? value
+    : "";
+  const datetime = (value) => value
+    ? controller?.model?.formatForDatetimeLocal?.(value) ?? value
+    : "";
   const values = {
     "gt-ma": packageDraft?.maGoiThau,
     "gt-ten": packageDraft?.tenGoiThau,
@@ -276,6 +282,13 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
     "gt-tuychonmuathem": yesNo(packageDraft?.tuyChonMuaThem),
     "gt-phanlo": yesNo(packageDraft?.phanLo),
     "gt-giatribaomothau": money(packageDraft?.giaTriBaoDamDuThau),
+    "gt-soquyetdinh": packageDraft?.soQuyetDinh,
+    "gt-ngayquyetdinh": date(packageDraft?.ngayQuyetDinh),
+    "gt-thoigiandangtai": datetime(packageDraft?.thoiGianDangTai),
+    "gt-thoigiandongthau": datetime(packageDraft?.thoiGianDongThau),
+    "gt-thoigianmothau": datetime(packageDraft?.thoiGianMoThau),
+    "gt-thoigianmoehsdxtc": datetime(packageDraft?.thoiGianMoEhsdxtc),
+    "gt-trangthai": biddingPackageStatus(packageDraft?.trangThai),
   };
   Object.entries(values).forEach(([id, value]) => setControlValue(document, id, value));
   if (Array.isArray(packageDraft?.danhSachPhanLo)) {

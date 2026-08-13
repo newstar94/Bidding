@@ -190,9 +190,8 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
   const upserts = {
     chudautu: (state?.chudautu || []).filter((investor) => (
       investorIds.has(String(investor?.id || ""))
-      && !(snapshot.chudautu || []).some(
-        (previousInvestor) => String(previousInvestor?.id || "") === String(investor?.id || ""),
-      )
+      && investor?.referenceOnly !== true
+      && !(Number(investor?.rowVersion) > 0)
     )),
     kehoach: (state?.kehoach || []).filter((plan) => (
       String(plan?.rootId || plan?.id || "") === targetPlanRootId
@@ -220,6 +219,7 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
   };
   const deletions = {};
   Object.keys(upserts).forEach((table) => {
+    if (table === "chudautu") return;
     const ids = removedIds(previous[table], upserts[table]);
     if (ids.length) deletions[table] = ids;
   });

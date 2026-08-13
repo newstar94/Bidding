@@ -624,6 +624,7 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
           bidMode: "1_MTHS", processApply: "LDT", status: "PUB_KQLCNT",
           bidOpenId: "opening-1", inputResultId: "result-1", planNo: "PL2600000001",
           bidNo: "BP2600000001",
+          bidoBidStatus: { status: "OPEN_DXKT", successBidOpenDate: "2026-03-01T09:22:35" },
         }, metadata: { operation },
       };
       if (operation === "PLAN_VERSION_LIST") return {
@@ -657,7 +658,7 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
   const bundle = await new MscCollectors({ client }).collectCompleteBundle({
     type: "es-notify-contractor", id: "notice-01", notifyId: "notice-01",
     notifyNo: "IB2600000002", inputResultId: "result-1", bidOpenId: "opening-1",
-    processApply: "LDT", bidMode: "1_MTHS",
+    processApply: "LDT", bidMode: "1_MTHS", statusForNotify: "DXT",
   });
 
   assert.equal(bundle.schemaVersion, "biddingflow-muasamcong-raw-bundle-v2");
@@ -672,9 +673,90 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
   assert.equal(bundle.revisions["01"].sources.petition.absent, true);
   assert.equal(bundle.revisions["01"].sources.opening_bid_0.success, true);
   assert.equal(bundle.revisions["01"].sources.selectionResult.success, true);
+  assert.equal(bundle.revisions["01"].statusForNotify, "DXT");
+  assert.equal(bundle.revisions["01"].sourceStatus, "OPEN_DXKT");
   assert.equal(bundle.sources.contractList.response[0].contractCode, "HD-01");
   assert.equal(bundle.status, "FOUND_COMPLETE");
   assert.equal(calls.some(([operation]) => operation === "OPENING_LOT"), false);
+});
+
+
+test("invitation tender bundle stops before opening, result and contract endpoints", async () => {
+  const calls = [];
+  const forbidden = new Set([
+    "NOTICE_CONTRACT_LIST",
+    "SELECTION_RESULT",
+    "SELECTION_RESULT_OTHER",
+    "TECHNICAL_RESULT",
+  ]);
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      assert.equal(operation.startsWith("OPENING_"), false);
+      assert.equal(forbidden.has(operation), false);
+      if (operation === "NOTICE_LDT_VERSION_LIST") return {
+        data: { versionList: [{
+          id: "notice-00", notifyNo: "IB2600374868",
+          notifyVersion: "00", processApply: "LDT",
+        }] },
+        metadata: { operation },
+      };
+      if (operation === "NOTICE_OTHER_VERSION_LIST") {
+        throw new Error("PROCUREMENT_NOT_FOUND");
+      }
+      if (operation === "NOTICE_LDT_DETAIL") return {
+        data: {
+          notifyNo: "IB2600374868", notifyId: "notice-00",
+          notifyVersion: "00", processApply: "LDT", bidMode: "1_MTHS",
+          planNo: "PL2600184109", bidNo: "BP2600291019",
+          statusForNotify: "DXT", inputResultId: "result-1",
+          techReqId: "technical-1", bidOpenId: "opening-1",
+          bidoBidStatus: {
+            status: "OPEN_DXKT",
+            successBidOpenDate: "2026-08-03T13:08:42",
+          },
+        },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_VERSION_LIST") return {
+        data: { versionList: [{
+          id: "plan-00", planNo: "PL2600184109", planVersion: "00",
+        }] },
+        metadata: { operation },
+      };
+      if (operation === "PLAN_DETAIL") return {
+        data: {
+          planNo: "PL2600184109",
+          packages: [{
+            idDetail: "plan-package-1", bidNo: "BP2600291019",
+            bidName: "Goi thau dang xet thau",
+          }],
+        },
+        metadata: { operation },
+      };
+      if ([
+        "NOTICE_PETITION", "NOTICE_CLARIFICATION", "NOTICE_PREBID_CONFERENCE",
+      ].includes(operation)) {
+        throw new Error("PROCUREMENT_NOT_FOUND");
+      }
+      return { data: { operation, ...payload }, metadata: { operation } };
+    },
+  };
+
+  const bundle = await new MscCollectors({ client }).collectCompleteBundle({
+    type: "es-notify-contractor", id: "notice-00", notifyId: "notice-00",
+    notifyNo: "IB2600374868", processApply: "LDT", bidMode: "1_MTHS",
+    statusForNotify: "DXT", bidOpenId: "opening-1", inputResultId: "result-1",
+    techReqId: "technical-1",
+  }, { detailLevel: "INVITATION" });
+
+  assert.equal(bundle.detailLevel, "INVITATION");
+  assert.equal(bundle.revisions["00"].sources.tenderInfo.success, true);
+  assert.equal(bundle.revisions["00"].sources.hsmt.success, true);
+  assert.equal(bundle.revisions["00"].sources.planPackageDetail.success, true);
+  assert.equal(bundle.metrics.collector.openings, 0);
+  assert.equal(bundle.metrics.collector.results, 0);
+  assert.equal(bundle.metrics.collector.contracts, 0);
 });
 
 

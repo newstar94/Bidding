@@ -398,6 +398,71 @@ def test_notice_authoritative_business_fields_replace_plan_values():
     assert {field: source_fields[field] for field in expected} == expected
 
 
+def test_notice_reconciler_preserves_evaluation_milestones_for_repository():
+    repository = MemoryRepository()
+    ProcurementPlanReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        revision=_revision("00", "plan-evaluating-00", [_package("A")]),
+        idempotency_key="plan:evaluating:00", expected_plan_row_version=None,
+    )
+    result = ProcurementNoticeReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        notice={
+            **_notice("00", status="IS_PUBLISH"),
+            "statusForNotify": "DXT",
+            "actualOpeningAt": "2026-03-15T09:38:42+07:00",
+            "financialActualOpeningAt": "2026-03-16T10:05:00+07:00",
+            "bidGuaranteeVnd": 52_183_040,
+            "approvalDecisionNo": "123/QĐ-E-HSMT",
+            "approvalDecisionDate": "2026-03-01",
+            "publishedAt": "2026-03-02T08:00:00+07:00",
+        },
+        idempotency_key="notice:evaluating:00",
+        expected_package_row_version=1,
+    )
+
+    package = result["createdPackages"][0]
+    assert package["initialStatus"] == "EVALUATING"
+    assert package["noticeFields"]["actualOpeningAt"] == (
+        "2026-03-15T09:38:42+07:00"
+    )
+    assert package["sourceFields"]["bidGuaranteeVnd"] == 52_183_040
+    assert package["sourceFields"]["approvalDecisionNo"] == "123/QĐ-E-HSMT"
+
+
+def test_notice_milestone_change_is_material_even_when_schedule_is_unchanged():
+    repository = MemoryRepository()
+    ProcurementPlanReconciler(repository).reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        revision=_revision("00", "plan-material-00", [_package("A")]),
+        idempotency_key="plan:material:00", expected_plan_row_version=None,
+    )
+    command = ProcurementNoticeReconciler(repository)
+    first = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        notice={**_notice("00"), "bidGuaranteeVnd": 10_000_000},
+        idempotency_key="notice:material:00", expected_package_row_version=1,
+    )
+    changed = {
+        **_notice("01"),
+        "bidGuaranteeVnd": 12_000_000,
+        "approvalDecisionNo": "QĐ-02",
+    }
+    changed["bidClosingAt"] = _notice("00")["bidClosingAt"]
+    changed["bidOpeningAt"] = _notice("00")["bidOpeningAt"]
+    second = command.reconcile_revision(
+        organization_id="org-1", actor_user_id="user-1", provider="MUASAMCONG",
+        notice=changed,
+        idempotency_key="notice:material:01", expected_package_row_version=1,
+    )
+
+    assert first["operation"] == "APPLIED"
+    assert second["operation"] == "APPLIED"
+    assert second["createdPackages"][0]["sourceFields"]["bidGuaranteeVnd"] == (
+        12_000_000
+    )
+
+
 def test_standalone_notice_reimport_is_noop_and_digest_drift_conflicts():
     repository = MemoryRepository()
     ProcurementPlanReconciler(repository).reconcile_revision(
@@ -771,8 +836,17 @@ def test_real_postgres_plan_00_to_01_is_atomic_and_preserves_version_axes():
         }
         revision_01["packages"][1]["noticeFields"] = {
             "status": "PUBLISHED",
+            "publishedAt": "2026-03-01T08:00:00+07:00",
             "bidClosingAt": "2026-03-15T09:00:00+07:00",
+            "bidOpeningAt": "2026-03-15T09:00:00+07:00",
+            "actualOpeningAt": "2026-03-15T09:08:42+07:00",
         }
+        revision_01["packages"][1].update({
+            "bidGuaranteeVnd": 52_183_040,
+            "approvalDecisionNo": "123/QĐ-E-HSMT",
+            "approvalDecisionDate": "2026-03-01",
+            "actualOpeningAt": "2026-03-15T09:08:42+07:00",
+        })
         revision_01["familyNo"] = family_no
         revision_01["plan"]["investorId"] = investor_id
         revision_01["revisionDigest"] = canonical_digest(revision_01)
@@ -844,11 +918,17 @@ def test_real_postgres_plan_00_to_01_is_atomic_and_preserves_version_axes():
         assert second_packages["A"]["localVersion"] == 0
         assert second_packages["B"]["localVersion"] == 0
         linked_b = cursor.execute(
-            """SELECT trang_thai, thoi_gian_dong_thau
+            """SELECT trang_thai, thoi_gian_dong_thau, thoi_gian_mo_thau,
+                      thoi_gian_dang_tai, so_quyet_dinh, ngay_quyet_dinh,
+                      gia_tri_dam_bao_du_thau
                  FROM goi_thau WHERE organization_id = ? AND id = ?""",
             (organization_id, second_packages["B"]["id"]),
         ).fetchone()
-        assert tuple(linked_b) == ("INVITED", "2026-03-15 09:00:00")
+        assert tuple(linked_b) == (
+            "INVITED", "2026-03-15 09:00:00", "2026-03-15 09:08:42",
+            "2026-03-01 08:00:00", "123/QĐ-E-HSMT", "2026-03-01",
+            52_183_040,
+        )
         assert cursor.execute(
             """SELECT COUNT(*) FROM procurement_source_revision
                 WHERE organization_id = ? AND entity_kind = 'NOTICE'

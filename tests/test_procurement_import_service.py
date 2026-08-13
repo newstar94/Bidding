@@ -119,6 +119,17 @@ def test_procurement_code_normalization_separates_base_and_requested_revision():
             },
             "INVITED",
         ),
+        (
+            {
+                "noticeLink": {
+                    "state": "LINKED", "noticeNo": "IB2600374868",
+                    "kind": "TBMT", "noticeRevisionId": "notice-00",
+                    "noticeVersion": "00",
+                },
+                "noticeFields": {"statusForNotify": "DXT"},
+            },
+            "EVALUATING",
+        ),
     ],
 )
 def test_import_lifecycle_mapping_is_conservative(package, expected):
@@ -152,6 +163,74 @@ def test_package_draft_maps_source_lifecycle_to_bidding_status(
     )
 
     assert draft["trangThai"] == bidding_status
+
+
+def test_package_draft_maps_notice_business_fields_and_actual_opening_time():
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "PL2600184109",
+        {"revisionId": "plan-00", "revisionNumber": "00"},
+        {
+            "planDetailRevisionId": "detail-00",
+            "effectiveFields": {
+                "name": "Gói đang xét thầu",
+                "lifecycleStatus": "EVALUATING",
+                "bidGuaranteeVnd": 52_183_040,
+                "approvalDecisionNo": "123/QĐ-E-HSMT",
+                "approvalDecisionDate": "2026-07-15T00:00:00",
+                "financialActualOpeningAt": "2026-08-03T16:20:00",
+                "noticeFields": {
+                    "publishedAt": "2026-07-16T09:00:00",
+                    "bidClosingAt": "2026-08-03T13:00:00",
+                    "bidOpeningAt": "2026-08-03T13:00:00",
+                    "actualOpeningAt": "2026-08-03T13:08:42",
+                },
+            },
+        },
+    )
+
+    assert draft["trangThai"] == "Đang chấm thầu"
+    assert draft["giaTriBaoDamDuThau"] == 52_183_040
+    assert draft["soQuyetDinh"] == "123/QĐ-E-HSMT"
+    assert draft["ngayQuyetDinh"] == "2026-07-15T00:00:00"
+    assert draft["thoiGianDangTai"] == "2026-07-16T09:00:00"
+    assert draft["thoiGianDongThau"] == "2026-08-03T13:00:00"
+    assert draft["thoiGianMoThau"] == "2026-08-03T13:08:42"
+    assert draft["thoiGianMoEhsdxtc"] == "2026-08-03T16:20:00"
+
+
+def test_direct_notice_draft_derives_evaluating_from_status_for_notify():
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600374868",
+        {
+            "kind": "TBMT",
+            "noticeNo": "IB2600374868",
+            "revisionId": "notice-00",
+            "revisionNumber": "00",
+            "status": "IS_PUBLISH",
+            "statusForNotify": "DXT",
+            "publishedAt": "2026-07-16T09:00:00",
+            "bidClosingAt": "2026-08-03T13:00:00",
+            "bidOpeningAt": "2026-08-03T13:00:00",
+            "actualOpeningAt": "2026-08-03T13:08:42",
+        },
+        {
+            "kind": "TBMT",
+            "noticeNo": "IB2600374868",
+            "revisionId": "notice-00",
+            "revisionNumber": "00",
+            "status": "IS_PUBLISH",
+            "statusForNotify": "DXT",
+            "publishedAt": "2026-07-16T09:00:00",
+            "bidClosingAt": "2026-08-03T13:00:00",
+            "bidOpeningAt": "2026-08-03T13:00:00",
+            "actualOpeningAt": "2026-08-03T13:08:42",
+        },
+    )
+
+    assert draft["trangThai"] == "Đang chấm thầu"
+    assert draft["thoiGianDangTai"] == "2026-07-16T09:00:00"
+    assert draft["thoiGianDongThau"] == "2026-08-03T13:00:00"
+    assert draft["thoiGianMoThau"] == "2026-08-03T13:08:42"
 
 
 def test_prepare_latest_previews_full_snapshot_and_warns_about_older_history(tmp_path):
@@ -607,8 +686,9 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
         def lookup_with_options(
             self, code, kind, *, detail_level, revision_mode, revision_numbers
         ):
+            expected_detail = "COMPLETE" if kind == "PLAN" else "INVITATION"
             assert (detail_level, revision_mode, revision_numbers) == (
-                "COMPLETE", "ALL", [],
+                expected_detail, "ALL", [],
             )
             self.upstream.append((kind, code))
             revisions = (
@@ -624,9 +704,14 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
                 "metrics": {"cache": {"hit": False, "layer": "NONE"}},
             }
 
-        def lookup_from_raw_bundle(self, code, bundle, *, revision_mode):
+        def lookup_from_raw_bundle(
+            self, code, bundle, *, revision_mode, detail_level
+        ):
             assert revision_mode == "ALL"
             kind = (bundle.get("entity") or {}).get("kind")
+            assert detail_level == (
+                "COMPLETE" if kind == "PLAN" else "INVITATION"
+            )
             revisions = (
                 [self._plan_revision()] if kind == "PLAN"
                 else self._notice_revisions()
@@ -641,10 +726,10 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             }
 
         def list_notice_revisions(self, *_args, **_kwargs):
-            raise AssertionError("linked notice enrichment must use COMPLETE bundle")
+            raise AssertionError("linked notice enrichment must use INVITATION bundle")
 
         def get_notice_revision(self, *_args, **_kwargs):
-            raise AssertionError("linked notice enrichment must use cached COMPLETE bundle")
+            raise AssertionError("linked notice enrichment must use INVITATION bundle")
 
     reset_recorded_metrics_for_tests()
     source = CompleteSource()
@@ -666,11 +751,9 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
     assert source.upstream == [
         ("PLAN", "PL2600000001"),
         ("PACKAGE", "IB2600000002"),
-    ]
-    assert raw_cache.saved == [
-        ("PLAN", "PL2600000001"),
         ("PACKAGE", "IB2600000002"),
     ]
+    assert raw_cache.saved == [("PLAN", "PL2600000001")]
     for preview in (cold, warm):
         package = preview["packages"][0]
         assert package["noticeLink"]["noticeVersion"] == "00"
@@ -679,8 +762,86 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             "2026-03-01T09:00:00+07:00"
         )
     phases = snapshot_recorded_metrics().database_phase_count
-    assert phases[("procurement_import", "source_cache", "miss")] == 2
-    assert phases[("procurement_import", "source_cache", "hit")] == 2
+    assert phases[("procurement_import", "source_cache", "miss")] == 3
+    assert phases[("procurement_import", "source_cache", "hit")] == 1
+
+
+def test_plan_linked_notice_uses_invitation_scope_and_caps_post_opening_data():
+    class InvitationSource:
+        name = "MUASAMCONG"
+
+        def __init__(self):
+            self.calls = []
+
+        def list_plan_revisions(self, code):
+            assert code == "PL2600184109"
+            return [{"revisionId": "plan-00", "revisionNumber": "00"}]
+
+        def get_plan_revision(self, code, revision_id):
+            assert (code, revision_id) == ("PL2600184109", "plan-00")
+            return {
+                "revisionId": "plan-00", "revisionNumber": "00",
+                "name": "Ke hoach", "planType": "Du an",
+                "approvalDecisionNo": "01/QD",
+                "approvalDecisionDate": "2026-01-01",
+                "packages": [{
+                    "planDetailRevisionId": "detail-00", "symbol": "01",
+                    "name": "Goi thau", "priceVnd": 1_000,
+                    "executionPeriod": "30 ngay", "capitalDetail": "Ngan sach",
+                    "selectionDuration": "30 ngay", "selectionStart": "2026-02",
+                    "noticeLink": {
+                        "state": "LINKED", "noticeNo": "IB2600374868",
+                        "kind": "TBMT", "noticeVersion": "00",
+                    },
+                }],
+            }
+
+        def lookup_with_options(
+            self, code, kind, *, detail_level, revision_mode, revision_numbers
+        ):
+            self.calls.append((code, kind, detail_level, revision_mode, revision_numbers))
+            return {
+                "canonical": {"revisions": [{
+                    "noticeNo": code, "kind": "TBMT",
+                    "revisionId": "notice-00", "revisionNumber": "00",
+                    "status": "OPEN_DXKT", "statusForNotify": "DXT",
+                    "publishedAt": "2026-07-16T09:00:00",
+                    "bidClosingAt": "2026-08-03T13:00:00",
+                    "bidOpeningAt": "2026-08-03T13:00:00",
+                    "actualOpeningAt": "2026-08-03T13:08:42",
+                    "financialActualOpeningAt": "2026-08-03T16:20:00",
+                    "bidGuaranteeVnd": 52_183_040,
+                    "approvalDecisionNo": "123/QD-E-HSMT",
+                    "approvalDecisionDate": "2026-07-15T00:00:00",
+                    "opening": {"bidders": [{"code": "bidder-1"}]},
+                    "result": {"status": "APPROVED"},
+                }]},
+                "metrics": {"cache": {"hit": False}},
+            }
+
+    source = InvitationSource()
+    preview = ProcurementImportPreparer(source, PreviewStore()).prepare_plan(
+        code="PL2600184109", revision_mode="LATEST",
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+        local_state=None, include_linked_notices=True,
+    )
+
+    assert source.calls == [(
+        "IB2600374868", "PACKAGE", "INVITATION", "ALL", [],
+    )]
+    package = preview["packages"][0]
+    effective = package["effectiveFields"]
+    assert effective["lifecycleStatus"] == "INVITED"
+    assert effective["bidGuaranteeVnd"] == 52_183_040
+    assert effective["approvalDecisionNo"] == "123/QD-E-HSMT"
+    assert effective["approvalDecisionDate"] == "2026-07-15T00:00:00"
+    assert effective["noticeFields"] == {
+        "status": "PUBLISHED",
+        "publishedAt": "2026-07-16T09:00:00",
+        "bidClosingAt": "2026-08-03T13:00:00",
+    }
+    for field in ("actualOpeningAt", "financialActualOpeningAt", "opening", "result"):
+        assert field not in effective
 
 
 def test_prepare_all_orders_revisions_numerically_even_when_provider_is_unsorted(tmp_path):

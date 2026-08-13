@@ -534,7 +534,7 @@ def test_shadow_parser_reports_diff_without_replacing_active_result():
     assert events == [{
         "status": "DIFF",
         "fingerprint": "plan:v1:fixture",
-        "activeParserVersion": "2026.08.1",
+        "activeParserVersion": "2026.08.2",
         "shadowParserVersion": "2026.09-candidate",
     }]
 
@@ -934,11 +934,19 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
         "revisions": {
             "01": {
                 "revisionId": "notice-01",
+                "sourceStatus": "OPEN_DXKT",
+                "statusForNotify": "DXT",
                 "sources": {
                     "noticeDetail": {
                         "operation": "NOTICE_LDT_DETAIL",
                         "success": True,
-                        "response": raw_notice,
+                        "response": {
+                            **raw_notice,
+                            "bidInvContractorOfflineDTO": {
+                                "decisionNo": "123/QĐ-E-HSMT",
+                                "decisionDate": "2026-02-01T07:30:00",
+                            },
+                        },
                         "schemaFingerprint": "package-notice:v1:fixture",
                         "retrievedAt": "2026-08-12T00:00:00Z",
                     },
@@ -981,6 +989,10 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                         "success": True,
                         "response": {
                             "bidaInvChapterConfList": [{"isMultiLot": 1}],
+                            "resultDecision": {
+                                "decisionNo": "KHÔNG-ĐƯỢC-LẤY",
+                                "decisionDate": "2026-04-01T07:30:00",
+                            },
                         },
                     },
                     "planDetail": {
@@ -1020,6 +1032,9 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                         "operation": "OPENING_BID",
                         "success": True,
                         "response": {
+                            "bidoBidroundMngViewDTO": {
+                                "successBidOpenDate": "2026-03-01T09:22:35",
+                            },
                             "bidSubmissionByContractorViewResponse": {
                                 "bidSubmissionDTOList": [{
                                     "contractorCode": "vn0100000001",
@@ -1040,6 +1055,15 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                             "lotName": "Lô 1",
                             "lotFinalPrice": 900000000,
                         }],
+                    },
+                    "opening_bid_2": {
+                        "operation": "OPENING_BID",
+                        "success": True,
+                        "response": {
+                            "bidoBidroundMngViewDTO": {
+                                "successBidOpenDateTc": "2026-03-02T10:05:12",
+                            },
+                        },
                     },
                     "technicalResult": {
                         "operation": "TECHNICAL_RESULT",
@@ -1086,6 +1110,13 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert revision["capitalDetail"] == "Nguồn vốn sidecar"
     assert revision["onlineMode"] == "Không qua mạng"
     assert revision["bidGuaranteeVnd"] == 45_000_000
+    assert revision["status"] == "OPEN_DXKT"
+    assert revision["statusForNotify"] == "DXT"
+    assert revision["approvalDecisionNo"] == "123/QĐ-E-HSMT"
+    assert revision["approvalDecisionDate"] == "2026-02-01T07:30:00"
+    assert revision["actualOpeningAt"] == "2026-03-01T09:22:35"
+    assert revision["financialActualOpeningAt"] == "2026-03-02T10:05:12"
+    assert revision["bidOpeningAt"] == "2026-03-01T09:15:00"
     assert revision["isMedicinePackage"] is True
     assert revision["isMultiLot"] is True
     assert revision["additionalPurchaseOption"] is True

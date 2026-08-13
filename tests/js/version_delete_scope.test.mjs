@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  deleteLatestPackageVersion,
-  getPackageDeleteContext,
-} from "../../frontend/packages/packageDeleteHelpers.js";
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { deleteHopDong } from "../../frontend/contracts/HopDongWorkflow.js";
 import { deleteKeHoach } from "../../frontend/plans/KeHoachWorkflow.js";
@@ -23,68 +19,6 @@ function memoryStorage() {
     },
   };
 }
-
-function fakeModel(goithau) {
-  const deleted = [];
-  return {
-    deleted,
-    state: { goithau: goithau.map((row) => ({ ...row })), thongtinmothau: [] },
-    markDeleted(table, records) {
-      (Array.isArray(records) ? records : [records]).forEach((record) => {
-        deleted.push(`${table}:${record?.id ?? record}`);
-      });
-    },
-  };
-}
-
-test("deleting the latest package version keeps snapshots owned by other plan versions", () => {
-  // Creating a plan version freezes a package snapshot that keeps the same
-  // phienBan under the new plan. Deleting "the latest version" of the snapshot
-  // must not remove the sibling rows of the previous plan version.
-  const model = fakeModel([
-    { id: "pkg-v00", rootId: "pkg-v00", phienBan: "00", isLatest: 0, keHoachId: "plan-00" },
-    { id: "pkg-v01", rootId: "pkg-v00", phienBan: "01", isLatest: 1, keHoachId: "plan-00" },
-    { id: "pkg-v01-snap", rootId: "pkg-v00", phienBan: "01", isLatest: 1, keHoachId: "plan-01" },
-  ]);
-
-  const context = getPackageDeleteContext(model.state.goithau, "pkg-v01-snap");
-  deleteLatestPackageVersion(model, context);
-
-  assert.deepEqual(model.deleted, ["goithau:pkg-v01-snap"]);
-  assert.deepEqual(
-    model.state.goithau.map((pkg) => pkg.id),
-    ["pkg-v00", "pkg-v01"],
-    "packages of the other plan version must survive",
-  );
-});
-
-test("a single-version package snapshot is never wiped by the latest-version delete", () => {
-  // A plan version whose package was inherited unchanged: one phienBan, two
-  // plan scopes. Deleting the latest version of one scope leaves the other.
-  const model = fakeModel([
-    { id: "pkg-a", rootId: "pkg-a", phienBan: "00", isLatest: 0, keHoachId: "plan-00" },
-    { id: "pkg-a-snap", rootId: "pkg-a", phienBan: "00", isLatest: 1, keHoachId: "plan-01" },
-  ]);
-
-  const context = getPackageDeleteContext(model.state.goithau, "pkg-a-snap");
-  deleteLatestPackageVersion(model, context);
-
-  assert.deepEqual(model.deleted, ["goithau:pkg-a-snap"]);
-  assert.deepEqual(model.state.goithau.map((pkg) => pkg.id), ["pkg-a"]);
-});
-
-test("deleting the latest package version in one plan still promotes the previous one", () => {
-  const model = fakeModel([
-    { id: "pkg-v00", rootId: "pkg-v00", phienBan: "00", isLatest: 0, keHoachId: "plan-00" },
-    { id: "pkg-v01", rootId: "pkg-v00", phienBan: "01", isLatest: 1, keHoachId: "plan-00" },
-  ]);
-
-  const context = getPackageDeleteContext(model.state.goithau, "pkg-v01");
-  deleteLatestPackageVersion(model, context);
-
-  assert.deepEqual(model.state.goithau.map((pkg) => pkg.id), ["pkg-v00"]);
-  assert.equal(model.state.goithau[0].isLatest, 1, "the previous version becomes latest");
-});
 
 test("deleting the latest plan version is blocked by packages known only to the server", async () => {
   const planV00 = { id: "plan-00", rootId: "plan-00", phienBan: "00", isLatest: 0, tenKeHoach: "KH" };

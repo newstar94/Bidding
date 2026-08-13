@@ -159,3 +159,86 @@ test("custom select inside a label stays open and allows choosing an option", as
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("searchable portal dropdown stays within the viewport for long options", async () => {
+  const server = createServer(async (request, response) => {
+    try {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      if (pathname === "/") {
+        response.writeHead(200, { "content-type": contentType(".html") });
+        response.end(`<!doctype html><html><head>
+          <link rel="stylesheet" href="/views/css/tokens.css">
+          <link rel="stylesheet" href="/views/css/variables.css">
+          <link rel="stylesheet" href="/views/css/base.css">
+          <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" data-runtime-styles href="/css/runtime-styles.css">
+        </head><body>
+          <div style="position: absolute; top: 80px; right: 12px; width: 360px">
+            <label for="plan-select">Linked procurement plan</label>
+            <select id="plan-select" class="form-control">
+              <option value="">-- Select plan --</option>
+              <option value="plan-1">Procurement plan for specialized medical supplies, equipment, maintenance services, and operating materials for the full fiscal year 2026</option>
+            </select>
+          </div>
+        </body></html>`);
+        return;
+      }
+      const filePath = pathname === "/css/runtime-styles.css"
+        ? join(projectRoot, "views", "css", "runtime-styles.css")
+        : join(projectRoot, pathname.replace(/^\//, ""));
+      const payload = await readFile(filePath);
+      response.writeHead(200, { "content-type": contentType(pathname) });
+      response.end(payload);
+    } catch {
+      if (!response.headersSent) response.writeHead(404);
+      if (!response.writableEnded) response.end("Not Found");
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
+    await page.goto(`http://127.0.0.1:${address.port}/`);
+    await page.evaluate(async () => {
+      const { initAccessibleCombobox } = await import("/frontend/shared/accessibleCombobox.js");
+      initAccessibleCombobox(document.getElementById("plan-select"), {
+        compatibilityMode: "searchable-select",
+        includeEmptyOption: true,
+        noResultsText: "No results",
+        placeholder: "Search plans...",
+        portal: true,
+        searchable: true,
+        showToggle: true,
+      });
+    });
+
+    await page.locator("#plan-select-combobox").click();
+    const geometry = await page.evaluate(() => {
+      const trigger = document.getElementById("plan-select-combobox").getBoundingClientRect();
+      const list = document.getElementById("plan-select-listbox").getBoundingClientRect();
+      const optionStyle = getComputedStyle(
+        document.querySelector('#plan-select-listbox [data-value="plan-1"]'),
+      );
+      return {
+        leftDelta: Math.round((list.left - trigger.left) * 100) / 100,
+        widthDelta: Math.round((list.width - trigger.width) * 100) / 100,
+        right: Math.round(list.right * 100) / 100,
+        viewportWidth: window.innerWidth,
+        overflow: optionStyle.overflow,
+        textOverflow: optionStyle.textOverflow,
+        whiteSpace: optionStyle.whiteSpace,
+      };
+    });
+    assert.equal(geometry.leftDelta, 0);
+    assert.equal(geometry.widthDelta, 0);
+    assert.ok(geometry.right <= geometry.viewportWidth - 8, JSON.stringify(geometry));
+    assert.equal(geometry.overflow, "hidden");
+    assert.equal(geometry.textOverflow, "ellipsis");
+    assert.equal(geometry.whiteSpace, "nowrap");
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

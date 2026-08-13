@@ -92,7 +92,9 @@ class ProcurementImportPreparer:
             1.0, min(float(raw_cache_ttl_seconds), 86_400.0)
         )
 
-    def _lookup_complete_bundle(self, code, kind, organization_id):
+    def _lookup_complete_bundle(
+        self, code, kind, organization_id, *, detail_level="COMPLETE",
+    ):
         raw_bundle = None
         loader_name = (
             "load_fresh_plan_bundle" if kind == "PLAN"
@@ -101,15 +103,23 @@ class ProcurementImportPreparer:
         loader = getattr(self.raw_snapshot_repository, loader_name, None)
         project = getattr(self.source, "lookup_from_raw_bundle", None)
         if callable(loader) and callable(project):
+            loader_options = {
+                "revision_mode": "ALL",
+                "revision_numbers": [],
+                "max_age_seconds": self.raw_cache_ttl_seconds,
+            }
+            if kind == "PACKAGE":
+                loader_options["detail_level"] = detail_level
             raw_bundle = loader(
                 organization_id,
                 code,
-                revision_mode="ALL",
-                revision_numbers=[],
-                max_age_seconds=self.raw_cache_ttl_seconds,
+                **loader_options,
             )
         if isinstance(raw_bundle, dict):
-            complete = project(code, raw_bundle, revision_mode="ALL")
+            complete = project(
+                code, raw_bundle, revision_mode="ALL",
+                detail_level=detail_level,
+            )
             complete.setdefault("rawBundle", raw_bundle)
             complete.setdefault("metrics", {})["cache"] = {
                 "hit": True, "layer": "RAW_SNAPSHOT",
@@ -121,7 +131,7 @@ class ProcurementImportPreparer:
             complete = complete_lookup(
                 code,
                 kind,
-                detail_level="COMPLETE",
+                detail_level=detail_level,
                 revision_mode="ALL",
                 revision_numbers=[],
             )
@@ -134,6 +144,7 @@ class ProcurementImportPreparer:
         captured_bundle = complete.get("rawBundle")
         if (
             not cache_hit
+            and detail_level == "COMPLETE"
             and self.raw_snapshot_repository is not None
             and isinstance(captured_bundle, dict)
         ):
@@ -177,7 +188,8 @@ class ProcurementImportPreparer:
             complete = complete_cache.get(notice_no)
             if notice_no not in complete_cache:
                 complete = self._lookup_complete_bundle(
-                    notice_no, "PACKAGE", organization_id
+                    notice_no, "PACKAGE", organization_id,
+                    detail_level="INVITATION",
                 )
                 complete_cache[notice_no] = complete
             if complete is not None:
@@ -224,14 +236,22 @@ class ProcurementImportPreparer:
             notice_fields = {
                 field: deepcopy(detail.get(field))
                 for field in (
-                    "status", "publishedAt", "bidClosingAt", "bidOpeningAt",
+                    "publishedAt", "bidClosingAt",
                     "selectionForm", "selectionMode", "contractType",
                     "publicUrl",
                 )
                 if detail.get(field) not in (None, "")
             }
+            notice_fields["status"] = "PUBLISHED"
             if notice_fields:
                 package["noticeFields"] = notice_fields
+            for field in (
+                "bidGuaranteeVnd",
+                "approvalDecisionNo",
+                "approvalDecisionDate",
+            ):
+                if detail.get(field) not in (None, ""):
+                    package[field] = deepcopy(detail[field])
 
     @staticmethod
     def _match_candidates(observation, local_packages):

@@ -131,14 +131,24 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     const rect = input.getBoundingClientRect();
     const scrollX = window.scrollX || window.pageXOffset;
     const scrollY = window.scrollY || window.pageYOffset;
+    const viewportPadding = 8;
+    const availableWidth = Math.max(0, window.innerWidth - (viewportPadding * 2));
+    const dropdownWidth = Math.min(rect.width, availableWidth);
+    const left = Math.min(
+      Math.max(rect.left, viewportPadding),
+      Math.max(viewportPadding, window.innerWidth - dropdownWidth - viewportPadding),
+    );
     const dropdownHeight = list.offsetHeight || 220;
     const placeAbove = window.innerHeight - rect.bottom < dropdownHeight
       && rect.top > dropdownHeight;
     wrapper.classList.toggle("drop-up", placeAbove);
     setRuntimeStyles(list, {
       position: "absolute",
-      minWidth: `${rect.width}px`,
-      left: `${rect.left + scrollX}px`,
+      boxSizing: "border-box",
+      width: `${dropdownWidth}px`,
+      minWidth: `${dropdownWidth}px`,
+      maxWidth: `${availableWidth}px`,
+      left: `${left + scrollX}px`,
       top: `${placeAbove ? rect.top + scrollY - dropdownHeight - 4 : rect.bottom + scrollY + 4}px`,
     });
   };
