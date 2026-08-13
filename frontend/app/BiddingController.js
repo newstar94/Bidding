@@ -938,7 +938,19 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         return void 0;
       }
     };
-    const showPackageDetails = (id) => invokeLazyViewMethod("goithau-detail", "showPackageDetails", id);
+    const showPackageDetails = (id) => {
+      this.view._requestedPackageSnapshotId = null;
+      this.view._requestedPlanSnapshotId = null;
+      return invokeLazyViewMethod("goithau-detail", "showPackageDetails", id);
+    };
+    const showPackageDetailsSnapshot = (id) => {
+      const pkg = (this.model.state.goithau || []).find(
+        (candidate) => String(candidate?.id || "") === String(id || ""),
+      );
+      this.view._requestedPackageSnapshotId = id;
+      this.view._requestedPlanSnapshotId = pkg?.keHoachId || null;
+      return invokeLazyViewMethod("goithau-detail", "showPackageDetails", id, true);
+    };
     const showKeHoachDetails = (id) => invokeLazyViewMethod("kehoach-detail", "showKeHoachDetails", id);
     const showHopDongDetails = (id) => invokeLazyViewMethod("hopdong-detail", "showHopDongDetails", id);
     const showChuyenGiaDetails = (id) => invokeLazyViewMethod("chuyengia", "showChuyenGiaDetails", id);
@@ -1149,6 +1161,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       changeChuyenGiaRowVersion,
       changeHopDongRowVersion,
       showPackageDetails,
+      showPackageDetailsSnapshot,
       showKeHoachDetails,
       showHopDongDetails,
       showChuyenGiaDetails,
@@ -1273,6 +1286,8 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           return;
         case "show-package":
           return call("showPackageDetails", id);
+        case "show-package-snapshot":
+          return call("showPackageDetailsSnapshot", id);
         case "edit-package":
           return call("editGoiThau", id);
         case "view-package":

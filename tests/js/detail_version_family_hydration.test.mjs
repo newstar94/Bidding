@@ -52,6 +52,47 @@ test("detail version hydration loads missing records advertised by allVersions",
   );
 });
 
+test("requested plan snapshot keeps its historical package data within version 00", () => {
+  const historical = {
+    id: "package-plan-00", rootId: "package-root", phienBan: "00",
+    keHoachId: "plan-00", tenGoiThau: "Gói thầu 1",
+  };
+  const current = {
+    ...historical,
+    id: "package-plan-01", keHoachId: "plan-01",
+    tenGoiThau: "Gói thầu số 01",
+  };
+  const model = {
+    state: {
+      goithau: [historical, current],
+      kehoach: [
+        { id: "plan-00", phienBan: "00", isLatest: 0 },
+        { id: "plan-01", phienBan: "01", isLatest: 1 },
+      ],
+    },
+    getLatestPackage: () => current,
+    getLatestPlan: () => model.state.kehoach[1],
+  };
+
+  const historicalDetail = buildPackageDetailViewModel({
+    model, packageId: historical.id, switchingVersion: true,
+    planSnapshotId: "plan-00",
+  });
+  const currentDetail = buildPackageDetailViewModel({
+    model, packageId: current.id, switchingVersion: true,
+    planSnapshotId: "plan-01",
+  });
+
+  assert.equal(historicalDetail.pkg.tenGoiThau, "Gói thầu 1");
+  assert.equal(currentDetail.pkg.tenGoiThau, "Gói thầu số 01");
+  assert.deepEqual(historicalDetail.versions, [{
+    id: historical.id, label: "00", selected: true,
+  }]);
+  assert.deepEqual(currentDetail.versions, [{
+    id: current.id, label: "00", selected: true,
+  }]);
+});
+
 test("package, plan, and contract detail paths hydrate their version family", async () => {
   const [packageDetail, planView, contractView] = await Promise.all([
     readFile(new URL("../../frontend/packages/GoiThauDetail.js", import.meta.url), "utf8"),

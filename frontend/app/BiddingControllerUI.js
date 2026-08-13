@@ -24,6 +24,41 @@ function defaultTabForRole(model) {
   return model?.state?.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard";
 }
 
+export function resolvePackageDetailRoute(model, action, snapshotId = "") {
+  const packages = model?.state?.goithau || [];
+  const requestedSnapshot = snapshotId
+    ? packages.find((pkg) => String(pkg?.id || "").toLowerCase() === String(snapshotId).toLowerCase())
+    : null;
+  if (requestedSnapshot) {
+    return {
+      packageId: requestedSnapshot.id,
+      planSnapshotId: requestedSnapshot.keHoachId || "",
+    };
+  }
+
+  const requested = packages.find((pkg) => (
+    (pkg?.maGoiThau && pkg.maGoiThau.toLowerCase() === String(action || "").toLowerCase())
+    || (pkg?.id && pkg.id.toLowerCase() === String(action || "").toLowerCase())
+  ));
+  if (!requested) return { packageId: action, planSnapshotId: "" };
+  const latest = typeof model?.getLatestPackage === "function"
+    ? model.getLatestPackage(requested.id)
+    : null;
+  return { packageId: latest?.id || requested.id, planSnapshotId: "" };
+}
+
+export function packageDetailUrlAction(pkg, requestedSnapshotId = "") {
+  if (!pkg?.maGoiThau) return pkg?.id || "";
+  const code = encodeURIComponent(pkg.maGoiThau);
+  if (String(requestedSnapshotId || "") !== String(pkg.id || "")) return code;
+  return `${code}/${encodeURIComponent(pkg.id)}`;
+}
+
+export function detailRecordLookupForRoute(tabName, action, packageSnapshotId = "") {
+  if (tabName === "goithau-detail" && packageSnapshotId) return packageSnapshotId;
+  return action;
+}
+
 export function dashboardTitleForRole(role) {
   if (role === "manager") return "Tổng quan đơn vị";
   if (role === "employee") return "Công việc của tôi";
@@ -177,6 +212,9 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
   }
   let action = parts[1] || null;
   let urlAction = parts[1] || null;
+  const packageSnapshotId = tabName === "goithau-detail" && parts[2]
+    ? decodeURIComponent(parts[2])
+    : "";
   if (!action && urlAction) {
     action = urlAction;
   }
@@ -221,13 +259,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
     }
   }
   if (tabName === "goithau-detail" && action) {
-    const gt = this.model.state.goithau.find(
-      (g) => g.maGoiThau && g.maGoiThau.toLowerCase() === action.toLowerCase() || g.id && g.id.toLowerCase() === action.toLowerCase()
-    );
-    if (gt) {
-      const latestGt = this.model.getLatestPackage(gt.id);
-      action = latestGt ? latestGt.id : gt.id;
-    }
+    const resolved = resolvePackageDetailRoute(this.model, action, packageSnapshotId);
+    action = resolved.packageId;
+    this.view._requestedPackageSnapshotId = resolved.planSnapshotId ? resolved.packageId : null;
+    this.view._requestedPlanSnapshotId = resolved.planSnapshotId || null;
   }
   if (tabName === "kehoach-detail" && action) {
     let targetId = null;
@@ -269,8 +304,9 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
       action = latestHd ? latestHd.id : targetId;
     }
   }
-  if (action && typeof this.ensureDetailRecordLoaded === "function") {
-    const pendingDetailLoad = this.ensureDetailRecordLoaded(tabName, action);
+  const detailRecordLookup = detailRecordLookupForRoute(tabName, action, packageSnapshotId);
+  if (detailRecordLookup && typeof this.ensureDetailRecordLoaded === "function") {
+    const pendingDetailLoad = this.ensureDetailRecordLoaded(tabName, detailRecordLookup);
     if (pendingDetailLoad) {
       return pendingDetailLoad.then((record) => {
         if (record) {
@@ -289,9 +325,7 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
     let finalUrlAction = action ? this.actionMap[action] || action : null;
     if (tabName === "goithau-detail" && action) {
       const gt = this.model.state.goithau.find((g) => g.id === action);
-      if (gt && gt.maGoiThau) {
-        finalUrlAction = gt.maGoiThau;
-      }
+      if (gt) finalUrlAction = packageDetailUrlAction(gt, this.view._requestedPackageSnapshotId);
     }
     if (tabName === "kehoach-detail" && action) {
       const kh = this.model.state.kehoach.find((k) => k.id === action);
@@ -401,9 +435,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     let urlAction = action ? this.actionMap[action] || action : null;
     if (tabName === "goithau-detail" && action) {
       const gt = this.model.state.goithau.find((g) => g.id === action);
-      if (gt && gt.maGoiThau) {
-        urlAction = gt.maGoiThau;
-      }
+      if (gt) urlAction = packageDetailUrlAction(gt, this.view._requestedPackageSnapshotId);
     }
     if (tabName === "kehoach-detail" && action) {
       const kh = this.model.state.kehoach.find((k) => k.id === action);

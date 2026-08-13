@@ -31,8 +31,16 @@ export function resolveLatestPackage(model, packageRef) {
   ) || requested || null;
 }
 
-export function selectPackageDetailTab(target, tabId, packageRef, model = null) {
-  const latestPackage = resolveLatestPackage(model, packageRef);
+export function selectPackageDetailTab(
+  target,
+  tabId,
+  packageRef,
+  model = null,
+  { preserveSnapshot = false } = {},
+) {
+  const latestPackage = preserveSnapshot
+    ? (typeof packageRef === "object" ? packageRef : null)
+    : resolveLatestPackage(model, packageRef);
   const packageId = latestPackage?.id || (typeof packageRef === "object" ? packageRef?.id : packageRef);
   const workspace = packageWorkspaceFor(target);
   const currentPackageId = String(target._currentWorkflowPackageId || "");

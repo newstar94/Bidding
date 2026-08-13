@@ -249,6 +249,16 @@ export function autoSync() {
     return Promise.resolve({ ok: false, error, storageDegraded: true });
   }
   const mutationBatch = this.model?.buildMutationSyncPayload?.() || null;
+  const preparedOutboxStatus = this.model?.getMutationOutboxStatus?.();
+  if (preparedOutboxStatus?.state === "pending" && typeof this.model?.flushMutationOutbox === "function") {
+    return this.model.flushMutationOutbox().then(() => this.autoSync()).catch((error) => {
+      this.updateSyncState?.({
+        phase: "storageError",
+        message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
+      });
+      return { ok: false, error, storageDegraded: true };
+    });
+  }
   if (!mutationBatch) {
     this.updateSyncState({ phase: "idle" });
     return Promise.resolve({ ok: true, skipped: true });

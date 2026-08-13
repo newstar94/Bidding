@@ -32,13 +32,19 @@ function planVersion(model, pkg) {
   return numericVersion(plan?.phienBan);
 }
 
-function buildVersionOptions(model, pkg) {
+function buildVersionOptions(model, pkg, planSnapshotId = "") {
   const rootId = String(pkg?.rootId || pkg?.id || "");
   const selectedVersion = String(pkg?.phienBan || "00");
   const selectedByVersion = new Map();
 
   (model?.state?.goithau || [])
-    .filter((candidate) => String(candidate?.rootId || candidate?.id || "") === rootId)
+    .filter((candidate) => (
+      String(candidate?.rootId || candidate?.id || "") === rootId
+      && (
+        !planSnapshotId
+        || String(candidate?.keHoachId || "") === String(planSnapshotId)
+      )
+    ))
     .forEach((candidate) => {
       const version = String(candidate?.phienBan || "00");
       const current = selectedByVersion.get(version);
@@ -63,6 +69,7 @@ export function buildPackageDetailViewModel({
   model,
   packageId,
   switchingVersion = false,
+  planSnapshotId = "",
   currentPackageId = "",
   currentTab = "",
   editingBatchId = "",
@@ -111,6 +118,7 @@ export function buildPackageDetailViewModel({
       && String(latestPackage.id) === String(pkg.id)
       && pkg.trangThai !== "Hủy thầu"
     ),
+    planSnapshotId: String(planSnapshotId || ""),
     canCancel: !["Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Hủy thầu"].includes(effectiveStatus),
     inviteComparisonLabel: isTwoEnvelope
       ? "Ngày mời đối chiếu tài liệu/Thương thảo"
@@ -118,6 +126,6 @@ export function buildPackageDetailViewModel({
     comparisonLabel: isTwoEnvelope
       ? "Ngày đối chiếu tài liệu/Thương thảo"
       : "Ngày đối chiếu tài liệu",
-    versions: buildVersionOptions(model, pkg),
+    versions: buildVersionOptions(model, pkg, planSnapshotId),
   };
 }

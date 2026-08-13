@@ -89,7 +89,13 @@ export function bindPackageDetailChrome(view, detail) {
       }
       view._inPlaceEditMode = false;
       view._biddingInfoEditMode = false;
-      const packageId = selectPackageDetailTab(view, tabId, detail.pkg, view.model);
+      const packageId = selectPackageDetailTab(
+        view,
+        tabId,
+        detail.pkg,
+        view.model,
+        { preserveSnapshot: Boolean(detail.planSnapshotId) },
+      );
       await view.showPackageDetails(packageId);
     },
   );

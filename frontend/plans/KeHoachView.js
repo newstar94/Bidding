@@ -426,7 +426,7 @@ export async function renderPlanVersionDetails(versionId) {
                 <h5 class="detail-sub-title bf-s-fcb5ddef65">IV. Phần công việc thuộc kế hoạch lựa chọn nhà thầu (Các gói thầu - ${uniqueLinkedPackages.length})</h5>
                 <div class="associated-list">
                     ${uniqueLinkedPackages.length > 0 ? uniqueLinkedPackages.map((gt) => `
-                        <div class="associated-item bf-s-ecfbb78629" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="Xem chi tiết Gói thầu">
+                        <div class="associated-item bf-s-ecfbb78629" data-bf-action="show-package-snapshot" data-id="${safeAttr(gt.id)}" title="Xem snapshot gói thầu tại phiên bản kế hoạch này">
                             <div class="associated-info">
                                 <i data-lucide="briefcase" class="text-blue bf-s-0f88141c20"></i>
                                 <span><strong>${escapeHtml(gt.maGoiThau || "--")}</strong> - ${escapeHtml(gt.tenGoiThau || "--")}${gt.isRebid ? ' <span class="badge badge-warning">Đấu thầu lại</span>' : ""}</span>

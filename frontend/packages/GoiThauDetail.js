@@ -44,6 +44,18 @@ export function resetDetailedEvaluationNavigationForPackageChange(
 
 export async function showPackageDetails(id, isSwitchingVersion = false) {
   const appController = getAppController();
+  const requestedSnapshotId = String(this._requestedPackageSnapshotId || "");
+  const requestedPlanSnapshotId = String(this._requestedPlanSnapshotId || "");
+  const preservePlanSnapshot = Boolean(requestedPlanSnapshotId) && (
+    isSwitchingVersion
+    || requestedSnapshotId === String(id || "")
+  );
+  if (preservePlanSnapshot) {
+    this._requestedPackageSnapshotId = id;
+  } else {
+    this._requestedPackageSnapshotId = null;
+    this._requestedPlanSnapshotId = null;
+  }
   if (
     appController?.ensureBiddingWorkflows
     && (
@@ -84,7 +96,8 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   const detail = buildPackageDetailViewModel({
     model: this.model,
     packageId: id,
-    switchingVersion: isSwitchingVersion,
+    switchingVersion: isSwitchingVersion || preservePlanSnapshot,
+    planSnapshotId: preservePlanSnapshot ? requestedPlanSnapshotId : "",
     currentPackageId: this._currentWorkflowPackageId,
     currentTab: this._currentWorkflowTab,
     editingBatchId: this._editingOfficialResultLotBatchId,

@@ -232,6 +232,128 @@ test("a second edit after pull preserves every field from the first pending edit
   });
 });
 
+test("validation rejection removes the rejected plan and every dependent record from the sent batch", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "1",
+    createId: (() => {
+      let id = 0;
+      return () => `mutation-${++id}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+    resolveServerTable: (table) => ({
+      ke_hoach_lcnt: "kehoach",
+      goi_thau: "goithau",
+    })[table] || table,
+  });
+  outbox.enqueue({
+    table: "kehoach",
+    kind: "upsert",
+    records: [{ id: "plan-draft", tenKeHoach: "Kế hoạch lỗi" }],
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [
+      { id: "package-1", keHoachId: "plan-draft", tenGoiThau: "TV-01" },
+      { id: "package-2", keHoachId: "plan-draft", tenGoiThau: "TV-02" },
+      { id: "package-3", keHoachId: "plan-draft", tenGoiThau: "MS" },
+      { id: "package-independent", keHoachId: "plan-existing" },
+    ],
+  });
+  outbox.enqueue({
+    table: "goithauhanghoa",
+    kind: "upsert",
+    records: [
+      { id: "goods-1", goiThauId: "package-1" },
+      { id: "goods-independent", goiThauId: "package-independent" },
+    ],
+  });
+  const sent = outbox.snapshotForSync({});
+
+  const rejected = outbox.reject(sent.snapshot, [{
+    table: "ke_hoach_lcnt",
+    id: "plan-draft",
+    code: "SYNC_ITEM_INVALID",
+  }]);
+
+  assert.deepEqual(rejected.map(({ type, id }) => `${type}:${id}`).sort(), [
+    "goithau:package-1",
+    "goithau:package-2",
+    "goithau:package-3",
+    "goithauhanghoa:goods-1",
+    "kehoach:plan-draft",
+  ]);
+  assert.deepEqual(outbox.snapshot().upserts, {
+    goithau: {
+      "package-independent": { id: "package-independent", keHoachId: "plan-existing" },
+    },
+    goithauhanghoa: {
+      "goods-independent": { id: "goods-independent", goiThauId: "package-independent" },
+    },
+  });
+});
+
+test("pending package repairs a missing unsynced plan dependency before retry", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "1",
+    createId: (() => {
+      let id = 0;
+      return () => `mutation-${++id}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ id: "package-1", keHoachId: "plan-draft" }],
+  });
+
+  const pending = outbox.snapshotForSync({
+    kehoach: [{ id: "plan-draft", chuDauTuId: "investor-draft" }],
+    chudautu: [{ id: "investor-draft", tenChuDauTu: "Chủ đầu tư mới" }],
+    goithau: [{ id: "package-1", keHoachId: "plan-draft" }],
+  });
+
+  assert.deepEqual(pending.payload.kehoach, [{
+    id: "plan-draft",
+    chuDauTuId: "investor-draft",
+  }]);
+  assert.deepEqual(pending.payload.chudautu, [{
+    id: "investor-draft",
+    tenChuDauTu: "Chủ đầu tư mới",
+  }]);
+  assert.deepEqual(Object.keys(pending.snapshot.upserts).sort(), [
+    "chudautu",
+    "goithau",
+    "kehoach",
+  ]);
+});
+
+test("pending package does not restage a persisted plan dependency", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    createId: () => "mutation-1",
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ id: "package-1", keHoachId: "plan-existing" }],
+  });
+
+  const pending = outbox.snapshotForSync({
+    kehoach: [{ id: "plan-existing", rowVersion: 2 }],
+    goithau: [{ id: "package-1", keHoachId: "plan-existing" }],
+  });
+
+  assert.equal(pending.payload.kehoach, undefined);
+});
+
 test("full pull keeps a pending local delete absent", async () => {
   const persisted = [];
   const model = {

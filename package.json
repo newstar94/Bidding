@@ -73,7 +73,7 @@
   "dependencies": {
     "dompurify": "3.4.13",
     "playwright": "1.62.0",
-    "puppeteer": "24.34.0"
+    "puppeteer": "^25.6.0"
   },
   "overrides": {
     "brace-expansion": "5.0.9",

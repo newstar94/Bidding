@@ -22,6 +22,55 @@ function hasRecordId(record) {
   return record && record.id !== undefined && record.id !== null && String(record.id) !== "";
 }
 
+const OUTBOX_PARENT_REFERENCES = {
+  kehoach: [{ table: "chudautu", fields: ["chuDauTuId"] }],
+  goithau: [
+    { table: "kehoach", fields: ["keHoachId"] },
+    { table: "nhathau", fields: ["nhaThauTrungThauId"] },
+    { table: "goithau", fields: ["rebidFromPackageId"] },
+  ],
+  hopdong: [
+    { table: "kehoach", fields: ["keHoachId"] },
+    { table: "chudautu", fields: ["chuDauTuId", "chuDauTuThanhLyId"] },
+    { table: "nhathau", fields: ["nhaThauId", "nhaThauThanhLyId"] },
+    { table: "goithau", fields: ["goiThauIds"], many: true },
+  ],
+  thongtinmothau: [
+    { table: "goithau", fields: ["goiThauId"] },
+    { table: "nhathau", fields: ["nhaThauId"] },
+  ],
+  goithauhanghoa: [{ table: "goithau", fields: ["goiThauId"] }],
+  hanghoaduthaunhathau: [
+    { table: "goithau", fields: ["goiThauId"] },
+    { table: "thongtinmothau", fields: ["thongTinMoThauId"] },
+    { table: "goithauhanghoa", fields: ["goiThauHangHoaId"] },
+  ],
+};
+
+function parentKeysForRecord(table, record) {
+  const keys = [];
+  (OUTBOX_PARENT_REFERENCES[table] || []).forEach((reference) => {
+    reference.fields.forEach((field) => {
+      const raw = record?.[field];
+      const values = reference.many ? (Array.isArray(raw) ? raw : []) : [raw];
+      values.forEach((value) => {
+        if (value !== undefined && value !== null && String(value) !== "") {
+          keys.push(`${reference.table}:${String(value)}`);
+        }
+      });
+    });
+  });
+  if (table === "assignments") {
+    const parentTable = {
+      kehoach: "kehoach",
+      goithau: "goithau",
+      hopdong: "hopdong",
+    }[String(record?.type || "")];
+    if (parentTable && record?.targetId) keys.push(`${parentTable}:${String(record.targetId)}`);
+  }
+  return keys;
+}
+
 export class WorkspaceMutationOutbox {
   constructor({
     store,
@@ -112,6 +161,7 @@ export class WorkspaceMutationOutbox {
 
   snapshotForSync(state) {
     if (!mutationQueueHasChanges(this.queue)) return null;
+    this._repairUnsyncedParentDependencies(state);
     const receipt = this._createReceipt();
     return buildMutationPayload({
       queue: this.queue,
@@ -121,6 +171,40 @@ export class WorkspaceMutationOutbox {
       normalizeRecord: this.serializeRecord,
       snapshot: receipt,
     });
+  }
+
+  _repairUnsyncedParentDependencies(state) {
+    let changed = false;
+    let dependencyAdded = true;
+    while (dependencyAdded) {
+      dependencyAdded = false;
+      Object.entries(this.queue.upserts || {}).forEach(([table, records]) => {
+        Object.values(records || {}).forEach((record) => {
+          parentKeysForRecord(table, record).forEach((parentKey) => {
+            const separator = parentKey.indexOf(":");
+            const parentTable = parentKey.slice(0, separator);
+            const parentId = parentKey.slice(separator + 1);
+            if (!parentTable || !parentId || this.queue.upserts?.[parentTable]?.[parentId]) return;
+            const parent = (state?.[parentTable] || []).find(
+              (candidate) => String(candidate?.id || "") === parentId,
+            );
+            if (!parent || parent.referenceOnly === true || Number(parent.rowVersion) > 0) return;
+            if (!this.queue.upserts[parentTable]) this.queue.upserts[parentTable] = {};
+            this.queue.upserts[parentTable][parentId] = cloneValue(
+              this.normalizeRecord(parent, parentTable),
+            );
+            this._bumpRecord("upsert", parentTable, parentId);
+            changed = true;
+            dependencyAdded = true;
+          });
+        });
+      });
+    }
+    if (changed) {
+      this._touchForNewPayload();
+      this._persist();
+    }
+    return changed;
   }
 
   ack(receipt) {
@@ -178,11 +262,43 @@ export class WorkspaceMutationOutbox {
   }
 
   reject(receipt, errors = []) {
-    const rejectedByRecord = new Map();
-    let changed = false;
+    const rejectedKeys = new Set();
     (errors || []).forEach((error) => {
       const type = this.resolveServerTable(error?.table) || error?.table;
       const id = String(error?.id || "");
+      if (type && id) rejectedKeys.add(`${type}:${id}`);
+    });
+    let dependencyAdded = true;
+    while (dependencyAdded) {
+      dependencyAdded = false;
+      Object.entries(receipt?.upserts || {}).forEach(([table, records]) => {
+        Object.entries(records || {}).forEach(([id, generation]) => {
+          const key = `${table}:${String(id)}`;
+          if (rejectedKeys.has(key)) return;
+          if (this.recordGenerations.get(recordKey("upsert", table, id)) !== generation) return;
+          const queued = this.queue.upserts?.[table]?.[id];
+          if (!queued) return;
+          if (parentKeysForRecord(table, queued).some((parentKey) => rejectedKeys.has(parentKey))) {
+            rejectedKeys.add(key);
+            dependencyAdded = true;
+          }
+        });
+      });
+    }
+
+    const rejectedByRecord = new Map();
+    let changed = false;
+    const errorsByRecord = new Map();
+    (errors || []).forEach((error) => {
+      const type = this.resolveServerTable(error?.table) || error?.table;
+      const id = String(error?.id || "");
+      if (type && id) errorsByRecord.set(`${type}:${id}`, error);
+    });
+    rejectedKeys.forEach((key) => {
+      const separator = key.indexOf(":");
+      const type = key.slice(0, separator);
+      const id = key.slice(separator + 1);
+      const error = errorsByRecord.get(key) || {};
       if (!type || !id) return;
       let operation = "";
       const upsertKey = recordKey("upsert", type, id);
@@ -220,9 +336,9 @@ export class WorkspaceMutationOutbox {
         this.recordGenerations.delete(deleteKey);
       }
       if (!operation) return;
-      const key = `${type}:${id}`;
-      const existing = rejectedByRecord.get(key);
-      rejectedByRecord.set(key, {
+      const rejectedKey = `${type}:${id}`;
+      const existing = rejectedByRecord.get(rejectedKey);
+      rejectedByRecord.set(rejectedKey, {
         type,
         id,
         operation: existing?.operation || operation,

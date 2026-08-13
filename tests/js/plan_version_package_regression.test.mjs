@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
+import {
+  detailRecordLookupForRoute,
+  packageDetailUrlAction,
+  resolvePackageDetailRoute,
+} from "../../frontend/app/BiddingControllerUI.js";
+import { selectPackageDetailTab } from "../../frontend/packages/detail/PackageDetailState.js";
 import {
   createPackagePreparationVersionSnapshot,
   savePackagePreparation,
@@ -652,6 +659,57 @@ test("each plan version resolves only its own frozen package snapshot", () => {
 
   assert.deepEqual(model.getLatestPackagesForPlan("plan-v00"), [historicalPackage]);
   assert.deepEqual(model.getLatestPackagesForPlan("plan-v01"), [currentPackage]);
+});
+
+test("plan detail opens its package snapshot without upgrading to the latest plan snapshot", () => {
+  const planView = fs.readFileSync("frontend/plans/KeHoachView.js", "utf8");
+  const controller = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
+  const packageDetail = fs.readFileSync("frontend/packages/GoiThauDetail.js", "utf8");
+
+  assert.match(planView, /data-bf-action="show-package-snapshot"/);
+  assert.match(controller, /case "show-package-snapshot":/);
+  assert.match(controller, /showPackageDetailsSnapshot/);
+  assert.match(packageDetail, /_requestedPackageSnapshotId/);
+});
+
+test("historical package route and tab navigation preserve the exact plan snapshot", () => {
+  const historical = {
+    id: "package-plan-00", rootId: "package-root", phienBan: "00",
+    keHoachId: "plan-00", maGoiThau: "IB2600000001", tenGoiThau: "Gói thầu 1",
+  };
+  const current = {
+    ...historical,
+    id: "package-plan-01", keHoachId: "plan-01", tenGoiThau: "Gói thầu số 01",
+  };
+  const model = {
+    state: { goithau: [historical, current] },
+    getLatestPackage: () => current,
+  };
+
+  assert.deepEqual(resolvePackageDetailRoute(model, historical.maGoiThau), {
+    packageId: current.id,
+    planSnapshotId: "",
+  });
+  assert.deepEqual(resolvePackageDetailRoute(model, historical.maGoiThau, historical.id), {
+    packageId: historical.id,
+    planSnapshotId: historical.keHoachId,
+  });
+  assert.equal(
+    packageDetailUrlAction(historical, historical.id),
+    `${historical.maGoiThau}/${historical.id}`,
+  );
+  assert.equal(
+    detailRecordLookupForRoute("goithau-detail", current.id, historical.id),
+    historical.id,
+    "a reload must fetch the historical snapshot instead of the current representative",
+  );
+
+  const target = {};
+  assert.equal(
+    selectPackageDetailTab(target, "goods", historical, model, { preserveSnapshot: true }),
+    historical.id,
+  );
+  assert.equal(target._currentWorkflowPackageId, historical.id);
 });
 
 test("plan aggregate remaps rebid ancestry to the inherited canceled package", async () => {
