@@ -81,6 +81,12 @@ from backend.versioning.command import (
     build_aggregate_version_payload,
 )
 from backend.versioning.repository import AggregateVersionRepository
+from backend.procurement_import.sync_binding import (
+    persist_import_session_provenance,
+    resolve_pending_imported_investor,
+    validate_import_session_mutation,
+)
+from backend.procurement_import.domain import ImportConflict
 
 
 from backend.sync.request_contract import (
@@ -677,6 +683,11 @@ def execute_sync_mutation(
         owner_type = transaction_context.owner_type
         current_time = transaction_context.current_time
 
+        validate_import_session_mutation(
+            cursor, data, organization_id=org_name, user_id=user_id,
+        )
+        resolve_pending_imported_investor(cursor, data, org_name)
+
         if aggregate_version_command:
             command_kind = str(data.get("kind") or "").strip().lower()
             source_access = {
@@ -1055,6 +1066,13 @@ def execute_sync_mutation(
             events=mutation_tracker.activity_events,
         )
 
+        procurement_import_result = persist_import_session_provenance(
+            cursor,
+            data,
+            organization_id=org_name,
+            user_id=user_id,
+        )
+
         mutation_outcome = mutation_tracker.outcome()
         response_data = commit_sync_response(
             conn,
@@ -1069,6 +1087,7 @@ def execute_sync_mutation(
             updated_row_versions=mutation_outcome.updated_row_versions,
             delete_impacts=mutation_outcome.delete_impacts,
             orphaned_ids=mutation_outcome.orphaned_ids,
+            procurement_import=procurement_import_result,
         )
         transaction_committed = True
         return _run_post_commit_side_effects(
@@ -1094,19 +1113,43 @@ def execute_sync_mutation(
             status_code=409,
             fields={"currentVersion": conflict.current_version},
         )
-    except LookupError:
+    except LookupError as lookup_error:
         if conn:
             conn.rollback()
+        code = str(lookup_error.args[0]) if lookup_error.args else ""
+        if code in {"PROCUREMENT_SESSION_EXPIRED", "PROCUREMENT_REVISION_INVALID"}:
+            return error_response(
+                request,
+                code,
+                (
+                    "Phiên nhập đã hết hạn hoặc không còn tồn tại."
+                    if code == "PROCUREMENT_SESSION_EXPIRED"
+                    else "Phiên bản nguồn không hợp lệ."
+                ),
+                status_code=410 if code == "PROCUREMENT_SESSION_EXPIRED" else 400,
+            )
         return error_response(
             request,
             "VERSION_SOURCE_NOT_FOUND",
             "Không tìm thấy bản ghi nguồn để tạo phiên bản.",
             status_code=404,
         )
-    except ValueError as validation_error:
+    except (ValueError, ImportConflict) as validation_error:
         if conn:
             conn.rollback()
         if not aggregate_version_command:
+            code = str(validation_error.args[0]) if validation_error.args else ""
+            procurement_errors = {
+                "PROCUREMENT_INVESTOR_RESOLUTION_FAILED": (400, "Không thể xác định Chủ đầu tư từ dữ liệu nguồn."),
+                "PROCUREMENT_MATCH_AMBIGUOUS": (409, "Không thể ghép chính xác gói thầu với dữ liệu nguồn."),
+                "PROCUREMENT_SOURCE_VERSION_CONFLICT": (409, "Phiên bản nguồn không khớp với thứ tự nhập hiện tại."),
+                "PROCUREMENT_REVISION_INVALID": (400, "Phiên bản nguồn không hợp lệ."),
+            }
+            if code in procurement_errors:
+                status_code, message = procurement_errors[code]
+                return error_response(
+                    request, code, message, status_code=status_code,
+                )
             log_sync_error(
                 "Lỗi tổng quát sync_api: "
                 f"{validation_error}\n{traceback.format_exc()}"

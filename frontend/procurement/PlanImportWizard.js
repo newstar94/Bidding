@@ -1,4 +1,15 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
+import { SequentialRevisionController } from "./SequentialRevisionController.js";
+import {
+  materializeProcurementRevisionDraft,
+  materializeProcurementRevisionFromPrevious,
+} from "./ProcurementDraftWorkflow.js";
+import { resolveImportedInvestorDraft } from "./InvestorResolver.js";
+import { lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
+import {
+  forgetProcurementImportSession,
+  rememberProcurementImportSession,
+} from "./ProcurementImportResume.js";
 import { packageNoticeLabel, planPreviewFields } from "./fieldMapping.js";
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
@@ -69,6 +80,11 @@ export function canApplyPreview(preview, decisions = {}) {
       (conflict) => !fieldConflicts[`${observationId}:${conflict.field}`],
     );
   });
+}
+
+export function canStartSequentialImport(preview) {
+  if (!preview?.importSession?.sessionId) return false;
+  return !(preview.packages || []).some((row) => row.action === "AMBIGUOUS");
 }
 
 export function createDebouncedPreparer(callback, delay = 600, timers = globalThis) {
@@ -213,11 +229,6 @@ function renderRevisions(modal, preview) {
   });
 }
 
-function randomIdempotencyKey() {
-  if (globalThis.crypto?.randomUUID) return `procurement:${globalThis.crypto.randomUUID()}`;
-  return `procurement:${Date.now()}:${Math.random().toString(16).slice(2)}`;
-}
-
 export class PlanImportWizard {
   constructor({ controller, modal, client = new ProcurementImportClient() }) {
     this.controller = controller;
@@ -309,7 +320,7 @@ export class PlanImportWizard {
 
   refreshApplyGate() {
     const button = this.modal.querySelector("[data-procurement-apply]");
-    if (button) button.disabled = !canApplyPreview(this.preview, this.decisions);
+    if (button) button.disabled = !canStartSequentialImport(this.preview);
   }
 
   setStatus(message, urgent = false) {
@@ -366,10 +377,10 @@ export class PlanImportWizard {
         `${summary.total} gói · ${preview.plan?.selectedRevisions?.length || 0} phiên bản nguồn`;
       this.refreshApplyGate();
       this.saveDraft();
-      this.setStatus(canApplyPreview(preview, this.decisions)
-        ? "Preview đã sẵn sàng. Kiểm tra và xác nhận trước khi nhập."
-        : "Preview còn xung đột hoặc trường bắt buộc cần xử lý.",
-        !canApplyPreview(preview, this.decisions));
+      this.setStatus(canStartSequentialImport(preview)
+        ? "Dữ liệu đã sẵn sàng. Phiên bản đầu tiên sẽ mở trong biểu mẫu Kế hoạch."
+        : "Preview còn trường hợp ghép gói mơ hồ cần xử lý.",
+        !canStartSequentialImport(preview));
     } catch (error) {
       if (error?.name === "AbortError") return;
       this.setStatus(error?.message || "Không thể chuẩn bị preview.", true);
@@ -377,55 +388,37 @@ export class PlanImportWizard {
   }
 
   async apply() {
-    if (!canApplyPreview(this.preview, this.decisions)) return;
-    const investorId = this.modal.querySelector("[data-procurement-investor]").value;
-    if (!investorId) {
-      this.setStatus("Phải chọn chủ đầu tư hiện hữu trước khi áp dụng.", true);
+    if (!canStartSequentialImport(this.preview)) return;
+    const importSession = this.preview?.importSession;
+    if (!importSession?.sessionId || !(importSession.revisions || []).length) {
+      this.setStatus("Phiên nhập tuần tự chưa sẵn sàng. Hãy chuẩn bị lại dữ liệu.", true);
       return;
     }
     this.applyController?.abort();
     this.applyController = new AbortController();
     const button = this.modal.querySelector("[data-procurement-apply]");
     button.disabled = true;
-    this.setStatus("Đang commit kế hoạch, gói thầu và provenance…");
+    this.setStatus("Đang mở phiên bản đầu tiên trong biểu mẫu Kế hoạch…");
     try {
-      const result = await this.client.applyPlan({
-        previewId: this.preview.previewId,
-        idempotencyKey: randomIdempotencyKey(),
-        expectedPlanRowVersion: this.preview.plan?.expectedRowVersion ?? null,
-        decisions: {
-          investorId,
-          packageMatches: Object.entries(this.decisions.packageMatches).map(
-            ([packageObservationId, decision]) => ({ packageObservationId, ...decision }),
-          ),
-          fieldConflicts: Object.entries(this.decisions.fieldConflicts).map(
-            ([key, resolution]) => {
-              const separator = key.lastIndexOf(":");
-              return {
-                packageObservationId: key.slice(0, separator),
-                field: key.slice(separator + 1),
-                resolution,
-              };
-            },
-          ),
-          fieldValues: Object.entries(this.decisions.fieldValues).map(([key, value]) => {
-            const separator = key.lastIndexOf(":");
-            const field = key.slice(separator + 1);
-            return {
-              packageObservationId: key.slice(0, separator),
-              field,
-              value: field === "priceVnd" && value !== "" ? Number(value) : value,
-            };
-          }),
-          assignees: [],
-        },
-        workspaceLease: this.workspaceLease || null,
-      }, { signal: this.applyController.signal });
-      if (result.operationId) await this.monitor(result.operationId);
-      await this.controller?.model?.loadStorageKeys?.(["KEHOACH", "GOITHAU", "ASSIGNMENTS"]);
-      this.controller?.view?.renderKeHoachTable?.();
-      this.controller?.view?.renderGoiThauTable?.();
-      this.setStatus("Đã nhập kế hoạch và gói thầu thành công.");
+      const sequential = new SequentialRevisionController({
+        revisions: importSession.revisions,
+        loadRevision: (revision) => this.client.getPlanRevisionDraft(
+          importSession.sessionId,
+          revision.revisionNumber,
+          {
+            workspaceLease: this.workspaceLease || null,
+            signal: this.applyController.signal,
+          },
+        ),
+        saveRevision: async () => ({ ok: true }),
+      });
+      const currentDraft = await sequential.loadCurrent();
+      await this.controller?.startProcurementPlanImport?.({
+        session: importSession,
+        controller: sequential,
+        currentDraft,
+        client: this.client,
+      });
       this.draftStore.clear();
       this.controller?.view?.closeModal?.("modal-procurement-import");
     } catch (error) {
@@ -491,6 +484,111 @@ export async function openProcurementImportWizard() {
   const selectedInvestor = globalThis.document.getElementById("kh-chudautuid")?.value;
   if (selectedInvestor) investor.value = selectedInvestor;
   const restoredDraft = wizard.restoreDraft();
+  const mode = modal.querySelector("[data-procurement-mode]");
+  if (mode && !restoredDraft?.revisionMode) mode.value = "ALL";
   this.view.openModal("modal-procurement-import");
   if (sourceCode || restoredDraft?.code) wizard.debouncedPrepare.schedule();
+}
+
+function latestPlanForFamily(model, familyNo) {
+  const normalized = String(familyNo || "").trim().toUpperCase();
+  return (model?.state?.kehoach || [])
+    .filter((plan) => (
+      String(model?.getPlanBaseCode?.(plan.maKeHoach) || plan.maKeHoach || "")
+        .trim().toUpperCase() === normalized
+      && plan.isLatest == 1
+    ))
+    .sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0))[0] || null;
+}
+
+async function materializePlanImportRevision(controller, flow, revisionDraft, previousPlanId = null) {
+  const source = revisionDraft?.planDraft?.investorSource || {};
+  const investorResolution = await resolveImportedInvestorDraft({
+    source,
+    records: controller.model?.getLatestChuDauTu?.() || [],
+    lookup: lookupPartnerInfo,
+    timestamp: controller.model.getCurrentDateTimeString(),
+  });
+  const prior = previousPlanId
+    ? (controller.model.state.kehoach || []).find(
+      (plan) => String(plan.id) === String(previousPlanId),
+    )
+    : latestPlanForFamily(controller.model, revisionDraft.familyNo);
+  const materialized = prior
+    ? materializeProcurementRevisionFromPrevious(
+      controller.model.state,
+      prior.id,
+      revisionDraft,
+      { timestamp: controller.model.getCurrentDateTimeString() },
+    )
+    : materializeProcurementRevisionDraft(
+      controller.model.state,
+      revisionDraft,
+      { timestamp: controller.model.getCurrentDateTimeString() },
+    );
+  if (investorResolution.status === "NEW") {
+    controller.model.state.chudautu ||= [];
+    controller.model.state.chudautu.push(investorResolution.investor);
+  }
+  materialized.plan.chuDauTuId = investorResolution.investor.id;
+  materialized.plan.sourceRevision = revisionDraft.planDraft?.sourceRevision;
+  materialized.packages.forEach((pkg) => {
+    pkg.keHoachId = materialized.plan.id;
+  });
+  controller.planBreakdownDraft = materialized.draft;
+  controller.procurementPlanImport = {
+    ...flow,
+    currentDraft: revisionDraft,
+    currentPlanId: materialized.plan.id,
+    investorResolution,
+  };
+  rememberProcurementImportSession(controller, controller.procurementPlanImport);
+  await controller.plans.edit(materialized.plan.id);
+  return materialized;
+}
+
+export async function startProcurementPlanImport(flow) {
+  if (!flow?.controller || !flow?.currentDraft) {
+    throw new TypeError("PROCUREMENT_SESSION_INVALID");
+  }
+  return materializePlanImportRevision(this, flow, flow.currentDraft);
+}
+
+export async function completeProcurementPlanImportRevision(savedPlanId) {
+  const flow = this.procurementPlanImport;
+  if (!flow?.controller) return false;
+  await flow.controller.saveCurrent(savedPlanId);
+  const savedRevision = flow.currentDraft.revisionNumber;
+  if (!flow.controller.hasNext()) {
+    await this.view.customAlert(
+      "Hoàn tất nhập kế hoạch",
+      `Đã lưu phiên bản ${savedRevision}. Đã hoàn tất toàn bộ phiên bản của Kế hoạch.`,
+      "check-circle",
+    );
+    this.procurementPlanImport = null;
+    forgetProcurementImportSession(this);
+    return true;
+  }
+  const nextRevision = flow.controller.revisions[flow.controller.currentIndex + 1];
+  const shouldContinue = await this.view.customConfirm(
+    `Đã lưu phiên bản ${savedRevision}`,
+    `Kế hoạch trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
+    "help-circle",
+  );
+  if (!shouldContinue) {
+    await (flow.client || new ProcurementImportClient()).cancelImportSession(
+      flow.session.sessionId,
+      {
+        workspaceLease: this.model?.activeWorkspaceLease || null,
+        kind: "plan",
+      },
+    );
+    flow.controller.cancel();
+    this.procurementPlanImport = null;
+    forgetProcurementImportSession(this);
+    return true;
+  }
+  const nextDraft = await flow.controller.next();
+  await materializePlanImportRevision(this, flow, nextDraft, savedPlanId);
+  return true;
 }

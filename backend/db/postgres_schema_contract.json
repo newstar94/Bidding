@@ -2157,6 +2157,27 @@
       "table": "procurement_source_revision",
       "valid": true
     },
+    "idx_procurement_session_expiry": {
+      "definition": "CREATE INDEX idx_procurement_session_expiry ON $SCHEMA.procurement_import_session USING btree (expires_at)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_import_session",
+      "valid": true
+    },
+    "idx_procurement_session_family": {
+      "definition": "CREATE INDEX idx_procurement_session_family ON $SCHEMA.procurement_import_session USING btree (organization_id, family_key, status)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_import_session",
+      "valid": true
+    },
+    "idx_procurement_session_owner": {
+      "definition": "CREATE INDEX idx_procurement_session_owner ON $SCHEMA.procurement_import_session USING btree (organization_id, user_id, workspace_lease)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_import_session",
+      "valid": true
+    },
     "idx_rate_limit_expires": {
       "definition": "CREATE INDEX idx_rate_limit_expires ON $SCHEMA.rate_limit_buckets USING btree (expires_at)",
       "live": true,
@@ -2556,6 +2577,13 @@
       "table": "procurement_import_operation",
       "valid": true
     },
+    "procurement_import_session_pkey": {
+      "definition": "CREATE UNIQUE INDEX procurement_import_session_pkey ON $SCHEMA.procurement_import_session USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_import_session",
+      "valid": true
+    },
     "procurement_raw_snapshot_organization_id_provider_dedup_key_key": {
       "definition": "CREATE UNIQUE INDEX procurement_raw_snapshot_organization_id_provider_dedup_key_key ON $SCHEMA.procurement_raw_snapshot USING btree (organization_id, provider, dedup_key)",
       "live": true,
@@ -2789,7 +2817,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 54,
+  "schemaVersion": 55,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -14494,6 +14522,210 @@
         "procurement_import_operation_total_revisions_check": {
           "deferrable": false,
           "definition": "CHECK (total_revisions > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "procurement_import_session": {
+      "columns": {
+        "bundle_digest": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "canonical_bundle_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "current_revision_index": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "entity_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "family_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "revisions_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "workspace_lease": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "procurement_import_session_bundle_digest_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(bundle_digest) = 71 AND bundle_digest ~~ 'sha256:%'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_canonical_bundle_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(canonical_bundle_json) >= 2 AND length(canonical_bundle_json) <= 16777216)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_current_revision_index_check": {
+          "deferrable": false,
+          "definition": "CHECK (current_revision_index >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_entity_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (entity_kind = ANY (ARRAY['PLAN'::text, 'PACKAGE'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_family_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM family_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM organization_id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "procurement_import_session_provider_check": {
+          "deferrable": false,
+          "definition": "CHECK (provider = ANY (ARRAY['VNEPS'::text, 'VNEPS_FIXTURE'::text, 'MUASAMCONG'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_revisions_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(revisions_json) >= 2 AND length(revisions_json) <= 262144)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['READY'::text, 'EDITING_REVISION'::text, 'WAITING_NEXT_CONFIRMATION'::text, 'COMPLETED'::text, 'CANCELLED'::text, 'FAILED'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_user_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM user_id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_workspace_lease_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM workspace_lease) <> ''::text)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

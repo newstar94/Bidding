@@ -19,8 +19,11 @@ const LOCAL_ONLY_FIELDS = new Set([
   "expectedVersion",
   "_valid",
   "_comment",
-  "_operation"
+  "_operation",
+  "_procurementImportCurrent"
 ]);
+
+const PROCUREMENT_AUTHORITY_TABLES = new Set(["ke_hoach_lcnt", "goi_thau"]);
 
 const CHILD_FIELDS_BY_TABLE = {
   ke_hoach_lcnt: ["cvDaThucHienList", "cvKhongApDungList", "cvChuaDuDieuKienList"],
@@ -108,6 +111,7 @@ export function unknownOutboundFields(record, type, allowedTransforms = []) {
   const transforms = new Set(allowedTransforms);
   return Object.keys(record).filter((field) => (
     !allowed.has(field)
+    && !(field === "sourceRevision" && PROCUREMENT_AUTHORITY_TABLES.has(resolveSchemaTable(type)))
     && !SERVER_MANAGED_FIELDS.has(field)
     && !LOCAL_ONLY_FIELDS.has(field)
     && !transforms.has(field)
@@ -138,6 +142,16 @@ export function serializeOutboundRecord(record, type, normalizeRecord = (value) 
     const value = normalizeBigintSafeDecimal(tableName, field, normalizeSystemVersion(field, cloned));
     if (value !== void 0) serialized[field] = value;
   });
+
+  if (
+    PROCUREMENT_AUTHORITY_TABLES.has(tableName)
+    && normalized._procurementImportCurrent === true
+    && normalized.sourceRevision
+    && typeof normalized.sourceRevision === "object"
+    && !Array.isArray(normalized.sourceRevision)
+  ) {
+    serialized.sourceRevision = clonePayloadValue(normalized.sourceRevision);
+  }
 
   if (Number.isInteger(normalized.rowVersion) && normalized.rowVersion > 0) {
     serialized.expectedVersion = normalized.rowVersion;

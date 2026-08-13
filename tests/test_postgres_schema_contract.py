@@ -8,8 +8,11 @@ import pytest
 from backend.db.postgres_schema import assert_schema_contract
 from backend.db.postgres_schema_contract import (
     assert_catalog_contract,
+    load_expected_postgres_schema_catalog,
     schema_catalog_drift,
 )
+from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.db.upgrades import DB_SCHEMA_VERSION
 
 
 def _catalog_fixture():
@@ -277,6 +280,13 @@ def test_schema_catalog_contract_accepts_exact_normalized_catalog():
 
     assert schema_catalog_drift(expected, deepcopy(expected)) == ()
     assert_catalog_contract(expected, deepcopy(expected))
+
+
+def test_committed_schema_catalog_tracks_latest_application_schema():
+    expected = load_expected_postgres_schema_catalog()
+
+    assert expected["schemaVersion"] == DB_SCHEMA_VERSION
+    assert set(expected["tables"]) == set(SCHEMA_DINH_NGHIA)
 
 
 def test_schema_catalog_contract_raises_one_bounded_diagnostic():

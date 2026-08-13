@@ -36,6 +36,14 @@ def _stable_id(*parts):
     return str(uuid5(NAMESPACE_URL, ":".join(map(str, parts))))
 
 
+def _session_datetime(value):
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 class _CloneMutationTracker:
     def record_image_cleanup(self, _path):
         return None
@@ -966,3 +974,156 @@ class ProcurementImportRepository:
             "revisionResults": json.loads(row[8]), "idempotencyKey": row[9],
             "actorUserId": row[10], "requestHash": row[11],
         }
+
+
+class ProcurementImportSessionRepository:
+    """PostgreSQL storage for resumable, workspace-scoped import sessions."""
+
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def create(self, session):
+        self.cursor.execute(
+            """INSERT INTO procurement_import_session (
+                   id, organization_id, user_id, workspace_lease, provider,
+                   entity_kind, family_key, bundle_digest, revisions_json,
+                   canonical_bundle_json, current_revision_index, status,
+                   expires_at, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (organization_id, id) DO NOTHING""",
+            (
+                session["id"], session["organizationId"], session["userId"],
+                session["workspaceLease"], session["provider"], session["kind"],
+                session["familyNo"], session["bundleDigest"],
+                _json(session.get("revisions") or []),
+                _json(session.get("canonicalBundle") or {}),
+                int(session.get("currentIndex") or 0), session["status"],
+                session["expiresAt"], session["createdAt"], session["updatedAt"],
+            ),
+        )
+        stored = self.get_scoped(
+            session["id"],
+            organization_id=session["organizationId"],
+            user_id=session["userId"],
+            workspace_lease=session["workspaceLease"],
+        )
+        if stored is None:
+            raise RuntimeError("PROCUREMENT_SESSION_NOT_FOUND")
+        return stored
+
+    def get_scoped(self, session_id, *, organization_id, user_id, workspace_lease):
+        row = self.cursor.execute(
+            """SELECT id, organization_id, user_id, workspace_lease, provider,
+                      entity_kind, family_key, bundle_digest, revisions_json,
+                      canonical_bundle_json, current_revision_index, status,
+                      expires_at, created_at, updated_at
+                 FROM procurement_import_session
+                WHERE organization_id = ? AND id = ?""",
+            (organization_id, session_id),
+        ).fetchone()
+        if row is None:
+            return None
+        if str(row[2]) != str(user_id) or str(row[3]) != str(workspace_lease):
+            raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
+        return {
+            "id": row[0], "organizationId": row[1], "userId": row[2],
+            "workspaceLease": row[3], "provider": row[4], "kind": row[5],
+            "familyNo": row[6], "bundleDigest": row[7],
+            "revisions": json.loads(row[8]),
+            "canonicalBundle": json.loads(row[9]),
+            "currentIndex": int(row[10]), "status": row[11],
+            "expiresAt": _session_datetime(row[12]),
+            "createdAt": _session_datetime(row[13]),
+            "updatedAt": _session_datetime(row[14]),
+        }
+
+    def get_for_commit(self, session_id, *, organization_id, user_id):
+        row = self.cursor.execute(
+            """SELECT id, organization_id, user_id, workspace_lease, provider,
+                      entity_kind, family_key, bundle_digest, revisions_json,
+                      canonical_bundle_json, current_revision_index, status,
+                      expires_at, created_at, updated_at
+                 FROM procurement_import_session
+                WHERE organization_id = ? AND id = ? AND user_id = ?
+                FOR UPDATE""",
+            (organization_id, session_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0], "organizationId": row[1], "userId": row[2],
+            "workspaceLease": row[3], "provider": row[4], "kind": row[5],
+            "familyNo": row[6], "bundleDigest": row[7],
+            "revisions": json.loads(row[8]),
+            "canonicalBundle": json.loads(row[9]),
+            "currentIndex": int(row[10]), "status": row[11],
+            "expiresAt": _session_datetime(row[12]),
+            "createdAt": _session_datetime(row[13]),
+            "updatedAt": _session_datetime(row[14]),
+        }
+
+    def mark_revision_committed(self, session_id, *, organization_id, revision_number):
+        row = self.cursor.execute(
+            """SELECT revisions_json, current_revision_index
+                 FROM procurement_import_session
+                WHERE organization_id = ? AND id = ? FOR UPDATE""",
+            (organization_id, session_id),
+        ).fetchone()
+        if row is None:
+            raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+        revisions = json.loads(row[0])
+        index = next((
+            position for position, revision in enumerate(revisions)
+            if str(revision.get("revisionNumber")) == str(revision_number)
+        ), None)
+        if index is None:
+            raise LookupError("PROCUREMENT_REVISION_INVALID")
+        current_index = int(row[1] or 0)
+        if revisions[index].get("status") == "COMMITTED":
+            if index >= current_index:
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+            return {
+                "currentIndex": current_index,
+                "status": (
+                    "COMPLETED" if current_index >= len(revisions)
+                    else "WAITING_NEXT_CONFIRMATION"
+                ),
+            }
+        if index != current_index:
+            raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        revisions[index]["status"] = "COMMITTED"
+        next_index = index + 1
+        status = "COMPLETED" if next_index >= len(revisions) else "WAITING_NEXT_CONFIRMATION"
+        self.cursor.execute(
+            """UPDATE procurement_import_session
+                  SET revisions_json = ?, current_revision_index = ?, status = ?,
+                      updated_at = CURRENT_TIMESTAMP
+                WHERE organization_id = ? AND id = ?""",
+            (_json(revisions), next_index, status, organization_id, session_id),
+        )
+        return {"currentIndex": next_index, "status": status}
+
+    def update_progress(self, session_id, *, current_index, status):
+        self.cursor.execute(
+            """UPDATE procurement_import_session
+                  SET current_revision_index = ?, status = ?,
+                      updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?""",
+            (int(current_index), status, session_id),
+        )
+
+    def cleanup_expired(self):
+        self.cursor.execute(
+            "DELETE FROM procurement_import_session WHERE expires_at <= CURRENT_TIMESTAMP"
+        )
+
+    def cancel_remaining(self, session_id, *, organization_id, user_id):
+        result = self.cursor.execute(
+            """UPDATE procurement_import_session
+                  SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+                WHERE organization_id = ? AND id = ? AND user_id = ?
+                  AND status IN ('READY', 'EDITING_REVISION',
+                                 'WAITING_NEXT_CONFIRMATION')""",
+            (organization_id, session_id, user_id),
+        )
+        return bool(result.rowcount)

@@ -20,7 +20,6 @@ import { generateRecordId } from "../shared/idUtils.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import {
   hasServerCapability,
-  PROCUREMENT_IMPORT_CAPABILITY,
   PROCUREMENT_LOOKUP_CAPABILITY,
 } from "../auth/serverCapabilities.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
@@ -29,6 +28,7 @@ import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggrega
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 import {
   capturePlanBreakdownDraft,
+  boundProcurementRevisionChanges,
   collectPlanBreakdownDraftChanges,
   isPlanBreakdownDraftActive,
 } from "./planBreakdownDraft.js";
@@ -178,14 +178,6 @@ export async function editKeHoach(id) {
         buttonId: "btn-open-procurement-lookup-plan",
         statusId: "procurement-lookup-plan-status",
       })
-      : null;
-  }
-  const procurementImportButton = document.getElementById("btn-open-procurement-import");
-  if (procurementImportButton) {
-    const importEnabled = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
-    procurementImportButton.hidden = Boolean(id) || !importEnabled;
-    procurementImportButton.onclick = !id && importEnabled
-      ? () => this.openProcurementImportWizard?.()
       : null;
   }
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
@@ -599,7 +591,7 @@ export async function handleKeHoachSubmit(e) {
     this.recalculatePlanTotal(targetPlanId);
   }
   this.view.closeModal("modal-kehoach");
-  this.openPlanBreakdownModal(targetPlanId);
+  await this.openPlanBreakdownModal(targetPlanId);
 }
 export async function openPlanBreakdownModal(planId) {
   if (!document.getElementById("modal-plan-breakdown")) {
@@ -744,8 +736,8 @@ export function renderBreakdownPackagesList(planId) {
                 <td class="bf-s-69a042494b">${trangThaiBadge}</td>
                 <td class="bf-s-59809c145b">
                     <div class="action-btn-group">
-                      ${["Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(effectiveStatus) ? `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}"><i data-lucide="eye" aria-hidden="true"></i>Xem</button>` : `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}"><i data-lucide="pencil" aria-hidden="true"></i>Sửa</button>`}
-                      <button type="button" class="btn btn-danger btn-sm" data-bf-action="delete-package" data-id="${escapeHtml(gt.id)}"><i data-lucide="trash-2" aria-hidden="true"></i>Xóa</button>
+                      ${["Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(effectiveStatus) ? `<button type="button" class="action-btn btn-view breakdown-package-action" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}" aria-label="Xem gói thầu" title="Xem gói thầu"><i data-lucide="eye" aria-hidden="true"></i></button>` : `<button type="button" class="action-btn btn-edit breakdown-package-action" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}" aria-label="Sửa gói thầu" title="Sửa gói thầu"><i data-lucide="pencil" aria-hidden="true"></i></button>`}
+                      <button type="button" class="action-btn btn-delete breakdown-package-action" data-bf-action="delete-package" data-id="${escapeHtml(gt.id)}" aria-label="Xóa gói thầu" title="Xóa gói thầu"><i data-lucide="trash-2" aria-hidden="true"></i></button>
                     </div>
                 </td>
             </tr>
@@ -1033,6 +1025,9 @@ export async function savePlanBreakdown() {
         planId: finalPlanId,
         snapshot: this.planBreakdownDraft.snapshot,
       });
+      if (this.procurementPlanImport?.controller) {
+        explicitChanges = boundProcurementRevisionChanges(explicitChanges, finalPlanId);
+      }
     } else if (String(finalPlanId) !== String(planId)) {
       explicitChanges.upserts.goithau = this.model.state.goithau.filter(
         (pkg) => String(pkg.keHoachId) === String(finalPlanId),
@@ -1072,6 +1067,13 @@ export async function savePlanBreakdown() {
   this.tempPlanData = null;
   this.tempPlanAction = null;
   this.planBreakdownDraft = null;
-  this.closeModal("modal-plan-breakdown");
-  await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");
+  await this.closeModal("modal-plan-breakdown", {
+    restoreRoute: false,
+    preserveProcurementImport: true,
+  });
+  if (this.procurementPlanImport?.controller) {
+    await this.completeProcurementPlanImportRevision?.(finalPlanId);
+  } else {
+    await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");
+  }
 }

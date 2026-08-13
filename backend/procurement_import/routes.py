@@ -28,9 +28,12 @@ from backend.procurement_import.domain import (
     required_package_issues,
 )
 from backend.procurement_import.repository import ProcurementImportRepository
+from backend.procurement_import.repository import ProcurementImportSessionRepository
 from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
+from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_raw import ProcurementRawSnapshotRepository
 from backend.procurement_import.source import ProcurementSourceError
+from backend.procurement_lookup.config import ProcurementLookupSettings
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOTimeoutError,
@@ -89,11 +92,22 @@ def _enabled():
     ).strip().casefold() == "true"
 
 
-def _source_timeout_seconds():
-    provider = os.environ.get(
-        "PROCUREMENT_PROVIDER",
-        os.environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
+def _provider_name():
+    explicit = str(os.environ.get("PROCUREMENT_PROVIDER") or "").strip()
+    if explicit:
+        return explicit.casefold()
+    lookup_enabled = str(
+        os.environ.get("PROCUREMENT_LOOKUP_ENABLED") or ""
+    ).strip().casefold() == "true"
+    if lookup_enabled:
+        return "muasamcong"
+    return str(
+        os.environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
     ).strip().casefold()
+
+
+def _source_timeout_seconds():
+    provider = _provider_name()
     if provider in {"muasamcong", "web_dau_thau"}:
         return max(
             20.0,
@@ -122,10 +136,7 @@ def build_procurement_source():
             "Tính năng nhập Mua Sắm Công chưa được bật.",
             503,
         )
-    provider = os.environ.get(
-        "PROCUREMENT_PROVIDER",
-        os.environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
-    ).strip().casefold()
+    provider = _provider_name()
     if provider == "fixture":
         if os.environ.get("APP_ENV", "").strip().casefold() not in {
             "test", "testing",
@@ -149,6 +160,18 @@ def build_procurement_source():
         "PROCUREMENT_LOOKUP_DISABLED",
         "Connector procurement chưa được cấu hình.",
         503,
+    )
+
+
+def _build_import_preparer(source):
+    settings = ProcurementLookupSettings.from_environ()
+    return ProcurementImportPreparer(
+        source,
+        PREVIEW_STORE,
+        raw_snapshot_repository=ProcurementRawSnapshotRepository(
+            database=database
+        ),
+        raw_cache_ttl_seconds=settings.raw_cache_ttl_seconds,
     )
 
 
@@ -197,7 +220,16 @@ def _prepare_blocking(request, payload):
     source = build_procurement_source()
     connection = database.get_connection()
     try:
-        repository = ProcurementImportRepository(connection.cursor())
+        cursor = connection.cursor()
+        if not has_module_permission(
+            cursor, session, session.user_id, organization_id, "kehoach", "edit"
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền nhập kế hoạch trong workspace hiện tại.",
+                403,
+            )
+        repository = ProcurementImportRepository(cursor)
         code = str(payload.get("code") or "").strip().upper()
         family_no = code.split("-", 1)[0]
         local_state = repository.load_family(
@@ -208,13 +240,7 @@ def _prepare_blocking(request, payload):
     finally:
         connection.rollback()
         connection.close()
-    return ProcurementImportPreparer(
-        source,
-        PREVIEW_STORE,
-        raw_snapshot_repository=ProcurementRawSnapshotRepository(
-            database=database
-        ),
-    ).prepare_plan(
+    preview = _build_import_preparer(source).prepare_plan(
         code=payload.get("code"),
         revision_mode=payload.get("revisionMode") or "LATEST",
         selected_revision=payload.get("selectedRevision"),
@@ -224,6 +250,29 @@ def _prepare_blocking(request, payload):
         workspace_lease=lease,
         local_state=local_state,
     )
+    stored = PREVIEW_STORE.get(
+        preview["previewId"], organization_id=organization_id,
+        user_id=session.user_id, workspace_lease=lease,
+    )
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        import_session = ProcurementImportSessionService(
+            ProcurementImportSessionRepository(connection.cursor()),
+            ttl_seconds=int(os.environ.get("PROCUREMENT_IMPORT_SESSION_TTL_SECONDS", "86400")),
+        ).create_from_bundle(
+            stored.canonical_bundle,
+            organization_id=organization_id,
+            user_id=session.user_id,
+            workspace_lease=lease,
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return {**preview, "importSession": import_session}
 
 
 def _prepare_notice_blocking(request, payload):
@@ -232,6 +281,20 @@ def _prepare_notice_blocking(request, payload):
     )
     _enforce_rate_limit(request, session.user_id, organization_id, "prepare")
     source = build_procurement_source()
+
+    permission_connection = database.get_connection()
+    try:
+        if not has_module_permission(
+            permission_connection.cursor(), session, session.user_id,
+            organization_id, "goithau", "edit",
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền nhập gói thầu trong workspace hiện tại.",
+                403,
+            )
+    finally:
+        permission_connection.close()
 
     def resolve_local_target(notice_no, relationship, target_root_id):
         connection = database.get_connection()
@@ -246,7 +309,7 @@ def _prepare_notice_blocking(request, payload):
             connection.rollback()
             connection.close()
 
-    return ProcurementImportPreparer(source, PREVIEW_STORE).prepare_notice(
+    preview = _build_import_preparer(source).prepare_notice(
         code=payload.get("code"),
         revision_mode=payload.get("revisionMode") or "LATEST",
         selected_revision=payload.get("selectedRevision"),
@@ -256,6 +319,104 @@ def _prepare_notice_blocking(request, payload):
         workspace_lease=lease,
         resolve_local_target=resolve_local_target,
     )
+    stored = PREVIEW_STORE.get(
+        preview["previewId"], organization_id=organization_id,
+        user_id=session.user_id, workspace_lease=lease,
+    )
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        import_session = ProcurementImportSessionService(
+            ProcurementImportSessionRepository(connection.cursor()),
+            ttl_seconds=int(os.environ.get("PROCUREMENT_IMPORT_SESSION_TTL_SECONDS", "86400")),
+        ).create_from_bundle(
+            stored.canonical_bundle,
+            organization_id=organization_id,
+            user_id=session.user_id,
+            workspace_lease=lease,
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return {**preview, "importSession": import_session}
+
+
+def _get_import_session_blocking(request, session_id, revision_number=None):
+    session, organization_id, lease = _request_context(
+        request, request.query_params.get("workspaceLease")
+    )
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        repository = ProcurementImportSessionRepository(cursor)
+        service = ProcurementImportSessionService(repository)
+        stored = repository.get_scoped(
+            session_id, organization_id=organization_id,
+            user_id=session.user_id, workspace_lease=lease,
+        )
+        if stored is None:
+            raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+        module = "kehoach" if stored["kind"] == "PLAN" else "goithau"
+        if not has_module_permission(
+            cursor, session, session.user_id, organization_id, module, "edit"
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền tiếp tục phiên nhập trong workspace hiện tại.",
+                403,
+            )
+        if revision_number is None:
+            service._get(
+                session_id, organization_id=organization_id,
+                user_id=session.user_id, workspace_lease=lease,
+            )
+            return service._public_manifest(stored)
+        return service.get_revision_draft(
+            session_id, revision_number,
+            organization_id=organization_id, user_id=session.user_id,
+            workspace_lease=lease,
+        )
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def _cancel_import_session_blocking(request, session_id):
+    session, organization_id, lease = _request_context(
+        request, request.query_params.get("workspaceLease")
+    )
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        repository = ProcurementImportSessionRepository(cursor)
+        stored = repository.get_scoped(
+            session_id, organization_id=organization_id,
+            user_id=session.user_id, workspace_lease=lease,
+        )
+        if stored is None:
+            raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+        module = "kehoach" if stored["kind"] == "PLAN" else "goithau"
+        if not has_module_permission(
+            cursor, session, session.user_id, organization_id, module, "edit"
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền kết thúc phiên nhập trong workspace hiện tại.",
+                403,
+            )
+        repository.cancel_remaining(
+            session_id, organization_id=organization_id, user_id=session.user_id,
+        )
+        connection.commit()
+        return {"sessionId": session_id, "status": "CANCELLED"}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def _prepare_opening_blocking(request, payload):
@@ -1245,6 +1406,11 @@ def _public_error(request, error):
             request, "ORGANIZATION_ACCESS_DENIED", "Preview không thuộc workspace hiện tại.", status_code=403
         )
     if type(error) is LookupError and error.args:
+        if error.args[0] == "PROCUREMENT_SESSION_EXPIRED":
+            return error_response(
+                request, "PROCUREMENT_SESSION_EXPIRED",
+                "Phiên nhập đã hết hạn hoặc không còn tồn tại.", status_code=410,
+            )
         if error.args[0] == "PROCUREMENT_PREVIEW_EXPIRED":
             return error_response(
                 request, "PROCUREMENT_PREVIEW_EXPIRED", "Preview đã hết hạn.", status_code=410
@@ -1273,7 +1439,15 @@ def _public_error(request, error):
         return error_response(request, code, "Dữ liệu import đang xung đột.", status_code=409)
     if isinstance(error, ProcurementSourceError):
         code = str(error)
-        status = 503 if code in {"BLOCKED BY EXTERNAL/API AUTHORIZATION", "PROCUREMENT_LOOKUP_DISABLED"} else 502
+        if code == "PROCUREMENT_NOT_FOUND":
+            status = 404
+        elif code in {
+            "BLOCKED BY EXTERNAL/API AUTHORIZATION",
+            "PROCUREMENT_LOOKUP_DISABLED",
+        }:
+            status = 503
+        else:
+            status = 502
         public_code = "PROCUREMENT_LOOKUP_DISABLED" if code == "BLOCKED BY EXTERNAL/API AUTHORIZATION" else code
         return error_response(request, public_code, "Nguồn procurement chưa khả dụng.", status_code=status)
     if isinstance(error, OrgPermissionError):
@@ -1332,6 +1506,58 @@ async def apply_plan_import(request):
         return response or log_and_error(
             request, error, "apply_procurement_import",
             "PROCUREMENT_APPLY_FAILED", "Không thể áp dụng dữ liệu nhập.", status_code=500,
+        )
+
+
+async def get_plan_import_session(request):
+    try:
+        result = await run_blocking_io(
+            _get_import_session_blocking,
+            request,
+            request.path_params.get("session_id", ""),
+            timeout_seconds=8,
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request, error, "get_procurement_import_session",
+            "PROCUREMENT_SESSION_FAILED", "Không thể đọc phiên nhập.", status_code=500,
+        )
+
+
+async def get_plan_import_revision(request):
+    try:
+        result = await run_blocking_io(
+            _get_import_session_blocking,
+            request,
+            request.path_params.get("session_id", ""),
+            request.path_params.get("revision_number", ""),
+            timeout_seconds=8,
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request, error, "get_procurement_import_revision",
+            "PROCUREMENT_SESSION_FAILED", "Không thể đọc dữ liệu phiên bản.", status_code=500,
+        )
+
+
+async def cancel_import_session(request):
+    try:
+        result = await run_blocking_io(
+            _cancel_import_session_blocking,
+            request,
+            request.path_params.get("session_id", ""),
+            timeout_seconds=8,
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request, error, "cancel_procurement_import_session",
+            "PROCUREMENT_SESSION_FAILED", "Không thể kết thúc phiên nhập.", status_code=500,
         )
 
 
@@ -1475,8 +1701,14 @@ async def resume_import_operation(request):
 def procurement_import_routes(Route):
     return [
         Route("/api/procurement/imports/plan/prepare", prepare_plan_import, methods=["POST"]),
+        Route("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", get_plan_import_revision, methods=["GET"]),
+        Route("/api/procurement/imports/plan/sessions/{session_id}", get_plan_import_session, methods=["GET"]),
+        Route("/api/procurement/imports/plan/sessions/{session_id}/cancel", cancel_import_session, methods=["POST"]),
         Route("/api/procurement/imports/plan/apply", apply_plan_import, methods=["POST"]),
         Route("/api/procurement/imports/notice/prepare", prepare_notice_import, methods=["POST"]),
+        Route("/api/procurement/imports/notice/sessions/{session_id}/revisions/{revision_number}", get_plan_import_revision, methods=["GET"]),
+        Route("/api/procurement/imports/notice/sessions/{session_id}", get_plan_import_session, methods=["GET"]),
+        Route("/api/procurement/imports/notice/sessions/{session_id}/cancel", cancel_import_session, methods=["POST"]),
         Route("/api/procurement/imports/notice/apply", apply_notice_import, methods=["POST"]),
         Route("/api/procurement/imports/opening/prepare", prepare_opening_import, methods=["POST"]),
         Route("/api/procurement/imports/opening/apply", apply_opening_import, methods=["POST"]),

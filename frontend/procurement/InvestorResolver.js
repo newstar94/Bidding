@@ -1,0 +1,85 @@
+import {
+  normalizeOrganizationName,
+  normalizePersonName,
+  normalizeProcurementOrgCode,
+  normalizeVietnamTaxCode,
+} from "../app/domUtils.js";
+import { generateRecordId } from "../shared/idUtils.js";
+import {
+  buildInitialPartnerVersion,
+  PARTNER_FORM_CONFIGS,
+} from "../partners/PartnerFormController.js";
+
+function sourceCode(value) {
+  return normalizeProcurementOrgCode(String(value || "").split("-", 1)[0]);
+}
+
+function findExisting(records, code, taxCode) {
+  return (records || []).find((record) => (
+    code && normalizeProcurementOrgCode(record?.maChuDauTu) === code
+  ) || (
+    taxCode && normalizeVietnamTaxCode(record?.maSoThue) === taxCode
+  ));
+}
+
+function buildPendingInvestor(info, { createId, timestamp, effectiveDate, records }) {
+  const code = sourceCode(info?.org_code);
+  const name = normalizeOrganizationName(info?.name || "");
+  const representative = normalizePersonName(info?.representative_name || "");
+  const position = String(info?.representative_position || "").trim();
+  const address = String(info?.address || "").trim();
+  if (!code || !name || !representative || !position || !address) {
+    throw new Error("PROCUREMENT_INVESTOR_RESOLUTION_FAILED");
+  }
+  const id = createId("chudautu");
+  return buildInitialPartnerVersion({
+    maChuDauTu: code,
+    maSoThue: normalizeVietnamTaxCode(info?.tax_code),
+    tenChuDauTu: name,
+    tenVietTat: String(info?.short_name || "").trim(),
+    ngayApDung: effectiveDate,
+    daiDienCdt: representative,
+    chucVuDaiDien: position,
+    chucVuNguoiDungDau: String(info?.head_position || position).trim(),
+    danhXung: String(info?.salutation || "Ông/Bà").trim(),
+    diaChi: address,
+    diaChiGoc: address,
+    soDienThoai: String(info?.phone || "").trim(),
+    email: String(info?.email || "").trim(),
+    soTaiKhoan: String(info?.bank_account || "").trim(),
+    noiMoTaiKhoan: String(info?.bank_name || "").trim(),
+    maQHNS: String(info?.budget_code || "").trim(),
+    coQuanChuQuan: String(info?.parent_agency || "").trim(),
+  }, {
+    id,
+    timestamp,
+    records,
+    config: PARTNER_FORM_CONFIGS.chudautu,
+    validationErrorCode: "PROCUREMENT_INVESTOR_RESOLUTION_FAILED",
+  });
+}
+
+export async function resolveImportedInvestorDraft({
+  source,
+  records,
+  lookup,
+  createId = generateRecordId,
+  timestamp = new Date().toISOString(),
+  effectiveDate = String(new Date().toISOString()).slice(0, 10),
+} = {}) {
+  const code = sourceCode(source?.code);
+  const taxCode = normalizeVietnamTaxCode(source?.taxCode);
+  const existing = findExisting(records, code, taxCode);
+  if (existing) return { status: "EXISTING", investor: existing };
+  if (!code && !taxCode) throw new Error("PROCUREMENT_INVESTOR_RESOLUTION_FAILED");
+  const info = await lookup?.({ orgCode: code, taxCode, partnerRole: "CDT" });
+  const resolvedCode = sourceCode(info?.org_code || code);
+  const resolvedTax = normalizeVietnamTaxCode(info?.tax_code || taxCode);
+  const raced = findExisting(records, resolvedCode, resolvedTax);
+  if (raced) return { status: "EXISTING", investor: raced };
+  const investor = buildPendingInvestor(
+    { ...info, org_code: resolvedCode, tax_code: resolvedTax },
+    { createId, timestamp, effectiveDate, records },
+  );
+  return { status: "NEW", investor };
+}

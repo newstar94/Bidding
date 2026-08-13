@@ -57,6 +57,55 @@ export class ProcurementImportClient {
     );
   }
 
+  getPlanSession(sessionId, { workspaceLease, signal } = {}) {
+    const query = workspaceLease
+      ? `?workspaceLease=${encodeURIComponent(workspaceLease)}`
+      : "";
+    return this.get(
+      `/api/procurement/imports/plan/sessions/${encodeURIComponent(sessionId)}${query}`,
+      { signal, retries: 1 },
+    );
+  }
+
+  getImportSession(sessionId, { workspaceLease, signal, kind = "plan" } = {}) {
+    const query = workspaceLease
+      ? `?workspaceLease=${encodeURIComponent(workspaceLease)}`
+      : "";
+    return this.get(
+      `/api/procurement/imports/${encodeURIComponent(kind)}/sessions/`
+        + `${encodeURIComponent(sessionId)}${query}`,
+      { signal, retries: 1 },
+    );
+  }
+
+  cancelImportSession(sessionId, { workspaceLease, signal, kind = "plan" } = {}) {
+    const query = workspaceLease
+      ? `?workspaceLease=${encodeURIComponent(workspaceLease)}`
+      : "";
+    return this.post(
+      `/api/procurement/imports/${encodeURIComponent(kind)}/sessions/`
+        + `${encodeURIComponent(sessionId)}/cancel${query}`,
+      {},
+      { signal, retries: 1 },
+    );
+  }
+
+  getPlanRevisionDraft(sessionId, revisionNumber, {
+    workspaceLease,
+    signal,
+    kind = "plan",
+  } = {}) {
+    const query = workspaceLease
+      ? `?workspaceLease=${encodeURIComponent(workspaceLease)}`
+      : "";
+    return this.get(
+      `/api/procurement/imports/${encodeURIComponent(kind)}/sessions/`
+        + `${encodeURIComponent(sessionId)}/revisions/`
+        + `${encodeURIComponent(revisionNumber)}${query}`,
+      { signal, retries: 1 },
+    );
+  }
+
   prepareNotice(request, { signal } = {}) {
     return this.post(
       "/api/procurement/imports/notice/prepare",

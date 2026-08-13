@@ -2,6 +2,7 @@ import { generateRecordId } from "../shared/idUtils.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 
 export const PLAN_BREAKDOWN_DRAFT_TABLES = [
+  "chudautu",
   "kehoach",
   "goithau",
   "goithauhanghoa",
@@ -41,10 +42,34 @@ export function isPlanBreakdownDraftActive(controller, planId) {
 export function restorePlanBreakdownDraft(model, draft) {
   if (!draft?.snapshot) return false;
   PLAN_BREAKDOWN_DRAFT_TABLES.forEach((table) => {
+    const liveRecords = model?.state?.[table] || [];
+    const snapshotRecords = draft.snapshot[table] || [];
     const restored = restoreRecordSnapshot(
-      model?.state?.[table] || [],
-      draft.snapshot[table] || [],
+      liveRecords,
+      snapshotRecords,
     );
+    if (["kehoach", "goithau"].includes(table)) {
+      const snapshotIds = new Set(snapshotRecords.map((row) => String(row?.id || "")));
+      const committedNewerFamilies = new Set(
+        liveRecords
+          .filter((row) => (
+            !snapshotIds.has(String(row?.id || ""))
+            && Number.isInteger(row?.rowVersion)
+            && row.rowVersion > 0
+          ))
+          .map((row) => String(row?.rootId || row?.id || "")),
+      );
+      const snapshotById = new Map(
+        snapshotRecords.map((row) => [String(row?.id || ""), row]),
+      );
+      restored.forEach((row) => {
+        const snapshotRow = snapshotById.get(String(row?.id || ""));
+        const family = String(row?.rootId || row?.id || "");
+        if (snapshotRow && !committedNewerFamilies.has(family)) {
+          row.isLatest = snapshotRow.isLatest;
+        }
+      });
+    }
     if (typeof model?.replaceTableState === "function") model.replaceTableState(table, restored);
     else model.state[table] = restored;
   });
@@ -130,6 +155,10 @@ function removedIds(before, after) {
 
 export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} } = {}) {
   const targetPlanId = String(planId || "");
+  const targetPlan = (state?.kehoach || []).find(
+    (plan) => String(plan?.id || "") === targetPlanId,
+  );
+  const targetPlanRootId = String(targetPlan?.rootId || targetPlan?.id || "");
   const currentPackages = (state?.goithau || []).filter(
     (pkg) => String(pkg?.keHoachId || "") === targetPlanId,
   );
@@ -139,6 +168,13 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
   const packageIds = new Set(
     [...currentPackages, ...previousPackages].map((pkg) => String(pkg?.id || "")),
   );
+  const packageRootIds = new Set(
+    currentPackages.map((pkg) => String(pkg?.rootId || pkg?.id || "")),
+  );
+  const packageFamilyRows = (state?.goithau || []).filter(
+    (pkg) => packageRootIds.has(String(pkg?.rootId || pkg?.id || "")),
+  );
+  packageFamilyRows.forEach((pkg) => packageIds.add(String(pkg?.id || "")));
   const currentTargetIds = new Set([targetPlanId, ...packageIds]);
   const currentAssignments = (state?.assignments || []).filter((assignment) => (
     (assignment.type === "kehoach" && String(assignment.targetId || "") === targetPlanId)
@@ -148,17 +184,35 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
     (assignment.type === "kehoach" && String(assignment.targetId || "") === targetPlanId)
     || (assignment.type === "goithau" && currentTargetIds.has(String(assignment.targetId || "")))
   ));
+  const investorIds = new Set([
+    String(targetPlan?.chuDauTuId || ""),
+  ].filter(Boolean));
   const upserts = {
-    kehoach: (state?.kehoach || []).filter((plan) => String(plan?.id || "") === targetPlanId),
-    goithau: currentPackages,
+    chudautu: (state?.chudautu || []).filter((investor) => (
+      investorIds.has(String(investor?.id || ""))
+      && !(snapshot.chudautu || []).some(
+        (previousInvestor) => String(previousInvestor?.id || "") === String(investor?.id || ""),
+      )
+    )),
+    kehoach: (state?.kehoach || []).filter((plan) => (
+      String(plan?.rootId || plan?.id || "") === targetPlanRootId
+    )),
+    goithau: packageFamilyRows,
     goithauhanghoa: rowsForIds(state?.goithauhanghoa, "goiThauId", packageIds),
     thongtinmothau: rowsForIds(state?.thongtinmothau, "goiThauId", packageIds),
     hanghoaduthaunhathau: rowsForIds(state?.hanghoaduthaunhathau, "goiThauId", packageIds),
     assignments: currentAssignments,
   };
   const previous = {
-    kehoach: (snapshot.kehoach || []).filter((plan) => String(plan?.id || "") === targetPlanId),
-    goithau: previousPackages,
+    chudautu: (snapshot.chudautu || []).filter(
+      (investor) => investorIds.has(String(investor?.id || "")),
+    ),
+    kehoach: (snapshot.kehoach || []).filter((plan) => (
+      String(plan?.rootId || plan?.id || "") === targetPlanRootId
+    )),
+    goithau: (snapshot.goithau || []).filter(
+      (pkg) => packageRootIds.has(String(pkg?.rootId || pkg?.id || "")),
+    ),
     goithauhanghoa: rowsForIds(snapshot.goithauhanghoa, "goiThauId", packageIds),
     thongtinmothau: rowsForIds(snapshot.thongtinmothau, "goiThauId", packageIds),
     hanghoaduthaunhathau: rowsForIds(snapshot.hanghoaduthaunhathau, "goiThauId", packageIds),
@@ -170,4 +224,27 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
     if (ids.length) deletions[table] = ids;
   });
   return { upserts, deletions };
+}
+
+export function boundProcurementRevisionChanges(changes, planId) {
+  const bounded = clone(changes || { upserts: {}, deletions: {} });
+  const packageIds = new Set(
+    (bounded.upserts?.goithau || [])
+      .filter((pkg) => String(pkg?.keHoachId || "") === String(planId || ""))
+      .map((pkg) => String(pkg.id)),
+  );
+  bounded.upserts.kehoach = (bounded.upserts.kehoach || [])
+    .filter((plan) => String(plan.id) === String(planId));
+  bounded.upserts.goithau = (bounded.upserts.goithau || [])
+    .filter((pkg) => packageIds.has(String(pkg.id)));
+  for (const table of ["goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau"]) {
+    bounded.upserts[table] = (bounded.upserts[table] || [])
+      .filter((row) => packageIds.has(String(row.goiThauId || "")));
+  }
+  bounded.upserts.assignments = (bounded.upserts.assignments || [])
+    .filter((row) => (
+      String(row.targetId || "") === String(planId)
+      || packageIds.has(String(row.targetId || ""))
+    ));
+  return bounded;
 }

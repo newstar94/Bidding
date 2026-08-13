@@ -16,6 +16,24 @@ import {
   renderPackages,
   summarizePreview,
 } from "../../frontend/procurement/PlanImportWizard.js";
+import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
+import { resolveImportedInvestorDraft } from "../../frontend/procurement/InvestorResolver.js";
+import {
+  buildInitialPartnerVersion,
+  normalizePartnerRecord,
+  PARTNER_FORM_CONFIGS,
+  validatePartnerRecord,
+} from "../../frontend/partners/PartnerFormController.js";
+import {
+  ProcurementInlineLookup,
+  completeProcurementPackageImportRevision,
+} from "../../frontend/procurement/ProcurementInlineLookup.js";
+import { shouldCreatePackageVersion } from "../../frontend/packages/GoiThauWorkflow.js";
+import { completeProcurementPlanImportRevision } from "../../frontend/procurement/PlanImportWizard.js";
+import {
+  ProcurementImportResumeStore,
+  resumeProcurementImportSession,
+} from "../../frontend/procurement/ProcurementImportResume.js";
 
 
 class FakeElement {
@@ -36,6 +54,60 @@ class FakeElement {
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
 }
+
+test("resume pointer stores only bounded session metadata", () => {
+  const values = new Map();
+  const store = new ProcurementImportResumeStore({
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  });
+  store.save({
+    sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001",
+    revisionNumber: "00", canonicalBundle: { secret: "must-not-persist" },
+  });
+
+  const restored = store.load();
+  assert.deepEqual(Object.keys(restored).sort(), [
+    "familyNo", "kind", "revisionNumber", "savedAt", "sessionId",
+  ]);
+  assert.equal(JSON.stringify(restored).includes("must-not-persist"), false);
+});
+
+test("refresh resumes the server session at its first uncommitted revision", async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-1", kind: "PACKAGE", familyNo: "IB2600000001",
+    revisionNumber: "00",
+  });
+  const calls = [];
+  const controller = {
+    model: { workspaceStorage: storage, activeWorkspaceLease: "lease-1" },
+    view: { customConfirm: async () => true },
+    startProcurementPackageImport: async (flow) => calls.push(flow),
+  };
+  const resumed = await resumeProcurementImportSession.call(controller, {
+    client: {
+      getImportSession: async () => ({
+        sessionId: "session-1", kind: "PACKAGE", currentIndex: 1,
+        status: "WAITING_NEXT_CONFIRMATION",
+        revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+      }),
+      getPlanRevisionDraft: async (_id, revisionNumber) => ({
+        revisionNumber, packageDrafts: [{ maGoiThau: "IB2600000001" }],
+      }),
+    },
+  });
+
+  assert.equal(resumed, true);
+  assert.equal(calls[0].currentDraft.revisionNumber, "01");
+  assert.equal(calls[0].controller.currentIndex, 1);
+});
 
 
 test("plan import recovery draft is local UI state, not a Bidding version", () => {
@@ -111,6 +183,67 @@ test("prepare client forwards AbortSignal and revision mode", async () => {
   );
   assert.equal(captured.body.revisionMode, "ALL");
   assert.equal(captured.options.signal, controller.signal);
+});
+
+
+test("session client loads one prepared revision without sending canonical payload", async () => {
+  const calls = [];
+  const client = new ProcurementImportClient({
+    get: async (url, options) => {
+      calls.push({ url, options });
+      return { revisionNumber: "00" };
+    },
+  });
+  await client.getPlanRevisionDraft("session/1", "00", {
+    workspaceLease: "org-1",
+  });
+  assert.equal(
+    calls[0].url,
+    "/api/procurement/imports/plan/sessions/session%2F1/revisions/00?workspaceLease=org-1",
+  );
+});
+
+
+test("plan wizard starts editable workflow at first session revision and never bulk applies", async () => {
+  const calls = [];
+  const wizard = Object.create(PlanImportWizard.prototype);
+  wizard.preview = {
+    previewId: "preview-1",
+    blockingIssues: [],
+    packages: [],
+    importSession: {
+      sessionId: "session-1",
+      revisions: [{ revisionNumber: "01" }, { revisionNumber: "00" }],
+    },
+  };
+  wizard.decisions = { packageMatches: {}, fieldConflicts: {}, fieldValues: {} };
+  wizard.workspaceLease = "org-1";
+  wizard.modal = {
+    querySelector(selector) {
+      if (selector === "[data-procurement-apply]") return { disabled: false };
+      return null;
+    },
+  };
+  wizard.client = {
+    getPlanRevisionDraft: async (_sessionId, revisionNumber) => ({
+      revisionNumber, planDraft: { maKeHoach: "PL2600000001" }, packageDrafts: [],
+    }),
+    applyPlan: async () => { throw new Error("bulk apply must not run"); },
+  };
+  wizard.controller = {
+    startProcurementPlanImport: async (flow) => calls.push(flow),
+    view: { closeModal: (id) => calls.push(id) },
+  };
+  wizard.setStatus = () => {};
+  wizard.draftStore = { clear() {} };
+
+  await wizard.apply();
+  assert.equal(calls[0].currentDraft.revisionNumber, "00");
+  assert.deepEqual(
+    calls[0].controller.revisions.map((row) => row.revisionNumber),
+    ["00", "01"],
+  );
+  assert.equal(calls[1], "modal-procurement-import");
 });
 
 
@@ -375,4 +508,378 @@ test("wizard discards a response after workspace change and cleanup clears autho
   assert.equal(wizard.applyController.aborted, true);
   assert.equal(wizard.debouncedPrepare.cancelled, true);
   assert.equal(applyButton.disabled, true);
+});
+
+
+test("sequential revision controller never skips or advances after failed save", async () => {
+  const loaded = [];
+  let shouldFail = true;
+  const controller = new SequentialRevisionController({
+    revisions: [
+      { revisionNumber: "02" },
+      { revisionNumber: "00" },
+      { revisionNumber: "01" },
+    ],
+    loadRevision: async (revision) => loaded.push(revision.revisionNumber),
+    saveRevision: async () => {
+      if (shouldFail) throw new Error("save failed");
+      return { ok: true };
+    },
+  });
+
+  assert.equal(controller.current().revisionNumber, "00");
+  assert.equal(controller.hasNext(), true);
+  await controller.loadCurrent();
+  await assert.rejects(() => controller.saveCurrent(), /save failed/);
+  assert.equal(controller.current().revisionNumber, "00");
+  assert.equal(controller.state, "EDITING_REVISION");
+
+  shouldFail = false;
+  await controller.saveCurrent();
+  assert.equal(controller.state, "WAITING_NEXT_CONFIRMATION");
+  await controller.next();
+  assert.equal(controller.current().revisionNumber, "01");
+  assert.deepEqual(loaded, ["00", "01"]);
+  controller.cancel();
+  assert.equal(controller.state, "CANCELLED");
+});
+
+test("choosing no after plan 00 cancels remaining server revisions", async () => {
+  const calls = [];
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async () => ({}), saveRevision: async () => ({ ok: true }),
+  });
+  await sequential.loadCurrent();
+  const controller = {
+    model: { activeWorkspaceLease: "lease-1", workspaceStorage: null },
+    procurementPlanImport: {
+      session: { sessionId: "session-1" }, controller: sequential,
+      currentDraft: { revisionNumber: "00" },
+      client: { cancelImportSession: async (...args) => calls.push(args) },
+    },
+    view: { customConfirm: async () => false },
+  };
+  controller.completeProcurementPlanImportRevision = completeProcurementPlanImportRevision.bind(controller);
+
+  await controller.completeProcurementPlanImportRevision("plan-00");
+
+  assert.deepEqual(calls, [["session-1", { workspaceLease: "lease-1", kind: "plan" }]]);
+  assert.equal(sequential.state, "CANCELLED");
+  assert.equal(controller.procurementPlanImport, null);
+});
+
+test("package 00 continues with 01 from prepared session without upstream prepare", async () => {
+  const loaded = [];
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => {
+      loaded.push(revision.revisionNumber);
+      return {
+        revisionNumber: revision.revisionNumber,
+        packageDrafts: [{ maGoiThau: "IB2600000001" }],
+      };
+    },
+    saveRevision: async () => ({ ok: true }),
+  });
+  const firstDraft = await sequential.loadCurrent();
+  const controller = {
+    model: { workspaceStorage: null },
+    procurementPackageImport: {
+      session: { sessionId: "session-1" }, controller: sequential,
+      currentDraft: firstDraft,
+    },
+    view: { customConfirm: async () => true },
+    packages: { edit: async () => undefined },
+  };
+  controller.completeProcurementPackageImportRevision = completeProcurementPackageImportRevision.bind(controller);
+
+  await controller.completeProcurementPackageImportRevision("package-00");
+
+  assert.deepEqual(loaded, ["00", "01"]);
+  assert.equal(controller.procurementPackageImport.currentDraft.revisionNumber, "01");
+});
+
+test("direct package import saves exactly 00 01 02 from one prepared session", async () => {
+  const loaded = [];
+  const saved = [];
+  const sequential = new SequentialRevisionController({
+    revisions: [
+      { revisionNumber: "02" },
+      { revisionNumber: "00" },
+      { revisionNumber: "01" },
+    ],
+    loadRevision: async (revision) => {
+      loaded.push(revision.revisionNumber);
+      return {
+        revisionNumber: revision.revisionNumber,
+        packageDrafts: [{
+          maGoiThau: "IB2600000001",
+          tenGoiThau: `Gói ${revision.revisionNumber}`,
+          sourceRevision: { revisionNumber: revision.revisionNumber },
+        }],
+      };
+    },
+    saveRevision: async (revision, savedPackageId) => {
+      saved.push({ revisionNumber: revision.revisionNumber, savedPackageId });
+      return { ok: true };
+    },
+  });
+  const firstDraft = await sequential.loadCurrent();
+  const filled = [];
+  const previousDocument = globalThis.document;
+  globalThis.document = { getElementById: () => null };
+  const controller = {
+    model: { workspaceStorage: null },
+    procurementPackageImport: {
+      session: { sessionId: "session-1" },
+      controller: sequential,
+      currentDraft: firstDraft,
+      sourcePackageDraft: firstDraft.packageDrafts[0],
+    },
+    view: {
+      customConfirm: async () => true,
+      customAlert: async () => undefined,
+    },
+    packages: {
+      edit: async (id) => filled.push(id),
+    },
+  };
+  controller.completeProcurementPackageImportRevision = (
+    completeProcurementPackageImportRevision.bind(controller)
+  );
+
+  try {
+    await controller.completeProcurementPackageImportRevision("package-00");
+    await controller.completeProcurementPackageImportRevision("package-01");
+    await controller.completeProcurementPackageImportRevision("package-02");
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.deepEqual(loaded, ["00", "01", "02"]);
+  assert.deepEqual(saved, [
+    { revisionNumber: "00", savedPackageId: "package-00" },
+    { revisionNumber: "01", savedPackageId: "package-01" },
+    { revisionNumber: "02", savedPackageId: "package-02" },
+  ]);
+  assert.deepEqual(filled, ["package-00", "package-01"]);
+  assert.equal(controller.procurementPackageImport, null);
+  assert.equal(sequential.state, "COMPLETED");
+});
+
+test("authoritative package versioning ignores date heuristics and follows source revision", () => {
+  const previous = {
+    phienBan: "01",
+    thoiGianDangTai: "2026-01-01T09:00:00",
+    thoiGianDongThau: "2026-01-10T09:00:00",
+    thoiGianMoThau: "2026-01-10T09:00:00",
+  };
+  const changedDates = {
+    thoiGianDangTai: "2026-02-01T09:00:00",
+    thoiGianDongThau: "2026-02-10T09:00:00",
+    thoiGianMoThau: "2026-02-10T09:00:00",
+  };
+
+  assert.equal(shouldCreatePackageVersion(previous, changedDates, {
+    provider: "MUASAMCONG", revisionNumber: "01",
+  }), false);
+  assert.equal(shouldCreatePackageVersion(previous, changedDates, {
+    provider: "MUASAMCONG", revisionNumber: "02",
+  }), true);
+  assert.equal(shouldCreatePackageVersion(previous, changedDates), true);
+});
+
+test("investor resolver reuses normalized code and does not call external lookup", async () => {
+  let lookupCalls = 0;
+  const existing = { id: "investor-1", maChuDauTu: "ABC", maSoThue: "0101" };
+  const result = await resolveImportedInvestorDraft({
+    source: { code: "abc-01", taxCode: "0101" },
+    records: [existing],
+    lookup: async () => { lookupCalls += 1; },
+  });
+  assert.equal(result.status, "EXISTING");
+  assert.equal(result.investor, existing);
+  assert.equal(lookupCalls, 0);
+});
+
+test("investor resolver reuses an existing investor by normalized tax code", async () => {
+  let lookupCalls = 0;
+  const existing = {
+    id: "investor-tax", maChuDauTu: "OTHER-CODE", maSoThue: "0101234567",
+  };
+  const result = await resolveImportedInvestorDraft({
+    source: { code: "missing-code", taxCode: " 0101234567 " },
+    records: [existing],
+    lookup: async () => { lookupCalls += 1; },
+  });
+
+  assert.equal(result.status, "EXISTING");
+  assert.equal(result.investor, existing);
+  assert.equal(lookupCalls, 0);
+});
+
+test("investor resolver creates one pending initial version through shared validation", async () => {
+  const result = await resolveImportedInvestorDraft({
+    source: { code: "vn0101234567-01" },
+    records: [],
+    lookup: async () => ({
+      org_code: "vn0101234567", tax_code: "0101234567", name: "Bệnh viện A",
+      representative_name: "Nguyễn Văn A", representative_position: "Giám đốc",
+      address: "Số 1, Hà Nội",
+    }),
+    createId: () => "investor-draft",
+    timestamp: "2026-08-13 10:00:00",
+    effectiveDate: "2026-08-13",
+  });
+  assert.equal(result.status, "NEW");
+  assert.equal(result.investor.id, "investor-draft");
+  assert.equal(result.investor.phienBan, "00");
+  assert.equal(result.investor.maChuDauTu, "vn0101234567");
+  assert.equal(result.investor.tenChuDauTu, "Bệnh viện A");
+});
+
+test("investor resolver retry reuses the pending version without another lookup", async () => {
+  const records = [];
+  let lookupCalls = 0;
+  const options = {
+    source: { code: "vn0101234567-01" },
+    records,
+    lookup: async () => {
+      lookupCalls += 1;
+      return {
+        org_code: "vn0101234567", tax_code: "0101234567",
+        name: "Bệnh viện A", representative_name: "Nguyễn Văn A",
+        representative_position: "Giám đốc", address: "Số 1, Hà Nội",
+      };
+    },
+    createId: () => "investor-draft",
+    timestamp: "2026-08-13 10:00:00",
+    effectiveDate: "2026-08-13",
+  };
+  const first = await resolveImportedInvestorDraft(options);
+  records.push(first.investor);
+  const retried = await resolveImportedInvestorDraft(options);
+
+  assert.equal(first.status, "NEW");
+  assert.equal(retried.status, "EXISTING");
+  assert.equal(retried.investor.id, "investor-draft");
+  assert.equal(lookupCalls, 1);
+});
+
+test("investor resolver rechecks local records after lookup before creating", async () => {
+  const records = [];
+  const intervening = {
+    id: "investor-authoritative", maChuDauTu: "vn0101234567",
+    maSoThue: "0101234567",
+  };
+  const result = await resolveImportedInvestorDraft({
+    source: { code: "vn0101234567-01" },
+    records,
+    lookup: async () => {
+      records.push(intervening);
+      return {
+        org_code: "vn0101234567", tax_code: "0101234567",
+        name: "Bệnh viện A", representative_name: "Nguyễn Văn A",
+        representative_position: "Giám đốc", address: "Số 1, Hà Nội",
+      };
+    },
+    createId: () => assert.fail("intervening local investor must be reused"),
+  });
+
+  assert.equal(result.status, "EXISTING");
+  assert.equal(result.investor, intervening);
+});
+
+test("manual and imported investor creation share normalization validation and versioning", async () => {
+  const sourceRecord = {
+    maChuDauTu: " vn0101234567-01 ", maSoThue: " 0101234567 ",
+    tenChuDauTu: "  BỆNH VIỆN   A ", daiDienCdt: " nguyễn   văn a ",
+    chucVuDaiDien: "Giám đốc", diaChi: "Số 1, Hà Nội",
+    email: "invalid-email",
+  };
+  const normalized = normalizePartnerRecord(sourceRecord, PARTNER_FORM_CONFIGS.chudautu);
+  const manualErrors = validatePartnerRecord(
+    normalized, [], null, PARTNER_FORM_CONFIGS.chudautu,
+  );
+  assert.ok(manualErrors.some((error) => error.controlId === "cdt-email"));
+
+  await assert.rejects(
+    () => resolveImportedInvestorDraft({
+      source: { code: sourceRecord.maChuDauTu }, records: [],
+      lookup: async () => ({
+        org_code: sourceRecord.maChuDauTu,
+        tax_code: sourceRecord.maSoThue,
+        name: sourceRecord.tenChuDauTu,
+        representative_name: sourceRecord.daiDienCdt,
+        representative_position: sourceRecord.chucVuDaiDien,
+        address: sourceRecord.diaChi,
+        email: sourceRecord.email,
+      }),
+    }),
+    /PROCUREMENT_INVESTOR_RESOLUTION_FAILED/,
+  );
+
+  const initial = buildInitialPartnerVersion(
+    { ...normalized, email: "contact@example.test" },
+    { id: "investor-00", timestamp: "2026-08-13T10:00:00Z" },
+  );
+  assert.equal(initial.phienBan, "00");
+  assert.equal(initial.tenChuDauTu, "Bệnh viện a");
+});
+
+test("investor resolver rejects incomplete source data instead of inventing fields", async () => {
+  await assert.rejects(
+    () => resolveImportedInvestorDraft({
+      source: { code: "vn0101234567" }, records: [],
+      lookup: async () => ({ org_code: "vn0101234567", name: "Bệnh viện A" }),
+    }),
+    /PROCUREMENT_INVESTOR_RESOLUTION_FAILED/,
+  );
+});
+
+test("direct package lookup prepares all revisions and starts at 00", async () => {
+  const controls = new Map([
+    ["form-goithau", { querySelector: () => ({ value: "" }) }],
+    ["gt-ma", { value: "IB2600000001", focus() {} }],
+    ["lookup", { disabled: false, dataset: {}, textContent: "Lấy dữ liệu", setAttribute() {}, removeAttribute() {} }],
+    ["status", { hidden: true, dataset: {}, setAttribute() {}, textContent: "" }],
+  ]);
+  const calls = [];
+  const controller = {
+    model: { activeWorkspaceLease: "org-1" },
+    startProcurementPackageImport: async (flow) => calls.push(flow),
+    view: { showToast() {} },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    client: {
+      prepareNotice: async (request) => {
+        calls.push(request);
+        return {
+          importSession: {
+            sessionId: "session-package",
+            revisions: [{ revisionNumber: "01" }, { revisionNumber: "00" }],
+          },
+        };
+      },
+      getPlanRevisionDraft: async (_sessionId, revisionNumber) => ({
+        revisionNumber,
+        packageDrafts: [{ maGoiThau: "IB2600000001", tenGoiThau: "Gói 00" }],
+      }),
+    },
+    document: { getElementById: (id) => controls.get(id) || null },
+  });
+
+  await lookup.run({
+    kind: "PACKAGE", formId: "form-goithau", codeInputId: "gt-ma",
+    buttonId: "lookup", statusId: "status",
+  });
+  assert.equal(calls[0].revisionMode, "ALL");
+  assert.equal(calls[1].currentDraft.revisionNumber, "00");
+  assert.deepEqual(
+    calls[1].controller.revisions.map((row) => row.revisionNumber),
+    ["00", "01"],
+  );
 });

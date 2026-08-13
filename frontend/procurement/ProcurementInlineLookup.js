@@ -1,4 +1,11 @@
 import { ProcurementLookupClient } from "./ProcurementLookupClient.js";
+import { ProcurementImportClient } from "./ProcurementImportClient.js";
+import { SequentialRevisionController } from "./SequentialRevisionController.js";
+import { fillPackageFormFromProcurementDraft } from "./ProcurementDraftWorkflow.js";
+import {
+  forgetProcurementImportSession,
+  rememberProcurementImportSession,
+} from "./ProcurementImportResume.js";
 import {
   applyPackageDetails,
   applySelectedRows,
@@ -31,10 +38,16 @@ export class ProcurementInlineLookup {
   constructor({
     controller,
     client = new ProcurementLookupClient(),
+    importClient = null,
     document = globalThis.document,
   }) {
     this.controller = controller;
     this.client = client;
+    this.importClient = importClient || (
+      typeof client?.prepareNotice === "function"
+        ? client
+        : new ProcurementImportClient()
+    );
     this.document = document;
     this.requestGeneration = 0;
     this.lookupController = null;
@@ -76,6 +89,67 @@ export class ProcurementInlineLookup {
     setButtonLoading(button, true);
     this.setStatus(status, "Đang lấy dữ liệu từ Mua Sắm Công…", "loading");
     try {
+      if (normalizedKind === "PACKAGE" || normalizedKind === "PLAN") {
+        const prepare = normalizedKind === "PACKAGE"
+          ? this.importClient.prepareNotice.bind(this.importClient)
+          : this.importClient.preparePlan.bind(this.importClient);
+        const preview = await prepare({
+          code,
+          revisionMode: "ALL",
+          ...(normalizedKind === "PACKAGE" ? { targetPackageRootId: null } : {
+            includeLinkedNotices: true,
+          }),
+          workspaceLease: workspaceLease || null,
+        }, { signal: this.lookupController.signal });
+        if (generation !== this.requestGeneration) return null;
+        const contextChanged = (
+          formIdentity(form) !== identity
+          || String(codeInput?.value || "").trim().toUpperCase() !== code
+          || String(this.controller?.model?.activeWorkspaceLease || "")
+            !== workspaceLease
+        );
+        if (contextChanged) {
+          this.setStatus(
+            status,
+            "Biểu mẫu hoặc workspace đã thay đổi. Hãy lấy dữ liệu lại.",
+            "error",
+          );
+          return null;
+        }
+        const importSession = preview?.importSession;
+        if (!importSession?.sessionId || !(importSession.revisions || []).length) {
+          throw new Error("Phiên nhập gói thầu chưa sẵn sàng.");
+        }
+        const sequential = new SequentialRevisionController({
+          revisions: importSession.revisions,
+          loadRevision: (revision) => this.importClient.getPlanRevisionDraft(
+            importSession.sessionId,
+            revision.revisionNumber,
+            {
+              workspaceLease: workspaceLease || null,
+              signal: this.lookupController.signal,
+              kind: normalizedKind === "PACKAGE" ? "notice" : "plan",
+            },
+          ),
+          saveRevision: async () => ({ ok: true }),
+        });
+        const currentDraft = await sequential.loadCurrent();
+        const start = normalizedKind === "PACKAGE"
+          ? this.controller?.startProcurementPackageImport
+          : this.controller?.startProcurementPlanImport;
+        await start?.call(this.controller, {
+          session: importSession,
+          controller: sequential,
+          currentDraft,
+          client: this.importClient,
+        });
+        this.setStatus(
+          status,
+          `Đã mở phiên bản ${currentDraft.revisionNumber}. Dữ liệu chưa được lưu.`,
+          "success",
+        );
+        return { applied: true, revisionNumber: currentDraft.revisionNumber };
+      }
       const preview = await this.client.lookup(
         {
           code,
@@ -167,4 +241,66 @@ export async function runProcurementInlineLookup(options) {
     });
   }
   return this._procurementInlineLookup.run(options);
+}
+
+export async function startProcurementPackageImport(flow) {
+  const packageDraft = flow?.currentDraft?.packageDrafts?.[0];
+  if (!flow?.controller || !packageDraft) {
+    throw new TypeError("PROCUREMENT_SESSION_INVALID");
+  }
+  this.procurementPackageImport = {
+    ...flow,
+    currentDraft: flow.currentDraft,
+    sourcePackageDraft: packageDraft,
+  };
+  rememberProcurementImportSession(this, this.procurementPackageImport);
+  fillPackageFormFromProcurementDraft(globalThis.document, packageDraft, this);
+  return packageDraft;
+}
+
+export async function completeProcurementPackageImportRevision(savedPackageId) {
+  const flow = this.procurementPackageImport;
+  if (!flow?.controller) return false;
+  await flow.controller.saveCurrent(savedPackageId);
+  const savedRevision = flow.currentDraft.revisionNumber;
+  if (!flow.controller.hasNext()) {
+    await this.view.customAlert(
+      "Hoàn tất nhập gói thầu",
+      `Đã lưu phiên bản ${savedRevision}. Đã hoàn tất toàn bộ phiên bản của Gói thầu.`,
+      "check-circle",
+    );
+    this.procurementPackageImport = null;
+    forgetProcurementImportSession(this);
+    return true;
+  }
+  const nextRevision = flow.controller.revisions[flow.controller.currentIndex + 1];
+  const shouldContinue = await this.view.customConfirm(
+    `Đã lưu phiên bản ${savedRevision}`,
+    `Gói thầu trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
+    "help-circle",
+  );
+  if (!shouldContinue) {
+    await (flow.client || new ProcurementImportClient()).cancelImportSession(
+      flow.session.sessionId,
+      {
+        workspaceLease: this.model?.activeWorkspaceLease || null,
+        kind: "notice",
+      },
+    );
+    flow.controller.cancel();
+    this.procurementPackageImport = null;
+    forgetProcurementImportSession(this);
+    return true;
+  }
+  const nextDraft = await flow.controller.next();
+  const packageDraft = nextDraft.packageDrafts?.[0];
+  this.procurementPackageImport = {
+    ...flow,
+    currentDraft: nextDraft,
+    sourcePackageDraft: packageDraft,
+  };
+  rememberProcurementImportSession(this, this.procurementPackageImport);
+  await this.packages.edit(savedPackageId);
+  fillPackageFormFromProcurementDraft(globalThis.document, packageDraft, this);
+  return true;
 }

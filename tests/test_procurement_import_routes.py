@@ -20,8 +20,14 @@ def test_procurement_import_routes_are_registered():
     routes = procurement_import_routes(Route)
     assert [(route.path, route.methods) for route in routes] == [
         ("/api/procurement/imports/plan/prepare", {"POST"}),
+        ("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", {"GET", "HEAD"}),
+        ("/api/procurement/imports/plan/sessions/{session_id}", {"GET", "HEAD"}),
+        ("/api/procurement/imports/plan/sessions/{session_id}/cancel", {"POST"}),
         ("/api/procurement/imports/plan/apply", {"POST"}),
         ("/api/procurement/imports/notice/prepare", {"POST"}),
+        ("/api/procurement/imports/notice/sessions/{session_id}/revisions/{revision_number}", {"GET", "HEAD"}),
+        ("/api/procurement/imports/notice/sessions/{session_id}", {"GET", "HEAD"}),
+        ("/api/procurement/imports/notice/sessions/{session_id}/cancel", {"POST"}),
         ("/api/procurement/imports/notice/apply", {"POST"}),
         ("/api/procurement/imports/opening/prepare", {"POST"}),
         ("/api/procurement/imports/opening/apply", {"POST"}),
@@ -58,6 +64,30 @@ def test_fixture_provider_is_rejected_by_local_development_runtime(
         build_procurement_source()
     assert captured.value.code == "PROCUREMENT_LOOKUP_DISABLED"
     assert captured.value.status_code == 503
+
+
+def test_import_reuses_active_muasamcong_lookup_when_new_provider_is_unset(
+    monkeypatch,
+):
+    expected = SimpleNamespace(name="MUASAMCONG")
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.setenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true")
+    monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "vneps")
+    monkeypatch.setenv("PROCUREMENT_LOOKUP_ENABLED", "true")
+    monkeypatch.setattr(routes_module, "get_muasamcong_source", lambda: expected)
+
+    assert build_procurement_source() is expected
+
+
+def test_import_preparer_uses_configured_raw_snapshot_ttl(monkeypatch):
+    monkeypatch.setenv("PROCUREMENT_RAW_CACHE_TTL_SECONDS", "450")
+    source = SimpleNamespace(name="MUASAMCONG")
+
+    preparer = routes_module._build_import_preparer(source)
+
+    assert preparer.raw_cache_ttl_seconds == 450
+    assert preparer.raw_snapshot_repository is not None
 
 
 def test_apply_rejects_browser_supplied_canonical_payload(monkeypatch):
@@ -348,6 +378,22 @@ def test_prepare_reports_missing_source_revision_with_stable_error_contract(monk
         )
     assert response.status_code == 400
     assert response.json()["code"] == "PROCUREMENT_REVISION_INVALID"
+
+
+def test_prepare_reports_source_not_found_as_not_found(monkeypatch):
+    async def fail_with_not_found(*_args, **_kwargs):
+        raise routes_module.ProcurementSourceError("PROCUREMENT_NOT_FOUND")
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", fail_with_not_found)
+    app = Starlette(routes=procurement_import_routes(Route))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/procurement/imports/plan/prepare",
+            json={"code": "PL2600000001", "revisionMode": "ALL"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROCUREMENT_NOT_FOUND"
 
 
 @pytest.mark.parametrize(

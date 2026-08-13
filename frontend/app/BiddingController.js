@@ -848,6 +848,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     await Promise.all(routePreparationTasks);
     await this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
+    this.schedulePostStartupTask(async () => {
+      await this.ensureBiddingWorkflows();
+      await this.resumeProcurementImportSession?.();
+    }, { timeout: 2200, delay: 500 });
     hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();

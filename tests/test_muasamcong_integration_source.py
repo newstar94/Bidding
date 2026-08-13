@@ -31,6 +31,9 @@ from backend.integrations.muasamcong_browser.diagnostics import (
     DiagnosticRecorder,
     sanitized_shape,
 )
+from backend.procurement_import.draft_mapping import (
+    map_package_canonical_to_draft,
+)
 from backend.procurement_import.source import ProcurementSourceError
 
 
@@ -780,12 +783,14 @@ def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
         "revisions": {
             "01": {
                 "revisionId": "sanitized-plan-01",
-                "sources": {"planDetail": {
-                    "success": True,
-                    "response": raw_revision,
-                    "schemaFingerprint": "plan:v1:fixture",
-                    "retrievedAt": "2026-08-12T00:00:00Z",
-                }},
+                "sources": {
+                    "planDetail": {
+                        "success": True,
+                        "response": raw_revision,
+                        "schemaFingerprint": "plan:v1:fixture",
+                        "retrievedAt": "2026-08-12T00:00:00Z",
+                    }
+                },
                 "packages": {
                     "detail-a-01": {
                         "identifiers": {
@@ -793,23 +798,63 @@ def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
                             "idDetail": "detail-a-01",
                             "bidNo": "A",
                         },
-                        "sources": {"planPackageDetail": {
-                            "success": True,
-                            "response": {"bidpPlanDetailDTO": {
-                                "idDetail": "detail-a-01",
-                                "bidField": "HH",
-                                "bidForm": "LCNT_DB",
-                                "bidMode": "1_HTHS",
-                                "ctype": "DGCD",
-                                "isInternet": 0,
-                                "isDomestic": 0,
-                                "isMultiLot": 1,
-                            }},
-                            "schemaFingerprint": "plan-package:v1:fixture",
-                        }},
-                    }
+                        "sources": {
+                            "planPackageDetail": {
+                                "success": True,
+                                "response": {"bidpPlanDetailDTO": {
+                                    "idDetail": "detail-a-01",
+                                    "bidField": "HH",
+                                    "bidForm": "LCNT_DB",
+                                    "bidMode": "1_HTHS",
+                                    "ctype": "DGCD",
+                                    "isInternet": 0,
+                                    "isDomestic": 0,
+                                    "isMultiLot": 1,
+                                    "bidpBidLotList": [
+                                        {
+                                            "lotNo": "PP2600305188",
+                                            "lotName": "Lô thiết bị xét nghiệm",
+                                            "lotEstimatePrice": 5_365_000_000,
+                                            "cperiod": 120,
+                                            "cperiodUnit": "D",
+                                        },
+                                        {
+                                            "lotNo": "PP2600305189",
+                                            "lotName": "Lô thiết bị nội soi",
+                                            "lotEstimatePrice": 2_950_000_000,
+                                            "cperiod": 4,
+                                            "cperiodUnit": "M",
+                                        },
+                                    ],
+                                }},
+                                "schemaFingerprint": "plan-package:v1:fixture",
+                            }
+                        },
+                    },
+                    "detail-b-01": {
+                        "identifiers": {
+                            "id": "detail-b-01",
+                            "idDetail": "detail-b-01",
+                            "bidNo": "B",
+                        },
+                        "sources": {
+                            "planPackageDetail": {
+                                "success": True,
+                                "response": {
+                                    "idDetail": "detail-b-01",
+                                    "isMultiLot": 0,
+                                    "bidpBidLotList": [{
+                                        "lotNo": "DEFAULT",
+                                        "lotName": "Dòng mặc định của nguồn",
+                                        "lotEstimatePrice": 2_000_000_000,
+                                    }],
+                                },
+                                "schemaFingerprint": "plan-package:v1:fixture",
+                            }
+                        },
+                    },
                 },
-            }
+            },
         },
     }
 
@@ -827,9 +872,36 @@ def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
     assert package["onlineMode"] == "Không qua mạng"
     assert package["domesticOrInternational"] == "Quốc tế"
     assert package["isMultiLot"] is True
+    assert package["lots"] == [
+        {
+            "lotNo": "PP2600305188",
+            "lotName": "Lô thiết bị xét nghiệm",
+            "lotPrice": 5_365_000_000,
+            "bidGuarantee": None,
+            "executionPeriod": "120 ngày",
+        },
+        {
+            "lotNo": "PP2600305189",
+            "lotName": "Lô thiết bị nội soi",
+            "lotPrice": 2_950_000_000,
+            "bidGuarantee": None,
+            "executionPeriod": "4 tháng",
+        },
+    ]
     assert canonical["fieldSources"][
         "revisions.01.packages.detail-a-01.field"
     ]["operation"] == "PLAN_PACKAGE_DETAIL"
+    assert canonical["fieldSources"][
+        "revisions.01.packages.detail-a-01.lots"
+    ]["operation"] == "PLAN_PACKAGE_DETAIL"
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "PL2600000001", canonical["revisions"][0], package
+    )
+    assert draft["phanLo"] is True
+    assert draft["danhSachPhanLo"] == package["lots"]
+    non_multi_lot = canonical["revisions"][0]["packages"][1]
+    assert non_multi_lot["isMultiLot"] is False
+    assert non_multi_lot["lots"] is None
 
 
 def test_complete_notice_bundle_maps_opening_result_and_contract_sources():

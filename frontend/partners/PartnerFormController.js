@@ -3,6 +3,7 @@ import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { setValidationError } from "../shared/FormValidation.js";
 import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../shared/PartnerHelpers.js";
+import { createInitialVersion } from "../shared/VersionedEntityService.js";
 
 export const PARTNER_FORM_CONFIGS = {
   chudautu: {
@@ -180,6 +181,44 @@ export function collectPartnerFormData(root, form, config, { convertDate, fallba
   );
   data.diaChiGoc = form?.dataset?.diaChiGoc || "";
   return data;
+}
+
+export function normalizePartnerRecord(data, config) {
+  const normalized = { ...(data || {}) };
+  Object.keys(normalized).forEach((key) => {
+    if (typeof normalized[key] === "string") normalized[key] = normalized[key].trim();
+  });
+  normalized.maSoThue = normalizeVietnamTaxCode(normalized.maSoThue || "");
+  normalized[config.nameField] = normalizeOrganizationName(
+    normalized[config.nameField] || "",
+  );
+  normalized[config.representativeField] = normalizePersonName(
+    normalized[config.representativeField] || "",
+  );
+  if (Object.hasOwn(normalized, "chucVuNguoiDungDau")) {
+    normalized.chucVuNguoiDungDau = deriveInvestorHeadPosition(
+      normalized.chucVuDaiDien,
+    );
+  }
+  return normalized;
+}
+
+export function buildInitialPartnerVersion(data, {
+  id,
+  timestamp,
+  records = [],
+  config = PARTNER_FORM_CONFIGS.chudautu,
+  validationErrorCode = "PARTNER_VALIDATION_FAILED",
+} = {}) {
+  const normalized = normalizePartnerRecord(data, config);
+  const validationErrors = validatePartnerRecord(normalized, records, null, config);
+  if (validationErrors.length) {
+    const error = new Error(validationErrorCode);
+    error.code = validationErrorCode;
+    error.validationErrors = validationErrors;
+    throw error;
+  }
+  return createInitialVersion(normalized, { id, timestamp });
 }
 
 export async function loadPartnerFormData(root, form, record, config, {

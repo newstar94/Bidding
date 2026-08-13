@@ -501,6 +501,8 @@ def validate_sync_payload_shape(payload):
             | SYNC_VIRTUAL_FIELDS.get(table_name, set())
             | {"expectedVersion"}
         )
+        if table_name in {"ke_hoach_lcnt", "goi_thau"}:
+            allowed_item_keys.add("sourceRevision")
 
         for index, item in enumerate(items):
             item_path = f"{payload_key}[{index}]"
@@ -518,6 +520,43 @@ def validate_sync_payload_shape(payload):
                         errors.append(_field_error(
                             f"{item_path}.{key}", "INVALID_ROW_VERSION",
                             "expectedVersion phải là số nguyên dương.",
+                        ))
+                    continue
+                if key == "sourceRevision":
+                    value = item[key]
+                    field_path = f"{item_path}.{key}"
+                    if not isinstance(value, dict):
+                        errors.append(_field_error(
+                            field_path, "TYPE_OBJECT_REQUIRED",
+                            "Metadata phiên bản nguồn phải là object.",
+                        ))
+                        continue
+                    allowed_source_fields = {
+                        "sessionId", "workspaceLease", "provider", "familyNo", "revisionId",
+                        "revisionNumber", "revisionDigest",
+                        "packageObservationId", "stablePackageId",
+                    }
+                    for source_key in sorted(set(value) - allowed_source_fields):
+                        errors.append(_field_error(
+                            f"{field_path}.{source_key}", "UNKNOWN_FIELD",
+                            "Trường metadata nguồn không được hỗ trợ.",
+                        ))
+                    required = {
+                        "sessionId", "workspaceLease", "provider", "familyNo", "revisionId",
+                        "revisionNumber", "revisionDigest",
+                    }
+                    for source_key in sorted(required):
+                        source_value = value.get(source_key)
+                        if not isinstance(source_value, str) or not source_value.strip():
+                            errors.append(_field_error(
+                                f"{field_path}.{source_key}", "INVALID_STRING",
+                                "Metadata phiên bản nguồn không hợp lệ.",
+                            ))
+                    digest = value.get("revisionDigest")
+                    if isinstance(digest, str) and not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                        errors.append(_field_error(
+                            f"{field_path}.revisionDigest", "INVALID_DIGEST",
+                            "Digest phiên bản nguồn không hợp lệ.",
                         ))
                     continue
                 if key in SYNC_VIRTUAL_FIELDS.get(table_name, set()):

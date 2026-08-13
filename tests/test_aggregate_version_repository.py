@@ -66,6 +66,19 @@ class ScriptedCursor:
         return list(self.rows)
 
 
+class AuthorityCursor:
+    def __init__(self, provider):
+        self.provider = provider
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((" ".join(sql.split()), tuple(params)))
+        return self
+
+    def fetchone(self):
+        return None if self.provider is None else (self.provider,)
+
+
 def _map_record(_table_name, row):
     mapping = {
         "ke_hoach_id": "keHoachId",
@@ -149,3 +162,31 @@ def test_plan_repository_loads_latest_package_aggregates_from_server_state():
     )
     assert "is_latest = 1" in package_query[0]
     assert package_query[1] == ("org-1", "plan-1")
+
+
+def test_source_version_authority_resolves_plan_lineage_through_applied_snapshot():
+    cursor = AuthorityCursor("MUASAMCONG")
+
+    provider = AggregateVersionRepository(cursor).source_version_authority(
+        "org-1", "plan", "plan-root",
+    )
+
+    assert provider == "MUASAMCONG"
+    query, parameters = cursor.calls[0]
+    assert "JOIN ke_hoach_lcnt AS plan" in query
+    assert parameters == ("org-1", "PLAN", "kehoach", "plan-root")
+
+
+def test_source_version_authority_resolves_package_root_and_returns_none_when_unmanaged():
+    managed = AuthorityCursor("MUASAMCONG")
+    unmanaged = AuthorityCursor(None)
+
+    assert AggregateVersionRepository(managed).source_version_authority(
+        "org-1", "package", "package-root",
+    ) == "MUASAMCONG"
+    assert AggregateVersionRepository(unmanaged).source_version_authority(
+        "org-1", "package", "package-root",
+    ) is None
+    query, parameters = managed.calls[0]
+    assert "local_root_id = ?" in query
+    assert parameters == ("org-1", "NOTICE", "goithau", "package-root")

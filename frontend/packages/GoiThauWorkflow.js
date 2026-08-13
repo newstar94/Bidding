@@ -16,7 +16,6 @@ import { organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/
 import { loadWorkspaceEmployees } from "../shared/workspaceEmployeeLoader.js";
 import {
   hasServerCapability,
-  PROCUREMENT_IMPORT_CAPABILITY,
   PROCUREMENT_LOOKUP_CAPABILITY,
 } from "../auth/serverCapabilities.js";
 import {
@@ -34,6 +33,33 @@ import { parseLotListForDisplay } from "./lotJsonParser.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
+import { presentStatus } from "./LifecyclePolicy.js";
+
+export function shouldCreatePackageVersion(previousPackage, nextPackage, sourceRevision = null) {
+  const authoritative = sourceRevision?.provider === "MUASAMCONG";
+  const sourceVersion = Number(sourceRevision?.revisionNumber);
+  if (authoritative) {
+    return Number.isInteger(sourceVersion)
+      && sourceVersion > Number(previousPackage?.phienBan || 0);
+  }
+  const previousPublishedAt = String(previousPackage?.thoiGianDangTai || "").trim();
+  if (!previousPublishedAt) return false;
+  const changed = (before, after) => {
+    const oldValue = String(before || "").trim();
+    const newValue = String(after || "").trim();
+    if (!oldValue && !newValue) return false;
+    if (!oldValue || !newValue) return true;
+    const oldDate = new Date(oldValue);
+    const newDate = new Date(newValue);
+    if (Number.isNaN(oldDate.getTime()) || Number.isNaN(newDate.getTime())) {
+      return oldValue !== newValue;
+    }
+    return oldDate.getTime() !== newDate.getTime();
+  };
+  return changed(previousPublishedAt, nextPackage?.thoiGianDangTai)
+    || changed(previousPackage?.thoiGianDongThau, nextPackage?.thoiGianDongThau)
+    || changed(previousPackage?.thoiGianMoThau, nextPackage?.thoiGianMoThau);
+}
 import {
   evaluationMethodLabel,
   isCombinedEvaluationMethod,
@@ -108,7 +134,12 @@ export async function editGoiThau(id, isReadOnly = false) {
     await this.ensureLazyModal?.("modal-goithau");
   }
   const form = document.getElementById("form-goithau");
-  const gt = id ? this.model.state.goithau.find((g) => String(g.id) === String(id)) : null;
+  const storedPackage = id
+    ? this.model.state.goithau.find((g) => String(g.id) === String(id))
+    : null;
+  const gt = storedPackage
+    ? { ...storedPackage, trangThai: presentStatus(storedPackage.trangThai).label }
+    : null;
   const procurementLookupButton = document.getElementById(
     "btn-open-procurement-lookup-package",
   );
@@ -124,16 +155,6 @@ export async function editGoiThau(id, isReadOnly = false) {
         buttonId: "btn-open-procurement-lookup-package",
         statusId: "procurement-lookup-package-status",
       });
-  }
-  const procurementNoticeButton = document.getElementById(
-    "btn-open-procurement-notice-import",
-  );
-  if (procurementNoticeButton) {
-    const importEnabled = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
-    procurementNoticeButton.hidden = !gt || isReadOnly || !importEnabled;
-    procurementNoticeButton.onclick = gt && !isReadOnly && importEnabled
-      ? () => this.openProcurementNoticeImportWizard?.(gt.id)
-      : null;
   }
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
@@ -980,6 +1001,11 @@ export async function handleGoiThauSubmit(e) {
     hieuLucDamBaoDuThau: formVals.hieuLucDamBaoDuThau,
     tyLeBaoDamHopDong: formVals.tyLeBaoDamHopDong
   };
+  const procurementPackageDraft = this.procurementPackageImport?.sourcePackageDraft;
+  if (procurementPackageDraft?.sourceRevision) {
+    gtData.sourceRevision = procurementPackageDraft.sourceRevision;
+    gtData._procurementImportCurrent = true;
+  }
   clearCompetitiveQuotationAppraisal(gtData);
   if (gtData.trangThai === "Đã có kết quả") {
     if (!isPhanLo) {
@@ -1002,34 +1028,15 @@ export async function handleGoiThauSubmit(e) {
   }
   if (id) {
     const oldGt = this.model.state.goithau.find((g) => g.id === id);
-    const oldTimeDang = oldGt && oldGt.thoiGianDangTai ? String(oldGt.thoiGianDangTai).trim() : "";
-    const newTimeDang = String(gtData.thoiGianDangTai || "").trim();
-    const oldTimeDong = oldGt && oldGt.thoiGianDongThau ? String(oldGt.thoiGianDongThau).trim() : "";
-    const newTimeDong = String(gtData.thoiGianDongThau || "").trim();
-    const oldTimeMo = oldGt && oldGt.thoiGianMoThau ? String(oldGt.thoiGianMoThau).trim() : "";
-    const newTimeMo = String(gtData.thoiGianMoThau || "").trim();
-    let saveAsNewVersion = false;
-    if (oldGt && oldTimeDang !== "") {
-      const compareDate = (oldStr, newStr) => {
-        if (!oldStr && !newStr) return false;
-        if (!oldStr || !newStr) return true;
-        const d1 = new Date(oldStr);
-        const d2 = new Date(newStr);
-        if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
-          return oldStr !== newStr;
-        }
-        return d1.getTime() !== d2.getTime();
-      };
-      const dangChanged = compareDate(oldTimeDang, newTimeDang);
-      const dongChanged = compareDate(oldTimeDong, newTimeDong);
-      const moChanged = compareDate(oldTimeMo, newTimeMo);
-      if (dangChanged || dongChanged || moChanged) {
-        saveAsNewVersion = true;
-      }
-    }
+    const sourceAuthoritativeImport = Boolean(
+      procurementPackageDraft?.sourceRevision?.provider === "MUASAMCONG",
+    );
+    const saveAsNewVersion = shouldCreatePackageVersion(
+      oldGt, gtData, procurementPackageDraft?.sourceRevision,
+    );
     if (saveAsNewVersion) {
       const requestedChanges = { maGoiThau: inputCode, ...gtData };
-      const officialVersion = draftPackageSave
+      const officialVersion = draftPackageSave || sourceAuthoritativeImport
         ? { authoritative: false, fallbackRequired: true }
         : await createOfficialPackageVersionFromForm(
           this,
@@ -1045,14 +1052,19 @@ export async function handleGoiThauSubmit(e) {
         const newPackageSnapshot = snapshotPackageAggregate(this.model.state, oldGt, {
           targetPackageId: newGtId,
           targetPlanId: gtData.keHoachId,
-          packageVersion: getNextVersion(this.model.state.goithau, oldGt),
+          packageVersion: sourceAuthoritativeImport
+            ? String(procurementPackageDraft.sourceRevision.revisionNumber)
+            : getNextVersion(this.model.state.goithau, oldGt),
           timestamp,
           overrides: requestedChanges,
         });
         const newPackageVersion = newPackageSnapshot.packageRecord;
         const packageRootId = String(oldGt.rootId || oldGt.id);
         this.model.state.goithau.forEach((candidate) => {
-          if (String(candidate.rootId || candidate.id) === packageRootId) candidate.isLatest = 0;
+          if (String(candidate.rootId || candidate.id) === packageRootId) {
+            candidate.isLatest = 0;
+            candidate._procurementImportCurrent = false;
+          }
         });
         ensureVersionEhsmtAdjustment(newPackageVersion);
         clearCompetitiveQuotationAppraisal(newPackageVersion);
@@ -1083,6 +1095,9 @@ export async function handleGoiThauSubmit(e) {
       rebidFromPackageId: rebidFrom || null,
       ...gtData
     }, { id: newGtId, timestamp });
+    if (Number.isInteger(Number(procurementPackageDraft?.sourceRevision?.revisionNumber))) {
+      newPackage.phienBan = String(procurementPackageDraft.sourceRevision.revisionNumber);
+    }
     assignNewPackageLotIds(newPackage);
     if (rebidFrom) {
       const sourcePackage = this.model.state.goithau.find((item) => String(item.id) === String(rebidFrom));
@@ -1116,9 +1131,13 @@ export async function handleGoiThauSubmit(e) {
   const finalPackage = this.model.state.goithau.find((item) => String(item.id) === String(finalGtId));
   const finalPackageRootId = String(finalPackage?.rootId || finalPackage?.id || "");
   const explicitUpserts = {
-    goithau: this.model.state.goithau.filter(
-      (item) => String(item.rootId || item.id) === finalPackageRootId,
-    ),
+    goithau: this.procurementPackageImport?.controller
+      ? this.model.state.goithau.filter(
+        (item) => String(item.id) === String(finalGtId),
+      )
+      : this.model.state.goithau.filter(
+        (item) => String(item.rootId || item.id) === finalPackageRootId,
+      ),
     goithauhanghoa: this.model.state.goithauhanghoa.filter(
       (item) => String(item.goiThauId) === String(finalGtId),
     ),
@@ -1151,7 +1170,14 @@ export async function handleGoiThauSubmit(e) {
     );
     return;
   }
-  this.closeModal("modal-goithau");
+  await this.closeModal("modal-goithau", {
+    restoreRoute: false,
+    preserveProcurementImport: true,
+  });
+  if (this.procurementPackageImport?.controller) {
+    await this.completeProcurementPackageImportRevision?.(finalGtId);
+    return;
+  }
   if (this.packageWizard.active) {
     if (this.packageWizard.currentCount < this.packageWizard.totalCount) {
       this.packageWizard.currentCount++;

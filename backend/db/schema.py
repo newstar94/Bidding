@@ -1954,6 +1954,28 @@ SCHEMA_DINH_NGHIA = {
             "UNIQUE(organization_id, provider, idempotency_key)"
         ]
     },
+    "procurement_import_session": {
+        "columns": {
+            "id": "TEXT NOT NULL CHECK(trim(id) != '')",
+            "organization_id": "TEXT NOT NULL CHECK(trim(organization_id) != '')",
+            "user_id": "TEXT NOT NULL CHECK(trim(user_id) != '')",
+            "workspace_lease": "TEXT NOT NULL CHECK(trim(workspace_lease) != '')",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('VNEPS', 'VNEPS_FIXTURE', 'MUASAMCONG'))",
+            "entity_kind": "TEXT NOT NULL CHECK(entity_kind IN ('PLAN', 'PACKAGE'))",
+            "family_key": "TEXT NOT NULL CHECK(trim(family_key) != '')",
+            "bundle_digest": "TEXT NOT NULL CHECK(length(bundle_digest) = 71 AND bundle_digest LIKE 'sha256:%')",
+            "revisions_json": "TEXT NOT NULL CHECK(length(revisions_json) BETWEEN 2 AND 262144)",
+            "canonical_bundle_json": "TEXT NOT NULL CHECK(length(canonical_bundle_json) BETWEEN 2 AND 16777216)",
+            "current_revision_index": "INTEGER NOT NULL DEFAULT 0 CHECK(current_revision_index >= 0)",
+            "status": "TEXT NOT NULL CHECK(status IN ('READY', 'EDITING_REVISION', 'WAITING_NEXT_CONFIRMATION', 'COMPLETED', 'CANCELLED', 'FAILED'))",
+            "expires_at": "TIMESTAMPTZ NOT NULL",
+            "created_at": "TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+            "updated_at": "TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        },
+        "primary_keys": [
+            "PRIMARY KEY (organization_id, id)"
+        ]
+    },
     "procurement_raw_snapshot": {
         "columns": {
             "id": "TEXT NOT NULL CHECK(trim(id) != '')",

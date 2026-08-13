@@ -25,6 +25,20 @@ function setDynamicFieldLabel(label, text, required = false) {
   marker.textContent = "*";
   label.appendChild(marker);
 }
+
+export function packageFieldsLockedAfterInvitation(
+  originalStatus,
+  statusOrder,
+  isReadOnly = false,
+) {
+  const orderedStatuses = Array.isArray(statusOrder) ? statusOrder : [];
+  const originalIdx = orderedStatuses.indexOf(originalStatus);
+  const invitationIdx = orderedStatuses.indexOf("Đang mời thầu");
+  return isReadOnly
+    ? false
+    : invitationIdx >= 0 && originalIdx >= invitationIdx;
+}
+
 export function updateNguonVonFieldState(planId) {
   const gtNguonVon = document.getElementById("gt-nguonvon");
   if (!gtNguonVon) return;
@@ -705,7 +719,11 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   };
   const lockedFields = (fieldPolicy.lockedAfterInvitation || [])
     .map((field) => fieldControlIds[field]).filter(Boolean);
-  const isLocked = isReadOnly ? false : originalIdx >= 1;
+  const isLocked = packageFieldsLockedAfterInvitation(
+    originalStatus,
+    statusOrder,
+    isReadOnly,
+  );
   lockedFields.forEach((id) => {
     const input = document.getElementById(id);
     if (!input) return;

@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import secrets
+import time
 from threading import RLock
 
 from backend.procurement_import.domain import (
@@ -20,6 +21,7 @@ from backend.procurement_import.domain import (
     revision_sort_key,
     three_way_merge_field,
 )
+from backend.observability.recording import record_database_phase
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,10 +83,64 @@ class ProcurementImportPreparer:
         preview_store: PreviewStore,
         *,
         raw_snapshot_repository=None,
+        raw_cache_ttl_seconds=900,
     ):
         self.source = source
         self.preview_store = preview_store
         self.raw_snapshot_repository = raw_snapshot_repository
+        self.raw_cache_ttl_seconds = max(
+            1.0, min(float(raw_cache_ttl_seconds), 86_400.0)
+        )
+
+    def _lookup_complete_bundle(self, code, kind, organization_id):
+        raw_bundle = None
+        loader_name = (
+            "load_fresh_plan_bundle" if kind == "PLAN"
+            else "load_fresh_notice_bundle"
+        )
+        loader = getattr(self.raw_snapshot_repository, loader_name, None)
+        project = getattr(self.source, "lookup_from_raw_bundle", None)
+        if callable(loader) and callable(project):
+            raw_bundle = loader(
+                organization_id,
+                code,
+                revision_mode="ALL",
+                revision_numbers=[],
+                max_age_seconds=self.raw_cache_ttl_seconds,
+            )
+        if isinstance(raw_bundle, dict):
+            complete = project(code, raw_bundle, revision_mode="ALL")
+            complete.setdefault("rawBundle", raw_bundle)
+            complete.setdefault("metrics", {})["cache"] = {
+                "hit": True, "layer": "RAW_SNAPSHOT",
+            }
+        else:
+            complete_lookup = getattr(self.source, "lookup_with_options", None)
+            if not callable(complete_lookup):
+                return None
+            complete = complete_lookup(
+                code,
+                kind,
+                detail_level="COMPLETE",
+                revision_mode="ALL",
+                revision_numbers=[],
+            )
+        cache_metadata = (complete.get("metrics") or {}).get("cache") or {}
+        cache_hit = cache_metadata.get("hit") is True
+        record_database_phase(
+            "procurement_import", "source_cache", 0,
+            outcome=("hit" if cache_hit else "miss"),
+        )
+        captured_bundle = complete.get("rawBundle")
+        if (
+            not cache_hit
+            and self.raw_snapshot_repository is not None
+            and isinstance(captured_bundle, dict)
+        ):
+            self.raw_snapshot_repository.save_bundle(
+                organization_id, captured_bundle
+            )
+        return complete
 
     def _select_revisions(self, available, mode, requested, selected):
         ordered = sorted(
@@ -108,22 +164,55 @@ class ProcurementImportPreparer:
             raise ValueError("PROCUREMENT_REVISION_INVALID")
         return [ordered[-1]]
 
-    def _enrich_linked_notices(self, revision):
+    def _enrich_linked_notices(
+        self, revision, *, organization_id, complete_cache=None,
+    ):
+        complete_cache = complete_cache if complete_cache is not None else {}
         for package in revision.get("packages", []):
             link = package.get("noticeLink") or {}
             notice_no = str(link.get("noticeNo") or "").strip().upper()
             if link.get("state") != "LINKED" or not notice_no:
                 continue
-            available = sorted(
-                self.source.list_notice_revisions(notice_no),
-                key=lambda row: revision_sort_key(row.get("revisionNumber")),
-            )
-            if not available:
-                continue
-            selected = available[-1]
-            detail = self.source.get_notice_revision(
-                notice_no, selected.get("revisionId")
-            )
+            desired_version = str(link.get("noticeVersion") or "").strip()
+            complete = complete_cache.get(notice_no)
+            if notice_no not in complete_cache:
+                complete = self._lookup_complete_bundle(
+                    notice_no, "PACKAGE", organization_id
+                )
+                complete_cache[notice_no] = complete
+            if complete is not None:
+                revisions = sorted(
+                    deepcopy((complete.get("canonical") or {}).get("revisions") or []),
+                    key=lambda row: revision_sort_key(row.get("revisionNumber")),
+                )
+                detail = next((
+                    row for row in revisions
+                    if desired_version
+                    and str(row.get("revisionNumber")) == desired_version
+                ), revisions[-1] if revisions and not desired_version else None)
+                if detail is None:
+                    raise LookupError("PROCUREMENT_REVISION_INVALID")
+                selected = {
+                    "revisionId": detail.get("revisionId"),
+                    "revisionNumber": detail.get("revisionNumber"),
+                }
+            else:
+                available = sorted(
+                    self.source.list_notice_revisions(notice_no),
+                    key=lambda row: revision_sort_key(row.get("revisionNumber")),
+                )
+                if not available:
+                    continue
+                selected = next((
+                    row for row in available
+                    if desired_version
+                    and str(row.get("revisionNumber")) == desired_version
+                ), available[-1] if not desired_version else None)
+                if selected is None:
+                    raise LookupError("PROCUREMENT_REVISION_INVALID")
+                detail = self.source.get_notice_revision(
+                    notice_no, selected.get("revisionId")
+                )
             kind = str(detail.get("kind") or "UNKNOWN").upper()
             if kind not in {"TBMT", "PRE_NOTIFY"}:
                 kind = "UNKNOWN"
@@ -264,20 +353,17 @@ class ProcurementImportPreparer:
         selected_revision=None,
         include_linked_notices=True,
     ):
+        prepare_started = time.perf_counter()
         normalized = normalize_procurement_code(code)
         if normalized.kind is not ProcurementCodeKind.PLAN:
             raise ValueError("PROCUREMENT_CODE_INVALID")
         mode = str(revision_mode or "LATEST").upper()
         complete_lookup = getattr(self.source, "lookup_with_options", None)
+        source_started = time.perf_counter()
         if mode == "ALL" and callable(complete_lookup):
-            complete = complete_lookup(
-                normalized.base_code,
-                "PLAN",
-                detail_level="COMPLETE",
-                revision_mode="ALL",
-                revision_numbers=[],
+            complete = self._lookup_complete_bundle(
+                normalized.base_code, "PLAN", organization_id
             )
-            raw_bundle = complete.get("rawBundle")
             canonical = complete.get("canonical") or {}
             revisions = deepcopy(canonical.get("revisions") or [])
             available = [
@@ -290,13 +376,6 @@ class ProcurementImportPreparer:
             selected = available
             if not revisions:
                 raise LookupError("PROCUREMENT_REVISION_INVALID")
-            if (
-                self.raw_snapshot_repository is not None
-                and isinstance(raw_bundle, dict)
-            ):
-                self.raw_snapshot_repository.save_bundle(
-                    organization_id, raw_bundle
-                )
         else:
             available = self.source.list_plan_revisions(normalized.base_code)
             selected = self._select_revisions(
@@ -311,13 +390,23 @@ class ProcurementImportPreparer:
                 )
                 for row in selected
             ]
+        if include_linked_notices:
+            linked_notice_cache = {}
+            for revision in revisions:
+                self._enrich_linked_notices(
+                    revision,
+                    organization_id=organization_id,
+                    complete_cache=linked_notice_cache,
+                )
+        record_database_phase(
+            "procurement_import", "source_fetch",
+            time.perf_counter() - source_started,
+        )
+        normalize_started = time.perf_counter()
         source_revision_digests = {
             str(revision["revisionId"]): canonical_digest(revision)
             for revision in revisions
         }
-        if include_linked_notices:
-            for revision in revisions:
-                self._enrich_linked_notices(revision)
         lifecycle_warnings = []
         for revision in revisions:
             for package in revision.get("packages", []):
@@ -441,6 +530,14 @@ class ProcurementImportPreparer:
             "expiresAt": stored.expires_at.isoformat(),
             "bundleDigest": stored.bundle_digest,
         })
+        record_database_phase(
+            "procurement_import", "canonical_normalize",
+            time.perf_counter() - normalize_started,
+        )
+        record_database_phase(
+            "procurement_import", "prepare",
+            time.perf_counter() - prepare_started,
+        )
         return response
 
     def prepare_notice(
@@ -455,34 +552,72 @@ class ProcurementImportPreparer:
         selected_revision=None,
         target_package_root_id=None,
     ):
+        prepare_started = time.perf_counter()
         normalized = normalize_procurement_code(code)
         if normalized.kind is not ProcurementCodeKind.NOTICE:
             raise ValueError("PROCUREMENT_CODE_INVALID")
         mode = str(revision_mode or "LATEST").upper()
-        available = self.source.list_notice_revisions(normalized.base_code)
-        selected = self._select_revisions(
-            available, mode, normalized.requested_revision, selected_revision
-        )
-        revisions = []
-        relationships = []
-        for selected_row in selected:
-            revision = self.source.get_notice_revision(
-                normalized.base_code, selected_row["revisionId"]
+        source_started = time.perf_counter()
+        complete_lookup = getattr(self.source, "lookup_with_options", None)
+        if mode == "ALL" and callable(complete_lookup):
+            complete = self._lookup_complete_bundle(
+                normalized.base_code, "PACKAGE", organization_id
             )
-            relationship = self.source.resolve_notice_package(
-                normalized.base_code, selected_row["revisionId"]
+            revisions = sorted(
+                deepcopy((complete.get("canonical") or {}).get("revisions") or []),
+                key=lambda row: revision_sort_key(row.get("revisionNumber")),
             )
-            revision = {
-                **deepcopy(revision),
-                "noticeNo": normalized.base_code,
-                "revisionId": selected_row["revisionId"],
-                "revisionNumber": str(selected_row.get("revisionNumber")),
-                "relationship": deepcopy(relationship or {}),
-            }
+            if not revisions:
+                raise LookupError("PROCUREMENT_REVISION_INVALID")
+            available = [
+                {
+                    "revisionId": row.get("revisionId"),
+                    "revisionNumber": str(row.get("revisionNumber")),
+                }
+                for row in revisions
+            ]
+            relationships = [
+                {
+                    "planNo": revision.get("planNo"),
+                    "planDetailRevisionId": revision.get("planDetailRevisionId"),
+                    "stablePackageId": revision.get("stablePackageId"),
+                    "symbol": revision.get("symbol"),
+                }
+                if revision.get("planNo") else {}
+                for revision in revisions
+            ]
+        else:
+            available = self.source.list_notice_revisions(normalized.base_code)
+            selected = self._select_revisions(
+                available, mode, normalized.requested_revision, selected_revision
+            )
+            revisions = []
+            relationships = []
+            for selected_row in selected:
+                revision = self.source.get_notice_revision(
+                    normalized.base_code, selected_row["revisionId"]
+                )
+                relationship = self.source.resolve_notice_package(
+                    normalized.base_code, selected_row["revisionId"]
+                )
+                revision = {
+                    **deepcopy(revision),
+                    "noticeNo": normalized.base_code,
+                    "revisionId": selected_row["revisionId"],
+                    "revisionNumber": str(selected_row.get("revisionNumber")),
+                }
+                revisions.append(revision)
+                relationships.append(relationship or {})
+        for revision, relationship in zip(revisions, relationships, strict=True):
+            revision["noticeNo"] = normalized.base_code
+            revision["revisionNumber"] = str(revision.get("revisionNumber"))
+            revision["relationship"] = deepcopy(relationship or {})
             revision["revisionDigest"] = canonical_digest(revision)
-            revisions.append(revision)
-            relationships.append(relationship or {})
-        selected_row = selected[-1]
+        record_database_phase(
+            "procurement_import", "source_fetch",
+            time.perf_counter() - source_started,
+        )
+        normalize_started = time.perf_counter()
         relationship = relationships[-1]
         target = (
             resolve_local_target(
@@ -583,4 +718,12 @@ class ProcurementImportPreparer:
             "expiresAt": stored.expires_at.isoformat(),
             "bundleDigest": stored.bundle_digest,
         })
+        record_database_phase(
+            "procurement_import", "canonical_normalize",
+            time.perf_counter() - normalize_started,
+        )
+        record_database_phase(
+            "procurement_import", "prepare",
+            time.perf_counter() - prepare_started,
+        )
         return response

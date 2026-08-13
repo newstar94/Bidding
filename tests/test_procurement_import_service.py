@@ -1,8 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from copy import deepcopy
 
 import pytest
 
 from backend.procurement_import.domain import (
+    ImportConflict,
     PackageAction,
     ProcurementCodeKind,
     RequiredFieldIssue,
@@ -11,7 +13,15 @@ from backend.procurement_import.domain import (
     three_way_merge_field,
 )
 from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
+from backend.procurement_import.session import ProcurementImportSessionService
+from backend.procurement_import.repository import ProcurementImportSessionRepository
+from backend.procurement_import.draft_mapping import map_package_canonical_to_draft
 from backend.integrations.vneps.fake_procurement_provider import FixtureProcurementSource
+from backend.observability.recording import (
+    reset_recorded_metrics_for_tests,
+    snapshot_recorded_metrics,
+)
+from backend.observability import metrics as observability_metrics
 
 
 def _source(tmp_path):
@@ -115,6 +125,35 @@ def test_import_lifecycle_mapping_is_conservative(package, expected):
     assert derive_import_lifecycle_status(package) == expected
 
 
+@pytest.mark.parametrize(
+    ("source_status", "bidding_status"),
+    [
+        ("UNKNOWN", "Chưa xác định"),
+        ("PREPARING", "Chuẩn bị"),
+        ("INVITED", "Đang mời thầu"),
+        ("OPENED", "Đã mở thầu"),
+        ("EVALUATING", "Đang chấm thầu"),
+        ("PARTIALLY_AWARDED", "Đã có kết quả một phần"),
+        ("AWARDED", "Đã có kết quả"),
+        ("CANCELLED", "Hủy thầu"),
+    ],
+)
+def test_package_draft_maps_source_lifecycle_to_bidding_status(
+    source_status, bidding_status,
+):
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "PL2600000001",
+        {"revisionId": "rev-00", "revisionNumber": "00"},
+        {
+            "planDetailRevisionId": "detail-a-00",
+            "name": "Gói A",
+            "lifecycleStatus": source_status,
+        },
+    )
+
+    assert draft["trangThai"] == bidding_status
+
+
 def test_prepare_latest_previews_full_snapshot_and_warns_about_older_history(tmp_path):
     store = PreviewStore(ttl_seconds=120)
     preparer = ProcurementImportPreparer(_source(tmp_path), store)
@@ -148,6 +187,83 @@ def test_prepare_latest_previews_full_snapshot_and_warns_about_older_history(tmp
         workspace_lease="lease-1", now=datetime.now(timezone.utc),
     )
     assert stored.bundle_digest == preview["bundleDigest"]
+
+
+def test_prepare_and_session_read_record_bounded_latency_phases(tmp_path):
+    reset_recorded_metrics_for_tests()
+    store = PreviewStore(ttl_seconds=120)
+    preview = ProcurementImportPreparer(_source(tmp_path), store).prepare_plan(
+        code="PL2600000001", revision_mode="ALL",
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+        local_state=None,
+    )
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        store.get(
+            preview["previewId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1",
+        ).canonical_bundle,
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    service.get_revision_draft(
+        manifest["sessionId"], "01", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+
+    phases = snapshot_recorded_metrics().database_phase_count
+    assert phases[("procurement_import", "source_fetch", "ok")] == 1
+    assert phases[("procurement_import", "canonical_normalize", "ok")] >= 1
+    assert phases[("procurement_import", "prepare", "ok")] >= 1
+    assert phases[("procurement_import", "session_read", "ok")] == 2
+
+
+def test_procurement_import_phases_are_exposed_as_bounded_prometheus_labels(
+    monkeypatch,
+):
+    reset_recorded_metrics_for_tests()
+    for phase in (
+        "prepare", "source_fetch", "canonical_normalize", "session_read",
+        "investor_resolve", "revision_commit",
+    ):
+        observability_metrics.record_database_phase(
+            "procurement_import", phase, 0.001,
+        )
+    observability_metrics.record_database_phase(
+        "procurement_import", "source_cache", 0, outcome="hit",
+    )
+    observability_metrics.record_database_phase(
+        "procurement_import", "source_cache", 0, outcome="miss",
+    )
+    monkeypatch.setattr(
+        observability_metrics, "_filesystem_metrics",
+        lambda: {
+            "postgres_database_bytes": 0, "postgres_pool": {},
+            "websocket_outbox_rows": 0,
+            "websocket_outbox_oldest_seconds": 0,
+            "websocket_cluster_active_connections": 0,
+            "background_jobs": {}, "partner_upstream_open": {},
+            "postgres_stats": {}, "postgres_waiting_locks": 0,
+            "postgres_wal_bytes": 0, "disk": {},
+            "backup_timestamp": None, "backup_age": None,
+            "restore_timestamp": None, "restore_age": None,
+        },
+    )
+
+    rendered = observability_metrics.render_prometheus()
+
+    for phase in (
+        "prepare", "source_fetch", "canonical_normalize", "session_read",
+        "investor_resolve", "revision_commit", "source_cache",
+    ):
+        assert f'phase="{phase}"' in rendered
+    assert 'outcome="hit",phase="source_cache"' in rendered
+    assert 'outcome="miss",phase="source_cache"' in rendered
+    assert "revisionNumber" not in rendered
 
 
 def test_prepare_existing_family_carries_authoritative_plan_cas_version(tmp_path):
@@ -265,7 +381,7 @@ def test_prepare_enriches_exact_linked_notice_without_creating_another_package(t
     )
     assert (
         changed_notice["revisionPreviews"][0]["revisionDigest"]
-        == preview["revisionPreviews"][0]["revisionDigest"]
+        != preview["revisionPreviews"][0]["revisionDigest"]
     )
     assert changed_notice["bundleDigest"] != preview["bundleDigest"]
 
@@ -349,6 +465,222 @@ def test_prepare_notice_all_keeps_every_revision_in_chronological_order(tmp_path
         "00",
         "01",
     ]
+
+
+def test_prepare_notice_all_uses_one_complete_source_collection_and_cached_revisions():
+    class CompleteNoticeSource:
+        name = "MUASAMCONG"
+
+        def __init__(self):
+            self.complete_calls = 0
+
+        def lookup_with_options(
+            self, code, kind, *, detail_level, revision_mode, revision_numbers
+        ):
+            self.complete_calls += 1
+            assert (code, kind, detail_level, revision_mode, revision_numbers) == (
+                "IB2600000002", "PACKAGE", "COMPLETE", "ALL", [],
+            )
+            return {
+                "canonical": {
+                    "revisions": [
+                        {
+                            "noticeNo": code,
+                            "revisionId": "notice-01",
+                            "revisionNumber": "01",
+                            "planNo": "PL2600000001",
+                            "planDetailRevisionId": "detail-b-01",
+                            "symbol": "B",
+                            "name": "Gói B phiên bản 01",
+                        },
+                        {
+                            "noticeNo": code,
+                            "revisionId": "notice-00",
+                            "revisionNumber": "00",
+                            "planNo": "PL2600000001",
+                            "planDetailRevisionId": "detail-b-00",
+                            "symbol": "B",
+                            "name": "Gói B phiên bản 00",
+                        },
+                    ],
+                },
+                "rawBundle": {"schemaVersion": "raw-v2"},
+                "metrics": {"cache": {"hit": True}},
+            }
+
+        def list_notice_revisions(self, *_args, **_kwargs):
+            raise AssertionError("ALL must not issue a separate revision-list request")
+
+        def get_notice_revision(self, *_args, **_kwargs):
+            raise AssertionError("prepared revisions must come from the complete bundle")
+
+        def resolve_notice_package(self, *_args, **_kwargs):
+            raise AssertionError("relationship must come from each canonical revision")
+
+    reset_recorded_metrics_for_tests()
+    source = CompleteNoticeSource()
+    resolved_relationships = []
+    preview = ProcurementImportPreparer(source, PreviewStore()).prepare_notice(
+        code="IB2600000002",
+        revision_mode="ALL",
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+        resolve_local_target=lambda _notice, relationship, _root: (
+            resolved_relationships.append(relationship)
+            or {
+                "id": "package-b", "rootId": "package-b",
+                "planSnapshotId": "plan-00", "rowVersion": 1,
+            }
+        ),
+    )
+
+    assert source.complete_calls == 1
+    assert preview["notice"]["selectedRevisions"] == ["00", "01"]
+    assert resolved_relationships == [{
+        "planNo": "PL2600000001",
+        "planDetailRevisionId": "detail-b-01",
+        "stablePackageId": None,
+        "symbol": "B",
+    }]
+    phases = snapshot_recorded_metrics().database_phase_count
+    assert phases[("procurement_import", "source_cache", "hit")] == 1
+
+
+def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_version():
+    class RawCache:
+        def __init__(self):
+            self.bundles = {}
+            self.saved = []
+
+        def load_fresh_plan_bundle(self, organization_id, code, **_options):
+            return deepcopy(self.bundles.get((organization_id, "PLAN", code)))
+
+        def load_fresh_notice_bundle(self, organization_id, code, **_options):
+            return deepcopy(self.bundles.get((organization_id, "PACKAGE", code)))
+
+        def save_bundle(self, organization_id, bundle):
+            kind = (bundle.get("entity") or {}).get("kind")
+            code = (bundle.get("entity") or {}).get("canonicalCode")
+            self.bundles[(organization_id, kind, code)] = deepcopy(bundle)
+            self.saved.append((kind, code))
+
+    class CompleteSource:
+        name = "MUASAMCONG"
+
+        def __init__(self):
+            self.upstream = []
+
+        @staticmethod
+        def _plan_revision():
+            return {
+                "revisionId": "plan-00", "revisionNumber": "00",
+                "name": "Kế hoạch 00", "planType": "Dự toán mua sắm",
+                "projectName": "Dự toán A", "investorCode": "INV-1",
+                "approvalDecisionNo": "01/QĐ",
+                "approvalDecisionDate": "2026-01-01",
+                "packages": [{
+                    "planDetailRevisionId": "detail-a-00",
+                    "stablePackageId": "stable-a", "symbol": "A",
+                    "name": "Gói A", "priceVnd": 100,
+                    "executionPeriod": "30 ngày", "capitalDetail": "Ngân sách",
+                    "selectionDuration": "30 ngày", "selectionStart": "Quý I/2026",
+                    "noticeLink": {
+                        "state": "LINKED", "noticeNo": "IB2600000002",
+                        "kind": "TBMT", "noticeVersion": "00",
+                    },
+                }],
+            }
+
+        @staticmethod
+        def _notice_revisions():
+            return [{
+                "revisionId": "notice-00", "revisionNumber": "00",
+                "noticeNo": "IB2600000002", "kind": "TBMT",
+                "status": "PUBLISHED", "bidClosingAt": "2026-03-01T09:00:00+07:00",
+            }, {
+                "revisionId": "notice-01", "revisionNumber": "01",
+                "noticeNo": "IB2600000002", "kind": "TBMT",
+                "status": "OPENED", "bidClosingAt": "2026-04-01T09:00:00+07:00",
+            }]
+
+        def lookup_with_options(
+            self, code, kind, *, detail_level, revision_mode, revision_numbers
+        ):
+            assert (detail_level, revision_mode, revision_numbers) == (
+                "COMPLETE", "ALL", [],
+            )
+            self.upstream.append((kind, code))
+            revisions = (
+                [self._plan_revision()] if kind == "PLAN"
+                else self._notice_revisions()
+            )
+            return {
+                "canonical": {"revisions": revisions},
+                "rawBundle": {
+                    "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+                    "entity": {"kind": kind, "canonicalCode": code},
+                },
+                "metrics": {"cache": {"hit": False, "layer": "NONE"}},
+            }
+
+        def lookup_from_raw_bundle(self, code, bundle, *, revision_mode):
+            assert revision_mode == "ALL"
+            kind = (bundle.get("entity") or {}).get("kind")
+            revisions = (
+                [self._plan_revision()] if kind == "PLAN"
+                else self._notice_revisions()
+            )
+            return {
+                "canonical": {"revisions": revisions},
+                "rawBundle": deepcopy(bundle),
+                "metrics": {
+                    "cache": {"hit": True, "layer": "RAW_SNAPSHOT"},
+                    "upstream": {"requestCount": 0},
+                },
+            }
+
+        def list_notice_revisions(self, *_args, **_kwargs):
+            raise AssertionError("linked notice enrichment must use COMPLETE bundle")
+
+        def get_notice_revision(self, *_args, **_kwargs):
+            raise AssertionError("linked notice enrichment must use cached COMPLETE bundle")
+
+    reset_recorded_metrics_for_tests()
+    source = CompleteSource()
+    raw_cache = RawCache()
+    preparer = ProcurementImportPreparer(
+        source, PreviewStore(), raw_snapshot_repository=raw_cache,
+        raw_cache_ttl_seconds=900,
+    )
+    arguments = {
+        "code": "PL2600000001", "revision_mode": "ALL",
+        "organization_id": "org-1", "user_id": "user-1",
+        "workspace_lease": "lease-1", "local_state": None,
+        "include_linked_notices": True,
+    }
+
+    cold = preparer.prepare_plan(**arguments)
+    warm = preparer.prepare_plan(**arguments)
+
+    assert source.upstream == [
+        ("PLAN", "PL2600000001"),
+        ("PACKAGE", "IB2600000002"),
+    ]
+    assert raw_cache.saved == [
+        ("PLAN", "PL2600000001"),
+        ("PACKAGE", "IB2600000002"),
+    ]
+    for preview in (cold, warm):
+        package = preview["packages"][0]
+        assert package["noticeLink"]["noticeVersion"] == "00"
+        assert package["effectiveFields"]["noticeFields"]["status"] == "PUBLISHED"
+        assert package["effectiveFields"]["noticeFields"]["bidClosingAt"] == (
+            "2026-03-01T09:00:00+07:00"
+        )
+    phases = snapshot_recorded_metrics().database_phase_count
+    assert phases[("procurement_import", "source_cache", "miss")] == 2
+    assert phases[("procurement_import", "source_cache", "hit")] == 2
 
 
 def test_prepare_all_orders_revisions_numerically_even_when_provider_is_unsorted(tmp_path):
@@ -447,3 +779,308 @@ def test_three_way_merge_preserves_local_edits_and_surfaces_true_conflict():
     assert three_way_merge_field(
         "old", "local", "source", source_owned=False
     ) == ("local", "KEEP_LOCAL")
+
+
+class _MemorySessionRepository:
+    def __init__(self):
+        self.rows = {}
+
+    def create(self, row):
+        self.rows[row["id"]] = row
+        return row
+
+    def get_scoped(self, session_id, *, organization_id, user_id, workspace_lease):
+        row = self.rows.get(session_id)
+        if row is None:
+            return None
+        if (
+            row["organizationId"] != organization_id
+            or row["userId"] != user_id
+            or row["workspaceLease"] != workspace_lease
+        ):
+            raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
+        return row
+
+    def update_progress(self, session_id, *, current_index, status):
+        self.rows[session_id]["currentIndex"] = current_index
+        self.rows[session_id]["status"] = status
+
+
+def test_import_session_orders_manifest_and_serves_revision_draft_without_source():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository, ttl_seconds=3600)
+    bundle = {
+        "provider": "MUASAMCONG",
+        "plan": {"familyNo": "PL2600000001"},
+        "revisions": [
+            {
+                "revisionId": "rev-02", "revisionNumber": "02",
+                "name": "Kế hoạch 02", "planType": "Dự án",
+                "packages": [],
+            },
+            {
+                "revisionId": "rev-00", "revisionNumber": "00",
+                "name": "Kế hoạch 00", "planType": "Dự án",
+                "packages": [{
+                    "planDetailRevisionId": "detail-a", "symbol": "A",
+                    "name": "Gói A", "priceVnd": 100,
+                    "selectionStart": "2026-01", "selectionDuration": "30 ngày",
+                    "executionPeriod": "60 ngày", "capitalDetail": "Ngân sách",
+                }],
+            },
+            {
+                "revisionId": "rev-01", "revisionNumber": "01",
+                "name": "Kế hoạch 01", "planType": "Dự án",
+                "packages": [],
+            },
+        ],
+    }
+
+    manifest = service.create_from_bundle(
+        bundle,
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+    )
+    assert [row["revisionNumber"] for row in manifest["revisions"]] == [
+        "00", "01", "02",
+    ]
+
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "00",
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    assert draft["revisionNumber"] == "00"
+    assert draft["planDraft"]["maKeHoach"] == "PL2600000001"
+    assert draft["planDraft"]["phienBan"] == "00"
+    assert draft["packageDrafts"][0]["tenGoiThau"] == "Gói A"
+    assert draft["packageDrafts"][0]["sourceRevision"]["revisionId"] == "rev-00"
+    assert draft["packageDrafts"][0]["sourceRevision"]["workspaceLease"] == "lease-1"
+    assert "sourceCanonical" not in draft["packageDrafts"][0]
+
+
+def test_unlinked_plan_package_never_uses_bp_bid_number_as_bidding_code():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600000001"},
+            "revisions": [{
+                "revisionId": "rev-00", "revisionNumber": "00",
+                "name": "Kế hoạch", "packages": [{
+                    "planDetailRevisionId": "detail-bp",
+                    "stablePackageId": "BP2600291019",
+                    "symbol": "BP2600291019",
+                    "name": "Gói chưa đăng thông báo",
+                    "priceVnd": 100,
+                    "selectionStart": "2026-01",
+                    "selectionDuration": "30 ngày",
+                    "executionPeriod": "60 ngày",
+                    "capitalDetail": "Ngân sách",
+                    "noticeLink": {
+                        "state": "UNLINKED", "noticeNo": None,
+                    },
+                }],
+            }],
+        },
+        organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )["packageDrafts"][0]
+
+    assert draft["maGoiThau"] == ""
+    assert draft["soHieuGoiThau"] == ""
+    assert draft["sourceRevision"]["stablePackageId"] == "BP2600291019"
+
+
+def test_linked_package_uses_only_its_ib_notice_number_as_bidding_code():
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "PL2600000001",
+        {"revisionId": "rev-00", "revisionNumber": "00"},
+        {
+            "planDetailRevisionId": "detail-linked",
+            "stablePackageId": "BP2600291019",
+            "symbol": "BP2600291019",
+            "name": "Gói đã đăng thông báo",
+            "noticeLink": {
+                "state": "LINKED", "noticeNo": "IB2600212155",
+            },
+        },
+    )
+
+    assert draft["maGoiThau"] == "IB2600212155"
+    assert draft["soHieuGoiThau"] == ""
+    assert draft["sourceRevision"]["stablePackageId"] == "BP2600291019"
+
+
+def test_creating_session_opportunistically_cleans_expired_sessions():
+    repository = _MemorySessionRepository()
+    repository.cleanup_calls = 0
+    repository.cleanup_expired = lambda: setattr(
+        repository, "cleanup_calls", repository.cleanup_calls + 1
+    )
+    ProcurementImportSessionService(repository).create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600000001"},
+            "revisions": [{
+                "revisionId": "rev-00", "revisionNumber": "00",
+                "name": "Plan", "packages": [],
+            }],
+        },
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    assert repository.cleanup_calls == 1
+
+
+def test_import_session_rejects_cross_workspace_revision_read():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600000001"},
+            "revisions": [{
+                "revisionId": "rev-00", "revisionNumber": "00",
+                "name": "Plan", "packages": [],
+            }],
+        },
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(PermissionError, match="PROCUREMENT_SESSION_SCOPE_INVALID"):
+        service.get_revision_draft(
+            manifest["sessionId"], "00",
+            organization_id="org-1", user_id="user-1", workspace_lease="lease-2",
+        )
+
+
+class _SessionCursor:
+    def __init__(self):
+        self.row = None
+        self.query = ""
+
+    def execute(self, query, params=()):
+        self.query = " ".join(query.split())
+        if self.query.startswith("INSERT INTO procurement_import_session"):
+            self.row = tuple(params)
+        return self
+
+    def fetchone(self):
+        if not self.query.startswith("SELECT id, organization_id") or self.row is None:
+            return None
+        row = self.row
+        return (
+            row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7],
+            row[8], row[9], row[10], row[11], row[12], row[13], row[14],
+        )
+
+
+def test_persistent_session_repository_round_trips_canonical_bundle():
+    cursor = _SessionCursor()
+    repository = ProcurementImportSessionRepository(cursor)
+    now = datetime.now(timezone.utc)
+    created = repository.create({
+        "id": "session-1", "organizationId": "org-1", "userId": "user-1",
+        "workspaceLease": "lease-1", "provider": "MUASAMCONG", "kind": "PLAN",
+        "familyNo": "PL2600000001", "bundleDigest": "sha256:" + "a" * 64,
+        "revisions": [{"revisionNumber": "00"}],
+        "canonicalBundle": {"revisions": [{"revisionNumber": "00"}]},
+        "currentIndex": 0, "status": "READY",
+        "expiresAt": now + timedelta(hours=1), "createdAt": now, "updatedAt": now,
+    })
+    loaded = repository.get_scoped(
+        "session-1", organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )
+    assert created["id"] == "session-1"
+    assert loaded["canonicalBundle"]["revisions"][0]["revisionNumber"] == "00"
+    assert loaded["revisions"] == [{"revisionNumber": "00"}]
+
+
+class _ProgressCursor:
+    def __init__(self, revisions, current_index=0):
+        self.revisions = revisions
+        self.current_index = current_index
+        self.updated = None
+        self.query = ""
+
+    def execute(self, query, params=()):
+        self.query = " ".join(query.split())
+        if self.query.startswith("UPDATE procurement_import_session"):
+            self.updated = params
+        return self
+
+    def fetchone(self):
+        if self.query.startswith("SELECT revisions_json"):
+            import json
+            return (json.dumps(self.revisions), self.current_index)
+        return None
+
+
+def test_session_commit_requires_exact_next_revision_and_retry_is_idempotent():
+    revisions = [
+        {"revisionNumber": "00", "status": "READY"},
+        {"revisionNumber": "01", "status": "READY"},
+    ]
+    cursor = _ProgressCursor(revisions)
+    repository = ProcurementImportSessionRepository(cursor)
+
+    with pytest.raises(ImportConflict, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        repository.mark_revision_committed(
+            "session-1", organization_id="org-1", revision_number="01",
+        )
+
+    repository.mark_revision_committed(
+        "session-1", organization_id="org-1", revision_number="00",
+    )
+    assert cursor.updated[1:3] == (1, "WAITING_NEXT_CONFIRMATION")
+
+    cursor.current_index = 1
+    cursor.revisions[0]["status"] = "COMMITTED"
+    repository.mark_revision_committed(
+        "session-1", organization_id="org-1", revision_number="00",
+    )
+    assert cursor.updated[1:3] == (1, "WAITING_NEXT_CONFIRMATION")
+
+
+def test_session_cleanup_removes_only_expired_rows():
+    class CleanupCursor:
+        def __init__(self):
+            self.query = ""
+
+        def execute(self, query, params=()):
+            self.query = " ".join(query.split())
+            assert params == ()
+            return self
+
+    cursor = CleanupCursor()
+    ProcurementImportSessionRepository(cursor).cleanup_expired()
+    assert cursor.query == (
+        "DELETE FROM procurement_import_session "
+        "WHERE expires_at <= CURRENT_TIMESTAMP"
+    )
+
+
+def test_user_can_stop_a_waiting_session_without_discarding_committed_revisions():
+    class StopCursor:
+        def __init__(self):
+            self.params = None
+
+        def execute(self, query, params=()):
+            self.query = " ".join(query.split())
+            self.params = params
+            self.rowcount = 1
+            return self
+
+    cursor = StopCursor()
+    stopped = ProcurementImportSessionRepository(cursor).cancel_remaining(
+        "session-1", organization_id="org-1", user_id="user-1",
+    )
+    assert stopped is True
+    assert "status = 'CANCELLED'" in cursor.query
+    assert cursor.params == ("org-1", "session-1", "user-1")

@@ -3,6 +3,7 @@ import {
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
 import { parseLotListForDisplay, parseLotListStrict } from "./lotJsonParser.js";
+import { presentStatus } from "./LifecyclePolicy.js";
 
 const MODE_ALL = "all";
 const MODE_SELECTED = "selected";
@@ -69,7 +70,8 @@ export function getOfficialEvaluationLotState(pkg, metadataBlock = {}) {
 }
 
 export function resolvePackageResultStatus(pkg, editState = {}) {
-  const storedStatus = String(pkg?.trangThai || "").trim();
+  const rawStatus = String(pkg?.trangThai || "").trim();
+  const storedStatus = rawStatus ? presentStatus(rawStatus).label : "";
   if (storedStatus === "Hủy thầu") return storedStatus;
 
   const metadata = parseMetadataRecord(pkg?.danhGiaHsdtMetadata);

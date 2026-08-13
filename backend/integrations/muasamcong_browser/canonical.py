@@ -144,13 +144,14 @@ def _notice_number(row):
     return result.split("-", 1)[0] or None
 
 
-def _lots(row):
+def normalize_lots(row):
     candidates = pick(
         row,
         "lotDTOList",
         "lots",
         "lotList",
         "bidpPlanDetailLotList",
+        "bidpBidLotList",
     )
     if not isinstance(candidates, list):
         return None
@@ -189,7 +190,7 @@ def _notice_lots(raw):
         lots
         for item in _walk(raw)
         if isinstance(item, dict)
-        and (lots := _lots(item))
+        and (lots := normalize_lots(item))
     ]
     return max(candidates, key=len, default=None)
 
@@ -260,6 +261,7 @@ def normalize_plan_revision(
         if not isinstance(row, dict):
             continue
         notice_no = _notice_number(row)
+        is_multi_lot = map_optional_boolean(pick(row, "isMultiLot"))
         notify_id = pick(row, "notifyId")
         notice_version = pick(row, "notifyVersion")
         linked = bool(notice_no)
@@ -304,10 +306,8 @@ def normalize_plan_revision(
                 "domesticOrInternational": map_domestic_scope(
                     pick(row, "isDomestic")
                 ),
-                "lots": _lots(row),
-                "isMultiLot": map_optional_boolean(
-                    pick(row, "isMultiLot")
-                ),
+                "lots": normalize_lots(row) if is_multi_lot is True else None,
+                "isMultiLot": is_multi_lot,
                 "isPrequalification": map_optional_boolean(
                     pick(row, "isPrequalification")
                 ),

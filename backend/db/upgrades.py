@@ -2173,6 +2173,33 @@ def _upgrade_to_v54_allow_authoritative_procurement_resync(cursor, _context):
                organization_id, provider, idempotency_key, revision_uuid, digest
              )"""
     )
+
+
+def _upgrade_to_v55_add_procurement_import_sessions(cursor, context):
+    """Persist canonical import sessions across workers and restarts."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "procurement_import_session",
+        SCHEMA_DINH_NGHIA["procurement_import_session"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+    cursor.execute(create_sql)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_procurement_session_owner "
+        "ON procurement_import_session (organization_id, user_id, workspace_lease)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_procurement_session_family "
+        "ON procurement_import_session (organization_id, family_key, status)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_procurement_session_expiry "
+        "ON procurement_import_session (expires_at)"
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2434,6 +2461,11 @@ UPGRADES = (
         54,
         "allow_authoritative_procurement_resync",
         _upgrade_to_v54_allow_authoritative_procurement_resync,
+    ),
+    DatabaseUpgrade(
+        55,
+        "add_procurement_import_sessions",
+        _upgrade_to_v55_add_procurement_import_sessions,
     ),
 )
 

@@ -21,6 +21,7 @@ def commit_sync_response(
     updated_row_versions,
     delete_impacts,
     orphaned_ids,
+    procurement_import=None,
 ):
     response = {
         "status": "success",
@@ -37,6 +38,8 @@ def commit_sync_response(
         )
     if orphaned_ids:
         response["orphanedIds"] = orphaned_ids
+    if procurement_import:
+        response["procurementImport"] = procurement_import
     if client_mutation_id:
         cursor.execute(
             "INSERT INTO sync_mutations "

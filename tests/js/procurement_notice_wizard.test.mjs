@@ -52,7 +52,7 @@ test("notice wizard cleanup revokes preview authority", () => {
 });
 
 
-test("package modal exposes IB enrichment and lazy modal registry", () => {
+test("package modal keeps IB enrichment inline while legacy wizard remains non-primary", () => {
   const packageModal = fs.readFileSync("views/modals/modal_goithau.html", "utf8");
   const noticeModal = fs.readFileSync(
     "views/modals/modal_procurement_notice_import.html", "utf8",
@@ -60,7 +60,8 @@ test("package modal exposes IB enrichment and lazy modal registry", () => {
   const controller = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
   const workflows = fs.readFileSync("frontend/packages/BiddingWorkflows.js", "utf8");
 
-  assert.match(packageModal, /id="btn-open-procurement-notice-import"/);
+  assert.match(packageModal, /id="btn-open-procurement-lookup-package"/);
+  assert.doesNotMatch(packageModal, /id="btn-open-procurement-notice-import"/);
   assert.match(noticeModal, /id="modal-procurement-notice-import"/);
   assert.match(noticeModal, /aria-live="polite"/);
   assert.match(controller, /"modal-procurement-notice-import"/);

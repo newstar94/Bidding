@@ -667,6 +667,7 @@ export function renderTabData(tabName, action = null) {
 }
 export async function closeModal(modalId, options = {}) {
   const restoreRoute = options?.restoreRoute !== false;
+  const preserveProcurementImport = options?.preserveProcurementImport === true;
   if (modalId === "modal-excel-preview") {
     this._excelImportData = [];
     this._excelImportType = null;
@@ -707,6 +708,9 @@ export async function closeModal(modalId, options = {}) {
     }
     this.tempPlanData = null;
     this.tempPlanAction = null;
+    if (this.procurementPlanImport?.controller && !preserveProcurementImport) {
+      await this.cancelActiveProcurementImportSession?.();
+    }
     this.view.renderKeHoachTable();
     this.view.renderGoiThauTable();
   }
@@ -719,9 +723,19 @@ export async function closeModal(modalId, options = {}) {
       this.backupGoiThauState = null;
       this.tempPlanData = null;
       this.tempPlanAction = null;
+      if (this.procurementPlanImport?.controller && !preserveProcurementImport) {
+        await this.cancelActiveProcurementImportSession?.();
+      }
       this.view.renderKeHoachTable();
       this.view.renderGoiThauTable();
     }
+  }
+  if (
+    modalId === "modal-goithau"
+    && this.procurementPackageImport?.controller
+    && !preserveProcurementImport
+  ) {
+    await this.cancelActiveProcurementImportSession?.();
   }
   this.view.closeModal(modalId);
   if (!restoreRoute) return;

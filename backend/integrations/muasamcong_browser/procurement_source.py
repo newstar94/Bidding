@@ -15,6 +15,7 @@ from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
     _walk,
     normalize_notice_complete_bundle,
+    normalize_lots,
     pick,
 )
 from backend.integrations.muasamcong_browser.code_mapping import (
@@ -87,7 +88,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.13.1"
+    parser_version = "2026.08.13.2"
 
     def __init__(
         self,
@@ -710,6 +711,7 @@ class MuaSamCongProcurementSource:
                     map_optional_boolean,
                     ("isConcentrateShopping",),
                 ),
+                "lots": (normalize_lots, ()),
             }
             for package in canonical.get("packages") or []:
                 sidecar = next((
@@ -726,16 +728,26 @@ class MuaSamCongProcurementSource:
                     continue
                 response, package_source = sidecar
                 for field, (mapper, aliases) in package_mapping.items():
-                    value = pick(response, *aliases)
+                    if field == "lots" and package.get("isMultiLot") is not True:
+                        continue
+                    value = response if field == "lots" else pick(response, *aliases)
                     if value not in (None, ""):
-                        package[field] = mapper(value)
+                        mapped = mapper(value)
+                        if mapped is None:
+                            continue
+                        package[field] = mapped
                         field_sources[
                             f"revisions.{revision_number}.packages."
                             f"{package.get('planDetailRevisionId')}.{field}"
                         ] = {
                             "operation": "PLAN_PACKAGE_DETAIL",
                             "revision": str(revision_number),
-                            "sourcePath": "/".join(aliases),
+                            "sourcePath": (
+                                "bidpBidLotList/lotDTOList/lots/lotList/"
+                                "bidpPlanDetailLotList"
+                                if field == "lots"
+                                else "/".join(aliases)
+                            ),
                             "schemaFingerprint": package_source.get(
                                 "schemaFingerprint"
                             ),

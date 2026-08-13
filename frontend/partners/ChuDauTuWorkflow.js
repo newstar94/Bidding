@@ -7,7 +7,6 @@ import {
   refreshRecordBeforeDelete,
 } from "../shared/MutationService.js";
 import {
-  createInitialVersion,
   createNextVersion,
   getNextVersion,
   getVersionFamily,
@@ -25,6 +24,7 @@ import {
   createPartnerLookupHandlers,
   loadPartnerFormData,
   PARTNER_FORM_CONFIGS,
+  buildInitialPartnerVersion,
   resetPartnerFormData,
   validatePartnerRecord
 } from "./PartnerFormController.js";
@@ -148,7 +148,12 @@ export async function handleChuDauTuSubmit(e) {
     }
   } else {
     const newId = generateRecordId("chudautu");
-    data = createInitialVersion(data, { id: newId, timestamp: this.model.getCurrentDateTimeString() });
+    data = buildInitialPartnerVersion(data, {
+      id: newId,
+      timestamp: this.model.getCurrentDateTimeString(),
+      records: this.model.state.chudautu,
+      config: PARTNER_FORM_CONFIGS.chudautu,
+    });
     upsertRecords = [data];
   }
   rememberSelectedVersion(this.model.state, "selectedChuDauTuVersion", data);

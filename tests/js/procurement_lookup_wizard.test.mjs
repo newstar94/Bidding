@@ -10,6 +10,7 @@ import {
 } from "../../frontend/procurement/ProcurementLookupPreview.js";
 import {
   ProcurementInlineLookup,
+  startProcurementPackageImport,
 } from "../../frontend/procurement/ProcurementInlineLookup.js";
 import {
   hasServerCapability,
@@ -237,6 +238,7 @@ test("package preview maps linked plan scheduling fields", () => {
 
 
 test("inline package lookup fills bid guarantee without saving", async () => {
+  const previousDocument = globalThis.document;
   const identity = { value: "package-a" };
   const form = {
     querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
@@ -252,31 +254,57 @@ test("inline package lookup fills bid guarantee without saving", async () => {
     "btn-open-procurement-lookup-package": button,
     "procurement-lookup-package-status": status,
   };
+  const document = { getElementById: (id) => controls[id] || null };
+  const controller = {
+    model: {
+      activeWorkspaceLease: "org-1",
+      formatVND: (value) => new Intl.NumberFormat("vi-VN").format(value),
+    },
+  };
+  controller.startProcurementPackageImport = startProcurementPackageImport.bind(controller);
   const lookup = new ProcurementInlineLookup({
-    controller: { model: { activeWorkspaceLease: "org-1" } },
-    client: {
-      async lookup() {
+    controller,
+    importClient: {
+      async prepareNotice() {
         return {
-          schemaVersion: "biddingflow-procurement-preview-v1",
-          kind: "PACKAGE",
-          canonicalCode: "IB2600000002",
-          data: { notifyNo: "IB2600000002", bidGuarantee: 28_000_000 },
+          importSession: {
+            sessionId: "session-package",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getPlanRevisionDraft() {
+        return {
+          revisionNumber: "00",
+          packageDrafts: [{
+            maGoiThau: "IB2600000002",
+            giaTriBaoDamDuThau: 28_000_000,
+            sourceRevision: { revisionNumber: "00" },
+          }],
         };
       },
     },
-    document: { getElementById: (id) => controls[id] || null },
+    client: { async lookup() { assert.fail("must use sequential session"); } },
+    document,
   });
 
-  const result = await lookup.run({
-    kind: "PACKAGE",
-    formId: "form-goithau",
-    codeInputId: "gt-ma",
-    buttonId: "btn-open-procurement-lookup-package",
-    statusId: "procurement-lookup-package-status",
-  });
+  globalThis.document = document;
+  let result;
+  try {
+    result = await lookup.run({
+      kind: "PACKAGE",
+      formId: "form-goithau",
+      codeInputId: "gt-ma",
+      buttonId: "btn-open-procurement-lookup-package",
+      statusId: "procurement-lookup-package-status",
+    });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 
   assert.equal(guarantee.value, "28.000.000");
-  assert.equal(result.applied, 2);
+  assert.equal(result.revisionNumber, "00");
   assert.match(status.textContent, /dữ liệu chưa được lưu/i);
 });
 
@@ -487,7 +515,7 @@ function inlineStatus() {
 }
 
 
-test("inline lookup fills the open plan form without opening another modal", async () => {
+test("inline plan lookup prepares all revisions and opens editable revision 00 without another modal", async () => {
   const identity = { value: "plan-a" };
   const form = {
     querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
@@ -505,7 +533,7 @@ test("inline lookup fills the open plan form without opening another modal", asy
   const total = control("");
   const button = inlineButton();
   const status = inlineStatus();
-  let lookupRequest;
+  const calls = [];
   const controls = {
     "form-kehoach": form,
     "kh-ma": code,
@@ -517,24 +545,29 @@ test("inline lookup fills the open plan form without opening another modal", asy
     "procurement-lookup-plan-status": status,
   };
   const lookup = new ProcurementInlineLookup({
-    controller: { model: { activeWorkspaceLease: "org-1" } },
-    client: {
-      async lookup(request) {
-        lookupRequest = request;
+    controller: {
+      model: { activeWorkspaceLease: "org-1" },
+      async startProcurementPlanImport(flow) { calls.push(["start", flow]); },
+    },
+    importClient: {
+      async preparePlan(request) {
+        calls.push(["prepare", request]);
         return {
-          schemaVersion: "biddingflow-procurement-preview-v1",
-          kind: "PLAN",
-          canonicalCode: "PL2600000001",
-          data: {
-            planNo: "PL2600000001",
-            planName: "Kế hoạch từ nguồn",
-            planType: "Dự án",
-            projectName: "Dự án từ nguồn",
-            totalInvestment: 3_000_000_000,
+          importSession: {
+            sessionId: "session-plan",
+            revisions: [{ revisionNumber: "01" }, { revisionNumber: "00" }],
           },
         };
       },
+      async getPlanRevisionDraft(_sessionId, revisionNumber) {
+        return {
+          revisionNumber,
+          planDraft: { maKeHoach: "PL2600000001", tenKeHoach: "Kế hoạch 00" },
+          packageDrafts: [],
+        };
+      },
     },
+    client: { async lookup() { assert.fail("plan session flow must not lookup LATEST"); } },
     document: { getElementById: (id) => controls[id] || null },
   });
 
@@ -546,26 +579,24 @@ test("inline lookup fills the open plan form without opening another modal", asy
     statusId: "procurement-lookup-plan-status",
   });
 
-  assert.equal(result.applied, 5);
-  assert.equal(name.value, "Kế hoạch từ nguồn");
-  assert.equal(planType.value, "Dự án");
-  assert.equal(projectName.value, "Dự án từ nguồn");
-  assert.equal(total.value, "3.000.000.000");
-  assert.match(status.textContent, /đã điền 5 trường/i);
+  assert.equal(result.revisionNumber, "00");
+  assert.equal(calls[0][0], "prepare");
+  assert.equal(calls[0][1].revisionMode, "ALL");
+  assert.equal(calls[1][0], "start");
+  assert.equal(calls[1][1].currentDraft.revisionNumber, "00");
+  assert.deepEqual(
+    calls[1][1].controller.revisions.map((row) => row.revisionNumber),
+    ["00", "01"],
+  );
+  assert.match(status.textContent, /phiên bản 00/i);
   assert.equal(status.dataset.state, "success");
   assert.equal(button.textContent, "Lấy dữ liệu từ Mua Sắm Công");
   assert.equal(button.disabled, false);
-  assert.deepEqual(lookupRequest, {
-    code: "PL2600000001",
-    workspaceLease: "org-1",
-    detailLevel: "COMPLETE",
-    revisionMode: "LATEST",
-  });
 });
 
 
 test("inline lookup discards a response after the active form changes", async () => {
-  let resolveLookup;
+  let resolvePrepare;
   const status = inlineStatus();
   const code = control("PL2600000001");
   const identity = { value: "plan-a" };
@@ -581,7 +612,10 @@ test("inline lookup discards a response after the active form changes", async ()
   };
   const lookup = new ProcurementInlineLookup({
     controller: { model: { activeWorkspaceLease: "org-1" } },
-    client: { lookup: () => new Promise((resolve) => { resolveLookup = resolve; }) },
+    importClient: {
+      preparePlan: () => new Promise((resolve) => { resolvePrepare = resolve; }),
+    },
+    client: { lookup: () => assert.fail("must use sequential session") },
     document: { getElementById: (id) => controls[id] || null },
   });
 
@@ -593,11 +627,11 @@ test("inline lookup discards a response after the active form changes", async ()
     statusId: "procurement-lookup-plan-status",
   });
   identity.value = "plan-b";
-  resolveLookup({
-    schemaVersion: "biddingflow-procurement-preview-v1",
-    kind: "PLAN",
-    canonicalCode: "PL2600000001",
-    data: { planNo: "PL2600000001" },
+  resolvePrepare({
+    importSession: {
+      sessionId: "session-plan",
+      revisions: [{ revisionNumber: "00" }],
+    },
   });
   const result = await pending;
 
@@ -651,7 +685,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
   const planWorkflow = fs.readFileSync("frontend/plans/KeHoachWorkflow.js", "utf8");
 
   assert.match(planModal, /id="btn-open-procurement-lookup-plan"/);
-  assert.match(planModal, /id="btn-open-procurement-import"/);
+  assert.doesNotMatch(planModal, /id="btn-open-procurement-import"/);
   assert.match(planModal, /id="procurement-lookup-plan-status"/);
   assert.match(
     planModal,
@@ -662,7 +696,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
     /getElementById\("kh-pheduyet"\)\.value = "Dự toán và kế hoạch"/,
   );
   assert.match(packageModal, /id="btn-open-procurement-lookup-package"/);
-  assert.match(packageModal, /id="btn-open-procurement-notice-import"/);
+  assert.doesNotMatch(packageModal, /id="btn-open-procurement-notice-import"/);
   assert.match(packageModal, /id="procurement-lookup-package-status"/);
   assert.doesNotMatch(controller, /"modal-procurement-lookup"/);
   assert.match(workflows, /ProcurementInlineLookup\.js/);
@@ -671,15 +705,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
     /hasServerCapability\(PROCUREMENT_LOOKUP_CAPABILITY\)/,
   );
   assert.match(
-    planWorkflow,
-    /hasServerCapability\(PROCUREMENT_IMPORT_CAPABILITY\)/,
-  );
-  assert.match(
     fs.readFileSync("frontend/packages/GoiThauWorkflow.js", "utf8"),
     /hasServerCapability\(PROCUREMENT_LOOKUP_CAPABILITY\)/,
-  );
-  assert.match(
-    fs.readFileSync("frontend/packages/GoiThauWorkflow.js", "utf8"),
-    /hasServerCapability\(PROCUREMENT_IMPORT_CAPABILITY\)/,
   );
 });
