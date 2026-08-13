@@ -12,6 +12,11 @@ _PUBLIC_CODES = {
     "RECORD_DELETED",
     "FULL_SYNC_REQUIRED",
     "AGGREGATE_PENDING_REFERENCE_INVALID",
+    # Stable deletion business outcomes.  Keep the typed code while the
+    # sanitizer still strips table/id/reference details from the payload.
+    "DELETE_ROLE_PROTECTED",
+    "DELETE_ELEVATED_PERMISSION_REQUIRED",
+    "DELETE_REFERENCED",
 }
 
 

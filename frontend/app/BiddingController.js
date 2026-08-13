@@ -8,6 +8,7 @@ import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
 import { APP_DEBUG } from "./appConfig.js";
 import { setAppController } from "./controllerRef.js";
 import { hideInitLoader, isAuthTransitionActive } from "../auth/authRuntimeState.js";
+import { quarantineForcedSession } from "../auth/logoutMutationSafety.js";
 import {
   applyAccessContext,
   normalizeOrganizations,
@@ -705,12 +706,9 @@ export class BiddingController {
           if (isAuthTransitionActive()) return null;
           const overlay = document.getElementById("auth-overlay");
           if (overlay && getComputedStyle(overlay).display !== "flex") {
-            this.disconnectWebSocket?.(false);
-            const localCleanup = this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.();
-            void Promise.resolve(localCleanup).catch((error) => {
-              console.error("Failed to clear expired workspace data:", error);
+            void quarantineForcedSession(this).catch((error) => {
+              console.error("Failed to quarantine expired workspace data:", error);
             });
-            this.model.clearSessionData();
             setRuntimeStyle(overlay, "display", "flex");
             setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
             const formLogin = document.getElementById("form-auth-login");

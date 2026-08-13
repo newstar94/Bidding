@@ -10,7 +10,12 @@ import pytest
 from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.sync import websocket
 from backend.sync.websocket import enqueue_websocket_event
-from backend.db.upgrades import DB_SCHEMA_VERSION, UPGRADES
+from backend.db.upgrades import (
+    DB_SCHEMA_VERSION,
+    UPGRADES,
+    _upgrade_to_v58_add_document_job_policy,
+    _upgrade_to_v59_rename_websocket_delivery_to_dispatch,
+)
 
 
 class Cursor:
@@ -61,6 +66,36 @@ def test_websocket_delivery_state_uses_a_forward_only_migration():
     assert DB_SCHEMA_VERSION >= 32
     upgrade = next(item for item in UPGRADES if item.version == 32)
     assert upgrade.name == "add_websocket_delivery_state"
+
+
+def test_local_hint_dispatch_never_claims_global_delivery():
+    source = Path(websocket.__file__).read_text(encoding="utf-8")
+
+    assert "status = 'delivered'" not in source
+    assert "status = 'dispatched'" in source
+    assert "dispatched_at" in source
+
+
+def test_v58_and_v59_migrations_keep_their_table_changes_separate():
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement, _params=()):
+            self.statements.append(" ".join(statement.split()))
+
+    v58 = Cursor()
+    v59 = Cursor()
+
+    _upgrade_to_v58_add_document_job_policy(v58, None)
+    _upgrade_to_v59_rename_websocket_delivery_to_dispatch(v59, None)
+
+    assert len(v58.statements) == 2
+    assert all("ALTER TABLE document_jobs" in statement for statement in v58.statements)
+    assert any("policy_json" in statement for statement in v58.statements)
+    assert any("policy_hash" in statement for statement in v58.statements)
+    assert all("document_jobs" not in statement for statement in v59.statements)
+    assert all("websocket_events" in statement for statement in v59.statements)
 
 
 def test_legacy_broadcast_reports_durable_store_failure(monkeypatch):

@@ -5,12 +5,12 @@ export function workspaceChangedError() {
   return error;
 }
 
+export function currentWorkspaceToken(model) {
+  return String(model?.getWorkspaceToken?.() || model?.workspaceScope?.key || "");
+}
+
 export function captureWorkspaceLease(model, { controller = null } = {}) {
-  const token = String(
-    model?.getWorkspaceToken?.()
-    || model?.workspaceScope?.key
-    || "",
-  );
+  const token = currentWorkspaceToken(model);
   return Object.freeze({
     token,
     scope: String(model?.workspaceScope?.key || ""),
@@ -23,11 +23,7 @@ export function captureWorkspaceLease(model, { controller = null } = {}) {
 
 export function isWorkspaceLeaseCurrent(model, lease) {
   if (!model || !lease || lease.signal?.aborted) return false;
-  const currentToken = String(
-    model.getWorkspaceToken?.()
-    || model.workspaceScope?.key
-    || "",
-  );
+  const currentToken = currentWorkspaceToken(model);
   return (
     (!lease.token || currentToken === lease.token)
     && model.db === lease.db

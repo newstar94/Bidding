@@ -100,6 +100,30 @@ def test_application_startup_auto_starts_managed_local_postgres(monkeypatch):
     assert events == ["postgres-started"]
 
 
+def test_debug_reloader_supervisor_starts_postgres_before_workers(monkeypatch):
+    events = []
+    monkeypatch.delenv(app_module.LOCAL_DATABASE_SUPERVISOR_ENV, raising=False)
+    monkeypatch.setattr(
+        app_module,
+        "_start_local_database_if_managed",
+        lambda: events.append("postgres-started") or True,
+    )
+
+    assert app_module._start_local_database_before_reloader() is True
+    assert events == ["postgres-started"]
+    assert app_module.os.environ[app_module.LOCAL_DATABASE_SUPERVISOR_ENV] == "1"
+
+
+def test_reloader_worker_does_not_own_supervisor_postgres(monkeypatch):
+    monkeypatch.setenv(app_module.LOCAL_DATABASE_SUPERVISOR_ENV, "1")
+    monkeypatch.setattr(
+        "scripts.setup_local_postgres.ensure_local_postgres_running",
+        lambda: pytest.fail("reload worker must not start the supervisor database"),
+    )
+
+    assert app_module._start_local_database_if_managed() is False
+
+
 def test_production_startup_skips_absent_local_postgres_setup(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "project_root", str(tmp_path))
 

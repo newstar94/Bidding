@@ -758,7 +758,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     hanghoaduthaunhathau: [], assignments: [],
   };
   const model = {
-    state, workspaceStorage: null, activeWorkspaceLease: "org-1",
+    state, workspaceStorage: null, getWorkspaceToken: () => "org-1",
     getLatestChuDauTu: () => state.chudautu.filter((row) => row.isLatest == 1),
     getCurrentDateTimeString: () => "2026-08-13 10:00:00",
     getLatestPackagesForPlan: (planId) => state.goithau.filter(

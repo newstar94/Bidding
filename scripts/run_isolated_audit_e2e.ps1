@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "offline", "offline-soak", "joint-venture", "low-price", "crud", "pairwise", "ui", "domain", "lifecycle", "bidder-goods", "all")]
+    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "offline", "offline-soak", "websocket-missed-hint", "joint-venture", "low-price", "crud", "pairwise", "ui", "domain", "lifecycle", "bidder-goods", "all")]
     [string]$Suite = "all",
     [int]$Port = 8010
 )
@@ -55,6 +55,8 @@ $commands = if ($Suite -eq "smoke") {
     @("test:offline-sync-e2e")
 } elseif ($Suite -eq "offline-soak") {
     @("test:offline-sync-e2e:soak")
+} elseif ($Suite -eq "websocket-missed-hint") {
+    @("test:websocket-missed-hint-e2e")
 } elseif ($Suite -eq "joint-venture") {
     @("test:joint-venture-e2e")
 } elseif ($Suite -eq "low-price") {

@@ -59,6 +59,7 @@ from backend.documents.word_mapping_registry import (
     resolve_word_mappings,
     save_word_mapping,
 )
+from backend.documents.export_policy_registry import governed_export
 import uuid
 
 LEGACY_MANAGED_TEMPLATES = {
@@ -570,6 +571,7 @@ def _prepare_report_render(
     return context, manifest, template_path, sensitive_groups
 
 
+@governed_export("docx.plan")
 async def export_plan_api(request):
     plan_id = clean_id(request.path_params.get('plan_id'))
     try:
@@ -648,6 +650,7 @@ async def export_plan_api(request):
     except Exception as e:
         return _docx_error(request, e, "export_plan_api")
 
+@governed_export("docx.package_report")
 async def export_report_api(request):
     package_id = clean_id(request.path_params.get('package_id'))
     type_param = request.query_params.get('type', 'evaluation')

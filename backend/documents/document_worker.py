@@ -41,6 +41,7 @@ from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.audit_chain import insert_audit_row
 from backend.documents.document_job_policy import (
     DocumentJobAuthorizationError,
+    validate_document_job_policy_snapshot,
     verify_document_job_policy,
 )
 
@@ -855,6 +856,17 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
     )
     connection = database.get_connection()
     try:
+        connection.execute("BEGIN")
+        job_row = connection.execute(
+            """SELECT id, organization_id, user_id, package_id,
+                      policy_json, policy_hash
+                 FROM document_jobs WHERE id = ? FOR UPDATE""",
+            (job_id,),
+        ).fetchone()
+        if job_row is None:
+            connection.commit()
+            return False
+        verify_document_job_policy(connection.cursor(), dict(job_row))
         updated = connection.execute(
             """UPDATE document_jobs
                SET status = 'retry', attempt_count = 0, available_at = ?,
@@ -888,6 +900,7 @@ def enqueue_document_export(
     database=None,
     audit_event: dict[str, Any] | None = None,
 ) -> str:
+    validated_policy = validate_document_job_policy_snapshot(policy, policy_hash)
     return _enqueue_durable_document_job(
         operation,
         payload,
@@ -898,7 +911,7 @@ def enqueue_document_export(
             "package_id": package_id,
             "filename": filename,
             "content_type": content_type,
-            "policy": policy or {},
+            "policy": validated_policy,
             "policy_hash": policy_hash,
         },
         audit_event=audit_event,
@@ -923,10 +936,34 @@ def get_document_export_job(database, job_id: str, organization_id: str, user_id
 
 
 def read_document_export_result(database, job_id: str, organization_id: str, user_id: str):
-    job = get_document_export_job(database, job_id, organization_id, user_id)
-    if not job or job["status"] != "completed":
-        return job, None
-    return job, _read_result(_document_job_dir(job_id) / "result.json", _document_job_dir(job_id))
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        row = connection.execute(
+            """SELECT id, operation, organization_id, user_id, package_id,
+                      filename, content_type, status, attempt_count,
+                      last_error_code, completed_at, expires_at, cancelled_at,
+                      policy_json, policy_hash
+                 FROM document_jobs
+                WHERE id = ? AND organization_id = ? AND user_id = ?
+                FOR SHARE""",
+            (job_id, organization_id, user_id),
+        ).fetchone()
+        job = dict(row) if row else None
+        if not job or job["status"] != "completed":
+            connection.commit()
+            return job, None
+        verify_document_job_policy(connection.cursor(), job)
+        result = _read_result(
+            _document_job_dir(job_id) / "result.json", _document_job_dir(job_id)
+        )
+        connection.commit()
+        return job, result
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def cancel_document_export(database, job_id: str, organization_id: str, user_id: str) -> bool:
@@ -954,11 +991,19 @@ def cancel_document_export(database, job_id: str, organization_id: str, user_id:
 def _process_claimed_document_job(database, claimed) -> None:
     job_dir = _document_job_dir(claimed["id"])
     try:
-        policy_connection = database.get_connection()
-        try:
-            verify_document_job_policy(policy_connection.cursor(), claimed)
-        finally:
-            policy_connection.close()
+        owner_values = tuple(
+            str(claimed.get(field) or "").strip()
+            for field in ("organization_id", "user_id", "package_id")
+        )
+        owner_scoped = any(owner_values)
+        if owner_scoped and not all(owner_values):
+            raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+        if owner_scoped:
+            policy_connection = database.get_connection()
+            try:
+                verify_document_job_policy(policy_connection.cursor(), claimed)
+            finally:
+                policy_connection.close()
         operation, payload = read_job_manifest(job_dir / "input.json", job_dir)
         if operation != claimed["operation"]:
             raise DocumentWorkerInputError("Loại tác vụ tài liệu không khớp.")
@@ -967,11 +1012,12 @@ def _process_claimed_document_job(database, claimed) -> None:
             payload,
             image_root=job_dir / "assets" / "images",
         )
-        policy_connection = database.get_connection()
-        try:
-            verify_document_job_policy(policy_connection.cursor(), claimed)
-        finally:
-            policy_connection.close()
+        if owner_scoped:
+            policy_connection = database.get_connection()
+            try:
+                verify_document_job_policy(policy_connection.cursor(), claimed)
+            finally:
+                policy_connection.close()
         result_path = job_dir / "result.json"
         if result_path.exists():
             result_path.unlink()
@@ -992,9 +1038,9 @@ def _process_claimed_document_job(database, claimed) -> None:
         # and an explicit retry. The retention sweep is the only deletion path.
 
 
-def process_next_durable_document_job(database=None) -> bool:
+def process_next_durable_document_job(database=None, *, job_id=None) -> bool:
     database = database or _document_queue_database()
-    claimed = _claim_durable_document_job(database)
+    claimed = _claim_durable_document_job(database, job_id)
     if claimed is None:
         return False
     _process_claimed_document_job(database, claimed)

@@ -87,7 +87,7 @@ test("refresh resumes the server session at its first uncommitted revision", asy
   });
   const calls = [];
   const controller = {
-    model: { workspaceStorage: storage, activeWorkspaceLease: "lease-1" },
+    model: { workspaceStorage: storage, getWorkspaceToken: () => "lease-1" },
     view: { customConfirm: async () => true },
     startProcurementPackageImport: async (flow) => calls.push(flow),
   };
@@ -479,7 +479,8 @@ test("wizard discards a response after workspace change and cleanup clears autho
     },
   };
   const wizard = Object.create(PlanImportWizard.prototype);
-  wizard.controller = { model: { activeWorkspaceLease: "org-1" } };
+  let workspaceToken = "org-1";
+  wizard.controller = { model: { getWorkspaceToken: () => workspaceToken } };
   wizard.modal = modal;
   wizard.client = {
     preparePlan: () => new Promise((resolve) => { resolvePrepare = resolve; }),
@@ -493,7 +494,7 @@ test("wizard discards a response after workspace change and cleanup clears autho
   wizard.debouncedPrepare = { cancelled: false, cancel() { this.cancelled = true; } };
 
   const pending = wizard.prepare();
-  wizard.controller.model.activeWorkspaceLease = "org-2";
+  workspaceToken = "org-2";
   resolvePrepare({ previewId: "stale-preview", blockingIssues: [], packages: [] });
   await pending;
   assert.equal(wizard.preview, null);
@@ -552,7 +553,7 @@ test("choosing no after plan 00 cancels remaining server revisions", async () =>
   });
   await sequential.loadCurrent();
   const controller = {
-    model: { activeWorkspaceLease: "lease-1", workspaceStorage: null },
+    model: { getWorkspaceToken: () => "lease-1", workspaceStorage: null },
     procurementPlanImport: {
       session: { sessionId: "session-1" }, controller: sequential,
       currentDraft: { revisionNumber: "00" },
@@ -848,7 +849,7 @@ test("direct package lookup prepares all revisions and starts at 00", async () =
   ]);
   const calls = [];
   const controller = {
-    model: { activeWorkspaceLease: "org-1" },
+    model: { getWorkspaceToken: () => "org-1" },
     startProcurementPackageImport: async (flow) => calls.push(flow),
     view: { showToast() {} },
   };

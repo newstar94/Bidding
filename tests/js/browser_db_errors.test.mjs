@@ -200,6 +200,11 @@ test("outbox writes remain ordered until each IndexedDB transaction commits", as
       const transaction = {
         objectStore() {
           return {
+            get() {
+              const request = { result: null };
+              queueMicrotask(() => request.onsuccess?.({ target: request }));
+              return request;
+            },
             put() {
               const request = {};
               queueMicrotask(() => request.onsuccess?.({ target: request }));

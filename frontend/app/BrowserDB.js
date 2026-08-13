@@ -151,6 +151,44 @@ export class BrowserDB {
       }
     });
   }
+  update(key, updater) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) return reject(new BrowserDBError(
+        "NOT_INITIALIZED", "IndexedDB is not initialized", { operation: "update", store: "kv_store" },
+      ));
+      if (typeof updater !== "function") return reject(new BrowserDBError(
+        "INVALID_UPDATER", "IndexedDB update requires a function", { operation: "update", store: "kv_store" },
+      ));
+      try {
+        const transaction = this.db.transaction("kv_store", "readwrite");
+        const store = transaction.objectStore("kv_store");
+        const read = store.get(key);
+        let nextValue;
+        const write = bindWriteTransaction(transaction, {
+          operation: "update",
+          reject,
+          resolve: () => resolve(nextValue),
+          store: "kv_store",
+        });
+        read.onsuccess = () => {
+          try {
+            nextValue = updater(read.result ?? null);
+            const request = store.put(nextValue, key);
+            request.onerror = () => write.rejectRequest(request);
+          } catch (error) {
+            try {
+              transaction.abort();
+            } catch {
+            }
+            write.rejectRequest({ error });
+          }
+        };
+        read.onerror = () => write.rejectRequest(read);
+      } catch (error) {
+        reject(browserDBError(error, { operation: "update", store: "kv_store" }));
+      }
+    });
+  }
   getTableData(tableName) {
     return new Promise((resolve, reject) => {
       if (!this.db) return reject(new BrowserDBError(

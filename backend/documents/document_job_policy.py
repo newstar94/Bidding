@@ -67,17 +67,32 @@ def _policy(value):
     return parsed if isinstance(parsed, dict) else None
 
 
+def validate_document_job_policy_snapshot(policy, fingerprint):
+    """Validate immutable policy shape/hash without consulting current authority."""
+
+    parsed = _policy(policy)
+    if (
+        not parsed
+        or parsed.get("version") != POLICY_VERSION
+        or str(fingerprint or "") != document_job_policy_hash(parsed)
+    ):
+        raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+    if (
+        str(parsed.get("format") or "") not in {"docx", "xlsx"}
+        or not isinstance(parsed.get("packageRevision"), int)
+        or int(parsed["packageRevision"]) < 1
+        or not isinstance(parsed.get("requiredSensitiveGroups"), list)
+    ):
+        raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+    return parsed
+
+
 def verify_document_job_policy(cursor, job):
     """Reauthorize one job against current account, role, record and grants."""
 
-    policy = _policy(job.get("policy_json"))
-    fingerprint = str(job.get("policy_hash") or "")
-    if (
-        not policy
-        or policy.get("version") != POLICY_VERSION
-        or fingerprint != document_job_policy_hash(policy)
-    ):
-        raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+    policy = validate_document_job_policy_snapshot(
+        job.get("policy_json"), job.get("policy_hash")
+    )
     organization_id = str(job.get("organization_id") or "")
     user_id = str(job.get("user_id") or "")
     package_id = str(job.get("package_id") or "")

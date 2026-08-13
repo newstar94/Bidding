@@ -378,10 +378,11 @@ SCHEMA_DINH_NGHIA = {
             "organization_id": "TEXT",
             "user_id": "TEXT",
             "payload_json": "TEXT",
-            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'retry', 'delivered', 'dead_letter'))",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'retry', 'dispatched', 'dead_letter'))",
             "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
             "available_at": "INTEGER NOT NULL DEFAULT 0 CHECK(available_at >= 0)",
             "delivered_at": "INTEGER",
+            "dispatched_at": "INTEGER",
             "last_error_code": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         }

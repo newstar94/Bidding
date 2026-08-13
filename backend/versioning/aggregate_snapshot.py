@@ -195,15 +195,16 @@ def snapshot_package_aggregate(
 
     old_lots = _rows(source_package.get("phanLoList"))
     selected_lots = _rows(package_record.get("phanLoList"))
+    old_lots_by_id = {
+        str(lot.get("id")): lot for lot in old_lots if lot.get("id")
+    }
     old_lots_by_code = {_lot_token(lot): lot for lot in old_lots}
     lot_ids = {}
     cloned_lots = []
     for lot in selected_lots:
         cloned = _clone_owned_row(lot, "phanlo", create_id)
-        source_lot = next((
-            item for item in old_lots
-            if str(item.get("id")) == str(lot.get("id"))
-        ), None) or old_lots_by_code.get(_lot_token(lot))
+        source_lot = old_lots_by_id.get(str(lot.get("id"))) \
+            or old_lots_by_code.get(_lot_token(lot))
         if source_lot and source_lot.get("id"):
             lot_ids[str(source_lot["id"])] = cloned["id"]
         cloned_lots.append(cloned)
@@ -211,10 +212,8 @@ def snapshot_package_aggregate(
     target_lots_by_code = {_lot_token(lot): lot for lot in cloned_lots}
     awards = []
     for award in _rows(package_record.get("awardedPhanLoList")):
-        source_lot = next((
-            item for item in old_lots
-            if str(item.get("id")) == str(award.get("id"))
-        ), None) or old_lots_by_code.get(_lot_token(award))
+        source_lot = old_lots_by_id.get(str(award.get("id"))) \
+            or old_lots_by_code.get(_lot_token(award))
         target_lot = None
         if source_lot:
             mapped_id = lot_ids.get(str(source_lot.get("id")))
@@ -400,9 +399,32 @@ def snapshot_plan_aggregate(
         "sourcePackageIds": [],
         "mappings": {"packageIds": {}, "packageRoots": {}},
     }
+    relation_keys = (
+        "goithauhanghoa",
+        "thongtinmothau",
+        "hanghoaduthaunhathau",
+        "assignments",
+    )
+    relations_by_package = {
+        key: {} for key in relation_keys
+    }
+    for key in relation_keys:
+        for row in _rows(state.get(key)):
+            package_id = (
+                row.get("targetId")
+                if key == "assignments" and row.get("type") == "goithau"
+                else row.get("goiThauId")
+            )
+            if package_id:
+                relations_by_package[key].setdefault(str(package_id), []).append(row)
     for source_package in latest_by_root.values():
+        source_package_id = str(source_package.get("id"))
+        package_state = {
+            key: relations_by_package[key].get(source_package_id, ())
+            for key in relation_keys
+        }
         snapshot = snapshot_package_aggregate(
-            state,
+            package_state,
             source_package,
             target_package_id=create_id("goithau"),
             target_plan_id=target_plan_id,

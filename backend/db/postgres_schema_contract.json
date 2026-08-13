@@ -2831,7 +2831,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 58,
+  "schemaVersion": 59,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -17855,6 +17855,13 @@
           "notNull": false,
           "type": "integer"
         },
+        "dispatched_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
         "event_type": {
           "default": null,
           "generated": "",
@@ -17943,7 +17950,7 @@
         },
         "websocket_events_status_check": {
           "deferrable": false,
-          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'retry'::text, 'delivered'::text, 'dead_letter'::text]))",
+          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'retry'::text, 'dispatched'::text, 'dead_letter'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

@@ -1,6 +1,9 @@
+import asyncio
+import concurrent.futures
 import json
 import os
 import shutil
+import time
 
 import pytest
 
@@ -13,10 +16,16 @@ from backend.documents.document_worker import (
     get_document_export_job,
     process_next_durable_document_job,
     read_document_export_result,
+    retry_failed_durable_document_job,
+    run_document_job_async,
 )
-from backend.documents.document_job_policy import build_document_job_policy
+from backend.documents.document_job_policy import (
+    DocumentJobAuthorizationError,
+    build_document_job_policy,
+)
 from backend.auth.auth_helper import SessionRole
 from backend.db.db_helper import PostgresDatabase
+from tests.test_sync_conflict_authorization import _seed_denied_package
 
 
 class Result:
@@ -49,6 +58,82 @@ class Database:
 
     def get_connection(self):
         return self.connection
+
+
+def _policy_snapshot(*, organization_id="org-a", user_id="user-a", revision=1, format="xlsx"):
+    role = SessionRole(
+        "employee",
+        user_id,
+        platform_role="user",
+        active_role="employee",
+        active_role_organization_id=organization_id,
+    )
+    return build_document_job_policy(
+        role, package_revision=revision, document_format=format
+    )
+
+
+def _seed_export_job_scope(connection):
+    cursor = connection.cursor()
+    organization_id, user_id, package_id = _seed_denied_package(cursor)
+    cursor.execute(
+        """UPDATE thanh_vien_to_chuc
+              SET vai_tro_trong_to_chuc = 'manager'
+            WHERE organization_id = ? AND user_id = ?""",
+        (organization_id, user_id),
+    )
+    now = int(time.time())
+    cursor.execute(
+        """INSERT INTO organization_subscriptions
+              (organization_id, package_id, status, starts_at, expires_at, member_quota)
+            VALUES (?, 'diamond', 'active', ?, ?, 10)""",
+        (organization_id, now - 60, now + 3600),
+    )
+    package = cursor.execute(
+        "SELECT row_version FROM goi_thau WHERE organization_id = ? AND id = ?",
+        (organization_id, package_id),
+    ).fetchone()
+    connection.commit()
+    role = SessionRole(
+        "manager",
+        user_id,
+        platform_role="user",
+        active_role="manager",
+        active_role_organization_id=organization_id,
+    )
+    policy, fingerprint = build_document_job_policy(
+        role,
+        package_revision=int(package[0]),
+        document_format="xlsx",
+    )
+    return organization_id, user_id, package_id, policy, fingerprint
+
+
+def _cleanup_export_job_scope(connection, organization_id):
+    user_rows = connection.execute(
+        "SELECT user_id FROM thanh_vien_to_chuc WHERE organization_id = ?",
+        (organization_id,),
+    ).fetchall()
+    user_ids = [str(row[0]) for row in user_rows]
+    for table in (
+        "document_jobs",
+        "document_export_capabilities",
+        "organization_subscriptions",
+        "phan_cong_nhan_su",
+        "ma_tran_phan_quyen",
+        "goi_thau",
+        "ke_hoach_lcnt",
+        "chu_dau_tu",
+        "thanh_vien_to_chuc",
+    ):
+        connection.execute(
+            f"DELETE FROM {table} WHERE organization_id = ?",  # noqa: S608 - fixed test table list
+            (organization_id,),
+        )
+    connection.execute("DELETE FROM to_chuc WHERE id = ?", (organization_id,))
+    for user_id in user_ids:
+        connection.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
+    connection.commit()
 
 
 def test_async_export_routes_cover_create_status_download_retry_and_cancel():
@@ -88,6 +173,7 @@ def test_export_job_and_required_audit_share_one_transaction(tmp_path, monkeypat
         observed["event"] = event
 
     monkeypatch.setattr(document_worker, "insert_audit_row", record_audit)
+    policy, fingerprint = _policy_snapshot()
     job_id = enqueue_document_export(
         "export_excel",
         {"function": "create_phanlo_excel", "args": [[]]},
@@ -96,6 +182,8 @@ def test_export_job_and_required_audit_share_one_transaction(tmp_path, monkeypat
         package_id="package-a",
         filename="export.xlsx",
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        policy=policy,
+        policy_hash=fingerprint,
         database=database,
         audit_event={
             "actor_user_id": "user-a",
@@ -124,6 +212,7 @@ def test_export_job_rolls_back_and_removes_payload_when_required_audit_fails(
         raise RuntimeError("audit unavailable")
 
     monkeypatch.setattr(document_worker, "insert_audit_row", fail_audit)
+    policy, fingerprint = _policy_snapshot()
     with pytest.raises(RuntimeError, match="audit unavailable"):
         enqueue_document_export(
             "export_excel",
@@ -133,6 +222,8 @@ def test_export_job_rolls_back_and_removes_payload_when_required_audit_fails(
             package_id="package-a",
             filename="export.xlsx",
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
             database=database,
             audit_event={
                 "actor_user_id": "user-a",
@@ -152,38 +243,53 @@ def test_durable_export_job_completes_and_isolated_owner_can_download(tmp_path, 
     monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
     database = PostgresDatabase(database_url)
     job_ids = []
+    organization_id = None
     try:
+        connection = database.get_connection()
+        try:
+            (
+                organization_id,
+                user_id,
+                package_id,
+                policy,
+                fingerprint,
+            ) = _seed_export_job_scope(connection)
+        finally:
+            connection.close()
         job_id = enqueue_document_export(
             "export_excel",
             {"function": "create_phanlo_excel", "args": [[]]},
-            organization_id="org-export-test",
-            user_id="user-export-test",
-            package_id="package-export-test",
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
             filename="export.xlsx",
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
             database=database,
         )
         job_ids.append(job_id)
 
-        assert process_next_durable_document_job(database)
+        assert process_next_durable_document_job(database, job_id=job_id)
         job, result = read_document_export_result(
             database,
             job_id,
-            "org-export-test",
-            "user-export-test",
+            organization_id,
+            user_id,
         )
 
         assert job["status"] == "completed"
         assert bytes(result).startswith(b"PK")
         assert get_document_export_job(
-            database, job_id, "org-export-test", "another-user"
+            database, job_id, organization_id, "another-user"
         ) is None
     finally:
         connection = database.get_connection()
         try:
             for job_id in job_ids:
                 connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
-            connection.commit()
+            if organization_id:
+                _cleanup_export_job_scope(connection, organization_id)
         finally:
             connection.close()
         for job_id in job_ids:
@@ -199,34 +305,21 @@ def test_revoked_job_fails_before_worker_publishes_artifact(tmp_path, monkeypatc
     database = PostgresDatabase(database_url)
     connection = database.get_connection()
     job_id = None
+    organization_id = None
     try:
-        organization = connection.execute(
-            "SELECT id FROM to_chuc WHERE trang_thai = 'active' LIMIT 1"
-        ).fetchone()
-        user = connection.execute(
-            """SELECT account.id FROM tai_khoan AS account
-               JOIN thanh_vien_to_chuc AS membership ON membership.user_id = account.id
-               WHERE membership.organization_id = ?
-                 AND membership.trang_thai_thanh_vien = 'active'
-               LIMIT 1""",
-            (organization[0],),
-        ).fetchone() if organization else None
-        package = connection.execute(
-            "SELECT id, row_version FROM goi_thau WHERE organization_id = ? AND archived_at IS NULL LIMIT 1",
-            (organization[0],),
-        ).fetchone() if organization else None
-        if not organization or not user or not package:
-            pytest.skip("active organization/member/package fixture is required")
-        role = SessionRole("employee", user[0], platform_role="user", active_role="employee", active_role_organization_id=organization[0])
-        policy, fingerprint = build_document_job_policy(
-            role, package_revision=package[1], document_format="docx"
-        )
+        (
+            organization_id,
+            user_id,
+            package_id,
+            policy,
+            fingerprint,
+        ) = _seed_export_job_scope(connection)
         job_id = enqueue_document_export(
             "export_excel",
             {"function": "create_phanlo_excel", "args": [[]]},
-            organization_id=organization[0],
-            user_id=user[0],
-            package_id=package[0],
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
             filename="export.xlsx",
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             policy=policy,
@@ -235,12 +328,12 @@ def test_revoked_job_fails_before_worker_publishes_artifact(tmp_path, monkeypatc
         )
         connection.execute(
             "UPDATE thanh_vien_to_chuc SET trang_thai_thanh_vien = 'left' WHERE organization_id = ? AND user_id = ?",
-            (organization[0], user[0]),
+            (organization_id, user_id),
         )
         connection.commit()
 
-        assert process_next_durable_document_job(database)
-        job = get_document_export_job(database, job_id, organization[0], user[0])
+        assert process_next_durable_document_job(database, job_id=job_id)
+        job = get_document_export_job(database, job_id, organization_id, user_id)
         assert job["status"] == "failed"
         assert job["last_error_code"] == "DocumentJobAuthorizationError"
         assert not (_document_job_dir(job_id) / "result.json").exists()
@@ -248,7 +341,222 @@ def test_revoked_job_fails_before_worker_publishes_artifact(tmp_path, monkeypatc
         connection.rollback()
         if job_id:
             connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
-            connection.commit()
             shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        if organization_id:
+            _cleanup_export_job_scope(connection, organization_id)
         connection.close()
+        database.close()
+
+
+def test_permission_revoked_during_render_prevents_artifact_publication(
+    tmp_path, monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    database = PostgresDatabase(database_url)
+    connection = database.get_connection()
+    job_id = None
+    organization_id = None
+    try:
+        (
+            organization_id,
+            user_id,
+            package_id,
+            policy,
+            fingerprint,
+        ) = _seed_export_job_scope(connection)
+        job_id = enqueue_document_export(
+            "export_excel",
+            {"function": "create_phanlo_excel", "args": [[]]},
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
+            filename="export.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
+            database=database,
+        )
+
+        def render_then_revoke(*_args, **_kwargs):
+            revoke_connection = database.get_connection()
+            try:
+                revoke_connection.execute(
+                    """UPDATE thanh_vien_to_chuc
+                          SET trang_thai_thanh_vien = 'left'
+                        WHERE organization_id = ? AND user_id = ?""",
+                    (organization_id, user_id),
+                )
+                revoke_connection.commit()
+            finally:
+                revoke_connection.close()
+            return b"rendered-but-not-authorized"
+
+        monkeypatch.setattr(document_worker, "run_document_job", render_then_revoke)
+
+        assert process_next_durable_document_job(database, job_id=job_id)
+        job = get_document_export_job(database, job_id, organization_id, user_id)
+        assert job["status"] == "failed"
+        assert job["last_error_code"] == "DocumentJobAuthorizationError"
+        assert not (_document_job_dir(job_id) / "result.json").exists()
+    finally:
+        connection.rollback()
+        if job_id:
+            connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
+            shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        if organization_id:
+            _cleanup_export_job_scope(connection, organization_id)
+        connection.close()
+        database.close()
+
+
+def test_completed_export_is_not_downloadable_after_permission_revocation(
+    tmp_path, monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    database = PostgresDatabase(database_url)
+    connection = database.get_connection()
+    job_id = None
+    organization_id = None
+    try:
+        (
+            organization_id,
+            user_id,
+            package_id,
+            policy,
+            fingerprint,
+        ) = _seed_export_job_scope(connection)
+        job_id = enqueue_document_export(
+            "export_excel",
+            {"function": "create_phanlo_excel", "args": [[]]},
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
+            filename="export.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
+            database=database,
+        )
+        assert process_next_durable_document_job(database, job_id=job_id)
+        connection.execute(
+            """UPDATE thanh_vien_to_chuc
+                  SET trang_thai_thanh_vien = 'left'
+                WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, user_id),
+        )
+        connection.commit()
+
+        with pytest.raises(DocumentJobAuthorizationError):
+            read_document_export_result(
+                database, job_id, organization_id, user_id
+            )
+    finally:
+        connection.rollback()
+        if job_id:
+            connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
+            shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        if organization_id:
+            _cleanup_export_job_scope(connection, organization_id)
+        connection.close()
+        database.close()
+
+
+def test_retry_reauthorizes_and_only_one_concurrent_request_wins(
+    tmp_path, monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    database = PostgresDatabase(database_url)
+    connection = database.get_connection()
+    job_id = None
+    organization_id = None
+    try:
+        (
+            organization_id,
+            user_id,
+            package_id,
+            policy,
+            fingerprint,
+        ) = _seed_export_job_scope(connection)
+        job_id = enqueue_document_export(
+            "export_excel",
+            {"function": "create_phanlo_excel", "args": [[]]},
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
+            filename="export.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
+            database=database,
+        )
+        connection.execute(
+            "UPDATE document_jobs SET status = 'failed' WHERE id = ?",
+            (job_id,),
+        )
+        connection.commit()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(
+                executor.map(
+                    lambda _index: retry_failed_durable_document_job(database, job_id),
+                    range(2),
+                )
+            )
+        assert sorted(results) == [False, True]
+
+        connection.execute(
+            """UPDATE document_jobs SET status = 'failed' WHERE id = ?""",
+            (job_id,),
+        )
+        connection.execute(
+            """UPDATE thanh_vien_to_chuc
+                  SET trang_thai_thanh_vien = 'left'
+                WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, user_id),
+        )
+        connection.commit()
+        with pytest.raises(DocumentJobAuthorizationError):
+            retry_failed_durable_document_job(database, job_id)
+        assert get_document_export_job(
+            database, job_id, organization_id, user_id
+        )["status"] == "failed"
+    finally:
+        connection.rollback()
+        if job_id:
+            connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
+            shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        if organization_id:
+            _cleanup_export_job_scope(connection, organization_id)
+        connection.close()
+        database.close()
+
+
+def test_internal_isolated_async_job_runs_through_durable_queue(
+    tmp_path, monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    monkeypatch.setenv("DOCUMENT_WORKER_EXECUTION_MODE", "embedded")
+    database = PostgresDatabase(database_url)
+    monkeypatch.setattr(document_worker, "_document_queue_database", lambda: database)
+    try:
+        result = asyncio.run(
+            run_document_job_async(
+                "export_excel",
+                {"function": "create_phanlo_excel", "args": [[]]},
+            )
+        )
+        assert bytes(result).startswith(b"PK")
+    finally:
         database.close()

@@ -22,6 +22,19 @@ Tài liệu này bổ sung các finding H1–H14 được phát hiện sau khi �
 
 Đây là nhiệm vụ triển khai hoàn chỉnh. Không được dừng ở báo cáo, TODO, skeleton, helper chưa được nối vào production path, test bị skip, hoặc sửa một seam trong khi các seam tương đương vẫn lệch contract.
 
+## 0.1. Business contract ưu tiên cao nhất — không tự ý đổi hiển thị dữ liệu hoặc quyền
+
+Phần này thay thế mọi yêu cầu hoặc suy luận mâu thuẫn trong prompt gốc, prompt audit vòng 1, H2 của tài liệu này, ADR 0008 và implementation phát sinh từ các nội dung đó.
+
+1. Codex không được tự ý thêm/bỏ masking, redaction, ẩn trường, lọc response hoặc thay đổi dữ liệu người dùng nhìn thấy.
+2. Codex không được tự ý thêm/bỏ/gộp/tách hoặc đổi semantics của role, permission, assignment scope, capability, entitlement, inheritance hay default allow/deny.
+3. “An toàn hơn”, “least privilege”, “fail-closed” hoặc “best practice” không phải là thẩm quyền để thay đổi nghiệp vụ. Khi prompt không yêu cầu rõ, phải giữ nguyên hành vi. Nếu contract chưa rõ và thay đổi là cần thiết, phải hỏi chủ sản phẩm trước khi sửa code/schema/UI/test.
+4. Người có quyền đọc bản ghi theo tenant + module + assignment + record scope phải xem đầy đủ dữ liệu của bản ghi đó, bao gồm CCCD, số tài khoản, ngân hàng, chữ ký, con dấu và trường liên quan.
+5. Entitlement/capability xuất Word chỉ kiểm soát hành động tạo hoặc tải tài liệu Word; tuyệt đối không dùng nó để che/mở dữ liệu ở API hoặc giao diện đọc bản ghi.
+6. Không tồn tại capability đọc dữ liệu nhạy cảm riêng trong contract hiện hành. Mọi implementation, UI, migration, visibility epoch và test được thêm dựa trên giả định này phải được loại bỏ hoặc vô hiệu hóa tương thích.
+7. Các rào chắn tenant isolation, module permission, assignment scope, record authorization, session và audit vẫn bắt buộc; quy tắc này không mở quyền truy cập bản ghi ngoài scope.
+8. Mọi thay đổi quyền/hiển thị được phép trong tương lai phải có xác nhận nghiệp vụ rõ ràng, ADR/business contract, compatibility/migration plan và regression tests xuyên mọi seam liên quan.
+
 ---
 
 # 1. Quy tắc làm việc bắt buộc
@@ -62,7 +75,7 @@ Phải đọc toàn bộ ADR 0001–0007 trong `docs/adr/`. Nếu code hiện h�
 Ít nhất phải chốt nhất quán các contract sau:
 
 1. Canonical module identity và alias migration.
-2. Quyền đọc sensitive record so với quyền export sensitive document.
+2. Quyền đọc đầy đủ bản ghi sau khi đã qua tenant/module/assignment/record scope; quyền export Word là action entitlement độc lập và không được chi phối hiển thị trường.
 3. Assignment khi offboard là optional hay bắt buộc successor.
 4. Active role là persona/UI hay security boundary thực sự.
 5. Visibility epoch gồm những input nào và legacy cursor được nâng cấp ra sao.

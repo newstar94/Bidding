@@ -1110,6 +1110,9 @@ middleware = [
 import contextlib
 
 
+LOCAL_DATABASE_SUPERVISOR_ENV = "BIDDINGFLOW_LOCAL_DATABASE_SUPERVISOR"
+
+
 def _initialize_database():
     from backend.db.db_helper import PostgresDatabase
     from backend.db.postgres_schema import initialize_and_log
@@ -1127,6 +1130,8 @@ def _initialize_database():
 def _start_local_database_if_managed():
     """Start the repository-managed PostgreSQL cluster for local development."""
 
+    if os.environ.get(LOCAL_DATABASE_SUPERVISOR_ENV) == "1":
+        return False
     setup_script = os.path.join(project_root, "scripts", "setup_local_postgres.py")
     if not os.path.isfile(setup_script):
         return False
@@ -1140,6 +1145,14 @@ def _start_local_database_if_managed():
         return False
     ensure_local_postgres_running()
     return True
+
+
+def _start_local_database_before_reloader():
+    """Let the stable Uvicorn supervisor own local PostgreSQL startup."""
+
+    started = _start_local_database_if_managed()
+    os.environ[LOCAL_DATABASE_SUPERVISOR_ENV] = "1"
+    return started
 
 
 @contextlib.asynccontextmanager
@@ -1185,6 +1198,7 @@ app = Starlette(
 if __name__ == "__main__":
     import uvicorn
     if APP_DEBUG:
+        _start_local_database_before_reloader()
         uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=True, proxy_headers=False)
     else:
         uvicorn.run(app, host=APP_HOST, port=APP_PORT, reload=False, proxy_headers=False)

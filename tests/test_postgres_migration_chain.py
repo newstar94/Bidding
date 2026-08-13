@@ -413,9 +413,9 @@ def test_v46_exact_catalog_only_advances_version_without_rebuilding_objects():
         cursor.execute("UPDATE database_metadata SET schema_version = 45 WHERE id = 1")
         before = _schema_object_oids(cursor)
 
-        assert apply_database_upgrades(cursor, 45, context) == DB_SCHEMA_VERSION
-
+        assert apply_database_upgrades(cursor, 45, context, target_version=46) == 46
         assert _schema_object_oids(cursor) == before
+        assert apply_database_upgrades(cursor, 46, context) == DB_SCHEMA_VERSION
         assert cursor.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
         ).fetchone()[0] == DB_SCHEMA_VERSION

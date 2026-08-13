@@ -426,6 +426,14 @@ try {
       && !isExpectedTelemetryBackpressure(response)) {
       let body = "";
       try { body = await response.text(); } catch {}
+      // Delta 409 is the protocol's safe-reset/full-sync response.  The page
+      // immediately retries through the authoritative pull path; it is not a
+      // failed business mutation and must not poison this long E2E's error list.
+      if (
+        response.status() === 409
+        && response.request().method() === "GET"
+        && new URL(response.url()).pathname === "/api/sync/delta"
+      ) return;
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
     }
   });

@@ -49,16 +49,20 @@ Phân loại có thẩm quyền của một revision nguồn, xác định revis
 _Avoid_: Trạng thái giao diện, lựa chọn materialize của client
 
 **Thu hồi phạm vi hiển thị**:
-Sự kiện một tài khoản không còn được phép giữ hoặc xem dữ liệu đã đồng bộ trước đó do thay đổi membership, phân công, quyền phân hệ hoặc capability nhạy cảm.
+Sự kiện một tài khoản không còn được phép giữ hoặc xem bản ghi đã đồng bộ trước đó do thay đổi membership, phân công, quyền phân hệ hoặc record scope. Không được dùng capability cấp trường để che một phần bản ghi mà người dùng vẫn có quyền đọc.
 _Avoid_: Xóa bản ghi nghiệp vụ, tombstone xóa dữ liệu
 
 **Xuất bản chính thức**:
 Tài liệu được tạo từ snapshot đã commit trên máy chủ, có kiểm tra quyền và entitlement tại thời điểm phát hành, dùng làm kết quả nghiệp vụ hoặc tuân thủ.
 _Avoid_: Xuất bản nháp cục bộ, tải mẫu rỗng
 
-**Quyền đọc bản ghi nhạy cảm**:
-Quyền xem các trường tài chính, định danh, chữ ký hoặc con dấu trong bản ghi tương tác; quyền này độc lập với quyền đưa cùng trường vào tài liệu xuất.
-_Avoid_: Quyền xuất tài liệu, quyền xem phân hệ cơ bản
+**Đọc đầy đủ bản ghi đã được cấp quyền**:
+Sau khi tenant, module, assignment và record scope cho phép đọc một bản ghi, người dùng xem đầy đủ các trường nghiệp vụ của bản ghi đó, bao gồm thông tin tài chính, định danh, chữ ký và con dấu. Quyền xuất Word chỉ kiểm soát hành động xuất tài liệu, không kiểm soát hiển thị trường.
+_Avoid_: Capability đọc nhạy cảm riêng, masking mặc định, dùng entitlement Word để che dữ liệu
+
+**Thay đổi quyền hoặc hiển thị dữ liệu**:
+Thay đổi masking, redaction, trường hiển thị, role, permission, scope, capability, entitlement hoặc inheritance là quyết định nghiệp vụ cần chủ sản phẩm xác nhận rõ ràng; không được tự suy diễn từ best practice hoặc mục tiêu hardening.
+_Avoid_: Tự chọn fail-closed, tự hạ quyền, sửa test để hợp thức hóa semantics chưa được duyệt
 
 **Vai trò hoạt động**:
 Vai trò quyền hạn tối thiểu mà tài khoản chủ động chọn trong một workspace; chọn “Chuyên viên” thực sự hạ quyền backend và phạm vi dữ liệu, không chỉ đổi giao diện.

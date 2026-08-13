@@ -8,14 +8,15 @@ live under ``data/`` and are ignored by Git.
 
 from __future__ import annotations
 
-import os
 import argparse
 import base64
+import os
 import secrets
-import sys
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
+from pathlib import Path
 from urllib.parse import quote, urlparse
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
@@ -89,6 +90,16 @@ def _run(
     )
 
 
+def _pg_ctl_creation_flags() -> int:
+    """Detach a managed postmaster from Uvicorn's reload console on Windows."""
+
+    if os.name != "nt":
+        return 0
+    return int(getattr(subprocess, "DETACHED_PROCESS", 0)) | int(
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    )
+
+
 def _run_pg_ctl(*args: str) -> None:
     """Run pg_ctl without captured pipes inherited by the detached postmaster."""
 
@@ -99,7 +110,68 @@ def _run_pg_ctl(*args: str) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         timeout=60,
+        creationflags=_pg_ctl_creation_flags(),
     )
+
+
+def _is_local_postgres_running(pg_ctl: Path, data_dir: Path) -> bool:
+    try:
+        status = subprocess.run(
+            [str(pg_ctl), "-D", str(data_dir), "status"],
+            check=False,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return status.returncode == 0
+
+
+def _is_local_postgres_accepting(pg_root: Path, port: int) -> bool:
+    pg_isready = pg_root / "bin" / "pg_isready.exe"
+    if not pg_isready.is_file():
+        return False
+    try:
+        readiness = subprocess.run(
+            [str(pg_isready), "-h", "127.0.0.1", "-p", str(port), "-q"],
+            check=False,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return readiness.returncode == 0
+
+
+def _wait_for_local_postgres_transition(
+    pg_root: Path,
+    pg_ctl: Path,
+    data_dir: Path,
+    port: int,
+    *,
+    timeout_seconds: float = 60,
+) -> str:
+    """Wait until a recovering/shutting-down postmaster is ready or stopped."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if _is_local_postgres_accepting(pg_root, port):
+            return "ready"
+        if not _is_local_postgres_running(pg_ctl, data_dir):
+            return "stopped"
+        if time.monotonic() >= deadline:
+            return "transitioning"
+        time.sleep(0.25)
+
+
+def _postgres_log_path(data_dir: Path) -> Path:
+    """Keep the pg_ctl log outside PGDATA so crash recovery can fsync safely."""
+
+    log_path = data_dir.parent / "logs" / f"{data_dir.name}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    return log_path
 
 
 def _replace_env_value(lines: list[str], key: str, value: str) -> None:
@@ -211,27 +283,51 @@ def ensure_local_postgres_running(
             "Local PostgreSQL has not been initialized. Run "
             "python scripts/setup_local_postgres.py once."
         )
-    status = subprocess.run(
-        [str(pg_ctl), "-D", str(data_dir), "status"],
-        check=False,
-        capture_output=True,
-        stdin=subprocess.DEVNULL,
-        timeout=15,
+    state = _wait_for_local_postgres_transition(
+        pg_root,
+        pg_ctl,
+        data_dir,
+        port,
     )
-    if status.returncode == 0:
+    if state == "ready":
         return False
-    print("Starting local PostgreSQL...", flush=True)
-    _run_pg_ctl(
-        str(pg_ctl),
-        "-D",
-        str(data_dir),
-        "-l",
-        str(data_dir / "postgres.log"),
-        "-o",
-        f"-p {port} -h 127.0.0.1",
-        "start",
-    )
-    return True
+    if state == "transitioning":
+        raise RuntimeError(
+            "Local PostgreSQL remained in recovery or shutdown for more than 60 seconds."
+        )
+
+    log_path = _postgres_log_path(data_dir)
+    last_error = None
+    for _attempt in range(2):
+        print("Starting local PostgreSQL...", flush=True)
+        try:
+            _run_pg_ctl(
+                str(pg_ctl),
+                "-D",
+                str(data_dir),
+                "-l",
+                str(log_path),
+                "-o",
+                f"-p {port} -h 127.0.0.1",
+                "start",
+            )
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            last_error = exc
+            state = _wait_for_local_postgres_transition(
+                pg_root,
+                pg_ctl,
+                data_dir,
+                port,
+            )
+            if state == "ready":
+                return False
+            if state == "transitioning":
+                break
+
+    raise RuntimeError(
+        f"Local PostgreSQL could not start; inspect {log_path}."
+    ) from last_error
 
 
 def initialize_application_schemas(

@@ -925,6 +925,22 @@ def execute_sync_mutation(
                     table_name,
                     incoming_record_id,
                 )
+                if aggregate_version_command:
+                    db_row_data = record_serializer.serialize(
+                        table_name,
+                        item,
+                        previous_record,
+                    )
+                    write_result = record_writer.write(
+                        payload_key=payload_key,
+                        table_name=table_name,
+                        item=item,
+                        db_row_data=db_row_data,
+                        previous_record=previous_record,
+                    )
+                    if write_result.conflict_error:
+                        sync_item_errors.append(write_result.conflict_error)
+                    continue
                 cursor.execute("SAVEPOINT sync_item")
                 try:
                     db_row_data = record_serializer.serialize(

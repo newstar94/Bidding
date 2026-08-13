@@ -6,6 +6,14 @@ from backend.sync.mapper import attach_child_rows_to_items, map_db_to_json
 from backend.sync.repository import get_current_sync_version
 
 
+_QUERY_CHUNK_SIZE = 500
+
+
+def _chunks(values):
+    for offset in range(0, len(values), _QUERY_CHUNK_SIZE):
+        yield values[offset:offset + _QUERY_CHUNK_SIZE]
+
+
 class AggregateVersionRepository:
     """Load version source aggregates through a transaction-owned cursor."""
 
@@ -39,34 +47,35 @@ class AggregateVersionRepository:
         package_ids = [package["id"] for package in packages if package.get("id")]
         if not package_ids:
             return
-        placeholders = ", ".join("?" for _ in package_ids)
-        rows = self.cursor.execute(
-            f"""SELECT goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
-                FROM goi_thau_chuyen_gia
-                WHERE organization_id = ?
-                  AND goi_thau_id IN ({placeholders})
-                ORDER BY goi_thau_id, loai, chuyen_gia_id
-                FOR UPDATE""",  # noqa: S608 - placeholders only
-            (organization_id, *package_ids),
-        ).fetchall()
         packages_by_id = {str(package["id"]): package for package in packages}
-        for raw_row in rows:
-            row = self._row_dict(raw_row)
-            package = packages_by_id.get(str(row.get("goi_thau_id")))
-            if not package:
-                continue
-            relation = {
-                "chuyenGiaId": row.get("chuyen_gia_id"),
-                "id": row.get("chuyen_gia_id"),
-                "chucVu": row.get("chuc_vu") or "Tổ viên",
-                "congViec": row.get("cong_viec") or "",
-            }
-            target = (
-                "toChuyenGia"
-                if row.get("loai") == "chuyen_gia"
-                else "toThamDinh"
-            )
-            package[target].append(relation)
+        for package_chunk in _chunks(package_ids):
+            placeholders = ", ".join("?" for _ in package_chunk)
+            rows = self.cursor.execute(
+                f"""SELECT goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
+                    FROM goi_thau_chuyen_gia
+                    WHERE organization_id = ?
+                      AND goi_thau_id IN ({placeholders})
+                    ORDER BY goi_thau_id, loai, chuyen_gia_id
+                    FOR UPDATE""",  # noqa: S608 - placeholders only
+                (organization_id, *package_chunk),
+            ).fetchall()
+            for raw_row in rows:
+                row = self._row_dict(raw_row)
+                package = packages_by_id.get(str(row.get("goi_thau_id")))
+                if not package:
+                    continue
+                relation = {
+                    "chuyenGiaId": row.get("chuyen_gia_id"),
+                    "id": row.get("chuyen_gia_id"),
+                    "chucVu": row.get("chuc_vu") or "Tổ viên",
+                    "congViec": row.get("cong_viec") or "",
+                }
+                target = (
+                    "toChuyenGia"
+                    if row.get("loai") == "chuyen_gia"
+                    else "toThamDinh"
+                )
+                package[target].append(relation)
 
     def _load_package_relations(self, organization_id, package_ids):
         state = {
@@ -77,7 +86,6 @@ class AggregateVersionRepository:
         }
         if not package_ids:
             return state
-        placeholders = ", ".join("?" for _ in package_ids)
         relation_specs = (
             ("goithauhanghoa", "goi_thau_hang_hoa", "goi_thau_id"),
             ("thongtinmothau", "thong_tin_mo_thau", "goi_thau_id"),
@@ -88,28 +96,32 @@ class AggregateVersionRepository:
             ),
         )
         for payload_key, table_name, parent_column in relation_specs:
-            rows = self.cursor.execute(
-                f"""SELECT * FROM {table_name}
-                    WHERE organization_id = ?
-                      AND {parent_column} IN ({placeholders})
-                    ORDER BY {parent_column}, id
-                    FOR UPDATE""",  # noqa: S608 - fixed repository identifiers
-                (organization_id, *package_ids),
-            ).fetchall()
-            state[payload_key] = self._mapped_rows(table_name, rows)
+            for package_chunk in _chunks(package_ids):
+                placeholders = ", ".join("?" for _ in package_chunk)
+                rows = self.cursor.execute(
+                    f"""SELECT * FROM {table_name}
+                        WHERE organization_id = ?
+                          AND {parent_column} IN ({placeholders})
+                        ORDER BY {parent_column}, id
+                        FOR UPDATE""",  # noqa: S608 - fixed repository identifiers
+                    (organization_id, *package_chunk),
+                ).fetchall()
+                state[payload_key].extend(self._mapped_rows(table_name, rows))
 
-        assignments = self.cursor.execute(
-            f"""SELECT * FROM phan_cong_nhan_su
-                WHERE organization_id = ?
-                  AND loai_doi_tuong = 'goithau'
-                  AND id_muc_tieu IN ({placeholders})
-                ORDER BY id_muc_tieu, id
-                FOR UPDATE""",  # noqa: S608 - placeholders only
-            (organization_id, *package_ids),
-        ).fetchall()
-        state["assignments"] = self._mapped_rows(
-            "phan_cong_nhan_su", assignments
-        )
+        for package_chunk in _chunks(package_ids):
+            placeholders = ", ".join("?" for _ in package_chunk)
+            assignments = self.cursor.execute(
+                f"""SELECT * FROM phan_cong_nhan_su
+                    WHERE organization_id = ?
+                      AND loai_doi_tuong = 'goithau'
+                      AND id_muc_tieu IN ({placeholders})
+                    ORDER BY id_muc_tieu, id
+                    FOR UPDATE""",  # noqa: S608 - placeholders only
+                (organization_id, *package_chunk),
+            ).fetchall()
+            state["assignments"].extend(self._mapped_rows(
+                "phan_cong_nhan_su", assignments
+            ))
         self.attach_children(
             self.cursor,
             "thong_tin_mo_thau",

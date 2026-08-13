@@ -5,6 +5,7 @@ from importlib import import_module
 from backend.auth.auth_service import get_client_ip, get_rate_limit_decision, rate_limit_response
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError, run_blocking_io
 from backend.shared.logging_utils import error_response
+from backend.documents.export_policy_registry import governed_export
 
 
 _HEAVY_DOCUMENT_OPERATIONS = {
@@ -40,14 +41,17 @@ async def _dispatch(module_name, handler_name, request):
     return await getattr(module, handler_name)(request)
 
 
+@governed_export("docx.plan")
 async def export_plan_api(request):
     return await _dispatch("routes_docx", "export_plan_api", request)
 
 
+@governed_export("docx.package_report")
 async def export_report_api(request):
     return await _dispatch("routes_docx", "export_report_api", request)
 
 
+@governed_export("excel.timeline")
 async def export_timeline_api(request):
     return await _dispatch("routes_excel", "export_timeline_api", request)
 
@@ -96,29 +100,36 @@ async def import_excel_api(request):
     return await _dispatch("routes_excel", "import_excel_api", request)
 
 
+@governed_export("excel.generic_import_template")
 async def export_excel_template_api(request):
     return await _dispatch("routes_excel", "export_excel_template_api", request)
 
 
+@governed_export("excel.opening_template")
 async def export_mothau_template_api(request):
     return await _dispatch("routes_excel", "export_mothau_template_api", request)
 
 
+@governed_export("excel.evaluation")
 async def export_danhgiahsdt_template_api(request):
     return await _dispatch("routes_excel", "export_danhgiahsdt_template_api", request)
 
 
+@governed_export("excel.award_result")
 async def export_ketquaqd_template_api(request):
     return await _dispatch("routes_excel", "export_ketquaqd_template_api", request)
 
 
+@governed_export("excel.package_lot_draft_template")
 async def export_phanlo_excel_api(request):
     return await _dispatch("routes_excel", "export_phanlo_excel_api", request)
 
 
+@governed_export("excel.optional_purchase_draft_template")
 async def export_tuychonmuathem_excel_api(request):
     return await _dispatch("routes_excel", "export_tuychonmuathem_excel_api", request)
 
 
+@governed_export("excel.financial_opening")
 async def export_opening_fin_template_api(request):
     return await _dispatch("routes_excel", "export_opening_fin_template_api", request)

@@ -29,6 +29,7 @@ from backend.documents.routes_docx import (
     _validate_export_snapshot,
 )
 from backend.documents.timeline_context_service import build_timeline_context
+from backend.documents.export_policy_registry import export_policy, governed_export
 
 MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -103,6 +104,13 @@ def _can_export_package(role_or_err, org_name, package_id):
 
 
 def _timeline_export_entitlement_response(role_or_err, organization_id):
+    policy = export_policy("excel.timeline")
+    return _export_entitlement_response(role_or_err, organization_id, policy)
+
+
+def _export_entitlement_response(role_or_err, organization_id, policy):
+    if not policy.entitlement_required:
+        return None
     conn = database.get_connection()
     try:
         enabled = can_use_document_export(
@@ -110,7 +118,7 @@ def _timeline_export_entitlement_response(role_or_err, organization_id):
             role_or_err,
             role_or_err.user_id,
             organization_id,
-            format="xlsx",
+            format=policy.format,
         )
     finally:
         conn.close()
@@ -118,8 +126,8 @@ def _timeline_export_entitlement_response(role_or_err, organization_id):
         return None
     return JSONResponse(
         {
-            "error": "Phạm vi đang làm việc chưa có gói trả phí hoạt động để xuất Excel.",
-            "code": "TIMELINE_EXPORT_SUBSCRIPTION_REQUIRED",
+            "error": "Phạm vi đang làm việc chưa có gói trả phí hoạt động để xuất tài liệu.",
+            "code": "DOCUMENT_EXPORT_SUBSCRIPTION_REQUIRED",
         },
         status_code=403,
     )
@@ -161,6 +169,7 @@ async def _export_excel(function_name, *args):
     return BytesIO(result)
 
 
+@governed_export("excel.timeline")
 async def export_timeline_api(request):
     package_id = clean_id(request.path_params.get("package_id"))
     try:
@@ -279,8 +288,10 @@ async def import_excel_api(request):
     except Exception as e:
         return _excel_error(request, e, "import_excel_api")
 
+@governed_export("excel.generic_import_template")
 async def export_excel_template_api(request):
     try:
+        export_policy("excel.generic_import_template")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
@@ -301,8 +312,10 @@ async def export_excel_template_api(request):
     except Exception as e:
         return _excel_error(request, e, "export_excel_template_api")
 
+@governed_export("excel.opening_template")
 async def export_mothau_template_api(request):
     try:
+        export_policy("excel.opening_template")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
@@ -327,12 +340,19 @@ async def export_mothau_template_api(request):
     except Exception as e:
         return _excel_error(request, e, "export_mothau_template_api")
 
+@governed_export("excel.financial_opening")
 async def export_opening_fin_template_api(request):
     try:
+        policy = export_policy("excel.financial_opening")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         org_name = get_active_org(request, role_or_err.user_id)
+        entitlement_error = _export_entitlement_response(
+            role_or_err, org_name, policy,
+        )
+        if entitlement_error is not None:
+            return entitlement_error
 
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
@@ -364,12 +384,19 @@ async def export_opening_fin_template_api(request):
     except Exception as e:
         return _excel_error(request, e, "export_opening_fin_template_api")
 
+@governed_export("excel.evaluation")
 async def export_danhgiahsdt_template_api(request):
     try:
+        policy = export_policy("excel.evaluation")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         org_name = get_active_org(request, role_or_err.user_id)
+        entitlement_error = _export_entitlement_response(
+            role_or_err, org_name, policy,
+        )
+        if entitlement_error is not None:
+            return entitlement_error
 
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
@@ -411,12 +438,19 @@ async def export_danhgiahsdt_template_api(request):
     except Exception as e:
         return _excel_error(request, e, "export_danhgiahsdt_template_api")
 
+@governed_export("excel.award_result")
 async def export_ketquaqd_template_api(request):
     try:
+        policy = export_policy("excel.award_result")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         org_name = get_active_org(request, role_or_err.user_id)
+        entitlement_error = _export_entitlement_response(
+            role_or_err, org_name, policy,
+        )
+        if entitlement_error is not None:
+            return entitlement_error
 
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
@@ -450,8 +484,10 @@ async def export_ketquaqd_template_api(request):
     except Exception as e:
         return _excel_error(request, e, "export_ketquaqd_template_api")
 
+@governed_export("excel.package_lot_draft_template")
 async def export_phanlo_excel_api(request):
     try:
+        export_policy("excel.package_lot_draft_template")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
@@ -468,7 +504,7 @@ async def export_phanlo_excel_api(request):
 
         out_stream = await _export_excel("create_phanlo_excel", phan_lo_list)
 
-        filename = "Danh_sach_phan_lo.xlsx"
+        filename = "Mau_nhap_lieu_phan_lo_ban_nhap.xlsx"
         return StreamingResponse(
             out_stream,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -479,8 +515,10 @@ async def export_phanlo_excel_api(request):
     except Exception as e:
         return _excel_error(request, e, "export_phanlo_excel_api")
 
+@governed_export("excel.optional_purchase_draft_template")
 async def export_tuychonmuathem_excel_api(request):
     try:
+        export_policy("excel.optional_purchase_draft_template")
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
@@ -499,7 +537,7 @@ async def export_tuychonmuathem_excel_api(request):
             "create_tuychonmuathem_excel", tuy_chon_list
         )
 
-        filename = "Danh_sach_tuy_chon_mua_them.xlsx"
+        filename = "Mau_nhap_lieu_tuy_chon_mua_them_ban_nhap.xlsx"
         return StreamingResponse(
             out_stream,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

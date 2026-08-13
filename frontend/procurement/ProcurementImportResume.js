@@ -1,5 +1,6 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { SequentialRevisionController } from "./SequentialRevisionController.js";
+import { currentWorkspaceToken, workspaceChangedError } from "../app/workspaceLease.js";
 
 const RESUME_KEY = "procurement_import_resume_v1";
 const ACTIVE_STATUSES = new Set(["READY", "EDITING_REVISION", "WAITING_NEXT_CONFIRMATION"]);
@@ -56,7 +57,7 @@ export async function cancelActiveProcurementImportSession() {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
       flow.session.sessionId,
       {
-        workspaceLease: this.model?.activeWorkspaceLease || null,
+        workspaceLease: currentWorkspaceToken(this.model) || null,
         kind,
       },
     );
@@ -82,12 +83,16 @@ export async function resumeProcurementImportSession({
   const store = new ProcurementImportResumeStore(this.model?.workspaceStorage);
   const pointer = store.load();
   if (!pointer || this.procurementPlanImport || this.procurementPackageImport) return false;
-  const workspaceLease = String(this.model?.activeWorkspaceLease || "");
+  const workspaceLease = currentWorkspaceToken(this.model);
+  const assertCurrentWorkspace = () => {
+    if (currentWorkspaceToken(this.model) !== workspaceLease) throw workspaceChangedError();
+  };
   try {
     const session = await client.getImportSession(pointer.sessionId, {
       workspaceLease: workspaceLease || null,
       kind: pointer.kind === "PACKAGE" ? "notice" : "plan",
     });
+    assertCurrentWorkspace();
     if (!ACTIVE_STATUSES.has(String(session?.status || ""))) {
       store.clear();
       return false;
@@ -107,12 +112,14 @@ export async function resumeProcurementImportSession({
       `Phiên nhập ${session.familyNo} đang dở ở phiên bản ${currentRevision.revisionNumber}. Bạn có muốn tiếp tục không?`,
       "rotate-ccw",
     );
+    assertCurrentWorkspace();
     if (!shouldResume) {
       try {
         await client.cancelImportSession(session.sessionId, {
           workspaceLease: workspaceLease || null,
           kind: session.kind === "PACKAGE" ? "notice" : "plan",
         });
+        assertCurrentWorkspace();
       } finally {
         store.clear();
       }
@@ -132,12 +139,14 @@ export async function resumeProcurementImportSession({
     });
     sequential.currentIndex = currentIndex;
     const currentDraft = await sequential.loadCurrent();
+    assertCurrentWorkspace();
     const start = session.kind === "PACKAGE"
       ? this.startProcurementPackageImport
       : this.startProcurementPlanImport;
     await start?.call(this, {
       session, controller: sequential, currentDraft, client,
     });
+    assertCurrentWorkspace();
     return true;
   } catch (error) {
     if (["PROCUREMENT_SESSION_EXPIRED", "PROCUREMENT_REVISION_INVALID"].includes(error?.code)) {

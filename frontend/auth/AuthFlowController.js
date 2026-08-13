@@ -11,6 +11,7 @@ import { applyAccessContext, selectActiveOrganization } from "./accessContext.js
 import { setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { validateUsernameClient } from "./usernameClientPolicy.js";
+import { prepareExplicitLogout } from "./logoutMutationSafety.js";
 import {
   beginExplicitLogout,
   hideInitLoader,
@@ -414,14 +415,9 @@ export function setupAuth() {
         : "";
       const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", `Bạn có chắc chắn muốn đăng xuất tài khoản này không?${warning}`, "log-out");
       if (confirmed) {
+        const logoutDecision = await prepareExplicitLogout(this);
+        if (!logoutDecision.proceed) return;
         beginExplicitLogout();
-        try {
-          if (typeof this.autoSync === "function") {
-            await this.autoSync();
-          }
-        } catch (e) {
-          console.error("Failed final sync during logout:", e);
-        }
         try {
           await apiFetch("/api/auth/logout", {
             method: "POST",

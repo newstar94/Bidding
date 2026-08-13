@@ -25,6 +25,7 @@ from backend.documents.document_job_policy import (
     build_document_job_policy,
     verify_document_job_policy,
 )
+from backend.documents.export_policy_registry import governed_export
 from backend.shared.access_policy import can_read_record
 from backend.shared.client_ip import get_client_ip
 from backend.shared.database_io import run_database_read, run_database_write
@@ -80,6 +81,7 @@ def _job_access(request):
         connection.close()
 
 
+@governed_export("docx.package_report")
 async def create_package_export_job_api(request):
     valid, role = verify_session(request)
     if not valid:
@@ -195,6 +197,7 @@ async def document_export_job_status_api(request):
     })
 
 
+@governed_export("docx.package_report")
 async def download_document_export_job_api(request):
     access, job, error = await run_database_read(_job_access, request)
     if error:
@@ -252,6 +255,7 @@ async def cancel_document_export_job_api(request):
     )
 
 
+@governed_export("docx.package_report")
 async def retry_document_export_job_api(request):
     access, job, error = await run_database_read(_job_access, request)
     if error:

@@ -29,6 +29,7 @@ from backend.documents.document_worker import (
     DocumentWorkerInputError,
     run_document_job_async,
 )
+from backend.documents.export_policy_registry import governed_export
 from backend.documents.award_result_excel import reconciliation_filename
 from backend.documents.routes_docx import _content_disposition
 from backend.documents.upload_spooling import spooled_upload
@@ -170,6 +171,7 @@ def _authorize_winning_goods(request, package_id):
         connection.close()
 
 
+@governed_export("excel.winning_goods")
 async def export_winning_goods_excel_api(request):
     package_id = clean_id(request.path_params.get("package_id"))
     if not package_id:
@@ -414,6 +416,7 @@ async def validate_award_result_excel_api(request):
         return _safe_error(request, exception, "validate_award_result_excel_api")
 
 
+@governed_export("excel.award_result")
 async def export_award_result_excel_api(request):
     package_id = clean_id(request.path_params.get("package_id"))
     if not package_id:
@@ -587,6 +590,7 @@ async def award_result_excel_preview_api(request):
         return _safe_error(request, exception, "award_result_excel_preview_api")
 
 
+@governed_export("excel.award_result_reconciliation")
 async def award_result_excel_reconciliation_api(request):
     package_id = clean_id(request.path_params.get("package_id"))
     if not package_id:

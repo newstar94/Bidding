@@ -1,4 +1,8 @@
+import subprocess
+
 import pytest
+
+import scripts.setup_local_postgres as local_postgres
 
 from scripts.setup_local_postgres import (
     assert_safe_reset_environment,
@@ -155,6 +159,64 @@ def test_ensure_local_postgres_running_starts_stopped_cluster(monkeypatch, tmp_p
 
     assert ensure_local_postgres_running(pg_root=pg_root, data_dir=data_dir, port=55432)
     assert starts == [(
-        str(pg_ctl), "-D", str(data_dir), "-l", str(data_dir / "postgres.log"),
+        str(pg_ctl), "-D", str(data_dir), "-l", str(tmp_path / "logs" / "data.log"),
         "-o", "-p 55432 -h 127.0.0.1", "start",
     )]
+
+
+def test_ensure_local_postgres_running_retries_after_reload_shutdown(monkeypatch, tmp_path):
+    pg_root = tmp_path / "pgsql"
+    data_dir = tmp_path / "data"
+    (pg_root / "bin").mkdir(parents=True)
+    pg_ctl = pg_root / "bin" / "pg_ctl.exe"
+    pg_ctl.touch()
+    data_dir.mkdir()
+    (data_dir / "PG_VERSION").write_text("17", encoding="ascii")
+    accepting = iter((False, False, False))
+    running = iter((False, True, False))
+    starts = []
+
+    monkeypatch.setattr(
+        local_postgres,
+        "_is_local_postgres_accepting",
+        lambda *args, **kwargs: next(accepting),
+    )
+    monkeypatch.setattr(
+        local_postgres,
+        "_is_local_postgres_running",
+        lambda *args, **kwargs: next(running),
+    )
+    monkeypatch.setattr(local_postgres.time, "sleep", lambda _seconds: None)
+
+    def start(*args):
+        starts.append(args)
+        if len(starts) == 1:
+            raise subprocess.CalledProcessError(3, args)
+
+    monkeypatch.setattr(local_postgres, "_run_pg_ctl", start)
+
+    assert ensure_local_postgres_running(
+        pg_root=pg_root,
+        data_dir=data_dir,
+        port=55432,
+    )
+    expected = (
+        str(pg_ctl), "-D", str(data_dir), "-l", str(tmp_path / "logs" / "data.log"),
+        "-o", "-p 55432 -h 127.0.0.1", "start",
+    )
+    assert starts == [expected, expected]
+
+
+def test_pg_ctl_is_detached_from_windows_reload_console(monkeypatch):
+    calls = []
+    monkeypatch.setattr(local_postgres, "_pg_ctl_creation_flags", lambda: 0x08000200)
+    monkeypatch.setattr(
+        local_postgres.subprocess,
+        "run",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    local_postgres._run_pg_ctl("pg_ctl.exe", "start")
+
+    assert calls[0][1]["creationflags"] == 0x08000200
+    assert calls[0][1]["stdin"] is subprocess.DEVNULL

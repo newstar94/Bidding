@@ -2250,6 +2250,25 @@ def _upgrade_to_v58_add_document_job_policy(cursor, _context):
            CHECK(length(policy_hash) IN (0, 64))"""
     )
 
+
+def _upgrade_to_v59_rename_websocket_delivery_to_dispatch(cursor, _context):
+    """Record local hint dispatch without claiming global client delivery."""
+
+    cursor.execute(
+        "ALTER TABLE websocket_events ADD COLUMN IF NOT EXISTS dispatched_at INTEGER"
+    )
+    cursor.execute(
+        "ALTER TABLE websocket_events DROP CONSTRAINT IF EXISTS websocket_events_status_check"
+    )
+    cursor.execute(
+        "UPDATE websocket_events SET status = 'dispatched', dispatched_at = delivered_at WHERE status = 'delivered'"
+    )
+    cursor.execute(
+        """ALTER TABLE websocket_events
+           ADD CONSTRAINT websocket_events_status_check
+           CHECK(status IN ('pending', 'retry', 'dispatched', 'dead_letter'))"""
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2531,6 +2550,11 @@ UPGRADES = (
         58,
         "add_document_job_authorization_policy",
         _upgrade_to_v58_add_document_job_policy,
+    ),
+    DatabaseUpgrade(
+        59,
+        "rename_websocket_delivery_to_dispatch",
+        _upgrade_to_v59_rename_websocket_delivery_to_dispatch,
     ),
 )
 

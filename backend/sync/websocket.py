@@ -698,7 +698,7 @@ def _pending_broker_start_id():
         conn.close()
 
 
-def _record_broker_delivery(event_id, error=None):
+def _record_broker_dispatch(event_id, error=None):
     now = int(time.time())
     conn = database.get_connection()
     try:
@@ -706,12 +706,12 @@ def _record_broker_delivery(event_id, error=None):
         if error is None:
             conn.execute(
                 """UPDATE websocket_events
-                   SET status = 'delivered', attempt_count = attempt_count + 1,
-                       delivered_at = ?, last_error_code = NULL
+                   SET status = 'dispatched', attempt_count = attempt_count + 1,
+                       dispatched_at = ?, last_error_code = NULL
                    WHERE id = ?""",
                 (now, event_id),
             )
-            status = "delivered"
+            status = "dispatched"
         else:
             row = conn.execute(
                 "SELECT attempt_count FROM websocket_events WHERE id = ? FOR UPDATE",
@@ -742,7 +742,7 @@ def _record_broker_delivery(event_id, error=None):
 
 
 async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
-    """Fan out durable events using PostgreSQL LISTEN/NOTIFY with replay."""
+    """Dispatch best-effort hints locally; delta polling remains authoritative."""
     del poll_interval
     del start_after_id
     last_event_id = 0
@@ -782,14 +782,14 @@ async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
             try:
                 await dispatch_websocket_broker_event(event)
                 await run_blocking_io(
-                    _record_broker_delivery,
+                    _record_broker_dispatch,
                     int(event["id"]),
                     timeout_seconds=5.0,
                 )
                 last_event_id = max(last_event_id, int(event["id"]))
             except Exception as delivery_error:  # noqa: BLE001 - durable broker retries all delivery failures
                 status = await run_blocking_io(
-                    _record_broker_delivery,
+                    _record_broker_dispatch,
                     int(event["id"]),
                     delivery_error,
                     timeout_seconds=5.0,

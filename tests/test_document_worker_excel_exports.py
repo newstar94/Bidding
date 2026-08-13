@@ -173,6 +173,7 @@ def test_1g2t_evaluation_export_prefetches_database_data_before_worker(monkeypat
     )
     monkeypatch.setattr(routes_excel, "get_active_org", lambda *_args: "org-1")
     monkeypatch.setattr(routes_excel, "_can_export_package", lambda *_args: True)
+    monkeypatch.setattr(routes_excel, "_export_entitlement_response", lambda *_args: None)
     monkeypatch.setattr(
         excel_service.database,
         "get_connection",
@@ -297,6 +298,7 @@ def test_1g2t_financial_opening_export_prefetches_database_data(monkeypatch):
     )
     monkeypatch.setattr(routes_excel, "get_active_org", lambda *_args: "org-1")
     monkeypatch.setattr(routes_excel, "_can_export_package", lambda *_args: True)
+    monkeypatch.setattr(routes_excel, "_export_entitlement_response", lambda *_args: None)
     monkeypatch.setattr(
         excel_service.database,
         "get_connection",
@@ -366,6 +368,7 @@ def test_award_result_export_prefetches_database_data_before_worker(monkeypatch)
     )
     monkeypatch.setattr(routes_excel, "get_active_org", lambda *_args: "org-1")
     monkeypatch.setattr(routes_excel, "_can_export_package", lambda *_args: True)
+    monkeypatch.setattr(routes_excel, "_export_entitlement_response", lambda *_args: None)
     monkeypatch.setattr(
         excel_service.database,
         "get_connection",

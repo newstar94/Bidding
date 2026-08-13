@@ -1,4 +1,5 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
+import { currentWorkspaceToken } from "../app/workspaceLease.js";
 
 
 export function canApplyNoticePreview(preview) {
@@ -148,8 +149,7 @@ export class NoticeImportWizard {
       if (generation !== this.requestGeneration) return;
       if (code !== this.modal.querySelector("[data-procurement-notice-code]").value.trim()) return;
       if (
-        String(this.controller?.model?.activeWorkspaceLease || "")
-          !== requestWorkspaceLease
+        currentWorkspaceToken(this.controller?.model) !== requestWorkspaceLease
         || this.targetPackageRootId !== requestTargetRoot
       ) {
         this.preview = null;
@@ -235,7 +235,7 @@ export async function openProcurementNoticeImportWizard(packageId = null) {
   wizard.setContext({
     code: globalThis.document.getElementById("gt-ma")?.value || pkg.maGoiThau || "",
     targetPackageRootId: pkg.rootId || pkg.id,
-    workspaceLease: this.model?.activeWorkspaceLease || "",
+    workspaceLease: currentWorkspaceToken(this.model),
   });
   this.view.openModal("modal-procurement-notice-import");
 }

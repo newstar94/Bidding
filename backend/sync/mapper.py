@@ -1142,17 +1142,21 @@ def _select_children(
     extra_order="sort_order, id",
     extra_where="",
 ):
-    placeholders = ", ".join(["?"] * len(parent_ids))
-    params = list(parent_ids)
-    owner_filter = ""
-    if organization_id is not None:
-        owner_filter = " AND organization_id = ?"
-        params.append(organization_id)
-    cursor.execute(
-        f"SELECT * FROM {table} WHERE {parent_col} IN ({placeholders}){owner_filter}{extra_where} ORDER BY {parent_col}, {extra_order}",
-        params,
-    )
-    return [dict(row) for row in cursor.fetchall()]
+    rows = []
+    for offset in range(0, len(parent_ids), 500):
+        parent_chunk = parent_ids[offset:offset + 500]
+        placeholders = ", ".join(["?"] * len(parent_chunk))
+        params = list(parent_chunk)
+        owner_filter = ""
+        if organization_id is not None:
+            owner_filter = " AND organization_id = ?"
+            params.append(organization_id)
+        cursor.execute(
+            f"SELECT * FROM {table} WHERE {parent_col} IN ({placeholders}){owner_filter}{extra_where} ORDER BY {parent_col}, {extra_order}",
+            params,
+        )
+        rows.extend(dict(row) for row in cursor.fetchall())
+    return rows
 
 
 def _table_exists(cursor, table_name):

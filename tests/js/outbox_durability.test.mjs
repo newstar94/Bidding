@@ -98,6 +98,49 @@ function dualBackends({ localValue = null, databaseValue = null } = {}) {
   };
 }
 
+function sharedAtomicBackends() {
+  let indexed = null;
+  let local = null;
+  let transaction = Promise.resolve();
+  const database = {
+    async get() {
+      await transaction;
+      return clone(indexed);
+    },
+    update(_key, updater) {
+      let result;
+      transaction = transaction.then(() => {
+        result = updater(clone(indexed));
+        indexed = clone(result);
+      });
+      return transaction.then(() => clone(result));
+    },
+  };
+  const storage = {
+    getItem() { return null; },
+    readJson(_key, fallback) { return clone(local ?? fallback); },
+    writeJson(key, value) {
+      if (key === "bf_mutation_queue") local = clone(value);
+    },
+  };
+  return {
+    database,
+    storage,
+    get envelope() { return clone(indexed); },
+  };
+}
+
+function queueWithUpsert(id, name = id) {
+  return {
+    baseSyncVersion: "1",
+    clientMutationId: `mutation-${id}`,
+    dirtyTables: {},
+    upserts: { goithau: { [id]: { id, name } } },
+    deletes: [],
+    revision: 1,
+  };
+}
+
 test("localStorage read failure still hydrates IndexedDB evidence but marks it untrusted", async () => {
   const backends = dualBackends({ databaseValue: pendingEnvelope() });
   backends.setLocalReadError(new Error("localStorage denied"));
@@ -236,6 +279,77 @@ test("localStorage write failure still attempts IndexedDB and flush rejects degr
   assert.equal(backends.writes.some(([backend]) => backend === "indexeddb"), true);
   assert.equal(backends.databaseValue.queue.upserts.goithau["package-1"].name, "LOCAL PENDING");
   assert.equal(store.getStatus().state, "degraded");
+});
+
+test("two stale tabs atomically merge disjoint mutations instead of last-writer-wins", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = new WorkspaceMutationOutboxStore(backends);
+  const tabB = new WorkspaceMutationOutboxStore(backends);
+  await Promise.all([
+    tabA.hydrate({ createId: () => "empty-a" }),
+    tabB.hydrate({ createId: () => "empty-b" }),
+  ]);
+
+  tabA.persist(queueWithUpsert("package-a"), []);
+  tabB.persist(queueWithUpsert("package-b"), []);
+  await Promise.all([tabA.flush(), tabB.flush()]);
+
+  assert.deepEqual(
+    Object.keys(backends.envelope.queue.upserts.goithau).sort(),
+    ["package-a", "package-b"],
+  );
+});
+
+test("stale ACK removes only its receipt while a concurrent enqueue survives", async () => {
+  const backends = sharedAtomicBackends();
+  const seed = new WorkspaceMutationOutboxStore(backends);
+  seed.persist(queueWithUpsert("package-a"), []);
+  await seed.flush();
+  const ackTab = new WorkspaceMutationOutboxStore(backends);
+  const enqueueTab = new WorkspaceMutationOutboxStore(backends);
+  await Promise.all([
+    ackTab.hydrate({ createId: () => "ack" }),
+    enqueueTab.hydrate({ createId: () => "enqueue" }),
+  ]);
+
+  ackTab.persist(null, []);
+  enqueueTab.persist({
+    ...queueWithUpsert("package-a"),
+    clientMutationId: "mutation-b",
+    upserts: {
+      goithau: {
+        "package-a": { id: "package-a", name: "package-a" },
+        "package-b": { id: "package-b" },
+      },
+    },
+  }, []);
+  await Promise.all([ackTab.flush(), enqueueTab.flush()]);
+
+  assert.deepEqual(
+    Object.keys(backends.envelope.queue.upserts.goithau),
+    ["package-b"],
+  );
+});
+
+test("delete and upsert race has deterministic transaction-order last-operation-wins", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = new WorkspaceMutationOutboxStore(backends);
+  const tabB = new WorkspaceMutationOutboxStore(backends);
+  await Promise.all([tabA.hydrate(), tabB.hydrate()]);
+
+  tabA.persist({
+    ...queueWithUpsert("package-a"),
+    upserts: {},
+    deletes: [{ table: "goithau", id: "package-a" }],
+  }, [{ table: "goithau", id: "package-a" }]);
+  tabB.persist(queueWithUpsert("package-a", "newer upsert"), []);
+  await Promise.all([tabA.flush(), tabB.flush()]);
+
+  assert.equal(backends.envelope.queue.deletes.length, 0);
+  assert.equal(
+    backends.envelope.queue.upserts.goithau["package-a"].name,
+    "newer upsert",
+  );
 });
 
 test("model exposes degraded outbox state, blocks synced edits, and recovers explicitly", async () => {

@@ -11,6 +11,7 @@ import {
   applySelectedRows,
   buildComparisonRows,
 } from "./ProcurementLookupPreview.js";
+import { currentWorkspaceToken } from "../app/workspaceLease.js";
 
 const PREVIEW_SCHEMA = "biddingflow-procurement-preview-v1";
 const CODE_PATTERN = /^(PL|IB)\d{10}(?:-\d{2})?$/i;
@@ -82,9 +83,7 @@ export class ProcurementInlineLookup {
     const generation = ++this.requestGeneration;
     this.lookupController?.abort();
     this.lookupController = new AbortController();
-    const workspaceLease = String(
-      this.controller?.model?.activeWorkspaceLease || "",
-    );
+    const workspaceLease = currentWorkspaceToken(this.controller?.model);
     const identity = formIdentity(form);
     setButtonLoading(button, true);
     this.setStatus(status, "Đang lấy dữ liệu từ Mua Sắm Công…", "loading");
@@ -105,8 +104,7 @@ export class ProcurementInlineLookup {
         const contextChanged = (
           formIdentity(form) !== identity
           || String(codeInput?.value || "").trim().toUpperCase() !== code
-          || String(this.controller?.model?.activeWorkspaceLease || "")
-            !== workspaceLease
+          || currentWorkspaceToken(this.controller?.model) !== workspaceLease
         );
         if (contextChanged) {
           this.setStatus(
@@ -163,8 +161,7 @@ export class ProcurementInlineLookup {
       const contextChanged = (
         formIdentity(form) !== identity
         || String(codeInput?.value || "").trim().toUpperCase() !== code
-        || String(this.controller?.model?.activeWorkspaceLease || "")
-          !== workspaceLease
+        || currentWorkspaceToken(this.controller?.model) !== workspaceLease
       );
       if (contextChanged) {
         this.setStatus(
@@ -283,7 +280,7 @@ export async function completeProcurementPackageImportRevision(savedPackageId) {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
       flow.session.sessionId,
       {
-        workspaceLease: this.model?.activeWorkspaceLease || null,
+        workspaceLease: currentWorkspaceToken(this.model) || null,
         kind: "notice",
       },
     );

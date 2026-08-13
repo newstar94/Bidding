@@ -257,7 +257,7 @@ test("inline package lookup fills bid guarantee without saving", async () => {
   const document = { getElementById: (id) => controls[id] || null };
   const controller = {
     model: {
-      activeWorkspaceLease: "org-1",
+      getWorkspaceToken: () => "org-1",
       formatVND: (value) => new Intl.NumberFormat("vi-VN").format(value),
     },
   };
@@ -546,7 +546,7 @@ test("inline plan lookup prepares all revisions and opens editable revision 00 w
   };
   const lookup = new ProcurementInlineLookup({
     controller: {
-      model: { activeWorkspaceLease: "org-1" },
+      model: { getWorkspaceToken: () => "org-1" },
       async startProcurementPlanImport(flow) { calls.push(["start", flow]); },
     },
     importClient: {
@@ -611,7 +611,7 @@ test("inline lookup discards a response after the active form changes", async ()
     "procurement-lookup-plan-status": status,
   };
   const lookup = new ProcurementInlineLookup({
-    controller: { model: { activeWorkspaceLease: "org-1" } },
+    controller: { model: { getWorkspaceToken: () => "org-1" } },
     importClient: {
       preparePlan: () => new Promise((resolve) => { resolvePrepare = resolve; }),
     },

@@ -27,7 +27,7 @@ def test_account_status_uses_a_forward_only_v48_migration():
         upgrade.version == 48 and upgrade.name == "add_account_status"
         for upgrade in UPGRADES
     )
-    assert UPGRADES[-1].version == DB_SCHEMA_VERSION == 58
+    assert UPGRADES[-1].version == DB_SCHEMA_VERSION == 59
     assert any(
         upgrade.version == 50
         and upgrade.name == "version_procurement_binding_snapshots"
@@ -56,7 +56,12 @@ def test_account_status_uses_a_forward_only_v48_migration():
         and upgrade.name == "repair_sensitive_record_read_capability_fk"
         for upgrade in UPGRADES
     )
-    assert UPGRADES[-1].name == "add_document_job_authorization_policy"
+    assert any(
+        upgrade.version == 58
+        and upgrade.name == "add_document_job_authorization_policy"
+        for upgrade in UPGRADES
+    )
+    assert UPGRADES[-1].name == "rename_websocket_delivery_to_dispatch"
     assert "trang_thai" in SCHEMA_DINH_NGHIA["tai_khoan"]["columns"]
     definition = SCHEMA_DINH_NGHIA["tai_khoan"]["columns"]["trang_thai"]
     assert "DEFAULT 'active'" in definition

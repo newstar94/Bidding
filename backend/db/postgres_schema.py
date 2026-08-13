@@ -1204,6 +1204,16 @@ def _historical_v46_catalog(latest_catalog):
     account = catalog["tables"]["tai_khoan"]
     account["columns"].pop("trang_thai", None)
     account["constraints"].pop("tai_khoan_trang_thai_check", None)
+    websocket_events = catalog["tables"]["websocket_events"]
+    websocket_events["columns"].pop("dispatched_at", None)
+    status_constraint = websocket_events["constraints"].get(
+        "websocket_events_status_check"
+    )
+    if status_constraint is not None:
+        status_constraint["definition"] = (
+            "CHECK (status = ANY (ARRAY['pending'::text, 'retry'::text, "
+            "'delivered'::text, 'dead_letter'::text]))"
+        )
     post_v46_tables = {
         "procurement_source_revision",
         "procurement_source_binding",

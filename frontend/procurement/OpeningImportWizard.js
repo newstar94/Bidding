@@ -1,5 +1,6 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { currentWorkspaceToken, workspaceChangedError } from "../app/workspaceLease.js";
 
 
 function openingCaseType(pkg) {
@@ -100,6 +101,10 @@ export async function importOpeningFromMuasamcong() {
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = "Đang lấy dữ liệu…";
+  const workspaceToken = currentWorkspaceToken(this.model);
+  const assertCurrentWorkspace = () => {
+    if (currentWorkspaceToken(this.model) !== workspaceToken) throw workspaceChangedError();
+  };
   try {
     const client = new ProcurementImportClient();
     const possibleNotice = /^IB\d{10}(?:-\d{2})?$/i.test(String(pkg.maGoiThau || ""))
@@ -108,8 +113,9 @@ export async function importOpeningFromMuasamcong() {
     const preview = await client.prepareOpening({
       packageId: pkg.id,
       noticeNo: possibleNotice,
-      workspaceLease: this.model.activeWorkspaceLease || null,
+      workspaceLease: workspaceToken || null,
     });
+    assertCurrentWorkspace();
     if (!canApplyOpeningPreview(preview, pkg)) {
       throw new Error("PROCUREMENT_PREVIEW_STALE");
     }
@@ -145,12 +151,14 @@ export async function importOpeningFromMuasamcong() {
         `${previewMessage} Áp dụng vào bản nháp hiện tại?`,
         "download-cloud",
       ) ? "OVERWRITE" : null;
+    assertCurrentWorkspace();
     if (!action) return;
     const applied = await client.applyOpening({
       previewId: preview.previewId,
       expectedPackageRowVersion: preview.package.rowVersion,
-      workspaceLease: this.model.activeWorkspaceLease || null,
+      workspaceLease: workspaceToken || null,
     });
+    assertCurrentWorkspace();
     const current = this.model.state.goithau.find(
       (item) => String(item.id) === String(pkg.id),
     );
@@ -220,6 +228,10 @@ export async function importFinancialOpeningFromMuasamcong({
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = "Đang lấy dữ liệu…";
+  const workspaceToken = currentWorkspaceToken(view.model);
+  const assertCurrentWorkspace = () => {
+    if (currentWorkspaceToken(view.model) !== workspaceToken) throw workspaceChangedError();
+  };
   try {
     const possibleNotice = /^IB\d{10}(?:-\d{2})?$/i.test(String(pkg.maGoiThau || ""))
       ? String(pkg.maGoiThau).slice(0, 12)
@@ -227,8 +239,9 @@ export async function importFinancialOpeningFromMuasamcong({
     const preview = await client.prepareOpening({
       packageId: pkg.id,
       noticeNo: possibleNotice,
-      workspaceLease: view.model.activeWorkspaceLease || null,
+      workspaceLease: workspaceToken || null,
     });
+    assertCurrentWorkspace();
     if (!canApplyOpeningPreview(preview, pkg)) {
       throw new Error("PROCUREMENT_PREVIEW_STALE");
     }
@@ -255,12 +268,14 @@ export async function importFinancialOpeningFromMuasamcong({
         `TBMT ${preview.notice.noticeNo}-${preview.notice.selectedRevision}: ${financialBidders.length} giá dự thầu tài chính. Áp dụng vào bản nháp hiện tại?`,
         "download-cloud",
       ) ? "OVERWRITE" : null;
+    assertCurrentWorkspace();
     if (!action) return false;
     const applied = await client.applyOpening({
       previewId: preview.previewId,
       expectedPackageRowVersion: preview.package.rowVersion,
-      workspaceLease: view.model.activeWorkspaceLease || null,
+      workspaceLease: workspaceToken || null,
     });
+    assertCurrentWorkspace();
     const byIdentity = new Map(
       (applied.opening?.bidders || [])
         .filter((bidder) => bidder.phase === "FINANCIAL")

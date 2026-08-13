@@ -1,6 +1,6 @@
 import json
 
-from backend.sync.public_errors import public_sync_item_error
+from backend.sync.public_errors import public_sync_item_error, sanitize_sync_error
 from backend.sync.serializer import rollback_sync_response
 
 
@@ -14,6 +14,17 @@ class _Connection:
 
 class _ConstraintError(Exception):
     sqlstate = "23503"
+
+
+def test_stable_delete_role_error_survives_public_sanitization():
+    public = sanitize_sync_error({
+        "code": "DELETE_ROLE_PROTECTED",
+        "message": "Chỉ Quản lý tổ chức được phép xóa dữ liệu.",
+    })
+
+    assert public["code"] == "DELETE_ROLE_PROTECTED"
+    assert public["message"] == "Chỉ Quản lý tổ chức được phép xóa dữ liệu."
+    assert public["retryable"] is False
 
 
 def test_unexpected_database_error_is_redacted_and_does_not_echo_record_id():

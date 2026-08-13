@@ -190,3 +190,39 @@ def test_source_version_authority_resolves_package_root_and_returns_none_when_un
     query, parameters = managed.calls[0]
     assert "local_root_id = ?" in query
     assert parameters == ("org-1", "NOTICE", "goithau", "package-root")
+
+
+def test_plan_repository_chunks_every_package_relation_query():
+    cursor = ScriptedCursor()
+    repository = AggregateVersionRepository(
+        cursor,
+        map_record=_map_record,
+        attach_children=lambda *_args, **_kwargs: None,
+    )
+    package_ids = [f"package-{index}" for index in range(1201)]
+
+    repository._load_package_relations("org-1", package_ids)
+
+    relation_calls = [
+        call for call in cursor.calls
+        if any(table in call[0] for table in (
+            "goi_thau_hang_hoa",
+            "thong_tin_mo_thau",
+            "hang_hoa_du_thau_nha_thau",
+            "phan_cong_nhan_su",
+        ))
+    ]
+    assert len(relation_calls) == 12
+    assert max(len(parameters) for _sql, parameters in relation_calls) == 501
+
+
+def test_expert_relations_are_chunked_at_database_parameter_boundary():
+    cursor = ScriptedCursor()
+    repository = AggregateVersionRepository(cursor)
+    packages = [{"id": f"package-{index}"} for index in range(1001)]
+
+    repository._attach_package_expert_relations("org-1", packages)
+
+    calls = [call for call in cursor.calls if "goi_thau_chuyen_gia" in call[0]]
+    assert len(calls) == 3
+    assert max(len(parameters) for _sql, parameters in calls) == 501

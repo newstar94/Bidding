@@ -50,6 +50,36 @@ test("WebSocket client keeps bounded reconciliation while realtime is available"
 });
 
 
+test("bounded polling skips network reconciliation while the browser is offline", () => {
+  const originalSetInterval = globalThis.setInterval;
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  let tick = null;
+  const calls = [];
+  globalThis.setInterval = (callback) => { tick = callback; return 17; };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: false },
+  });
+  const client = new WebSocketSyncClient({
+    scheduleBackgroundSync: () => calls.push("sync"),
+    notificationCenter: { refresh: () => calls.push("notifications") },
+  });
+  try {
+    client.startPollingFallback();
+    tick();
+    assert.deepEqual(calls, []);
+  } finally {
+    client.stopPollingFallback();
+    globalThis.setInterval = originalSetInterval;
+    if (previousNavigator) {
+      Object.defineProperty(globalThis, "navigator", previousNavigator);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+});
+
+
 function installRealtimeHarness() {
   const originals = {
     WebSocket: globalThis.WebSocket,
@@ -195,6 +225,27 @@ test("ready socket keeps bounded reconciliation and reconnect reuses it", () => 
     assert.equal(harness.sockets.length, 2);
     assert.ok(controller._wsPollingTimer);
   } finally {
+    client.disconnect(false);
+    harness.restore();
+  }
+});
+
+
+test("malformed socket hints are contained and polling remains authoritative", async () => {
+  const harness = installRealtimeHarness();
+  const controller = realtimeController("org-1", "tab-malformed");
+  const client = new WebSocketSyncClient(controller);
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    client.connect();
+    const socket = harness.sockets[0];
+    socket.readyState = WebSocket.OPEN;
+    socket.onmessage({ data: "{invalid-json" });
+    await Promise.resolve();
+    assert.ok(controller._wsPollingTimer);
+  } finally {
+    console.error = originalConsoleError;
     client.disconnect(false);
     harness.restore();
   }

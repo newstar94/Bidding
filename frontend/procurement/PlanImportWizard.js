@@ -11,6 +11,7 @@ import {
   rememberProcurementImportSession,
 } from "./ProcurementImportResume.js";
 import { packageNoticeLabel, planPreviewFields } from "./fieldMapping.js";
+import { currentWorkspaceToken } from "../app/workspaceLease.js";
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
 const DRAFT_KEY = "procurement_plan_import_draft_v1";
@@ -239,7 +240,7 @@ export class PlanImportWizard {
     this.prepareController = null;
     this.applyController = null;
     this.requestGeneration = 0;
-    this.workspaceLease = String(controller?.model?.activeWorkspaceLease || "");
+    this.workspaceLease = currentWorkspaceToken(controller?.model);
     this.draftStore = new PlanImportDraftStore(
       controller?.model?.workspaceStorage || null,
     );
@@ -352,10 +353,8 @@ export class PlanImportWizard {
       }, { signal: this.prepareController.signal });
       if (generation !== this.requestGeneration) return;
       if (code !== this.modal.querySelector("[data-procurement-code]").value.trim()) return;
-      const activeWorkspaceLease = String(
-        this.controller?.model?.activeWorkspaceLease || "",
-      );
-      if (activeWorkspaceLease !== requestWorkspaceLease) {
+      const currentToken = currentWorkspaceToken(this.controller?.model);
+      if (currentToken !== requestWorkspaceLease) {
         this.preview = null;
         this.setStatus("Workspace đã thay đổi. Hãy chuẩn bị preview mới.", true);
         this.refreshApplyGate();
@@ -459,10 +458,10 @@ export async function openProcurementImportWizard() {
     wizard = new PlanImportWizard({ controller: this, modal });
     modal._procurementImportWizard = wizard;
   }
-  const activeWorkspaceLease = String(this.model?.activeWorkspaceLease || "");
-  if (wizard.workspaceLease !== activeWorkspaceLease) {
+  const currentToken = currentWorkspaceToken(this.model);
+  if (wizard.workspaceLease !== currentToken) {
     wizard.cleanup();
-    wizard.workspaceLease = activeWorkspaceLease;
+    wizard.workspaceLease = currentToken;
     wizard.draftStore = new PlanImportDraftStore(
       this.model?.workspaceStorage || null,
     );
@@ -579,7 +578,7 @@ export async function completeProcurementPlanImportRevision(savedPlanId) {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
       flow.session.sessionId,
       {
-        workspaceLease: this.model?.activeWorkspaceLease || null,
+        workspaceLease: currentWorkspaceToken(this.model) || null,
         kind: "plan",
       },
     );

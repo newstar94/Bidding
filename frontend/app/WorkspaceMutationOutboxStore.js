@@ -95,6 +95,137 @@ function selectNewestEnvelope(...values) {
     ))[0] || null;
 }
 
+function deletionMap(values) {
+  return new Map((values || []).map((item) => [
+    `${item.table}::${String(item.id)}`,
+    cloneValue(item),
+  ]));
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
+  if (
+    (currentQueue !== null && !isMutationQueue(currentQueue))
+    || (previousQueue !== null && !isMutationQueue(previousQueue))
+    || (requestedQueue !== null && !isMutationQueue(requestedQueue))
+  ) {
+    return requestedQueue === null ? null : cloneValue(requestedQueue);
+  }
+  const current = normalizeMutationQueue(cloneValue(currentQueue), {
+    baseSyncVersion: requestedQueue?.baseSyncVersion || previousQueue?.baseSyncVersion || "0",
+    createId: () => requestedQueue?.clientMutationId || previousQueue?.clientMutationId || "",
+  });
+  const previous = previousQueue || { dirtyTables: {}, upserts: {}, deletes: [] };
+  const requested = requestedQueue || { dirtyTables: {}, upserts: {}, deletes: [] };
+
+  const tables = new Set([
+    ...Object.keys(previous.upserts || {}),
+    ...Object.keys(requested.upserts || {}),
+  ]);
+  tables.forEach((table) => {
+    const before = previous.upserts?.[table] || {};
+    const after = requested.upserts?.[table] || {};
+    const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
+    ids.forEach((id) => {
+      if (Object.prototype.hasOwnProperty.call(after, id)) {
+        if (sameValue(after[id], before[id])) return;
+        if (!current.upserts[table]) current.upserts[table] = {};
+        current.upserts[table][id] = cloneValue(after[id]);
+        current.deletes = current.deletes.filter(
+          (item) => !(item.table === table && String(item.id) === id),
+        );
+        return;
+      }
+      if (sameValue(current.upserts?.[table]?.[id], before[id])) {
+        delete current.upserts[table][id];
+      }
+    });
+    if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
+      delete current.upserts[table];
+    }
+  });
+
+  const currentDeletes = deletionMap(current.deletes);
+  const beforeDeletes = deletionMap(previous.deletes);
+  const afterDeletes = deletionMap(requested.deletes);
+  new Set([...beforeDeletes.keys(), ...afterDeletes.keys()]).forEach((key) => {
+    const before = beforeDeletes.get(key);
+    const after = afterDeletes.get(key);
+    if (after) {
+      currentDeletes.set(key, after);
+      const [table, id] = key.split("::");
+      if (current.upserts?.[table]) delete current.upserts[table][id];
+      if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
+        delete current.upserts[table];
+      }
+    } else if (sameValue(currentDeletes.get(key), before)) {
+      currentDeletes.delete(key);
+    }
+  });
+  current.deletes = [...currentDeletes.values()];
+
+  new Set([
+    ...Object.keys(previous.dirtyTables || {}),
+    ...Object.keys(requested.dirtyTables || {}),
+  ]).forEach((table) => {
+    if (Object.prototype.hasOwnProperty.call(requested.dirtyTables || {}, table)) {
+      current.dirtyTables[table] = Boolean(requested.dirtyTables[table]);
+    } else if (current.dirtyTables[table] === previous.dirtyTables?.[table]) {
+      delete current.dirtyTables[table];
+    }
+  });
+  current.baseSyncVersion = String(requested.baseSyncVersion || current.baseSyncVersion || "0");
+  current.clientMutationId = requested.clientMutationId || current.clientMutationId;
+  current.revision = Math.max(
+    Number(current.revision || 0),
+    Number(requested.revision || 0),
+  );
+  return current;
+}
+
+function mergeLocalDeletions(currentValues, previousValues, requestedValues) {
+  const current = deletionMap(currentValues);
+  const previous = deletionMap(previousValues);
+  const requested = deletionMap(requestedValues);
+  new Set([...previous.keys(), ...requested.keys()]).forEach((key) => {
+    const before = previous.get(key);
+    const after = requested.get(key);
+    if (after) current.set(key, after);
+    else if (sameValue(current.get(key), before)) current.delete(key);
+  });
+  return [...current.values()];
+}
+
+function mergeEnvelope(currentValue, previousValue, requestedValue, savedAt) {
+  const current = normalizeEnvelope(currentValue);
+  const previous = normalizeEnvelope(previousValue);
+  const requested = normalizeEnvelope(requestedValue);
+  const queue = mergeMutationQueue(
+    current?.queue || null,
+    previous?.queue || null,
+    requested?.queue || null,
+  );
+  const localDeletions = mergeLocalDeletions(
+    current?.localDeletions || [],
+    previous?.localDeletions || [],
+    requested?.localDeletions || [],
+  );
+  return {
+    version: OUTBOX_ENVELOPE_VERSION,
+    revision: Math.max(
+      Number(current?.revision || 0),
+      Number(previous?.revision || 0),
+      Number(requested?.revision || 0),
+    ) + 1,
+    savedAt,
+    queue,
+    localDeletions,
+  };
+}
+
 function normalizeFailure(error, fallbackMessage) {
   return error instanceof Error
     ? error
@@ -138,6 +269,7 @@ export class WorkspaceMutationOutboxStore {
     this.now = now;
     this.onStatusChange = onStatusChange;
     this.revision = 0;
+    this.persistedEnvelope = null;
     this.writePromise = Promise.resolve();
     this.writeError = null;
     this.status = {
@@ -162,17 +294,18 @@ export class WorkspaceMutationOutboxStore {
   }
 
   persist(queue, localDeletions = []) {
-    const envelope = {
+    const requestedEnvelope = {
       version: OUTBOX_ENVELOPE_VERSION,
       revision: this.revision + 1,
       savedAt: this.now(),
       queue: queue ? cloneValue(queue) : null,
       localDeletions: cloneValue(Array.isArray(localDeletions) ? localDeletions : []),
     };
-    this.revision = envelope.revision;
+    this.revision = requestedEnvelope.revision;
 
     const localConfigured = typeof this.storage?.writeJson === "function";
-    const databaseConfigured = typeof this.database?.set === "function";
+    const databaseConfigured = typeof this.database?.update === "function"
+      || typeof this.database?.set === "function";
     this._setStatus({
       backends: {
         indexedDB: databaseConfigured ? "pending" : "unavailable",
@@ -183,23 +316,38 @@ export class WorkspaceMutationOutboxStore {
       state: "pending",
       trusted: false,
     });
-    let localFailure = null;
-    if (localConfigured) {
-      try {
-        this.storage.writeJson(MUTATION_QUEUE_KEY, envelope);
-        this.storage.writeJson(LOCAL_DELETIONS_KEY, envelope.localDeletions);
-      } catch (error) {
-        localFailure = normalizeFailure(error, "Cannot persist mutation outbox to localStorage");
-      }
-    }
-
     this.writePromise = this.writePromise.then(async () => {
+      const previousEnvelope = this.persistedEnvelope;
       let databaseFailure = null;
+      let durableEnvelope = requestedEnvelope;
       if (databaseConfigured) {
         try {
-          await this.database.set(MUTATION_QUEUE_KEY, envelope);
+          if (typeof this.database.update === "function") {
+            durableEnvelope = await this.database.update(
+              MUTATION_QUEUE_KEY,
+              (current) => mergeEnvelope(
+                current,
+                previousEnvelope,
+                requestedEnvelope,
+                this.now(),
+              ),
+            );
+          } else {
+            await this.database.set(MUTATION_QUEUE_KEY, requestedEnvelope);
+          }
+          this.persistedEnvelope = cloneValue(durableEnvelope);
+          this.revision = Math.max(this.revision, Number(durableEnvelope.revision || 0));
         } catch (error) {
           databaseFailure = normalizeFailure(error, "Cannot persist mutation outbox to IndexedDB");
+        }
+      }
+      let localFailure = null;
+      if (localConfigured) {
+        try {
+          this.storage.writeJson(MUTATION_QUEUE_KEY, durableEnvelope);
+          this.storage.writeJson(LOCAL_DELETIONS_KEY, durableEnvelope.localDeletions);
+        } catch (error) {
+          localFailure = normalizeFailure(error, "Cannot persist mutation outbox to localStorage");
         }
       }
       const status = buildDurabilityStatus({
@@ -215,7 +363,7 @@ export class WorkspaceMutationOutboxStore {
         ? new OutboxDurabilityError(status, [localFailure, databaseFailure])
         : null;
     });
-    return envelope.revision;
+    return requestedEnvelope.revision;
   }
 
   async hydrate({
@@ -281,6 +429,7 @@ export class WorkspaceMutationOutboxStore {
     }
 
     const selected = selectNewestEnvelope(localResult.envelope, databaseResult.envelope);
+    this.persistedEnvelope = cloneValue(selected);
     this.revision = Math.max(
       this.revision,
       Number(localResult.envelope?.revision || 0),

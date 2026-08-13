@@ -19,6 +19,7 @@ from tests.test_sync_conflict_authorization import (
     _seed_denied_package,
     _test_database,
 )
+from backend.sync.visibility_epoch import VISIBILITY_POLICY_VERSION
 
 
 def _enable_organization_word_export(cursor, organization_id):
@@ -146,7 +147,7 @@ def _seed_word_policy_member(cursor, *, membership_role="employee"):
     return organization_id, user_id
 
 
-def test_export_grants_do_not_implicitly_grant_sensitive_record_read():
+def test_word_export_grants_do_not_change_complete_record_projection():
     connection = _word_policy_database()
     try:
         cursor = connection.cursor()
@@ -161,7 +162,7 @@ def test_export_grants_do_not_implicitly_grant_sensitive_record_read():
             active_role="employee",
         )
 
-        denied = resolve_sensitive_read_policy(
+        before = resolve_sensitive_read_policy(
             cursor,
             role,
             employee_id,
@@ -169,15 +170,15 @@ def test_export_grants_do_not_implicitly_grant_sensitive_record_read():
             table_names={"chuyen_gia", "nha_thau"},
         )
         assert (
-            denied.can_view_contractor_financials,
-            denied.can_view_expert_details,
-            denied.can_view_signature_images,
-        ) == (False, False, False)
+            before.can_view_contractor_financials,
+            before.can_view_expert_details,
+            before.can_view_signature_images,
+        ) == (True, True, True)
 
         _insert_sensitive_read_capabilities(
             cursor, organization_id, employee_id, (1, 1, 1)
         )
-        granted = resolve_sensitive_read_policy(
+        after = resolve_sensitive_read_policy(
             cursor,
             role,
             employee_id,
@@ -185,12 +186,78 @@ def test_export_grants_do_not_implicitly_grant_sensitive_record_read():
             table_names={"chuyen_gia", "nha_thau"},
         )
         assert (
-            granted.can_view_contractor_financials,
-            granted.can_view_expert_details,
-            granted.can_view_signature_images,
+            after.can_view_contractor_financials,
+            after.can_view_expert_details,
+            after.can_view_signature_images,
         ) == (True, True, True)
     finally:
         connection.close()
+
+
+def test_authorized_record_read_is_complete_without_field_capability():
+    connection = _word_policy_database()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id = _seed_word_policy_member(cursor)
+        role = SessionRole(
+            'user',
+            employee_id,
+            platform_role='user',
+            active_role='employee',
+        )
+        policy = resolve_sensitive_read_policy(
+            cursor, role, employee_id, organization_id,
+            table_names={'chuyen_gia', 'nha_thau'},
+        )
+        contractor = serialize_sensitive_read_item(
+            'nha_thau',
+            {
+                'soTaiKhoan': '0123456789',
+                'noiMoTaiKhoan': 'Vietcombank Ha Noi',
+                'maNganHang': 'VCB',
+                'anhDau': 'images/nha_thau/stamp.webp',
+            },
+            policy,
+        )
+        expert = serialize_sensitive_read_item(
+            'chuyen_gia',
+            {
+                'soCCCD': '012345678901',
+                'anhChungChi': 'images/chuyen_gia/certificate.webp',
+                'anhChuKy': 'images/chuyen_gia/signature.webp',
+            },
+            policy,
+        )
+        assert contractor == {
+            'soTaiKhoan': '0123456789',
+            'noiMoTaiKhoan': 'Vietcombank Ha Noi',
+            'maNganHang': 'VCB',
+            'anhDau': 'images/nha_thau/stamp.webp',
+        }
+        assert expert == {
+            'soCCCD': '012345678901',
+            'anhChungChi': 'images/chuyen_gia/certificate.webp',
+            'anhChuKy': 'images/chuyen_gia/signature.webp',
+        }
+    finally:
+        connection.close()
+
+
+def test_complete_record_read_contract_has_no_runtime_field_capability_controls():
+    root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    runtime_sources = (
+        root / "backend" / "auth" / "admin_user_routes.py",
+        root / "backend" / "shared" / "sensitive_data.py",
+        root / "backend" / "sync" / "visibility_epoch.py",
+        root / "frontend" / "admin" / "AdminUserController.js",
+        root / "views" / "modals" / "modal_detail_system_user.html",
+    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in runtime_sources)
+
+    assert "sensitive_record_read_capabilities" not in combined
+    assert "sensitive_read_capabilities" not in combined
+    assert "data-sensitive-read-capability" not in combined
+    assert VISIBILITY_POLICY_VERSION >= 3
 
 
 def test_record_access_and_word_export_have_distinct_sensitive_policies():
@@ -256,17 +323,19 @@ def test_record_access_and_word_export_have_distinct_sensitive_policies():
             },
             sensitive_policy,
         )
-        assert contractor["soTaiKhoan"].endswith("6789")
-        assert contractor["maNganHang"] is None
-        assert contractor["anhDau"] is None
-        assert contractor["sensitiveFinancialDataMasked"] is True
+        assert contractor == {
+            "id": "contractor-1",
+            "soTaiKhoan": "0123456789",
+            "maNganHang": "VCB",
+            "anhDau": "images/nha_thau/stamp.png",
+        }
     finally:
         connection.rollback()
         connection.close()
         database.close()
 
 
-def test_sensitive_record_read_requires_its_own_explicit_grant():
+def test_legacy_sensitive_read_grant_is_inert_for_record_projection():
     database = _test_database()
     connection = database.get_connection()
     try:

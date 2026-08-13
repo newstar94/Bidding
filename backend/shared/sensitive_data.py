@@ -2,37 +2,7 @@
 
 from dataclasses import dataclass
 
-from backend.shared.access_policy import (
-    DocumentExportCapabilities,
-    has_active_organization_membership,
-    is_organization_manager,
-    is_personal_workspace_owner,
-)
-
-
-SENSITIVE_READ_MODULES = {
-    "chuyen_gia": "chuyengia",
-    "nha_thau": "nhathau",
-}
-
-
-def _stored_sensitive_read_capabilities(cursor, user_id, organization_id):
-    """Read explicit record-view grants; document export grants never apply."""
-
-    row = cursor.execute(
-        """SELECT financial, identity, signature
-           FROM sensitive_record_read_capabilities
-           WHERE organization_id = ? AND user_id = ?
-           LIMIT 1""",
-        (organization_id, user_id),
-    ).fetchone()
-    if not row:
-        return DocumentExportCapabilities()
-    return DocumentExportCapabilities(
-        financial=bool(row[0]),
-        identity=bool(row[1]),
-        signature=bool(row[2]),
-    )
+SENSITIVE_READ_TABLES = frozenset({"chuyen_gia", "nha_thau"})
 
 
 @dataclass(frozen=True)
@@ -58,134 +28,29 @@ def resolve_sensitive_read_policy(
     organization_id,
     table_names=None,
 ):
-    """Resolve sensitive field families independently from base module access."""
+    """Project complete fields after canonical record authorization has passed.
+
+    Tenant, module, assignment and record-level checks happen before this
+    serializer is called. Field-level grants are deliberately not part of the
+    BiddingFlow business contract; Word export remains a separate action policy.
+    """
+    del cursor, role_str, user_id, organization_id
     requested_tables = (
-        set(SENSITIVE_READ_MODULES)
+        set(SENSITIVE_READ_TABLES)
         if table_names is None
-        else set(table_names) & set(SENSITIVE_READ_MODULES)
+        else set(table_names) & set(SENSITIVE_READ_TABLES)
     )
-
-    if is_personal_workspace_owner(cursor, user_id, organization_id) or is_organization_manager(
-        cursor, role_str, user_id, organization_id
-    ):
-        capabilities = DocumentExportCapabilities.allow_all()
-    elif has_active_organization_membership(
-        cursor, role_str, user_id, organization_id
-    ):
-        capabilities = _stored_sensitive_read_capabilities(
-            cursor, user_id, organization_id
-        )
-    else:
-        capabilities = DocumentExportCapabilities()
-
     return SensitiveReadPolicy(
-        can_view_expert_details=(
-            "chuyen_gia" in requested_tables and capabilities.identity
-        ),
-        can_view_contractor_financials=(
-            "nha_thau" in requested_tables and capabilities.financial
-        ),
-        can_view_signature_images=bool(requested_tables and capabilities.signature),
+        can_view_expert_details="chuyen_gia" in requested_tables,
+        can_view_contractor_financials="nha_thau" in requested_tables,
+        can_view_signature_images=bool(requested_tables),
     )
-
-
-def mask_identifier(value, visible_suffix=4):
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    suffix_length = max(0, min(int(visible_suffix), len(raw)))
-    suffix = raw[-suffix_length:] if suffix_length else ""
-    return "*" * max(4, len(raw) - suffix_length) + suffix
-
-
-def redact_expert_item(item):
-    """Return a copy safe for users who only have view permission."""
-    redacted = dict(item or {})
-    for key in ("soCCCD", "so_cccd"):
-        if key in redacted:
-            redacted[key] = mask_identifier(redacted.get(key))
-    for key in (
-        "anhChungChi",
-        "anhChuKy",
-        "tenAnhChungChi",
-        "tenAnhChuKy",
-        "anh_chung_chi",
-        "anh_chu_ky",
-        "ten_anh_chung_chi",
-        "ten_anh_chu_ky",
-    ):
-        if key in redacted:
-            redacted[key] = None
-    redacted["sensitiveDataMasked"] = True
-    return redacted
-
-
-def redact_contractor_financial_item(item):
-    """Mask bank details for users who only have view access to contractors."""
-    redacted = dict(item or {})
-    for key in ("soTaiKhoan", "so_tai_khoan"):
-        if key in redacted:
-            redacted[key] = mask_identifier(redacted.get(key))
-    for key in ("noiMoTaiKhoan", "noi_mo_tai_khoan", "maNganHang", "ma_ngan_hang"):
-        if key in redacted:
-            redacted[key] = None
-    for member_key in ("thanhVienLienDanh", "thanh_vien_lien_danh"):
-        if isinstance(redacted.get(member_key), list):
-            redacted[member_key] = [
-                redact_contractor_financial_item(member) for member in redacted[member_key]
-            ]
-    redacted["sensitiveFinancialDataMasked"] = True
-    return redacted
-
-
-def redact_signature_media_item(item):
-    """Remove private certificate/signature/stamp paths from one response DTO."""
-    redacted = dict(item or {})
-    for key in (
-        "anhDau",
-        "tenAnhDau",
-        "anhChungChi",
-        "anhChuKy",
-        "tenAnhChungChi",
-        "tenAnhChuKy",
-        "anh_dau",
-        "ten_anh_dau",
-        "anh_chung_chi",
-        "anh_chu_ky",
-        "ten_anh_chung_chi",
-        "ten_anh_chu_ky",
-    ):
-        if key in redacted:
-            redacted[key] = None
-    for member_key in ("thanhVienLienDanh", "thanh_vien_lien_danh"):
-        if isinstance(redacted.get(member_key), list):
-            redacted[member_key] = [
-                redact_signature_media_item(member)
-                for member in redacted[member_key]
-            ]
-    redacted["sensitiveMediaMasked"] = True
-    return redacted
 
 
 def serialize_sensitive_read_item(table_name, item, policy):
-    """Return a response-safe copy according to the resolved workspace policy."""
-    if table_name == "chuyen_gia":
-        serialized = (
-            dict(item or {})
-            if policy.can_view(table_name)
-            else redact_expert_item(item)
-        )
-    elif table_name == "nha_thau":
-        serialized = (
-            dict(item or {})
-            if policy.can_view(table_name)
-            else redact_contractor_financial_item(item)
-        )
-    else:
-        return dict(item or {})
-    if not policy.can_view_signature_images:
-        serialized = redact_signature_media_item(serialized)
-    return serialized
+    """Return the complete record after its canonical read check has passed."""
+    del table_name, policy
+    return dict(item or {})
 
 
 def serialize_sensitive_read_items(table_name, items, policy):

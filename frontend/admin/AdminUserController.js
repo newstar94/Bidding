@@ -223,11 +223,6 @@ function renderOrganizationAccessSettings(controller, user, organizationId) {
     input.checked = isManager || Boolean(organization?.document_capabilities?.[field]);
     input.disabled = isManager || !organization?.entitlements?.word_export;
   });
-  document.querySelectorAll("[data-sensitive-read-capability]").forEach((input) => {
-    const field = input.dataset.sensitiveReadCapability;
-    input.checked = isManager || Boolean(organization?.sensitive_read_capabilities?.[field]);
-    input.disabled = isManager;
-  });
   renderWordEntitlement(
     document.getElementById("detail-su-organization-entitlement"),
     Boolean(organization?.entitlements?.word_export),
@@ -318,10 +313,8 @@ export async function showSystemUserDetail(userId) {
     if (organizationSelect) organizationSelect.value = selectedOrganization?.id || "";
     const organizationSection = document.getElementById("detail-su-organization-section");
     const documentCapabilitiesSection = document.getElementById("detail-su-document-capabilities-section");
-    const sensitiveReadCapabilitiesSection = document.getElementById("detail-su-sensitive-read-capabilities-section");
     if (organizationSection) organizationSection.hidden = !selectedOrganization;
     if (documentCapabilitiesSection) documentCapabilitiesSection.hidden = !selectedOrganization;
-    if (sensitiveReadCapabilitiesSection) sensitiveReadCapabilitiesSection.hidden = !selectedOrganization;
     const form = document.getElementById("form-detail-system-user");
     form.__detailUser = user;
     renderOrganizationAccessSettings(this, user, selectedOrganization?.id || "");
@@ -576,11 +569,6 @@ export function setupRBACEvents() {
     document.querySelectorAll("[data-document-capability]").forEach((input) => {
       input.disabled = document.getElementById("detail-su-role")?.value === "manager" || !enabled;
     });
-    document.querySelectorAll("[data-sensitive-read-capability]").forEach((input) => {
-      const isManager = document.getElementById("detail-su-role")?.value === "manager";
-      input.disabled = isManager;
-      if (isManager) input.checked = true;
-    });
     globalThis.lucide?.createIcons?.();
   });
   const organizationRoleSelect = document.getElementById("detail-su-role");
@@ -588,10 +576,6 @@ export function setupRBACEvents() {
     const isManager = event.target.value === "manager";
     document.querySelectorAll("[data-document-capability]").forEach((input) => {
       input.disabled = isManager || document.getElementById("detail-su-package")?.value === "none";
-      if (isManager) input.checked = true;
-    });
-    document.querySelectorAll("[data-sensitive-read-capability]").forEach((input) => {
-      input.disabled = isManager;
       if (isManager) input.checked = true;
     });
   });
@@ -611,12 +595,6 @@ export function setupRBACEvents() {
           Boolean(input.checked)
         ])
       );
-      const sensitiveReadCapabilities = Object.fromEntries(
-        Array.from(document.querySelectorAll("[data-sensitive-read-capability]")).map((input) => [
-          input.dataset.sensitiveReadCapability,
-          Boolean(input.checked)
-        ])
-      );
       try {
         formSu.setAttribute("aria-busy", "true");
         if (submitButton) {
@@ -633,8 +611,7 @@ export function setupRBACEvents() {
             organization_id: organizationId || null,
             organization_role: organizationId ? document.getElementById("detail-su-role").value : null,
             organization_package_id: organizationId ? document.getElementById("detail-su-package").value : null,
-            document_capabilities: organizationId ? documentCapabilities : null,
-            sensitive_read_capabilities: organizationId ? sensitiveReadCapabilities : null
+            document_capabilities: organizationId ? documentCapabilities : null
           })
         });
         const payload = await response.json();
