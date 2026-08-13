@@ -69,3 +69,23 @@ test("canonical E2E harnesses derive calendar values from the test clock", () =>
   }
   assert.deepEqual(violations, []);
 });
+
+
+test("plan approval E2E selections use the stable stored value, not its display label", () => {
+  for (const name of [
+    "verify_crud_modules_e2e.mjs",
+    "verify_full_lifecycle.mjs",
+  ]) {
+    const source = fs.readFileSync(path.join(scriptsRoot, name), "utf8");
+    assert.match(
+      source,
+      /#kh-pheduyet", \{ value: "Dự toán và kế hoạch" \}/u,
+      name,
+    );
+    assert.doesNotMatch(
+      source,
+      /#kh-pheduyet", \{ label: "Dự toán và kế hoạch" \}/u,
+      name,
+    );
+  }
+});

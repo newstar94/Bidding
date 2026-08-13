@@ -59,6 +59,22 @@ def test_structured_operational_diagnostic_accepts_only_bounded_redacted_dimensi
     assert "message" not in normalized
 
 
+def test_client_diagnostic_accepts_git_sha_release_id_starting_with_digit():
+    payload = {
+        "kind": "error",
+        "releaseId": "2870eb7812ee4599b2ac695e8b66f310abcdef12",
+        "errorName": "Sync.TransportFailure",
+        "source": "/frontend/app/SyncPushService.js",
+        "line": 0,
+        "column": 0,
+    }
+
+    normalized, errors = normalize_client_error_payload(payload)
+
+    assert errors == []
+    assert normalized == payload
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

@@ -292,7 +292,7 @@ try {
   await page.locator("#kh-ma").fill(crudCodes.plan);
   await page.locator("#kh-ten").fill(`Kế hoạch CRUD ${runId}`);
   await select(page, "#kh-loaihinh", { label: "Dự toán mua sắm" });
-  await select(page, "#kh-pheduyet", { label: "Dự toán và kế hoạch" });
+  await select(page, "#kh-pheduyet", { value: "Dự toán và kế hoạch" });
   await page.locator("#kh-duan").fill(`Dự toán CRUD ${runId}`);
   await select(page, "#kh-chudautuid", { index: 1 });
   await page.locator("#kh-sototrinhdutoankehoach").fill(`${runId}/TTR`);

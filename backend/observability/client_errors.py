@@ -31,6 +31,7 @@ _REPORT_FIELDS = {
     "correlationId": {"type": "string", "required": False, "min_length": 1, "max_length": 64},
 }
 _IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,127}")
+_RELEASE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 _CORRELATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
 _WORKSPACE_HASH = re.compile(r"[0-9a-f]{16}")
 _SOURCE_PATH = re.compile(r"(?:/dist/assets/|/frontend/)[A-Za-z0-9_./-]{1,240}|unknown")
@@ -68,7 +69,7 @@ def normalize_client_error_payload(payload):
     errors = validate_json_object(payload, _REPORT_FIELDS)
     if errors:
         return None, errors
-    if not _IDENTIFIER.fullmatch(payload["releaseId"]):
+    if not _RELEASE_ID.fullmatch(payload["releaseId"]):
         return None, [{"field": "releaseId", "code": "INVALID_IDENTIFIER", "message": "Release ID không hợp lệ."}]
     if not _IDENTIFIER.fullmatch(payload["errorName"]):
         return None, [{"field": "errorName", "code": "INVALID_IDENTIFIER", "message": "Loại lỗi không hợp lệ."}]

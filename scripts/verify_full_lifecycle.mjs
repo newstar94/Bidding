@@ -191,7 +191,7 @@ try {
   await page.locator("#kh-ma").fill(`${runId}-KH`);
   await page.locator("#kh-ten").fill(`Kế hoạch ${runId}`);
   await select(page, "#kh-loaihinh", { label: "Dự toán mua sắm" });
-  await select(page, "#kh-pheduyet", { label: "Dự toán và kế hoạch" });
+  await select(page, "#kh-pheduyet", { value: "Dự toán và kế hoạch" });
   await page.locator("#kh-duan").fill(`Dự toán ${runId}`);
   await select(page, "#kh-chudautuid", { label: `Chủ đầu tư ${runId}` });
   await page.locator("#kh-sototrinhdutoankehoach").fill(`${runId}/TTR`);
