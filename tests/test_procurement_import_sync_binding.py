@@ -1,6 +1,7 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import json
 import time
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ from backend.procurement_import.domain import canonical_digest
 from backend.procurement_import.repository import ProcurementImportSessionRepository
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_import.sync_binding import (
+    _load_trusted_revision,
     _record_revision_commit,
     _session_records,
     _validate_session_authority,
@@ -134,6 +136,125 @@ def test_preflight_rejects_replayed_revision_before_entity_writes(monkeypatch):
         validate_import_session_mutation(
             object(), payload, organization_id="org-1", user_id="user-1",
         )
+
+
+def test_plan_revision_accepts_an_independent_unchanged_package_version(monkeypatch):
+    revision = {
+        "revisionId": "revision-01",
+        "revisionNumber": "01",
+        "revisionDigest": "sha256:" + "a" * 64,
+        "packages": [{
+            "planDetailRevisionId": "detail-a-01",
+            "stablePackageId": "stable-a",
+            "noticeLink": {"state": "UNLINKED", "noticeVersion": None},
+        }],
+    }
+    session = {
+        "id": "session-1", "provider": "MUASAMCONG",
+        "familyNo": "PL2600000001", "workspaceLease": "lease-1",
+        "status": "READY", "currentIndex": 0,
+        "expiresAt": datetime.now(timezone.utc) + timedelta(minutes=5),
+        "revisions": [{"revisionNumber": "01", "status": "READY"}],
+        "canonicalBundle": {"revisions": [revision]},
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_for_commit(self, *_args, **_kwargs):
+            return session
+
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding.ProcurementImportSessionRepository",
+        Repository,
+    )
+    context = {
+        "sessionId": "session-1", "revisionNumber": "01",
+        "provider": "MUASAMCONG", "familyNo": "PL2600000001",
+        "workspaceLease": "lease-1",
+        "plans": [{
+            "id": "plan-01", "phienBan": "01",
+            "sourceRevision": _authority("01"),
+        }],
+        "packages": [{
+            "id": "package-a-plan-01", "phienBan": "00",
+            "sourceRevision": {
+                **_authority("01"),
+                "packageObservationId": "detail-a-01",
+                "stablePackageId": "stable-a",
+            },
+        }],
+    }
+
+    loaded_session, loaded_revision, _digest = _load_trusted_revision(
+        object(), context, "org-1", "user-1",
+    )
+
+    assert loaded_session is session
+    assert loaded_revision is revision
+
+    context["packages"][0]["phienBan"] = "01"
+    with pytest.raises(ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        _load_trusted_revision(object(), context, "org-1", "user-1")
+
+
+def test_plan_revision_validates_linked_notice_version_independently(monkeypatch):
+    revision = {
+        "revisionId": "revision-03",
+        "revisionNumber": "03",
+        "revisionDigest": "sha256:" + "a" * 64,
+        "packages": [{
+            "planDetailRevisionId": "detail-a-03",
+            "stablePackageId": "stable-a",
+            "noticeLink": {"state": "LINKED", "noticeVersion": "01"},
+        }],
+    }
+    session = {
+        "id": "session-1", "provider": "MUASAMCONG",
+        "familyNo": "PL2600000001", "workspaceLease": "lease-1",
+        "status": "READY", "currentIndex": 0,
+        "expiresAt": datetime.now(timezone.utc) + timedelta(minutes=5),
+        "revisions": [{"revisionNumber": "03", "status": "READY"}],
+        "canonicalBundle": {"revisions": [revision]},
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_for_commit(self, *_args, **_kwargs):
+            return session
+
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding.ProcurementImportSessionRepository",
+        Repository,
+    )
+    authority = {
+        **_authority("03"),
+        "packageObservationId": "detail-a-03",
+        "stablePackageId": "stable-a",
+        "packageRevisionNumber": "01",
+    }
+    context = {
+        "sessionId": "session-1", "revisionNumber": "03",
+        "provider": "MUASAMCONG", "familyNo": "PL2600000001",
+        "workspaceLease": "lease-1",
+        "plans": [{
+            "id": "plan-03", "phienBan": "03",
+            "sourceRevision": _authority("03"),
+        }],
+        "packages": [{
+            "id": "package-a-plan-03", "phienBan": "01",
+            "sourceRevision": authority,
+        }],
+    }
+
+    _load_trusted_revision(object(), context, "org-1", "user-1")
+
+    context["packages"][0]["phienBan"] = "03"
+    with pytest.raises(ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        _load_trusted_revision(object(), context, "org-1", "user-1")
 
 
 def test_real_postgres_concurrent_investor_resolution_creates_one_identity():
@@ -384,12 +505,15 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
         }
 
     def package_row(revision_number, package_data, plan_id, package_id, root_id=None):
+        package_revision = str(
+            (package_data.get("noticeLink") or {}).get("noticeVersion") or "00"
+        ).zfill(2)
         return {
             "id": package_id,
             "rootId": root_id or package_id,
             "keHoachId": plan_id,
             "maGoiThau": f"{family_no}-{package_data['symbol']}",
-            "phienBan": revision_number,
+            "phienBan": package_revision,
             "isLatest": 1,
             "tenGoiThau": package_data["name"],
             "giaGoiThau": package_data["priceVnd"],
@@ -503,10 +627,10 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
                 (organization_id,),
             ).fetchall()
             assert len(packages) == 5
-            assert (package_a_00_id, 1, "Gói A 01", 110) in {
+            assert (package_a_00_id, 0, "Gói A 01", 110) in {
                 tuple(row) for row in packages
             }
-            assert (package_b_00_id, 1, "Gói B 01", 220) in {
+            assert (package_b_00_id, 0, "Gói B 01", 220) in {
                 tuple(row) for row in packages
             }
             session_row = check.execute(

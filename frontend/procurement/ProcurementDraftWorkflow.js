@@ -56,7 +56,7 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
       ...sourcePackage,
       id: packageId,
       keHoachId: planId,
-      phienBan: String(revisionDraft.revisionNumber ?? "00"),
+      phienBan: sourcePackageVersion(sourcePackage),
       trangThai: biddingPackageStatus(sourcePackage.trangThai),
       isThuoc: sourceBoolean(sourcePackage.goiThauThuoc) === true ? 1 : 0,
       tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
@@ -64,7 +64,7 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
       phanLoList: lots,
       giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
     }, { id: packageId, timestamp });
-    packageRecord.phienBan = String(revisionDraft.revisionNumber ?? "00");
+    packageRecord.phienBan = sourcePackageVersion(sourcePackage);
     packageRecord._procurementImportCurrent = true;
     return packageRecord;
   });
@@ -83,6 +83,14 @@ function sourcePackageIdentity(record) {
     || record?.maGoiThau
     || "",
   ).trim().toLocaleLowerCase("vi");
+}
+
+function sourcePackageVersion(source, fallback = "00") {
+  const value = source?.sourceRevision?.packageRevisionNumber
+    ?? source?.noticeLink?.noticeVersion;
+  const text = String(value ?? "").trim();
+  if (/^\d+$/.test(text)) return text.padStart(2, "0");
+  return source ? "00" : String(fallback || "00");
 }
 
 function removeSnapshotPackages(state, aggregate, packageIds) {
@@ -164,13 +172,13 @@ export function materializeProcurementRevisionFromPrevious(
   aggregate.goithau.forEach((packageRecord) => {
     packageRecord._procurementImportCurrent = true;
     const source = sourceByIdentity.get(sourcePackageIdentity(packageRecord));
-    packageRecord.phienBan = revisionNumber;
+    packageRecord.phienBan = sourcePackageVersion(source, packageRecord.phienBan);
     if (!source) return;
     Object.assign(packageRecord, source, {
       id: packageRecord.id,
       rootId: packageRecord.rootId,
       keHoachId: planId,
-      phienBan: revisionNumber,
+      phienBan: sourcePackageVersion(source, packageRecord.phienBan),
       isLatest: 1,
       trangThai: biddingPackageStatus(source.trangThai || packageRecord.trangThai),
       tuyChonMuaThem: yesNo(
@@ -202,7 +210,7 @@ export function materializeProcurementRevisionFromPrevious(
     const created = createInitialVersion({
       ...source,
       keHoachId: planId,
-      phienBan: revisionNumber,
+      phienBan: sourcePackageVersion(source),
       trangThai: biddingPackageStatus(source.trangThai),
       tuyChonMuaThem: yesNo(source.tuyChonMuaThem),
       phanLo: yesNo(source.phanLo),
@@ -210,7 +218,7 @@ export function materializeProcurementRevisionFromPrevious(
       isThuoc: sourceBoolean(source.goiThauThuoc) === true ? 1 : 0,
       giaTriDamBaoDuThau: source.giaTriBaoDamDuThau ?? 0,
     }, { id: packageId, timestamp });
-    created.phienBan = revisionNumber;
+    created.phienBan = sourcePackageVersion(source);
     created._procurementImportCurrent = true;
     state.goithau.push(created);
     aggregate.goithau.push(created);

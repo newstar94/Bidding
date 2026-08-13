@@ -137,7 +137,7 @@ test("revision 01 inherits local-only aggregate state and applies source-owned p
       maKeHoach: "PL2600000001", ghiChuNoiBo: "Giữ local",
     }],
     goithau: [{
-      id: "pkg-00", rootId: "pkg-00", phienBan: "00", isLatest: 1,
+      id: "pkg-00", rootId: "pkg-00", phienBan: "01", isLatest: 1,
       keHoachId: "plan-00", tenGoiThau: "Tên 00", giaGoiThau: 100,
       ghiChuNoiBo: "Ghi chú local",
       sourceRevision: { stablePackageId: "stable-a" },
@@ -167,10 +167,49 @@ test("revision 01 inherits local-only aggregate state and applies source-owned p
   assert.equal(result.plan.ghiChuNoiBo, "Giữ local");
   assert.equal(result.packages[0].tenGoiThau, "Tên 01");
   assert.equal(result.packages[0].giaGoiThau, 200);
+  assert.equal(
+    result.packages[0].phienBan,
+    "00",
+    "a plan revision must not become a package revision",
+  );
   assert.equal(result.packages[0].ghiChuNoiBo, "Ghi chú local");
   assert.equal(result.packages[0].keHoachId, result.plan.id);
   assert.equal(state.assignments.at(-1).targetId, result.packages[0].id);
   assert.equal(result.draft.active, true);
+});
+
+test("linked notice version independently advances the package version", () => {
+  let sequence = 0;
+  const state = {
+    chudautu: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-root", phienBan: "00", isLatest: 1,
+      maKeHoach: "PL2600225773",
+    }],
+    goithau: [{
+      id: "pkg-00", rootId: "pkg-root", phienBan: "00", isLatest: 1,
+      keHoachId: "plan-00", tenGoiThau: "Gói A 00",
+      noticeLink: { state: "LINKED", noticeNo: "IB2600000001", noticeVersion: "00" },
+      sourceRevision: { stablePackageId: "stable-a" },
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+
+  const result = materializeProcurementRevisionFromPrevious(state, "plan-00", {
+    revisionNumber: "01",
+    planDraft: { maKeHoach: "PL2600225773", phienBan: "01" },
+    packageDrafts: [{
+      tenGoiThau: "Gói A thông báo 01",
+      noticeLink: { state: "LINKED", noticeNo: "IB2600000001", noticeVersion: "01" },
+      sourceRevision: { stablePackageId: "stable-a", revisionNumber: "01" },
+    }],
+  }, {
+    createId: (kind) => `${kind}-${++sequence}`,
+    timestamp: "2026-08-13 12:00:00",
+  });
+
+  assert.equal(result.plan.phienBan, "01");
+  assert.equal(result.packages[0].phienBan, "01");
 });
 
 test("next plan revision matches changed detail ids by package symbol and drops removed packages", () => {
@@ -725,7 +764,11 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
       persistedRevisions.push({
         revision: current.phienBan,
         packages: state.goithau.filter((row) => row.keHoachId === current.id)
-          .map((row) => ({ name: row.tenGoiThau, price: row.giaGoiThau })),
+          .map((row) => ({
+            name: row.tenGoiThau,
+            price: row.giaGoiThau,
+            version: row.phienBan,
+          })),
       });
       return { ok: true };
     },
@@ -776,6 +819,10 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.ok(persistedRevisions[1].packages.some(
       (row) => row.name === "Gói A 01" && row.price === 150,
     ));
+    assert.ok(
+      persistedRevisions[1].packages.every((row) => row.version === "00"),
+      "plan version 01 must not create package version 01",
+    );
     assert.deepEqual(packageModalEdits, [packageA00.id]);
     assert.equal(controller.procurementPlanImport, null);
   } finally {
@@ -814,11 +861,18 @@ test("pending imported investor is part of plan breakdown commit and rollback bo
 
 test("plan breakdown package row exposes accessible icon-only actions", () => {
   const previousDocument = globalThis.document;
+  const previousLucide = globalThis.lucide;
   const previousSanitize = DOMPurify.sanitize;
   const previousIsSupported = DOMPurify.isSupported;
   DOMPurify.isSupported = true;
   DOMPurify.sanitize = (value) => String(value);
   const tbody = { innerHTML: "" };
+  const iconRoots = [];
+  globalThis.lucide = {
+    createIcons(options) {
+      iconRoots.push(options?.root);
+    },
+  };
   globalThis.document = {
     getElementById: (id) => id === "tbody-breakdown-goithau" ? tbody : null,
   };
@@ -846,6 +900,8 @@ test("plan breakdown package row exposes accessible icon-only actions", () => {
     DOMPurify.isSupported = previousIsSupported;
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
+    if (previousLucide === undefined) delete globalThis.lucide;
+    else globalThis.lucide = previousLucide;
   }
 
   assert.match(String(tbody.innerHTML), /data-bf-action="edit-package"/);
@@ -854,6 +910,7 @@ test("plan breakdown package row exposes accessible icon-only actions", () => {
   assert.match(String(tbody.innerHTML), /title="Xóa gói thầu"/);
   assert.doesNotMatch(String(tbody.innerHTML), />\s*Sửa\s*</);
   assert.doesNotMatch(String(tbody.innerHTML), />\s*Xóa\s*</);
+  assert.deepEqual(iconRoots, [tbody]);
 });
 
 test("plan breakdown tabs use one active-state color contract", () => {

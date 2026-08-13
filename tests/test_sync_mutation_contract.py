@@ -35,7 +35,7 @@ def test_sync_accepts_only_bounded_source_revision_authority_on_plan_and_package
             "id": "package-1",
             "sourceRevision": {
                 **authority, "packageObservationId": "detail-a",
-                "stablePackageId": "stable-a",
+                "stablePackageId": "stable-a", "packageRevisionNumber": "01",
             },
         }],
     })

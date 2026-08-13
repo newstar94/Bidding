@@ -535,6 +535,7 @@ def validate_sync_payload_shape(payload):
                         "sessionId", "workspaceLease", "provider", "familyNo", "revisionId",
                         "revisionNumber", "revisionDigest",
                         "packageObservationId", "stablePackageId",
+                        "packageRevisionNumber",
                     }
                     for source_key in sorted(set(value) - allowed_source_fields):
                         errors.append(_field_error(

@@ -918,6 +918,25 @@ def test_linked_package_uses_only_its_ib_notice_number_as_bidding_code():
     assert draft["sourceRevision"]["stablePackageId"] == "BP2600291019"
 
 
+def test_plan_package_draft_exposes_notice_version_as_independent_package_version():
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "PL2600000001",
+        {"revisionId": "plan-rev-03", "revisionNumber": "03"},
+        {
+            "planDetailRevisionId": "detail-linked",
+            "stablePackageId": "BP2600291019",
+            "name": "Gói có thông báo phiên bản riêng",
+            "noticeLink": {
+                "state": "LINKED", "noticeNo": "IB2600212155",
+                "noticeVersion": "01",
+            },
+        },
+    )
+
+    assert draft["sourceRevision"]["revisionNumber"] == "03"
+    assert draft["sourceRevision"]["packageRevisionNumber"] == "01"
+
+
 def test_creating_session_opportunistically_cleans_expired_sessions():
     repository = _MemorySessionRepository()
     repository.cleanup_calls = 0

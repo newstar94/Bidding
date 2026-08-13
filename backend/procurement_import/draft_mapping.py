@@ -72,6 +72,9 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
     effective = deepcopy(package.get("effectiveFields") or package)
     notice = effective.get("noticeFields") or {}
     link = effective.get("noticeLink") or {}
+    notice_version = link.get("noticeVersion")
+    if notice_version not in (None, ""):
+        source["packageRevisionNumber"] = str(notice_version).zfill(2)
     price = effective.get("estimatePriceVnd")
     if price is None:
         price = effective.get("priceVnd")

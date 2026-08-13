@@ -173,12 +173,57 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
     if revision is None:
         raise ValueError("PROCUREMENT_REVISION_INVALID")
     expected_digest = str(revision.get("revisionDigest") or canonical_digest(revision))
-    for record in [*context["plans"], *context["packages"]]:
+    for record in context["plans"]:
         source = _source(record)
         if (
             str(source.get("revisionId") or "") != str(revision.get("revisionId") or "")
             or str(source.get("revisionDigest") or "") != expected_digest
             or str(record.get("phienBan") or "") != context["revisionNumber"]
+        ):
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    canonical_packages = revision.get("packages") or []
+    by_observation = {
+        str(row.get("planDetailRevisionId") or ""): row
+        for row in canonical_packages
+    }
+    by_stable = {
+        str(row.get("stablePackageId") or ""): row
+        for row in canonical_packages if row.get("stablePackageId")
+    }
+    for record in context["packages"]:
+        source = _source(record)
+        if (
+            str(source.get("revisionId") or "") != str(revision.get("revisionId") or "")
+            or str(source.get("revisionDigest") or "") != expected_digest
+        ):
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        if not context["plans"]:
+            if str(record.get("phienBan") or "") != context["revisionNumber"]:
+                raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+            continue
+        canonical = (
+            by_observation.get(str(source.get("packageObservationId") or ""))
+            or by_stable.get(str(source.get("stablePackageId") or ""))
+        )
+        if canonical is None:
+            raise ValueError("PROCUREMENT_MATCH_AMBIGUOUS")
+        expected_package_version = str(
+            (canonical.get("noticeLink") or {}).get("noticeVersion") or ""
+        ).strip()
+        declared_package_version = str(
+            source.get("packageRevisionNumber") or ""
+        ).strip()
+        if expected_package_version:
+            expected_package_version = expected_package_version.zfill(2)
+            if (
+                declared_package_version.zfill(2) != expected_package_version
+                or str(record.get("phienBan") or "").zfill(2)
+                != expected_package_version
+            ):
+                raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        elif (
+            declared_package_version
+            or str(record.get("phienBan") or "").zfill(2) != "00"
         ):
             raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
     return session, revision, expected_digest

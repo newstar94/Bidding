@@ -743,6 +743,7 @@ export function renderBreakdownPackagesList(planId) {
             </tr>
         `;
   }).join(""));
+  lucide.createIcons({ root: tbody });
 }
 export function addBreakdownRow(type, data = null) {
   const tbody = document.getElementById(`tbody-breakdown-${type}`);
