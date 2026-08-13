@@ -799,6 +799,11 @@ def test_real_postgres_plan_00_to_01_is_atomic_and_preserves_version_axes():
     cursor = PostgresCursor(connection.cursor())
     try:
         cursor.execute("BEGIN")
+        # Production connections are configured to use Vietnam business time.
+        # Keep this direct psycopg fixture on the same contract so a CI server
+        # whose PostgreSQL default is UTC cannot reinterpret naive wall-clock
+        # values and shift every imported tender milestone by seven hours.
+        cursor.execute("SET LOCAL TIME ZONE 'Asia/Ho_Chi_Minh'")
         cursor.execute(
             "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
             (organization_id, "Procurement test organization"),
