@@ -2199,6 +2199,13 @@
       "table": "record_edit_ownership",
       "valid": true
     },
+    "idx_sensitive_record_read_capabilities_user": {
+      "definition": "CREATE INDEX idx_sensitive_record_read_capabilities_user ON $SCHEMA.sensitive_record_read_capabilities USING btree (user_id, organization_id)",
+      "live": true,
+      "ready": true,
+      "table": "sensitive_record_read_capabilities",
+      "valid": true
+    },
     "idx_sync_mutations_actor": {
       "definition": "CREATE INDEX idx_sync_mutations_actor ON $SCHEMA.sync_mutations USING btree (actor_user_id)",
       "live": true,
@@ -2647,6 +2654,13 @@
       "table": "record_edit_ownership",
       "valid": true
     },
+    "sensitive_record_read_capabilities_pkey": {
+      "definition": "CREATE UNIQUE INDEX sensitive_record_read_capabilities_pkey ON $SCHEMA.sensitive_record_read_capabilities USING btree (organization_id, user_id)",
+      "live": true,
+      "ready": true,
+      "table": "sensitive_record_read_capabilities",
+      "valid": true
+    },
     "sync_metadata_pkey": {
       "definition": "CREATE UNIQUE INDEX sync_metadata_pkey ON $SCHEMA.sync_metadata USING btree (organization_id)",
       "live": true,
@@ -2817,7 +2831,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 55,
+  "schemaVersion": 58,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -6479,6 +6493,20 @@
           "notNull": false,
           "type": "text"
         },
+        "policy_hash": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "policy_json": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
         "status": {
           "default": "'pending'::text",
           "generated": "",
@@ -6549,6 +6577,20 @@
           "definition": "PRIMARY KEY (id)",
           "initiallyDeferred": false,
           "kind": "p",
+          "validated": true
+        },
+        "document_jobs_policy_hash_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(policy_hash) = ANY (ARRAY[0, 64]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "document_jobs_policy_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(policy_json) <= 8192)",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         },
         "document_jobs_status_check": {
@@ -15655,6 +15697,112 @@
         "record_edit_ownership_table_name_check": {
           "deferrable": false,
           "definition": "CHECK (table_name = ANY (ARRAY['chu_dau_tu'::text, 'ke_hoach_lcnt'::text, 'goi_thau'::text, 'thong_tin_mo_thau'::text, 'hop_dong'::text, 'nha_thau'::text, 'chuyen_gia'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "sensitive_record_read_capabilities": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "financial": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "identity": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "signature": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_sensitive_record_read_capabilities_1_b06fce24": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (user_id, organization_id) REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "sensitive_record_read_capabilities_financial_check": {
+          "deferrable": false,
+          "definition": "CHECK (financial = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "sensitive_record_read_capabilities_identity_check": {
+          "deferrable": false,
+          "definition": "CHECK (identity = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "sensitive_record_read_capabilities_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "sensitive_record_read_capabilities_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, user_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "sensitive_record_read_capabilities_signature_check": {
+          "deferrable": false,
+          "definition": "CHECK (signature = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "sensitive_record_read_capabilities_user_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (user_id <> ''::text)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

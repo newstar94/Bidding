@@ -92,6 +92,7 @@ class AggregateVersionRepository:
                 f"""SELECT * FROM {table_name}
                     WHERE organization_id = ?
                       AND {parent_column} IN ({placeholders})
+                    ORDER BY {parent_column}, id
                     FOR UPDATE""",  # noqa: S608 - fixed repository identifiers
                 (organization_id, *package_ids),
             ).fetchall()
@@ -102,6 +103,7 @@ class AggregateVersionRepository:
                 WHERE organization_id = ?
                   AND loai_doi_tuong = 'goithau'
                   AND id_muc_tieu IN ({placeholders})
+                ORDER BY id_muc_tieu, id
                 FOR UPDATE""",  # noqa: S608 - placeholders only
             (organization_id, *package_ids),
         ).fetchall()

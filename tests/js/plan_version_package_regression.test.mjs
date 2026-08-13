@@ -661,6 +661,56 @@ test("each plan version resolves only its own frozen package snapshot", () => {
   assert.deepEqual(model.getLatestPackagesForPlan("plan-v01"), [currentPackage]);
 });
 
+test("creating a package version demotes only its representative in the same plan snapshot", async () => {
+  const historicalRepresentative = {
+    id: "package-plan-v00",
+    rootId: "package-root",
+    phienBan: "00",
+    isLatest: 1,
+    keHoachId: "plan-v00",
+  };
+  const source = {
+    ...historicalRepresentative,
+    id: "package-plan-v01",
+    keHoachId: "plan-v01",
+    thoiGianDangTai: "2026-08-01 08:00:00",
+    thoiGianDongThau: "2026-08-05 08:00:00",
+    phanLoList: [],
+  };
+  const state = {
+    goithau: [historicalRepresentative, source],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const controller = {
+    model: {
+      state,
+      getLatestPlan: () => ({ id: "plan-v01" }),
+      getCurrentDateTimeString: () => "2026-08-05 10:00:00",
+      commitLocalMutation: () => {},
+      persistData: async () => {},
+      flushMutationOutbox: async () => {},
+    },
+    autoSync: async () => ({ ok: true }),
+  };
+
+  await savePackagePreparation(
+    controller,
+    source,
+    { thoiGianDongThau: "2026-08-06 08:00:00" },
+    { generateRecordId: (type) => `${type}-next` },
+  );
+
+  assert.equal(historicalRepresentative.isLatest, 1);
+  assert.equal(source.isLatest, 0);
+  assert.equal(
+    state.goithau.find((pkg) => pkg.id === "goithau-next")?.isLatest,
+    1,
+  );
+});
+
 test("plan detail opens its package snapshot without upgrading to the latest plan snapshot", () => {
   const planView = fs.readFileSync("frontend/plans/KeHoachView.js", "utf8");
   const controller = fs.readFileSync("frontend/app/BiddingController.js", "utf8");

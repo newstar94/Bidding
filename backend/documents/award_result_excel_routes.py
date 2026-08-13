@@ -17,6 +17,7 @@ from backend.documents.award_result_excel_service import (
     export_updates_from_match,
     find_foreign_lot_codes,
     load_award_result_dataset,
+    load_winning_goods_export_model,
     load_validation_artifact,
     match_award_result_rows,
     output_filename,
@@ -45,6 +46,7 @@ from backend.shared.helpers import (
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.subscription_policy import can_use_award_result_excel_export
+from backend.shared.subscription_policy import can_use_document_export
 
 
 MAX_AWARD_RESULT_EXCEL_BYTES = 10 * 1024 * 1024
@@ -136,6 +138,104 @@ def _authorize(request, package_id):
         return role, organization_id
     finally:
         connection.close()
+
+
+def _authorize_winning_goods(request, package_id):
+    valid, role = verify_session(request)
+    if not valid:
+        raise AwardResultExcelError("AUTH_REQUIRED", str(role), status_code=401)
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id = get_active_org(request, role.user_id, cursor=cursor)
+        if not can_read_record(
+            cursor, role, role.user_id, organization_id,
+            "goithau", "goi_thau", package_id,
+        ):
+            raise AwardResultExcelError(
+                "PACKAGE_EXPORT_DENIED",
+                "Bạn không có quyền xuất hàng hóa của gói thầu này.",
+                status_code=403,
+            )
+        if not can_use_document_export(
+            cursor, role, role.user_id, organization_id, format="xlsx"
+        ):
+            raise AwardResultExcelError(
+                "EXCEL_EXPORT_SUBSCRIPTION_REQUIRED",
+                "Phạm vi đang làm việc chưa có quyền xuất Excel.",
+                status_code=403,
+            )
+        return role, organization_id
+    finally:
+        connection.close()
+
+
+async def export_winning_goods_excel_api(request):
+    package_id = clean_id(request.path_params.get("package_id"))
+    if not package_id:
+        return error_response(
+            request, "PACKAGE_ID_INVALID", "Mã gói thầu không hợp lệ.",
+            status_code=400,
+        )
+    try:
+        role, organization_id = await run_database_read(
+            _authorize_winning_goods, request, package_id, timeout_seconds=10
+        )
+        try:
+            expected_revision = int(request.query_params.get("expectedRevision") or 0)
+        except (TypeError, ValueError):
+            expected_revision = 0
+        if expected_revision < 1:
+            raise AwardResultExcelError(
+                "PACKAGE_REVISION_REQUIRED",
+                "Thiếu phiên bản gói thầu dùng để xuất.",
+            )
+        export_model = await run_database_read(
+            load_winning_goods_export_model,
+            package_id,
+            organization_id,
+            expected_revision,
+            timeout_seconds=20,
+        )
+        output = await run_document_job_async(
+            "export_excel",
+            {"function": "create_winning_goods_excel", "args": [export_model]},
+            timeout_seconds=45,
+        )
+        if not isinstance(output, (bytes, bytearray)):
+            raise DocumentWorkerError("Kết quả xuất workbook không hợp lệ.")
+        package_code = str(export_model.get("packageCode") or "goi_thau")
+        safe_code = "".join(
+            char if char.isalnum() or char in {"-", "_"} else "_"
+            for char in package_code
+        )[:120] or "goi_thau"
+        log_audit(
+            "winning_goods.excel_exported",
+            actor_user_id=role.user_id,
+            organization_id=organization_id,
+            target_type="goi_thau",
+            target_id=package_id,
+            request=request,
+            metadata={
+                "revision": expected_revision,
+                "output_size": len(output),
+                "group_count": len(export_model.get("groups") or []),
+            },
+            required=True,
+        )
+        return Response(
+            bytes(output),
+            media_type=XLSX_CONTENT_TYPE,
+            headers={
+                "Content-Disposition": _content_disposition(
+                    f"Danh_sach_hang_hoa_trung_thau_{safe_code}.xlsx"
+                ),
+                "Cache-Control": "private, no-store",
+                "Pragma": "no-cache",
+            },
+        )
+    except Exception as exception:  # noqa: BLE001 - route maps safe failures
+        return _safe_error(request, exception, "export_winning_goods_excel_api")
 
 
 def _validate_upload_metadata(upload, head: bytes, size: int) -> None:
@@ -639,6 +739,11 @@ async def cancel_award_result_excel_validation_api(request):
 
 def award_result_excel_routes(Route):
     return [
+        Route(
+            "/api/packages/{package_id}/winning-goods.xlsx",
+            export_winning_goods_excel_api,
+            methods=["GET"],
+        ),
         Route(
             "/api/packages/{package_id}/award-result-excel/validate",
             validate_award_result_excel_api,

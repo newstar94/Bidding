@@ -1574,6 +1574,211 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
     }
 
 
+def _winning_unit_price(row: dict[str, Any]) -> Decimal:
+    quantity = Decimal(str(row.get("khoi_luong") or "0"))
+    if quantity <= 0:
+        raise AwardResultExcelError(
+            "WINNING_GOODS_QUANTITY_INVALID",
+            "Hàng hóa trúng thầu có khối lượng không hợp lệ.",
+            status_code=409,
+        )
+    allocated = row.get("gia_tri_co_so_sau_giam_gia")
+    if allocated is not None:
+        return Decimal(str(allocated)) / quantity
+    unit_price = row.get("don_gia_du_thau")
+    if unit_price is None:
+        raise AwardResultExcelError(
+            "WINNING_GOODS_PRICE_MISSING",
+            "Hàng hóa trúng thầu thiếu đơn giá chính thức.",
+            status_code=409,
+        )
+    return Decimal(str(unit_price))
+
+
+def _decimal_text(value: Decimal) -> str:
+    return format(value.normalize(), "f") if value else "0"
+
+
+def load_winning_goods_export_model(
+    package_id: str,
+    organization_id: str,
+    expected_revision: int,
+    *,
+    database_obj=None,
+):
+    """Load only committed winner goods at one authoritative package revision."""
+
+    if database_obj is None:
+        from backend.shared.helpers import database as database_obj
+    connection = database_obj.get_connection()
+    try:
+        cursor = connection.cursor()
+        package = cursor.execute(
+            """SELECT id, ma_goi_thau, ten_goi_thau, linh_vuc, phan_lo,
+                      nha_thau_trung_thau_id, row_version
+               FROM goi_thau
+               WHERE id = ? AND organization_id = ? AND archived_at IS NULL""",
+            (package_id, organization_id),
+        ).fetchone()
+        if not package:
+            raise AwardResultExcelError(
+                "PACKAGE_NOT_FOUND", "Không tìm thấy gói thầu.", status_code=404
+            )
+        package = _row_mapping(
+            package,
+            ("id", "ma_goi_thau", "ten_goi_thau", "linh_vuc", "phan_lo",
+             "nha_thau_trung_thau_id", "row_version"),
+        )
+        actual_revision = int(package.get("row_version") or 1)
+        if actual_revision != expected_revision:
+            raise AwardResultExcelError(
+                "PACKAGE_REVISION_CONFLICT",
+                "Gói thầu đã thay đổi; vui lòng tải lại trước khi xuất.",
+                status_code=409,
+            )
+        if str(package.get("linh_vuc") or "").strip() not in {"Hàng hóa", "Hỗn hợp"}:
+            raise AwardResultExcelError(
+                "WINNING_GOODS_EXPORT_UNSUPPORTED",
+                "Chức năng chỉ áp dụng cho gói Hàng hóa hoặc Hỗn hợp.",
+                status_code=409,
+            )
+        lot_rows = cursor.execute(
+            """SELECT id, ma_phan_lo, ten_phan_lo, nha_thau_trung_thau_id,
+                      sort_order
+               FROM goi_thau_phan_lo
+               WHERE goi_thau_id = ? AND organization_id = ?
+                 AND archived_at IS NULL
+               ORDER BY sort_order, id""",
+            (package_id, organization_id),
+        ).fetchall()
+        lots = [
+            _row_mapping(row, ("id", "ma_phan_lo", "ten_phan_lo",
+                               "nha_thau_trung_thau_id", "sort_order"))
+            for row in lot_rows
+        ]
+        opening_rows = cursor.execute(
+            """SELECT opening.id, opening.nha_thau_id, opening.ma_phan_lo,
+                      COALESCE(NULLIF(opening.ten_nha_thau, ''), bidder.ten_nha_thau)
+               FROM thong_tin_mo_thau AS opening
+               JOIN nha_thau AS bidder
+                 ON bidder.organization_id = opening.organization_id
+                AND bidder.id = opening.nha_thau_id
+               WHERE opening.goi_thau_id = ? AND opening.organization_id = ?
+                 AND opening.archived_at IS NULL
+               ORDER BY opening.ma_phan_lo, opening.id""",
+            (package_id, organization_id),
+        ).fetchall()
+        openings = [
+            _row_mapping(row, ("id", "nha_thau_id", "ma_phan_lo", "ten_nha_thau"))
+            for row in opening_rows
+        ]
+        goods_rows = cursor.execute(
+            """SELECT id, thong_tin_mo_thau_id, phan_lo_id, stt_nguon,
+                      danh_muc_hang_hoa, ky_ma_hieu, nhan_hieu, nam_san_xuat,
+                      xuat_xu, hang_san_xuat, cau_hinh_tinh_nang_ky_thuat,
+                      don_vi_tinh, khoi_luong, ma_hs, don_gia_du_thau,
+                      gia_tri_co_so_sau_giam_gia, sort_order
+               FROM hang_hoa_du_thau_nha_thau
+               WHERE goi_thau_id = ? AND organization_id = ? AND is_draft = 0
+               ORDER BY thong_tin_mo_thau_id, sort_order, id""",
+            (package_id, organization_id),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    goods_columns = (
+        "id", "thong_tin_mo_thau_id", "phan_lo_id", "stt_nguon",
+        "danh_muc_hang_hoa", "ky_ma_hieu", "nhan_hieu", "nam_san_xuat",
+        "xuat_xu", "hang_san_xuat", "cau_hinh_tinh_nang_ky_thuat",
+        "don_vi_tinh", "khoi_luong", "ma_hs", "don_gia_du_thau",
+        "gia_tri_co_so_sau_giam_gia", "sort_order",
+    )
+    goods_by_opening: dict[str, list[dict[str, Any]]] = {}
+    for raw in goods_rows:
+        row = _row_mapping(raw, goods_columns)
+        goods_by_opening.setdefault(str(row["thong_tin_mo_thau_id"]), []).append(row)
+
+    is_lotted = str(package.get("phan_lo") or "") == "Có"
+    scopes = []
+    if is_lotted:
+        scopes = [
+            (lot, str(lot.get("nha_thau_trung_thau_id") or ""))
+            for lot in lots if str(lot.get("nha_thau_trung_thau_id") or "")
+        ]
+    else:
+        winner = str(package.get("nha_thau_trung_thau_id") or "")
+        if winner:
+            scopes = [(None, winner)]
+    if not scopes:
+        raise AwardResultExcelError(
+            "WINNING_GOODS_RESULT_MISSING",
+            "Gói thầu chưa có kết quả trúng thầu chính thức để xuất.",
+            status_code=409,
+        )
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for lot, winner_id in scopes:
+        lot_code = str((lot or {}).get("ma_phan_lo") or "").strip()
+        matches = [
+            opening for opening in openings
+            if str(opening.get("nha_thau_id") or "") == winner_id
+            and str(opening.get("ma_phan_lo") or "").strip() == lot_code
+        ]
+        if len(matches) != 1:
+            raise AwardResultExcelError(
+                "WINNING_GOODS_OPENING_AMBIGUOUS",
+                "Không xác định duy nhất hồ sơ mở thầu của nhà thầu trúng thầu.",
+                status_code=409,
+            )
+        opening = matches[0]
+        official = [
+            row for row in goods_by_opening.get(str(opening["id"]), [])
+            if (not lot or str(row.get("phan_lo_id") or "") == str(lot["id"]))
+        ]
+        if not official:
+            raise AwardResultExcelError(
+                "WINNING_GOODS_COMMITTED_DATA_MISSING",
+                "Nhà thầu trúng thầu chưa có hàng hóa chính thức để xuất.",
+                status_code=409,
+            )
+        group = grouped.setdefault(winner_id, {
+            "contractorId": winner_id,
+            "contractorName": str(opening.get("ten_nha_thau") or ""),
+            "lots": [],
+        })
+        projected = []
+        for index, row in enumerate(official, start=1):
+            projected.append({
+                "stt": str(row.get("stt_nguon") or index),
+                "danhMucHangHoa": str(row.get("danh_muc_hang_hoa") or ""),
+                "kyMaHieu": str(row.get("ky_ma_hieu") or ""),
+                "nhanHieu": str(row.get("nhan_hieu") or ""),
+                "namSanXuat": str(row.get("nam_san_xuat") or ""),
+                "xuatXu": str(row.get("xuat_xu") or ""),
+                "hangSanXuat": str(row.get("hang_san_xuat") or ""),
+                "cauHinhTinhNangKyThuat": str(
+                    row.get("cau_hinh_tinh_nang_ky_thuat") or ""
+                ),
+                "donViTinh": str(row.get("don_vi_tinh") or ""),
+                "khoiLuong": str(row.get("khoi_luong") or ""),
+                "maHs": str(row.get("ma_hs") or ""),
+                "donGiaTrungThau": _decimal_text(_winning_unit_price(row)),
+            })
+        group["lots"].append({
+            "lotId": str((lot or {}).get("id") or ""),
+            "lotCode": lot_code,
+            "lotName": str((lot or {}).get("ten_phan_lo") or ""),
+            "rows": projected,
+        })
+    return {
+        "packageCode": str(package.get("ma_goi_thau") or ""),
+        "packageName": str(package.get("ten_goi_thau") or ""),
+        "isLotted": is_lotted,
+        "revision": actual_revision,
+        "groups": list(grouped.values()),
+    }
+
+
 def find_foreign_lot_codes(
     lot_codes: Iterable[Any], package_id: str, organization_id: str, *, database_obj=None
 ) -> set[str]:

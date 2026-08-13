@@ -10,6 +10,7 @@ from backend.versioning.aggregate_snapshot import (
     snapshot_package_aggregate,
     snapshot_plan_aggregate,
 )
+from backend.versioning.aggregate_validator import validate_generated_aggregate_graph
 
 
 IMMUTABLE_VERSION_FIELDS = SERVER_FIELDS | {
@@ -39,6 +40,14 @@ class AggregateVersionConflict(Exception):
 
 class HistoricalAggregateError(ValueError):
     """Raised when a command would derive a new version from historical state."""
+
+
+class AggregateVersionPolicyError(ValueError):
+    """Raised when aggregate selection violates a stable domain policy."""
+
+    def __init__(self, code, message):
+        self.code = str(code)
+        super().__init__(message)
 
 
 def _rows(value):
@@ -77,13 +86,26 @@ def _demote_source(source):
     return record
 
 
-def _id_factory(client_mutation_id, kind):
-    counter = 0
+def _id_factory(
+    organization_id,
+    actor_authority_id,
+    source_id,
+    client_mutation_id,
+    kind,
+):
+    counters = {}
 
     def create_id(entity_kind):
-        nonlocal counter
-        counter += 1
-        token = f"{client_mutation_id}:{kind}:{counter}:{entity_kind}"
+        counters[entity_kind] = counters.get(entity_kind, 0) + 1
+        token = ":".join((
+            str(organization_id),
+            str(actor_authority_id),
+            str(source_id),
+            str(kind),
+            str(client_mutation_id),
+            str(entity_kind),
+            str(counters[entity_kind]),
+        ))
         return str(uuid5(NAMESPACE_URL, token))
 
     return create_id
@@ -152,6 +174,61 @@ def _assert_current_source(source, expected_version):
         raise AggregateVersionConflict(current_version)
 
 
+def _validate_plan_package_selection(
+    state,
+    source_plan_id,
+    include_roots,
+    exclude_roots,
+):
+    packages = [
+        package for package in _rows(state.get("goithau"))
+        if str(package.get("keHoachId")) == str(source_plan_id)
+    ]
+    packages_by_id = {
+        str(package.get("id")): package
+        for package in packages
+        if package.get("id")
+    }
+    roots = {
+        str(package.get("rootId") or package.get("id"))
+        for package in packages
+        if package.get("id")
+    }
+    requested = (include_roots or set()) | (exclude_roots or set())
+    if requested - roots:
+        raise AggregateVersionPolicyError(
+            "AGGREGATE_SELECTION_ROOT_INVALID",
+            "Package selection contains a root outside the source plan.",
+        )
+    selected = {
+        str(package.get("id"))
+        for package in packages
+        if (
+            (include_roots is None or str(package.get("rootId") or package.get("id")) in include_roots)
+            and str(package.get("rootId") or package.get("id")) not in exclude_roots
+        )
+    }
+    for package_id in selected:
+        seen = {package_id}
+        ancestor_id = str(
+            packages_by_id[package_id].get("rebidFromPackageId") or ""
+        ).strip()
+        while ancestor_id:
+            ancestor = packages_by_id.get(ancestor_id)
+            if not ancestor or ancestor_id not in selected:
+                raise AggregateVersionPolicyError(
+                    "AGGREGATE_REBID_DEPENDENCY_EXCLUDED",
+                    "Selected package requires a rebid ancestor excluded from the target plan.",
+                )
+            if ancestor_id in seen:
+                raise AggregateVersionPolicyError(
+                    "AGGREGATE_REBID_DEPENDENCY_INVALID",
+                    "Rebid package ancestry contains a cycle.",
+                )
+            seen.add(ancestor_id)
+            ancestor_id = str(ancestor.get("rebidFromPackageId") or "").strip()
+
+
 def _base_payload(repository, organization_id, mutation_id):
     return {
         "baseSyncVersion": str(repository.current_sync_version(organization_id)),
@@ -172,6 +249,7 @@ def build_aggregate_version_payload(
     command,
     *,
     timestamp,
+    actor_authority_id="server",
 ):
     """Load authoritative state and build one idempotent sync mutation payload."""
 
@@ -206,7 +284,13 @@ def build_aggregate_version_payload(
                 "MUASAMCONG-managed lineages receive versions only from source revisions."
             )
 
-    create_id = _id_factory(mutation_id, kind)
+    create_id = _id_factory(
+        organization_id,
+        actor_authority_id,
+        source_id,
+        mutation_id,
+        kind,
+    )
     payload = _base_payload(repository, organization_id, mutation_id)
     if kind == "package":
         owning_plan = _source_record(
@@ -237,9 +321,23 @@ def build_aggregate_version_payload(
             "assignments",
         ):
             payload[key] = snapshot[key]
-        return payload
+        return validate_generated_aggregate_graph(
+            payload,
+            source_ids={
+                source.get("id"),
+                *snapshot["mappings"]["lotIds"].keys(),
+                *snapshot["mappings"]["goodsIds"].keys(),
+                *snapshot["mappings"]["openingIds"].keys(),
+            },
+        )
 
     target_plan_id = create_id("kehoach")
+    _validate_plan_package_selection(
+        state,
+        source_id,
+        include_roots,
+        exclude_roots,
+    )
     created_plan = _clean_record(source)
     created_plan.update(deepcopy(changes))
     created_plan.update({
@@ -281,4 +379,7 @@ def build_aggregate_version_payload(
             "type": "kehoach",
         })
         payload["assignments"].append(cloned_assignment)
-    return payload
+    return validate_generated_aggregate_graph(
+        payload,
+        source_ids={source_id, *aggregate["sourcePackageIds"]},
+    )

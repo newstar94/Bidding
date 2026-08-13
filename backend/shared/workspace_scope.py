@@ -44,6 +44,11 @@ def is_personal_scope_for_user(scope_id, user_id):
 
 
 def personal_workspace_payload(user_id, display_name=None, subscription=None):
+    capabilities = (
+        dict(subscription.get("entitlements") or {})
+        if subscription and subscription.get("status") == "active"
+        else {}
+    )
     return {
         "id": personal_scope_id(user_id),
         "name": "Cá nhân",
@@ -52,8 +57,10 @@ def personal_workspace_payload(user_id, display_name=None, subscription=None):
         "status": "active",
         "subscription": subscription,
         "entitlements": {
-            "word_export": bool(
-                subscription and subscription.get("status") == "active"
+            "word_export": bool(capabilities.get("document.export.word")),
+            "excel_export": bool(capabilities.get("document.export.excel")),
+            "award_result_excel_export": bool(
+                capabilities.get("document.export.award_result_excel")
             ),
             "source": "account_subscription",
         },

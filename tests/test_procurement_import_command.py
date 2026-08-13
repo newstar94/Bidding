@@ -861,7 +861,23 @@ def test_real_postgres_plan_00_to_01_is_atomic_and_preserves_version_axes():
             provider="VNEPS", revision=revision_00,
             idempotency_key=f"{token}:00", expected_plan_row_version=None,
         )
+        assert first["syncVersion"] > 0
         first_a = first["createdPackages"][0]
+        plan_sync_version = cursor.execute(
+            "SELECT sync_version FROM ke_hoach_lcnt WHERE id = ?",
+            (first["createdPlans"][0]["id"],),
+        ).fetchone()[0]
+        package_sync_version = cursor.execute(
+            "SELECT sync_version FROM goi_thau WHERE id = ?",
+            (first_a["id"],),
+        ).fetchone()[0]
+        assert plan_sync_version == package_sync_version == first["syncVersion"]
+        assert cursor.execute(
+            """SELECT COUNT(*) FROM websocket_events
+                WHERE organization_id = ? AND event_type = 'broadcast'
+                  AND payload_json LIKE '%%db_changed%%'""",
+            (organization_id,),
+        ).fetchone()[0] >= 1
         assert cursor.execute(
             "SELECT trang_thai FROM goi_thau WHERE id = ?",
             (first_a["id"],),

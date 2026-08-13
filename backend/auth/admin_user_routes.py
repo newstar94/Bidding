@@ -32,7 +32,7 @@ from backend.shared.subscription_policy import get_account_subscriptions_by_user
 from backend.shared.request_validation import read_json_object
 
 
-_DOCUMENT_CAPABILITY_FIELDS = ("financial", "identity", "signature")
+_SENSITIVE_CAPABILITY_FIELDS = ("financial", "identity", "signature")
 
 
 def _database_lane_unavailable_response(request, *, write=False, timed_out=False):
@@ -149,7 +149,12 @@ def _list_users_sync(request):
                        pkg.trang_thai AS package_status,
                        permission.kehoach, permission.goithau, permission.chudautu,
                        permission.nhathau, permission.chuyengia, permission.hopdong,
-                       export_grant.financial, export_grant.identity, export_grant.signature,
+                       export_grant.financial AS export_financial,
+                       export_grant.identity AS export_identity,
+                       export_grant.signature AS export_signature,
+                       read_grant.financial AS read_financial,
+                       read_grant.identity AS read_identity,
+                       read_grant.signature AS read_signature,
                        (SELECT count(*) FROM thanh_vien_to_chuc members
                         WHERE members.organization_id = tc.id
                           AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
@@ -161,6 +166,8 @@ def _list_users_sync(request):
                   ON permission.organization_id = tc.id AND permission.emp_id = tvtc.user_id
                 LEFT JOIN document_export_capabilities export_grant
                   ON export_grant.organization_id = tc.id AND export_grant.user_id = tvtc.user_id
+                LEFT JOIN sensitive_record_read_capabilities read_grant
+                  ON read_grant.organization_id = tc.id AND read_grant.user_id = tvtc.user_id
                 WHERE tvtc.user_id IN ({placeholders})
                   AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
             """, user_ids)
@@ -214,8 +221,12 @@ def _list_users_sync(request):
                         )
                     },
                     "document_capabilities": {
-                        field: bool(row[field])
-                        for field in ("financial", "identity", "signature")
+                        field: bool(row[f"export_{field}"])
+                        for field in _SENSITIVE_CAPABILITY_FIELDS
+                    },
+                    "sensitive_read_capabilities": {
+                        field: bool(row[f"read_{field}"])
+                        for field in _SENSITIVE_CAPABILITY_FIELDS
                     },
                 })
 
@@ -269,6 +280,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         organization_package_id = str(data.get("organization_package_id") or "none").strip().lower()
         permissions = data.get("permissions")
         document_capabilities = data.get("document_capabilities")
+        sensitive_read_capabilities = data.get("sensitive_read_capabilities")
 
         if not user_id or platform_role not in {"super_admin", "user"}:
             return JSONResponse(
@@ -287,10 +299,17 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             )
         if document_capabilities is not None and not isinstance(document_capabilities, dict):
             return JSONResponse({"error": "Cấu hình quyền xuất Word không hợp lệ."}, status_code=400)
+        if sensitive_read_capabilities is not None and not isinstance(
+            sensitive_read_capabilities, dict
+        ):
+            return JSONResponse(
+                {"error": "Cấu hình quyền đọc dữ liệu nhạy cảm không hợp lệ."},
+                status_code=400,
+            )
 
         normalized_capabilities = {}
         if document_capabilities is not None:
-            for field in _DOCUMENT_CAPABILITY_FIELDS:
+            for field in _SENSITIVE_CAPABILITY_FIELDS:
                 value = document_capabilities.get(field)
                 if not isinstance(value, bool):
                     return JSONResponse(
@@ -298,6 +317,16 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                         status_code=400,
                     )
                 normalized_capabilities[field] = 1 if value else 0
+        normalized_read_capabilities = {}
+        if sensitive_read_capabilities is not None:
+            for field in _SENSITIVE_CAPABILITY_FIELDS:
+                value = sensitive_read_capabilities.get(field)
+                if not isinstance(value, bool):
+                    return JSONResponse(
+                        {"error": f"Quyền đọc dữ liệu {field} phải là đúng hoặc sai."},
+                        status_code=400,
+                    )
+                normalized_read_capabilities[field] = 1 if value else 0
 
         conn = database.get_connection()
         conn.execute("BEGIN")
@@ -467,7 +496,26 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                     (
                         organization_id,
                         user_id,
-                        *(normalized_capabilities[field] for field in _DOCUMENT_CAPABILITY_FIELDS),
+                        *(normalized_capabilities[field] for field in _SENSITIVE_CAPABILITY_FIELDS),
+                    ),
+                )
+            if normalized_read_capabilities:
+                cursor.execute(
+                    """INSERT INTO sensitive_record_read_capabilities (
+                           organization_id, user_id, financial, identity, signature
+                       ) VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(organization_id, user_id) DO UPDATE SET
+                           financial = excluded.financial,
+                           identity = excluded.identity,
+                           signature = excluded.signature,
+                           updated_at = CURRENT_TIMESTAMP""",
+                    (
+                        organization_id,
+                        user_id,
+                        *(
+                            normalized_read_capabilities[field]
+                            for field in _SENSITIVE_CAPABILITY_FIELDS
+                        ),
                     ),
                 )
         log_audit(
@@ -485,6 +533,10 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 "organization_package_id": organization_package_id if organization_id else None,
                 "document_capabilities": {
                     field: bool(value) for field, value in normalized_capabilities.items()
+                },
+                "sensitive_read_capabilities": {
+                    field: bool(value)
+                    for field, value in normalized_read_capabilities.items()
                 },
             },
             cursor=cursor,

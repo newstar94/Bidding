@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fetchDeltaSnapshot } from "../../frontend/app/syncCursor.js";
+import { commitSyncCursor, fetchDeltaSnapshot, readSyncCursor } from "../../frontend/app/syncCursor.js";
 
 function response(payload, ok = true) {
   return { ok, status: ok ? 200 : 409, json: async () => payload };
@@ -24,6 +24,29 @@ test("delta client advances the durable version only after the final page", asyn
   assert.match(calls[1], /cursor=signed/u);
 });
 
+test("delta client sends and persists the opaque visibility token", async () => {
+  let requested = "";
+  const storage = new Map([
+    ["bf_last_sync_version", "7"],
+    ["bf_visibility_token", "visibility-old"],
+  ]);
+  const adapter = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, String(value)),
+  };
+  const result = await fetchDeltaSnapshot(async (url) => {
+    requested = url;
+    return response({
+      deletions: [], throughVersion: 8, syncVersion: 8,
+      visibilityToken: "visibility-new", nextCursor: "",
+    });
+  }, { afterVersion: 7, visibilityToken: "visibility-old" });
+  commitSyncCursor(adapter, result.snapshot);
+
+  assert.match(requested, /visibility_token=visibility-old/);
+  assert.equal(storage.get("bf_visibility_token"), "visibility-new");
+});
+
 test("delta client exposes an error without committing a partial snapshot", async () => {
   let count = 0;
   const result = await fetchDeltaSnapshot(async () => {
@@ -35,4 +58,14 @@ test("delta client exposes an error without committing a partial snapshot", asyn
 
   assert.equal(result.snapshot, null);
   assert.equal(result.response.status, 409);
+});
+
+test("legacy version cursor without a visibility token forces a full sync", () => {
+  const storage = new Map([["bf_last_sync_version", "7"]]);
+  const cursor = readSyncCursor({
+    getItem: (key) => storage.get(key) ?? null,
+  });
+
+  assert.equal(cursor.useVersionDelta, false);
+  assert.deepEqual(cursor.query, { since: "0" });
 });

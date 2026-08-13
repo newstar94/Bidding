@@ -1051,6 +1051,42 @@ def test_batch_authorization_recognizes_new_snapshot_and_cloned_assignment():
     ).allowed
 
 
+def test_server_inherited_assignment_preserves_other_assignee_without_client_grant():
+    inherited = {
+        "id": "assignment-v2-other",
+        "targetId": "package-v2",
+        "type": "goithau",
+        "empId": "employee-2",
+    }
+    context = access_policy.BatchWriteAuthorizationContext(
+        role_str="employee",
+        user_id="employee-1",
+        organization_id="organization-1",
+        organization_manager=False,
+        personal_workspace_owner=False,
+        active_membership=True,
+        inherited_specialist_access=False,
+        membership_role="employee",
+        snapshot_package_ids={"package-v2"},
+        server_inherited_assignment_ids={"assignment-v2-other"},
+    )
+
+    assert access_policy.authorize_record_write_from_context(
+        context,
+        "assignments",
+        "phan_cong_nhan_su",
+        inherited,
+    ).allowed
+
+    context.server_inherited_assignment_ids.clear()
+    assert not access_policy.authorize_record_write_from_context(
+        context,
+        "assignments",
+        "phan_cong_nhan_su",
+        inherited,
+    ).allowed
+
+
 def test_batch_authorization_decisions_preserve_assignment_and_membership_rules():
     context = access_policy.BatchWriteAuthorizationContext(
         role_str="employee",
@@ -1117,9 +1153,12 @@ def test_mixed_table_deletions_preserve_child_before_parent_order(monkeypatch):
                 self.answer = _Answer(rows=[{
                     "id": "plan-1",
                     "id_goc": "plan-1",
+                    "is_latest": 1,
                     "row_version": 1,
                     "archived_at": None,
                 }])
+            elif normalized.startswith("SELECT id, is_latest FROM ke_hoach_lcnt"):
+                self.answer = _Answer(rows=[("plan-1", 1)])
             elif normalized.startswith(
                 "SELECT ke_hoach_id, COUNT(*) FROM goi_thau"
             ):

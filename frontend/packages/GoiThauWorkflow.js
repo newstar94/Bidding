@@ -114,6 +114,7 @@ export async function createOfficialPackageVersionFromForm(
   const rootId = String(sourcePackage.rootId || sourcePackage.id);
   const packageRecord = controller.model.state.goithau.find((candidate) => (
     String(candidate.rootId || candidate.id) === rootId
+    && String(candidate.keHoachId) === String(changes?.keHoachId || sourcePackage.keHoachId)
     && candidate.isLatest == 1
     && String(candidate.id) !== String(sourcePackage.id)
   ));
@@ -1061,7 +1062,10 @@ export async function handleGoiThauSubmit(e) {
         const newPackageVersion = newPackageSnapshot.packageRecord;
         const packageRootId = String(oldGt.rootId || oldGt.id);
         this.model.state.goithau.forEach((candidate) => {
-          if (String(candidate.rootId || candidate.id) === packageRootId) {
+          if (
+            String(candidate.rootId || candidate.id) === packageRootId
+            && String(candidate.keHoachId) === String(gtData.keHoachId)
+          ) {
             candidate.isLatest = 0;
             candidate._procurementImportCurrent = false;
           }

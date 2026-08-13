@@ -63,7 +63,7 @@ def test_organization_ownership_registry_covers_schema_without_manual_allowlist(
     }
 
     assert {entry.table_name for entry in registry} == expected_tables
-    assert len(registry) == 67
+    assert len(registry) == len(expected_tables)
     assert sum(entry.polymorphic_owner for entry in registry) == 39
 
 

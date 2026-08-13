@@ -33,6 +33,8 @@ _WEBSOCKET_LEASE_SECONDS = 120
 
 _WEBSOCKET_EVENT_FIELDS = {
     "db_changed": ("event",),
+    "lot_lifecycle_changed": ("event", "packageId", "revision"),
+    "package_documents_changed": ("event", "packageId", "revision"),
     "organization_member_changed": ("event",),
     "organization_subscription_changed": ("event",),
     "user_access_settings_changed": ("event",),
@@ -649,6 +651,7 @@ async def dispatch_websocket_broker_event(event):
 
 
 def _load_broker_events(after_id):
+    del after_id
     conn = database.get_connection()
     try:
         rows = conn.execute(
@@ -656,12 +659,12 @@ def _load_broker_events(after_id):
             SELECT id, event_type, organization_id, user_id, payload_json,
                    status, attempt_count
             FROM websocket_events
-            WHERE id > ? AND status != 'dead_letter'
+            WHERE status IN ('pending', 'retry')
               AND available_at <= ?
             ORDER BY id
             LIMIT 500
             """,
-            (after_id, int(time.time())),
+            (int(time.time()),),
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -741,11 +744,8 @@ def _record_broker_delivery(event_id, error=None):
 async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
     """Fan out durable events using PostgreSQL LISTEN/NOTIFY with replay."""
     del poll_interval
-    last_event_id = (
-        int(start_after_id)
-        if start_after_id is not None
-        else await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
-    )
+    del start_after_id
+    last_event_id = 0
     listener = None
     cleanup_counter = 0
     while True:

@@ -68,6 +68,30 @@ test("platform Word entitlement overrides an organization without a subscription
 });
 
 
+test("access context keeps Excel entitlements independent from Word", () => {
+  const target = {};
+  applyAccessContext(target, {
+    platform_role: "user",
+    active_org_id: "org-a",
+    organizations: [{
+      id: "org-a",
+      name: "Tổ chức A",
+      scope_type: "organization",
+      role: "employee",
+      entitlements: {
+        word_export: false,
+        excel_export: true,
+        award_result_excel_export: true,
+      },
+    }],
+  });
+
+  assert.equal(target.wordExportEnabled, false);
+  assert.equal(target.excelExportEnabled, true);
+  assert.equal(target.awardResultExcelExportEnabled, true);
+});
+
+
 test("Word mapping UI distinguishes sparse overrides and can restore defaults", () => {
   const workflow = fs.readFileSync("frontend/documents/WordIntegration.js", "utf8");
   const view = fs.readFileSync("frontend/partners/PartnerView.js", "utf8");

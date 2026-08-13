@@ -11,6 +11,7 @@ from backend.sync.delta_paging import (
     encode_delta_cursor,
 )
 from backend.sync.mapper import save_child_payloads
+from backend.sync.visibility_scope import VisibilityScope
 from tests.test_sync_conflict_authorization import _seed_denied_package, _test_database
 
 
@@ -70,6 +71,26 @@ def test_delta_cursor_expires():
             user_id="user-a",
             now=2_001,
         )
+
+
+def test_visibility_scope_pushes_assignment_and_module_denial_into_sql():
+    scope = VisibilityScope(
+        organization_id="org-a",
+        user_id="employee-a",
+        unrestricted=False,
+        permissions={"goithau": "view"},
+    )
+
+    package = scope.live_predicate("goi_thau", "source_row")
+    opening = scope.live_predicate("thong_tin_mo_thau", "source_row")
+    denied = scope.live_predicate("chuyen_gia", "source_row")
+
+    assert "pc.id_muc_tieu = source_row.id" in package.sql
+    assert "pc.id_muc_tieu = source_row.goi_thau_id" in opening.sql
+    assert package.parameters == ("org-a", "employee-a")
+    assert opening.parameters == ("org-a", "employee-a")
+    assert denied.sql == "FALSE"
+    assert denied.parameters == ()
 
 
 def test_delta_query_pins_through_version_and_orders_live_with_tombstone():

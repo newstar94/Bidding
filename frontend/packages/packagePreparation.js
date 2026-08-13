@@ -120,6 +120,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
       const packageRootId = String(pkg.rootId || pkg.id);
       const savedPackage = model.state.goithau.find((candidate) => (
         String(candidate.rootId || candidate.id) === packageRootId
+        && String(candidate.keHoachId) === String(pkg.keHoachId)
         && candidate.isLatest == 1
         && String(candidate.id) !== String(pkg.id)
       ));
@@ -148,6 +149,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
     const packageRootId = String(pkg.rootId || pkg.id);
     previousLatestPackages = model.state.goithau
       .filter((candidate) => String(candidate.rootId || candidate.id) === packageRootId)
+      .filter((candidate) => String(candidate.keHoachId) === String(latestPlan?.id || pkg.keHoachId))
       .filter((candidate) => candidate.isLatest == 1);
     const snapshot = createPackagePreparationVersionSnapshot(
       model.state,
@@ -165,6 +167,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
     );
     model.state.goithau
       .filter((candidate) => String(candidate.rootId || candidate.id) === packageRootId)
+      .filter((candidate) => String(candidate.keHoachId) === String(latestPlan?.id || pkg.keHoachId))
       .forEach((candidate) => { candidate.isLatest = 0; });
     savedPackage = snapshot.packageRecord;
     ensureVersionEhsmtAdjustment(savedPackage);

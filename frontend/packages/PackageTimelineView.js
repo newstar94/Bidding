@@ -167,12 +167,17 @@ function isTimelinePlanSelectable(view, planId) {
   return selectableTimelinePlans(view).some((plan) => String(plan.id) === String(planId));
 }
 
-function findContracts(view, packageRecord) {
+export function findTimelineContracts(view, packageRecord) {
+  const packageIds = new Set((view.model.state.goithau || [])
+    .filter((pkg) => String(pkg.rootId || pkg.id) === String(packageRecord?.rootId || packageRecord?.id))
+    .map((pkg) => String(pkg.id)));
   return (view.model.state.hopdong || []).filter((contract) => (
     Array.isArray(contract.goiThauIds)
-    && contract.goiThauIds.some((id) => String(id) === String(packageRecord?.id))
+    && contract.goiThauIds.some((id) => packageIds.has(String(id)))
   ));
 }
+
+const findContracts = findTimelineContracts;
 
 function prepareTimelineSelect(select, label, refreshOptions = {}) {
   if (!select) return null;

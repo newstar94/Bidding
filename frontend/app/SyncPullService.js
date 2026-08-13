@@ -201,7 +201,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     && this.view && this.view.showLoader;
   if (shouldShowFullLoader) this.view.showLoader();
   try {
-    const { useVersionDelta, since, query } = readSyncCursor(storage, { forceFull });
+    const { useVersionDelta, since, query, visibilityToken } = readSyncCursor(storage, { forceFull });
     const queryParams = new URLSearchParams(query);
     const currentTab = typeof this.getTabNameForPath === "function"
       ? this.getTabNameForPath(window.location.pathname)
@@ -219,6 +219,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     if (useVersionDelta && !routeOnly) {
       const delta = await fetchDeltaSnapshot(apiFetch, {
         afterVersion: query.after_version,
+        visibilityToken,
         headers: requestHeaders,
       });
       response = delta.response;
@@ -231,9 +232,10 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     if (response.status === 409 && !forceFull) {
       let resyncPayload = null;
       try { resyncPayload = await response.clone().json(); } catch { resyncPayload = null; }
-      if (resyncPayload?.code === "FULL_SYNC_REQUIRED" || resyncPayload?.requiresFullSync) {
+      if (["FULL_SYNC_REQUIRED", "SYNC_VISIBILITY_RESET_REQUIRED"].includes(resyncPayload?.code) || resyncPayload?.requiresFullSync) {
         storage.removeItem("bf_last_sync_version");
         storage.removeItem("bf_last_sync_timestamp");
+        storage.removeItem("bf_visibility_token");
         return this.forceSyncData(isBackground, true, routeOnly);
       }
     }

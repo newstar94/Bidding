@@ -240,6 +240,7 @@ def create_batch(
     context, _display = _context(cursor, organization_id, package_id, mode)
     decision = assess_batch_start(context, lot_ids)
     decision.require_allowed()
+    sync_version = next_sync_version(cursor, organization_id)
 
     sequence_row = cursor.execute(
         """SELECT COALESCE(MAX(sequence_no), 0) + 1
@@ -259,8 +260,9 @@ def create_batch(
         """INSERT INTO dot_xu_ly_phan_lo (
                id, organization_id, owner_type, goi_thau_id, sequence_no,
                procedure_kind, approval_mode, status, policy_version,
-               staged_approval_authorized, authorization_basis, created_by_id
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)""",
+               staged_approval_authorized, authorization_basis, created_by_id,
+               sync_version
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)""",
         (
             batch_id,
             organization_id,
@@ -273,6 +275,7 @@ def create_batch(
             1 if staged_approval_authorized else 0,
             str(authorization_basis or "").strip() or None,
             actor_user_id,
+            sync_version,
         ),
     )
     rows = [
@@ -288,9 +291,10 @@ def create_batch(
     ]
     cursor.executemany(
         """INSERT INTO dot_xu_ly_phan_lo_chi_tiet (
-               id, organization_id, owner_type, batch_id, lot_id, current_stage
-           ) VALUES (?, ?, ?, ?, ?, ?)""",
-        rows,
+               id, organization_id, owner_type, batch_id, lot_id,
+               current_stage, sync_version
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        [(*row, sync_version) for row in rows],
     )
     return {
         "id": batch_id,
@@ -301,6 +305,7 @@ def create_batch(
         "initialStage": initial_stage.value,
         "lotIds": sorted(decision.selected_lot_ids),
         "policyVersion": POLICY_VERSION,
+        "syncVersion": sync_version,
     }
 
 

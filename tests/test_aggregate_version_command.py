@@ -4,6 +4,7 @@ import pytest
 
 from backend.versioning.command import (
     AggregateVersionConflict,
+    AggregateVersionPolicyError,
     HistoricalAggregateError,
     build_aggregate_version_payload,
 )
@@ -70,6 +71,40 @@ def test_package_version_command_builds_an_idempotent_server_sync_payload():
     assert created["phienBan"] == 3
     assert created["tenGoiThau"] == "Gói mới"
     assert source_state == frozen_source
+
+
+def test_deterministic_ids_are_scoped_by_actor_and_source_aggregate():
+    command = {
+        "kind": "package",
+        "sourceId": "package-1",
+        "expectedRowVersion": 5,
+        "changes": {},
+        "clientMutationId": "shared-mutation-id",
+    }
+    first = build_aggregate_version_payload(
+        FakeRepository(_state()), "org-1", command,
+        timestamp="2026-08-08 10:00:00", actor_authority_id="actor-a",
+    )
+    second = build_aggregate_version_payload(
+        FakeRepository(_state()), "org-1", command,
+        timestamp="2026-08-08 10:00:00", actor_authority_id="actor-b",
+    )
+    other_state = _state()
+    other_state["goithau"][0].update({
+        "id": "package-2", "rootId": "package-root-2",
+    })
+    other_command = {**command, "sourceId": "package-2"}
+    third = build_aggregate_version_payload(
+        FakeRepository(other_state), "org-1", other_command,
+        timestamp="2026-08-08 10:00:00", actor_authority_id="actor-a",
+    )
+
+    assert first["goithau"][1]["id"] != second["goithau"][1]["id"]
+    assert first["goithau"][1]["id"] != third["goithau"][1]["id"]
+    assert first == build_aggregate_version_payload(
+        FakeRepository(_state()), "org-1", command,
+        timestamp="2026-08-08 10:00:00", actor_authority_id="actor-a",
+    )
 
 
 def test_version_command_cannot_resolve_a_same_id_source_from_another_tenant():
@@ -255,3 +290,51 @@ def test_plan_version_command_can_exclude_removed_package_roots():
         timestamp="2026-08-08 10:00:00",
     )
     assert [row["rootId"] for row in payload["goithau"]] == ["package-root"]
+
+
+def test_plan_version_rejects_unknown_selection_root():
+    with pytest.raises(AggregateVersionPolicyError) as error:
+        build_aggregate_version_payload(
+            FakeRepository(_state()),
+            "org-1",
+            {
+                "kind": "plan",
+                "sourceId": "plan-1",
+                "expectedRowVersion": 3,
+                "changes": {},
+                "includePackageRootIds": ["foreign-root"],
+                "clientMutationId": "unknown-selection-root",
+            },
+            timestamp="2026-08-08 10:00:00",
+        )
+    assert error.value.code == "AGGREGATE_SELECTION_ROOT_INVALID"
+
+
+def test_plan_version_rejects_excluded_rebid_ancestor():
+    state = _state()
+    state["goithau"][0].update({
+        "trangThai": "CANCELLED",
+    })
+    state["goithau"].append({
+        **state["goithau"][0],
+        "id": "package-rebid",
+        "rootId": "rebid-root",
+        "trangThai": "PREPARING",
+        "isRebid": True,
+        "rebidFromPackageId": "package-1",
+    })
+    with pytest.raises(AggregateVersionPolicyError) as error:
+        build_aggregate_version_payload(
+            FakeRepository(state),
+            "org-1",
+            {
+                "kind": "plan",
+                "sourceId": "plan-1",
+                "expectedRowVersion": 3,
+                "changes": {},
+                "excludePackageRootIds": ["package-root"],
+                "clientMutationId": "excluded-rebid-ancestor",
+            },
+            timestamp="2026-08-08 10:00:00",
+        )
+    assert error.value.code == "AGGREGATE_REBID_DEPENDENCY_EXCLUDED"

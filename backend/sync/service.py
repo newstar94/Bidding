@@ -75,9 +75,11 @@ from backend.sync.repository import (
     next_sync_version,
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
+from backend.sync.public_errors import public_sync_item_error
 from backend.sync.payload_validation import validate_sync_payload_shape
 from backend.versioning.command import (
     AggregateVersionConflict,
+    AggregateVersionPolicyError,
     build_aggregate_version_payload,
 )
 from backend.versioning.repository import AggregateVersionRepository
@@ -91,6 +93,7 @@ from backend.procurement_import.domain import ImportConflict
 
 from backend.sync.request_contract import (
     sync_batch_limit as _sync_batch_limit,
+    generated_aggregate_batch_limit as _generated_aggregate_batch_limit,
     sync_batch_size as _sync_batch_size,
 )
 from backend.sync.response import commit_sync_response
@@ -98,7 +101,6 @@ from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.database_io import run_database_write
 from backend.shared.request_validation import read_json_object
 from backend.notifications.service import (
-    find_unreplaced_assignment_removals,
     queue_assignment_state_changes,
     snapshot_assignment_state,
 )
@@ -646,6 +648,7 @@ def execute_sync_mutation(
     transaction_committed = False
     newly_written_images = set()
     staged_assets = []
+    server_inherited_assignment_ids = set()
     batch_limit = _sync_batch_limit()
     try:
         envelope = SyncMutationEnvelope.from_payload(data)
@@ -725,7 +728,13 @@ def execute_sync_mutation(
                 org_name,
                 data,
                 timestamp=current_time,
+                actor_authority_id=user_id,
             )
+            server_inherited_assignment_ids = {
+                str(item.get("id"))
+                for item in data.get("assignments", ())
+                if isinstance(item, dict) and item.get("id")
+            }
             shape_errors = validate_sync_payload_shape(data)
             if shape_errors:
                 conn.rollback()
@@ -737,7 +746,8 @@ def execute_sync_mutation(
                     fields={"errors": shape_errors},
                 )
             generated_batch_size = _sync_batch_size(data)
-            if generated_batch_size > batch_limit:
+            generated_batch_limit = _generated_aggregate_batch_limit()
+            if generated_batch_size > generated_batch_limit:
                 conn.rollback()
                 return error_response(
                     request,
@@ -745,7 +755,7 @@ def execute_sync_mutation(
                     "Số lượng bản ghi của phiên bản vượt quá giới hạn cho phép.",
                     status_code=413,
                     fields={
-                        "maxItems": batch_limit,
+                        "maxItems": generated_batch_limit,
                         "receivedItems": generated_batch_size,
                     },
                 )
@@ -806,11 +816,16 @@ def execute_sync_mutation(
         )
 
         try:
+            effective_batch_limit = (
+                _generated_aggregate_batch_limit()
+                if aggregate_version_command
+                else batch_limit
+            )
             augment_default_assignments(
                 cursor,
                 transaction_context,
                 data,
-                batch_limit=batch_limit,
+                batch_limit=effective_batch_limit,
                 measure_batch=_sync_batch_size,
             )
         except SyncBatchLimitExceeded as limit_error:
@@ -858,6 +873,7 @@ def execute_sync_mutation(
         )
 
         sync_item_errors = []
+        public_correlation_id = get_request_id(request)
 
 
         payload_index = SyncPayloadIndex.build(data, get_clean_id)
@@ -870,6 +886,7 @@ def execute_sync_mutation(
             schema_definition=SCHEMA_DINH_NGHIA,
             iter_payloads=iter_sync_table_payloads,
             canonicalize_item=canonicalize_payload_item,
+            server_inherited_assignment_ids=server_inherited_assignment_ids,
         )
         validation_errors = record_validator.validate_payload()
 
@@ -936,11 +953,12 @@ def execute_sync_mutation(
                         cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
                         cursor.execute("RELEASE SAVEPOINT sync_item")
                     except DatabaseError as savepoint_error:
-                        error = {
-                            "table": table_name,
-                            "id": item.get("id"),
-                            "message": str(item_err),
-                        }
+                        error = public_sync_item_error(
+                            item_err,
+                            table_name=table_name,
+                            record_id=item_id,
+                            correlation_id=public_correlation_id,
+                        )
                         log_sync_error(
                             f"Không thể phục hồi transaction sau lỗi bản ghi {item_id}: "
                             f"{savepoint_error}"
@@ -950,6 +968,7 @@ def execute_sync_mutation(
                             [error],
                             "Không thể đồng bộ vì có bản ghi không hợp lệ.",
                             status_code=400,
+                            correlation_id=public_correlation_id,
                         )
 
                     if (
@@ -972,11 +991,12 @@ def execute_sync_mutation(
                             log_sync_error(f"Không thể đánh dấu bản ghi mồ côi {item_id}: {orphan_cleanup_error}")
                     else:
                         log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
-                        sync_item_errors.append({
-                            "table": table_name,
-                            "id": item.get("id"),
-                            "message": str(item_err)
-                        })
+                        sync_item_errors.append(public_sync_item_error(
+                            item_err,
+                            table_name=table_name,
+                            record_id=item_id,
+                            correlation_id=public_correlation_id,
+                        ))
 
 
         deletion_result = apply_sync_deletions(
@@ -1003,22 +1023,6 @@ def execute_sync_mutation(
         assignment_state_after = {}
         if owner_type == "organization" and not sync_item_errors:
             assignment_state_after = snapshot_assignment_state(cursor, org_name)
-            for missing_assignment in find_unreplaced_assignment_removals(
-                cursor,
-                organization_id=org_name,
-                before=assignment_state_before,
-                after=assignment_state_after,
-            ):
-                sync_item_errors.append({
-                    "table": "phan_cong_nhan_su",
-                    "id": missing_assignment["target_id"],
-                    "field": "id_nhan_vien",
-                    "code": "ASSIGNMENT_SUCCESSOR_REQUIRED",
-                    "message": (
-                        "Không thể hủy phân công khi công việc vẫn tồn tại. "
-                        "Phải chọn một nhân sự khác tiếp quản trong cùng thao tác."
-                    ),
-                })
 
         if sync_item_errors:
             conflict = any(error.get("code") == "ROW_VERSION_CONFLICT" for error in sync_item_errors)
@@ -1027,6 +1031,7 @@ def execute_sync_mutation(
                 sync_item_errors,
                 "Không thể đồng bộ vì có bản ghi không hợp lệ.",
                 status_code=409 if conflict else 400,
+                correlation_id=public_correlation_id,
             )
 
         if owner_type == "organization":
@@ -1157,6 +1162,13 @@ def execute_sync_mutation(
             return JSONResponse(
                 {"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."},
                 status_code=500,
+            )
+        if isinstance(validation_error, AggregateVersionPolicyError):
+            return error_response(
+                request,
+                validation_error.code,
+                str(validation_error),
+                status_code=400,
             )
         return error_response(
             request,

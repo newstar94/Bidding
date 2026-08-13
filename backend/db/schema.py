@@ -410,6 +410,8 @@ SCHEMA_DINH_NGHIA = {
             "package_id": "TEXT",
             "filename": "TEXT",
             "content_type": "TEXT",
+            "policy_json": "TEXT NOT NULL DEFAULT '' CHECK(length(policy_json) <= 8192)",
+            "policy_hash": "TEXT NOT NULL DEFAULT '' CHECK(length(policy_hash) IN (0, 64))",
             "cancelled_at": "INTEGER",
             "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'completed', 'failed'))",
             "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
@@ -1867,6 +1869,21 @@ SCHEMA_DINH_NGHIA = {
         ],
         "foreign_keys": [
             "FOREIGN KEY (chain_id) REFERENCES audit_chain_heads(chain_id) ON DELETE RESTRICT"
+        ]
+    },
+    "sensitive_record_read_capabilities": {
+        "columns": {
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "user_id": "TEXT NOT NULL CHECK(user_id != '')",
+            "financial": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(financial) = 'integer' AND financial IN (0, 1))",
+            "identity": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(identity) = 'integer' AND identity IN (0, 1))",
+            "signature": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(signature) = 'integer' AND signature IN (0, 1))",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["organization_id", "user_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (user_id, organization_id) REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
         ]
     },
     "procurement_source_revision": {

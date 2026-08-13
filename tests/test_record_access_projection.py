@@ -52,6 +52,15 @@ def _insert_document_export_capabilities(cursor, organization_id, user_id, grant
     )
 
 
+def _insert_sensitive_read_capabilities(cursor, organization_id, user_id, grants):
+    cursor.execute(
+        """INSERT INTO sensitive_record_read_capabilities
+           (organization_id, user_id, financial, identity, signature)
+           VALUES (?, ?, ?, ?, ?)""",
+        (organization_id, user_id, *grants),
+    )
+
+
 def _word_policy_database():
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
@@ -102,6 +111,14 @@ def _word_policy_database():
             signature INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (organization_id, user_id)
         );
+        CREATE TABLE sensitive_record_read_capabilities (
+            organization_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            financial INTEGER NOT NULL DEFAULT 0,
+            identity INTEGER NOT NULL DEFAULT 0,
+            signature INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (organization_id, user_id)
+        );
         """
     )
     return connection
@@ -127,6 +144,53 @@ def _seed_word_policy_member(cursor, *, membership_role="employee"):
     )
     _enable_organization_word_export(cursor, organization_id)
     return organization_id, user_id
+
+
+def test_export_grants_do_not_implicitly_grant_sensitive_record_read():
+    connection = _word_policy_database()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id = _seed_word_policy_member(cursor)
+        _insert_document_export_capabilities(
+            cursor, organization_id, employee_id, (1, 1, 1)
+        )
+        role = SessionRole(
+            "user",
+            employee_id,
+            platform_role="user",
+            active_role="employee",
+        )
+
+        denied = resolve_sensitive_read_policy(
+            cursor,
+            role,
+            employee_id,
+            organization_id,
+            table_names={"chuyen_gia", "nha_thau"},
+        )
+        assert (
+            denied.can_view_contractor_financials,
+            denied.can_view_expert_details,
+            denied.can_view_signature_images,
+        ) == (False, False, False)
+
+        _insert_sensitive_read_capabilities(
+            cursor, organization_id, employee_id, (1, 1, 1)
+        )
+        granted = resolve_sensitive_read_policy(
+            cursor,
+            role,
+            employee_id,
+            organization_id,
+            table_names={"chuyen_gia", "nha_thau"},
+        )
+        assert (
+            granted.can_view_contractor_financials,
+            granted.can_view_expert_details,
+            granted.can_view_signature_images,
+        ) == (True, True, True)
+    finally:
+        connection.close()
 
 
 def test_record_access_and_word_export_have_distinct_sensitive_policies():
@@ -163,16 +227,16 @@ def test_record_access_and_word_export_have_distinct_sensitive_policies():
 
         _enable_organization_word_export(cursor, organization_id)
         _insert_document_export_capabilities(
-            cursor, organization_id, employee_id, (0, 0, 0)
+            cursor, organization_id, employee_id, (1, 1, 1)
         )
 
         capabilities = resolve_document_export_capabilities(
             cursor, role, employee_id, organization_id,
         )
         assert capabilities.as_dict() == {
-            "financial": False,
-            "identity": False,
-            "signature": False,
+            "financial": True,
+            "identity": True,
+            "signature": True,
         }
 
         sensitive_policy = resolve_sensitive_read_policy(
@@ -192,10 +256,46 @@ def test_record_access_and_word_export_have_distinct_sensitive_policies():
             },
             sensitive_policy,
         )
-        assert contractor["soTaiKhoan"] == "0123456789"
-        assert contractor["maNganHang"] == "VCB"
-        assert contractor["anhDau"] == "images/nha_thau/stamp.png"
-        assert "sensitiveFinancialDataMasked" not in contractor
+        assert contractor["soTaiKhoan"].endswith("6789")
+        assert contractor["maNganHang"] is None
+        assert contractor["anhDau"] is None
+        assert contractor["sensitiveFinancialDataMasked"] is True
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
+def test_sensitive_record_read_requires_its_own_explicit_grant():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id, _package_id = _seed_denied_package(cursor)
+        role = SessionRole(
+            "user",
+            employee_id,
+            platform_role="user",
+            active_role="employee",
+        )
+        _insert_document_export_capabilities(
+            cursor, organization_id, employee_id, (0, 0, 0)
+        )
+        _insert_sensitive_read_capabilities(
+            cursor, organization_id, employee_id, (1, 1, 1)
+        )
+
+        policy = resolve_sensitive_read_policy(
+            cursor,
+            role,
+            employee_id,
+            organization_id,
+            table_names={"chuyen_gia", "nha_thau"},
+        )
+
+        assert policy.can_view_expert_details is True
+        assert policy.can_view_contractor_financials is True
+        assert policy.can_view_signature_images is True
     finally:
         connection.rollback()
         connection.close()

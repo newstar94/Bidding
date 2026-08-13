@@ -29,6 +29,10 @@ from backend.sync.mapper import map_db_to_json
 from backend.sync.conflict_projection import project_conflict_record
 from backend.sync.queries import TABLE_KEYS
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, VERSIONED_TABLES
+from backend.sync.aggregate_mutability import (
+    build_aggregate_mutability_context,
+    historical_parent_mutation_error,
+)
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -286,6 +290,15 @@ def apply_sync_deletions(
             for table_name, record_ids in record_ids_by_table.items()
         },
     )
+    aggregate_mutability_context = build_aggregate_mutability_context(
+        cursor,
+        organization_id,
+        {
+            table_name: list(records.values())
+            for table_name, records in records_by_table.items()
+        },
+        records_by_table,
+    )
 
     for deletion in deletions:
         if not isinstance(deletion, dict):
@@ -314,6 +327,19 @@ def apply_sync_deletions(
             continue
         record = records_by_table.get(table_name, {}).get(str(record_id))
         if not record:
+            continue
+        parent_history_error = historical_parent_mutation_error(
+            aggregate_mutability_context,
+            table_name,
+            record,
+            record,
+        )
+        if parent_history_error:
+            result["errors"].append({
+                "table": table_name,
+                "id": record_id,
+                **parent_history_error,
+            })
             continue
         expected_version = deletion.get("expectedVersion")
         current_version = int(record.get("row_version") or 1)

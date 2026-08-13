@@ -437,7 +437,7 @@ def _prepare_opening_blocking(request, payload):
             session,
             session.user_id,
             organization_id,
-            "thongtinmothau",
+            "goithau",
             "edit",
         ):
             raise ProcurementRouteError(
@@ -586,7 +586,7 @@ def _apply_opening_blocking(request, payload):
             session,
             session.user_id,
             organization_id,
-            "thongtinmothau",
+            "goithau",
             "edit",
         ):
             raise ProcurementRouteError(

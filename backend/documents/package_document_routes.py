@@ -62,9 +62,15 @@ from backend.activity.service import (
     insert_activity_events,
 )
 from backend.sync.websocket import enqueue_websocket_event
+from backend.sync.aggregate_mutability import package_mutability_error
+from backend.sync.repository import next_sync_version
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+
+
+class PackageDocumentHistoricalError(PackageDocumentError):
+    code = "HISTORICAL_PARENT_IMMUTABLE"
 
 
 def _document_error(message, code, status_code):
@@ -166,6 +172,11 @@ def _package_read_allowed(cursor, session, organization_id, package_id):
 
 
 def _package_write_decision(cursor, session, organization_id, package_id):
+    immutability = package_mutability_error(
+        cursor, organization_id, package_id, lock=True
+    )
+    if immutability:
+        raise PackageDocumentHistoricalError(immutability["message"])
     return authorize_record_write(
         cursor,
         session,
@@ -181,6 +192,21 @@ def _request_evaluation_batch_id(request):
     return str(
         request.query_params.get("evaluationBatchId") or ""
     ).strip() or None
+
+
+def _bump_package_projection_revision(cursor, organization_id, package_id):
+    sync_version = next_sync_version(cursor, organization_id)
+    row = cursor.execute(
+        """UPDATE goi_thau
+              SET sync_version = ?, row_version = row_version + 1,
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE organization_id = ? AND id = ? AND archived_at IS NULL
+            RETURNING row_version""",
+        (sync_version, organization_id, package_id),
+    ).fetchone()
+    if not row:
+        raise PackageDocumentNotFoundError("Không tìm thấy gói thầu.")
+    return sync_version, int(row[0])
 
 
 def _validate_mutation_scope(
@@ -485,6 +511,11 @@ async def upload_package_document_api(request):
             uploaded_by_id=session.user_id,
             evaluation_batch_id=evaluation_batch_id,
         )
+        projection_revision, package_row_version = _bump_package_projection_revision(
+            cursor, organization_id, package_id
+        )
+        document["projectionRevision"] = projection_revision
+        document["packageRowVersion"] = package_row_version
         old_storage_key = previous.get("storage_key") if previous else None
         insert_activity_events(
             cursor,
@@ -536,7 +567,11 @@ async def upload_package_document_api(request):
             cursor,
             "broadcast",
             organization_id=organization_id,
-            payload={"event": "db_changed"},
+            payload={
+                "event": "package_documents_changed",
+                "packageId": package_id,
+                "revision": projection_revision,
+            },
         )
         connection.commit()
         connection.close()
@@ -812,6 +847,9 @@ async def delete_package_document_api(request):
             document_type,
             evaluation_batch_id,
         )
+        projection_revision, package_row_version = _bump_package_projection_revision(
+            cursor, organization_id, package_id
+        )
         insert_activity_events(
             cursor,
             organization_id=organization_id,
@@ -844,7 +882,11 @@ async def delete_package_document_api(request):
             cursor=cursor,
             required=True,
         )
-        response_payload = {"success": True}
+        response_payload = {
+            "success": True,
+            "projectionRevision": projection_revision,
+            "packageRowVersion": package_row_version,
+        }
         _store_document_idempotency(
             cursor,
             actor_user_id=session.user_id,
@@ -857,7 +899,11 @@ async def delete_package_document_api(request):
             cursor,
             "broadcast",
             organization_id=organization_id,
-            payload={"event": "db_changed"},
+            payload={
+                "event": "package_documents_changed",
+                "packageId": package_id,
+                "revision": projection_revision,
+            },
         )
         connection.commit()
         connection.close()

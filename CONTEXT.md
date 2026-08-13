@@ -24,6 +24,10 @@ _Avoid_: Chỉ dữ liệu của riêng hàng kế hoạch
 Toàn bộ trạng thái của gói thầu và dữ liệu nghiệp vụ liên quan tại một phiên bản, bao gồm trạng thái tiến trình và kết quả đã có.
 _Avoid_: Gói thầu rỗng, khởi tạo lại quy trình
 
+**Đại diện gói thầu trong snapshot kế hoạch**:
+Snapshot gói thầu duy nhất đại diện cho một dòng gói thầu bên trong một snapshot kế hoạch cụ thể; đại diện này có thể thuộc một kế hoạch lịch sử nên không mặc nhiên được phép chỉnh sửa.
+_Avoid_: Gói thầu mới nhất toàn cục, gói thầu hiện hành
+
 **Kế thừa phiên bản**:
 Việc tạo ảnh chụp mới từ toàn bộ trạng thái của phiên bản mới nhất mà không làm thay đổi ảnh chụp nguồn.
 _Avoid_: Reset dữ liệu, sửa đè lịch sử
@@ -39,6 +43,26 @@ _Avoid_: Phiên bản tạm, revision cục bộ
 **Đối chiếu phiên bản nguồn**:
 Việc so sánh một snapshot nguồn với binding đã lưu để phân loại đối tượng thành giữ nguyên, thay đổi, mới, bị loại hoặc mơ hồ trước khi áp dụng quy tắc phiên bản nội bộ.
 _Avoid_: Ghép tự động bằng tên hoặc số thứ tự
+
+**Disposition nhập liệu**:
+Phân loại có thẩm quyền của một revision nguồn, xác định revision đó tạo snapshot nghiệp vụ, đồng bộ lại, chỉ lưu bằng chứng nguồn hay đã được xử lý trước đó.
+_Avoid_: Trạng thái giao diện, lựa chọn materialize của client
+
+**Thu hồi phạm vi hiển thị**:
+Sự kiện một tài khoản không còn được phép giữ hoặc xem dữ liệu đã đồng bộ trước đó do thay đổi membership, phân công, quyền phân hệ hoặc capability nhạy cảm.
+_Avoid_: Xóa bản ghi nghiệp vụ, tombstone xóa dữ liệu
+
+**Xuất bản chính thức**:
+Tài liệu được tạo từ snapshot đã commit trên máy chủ, có kiểm tra quyền và entitlement tại thời điểm phát hành, dùng làm kết quả nghiệp vụ hoặc tuân thủ.
+_Avoid_: Xuất bản nháp cục bộ, tải mẫu rỗng
+
+**Quyền đọc bản ghi nhạy cảm**:
+Quyền xem các trường tài chính, định danh, chữ ký hoặc con dấu trong bản ghi tương tác; quyền này độc lập với quyền đưa cùng trường vào tài liệu xuất.
+_Avoid_: Quyền xuất tài liệu, quyền xem phân hệ cơ bản
+
+**Vai trò hoạt động**:
+Vai trò quyền hạn tối thiểu mà tài khoản chủ động chọn trong một workspace; chọn “Chuyên viên” thực sự hạ quyền backend và phạm vi dữ liệu, không chỉ đổi giao diện.
+_Avoid_: Persona chỉ để trình bày, vai trò nền tảng
 
 **Thông báo liên kết**:
 Thông báo trên Mua Sắm Công được nối từ một gói trong KHLCNT để bổ sung dữ liệu ở giai đoạn thông báo. Liên kết này là nguồn làm giàu dữ liệu, không thay thế định danh dòng gói thầu.

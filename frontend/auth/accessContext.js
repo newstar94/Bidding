@@ -19,7 +19,7 @@ export function normalizeOrganizations(payload = {}) {
           : null,
         entitlements: organization?.entitlements && typeof organization.entitlements === "object"
           ? { ...organization.entitlements }
-          : { word_export: false }
+          : { word_export: false, excel_export: false, award_result_excel_export: false }
       };
     }).filter((organization) => organization.id && organization.name);
   }
@@ -116,6 +116,10 @@ export function applyAccessContext(target, payload = {}, storage = null) {
     ? { ...(selected?.entitlements || {}), ...(payload.entitlements || {}) }
     : { ...(selected?.entitlements || payload.entitlements || {}) };
   target.wordExportEnabled = Boolean(target.entitlements.word_export);
+  target.excelExportEnabled = Boolean(target.entitlements.excel_export);
+  target.awardResultExcelExportEnabled = Boolean(
+    target.entitlements.award_result_excel_export,
+  );
   const wordNavigation = globalThis.document?.getElementById?.("btn-tab-bieumau");
   if (wordNavigation) {
     wordNavigation.disabled = !target.wordExportEnabled;

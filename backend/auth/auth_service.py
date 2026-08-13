@@ -152,6 +152,9 @@ def get_user_organizations(cursor, user_id):
                sub.package_id, sub.status AS subscription_status,
                sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
                pkg.trang_thai AS package_status,
+               pkg.document_export_word,
+               pkg.document_export_excel,
+               pkg.document_export_award_result_excel,
                (SELECT count(*) FROM thanh_vien_to_chuc members
                 WHERE members.organization_id = tc.id
                   AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
@@ -189,7 +192,7 @@ def get_user_organizations(cursor, user_id):
         organization_status = str(row['organization_status'] or '').strip().lower()
         package_status = str(row['package_status'] or '').strip().lower()
         workspace_status = 'active' if organization_status == 'active' else 'suspended'
-        word_export_enabled = bool(
+        export_enabled = bool(
             workspace_status == 'active'
             and subscription_status == 'active'
             and package_status == 'active'
@@ -215,7 +218,12 @@ def get_user_organizations(cursor, user_id):
                 "status": workspace_status,
                 "subscription": subscription,
                 "entitlements": {
-                    "word_export": word_export_enabled,
+                    "word_export": export_enabled
+                    and bool(int(row['document_export_word'] or 0)),
+                    "excel_export": export_enabled
+                    and bool(int(row['document_export_excel'] or 0)),
+                    "award_result_excel_export": export_enabled
+                    and bool(int(row['document_export_award_result_excel'] or 0)),
                     "source": "organization_subscription",
                 },
             }
@@ -250,6 +258,8 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
     entitlements = dict(selected.get("entitlements") or {}) if selected else {}
     if platform_role == "super_admin":
         entitlements["word_export"] = True
+        entitlements["excel_export"] = True
+        entitlements["award_result_excel_export"] = True
         entitlements["source"] = "platform"
     display_role = "super_admin" if platform_role == "super_admin" else membership_role
     return {

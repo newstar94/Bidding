@@ -26,6 +26,8 @@ from backend.sync.record_serializer import SyncRecordSerializer
 from backend.versioning.aggregate_snapshot import snapshot_package_aggregate
 from backend.versioning.repository import AggregateVersionRepository
 from backend.shared.logging_utils import log_audit
+from backend.sync.repository import next_sync_version
+from backend.sync.websocket import enqueue_websocket_event
 
 
 def _json(value):
@@ -50,8 +52,14 @@ class _CloneMutationTracker:
 
 
 class ProcurementImportRepository:
-    def __init__(self, cursor):
+    def __init__(self, cursor, *, sync_version=None):
         self.cursor = cursor
+        self.sync_version = sync_version
+
+    def _ensure_sync_version(self, organization_id):
+        if self.sync_version is None:
+            self.sync_version = next_sync_version(self.cursor, organization_id)
+        return int(self.sync_version)
 
     def lock_family(self, organization_id, provider, family_no):
         lock_key = f"procurement:{organization_id}:{provider}:{family_no}"
@@ -494,6 +502,7 @@ class ProcurementImportRepository:
                 """UPDATE goi_thau
                       SET archived_at = CURRENT_TIMESTAMP, is_latest = 0,
                           row_version = row_version + 1,
+                          sync_version = ?,
                           updated_at = CURRENT_TIMESTAMP
                     WHERE organization_id = ? AND ke_hoach_id IN (
                       SELECT id FROM ke_hoach_lcnt
@@ -502,7 +511,7 @@ class ProcurementImportRepository:
                          AND phien_ban = ? AND archived_at IS NULL
                     ) AND archived_at IS NULL""",
                 (
-                    organization_id, organization_id, row["familyNo"],
+                    self.sync_version, organization_id, organization_id, row["familyNo"],
                     row["rootId"], row["localVersion"],
                 ),
             )
@@ -510,12 +519,13 @@ class ProcurementImportRepository:
                 """UPDATE ke_hoach_lcnt
                       SET archived_at = CURRENT_TIMESTAMP, is_latest = 0,
                           row_version = row_version + 1,
+                          sync_version = ?,
                           updated_at = CURRENT_TIMESTAMP
                     WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
                       AND COALESCE(NULLIF(id_goc, ''), id) = ?
                       AND phien_ban = ? AND archived_at IS NULL""",
                 (
-                    organization_id, row["familyNo"], row["rootId"],
+                    self.sync_version, organization_id, row["familyNo"], row["rootId"],
                     row["localVersion"],
                 ),
             )
@@ -523,10 +533,11 @@ class ProcurementImportRepository:
             self.cursor.execute(
                 """UPDATE ke_hoach_lcnt SET is_latest = 0,
                           row_version = row_version + 1,
+                          sync_version = ?,
                           updated_at = CURRENT_TIMESTAMP
                     WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
                       AND is_latest = 1""",
-                (organization_id, row["familyNo"]),
+                (self.sync_version, organization_id, row["familyNo"]),
             )
         self.cursor.execute(
             """INSERT INTO ke_hoach_lcnt (
@@ -534,8 +545,8 @@ class ProcurementImportRepository:
                    phien_ban, is_latest, ten_ke_hoach, ten_du_an_du_toan,
                    loai_hinh_mua_sam, chu_dau_tu_id, ngay_phe_duyet,
                    quyet_dinh_phe_duyet, tong_muc_dau_tu, nguon_von,
-                   thoi_gian_dang_tai, row_version)
-               VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                   thoi_gian_dang_tai, row_version, sync_version)
+               VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
@@ -545,6 +556,7 @@ class ProcurementImportRepository:
                 row.get("planType") or "Dự toán mua sắm", row.get("investorId"),
                 row.get("approvalDecisionDate"), row.get("approvalDecisionNo"),
                 row.get("totalAmountVnd"), row.get("capitalDetail"), row.get("publishedAt"),
+                self.sync_version,
             ),
         )
 
@@ -581,9 +593,9 @@ class ProcurementImportRepository:
                    thoi_gian_dong_thau, thoi_gian_mo_thau,
                    thoi_gian_mo_ehsdxtc, so_quyet_dinh,
                    ngay_quyet_dinh, gia_tri_dam_bao_du_thau,
-                   trang_thai, row_version)
+                   trang_thai, row_version, sync_version)
                VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
@@ -603,7 +615,7 @@ class ProcurementImportRepository:
                 fields.get("approvalDecisionNo"),
                 fields.get("approvalDecisionDate"),
                 fields.get("bidGuaranteeVnd"),
-                mapped_status,
+                mapped_status, self.sync_version,
             ),
         )
 
@@ -715,7 +727,7 @@ class ProcurementImportRepository:
         tracker = _CloneMutationTracker()
         serializer = SyncRecordSerializer(
             transaction,
-            sync_version=0,
+            sync_version=self.sync_version,
             newly_written_images=set(),
             mutation_tracker=tracker,
             clean_record_id=clean_sync_record_id,
@@ -740,7 +752,7 @@ class ProcurementImportRepository:
                 )
                 save_child_payloads(
                     self.cursor, table_name, item, organization_id,
-                    "organization", 0, current_time, actor_user_id,
+                    "organization", self.sync_version, current_time, actor_user_id,
                 )
         for assignment in inherited.get("assignments", []):
             self._insert_assignment(
@@ -755,15 +767,19 @@ class ProcurementImportRepository:
         self.cursor.execute(
             """INSERT INTO phan_cong_nhan_su
                    (id, organization_id, owner_type, id_nhan_vien,
-                    id_muc_tieu, loai_doi_tuong)
-               VALUES (?, ?, 'organization', ?, ?, ?)
+                    id_muc_tieu, loai_doi_tuong, sync_version)
+               VALUES (?, ?, 'organization', ?, ?, ?, ?)
                ON CONFLICT DO NOTHING""",
-            (assignment_id, organization_id, user_id, target_id, target_type),
+            (
+                assignment_id, organization_id, user_id, target_id,
+                target_type, self.sync_version,
+            ),
         )
 
     def persist_revision(self, result):
         evidence = result["provenance"]
         organization_id = evidence["organizationId"]
+        sync_version = self._ensure_sync_version(organization_id)
         inherited_by_package_id = {
             package["id"]: self._build_inherited_package_snapshot(
                 organization_id, package
@@ -784,18 +800,20 @@ class ProcurementImportRepository:
                         """UPDATE goi_thau
                               SET archived_at = CURRENT_TIMESTAMP, is_latest = 0,
                                   row_version = row_version + 1,
+                                  sync_version = ?,
                                   updated_at = CURRENT_TIMESTAMP
                             WHERE organization_id = ? AND id = ?
                               AND archived_at IS NULL""",
-                        (organization_id, superseded_id),
+                        (sync_version, organization_id, superseded_id),
                     )
                 else:
                     self.cursor.execute(
                         """UPDATE goi_thau
                               SET is_latest = 0, row_version = row_version + 1,
+                                  sync_version = ?,
                                   updated_at = CURRENT_TIMESTAMP
                             WHERE organization_id = ? AND id = ? AND is_latest = 1""",
-                        (organization_id, superseded_id),
+                        (sync_version, organization_id, superseded_id),
                     )
                 if self.cursor.rowcount != 1:
                     raise ImportConflict("PROCUREMENT_PREVIEW_STALE")
@@ -807,7 +825,7 @@ class ProcurementImportRepository:
                 )
                 save_child_payloads(
                     self.cursor, "goi_thau", inherited["packageRecord"],
-                    organization_id, "organization", 0,
+                    organization_id, "organization", sync_version,
                     datetime.now(timezone.utc).isoformat(),
                     evidence.get("actorUserId"),
                 )
@@ -945,6 +963,13 @@ class ProcurementImportRepository:
                     canonical_digest(canonical_fields),
                 ),
             )
+        enqueue_websocket_event(
+            self.cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={"event": "db_changed"},
+        )
+        result["syncVersion"] = sync_version
 
     def create_operation(self, operation):
         self.cursor.execute(

@@ -198,19 +198,19 @@ ENTITY_SPECS: dict[str, EntitySpec] = {
         scope_entity="contracts", parent_column="hop_dong_id", order_column="updated_at",
     ),
     "bid_openings": _spec(
-        "bid_openings", "dữ liệu mở thầu", "thong_tin_mo_thau", "thongtinmothau", "/goi-thau",
+        "bid_openings", "dữ liệu mở thầu", "thong_tin_mo_thau", "goithau", "/goi-thau",
         (("id", "id"), ("packageId", "goi_thau_id"), ("contractorId", "nha_thau_id"), ("lotCode", "ma_phan_lo"), ("contractorName", "ten_nha_thau"), ("bidPrice", "gia_du_thau"), ("discountedPrice", "gia_sau_giam_gia"), ("status", "trang_thai_tinh_uu_dai")),
         ("ma_phan_lo", "ten_nha_thau", "ma_dinh_danh", "trang_thai_tinh_uu_dai"),
         scope_entity="packages", parent_column="goi_thau_id", status_column="trang_thai_tinh_uu_dai",
     ),
     "bid_participants": _spec(
-        "bid_participants", "nhà thầu tham dự mở thầu", "nha_thau_tham_du_mo_thau", "thongtinmothau", "/goi-thau",
+        "bid_participants", "nhà thầu tham dự mở thầu", "nha_thau_tham_du_mo_thau", "goithau", "/goi-thau",
         (("id", "id"), ("openingId", "thong_tin_mo_thau_id"), ("packageId", "goi_thau_id"), ("sourceContractorId", "nha_thau_goc_id"), ("versionContractorId", "nha_thau_phien_ban_id")),
         ("goi_thau_id", "nha_thau_goc_id"),
         scope_entity="packages", parent_column="goi_thau_id",
     ),
     "bidder_goods": _spec(
-        "bidder_goods", "hàng hóa dự thầu", "hang_hoa_du_thau_nha_thau", "thongtinmothau", "/goi-thau",
+        "bidder_goods", "hàng hóa dự thầu", "hang_hoa_du_thau_nha_thau", "goithau", "/goi-thau",
         (("id", "id"), ("packageId", "goi_thau_id"), ("openingId", "thong_tin_mo_thau_id"), ("lotId", "phan_lo_id"), ("name", "danh_muc_hang_hoa"), ("brand", "nhan_hieu"), ("origin", "xuat_xu"), ("unit", "don_vi_tinh"), ("quantity", "khoi_luong"), ("unitPrice", "don_gia_du_thau"), ("total", "thanh_tien_du_thau"), ("mappingStatus", "mapping_status")),
         ("danh_muc_hang_hoa", "nhan_hieu", "xuat_xu", "hang_san_xuat", "mapping_status"),
         scope_entity="packages", parent_column="goi_thau_id",

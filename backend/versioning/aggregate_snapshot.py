@@ -12,6 +12,8 @@ from backend.sync.evaluation_metadata import (
     dump_evaluation_metadata,
     parse_evaluation_metadata,
 )
+from backend.versioning.aggregate_validator import AggregateGraphValidationError
+from backend.versioning.aggregate_policy import relation_tables
 
 
 SERVER_FIELDS = {
@@ -38,33 +40,8 @@ OWNED_CHILDREN = (
 # a later plan/package revision appear to have rerun an already completed
 # lifecycle.  The repository therefore loads only the clone-and-remap group.
 PACKAGE_CHILD_CLONE_POLICY = {
-    "clone_and_remap": (
-        "goi_thau_phan_lo",
-        "goi_thau_hang_hoa",
-        "thong_tin_mo_thau",
-        "vong_danh_gia",
-        "tieu_chi_danh_gia",
-        "ket_qua_danh_gia_nha_thau",
-        "bao_cao_danh_gia_nha_thau",
-        "chi_tiet_danh_gia_nha_thau",
-        "hang_hoa_du_thau_nha_thau",
-        "goi_thau_tuy_chon_mua_them",
-        "goi_thau_gia_han",
-        "goi_thau_lam_ro",
-        "goi_thau_moc_tien_do",
-        "goi_thau_dieu_chinh_hsmt",
-        "phan_cong_nhan_su",
-    ),
-    "retain_on_historical_snapshot": (
-        "dot_xu_ly_phan_lo",
-        "dot_xu_ly_phan_lo_chi_tiet",
-        "nhom_phu_thuoc_phan_lo",
-        "nhom_phu_thuoc_phan_lo_thanh_vien",
-        "ho_so_nghiep_vu_lcnt",
-        "ho_so_nghiep_vu_lcnt_phan_lo",
-        "tai_lieu_goi_thau",
-        "hop_dong_goi_thau",
-    ),
+    "clone_and_remap": relation_tables("clone"),
+    "retain_on_historical_snapshot": relation_tables("retain"),
 }
 
 
@@ -83,6 +60,14 @@ def _clone_owned_row(source, kind, create_id):
     cloned = _clean_server_fields(source)
     cloned["id"] = create_id(kind)
     return cloned
+
+
+def _required_mapping(mapping, source_id, code, message):
+    source_key = str(source_id or "").strip()
+    target_id = mapping.get(source_key) if source_key else None
+    if not target_id:
+        raise AggregateGraphValidationError(code, message)
+    return target_id
 
 
 def _lot_token(lot):
@@ -109,6 +94,9 @@ def _clone_evaluation_metadata(raw_metadata, target_package_id, create_id):
         if old_round_id:
             round_ids[old_round_id] = target_round_id
         round_ids[round_type] = target_round_id
+        if "vongDanhGiaId" in block:
+            block["vongDanhGiaId"] = target_round_id
+        block["id"] = target_round_id
         for criterion in _rows(block.get("criteria")):
             old_id = str(criterion.get("id") or "")
             new_id = create_id("evaluationcriterion")
@@ -121,12 +109,18 @@ def _clone_evaluation_metadata(raw_metadata, target_package_id, create_id):
                 or criterion.get("tieuChiChaId")
                 or ""
             )
-            if parent_id not in criterion_ids:
+            if not parent_id:
                 continue
+            mapped_parent = _required_mapping(
+                criterion_ids,
+                parent_id,
+                "AGGREGATE_CRITERION_PARENT_UNMAPPED",
+                "Evaluation criterion parent is outside the target graph.",
+            )
             if "parentCriterionId" in criterion:
-                criterion["parentCriterionId"] = criterion_ids[parent_id]
+                criterion["parentCriterionId"] = mapped_parent
             if "tieuChiChaId" in criterion:
-                criterion["tieuChiChaId"] = criterion_ids[parent_id]
+                criterion["tieuChiChaId"] = mapped_parent
     return (
         dump_evaluation_metadata(metadata) if was_string else metadata,
         round_ids,
@@ -226,19 +220,35 @@ def snapshot_package_aggregate(
             mapped_id = lot_ids.get(str(source_lot.get("id")))
             target_lot = next((lot for lot in cloned_lots if lot["id"] == mapped_id), None)
         target_lot = target_lot or target_lots_by_code.get(_lot_token(award))
+        if not target_lot:
+            raise AggregateGraphValidationError(
+                "AGGREGATE_AWARD_LOT_UNMAPPED",
+                "Awarded lot does not resolve to a selected target lot.",
+            )
         cloned = _clean_server_fields(award)
-        cloned["id"] = target_lot["id"] if target_lot else create_id("phanlo")
+        cloned["id"] = target_lot["id"]
         awards.append(cloned)
     package_record["awardedPhanLoList"] = awards
+    owned_child_ids = {}
     for field, kind in OWNED_CHILDREN:
-        package_record[field] = [
-            _clone_owned_row(row, kind, create_id)
-            for row in _rows(package_record.get(field))
-        ]
+        cloned_children = []
+        for row in _rows(package_record.get(field)):
+            cloned = _clone_owned_row(row, kind, create_id)
+            source_child_id = str(row.get("id") or "").strip()
+            if source_child_id:
+                owned_child_ids[source_child_id] = cloned["id"]
+            cloned_children.append(cloned)
+        package_record[field] = cloned_children
+    internal_source_ids = {**lot_ids, **owned_child_ids}
     for item in package_record.get("timelineItems", []):
         source_id = str(item.get("sourceEntityId") or "")
-        if source_id in lot_ids:
-            item["sourceEntityId"] = lot_ids[source_id]
+        if source_id in internal_source_ids:
+            item["sourceEntityId"] = internal_source_ids[source_id]
+        elif source_id:
+            raise AggregateGraphValidationError(
+                "AGGREGATE_TIMELINE_SOURCE_UNMAPPED",
+                "Timeline source entity is outside the target graph.",
+            )
 
     metadata, round_ids, criterion_ids = _clone_evaluation_metadata(
         package_record.get("danhGiaHsdtMetadata"),
@@ -291,8 +301,11 @@ def snapshot_package_aggregate(
             for detail in _rows(report_clone.get("chiTietList")):
                 detail_clone = _clone_owned_row(detail, "detailedevaluationrow", create_id)
                 old_criterion = str(detail.get("tieuChiDanhGiaId") or "")
-                detail_clone["tieuChiDanhGiaId"] = criterion_ids.get(
-                    old_criterion, old_criterion
+                detail_clone["tieuChiDanhGiaId"] = _required_mapping(
+                    criterion_ids,
+                    old_criterion,
+                    "AGGREGATE_DETAIL_CRITERION_UNMAPPED",
+                    "Detailed evaluation criterion is outside the target graph.",
                 )
                 details.append(detail_clone)
             report_clone["chiTietList"] = details
@@ -306,8 +319,11 @@ def snapshot_package_aggregate(
             continue
         cloned = _clone_owned_row(row, "hanghoaduthaunhathau", create_id)
         cloned["goiThauId"] = target_package_id
-        cloned["thongTinMoThauId"] = opening_ids.get(
-            str(row.get("thongTinMoThauId")), row.get("thongTinMoThauId")
+        cloned["thongTinMoThauId"] = _required_mapping(
+            opening_ids,
+            row.get("thongTinMoThauId"),
+            "AGGREGATE_BIDDER_GOODS_OPENING_UNMAPPED",
+            "Bidder goods opening is outside the target graph.",
         )
         cloned["goiThauHangHoaId"] = goods_ids.get(
             str(row.get("goiThauHangHoaId"))
@@ -408,6 +424,8 @@ def snapshot_plan_aggregate(
     for package in aggregate["goithau"]:
         source_rebid_id = str(package.get("rebidFromPackageId") or "")
         replacement = aggregate["mappings"]["packageIds"].get(source_rebid_id)
-        if replacement:
+        if source_rebid_id:
+            if not replacement:
+                raise ValueError("AGGREGATE_REBID_DEPENDENCY_EXCLUDED")
             package["rebidFromPackageId"] = replacement
     return aggregate

@@ -155,6 +155,59 @@ def test_opening_write_authorization_uses_stored_parent_not_payload_parent():
     assert "\u0111\u1ed5i g\u00f3i th\u1ea7u cha" in decision.message
 
 
+def test_shared_reference_permission_is_enforced_and_invalid_module_fails_closed():
+    cursor = _AuthorizationCursor()
+    context = access_policy.BatchWriteAuthorizationContext(
+        role_str="employee",
+        user_id="specialist-1",
+        organization_id="org-1",
+        organization_manager=False,
+        personal_workspace_owner=False,
+        active_membership=True,
+        inherited_specialist_access=False,
+        membership_role="employee",
+        permissions={"nhathau": "view", "chudautu": ""},
+    )
+    assert not access_policy.authorize_record_write_from_context(
+        context, "nhathau", "nha_thau", {"id": "contractor-1"}
+    ).allowed
+    context.permissions["nhathau"] = "edit"
+    assert access_policy.authorize_record_write_from_context(
+        context, "nhathau", "nha_thau", {"id": "contractor-1"}
+    ).allowed
+    assert not access_policy.has_module_permission(
+        cursor, "employee", "specialist-1", "org-1", "invalid-column", "view"
+    )
+
+
+def test_manager_employee_persona_uses_explicit_least_privilege_permissions():
+    class ManagerEmployeeCursor(_AuthorizationCursor):
+        def execute(self, sql, params=()):
+            super().execute(sql, params)
+            normalized = " ".join(str(sql).split())
+            if normalized.startswith("SELECT lower(trim(vai_tro_trong_to_chuc))"):
+                self.one = ("manager",)
+            elif normalized.startswith("SELECT goithau FROM ma_tran_phan_quyen"):
+                self.one = ("view",)
+            return self
+
+    role = SimpleNamespace(active_role="employee", platform_role="user")
+    cursor = ManagerEmployeeCursor()
+
+    assert access_policy.is_organization_manager(
+        cursor, role, "specialist-1", "org-1"
+    ) is False
+    assert access_policy.has_inherited_specialist_access(
+        cursor, role, "specialist-1", "org-1"
+    ) is False
+    assert access_policy.has_module_permission(
+        cursor, role, "specialist-1", "org-1", "goithau", "edit"
+    ) is False
+    assert access_policy.has_module_permission(
+        cursor, role, "specialist-1", "org-1", "goithau", "view"
+    ) is True
+
+
 @pytest.mark.parametrize(
     ("table_key", "table_name", "assigned_id", "unassigned_id"),
     [

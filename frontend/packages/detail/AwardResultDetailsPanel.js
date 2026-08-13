@@ -21,11 +21,8 @@ import {
   resolvePackageResultStatus,
   setPackageResultEditState
 } from "../lotEvaluationScope.js";
-import {
-  hasWinningGoodsExportScope,
-  selectWinningGoodsForExport,
-} from "../winningGoodsSelectors.js";
-import { downloadWinningGoodsWorkbook } from "../WinningGoodsExcel.js";
+import { hasWinningGoodsExportScope } from "../winningGoodsSelectors.js";
+import { downloadOfficialWinningGoodsWorkbook } from "../WinningGoodsExcel.js";
 import { bindAwardResultExcelExport } from "./AwardResultExcelExport.js";
 
 
@@ -163,8 +160,12 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           appraisalDate: ngayBctdResult,
           isEditable,
           wordExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
-          awardResultExcelExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
-          winningGoodsExportEnabled: hasWinningGoodsExportScope(gt),
+          awardResultExcelExportEnabled: Boolean(
+            view.model.state.activeuser?.awardResultExcelExportEnabled,
+          ),
+          winningGoodsExportEnabled: Boolean(
+            view.model.state.activeuser?.excelExportEnabled,
+          ) && hasWinningGoodsExportScope(gt),
           formatCurrency: (value) => view.model.formatCurrency(value),
           formatDate: (value) => view.model.formatDate(value)
         });
@@ -184,13 +185,11 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             );
           },
           onExportWinningGoods: async () => {
-            const exportModel = selectWinningGoodsForExport({
-              pkg: gt,
-              openings: view.model.state.thongtinmothau || [],
-              goods: view.model.state.hanghoaduthaunhathau || [],
-              model: view.model,
+            await downloadOfficialWinningGoodsWorkbook({
+              packageId: gt.id,
+              packageCode: gt.maGoiThau,
+              expectedRevision: gt.rowVersion,
             });
-            await downloadWinningGoodsWorkbook(exportModel);
           },
           onExportError: (error) => view.customAlert("Lỗi", "Lỗi xuất báo cáo: " + error.message, "x-circle"),
           onWinningGoodsExportError: (error) => view.customAlert(

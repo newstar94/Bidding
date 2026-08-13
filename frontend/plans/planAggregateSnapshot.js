@@ -17,6 +17,8 @@ export function snapshotPlanAggregate(state, {
 } = {}) {
   if (!sourcePlanId || !targetPlanId) throw new Error("Không đủ dữ liệu để kế thừa phiên bản kế hoạch.");
   const aggregate = {
+    sourcePlanId,
+    targetPlanId,
     goithau: [],
     goithauhanghoa: [],
     thongtinmothau: [],
@@ -60,7 +62,10 @@ export function snapshotPlanAggregate(state, {
 export function applyPlanAggregateSnapshot(state, aggregate) {
   const sourceIds = new Set((aggregate.sourcePackageIds || []).map(String));
   (state.goithau || []).forEach((pkg) => {
-    if (sourceIds.has(String(pkg.id))) pkg.isLatest = 0;
+    if (
+      sourceIds.has(String(pkg.id))
+      && String(pkg.keHoachId) === String(aggregate.sourcePlanId || pkg.keHoachId)
+    ) pkg.isLatest = 0;
   });
   ["goithau", "goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments"].forEach((key) => {
     state[key] = Array.isArray(state[key]) ? state[key] : [];

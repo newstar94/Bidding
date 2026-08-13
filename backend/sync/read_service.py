@@ -2,6 +2,7 @@
 
 from backend.db.db_helper import DatabaseError
 
+import hmac
 import time
 
 from starlette.responses import JSONResponse
@@ -33,6 +34,8 @@ from backend.sync.queries import (
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
 from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
+from backend.sync.visibility_epoch import build_visibility_token
+from backend.sync.visibility_scope import VisibilityScope
 from backend.sync.request_contract import parse_sync_read_window
 from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
@@ -157,6 +160,28 @@ def _read_sync_data_blocking(request):
         )
         role_str = role_or_err
         user_id = role_or_err.user_id
+        visibility_token = build_visibility_token(
+            cursor, org_name, user_id, role_str
+        )
+        visibility_scope = VisibilityScope.resolve(
+            cursor, role_str, user_id, org_name
+        )
+        supplied_visibility = str(
+            request.query_params.get("visibility_token") or ""
+        )
+        if after_version is not None and (
+            not supplied_visibility
+            or not hmac.compare_digest(supplied_visibility, visibility_token)
+        ):
+            conn.close()
+            conn = None
+            return JSONResponse(
+                {
+                    "code": "SYNC_VISIBILITY_RESET_REQUIRED",
+                    "requiresFullSync": True,
+                },
+                status_code=409,
+            )
         sensitive_read_policy = resolve_sensitive_read_policy(
             cursor, role_str, user_id, org_name
         )
@@ -194,12 +219,24 @@ def _read_sync_data_blocking(request):
 
                 return []
             active_clause = " AND archived_at IS NULL" if tbl in ARCHIVED_TABLES else ""
+            visibility = visibility_scope.live_predicate(tbl, "source_row")
             if after_version is not None:
-                cursor.execute(f"SELECT * FROM {tbl} WHERE organization_id = ? AND sync_version > ?{active_clause}", (org_name, after_version))
+                cursor.execute(
+                    f"SELECT * FROM {tbl} AS source_row WHERE {visibility.sql} "  # noqa: S608 - table/predicate come from internal registries
+                    f"AND sync_version > ?{active_clause}",
+                    (*visibility.parameters, after_version),
+                )
             elif not is_full_fetch:
-                cursor.execute(f"SELECT * FROM {tbl} WHERE organization_id = ? AND updated_at > ?{active_clause}", (org_name, since))
+                cursor.execute(
+                    f"SELECT * FROM {tbl} AS source_row WHERE {visibility.sql} "  # noqa: S608 - table/predicate come from internal registries
+                    f"AND updated_at > ?{active_clause}",
+                    (*visibility.parameters, since),
+                )
             else:
-                cursor.execute(f"SELECT * FROM {tbl} WHERE organization_id = ?{active_clause}", (org_name,))
+                cursor.execute(
+                    f"SELECT * FROM {tbl} AS source_row WHERE {visibility.sql}{active_clause}",  # noqa: S608 - table/predicate come from internal registries
+                    visibility.parameters,
+                )
             return cursor.fetchall()
 
 
@@ -289,12 +326,24 @@ def _read_sync_data_blocking(request):
 
         assignments = []
         if not is_partial_response or "assignments" in requested_keys:
+            assignment_visibility = visibility_scope.live_predicate(
+                "phan_cong_nhan_su", "source_row"
+            )
             if after_version is not None:
-                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
+                cursor.execute(
+                    f"SELECT * FROM phan_cong_nhan_su AS source_row WHERE {assignment_visibility.sql} AND sync_version > ?",  # noqa: S608 - predicate is registry-built
+                    (*assignment_visibility.parameters, after_version),
+                )
             elif since != '1970-01-01 00:00:00' and since != '0':
-                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE organization_id = ? AND updated_at > ?", (org_name, since))
+                cursor.execute(
+                    f"SELECT * FROM phan_cong_nhan_su AS source_row WHERE {assignment_visibility.sql} AND updated_at > ?",  # noqa: S608 - predicate is registry-built
+                    (*assignment_visibility.parameters, since),
+                )
             else:
-                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE organization_id = ?", (org_name,))
+                cursor.execute(
+                    f"SELECT * FROM phan_cong_nhan_su AS source_row WHERE {assignment_visibility.sql}",  # noqa: S608 - predicate is registry-built
+                    assignment_visibility.parameters,
+                )
             for row in cursor.fetchall():
                 assignments.append(map_db_to_json("phan_cong_nhan_su", dict(row)))
 
@@ -327,19 +376,27 @@ def _read_sync_data_blocking(request):
 
 
         permissionmatrix = []
-        try:
-            if not is_partial_response or "permissionmatrix" in requested_keys:
-                if after_version is not None:
-                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
-                elif since != '1970-01-01 00:00:00' and since != '0':
-                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ? AND updated_at > ?", (org_name, since))
-                else:
-                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ?", (org_name,))
-                for row in cursor.fetchall():
-                    permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
-        except DatabaseError as permission_read_error:
-            from backend.shared.logging_utils import log_error
-            log_error(permission_read_error, "sync_read_permission_matrix", level="WARN")
+        if not is_partial_response or "permissionmatrix" in requested_keys:
+            permission_visibility = visibility_scope.live_predicate(
+                "ma_tran_phan_quyen", "source_row"
+            )
+            if after_version is not None:
+                cursor.execute(
+                    f"SELECT * FROM ma_tran_phan_quyen AS source_row WHERE {permission_visibility.sql} AND sync_version > ?",  # noqa: S608 - predicate is registry-built
+                    (*permission_visibility.parameters, after_version),
+                )
+            elif since != '1970-01-01 00:00:00' and since != '0':
+                cursor.execute(
+                    f"SELECT * FROM ma_tran_phan_quyen AS source_row WHERE {permission_visibility.sql} AND updated_at > ?",  # noqa: S608 - predicate is registry-built
+                    (*permission_visibility.parameters, since),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT * FROM ma_tran_phan_quyen AS source_row WHERE {permission_visibility.sql}",  # noqa: S608 - predicate is registry-built
+                    permission_visibility.parameters,
+                )
+            for row in cursor.fetchall():
+                permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
 
 
         deletions = []
@@ -404,19 +461,14 @@ def _read_sync_data_blocking(request):
                 if is_partial_response and payload_key not in requested_keys:
                     continue
                 cursor.execute(
-                    f"SELECT id FROM {table_name} WHERE organization_id = ? AND archived_at IS NULL",
-                    (org_name,)
+                    f"SELECT source_row.id FROM {table_name} AS source_row "  # noqa: S608 - table/predicate come from internal registries
+                    f"WHERE {visibility_scope.live_predicate(table_name, 'source_row').sql} "
+                    "AND archived_at IS NULL",
+                    visibility_scope.live_predicate(
+                        table_name, "source_row"
+                    ).parameters,
                 )
                 manifest_items = [{"id": row[0]} for row in cursor.fetchall()]
-                manifest_items = filter_items_for_read(
-                    cursor,
-                    role_str,
-                    user_id,
-                    org_name,
-                    payload_key,
-                    table_name,
-                    manifest_items,
-                )
                 record_manifest[payload_key] = [item["id"] for item in manifest_items]
 
                 selected_columns = reference_columns.get(payload_key)
@@ -424,19 +476,31 @@ def _read_sync_data_blocking(request):
                     continue
                 reference_where = "organization_id = ? AND is_latest = 1 AND archived_at IS NULL"
                 reference_params = (org_name,)
+                reference_visibility = visibility_scope.live_predicate(
+                    table_name, "source_row"
+                )
+                reference_where = (
+                    f"{reference_visibility.sql} AND is_latest = 1 "
+                    "AND archived_at IS NULL"
+                )
+                reference_params = reference_visibility.parameters
                 if table_name == "goi_thau":
                     reference_where += (
                         " AND ke_hoach_id IN ("
                         "SELECT id FROM ke_hoach_lcnt "
                         "WHERE organization_id = ? AND is_latest = 1 AND archived_at IS NULL)"
                     )
-                    reference_params = (org_name, org_name)
+                    reference_params = (*reference_params, org_name)
                 if table_name in {"chu_dau_tu", "nha_thau"}:
                     # Date-based stage binding needs the lightweight identity of
                     # every version; full details remain paginated/lazy-loaded.
-                    reference_where = "organization_id = ? AND archived_at IS NULL"
+                    reference_where = (
+                        f"{reference_visibility.sql} AND archived_at IS NULL"
+                    )
+                    reference_params = reference_visibility.parameters
                 cursor.execute(
-                    f"SELECT {', '.join(selected_columns)} FROM {table_name} WHERE {reference_where}",
+                    f"SELECT {', '.join('source_row.' + column for column in selected_columns)} "  # noqa: S608 - table/columns are fixed reference registry entries
+                    f"FROM {table_name} AS source_row WHERE {reference_where}",
                     reference_params,
                 )
                 reference_items = []
@@ -450,15 +514,7 @@ def _read_sync_data_blocking(request):
                     # records as complete detail/edit records.
                     reference_item["referenceOnly"] = True
                     reference_items.append(reference_item)
-                reference_data[payload_key] = filter_items_for_read(
-                    cursor,
-                    role_str,
-                    user_id,
-                    org_name,
-                    payload_key,
-                    table_name,
-                    reference_items,
-                )
+                reference_data[payload_key] = reference_items
                 reference_data[payload_key] = serialize_sensitive_read_items(
                     table_name,
                     reference_data[payload_key],
@@ -472,8 +528,6 @@ def _read_sync_data_blocking(request):
             ]
 
         current_sync_version = get_current_sync_version(cursor, org_name)
-
-
         dashboard_summary = build_dashboard_summary(cursor, org_name, role_str, user_id) if include_dashboard_summary else None
 
         response_payload = {
@@ -499,6 +553,7 @@ def _read_sync_data_blocking(request):
             "timestamp": current_time,
             "syncVersion": current_sync_version,
             "minAvailableSyncVersion": min_available_sync_version,
+            "visibilityToken": visibility_token,
             "domainContract": {"packageFieldPolicy": get_package_field_policy()},
         }
         if is_partial_response:
@@ -611,16 +666,22 @@ def _read_single_record_blocking(request):
         user_id = role_or_err.user_id
         conn = database.get_connection()
         cursor = conn.cursor()
+        visibility_scope = VisibilityScope.resolve(
+            cursor, role_str, user_id, org_name
+        )
+        record_visibility = visibility_scope.live_predicate(
+            table_name, "source_row"
+        )
 
         if not can_read_table(cursor, role_str, user_id, org_name, table_key, table_name):
             return JSONResponse({"error": "Không có quyền đọc dữ liệu này."}, status_code=403)
 
         if table_name == "thong_tin_mo_thau":
             cursor.execute(
-                """SELECT * FROM thong_tin_mo_thau
-                   WHERE organization_id = ? AND id = ? AND archived_at IS NULL
-                   LIMIT 1""",
-                (org_name, lookup_value),
+                f"""SELECT * FROM thong_tin_mo_thau AS source_row
+                   WHERE {record_visibility.sql} AND id = ? AND archived_at IS NULL
+                   LIMIT 1""",  # noqa: S608 - predicate is registry-built
+                (*record_visibility.parameters, lookup_value),
             )
         else:
             lookup_column = {
@@ -640,8 +701,8 @@ def _read_single_record_blocking(request):
             placeholders = ", ".join(["?"] * len(lookup_candidates))
             cursor.execute(f"""
                 SELECT *
-                FROM {table_name}
-                WHERE organization_id = ?
+                FROM {table_name} AS source_row
+                WHERE {record_visibility.sql}
                   AND (
                       id IN ({placeholders})
                       OR (archived_at IS NULL AND {lookup_column} IN ({placeholders}))
@@ -650,7 +711,7 @@ def _read_single_record_blocking(request):
                          CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC,
                          COALESCE(updated_at, created_at) DESC
                 LIMIT 1
-            """, tuple([org_name] + lookup_candidates + lookup_candidates))
+            """, tuple(record_visibility.parameters) + tuple(lookup_candidates + lookup_candidates))  # noqa: S608 - table/column are strict allowlist values above
         row = cursor.fetchone()
         if not row:
             return JSONResponse({"item": None}, status_code=404)

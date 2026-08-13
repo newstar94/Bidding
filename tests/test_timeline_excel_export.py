@@ -107,6 +107,33 @@ def test_timeline_excel_worker_supports_the_data_only_builder(monkeypatch):
     assert workbook["Timeline"]["B3"].value == "GT-01"
 
 
+def test_timeline_export_entitlement_uses_excel_not_word(monkeypatch):
+    observed = []
+
+    class Connection:
+        def cursor(self):
+            return object()
+
+        def close(self):
+            observed.append("closed")
+
+    monkeypatch.setattr(
+        routes_excel.database, "get_connection", lambda: Connection()
+    )
+    monkeypatch.setattr(
+        routes_excel,
+        "can_use_document_export",
+        lambda *_args, **kwargs: observed.append(kwargs) or True,
+    )
+
+    response = routes_excel._timeline_export_entitlement_response(
+        SimpleNamespace(user_id="user"), "org"
+    )
+
+    assert response is None
+    assert observed[0] == {"format": "xlsx"}
+
+
 def test_timeline_export_route_keeps_snapshot_and_access_guards(monkeypatch):
     calls = []
     role = SimpleNamespace(user_id="user-1")

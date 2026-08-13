@@ -1,17 +1,32 @@
 const VERSION_KEY = "bf_last_sync_version";
 const TIMESTAMP_KEY = "bf_last_sync_timestamp";
 const FETCH_TIME_KEY = "bf_last_fetch_time";
+const VISIBILITY_KEY = "bf_visibility_token";
 
 export function readSyncCursor(storage, { forceFull = false } = {}) {
   const lastSyncVersion = storage?.getItem(VERSION_KEY);
-  const useVersionDelta = !forceFull && lastSyncVersion !== null && lastSyncVersion !== "";
-  const since = forceFull ? "0" : storage?.getItem(TIMESTAMP_KEY) || "0";
+  const storedVisibilityToken = storage?.getItem(VISIBILITY_KEY) || "";
+  const hasLegacyVersionWithoutVisibility = !forceFull
+    && lastSyncVersion !== null
+    && lastSyncVersion !== ""
+    && !storedVisibilityToken;
+  const useVersionDelta = !forceFull
+    && lastSyncVersion !== null
+    && lastSyncVersion !== ""
+    && Boolean(storedVisibilityToken);
+  const since = forceFull || hasLegacyVersionWithoutVisibility
+    ? "0"
+    : storage?.getItem(TIMESTAMP_KEY) || "0";
+  const visibilityToken = forceFull ? "" : storedVisibilityToken;
 
   return {
     lastSyncVersion,
     since,
     useVersionDelta,
-    query: useVersionDelta ? { after_version: lastSyncVersion } : { since }
+    visibilityToken,
+    query: useVersionDelta
+      ? { after_version: lastSyncVersion, ...(visibilityToken ? { visibility_token: visibilityToken } : {}) }
+      : { since }
   };
 }
 
@@ -28,12 +43,16 @@ export function commitSyncCursor(storage, snapshot, { fetchedAt = Date.now() } =
     timestamp = String(snapshot.timestamp);
     storage.setItem(TIMESTAMP_KEY, timestamp);
   }
+  if (!snapshot?.partial && snapshot?.visibilityToken) {
+    storage.setItem(VISIBILITY_KEY, String(snapshot.visibilityToken));
+  }
   storage.setItem(FETCH_TIME_KEY, String(fetchedAt));
   return { syncVersion, timestamp, fetchedAt };
 }
 
 export async function fetchDeltaSnapshot(apiFetch, {
   afterVersion,
+  visibilityToken,
   headers,
   maxPages = 10_000,
 } = {}) {
@@ -42,7 +61,12 @@ export async function fetchDeltaSnapshot(apiFetch, {
   let lastResponse = null;
   for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
     const query = new URLSearchParams(
-      cursor ? { cursor } : { after_version: String(afterVersion ?? 0) },
+      cursor
+        ? { cursor }
+        : {
+            after_version: String(afterVersion ?? 0),
+            ...(visibilityToken ? { visibility_token: visibilityToken } : {}),
+          },
     );
     lastResponse = await apiFetch(`/api/sync/delta?${query}`, { headers });
     if (!lastResponse.ok) return { response: lastResponse, snapshot: null };
@@ -53,6 +77,7 @@ export async function fetchDeltaSnapshot(apiFetch, {
       aggregate[key].push(...value);
     });
     aggregate.throughVersion = page.throughVersion;
+    aggregate.visibilityToken = page.visibilityToken;
     cursor = String(page.nextCursor || "");
     if (!cursor) {
       aggregate.partial = false;

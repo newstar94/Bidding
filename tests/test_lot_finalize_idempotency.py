@@ -195,6 +195,11 @@ def test_finalize_route_replays_committed_result_after_response_path_fails(
         lambda *_args, **_kwargs: SimpleNamespace(allowed=True, reason=""),
     )
     monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "package_mutability_error",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
         lot_lifecycle_routes.database,
         "get_connection",
         lambda: _Connection(cursor, events),
@@ -202,7 +207,11 @@ def test_finalize_route_replays_committed_result_after_response_path_fails(
 
     def finalize(*_args, **_kwargs):
         finalize_calls.append("finalize")
-        return {"packageRowVersion": 8, "packageStatus": "COMPLETED"}
+        return {
+            "packageRowVersion": 8,
+            "packageStatus": "COMPLETED",
+            "syncVersion": 19,
+        }
 
     monkeypatch.setattr(lot_lifecycle_routes, "finalize_batch_award", finalize)
     monkeypatch.setattr(
@@ -243,11 +252,16 @@ def test_finalize_route_replays_committed_result_after_response_path_fails(
         "success": True,
         "packageRowVersion": 8,
         "packageStatus": "COMPLETED",
+        "syncVersion": 19,
     }
     assert finalize_calls == ["finalize"]
     assert audit_calls == ["audit"]
     assert len(cursor.websocket_events) == 1
-    assert json.loads(cursor.websocket_events[0][3]) == {"event": "db_changed"}
+    assert json.loads(cursor.websocket_events[0][3]) == {
+        "event": "lot_lifecycle_changed",
+        "packageId": "package-1",
+        "revision": 19,
+    }
     assert events.count("commit") == 2
 
 

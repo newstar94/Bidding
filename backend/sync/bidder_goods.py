@@ -58,7 +58,24 @@ def _amount(value):
     return Decimal(parsed) if parsed is not None else None
 
 
-def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=None):
+def _pending_value(record, camel_name, snake_name, default=None):
+    if camel_name in record:
+        return record.get(camel_name)
+    return record.get(snake_name, default)
+
+
+def _pending_records(incoming_records_by_table, table_name):
+    return (incoming_records_by_table or {}).get(table_name, {})
+
+
+def validate_bidder_goods_batch(
+    cursor,
+    organization_id,
+    items,
+    opening_items=None,
+    *,
+    incoming_records_by_table=None,
+):
     items = [item for item in (items or ()) if isinstance(item, dict)]
     if not items:
         return []
@@ -115,6 +132,62 @@ def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=No
         requirement_ids,
         ("id", "goi_thau_id", "phan_lo_id"),
     )
+    for record_id, record in _pending_records(
+        incoming_records_by_table, "goi_thau"
+    ).items():
+        if str(record_id) not in package_ids:
+            continue
+        packages[str(record_id)] = {
+            "id": record_id,
+            "linh_vuc": _pending_value(record, "linhVuc", "linh_vuc"),
+            "phan_lo": _pending_value(record, "phanLo", "phan_lo"),
+            "trang_thai": _pending_value(record, "trangThai", "trang_thai"),
+            "phuong_thuc_lua_chon": _pending_value(
+                record, "phuongThucLuaChon", "phuong_thuc_lua_chon"
+            ),
+            "phuong_phap_danh_gia": _pending_value(
+                record, "phuongPhapDanhGia", "phuong_phap_danh_gia"
+            ),
+        }
+        for lot in record.get("phanLoList") or record.get("phan_lo_list") or ():
+            if not isinstance(lot, dict):
+                continue
+            lot_id = clean_id(lot.get("id"))
+            if lot_id and lot_id in lot_ids:
+                lots[str(lot_id)] = {
+                    "id": lot_id,
+                    "goi_thau_id": record_id,
+                    "ma_phan_lo": _pending_value(lot, "maPhanLo", "ma_phan_lo"),
+                    "archived_at": _pending_value(lot, "archivedAt", "archived_at"),
+                }
+    for record_id, record in _pending_records(
+        incoming_records_by_table, "thong_tin_mo_thau"
+    ).items():
+        if str(record_id) not in opening_ids:
+            continue
+        openings[str(record_id)] = {
+            "id": record_id,
+            "goi_thau_id": _pending_value(record, "goiThauId", "goi_thau_id"),
+            "ma_phan_lo": _pending_value(record, "maPhanLo", "ma_phan_lo"),
+            "gia_du_thau": _pending_value(record, "giaDuThau", "gia_du_thau"),
+            "archived_at": _pending_value(record, "archivedAt", "archived_at"),
+            "ty_le_giam_gia": _pending_value(
+                record, "tyLeGiamGia", "ty_le_giam_gia"
+            ),
+            "gia_sau_giam_gia": _pending_value(
+                record, "giaSauGiamGia", "gia_sau_giam_gia"
+            ),
+        }
+    for record_id, record in _pending_records(
+        incoming_records_by_table, "goi_thau_hang_hoa"
+    ).items():
+        if str(record_id) not in requirement_ids:
+            continue
+        requirements[str(record_id)] = {
+            "id": record_id,
+            "goi_thau_id": _pending_value(record, "goiThauId", "goi_thau_id"),
+            "phan_lo_id": _pending_value(record, "phanLoId", "phan_lo_id"),
+        }
     required_ids_by_scope = defaultdict(set)
     for chunk in _chunked(sorted(package_ids)):
         placeholders = ", ".join("?" for _ in chunk)
@@ -130,6 +203,20 @@ def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=No
                 str(_value(row, "goi_thau_id", 1)),
                 str(_value(row, "phan_lo_id", 2) or ""),
             )].add(str(_value(row, "id", 0)))
+    for record_id, requirement in _pending_records(
+        incoming_records_by_table, "goi_thau_hang_hoa"
+    ).items():
+        package_id = clean_id(_pending_value(
+            requirement, "goiThauId", "goi_thau_id"
+        ))
+        if package_id not in package_ids:
+            continue
+        lot_id = clean_id(_pending_value(
+            requirement, "phanLoId", "phan_lo_id"
+        ))
+        required_ids_by_scope[(str(package_id), str(lot_id or ""))].add(
+            str(record_id)
+        )
     technical_results = {}
     detailed_progress = {}
     if opening_ids:
@@ -161,6 +248,29 @@ def validate_bidder_goods_batch(cursor, organization_id, items, opening_items=No
                 except (TypeError, ValueError, json.JSONDecodeError):
                     extension = {}
                 detailed_progress[str(_value(row, "thong_tin_mo_thau_id", 0))] = extension
+    for record_id, opening in _pending_records(
+        incoming_records_by_table, "thong_tin_mo_thau"
+    ).items():
+        if str(record_id) not in opening_ids:
+            continue
+        technical_results[str(record_id)] = str(_pending_value(
+            opening, "danhGiaKyThuat", "danh_gia_ky_thuat", ""
+        ) or "")
+        reports = (
+            opening.get("baoCaoDanhGiaChiTietList")
+            or opening.get("bao_cao_danh_gia_chi_tiet_list")
+            or ()
+        )
+        report = next((
+            value for value in reports
+            if isinstance(value, dict)
+            and str(_pending_value(value, "loaiVong", "loai_vong", "single"))
+                == "single"
+        ), None)
+        if report:
+            extension = report.get("extension")
+            if isinstance(extension, dict):
+                detailed_progress[str(record_id)] = extension
 
     stored_mappings = {}
     stored_official_by_scope = defaultdict(list)

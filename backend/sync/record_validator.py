@@ -32,6 +32,10 @@ from backend.sync.package_goods import (
     validate_package_goods_configuration_change,
 )
 from backend.sync.bidder_goods import validate_bidder_goods_batch
+from backend.sync.aggregate_mutability import (
+    build_aggregate_mutability_context,
+    historical_parent_mutation_error,
+)
 from backend.sync.bid_evaluation_rules import (
     is_inherited_legacy_technical_result,
     parse_technical_score,
@@ -71,6 +75,7 @@ class SyncRecordValidator:
         schema_definition: dict[str, Any],
         iter_payloads,
         canonicalize_item,
+        server_inherited_assignment_ids=None,
     ):
         self.transaction = transaction_context
         self.payload = payload
@@ -80,6 +85,11 @@ class SyncRecordValidator:
         self.schema_definition = schema_definition
         self.iter_payloads = iter_payloads
         self.canonicalize_item = canonicalize_item
+        self.server_inherited_assignment_ids = {
+            str(record_id)
+            for record_id in (server_inherited_assignment_ids or ())
+            if record_id
+        }
 
     def validate_payload(self) -> list[dict[str, Any]]:
         cursor = self.transaction.cursor
@@ -135,6 +145,7 @@ class SyncRecordValidator:
             organization_id,
             bidder_goods_items,
             opening_items,
+            incoming_records_by_table=self.payload_index.incoming_records_by_table,
         ))
         allowed_statuses = self.payload_index.allowed_contract_status_names(
             cursor,
@@ -180,10 +191,19 @@ class SyncRecordValidator:
             organization_id,
             records_by_table,
         )
+        authorization_context.server_inherited_assignment_ids.update(
+            self.server_inherited_assignment_ids
+        )
         uniqueness_context = build_domain_uniqueness_context(
             cursor,
             organization_id,
             records_by_table,
+        )
+        aggregate_mutability_context = build_aggregate_mutability_context(
+            cursor,
+            organization_id,
+            records_by_table,
+            current_records_by_table,
         )
         owner_reference_context = build_owner_reference_context(
             cursor,
@@ -313,6 +333,15 @@ class SyncRecordValidator:
                         item_errors.append(
                             "Bản ghi đã được lưu trữ và không thể chỉnh sửa."
                         )
+
+                parent_history_error = historical_parent_mutation_error(
+                    aggregate_mutability_context,
+                    table_name,
+                    item,
+                    current_record,
+                )
+                if parent_history_error:
+                    item_errors.append(parent_history_error)
 
                 item, pure_errors, _requested_statuses = validate_sync_item(
                     table_name,

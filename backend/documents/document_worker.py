@@ -39,6 +39,10 @@ from backend.observability.recording import (
 )
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.audit_chain import insert_audit_row
+from backend.documents.document_job_policy import (
+    DocumentJobAuthorizationError,
+    verify_document_job_policy,
+)
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
@@ -627,9 +631,10 @@ def _enqueue_durable_document_job(
             connection.execute(
                 """INSERT INTO document_jobs (
                        id, operation, organization_id, user_id, package_id,
-                       filename, content_type, status, attempt_count,
+                       filename, content_type, policy_json, policy_hash,
+                       status, attempt_count,
                        available_at, expires_at, created_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)""",
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)""",
                 (
                     job_id,
                     operation,
@@ -638,6 +643,13 @@ def _enqueue_durable_document_job(
                     scope.get("package_id"),
                     scope.get("filename"),
                     scope.get("content_type"),
+                    json.dumps(
+                        scope.get("policy") or {},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    scope.get("policy_hash") or "",
                     now,
                     now + retention_seconds,
                     now,
@@ -689,7 +701,8 @@ def _claim_durable_document_job(database, job_id: str | None = None):
     try:
         connection.execute("BEGIN")
         row = connection.execute(
-            """SELECT id, operation, attempt_count
+            """SELECT id, operation, organization_id, user_id, package_id,
+                      policy_json, policy_hash, attempt_count
                FROM document_jobs
                WHERE (CAST(? AS TEXT) IS NULL OR id = ?)
                  AND attempt_count < ?
@@ -754,11 +767,16 @@ def _finish_durable_document_job(
         error_message = None
         completed_at = now
     else:
-        retryable = not isinstance(error, DocumentWorkerInputError)
+        retryable = not isinstance(
+            error, (DocumentWorkerInputError, DocumentJobAuthorizationError)
+        )
         status = "retry" if retryable and attempts < max_attempts else "failed"
         available_at = now + min(30, 2 ** attempts) if status == "retry" else now
         error_code = error.__class__.__name__[:96]
-        if isinstance(error, (DocumentWorkerInputError, DocumentWorkerError)):
+        if isinstance(
+            error,
+            (DocumentWorkerInputError, DocumentWorkerError, DocumentJobAuthorizationError),
+        ):
             error_message = str(error)[:500]
         else:
             error_message = "Tác vụ tài liệu không thành công."
@@ -865,6 +883,8 @@ def enqueue_document_export(
     package_id: str,
     filename: str,
     content_type: str,
+    policy: dict[str, Any] | None = None,
+    policy_hash: str = "",
     database=None,
     audit_event: dict[str, Any] | None = None,
 ) -> str:
@@ -878,6 +898,8 @@ def enqueue_document_export(
             "package_id": package_id,
             "filename": filename,
             "content_type": content_type,
+            "policy": policy or {},
+            "policy_hash": policy_hash,
         },
         audit_event=audit_event,
     )
@@ -889,7 +911,8 @@ def get_document_export_job(database, job_id: str, organization_id: str, user_id
         row = connection.execute(
             """SELECT id, operation, organization_id, user_id, package_id,
                       filename, content_type, status, attempt_count,
-                      last_error_code, completed_at, expires_at, cancelled_at
+                      last_error_code, completed_at, expires_at, cancelled_at,
+                      policy_json, policy_hash
                FROM document_jobs
                WHERE id = ? AND organization_id = ? AND user_id = ?""",
             (job_id, organization_id, user_id),
@@ -931,6 +954,11 @@ def cancel_document_export(database, job_id: str, organization_id: str, user_id:
 def _process_claimed_document_job(database, claimed) -> None:
     job_dir = _document_job_dir(claimed["id"])
     try:
+        policy_connection = database.get_connection()
+        try:
+            verify_document_job_policy(policy_connection.cursor(), claimed)
+        finally:
+            policy_connection.close()
         operation, payload = read_job_manifest(job_dir / "input.json", job_dir)
         if operation != claimed["operation"]:
             raise DocumentWorkerInputError("Loại tác vụ tài liệu không khớp.")
@@ -939,6 +967,11 @@ def _process_claimed_document_job(database, claimed) -> None:
             payload,
             image_root=job_dir / "assets" / "images",
         )
+        policy_connection = database.get_connection()
+        try:
+            verify_document_job_policy(policy_connection.cursor(), claimed)
+        finally:
+            policy_connection.close()
         result_path = job_dir / "result.json"
         if result_path.exists():
             result_path.unlink()

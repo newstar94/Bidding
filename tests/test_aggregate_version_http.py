@@ -97,11 +97,19 @@ def test_version_command_is_built_after_serializable_begin_and_conflicts_return_
         lambda *_args: SimpleNamespace(allowed=True, reason=""),
     )
 
-    def build_payload(repository, organization_id, _command, *, timestamp):
+    def build_payload(
+        repository,
+        organization_id,
+        _command,
+        *,
+        timestamp,
+        actor_authority_id,
+    ):
         assert connection.commands == ["BEGIN ISOLATION LEVEL SERIALIZABLE"]
         assert repository.cursor is connection.cursor_instance
         assert organization_id == "org-1"
         assert timestamp == "2026-08-08 10:00:00"
+        assert actor_authority_id == "user-1"
         raise AggregateVersionConflict(6)
 
     monkeypatch.setattr(sync_service, "build_aggregate_version_payload", build_payload)

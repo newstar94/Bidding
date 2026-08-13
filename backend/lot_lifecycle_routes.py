@@ -29,6 +29,7 @@ from backend.shared.helpers import (
 )
 from backend.shared.idempotency import acquire_idempotency_lock
 from backend.sync.websocket import enqueue_websocket_event
+from backend.sync.aggregate_mutability import package_mutability_error
 from backend.shared.logging_utils import log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 
@@ -208,6 +209,15 @@ async def create_lot_batch_api(request):
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
+        immutability = package_mutability_error(
+            cursor, organization_id, package_id, lock=True
+        )
+        if immutability:
+            connection.rollback()
+            return JSONResponse(
+                {"error": immutability["message"], "code": immutability["code"]},
+                status_code=409,
+            )
         write_decision = authorize_record_write(
             cursor,
             session,
@@ -230,6 +240,16 @@ async def create_lot_batch_api(request):
             staged_approval_authorized=staged_authorized,
             authorization_basis=data.get("authorizationBasis", ""),
             actor_user_id=session.user_id,
+        )
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={
+                "event": "lot_lifecycle_changed",
+                "packageId": package_id,
+                "revision": batch["syncVersion"],
+            },
         )
         connection.commit()
         return JSONResponse({"success": True, "batch": batch}, status_code=201)
@@ -336,6 +356,15 @@ async def finalize_lot_batch_api(request):
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
+        immutability = package_mutability_error(
+            cursor, organization_id, package_id, lock=True
+        )
+        if immutability:
+            connection.rollback()
+            return JSONResponse(
+                {"error": immutability["message"], "code": immutability["code"]},
+                status_code=409,
+            )
         write_decision = authorize_record_write(
             cursor,
             session,
@@ -400,7 +429,11 @@ async def finalize_lot_batch_api(request):
             cursor,
             "broadcast",
             organization_id=organization_id,
-            payload={"event": "db_changed"},
+            payload={
+                "event": "lot_lifecycle_changed",
+                "packageId": package_id,
+                "revision": lifecycle["syncVersion"],
+            },
         )
         connection.commit()
         return JSONResponse(response_payload)

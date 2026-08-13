@@ -20,6 +20,11 @@ from backend.documents.routes_docx import (
     _prepare_report_render,
     _word_export_subscription_response,
 )
+from backend.documents.document_job_policy import (
+    DocumentJobAuthorizationError,
+    build_document_job_policy,
+    verify_document_job_policy,
+)
 from backend.shared.access_policy import can_read_record
 from backend.shared.client_ip import get_client_ip
 from backend.shared.database_io import run_database_read, run_database_write
@@ -66,6 +71,10 @@ def _job_access(request):
             "goithau", "goi_thau", job["package_id"],
         ):
             return None, None, _error("DOCUMENT_JOB_NOT_FOUND", 404)
+        try:
+            verify_document_job_policy(cursor, job)
+        except DocumentJobAuthorizationError as policy_error:
+            return None, None, _error(policy_error.code, 403)
         return (role, organization_id), job, None
     finally:
         connection.close()
@@ -103,6 +112,22 @@ async def create_package_export_job_api(request):
         report_type,
         timeout_seconds=30,
     )
+    connection = database.get_connection()
+    try:
+        package_revision_row = connection.execute(
+            "SELECT row_version FROM goi_thau WHERE organization_id = ? AND id = ?",
+            (organization_id, package_id),
+        ).fetchone()
+        if not package_revision_row:
+            return _error("DOCUMENT_EXPORT_DENIED", 403)
+        policy, policy_hash = build_document_job_policy(
+            role,
+            package_revision=int(package_revision_row[0] or 1),
+            required_sensitive_groups=sensitive_groups,
+            document_format="docx",
+        )
+    finally:
+        connection.close()
     filename = _filename_for_report(report_type, context)
     job_id = await run_database_write(
         enqueue_document_export,
@@ -117,6 +142,8 @@ async def create_package_export_job_api(request):
         package_id=package_id,
         filename=filename,
         content_type=DOCX_CONTENT_TYPE,
+        policy=policy,
+        policy_hash=policy_hash,
         database=database,
         audit_event={
             "actor_user_id": role.user_id,

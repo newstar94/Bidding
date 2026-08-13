@@ -11,7 +11,7 @@ from backend.shared.helpers import (
     log_audit,
 )
 from backend.shared.access_policy import can_read_record
-from backend.shared.subscription_policy import can_use_word_export
+from backend.shared.subscription_policy import can_use_document_export
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.database_io import run_database_read
@@ -105,11 +105,12 @@ def _can_export_package(role_or_err, org_name, package_id):
 def _timeline_export_entitlement_response(role_or_err, organization_id):
     conn = database.get_connection()
     try:
-        enabled = can_use_word_export(
+        enabled = can_use_document_export(
             conn.cursor(),
             role_or_err,
             role_or_err.user_id,
             organization_id,
+            format="xlsx",
         )
     finally:
         conn.close()

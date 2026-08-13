@@ -15,6 +15,16 @@ def sync_batch_limit():
     return min(10_000, max(100, value))
 
 
+def generated_aggregate_batch_limit():
+    """Bound trusted server graphs separately from untrusted client batches."""
+
+    try:
+        value = int(os.environ.get("AGGREGATE_VERSION_MAX_ITEMS", "100000"))
+    except (TypeError, ValueError):
+        value = 100_000
+    return min(500_000, max(2_001, value))
+
+
 def sync_batch_size(payload):
     if not isinstance(payload, dict):
         return 0

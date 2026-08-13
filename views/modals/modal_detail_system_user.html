@@ -107,6 +107,21 @@
                         <label class="checkbox-item" for="detail-su-doc-signature"><input type="checkbox" id="detail-su-doc-signature" data-document-capability="signature"> Chữ ký và con dấu</label>
                     </div>
                 </section>
+
+                <section class="access-settings-section" id="detail-su-sensitive-read-capabilities-section"
+                    aria-labelledby="detail-su-sensitive-read-capabilities-heading" hidden>
+                    <div class="access-settings-section-heading">
+                        <div>
+                            <h4 id="detail-su-sensitive-read-capabilities-heading">Đọc dữ liệu nhạy cảm trong bản ghi</h4>
+                            <p>Độc lập với quyền xuất tài liệu; mặc định dữ liệu được che.</p>
+                        </div>
+                    </div>
+                    <div class="access-checkbox-grid">
+                        <label class="checkbox-item" for="detail-su-read-financial"><input type="checkbox" id="detail-su-read-financial" data-sensitive-read-capability="financial"> Thông tin tài chính</label>
+                        <label class="checkbox-item" for="detail-su-read-identity"><input type="checkbox" id="detail-su-read-identity" data-sensitive-read-capability="identity"> Thông tin định danh</label>
+                        <label class="checkbox-item" for="detail-su-read-signature"><input type="checkbox" id="detail-su-read-signature" data-sensitive-read-capability="signature"> Chữ ký và con dấu</label>
+                    </div>
+                </section>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" data-close="modal-detail-system-user">Hủy</button>

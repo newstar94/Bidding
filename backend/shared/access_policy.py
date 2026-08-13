@@ -4,6 +4,11 @@ from backend.auth.auth_helper import get_effective_roles
 from backend.shared.text_utils import clean_id
 from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.subscription_policy import can_use_word_export
+from backend.shared.module_registry import (
+    CANONICAL_PERMISSION_MODULES,
+    TABLE_TO_MODULE,
+    canonical_module,
+)
 
 
 PLATFORM_ADMIN_ROLES = {"super_admin"}
@@ -17,19 +22,7 @@ WRITE_PROTECTED_KEYS = {
     "systempackages",
 }
 
-TABLE_TO_MODULE = {
-    "chu_dau_tu": "chudautu",
-    "ke_hoach_lcnt": "kehoach",
-    "goi_thau": "goithau",
-    "chuyen_gia": "chuyengia",
-    "nha_thau": "nhathau",
-    "hop_dong": "hopdong",
-    # Opening records are children of a package and inherit its module grant.
-    "thong_tin_mo_thau": "goithau",
-    "goi_thau_hang_hoa": "goithau",
-    "hang_hoa_du_thau_nha_thau": "goithau",
-    "danh_muc_trang_thai_hop_dong": "hopdong",
-}
+MODULE_PERMISSION_COLUMNS = CANONICAL_PERMISSION_MODULES
 
 ASSIGNED_TABLE_TYPES = {
     "ke_hoach_lcnt": "kehoach",
@@ -78,6 +71,7 @@ class BatchWriteAuthorizationContext:
     bidder_goods_parent_by_id: dict[str, str] = field(default_factory=dict)
     package_status_by_id: dict[str, str] = field(default_factory=dict)
     snapshot_package_ids: set[str] = field(default_factory=set)
+    server_inherited_assignment_ids: set[str] = field(default_factory=set)
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -180,16 +174,10 @@ def has_active_organization_membership(cursor, role_str, user_id, organization_i
 
 
 def has_inherited_specialist_access(cursor, role_str, user_id, organization_id):
-    """Keep operational edit rights when an admin or manager acts as employee."""
+    """Employee persona is a real least-privilege security boundary."""
 
-    if getattr(role_str, "active_role", None) != "employee":
-        return False
-    platform_role = str(getattr(role_str, "platform_role", "") or "").strip().lower()
-    if platform_role in PLATFORM_ADMIN_ROLES:
-        return True
-    return organization_membership_role(
-        cursor, user_id, organization_id
-    ) in ORGANIZATION_MANAGER_ROLES
+    del cursor, role_str, user_id, organization_id
+    return False
 
 
 def _stored_document_export_capabilities(cursor, user_id, organization_id):
@@ -226,7 +214,8 @@ def resolve_document_export_capabilities(cursor, role_str, user_id, organization
 
 
 def _permission_for(cursor, organization_id, user_id, module_name):
-    if not module_name:
+    module_name = canonical_module(module_name)
+    if module_name not in MODULE_PERMISSION_COLUMNS:
         return ""
     cursor.execute(
         f"SELECT {module_name} FROM ma_tran_phan_quyen WHERE organization_id = ? AND emp_id = ?",
@@ -242,6 +231,9 @@ def _permission_for(cursor, organization_id, user_id, module_name):
 
 
 def has_module_permission(cursor, role_str, user_id, organization_id, module_name, action="view"):
+    module_name = canonical_module(module_name)
+    if module_name is None:
+        return False
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return True
     if is_personal_workspace_owner(cursor, user_id, organization_id):
@@ -252,8 +244,6 @@ def has_module_permission(cursor, role_str, user_id, organization_id, module_nam
         return True
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False
-    if module_name in {"chudautu", "nhathau"}:
-        return True
     permission = _permission_for(cursor, organization_id, user_id, module_name)
     if action == "edit":
         return permission == "edit"
@@ -543,14 +533,7 @@ def build_batch_write_authorization_context(
     )
     personal_owner = is_personal_workspace_owner(cursor, user_id, organization_id)
     active_membership = bool(platform_manager or membership_role is not None)
-    inherited_access = bool(
-        active_role == "employee"
-        and (
-            str(getattr(role_str, "platform_role", "") or "").strip().lower()
-            in PLATFORM_ADMIN_ROLES
-            or membership_role in ORGANIZATION_MANAGER_ROLES
-        )
-    )
+    inherited_access = False
     context = BatchWriteAuthorizationContext(
         role_str=role_str,
         user_id=str(user_id),
@@ -566,7 +549,6 @@ def build_batch_write_authorization_context(
         module
         for table_name in records_by_table
         if (module := TABLE_TO_MODULE.get(table_name))
-        and module not in {"chudautu", "nhathau"}
     })
     if (
         modules
@@ -803,8 +785,6 @@ def _context_has_module_permission(context, module_name, action="view"):
         return True
     if not context.active_membership:
         return False
-    if module_name in {"chudautu", "nhathau"}:
-        return True
     permission = context.permissions.get(module_name, "")
     return permission == "edit" if action == "edit" else permission in {"view", "edit"}
 
@@ -837,6 +817,9 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
             )
         return AccessDecision(True)
     if table_name == "phan_cong_nhan_su" and not context.organization_manager and not is_manager_role(context.role_str):
+        assignment_id = clean_id(item.get("id"))
+        if assignment_id in context.server_inherited_assignment_ids:
+            return AccessDecision(True)
         employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
         target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))
         target_type = str(item.get("type") or item.get("loai_doi_tuong") or "").strip()
@@ -907,7 +890,7 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     module_name = TABLE_TO_MODULE.get(table_name)
     if table_name in SHARED_REFERENCE_TABLES and not context.active_membership:
         return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
-    if table_name not in SHARED_REFERENCE_TABLES and not _context_has_module_permission(
+    if not _context_has_module_permission(
         context, module_name, "edit"
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
@@ -1043,8 +1026,7 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
     ):
         return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
     if (
-        table_name not in SHARED_REFERENCE_TABLES
-        and not has_module_permission(
+        not has_module_permission(
             cursor, role_str, user_id, organization_id, module_name, "edit"
         )
     ):
@@ -1082,8 +1064,6 @@ def can_read_table(cursor, role_str, user_id, organization_id, payload_key, tabl
         return payload_key not in WRITE_PROTECTED_KEYS
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False
-    if table_name in SHARED_REFERENCE_TABLES:
-        return True
     if payload_key in {"assignments", "permissionmatrix"}:
         return True
     module_name = TABLE_TO_MODULE.get(table_name)

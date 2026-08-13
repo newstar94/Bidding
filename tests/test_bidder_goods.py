@@ -154,6 +154,74 @@ def test_backend_accepts_consistent_official_batch_and_rejects_cross_package_map
     connection.close()
 
 
+def test_backend_validates_official_bidder_goods_against_pending_aggregate_graph():
+    connection = _connection()
+    package = {
+        "id": "package-pending",
+        "linhVuc": "Hàng hóa",
+        "phanLo": "Có",
+        "trangThai": "EVALUATING",
+        "phuongThucLuaChon": "Một giai đoạn một túi hồ sơ",
+        "phuongPhapDanhGia": "Giá thấp nhất",
+        "phanLoList": [{"id": "lot-pending", "maPhanLo": "L01"}],
+    }
+    opening = {
+        "id": "opening-pending",
+        "goiThauId": package["id"],
+        "maPhanLo": "L01",
+        "giaDuThau": 100,
+        "tyLeGiamGia": 0,
+        "giaSauGiamGia": 100,
+        "danhGiaKyThuat": "Đạt",
+        "baoCaoDanhGiaChiTietList": [{
+            "loaiVong": "single",
+            "extension": {
+                "workflowVersion": 2,
+                "completedGroups": ["validity", "capacity", "technical"],
+                "groupResults": {
+                    "validity": "Đạt",
+                    "capacity": "Đạt",
+                    "technical": "Đạt",
+                },
+            },
+        }],
+    }
+    requirement = {
+        "id": "requirement-pending",
+        "goiThauId": package["id"],
+        "phanLoId": "lot-pending",
+    }
+    offered = {
+        "id": "offered-pending",
+        "goiThauId": package["id"],
+        "thongTinMoThauId": opening["id"],
+        "phanLoId": "lot-pending",
+        "goiThauHangHoaId": requirement["id"],
+        "khoiLuong": 2,
+        "donGiaDuThau": 50,
+        "thanhTienDuThau": 100,
+        "mappingStatus": "matched",
+        "uuDaiMatchStatus": "matched",
+        "isDraft": False,
+    }
+    pending_graph = {
+        "goi_thau": {package["id"]: package},
+        "thong_tin_mo_thau": {opening["id"]: opening},
+        "goi_thau_hang_hoa": {requirement["id"]: requirement},
+    }
+
+    errors = validate_bidder_goods_batch(
+        connection.cursor(),
+        "org-1",
+        [offered],
+        [opening],
+        incoming_records_by_table=pending_graph,
+    )
+
+    assert errors == []
+    connection.close()
+
+
 def test_backend_accepts_mixed_package_and_rejects_non_goods_field():
     connection = _connection()
     valid = {

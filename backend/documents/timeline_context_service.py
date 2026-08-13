@@ -19,6 +19,7 @@ from backend.timeline.effective_timeline import (
     assign_timeline_display_codes,
     build_effective_timeline,
 )
+from backend.versioning.relation_policy import load_contracts_for_package_lineage
 
 
 def _row_dict(row):
@@ -48,19 +49,9 @@ def _display_date(value):
 
 def _load_related(cursor, organization_id, package_id):
     related = {}
-    related["contracts"] = [
-        _row_dict(row)
-        for row in cursor.execute(
-            """SELECT hd.*
-               FROM hop_dong hd
-               JOIN hop_dong_goi_thau hgt
-                 ON hgt.organization_id = hd.organization_id AND hgt.hop_dong_id = hd.id
-               WHERE hgt.organization_id = ? AND hgt.goi_thau_id = ?
-                 AND hd.archived_at IS NULL
-               ORDER BY hd.is_latest DESC, hd.ngay_ky DESC""",
-            (organization_id, package_id),
-        ).fetchall()
-    ]
+    related["contracts"] = load_contracts_for_package_lineage(
+        cursor, organization_id, package_id
+    )
     related["ehsmtAdjustments"] = [
         _row_dict(row)
         for row in cursor.execute(

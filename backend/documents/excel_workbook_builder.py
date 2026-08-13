@@ -162,6 +162,104 @@ def create_excel_from_spec(spec):
     return _build_configured_workbook(**spec)
 
 
+WINNING_GOODS_HEADERS = (
+    "STT", "Danh mục hàng hóa", "Ký mã hiệu", "Nhãn hiệu",
+    "Năm sản xuất", "Xuất xứ", "Hãng sản xuất",
+    "Cấu hình, tính năng kỹ thuật cơ bản", "Đơn vị tính", "Khối lượng",
+    "Mã HS", "Đơn giá trúng thầu",
+)
+
+
+def create_winning_goods_excel(export_model):
+    """Build an official winning-goods workbook from a server-owned model."""
+
+    if not isinstance(export_model, dict):
+        raise ValueError("Dữ liệu xuất hàng hóa trúng thầu không hợp lệ.")
+    groups = export_model.get("groups")
+    if not isinstance(groups, list) or not groups:
+        raise ValueError("Không có hàng hóa trúng thầu chính thức để xuất.")
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "HangHoaTrungThau"
+    sheet.sheet_view.showGridLines = False
+    last_column = len(WINNING_GOODS_HEADERS)
+    sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_column)
+    sheet.cell(1, 1, "DANH SÁCH HÀNG HÓA TRÚNG THẦU").font = Font(bold=True, size=14)
+    sheet.cell(1, 1).alignment = CENTER_ALIGN
+    row_index = 2
+    package_label = " - ".join(
+        str(export_model.get(key) or "").strip()
+        for key in ("packageCode", "packageName")
+        if str(export_model.get(key) or "").strip()
+    )
+    if package_label:
+        sheet.merge_cells(
+            start_row=row_index, start_column=1, end_row=row_index, end_column=last_column
+        )
+        sheet.cell(row_index, 1, safe_spreadsheet_text(f"GÓI THẦU: {package_label}"))
+        sheet.cell(row_index, 1).font = Font(bold=True)
+        row_index += 1
+
+    for group in groups:
+        contractor_name = str((group or {}).get("contractorName") or "").strip()
+        lots = (group or {}).get("lots")
+        if not contractor_name or not isinstance(lots, list) or not lots:
+            raise ValueError("Nhóm nhà thầu trúng thầu không hợp lệ.")
+        sheet.merge_cells(
+            start_row=row_index, start_column=1, end_row=row_index, end_column=last_column
+        )
+        sheet.cell(row_index, 1, safe_spreadsheet_text(f"NHÀ THẦU: {contractor_name}"))
+        sheet.cell(row_index, 1).font = Font(bold=True)
+        row_index += 1
+        for lot in lots:
+            if export_model.get("isLotted"):
+                lot_label = " - ".join(
+                    str((lot or {}).get(key) or "").strip()
+                    for key in ("lotCode", "lotName")
+                    if str((lot or {}).get(key) or "").strip()
+                )
+                sheet.merge_cells(
+                    start_row=row_index, start_column=1,
+                    end_row=row_index, end_column=last_column,
+                )
+                sheet.cell(row_index, 1, safe_spreadsheet_text(f"PHẦN (LÔ): {lot_label}"))
+                sheet.cell(row_index, 1).font = Font(bold=True)
+                row_index += 1
+            rows = (lot or {}).get("rows")
+            if not isinstance(rows, list) or not rows:
+                raise ValueError("Phần trúng thầu không có hàng hóa chính thức.")
+            for column_index, header in enumerate(WINNING_GOODS_HEADERS, start=1):
+                cell = sheet.cell(row_index, column_index, header)
+                cell.font = HEADER_FONT
+                cell.fill = HEADER_FILL
+                cell.alignment = CENTER_ALIGN
+                cell.border = THIN_BORDER
+            row_index += 1
+            for row in rows:
+                values = (
+                    row.get("stt"), row.get("danhMucHangHoa"), row.get("kyMaHieu"),
+                    row.get("nhanHieu"), row.get("namSanXuat"), row.get("xuatXu"),
+                    row.get("hangSanXuat"), row.get("cauHinhTinhNangKyThuat"),
+                    row.get("donViTinh"), row.get("khoiLuong"), row.get("maHs"),
+                    row.get("donGiaTrungThau"),
+                )
+                for column_index, value in enumerate(values, start=1):
+                    cell = sheet.cell(
+                        row_index, column_index,
+                        safe_spreadsheet_text(value),
+                    )
+                    cell.border = THIN_BORDER
+                    cell.alignment = Alignment(vertical="top", wrap_text=True)
+                row_index += 1
+
+    sheet.freeze_panes = "A3"
+    widths = (10, 32, 20, 18, 15, 18, 24, 45, 14, 14, 16, 22)
+    for column_index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(column_index)].width = width
+    return workbook
+
+
 def _timeline_date(value):
     if isinstance(value, datetime):
         return value

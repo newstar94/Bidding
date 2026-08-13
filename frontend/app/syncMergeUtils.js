@@ -78,7 +78,7 @@ export function mergeReferenceRecords(model, key, incoming, { preserveLocalIds =
   return mergedRecords;
 }
 export function applyServerSnapshot(model, dbData, options = {}) {
-  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "domainContract", "partial"]);
+  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "visibilityToken", "dashboardSummary", "domainContract", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
   const overlayDeletionsByTable = {};

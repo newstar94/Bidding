@@ -2200,6 +2200,56 @@ def _upgrade_to_v55_add_procurement_import_sessions(cursor, context):
         "ON procurement_import_session (expires_at)"
     )
 
+
+def _upgrade_to_v56_separate_sensitive_record_read_capabilities(cursor, context):
+    """Create fail-closed record-read grants without copying export grants."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "sensitive_record_read_capabilities",
+        SCHEMA_DINH_NGHIA["sensitive_record_read_capabilities"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+    cursor.execute(create_sql)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensitive_record_read_capabilities_user "
+        "ON sensitive_record_read_capabilities (user_id, organization_id)"
+    )
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("sensitive_record_read_capabilities",),
+            if_not_exists=True,
+        )
+
+
+def _upgrade_to_v57_repair_sensitive_read_capability_fk(cursor, context):
+    """Repair v56 databases whose separately-created PostgreSQL FK was absent."""
+
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("sensitive_record_read_capabilities",),
+            if_not_exists=True,
+        )
+
+
+def _upgrade_to_v58_add_document_job_policy(cursor, _context):
+    """Bind durable exports to an immutable, revalidated authorization policy."""
+
+    cursor.execute(
+        """ALTER TABLE document_jobs
+           ADD COLUMN IF NOT EXISTS policy_json TEXT NOT NULL DEFAULT ''
+           CHECK(length(policy_json) <= 8192)"""
+    )
+    cursor.execute(
+        """ALTER TABLE document_jobs
+           ADD COLUMN IF NOT EXISTS policy_hash TEXT NOT NULL DEFAULT ''
+           CHECK(length(policy_hash) IN (0, 64))"""
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2466,6 +2516,21 @@ UPGRADES = (
         55,
         "add_procurement_import_sessions",
         _upgrade_to_v55_add_procurement_import_sessions,
+    ),
+    DatabaseUpgrade(
+        56,
+        "separate_sensitive_record_read_capabilities",
+        _upgrade_to_v56_separate_sensitive_record_read_capabilities,
+    ),
+    DatabaseUpgrade(
+        57,
+        "repair_sensitive_record_read_capability_fk",
+        _upgrade_to_v57_repair_sensitive_read_capability_fk,
+    ),
+    DatabaseUpgrade(
+        58,
+        "add_document_job_authorization_policy",
+        _upgrade_to_v58_add_document_job_policy,
     ),
 )
 

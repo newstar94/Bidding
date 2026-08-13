@@ -1,6 +1,7 @@
 from starlette.responses import JSONResponse
 
 from backend.sync.queries import TABLE_KEYS
+from backend.sync.public_errors import sanitize_sync_error
 
 
 def _order_package_dependencies(items):
@@ -52,10 +53,16 @@ def iter_sync_table_payloads(data, table_keys=TABLE_KEYS):
         yield payload_key, table_name, items
 
 
-def rollback_sync_response(conn, errors, message, status_code=400):
+def rollback_sync_response(
+    conn, errors, message, status_code=400, *, correlation_id=None
+):
     conn.rollback()
     return JSONResponse({
         "status": "error",
         "message": message,
-        "errors": errors
+        "errors": [
+            sanitize_sync_error(error, correlation_id=correlation_id)
+            for error in errors
+        ],
+        **({"correlationId": correlation_id} if correlation_id else {}),
     }, status_code=status_code)

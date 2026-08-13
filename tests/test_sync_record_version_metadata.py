@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 
 from backend.sync import read_service
+from backend.sync.visibility_scope import SqlPredicate
 
 
 class _VersionedRecordCursor:
@@ -59,6 +60,15 @@ def test_single_record_lookup_includes_version_family_metadata(monkeypatch):
     )
     monkeypatch.setattr(read_service, "can_read_table", lambda *_args: True)
     monkeypatch.setattr(read_service, "can_read_record", lambda *_args: True)
+    monkeypatch.setattr(
+        read_service.VisibilityScope,
+        "resolve",
+        lambda *_args: SimpleNamespace(
+            live_predicate=lambda *_args: SqlPredicate(
+                "source_row.organization_id = ?", ("org-1",)
+            )
+        ),
+    )
     monkeypatch.setattr(
         read_service,
         "map_db_to_json",
@@ -123,6 +133,15 @@ def test_single_record_lookup_supports_historical_expert(monkeypatch):
     )
     monkeypatch.setattr(read_service, "can_read_table", lambda *_args: True)
     monkeypatch.setattr(read_service, "can_read_record", lambda *_args: True)
+    monkeypatch.setattr(
+        read_service.VisibilityScope,
+        "resolve",
+        lambda *_args: SimpleNamespace(
+            live_predicate=lambda *_args: SqlPredicate(
+                "source_row.organization_id = ?", ("org-1",)
+            )
+        ),
+    )
     monkeypatch.setattr(
         read_service,
         "map_db_to_json",

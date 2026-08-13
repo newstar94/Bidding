@@ -153,6 +153,26 @@ def test_workspace_search_requires_module_permission():
     assert error.value.code == "AI_PERMISSION_DENIED"
 
 
+def test_opening_search_inherits_the_canonical_package_permission():
+    cursor = Cursor([])
+
+    result = search_workspace_records(
+        cursor,
+        context(permissions={"goithau": "view"}),
+        {
+            "entity": "bid_openings",
+            "operation": "list",
+            "query": "",
+            "status": "",
+            "packageId": "",
+            "limit": 20,
+        },
+    )
+
+    assert result.records == []
+    assert "FROM thong_tin_mo_thau" in cursor.statement
+
+
 def test_workspace_search_is_the_only_generic_data_tool():
     data_names = {item["name"] for item in tool_definitions("data")}
     assert "search_workspace" in data_names

@@ -619,6 +619,7 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_content ON procurement_raw_snapshot (organization_id, content_hash)",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sensitive_record_read_capabilities_user ON sensitive_record_read_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record ON deleted_records (organization_id, table_name, record_id)",
     )

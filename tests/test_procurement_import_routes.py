@@ -56,6 +56,9 @@ def test_fixture_provider_is_rejected_by_local_development_runtime(
         encoding="utf-8",
     )
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
+    monkeypatch.delenv("PROCUREMENT_LOOKUP_ENABLED", raising=False)
     monkeypatch.setenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true")
     monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "fixture")
     monkeypatch.setenv("VNEPS_PROCUREMENT_FIXTURE_PATH", str(fixture))
@@ -226,7 +229,7 @@ class _OpeningSource:
 
 
 def _install_opening_http_harness(monkeypatch, *, allowed=True):
-    state = {"row_version": 3}
+    state = {"row_version": 3, "authorized_modules": []}
 
     async def inline(function, *args, **kwargs):
         kwargs.pop("timeout_seconds", None)
@@ -241,7 +244,11 @@ def _install_opening_http_harness(monkeypatch, *, allowed=True):
         ),
     )
     monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
-    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: allowed)
+    def authorize_module(*args):
+        state["authorized_modules"].append(args[4])
+        return allowed
+
+    monkeypatch.setattr(routes_module, "has_module_permission", authorize_module)
     monkeypatch.setattr(
         routes_module.database,
         "get_connection",
@@ -264,6 +271,20 @@ def test_opening_prepare_requires_edit_authority(monkeypatch):
 
     assert response.status_code == 403
     assert response.json()["code"] == "ORGANIZATION_ACCESS_DENIED"
+
+
+def test_opening_import_authorizes_the_canonical_package_module(monkeypatch):
+    state = _install_opening_http_harness(monkeypatch)
+    app = Starlette(routes=procurement_import_routes(Route))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/procurement/imports/opening/prepare",
+            json={"packageId": "package-1", "workspaceLease": "workspace-1"},
+        )
+
+    assert response.status_code == 200
+    assert state["authorized_modules"] == ["goithau"]
 
 
 def test_opening_prepare_and_apply_use_server_preview_and_reject_stale_package(

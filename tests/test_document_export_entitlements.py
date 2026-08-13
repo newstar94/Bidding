@@ -7,6 +7,7 @@ import pytest
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION, UPGRADES
 from backend.shared.subscription_policy import can_use_document_export
+from backend.shared.workspace_scope import personal_workspace_payload
 
 
 def _database(*, word=1, excel=1, award=1):
@@ -134,3 +135,23 @@ def test_v37_legacy_backfill_and_schema_capabilities_are_registered():
     ):
         assert column in SCHEMA_DINH_NGHIA["goi_dich_vu"]["columns"]
         assert f"SET {column} = 1 WHERE {column} IS NULL" in sql
+
+
+def test_personal_workspace_projects_format_specific_export_entitlements():
+    subscription = {
+        "status": "active",
+        "entitlements": {
+            "document.export.word": False,
+            "document.export.excel": True,
+            "document.export.award_result_excel": False,
+        },
+    }
+
+    payload = personal_workspace_payload("user", "User", subscription)
+
+    assert payload["entitlements"] == {
+        "word_export": False,
+        "excel_export": True,
+        "award_result_excel_export": False,
+        "source": "account_subscription",
+    }

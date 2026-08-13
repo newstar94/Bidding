@@ -1,5 +1,6 @@
 import { ensureXlsxLoaded } from "../shared/externalAssets.js";
 import { escapeSpreadsheetFormula } from "./BidderGoodsExcel.js";
+import { authFetchDownload } from "../shared/view_helpers.js";
 
 export const WINNING_GOODS_HEADERS = Object.freeze([
   "STT",
@@ -148,4 +149,22 @@ export async function downloadWinningGoodsWorkbook(exportModel) {
   const filename = `Danh_sach_hang_hoa_trung_thau_${safeFilename(exportModel.packageCode)}.xlsx`;
   XLSX.writeFile(workbook, filename);
   return { workbook, filename };
+}
+
+export async function downloadOfficialWinningGoodsWorkbook({
+  packageId,
+  packageCode = "goi_thau",
+  expectedRevision,
+  downloadImpl = authFetchDownload,
+} = {}) {
+  const normalizedPackageId = String(packageId || "").trim();
+  const revision = Number(expectedRevision);
+  if (!normalizedPackageId) throw new TypeError("Thiếu gói thầu cần xuất.");
+  if (!Number.isInteger(revision) || revision < 1) {
+    throw new TypeError("Thiếu phiên bản gói thầu hợp lệ để xuất.");
+  }
+  const url = `/api/packages/${encodeURIComponent(normalizedPackageId)}/winning-goods.xlsx?expectedRevision=${revision}`;
+  const filename = `Danh_sach_hang_hoa_trung_thau_${safeFilename(packageCode)}.xlsx`;
+  await downloadImpl(url, filename);
+  return { filename };
 }

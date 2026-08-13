@@ -2,13 +2,37 @@
 
 from dataclasses import dataclass
 
-from backend.shared.access_policy import has_module_permission
+from backend.shared.access_policy import (
+    DocumentExportCapabilities,
+    has_active_organization_membership,
+    is_organization_manager,
+    is_personal_workspace_owner,
+)
 
 
 SENSITIVE_READ_MODULES = {
     "chuyen_gia": "chuyengia",
     "nha_thau": "nhathau",
 }
+
+
+def _stored_sensitive_read_capabilities(cursor, user_id, organization_id):
+    """Read explicit record-view grants; document export grants never apply."""
+
+    row = cursor.execute(
+        """SELECT financial, identity, signature
+           FROM sensitive_record_read_capabilities
+           WHERE organization_id = ? AND user_id = ?
+           LIMIT 1""",
+        (organization_id, user_id),
+    ).fetchone()
+    if not row:
+        return DocumentExportCapabilities()
+    return DocumentExportCapabilities(
+        financial=bool(row[0]),
+        identity=bool(row[1]),
+        signature=bool(row[2]),
+    )
 
 
 @dataclass(frozen=True)
@@ -34,29 +58,34 @@ def resolve_sensitive_read_policy(
     organization_id,
     table_names=None,
 ):
-    """Allow complete business fields whenever the module itself is viewable."""
+    """Resolve sensitive field families independently from base module access."""
     requested_tables = (
         set(SENSITIVE_READ_MODULES)
         if table_names is None
         else set(table_names) & set(SENSITIVE_READ_MODULES)
     )
 
-    def can_view(table_name):
-        if table_name not in requested_tables:
-            return False
-        return has_module_permission(
-            cursor,
-            role_str,
-            user_id,
-            organization_id,
-            SENSITIVE_READ_MODULES[table_name],
-            "view",
+    if is_personal_workspace_owner(cursor, user_id, organization_id) or is_organization_manager(
+        cursor, role_str, user_id, organization_id
+    ):
+        capabilities = DocumentExportCapabilities.allow_all()
+    elif has_active_organization_membership(
+        cursor, role_str, user_id, organization_id
+    ):
+        capabilities = _stored_sensitive_read_capabilities(
+            cursor, user_id, organization_id
         )
+    else:
+        capabilities = DocumentExportCapabilities()
 
     return SensitiveReadPolicy(
-        can_view_expert_details=can_view("chuyen_gia"),
-        can_view_contractor_financials=can_view("nha_thau"),
-        can_view_signature_images=any(can_view(table) for table in requested_tables),
+        can_view_expert_details=(
+            "chuyen_gia" in requested_tables and capabilities.identity
+        ),
+        can_view_contractor_financials=(
+            "nha_thau" in requested_tables and capabilities.financial
+        ),
+        can_view_signature_images=bool(requested_tables and capabilities.signature),
     )
 
 

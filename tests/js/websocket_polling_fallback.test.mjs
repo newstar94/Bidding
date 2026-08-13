@@ -14,7 +14,7 @@ test("polling fallback duration uses bounded low-cardinality buckets", () => {
 });
 
 
-test("WebSocket client polls only while the realtime channel is unavailable", () => {
+test("WebSocket client keeps bounded reconciliation while realtime is available", () => {
   const originalSetInterval = globalThis.setInterval;
   const originalClearInterval = globalThis.clearInterval;
   const callbacks = [];
@@ -169,7 +169,7 @@ test("personal workspace auth rejection leaves polling active in both tabs", () 
 });
 
 
-test("polling stops only after ready and resumes during reconnect", () => {
+test("ready socket keeps bounded reconciliation and reconnect reuses it", () => {
   const harness = installRealtimeHarness();
   const controller = realtimeController("org-1", "tab-a");
   const client = new WebSocketSyncClient(controller);
@@ -181,7 +181,10 @@ test("polling stops only after ready and resumes during reconnect", () => {
     firstSocket.onopen();
     assert.ok(controller._wsPollingTimer);
     firstSocket.onmessage({ data: JSON.stringify({ type: "ready", organizationId: "org-1" }) });
-    assert.equal(controller._wsPollingTimer, null);
+    assert.ok(controller._wsPollingTimer);
+    const timer = harness.intervals.get(controller._wsPollingTimer);
+    timer.callback();
+    assert.deepEqual(controller.calls.slice(-2), [["notifications"], ["sync", 0]]);
 
     firstSocket.readyState = WebSocket.CLOSED;
     firstSocket.onclose({ code: 1013, reason: "retry" });
@@ -226,7 +229,7 @@ test("logout stops polling while workspace switch transfers fallback ownership",
     newSocket.readyState = WebSocket.OPEN;
     newSocket.onopen();
     newSocket.onmessage({ data: JSON.stringify({ type: "ready", organizationId: "org-2" }) });
-    assert.equal(controller._wsPollingTimer, null);
+    assert.ok(controller._wsPollingTimer);
   } finally {
     client.disconnect(false);
     harness.restore();

@@ -1,9 +1,15 @@
 from copy import deepcopy
 
+import pytest
+
 from backend.versioning.aggregate_snapshot import (
     PACKAGE_CHILD_CLONE_POLICY,
     snapshot_package_aggregate,
     snapshot_plan_aggregate,
+)
+from backend.versioning.aggregate_validator import (
+    AggregateGraphValidationError,
+    validate_generated_aggregate_graph,
 )
 
 
@@ -147,6 +153,28 @@ def test_package_snapshot_remaps_full_aggregate_without_server_fields():
     assert snapshot["assignments"][0]["targetId"] == "package-target"
 
 
+def test_generated_graph_validator_rejects_missing_pending_requirement():
+    payload = {
+        "goithau": [{
+            "id": "package-target", "isLatest": 1, "keHoachId": "plan-target",
+            "phanLoList": [],
+        }],
+        "goithauhanghoa": [],
+        "thongtinmothau": [{
+            "id": "opening-target", "goiThauId": "package-target",
+        }],
+        "hanghoaduthaunhathau": [{
+            "id": "offered-target", "goiThauId": "package-target",
+            "thongTinMoThauId": "opening-target",
+            "goiThauHangHoaId": "missing-requirement",
+        }],
+        "assignments": [],
+    }
+    with pytest.raises(AggregateGraphValidationError) as error:
+        validate_generated_aggregate_graph(payload)
+    assert error.value.code == "AGGREGATE_PENDING_REFERENCE_INVALID"
+
+
 def test_operational_evidence_remains_on_the_historical_package_snapshot():
     state = _state()
     retained_tables = PACKAGE_CHILD_CLONE_POLICY["retain_on_historical_snapshot"]
@@ -213,3 +241,61 @@ def test_plan_snapshot_can_exclude_removed_package_roots():
 
     assert len(aggregate["goithau"]) == 1
     assert aggregate["goithau"][0]["rootId"] == "package-root"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected_code"),
+    [
+        (
+            lambda state: state["goithau"][0].update(
+                {"awardedPhanLoList": [{"id": "missing-lot", "maPhanLo": "X"}]}
+            ),
+            "AGGREGATE_AWARD_LOT_UNMAPPED",
+        ),
+        (
+            lambda state: state["goithau"][0]["danhGiaHsdtMetadata"][
+                "technical"
+            ]["criteria"][0].update({"parentCriterionId": "missing-parent"}),
+            "AGGREGATE_CRITERION_PARENT_UNMAPPED",
+        ),
+        (
+            lambda state: state["thongtinmothau"][0][
+                "baoCaoDanhGiaChiTietList"
+            ][0]["chiTietList"][0].update(
+                {"tieuChiDanhGiaId": "missing-criterion"}
+            ),
+            "AGGREGATE_DETAIL_CRITERION_UNMAPPED",
+        ),
+        (
+            lambda state: state["hanghoaduthaunhathau"][0].update(
+                {"thongTinMoThauId": "missing-opening"}
+            ),
+            "AGGREGATE_BIDDER_GOODS_OPENING_UNMAPPED",
+        ),
+        (
+            lambda state: state["goithau"][0]["timelineItems"][0].update(
+                {"sourceEntityId": "missing-source"}
+            ),
+            "AGGREGATE_TIMELINE_SOURCE_UNMAPPED",
+        ),
+    ],
+)
+def test_package_snapshot_fails_closed_for_unmapped_internal_references(
+    mutate,
+    expected_code,
+):
+    state = _state()
+    mutate(state)
+
+    with pytest.raises(AggregateGraphValidationError) as error:
+        snapshot_package_aggregate(
+            state,
+            state["goithau"][0],
+            target_package_id="package-target",
+            target_plan_id="plan-target",
+            package_version=3,
+            timestamp="2026-08-08 10:00:00",
+            create_id=_ids(),
+        )
+
+    assert error.value.code == expected_code

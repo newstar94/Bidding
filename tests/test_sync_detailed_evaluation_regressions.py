@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend.sync import mapper, read_service
+from backend.sync.visibility_scope import SqlPredicate
 
 
 class _ValidationCursor:
@@ -94,6 +95,15 @@ def test_single_record_lookup_restores_opening_bid(monkeypatch):
     )
     monkeypatch.setattr(read_service, "can_read_table", lambda *_args: True)
     monkeypatch.setattr(read_service, "can_read_record", lambda *_args: True)
+    monkeypatch.setattr(
+        read_service.VisibilityScope,
+        "resolve",
+        lambda *_args: SimpleNamespace(
+            live_predicate=lambda *_args: SqlPredicate(
+                "source_row.organization_id = ?", ("org-1",)
+            )
+        ),
+    )
     monkeypatch.setattr(
         read_service,
         "map_db_to_json",

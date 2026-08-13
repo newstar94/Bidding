@@ -10,6 +10,7 @@ from backend.db.upgrades import (
 )
 from backend.timeline.effective_timeline import build_effective_timeline
 from backend.sync.payload_validation import validate_sync_payload_shape
+from backend.analytics.semantic_registry import get_metric
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +67,13 @@ def test_timeline_schema_and_forward_only_migration():
     assert DB_SCHEMA_VERSION >= 34
     assert next(item for item in UPGRADES if item.version == 33).name == "add_effective_timeline_model"
     assert next(item for item in UPGRADES if item.version == 34).name == "index_ehsmt_adjustment_actors"
+
+
+def test_without_contract_metric_resolves_tenant_scoped_package_lineage():
+    expression = get_metric("packages", "without_contract_count").status_expression
+    assert "linked_package.organization_id = goi_thau.organization_id" in expression
+    assert "linked_package.id_goc" in expression
+    assert "linked_package.id = h.goi_thau_id" in expression
 
 
 def test_v33_backfills_unrelated_fields_without_workspace_owner_triggers():

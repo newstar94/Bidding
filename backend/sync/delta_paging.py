@@ -23,6 +23,8 @@ from backend.shared.sensitive_data import (
 from backend.sync.conflict_projection import project_conflict_record
 from backend.sync.mapper import attach_child_rows_to_items, map_db_to_json
 from backend.sync.queries import TABLE_KEYS
+from backend.sync.visibility_epoch import build_visibility_token
+from backend.sync.visibility_scope import VisibilityScope
 
 
 _CURSOR_VERSION = 1
@@ -53,7 +55,7 @@ def _binding(organization_id: str, user_id: str) -> str:
 
 def encode_delta_cursor(
     *, signing_key, organization_id, user_id, after_version,
-    through_version, marker, expires_at,
+    through_version, marker, expires_at, visibility_token=None,
 ) -> str:
     payload = {
         "v": _CURSOR_VERSION,
@@ -62,6 +64,7 @@ def encode_delta_cursor(
         "through": int(through_version),
         "marker": list(marker),
         "exp": int(expires_at),
+        "visibility": str(visibility_token or ""),
     }
     encoded = _b64encode(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
@@ -113,41 +116,78 @@ def _bounded_int(name, default, minimum, maximum):
     return min(maximum, max(minimum, value))
 
 
-def _delta_union_sql():
+def _delta_union_sql(visibility_scope=None):
     statements = []
+    parameters = []
     for payload_key, table_name in TABLE_KEYS.items():
+        predicate = (
+            visibility_scope.live_predicate(table_name, "source_row")
+            if visibility_scope
+            else None
+        )
+        visibility_sql = (
+            predicate.sql if predicate else "source_row.organization_id = ?"
+        )
         statements.append(
             f"""SELECT sync_version AS version, 'upsert' AS kind,
                        '{payload_key}' AS table_key, id AS record_id,
                        to_jsonb(source_row) AS record_json,
                        NULL::text AS snapshot_json
                   FROM {table_name} AS source_row
-                 WHERE organization_id = ?
+                 WHERE {visibility_sql}
                    AND sync_version > ? AND sync_version <= ?"""
         )
-    statements.append(
-        """SELECT delete_version AS version, 'delete' AS kind,
-                  table_name AS table_key, record_id,
-                  NULL::jsonb AS record_json,
-                  record_snapshot_json AS snapshot_json
-             FROM deleted_records
-            WHERE organization_id = ?
-              AND delete_version > ? AND delete_version <= ?"""
-    )
-    return " UNION ALL ".join(statements)
+        parameters.extend(
+            predicate.parameters if predicate else (visibility_scope.organization_id if visibility_scope else None,)
+        )
+        parameters.extend(("$after", "$through"))
+    if visibility_scope:
+        for payload_key, table_name in TABLE_KEYS.items():
+            predicate = visibility_scope.deletion_predicate(
+                table_name, "deleted_row"
+            )
+            statements.append(
+                f"""SELECT delete_version AS version, 'delete' AS kind,
+                          '{payload_key}' AS table_key, record_id,
+                          NULL::jsonb AS record_json,
+                          record_snapshot_json AS snapshot_json
+                     FROM deleted_records AS deleted_row
+                    WHERE {predicate.sql}
+                      AND delete_version > ? AND delete_version <= ?"""
+            )
+            parameters.extend(predicate.parameters)
+            parameters.extend(("$after", "$through"))
+    else:
+        statements.append(
+            """SELECT delete_version AS version, 'delete' AS kind,
+                      table_name AS table_key, record_id,
+                      NULL::jsonb AS record_json,
+                      record_snapshot_json AS snapshot_json
+                 FROM deleted_records
+                WHERE organization_id = ?
+                  AND delete_version > ? AND delete_version <= ?"""
+        )
+        parameters.extend((None, "$after", "$through"))
+    return " UNION ALL ".join(statements), parameters
 
 
 def _load_candidates(
     cursor, organization_id, after_version, through_version, marker, limit,
+    visibility_scope=None,
 ):
-    params = []
-    for _statement in range(len(TABLE_KEYS) + 1):
-        params.extend((organization_id, after_version, through_version))
+    union_sql, parameter_template = _delta_union_sql(visibility_scope)
+    params = [
+        after_version if value == "$after"
+        else through_version if value == "$through"
+        else organization_id if value is None
+        else value
+        for value in parameter_template
+    ]
     params.extend((*marker, limit))
     return cursor.execute(
         f"""SELECT version, kind, table_key, record_id,
                    record_json, snapshot_json
-              FROM ({_delta_union_sql()}) AS delta
+              FROM ({union_sql}) AS delta
              WHERE (version, kind, table_key, record_id) > (?, ?, ?, ?)
              ORDER BY version, kind, table_key, record_id
              LIMIT ?""",
@@ -294,6 +334,28 @@ def _read_delta_page_blocking(request):
             ).fetchone()
             through_version = int(metadata[0] or 0) if metadata else 0
             marker = (after_version, "", "", "")
+        visibility_token = build_visibility_token(
+            cursor, organization_id, role.user_id, role
+        )
+        visibility_scope = VisibilityScope.resolve(
+            cursor, role, role.user_id, organization_id
+        )
+        supplied_visibility = (
+            str(state.get("visibility") or "")
+            if raw_cursor
+            else str(request.query_params.get("visibility_token") or "")
+        )
+        if (
+            after_version > 0
+            and not supplied_visibility
+        ) or (
+            supplied_visibility
+            and not hmac.compare_digest(supplied_visibility, visibility_token)
+        ):
+            return JSONResponse({
+                "code": "SYNC_VISIBILITY_RESET_REQUIRED",
+                "requiresFullSync": True,
+            }, status_code=409)
         metadata = cursor.execute(
             "SELECT min_available_version FROM sync_metadata WHERE organization_id = ?",
             (organization_id,),
@@ -313,6 +375,7 @@ def _read_delta_page_blocking(request):
         candidates = _load_candidates(
             cursor, organization_id, after_version,
             through_version, marker, candidate_limit,
+            visibility_scope=visibility_scope,
         )
         prepared_upserts = _prepare_upsert_items(
             cursor,
@@ -371,10 +434,12 @@ def _read_delta_page_blocking(request):
                 expires_at=now + _bounded_int(
                     "SYNC_DELTA_CURSOR_TTL_SECONDS", 900, 60, 3600
                 ),
+                visibility_token=visibility_token,
             )
         payload = {
             "deletions": [], "partial": bool(has_more),
             "throughVersion": through_version, "nextCursor": next_cursor,
+            "visibilityToken": visibility_token,
         }
         for entry in entries:
             if entry["kind"] == "delete":

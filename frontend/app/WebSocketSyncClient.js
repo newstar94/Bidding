@@ -104,7 +104,7 @@ export class WebSocketSyncClient {
           if (controller.ws !== ws || !workspaceIsCurrent(controller, workspace)
             || String(msg.organizationId || "") !== workspace.organizationId) return;
           controller._wsReady = true;
-          this.stopPollingFallback();
+          this.startPollingFallback();
           hideOfflineBanner();
           controller.updateSyncState?.({ online: true });
           return;
@@ -117,6 +117,18 @@ export class WebSocketSyncClient {
           if (!workspaceIsCurrent(controller, workspace)) return;
           if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
           controller.notificationCenter?.refresh?.();
+          controller.scheduleBackgroundSync(300);
+        } else if (msg.event === "lot_lifecycle_changed"
+          || msg.event === "package_documents_changed") {
+          if (!workspaceIsCurrent(controller, workspace)) return;
+          const packageId = String(msg.packageId || "");
+          if (
+            packageId
+            && String(controller.view?._currentWorkflowPackageId || "") === packageId
+            && typeof controller.view?.showPackageDetails === "function"
+          ) {
+            void controller.view.showPackageDetails(packageId, true);
+          }
           controller.scheduleBackgroundSync(300);
         } else if (msg.event === "organization_member_changed") {
           if (!workspaceIsCurrent(controller, workspace)) return;

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from backend.versioning.relation_policy import contract_package_relation_predicate
+
 
 @dataclass(frozen=True)
 class MetricSpec:
@@ -31,7 +33,7 @@ METRICS = {
         "opened_count": MetricSpec("opened_count", "Số gói đã mở thầu", "packages", "count", None, "thoi_gian_mo_thau", "goithau", "thoi_gian_mo_thau", status_expression="thoi_gian_mo_thau IS NOT NULL"),
         "delayed_count": MetricSpec("delayed_count", "Số gói chậm tiến độ", "packages", "count", None, None, "goithau", None, status_expression="EXISTS (SELECT 1 FROM goi_thau_moc_tien_do m WHERE m.organization_id = goi_thau.organization_id AND m.goi_thau_id = goi_thau.id AND m.ngay_du_kien IS NOT NULL AND m.ngay_du_kien < CURRENT_DATE AND COALESCE(m.trang_thai, '') NOT IN ('completed', 'COMPLETED', 'done'))"),
         "without_expert_count": MetricSpec("without_expert_count", "Số gói chưa phân công chuyên gia", "packages", "count", None, None, "goithau", None, status_expression="NOT EXISTS (SELECT 1 FROM goi_thau_chuyen_gia e WHERE e.organization_id = goi_thau.organization_id AND e.goi_thau_id = goi_thau.id)"),
-        "without_contract_count": MetricSpec("without_contract_count", "Số gói có kết quả nhưng chưa có hợp đồng", "packages", "count", None, "ngay_quyet_dinh_ket_qua", "goithau", "ngay_quyet_dinh_ket_qua", status_expression="ngay_quyet_dinh_ket_qua IS NOT NULL AND NOT EXISTS (SELECT 1 FROM hop_dong_goi_thau h WHERE h.organization_id = goi_thau.organization_id AND h.goi_thau_id = goi_thau.id)"),
+        "without_contract_count": MetricSpec("without_contract_count", "Số gói có kết quả nhưng chưa có hợp đồng", "packages", "count", None, "ngay_quyet_dinh_ket_qua", "goithau", "ngay_quyet_dinh_ket_qua", status_expression=f"ngay_quyet_dinh_ket_qua IS NOT NULL AND NOT EXISTS (SELECT 1 FROM hop_dong_goi_thau h WHERE {contract_package_relation_predicate()})"),  # noqa: S608 - predicate uses fixed registry aliases
     },
     "plans": {
         "count": MetricSpec("count", "Số kế hoạch", "plans", "count", None, None, "kehoach", None),

@@ -194,8 +194,9 @@ def find_unreplaced_assignment_removals(
     before: dict,
     after: dict,
 ) -> list[dict]:
-    """Assignments are optional; removing the final membership is valid."""
+    """Compatibility interface: assignments are optional, so none are missing."""
 
+    del cursor, organization_id, before, after
     return []
 
 

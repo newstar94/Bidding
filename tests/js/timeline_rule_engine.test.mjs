@@ -12,6 +12,7 @@ import {
   ensureVersionEhsmtAdjustment,
   preparePackageSnapshot
 } from "../../frontend/shared/VersionedEntityService.js";
+import { findTimelineContracts } from "../../frontend/packages/PackageTimelineView.js";
 
 const base = {
   hinhThucLuaChon: "Đấu thầu rộng rãi",
@@ -154,6 +155,24 @@ test("timeline toolbar exports an editable Excel workbook", () => {
   assert.match(source, /Timeline_goi_thau_\$\{code\}\.xlsx/);
   assert.match(source, /\/api\/export-timeline\//);
   assert.doesNotMatch(source, /Timeline_goi_thau_\$\{code\}\.docx/);
+});
+
+test("timeline contract projection resolves package lineage", () => {
+  const historical = { id: "package-v1", rootId: "package-root" };
+  const current = { id: "package-v2", rootId: "package-root" };
+  const unrelated = { id: "package-other", rootId: "other-root" };
+  const exact = { id: "contract-exact", goiThauIds: [current.id] };
+  const inherited = { id: "contract-lineage", goiThauIds: [historical.id] };
+  const foreign = { id: "contract-other", goiThauIds: [unrelated.id] };
+  const view = { model: { state: {
+    goithau: [historical, current, unrelated],
+    hopdong: [exact, inherited, foreign],
+  } } };
+
+  assert.deepEqual(
+    findTimelineContracts(view, current).map((contract) => contract.id),
+    [exact.id, inherited.id],
+  );
 });
 
 test("bid evaluation report title follows the package envelope method", () => {

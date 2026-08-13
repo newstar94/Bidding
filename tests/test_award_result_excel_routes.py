@@ -13,9 +13,10 @@ from backend.documents import award_result_excel_service as service
 
 
 class _Request:
-    def __init__(self, *, package_id="pkg", upload=None):
+    def __init__(self, *, package_id="pkg", upload=None, query_params=None):
         self.path_params = {"package_id": package_id}
         self._upload = upload
+        self.query_params = query_params or {}
         self.headers = {}
         self.state = SimpleNamespace()
         self.client = ("127.0.0.1", 1234)
@@ -399,6 +400,80 @@ def test_export_endpoint_reloads_data_sends_only_worker_updates_and_audits(monke
     assert audits[0][0] == "award_result.excel_exported"
     assert audits[0][1]["required"] is True
     assert consumed == ["validation-token"]
+
+
+def test_winning_goods_export_uses_only_committed_server_snapshot(monkeypatch):
+    audits = []
+    worker_payloads = []
+    monkeypatch.setattr(
+        routes,
+        "_authorize_winning_goods",
+        lambda _request, _package_id: (SimpleNamespace(user_id="user"), "org"),
+    )
+
+    async def database_read(function, *args, **_kwargs):
+        if function is routes._authorize_winning_goods:
+            return function(*args)
+        assert function is routes.load_winning_goods_export_model
+        assert args == ("pkg", "org", 7)
+        return {
+            "packageCode": "IB-01",
+            "packageName": "Gói hàng hóa",
+            "isLotted": False,
+            "revision": 7,
+            "groups": [{
+                "contractorName": "Nhà thầu A",
+                "lots": [{"rows": [{"danhMucHangHoa": "Committed"}]}],
+            }],
+        }
+
+    async def worker(operation, payload, **_kwargs):
+        assert operation == "export_excel"
+        worker_payloads.append(payload)
+        return b"official-xlsx"
+
+    monkeypatch.setattr(routes, "run_database_read", database_read)
+    monkeypatch.setattr(routes, "run_document_job_async", worker)
+    monkeypatch.setattr(
+        routes, "log_audit", lambda action, **kwargs: audits.append((action, kwargs))
+    )
+
+    request = _Request(query_params={"expectedRevision": "7", "rows": "tampered"})
+    response = asyncio.run(routes.export_winning_goods_excel_api(request))
+
+    assert response.status_code == 200
+    assert response.body == b"official-xlsx"
+    assert worker_payloads == [{
+        "function": "create_winning_goods_excel",
+        "args": [{
+            "packageCode": "IB-01",
+            "packageName": "Gói hàng hóa",
+            "isLotted": False,
+            "revision": 7,
+            "groups": [{
+                "contractorName": "Nhà thầu A",
+                "lots": [{"rows": [{"danhMucHangHoa": "Committed"}]}],
+            }],
+        }],
+    }]
+    assert audits[0][0] == "winning_goods.excel_exported"
+    assert audits[0][1]["required"] is True
+
+
+@pytest.mark.parametrize("revision", [None, "", "0", "abc"])
+def test_winning_goods_export_requires_positive_expected_revision(monkeypatch, revision):
+    monkeypatch.setattr(
+        routes,
+        "_authorize_winning_goods",
+        lambda _request, _package_id: (SimpleNamespace(user_id="user"), "org"),
+    )
+    response = asyncio.run(
+        routes.export_winning_goods_excel_api(
+            _Request(query_params={"expectedRevision": revision} if revision is not None else {})
+        )
+    )
+    assert response.status_code == 400
+    assert _json(response)["code"] == "PACKAGE_REVISION_REQUIRED"
 
 
 def test_reconciliation_endpoint_recomputes_server_data_without_consuming_token(monkeypatch):

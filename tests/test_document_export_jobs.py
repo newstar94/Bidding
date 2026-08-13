@@ -14,6 +14,8 @@ from backend.documents.document_worker import (
     process_next_durable_document_job,
     read_document_export_result,
 )
+from backend.documents.document_job_policy import build_document_job_policy
+from backend.auth.auth_helper import SessionRole
 from backend.db.db_helper import PostgresDatabase
 
 
@@ -186,4 +188,67 @@ def test_durable_export_job_completes_and_isolated_owner_can_download(tmp_path, 
             connection.close()
         for job_id in job_ids:
             shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        database.close()
+
+
+def test_revoked_job_fails_before_worker_publishes_artifact(tmp_path, monkeypatch):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    database = PostgresDatabase(database_url)
+    connection = database.get_connection()
+    job_id = None
+    try:
+        organization = connection.execute(
+            "SELECT id FROM to_chuc WHERE trang_thai = 'active' LIMIT 1"
+        ).fetchone()
+        user = connection.execute(
+            """SELECT account.id FROM tai_khoan AS account
+               JOIN thanh_vien_to_chuc AS membership ON membership.user_id = account.id
+               WHERE membership.organization_id = ?
+                 AND membership.trang_thai_thanh_vien = 'active'
+               LIMIT 1""",
+            (organization[0],),
+        ).fetchone() if organization else None
+        package = connection.execute(
+            "SELECT id, row_version FROM goi_thau WHERE organization_id = ? AND archived_at IS NULL LIMIT 1",
+            (organization[0],),
+        ).fetchone() if organization else None
+        if not organization or not user or not package:
+            pytest.skip("active organization/member/package fixture is required")
+        role = SessionRole("employee", user[0], platform_role="user", active_role="employee", active_role_organization_id=organization[0])
+        policy, fingerprint = build_document_job_policy(
+            role, package_revision=package[1], document_format="docx"
+        )
+        job_id = enqueue_document_export(
+            "export_excel",
+            {"function": "create_phanlo_excel", "args": [[]]},
+            organization_id=organization[0],
+            user_id=user[0],
+            package_id=package[0],
+            filename="export.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
+            database=database,
+        )
+        connection.execute(
+            "UPDATE thanh_vien_to_chuc SET trang_thai_thanh_vien = 'left' WHERE organization_id = ? AND user_id = ?",
+            (organization[0], user[0]),
+        )
+        connection.commit()
+
+        assert process_next_durable_document_job(database)
+        job = get_document_export_job(database, job_id, organization[0], user[0])
+        assert job["status"] == "failed"
+        assert job["last_error_code"] == "DocumentJobAuthorizationError"
+        assert not (_document_job_dir(job_id) / "result.json").exists()
+    finally:
+        connection.rollback()
+        if job_id:
+            connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
+            connection.commit()
+            shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        connection.close()
         database.close()
