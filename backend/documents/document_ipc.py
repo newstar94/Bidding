@@ -24,6 +24,7 @@ MAX_COLLECTION_ITEMS = 100_000
 MAX_STRING_BYTES = 4 * 1024 * 1024
 ALLOWED_OPERATIONS = frozenset({
     "validate_docx",
+    "sanitize_docx_template",
     "validate_ooxml",
     "parse_excel",
     "inspect_award_result_excel",

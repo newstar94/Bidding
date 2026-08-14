@@ -18,6 +18,8 @@ import {
   isWorkspaceLeaseCurrent,
 } from "../app/workspaceLease.js";
 
+const pendingWordTemplateDeletes = new Set();
+
 export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   const isReadonly = !canManageWordVariables;
   forms.forEach((form) => {
@@ -1116,9 +1118,18 @@ export function setupTemplateActivationEvents() {
   document.querySelectorAll(".btn-delete-template").forEach((btn) => {
     btn.onclick = async (e) => {
       const targetEl = e.target.closest(".btn-delete-template");
-      if (!targetEl) return;
+      if (!targetEl || targetEl.disabled) return;
       const filename = targetEl.getAttribute("data-filename");
-      await handleWordTemplateDelete.call(this, filename);
+      targetEl.disabled = true;
+      targetEl.setAttribute("aria-busy", "true");
+      try {
+        await handleWordTemplateDelete.call(this, filename);
+      } finally {
+        if (targetEl.isConnected) {
+          targetEl.disabled = false;
+          targetEl.removeAttribute("aria-busy");
+        }
+      }
     };
   });
 }
@@ -1417,13 +1428,16 @@ export async function handleWordTemplateDelete(filename) {
     await showTemplateAccessDenied(this);
     return;
   }
-  const confirmed = await this.view.customConfirm(
-    "Xóa biểu mẫu",
-    `Bạn có chắc chắn muốn xóa biểu mẫu “${filename}”?`,
-    "trash-2",
-  );
-  if (!confirmed) return;
+  const deleteKey = String(filename || "").normalize("NFC");
+  if (pendingWordTemplateDeletes.has(deleteKey)) return;
+  pendingWordTemplateDeletes.add(deleteKey);
   try {
+    const confirmed = await this.view.customConfirm(
+      "Xóa biểu mẫu",
+      `Bạn có chắc chắn muốn xóa biểu mẫu “${filename}”?`,
+      "trash-2",
+    );
+    if (!confirmed) return;
     const res = await apiFetch(templateResourceUrl(filename), {
       method: "DELETE",
     });
@@ -1448,5 +1462,7 @@ export async function handleWordTemplateDelete(filename) {
       "Lỗi kết nối máy chủ: " + err.message,
       "alert-triangle",
     );
+  } finally {
+    pendingWordTemplateDeletes.delete(deleteKey);
   }
 }

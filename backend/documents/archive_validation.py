@@ -12,6 +12,7 @@ import io
 import posixpath
 import zipfile
 from defusedxml import ElementTree
+from lxml import etree
 
 
 MAX_ARCHIVE_ENTRIES = 2_048
@@ -21,6 +22,20 @@ MAX_TOTAL_XML_BYTES = 30 * 1024 * 1024
 MAX_SINGLE_XML_BYTES = 10 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 100
 MAX_XML_DEPTH = 128
+
+_ATTACHED_TEMPLATE_RELATIONSHIP = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+    "attachedTemplate"
+)
+_PACKAGE_RELATIONSHIP_NS = (
+    "http://schemas.openxmlformats.org/package/2006/relationships"
+)
+_OFFICE_RELATIONSHIP_NS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+)
+_WORDPROCESSING_NS = (
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+)
 
 _OFFICE_DOCUMENT_CONTENT_TYPES = {
     "docx": {
@@ -83,6 +98,7 @@ def _validate_xml_part(
     archive_kind: str,
     *,
     allow_xlsx_formulas: bool = False,
+    allow_docx_attached_template: bool = False,
 ) -> None:
     raw = zf.read(name)
     upper_raw = raw.upper()
@@ -99,8 +115,22 @@ def _validate_xml_part(
                 if depth > MAX_XML_DEPTH:
                     raise UnsafeArchiveError("Độ sâu XML của tệp Office vượt quá giới hạn.")
                 local_name = node.tag.rsplit("}", 1)[-1]
-                if local_name == "Relationship" and str(node.attrib.get("TargetMode", "")).casefold() == "external":
-                    raise UnsafeArchiveError("Tệp Office chứa liên kết ngoài không được phép.")
+                if (
+                    local_name == "Relationship"
+                    and str(node.attrib.get("TargetMode", "")).casefold()
+                    == "external"
+                ):
+                    is_removable_attached_template = (
+                        allow_docx_attached_template
+                        and archive_kind == "docx"
+                        and name.casefold() == "word/_rels/settings.xml.rels"
+                        and str(node.attrib.get("Type", ""))
+                        == _ATTACHED_TEMPLATE_RELATIONSHIP
+                    )
+                    if not is_removable_attached_template:
+                        raise UnsafeArchiveError(
+                            "Tệp Office chứa liên kết ngoài không được phép."
+                        )
                 if (
                     archive_kind == "xlsx"
                     and not allow_xlsx_formulas
@@ -119,6 +149,7 @@ def validate_ooxml_archive(
     archive_kind: str,
     *,
     allow_xlsx_formulas: bool = False,
+    _allow_docx_attached_template: bool = False,
 ) -> None:
     """Validate DOCX/XLSX bytes without extracting their ZIP entries."""
 
@@ -173,6 +204,9 @@ def validate_ooxml_archive(
                         name,
                         archive_kind,
                         allow_xlsx_formulas=allow_xlsx_formulas,
+                        allow_docx_attached_template=(
+                            _allow_docx_attached_template
+                        ),
                     )
 
             if not _REQUIRED_PARTS[archive_kind].issubset(names):
@@ -180,3 +214,95 @@ def validate_ooxml_archive(
             _validate_content_types(zf, archive_kind)
     except zipfile.BadZipFile as exc:
         raise UnsafeArchiveError("Tệp Office không phải là gói ZIP hợp lệ.") from exc
+
+
+def _parse_sanitizable_xml(content: bytes):
+    parser = etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        remove_blank_text=False,
+        recover=False,
+    )
+    try:
+        return etree.fromstring(content, parser=parser)
+    except etree.XMLSyntaxError as exc:
+        raise UnsafeArchiveError(
+            "Cấu trúc XML của tệp Office không hợp lệ."
+        ) from exc
+
+
+def _serialize_sanitized_xml(root, original: bytes) -> bytes:
+    return etree.tostring(
+        root,
+        encoding="UTF-8",
+        xml_declaration=original.lstrip().startswith(b"<?xml"),
+        standalone=None,
+    )
+
+
+def sanitize_docx_attached_template(content: bytes) -> bytes:
+    """Remove only external Word attached-template references from a DOCX."""
+
+    validate_ooxml_archive(
+        content,
+        "docx",
+        _allow_docx_attached_template=True,
+    )
+    relationships_name = "word/_rels/settings.xml.rels"
+    settings_name = "word/settings.xml"
+    with zipfile.ZipFile(io.BytesIO(content)) as source:
+        names = set(source.namelist())
+        if relationships_name not in names:
+            return content
+
+        relationships_xml = source.read(relationships_name)
+        relationships = _parse_sanitizable_xml(relationships_xml)
+        removed_ids = set()
+        for relationship in list(
+            relationships.findall(
+                f"{{{_PACKAGE_RELATIONSHIP_NS}}}Relationship"
+            )
+        ):
+            if (
+                str(relationship.attrib.get("TargetMode", "")).casefold()
+                == "external"
+                and relationship.attrib.get("Type")
+                == _ATTACHED_TEMPLATE_RELATIONSHIP
+            ):
+                removed_ids.add(str(relationship.attrib.get("Id", "")))
+                relationships.remove(relationship)
+
+        if not removed_ids:
+            return content
+
+        replacements = {
+            relationships_name: _serialize_sanitized_xml(
+                relationships,
+                relationships_xml,
+            )
+        }
+        if settings_name in names:
+            settings_xml = source.read(settings_name)
+            settings = _parse_sanitizable_xml(settings_xml)
+            relationship_id_attribute = f"{{{_OFFICE_RELATIONSHIP_NS}}}id"
+            for attached_template in list(
+                settings.findall(f"{{{_WORDPROCESSING_NS}}}attachedTemplate")
+            ):
+                if attached_template.attrib.get(relationship_id_attribute) in removed_ids:
+                    settings.remove(attached_template)
+            replacements[settings_name] = _serialize_sanitized_xml(
+                settings,
+                settings_xml,
+            )
+
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as destination:
+            for info in source.infolist():
+                destination.writestr(
+                    info,
+                    replacements.get(info.filename, source.read(info.filename)),
+                )
+
+    sanitized = output.getvalue()
+    validate_ooxml_archive(sanitized, "docx")
+    return sanitized

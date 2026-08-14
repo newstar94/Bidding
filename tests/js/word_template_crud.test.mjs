@@ -6,6 +6,7 @@ import {
   buildWordTemplateFileLink,
 } from "../../frontend/partners/PartnerView.js";
 import {
+  handleWordTemplateDelete,
   normalizeWordTemplateName,
   templateResourceUrl,
   validateWordTemplateName,
@@ -63,6 +64,10 @@ test("manager can use, edit, and delete a custom template", () => {
   assert.match(html, /btn-activate-template/);
   assert.match(html, /btn-edit-template/);
   assert.match(html, /btn-delete-template/);
+  assert.match(html, /aria-label="Sử dụng biểu mẫu bao cao &amp; quyet dinh\.docx"/);
+  assert.match(html, /aria-label="Sửa biểu mẫu bao cao &amp; quyet dinh\.docx"/);
+  assert.match(html, /aria-label="Xóa biểu mẫu bao cao &amp; quyet dinh\.docx"/);
+  assert.doesNotMatch(html, /<\/i>\s*(?:Sử dụng|Sửa|Xóa)\s*<\/button>/);
   assert.doesNotMatch(html, /data-filename="bao cao & quyet dinh.docx"/);
 });
 
@@ -106,4 +111,48 @@ test("edited template names retain Unicode and receive the docx extension", () =
   );
   assert.equal(validateWordTemplateName("Báo cáo lựa chọn nhà thầu"), "");
   assert.match(validateWordTemplateName("bad/name"), /không hợp lệ/);
+});
+
+test("duplicate delete gestures send only one request per template", async () => {
+  const originalFetch = globalThis.fetch;
+  let deleteRequests = 0;
+  globalThis.fetch = async (_url, options = {}) => {
+    if (options.method === "DELETE") deleteRequests += 1;
+    return new Response(JSON.stringify({ success: true, deleted: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const controller = {
+    model: {
+      state: {
+        activerole: "manager",
+        activeuser: {
+          activeOrganizationId: "org-a",
+          organizations: [{
+            id: "org-a",
+            name: "HCP",
+            scope_type: "organization",
+            role: "manager",
+          }],
+        },
+      },
+    },
+    view: {
+      customConfirm: async () => true,
+      customAlert: async () => {},
+    },
+    loadWordTemplates: async () => {},
+  };
+
+  try {
+    await Promise.all([
+      handleWordTemplateDelete.call(controller, "Bìa E-HSMT.docx"),
+      handleWordTemplateDelete.call(controller, "Bìa E-HSMT.docx"),
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(deleteRequests, 1);
 });

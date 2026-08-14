@@ -2,17 +2,25 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
+from starlette.applications import Starlette
 from starlette.requests import Request
+from starlette.routing import Route
+from starlette.testclient import TestClient
 
 from backend.documents import custom_exporter
 from backend.documents.document_worker import DocumentWorkerInputError
 from backend.documents.routes_docx import (
+    _content_disposition,
     _docx_error,
     _delete_scoped_template,
+    _persist_scoped_template_from_path,
     _replace_scoped_template_from_path,
     _update_scoped_template,
+    _validate_docx_upload,
+    delete_template_api,
     view_template_api,
 )
 
@@ -42,6 +50,61 @@ def _custom_template(template_root, owner_type, owner_id, filename, content):
     path = scope_dir / filename
     path.write_bytes(content)
     return path
+
+
+def test_upload_preserves_vietnamese_filename_without_random_suffix():
+    filename = "4.1.0. Bìa E-HSMT - Gói 04.docx"
+
+    first = _validate_docx_upload(filename, b"docx", deep_validation=False)
+    second = _validate_docx_upload(filename, b"docx", deep_validation=False)
+
+    assert first == filename
+    assert second == filename
+
+
+def test_download_header_keeps_unicode_filename_in_rfc5987_parameter():
+    disposition = _content_disposition("4.1.0. Bìa E-HSMT - Gói 04.docx")
+
+    assert "filename=4.1.0._B_a_E-HSMT_-_G_i_04.docx" in disposition
+    assert (
+        "filename*=UTF-8''4.1.0.%20B%C3%ACa%20E-HSMT%20-%20G%C3%B3i%2004.docx"
+        in disposition
+    )
+
+
+def test_upload_rejects_duplicate_name_in_same_scope(template_root, tmp_path):
+    filename = "4.1.0. Bìa E-HSMT - Gói 04.docx"
+    existing = _custom_template(
+        template_root, "organization", "org-a", filename, b"existing"
+    )
+    upload = tmp_path / "validated-upload.docx"
+    upload.write_bytes(b"new")
+
+    with pytest.raises(FileExistsError, match="Tên biểu mẫu đã tồn tại"):
+        _persist_scoped_template_from_path(
+            "organization", "org-a", filename, str(upload)
+        )
+
+    assert existing.read_bytes() == b"existing"
+
+
+def test_upload_allows_same_name_in_different_scopes(template_root, tmp_path):
+    filename = "4.1.0. Bìa E-HSMT - Gói 04.docx"
+    _custom_template(
+        template_root, "organization", "org-a", filename, b"organization-a"
+    )
+    upload = tmp_path / "validated-upload.docx"
+    upload.write_bytes(b"organization-b")
+
+    _persist_scoped_template_from_path(
+        "organization", "org-b", filename, str(upload)
+    )
+
+    stored = (
+        Path(custom_exporter.get_scope_template_dir("organization", "org-b"))
+        / filename
+    )
+    assert stored.read_bytes() == b"organization-b"
 
 
 def test_replace_custom_template_preserves_name_and_active_selection(template_root, tmp_path):
@@ -79,6 +142,48 @@ def test_delete_active_custom_template_clears_active_selection(template_root):
     assert custom_exporter.get_active_template(
         "user-a", owner_type="personal"
     ) == ""
+
+
+def test_delete_route_decodes_percent_encoded_unicode_filename(
+    template_root,
+    monkeypatch,
+):
+    filename = "4.3.0. Bìa BCTĐ E-HSMT - Gói 04.docx"
+    target = _custom_template(
+        template_root,
+        "organization",
+        "org-a",
+        filename,
+        b"content",
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-a")),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_config_access_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_template_upload_access_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.get_active_org",
+        lambda *_args: "org-a",
+    )
+    app = Starlette(routes=[
+        Route("/api/templates/{filename}", delete_template_api, methods=["DELETE"]),
+    ])
+
+    client = TestClient(app)
+    resource_url = f"/api/templates/{quote(filename, safe='')}"
+    response = client.delete(resource_url)
+    repeated_response = client.delete(resource_url)
+
+    assert response.status_code == 200
+    assert repeated_response.status_code == 200
+    assert not target.exists()
 
 
 def test_rename_custom_template_preserves_active_selection(template_root):

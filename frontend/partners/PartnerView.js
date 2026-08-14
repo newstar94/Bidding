@@ -37,12 +37,12 @@ export function buildWordTemplateActions(tpl, canManageTemplates) {
   const safeFilename = safeAttr(tpl.filename);
   const actions = [];
   if (!tpl.is_active) {
-    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}"><i data-lucide="play" aria-hidden="true"></i>Sử dụng</button>`);
+    actions.push(`<button type="button" class="btn btn-outline btn-sm word-template-action-button btn-activate-template" data-filename="${safeFilename}" aria-label="Sử dụng biểu mẫu ${safeFilename}" title="Sử dụng làm mẫu chính"><i data-lucide="play" aria-hidden="true"></i></button>`);
   }
   const isMutable = tpl.is_mutable === undefined ? !tpl.is_system : tpl.is_mutable;
   if (isMutable) {
-    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-edit-template" data-filename="${safeFilename}"><i data-lucide="pencil" aria-hidden="true"></i>Sửa</button>`);
-    actions.push(`<button type="button" class="btn btn-outline btn-sm btn-delete-template" data-filename="${safeFilename}"><i data-lucide="trash-2" aria-hidden="true"></i>Xóa</button>`);
+    actions.push(`<button type="button" class="btn btn-outline btn-sm word-template-action-button btn-edit-template" data-filename="${safeFilename}" aria-label="Sửa biểu mẫu ${safeFilename}" title="Sửa"><i data-lucide="pencil" aria-hidden="true"></i></button>`);
+    actions.push(`<button type="button" class="btn btn-danger btn-sm word-template-action-button btn-delete-template" data-filename="${safeFilename}" aria-label="Xóa biểu mẫu ${safeFilename}" title="Xóa"><i data-lucide="trash-2" aria-hidden="true"></i></button>`);
   }
   return `<div class="word-template-actions" data-word-template-display>${actions.join("")}</div>`;
 }
@@ -62,11 +62,11 @@ export function renderBieumauTab(templatesList = []) {
     this.model.state.activerole,
   );
   if (templatesList.length === 0) {
-    tbody.innerHTML = trustedHTML(`<tr><td colspan="4" class="text-center text-muted word-template-empty-state"><i data-lucide="file-plus-2"></i><span>Chưa có biểu mẫu Word. Hãy thêm biểu mẫu đầu tiên.</span></td></tr>`);
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="5" class="text-center text-muted word-template-empty-state"><i data-lucide="file-plus-2"></i><span>Chưa có biểu mẫu Word. Hãy thêm biểu mẫu đầu tiên.</span></td></tr>`);
     lucide.createIcons({ root: tbody });
     return;
   }
-  tbody.innerHTML = trustedHTML(templatesList.map((tpl) => {
+  tbody.innerHTML = trustedHTML(templatesList.map((tpl, index) => {
     const safeFilename = safeAttr(tpl.filename);
     const isAvailable = tpl.is_available !== false;
     const activeBadge = !isAvailable
@@ -80,6 +80,7 @@ export function renderBieumauTab(templatesList = []) {
     const fileLink = buildWordTemplateFileLink(tpl);
     return `
             <tr data-word-template-row data-filename="${safeFilename}">
+                <td class="text-center word-template-index-cell">${index + 1}</td>
                 <td class="fw-bold word-template-name-cell"><span data-word-template-display>${escapeHtml(tpl.name)}</span></td>
                 <td class="word-template-file-cell">${fileLink}</td>
                 <td class="word-template-status-cell">${activeBadge}</td>

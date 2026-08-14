@@ -2,6 +2,7 @@ from backend.db.db_helper import DatabaseError
 import os
 import re
 import shutil
+import unicodedata
 from io import BytesIO
 from urllib.parse import quote
 from starlette.responses import FileResponse, StreamingResponse, JSONResponse
@@ -286,11 +287,12 @@ def _safe_filename(value, fallback='download.docx'):
 
 def _content_disposition(filename):
     safe_name = _safe_filename(filename)
-    return f"attachment; filename={safe_name}; filename*=UTF-8''{quote(safe_name)}"
+    encoded_name = quote(str(filename or safe_name), safe='')
+    return f"attachment; filename={safe_name}; filename*=UTF-8''{encoded_name}"
 
 
 def _normalize_custom_template_filename(value):
-    name = str(value or '').strip()
+    name = unicodedata.normalize('NFC', str(value or '')).strip()
     if not name:
         raise ValueError('Tên biểu mẫu không được để trống')
     if not name.lower().endswith('.docx'):
@@ -354,18 +356,39 @@ def _resolve_custom_template_path(owner_type, owner_id, filename):
 
 
 def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_path):
+    filename = _normalize_custom_template_filename(filename)
     scope_dir = os.path.realpath(
         custom_exporter.get_scope_template_dir(owner_type, owner_id)
     )
     dest_path = os.path.realpath(os.path.join(scope_dir, filename))
     if not dest_path.startswith(scope_dir + os.sep):
         raise ValueError("Tên tệp không hợp lệ")
-    shutil.copyfile(source_path, dest_path)
+    if any(
+        existing_name.casefold() == filename.casefold()
+        for existing_name in os.listdir(scope_dir)
+    ):
+        raise FileExistsError('Tên biểu mẫu đã tồn tại')
+    try:
+        with open(source_path, 'rb') as source, open(dest_path, 'xb') as destination:
+            shutil.copyfileobj(source, destination)
+    except FileExistsError:
+        raise FileExistsError('Tên biểu mẫu đã tồn tại') from None
     custom_exporter.set_active_template(
         filename,
         owner_id,
         owner_type=owner_type,
     )
+
+
+def _replace_file_content(path, content):
+    temporary_path = f"{path}.{uuid.uuid4().hex}.sanitize"
+    try:
+        with open(temporary_path, 'xb') as destination:
+            destination.write(content)
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
 
 def _replace_scoped_template_from_path(owner_type, owner_id, filename, source_path):
@@ -452,17 +475,18 @@ def _delete_scoped_template(owner_type, owner_id, filename):
 
 
 def _validate_docx_upload(filename, content, *, deep_validation=True, total_size=None):
-    safe_name = _safe_filename(filename, f"template_{uuid.uuid4().hex[:8]}.docx")
-    root, ext = os.path.splitext(safe_name)
+    original_name = unicodedata.normalize('NFC', str(filename or '')).strip()
+    _, ext = os.path.splitext(original_name)
     if ext.lower() != '.docx':
         raise ValueError('Chỉ cho phép tải lên tệp .docx')
+    safe_name = _normalize_custom_template_filename(original_name)
     if not content:
         raise ValueError('Tệp tải lên đang trống')
     if (total_size if total_size is not None else len(content)) > MAX_TEMPLATE_UPLOAD_BYTES:
         raise ValueError('Tệp mẫu vượt quá giới hạn 10MB')
     if deep_validation:
         run_document_job("validate_docx", {"content": content}, timeout_seconds=15)
-    return _safe_filename(f"{root[:80]}_{uuid.uuid4().hex[:8]}.docx")
+    return safe_name
 
 
 def _database_read_unavailable_response(request, *, timed_out=False):
@@ -886,8 +910,16 @@ async def upload_template_api(request):
                 filename = _validate_docx_upload(
                     file_obj.filename, head, deep_validation=False, total_size=upload_size,
                 )
-                await run_document_job_async(
-                    "validate_docx", {"content_path": str(upload_path)}, timeout_seconds=15,
+                sanitized_content = await run_document_job_async(
+                    "sanitize_docx_template",
+                    {"content_path": str(upload_path)},
+                    timeout_seconds=15,
+                )
+                await run_blocking_io(
+                    _replace_file_content,
+                    str(upload_path),
+                    sanitized_content,
+                    timeout_seconds=5,
                 )
             except ValueError as e:
                 return _docx_error(request, e, "upload_template_api")
@@ -901,7 +933,7 @@ async def upload_template_api(request):
                 timeout_seconds=10,
             )
         return JSONResponse({"success": True, "filename": filename})
-    except DocumentWorkerError as e:
+    except (FileExistsError, ValueError, DocumentWorkerError) as e:
         return _docx_error(request, e, "upload_template_api")
     except Exception as e:
         return _docx_error(request, e, "upload_template_api")
@@ -951,10 +983,16 @@ async def replace_template_api(request):
                     deep_validation=False,
                     total_size=upload_size,
                 )
-                await run_document_job_async(
-                    "validate_docx",
+                sanitized_content = await run_document_job_async(
+                    "sanitize_docx_template",
                     {"content_path": str(upload_path)},
                     timeout_seconds=15,
+                )
+                await run_blocking_io(
+                    _replace_file_content,
+                    str(upload_path),
+                    sanitized_content,
+                    timeout_seconds=5,
                 )
                 _, new_name = await run_blocking_io(
                     _update_scoped_template,
@@ -1007,8 +1045,10 @@ async def delete_template_api(request):
             template_name,
             timeout_seconds=5,
         )
-        return JSONResponse({"success": True})
-    except (FileNotFoundError, ValueError) as e:
+        return JSONResponse({"success": True, "deleted": True})
+    except FileNotFoundError:
+        return JSONResponse({"success": True, "deleted": False})
+    except ValueError as e:
         return _docx_error(request, e, "delete_template_api")
     except (DatabaseError, OrgPermissionError, BlockingIOBusyError, BlockingIOTimeoutError, OSError) as e:
         return _docx_error(request, e, "delete_template_api")

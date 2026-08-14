@@ -3306,18 +3306,46 @@ input#edit-pkg-price {
 
 #tab-bieumau .word-template-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
     align-items: center;
     justify-content: flex-end;
+}
+
+#tab-bieumau #word-templates-table tbody tr:not(.is-editing) {
+    height: 56px;
+}
+
+#tab-bieumau .word-template-action-button {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    justify-content: center;
 }
 
 #tab-bieumau #word-templates-table {
     min-width: 960px;
 }
 
-#tab-bieumau #word-templates-table th:nth-child(1) {
-    width: 28%;
+#tab-bieumau .word-template-table-container {
+    min-height: 360px;
+    max-height: clamp(480px, 58vh, 760px);
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+#tab-bieumau .word-template-table-container #word-templates-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+#tab-bieumau #word-templates-table th:nth-child(1),
+#tab-bieumau #word-templates-table td:nth-child(1) {
+    width: 72px;
+    min-width: 72px;
+    white-space: nowrap;
 }
 
 #tab-bieumau #word-templates-table th:nth-child(2) {
@@ -3325,13 +3353,23 @@ input#edit-pkg-price {
 }
 
 #tab-bieumau #word-templates-table th:nth-child(3) {
+    width: 26%;
+}
+
+#tab-bieumau #word-templates-table th:nth-child(4) {
     width: 18%;
 }
 
-#tab-bieumau #word-templates-table th:nth-child(4),
-#tab-bieumau #word-templates-table td:nth-child(4) {
-    width: 1%;
+#tab-bieumau #word-templates-table th:nth-child(5),
+#tab-bieumau #word-templates-table td:nth-child(5) {
+    width: 156px;
+    min-width: 156px;
     white-space: nowrap;
+}
+
+#tab-bieumau .word-template-index-cell {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 #tab-bieumau .word-template-actions .btn,
@@ -3444,6 +3482,11 @@ input#edit-pkg-price {
 }
 
 @media (max-width: 640px) {
+    #tab-bieumau .word-template-table-container {
+        min-height: 260px;
+        max-height: min(60vh, 560px);
+    }
+
     #tab-bieumau .word-template-toolbar {
         align-items: stretch;
         flex-direction: column;

@@ -126,6 +126,14 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         validate_docx_template_statements(content)
         return True
 
+    if operation == "sanitize_docx_template":
+        from backend.documents.archive_validation import sanitize_docx_attached_template
+        from backend.documents.template_security import validate_docx_template_statements
+
+        sanitized = sanitize_docx_attached_template(_payload_content(payload))
+        validate_docx_template_statements(sanitized)
+        return sanitized
+
     if operation == "validate_ooxml":
         from backend.documents.archive_validation import validate_ooxml_archive
 
