@@ -35,7 +35,7 @@ from backend.sync.queries import (
 )
 from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
 from backend.sync.visibility_epoch import build_visibility_token
-from backend.sync.visibility_scope import VisibilityScope
+from backend.sync.visibility_scope import VisibilityScope, scoped_deletion_branches
 from backend.sync.request_contract import parse_sync_read_window
 from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
@@ -93,6 +93,43 @@ _VERSION_FAMILY_SQL = {
         ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
     """,
 }
+
+
+def _load_visible_deletions(
+    cursor, visibility_scope, *, after_version=None, since=None,
+    payload_keys=None, limit=1000
+):
+    """Load tombstones after applying the same record scope as delta sync."""
+
+    if after_version is None and since in (None, "", "0", "1970-01-01 00:00:00"):
+        return []
+    statements = []
+    parameters = []
+    for payload_key, _table_name, predicate in scoped_deletion_branches(
+        visibility_scope, "deleted_row", payload_keys
+    ):
+        boundary = "deleted_row.delete_version > ?" if after_version is not None else "deleted_row.deleted_at > ?"
+        statements.append(
+            f"SELECT '{payload_key}' AS table_key, deleted_row.record_id, "  # noqa: S608 - payload key/predicate come from canonical registries
+            "deleted_row.delete_version, deleted_row.deleted_at "
+            "FROM deleted_records AS deleted_row "
+            f"WHERE {predicate.sql} AND {boundary}"  # noqa: S608 - predicate is registry-built
+        )
+        parameters.extend(predicate.parameters)
+        parameters.append(after_version if after_version is not None else since)
+    order = (
+        "delete_version ASC, deleted_at ASC, table_key ASC, record_id ASC"
+        if after_version is not None
+        else "deleted_at DESC, table_key ASC, record_id ASC"
+    )
+    query = " UNION ALL ".join(statements) + f" ORDER BY {order}"  # noqa: S608 - fixed clauses plus registry-built branches
+    if after_version is None:
+        query += " LIMIT ?"
+        parameters.append(limit)
+    return [
+        {"table": row[0], "id": row[1]}
+        for row in cursor.execute(query, tuple(parameters)).fetchall()
+    ]
 
 
 def _database_read_unavailable(request, code, message):
@@ -399,32 +436,13 @@ def _read_sync_data_blocking(request):
                 permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
 
 
-        deletions = []
-        if after_version is not None:
-            cursor.execute(
-                "SELECT table_name, record_id FROM deleted_records "
-                "WHERE organization_id = ? AND delete_version > ? "
-                "ORDER BY delete_version ASC, deleted_at ASC",
-                (org_name, after_version)
-            )
-            TABLE_KEYS_INV = {v: k for k, v in TABLE_KEYS.items()}
-            for row in cursor.fetchall():
-                tbl_key = TABLE_KEYS_INV.get(row[0])
-                if tbl_key:
-                    deletions.append({"table": tbl_key, "id": row[1]})
-        elif since != '1970-01-01 00:00:00' and since != '0':
-
-            cursor.execute(
-                "SELECT table_name, record_id FROM deleted_records "
-                "WHERE organization_id = ? AND deleted_at > ? "
-                "ORDER BY deleted_at DESC LIMIT 1000",
-                (org_name, since)
-            )
-            TABLE_KEYS_INV = {v: k for k, v in TABLE_KEYS.items()}
-            for row in cursor.fetchall():
-                tbl_key = TABLE_KEYS_INV.get(row[0])
-                if tbl_key:
-                    deletions.append({"table": tbl_key, "id": row[1]})
+        deletions = _load_visible_deletions(
+            cursor,
+            visibility_scope,
+            after_version=after_version,
+            since=since,
+            payload_keys=requested_keys if is_partial_response else None,
+        )
 
         chudautu = filter_items_for_read(cursor, role_str, user_id, org_name, "chudautu", "chu_dau_tu", chudautu)
         kehoach = filter_items_for_read(cursor, role_str, user_id, org_name, "kehoach", "ke_hoach_lcnt", kehoach)

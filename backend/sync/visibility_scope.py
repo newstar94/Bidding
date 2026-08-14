@@ -35,6 +35,21 @@ _PACKAGE_CHILDREN = frozenset(
 _PAYLOAD_BY_TABLE = {table: key for key, table in TABLE_KEYS.items()}
 
 
+def scoped_deletion_branches(visibility_scope, alias="deleted_row", payload_keys=None):
+    """Return every tombstone payload branch with its canonical visibility predicate."""
+
+    allowed = set(payload_keys) if payload_keys else None
+    return tuple(
+        (
+            payload_key,
+            table_name,
+            visibility_scope.deletion_predicate(table_name, alias),
+        )
+        for payload_key, table_name in TABLE_KEYS.items()
+        if allowed is None or payload_key in allowed
+    )
+
+
 @dataclass(frozen=True)
 class VisibilityScope:
     organization_id: str
@@ -161,6 +176,24 @@ class VisibilityScope:
         snapshot = (
             f"COALESCE(NULLIF({alias}.record_snapshot_json, ''), '{{}}')::jsonb"
         )
+
+        def assignment_evidence(target_expression, assignment_type):
+            return (  # noqa: S608 - alias/expression/type come from fixed registries
+                "(EXISTS (SELECT 1 FROM phan_cong_nhan_su AS pc "  # noqa: S608 - fixed registry SQL
+                f"WHERE pc.organization_id = {alias}.organization_id "
+                f"AND pc.id_muc_tieu = {target_expression} "
+                "AND pc.id_nhan_vien = ? "
+                f"AND pc.loai_doi_tuong = '{assignment_type}') "
+                "OR EXISTS (SELECT 1 FROM deleted_records AS deleted_assignment "
+                f"WHERE deleted_assignment.organization_id = {alias}.organization_id "
+                "AND deleted_assignment.table_name = 'phan_cong_nhan_su' "
+                "AND COALESCE(NULLIF(deleted_assignment.record_snapshot_json, ''), '{}')::jsonb "
+                f"->> 'id_muc_tieu' = {target_expression} "
+                "AND COALESCE(NULLIF(deleted_assignment.record_snapshot_json, ''), '{}')::jsonb "
+                "->> 'id_nhan_vien' = ? "
+                "AND COALESCE(NULLIF(deleted_assignment.record_snapshot_json, ''), '{}')::jsonb "
+                f"->> 'loai_doi_tuong' = '{assignment_type}'))"
+            )  # noqa: S608 - alias/expression/type come from fixed registries
         if payload_key == "assignments":
             return SqlPredicate(
                 tenant + f" AND {snapshot} ->> 'id_nhan_vien' = ?",
@@ -173,34 +206,42 @@ class VisibilityScope:
             )
         if table_name == "ke_hoach_lcnt":
             return SqlPredicate(
-                tenant + " AND (EXISTS (SELECT 1 FROM phan_cong_nhan_su AS pc "  # noqa: S608 - alias is internal constant
-                f"WHERE pc.organization_id = {alias}.organization_id "
-                f"AND pc.id_muc_tieu = {alias}.record_id "
-                "AND pc.id_nhan_vien = ? AND pc.loai_doi_tuong = 'kehoach') "
-                "OR EXISTS (SELECT 1 FROM goi_thau AS package "
-                "JOIN phan_cong_nhan_su AS pc ON pc.organization_id = package.organization_id "
-                "AND pc.id_muc_tieu = package.id "
+                tenant + " AND ("  # noqa: S608 - alias is internal constant
+                + assignment_evidence(f"{alias}.record_id", "kehoach")
+                + " OR EXISTS (SELECT 1 FROM goi_thau AS package "  # noqa: S608 - fixed registry predicate
                 f"WHERE package.organization_id = {alias}.organization_id "
-                f"AND package.ke_hoach_id = {alias}.record_id "
-                "AND pc.id_nhan_vien = ? AND pc.loai_doi_tuong = 'goithau'))",
-                (*base_parameters, self.user_id, self.user_id),  # noqa: S608 - alias is internal constant
+                f"AND package.ke_hoach_id = {alias}.record_id AND "
+                + assignment_evidence("package.id", "goithau")
+                + ") OR EXISTS (SELECT 1 FROM deleted_records AS deleted_package "  # noqa: S608 - fixed registry predicate
+                f"WHERE deleted_package.organization_id = {alias}.organization_id "
+                "AND deleted_package.table_name = 'goi_thau' "
+                "AND COALESCE(NULLIF(deleted_package.record_snapshot_json, ''), '{}')::jsonb "
+                f"->> 'ke_hoach_id' = {alias}.record_id AND "
+                + assignment_evidence("deleted_package.record_id", "goithau")
+                + "))",
+                (
+                    *base_parameters,
+                    self.user_id,
+                    self.user_id,
+                    self.user_id,
+                    self.user_id,
+                    self.user_id,
+                    self.user_id,
+                ),
             )
         if table_name in _PACKAGE_CHILDREN:
             return SqlPredicate(
-                tenant + " AND EXISTS (SELECT 1 FROM phan_cong_nhan_su AS pc "  # noqa: S608 - alias is internal constant
-                f"WHERE pc.organization_id = {alias}.organization_id "
-                f"AND pc.id_muc_tieu = {snapshot} ->> 'goi_thau_id' "
-                "AND pc.id_nhan_vien = ? AND pc.loai_doi_tuong = 'goithau')",
-                (*base_parameters, self.user_id),  # noqa: S608 - alias is internal constant
+                tenant + " AND "  # noqa: S608 - alias is internal constant
+                + assignment_evidence(
+                    f"{snapshot} ->> 'goi_thau_id'", "goithau"
+                ),
+                (*base_parameters, self.user_id, self.user_id),
             )
         assignment_type = _ASSIGNMENT_TYPES.get(table_name)
         if assignment_type:
             return SqlPredicate(
-                tenant + " AND EXISTS (SELECT 1 FROM phan_cong_nhan_su AS pc "  # noqa: S608 - assignment type is allowlisted
-                f"WHERE pc.organization_id = {alias}.organization_id "
-                f"AND pc.id_muc_tieu = {alias}.record_id "
-                "AND pc.id_nhan_vien = ? "
-                f"AND pc.loai_doi_tuong = '{assignment_type}')",
-                (*base_parameters, self.user_id),  # noqa: S608 - assignment type is allowlisted
+                tenant + " AND "  # noqa: S608 - assignment type is allowlisted
+                + assignment_evidence(f"{alias}.record_id", assignment_type),
+                (*base_parameters, self.user_id, self.user_id),
             )
         return SqlPredicate(tenant, base_parameters)

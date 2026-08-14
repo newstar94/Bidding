@@ -273,6 +273,36 @@ def test_plan_snapshot_can_exclude_removed_package_roots():
             "AGGREGATE_BIDDER_GOODS_OPENING_UNMAPPED",
         ),
         (
+            lambda state: state["goithauhanghoa"][0].update(
+                {"phanLoId": "missing-lot"}
+            ),
+            "AGGREGATE_GOODS_LOT_UNMAPPED",
+        ),
+        (
+            lambda state: state["thongtinmothau"][0].update(
+                {"phanLoId": "missing-lot"}
+            ),
+            "AGGREGATE_OPENING_LOT_UNMAPPED",
+        ),
+        (
+            lambda state: state["hanghoaduthaunhathau"][0].update(
+                {"goiThauHangHoaId": "missing-goods"}
+            ),
+            "AGGREGATE_BIDDER_GOODS_GOODS_UNMAPPED",
+        ),
+        (
+            lambda state: state["hanghoaduthaunhathau"][0].update(
+                {"phanLoId": "missing-lot"}
+            ),
+            "AGGREGATE_BIDDER_GOODS_LOT_UNMAPPED",
+        ),
+        (
+            lambda state: state["thongtinmothau"][0][
+                "baoCaoDanhGiaChiTietList"
+            ][0].update({"vongDanhGiaId": "missing-round"}),
+            "AGGREGATE_EVALUATION_ROUND_UNMAPPED",
+        ),
+        (
             lambda state: state["goithau"][0]["timelineItems"][0].update(
                 {"sourceEntityId": "missing-source"}
             ),
@@ -299,3 +329,26 @@ def test_package_snapshot_fails_closed_for_unmapped_internal_references(
         )
 
     assert error.value.code == expected_code
+
+
+def test_package_snapshot_preserves_optional_null_internal_references():
+    state = _state()
+    state["goithauhanghoa"][0]["phanLoId"] = None
+    state["thongtinmothau"][0]["phanLoId"] = None
+    state["hanghoaduthaunhathau"][0]["phanLoId"] = None
+    state["hanghoaduthaunhathau"][0]["goiThauHangHoaId"] = None
+
+    snapshot = snapshot_package_aggregate(
+        state,
+        state["goithau"][0],
+        target_package_id="package-target",
+        target_plan_id="plan-target",
+        package_version=3,
+        timestamp="2026-08-08 10:00:00",
+        create_id=_ids(),
+    )
+
+    assert snapshot["goithauhanghoa"][0]["phanLoId"] is None
+    assert snapshot["thongtinmothau"][0]["phanLoId"] is None
+    assert snapshot["hanghoaduthaunhathau"][0]["phanLoId"] is None
+    assert snapshot["hanghoaduthaunhathau"][0]["goiThauHangHoaId"] is None

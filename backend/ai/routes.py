@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import time
+import asyncio
+from contextlib import suppress
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
@@ -184,14 +186,39 @@ async def send_ai_message_api(request: Request):
         return _error(request, ai_error("AI_DATA_UNAVAILABLE", "Không thể xác thực cuộc trò chuyện."))
 
     increment("ai_requests_total")
-    increment("ai_active_streams")
 
     async def event_stream():
         started_at = time.perf_counter()
+        increment("ai_active_streams")
+        provider_stream = stream_message(
+            request,
+            context,
+            conversation_id,
+            content,
+            current_route=current_route,
+            quota_consumed=True,
+        )
         try:
-            async for event in stream_message(request, context, conversation_id, content, current_route=current_route, quota_consumed=True):
+            iterator = provider_stream.__aiter__()
+            while True:
+                next_event = asyncio.create_task(anext(iterator))
+                while not next_event.done():
+                    await asyncio.wait({next_event}, timeout=0.25)
+                    if await request.is_disconnected():
+                        next_event.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await next_event
+                        return
+                try:
+                    event = next_event.result()
+                except StopAsyncIteration:
+                    return
+                if await request.is_disconnected():
+                    return
                 yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n".encode("utf-8")
         finally:
+            with suppress(Exception):
+                await provider_stream.aclose()
             increment("ai_request_duration_seconds", time.perf_counter() - started_at)
             increment("ai_active_streams", -1)
 

@@ -709,10 +709,15 @@ def _create_trigger_functions(cursor) -> None:
              WHERE organization_id = OLD.organization_id
              RETURNING current_version INTO next_version;
              INSERT INTO deleted_records (
-               table_name, record_id, organization_id, deleted_at, delete_version
-             ) VALUES (TG_TABLE_NAME, OLD.id, OLD.organization_id, CURRENT_TIMESTAMP, next_version)
+               table_name, record_id, organization_id, deleted_at,
+               delete_version, record_snapshot_json
+             ) VALUES (
+               TG_TABLE_NAME, OLD.id, OLD.organization_id, CURRENT_TIMESTAMP,
+               next_version, to_jsonb(OLD)::text
+             )
              ON CONFLICT (organization_id, table_name, record_id) DO UPDATE SET
                deleted_at = EXCLUDED.deleted_at,
+               record_snapshot_json = EXCLUDED.record_snapshot_json,
                delete_version = GREATEST(
                  COALESCE(deleted_records.delete_version, 0),
                  COALESCE(EXCLUDED.delete_version, 0)

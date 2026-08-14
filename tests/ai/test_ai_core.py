@@ -1,4 +1,7 @@
 import json
+import asyncio
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -9,9 +12,12 @@ from backend.ai.errors import AiError
 from backend.ai.redaction import redact_json
 from backend.ai.tool_registry import tool_definitions, validate_tool_arguments
 from backend.analytics.semantic_registry import get_metric, supported_metrics
-from backend.analytics.aggregation_engine import aggregate_entity
+from backend.analytics.aggregation_engine import aggregate_entity, list_entity
 from backend.ai.types import AiRequestContext
 from backend.ai.metrics import render_prometheus_lines
+from backend.ai.service import _PROVIDER_EVENT_QUEUE_SIZE, _provider_event_stream
+from backend.ai import routes as ai_routes
+from backend.ai import service as ai_service
 from backend.ai.tools.reports import execute_report_tool
 from backend.shared.domain_enums import CONTRACT_STATUS_LABELS, PACKAGE_STATUS_LABELS
 
@@ -94,6 +100,167 @@ def test_fake_provider_streams_without_network(monkeypatch):
     tools = [{"name": "aggregate_packages"}]
     events = list(provider.stream_response(input_items=[{"role": "user", "content": "Có bao nhiêu gói?"}], instructions="", tools=tools))
     assert any(event["type"] == "response.function_call_arguments.done" for event in events)
+
+
+def test_provider_event_stream_completes_and_forwards_events():
+    class Provider:
+        adapter = None
+
+        def stream_response(self, **_kwargs):
+            yield {"type": "one"}
+            yield {"type": "two"}
+
+    async def collect():
+        return [event async for event in _provider_event_stream(Provider(), [], "", [])]
+
+    assert asyncio.run(collect()) == [{"type": "one"}, {"type": "two"}]
+
+
+def test_provider_worker_limit_fails_without_spawning_another_thread(monkeypatch):
+    class FullSlots:
+        def acquire(self, **_kwargs):
+            return False
+
+    monkeypatch.setattr(ai_service, "_PROVIDER_THREAD_SLOTS", FullSlots())
+    with pytest.raises(AiError) as error:
+        ai_service._provider_event_stream(object(), [], "", [])
+    assert error.value.code == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_provider_event_stream_forwards_provider_exception():
+    class Provider:
+        adapter = None
+
+        def stream_response(self, **_kwargs):
+            yield {"type": "before-error"}
+            raise ValueError("provider failed")
+
+    async def collect():
+        stream = _provider_event_stream(Provider(), [], "", [])
+        assert await anext(stream) == {"type": "before-error"}
+        with pytest.raises(AiError) as error:
+            await anext(stream)
+        return error.value.code
+
+    assert asyncio.run(collect()) == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_provider_event_stream_cancellation_stops_worker_and_calls_abort():
+    stopped = threading.Event()
+
+    class Provider:
+        adapter = None
+
+        def __init__(self):
+            self.aborted = threading.Event()
+            self.produced = 0
+
+        def abort(self):
+            self.aborted.set()
+
+        def stream_response(self, **_kwargs):
+            try:
+                while not self.aborted.is_set():
+                    self.produced += 1
+                    yield {"index": self.produced}
+            finally:
+                stopped.set()
+
+    provider = Provider()
+
+    async def cancel_early():
+        stream = _provider_event_stream(provider, [], "", [])
+        await anext(stream)
+        await stream.aclose()
+
+    asyncio.run(cancel_early())
+    assert provider.aborted.wait(1)
+    assert stopped.wait(1)
+    assert provider.produced <= _PROVIDER_EVENT_QUEUE_SIZE + 2
+
+
+def test_repeated_provider_disconnects_do_not_accumulate_workers():
+    baseline = sum(
+        thread.name == "bidding-ai-provider" for thread in threading.enumerate()
+    )
+
+    class Provider:
+        adapter = None
+
+        def __init__(self):
+            self.cancelled = threading.Event()
+
+        def cancel(self):
+            self.cancelled.set()
+
+        def stream_response(self, **_kwargs):
+            while not self.cancelled.is_set():
+                yield {"type": "delta"}
+
+    async def disconnect(provider):
+        stream = _provider_event_stream(provider, [], "", [])
+        await anext(stream)
+        await stream.aclose()
+
+    for _ in range(12):
+        asyncio.run(disconnect(Provider()))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        active = sum(
+            thread.name == "bidding-ai-provider" for thread in threading.enumerate()
+        )
+        if active <= baseline:
+            break
+        time.sleep(0.01)
+    assert active <= baseline
+
+
+def test_ai_route_disconnect_closes_stream_and_releases_active_metric(monkeypatch):
+    closed = threading.Event()
+    increments = []
+
+    class Request:
+        path_params = {"conversation_id": "conversation-1"}
+
+        async def is_disconnected(self):
+            return True
+
+    async def provider_stream(*_args, **_kwargs):
+        try:
+            await asyncio.sleep(10)
+            yield {"type": "never-reached"}
+        finally:
+            closed.set()
+
+    context = AiRequestContext(
+        user_id="user-1",
+        organization_id="org-1",
+        organization_name="HTD",
+        platform_role="user",
+        membership_role="manager",
+        scope_type="organization",
+        active_role="manager",
+        permissions={"goithau": "view"},
+    )
+    monkeypatch.setattr(ai_routes, "_context_or_response", lambda _request: asyncio.sleep(0, result=(context, None)))
+    async def read_json(_request):
+        return {"content": "hello", "route": "/"}, None
+
+    monkeypatch.setattr(ai_routes, "read_json_object", read_json)
+    monkeypatch.setattr(ai_routes, "run_database_read", lambda *args, **kwargs: asyncio.sleep(0, result=None))
+    monkeypatch.setattr(ai_routes, "run_database_write", lambda *args, **kwargs: asyncio.sleep(0, result=None))
+    monkeypatch.setattr(ai_routes, "stream_message", provider_stream)
+    monkeypatch.setattr(ai_routes, "increment", lambda name, value=1: increments.append((name, value)))
+
+    async def consume_response():
+        response = await ai_routes.send_ai_message_api(Request())
+        async for _chunk in response.body_iterator:
+            pass
+
+    asyncio.run(consume_response())
+    assert closed.wait(1)
+    assert ("ai_active_streams", 1) in increments
+    assert ("ai_active_streams", -1) in increments
 
 
 def test_fake_provider_uses_workspace_search_for_unmodeled_business_entities(monkeypatch):
@@ -210,6 +377,74 @@ def test_aggregate_without_group_returns_summary_without_group_key_lookup():
     )
     assert result.summary["recordCount"] == 3
     assert result.records == []
+
+
+@pytest.mark.parametrize(
+    ("entity", "permission", "table_name"),
+    [
+        ("packages", "goithau", "goi_thau"),
+        ("plans", "kehoach", "ke_hoach_lcnt"),
+        ("contracts", "hopdong", "hop_dong"),
+    ],
+)
+def test_ai_list_and_aggregate_share_latest_only_semantics(
+    entity, permission, table_name
+):
+    class Cursor:
+        def __init__(self):
+            self.queries = []
+
+        def execute(self, query, parameters):
+            self.queries.append((" ".join(str(query).split()), tuple(parameters)))
+            return self
+
+        def fetchall(self):
+            if "aggregate_value" in self.queries[-1][0]:
+                return [{"record_count": 1, "aggregate_value": 0}]
+            return []
+
+    context = AiRequestContext(
+        user_id="user-1",
+        organization_id="org-1",
+        organization_name="HTD",
+        platform_role="user",
+        membership_role="manager",
+        scope_type="organization",
+        active_role="manager",
+        permissions={permission: "view"},
+    )
+    cursor = Cursor()
+    aggregate_entity(
+        cursor,
+        context,
+        entity,
+        {
+            "metric": "count",
+            "dateField": None,
+            "dateFrom": None,
+            "dateTo": None,
+            "statuses": [],
+            "groupBy": "none",
+            "limit": 20,
+        },
+    )
+    list_entity(
+        cursor,
+        context,
+        entity,
+        {
+            "dateField": None,
+            "dateFrom": None,
+            "dateTo": None,
+            "status": "",
+            "limit": 20,
+        },
+    )
+
+    assert all(
+        f"{table_name}.is_latest = 1" in query
+        for query, _parameters in cursor.queries
+    )
 
 
 @pytest.mark.parametrize(

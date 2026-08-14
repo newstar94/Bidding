@@ -24,7 +24,7 @@ from backend.sync.conflict_projection import project_conflict_record
 from backend.sync.mapper import attach_child_rows_to_items, map_db_to_json
 from backend.sync.queries import TABLE_KEYS
 from backend.sync.visibility_epoch import build_visibility_token
-from backend.sync.visibility_scope import VisibilityScope
+from backend.sync.visibility_scope import VisibilityScope, scoped_deletion_branches
 
 
 _CURSOR_VERSION = 1
@@ -142,10 +142,9 @@ def _delta_union_sql(visibility_scope=None):
         )
         parameters.extend(("$after", "$through"))
     if visibility_scope:
-        for payload_key, table_name in TABLE_KEYS.items():
-            predicate = visibility_scope.deletion_predicate(
-                table_name, "deleted_row"
-            )
+        for payload_key, _table_name, predicate in scoped_deletion_branches(
+            visibility_scope, "deleted_row"
+        ):
             statements.append(
                 f"""SELECT delete_version AS version, 'delete' AS kind,
                           '{payload_key}' AS table_key, record_id,

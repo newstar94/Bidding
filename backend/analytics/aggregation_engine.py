@@ -110,9 +110,11 @@ def aggregate_entity(cursor, context: AiRequestContext, entity: str, arguments: 
         raise ai_error("AI_UNSUPPORTED_GROUP_BY", "Cách nhóm dữ liệu không được hỗ trợ.")
     table_name, _module, _assignment = table_for_entity(entity)
     visibility, params = visibility_clause(context, entity, table_name)
-    where = [visibility, f"{table_name}.archived_at IS NULL"]
-    if "is_latest" in {"is_latest"}:
-        where.append(f"{table_name}.is_latest = 1")
+    where = [
+        visibility,
+        f"{table_name}.archived_at IS NULL",
+        f"{table_name}.is_latest = 1",
+    ]
     if spec.status_expression:
         where.append(spec.status_expression)
 

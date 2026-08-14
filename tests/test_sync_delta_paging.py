@@ -12,6 +12,7 @@ from backend.sync.delta_paging import (
 )
 from backend.sync.mapper import save_child_payloads
 from backend.sync.visibility_scope import VisibilityScope
+from backend.sync.read_service import _load_visible_deletions
 from tests.test_sync_conflict_authorization import _seed_denied_package, _test_database
 
 
@@ -91,6 +92,154 @@ def test_visibility_scope_pushes_assignment_and_module_denial_into_sql():
     assert opening.parameters == ("org-a", "employee-a")
     assert denied.sql == "FALSE"
     assert denied.parameters == ()
+
+
+def test_deletion_scope_accepts_historical_assignment_snapshot_without_broadening_scope():
+    scope = VisibilityScope(
+        organization_id="org-a",
+        user_id="employee-a",
+        unrestricted=False,
+        permissions={"goithau": "view"},
+    )
+
+    predicate = scope.deletion_predicate("goi_thau")
+
+    assert "deleted_assignment" in predicate.sql
+    assert "record_snapshot_json" in predicate.sql
+    assert predicate.parameters == (
+        "org-a",
+        "goi_thau",
+        "employee-a",
+        "employee-a",
+    )
+
+
+def test_full_read_tombstones_share_delta_record_scope_for_package_children():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id, package_b = _seed_denied_package(cursor)
+        package_a = f"assigned-{package_b}"
+        plan_id = cursor.execute(
+            "SELECT ke_hoach_id FROM goi_thau WHERE organization_id = ? AND id = ?",
+            (organization_id, package_b),
+        ).fetchone()[0]
+        cursor.execute(
+            """INSERT INTO goi_thau
+               (id, organization_id, id_goc, ke_hoach_id, ten_goi_thau,
+                gia_goi_thau, thoi_gian_thuc_hien, nguon_von,
+                thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, trang_thai)
+               SELECT ?, organization_id, ?, ke_hoach_id, 'Assigned package',
+                      gia_goi_thau, thoi_gian_thuc_hien, nguon_von,
+                      thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, trang_thai
+                 FROM goi_thau WHERE organization_id = ? AND id = ?""",
+            (package_a, package_a, organization_id, package_b),
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+               (id, organization_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'goithau')""",
+            (f"assigned-row-{package_b}", organization_id, employee_id, package_a),
+        )
+        tombstones = (
+            ("goi_thau", package_a, {"id": package_a}),
+            ("goi_thau", package_b, {"id": package_b}),
+            ("thong_tin_mo_thau", "opening-a", {"id": "opening-a", "goi_thau_id": package_a}),
+            ("thong_tin_mo_thau", "opening-b", {"id": "opening-b", "goi_thau_id": package_b}),
+        )
+        for version, (table_name, record_id, snapshot) in enumerate(tombstones, start=11):
+            cursor.execute(
+                """INSERT INTO deleted_records
+                   (table_name, record_id, organization_id, delete_version,
+                    record_snapshot_json, deleted_at)
+                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+                (table_name, record_id, organization_id, version, json.dumps(snapshot)),
+            )
+        cursor.execute(
+            """INSERT INTO deleted_records
+               (table_name, record_id, organization_id, delete_version,
+                record_snapshot_json, deleted_at)
+               VALUES ('goi_thau', 'cross-org-package', 'other-org', 19, '{}',
+                       CURRENT_TIMESTAMP)"""
+        )
+        cursor.execute(
+            """DELETE FROM phan_cong_nhan_su
+               WHERE organization_id = ? AND id_nhan_vien = ?
+                 AND id_muc_tieu = ? AND loai_doi_tuong = 'goithau'""",
+            (organization_id, employee_id, package_a),
+        )
+        cursor.execute(
+            """UPDATE deleted_records
+               SET record_snapshot_json = ?
+               WHERE organization_id = ? AND table_name = 'phan_cong_nhan_su'
+                 AND record_id = ?""",
+            (
+                json.dumps({
+                    "id": f"assigned-row-{package_b}",
+                    "id_nhan_vien": employee_id,
+                    "id_muc_tieu": package_a,
+                    "loai_doi_tuong": "goithau",
+                }),
+                organization_id,
+                f"assigned-row-{package_b}",
+            ),
+        )
+        scope = VisibilityScope(
+            organization_id=organization_id,
+            user_id=employee_id,
+            unrestricted=False,
+            permissions={"goithau": "view"},
+        )
+
+        full = _load_visible_deletions(cursor, scope, after_version=10)
+        delta = _load_candidates(
+            cursor,
+            organization_id,
+            10,
+            20,
+            (10, "", "", ""),
+            100,
+            visibility_scope=scope,
+        )
+        scoped_keys = {"goithau", "thongtinmothau"}
+        full_ids = {
+            (item["table"], item["id"])
+            for item in full
+            if item["table"] in scoped_keys
+        }
+        delta_ids = {
+            (row["table_key"], row["record_id"])
+            for row in delta
+            if row["kind"] == "delete" and row["table_key"] in scoped_keys
+        }
+        assert full_ids == delta_ids == {
+            ("goithau", package_a),
+            ("thongtinmothau", "opening-a"),
+        }
+        manager = VisibilityScope(
+            organization_id=organization_id,
+            user_id="manager-a",
+            unrestricted=True,
+            permissions={},
+        )
+        manager_ids = {
+            (item["table"], item["id"])
+            for item in _load_visible_deletions(cursor, manager, after_version=10)
+            if item["table"] in scoped_keys
+        }
+        assert manager_ids == {
+            ("goithau", package_a),
+            ("goithau", package_b),
+            ("thongtinmothau", "opening-a"),
+            ("thongtinmothau", "opening-b"),
+        }
+        assert ("goithau", "cross-org-package") not in manager_ids
+        assert plan_id
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
 
 
 def test_delta_query_pins_through_version_and_orders_live_with_tombstone():

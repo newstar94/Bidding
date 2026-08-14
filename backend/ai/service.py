@@ -33,6 +33,12 @@ from backend.db.db_helper import OperationalError
 from backend.shared.database_io import run_database_read, run_database_write
 
 
+_PROVIDER_EVENT_QUEUE_SIZE = 64
+_PROVIDER_QUEUE_TIMEOUT_SECONDS = 0.1
+_PROVIDER_THREAD_LIMIT = 32
+_PROVIDER_THREAD_SLOTS = threading.BoundedSemaphore(_PROVIDER_THREAD_LIMIT)
+
+
 def validate_message(content: object, config=None) -> str:
     config = config or get_ai_config()
     if not isinstance(content, str):
@@ -46,30 +52,89 @@ def validate_message(content: object, config=None) -> str:
 
 
 def _provider_event_stream(provider: ResponsesProvider, input_items: list[dict], instructions: str, tools: list[dict]):
-    event_queue: queue.Queue = queue.Queue()
+    if not _PROVIDER_THREAD_SLOTS.acquire(blocking=False):
+        raise ai_error(
+            "AI_PROVIDER_UNAVAILABLE",
+            "AI provider is processing the maximum number of concurrent streams.",
+        )
+    event_queue: queue.Queue = queue.Queue(maxsize=_PROVIDER_EVENT_QUEUE_SIZE)
+    cancel_event = threading.Event()
+
+    def enqueue(kind, payload):
+        while not cancel_event.is_set():
+            try:
+                event_queue.put((kind, payload), timeout=_PROVIDER_QUEUE_TIMEOUT_SECONDS)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def cancel_provider():
+        for candidate in (provider, getattr(provider, "adapter", None)):
+            if candidate is None:
+                continue
+            for method_name in ("cancel", "abort", "close"):
+                method = getattr(candidate, method_name, None)
+                if callable(method):
+                    try:
+                        method()
+                    except (OSError, RuntimeError, TypeError, ValueError):
+                        pass
+                    break
 
     def worker():
+        provider_stream = None
         try:
-            for event in provider.stream_response(input_items=input_items, instructions=instructions, tools=tools):
-                event_queue.put(("event", event))
-        except (AiError, OSError, TimeoutError, ValueError, TypeError) as error:
-            event_queue.put(("error", error))
+            provider_stream = provider.stream_response(input_items=input_items, instructions=instructions, tools=tools)
+            for event in provider_stream:
+                if cancel_event.is_set() or not enqueue("event", event):
+                    break
+        except Exception as error:  # noqa: BLE001 - provider adapters are an isolation boundary
+            enqueue("error", error)
         finally:
-            event_queue.put(("done", None))
+            close_stream = getattr(provider_stream, "close", None)
+            if callable(close_stream):
+                try:
+                    close_stream()
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    pass
+            enqueue("done", None)
+            _PROVIDER_THREAD_SLOTS.release()
 
-    threading.Thread(target=worker, daemon=True, name="bidding-ai-provider").start()
+    worker_thread = threading.Thread(target=worker, daemon=True, name="bidding-ai-provider")
+    try:
+        worker_thread.start()
+    except RuntimeError:
+        _PROVIDER_THREAD_SLOTS.release()
+        raise
 
     async def consume():
-        while True:
-            kind, payload = await asyncio.to_thread(event_queue.get)
-            if kind == "event":
-                yield payload
-            elif kind == "error":
-                if isinstance(payload, AiError):
-                    raise payload
-                raise ai_error("AI_PROVIDER_UNAVAILABLE", "AI provider không trả về kết quả hợp lệ.") from payload
-            else:
-                return
+        try:
+            while True:
+                try:
+                    kind, payload = await asyncio.to_thread(
+                        event_queue.get, True, _PROVIDER_QUEUE_TIMEOUT_SECONDS
+                    )
+                except queue.Empty:
+                    if worker_thread.is_alive():
+                        continue
+                    return
+                if kind == "event":
+                    yield payload
+                elif kind == "error":
+                    if isinstance(payload, AiError):
+                        raise payload
+                    raise ai_error(
+                        "AI_PROVIDER_UNAVAILABLE",
+                        "AI provider returned an invalid result.",
+                    ) from payload
+                else:
+                    return
+        except asyncio.CancelledError:
+            raise
+        finally:
+            cancel_event.set()
+            cancel_provider()
 
     return consume()
 

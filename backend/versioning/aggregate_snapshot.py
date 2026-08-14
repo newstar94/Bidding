@@ -70,6 +70,15 @@ def _required_mapping(mapping, source_id, code, message):
     return target_id
 
 
+def _mapped_optional_reference(mapping, source_id, code, message):
+    """Preserve null references, but never silently detach a real source edge."""
+
+    source_key = str(source_id or "").strip()
+    if not source_key:
+        return None
+    return _required_mapping(mapping, source_key, code, message)
+
+
 def _lot_token(lot):
     return str(lot.get("maPhanLo") or lot.get("tenPhanLo") or "").strip().casefold()
 
@@ -266,7 +275,12 @@ def snapshot_package_aggregate(
             continue
         cloned = _clone_owned_row(row, "goithauhanghoa", create_id)
         cloned["goiThauId"] = target_package_id
-        cloned["phanLoId"] = lot_ids.get(str(row.get("phanLoId"))) if row.get("phanLoId") else None
+        cloned["phanLoId"] = _mapped_optional_reference(
+            lot_ids,
+            row.get("phanLoId"),
+            "AGGREGATE_GOODS_LOT_UNMAPPED",
+            "Goods lot is outside the target graph.",
+        )
         goods_ids[str(row.get("id"))] = cloned["id"]
         goods.append(cloned)
 
@@ -278,8 +292,12 @@ def snapshot_package_aggregate(
         cloned = _clone_owned_row(row, "thongtinmothau", create_id)
         opening_ids[str(row.get("id"))] = cloned["id"]
         cloned["goiThauId"] = target_package_id
-        if row.get("phanLoId"):
-            cloned["phanLoId"] = lot_ids.get(str(row.get("phanLoId")))
+        cloned["phanLoId"] = _mapped_optional_reference(
+            lot_ids,
+            row.get("phanLoId"),
+            "AGGREGATE_OPENING_LOT_UNMAPPED",
+            "Opening lot is outside the target graph.",
+        )
         score = _inherited_technical_score(row, source_package)
         if score is not None:
             cloned["danhGiaKyThuat"] = score
@@ -291,9 +309,16 @@ def snapshot_package_aggregate(
         for report in _rows(cloned.get("baoCaoDanhGiaChiTietList")):
             report_clone = _clone_owned_row(report, "detailedevaluation", create_id)
             round_type = str(report.get("loaiVong") or "single")
+            source_round_id = str(report.get("vongDanhGiaId") or "").strip()
             report_clone["vongDanhGiaId"] = (
-                round_ids.get(str(report.get("vongDanhGiaId") or ""))
-                or round_ids.get(round_type)
+                _required_mapping(
+                    round_ids,
+                    source_round_id,
+                    "AGGREGATE_EVALUATION_ROUND_UNMAPPED",
+                    "Detailed evaluation round is outside the target graph.",
+                )
+                if source_round_id
+                else round_ids.get(round_type)
                 or f"evaluation-round:{target_package_id}:{round_type}"
             )
             details = []
@@ -324,10 +349,18 @@ def snapshot_package_aggregate(
             "AGGREGATE_BIDDER_GOODS_OPENING_UNMAPPED",
             "Bidder goods opening is outside the target graph.",
         )
-        cloned["goiThauHangHoaId"] = goods_ids.get(
-            str(row.get("goiThauHangHoaId"))
-        ) if row.get("goiThauHangHoaId") else None
-        cloned["phanLoId"] = lot_ids.get(str(row.get("phanLoId"))) if row.get("phanLoId") else None
+        cloned["goiThauHangHoaId"] = _mapped_optional_reference(
+            goods_ids,
+            row.get("goiThauHangHoaId"),
+            "AGGREGATE_BIDDER_GOODS_GOODS_UNMAPPED",
+            "Bidder goods requirement is outside the target graph.",
+        )
+        cloned["phanLoId"] = _mapped_optional_reference(
+            lot_ids,
+            row.get("phanLoId"),
+            "AGGREGATE_BIDDER_GOODS_LOT_UNMAPPED",
+            "Bidder goods lot is outside the target graph.",
+        )
         bidder_goods.append(cloned)
 
     assignments = []
