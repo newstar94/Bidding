@@ -77,6 +77,12 @@ class BatchWriteAuthorizationContext:
 _QUERY_CHUNK_SIZE = 500
 
 
+def _chunked(values, size=_QUERY_CHUNK_SIZE):
+    values = list(values)
+    for offset in range(0, len(values), size):
+        yield values[offset:offset + size]
+
+
 @dataclass(frozen=True)
 class DocumentExportCapabilities:
     """Effective permission to place sensitive field families in a document."""
@@ -1124,9 +1130,11 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
     record_ids = [record_id for record_id in record_ids if record_id]
     if not record_ids:
         return []
-    placeholders = ", ".join("?" for _ in record_ids)
-    if table_name == "ke_hoach_lcnt":
-        rows = cursor.execute(
+    allowed_ids = set()
+    for record_chunk in _chunked(record_ids):
+        placeholders = ", ".join("?" for _ in record_chunk)
+        if table_name == "ke_hoach_lcnt":
+            rows = cursor.execute(
             f"""SELECT pc.id_muc_tieu
                 FROM phan_cong_nhan_su pc
                 WHERE pc.organization_id = ? AND pc.id_nhan_vien = ?
@@ -1141,10 +1149,10 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
                  AND pc.loai_doi_tuong = 'goithau'
                 WHERE gt.organization_id = ? AND pc.id_nhan_vien = ?
                   AND gt.ke_hoach_id IN ({placeholders})""",
-            (organization_id, user_id, *record_ids, organization_id, user_id, *record_ids),
-        ).fetchall()
-    elif table_name == "goi_thau_hang_hoa":
-        rows = cursor.execute(
+            (organization_id, user_id, *record_chunk, organization_id, user_id, *record_chunk),
+            ).fetchall()
+        elif table_name == "goi_thau_hang_hoa":
+            rows = cursor.execute(
             f"""SELECT goods.id
                 FROM goi_thau_hang_hoa AS goods
                 JOIN phan_cong_nhan_su AS pc
@@ -1153,10 +1161,10 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
                  AND pc.loai_doi_tuong = 'goithau'
                 WHERE goods.organization_id = ? AND pc.id_nhan_vien = ?
                   AND goods.id IN ({placeholders})""",
-            (organization_id, user_id, *record_ids),
-        ).fetchall()
-    elif table_name == "hang_hoa_du_thau_nha_thau":
-        rows = cursor.execute(
+            (organization_id, user_id, *record_chunk),
+            ).fetchall()
+        elif table_name == "hang_hoa_du_thau_nha_thau":
+            rows = cursor.execute(
             f"""SELECT goods.id
                 FROM hang_hoa_du_thau_nha_thau AS goods
                 JOIN phan_cong_nhan_su AS pc
@@ -1165,10 +1173,10 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
                  AND pc.loai_doi_tuong = 'goithau'
                 WHERE goods.organization_id = ? AND pc.id_nhan_vien = ?
                   AND goods.id IN ({placeholders})""",
-            (organization_id, user_id, *record_ids),
-        ).fetchall()
-    elif table_name == "thong_tin_mo_thau":
-        rows = cursor.execute(
+            (organization_id, user_id, *record_chunk),
+            ).fetchall()
+        elif table_name == "thong_tin_mo_thau":
+            rows = cursor.execute(
             f"""SELECT mt.id
                 FROM thong_tin_mo_thau mt
                 JOIN phan_cong_nhan_su pc
@@ -1177,17 +1185,17 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
                  AND pc.loai_doi_tuong = 'goithau'
                 WHERE mt.organization_id = ? AND pc.id_nhan_vien = ?
                   AND mt.id IN ({placeholders})""",
-            (organization_id, user_id, *record_ids),
-        ).fetchall()
-    else:
-        target_type = ASSIGNED_TABLE_TYPES[table_name]
-        rows = cursor.execute(
+            (organization_id, user_id, *record_chunk),
+            ).fetchall()
+        else:
+            target_type = ASSIGNED_TABLE_TYPES[table_name]
+            rows = cursor.execute(
             f"""SELECT id_muc_tieu FROM phan_cong_nhan_su
                 WHERE organization_id = ? AND id_nhan_vien = ?
                   AND loai_doi_tuong = ? AND id_muc_tieu IN ({placeholders})""",
-            (organization_id, user_id, target_type, *record_ids),
-        ).fetchall()
-    allowed_ids = {clean_id(row[0]) for row in rows}
+            (organization_id, user_id, target_type, *record_chunk),
+            ).fetchall()
+        allowed_ids.update(clean_id(row[0]) for row in rows)
     return [
         item for item in source_items
         if clean_id(item.get("id") if isinstance(item, dict) else item) in allowed_ids

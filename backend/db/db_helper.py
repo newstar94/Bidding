@@ -118,6 +118,7 @@ def _convert_qmark_parameters(statement: str) -> str:
     output: list[str] = []
     index = 0
     state = "normal"
+    dollar_tag = ""
     length = len(statement)
     while index < length:
         char = statement[index]
@@ -127,11 +128,41 @@ def _convert_qmark_parameters(statement: str) -> str:
                 state = "single"
             elif char == '"':
                 state = "double"
+            elif char == "$":
+                # PostgreSQL dollar-quoted strings: $tag$...$tag$.
+                # A dollar followed by an identifier-ish tag is not a
+                # placeholder and must be copied without scanning its body.
+                end = statement.find("$", index + 1)
+                if end > index and end - index <= 64:
+                    candidate = statement[index:end + 1]
+                    if candidate[1:-1] == "" or all(
+                        part.isalnum() or part == "_"
+                        for part in candidate[1:-1]
+                    ):
+                        dollar_tag = candidate
+                        output.append(candidate)
+                        index = end + 1
+                        state = "dollar"
+                        continue
             elif char == "-" and following == "-":
                 state = "line_comment"
             elif char == "/" and following == "*":
                 state = "block_comment"
             elif char == "?":
+                # JSON/JSONB existence operators (``?``, ``?|``, ``?&``)
+                # are SQL syntax, not DB-API placeholders.  The common
+                # ``data ? 'key'`` form is recognized by its quoted operand.
+                if following in {"|", "&"}:
+                    output.append(char)
+                    index += 1
+                    continue
+                lookahead = index + 1
+                while lookahead < length and statement[lookahead].isspace():
+                    lookahead += 1
+                if lookahead < length and statement[lookahead] in {"'", '"', "$"}:
+                    output.append(char)
+                    index += 1
+                    continue
                 output.append("%s")
                 index += 1
                 continue
@@ -157,6 +188,13 @@ def _convert_qmark_parameters(statement: str) -> str:
                 output.extend((char, following))
                 index += 2
                 state = "normal"
+                continue
+        elif state == "dollar":
+            if dollar_tag and statement.startswith(dollar_tag, index):
+                output.append(dollar_tag)
+                index += len(dollar_tag)
+                state = "normal"
+                dollar_tag = ""
                 continue
         output.append(char)
         index += 1

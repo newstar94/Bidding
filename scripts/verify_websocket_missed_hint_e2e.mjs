@@ -179,7 +179,8 @@ try {
   );
   droppedHints = 0;
   syncResponses.length = 0;
-  await employeePage.waitForTimeout(3_000);
+  const quietUntil = Date.now() + 3_000;
+  await employeePage.waitForFunction((deadline) => Date.now() >= deadline, quietUntil);
   syncResponses.length = 0;
 
   const managerContext = await browser.newContext({ locale: "vi-VN" });

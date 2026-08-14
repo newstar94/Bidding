@@ -62,6 +62,9 @@ def build_visibility_token(
              WHERE organization_id = ? AND emp_id = ?""",  # noqa: S608
         (organization_id, user_id),
     ).fetchone()
+    # Document export grants are action entitlements, not record-field
+    # visibility inputs.  Deliberately do not include their revision/values in
+    # the record visibility fingerprint (ADR 0010).
     assignments = cursor.execute(
         """SELECT loai_doi_tuong, id_muc_tieu
              FROM phan_cong_nhan_su

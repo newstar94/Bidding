@@ -260,6 +260,29 @@ def test_complete_record_read_contract_has_no_runtime_field_capability_controls(
     assert VISIBILITY_POLICY_VERSION >= 3
 
 
+def test_document_entitlement_changes_do_not_change_record_visibility_token():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id, _package_id = _seed_denied_package(cursor)
+        role = SessionRole(
+            "user", employee_id, platform_role="user", active_role="employee"
+        )
+        from backend.sync.visibility_epoch import build_visibility_token
+
+        before = build_visibility_token(cursor, organization_id, employee_id, role)
+        _insert_document_export_capabilities(
+            cursor, organization_id, employee_id, (1, 1, 1)
+        )
+        after = build_visibility_token(cursor, organization_id, employee_id, role)
+        assert before == after
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
 def test_record_access_and_word_export_have_distinct_sensitive_policies():
     database = _test_database()
     connection = database.get_connection()

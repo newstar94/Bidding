@@ -8,6 +8,8 @@ const MODES = [
   ["app_help", "Hướng dẫn ứng dụng"]
 ];
 
+const ASSISTANT_TRIGGER_POSITION_KEY = "biddingflow.assistant.trigger-position";
+
 const make = (tag, className, text = "") => {
   const element = document.createElement(tag);
   if (className) element.className = className;
@@ -91,6 +93,9 @@ class AssistantController {
     this.historyList = null;
     this.sourceList = null;
     this.sourceKeys = new Set();
+    this.triggerDrag = null;
+    this.suppressTriggerClick = false;
+    this.positionPanel = this.positionPanel.bind(this);
   }
 
   mount() {
@@ -101,6 +106,7 @@ class AssistantController {
     this.trigger.setAttribute("aria-label", "Mở trợ lý BiddingFlow");
     this.trigger.setAttribute("aria-controls", "bf-assistant-panel");
     this.trigger.setAttribute("aria-expanded", "false");
+    this.trigger.title = "Kéo để di chuyển · Nhấn để mở trợ lý";
     const triggerMark = make("span", "bf-assistant-trigger-mark");
     triggerMark.setAttribute("aria-hidden", "true");
     const robotFace = make("span", "bf-assistant-trigger-robot");
@@ -116,6 +122,7 @@ class AssistantController {
     );
     this.trigger.append(triggerMark, triggerCopy);
     document.body.appendChild(this.trigger);
+    this.restoreTriggerPosition();
 
     this.panel = make("aside", "bf-assistant-panel");
     this.panel.id = "bf-assistant-panel";
@@ -126,7 +133,14 @@ class AssistantController {
     this.panel.hidden = true;
     document.body.appendChild(this.panel);
     this.buildPanel();
-    this.trigger.addEventListener("click", () => this.toggle());
+    this.trigger.addEventListener("click", () => {
+      if (this.suppressTriggerClick) {
+        this.suppressTriggerClick = false;
+        return;
+      }
+      this.toggle();
+    });
+    this.bindTriggerDrag();
     this.panel.addEventListener("keydown", (event) => this.trapFocus(event));
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !this.panel.hidden) this.close();
@@ -137,7 +151,100 @@ class AssistantController {
       this.setHistoryOpen(false);
     });
     window.addEventListener("bf:workspace-changed", () => this.resetForWorkspace());
+    window.addEventListener("resize", this.positionPanel);
     window.lucide?.createIcons?.({ root: this.panel });
+  }
+
+  restoreTriggerPosition() {
+    try {
+      const saved = JSON.parse(window.localStorage?.getItem(ASSISTANT_TRIGGER_POSITION_KEY) || "null");
+      if (!Number.isFinite(saved?.left) || !Number.isFinite(saved?.top)) return;
+      const rect = this.trigger.getBoundingClientRect();
+      const left = Math.min(Math.max(0, saved.left), Math.max(0, window.innerWidth - rect.width));
+      const top = Math.min(Math.max(0, saved.top), Math.max(0, window.innerHeight - rect.height));
+      this.trigger.style.left = `${left}px`;
+      this.trigger.style.top = `${top}px`;
+      this.trigger.style.right = "auto";
+      this.trigger.style.bottom = "auto";
+    } catch (_) {
+      // Storage can be unavailable in private or restricted browsing contexts.
+    }
+  }
+
+  persistTriggerPosition() {
+    try {
+      const rect = this.trigger.getBoundingClientRect();
+      window.localStorage?.setItem(ASSISTANT_TRIGGER_POSITION_KEY, JSON.stringify({
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+      }));
+    } catch (_) {
+      // Keep dragging usable even when persistence is blocked.
+    }
+  }
+
+  bindTriggerDrag() {
+    this.trigger.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 && event.pointerType !== "touch") return;
+      const rect = this.trigger.getBoundingClientRect();
+      this.triggerDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originLeft: rect.left,
+        originTop: rect.top,
+        moved: false,
+      };
+      this.trigger.setPointerCapture?.(event.pointerId);
+    });
+    this.trigger.addEventListener("pointermove", (event) => {
+      const drag = this.triggerDrag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const deltaX = event.clientX - drag.startX;
+      const deltaY = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+      drag.moved = true;
+      const rect = this.trigger.getBoundingClientRect();
+      const left = Math.min(Math.max(0, drag.originLeft + deltaX), Math.max(0, window.innerWidth - rect.width));
+      const top = Math.min(Math.max(0, drag.originTop + deltaY), Math.max(0, window.innerHeight - rect.height));
+      this.trigger.style.left = `${left}px`;
+      this.trigger.style.top = `${top}px`;
+      this.trigger.style.right = "auto";
+      this.trigger.style.bottom = "auto";
+      this.trigger.classList.toggle("is-dragging", true);
+      if (!this.panel.hidden) this.positionPanel();
+      event.preventDefault();
+    });
+    const finishDrag = (event) => {
+      const drag = this.triggerDrag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      this.trigger.releasePointerCapture?.(event.pointerId);
+      this.triggerDrag = null;
+      this.trigger.classList.remove("is-dragging");
+      if (drag.moved) {
+        this.suppressTriggerClick = true;
+        this.persistTriggerPosition();
+      }
+    };
+    this.trigger.addEventListener("pointerup", finishDrag);
+    this.trigger.addEventListener("pointercancel", finishDrag);
+  }
+
+  positionPanel() {
+    if (!this.panel || this.panel.hidden || !this.trigger) return;
+    const triggerRect = this.trigger.getBoundingClientRect();
+    const panelRect = this.panel.getBoundingClientRect();
+    const gap = 12;
+    const margin = 8;
+    let left = triggerRect.right - panelRect.width;
+    let top = triggerRect.top - panelRect.height - gap;
+    if (top < margin) top = triggerRect.bottom + gap;
+    left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - panelRect.width - margin));
+    top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - panelRect.height - margin));
+    this.panel.style.left = `${Math.round(left)}px`;
+    this.panel.style.top = `${Math.round(top)}px`;
+    this.panel.style.right = "auto";
+    this.panel.style.bottom = "auto";
   }
 
   buildPanel() {
@@ -262,6 +369,7 @@ class AssistantController {
   open() {
     this.previousFocus = document.activeElement;
     this.panel.hidden = false;
+    this.positionPanel();
     this.trigger.setAttribute("aria-expanded", "true");
     this.trigger.setAttribute("aria-label", "Đóng trợ lý BiddingFlow");
     if (!this.historyInitialized) {

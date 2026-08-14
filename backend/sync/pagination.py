@@ -206,7 +206,9 @@ def _paginate_records_blocking(request):
             org_name,
             table_names=(table_name,),
         )
-        can_view_sensitive_expert = sensitive_read_policy.can_view("chuyen_gia")
+        # Search uses the same complete authorized record projection as detail
+        # and sync reads; document export grants never hide searchable fields.
+        can_view_sensitive_expert = True
 
 
         query_parts = ["organization_id = ?"]

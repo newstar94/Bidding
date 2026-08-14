@@ -30,13 +30,17 @@
 | Audit vòng 1 G — migration/concurrency/error/observability | Hoàn tất | migration v59, catalog contract v59, typed public errors | v1→v59 replay, clean install, races, static gates |
 | Vòng 2 H1 — canonical module registry | Hoàn tất | canonical module/action mapping | registry and authorization coverage |
 | Vòng 2 H2 — sensitive read | Hoàn tất theo contract chủ sản phẩm | `serialize_sensitive_read_item()` bảo toàn record; capability đọc riêng không còn runtime caller | 12 projection tests, structural regression |
-| Vòng 2 H3–H5 — assignment/epoch/SQL visibility | Hoàn tất | optional assignment parity, token v3, scope pushed into query | sync authorization/delta/projection suites |
+| Vòng 2 H3–H5 — assignment/epoch/SQL visibility | Hoàn tất | optional assignment parity, token v3, scope pushed into query; bulk record filtering chunk 500 và search giữ full authorized fields | sync authorization/delta/projection suites; 1184-test full suite |
 | Vòng 2 H6–H8 — graph/mutability/direct-write convergence | Hoàn tất | full graph validator, writer guard, transactional outbox | aggregate, direct writer, rollback suites |
-| Vòng 2 H9 — official export | Hoàn tất | server-owned export registry; draft client rows không mang nhãn official | 50 targeted export tests |
-| Vòng 2 H10 — bounded WebSocket hint | Hoàn tất | `dispatched_at`; 30-second delta reconciliation | WebSocket Python/JS and E2E tests |
+| Vòng 2 H9 — official export | Hoàn tất | server-owned export registry; route-bound policy recheck cho mọi artifact route; draft client rows không mang nhãn official | 64 export/route-matrix tests; official Excel/Word JV E2E |
+| Vòng 2 H10 — bounded WebSocket hint | Hoàn tất | `dispatched_at`; 30-second delta reconciliation; retryable low-ID event không chặn event mới | WebSocket Python/JS, missed-hint E2E với hint bị proxy drop |
 | Vòng 2 H11–H12 — public errors/active role | Hoàn tất | sanitized errors và active-role authorization context | security, AI, role-switch suites |
 | Vòng 2 H13 — aggregate scale | Hoàn tất | O(n) relation index, 500-ID chunks, no aggregate per-row savepoint | 2.001 threshold + 2k/10k/25k benchmark |
 | Vòng 2 H14 — effective relation lineage | Hoàn tất | deterministic precedence in relation policy | relation registry and lineage tests |
+
+Các regression bổ sung trong lượt cuối: canonical module aliases được kiểm tra tập trung (`tests/test_module_registry_contract.py`); mọi production export route chính được bind vào registry và kiểm tra policy ở cả thời điểm bind lẫn handler runtime; E2E WebSocket chứng minh client vẫn hội tụ bằng polling khi `db_changed` bị bỏ qua; joint-venture E2E kiểm tra nội dung file Excel/Word official. HTTP 409 của `/api/sync/delta` trong scenario visibility reset là phản hồi `FULL_SYNC_REQUIRED` hợp lệ của protocol và harness xử lý như safe reset, không phải lỗi quyền.
+
+Các hardening bổ sung: qmark compatibility scanner nhận diện quoted string, quoted identifier, line/block comment, dollar-quoted string và JSONB operators; visibility token không phụ thuộc grant trường Word; `filter_items_for_read` chunk record IDs theo 500 để không tạo giant `IN (...)`.
 
 ## 3. Authorization parity matrix
 
@@ -100,9 +104,9 @@ Benchmark results and reproducible commands are in `docs/performance/BENCHMARKS.
 
 | Gate | Command | Result |
 |---|---|---|
-| Full Python + PostgreSQL | `python -m pytest -q` with configured PostgreSQL 17 | 1178 passed, exit 0 |
-| Full JavaScript | `npm run test:js` | 801 passed, exit 0 |
-| JS coverage | `npm run test:js:coverage` | 803 tests after added WebSocket branches; global 47.46% lines/61.92% branches/64.01% functions; 14 critical ratchets pass, exit 0 |
+| Full Python + PostgreSQL | `python -m pytest -q` with configured PostgreSQL 17 | 1184 passed, exit 0 |
+| Full JavaScript | `npm run test:js` | 803 passed, exit 0 |
+| JS coverage | `npm run test:js:coverage` | 803 passed; global 47.47% lines/61.91% branches/64.01% functions; 14 critical ratchets pass, exit 0 |
 | Static/schema/lint | `npm run check:static` | pass, exit 0 |
 | Secure production build | `npm run build:secure` | 281 modules, 52 obfuscated bundles, verification pass, exit 0 |
 | PostgreSQL migration/races | migration chain + document jobs + WebSocket targeted suite | v1→v59, clean install and races pass |
@@ -111,7 +115,12 @@ Benchmark results and reproducible commands are in `docs/performance/BENCHMARKS.
 | Offline E2E | `scripts/run_isolated_audit_e2e.ps1 -Suite offline` | reconnect retry and interrupted-mutation manual retry passed; pending outbox survived reload |
 | Bidder-goods E2E | `scripts/run_isolated_audit_e2e.ps1 -Suite bidder-goods` | single/two-envelope, PostgreSQL persistence, second-context sync and realtime preview passed |
 | Typed sync errors | `python -m pytest -q tests/test_sync_public_errors.py tests/test_delete_concurrency.py tests/test_sync_conflict_authorization.py` | 5 passed, 4 PostgreSQL-dependent tests skipped in isolated unit run; `DELETE_ROLE_PROTECTED` preserved at public boundary |
-| Aggregate benchmark | `npm run benchmark:aggregate-version` | 2k: 0.0544s/1.71 MiB; 10k: 0.266s/8.78 MiB; 25k: 0.6865s/22.26 MiB |
+| Export/registry regression | `python -m pytest -q tests/test_module_registry_contract.py tests/test_export_policy_registry.py ...` | 64 export route tests; 21 module/authorization tests pass |
+| Missed WebSocket hint E2E | `scripts\run_isolated_audit_e2e.ps1 -Suite websocket-missed-hint` | passed: dropped hint, socket remained ready, bounded polling converged after ≥20s |
+| Joint-venture official export E2E | `scripts\run_isolated_audit_e2e.ps1 -Suite joint-venture` | passed: evaluation Excel, award-result Excel and Word report exported and fixture contents inspected |
+| Aggregate benchmark | `npm run benchmark:aggregate-version` | 2k: 0.0690s/1.71 MiB; 10k: 0.3440s/8.78 MiB; 25k: 0.8462s/22.26 MiB |
+| N+1 benchmark | `python scripts/benchmark_n_plus_one.py --sizes 1,10,50,100` | PostgreSQL run passed; owner references 1 query, delete references 3, delete impacts 7, uniqueness 2, authorization 2 at every size; `repeated = 0` |
+| PostgreSQL qmark scanner | `python -m pytest -q tests/test_postgres_qmark_scanner.py tests/test_postgres_migration_chain.py tests/test_startup_database_migration.py` | 24 passed, exit 0; quoted strings/comments/dollar-quotes/JSONB operators preserved |
 | Diff integrity | `git diff --check` | pass; only line-ending warnings from Git on Windows |
 
 ## 9. Remaining rollout notes

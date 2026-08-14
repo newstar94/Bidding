@@ -1,7 +1,7 @@
 .bf-assistant-trigger {
   position: fixed;
   right: 24px;
-  bottom: 24px;
+  bottom: 96px;
   z-index: 80;
   min-height: 54px;
   padding: 6px 15px 6px 7px;
@@ -16,7 +16,14 @@
   box-shadow: 0 14px 34px rgba(31, 53, 142, .17), 0 3px 8px rgba(17, 26, 44, .08);
   backdrop-filter: blur(12px);
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
   transition: transform .18s ease, border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.bf-assistant-trigger.is-dragging {
+  cursor: grabbing;
+  transform: scale(.98);
+  transition: none;
 }
 .bf-assistant-trigger:hover {
   transform: translateY(-3px);
@@ -131,12 +138,11 @@
 body:has(> .bf-assistant-trigger) .pagination-container {
   flex-wrap: wrap;
   gap: 12px;
-  padding-inline-end: 196px;
 }
 .bf-assistant-panel {
   position: fixed;
-  right: 24px;
-  bottom: 82px;
+  left: auto;
+  top: auto;
   z-index: 90;
   width: min(410px, calc(100vw - 32px));
   height: min(690px, calc(100vh - 112px));
@@ -314,11 +320,10 @@ body:has(> .bf-assistant-trigger) .pagination-container {
 .bf-assistant-feedback-button.is-selected { color: #fff; border-color: var(--primary, #3157e8); background: var(--primary, #3157e8); box-shadow: 0 3px 8px rgba(49, 87, 232, .24); }
 .bf-assistant-feedback-button:disabled { opacity: .65; cursor: wait; }
 @media (max-width: 640px) {
-  .bf-assistant-trigger { right: 16px; bottom: 16px; width: 54px; min-height: 54px; padding: 6px; gap: 0; border-radius: 18px; }
-  body:has(> .bf-assistant-trigger) .pagination-container { padding-inline-end: 86px; }
+  .bf-assistant-trigger { right: 16px; bottom: 88px; width: 54px; min-height: 54px; padding: 6px; gap: 0; border-radius: 18px; }
   .bf-assistant-trigger-copy { display: none; }
   .bf-assistant-trigger-mark { flex-basis: 40px; }
-  .bf-assistant-panel { right: 8px; bottom: 72px; width: calc(100vw - 16px); height: calc(100vh - 88px); border-radius: 16px; }
+  .bf-assistant-panel { width: calc(100vw - 16px); height: calc(100vh - 88px); border-radius: 16px; }
   .bf-assistant-source-list { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {

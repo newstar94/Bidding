@@ -651,6 +651,9 @@ async def dispatch_websocket_broker_event(event):
 
 
 def _load_broker_events(after_id):
+    # ``after_id`` is only a wake-up hint.  Correctness is driven by durable
+    # pending/retry rows and their availability time, so a deferred low ID can
+    # never be skipped merely because a later event was dispatched.
     del after_id
     conn = database.get_connection()
     try:
@@ -708,16 +711,23 @@ def _record_broker_dispatch(event_id, error=None):
                 """UPDATE websocket_events
                    SET status = 'dispatched', attempt_count = attempt_count + 1,
                        dispatched_at = ?, last_error_code = NULL
-                   WHERE id = ?""",
+                   WHERE id = ? AND status IN ('pending', 'retry')""",
                 (now, event_id),
             )
-            status = "dispatched"
-        else:
             row = conn.execute(
-                "SELECT attempt_count FROM websocket_events WHERE id = ? FOR UPDATE",
+                "SELECT status FROM websocket_events WHERE id = ?",
                 (event_id,),
             ).fetchone()
-            attempts = int(row[0] or 0) + 1 if row else 1
+            status = str(row[0]) if row else "dispatched"
+        else:
+            row = conn.execute(
+                "SELECT status, attempt_count FROM websocket_events WHERE id = ? FOR UPDATE",
+                (event_id,),
+            ).fetchone()
+            if row and str(row[0]) not in {"pending", "retry"}:
+                conn.commit()
+                return str(row[0])
+            attempts = int(row[1] or 0) + 1 if row else 1
             status = "dead_letter" if attempts >= 5 else "retry"
             conn.execute(
                 """UPDATE websocket_events
@@ -744,8 +754,7 @@ def _record_broker_dispatch(event_id, error=None):
 async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
     """Dispatch best-effort hints locally; delta polling remains authoritative."""
     del poll_interval
-    del start_after_id
-    last_event_id = 0
+    last_event_id = int(start_after_id or 0)
     listener = None
     cleanup_counter = 0
     while True:
@@ -796,7 +805,10 @@ async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
                 )
                 if status == "dead_letter":
                     last_event_id = max(last_event_id, int(event["id"]))
-                break
+                # A retryable low-ID event must not block unrelated ready
+                # hints.  It remains durable in the pending/retry queue and
+                # will be selected again once available_at is reached.
+                continue
         cleanup_counter += 1
         if cleanup_counter >= 1_000:
             cleanup_counter = 0
