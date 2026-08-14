@@ -97,6 +97,7 @@ def main() -> int:
                 from backend.db.db_helper import PostgresCursor
                 from backend.db.postgres_schema import (
                     _create_foreign_keys,
+                    _create_synced_delete_trigger_function,
                     _create_trigger_functions,
                     assert_foreign_key_integrity,
                     build_create_table_sql,
@@ -120,6 +121,9 @@ def main() -> int:
                             assert_foreign_key_integrity=assert_foreign_key_integrity,
                             create_foreign_keys=_create_foreign_keys,
                             create_trigger_functions=_create_trigger_functions,
+                            create_synced_delete_trigger_function=(
+                                _create_synced_delete_trigger_function
+                            ),
                         ),
                     )
                     catalog = read_postgres_schema_catalog(raw_cursor)

@@ -1,8 +1,11 @@
 import json
+from types import SimpleNamespace
+
 import pytest
 
 from backend.auth.auth_helper import SessionRole
 from backend.shared.sensitive_data import SensitiveReadPolicy
+from backend.sync import delta_paging, visibility_epoch
 from backend.sync.delta_paging import (
     DeltaCursorError,
     _load_candidates,
@@ -92,6 +95,173 @@ def test_visibility_scope_pushes_assignment_and_module_denial_into_sql():
     assert opening.parameters == ("org-a", "employee-a")
     assert denied.sql == "FALSE"
     assert denied.parameters == ()
+
+
+def test_visibility_policy_v3_token_is_rejected_by_v4_delta_read(monkeypatch):
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id, _package_id = _seed_denied_package(cursor)
+        role = SessionRole(
+            "user",
+            employee_id,
+            platform_role="user",
+            active_role="employee",
+        )
+        monkeypatch.setattr(visibility_epoch, "VISIBILITY_POLICY_VERSION", 3)
+        old_token = visibility_epoch.build_visibility_token(
+            cursor, organization_id, employee_id, role
+        )
+        assert old_token == visibility_epoch.build_visibility_token(
+            cursor, organization_id, employee_id, role
+        )
+
+        monkeypatch.setattr(visibility_epoch, "VISIBILITY_POLICY_VERSION", 4)
+        current_token = visibility_epoch.build_visibility_token(
+            cursor, organization_id, employee_id, role
+        )
+        assert current_token != old_token
+        assert current_token == visibility_epoch.build_visibility_token(
+            cursor, organization_id, employee_id, role
+        )
+
+        class _Cursor:
+            def execute(self, _sql, _params=()):
+                return self
+
+            def fetchone(self):
+                return (10,)
+
+        class _Connection:
+            def cursor(self):
+                return _Cursor()
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(
+            delta_paging, "verify_session", lambda _request: (True, role)
+        )
+        monkeypatch.setattr(
+            delta_paging,
+            "get_active_org",
+            lambda _request, _user_id, cursor=None: organization_id,
+        )
+        monkeypatch.setattr(
+            delta_paging,
+            "database",
+            SimpleNamespace(get_connection=lambda: _Connection()),
+        )
+        monkeypatch.setattr(
+            delta_paging,
+            "build_visibility_token",
+            lambda *_args, **_kwargs: current_token,
+        )
+        monkeypatch.setattr(
+            delta_paging.VisibilityScope,
+            "resolve",
+            classmethod(lambda cls, *_args: SimpleNamespace()),
+        )
+        response = delta_paging._read_delta_page_blocking(
+            SimpleNamespace(
+                query_params={
+                    "after_version": "1",
+                    "visibility_token": old_token,
+                },
+                cookies={"session_token": "test-session"},
+            )
+        )
+
+        assert response.status_code == 409
+        assert json.loads(response.body) == {
+            "code": "SYNC_VISIBILITY_RESET_REQUIRED",
+            "requiresFullSync": True,
+        }
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
+def test_full_refresh_projection_keeps_assigned_package_and_child_only():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id, package_b = _seed_denied_package(cursor)
+        package_a = f"assigned-{package_b}"
+        cursor.execute(
+            """INSERT INTO goi_thau
+               (id, organization_id, id_goc, ke_hoach_id, ten_goi_thau,
+                gia_goi_thau, thoi_gian_thuc_hien, nguon_von,
+                thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, trang_thai)
+               SELECT ?, organization_id, ?, ke_hoach_id, 'Assigned package',
+                      gia_goi_thau, thoi_gian_thuc_hien, nguon_von,
+                      thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, trang_thai
+                 FROM goi_thau WHERE organization_id = ? AND id = ?""",
+            (package_a, package_a, organization_id, package_b),
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+               (id, organization_id, id_nhan_vien, id_muc_tieu,
+                loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'goithau')""",
+            (f"assignment-{package_a}", organization_id, employee_id, package_a),
+        )
+        for suffix, package_id in (("a", package_a), ("b", package_b)):
+            cursor.execute(
+                """INSERT INTO goi_thau_hang_hoa
+                   (id, organization_id, goi_thau_id, ma_hang_hoa,
+                    ten_hang_hoa, don_vi_tinh, so_luong)
+                   VALUES (?, ?, ?, ?, ?, 'unit', 1)""",
+                (
+                    f"goods-{suffix}-{package_b}",
+                    organization_id,
+                    package_id,
+                    f"GOODS-{suffix}",
+                    f"Goods {suffix}",
+                ),
+            )
+        scope = VisibilityScope.resolve(
+            cursor,
+            SessionRole(
+                "user",
+                employee_id,
+                platform_role="user",
+                active_role="employee",
+            ),
+            employee_id,
+            organization_id,
+        )
+
+        package_predicate = scope.live_predicate("goi_thau", "source_row")
+        package_ids = {
+            row[0]
+            for row in cursor.execute(
+                "SELECT source_row.id FROM goi_thau AS source_row WHERE "  # noqa: S608 - predicate is registry-built
+                + package_predicate.sql,
+                package_predicate.parameters,
+            ).fetchall()
+        }
+        child_predicate = scope.live_predicate(
+            "goi_thau_hang_hoa", "source_row"
+        )
+        child_ids = {
+            row[0]
+            for row in cursor.execute(
+                "SELECT source_row.id FROM goi_thau_hang_hoa AS source_row "  # noqa: S608 - predicate is registry-built
+                "WHERE " + child_predicate.sql,
+                child_predicate.parameters,
+            ).fetchall()
+        }
+
+        assert package_ids == {package_a}
+        assert child_ids == {f"goods-a-{package_b}"}
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
 
 
 def test_deletion_scope_accepts_historical_assignment_snapshot_without_broadening_scope():

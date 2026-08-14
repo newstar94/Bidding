@@ -29,6 +29,7 @@ class DatabaseUpgradeContext:
     assert_foreign_key_integrity: object
     create_foreign_keys: object = None
     create_trigger_functions: object = None
+    create_synced_delete_trigger_function: object = None
 
 
 def _context_for_historical_upgrade(context, version):
@@ -2269,6 +2270,19 @@ def _upgrade_to_v59_rename_websocket_delivery_to_dispatch(cursor, _context):
            CHECK(status IN ('pending', 'retry', 'dispatched', 'dead_letter'))"""
     )
 
+
+def _upgrade_to_v60_capture_synced_delete_snapshots(cursor, context):
+    """Deploy the snapshot-aware tombstone function to existing databases."""
+
+    installer = getattr(
+        context, "create_synced_delete_trigger_function", None
+    )
+    if not callable(installer):
+        raise RuntimeError(
+            "v60 requires the synced-delete trigger function installer."
+        )
+    installer(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2555,6 +2569,11 @@ UPGRADES = (
         59,
         "rename_websocket_delivery_to_dispatch",
         _upgrade_to_v59_rename_websocket_delivery_to_dispatch,
+    ),
+    DatabaseUpgrade(
+        60,
+        "capture_synced_delete_snapshots",
+        _upgrade_to_v60_capture_synced_delete_snapshots,
     ),
 )
 

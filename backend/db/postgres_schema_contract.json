@@ -2831,7 +2831,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 59,
+  "schemaVersion": 60,
   "tables": {
     "account_subscriptions": {
       "columns": {

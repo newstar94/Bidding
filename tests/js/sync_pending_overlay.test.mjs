@@ -35,7 +35,15 @@ test("full pull keeps pending local upsert as the visible and durable overlay", 
   const persisted = [];
   const localRecord = { id: "package-1", name: "LOCAL FULL", rowVersion: 4 };
   const model = {
-    state: { goithau: [structuredClone(localRecord)] },
+    state: {
+      goithau: [
+        structuredClone(localRecord),
+        { id: "package-2", name: "STALE UNASSIGNED" },
+      ],
+      thongtinmothau: [
+        { id: "opening-2", goiThauId: "package-2" },
+      ],
+    },
     normalizeRecordKeys: (record) => structuredClone(record),
     getMutationQueue: () => ({
       upserts: { goithau: { "package-1": structuredClone(localRecord) } },
@@ -52,16 +60,18 @@ test("full pull keeps pending local upsert as the visible and durable overlay", 
   const result = applyServerSnapshot(model, {
     goithau: [
       { id: "package-1", name: "SERVER FULL", rowVersion: 2 },
-      { id: "package-2", name: "SERVER OTHER", rowVersion: 1 },
     ],
+    thongtinmothau: [],
   }, { useVersionDelta: false, since: "0" });
   await result.persistencePromise;
 
-  assert.deepEqual(model.state.goithau, [
-    localRecord,
-    { id: "package-2", name: "SERVER OTHER", rowVersion: 1 },
-  ]);
+  assert.deepEqual(model.state.goithau, [localRecord]);
+  assert.deepEqual(model.state.thongtinmothau, []);
   assert.deepEqual(persisted[0].replacements.goithau, model.state.goithau);
+  assert.deepEqual(
+    persisted[0].replacements.thongtinmothau,
+    model.state.thongtinmothau,
+  );
 });
 
 test("delta pull cannot resurrect a record with a pending local delete", async () => {

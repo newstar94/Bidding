@@ -168,14 +168,15 @@ test("manual pull supersedes an earlier websocket-triggered pull", async () => {
   }
 });
 
-test("409 full-sync recursion owns the latest pull generation", async () => {
+for (const resetCode of ["FULL_SYNC_REQUIRED", "SYNC_VISIBILITY_RESET_REQUIRED"]) {
+test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
   const previousFetch = globalThis.fetch;
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
   const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   const responses = [
     new Response(JSON.stringify({
-      code: "FULL_SYNC_REQUIRED",
+      code: resetCode,
       requiresFullSync: true,
     }), { status: 409, headers: { "content-type": "application/json" } }),
     new Response(JSON.stringify({
@@ -234,3 +235,4 @@ test("409 full-sync recursion owns the latest pull generation", async () => {
     }
   }
 });
+}

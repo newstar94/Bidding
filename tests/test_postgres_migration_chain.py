@@ -12,6 +12,7 @@ from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.db.postgres_schema import (
     _create_extensions,
     _create_foreign_keys,
+    _create_synced_delete_trigger_function,
     _create_trigger_functions,
     assert_foreign_key_integrity,
     assert_schema_contract,
@@ -202,6 +203,46 @@ def _upgrade_context():
         assert_foreign_key_integrity=assert_foreign_key_integrity,
         create_foreign_keys=_create_foreign_keys,
         create_trigger_functions=_create_trigger_functions,
+        create_synced_delete_trigger_function=(
+            _create_synced_delete_trigger_function
+        ),
+    )
+
+
+def _install_v59_synced_delete_function(cursor):
+    """Reproduce the released v59 function body that omitted row snapshots."""
+
+    cursor.execute(
+        """CREATE OR REPLACE FUNCTION bf_log_synced_delete()
+           RETURNS trigger LANGUAGE plpgsql AS $$
+           DECLARE next_version BIGINT;
+           BEGIN
+             IF OLD.organization_id IS NULL OR OLD.organization_id = '' THEN
+               RETURN OLD;
+             END IF;
+             INSERT INTO sync_metadata (organization_id, current_version)
+             VALUES (OLD.organization_id, 0)
+             ON CONFLICT (organization_id) DO NOTHING;
+             UPDATE sync_metadata
+             SET current_version = current_version + 1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE organization_id = OLD.organization_id
+             RETURNING current_version INTO next_version;
+             INSERT INTO deleted_records (
+               table_name, record_id, organization_id, deleted_at,
+               delete_version
+             ) VALUES (
+               TG_TABLE_NAME, OLD.id, OLD.organization_id,
+               CURRENT_TIMESTAMP, next_version
+             )
+             ON CONFLICT (organization_id, table_name, record_id) DO UPDATE SET
+               deleted_at = EXCLUDED.deleted_at,
+               delete_version = GREATEST(
+                 COALESCE(deleted_records.delete_version, 0),
+                 COALESCE(EXCLUDED.delete_version, 0)
+               );
+             RETURN OLD;
+           END $$"""
     )
 
 
@@ -359,6 +400,11 @@ def test_fresh_v47_catalog_keeps_only_constraint_backed_audit_successor_index(
 
         assert create_fresh_database(cursor, _upgrade_context()) == DB_SCHEMA_VERSION
         assert_schema_contract(cursor)
+        fresh_definition = cursor.execute(
+            "SELECT pg_get_functiondef('bf_log_synced_delete()'::regprocedure)"
+        ).fetchone()[0]
+        assert "record_snapshot_json" in fresh_definition
+        assert "to_jsonb(old)" in fresh_definition.casefold()
         names = {
             row[0]
             for row in cursor.execute(
@@ -400,6 +446,70 @@ def test_real_postgres_v35_checkpoint_reaches_latest_catalog():
         assert cursor.execute(
             "SELECT ma_phan_lo_normalized FROM goi_thau_phan_lo WHERE id = 'fixture-lot'"
         ).fetchone()[0] == "lot a"
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_v59_to_v60_replaces_delete_function_and_captures_trigger_snapshot():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor, 1, context, target_version=59
+        ) == 59
+        _install_v59_synced_delete_function(cursor)
+        old_definition = cursor.execute(
+            "SELECT pg_get_functiondef('bf_log_synced_delete()'::regprocedure)"
+        ).fetchone()[0]
+        assert "record_snapshot_json" not in old_definition
+        trigger_count = cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_trigger
+                WHERE tgrelid = 'phan_cong_nhan_su'::regclass
+                  AND tgname = 'trg_phan_cong_nhan_su_deleted_log'
+                  AND NOT tgisinternal"""
+        ).fetchone()[0]
+        assert trigger_count == 1
+
+        assert apply_database_upgrades(cursor, 59, context) == 60
+        definition = cursor.execute(
+            "SELECT pg_get_functiondef('bf_log_synced_delete()'::regprocedure)"
+        ).fetchone()[0]
+        assert "record_snapshot_json" in definition
+        assert "to_jsonb(old)" in definition.casefold()
+
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+                   (id, organization_id, id_nhan_vien, id_muc_tieu,
+                    loai_doi_tuong)
+               VALUES ('fixture-assignment-v60', 'fixture-org', 'fixture-user',
+                       'fixture-package', 'goithau')"""
+        )
+        cursor.execute(
+            "DELETE FROM phan_cong_nhan_su WHERE id = 'fixture-assignment-v60'"
+        )
+        snapshot_text = cursor.execute(
+            """SELECT record_snapshot_json
+                 FROM deleted_records
+                WHERE organization_id = 'fixture-org'
+                  AND table_name = 'phan_cong_nhan_su'
+                  AND record_id = 'fixture-assignment-v60'"""
+        ).fetchone()[0]
+        snapshot = json.loads(snapshot_text)
+        assert snapshot["id"] == "fixture-assignment-v60"
+        assert snapshot["organization_id"] == "fixture-org"
+        assert snapshot["id_nhan_vien"] == "fixture-user"
+        assert snapshot["id_muc_tieu"] == "fixture-package"
+        assert snapshot["loai_doi_tuong"] == "goithau"
+
+        assert apply_database_upgrades(cursor, 60, context) == 60
+        assert cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_trigger
+                WHERE tgrelid = 'phan_cong_nhan_su'::regclass
+                  AND tgname = 'trg_phan_cong_nhan_su_deleted_log'
+                  AND NOT tgisinternal"""
+        ).fetchone()[0] == trigger_count
     finally:
         _close_fixture_connection(connection, cursor, schema_name)
 

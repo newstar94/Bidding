@@ -628,6 +628,44 @@ def _create_indexes(cursor) -> None:
     _create_search_indexes(cursor)
 
 
+def _create_synced_delete_trigger_function(cursor) -> None:
+    """Install the tombstone trigger function without rebuilding other DDL."""
+
+    cursor.execute(
+        """CREATE OR REPLACE FUNCTION bf_log_synced_delete()
+           RETURNS trigger LANGUAGE plpgsql AS $$
+           DECLARE next_version BIGINT;
+           BEGIN
+             IF OLD.organization_id IS NULL OR OLD.organization_id = '' THEN
+               RETURN OLD;
+             END IF;
+             INSERT INTO sync_metadata (organization_id, current_version)
+             VALUES (OLD.organization_id, 0)
+             ON CONFLICT (organization_id) DO NOTHING;
+             UPDATE sync_metadata
+             SET current_version = current_version + 1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE organization_id = OLD.organization_id
+             RETURNING current_version INTO next_version;
+             INSERT INTO deleted_records (
+               table_name, record_id, organization_id, deleted_at,
+               delete_version, record_snapshot_json
+             ) VALUES (
+               TG_TABLE_NAME, OLD.id, OLD.organization_id, CURRENT_TIMESTAMP,
+               next_version, to_jsonb(OLD)::text
+             )
+             ON CONFLICT (organization_id, table_name, record_id) DO UPDATE SET
+               deleted_at = EXCLUDED.deleted_at,
+               record_snapshot_json = EXCLUDED.record_snapshot_json,
+               delete_version = GREATEST(
+                 COALESCE(deleted_records.delete_version, 0),
+                 COALESCE(EXCLUDED.delete_version, 0)
+               );
+             RETURN OLD;
+           END $$"""
+    )
+
+
 def _create_trigger_functions(cursor) -> None:
     cursor.execute(
         """CREATE OR REPLACE FUNCTION bf_validate_workspace_owner()
@@ -692,39 +730,7 @@ def _create_trigger_functions(cursor) -> None:
              RETURN NEW;
            END $$"""
     )
-    cursor.execute(
-        """CREATE OR REPLACE FUNCTION bf_log_synced_delete()
-           RETURNS trigger LANGUAGE plpgsql AS $$
-           DECLARE next_version BIGINT;
-           BEGIN
-             IF OLD.organization_id IS NULL OR OLD.organization_id = '' THEN
-               RETURN OLD;
-             END IF;
-             INSERT INTO sync_metadata (organization_id, current_version)
-             VALUES (OLD.organization_id, 0)
-             ON CONFLICT (organization_id) DO NOTHING;
-             UPDATE sync_metadata
-             SET current_version = current_version + 1,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE organization_id = OLD.organization_id
-             RETURNING current_version INTO next_version;
-             INSERT INTO deleted_records (
-               table_name, record_id, organization_id, deleted_at,
-               delete_version, record_snapshot_json
-             ) VALUES (
-               TG_TABLE_NAME, OLD.id, OLD.organization_id, CURRENT_TIMESTAMP,
-               next_version, to_jsonb(OLD)::text
-             )
-             ON CONFLICT (organization_id, table_name, record_id) DO UPDATE SET
-               deleted_at = EXCLUDED.deleted_at,
-               record_snapshot_json = EXCLUDED.record_snapshot_json,
-               delete_version = GREATEST(
-                 COALESCE(deleted_records.delete_version, 0),
-                 COALESCE(EXCLUDED.delete_version, 0)
-               );
-             RETURN OLD;
-           END $$"""
-    )
+    _create_synced_delete_trigger_function(cursor)
     cursor.execute(
         """CREATE OR REPLACE FUNCTION bf_validate_record_edit_owner()
            RETURNS trigger LANGUAGE plpgsql AS $$
@@ -1411,6 +1417,9 @@ def initialize_postgres_database(database, *, dry_run: bool = False) -> int:
             assert_foreign_key_integrity=assert_foreign_key_integrity,
             create_foreign_keys=_create_foreign_keys,
             create_trigger_functions=_create_trigger_functions,
+            create_synced_delete_trigger_function=(
+                _create_synced_delete_trigger_function
+            ),
         )
         installed_version = read_database_version(cursor)
         if installed_version is None:
