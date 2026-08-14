@@ -450,7 +450,7 @@ def test_real_postgres_v35_checkpoint_reaches_latest_catalog():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
-def test_v59_to_v60_replaces_delete_function_and_captures_trigger_snapshot():
+def test_v59_to_v61_replaces_delete_function_and_renames_default_workspace():
     connection, cursor, schema_name = _open_fixture_connection()
     try:
         context = _upgrade_context()
@@ -471,7 +471,11 @@ def test_v59_to_v60_replaces_delete_function_and_captures_trigger_snapshot():
         ).fetchone()[0]
         assert trigger_count == 1
 
-        assert apply_database_upgrades(cursor, 59, context) == 60
+        cursor.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES ('fixture-htd', 'HTD')"
+        )
+
+        assert apply_database_upgrades(cursor, 59, context) == DB_SCHEMA_VERSION
         definition = cursor.execute(
             "SELECT pg_get_functiondef('bf_log_synced_delete()'::regprocedure)"
         ).fetchone()[0]
@@ -502,7 +506,11 @@ def test_v59_to_v60_replaces_delete_function_and_captures_trigger_snapshot():
         assert snapshot["id_muc_tieu"] == "fixture-package"
         assert snapshot["loai_doi_tuong"] == "goithau"
 
-        assert apply_database_upgrades(cursor, 60, context) == 60
+        assert cursor.execute(
+            "SELECT ten_to_chuc FROM to_chuc WHERE id = 'fixture-htd'"
+        ).fetchone()[0] == "HCP"
+
+        assert apply_database_upgrades(cursor, DB_SCHEMA_VERSION, context) == DB_SCHEMA_VERSION
         assert cursor.execute(
             """SELECT COUNT(*)
                  FROM pg_trigger

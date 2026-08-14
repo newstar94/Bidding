@@ -332,7 +332,7 @@ export function setupRBACEvents() {
       const val = btn.getAttribute("data-switch-role");
       if (!["super_admin", "manager", "employee"].includes(val)) return;
       const currentUser = this.model.state.activeuser;
-      const userName = currentUser ? currentUser.name : "Vy Tuấn Dương";
+      const userName = currentUser ? currentUser.name : "VTD";
       const realUserId = currentUser?.id || sessionStorage.getItem("bf_user_id") || "";
       btn.disabled = true;
       btn.setAttribute("aria-busy", "true");

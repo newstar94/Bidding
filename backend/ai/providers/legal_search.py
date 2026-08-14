@@ -34,7 +34,7 @@ from backend.ai.providers.url_policy import (
 _DATE_RE = re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?!\d)")
 _ISO_DATE_RE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 _PRIVATE_CONTEXT_RE = re.compile(
-    r"(?i)\b(?:workspace|biddingflow|backend|htd)\b(?:\s+[\wÀ-ỹ.-]+){0,8}"
+    r"(?i)\b(?:workspace|biddingflow|backend|hcp)\b(?:\s+[\wÀ-ỹ.-]+){0,8}"
     r"(?=\s+(?:là|la|của|cua|và|va|hiện|hien|này|nay|không|khong)|[?.!,]|$)"
 )
 _SECRET_RE = re.compile(

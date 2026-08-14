@@ -10,7 +10,7 @@ def _context(permissions=None):
     return AiRequestContext(
         user_id="manager-1",
         organization_id="org-1",
-        organization_name="HTD",
+        organization_name="HCP",
         platform_role="user",
         membership_role="manager",
         scope_type="organization",
@@ -70,7 +70,7 @@ class Cursor:
 
 
 def test_query_workspace_selects_allowlisted_columns_and_keeps_organization_scope():
-    cursor = Cursor([{"name": "HTD", "taxCode": "0101"}])
+    cursor = Cursor([{"name": "HCP", "taxCode": "0101"}])
 
     result = query_workspace_records(
         cursor,
@@ -86,7 +86,7 @@ def test_query_workspace_selects_allowlisted_columns_and_keeps_organization_scop
         },
     )
 
-    assert result.records == [{"name": "HTD", "taxCode": "0101"}]
+    assert result.records == [{"name": "HCP", "taxCode": "0101"}]
     assert "SELECT record.ten_chu_dau_tu AS \"name\", record.ma_so_thue AS \"taxCode\"" in cursor.statement
     assert "FROM chu_dau_tu AS record" in cursor.statement
     assert "record.organization_id = ?" in cursor.statement

@@ -2283,6 +2283,17 @@ def _upgrade_to_v60_capture_synced_delete_snapshots(cursor, context):
         )
     installer(cursor)
 
+
+def _upgrade_to_v61_rename_default_workspace(cursor, _context):
+    """Rename the historical default workspace without changing its identity."""
+
+    cursor.execute(
+        """UPDATE to_chuc
+              SET ten_to_chuc = 'HCP',
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE ten_to_chuc = 'HTD'"""
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2574,6 +2585,11 @@ UPGRADES = (
         60,
         "capture_synced_delete_snapshots",
         _upgrade_to_v60_capture_synced_delete_snapshots,
+    ),
+    DatabaseUpgrade(
+        61,
+        "rename_default_workspace",
+        _upgrade_to_v61_rename_default_workspace,
     ),
 )
 

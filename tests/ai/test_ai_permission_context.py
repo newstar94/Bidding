@@ -13,7 +13,7 @@ class _Cursor:
         return self
 
     def fetchone(self):
-        return ("HTD",)
+        return ("HCP",)
 
 
 class _Connection:

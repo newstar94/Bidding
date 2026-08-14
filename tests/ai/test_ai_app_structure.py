@@ -7,7 +7,7 @@ def context(*, platform_role="employee"):
     return AiRequestContext(
         user_id="user-1",
         organization_id="org-1",
-        organization_name="HTD",
+        organization_name="HCP",
         platform_role=platform_role,
         membership_role="employee",
         scope_type="organization",

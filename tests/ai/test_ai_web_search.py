@@ -103,13 +103,13 @@ def test_legal_search_normalizes_only_allowlisted_sources_and_does_not_send_work
 
     monkeypatch.setattr(legal_search_module, "open_outbound_request", fake_urlopen)
     result = GeminiLegalSearchAdapter(config()).search_official_law(
-        "Hạn mức chỉ định thầu trong workspace HTD của tôi là bao nhiêu?",
+        "Hạn mức chỉ định thầu trong workspace HCP của tôi là bao nhiêu?",
         ("vanban.chinhphu.vn", "vbpl.vn"),
     )
 
     body = json.loads(captured["request"].data.decode("utf-8"))
     assert body["tools"] == [{"type": "google_search"}]
-    assert "workspace HTD" not in body["input"]
+    assert "workspace HCP" not in body["input"]
     assert "workspace" not in body["input"].casefold()
     assert [source["url"] for source in result.sources] == [
         "https://vanban.chinhphu.vn/luat-dau-thau"

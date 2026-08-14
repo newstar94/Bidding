@@ -10,7 +10,7 @@ def context(*, permissions=None, membership_role="manager"):
     return AiRequestContext(
         user_id="user-1",
         organization_id="org-1",
-        organization_name="HTD",
+        organization_name="HCP",
         platform_role="user",
         membership_role=membership_role,
         scope_type="organization",

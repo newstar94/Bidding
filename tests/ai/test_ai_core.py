@@ -235,7 +235,7 @@ def test_ai_route_disconnect_closes_stream_and_releases_active_metric(monkeypatc
     context = AiRequestContext(
         user_id="user-1",
         organization_id="org-1",
-        organization_name="HTD",
+        organization_name="HCP",
         platform_role="user",
         membership_role="manager",
         scope_type="organization",
@@ -406,7 +406,7 @@ def test_ai_list_and_aggregate_share_latest_only_semantics(
     context = AiRequestContext(
         user_id="user-1",
         organization_id="org-1",
-        organization_name="HTD",
+        organization_name="HCP",
         platform_role="user",
         membership_role="manager",
         scope_type="organization",
@@ -486,7 +486,7 @@ def test_aggregate_normalizes_every_supported_status(
         AiRequestContext(
             user_id="user-1",
             organization_id="org-1",
-            organization_name="HTD",
+            organization_name="HCP",
             platform_role="user",
             membership_role="manager",
             scope_type="organization",

@@ -1348,7 +1348,7 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
     admin_name = os.environ.get("ADMIN_NAME", "Administrator").strip() or "Administrator"
     admin_username = normalize_username(os.environ.get("ADMIN_USERNAME", "admin"))
     admin_email = normalize_email(os.environ.get("ADMIN_EMAIL", "admin@localhost"))
-    organization_name = os.environ.get("DEFAULT_ORG_NAME", "HTD").strip() or "HTD"
+    organization_name = os.environ.get("DEFAULT_ORG_NAME", "HCP").strip() or "HCP"
     organization_id = stable_org_id(organization_name)
     cursor.execute(
         """INSERT INTO tai_khoan (
