@@ -41,6 +41,22 @@ function setButtonLoading(button, loading) {
   else button.removeAttribute("aria-busy");
 }
 
+function setLookupLoading(loadingScreen, form, loading, code = "") {
+  if (loading) form?.setAttribute?.("aria-busy", "true");
+  else form?.removeAttribute?.("aria-busy");
+  if (!loadingScreen) return;
+
+  const codeLabel = loadingScreen.querySelector?.(
+    "[data-procurement-loading-code]",
+  );
+  if (codeLabel) {
+    codeLabel.textContent = code;
+    codeLabel.hidden = !code;
+  }
+  loadingScreen.setAttribute("aria-busy", String(loading));
+  loadingScreen.hidden = !loading;
+}
+
 export class ProcurementInlineLookup {
   constructor({
     controller,
@@ -68,12 +84,23 @@ export class ProcurementInlineLookup {
     status.setAttribute("aria-live", state === "error" ? "assertive" : "polite");
   }
 
-  async run({ kind, formId, codeInputId, triggerId, buttonId, statusId }) {
+  async run({
+    kind,
+    formId,
+    codeInputId,
+    triggerId,
+    buttonId,
+    statusId,
+    loadingId,
+  }) {
     const normalizedKind = String(kind || "").toUpperCase();
     const form = this.document.getElementById(formId);
     const codeInput = this.document.getElementById(codeInputId);
     const button = this.document.getElementById(triggerId || buttonId);
     const status = this.document.getElementById(statusId);
+    const loadingScreen = this.document.getElementById(
+      loadingId || `procurement-lookup-${normalizedKind === "PLAN" ? "plan" : "package"}-loading`,
+    );
     const code = String(codeInput?.value || "").trim().toUpperCase();
     const expectedPrefix = normalizedKind === "PLAN" ? "PL" : "IB";
     if (!CODE_PATTERN.test(code) || !code.startsWith(expectedPrefix)) {
@@ -92,6 +119,7 @@ export class ProcurementInlineLookup {
     const workspaceLease = currentWorkspaceToken(this.controller?.model);
     const identity = formIdentity(form);
     setButtonLoading(button, true);
+    setLookupLoading(loadingScreen, form, true, code);
     this.setStatus(status, "Đang lấy dữ liệu từ Mua Sắm Công…", "loading");
     try {
       if (normalizedKind === "PACKAGE" || normalizedKind === "PLAN") {
@@ -232,7 +260,10 @@ export class ProcurementInlineLookup {
       );
       return null;
     } finally {
-      if (generation === this.requestGeneration) setButtonLoading(button, false);
+      if (generation === this.requestGeneration) {
+        setButtonLoading(button, false);
+        setLookupLoading(loadingScreen, form, false);
+      }
     }
   }
 }

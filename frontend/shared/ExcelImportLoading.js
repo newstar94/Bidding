@@ -39,12 +39,12 @@ function ensureOverlay(documentRef) {
   const header = makeElement(documentRef, "div", "excel-import-loading-header");
   const visual = makeElement(documentRef, "div", "excel-import-loading-visual");
   visual.setAttribute("aria-hidden", "true");
-  visual.appendChild(makeElement(documentRef, "span", "excel-import-loading-file-mark", "XLSX"));
-  const grid = makeElement(documentRef, "span", "excel-import-loading-grid");
-  for (let index = 0; index < 12; index += 1) {
-    grid.appendChild(makeElement(documentRef, "span", "excel-import-loading-cell"));
-  }
-  visual.appendChild(grid);
+  const visualIcon = makeElement(documentRef, "img", "excel-import-loading-icon");
+  visualIcon.src = "/assets/favicon.png?v=transparent-corners-20260814";
+  visualIcon.alt = "";
+  visualIcon.width = 1254;
+  visualIcon.height = 1254;
+  visual.appendChild(visualIcon);
 
   const copy = makeElement(documentRef, "div", "excel-import-loading-copy");
   const title = makeElement(documentRef, "h2", "excel-import-loading-title", "Đang xử lý file Excel");

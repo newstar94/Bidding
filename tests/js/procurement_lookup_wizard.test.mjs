@@ -577,6 +577,83 @@ function inlineStatus() {
   };
 }
 
+function inlineLoading() {
+  const code = { hidden: true, textContent: "" };
+  return {
+    hidden: true,
+    attributes: new Map(),
+    code,
+    querySelector(selector) {
+      return selector === "[data-procurement-loading-code]" ? code : null;
+    },
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+  };
+}
+
+
+test("inline MSC lookup shows and closes its loading screen", async () => {
+  let resolvePrepare;
+  const identity = { value: "plan-loading" };
+  const form = {
+    attributes: new Map(),
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    removeAttribute(name) { this.attributes.delete(name); },
+  };
+  const code = control("PL2600000001");
+  const trigger = inlineButton();
+  const status = inlineStatus();
+  const loading = inlineLoading();
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "procurement-lookup-plan-enabled": trigger,
+    "procurement-lookup-plan-status": status,
+    "procurement-lookup-plan-loading": loading,
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller: {
+      model: { getWorkspaceToken: () => "org-1" },
+      async startProcurementPlanImport() {},
+    },
+    importClient: {
+      preparePlan: () => new Promise((resolve) => { resolvePrepare = resolve; }),
+      async getPlanRevisionDraft() {
+        return { revisionNumber: "00", planDraft: {}, packageDrafts: [] };
+      },
+    },
+    client: { async lookup() { assert.fail("must use sequential session"); } },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const pending = lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    triggerId: "procurement-lookup-plan-enabled",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.equal(loading.hidden, false);
+  assert.equal(loading.attributes.get("aria-busy"), "true");
+  assert.equal(loading.code.hidden, false);
+  assert.equal(loading.code.textContent, "PL2600000001");
+  assert.equal(form.attributes.get("aria-busy"), "true");
+
+  resolvePrepare({
+    importSession: {
+      sessionId: "session-loading",
+      revisions: [{ revisionNumber: "00" }],
+    },
+  });
+  await pending;
+
+  assert.equal(loading.hidden, true);
+  assert.equal(loading.attributes.get("aria-busy"), "false");
+  assert.equal(form.attributes.has("aria-busy"), false);
+  assert.equal(trigger.disabled, false);
+});
+
 
 test("inline plan lookup prepares all revisions and opens editable revision 00 without another modal", async () => {
   const identity = { value: "plan-a" };
@@ -749,6 +826,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
   const componentStyles = fs.readFileSync("views/css/components.css", "utf8");
 
   assert.match(planModal, /id="procurement-lookup-plan-enabled"/);
+  assert.match(planModal, /id="procurement-lookup-plan-loading"/);
   assert.match(planModal, /<span>Lấy từ MSC<\/span>/);
   assert.doesNotMatch(planModal, /id="btn-open-procurement-lookup-plan"/);
   assert.doesNotMatch(planModal, /id="btn-open-procurement-import"/);
@@ -762,6 +840,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
     /getElementById\("kh-pheduyet"\)\.value = "Dự toán và kế hoạch"/,
   );
   assert.match(packageModal, /id="procurement-lookup-package-enabled"/);
+  assert.match(packageModal, /id="procurement-lookup-package-loading"/);
   assert.match(packageModal, /class="package-identity-grid col-span-2"/);
   assert.match(packageModal, /<span>Lấy từ MSC<\/span>/);
   assert.doesNotMatch(packageModal, /id="btn-open-procurement-lookup-package"/);

@@ -1,6 +1,23 @@
 
 <div class="modal-overlay" id="modal-kehoach">
-    <div class="modal-card modal-lg modal-wide-form">
+    <div class="modal-card modal-lg modal-wide-form procurement-lookup-host">
+        <div class="procurement-lookup-loading" id="procurement-lookup-plan-loading"
+            role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden>
+            <div class="procurement-lookup-loading__card">
+                <span class="procurement-lookup-loading__visual" aria-hidden="true">
+                    <img class="app-brand-image" src="/assets/favicon.png?v=transparent-corners-20260814" alt="" width="1254" height="1254">
+                </span>
+                <div class="procurement-lookup-loading__copy">
+                    <span class="procurement-lookup-loading__eyebrow">Mua Sắm Công</span>
+                    <strong>Đang lấy dữ liệu kế hoạch</strong>
+                    <span>Hệ thống đang tra cứu và chuẩn bị thông tin. Vui lòng chờ trong giây lát.</span>
+                    <span class="procurement-lookup-loading__code" data-procurement-loading-code hidden></span>
+                </div>
+                <span class="procurement-lookup-loading__progress" aria-hidden="true">
+                    <span></span>
+                </span>
+            </div>
+        </div>
         <div class="modal-header">
             <h3 id="modal-kehoach-title">Thêm Kế hoạch LCNT</h3>
             <button class="modal-close" data-close="modal-kehoach">&times;</button>
