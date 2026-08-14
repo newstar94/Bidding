@@ -109,20 +109,44 @@ const port = server.address().port;
 const browser = await chromium.launch({ headless: true });
 const results = [];
 const startup = { cold: [], warm: [] };
+const layoutOnly = process.argv.includes("--layout-only");
 const percentile = (values, ratio) => {
+  if (!values.length) return 0;
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)];
 };
 const measureNavigation = async (page) => {
   await page.goto("http://127.0.0.1:" + port + "/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.body.classList.contains("landing-ready"));
-  return page.evaluate(() => {
+  const metrics = await page.evaluate(() => {
     const readyMs = Math.round(performance.now() * 100) / 100;
     const longestTaskMs = Math.round(
       Math.max(0, ...(globalThis.__bfRouteLongTasks || [])) * 100,
     ) / 100;
-    return { readyMs, longestTaskMs };
+    const frameRect = document.querySelector(".landing-preview-logo")?.getBoundingClientRect();
+    const imageRect = document.querySelector(".landing-preview-logo .app-brand-image")?.getBoundingClientRect();
+    return {
+      readyMs,
+      longestTaskMs,
+      previewBrand: frameRect && imageRect ? {
+        frameWidth: frameRect.width,
+        frameHeight: frameRect.height,
+        imageWidth: imageRect.width,
+        imageHeight: imageRect.height,
+      } : null,
+    };
   });
+  if (
+    !metrics.previewBrand
+    || metrics.previewBrand.imageWidth > metrics.previewBrand.frameWidth + 1
+    || metrics.previewBrand.imageHeight > metrics.previewBrand.frameHeight + 1
+  ) {
+    throw new Error(
+      "landing preview brand image escapes its frame: "
+      + JSON.stringify(metrics.previewBrand),
+    );
+  }
+  return metrics;
 };
 const createMeasuredContext = async () => {
   const context = await browser.newContext();
@@ -181,28 +205,31 @@ try {
       await page.close();
     }
   }
-  for (let run = 0; run < 30; run += 1) {
+  const coldRuns = layoutOnly ? 1 : 30;
+  for (let run = 0; run < coldRuns; run += 1) {
     const context = await createMeasuredContext();
     const page = await context.newPage();
     startup.cold.push(await measureNavigation(page));
     await context.close();
   }
-  const warmContext = await createMeasuredContext();
-  const warmPage = await warmContext.newPage();
-  await measureNavigation(warmPage);
-  for (let run = 0; run < 30; run += 1) {
-    startup.warm.push(await measureNavigation(warmPage));
-  }
-  await warmContext.close();
-  const measuredLongestTask = Math.max(
-    ...startup.cold.map((sample) => sample.longestTaskMs),
-    ...startup.warm.map((sample) => sample.longestTaskMs),
-  );
-  if (measuredLongestTask > STARTUP_LONG_TASK_LIMIT_MS) {
-    throw new Error(
-      "Built route startup long task is " + measuredLongestTask
-      + " ms; budget is " + STARTUP_LONG_TASK_LIMIT_MS + " ms",
+  if (!layoutOnly) {
+    const warmContext = await createMeasuredContext();
+    const warmPage = await warmContext.newPage();
+    await measureNavigation(warmPage);
+    for (let run = 0; run < 30; run += 1) {
+      startup.warm.push(await measureNavigation(warmPage));
+    }
+    await warmContext.close();
+    const measuredLongestTask = Math.max(
+      ...startup.cold.map((sample) => sample.longestTaskMs),
+      ...startup.warm.map((sample) => sample.longestTaskMs),
     );
+    if (measuredLongestTask > STARTUP_LONG_TASK_LIMIT_MS) {
+      throw new Error(
+        "Built route startup long task is " + measuredLongestTask
+        + " ms; budget is " + STARTUP_LONG_TASK_LIMIT_MS + " ms",
+      );
+    }
   }
 } finally {
   await browser.close();
@@ -216,13 +243,13 @@ console.log(JSON.stringify({
       count: startup.cold.length,
       medianMs: percentile(startup.cold.map((sample) => sample.readyMs), 0.5),
       p95Ms: percentile(startup.cold.map((sample) => sample.readyMs), 0.95),
-      longestTaskMs: Math.max(...startup.cold.map((sample) => sample.longestTaskMs)),
+      longestTaskMs: Math.max(0, ...startup.cold.map((sample) => sample.longestTaskMs)),
     },
     warm: {
       count: startup.warm.length,
       medianMs: percentile(startup.warm.map((sample) => sample.readyMs), 0.5),
       p95Ms: percentile(startup.warm.map((sample) => sample.readyMs), 0.95),
-      longestTaskMs: Math.max(...startup.warm.map((sample) => sample.longestTaskMs)),
+      longestTaskMs: Math.max(0, ...startup.warm.map((sample) => sample.longestTaskMs)),
     },
   },
 }));

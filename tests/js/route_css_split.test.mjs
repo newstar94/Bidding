@@ -40,3 +40,29 @@ test("secure build enforces hashed route CSS and its main-bundle budget", () => 
   assert.match(checker, /frontend\/landing\/LandingPage\.js/u);
   assert.match(checker, /frontend\/legal\/LegalPage\.js/u);
 });
+
+test("secure main stylesheet preserves the shared debug cascade", () => {
+  const index = read("views/index.html");
+  const appCss = read("views/css/app.css");
+  const debugOrder = [...index.matchAll(/href="\/css\/([^?"]+)\.css[^"]*"/gu)]
+    .map((match) => `${match[1]}.css`)
+    .filter((name) => !["landing.css", "legal.css"].includes(name));
+  const secureOrder = [...appCss.matchAll(/@import\s+"\.\/([^"]+)"[^;]*;/gu)]
+    .map((match) => match[1]);
+
+  assert.deepEqual(secureOrder, debugOrder);
+  assert.doesNotMatch(appCss, /@layer|\blayer\s*\(/u);
+});
+
+test("mobile stacked filters clear desktop fixed flex bases", () => {
+  const redesignCss = read("views/css/ui-redesign.css");
+  const mobileStart = redesignCss.indexOf("@media (max-width: 768px)");
+  const nextMedia = redesignCss.indexOf("@media", mobileStart + 1);
+  const mobileCss = redesignCss.slice(mobileStart, nextMedia);
+
+  assert.notEqual(mobileStart, -1);
+  assert.match(
+    mobileCss,
+    /\.select-wrapper\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*\}/u,
+  );
+});

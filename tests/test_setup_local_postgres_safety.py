@@ -113,7 +113,7 @@ def test_reset_initializes_every_recreated_local_database(monkeypatch):
     assert [call[1]["DATABASE_URL"] for call in calls] == list(database_urls)
 
 
-def test_local_postgres_auto_start_only_targets_managed_development_cluster(tmp_path):
+def test_local_postgres_auto_start_only_targets_managed_non_production_cluster(tmp_path):
     pg_root = tmp_path / "pgsql"
     data_dir = tmp_path / "data"
     (pg_root / "bin").mkdir(parents=True)
@@ -126,8 +126,29 @@ def test_local_postgres_auto_start_only_targets_managed_development_cluster(tmp_
     }
 
     assert should_auto_start_local_postgres(local, pg_root=pg_root, data_dir=data_dir)
+    assert should_auto_start_local_postgres(
+        {
+            **local,
+            "APP_ENV": "staging",
+            "DATABASE_AUTO_START_LOCAL": "true",
+        },
+        pg_root=pg_root,
+        data_dir=data_dir,
+    )
+    assert not should_auto_start_local_postgres(
+        {**local, "APP_ENV": "staging"}, pg_root=pg_root, data_dir=data_dir
+    )
     assert not should_auto_start_local_postgres(
         {**local, "APP_ENV": "production"}, pg_root=pg_root, data_dir=data_dir
+    )
+    assert not should_auto_start_local_postgres(
+        {
+            **local,
+            "APP_ENV": "production",
+            "DATABASE_AUTO_START_LOCAL": "true",
+        },
+        pg_root=pg_root,
+        data_dir=data_dir,
     )
     assert not should_auto_start_local_postgres(
         {**local, "DATABASE_URL": "postgresql://app:secret@db.example.com:5432/biddingflow"},

@@ -17,6 +17,7 @@ CANVAS_COLOR = "#f5f8fc"
 INK_COLOR = "#111a2c"
 MUTED_COLOR = "#53627a"
 LINE_COLOR = "#dce5f0"
+EMAIL_BRAND_CONTENT_ID = "biddingflow-brand-icon"
 
 _NOTICE_TONES = {
     "info": ("#edf2ff", "#3157e8", "#2446c7"),
@@ -60,29 +61,9 @@ def application_url(route: str | None = None) -> str | None:
     return f"{base}{local_route}"
 
 
-def _font_face_css() -> str:
-    """Load the application font when the email client supports web fonts."""
-
-    vietnamese_url = application_url("/vendor/fonts/plus-jakarta-sans-vietnamese.woff2")
-    latin_url = application_url("/vendor/fonts/plus-jakarta-sans-latin.woff2")
-    if not vietnamese_url or not latin_url:
-        return ""
-    return f"""
-    @font-face {{
-      font-family:'Plus Jakarta Sans';font-style:normal;font-weight:300 800;font-display:swap;
-      src:url('{_text(vietnamese_url)}') format('woff2');
-      unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
-    }}
-    @font-face {{
-      font-family:'Plus Jakarta Sans';font-style:normal;font-weight:300 800;font-display:swap;
-      src:url('{_text(latin_url)}') format('woff2');
-      unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-    }}"""
-
-
 def _paragraphs(values) -> str:
     return "".join(
-        '<p style="margin:0 0 16px;color:#40506a;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;'
+        '<p style="margin:0 0 16px;color:#40506a;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;'
         'font-size:16px;line-height:1.7;">'
         f"{_text(value)}</p>"
         for value in values
@@ -97,11 +78,11 @@ def _details_table(details) -> str:
             continue
         rows.append(
             '<tr><td style="padding:10px 12px;border-bottom:1px solid #dce5f0;'
-            'color:#53627a;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;font-size:13px;'
+            'color:#53627a;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;font-size:13px;'
             'font-weight:700;vertical-align:top;width:34%;">'
             f"{_text(label)}</td>"
             '<td style="padding:10px 12px;border-bottom:1px solid #dce5f0;'
-            'color:#111a2c;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;font-size:14px;'
+            'color:#111a2c;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;font-size:14px;'
             'font-weight:600;vertical-align:top;word-break:break-word;">'
             f"{_text(value)}</td></tr>"
         )
@@ -123,7 +104,7 @@ def _code_panel(code: str | None, label: str | None) -> str:
         'style="margin:8px 0 22px;border-collapse:separate;">'
         '<tr><td align="center" style="padding:20px 16px;border:1px solid #cfd9ff;'
         'border-radius:12px;background:#edf2ff;">'
-        '<div style="margin:0 0 7px;color:#53627a;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;'
+        '<div style="margin:0 0 7px;color:#53627a;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;'
         'font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">'
         f"{_text(label or 'Mã xác thực')}</div>"
         '<div style="color:#2446c7;font-family:Consolas,Menlo,Monaco,monospace;'
@@ -141,10 +122,10 @@ def _action_button(label: str | None, url: str | None) -> str:
         '<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 22px;">'
         '<tr><td bgcolor="#3157e8" style="border-radius:9px;">'
         f'<a href="{href}" style="display:inline-block;padding:13px 22px;color:#ffffff;'
-        'font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;'
+        'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;'
         'line-height:20px;text-decoration:none;border-radius:9px;">'
         f"{_text(label)}</a></td></tr></table>"
-        '<p style="margin:0 0 20px;color:#6b7890;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;'
+        '<p style="margin:0 0 20px;color:#6b7890;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;'
         'font-size:12px;line-height:1.6;word-break:break-all;">'
         'Nếu nút không hoạt động, sao chép liên kết này vào trình duyệt:<br>'
         f'<a href="{href}" style="color:#3157e8;text-decoration:underline;">{href}</a></p>'
@@ -159,7 +140,7 @@ def _notice_panel(message: str | None, tone: str) -> str:
         f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
         f'style="margin:2px 0 20px;border-left:4px solid {border};border-collapse:separate;">'
         f'<tr><td style="padding:13px 15px;background:{background};color:{foreground};'
-        'font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;line-height:1.6;">'
+        'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;line-height:1.6;">'
         f"{_text(message)}</td></tr></table>"
     )
 
@@ -185,14 +166,14 @@ def render_branded_email(
     greeting = ""
     if recipient_name is not None:
         greeting = (
-            '<p style="margin:0 0 14px;color:#111a2c;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;'
+            '<p style="margin:0 0 14px;color:#111a2c;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;'
             'font-size:16px;line-height:1.65;">Xin chào '
             f"<strong>{_text(recipient_name or 'bạn')}</strong>,</p>"
         )
     lead_html = ""
     if str(lead or "").strip():
         lead_html = (
-            '<p style="margin:0 0 18px;color:#111a2c;font-family:Plus Jakarta Sans,Segoe UI,Arial,Helvetica,sans-serif;'
+            '<p style="margin:0 0 18px;color:#111a2c;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;'
             'font-size:17px;font-weight:600;line-height:1.65;">'
             f"{_text(lead)}</p>"
         )
@@ -204,7 +185,6 @@ def render_branded_email(
         else "BiddingFlow"
     )
     preview = preheader or lead or title
-    font_face_css = _font_face_css()
     return f"""<!doctype html>
 <html lang="vi">
 <head>
@@ -214,7 +194,6 @@ def render_branded_email(
   <meta name="supported-color-schemes" content="light">
   <title>{_text(title)}</title>
   <style>
-    {font_face_css}
     @media screen and (max-width:640px) {{
       .bf-email-shell {{ width:100% !important; }}
       .bf-email-pad {{ padding-left:20px !important; padding-right:20px !important; }}
@@ -222,14 +201,14 @@ def render_branded_email(
     }}
   </style>
 </head>
-<body style="margin:0;padding:0;background:{CANVAS_COLOR};color:{INK_COLOR};font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;">
+<body style="margin:0;padding:0;background:{CANVAS_COLOR};color:{INK_COLOR};font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
   <div class="email-preheader" style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
     {_text(preview)}
   </div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="{CANVAS_COLOR}" style="width:100%;background:{CANVAS_COLOR};border-collapse:collapse;">
     <tr><td align="center" style="padding:30px 12px;">
       <table role="presentation" class="bf-email-shell" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;border-collapse:separate;">
-        <tr><td style="padding:0 8px 14px;color:#6b7890;font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;line-height:1.5;text-align:center;">
+        <tr><td style="padding:0 8px 14px;color:#6b7890;font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;line-height:1.5;text-align:center;">
           Email tự động từ hệ thống quản lý đấu thầu BiddingFlow
         </td></tr>
         <tr><td style="border:1px solid {LINE_COLOR};border-radius:16px;background:#ffffff;box-shadow:0 12px 36px rgba(35,57,91,.09);overflow:hidden;">
@@ -238,27 +217,27 @@ def render_branded_email(
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
                 <tr>
                   <td width="48" valign="middle">
-                    <div style="width:42px;height:42px;border-radius:11px;background:{BRAND_COLOR};color:#ffffff;font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:16px;font-weight:800;line-height:42px;text-align:center;">BF</div>
+                    <img src="cid:{EMAIL_BRAND_CONTENT_ID}" alt="" width="42" height="42" style="display:block;width:42px;height:42px;border:0;border-radius:11px;">
                   </td>
                   <td valign="middle" style="padding-left:10px;">
-                    <div style="color:{INK_COLOR};font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;letter-spacing:-.2px;">{BRAND_NAME}</div>
-                    <div style="margin-top:2px;color:{MUTED_COLOR};font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:.45px;text-transform:uppercase;">Hệ thống quản lý đấu thầu</div>
+                    <div style="color:{INK_COLOR};font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;letter-spacing:-.2px;">{BRAND_NAME}</div>
+                    <div style="margin-top:2px;color:{MUTED_COLOR};font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:.45px;text-transform:uppercase;">Hệ thống quản lý đấu thầu</div>
                   </td>
                 </tr>
               </table>
             </td></tr>
             <tr><td height="4" style="height:4px;background:{ACCENT_COLOR};font-size:0;line-height:0;">&nbsp;</td></tr>
             <tr><td class="bf-email-pad" style="padding:34px 40px 30px;background:#ffffff;">
-              <div style="margin:0 0 9px;color:{BRAND_COLOR};font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;font-weight:800;letter-spacing:1.25px;text-transform:uppercase;">{_text(eyebrow)}</div>
-              <h1 class="bf-email-title" style="margin:0 0 22px;color:{INK_COLOR};font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:29px;font-weight:800;line-height:1.25;letter-spacing:-.55px;">{_text(title)}</h1>
+              <div style="margin:0 0 9px;color:{BRAND_COLOR};font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.25px;text-transform:uppercase;">{_text(eyebrow)}</div>
+              <h1 class="bf-email-title" style="margin:0 0 22px;color:{INK_COLOR};font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:29px;font-weight:700;line-height:1.3;letter-spacing:-.4px;">{_text(title)}</h1>
               {greeting}{lead_html}{_paragraphs(paragraphs)}{_details_table(details)}{_code_panel(code, code_label)}{_action_button(action_label, action_url)}{_notice_panel(notice, notice_tone)}
-              <p style="margin:24px 0 0;padding-top:20px;border-top:1px solid {LINE_COLOR};color:#6b7890;font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-height:1.65;">
+              <p style="margin:24px 0 0;padding-top:20px;border-top:1px solid {LINE_COLOR};color:#6b7890;font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-height:1.65;">
                 Trân trọng,<br><strong style="color:{INK_COLOR};">Đội ngũ BiddingFlow</strong>
               </p>
             </td></tr>
           </table>
         </td></tr>
-        <tr><td style="padding:18px 24px 0;color:#718097;font-family:'Plus Jakarta Sans','Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;line-height:1.65;text-align:center;">
+        <tr><td style="padding:18px 24px 0;color:#718097;font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;line-height:1.65;text-align:center;">
           Đây là email tự động, vui lòng không trả lời trực tiếp.<br>{footer_link}
         </td></tr>
       </table>

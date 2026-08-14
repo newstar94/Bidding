@@ -44,6 +44,36 @@ try {
       }).map((element) => `${element.tagName.toLowerCase()}#${element.id}`);
       const submit = document.querySelector('#form-auth-login button[type="submit"]');
       const google = document.querySelector("#google-signin-btn-container");
+      let googleAlignment = null;
+      if (google) {
+        const originalChildren = [...google.childNodes];
+        const wrapper = document.createElement("div");
+        const inner = document.createElement("div");
+        const probe = document.createElement("iframe");
+        wrapper.className = "S9gUrf-YoZ4jf";
+        wrapper.style.position = "relative";
+        probe.style.cssText = "display:block;position:relative;top:0;left:0;height:44px;width:320px;border:0;margin:-2px -10px";
+        probe.tabIndex = -1;
+        inner.append(probe);
+        wrapper.append(inner);
+        google.replaceChildren(wrapper);
+        const containerRect = google.getBoundingClientRect();
+        const probeRect = wrapper.getBoundingClientRect();
+        const iframeRect = probe.getBoundingClientRect();
+        const iframeCssWidth = Number.parseFloat(getComputedStyle(probe).width) || iframeRect.width;
+        const iframeScale = iframeRect.width / iframeCssWidth;
+        googleAlignment = {
+          containerWidth: containerRect.width,
+          probeWidth: probeRect.width,
+          iframeWidth: iframeRect.width,
+          iframeOffset: iframeRect.left - containerRect.left,
+          centerDelta: Math.abs(
+            (containerRect.left + containerRect.width / 2)
+            - (iframeRect.left + ((10 + 150) * iframeScale)),
+          ),
+        };
+        google.replaceChildren(...originalChildren);
+      }
       return {
         viewport: [innerWidth, innerHeight],
         scrollWidth: document.documentElement.scrollWidth,
@@ -58,6 +88,7 @@ try {
           height: google.getBoundingClientRect().height,
           state: google.dataset.state || "",
         } : null,
+        googleAlignment,
       };
     });
     if (metrics.horizontalOverflow) throw new Error(`${viewport.name}: horizontal overflow ${JSON.stringify(metrics)}`);
@@ -74,6 +105,9 @@ try {
       && (!metrics.googleRect || metrics.googleRect.height < 40);
     if (!metrics.submitRect || metrics.submitRect.height < 40 || googleTargetTooSmall) {
       throw new Error(`${viewport.name}: touch targets too small ${JSON.stringify(metrics)}`);
+    }
+    if (!metrics.googleAlignment || metrics.googleAlignment.centerDelta > 1) {
+      throw new Error(`${viewport.name}: Google sign-in is not centered ${JSON.stringify(metrics.googleAlignment)}`);
     }
 
     await page.locator("#login-username").focus();
@@ -105,11 +139,6 @@ try {
     }
     const expectedNetworkConsole = consoleErrors.findIndex((message) => message.includes("ERR_INTERNET_DISCONNECTED"));
     if (expectedNetworkConsole >= 0) consoleErrors.splice(expectedNetworkConsole, 1);
-    for (let index = consoleErrors.length - 1; index >= 0; index -= 1) {
-      if (consoleErrors[index].includes("Applying inline style violates") && consoleErrors[index].includes("accounts.google.com")) {
-        consoleErrors.splice(index, 1);
-      }
-    }
     await page.unroute("**/api/auth/login");
     if (pageErrors.length || consoleErrors.length || httpErrors.length) {
       throw new Error(`${viewport.name}: runtime errors ${JSON.stringify({ pageErrors, consoleErrors, httpErrors })}`);

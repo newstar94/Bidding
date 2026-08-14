@@ -92,3 +92,4 @@ data/e2e-artifacts/
 .idea/
 .codex*
 .hallmark
+.env.before-staging

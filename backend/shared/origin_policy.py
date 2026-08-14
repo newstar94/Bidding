@@ -39,6 +39,19 @@ def normalize_http_origin(value, *, allow_path=False):
 
 def get_allowed_http_origins(environ=None):
     environment = os.environ if environ is None else environ
+    explicitly_trusted = str(
+        environment.get("CSRF_TRUSTED_ORIGINS", "")
+    ).strip()
+    if explicitly_trusted:
+        return frozenset(
+            normalized
+            for normalized in (
+                normalize_http_origin(item)
+                for item in explicitly_trusted.split(",")
+            )
+            if normalized
+        )
+
     configured = normalize_http_origin(environment.get("APP_PUBLIC_URL"))
     if configured:
         return frozenset({configured})

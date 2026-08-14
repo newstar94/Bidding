@@ -95,6 +95,7 @@ export async function bootstrapLandingPage(session = { valid: false }) {
   if (!APP_DEBUG) await loadStyleOnce(LANDING_STYLESHEET_URL);
   document.body.classList.remove("bf-init-loading");
   document.body.classList.add("landing-ready");
+  document.body.removeAttribute("hidden");
   document.querySelectorAll("[data-landing-year]").forEach((node) => {
     node.textContent = String(new Date().getFullYear());
   });

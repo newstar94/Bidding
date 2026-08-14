@@ -2105,6 +2105,11 @@ button:disabled {
     width: 100%;
   }
 
+  .select-wrapper {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
   .table-actions-bar > *:last-child,
   .table-actions-bar > *:last-child .btn,
   .table-actions-bar > *:last-child .btn-excel-action {

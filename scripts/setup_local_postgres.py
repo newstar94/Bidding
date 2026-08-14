@@ -244,8 +244,10 @@ def should_auto_start_local_postgres(
     environ = os.environ if environ is None else environ
     environment = str(environ.get("APP_ENV", "development")).strip().casefold()
     configured = str(environ.get("DATABASE_AUTO_START_LOCAL", "")).strip().casefold()
-    enabled = configured in TRUE_VALUES if configured else environment in {"development", "dev"}
-    if not enabled or environment not in {"development", "dev"}:
+    development_environment = environment in {"development", "dev"}
+    managed_local_environment = development_environment or environment == "staging"
+    enabled = configured in TRUE_VALUES if configured else development_environment
+    if not enabled or not managed_local_environment:
         return False
     parsed = urlparse(str(environ.get("DATABASE_URL", "")).strip())
     try:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import hashlib
@@ -12,7 +13,10 @@ import smtplib
 import ssl
 
 from backend.shared.logging_utils import log_structured_event
-from backend.shared.email_templates import html_to_plain_text
+from backend.shared.email_templates import EMAIL_BRAND_CONTENT_ID, html_to_plain_text
+
+
+EMAIL_BRAND_ICON_PATH = Path(__file__).resolve().parents[2] / "views" / "assets" / "email-brand-icon.png"
 
 
 @dataclass(frozen=True)
@@ -134,13 +138,23 @@ def gui_email(email_nhan, tieu_de, noi_dung_html, sensitive_content=False):
         )
         return EmailDeliveryResult(False, "mock", "SMTP_NOT_CONFIGURED")
 
-    message = MIMEMultipart("alternative")
+    message = MIMEMultipart("related")
     message["From"] = configuration.sender
     message["To"] = recipient
     message["Subject"] = subject
     html_body = str(noi_dung_html)
-    message.attach(MIMEText(html_to_plain_text(html_body), "plain", "utf-8"))
-    message.attach(MIMEText(html_body, "html", "utf-8"))
+    alternatives = MIMEMultipart("alternative")
+    alternatives.attach(MIMEText(html_to_plain_text(html_body), "plain", "utf-8"))
+    alternatives.attach(MIMEText(html_body, "html", "utf-8"))
+    message.attach(alternatives)
+    brand_icon = MIMEImage(EMAIL_BRAND_ICON_PATH.read_bytes(), _subtype="png")
+    brand_icon.add_header("Content-ID", f"<{EMAIL_BRAND_CONTENT_ID}>")
+    brand_icon.add_header(
+        "Content-Disposition",
+        "inline",
+        filename="biddingflow-email-icon.png",
+    )
+    message.attach(brand_icon)
 
     try:
         context = _tls_context(configuration)

@@ -213,6 +213,11 @@ def compile_html(file_path):
             '\n',
             compiled
         )
+        compiled = re.sub(
+            r'\s*<link\s+rel="preload"\s+href="/vendor/fonts/plus-jakarta-sans-(?:latin|vietnamese)\.woff2"[^>]*>\s*',
+            '\n',
+            compiled,
+        )
         bundle_src = "/dist/assets/appbundle.js"
         bundle_is_content_hashed = False
         bundled_stylesheet = None
@@ -730,6 +735,7 @@ def _is_production_view_asset_allowed(path):
     return (
         normalized == "service-worker.js"
         or normalized == "assets/auth-procurement-visual-v2.webp"
+        or normalized == "assets/favicon.png"
         or (normalized.startswith("css/") and normalized.endswith(".css"))
         or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
         or (normalized.startswith("tabs/") and normalized.endswith(".html"))

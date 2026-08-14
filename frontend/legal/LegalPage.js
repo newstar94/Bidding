@@ -90,6 +90,7 @@ export async function bootstrapLegalPage() {
   if (!APP_DEBUG) await loadStyleOnce(LEGAL_STYLESHEET_URL);
   document.body.classList.remove("bf-init-loading");
   document.body.classList.add("legal-ready");
+  document.body.removeAttribute("hidden");
   document.querySelectorAll("[data-legal-year]").forEach((node) => {
     node.textContent = String(new Date().getFullYear());
   });

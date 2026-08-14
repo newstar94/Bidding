@@ -189,6 +189,8 @@ def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):
     index_path = views_directory / "index.html"
     index_path.write_text(
         """<html><head>
+<link rel="preload" href="/vendor/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/vendor/fonts/plus-jakarta-sans-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/base.css?v=2.0">
 <link rel="stylesheet" href="/css/runtime-styles.css?v=2.0" data-runtime-styles>
 </head><body><script type="module" src="/frontend/app/app.js?v=2.0"></script></body></html>
@@ -214,6 +216,8 @@ def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):
     assert 'data-runtime-styles' in compiled
     assert '/css/base.css' not in compiled
     assert '/css/runtime-styles.css' not in compiled
+    assert '/vendor/fonts/plus-jakarta-sans-latin.woff2' not in compiled
+    assert '/vendor/fonts/plus-jakarta-sans-vietnamese.woff2' not in compiled
 
 
 def test_frontend_prewarm_reads_only_manifest_assets_inside_dist(monkeypatch, tmp_path):

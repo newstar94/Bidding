@@ -2438,6 +2438,7 @@ table th {
   margin: 2px 0 4px;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 .google-signin-container > div {
   width: 100% !important;
@@ -2446,8 +2447,12 @@ table th {
 .google-signin-container iframe {
   box-sizing: border-box;
   display: block;
-  width: 100% !important;
-  max-width: 100%;
+  flex: 0 0 320px;
+  width: 320px !important;
+  max-width: none;
+  margin: -2px 0 !important;
+  left: 50% !important;
+  transform: translateX(-50%);
   border: 0 !important;
   box-shadow: none;
 }

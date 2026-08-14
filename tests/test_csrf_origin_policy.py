@@ -17,8 +17,16 @@ async def _mutate(_request):
     return JSONResponse({"ok": True})
 
 
-def _client(monkeypatch, public_url="https://biddingflow.example"):
+def _client(
+    monkeypatch,
+    public_url="https://biddingflow.example",
+    trusted_origins=None,
+):
     monkeypatch.setenv("APP_PUBLIC_URL", public_url)
+    if trusted_origins is None:
+        monkeypatch.delenv("CSRF_TRUSTED_ORIGINS", raising=False)
+    else:
+        monkeypatch.setenv("CSRF_TRUSTED_ORIGINS", trusted_origins)
     app = Starlette(
         routes=[Route("/api/data", _mutate, methods=["POST"])],
         middleware=[Middleware(CSRFMiddleware)],
@@ -73,6 +81,23 @@ def test_authenticated_mutation_uses_configured_origin_not_spoofed_host(monkeypa
         host="attacker.example",
     )
     assert response.status_code == 200
+
+
+def test_staging_can_explicitly_trust_local_comparison_origins(monkeypatch):
+    client = _client(
+        monkeypatch,
+        trusted_origins=(
+            "https://biddingflow.example,"
+            "http://127.0.0.1:8000,"
+            "http://localhost:8000"
+        ),
+    )
+
+    assert _request(
+        client,
+        origin="http://127.0.0.1:8000",
+        host="127.0.0.1:8000",
+    ).status_code == 200
 
 
 def test_origin_rejects_scheme_subdomain_suffix_and_port_mismatch(monkeypatch):
