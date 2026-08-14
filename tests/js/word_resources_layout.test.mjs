@@ -7,16 +7,28 @@ import { chromium } from "playwright";
 
 const viewsStylesheet = fileURLToPath(new URL("../../views/css/views.css", import.meta.url));
 const wordTemplatesView = fileURLToPath(new URL("../../views/tabs/tab_bieumau.html", import.meta.url));
+const wordIntegrationSource = fileURLToPath(new URL("../../frontend/documents/WordIntegration.js", import.meta.url));
 
 test("Word template manager uses an add button without seeded default rows", async () => {
   const html = await readFile(wordTemplatesView, "utf8");
 
   assert.match(html, /id="word-template-add-button"/);
+  assert.match(html, /id="word-file-input"[^>]*multiple/);
+  assert.match(html, /aria-label="Chọn một hoặc nhiều biểu mẫu Word để thêm"/);
   assert.match(html, /<th>File mẫu<\/th>/);
   assert.doesNotMatch(html, /id="word-drag-drop-zone"/);
   assert.doesNotMatch(html, /id="word-template-replace-input"/);
   assert.doesNotMatch(html, /Bản báo cáo đánh giá mặc định/);
   assert.doesNotMatch(html, /Mẫu hợp đồng kinh tế LCNT/);
+});
+
+test("Word template upload processes every selected file and refreshes once", async () => {
+  const source = await readFile(wordIntegrationSource, "utf8");
+
+  assert.match(source, /Array\.from\(e\.target\.files \|\| \[\]\)/);
+  assert.match(source, /handleWordTemplateBatchUpload\.call\(this, files\)/);
+  assert.match(source, /for \(const file of files\)/);
+  assert.match(source, /reload: false/);
 });
 
 test("Word dictionary and templates use one full-width column on desktop", async () => {

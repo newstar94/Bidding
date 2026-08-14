@@ -77,8 +77,12 @@ export function setupWordTemplatesEvents() {
   if (templateInput && !templateInput.dataset.wordUploadBound) {
     templateInput.dataset.wordUploadBound = "true";
     templateInput.addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (file) await this.handleWordTemplateUpload(file);
+      const files = Array.from(e.target.files || []).filter(Boolean);
+      if (files.length === 1) {
+        await this.handleWordTemplateUpload(files[0]);
+      } else if (files.length > 1) {
+        await handleWordTemplateBatchUpload.call(this, files);
+      }
       e.target.value = "";
     });
   }
@@ -1302,14 +1306,15 @@ async function showTemplateAccessDenied(controller) {
   );
 }
 
-export async function handleWordTemplateUpload(file) {
+export async function handleWordTemplateUpload(file, { notify = true, reload = true } = {}) {
   if (!canMutateWordTemplates(this)) {
-    await showTemplateAccessDenied(this);
-    return;
+    if (notify) await showTemplateAccessDenied(this);
+    return { success: false, error: "Từ chối truy cập" };
   }
   if (!file.name.toLowerCase().endsWith(".docx")) {
-    await this.view.customAlert("Lỗi định dạng", "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!", "alert-triangle");
-    return;
+    const error = "Hệ thống chỉ hỗ trợ biểu mẫu tệp tin Microsoft Word (.docx)!";
+    if (notify) await this.view.customAlert("Lỗi định dạng", error, "alert-triangle");
+    return { success: false, error };
   }
   const formData = new FormData();
   formData.append("file", file);
@@ -1320,14 +1325,41 @@ export async function handleWordTemplateUpload(file) {
     });
     const data = await res.json();
     if (res.ok) {
-      await this.view.customAlert("Thành công", "Đã thêm biểu mẫu Word thành công!", "check-circle");
-      await this.loadWordTemplates();
+      if (reload) await this.loadWordTemplates();
+      if (notify) await this.view.customAlert("Thành công", "Đã thêm biểu mẫu Word thành công!", "check-circle");
+      return { success: true, filename: data.filename || file.name };
     } else {
-      await this.view.customAlert("Thất bại", data.error || "Không thể tải lên biểu mẫu này.", "alert-triangle");
+      const error = data.error || "Không thể tải lên biểu mẫu này.";
+      if (notify) await this.view.customAlert("Thất bại", error, "alert-triangle");
+      return { success: false, error };
     }
   } catch (err) {
-    await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    const error = "Lỗi kết nối máy chủ: " + err.message;
+    if (notify) await this.view.customAlert("Lỗi hệ thống", error, "alert-triangle");
+    return { success: false, error };
   }
+}
+
+async function handleWordTemplateBatchUpload(files) {
+  if (!canMutateWordTemplates(this)) {
+    await showTemplateAccessDenied(this);
+    return [];
+  }
+  const results = [];
+  for (const file of files) {
+    results.push(await handleWordTemplateUpload.call(this, file, { notify: false, reload: false }));
+  }
+  const successful = results.filter((result) => result.success);
+  const failed = results.filter((result) => !result.success);
+  if (successful.length > 0) await this.loadWordTemplates();
+
+  const failureSummary = failed.length > 0
+    ? ` ${failed.length} tệp thất bại${failed[0].error ? `: ${failed[0].error}` : "."}`
+    : "";
+  const title = failed.length === 0 ? "Thành công" : "Hoàn tất tải lên";
+  const message = `Đã thêm ${successful.length}/${files.length} biểu mẫu Word.${failureSummary}`;
+  await this.view.customAlert(title, message, failed.length === 0 ? "check-circle" : "alert-triangle");
+  return results;
 }
 
 export async function handleWordTemplateReplace(
