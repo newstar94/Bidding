@@ -34,6 +34,7 @@ import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageG
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 import { presentStatus } from "./LifecyclePolicy.js";
+import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
 
 export function shouldCreatePackageVersion(previousPackage, nextPackage, sourceRevision = null) {
   const authoritative = sourceRevision?.provider === "MUASAMCONG";
@@ -141,22 +142,9 @@ export async function editGoiThau(id, isReadOnly = false) {
   const gt = storedPackage
     ? { ...storedPackage, trangThai: presentStatus(storedPackage.trangThai).label }
     : null;
-  const procurementLookupButton = document.getElementById(
-    "btn-open-procurement-lookup-package",
+  const procurementLookupEnabled = hasServerCapability(
+    PROCUREMENT_LOOKUP_CAPABILITY,
   );
-  if (procurementLookupButton) {
-    const lookupEnabled = hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY);
-    procurementLookupButton.hidden = isReadOnly || !lookupEnabled;
-    procurementLookupButton.onclick = isReadOnly || !lookupEnabled
-      ? null
-      : () => this.runProcurementInlineLookup?.({
-        kind: "PACKAGE",
-        formId: "form-goithau",
-        codeInputId: "gt-ma",
-        buttonId: "btn-open-procurement-lookup-package",
-        statusId: "procurement-lookup-package-status",
-      });
-  }
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
   const khSelect = document.getElementById("gt-kehoachid");
@@ -676,6 +664,41 @@ export async function editGoiThau(id, isReadOnly = false) {
     });
     setPackageSubTableActionsVisible(false);
   }
+  const procurementLookupCheckbox = document.getElementById(
+    "procurement-lookup-package-enabled",
+  );
+  const procurementLookupControl = document.getElementById(
+    "procurement-lookup-package-control",
+  );
+  const procurementLookupStatus = document.getElementById(
+    "procurement-lookup-package-status",
+  );
+  const canLookupProcurement = procurementLookupEnabled && !isReadOnly;
+  if (procurementLookupControl) {
+    procurementLookupControl.hidden = !canLookupProcurement;
+  }
+  if (procurementLookupCheckbox) {
+    procurementLookupCheckbox.checked = false;
+    procurementLookupCheckbox.disabled = !canLookupProcurement;
+  }
+  if (procurementLookupStatus) {
+    procurementLookupStatus.hidden = true;
+    procurementLookupStatus.textContent = "";
+    delete procurementLookupStatus.dataset.state;
+    procurementLookupStatus.setAttribute("aria-live", "polite");
+  }
+  bindProcurementCodeAutoLookup({
+    codeInput: document.getElementById("gt-ma"),
+    checkbox: procurementLookupCheckbox,
+    enabled: canLookupProcurement,
+    runLookup: () => this.runProcurementInlineLookup?.({
+      kind: "PACKAGE",
+      formId: "form-goithau",
+      codeInputId: "gt-ma",
+      triggerId: "procurement-lookup-package-enabled",
+      statusId: "procurement-lookup-package-status",
+    }),
+  });
   this.view.openModal("modal-goithau");
 }
 // eslint-disable-next-line complexity -- Legacy package persistence orchestration is isolated for a dedicated refactor.

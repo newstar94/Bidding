@@ -9,23 +9,31 @@
             <input type="hidden" id="form-goithau-id">
             <div class="modal-body">
                 <div class="form-grid">
-                    <div class="form-group">
-                        <label for="gt-ma">Mã thông báo mời thầu</label>
-                        <input type="text" id="gt-ma" placeholder="Nhập mã thông báo mời thầu">
-                        <button type="button" class="btn btn-outline package-notice-import-trigger" id="btn-open-procurement-lookup-package">
-                            Lấy dữ liệu từ Mua Sắm Công
-                        </button>
-                        <span class="procurement-inline-status" id="procurement-lookup-package-status"
-                            role="status" aria-live="polite" hidden></span>
-                        <span class="error-text">Vui lòng nhập mã thông báo mời thầu</span>
-                    </div>
-                    <div class="form-group">
-                        <label for="gt-kehoachid">Kế hoạch LCNT liên kết <span class="required">*</span></label>
-                        <select id="gt-kehoachid" required>
-                            <option value="">-- Chọn Kế hoạch --</option>
+                    <div class="package-identity-grid col-span-2">
+                        <div class="form-group">
+                            <label for="gt-ma">Mã thông báo mời thầu</label>
+                            <div class="procurement-code-input-row">
+                                <input type="text" id="gt-ma" placeholder="Nhập mã thông báo mời thầu"
+                                    aria-describedby="procurement-lookup-package-status">
+                                <label class="procurement-source-toggle" id="procurement-lookup-package-control"
+                                    for="procurement-lookup-package-enabled">
+                                    <input type="checkbox" id="procurement-lookup-package-enabled"
+                                        aria-describedby="procurement-lookup-package-status">
+                                    <span>Lấy từ MSC</span>
+                                </label>
+                            </div>
+                            <span class="procurement-inline-status" id="procurement-lookup-package-status"
+                                role="status" aria-live="polite" hidden></span>
+                            <span class="error-text">Vui lòng nhập mã thông báo mời thầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-kehoachid">Kế hoạch LCNT liên kết <span class="required">*</span></label>
+                            <select id="gt-kehoachid" required>
+                                <option value="">-- Chọn Kế hoạch --</option>
 
-                        </select>
-                        <span class="error-text">Vui lòng chọn Kế hoạch LCNT</span>
+                            </select>
+                            <span class="error-text">Vui lòng chọn Kế hoạch LCNT</span>
+                        </div>
                     </div>
                     <div class="form-group col-span-2">
                         <label for="gt-ten">Tên gói thầu <span class="required">*</span></label>

@@ -12,10 +12,16 @@
                     <div class="plan-identity-grid col-span-2">
                         <div class="form-group">
                             <label for="kh-ma">Mã kế hoạch</label>
-                            <input type="text" id="kh-ma" placeholder="Ví dụ: PL2600146586">
-                            <button type="button" class="btn btn-outline plan-procurement-import-trigger" id="btn-open-procurement-lookup-plan">
-                                Lấy dữ liệu từ Mua Sắm Công
-                            </button>
+                            <div class="procurement-code-input-row">
+                                <input type="text" id="kh-ma" placeholder="Ví dụ: PL2600146586"
+                                    aria-describedby="procurement-lookup-plan-status">
+                                <label class="procurement-source-toggle" id="procurement-lookup-plan-control"
+                                    for="procurement-lookup-plan-enabled">
+                                    <input type="checkbox" id="procurement-lookup-plan-enabled"
+                                        aria-describedby="procurement-lookup-plan-status">
+                                    <span>Lấy từ MSC</span>
+                                </label>
+                            </div>
                             <span class="procurement-inline-status" id="procurement-lookup-plan-status"
                                 role="status" aria-live="polite" hidden></span>
                             <span class="error-text">Mã kế hoạch đã tồn tại. Vui lòng nhập mã duy nhất!</span>

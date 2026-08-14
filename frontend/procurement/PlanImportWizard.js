@@ -542,7 +542,10 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     investorResolution,
   };
   rememberProcurementImportSession(controller, controller.procurementPlanImport);
-  await controller.plans.edit(materialized.plan.id);
+  await controller.plans.edit(materialized.plan.id, {
+    keepProcurementCodeEditable: true,
+    preserveProcurementLookupSelection: true,
+  });
   return materialized;
 }
 

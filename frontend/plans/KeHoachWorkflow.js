@@ -32,6 +32,7 @@ import {
   collectPlanBreakdownDraftChanges,
   isPlanBreakdownDraftActive,
 } from "./planBreakdownDraft.js";
+import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
 
 /**
  * Load every package attached to the given plan versions so reference guards
@@ -161,25 +162,24 @@ export async function handlePlanInvestorChange(event) {
   event.target.value = "";
   return this.partners.editInvestor(null);
 }
-export async function editKeHoach(id) {
+export async function editKeHoach(id, {
+  keepProcurementCodeEditable = false,
+  preserveProcurementLookupSelection = false,
+} = {}) {
   if (!document.getElementById("modal-kehoach")) {
     await this.ensureLazyModal?.("modal-kehoach");
   }
   const form = document.getElementById("form-kehoach");
-  const procurementLookupButton = document.getElementById("btn-open-procurement-lookup-plan");
-  if (procurementLookupButton) {
-    const lookupEnabled = hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY);
-    procurementLookupButton.hidden = !lookupEnabled;
-    procurementLookupButton.onclick = lookupEnabled
-      ? () => this.runProcurementInlineLookup?.({
-        kind: "PLAN",
-        formId: "form-kehoach",
-        codeInputId: "kh-ma",
-        buttonId: "btn-open-procurement-lookup-plan",
-        statusId: "procurement-lookup-plan-status",
-      })
-      : null;
-  }
+  const existingProcurementLookupCheckbox = document.getElementById(
+    "procurement-lookup-plan-enabled",
+  );
+  const procurementLookupState = {
+    checked: Boolean(existingProcurementLookupCheckbox?.checked),
+    disabled: Boolean(existingProcurementLookupCheckbox?.disabled),
+  };
+  const procurementLookupEnabled = hasServerCapability(
+    PROCUREMENT_LOOKUP_CAPABILITY,
+  );
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];
@@ -298,7 +298,10 @@ export async function editKeHoach(id) {
     document.getElementById("kh-ma").value = existingCode;
     const khMaInput = document.getElementById("kh-ma");
     if (khMaInput) {
-      if (existingCode && existingCode.trim() !== "" && kh.thoiGianDangMa) {
+      if (keepProcurementCodeEditable) {
+        khMaInput.disabled = false;
+        khMaInput.removeAttribute("readonly");
+      } else if (existingCode && existingCode.trim() !== "" && kh.thoiGianDangMa) {
         khMaInput.setAttribute("readonly", "true");
       } else {
         khMaInput.removeAttribute("readonly");
@@ -376,6 +379,44 @@ export async function editKeHoach(id) {
       khMaInput.removeAttribute("readonly");
     }
   }
+  const procurementLookupCheckbox = document.getElementById(
+    "procurement-lookup-plan-enabled",
+  );
+  const procurementLookupControl = document.getElementById(
+    "procurement-lookup-plan-control",
+  );
+  const procurementLookupStatus = document.getElementById(
+    "procurement-lookup-plan-status",
+  );
+  if (procurementLookupControl) {
+    procurementLookupControl.hidden = !procurementLookupEnabled;
+  }
+  if (procurementLookupCheckbox) {
+    procurementLookupCheckbox.checked = preserveProcurementLookupSelection
+      ? procurementLookupState.checked
+      : false;
+    procurementLookupCheckbox.disabled = preserveProcurementLookupSelection
+      ? procurementLookupState.disabled || !procurementLookupEnabled
+      : !procurementLookupEnabled;
+  }
+  if (procurementLookupStatus) {
+    procurementLookupStatus.hidden = true;
+    procurementLookupStatus.textContent = "";
+    delete procurementLookupStatus.dataset.state;
+    procurementLookupStatus.setAttribute("aria-live", "polite");
+  }
+  bindProcurementCodeAutoLookup({
+    codeInput: document.getElementById("kh-ma"),
+    checkbox: procurementLookupCheckbox,
+    enabled: procurementLookupEnabled,
+    runLookup: () => this.runProcurementInlineLookup?.({
+      kind: "PLAN",
+      formId: "form-kehoach",
+      codeInputId: "kh-ma",
+      triggerId: "procurement-lookup-plan-enabled",
+      statusId: "procurement-lookup-plan-status",
+    }),
+  });
   lucide.createIcons();
   this.view.openModal("modal-kehoach");
   const addWorkingDays = (startDateStr, days) => {

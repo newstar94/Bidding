@@ -749,6 +749,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
   const firstDraft = await sequential.loadCurrent();
   const persistedRevisions = [];
   const packageModalEdits = [];
+  const planModalEditOptions = [];
   const state = {
     chudautu: [{
       id: "investor-1", rootId: "investor-1", maChuDauTu: "vn123456789",
@@ -785,7 +786,8 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
       customConfirm: async () => true, customAlert: async () => {},
     },
     plans: {
-      edit: async (id) => {
+      edit: async (id, options) => {
+        planModalEditOptions.push(options);
         const plan = state.kehoach.find((row) => row.id === id);
         controls.get("form-kehoach-id").value = id;
         fillPlanFormFromProcurementDraft(globalThis.document, plan, model);
@@ -827,6 +829,10 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
       },
       controller: sequential, currentDraft: firstDraft,
       client: { cancelImportSession: async () => {} },
+    });
+    assert.deepEqual(planModalEditOptions[0], {
+      keepProcurementCodeEditable: true,
+      preserveProcurementLookupSelection: true,
     });
     await controller.handleKeHoachSubmit({ preventDefault() {} });
     const plan00 = state.kehoach.find((row) => row.phienBan === "00");

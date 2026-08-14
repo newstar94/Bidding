@@ -1027,8 +1027,20 @@
   min-width: 0;
 }
 .plan-identity-grid {
+  --identity-control-height: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 9fr);
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  align-items: start;
+  gap: 20px;
+  width: 100%;
+  min-width: 0;
+}
+.package-identity-grid {
+  --identity-control-height: 44px;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: start;
   gap: 20px;
   width: 100%;
   min-width: 0;
@@ -1093,7 +1105,8 @@
 }
 @media (max-width: 768px) {
   .plan-identity-grid,
-  .plan-identity-grid.is-budget {
+  .plan-identity-grid.is-budget,
+  .package-identity-grid {
     grid-template-columns: minmax(0, 1fr);
   }
   .entity-name-date-grid,
@@ -3004,11 +3017,75 @@ body.excel-import-is-busy {
     transform: none;
   }
 }
-.plan-procurement-import-trigger,
-.package-notice-import-trigger {
-    align-self: flex-start;
-    min-height: 44px;
-    margin-top: 0.45rem;
+.procurement-code-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.procurement-code-input-row > input,
+.plan-identity-grid > .form-group > input,
+.package-identity-grid .bf-combobox,
+.package-identity-grid .bf-combobox-input,
+.package-identity-grid .bf-combobox-toggle,
+.procurement-source-toggle {
+    height: var(--identity-control-height);
+    min-height: var(--identity-control-height);
+}
+
+.form-group .procurement-source-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    align-self: stretch;
+    min-width: 10.5rem;
+    margin: 0;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--neutral-soft);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.procurement-source-toggle[hidden] {
+    display: none;
+}
+
+.procurement-source-toggle:has(input:checked) {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.procurement-source-toggle:has(input:focus-visible) {
+    outline: var(--focus-ring-width) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+}
+
+.procurement-source-toggle:has(input:disabled) {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+@media (max-width: 420px) {
+    .procurement-code-input-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .procurement-source-toggle {
+        justify-self: stretch;
+        min-width: 0;
+    }
 }
 
 .procurement-inline-status {

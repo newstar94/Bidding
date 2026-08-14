@@ -26,6 +26,12 @@ function formIdentity(form) {
 
 function setButtonLoading(button, loading) {
   if (!button) return;
+  if (button.type === "checkbox") {
+    button.disabled = loading;
+    if (loading) button.setAttribute("aria-busy", "true");
+    else button.removeAttribute("aria-busy");
+    return;
+  }
   if (!button.dataset.defaultLabel) {
     button.dataset.defaultLabel = String(button.textContent || "").trim();
   }
@@ -62,11 +68,11 @@ export class ProcurementInlineLookup {
     status.setAttribute("aria-live", state === "error" ? "assertive" : "polite");
   }
 
-  async run({ kind, formId, codeInputId, buttonId, statusId }) {
+  async run({ kind, formId, codeInputId, triggerId, buttonId, statusId }) {
     const normalizedKind = String(kind || "").toUpperCase();
     const form = this.document.getElementById(formId);
     const codeInput = this.document.getElementById(codeInputId);
-    const button = this.document.getElementById(buttonId);
+    const button = this.document.getElementById(triggerId || buttonId);
     const status = this.document.getElementById(statusId);
     const code = String(codeInput?.value || "").trim().toUpperCase();
     const expectedPrefix = normalizedKind === "PLAN" ? "PL" : "IB";

@@ -60,7 +60,8 @@ test("package modal keeps IB enrichment inline while legacy wizard remains non-p
   const controller = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
   const workflows = fs.readFileSync("frontend/packages/BiddingWorkflows.js", "utf8");
 
-  assert.match(packageModal, /id="btn-open-procurement-lookup-package"/);
+  assert.match(packageModal, /id="procurement-lookup-package-enabled"/);
+  assert.doesNotMatch(packageModal, /id="btn-open-procurement-lookup-package"/);
   assert.doesNotMatch(packageModal, /id="btn-open-procurement-notice-import"/);
   assert.match(noticeModal, /id="modal-procurement-notice-import"/);
   assert.match(noticeModal, /aria-live="polite"/);

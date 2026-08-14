@@ -12,6 +12,7 @@ import {
   ProcurementInlineLookup,
   startProcurementPackageImport,
 } from "../../frontend/procurement/ProcurementInlineLookup.js";
+import { bindProcurementCodeAutoLookup } from "../../frontend/procurement/ProcurementAutoLookup.js";
 import {
   hasServerCapability,
   invalidateServerCapabilities,
@@ -115,6 +116,68 @@ test("legacy import controls require their own server capability", () => {
   assert.equal(hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY), false);
   assert.equal(hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY), true);
   invalidateServerCapabilities();
+});
+
+
+test("MSC checkbox looks up after code entry without duplicate blur requests", async () => {
+  const codeInput = Object.assign(new EventTarget(), { value: "" });
+  const checkbox = Object.assign(new EventTarget(), {
+    checked: false,
+    disabled: false,
+  });
+  const calls = [];
+  let resolveLookup;
+  bindProcurementCodeAutoLookup({
+    codeInput,
+    checkbox,
+    runLookup: () => {
+      calls.push(codeInput.value);
+      return new Promise((resolve) => { resolveLookup = resolve; });
+    },
+  });
+
+  codeInput.value = "PL2600000001";
+  codeInput.dispatchEvent(new Event("blur"));
+  assert.deepEqual(calls, []);
+
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new Event("change"));
+  codeInput.dispatchEvent(new Event("change"));
+  codeInput.dispatchEvent(new Event("blur"));
+  assert.deepEqual(calls, ["PL2600000001"]);
+
+  resolveLookup({ applied: true });
+  await Promise.resolve();
+  await Promise.resolve();
+  codeInput.dispatchEvent(new Event("blur"));
+  assert.deepEqual(calls, ["PL2600000001"]);
+});
+
+
+test("failed MSC auto lookup can retry the same code", async () => {
+  const codeInput = Object.assign(new EventTarget(), { value: "IB2600000001" });
+  const checkbox = Object.assign(new EventTarget(), {
+    checked: true,
+    disabled: false,
+  });
+  let calls = 0;
+  bindProcurementCodeAutoLookup({
+    codeInput,
+    checkbox,
+    runLookup: async () => {
+      calls += 1;
+      return null;
+    },
+  });
+
+  codeInput.dispatchEvent(new Event("change"));
+  await Promise.resolve();
+  await Promise.resolve();
+  codeInput.dispatchEvent(new Event("blur"));
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(calls, 2);
 });
 
 
@@ -683,8 +746,11 @@ test("plan and package forms expose inline lookup without a comparison modal", (
   const controller = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
   const workflows = fs.readFileSync("frontend/packages/BiddingWorkflows.js", "utf8");
   const planWorkflow = fs.readFileSync("frontend/plans/KeHoachWorkflow.js", "utf8");
+  const componentStyles = fs.readFileSync("views/css/components.css", "utf8");
 
-  assert.match(planModal, /id="btn-open-procurement-lookup-plan"/);
+  assert.match(planModal, /id="procurement-lookup-plan-enabled"/);
+  assert.match(planModal, /<span>Lấy từ MSC<\/span>/);
+  assert.doesNotMatch(planModal, /id="btn-open-procurement-lookup-plan"/);
   assert.doesNotMatch(planModal, /id="btn-open-procurement-import"/);
   assert.match(planModal, /id="procurement-lookup-plan-status"/);
   assert.match(
@@ -695,17 +761,37 @@ test("plan and package forms expose inline lookup without a comparison modal", (
     planWorkflow,
     /getElementById\("kh-pheduyet"\)\.value = "Dự toán và kế hoạch"/,
   );
-  assert.match(packageModal, /id="btn-open-procurement-lookup-package"/);
+  assert.match(packageModal, /id="procurement-lookup-package-enabled"/);
+  assert.match(packageModal, /class="package-identity-grid col-span-2"/);
+  assert.match(packageModal, /<span>Lấy từ MSC<\/span>/);
+  assert.doesNotMatch(packageModal, /id="btn-open-procurement-lookup-package"/);
   assert.doesNotMatch(packageModal, /id="btn-open-procurement-notice-import"/);
   assert.match(packageModal, /id="procurement-lookup-package-status"/);
   assert.doesNotMatch(controller, /"modal-procurement-lookup"/);
   assert.match(workflows, /ProcurementInlineLookup\.js/);
   assert.match(
     planWorkflow,
-    /hasServerCapability\(PROCUREMENT_LOOKUP_CAPABILITY\)/,
+    /hasServerCapability\(\s*PROCUREMENT_LOOKUP_CAPABILITY/,
   );
   assert.match(
     fs.readFileSync("frontend/packages/GoiThauWorkflow.js", "utf8"),
-    /hasServerCapability\(PROCUREMENT_LOOKUP_CAPABILITY\)/,
+    /hasServerCapability\(\s*PROCUREMENT_LOOKUP_CAPABILITY/,
+  );
+  assert.match(
+    componentStyles,
+    /\.plan-identity-grid\s*{[^}]*minmax\(0, 4fr\) minmax\(0, 8fr\)/s,
+  );
+  assert.match(
+    componentStyles,
+    /\.package-identity-grid\s*{[^}]*minmax\(0, 5fr\) minmax\(0, 7fr\)/s,
+  );
+  assert.match(
+    componentStyles,
+    /\.procurement-code-input-row\s*{[^}]*align-items:\s*stretch/s,
+  );
+  assert.match(componentStyles, /--identity-control-height:\s*44px/);
+  assert.match(
+    componentStyles,
+    /\.package-identity-grid \.bf-combobox-input,[^}]*height:\s*var\(--identity-control-height\)/s,
   );
 });
