@@ -23,7 +23,7 @@ test("Google sign-in area is prominent while its icon remains constrained", () =
   assert.doesNotMatch(controller, /measuredWidth|googleButtonWidth/u);
   assert.match(controller, /renderButton\(container,[\s\S]*width:\s*300,/u);
   assert.doesNotMatch(qualityCheck, /Applying inline style violates/u);
-  assert.match(indexMarkup, /google-center-v2-20260814/u);
+  assert.match(indexMarkup, /google-center-v3-20260815/u);
 });
 
 test("Google sign-in keeps its launch button visible while the identity client preloads", () => {
@@ -34,4 +34,13 @@ test("Google sign-in keeps its launch button visible while the identity client p
   assert.match(controller, /showGoogleSignInState\("", "idle"\)/u);
   assert.match(controller, /google\.accounts\.id\.prompt|google\?\.accounts\?\.id\?\.prompt/u);
   assert.match(css, /\.google-signin-launch\s*\{/u);
+});
+
+test("Google sign-in surface is not clipped by its host container", () => {
+  const css = fs.readFileSync("views/css/views.css", "utf8");
+  const containerRule = css.match(/\.google-signin-container\s*\{([^}]*)\}/u)?.[1] || "";
+  const iframeRule = css.match(/\.google-signin-container iframe\s*\{([^}]*)\}/u)?.[1] || "";
+  assert.match(containerRule, /overflow:\s*visible/u);
+  assert.doesNotMatch(containerRule, /overflow:\s*hidden/u);
+  assert.match(iframeRule, /margin:\s*0\s*!important/u);
 });
