@@ -27,6 +27,18 @@ function mapLots(lots) {
   }));
 }
 
+function mapAdditionalPurchaseItems(items, createId) {
+  return (Array.isArray(items) ? items : []).map((item) => ({
+    id: createId("tuychonmuathem"),
+    sourceItemId: item?.sourceItemId || item?.id || null,
+    hangMuc: item?.hangMuc || item?.name || "",
+    donVi: item?.donVi || item?.unit || "",
+    soLuong: item?.soLuong ?? item?.quantity ?? null,
+    tyLe: item?.tyLe ?? item?.percentage ?? item?.percent ?? null,
+    giaTriUocTinh: item?.giaTriUocTinh ?? item?.estimateValueVnd ?? item?.price ?? 0,
+  }));
+}
+
 export function biddingPackageStatus(value) {
   return presentStatus(value).label;
 }
@@ -62,6 +74,10 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
       tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
       phanLo: yesNo(sourcePackage.phanLo),
       phanLoList: lots,
+      tuyChonMuaThemList: mapAdditionalPurchaseItems(
+        sourcePackage.tuyChonMuaThemList,
+        createId,
+      ),
       giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
     }, { id: packageId, timestamp });
     packageRecord.phienBan = sourcePackageVersion(sourcePackage);
@@ -91,6 +107,104 @@ function sourcePackageVersion(source, fallback = "00") {
   const text = String(value ?? "").trim();
   if (/^\d+$/.test(text)) return text.padStart(2, "0");
   return source ? "00" : String(fallback || "00");
+}
+
+export function procurementRevisionNumbersEqual(left, right) {
+  const normalize = (value) => {
+    const text = String(value ?? "").trim();
+    return /^\d+$/.test(text) ? String(Number.parseInt(text, 10)) : text;
+  };
+  return normalize(left) === normalize(right);
+}
+
+export function materializeProcurementRevisionIntoExisting(
+  state,
+  existingPlanId,
+  revisionDraft,
+  { createId = generateRecordId, timestamp = new Date().toISOString() } = {},
+) {
+  const plan = (state.kehoach || []).find(
+    (candidate) => String(candidate?.id) === String(existingPlanId),
+  );
+  if (!plan) throw new Error("PROCUREMENT_SOURCE_VERSION_CONFLICT");
+  const revisionNumber = String(revisionDraft?.revisionNumber || "");
+  if (!procurementRevisionNumbersEqual(plan.phienBan, revisionNumber)) {
+    throw new Error("PROCUREMENT_SOURCE_VERSION_CONFLICT");
+  }
+
+  const draft = capturePlanBreakdownDraft(state, {
+    planId: existingPlanId,
+    action: "create",
+  });
+  const rowVersion = plan.rowVersion;
+  Object.assign(plan, revisionDraft?.planDraft || {}, {
+    id: plan.id,
+    rootId: plan.rootId || plan.id,
+    phienBan: revisionNumber,
+    isLatest: 1,
+    rowVersion,
+    updatedAt: timestamp,
+    _procurementImportCurrent: true,
+  });
+
+  const existingPackages = (state.goithau || []).filter(
+    (pkg) => String(pkg?.keHoachId || "") === String(plan.id),
+  );
+  const existingByIdentity = new Map(
+    existingPackages.map((pkg) => [sourcePackageIdentity(pkg), pkg]),
+  );
+  const packages = (revisionDraft?.packageDrafts || []).map((sourcePackage) => {
+    const identity = sourcePackageIdentity(sourcePackage);
+    const existing = identity ? existingByIdentity.get(identity) : null;
+    if (!existing) {
+      const packageId = createId("goithau");
+      const created = createInitialVersion({
+        ...sourcePackage,
+        id: packageId,
+        keHoachId: plan.id,
+        phienBan: sourcePackageVersion(sourcePackage),
+        trangThai: biddingPackageStatus(sourcePackage.trangThai),
+        tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
+        phanLo: yesNo(sourcePackage.phanLo),
+        phanLoList: mapLots(sourcePackage.danhSachPhanLo),
+        tuyChonMuaThemList: mapAdditionalPurchaseItems(
+          sourcePackage.tuyChonMuaThemList,
+          createId,
+        ),
+        isThuoc: sourceBoolean(sourcePackage.goiThauThuoc) === true ? 1 : 0,
+        giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
+      }, { id: packageId, timestamp });
+      created.phienBan = sourcePackageVersion(sourcePackage);
+      created._procurementImportCurrent = true;
+      state.goithau.push(created);
+      return created;
+    }
+    const existingRowVersion = existing.rowVersion;
+    Object.assign(existing, sourcePackage, {
+      id: existing.id,
+      rootId: existing.rootId || existing.id,
+      keHoachId: plan.id,
+      phienBan: sourcePackageVersion(sourcePackage, existing.phienBan),
+      isLatest: 1,
+      rowVersion: existingRowVersion,
+      updatedAt: timestamp,
+      trangThai: biddingPackageStatus(sourcePackage.trangThai),
+      tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
+      phanLo: yesNo(sourcePackage.phanLo),
+      phanLoList: mapLots(sourcePackage.danhSachPhanLo),
+      tuyChonMuaThemList: mapAdditionalPurchaseItems(
+        sourcePackage.tuyChonMuaThemList,
+        createId,
+      ),
+      isThuoc: sourceBoolean(sourcePackage.goiThauThuoc) === true ? 1 : 0,
+      giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
+      _procurementImportCurrent: true,
+    });
+    existingByIdentity.delete(identity);
+    return existing;
+  });
+  draft.planId = plan.id;
+  return { draft, plan, packages };
 }
 
 function removeSnapshotPackages(state, aggregate, packageIds) {
@@ -189,6 +303,9 @@ export function materializeProcurementRevisionFromPrevious(
       phanLoList: Array.isArray(source.danhSachPhanLo)
         ? mapLots(source.danhSachPhanLo)
         : packageRecord.phanLoList,
+      tuyChonMuaThemList: Array.isArray(source.tuyChonMuaThemList)
+        ? mapAdditionalPurchaseItems(source.tuyChonMuaThemList, createId)
+        : packageRecord.tuyChonMuaThemList,
       isThuoc: sourceBoolean(source.goiThauThuoc) === true
         ? 1
         : packageRecord.isThuoc,
@@ -215,6 +332,10 @@ export function materializeProcurementRevisionFromPrevious(
       tuyChonMuaThem: yesNo(source.tuyChonMuaThem),
       phanLo: yesNo(source.phanLo),
       phanLoList: mapLots(source.danhSachPhanLo),
+      tuyChonMuaThemList: mapAdditionalPurchaseItems(
+        source.tuyChonMuaThemList,
+        createId,
+      ),
       isThuoc: sourceBoolean(source.goiThauThuoc) === true ? 1 : 0,
       giaTriDamBaoDuThau: source.giaTriBaoDamDuThau ?? 0,
     }, { id: packageId, timestamp });

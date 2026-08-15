@@ -134,8 +134,23 @@ def test_procurement_code_normalization_separates_base_and_requested_revision():
                 "name": "Gói A", "priceVnd": 1,
                 "executionPeriod": "30 ngày", "capitalDetail": "Ngân sách",
                 "selectionDuration": "30 ngày", "selectionStart": "2026-02",
+                "bidValidityDays": 90,
             },
             "INVITED",
+        ),
+        (
+            {
+                "noticeLink": {
+                    "state": "LINKED", "noticeNo": "IB2600000001",
+                    "kind": "TBMT", "noticeRevisionId": "notice-00",
+                    "noticeVersion": "00",
+                },
+                "noticeFields": {"status": "PUBLISHED"},
+                "name": "Gói A", "priceVnd": 1,
+                "executionPeriod": "30 ngày", "capitalDetail": "Ngân sách",
+                "selectionDuration": "30 ngày", "selectionStart": "2026-02",
+            },
+            "UNKNOWN",
         ),
         (
             {
@@ -827,9 +842,10 @@ def test_plan_linked_notice_uses_invitation_scope_and_caps_post_opening_data():
                     "bidClosingAt": "2026-08-03T13:00:00",
                     "bidOpeningAt": "2026-08-03T13:00:00",
                     "actualOpeningAt": "2026-08-03T13:08:42",
-                    "financialActualOpeningAt": "2026-08-03T16:20:00",
-                    "bidGuaranteeVnd": 52_183_040,
-                    "approvalDecisionNo": "123/QD-E-HSMT",
+                        "financialActualOpeningAt": "2026-08-03T16:20:00",
+                        "bidGuaranteeVnd": 52_183_040,
+                        "bidValidityDays": 90,
+                        "approvalDecisionNo": "123/QD-E-HSMT",
                     "approvalDecisionDate": "2026-07-15T00:00:00",
                     "opening": {"bidders": [{"code": "bidder-1"}]},
                     "result": {"status": "APPROVED"},
@@ -850,6 +866,7 @@ def test_plan_linked_notice_uses_invitation_scope_and_caps_post_opening_data():
     package = preview["packages"][0]
     effective = package["effectiveFields"]
     assert effective["lifecycleStatus"] == "INVITED"
+    assert effective["bidValidityDays"] == 90
     assert effective["bidGuaranteeVnd"] == 52_183_040
     assert effective["approvalDecisionNo"] == "123/QD-E-HSMT"
     assert effective["approvalDecisionDate"] == "2026-07-15T00:00:00"

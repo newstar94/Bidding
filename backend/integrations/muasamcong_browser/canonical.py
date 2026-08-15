@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import math
 from typing import Iterable
 
 from backend.procurement_import.source import ProcurementSourceError
@@ -86,6 +87,85 @@ def _money(value):
         if normalized.isdigit():
             return int(normalized)
     return None
+
+
+def _number(value):
+    """Return a finite source number without accepting boolean coercions."""
+
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return value if math.isfinite(value) else None
+    if isinstance(value, str):
+        normalized = value.strip().replace(" ", "").replace("%", "")
+        if not normalized:
+            return None
+        if "," in normalized and "." not in normalized:
+            normalized = normalized.replace(",", ".")
+        try:
+            parsed = float(normalized)
+        except ValueError:
+            return None
+        if not math.isfinite(parsed):
+            return None
+        return int(parsed) if parsed.is_integer() else parsed
+    return None
+
+
+def _positive_days(value):
+    parsed = _number(value)
+    if parsed is None or parsed <= 0 or int(parsed) != parsed:
+        return None
+    return int(parsed)
+
+
+def normalize_additional_purchase_items(row):
+    """Normalize MSC ``formValue`` rows while retaining source identity."""
+
+    value = pick(
+        row,
+        "formValue",
+        "additionalPurchaseItems",
+        "additionalChoiceList",
+        "additionalChoiseList",
+    )
+    for _ in range(2):
+        if not isinstance(value, str):
+            break
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+    if isinstance(value, dict):
+        value = pick(value, "items", "rows", "data", "value", default=[])
+    if not isinstance(value, list):
+        return []
+
+    result = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        normalized = {
+            "sourceItemId": str(pick(
+                item, "sourceItemId", "id", "itemId", default=""
+            ) or "") or None,
+            "name": pick(item, "name", "category", "hangMuc"),
+            "unit": pick(item, "unit", "donVi"),
+            "quantity": _number(pick(item, "quantity", "qty", "soLuong")),
+            "percentage": _number(pick(
+                item, "percentage", "percent", "tyLe"
+            )),
+            "estimateValueVnd": _money(pick(
+                item,
+                "estimateValueVnd",
+                "estimateValue",
+                "price",
+                "giaTriUocTinh",
+            )),
+        }
+        if any(value not in (None, "") for value in normalized.values()):
+            result.append(normalized)
+    return result
 
 
 def _period(row):
@@ -350,9 +430,13 @@ def normalize_plan_revision(
                 "isConcentrateShopping": map_optional_boolean(
                     pick(row, "isConcentrateShopping")
                 ),
-                "additionalPurchaseOption": pick(
+                "additionalPurchaseOption": map_optional_boolean(pick(
                     row, "additionalChoise", "additionalPurchaseOption"
-                ),
+                )),
+                "additionalPurchaseItems": normalize_additional_purchase_items(row),
+                "bidValidityDays": _positive_days(pick(
+                    row, "bidValidity", "bidValidityDays", "bidValidityNum"
+                )),
                 "expectedNotice": not linked,
                 "sourceStatus": source_status or None,
                 "noticeLink": {
@@ -556,6 +640,12 @@ def normalize_notice_revision(
         "processApply": process_apply,
         "additionalPurchaseOption": map_optional_boolean(related_pick(
             "additionalChoise", "additionalPurchaseOption"
+        )),
+        "additionalPurchaseItems": normalize_additional_purchase_items(
+            selection_row or notice
+        ),
+        "bidValidityDays": _positive_days(related_pick(
+            "bidValidity", "bidValidityDays", "bidValidityNum"
         )),
         "selectionDuration": str(related_pick(
             "bidTime", "selectionDuration", default=""
@@ -1087,6 +1177,15 @@ def normalize_notice_complete_bundle(bundle: dict):
                     "additionalChoise",
                     "additionalPurchaseOption",
                 )),
+                "additionalPurchaseItems": normalize_additional_purchase_items(
+                    plan_package
+                ),
+                "bidValidityDays": _positive_days(pick(
+                    plan_package,
+                    "bidValidity",
+                    "bidValidityDays",
+                    "bidValidityNum",
+                )),
                 "selectionDuration": str(pick(
                     plan_package,
                     "bidTime",
@@ -1200,7 +1299,8 @@ def normalize_notice_complete_bundle(bundle: dict):
             "sourceBidPriceVnd", "estimatePriceVnd",
             "executionPeriod", "contractType", "selectionMode",
             "isMedicinePackage", "isMultiLot", "lots",
-            "additionalPurchaseOption", "selectionDuration", "selectionStart",
+            "additionalPurchaseOption", "additionalPurchaseItems",
+            "bidValidityDays", "selectionDuration", "selectionStart",
             "linkedPlanRevisionId", "linkedPlanVersion",
             "approvalDecisionNo", "approvalDecisionDate", "actualOpeningAt",
             "financialActualOpeningAt",
@@ -1213,6 +1313,8 @@ def normalize_notice_complete_bundle(bundle: dict):
                     operation = tender_info_source.get("operation")
                 if field in {
                     "additionalPurchaseOption",
+                    "additionalPurchaseItems",
+                    "bidValidityDays",
                     "selectionDuration",
                     "selectionStart",
                 } and plan_package is not None:

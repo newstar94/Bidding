@@ -167,6 +167,17 @@ def derive_import_lifecycle_status(package: dict) -> str:
         for character in unicodedata.normalize("NFKD", source_status)
         if unicodedata.category(character) != "Mn"
     ).replace("Đ", "D")
+    selection_form = str(package.get("selectionForm") or "").strip()
+    direct_or_special = selection_form in {
+        "Chỉ định thầu rút gọn",
+        "Lựa chọn nhà thầu trong trường hợp đặc biệt",
+    }
+    bid_validity = package.get("bidValidityDays")
+    has_bid_validity = (
+        not isinstance(bid_validity, bool)
+        and isinstance(bid_validity, (int, float))
+        and bid_validity > 0
+    )
     if exact_tbmt and source_status_text in {"DANG XET THAU", "DANG CHAM THAU"}:
         return "EVALUATING"
     if exact_tbmt and status_for_notify == "DXT":
@@ -188,9 +199,18 @@ def derive_import_lifecycle_status(package: dict) -> str:
         "03": "CANCELLED",
     }
     mapped = status_mapping.get(source_status)
-    if exact_tbmt and mapped and (mapped != "INVITED" or complete):
+    if (
+        exact_tbmt
+        and mapped
+        and (mapped != "INVITED" or (complete and (direct_or_special or has_bid_validity)))
+    ):
         return mapped
-    if exact_tbmt and complete and source_status == "PUBLISHED":
+    if (
+        exact_tbmt
+        and complete
+        and source_status == "PUBLISHED"
+        and (direct_or_special or has_bid_validity)
+    ):
         return "INVITED"
     contrary = source_status in {
         "CANCELLED", "OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED",
@@ -227,6 +247,8 @@ SOURCE_OWNED_PACKAGE_FIELDS = (
     "isPrequalification",
     "isConcentrateShopping",
     "additionalPurchaseOption",
+    "additionalPurchaseItems",
+    "bidValidityDays",
     "bidGuaranteeVnd",
     "approvalDecisionNo",
     "approvalDecisionDate",

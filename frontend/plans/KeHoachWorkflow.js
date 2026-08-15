@@ -10,9 +10,9 @@ import {
   removeLatestVersion
 } from "../shared/VersionedEntityService.js";
 import {
+  mutatePersistAndSync,
   persistAndSync,
   refreshRecordBeforeDelete,
-  stageLocalRecords,
 } from "../shared/MutationService.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
@@ -1085,23 +1085,17 @@ export async function savePlanBreakdown() {
         || (assignment.type === "goithau" && inheritedPackageIds.has(String(assignment.targetId)))
       ));
     }
-    Object.entries(explicitChanges.upserts).forEach(([table, records]) => {
-      stageLocalRecords(this.model, table, records);
-    });
-    Object.entries(explicitChanges.deletions).forEach(([table, records]) => {
-      this.model.markDeleted?.(table, records);
-    });
   }
   const syncResult = officialVersionCommitted
     ? (await renderVersionTables(), { ok: true })
-    : await persistAndSync(this, [
-      ...new Set([
-        ...Object.keys(explicitChanges.upserts),
-        ...Object.keys(explicitChanges.deletions),
-      ]),
-    ], {
+    : await mutatePersistAndSync(this, explicitChanges, {
+      tableKeys: [
+        ...new Set([
+          ...Object.keys(explicitChanges.upserts),
+          ...Object.keys(explicitChanges.deletions),
+        ]),
+      ],
       afterPersist: renderVersionTables,
-      changes: explicitChanges,
     });
   if (!syncResult?.ok) return;
   this.backupKeHoachState = null;

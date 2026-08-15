@@ -82,6 +82,18 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
     price = effective.get("estimatePriceVnd")
     if price is None:
         price = effective.get("priceVnd")
+    additional_purchase_items = [
+        {
+            "sourceItemId": item.get("sourceItemId"),
+            "hangMuc": item.get("name") or "",
+            "donVi": item.get("unit") or "",
+            "soLuong": item.get("quantity"),
+            "tyLe": item.get("percentage"),
+            "giaTriUocTinh": item.get("estimateValueVnd"),
+        }
+        for item in (effective.get("additionalPurchaseItems") or [])
+        if isinstance(item, dict)
+    ]
     return {
         # MSC bidNo/symbol may be a BP... package number. Bidding's package
         # code is the IB... notice number only; an unlinked package has no
@@ -109,6 +121,8 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         "soTuyen": effective.get("isPrequalification"),
         "muaSamTapTrung": effective.get("isConcentrateShopping"),
         "tuyChonMuaThem": effective.get("additionalPurchaseOption"),
+        "tuyChonMuaThemList": additional_purchase_items,
+        "hieuLucHsdt": effective.get("bidValidityDays"),
         "giaTriBaoDamDuThau": effective.get("bidGuaranteeVnd"),
         "soQuyetDinh": effective.get("approvalDecisionNo") or "",
         "ngayQuyetDinh": effective.get("approvalDecisionDate") or "",

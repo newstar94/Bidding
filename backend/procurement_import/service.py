@@ -247,6 +247,8 @@ class ProcurementImportPreparer:
                 package["noticeFields"] = notice_fields
             for field in (
                 "bidGuaranteeVnd",
+                "bidValidityDays",
+                "additionalPurchaseItems",
                 "approvalDecisionNo",
                 "approvalDecisionDate",
             ):

@@ -305,6 +305,60 @@ test("validation rejection removes the rejected plan and every dependent record 
   });
 });
 
+test("pending duplicate plan version is merged into its authoritative row before sync", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "7",
+    createId: (() => {
+      let id = 0;
+      return () => `mutation-${++id}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  const state = {
+    kehoach: [
+      {
+        id: "plan-authoritative", rootId: "plan-family", phienBan: "00",
+        rowVersion: 3, tenKeHoach: "Server name",
+      },
+      {
+        id: "plan-duplicate", rootId: "plan-family", phienBan: 0,
+        tenKeHoach: "Imported draft", sourceRevision: { revisionId: "source-00" },
+      },
+    ],
+    goithau: [{
+      id: "package-pending", keHoachId: "plan-duplicate", tenGoiThau: "Gói mới",
+    }],
+  };
+  outbox.enqueue({
+    table: "kehoach",
+    kind: "upsert",
+    records: [state.kehoach[1]],
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: state.goithau,
+  });
+
+  const repair = outbox.repairDuplicatePlanVersions(state);
+  const queue = outbox.snapshot();
+
+  assert.deepEqual(repair.duplicatePlanIds, ["plan-duplicate"]);
+  assert.equal(state.kehoach.length, 1);
+  assert.equal(state.kehoach[0].id, "plan-authoritative");
+  assert.equal(state.kehoach[0].rowVersion, 3);
+  assert.equal(state.kehoach[0].tenKeHoach, "Imported draft");
+  assert.equal(state.goithau[0].keHoachId, "plan-authoritative");
+  assert.equal(queue.upserts.kehoach["plan-duplicate"], undefined);
+  assert.equal(queue.upserts.kehoach["plan-authoritative"].rowVersion, 3);
+  assert.equal(
+    queue.upserts.goithau["package-pending"].keHoachId,
+    "plan-authoritative",
+  );
+});
+
 test("pending package repairs a missing unsynced plan dependency before retry", () => {
   const outbox = new WorkspaceMutationOutbox({
     store: { persist() {}, async flush() {} },

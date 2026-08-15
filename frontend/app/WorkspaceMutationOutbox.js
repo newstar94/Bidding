@@ -71,6 +71,56 @@ function parentKeysForRecord(table, record) {
   return keys;
 }
 
+function planVersionKey(record) {
+  const rootId = String(record?.rootId || record?.id || "").trim();
+  const rawVersion = String(record?.phienBan ?? "").trim();
+  const version = /^\d+$/.test(rawVersion)
+    ? String(Number.parseInt(rawVersion, 10))
+    : rawVersion;
+  return rootId && version ? `${rootId}:${version}` : "";
+}
+
+const AUTHORITATIVE_PLAN_FIELDS = [
+  "id",
+  "rootId",
+  "phienBan",
+  "rowVersion",
+  "organizationId",
+  "ownerType",
+  "syncVersion",
+  "createdAt",
+  "archivedAt",
+];
+
+function mergePlanIntoAuthoritative(authoritative, pending) {
+  const merged = { ...authoritative, ...pending };
+  AUTHORITATIVE_PLAN_FIELDS.forEach((field) => {
+    if (authoritative[field] !== undefined) merged[field] = authoritative[field];
+    else delete merged[field];
+  });
+  merged.id = authoritative.id;
+  merged.rootId = authoritative.rootId || authoritative.id;
+  merged.rowVersion = authoritative.rowVersion;
+  return merged;
+}
+
+function repointPlanReference(table, record, fromId, toId) {
+  let changed = false;
+  if (["goithau", "hopdong"].includes(table) && String(record?.keHoachId || "") === fromId) {
+    record.keHoachId = toId;
+    changed = true;
+  }
+  if (
+    table === "assignments"
+    && String(record?.type || "") === "kehoach"
+    && String(record?.targetId || "") === fromId
+  ) {
+    record.targetId = toId;
+    changed = true;
+  }
+  return changed;
+}
+
 export class WorkspaceMutationOutbox {
   constructor({
     store,
@@ -171,6 +221,83 @@ export class WorkspaceMutationOutbox {
       normalizeRecord: this.serializeRecord,
       snapshot: receipt,
     });
+  }
+
+  repairDuplicatePlanVersions(state) {
+    const plans = Array.isArray(state?.kehoach) ? state.kehoach : [];
+    const queuedPlans = this.queue.upserts?.kehoach || {};
+    if (plans.length < 2 || Object.keys(queuedPlans).length === 0) return null;
+
+    const authoritativeByVersion = new Map();
+    plans.forEach((plan) => {
+      const key = planVersionKey(plan);
+      if (!key || !(Number(plan?.rowVersion) > 0)) return;
+      const current = authoritativeByVersion.get(key);
+      if (!current || Number(plan.rowVersion) > Number(current.rowVersion)) {
+        authoritativeByVersion.set(key, plan);
+      }
+    });
+
+    const duplicatePlanIds = [];
+    const authoritativePlans = new Map();
+    const repointedRecords = {};
+    Object.values(queuedPlans).forEach((pending) => {
+      const pendingId = String(pending?.id || "");
+      const key = planVersionKey(pending);
+      const authoritative = authoritativeByVersion.get(key);
+      if (
+        !pendingId
+        || !authoritative
+        || String(authoritative.id) === pendingId
+        || Number(pending?.rowVersion) > 0
+      ) return;
+
+      const authoritativeId = String(authoritative.id);
+      const localPlan = plans.find((plan) => String(plan?.id || "") === pendingId) || pending;
+      const merged = mergePlanIntoAuthoritative(authoritative, localPlan);
+      Object.assign(authoritative, merged);
+      authoritativePlans.set(authoritativeId, cloneValue(authoritative));
+      authoritativeByVersion.set(key, authoritative);
+      duplicatePlanIds.push(pendingId);
+
+      delete queuedPlans[pendingId];
+      this.recordGenerations.delete(recordKey("upsert", "kehoach", pendingId));
+      queuedPlans[authoritativeId] = cloneValue(
+        this.normalizeRecord(authoritative, "kehoach"),
+      );
+      this._bumpRecord("upsert", "kehoach", authoritativeId);
+
+      for (const table of ["goithau", "hopdong", "assignments"]) {
+        (state?.[table] || []).forEach((record) => {
+          if (!repointPlanReference(table, record, pendingId, authoritativeId)) return;
+          repointedRecords[table] ||= new Map();
+          repointedRecords[table].set(String(record.id), cloneValue(record));
+        });
+        Object.values(this.queue.upserts?.[table] || {}).forEach((record) => {
+          if (!repointPlanReference(table, record, pendingId, authoritativeId)) return;
+          this._bumpRecord("upsert", table, record.id);
+          repointedRecords[table] ||= new Map();
+          repointedRecords[table].set(String(record.id), cloneValue(record));
+        });
+      }
+    });
+
+    if (duplicatePlanIds.length === 0) return null;
+    const duplicates = new Set(duplicatePlanIds);
+    state.kehoach = plans.filter((plan) => !duplicates.has(String(plan?.id || "")));
+    if (Object.keys(queuedPlans).length === 0) delete this.queue.upserts.kehoach;
+    this._touchForNewPayload();
+    this._persist();
+    return {
+      duplicatePlanIds,
+      authoritativePlans: Array.from(authoritativePlans.values()),
+      repointedRecords: Object.fromEntries(
+        Object.entries(repointedRecords).map(([table, records]) => [
+          table,
+          Array.from(records.values()),
+        ]),
+      ),
+    };
   }
 
   _repairUnsyncedParentDependencies(state) {

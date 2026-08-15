@@ -818,6 +818,49 @@ export class BiddingModel {
   buildMutationSyncPayload() {
     return this._getMutationOutbox().snapshotForSync(this.state);
   }
+  repairPendingDuplicatePlanVersions() {
+    const outbox = this._getMutationOutbox();
+    const checkpoint = outbox.checkpoint();
+    const stateBefore = {
+      kehoach: structuredClone(this.state.kehoach || []),
+      goithau: structuredClone(this.state.goithau || []),
+      hopdong: structuredClone(this.state.hopdong || []),
+      assignments: structuredClone(this.state.assignments || []),
+    };
+    const repair = outbox.repairDuplicatePlanVersions(this.state);
+    if (!repair) return null;
+
+    const upserts = {
+      kehoach: repair.authoritativePlans,
+      ...repair.repointedRecords,
+    };
+    const persist = this.db && typeof this.db.applySyncChanges === "function"
+      ? this.db.applySyncChanges({
+        upserts,
+        deletions: { kehoach: repair.duplicatePlanIds },
+      })
+      : Promise.all(
+        [...new Set(["kehoach", ...Object.keys(repair.repointedRecords)])]
+          .map((table) => this.persistData(table, { trackMutation: false })),
+      );
+    return Promise.resolve(persist).catch(async (error) => {
+      Object.entries(stateBefore).forEach(([table, records]) => {
+        this.state[table] = records;
+      });
+      outbox.restore(checkpoint);
+      try {
+        await outbox.flush();
+      } catch {
+        // Preserve the original persistence error; the outbox store reports
+        // its own degraded state separately.
+      }
+      throw error;
+    }).then(async () => {
+      await outbox.flush();
+      Object.keys(upserts).forEach((table) => this.entityIndexes?.invalidate?.(table));
+      return repair;
+    });
+  }
   async applyCommittedRowVersions(entries = []) {
     const writes = [];
     entries.forEach((entry) => {

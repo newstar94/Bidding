@@ -83,6 +83,55 @@ def test_plan_canonical_revision_keeps_total_investment_provenance():
     assert revision["totalAmountVnd"] == 300_000_000
 
 
+def test_plan_package_normalizes_bid_validity_and_additional_purchase_items():
+    raw = fixture("plan", "plan_revision_v1.json")
+    package = raw["bidpPlanDetailToProjectList"][0]
+    package.update({
+        "additionalChoise": 1,
+        "bidValidity": 90,
+        "formValue": json.dumps([
+            {
+                "id": "option-1",
+                "category": "Phim X-Quang kỹ thuật số",
+                "unit": "tấm",
+                "qty": 6000,
+                "percentage": 0.3,
+                "estimateValue": 123_360_000,
+            },
+        ], ensure_ascii=False),
+    })
+
+    revision = normalize_plan_revision(
+        raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+    canonical_package = revision["packages"][0]
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "PL2600000001", revision, canonical_package,
+    )
+
+    assert canonical_package["bidValidityDays"] == 90
+    assert canonical_package["additionalPurchaseItems"] == [{
+        "sourceItemId": "option-1",
+        "name": "Phim X-Quang kỹ thuật số",
+        "unit": "tấm",
+        "quantity": 6000,
+        "percentage": 0.3,
+        "estimateValueVnd": 123_360_000,
+    }]
+    assert draft["hieuLucHsdt"] == 90
+    assert draft["tuyChonMuaThemList"] == [{
+        "sourceItemId": "option-1",
+        "hangMuc": "Phim X-Quang kỹ thuật số",
+        "donVi": "tấm",
+        "soLuong": 6000,
+        "tyLe": 0.3,
+        "giaTriUocTinh": 123_360_000,
+    }]
+
+
 def test_plan_creator_is_the_investor_code_without_revision_suffix():
     raw = fixture("plan", "plan_revision_v1.json")
     revision = normalize_plan_revision(

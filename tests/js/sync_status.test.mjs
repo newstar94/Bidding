@@ -6,6 +6,7 @@ import {
   getSyncActivitySnapshot,
   shouldShowLocalPending,
 } from "../../frontend/app/SyncCoordinator.js";
+import { autoSync } from "../../frontend/app/SyncPushService.js";
 
 
 test("sync status distinguishes durable, pending, validation, transport, and offline states", () => {
@@ -83,4 +84,33 @@ test("sync activity is settled only after queued work and outbox durability fini
       _workspaceMutations: new Set([{}]),
     },
   }).settled, false);
+});
+
+test("auto sync repairs a duplicate pending plan before building its payload", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { organizationId: "org-1" },
+      getWorkspaceToken: () => "workspace-1",
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      repairPendingDuplicatePlanVersions: () => {
+        calls.push("repair");
+        return Promise.resolve({ duplicatePlanIds: ["plan-duplicate"] });
+      },
+      buildMutationSyncPayload: () => {
+        calls.push("build");
+        return null;
+      },
+    },
+    autoSync,
+    updateSyncState(state) {
+      calls.push(state.phase);
+    },
+  };
+
+  const result = await autoSync.call(controller);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.skipped, true);
+  assert.deepEqual(calls, ["repair", "build", "idle"]);
 });

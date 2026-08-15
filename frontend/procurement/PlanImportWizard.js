@@ -2,7 +2,9 @@ import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { SequentialRevisionController } from "./SequentialRevisionController.js";
 import {
   materializeProcurementRevisionDraft,
+  materializeProcurementRevisionIntoExisting,
   materializeProcurementRevisionFromPrevious,
+  procurementRevisionNumbersEqual,
 } from "./ProcurementDraftWorkflow.js";
 import { resolveImportedInvestorDraft } from "./InvestorResolver.js";
 import { lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
@@ -513,18 +515,30 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
       (plan) => String(plan.id) === String(previousPlanId),
     )
     : latestPlanForFamily(controller.model, revisionDraft.familyNo);
-  const materialized = prior
-    ? materializeProcurementRevisionFromPrevious(
+  const sameRevision = prior
+    && procurementRevisionNumbersEqual(
+      prior.phienBan,
+      revisionDraft?.revisionNumber,
+    );
+  const materialized = sameRevision
+    ? materializeProcurementRevisionIntoExisting(
       controller.model.state,
       prior.id,
       revisionDraft,
       { timestamp: controller.model.getCurrentDateTimeString() },
     )
-    : materializeProcurementRevisionDraft(
+    : prior
+      ? materializeProcurementRevisionFromPrevious(
       controller.model.state,
+      prior.id,
       revisionDraft,
       { timestamp: controller.model.getCurrentDateTimeString() },
-    );
+      )
+      : materializeProcurementRevisionDraft(
+        controller.model.state,
+        revisionDraft,
+        { timestamp: controller.model.getCurrentDateTimeString() },
+      );
   if (investorResolution.status === "NEW") {
     controller.model.state.chudautu ||= [];
     controller.model.state.chudautu.push(investorResolution.investor);

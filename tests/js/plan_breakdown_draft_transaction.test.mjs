@@ -24,6 +24,7 @@ import {
   fillPackageFormFromProcurementDraft,
   fillPlanFormFromProcurementDraft,
   materializeProcurementRevisionDraft,
+  materializeProcurementRevisionIntoExisting,
   materializeProcurementRevisionFromPrevious,
 } from "../../frontend/procurement/ProcurementDraftWorkflow.js";
 import { closeModal } from "../../frontend/app/BiddingControllerUI.js";
@@ -748,6 +749,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
   });
   const firstDraft = await sequential.loadCurrent();
   const persistedRevisions = [];
+  const workspaceMutations = [];
   const packageModalEdits = [];
   const planModalEditOptions = [];
   const state = {
@@ -774,6 +776,20 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     convertDMYToYMD: (value) => value,
     convertDMYHMSToYMDHMS: (value) => value,
     parseVND: Number,
+    beginWorkspaceMutation() {
+      const mutation = {
+        state,
+        stagedTables: new Set(),
+        outbox: { flush: async () => {} },
+      };
+      workspaceMutations.push(mutation);
+      return mutation;
+    },
+    commitWorkspaceMutation(mutation, table) {
+      mutation.stagedTables.add(table);
+    },
+    finishWorkspaceMutation() {},
+    workspaceMutationUsesCurrentResources: () => true,
     commitLocalMutation() {}, markDeleted() {},
     async persistChanges() {}, async flushMutationOutbox() {},
   };
@@ -850,6 +866,11 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.deepEqual(persistedRevisions, [], "package modal save remains memory-only");
 
     await controller.savePlanBreakdown();
+    assert.deepEqual(
+      [...workspaceMutations[0].stagedTables].sort(),
+      ["chudautu", "goithau", "kehoach"],
+      "plan, investor, and packages must enter one workspace mutation before sync",
+    );
     assert.equal(persistedRevisions[0].revision, "00");
     assert.ok(persistedRevisions[0].packages.some((row) => row.price === 125));
     assert.deepEqual(loaded, ["00", "01"]);
@@ -882,6 +903,104 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     if (previousLucide === undefined) delete globalThis.lucide;
     else globalThis.lucide = previousLucide;
   }
+});
+
+test("retrying the same procurement revision reuses the saved plan version", async () => {
+  const existingPlan = {
+    id: "plan-00",
+    rootId: "plan-00",
+    maKeHoach: "PL2600164871",
+    phienBan: 0,
+    isLatest: 1,
+    rowVersion: 2,
+  };
+  const state = {
+    chudautu: [{
+      id: "investor-1", rootId: "investor-1", maChuDauTu: "vn3900786617",
+      phienBan: "00", isLatest: 1,
+    }],
+    kehoach: [existingPlan],
+    goithau: [],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const controller = {
+    model: {
+      state,
+      workspaceStorage: null,
+      getLatestChuDauTu: () => state.chudautu,
+      getCurrentDateTimeString: () => "2026-08-15 12:00:00",
+      getPlanBaseCode: (value) => value,
+      getWorkspaceToken: () => "org-1",
+    },
+    plans: { edit: async () => {} },
+  };
+  const revisionDraft = {
+    familyNo: "PL2600164871",
+    revisionNumber: "00",
+    planDraft: {
+      maKeHoach: "PL2600164871",
+      investorSource: { code: "vn3900786617" },
+      sourceRevision: {
+        provider: "MUASAMCONG",
+        familyNo: "PL2600164871",
+        revisionId: "revision-00",
+        revisionNumber: "00",
+      },
+    },
+    packageDrafts: [{
+      tenGoiThau: "Package 01",
+      sourceRevision: {
+        stablePackageId: "package-01",
+        packageObservationId: "detail-01",
+      },
+    }],
+  };
+
+  const result = await startProcurementPlanImport.call(controller, {
+    session: { sessionId: "session-1", familyNo: "PL2600164871" },
+    controller: {},
+    currentDraft: revisionDraft,
+  });
+
+  assert.equal(result.plan.id, "plan-00");
+  assert.equal(state.kehoach.length, 1);
+  assert.equal(state.kehoach[0].phienBan, "00");
+  assert.equal(state.kehoach[0].isLatest, 1);
+  assert.equal(state.goithau.length, 1);
+  assert.equal(state.goithau[0].keHoachId, "plan-00");
+});
+
+test("procurement materialization replaces MSC option ids with internal child ids", () => {
+  const state = {
+    kehoach: [{ id: "plan-00", rootId: "plan-00", phienBan: "00", rowVersion: 2 }],
+    goithau: [],
+  };
+  const ids = { goithau: 0, tuychonmuathem: 0 };
+  const result = materializeProcurementRevisionIntoExisting(
+    state,
+    "plan-00",
+    {
+      revisionNumber: "00",
+      packageDrafts: [{
+        tenGoiThau: "Gói mua sắm",
+        sourceRevision: { stablePackageId: "source-package-1" },
+        tuyChonMuaThem: true,
+        tuyChonMuaThemList: [{
+          sourceItemId: "msc-option-1",
+          id: "msc-option-1",
+          hangMuc: "Phim X-Quang",
+        }],
+      }],
+    },
+    { createId: (type) => `${type}-${++ids[type]}` },
+  );
+
+  assert.equal(result.packages[0].tuyChonMuaThemList[0].id, "tuychonmuathem-1");
+  assert.equal(result.packages[0].tuyChonMuaThemList[0].sourceItemId, "msc-option-1");
+  assert.notEqual(result.packages[0].tuyChonMuaThemList[0].id, "msc-option-1");
 });
 
 test("pending imported investor is part of plan breakdown commit and rollback boundary", () => {

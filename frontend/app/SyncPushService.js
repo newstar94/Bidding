@@ -205,7 +205,7 @@ async function applyFailedPush(controller, { status, data, snapshot }) {
   return { ok: false, status, data, validation: validationErrors.length > 0 };
 }
 
-export function autoSync() {
+export function autoSync(options = {}) {
   const deferPostCommitRender = this._deferPostCommitRender === true;
   this._deferPostCommitRender = false;
   if (this._autoSyncPromise) {
@@ -216,6 +216,7 @@ export function autoSync() {
       return this.autoSync();
     });
   }
+  if (this._syncRepairPromise) return this._syncRepairPromise;
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) {
     return Promise.resolve({ ok: false, error: new Error("No active workspace") });
@@ -247,6 +248,29 @@ export function autoSync() {
       message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
     });
     return Promise.resolve({ ok: false, error, storageDegraded: true });
+  }
+  if (
+    options.skipDuplicatePlanRepair !== true
+    && typeof this.model?.repairPendingDuplicatePlanVersions === "function"
+  ) {
+    const repair = this.model.repairPendingDuplicatePlanVersions();
+    if (repair) {
+      const trackedRepair = Promise.resolve(repair).then(() => {
+        this._syncRepairPromise = null;
+        if (deferPostCommitRender) this._deferPostCommitRender = true;
+        return this.autoSync({ skipDuplicatePlanRepair: true });
+      }).catch((error) => {
+        this.updateSyncState?.({
+          phase: "storageError",
+          message: "Không thể sửa hàng đợi đồng bộ cục bộ",
+        });
+        return { ok: false, error, storageDegraded: true };
+      }).finally(() => {
+        if (this._syncRepairPromise === trackedRepair) this._syncRepairPromise = null;
+      });
+      this._syncRepairPromise = trackedRepair;
+      return trackedRepair;
+    }
   }
   const mutationBatch = this.model?.buildMutationSyncPayload?.() || null;
   const preparedOutboxStatus = this.model?.getMutationOutboxStatus?.();
