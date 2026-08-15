@@ -91,7 +91,7 @@ test("goods hierarchy table fits its container without horizontal scrolling", as
           <tbody>
             <tr class="package-goods-lot-row"><td>1</td><td>PL1</td><td>Lô 1</td><td colspan="4"></td></tr>
             <tr class="package-goods-item-row"><td class="package-goods-sequence">1.1</td><td></td><td></td><td class="package-goods-name">Hóa chất xét nghiệm định lượng C-reactive protein dùng cho máy xét nghiệm sinh hóa</td><td class="package-goods-unit">Hộp</td><td class="package-goods-quantity">18</td><td class="package-goods-actions-cell"><div class="action-btn-group"><button class="action-btn btn-edit" aria-label="Sửa">${icon}</button><button class="action-btn btn-delete" aria-label="Xóa">${icon}</button></div></td></tr>
-            <tr class="package-goods-item-row package-goods-item-row--editing package-goods-item-row--creating"><td class="package-goods-sequence">1.2</td><td colspan="2"><select class="bf-combobox-native" hidden><option>Lô 1</option></select><div class="bf-combobox is-searchable open"><input class="bf-combobox-input" value="PL1 — Lô 1"><button class="bf-combobox-toggle"><span class="bf-combobox-chevron"></span></button><ul class="bf-combobox-list"><li class="bf-combobox-option selected">PL1 — Lô 1</li><li class="bf-combobox-option">PL2 — Lô 2</li></ul></div></td><td><textarea class="form-control package-goods-inline-control package-goods-inline-name"></textarea></td><td><input class="form-control package-goods-inline-control package-goods-inline-unit"></td><td><input class="form-control package-goods-inline-control package-goods-inline-number" type="number"></td><td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button class="btn btn-sm btn-primary">${icon}Lưu</button><button class="btn btn-sm btn-outline">Hủy</button></div></td></tr>
+            <tr class="package-goods-item-row package-goods-item-row--editing package-goods-item-row--creating"><td class="package-goods-sequence">1.2</td><td colspan="2"><select class="bf-combobox-native" hidden><option>Lô 1</option></select><div class="bf-combobox is-searchable open"><input class="bf-combobox-input" value="PL1 — Lô 1"><button class="bf-combobox-toggle"><span class="bf-combobox-chevron"></span></button><ul class="bf-combobox-list"><li class="bf-combobox-option selected">PL1 — Lô 1</li><li class="bf-combobox-option">PL2 — Lô 2</li></ul></div></td><td><textarea class="form-control package-goods-inline-control package-goods-inline-name"></textarea></td><td><input class="form-control package-goods-inline-control package-goods-inline-unit"></td><td><input class="form-control package-goods-inline-control package-goods-inline-number" type="number"></td><td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button class="action-btn btn-edit package-goods-inline-action--save" aria-label="Lưu">${icon}</button><button class="action-btn btn-delete package-goods-inline-action--cancel" aria-label="Hủy">${icon}</button></div></td></tr>
           </tbody>
         </table>
       </div>`);
@@ -109,6 +109,14 @@ test("goods hierarchy table fits its container without horizontal scrolling", as
       quantityHeader: "right",
       quantityCell: "right",
     });
+    const columnWidths = await page.locator(".package-goods-table").evaluate((container) => ({
+      table: container.querySelector("table").getBoundingClientRect().width,
+      lotCode: container.querySelector("thead th:nth-child(2)").getBoundingClientRect().width,
+      lotName: container.querySelector("thead th:nth-child(3)").getBoundingClientRect().width,
+    }));
+    assert.ok(columnWidths.lotCode >= columnWidths.table * 0.105);
+    assert.ok(columnWidths.lotName > columnWidths.lotCode);
+    assert.ok(columnWidths.lotName >= columnWidths.table * 0.115);
     const comboboxStyle = await page.locator(".package-goods-table .bf-combobox-input").evaluate((input) => ({
       height: getComputedStyle(input).height,
       listDisplay: getComputedStyle(input.closest(".bf-combobox").querySelector(".bf-combobox-list")).display,

@@ -222,6 +222,8 @@ test("goods editing renders controls inside the current table row", () => {
   assert.match(markup, /name="soLuong"[^>]*value="18"/);
   assert.match(markup, /class="[^"]*package-goods-inline-action--save[^"]*"[^>]*data-save-goods="goods-1"[^>]*title="Lưu hàng hóa"[^>]*aria-label="Lưu hàng hóa"/);
   assert.match(markup, /class="[^"]*package-goods-inline-action--cancel[^"]*"[^>]*data-cancel-goods="goods-1"[^>]*title="Hủy chỉnh sửa"[^>]*aria-label="Hủy chỉnh sửa"/);
+  assert.match(markup, /class="[^"]*btn-edit[^"]*"[^>]*data-save-goods="goods-1"/);
+  assert.match(markup, /class="[^"]*btn-delete[^"]*"[^>]*data-cancel-goods="goods-1"/);
   assert.doesNotMatch(markup, />\s*(?:Lưu|Hủy)\s*<\/button>/);
   assert.doesNotMatch(markup, /package-goods-editor/);
 });
