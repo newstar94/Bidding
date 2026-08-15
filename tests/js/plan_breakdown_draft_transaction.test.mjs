@@ -26,6 +26,7 @@ import {
   materializeProcurementRevisionDraft,
   materializeProcurementRevisionIntoExisting,
   materializeProcurementRevisionFromPrevious,
+  resolveProcurementImportedPackageStatus,
 } from "../../frontend/procurement/ProcurementDraftWorkflow.js";
 import { closeModal } from "../../frontend/app/BiddingControllerUI.js";
 import {
@@ -33,6 +34,68 @@ import {
   startProcurementPlanImport,
 } from "../../frontend/procurement/PlanImportWizard.js";
 import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
+
+test("procurement package status projection caps source lifecycle and preserves local progress", () => {
+  assert.equal(resolveProcurementImportedPackageStatus({
+    sourceStatus: "Đang chấm thầu",
+    isNew: true,
+    hasPublishedNotice: true,
+  }), "Đang mời thầu");
+  assert.equal(resolveProcurementImportedPackageStatus({
+    sourceStatus: "Đã có kết quả",
+    existingStatus: "Đang mời thầu",
+    hasPublishedNotice: true,
+  }), "Đang mời thầu");
+  assert.equal(resolveProcurementImportedPackageStatus({
+    sourceStatus: "Đã có kết quả",
+    existingStatus: "Đang chấm thầu",
+    hasPublishedNotice: true,
+  }), "Đang chấm thầu");
+});
+
+test("procurement resync preserves existing appraisal and workflow state", () => {
+  const state = {
+    kehoach: [{ id: "plan-00", rootId: "plan-00", phienBan: "00", rowVersion: 1 }],
+    goithau: [{
+      id: "package-1",
+      rootId: "package-1",
+      keHoachId: "plan-00",
+      phienBan: "00",
+      rowVersion: 3,
+      trangThai: "Đang chấm thầu",
+      hieuLucHsdt: 60,
+      hieuLucDamBaoDuThau: 99,
+      yeuCauThamDinhHsmt: "Có",
+      yeuCauThamDinhHsmtCode: "REQUIRED",
+      sourceRevision: { stablePackageId: "stable-1" },
+    }],
+  };
+
+  const result = materializeProcurementRevisionIntoExisting(
+    state,
+    "plan-00",
+    {
+      revisionNumber: "00",
+      packageDrafts: [{
+        tenGoiThau: "Gói đã có kết quả ở nguồn",
+        trangThai: "Đã có kết quả",
+        hieuLucHsdt: 90,
+        yeuCauThamDinhHsmt: "Không",
+        yeuCauThamDinhHsmtCode: "NOT_REQUIRED",
+        sourceRevision: { stablePackageId: "stable-1" },
+        noticeLink: {
+          state: "LINKED", kind: "TBMT", noticeNo: "IB2600000001",
+          noticeRevisionId: "notice-00", noticeVersion: "00",
+        },
+      }],
+    },
+  );
+
+  assert.equal(result.packages[0].trangThai, "Đang chấm thầu");
+  assert.equal(result.packages[0].hieuLucDamBaoDuThau, 99);
+  assert.equal(result.packages[0].yeuCauThamDinhHsmt, "Có");
+  assert.equal(result.packages[0].yeuCauThamDinhHsmtCode, "REQUIRED");
+});
 
 test("package procurement draft fills lifecycle and tender milestone controls", () => {
   const controls = new Map([
@@ -42,12 +105,47 @@ test("package procurement draft fills lifecycle and tender milestone controls", 
     "gt-quatmang", "gt-trongnuocquocte", "gt-tuychonmuathem", "gt-phanlo",
     "gt-giatribaomothau", "gt-soquyetdinh", "gt-ngayquyetdinh",
     "gt-thoigiandangtai", "gt-thoigiandongthau", "gt-thoigianmothau",
-    "gt-thoigianmoehsdxtc", "gt-trangthai",
+    "gt-thoigianmoehsdxtc", "gt-hieuluchsdt", "gt-hieuluchbaomothau", "gt-trangthai",
   ].map((id) => [id, { id, value: "", disabled: false, dispatchEvent() {} }]));
-  const document = { getElementById: (id) => controls.get(id) || null };
+  const medicineRadios = new Map([
+    ["0", { value: "0", checked: true, disabled: false, dispatchEvent() {} }],
+    ["1", { value: "1", checked: false, disabled: false, dispatchEvent() {} }],
+  ]);
+  const document = {
+    getElementById: (id) => controls.get(id) || null,
+    querySelector: (selector) => {
+      const match = /input\[name="gt-goithauthuoc"\]\[value="([01])"\]/.exec(selector);
+      return match ? medicineRadios.get(match[1]) : null;
+    },
+    querySelectorAll: (selector) => (
+      selector === 'input[name="gt-goithauthuoc"]'
+        ? [...medicineRadios.values()]
+        : []
+    ),
+  };
+  const additionalPurchaseRows = [];
   fillPackageFormFromProcurementDraft(document, {
     maGoiThau: "IB2600374868",
     trangThai: "Đang chấm thầu",
+    hieuLucHsdt: 90,
+    goiThauThuoc: true,
+    phanLo: true,
+    danhSachPhanLo: [{
+      lotNo: "PP2600000001",
+      lotName: "Phần 1",
+      lotPrice: 7_783_488_780,
+      bidGuarantee: null,
+      executionPeriod: "24 tháng",
+    }],
+    tuyChonMuaThem: true,
+    tuyChonMuaThemList: [{
+      sourceItemId: "option-1",
+      hangMuc: "Phim X-Quang kỹ thuật số",
+      donVi: "tấm",
+      soLuong: 6000,
+      tyLe: 0.3,
+      giaTriUocTinh: 123_360_000,
+    }],
     giaTriBaoDamDuThau: 52_183_040,
     soQuyetDinh: "123/QĐ-E-HSMT",
     ngayQuyetDinh: "2026-07-15T00:00:00",
@@ -61,10 +159,29 @@ test("package procurement draft fills lifecycle and tender milestone controls", 
       formatForDateInput: (value) => `DATE:${value}`,
       formatForDatetimeLocal: (value) => `DATETIME:${value}`,
     },
+    _loadPhanLoRows: () => {
+      // The real lot loader recalculates the package-level guarantee from
+      // lot guarantees. MSC sometimes supplies only the package-level value.
+      controls.get("gt-giatribaomothau").value = "0";
+    },
+    _loadTuyChonMuaThemRows: (rows) => additionalPurchaseRows.push(...rows),
   });
 
   assert.equal(controls.get("gt-trangthai").value, "Đang chấm thầu");
   assert.equal(controls.get("gt-giatribaomothau").value, "52183040");
+  assert.equal(controls.get("gt-hieuluchsdt").value, "90");
+  assert.equal(controls.get("gt-hieuluchbaomothau").value, "120");
+  assert.equal(medicineRadios.get("1").checked, true);
+  assert.equal(medicineRadios.get("0").checked, false);
+  assert.equal(controls.get("gt-tuychonmuathem").value, "Có");
+  assert.deepEqual(additionalPurchaseRows, [{
+    sourceItemId: "option-1",
+    hangMuc: "Phim X-Quang kỹ thuật số",
+    donVi: "tấm",
+    soLuong: 6000,
+    tyLe: 0.3,
+    giaTriUocTinh: 123_360_000,
+  }]);
   assert.equal(controls.get("gt-soquyetdinh").value, "123/QĐ-E-HSMT");
   assert.equal(controls.get("gt-ngayquyetdinh").value, "DATE:2026-07-15T00:00:00");
   assert.equal(controls.get("gt-thoigiandangtai").value, "DATETIME:2026-07-16T09:00:00");

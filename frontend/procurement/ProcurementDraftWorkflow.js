@@ -2,7 +2,7 @@ import { generateRecordId } from "../shared/idUtils.js";
 import { createInitialVersion } from "../shared/VersionedEntityService.js";
 import { capturePlanBreakdownDraft } from "../plans/planBreakdownDraft.js";
 import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "../plans/planAggregateSnapshot.js";
-import { presentStatus } from "../packages/LifecyclePolicy.js";
+import { normalizeStatus, presentStatus } from "../packages/LifecyclePolicy.js";
 
 function sourceBoolean(value) {
   if (typeof value === "boolean") return value;
@@ -43,6 +43,80 @@ export function biddingPackageStatus(value) {
   return presentStatus(value).label;
 }
 
+export function deriveBidGuaranteeValidityDays(value) {
+  const match = String(value ?? "").trim().match(/^\d+/);
+  if (!match) return null;
+  const days = Number.parseInt(match[0], 10);
+  return Number.isInteger(days) && days > 0 ? days + 30 : null;
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function packageGuaranteeValidity(sourcePackage, fallback = null) {
+  if (hasValue(fallback)) return fallback;
+  if (hasValue(sourcePackage?.hieuLucDamBaoDuThau)) {
+    return sourcePackage.hieuLucDamBaoDuThau;
+  }
+  return deriveBidGuaranteeValidityDays(sourcePackage?.hieuLucHsdt);
+}
+
+function hasPublishedProcurementNotice(source) {
+  const link = source?.noticeLink || {};
+  return String(link.state || "").toUpperCase() === "LINKED"
+    && String(link.kind || "").toUpperCase() === "TBMT"
+    && Boolean(String(link.noticeNo || source?.maGoiThau || "").trim())
+    && Boolean(String(link.noticeRevisionId || "").trim())
+    && link.noticeVersion !== null
+    && link.noticeVersion !== undefined
+    && String(link.noticeVersion).trim() !== "";
+}
+
+export function resolveProcurementImportedPackageStatus({
+  sourceStatus,
+  existingStatus = null,
+  isNew = false,
+  hasPublishedNotice = false,
+} = {}) {
+  const source = normalizeStatus(sourceStatus);
+  const existing = existingStatus == null ? null : normalizeStatus(existingStatus);
+  if ([
+    "OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED", "CANCELLED",
+  ].includes(existing)) {
+    return presentStatus(existing).label;
+  }
+  if (existing === "INVITED") return presentStatus("INVITED").label;
+  if (source === "PREPARING") return presentStatus("PREPARING").label;
+  if (source === "INVITED") return presentStatus("INVITED").label;
+  if (["OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED"].includes(source)) {
+    return presentStatus("INVITED").label;
+  }
+  if (source === "CANCELLED") {
+    return presentStatus(hasPublishedNotice ? "INVITED" : "UNKNOWN").label;
+  }
+  if (!isNew && existing === "PREPARING" && hasPublishedNotice) {
+    return presentStatus("INVITED").label;
+  }
+  return presentStatus(hasPublishedNotice ? "INVITED" : "UNKNOWN").label;
+}
+
+function importedAppraisal(existing = null) {
+  if (existing && (
+    String(existing.yeuCauThamDinhHsmtCode || "").trim()
+    || String(existing.yeuCauThamDinhHsmt || "").trim()
+  )) {
+    return {
+      yeuCauThamDinhHsmt: existing.yeuCauThamDinhHsmt,
+      yeuCauThamDinhHsmtCode: existing.yeuCauThamDinhHsmtCode,
+    };
+  }
+  return {
+    yeuCauThamDinhHsmt: "Không",
+    yeuCauThamDinhHsmtCode: "NOT_REQUIRED",
+  };
+}
+
 export function materializeProcurementRevisionDraft(state, revisionDraft, {
   createId = generateRecordId,
   timestamp = new Date().toISOString(),
@@ -69,7 +143,12 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
       id: packageId,
       keHoachId: planId,
       phienBan: sourcePackageVersion(sourcePackage),
-      trangThai: biddingPackageStatus(sourcePackage.trangThai),
+      trangThai: resolveProcurementImportedPackageStatus({
+        sourceStatus: sourcePackage.trangThai,
+        isNew: true,
+        hasPublishedNotice: hasPublishedProcurementNotice(sourcePackage),
+      }),
+      ...importedAppraisal(),
       isThuoc: sourceBoolean(sourcePackage.goiThauThuoc) === true ? 1 : 0,
       tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
       phanLo: yesNo(sourcePackage.phanLo),
@@ -79,6 +158,7 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
         createId,
       ),
       giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
+      hieuLucDamBaoDuThau: packageGuaranteeValidity(sourcePackage),
     }, { id: packageId, timestamp });
     packageRecord.phienBan = sourcePackageVersion(sourcePackage);
     packageRecord._procurementImportCurrent = true;
@@ -163,7 +243,12 @@ export function materializeProcurementRevisionIntoExisting(
         id: packageId,
         keHoachId: plan.id,
         phienBan: sourcePackageVersion(sourcePackage),
-        trangThai: biddingPackageStatus(sourcePackage.trangThai),
+        trangThai: resolveProcurementImportedPackageStatus({
+          sourceStatus: sourcePackage.trangThai,
+          isNew: true,
+          hasPublishedNotice: hasPublishedProcurementNotice(sourcePackage),
+        }),
+        ...importedAppraisal(),
         tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
         phanLo: yesNo(sourcePackage.phanLo),
         phanLoList: mapLots(sourcePackage.danhSachPhanLo),
@@ -173,6 +258,7 @@ export function materializeProcurementRevisionIntoExisting(
         ),
         isThuoc: sourceBoolean(sourcePackage.goiThauThuoc) === true ? 1 : 0,
         giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
+        hieuLucDamBaoDuThau: packageGuaranteeValidity(sourcePackage),
       }, { id: packageId, timestamp });
       created.phienBan = sourcePackageVersion(sourcePackage);
       created._procurementImportCurrent = true;
@@ -180,6 +266,8 @@ export function materializeProcurementRevisionIntoExisting(
       return created;
     }
     const existingRowVersion = existing.rowVersion;
+    const existingGuaranteeValidity = existing.hieuLucDamBaoDuThau;
+    const appraisal = importedAppraisal(existing);
     Object.assign(existing, sourcePackage, {
       id: existing.id,
       rootId: existing.rootId || existing.id,
@@ -188,7 +276,12 @@ export function materializeProcurementRevisionIntoExisting(
       isLatest: 1,
       rowVersion: existingRowVersion,
       updatedAt: timestamp,
-      trangThai: biddingPackageStatus(sourcePackage.trangThai),
+      trangThai: resolveProcurementImportedPackageStatus({
+        sourceStatus: sourcePackage.trangThai,
+        existingStatus: existing.trangThai,
+        hasPublishedNotice: hasPublishedProcurementNotice(sourcePackage),
+      }),
+      ...appraisal,
       tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
       phanLo: yesNo(sourcePackage.phanLo),
       phanLoList: mapLots(sourcePackage.danhSachPhanLo),
@@ -198,6 +291,10 @@ export function materializeProcurementRevisionIntoExisting(
       ),
       isThuoc: sourceBoolean(sourcePackage.goiThauThuoc) === true ? 1 : 0,
       giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
+      hieuLucDamBaoDuThau: packageGuaranteeValidity(
+        sourcePackage,
+        existingGuaranteeValidity,
+      ),
       _procurementImportCurrent: true,
     });
     existingByIdentity.delete(identity);
@@ -288,13 +385,20 @@ export function materializeProcurementRevisionFromPrevious(
     const source = sourceByIdentity.get(sourcePackageIdentity(packageRecord));
     packageRecord.phienBan = sourcePackageVersion(source, packageRecord.phienBan);
     if (!source) return;
+    const existingGuaranteeValidity = packageRecord.hieuLucDamBaoDuThau;
+    const appraisal = importedAppraisal(packageRecord);
     Object.assign(packageRecord, source, {
       id: packageRecord.id,
       rootId: packageRecord.rootId,
       keHoachId: planId,
       phienBan: sourcePackageVersion(source, packageRecord.phienBan),
       isLatest: 1,
-      trangThai: biddingPackageStatus(source.trangThai || packageRecord.trangThai),
+      trangThai: resolveProcurementImportedPackageStatus({
+        sourceStatus: source.trangThai,
+        existingStatus: packageRecord.trangThai,
+        hasPublishedNotice: hasPublishedProcurementNotice(source),
+      }),
+      ...appraisal,
       tuyChonMuaThem: yesNo(
         source.tuyChonMuaThem,
         packageRecord.tuyChonMuaThem || "Không",
@@ -311,6 +415,10 @@ export function materializeProcurementRevisionFromPrevious(
         : packageRecord.isThuoc,
       giaTriDamBaoDuThau: source.giaTriBaoDamDuThau
         ?? packageRecord.giaTriDamBaoDuThau,
+      hieuLucDamBaoDuThau: packageGuaranteeValidity(
+        source,
+        existingGuaranteeValidity,
+      ),
     });
     sourceByIdentity.delete(sourcePackageIdentity(source));
   });
@@ -328,7 +436,12 @@ export function materializeProcurementRevisionFromPrevious(
       ...source,
       keHoachId: planId,
       phienBan: sourcePackageVersion(source),
-      trangThai: biddingPackageStatus(source.trangThai),
+      trangThai: resolveProcurementImportedPackageStatus({
+        sourceStatus: source.trangThai,
+        isNew: true,
+        hasPublishedNotice: hasPublishedProcurementNotice(source),
+      }),
+      ...importedAppraisal(),
       tuyChonMuaThem: yesNo(source.tuyChonMuaThem),
       phanLo: yesNo(source.phanLo),
       phanLoList: mapLots(source.danhSachPhanLo),
@@ -338,6 +451,7 @@ export function materializeProcurementRevisionFromPrevious(
       ),
       isThuoc: sourceBoolean(source.goiThauThuoc) === true ? 1 : 0,
       giaTriDamBaoDuThau: source.giaTriBaoDamDuThau ?? 0,
+      hieuLucDamBaoDuThau: packageGuaranteeValidity(source),
     }, { id: packageId, timestamp });
     created.phienBan = sourcePackageVersion(source);
     created._procurementImportCurrent = true;
@@ -355,6 +469,22 @@ function setControlValue(document, id, value, { event = true } = {}) {
   if (event && typeof globalThis.Event === "function") {
     control.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
     control.dispatchEvent(new globalThis.Event("change", { bubbles: true }));
+  }
+  return true;
+}
+
+function setRadioValue(document, name, value) {
+  const radio = document?.querySelector?.(
+    `input[name="${name}"][value="${String(value)}"]`,
+  );
+  if (!radio || radio.disabled) return false;
+  document?.querySelectorAll?.(`input[name="${name}"]`)?.forEach?.((candidate) => {
+    candidate.checked = candidate === radio;
+  });
+  radio.checked = true;
+  if (typeof globalThis.Event === "function") {
+    radio.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
+    radio.dispatchEvent(new globalThis.Event("change", { bubbles: true }));
   }
   return true;
 }
@@ -385,6 +515,7 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
   const datetime = (value) => value
     ? controller?.model?.formatForDatetimeLocal?.(value) ?? value
     : "";
+  const guaranteeValidity = packageGuaranteeValidity(packageDraft) ?? "";
   const values = {
     "gt-ma": packageDraft?.maGoiThau,
     "gt-ten": packageDraft?.tenGoiThau,
@@ -409,11 +540,35 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
     "gt-thoigiandongthau": datetime(packageDraft?.thoiGianDongThau),
     "gt-thoigianmothau": datetime(packageDraft?.thoiGianMoThau),
     "gt-thoigianmoehsdxtc": datetime(packageDraft?.thoiGianMoEhsdxtc),
+    "gt-hieuluchsdt": packageDraft?.hieuLucHsdt ?? "",
+    "gt-hieuluchbaomothau": guaranteeValidity,
     "gt-trangthai": biddingPackageStatus(packageDraft?.trangThai),
   };
   Object.entries(values).forEach(([id, value]) => setControlValue(document, id, value));
+  const medicinePackage = sourceBoolean(packageDraft?.goiThauThuoc);
+  if (medicinePackage !== null) {
+    setRadioValue(document, "gt-goithauthuoc", medicinePackage ? "1" : "0");
+  }
   if (Array.isArray(packageDraft?.danhSachPhanLo)) {
     controller?._loadPhanLoRows?.(mapLots(packageDraft.danhSachPhanLo));
+  }
+  if (Array.isArray(packageDraft?.tuyChonMuaThemList)) {
+    controller?._loadTuyChonMuaThemRows?.(packageDraft.tuyChonMuaThemList);
+  }
+  // Lot loading recalculates aggregate money fields. MSC can provide a
+  // package-level value while leaving every lot-level guarantee empty; keep
+  // the authoritative package total visible without inventing a per-lot
+  // allocation.
+  if (packageDraft?.giaGoiThau != null) {
+    setControlValue(document, "gt-gia", money(packageDraft.giaGoiThau), { event: false });
+  }
+  if (packageDraft?.giaTriBaoDamDuThau != null) {
+    setControlValue(
+      document,
+      "gt-giatribaomothau",
+      money(packageDraft.giaTriBaoDamDuThau),
+      { event: false },
+    );
   }
   return values;
 }

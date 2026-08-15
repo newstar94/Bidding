@@ -422,7 +422,7 @@ def test_notice_reconciler_preserves_evaluation_milestones_for_repository():
     )
 
     package = result["createdPackages"][0]
-    assert package["initialStatus"] == "EVALUATING"
+    assert package["initialStatus"] == "INVITED"
     assert package["noticeFields"]["actualOpeningAt"] == (
         "2026-03-15T09:38:42+07:00"
     )
@@ -840,7 +840,7 @@ def test_real_postgres_plan_00_to_01_is_atomic_and_preserves_version_axes():
             "noticeRevisionId": f"notice-rev-00-{token}", "noticeVersion": "00",
         }
         revision_01["packages"][1]["noticeFields"] = {
-            "status": "PUBLISHED",
+            "status": "AWARDED",
             "publishedAt": "2026-03-01T08:00:00+07:00",
             "bidClosingAt": "2026-03-15T09:00:00+07:00",
             "bidOpeningAt": "2026-03-15T09:00:00+07:00",
@@ -941,15 +941,21 @@ def test_real_postgres_plan_00_to_01_is_atomic_and_preserves_version_axes():
         linked_b = cursor.execute(
             """SELECT trang_thai, thoi_gian_dong_thau, thoi_gian_mo_thau,
                       thoi_gian_dang_tai, so_quyet_dinh, ngay_quyet_dinh,
-                      gia_tri_dam_bao_du_thau
+                          gia_tri_dam_bao_du_thau, yeu_cau_tham_dinh_hsmt,
+                          yeu_cau_tham_dinh_hsmt_code
                  FROM goi_thau WHERE organization_id = ? AND id = ?""",
             (organization_id, second_packages["B"]["id"]),
         ).fetchone()
         assert tuple(linked_b) == (
-            "INVITED", "2026-03-15 09:00:00", "2026-03-15 09:08:42",
+            "INVITED", "2026-03-15 09:00:00", None,
             "2026-03-01 08:00:00", "123/QĐ-E-HSMT", "2026-03-01",
-            52_183_040,
+            52_183_040, "Không", "NOT_REQUIRED",
         )
+        assert cursor.execute(
+            """SELECT COUNT(*) FROM thong_tin_mo_thau
+                WHERE organization_id = ? AND goi_thau_id = ?""",
+            (organization_id, second_packages["B"]["id"]),
+        ).fetchone()[0] == 0
         assert cursor.execute(
             """SELECT COUNT(*) FROM procurement_source_revision
                 WHERE organization_id = ? AND entity_kind = 'NOTICE'

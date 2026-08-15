@@ -138,6 +138,32 @@ def test_preflight_rejects_replayed_revision_before_entity_writes(monkeypatch):
         )
 
 
+def test_preflight_returns_only_validated_import_package_ids(monkeypatch):
+    payload = {
+        "goithau": [
+            {
+                "id": "package-imported",
+                "sourceRevision": _authority("00"),
+            },
+            {"id": "package-manual"},
+        ],
+    }
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        lambda *_args, **_kwargs: (
+            {"id": "session-1"},
+            {"revisionId": "revision-00"},
+            "sha256:" + "a" * 64,
+        ),
+    )
+
+    authority = validate_import_session_mutation(
+        object(), payload, organization_id="org-1", user_id="user-1",
+    )
+
+    assert authority["packageIds"] == ("package-imported",)
+
+
 def test_plan_revision_accepts_an_independent_unchanged_package_version(monkeypatch):
     revision = {
         "revisionId": "revision-01",

@@ -245,13 +245,25 @@ export function setupActionListeners() {
     "hd-giatri",
     "edit-pkg-price"
   ].forEach((inputId) => bindCurrencyInput(inputId, (value) => this.model.formatVND(value)));
+  const syncBidGuaranteeValidity = (hsdthInput) => {
+    const hsdthVal = parseInt(hsdthInput?.value, 10) || 0;
+    const bdmInput = document.getElementById("gt-hieuluchbaomothau");
+    if (bdmInput) {
+      bdmInput.value = hsdthVal > 0 ? hsdthVal + 30 : "";
+    }
+  };
   const hsdthInput = document.getElementById("gt-hieuluchsdt");
   if (hsdthInput) {
-    hsdthInput.addEventListener("input", () => {
-      const hsdthVal = parseInt(hsdthInput.value) || 0;
-      const bdmInput = document.getElementById("gt-hieuluchbaomothau");
-      if (bdmInput) {
-        bdmInput.value = hsdthVal > 0 ? hsdthVal + 30 : "";
+    hsdthInput.addEventListener("input", () => syncBidGuaranteeValidity(hsdthInput));
+  }
+  // Package modals are lazy-loaded after the main form listeners. Delegate
+  // the calculation so an imported package gets the same rule even when its
+  // HSDT control did not exist during initial bootstrap.
+  if (!document._bfBidGuaranteeValidityListener) {
+    document._bfBidGuaranteeValidityListener = true;
+    document.addEventListener("input", (event) => {
+      if (event.target?.id === "gt-hieuluchsdt") {
+        syncBidGuaranteeValidity(event.target);
       }
     });
   }

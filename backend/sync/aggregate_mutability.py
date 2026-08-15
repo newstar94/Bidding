@@ -138,6 +138,12 @@ def build_aggregate_mutability_context(
         latest = _value(plan, "isLatest", "is_latest")
         if latest is None:
             latest = current.get("is_latest")
+        if latest is None and not current:
+            # ``is_latest`` is server-managed and therefore absent from a
+            # normal client payload. A plan that is both incoming and absent
+            # from PostgreSQL is the initial/current snapshot of its new
+            # family for this batch, so packages created with it are mutable.
+            latest = 1
         if latest is not None:
             context.plan_is_latest_by_id[str(plan_id)] = int(latest or 0) == 1
 
@@ -158,6 +164,75 @@ def build_aggregate_mutability_context(
             for row in rows
         )
     return context
+
+
+def authorized_package_family_deletion_ids(
+    cursor,
+    organization_id,
+    records_by_table,
+    context,
+):
+    """Authorize historical package rows only for a complete family deletion.
+
+    Historical snapshots remain immutable when targeted on their own. A package
+    family may nevertheless be removed as one aggregate when the same delete
+    batch contains a representative owned by the current plan and every active
+    package snapshot in that family.
+    """
+
+    packages = records_by_table.get("goi_thau", {})
+    requested_by_root = {}
+    has_current_by_root = {}
+    for package_id, package in packages.items():
+        normalized_id = clean_id(package.get("id") or package_id)
+        if not normalized_id:
+            continue
+        normalized_id = str(normalized_id)
+        root_id = clean_id(package.get("id_goc") or normalized_id)
+        if not root_id:
+            continue
+        root_id = str(root_id)
+        requested_by_root.setdefault(root_id, set()).add(normalized_id)
+        if context.package_is_mutable(normalized_id):
+            has_current_by_root[root_id] = True
+
+    candidate_roots = {
+        root_id
+        for root_id in requested_by_root
+        if has_current_by_root.get(root_id)
+    }
+    if not candidate_roots:
+        return set()
+
+    stored_by_root = {root_id: set() for root_id in candidate_roots}
+    for offset in range(0, len(candidate_roots), _QUERY_CHUNK_SIZE):
+        chunk = sorted(candidate_roots)[offset:offset + _QUERY_CHUNK_SIZE]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT id, COALESCE(id_goc, id) AS family_root
+                FROM goi_thau
+                WHERE organization_id = ?
+                  AND archived_at IS NULL
+                  AND COALESCE(id_goc, id) IN ({placeholders})
+                FOR UPDATE""",  # noqa: S608 - placeholders are generated locally
+            (organization_id, *chunk),
+        ).fetchall()
+        for row in rows:
+            try:
+                package_id = row["id"]
+                root_id = row["family_root"]
+            except (KeyError, TypeError):
+                package_id, root_id = row[0], row[1]
+            root_id = str(root_id)
+            if root_id in stored_by_root:
+                stored_by_root[root_id].add(str(package_id))
+
+    authorized = set()
+    for root_id in candidate_roots:
+        stored_ids = stored_by_root.get(root_id, set())
+        if stored_ids and requested_by_root[root_id] == stored_ids:
+            authorized.update(stored_ids)
+    return authorized
 
 
 def historical_parent_mutation_error(

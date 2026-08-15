@@ -6,7 +6,11 @@ from copy import deepcopy
 import re
 
 from backend.shared.domain_enums import PACKAGE_STATUS_LABELS
-from backend.procurement_import.domain import derive_import_lifecycle_status
+from backend.procurement_import.domain import (
+    derive_import_lifecycle_status,
+    has_exact_published_notice,
+    project_source_lifecycle_to_bidding,
+)
 
 
 _BIDDING_PACKAGE_CODE = re.compile(r"^IB[0-9]{10}(?:-[0-9]{2})?$", re.I)
@@ -28,6 +32,24 @@ def _package_symbol(value):
 def _bidding_package_status(value):
     status = str(value or "UNKNOWN").strip()
     return PACKAGE_STATUS_LABELS.get(status, status)
+
+
+def _derive_bid_guarantee_validity_days(value):
+    """Derive the package guarantee validity from the bid validity rule.
+
+    BiddingFlow's package form uses a fixed 30-day extension for the bid
+    guarantee.  MSC does not reliably expose this as a package-level field,
+    so keep the derivation in the canonical-to-draft boundary rather than
+    leaving the form to depend on a DOM event.
+    """
+
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    match = re.match(r"^\s*(\d+)", str(value))
+    if not match:
+        return None
+    days = int(match.group(1))
+    return days + 30 if days > 0 else None
 
 
 def _source_revision(provider, family_no, revision):
@@ -82,6 +104,7 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
     price = effective.get("estimatePriceVnd")
     if price is None:
         price = effective.get("priceVnd")
+    bid_validity_days = effective.get("bidValidityDays")
     additional_purchase_items = [
         {
             "sourceItemId": item.get("sourceItemId"),
@@ -122,25 +145,24 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         "muaSamTapTrung": effective.get("isConcentrateShopping"),
         "tuyChonMuaThem": effective.get("additionalPurchaseOption"),
         "tuyChonMuaThemList": additional_purchase_items,
-        "hieuLucHsdt": effective.get("bidValidityDays"),
+        "hieuLucHsdt": bid_validity_days,
+        "hieuLucDamBaoDuThau": _derive_bid_guarantee_validity_days(
+            bid_validity_days
+        ),
         "giaTriBaoDamDuThau": effective.get("bidGuaranteeVnd"),
         "soQuyetDinh": effective.get("approvalDecisionNo") or "",
         "ngayQuyetDinh": effective.get("approvalDecisionDate") or "",
         "thoiGianDangTai": notice.get("publishedAt"),
         "thoiGianDongThau": notice.get("bidClosingAt"),
-        "thoiGianMoThau": (
-            notice.get("actualOpeningAt")
-            or effective.get("actualOpeningAt")
-            or notice.get("bidOpeningAt")
-        ),
-        "thoiGianMoEhsdxtc": (
-            notice.get("financialActualOpeningAt")
-            or effective.get("financialActualOpeningAt")
-        ),
         "trangThai": _bidding_package_status(
-            effective.get("lifecycleStatus")
-            or derive_import_lifecycle_status(effective)
+            project_source_lifecycle_to_bidding(
+                effective.get("lifecycleStatus")
+                or derive_import_lifecycle_status(effective),
+                has_published_notice=has_exact_published_notice(effective),
+            )
         ),
+        "yeuCauThamDinhHsmt": "Không",
+        "yeuCauThamDinhHsmtCode": "NOT_REQUIRED",
         "sourceStatus": effective.get("sourceStatus"),
         "noticeLink": deepcopy(link),
         "sourceRevision": source,

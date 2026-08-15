@@ -307,7 +307,16 @@ async function readResponseBody(response) {
     }
   }
   const text = await response.text();
-  return text || null;
+  if (!text) return null;
+  if (!response.ok) {
+    const normalized = text.trim();
+    const looksLikeHtml = contentType.includes("text/html")
+      || /^\s*<!doctype\s+html/i.test(normalized)
+      || /^\s*<html[\s>]/i.test(normalized);
+    if (looksLikeHtml) return null;
+    return normalized.slice(0, 500) || null;
+  }
+  return text;
 }
 
 export async function requestJson(url, options = {}, fetchImpl = globalThis.fetch) {

@@ -41,6 +41,7 @@ from backend.procurement_lookup.domain import ProcurementLookupError
 
 _PLAN_PATTERN = re.compile(r"^PL\d{10}$", re.I)
 _NOTICE_PATTERN = re.compile(r"^IB\d{10}$", re.I)
+_SESSION_BOOTSTRAP_ATTEMPTS = 3
 _ALLOWED_ERRORS = {
     "PROCUREMENT_NOT_FOUND",
     "PROCUREMENT_REVISION_INVALID",
@@ -328,15 +329,22 @@ class MuaSamCongProcurementSource:
         except Exception:  # noqa: BLE001 - telemetry cannot break imports.
             return
 
-    @staticmethod
-    def _call(callback, *args, **kwargs):
-        try:
-            result = callback(*args, **kwargs)
-        except Exception as error:  # noqa: BLE001 - process boundary normalization.
-            code = str(error)
-            if code not in _ALLOWED_ERRORS:
-                code = "PROCUREMENT_UPSTREAM_UNAVAILABLE"
-            raise ProcurementSourceError(code) from error
+    def _call(self, callback, *args, **kwargs):
+        result = None
+        for attempt in range(_SESSION_BOOTSTRAP_ATTEMPTS):
+            try:
+                result = callback(*args, **kwargs)
+                break
+            except Exception as error:  # noqa: BLE001 - process boundary normalization.
+                code = str(error)
+                if code not in _ALLOWED_ERRORS:
+                    code = "PROCUREMENT_UPSTREAM_UNAVAILABLE"
+                if (
+                    code == "PROCUREMENT_SESSION_FAILED"
+                    and attempt + 1 < _SESSION_BOOTSTRAP_ATTEMPTS
+                ):
+                    continue
+                raise ProcurementSourceError(code) from error
         if not isinstance(result, dict):
             raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
         return result
@@ -474,7 +482,7 @@ class MuaSamCongProcurementSource:
 
     def get_opening_bundle(self, notice_no: str, revision_id: str) -> dict:
         notice_no = _canonical_code(notice_no, _NOTICE_PATTERN)
-        self._notice_revision_hint(notice_no, revision_id)
+        hint = self._notice_revision_hint(notice_no, revision_id)
         result = self._call(
             self.runtime.get_opening_bundle, notice_no, str(revision_id)
         )
@@ -502,10 +510,68 @@ class MuaSamCongProcurementSource:
                     )
                 ),
                 "source": self._source_metadata(result),
+                "rawBundle": self._opening_raw_bundle(
+                    notice_no,
+                    str(revision_id),
+                    str(hint.get("revisionNumber") or ""),
+                    result,
+                ),
             }
         )
         self._observe("OPENING", result, canonical)
         return canonical
+
+    @staticmethod
+    def _opening_raw_bundle(notice_no, revision_id, revision_number, result):
+        raw = result.get("raw") or {}
+        retrieved_at = result.get("retrievedAt")
+        failures = result.get("failures") or []
+        sources = {}
+        for key, response in raw.items():
+            if key == "noticeDetail":
+                operation = str(
+                    result.get("noticeDetailOperation") or "NOTICE_LDT_DETAIL"
+                )
+            else:
+                operation = re.sub(r"_\d+$", "", str(key)).upper()
+            sources[str(key)] = {
+                "operation": operation,
+                "endpoint": "",
+                "request": {
+                    "noticeNo": notice_no,
+                    "revisionId": revision_id,
+                },
+                "response": deepcopy(response),
+                "error": None,
+                "success": True,
+                "schemaFingerprint": str(
+                    result.get("fingerprint") or "unknown"
+                ),
+                "retrievedAt": retrieved_at,
+            }
+        return {
+            "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+            "provider": "MUASAMCONG",
+            "entity": {
+                "kind": "NOTICE",
+                "canonicalCode": notice_no,
+                "noticeNo": notice_no,
+            },
+            "detailLevel": "COMPLETE",
+            "revisionMode": "SELECTED",
+            "retrievedAt": retrieved_at,
+            "sources": {},
+            "revisions": {
+                revision_number: {
+                    "revisionId": revision_id,
+                    "revisionNumber": revision_number,
+                    "sources": sources,
+                },
+            },
+            "failures": deepcopy(failures),
+            "complete": not failures,
+            "status": "FOUND_COMPLETE" if not failures else "FOUND_PARTIAL",
+        }
 
     def get_result_bundle(self, notice_no: str, revision_id: str) -> dict:
         notice_no = _canonical_code(notice_no, _NOTICE_PATTERN)
@@ -824,6 +890,10 @@ class MuaSamCongProcurementSource:
             "additionalPurchaseOption": revision.get(
                 "additionalPurchaseOption"
             ),
+            "additionalPurchaseItems": deepcopy(
+                revision.get("additionalPurchaseItems") or []
+            ),
+            "bidValidityDays": revision.get("bidValidityDays"),
             "selectionDuration": revision.get("selectionDuration"),
             "selectionStart": revision.get("selectionStart"),
             "bidCloseDate": revision.get("bidClosingAt"),

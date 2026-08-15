@@ -56,6 +56,27 @@ def _walk(value, *, max_depth=10, max_nodes=10_000) -> Iterable[object]:
             pending.extend((child, depth + 1) for child in item[:2_000])
 
 
+def _embedded_form_pick(raw, *aliases):
+    """Read a scalar from JSON-encoded MSC web-form payloads."""
+
+    for item in _walk(raw):
+        if not isinstance(item, dict):
+            continue
+        value = item.get("formValue")
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        result = pick(parsed, *aliases)
+        if result not in (None, ""):
+            return result
+    return None
+
+
 def _same_family(actual, expected):
     return str(actual or "").strip().upper().split("-", 1)[0] == str(
         expected or ""
@@ -644,9 +665,10 @@ def normalize_notice_revision(
         "additionalPurchaseItems": normalize_additional_purchase_items(
             selection_row or notice
         ),
-        "bidValidityDays": _positive_days(related_pick(
-            "bidValidity", "bidValidityDays", "bidValidityNum"
-        )),
+        "bidValidityDays": _positive_days(
+            related_pick("bidValidity", "bidValidityDays", "bidValidityNum")
+            or _embedded_form_pick(raw, "effectTimeHSDT")
+        ),
         "selectionDuration": str(related_pick(
             "bidTime", "selectionDuration", default=""
         ) or "") or None,
@@ -1171,15 +1193,26 @@ def normalize_notice_complete_bundle(bundle: dict):
                 if len(name_matches) == 1:
                     plan_package = name_matches[0]
         if plan_package is not None:
+            plan_package_detail_source = sources.get("planPackageDetail") or {}
+            plan_package_detail = (
+                plan_package_detail_source.get("response")
+                if plan_package_detail_source.get("success") is True
+                else None
+            )
+            additional_purchase_items = normalize_additional_purchase_items(
+                plan_package_detail or {}
+            )
+            if not additional_purchase_items:
+                additional_purchase_items = normalize_additional_purchase_items(
+                    plan_package
+                )
             plan_values = {
                 "additionalPurchaseOption": map_optional_boolean(pick(
                     plan_package,
                     "additionalChoise",
                     "additionalPurchaseOption",
                 )),
-                "additionalPurchaseItems": normalize_additional_purchase_items(
-                    plan_package
-                ),
+                "additionalPurchaseItems": additional_purchase_items,
                 "bidValidityDays": _positive_days(pick(
                     plan_package,
                     "bidValidity",

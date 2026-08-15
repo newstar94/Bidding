@@ -686,8 +686,11 @@ def execute_sync_mutation(
         owner_type = transaction_context.owner_type
         current_time = transaction_context.current_time
 
-        validate_import_session_mutation(
+        import_authority = validate_import_session_mutation(
             cursor, data, organization_id=org_name, user_id=user_id,
+        )
+        trusted_import_package_ids = set(
+            (import_authority or {}).get("packageIds") or ()
         )
         resolve_pending_imported_investor(cursor, data, org_name)
 
@@ -887,6 +890,7 @@ def execute_sync_mutation(
             iter_payloads=iter_sync_table_payloads,
             canonicalize_item=canonicalize_payload_item,
             server_inherited_assignment_ids=server_inherited_assignment_ids,
+            trusted_import_package_ids=trusted_import_package_ids,
         )
         validation_errors = record_validator.validate_payload()
 

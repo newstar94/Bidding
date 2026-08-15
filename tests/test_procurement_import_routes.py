@@ -9,11 +9,63 @@ from starlette.testclient import TestClient
 import backend.procurement_import.routes as routes_module
 from backend.procurement_import.routes import (
     ProcurementRouteError,
+    _load_opening_from_raw_snapshot,
     _resolve_revision_decisions,
     build_procurement_source,
     procurement_import_routes,
 )
 from backend.procurement_import.service import PreviewStore
+
+
+def test_opening_prepare_reuses_complete_exact_raw_snapshot():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, organization_id, notice_no, **options):
+            assert (organization_id, notice_no) == ("org-1", "IB2600000002")
+            assert options["detail_level"] == "COMPLETE"
+            assert options["revision_mode"] == "SELECTED"
+            assert options["revision_numbers"] == ["01"]
+            return {"complete": True, "entity": {"kind": "NOTICE"}}
+
+    class Source:
+        def lookup_from_raw_bundle(self, notice_no, bundle, **options):
+            assert notice_no == "IB2600000002"
+            assert bundle["complete"] is True
+            assert options == {"revision_mode": "SELECTED", "detail_level": "COMPLETE"}
+            return {"canonical": {"revisions": [{
+                "revisionId": "notice-01",
+                "revisionNumber": "01",
+                "opening": {
+                    "openingAt": "2026-08-03T13:08:42",
+                    "bidders": [{"contractorName": "Nhà thầu A"}],
+                    "lots": [],
+                },
+            }]}}
+
+        def get_opening_bundle(self, *_args):
+            raise AssertionError("cache hit must not call upstream opening")
+
+    opening = _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    )
+
+    assert opening["openingAt"] == "2026-08-03T13:08:42"
+    assert opening["source"]["driver"] == "raw-snapshot"
+
+
+def test_opening_prepare_rejects_partial_raw_snapshot_for_cache_reuse():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {"complete": False, "entity": {"kind": "NOTICE"}}
+
+    class Source:
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            raise AssertionError("partial evidence must not fabricate opening")
+
+    assert _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    ) is None
 
 
 def test_procurement_import_routes_are_registered():
@@ -142,6 +194,141 @@ def test_prepare_returns_only_server_result(monkeypatch):
     assert response.status_code == 200
     assert response.json()["previewId"] == "opaque-preview"
     assert "revisions" not in response.json()
+
+
+def test_employee_with_plan_view_access_may_prepare_muasamcong_plan(monkeypatch):
+    permission_actions = []
+
+    class Connection:
+        def cursor(self):
+            return object()
+
+        def execute(self, _sql):
+            return self
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def load_family(self, _organization_id, _provider, _family_no):
+            return {"latestPlan": None}
+
+    class Preparer:
+        def prepare_plan(self, **_options):
+            return {"previewId": "preview-employee"}
+
+    class PreviewStore:
+        def get(self, *_args, **_kwargs):
+            return SimpleNamespace(canonical_bundle={"kind": "PLAN"})
+
+    class SessionService:
+        def __init__(self, _repository, **_options):
+            pass
+
+        def create_from_bundle(self, _bundle, **_context):
+            return {"sessionId": "session-employee"}
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="employee-1", active_role="employee"),
+            "org-1",
+            "workspace-1",
+        ),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(
+        routes_module,
+        "build_procurement_source",
+        lambda: SimpleNamespace(name="MUASAMCONG"),
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "has_module_permission",
+        lambda *_args: permission_actions.append(_args[-1]) or _args[-1] == "view",
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", Connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "_build_import_preparer", lambda _source: Preparer())
+    monkeypatch.setattr(routes_module, "PREVIEW_STORE", PreviewStore())
+    monkeypatch.setattr(routes_module, "ProcurementImportSessionRepository", Repository)
+    monkeypatch.setattr(routes_module, "ProcurementImportSessionService", SessionService)
+
+    result = routes_module._prepare_blocking(
+        object(),
+        {
+            "code": "PL2600000001",
+            "revisionMode": "LATEST",
+            "workspaceLease": "workspace-1",
+        },
+    )
+
+    assert result["previewId"] == "preview-employee"
+    assert result["importSession"]["sessionId"] == "session-employee"
+    assert permission_actions == ["view"]
+
+
+def test_plan_prepare_still_denies_member_without_plan_view_access(monkeypatch):
+    permission_actions = []
+
+    class Connection:
+        def cursor(self):
+            return object()
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="employee-1", active_role="employee"),
+            "org-1",
+            "workspace-1",
+        ),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(
+        routes_module,
+        "build_procurement_source",
+        lambda: SimpleNamespace(name="MUASAMCONG"),
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "has_module_permission",
+        lambda *_args: permission_actions.append(_args[-1]) or False,
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", Connection)
+
+    try:
+        routes_module._prepare_blocking(
+            object(),
+            {
+                "code": "PL2600000001",
+                "revisionMode": "LATEST",
+                "workspaceLease": "workspace-1",
+            },
+        )
+    except ProcurementRouteError as error:
+        assert error.code == "ORGANIZATION_ACCESS_DENIED"
+        assert error.status_code == 403
+    else:
+        raise AssertionError("member without plan view access must be denied")
+
+    assert permission_actions == ["view"]
 
 
 def test_prepare_notice_returns_only_server_preview_authority(monkeypatch):

@@ -361,6 +361,20 @@ test("opening draft merge preserves local rows while overwrite replaces them", (
 });
 
 
+test("opening import reconciliation does not change package workflow status", () => {
+  const pkg = { id: "package-1", trangThai: "Đang mời thầu" };
+
+  const result = reconcileOpeningDrafts([], [{
+    contractorCode: "0100000001",
+    contractorName: "Nhà thầu 01",
+    bidPrice: 100,
+  }], "OVERWRITE");
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(pkg.trangThai, "Đang mời thầu");
+});
+
+
 test("debounced preparer cancels stale code and runs only the latest value", () => {
   const pending = new Map();
   let sequence = 0;

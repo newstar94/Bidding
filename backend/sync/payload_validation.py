@@ -330,7 +330,12 @@ def _validate_single_team_leader(item, field_name, label, errors):
             errors.append(f"{label} phải có đúng một Tổ trưởng.")
 
 
-def validate_package_status_transition(previous_status, item):
+def validate_package_status_transition(
+    previous_status,
+    item,
+    *,
+    allow_source_reconciliation=False,
+):
     previous_status = enum_label("goi_thau", "trang_thai", previous_status)
     old_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
         str(previous_status or "").strip(), str(previous_status or "").strip()
@@ -340,6 +345,12 @@ def validate_package_status_transition(previous_status, item):
         str(item.get("trangThai") or "Chuẩn bị").strip(),
     )
     if not old_status or old_status == new_status:
+        return []
+    if (
+        allow_source_reconciliation
+        and old_status == "Chưa xác định"
+        and new_status == "Đang mời thầu"
+    ):
         return []
     direct_or_special = str(item.get("hinhThucLuaChon") or "").strip() in {
         "Chỉ định thầu rút gọn",

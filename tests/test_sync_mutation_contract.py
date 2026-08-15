@@ -1,11 +1,39 @@
 from pathlib import Path
+from types import SimpleNamespace
 
-from backend.sync.payload_validation import validate_sync_payload_shape
+from backend.sync.payload_validation import (
+    validate_package_status_transition,
+    validate_sync_payload_shape,
+)
 from backend.sync.request_contract import (
     generated_aggregate_batch_limit,
     sync_batch_limit,
 )
 from backend.procurement_import.sync_binding import _session_records
+from backend.shared.access_policy import AccessDecision
+from backend.sync import deletion_service
+
+
+def test_manual_unknown_to_invited_package_transition_remains_rejected():
+    errors = validate_package_status_transition(
+        "Chưa xác định",
+        {"trangThai": "Đang mời thầu"},
+    )
+
+    assert errors == [
+        "Không được chuyển trạng thái gói thầu từ 'Chưa xác định' "
+        "sang 'Đang mời thầu'."
+    ]
+
+
+def test_trusted_procurement_reconciliation_allows_unknown_to_invited():
+    errors = validate_package_status_transition(
+        "Chưa xác định",
+        {"trangThai": "Đang mời thầu"},
+        allow_source_reconciliation=True,
+    )
+
+    assert errors == []
 
 
 def test_mutating_sync_payload_requires_client_mutation_id():
@@ -113,6 +141,7 @@ def test_import_authority_rejects_two_source_revisions_even_if_client_demotes_on
 from backend.sync.record_validator import historical_record_mutation_error
 from backend.sync.aggregate_mutability import (
     AggregateMutabilityContext,
+    build_aggregate_mutability_context,
     historical_parent_mutation_error,
     package_mutability_error,
 )
@@ -152,6 +181,67 @@ def test_package_and_children_under_historical_plan_are_immutable():
         assert error["code"] == "HISTORICAL_PARENT_IMMUTABLE"
 
 
+def test_new_plan_and_packages_in_same_sync_batch_are_mutable():
+    class Cursor:
+        def execute(self, _sql, _parameters=()):
+            raise AssertionError("complete incoming ownership must not query PostgreSQL")
+
+    context = build_aggregate_mutability_context(
+        Cursor(),
+        "org-1",
+        {
+            "ke_hoach_lcnt": [{
+                "id": "plan-new",
+                "maKeHoach": "PL2600164871",
+            }],
+            "goi_thau": [
+                {"id": "package-1", "keHoachId": "plan-new"},
+                {"id": "package-2", "keHoachId": "plan-new"},
+                {"id": "package-3", "keHoachId": "plan-new"},
+            ],
+        },
+        current_records_by_table={
+            "ke_hoach_lcnt": {},
+            "goi_thau": {},
+        },
+    )
+
+    assert context.plan_is_latest_by_id == {"plan-new": True}
+    assert all(
+        historical_parent_mutation_error(context, "goi_thau", {"id": package_id})
+        is None
+        for package_id in ("package-1", "package-2", "package-3")
+    )
+
+
+def test_existing_historical_plan_in_sync_batch_remains_immutable():
+    class Cursor:
+        def execute(self, _sql, _parameters=()):
+            raise AssertionError("complete incoming ownership must not query PostgreSQL")
+
+    context = build_aggregate_mutability_context(
+        Cursor(),
+        "org-1",
+        {
+            "ke_hoach_lcnt": [{"id": "plan-history"}],
+            "goi_thau": [{"id": "package-1", "keHoachId": "plan-history"}],
+        },
+        current_records_by_table={
+            "ke_hoach_lcnt": {
+                "plan-history": {"id": "plan-history", "is_latest": 0},
+            },
+            "goi_thau": {},
+        },
+    )
+
+    error = historical_parent_mutation_error(
+        context,
+        "goi_thau",
+        {"id": "package-1"},
+    )
+    assert error["code"] == "HISTORICAL_PARENT_IMMUTABLE"
+
+
 def test_sync_has_no_successor_requirement_for_optional_assignments():
     service_source = Path("backend/sync/service.py").read_text(encoding="utf-8")
 
@@ -182,3 +272,146 @@ def test_direct_package_mutability_guard_locks_owning_plan_and_fails_closed():
     assert denied["code"] == "HISTORICAL_PARENT_IMMUTABLE"
     assert "FOR UPDATE OF package, plan" in historical.sql
     assert historical.parameters == ("org-1", "package-1")
+
+
+def test_complete_package_family_deletion_may_remove_historical_snapshots(monkeypatch):
+    packages = {
+        "package-history": {
+            "id": "package-history",
+            "id_goc": "package-root",
+            "ke_hoach_id": "plan-history",
+            "row_version": 1,
+            "archived_at": None,
+        },
+        "package-current": {
+            "id": "package-current",
+            "id_goc": "package-root",
+            "ke_hoach_id": "plan-current",
+            "row_version": 1,
+            "archived_at": None,
+        },
+    }
+
+    class Answer:
+        def __init__(self, rows=()):
+            self.rows = list(rows)
+
+        def fetchall(self):
+            return list(self.rows)
+
+        def fetchone(self):
+            return self.rows[0] if self.rows else None
+
+    class Cursor:
+        rowcount = 1
+
+        def __init__(self):
+            self.answer = Answer()
+
+        def execute(self, sql, parameters=()):
+            normalized = " ".join(str(sql).split())
+            parameters = tuple(parameters)
+            if normalized.startswith("SELECT * FROM goi_thau"):
+                self.answer = Answer(
+                    packages[record_id]
+                    for record_id in parameters[1:]
+                    if record_id in packages
+                )
+            elif normalized.startswith("SELECT id, is_latest FROM ke_hoach_lcnt"):
+                self.answer = Answer([
+                    ("plan-history", 0),
+                    ("plan-current", 1),
+                ])
+            elif normalized.startswith(
+                "SELECT id, COALESCE(id_goc, id) AS family_root FROM goi_thau"
+            ):
+                self.answer = Answer([
+                    ("package-history", "package-root"),
+                    ("package-current", "package-root"),
+                ])
+            else:
+                self.answer = Answer()
+            return self
+
+        def fetchall(self):
+            return self.answer.fetchall()
+
+        def fetchone(self):
+            return self.answer.fetchone()
+
+    def impacts(_cursor, _organization_id, _table_name, record_ids):
+        return {
+            str(record_id): {
+                "rootCount": 1,
+                "dependentCount": 0,
+                "totalCount": 1,
+                "dependents": [],
+                "assignmentCount": 0,
+            }
+            for record_id in record_ids
+        }
+
+    monkeypatch.setattr(
+        deletion_service,
+        "build_delete_impacts_by_record_ids",
+        impacts,
+    )
+    monkeypatch.setattr(
+        deletion_service,
+        "find_blocking_delete_references_by_record_ids",
+        lambda _cursor, _organization_id, _table_name, record_ids: {
+            str(record_id): [] for record_id in record_ids
+        },
+    )
+    monkeypatch.setattr(
+        deletion_service,
+        "build_batch_write_authorization_context",
+        lambda *_args, **_kwargs: SimpleNamespace(organization_manager=True),
+    )
+    monkeypatch.setattr(
+        deletion_service,
+        "authorize_record_write_from_context",
+        lambda *_args, **_kwargs: AccessDecision(True),
+    )
+    monkeypatch.setattr(
+        deletion_service,
+        "insert_delete_audit",
+        lambda *_args, **_kwargs: None,
+    )
+
+    denied = deletion_service.apply_sync_deletions(
+        Cursor(),
+        [{"table": "goithau", "id": "package-history", "expectedVersion": 1}],
+        organization_id="org-1",
+        actor_role="manager",
+        actor_user_id="manager-1",
+        current_time="2026-08-15 12:00:00",
+        sync_version=2,
+        clean_record_id=lambda _table, value: str(value) if value else None,
+        ip_address="127.0.0.1",
+    )
+
+    assert [error["code"] for error in denied["errors"]] == [
+        "HISTORICAL_PARENT_IMMUTABLE"
+    ]
+
+    result = deletion_service.apply_sync_deletions(
+        Cursor(),
+        [
+            {"table": "goithau", "id": "package-history", "expectedVersion": 1},
+            {"table": "goithau", "id": "package-current", "expectedVersion": 1},
+        ],
+        organization_id="org-1",
+        actor_role="manager",
+        actor_user_id="manager-1",
+        current_time="2026-08-15 12:00:00",
+        sync_version=2,
+        clean_record_id=lambda _table, value: str(value) if value else None,
+        ip_address="127.0.0.1",
+    )
+
+    assert result["errors"] == []
+    assert {item["id"] for item in result["impacts"]} == {
+        "package-history",
+        "package-current",
+    }

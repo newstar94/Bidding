@@ -705,6 +705,14 @@ def test_unified_source_exposes_all_revisions_opening_and_lookup_contracts():
     assert plan["totalAmountVnd"] == 300_000_000
     assert notice["source"]["semanticOperation"] == "NOTICE_LDT_DETAIL"
     assert opening["schemaVersion"] == "biddingflow-opening-bundle-v1"
+    assert opening["rawBundle"]["entity"] == {
+        "kind": "NOTICE",
+        "canonicalCode": "IB2600000002",
+        "noticeNo": "IB2600000002",
+    }
+    assert opening["rawBundle"]["revisions"]["01"]["revisionId"] == (
+        "notice-01"
+    )
     assert result["schemaVersion"] == "biddingflow-result-bundle-v1"
     assert result["hasSelectionResult"] is True
     assert result["hasTechnicalResult"] is True
@@ -1038,6 +1046,12 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                         "success": True,
                         "response": {
                             "bidaInvChapterConfList": [{"isMultiLot": 1}],
+                            "bidoInvBiddingDTO": [{
+                                "formCode": "BD_DATA_TABLE",
+                                "formValue": json.dumps({
+                                    "effectTimeHSDT": 90,
+                                }),
+                            }],
                             "resultDecision": {
                                 "decisionNo": "KHÔNG-ĐƯỢC-LẤY",
                                 "decisionDate": "2026-04-01T07:30:00",
@@ -1075,6 +1089,20 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                                     "bidStartYear": 2026,
                                 },
                             ],
+                        },
+                    },
+                    "planPackageDetail": {
+                        "operation": "PLAN_PACKAGE_DETAIL",
+                        "success": True,
+                        "response": {
+                            "formValue": json.dumps([{
+                                "id": "option-1",
+                                "category": "Phim X-Quang kỹ thuật số",
+                                "unit": "tấm",
+                                "qty": 6000,
+                                "percentage": 0.3,
+                                "estimateValue": 123_360_000,
+                            }], ensure_ascii=False),
                         },
                     },
                     "opening_bid_0": {
@@ -1169,6 +1197,15 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert revision["isMedicinePackage"] is True
     assert revision["isMultiLot"] is True
     assert revision["additionalPurchaseOption"] is True
+    assert revision["additionalPurchaseItems"] == [{
+        "sourceItemId": "option-1",
+        "name": "Phim X-Quang kỹ thuật số",
+        "unit": "tấm",
+        "quantity": 6000,
+        "percentage": 0.3,
+        "estimateValueVnd": 123_360_000,
+    }]
+    assert revision["bidValidityDays"] == 90
     assert revision["selectionDuration"] == "45 ngày"
     assert revision["selectionStart"] == "Quý II/2026"
     assert revision["linkedPlanRevisionId"] == "plan-revision-00"
@@ -1206,6 +1243,10 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert projected["data"]["isMedicinePackage"] is True
     assert projected["data"]["isMultiLot"] is True
     assert projected["data"]["additionalPurchaseOption"] is True
+    assert projected["data"]["additionalPurchaseItems"] == (
+        revision["additionalPurchaseItems"]
+    )
+    assert projected["data"]["bidValidityDays"] == 90
     assert projected["data"]["selectionDuration"] == "45 ngày"
     assert projected["data"]["selectionStart"] == "Quý II/2026"
     assert projected["data"]["linkedPlanRevisionId"] == "plan-revision-00"
@@ -1277,6 +1318,37 @@ def test_plan_summary_lookup_exposes_total_investment_alias():
     assert result["data"]["totalInvestment"] == 3_000_000_000
     assert result["data"]["sourcePlanType"] == "DTPT"
     assert result["data"]["planType"] == "Dự án"
+
+
+def test_protected_lookup_recovers_after_two_transient_session_bootstrap_failures():
+    class FlakySessionRuntime(FakeRuntime):
+        def __init__(self):
+            self.search_calls = 0
+
+        def search(self, code, kind):
+            self.search_calls += 1
+            if self.search_calls <= 2:
+                raise RuntimeError("PROCUREMENT_SESSION_FAILED")
+            return {
+                "record": {
+                    "planNo": code,
+                    "name": "Kế hoạch sau khi làm mới phiên",
+                    "investTotal": 3_000_000_000,
+                    "planType": "DTPT",
+                },
+                "metadata": {},
+            }
+
+    runtime = FlakySessionRuntime()
+    result = MuaSamCongProcurementSource(runtime).lookup_with_options(
+        "PL2600000001",
+        "PLAN",
+        detail_level="SUMMARY",
+        revision_mode="LATEST",
+    )
+
+    assert runtime.search_calls == 3
+    assert result["data"]["planName"] == "Kế hoạch sau khi làm mới phiên"
 
 
 def test_import_source_observer_emits_complete_secret_free_dimensions():

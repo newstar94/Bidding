@@ -179,3 +179,29 @@ test("non-idempotent mutation without an idempotency key is never retried", asyn
   );
   assert.equal(calls, 1);
 });
+
+
+test("HTML gateway errors are never exposed as the API error message", async () => {
+  const html = "<!DOCTYPE html><html><head><title>502 Bad gateway</title></head>"
+    + `<body>${"upstream failure ".repeat(500)}</body></html>`;
+
+  await assert.rejects(
+    requestJson("/api/procurement/imports/plan/prepare", {
+      method: "POST",
+      csrf: false,
+      retries: 0,
+      timeoutMs: 0,
+    }, async () => new Response(html, {
+      status: 502,
+      statusText: "Bad Gateway",
+      headers: { "Content-Type": "text/html; charset=UTF-8" },
+    })),
+    (error) => (
+      error instanceof ApiError
+      && error.status === 502
+      && error.message === "502 Bad Gateway"
+      && error.data === null
+      && !error.message.includes("DOCTYPE")
+    ),
+  );
+});

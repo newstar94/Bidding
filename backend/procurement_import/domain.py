@@ -126,8 +126,8 @@ def required_package_issues(package: dict) -> list[dict]:
     ]
 
 
-def derive_import_lifecycle_status(package: dict) -> str:
-    """Map source evidence conservatively to a persisted package status."""
+def has_exact_published_notice(package: dict) -> bool:
+    """Return whether source evidence identifies an exact published TBMT."""
 
     has_link_field = "noticeLink" in package
     link = package.get("noticeLink") or {}
@@ -135,7 +135,6 @@ def derive_import_lifecycle_status(package: dict) -> str:
         link.get("state") or ("UNKNOWN" if has_link_field else "UNLINKED")
     ).upper()
     kind = str(link.get("kind") or "UNKNOWN").upper()
-    complete = not required_package_issues(package)
     exact_tbmt = bool(
         (
             link_state == "LINKED"
@@ -151,6 +150,19 @@ def derive_import_lifecycle_status(package: dict) -> str:
             and package.get("revisionNumber") is not None
         )
     )
+    return exact_tbmt
+
+
+def derive_import_lifecycle_status(package: dict) -> str:
+    """Interpret the lifecycle observed at the procurement source."""
+
+    has_link_field = "noticeLink" in package
+    link = package.get("noticeLink") or {}
+    link_state = str(
+        link.get("state") or ("UNKNOWN" if has_link_field else "UNLINKED")
+    ).upper()
+    complete = not required_package_issues(package)
+    exact_tbmt = has_exact_published_notice(package)
     notice_fields = package.get("noticeFields") or {}
     status_for_notify = str(
         notice_fields.get("statusForNotify")
@@ -160,6 +172,7 @@ def derive_import_lifecycle_status(package: dict) -> str:
     source_status = str(
         notice_fields.get("status")
         or package.get("sourceStatus")
+        or package.get("status")
         or ""
     ).strip().upper()
     source_status_text = "".join(
@@ -167,17 +180,6 @@ def derive_import_lifecycle_status(package: dict) -> str:
         for character in unicodedata.normalize("NFKD", source_status)
         if unicodedata.category(character) != "Mn"
     ).replace("Đ", "D")
-    selection_form = str(package.get("selectionForm") or "").strip()
-    direct_or_special = selection_form in {
-        "Chỉ định thầu rút gọn",
-        "Lựa chọn nhà thầu trong trường hợp đặc biệt",
-    }
-    bid_validity = package.get("bidValidityDays")
-    has_bid_validity = (
-        not isinstance(bid_validity, bool)
-        and isinstance(bid_validity, (int, float))
-        and bid_validity > 0
-    )
     if exact_tbmt and source_status_text in {"DANG XET THAU", "DANG CHAM THAU"}:
         return "EVALUATING"
     if exact_tbmt and status_for_notify == "DXT":
@@ -191,30 +193,33 @@ def derive_import_lifecycle_status(package: dict) -> str:
         "PUBLISHED": "INVITED",
         "PUB_TBMT": "INVITED",
         "PUB_MT": "INVITED",
+        "IS_PUBLISH": "INVITED",
+        "CHUA_DONG_THAU": "INVITED",
         "OPEN_BID": "OPENED",
         "OPEN_DXKT": "OPENED",
         "PUB_DSNTKT": "EVALUATING",
         "OPEN_DXTC": "OPENED",
         "CANCEL_BID": "CANCELLED",
         "03": "CANCELLED",
+        "OPENED": "OPENED",
+        "EVALUATING": "EVALUATING",
+        "PARTIALLY_AWARDED": "PARTIALLY_AWARDED",
+        "AWARDED": "AWARDED",
+        "CANCELLED": "CANCELLED",
+        "PUB_KQLCNT": "AWARDED",
     }
     mapped = status_mapping.get(source_status)
-    if (
-        exact_tbmt
-        and mapped
-        and (mapped != "INVITED" or (complete and (direct_or_special or has_bid_validity)))
-    ):
+    if exact_tbmt and mapped:
         return mapped
-    if (
-        exact_tbmt
-        and complete
-        and source_status == "PUBLISHED"
-        and (direct_or_special or has_bid_validity)
-    ):
-        return "INVITED"
     contrary = source_status in {
         "CANCELLED", "OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED",
     }
+    if (
+        exact_tbmt
+        and str(package.get("approvalDecisionNo") or "").strip()
+        and not contrary
+    ):
+        return "INVITED"
     if (
         link_state == "UNLINKED"
         and package.get("expectedNotice") is True
@@ -223,6 +228,48 @@ def derive_import_lifecycle_status(package: dict) -> str:
     ):
         return "PREPARING"
     return "UNKNOWN"
+
+
+_LOCAL_WORKFLOW_STATUSES = {
+    "UNKNOWN", "PREPARING", "INVITED", "OPENED", "EVALUATING",
+    "PARTIALLY_AWARDED", "AWARDED", "CANCELLED",
+}
+_USER_CONTROLLED_WORKFLOW_STATUSES = {
+    "OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED", "CANCELLED",
+}
+_SOURCE_POST_INVITATION_STATUSES = {
+    "OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED", "CANCELLED",
+}
+
+
+def project_source_lifecycle_to_bidding(
+    source_status,
+    *,
+    existing_status=None,
+    has_published_notice=False,
+) -> str:
+    """Project source evidence without letting it drive Bidding workflow."""
+
+    source = str(source_status or "UNKNOWN").strip().upper()
+    if source not in _LOCAL_WORKFLOW_STATUSES:
+        source = "UNKNOWN"
+    existing = str(existing_status or "").strip().upper()
+    if existing not in _LOCAL_WORKFLOW_STATUSES:
+        existing = ""
+
+    if existing in _USER_CONTROLLED_WORKFLOW_STATUSES:
+        return existing
+    if existing == "INVITED":
+        return "INVITED"
+    if source == "PREPARING":
+        return "PREPARING"
+    if source == "INVITED":
+        return "INVITED" if has_published_notice else "UNKNOWN"
+    if source in _SOURCE_POST_INVITATION_STATUSES:
+        return "INVITED" if has_published_notice else "UNKNOWN"
+    if existing == "PREPARING" and has_published_notice:
+        return "INVITED"
+    return "INVITED" if has_published_notice else "UNKNOWN"
 
 
 SOURCE_OWNED_PACKAGE_FIELDS = (

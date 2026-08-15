@@ -148,7 +148,9 @@ class ProcurementImportRepository:
                       binding.id_detail, binding.match_method,
                       binding.confirmed_by, package.ke_hoach_id,
                       package.trang_thai, package.thoi_gian_dong_thau,
-                      package.thoi_gian_mo_thau
+                      package.thoi_gian_mo_thau,
+                      package.yeu_cau_tham_dinh_hsmt,
+                      package.yeu_cau_tham_dinh_hsmt_code
                  FROM goi_thau AS package
             LEFT JOIN procurement_source_binding AS binding
                    ON binding.organization_id = package.organization_id
@@ -196,6 +198,9 @@ class ProcurementImportRepository:
                     or "UNKNOWN"
                 ),
                 "noticeFields": deepcopy(source_fields.get("noticeFields") or {}),
+                "localStatus": str(row[28] or "UNKNOWN").upper(),
+                "appraisalRequired": row[31],
+                "appraisalRequiredCode": row[32],
                 "binding": {
                     "familyNo": row[22], "planRevisionId": row[23],
                     "idDetail": row[24], "stableExternalId": row[21],
@@ -299,7 +304,10 @@ class ProcurementImportRepository:
                         WHERE assignment.organization_id = package.organization_id
                           AND assignment.loai_doi_tuong = 'goithau'
                           AND assignment.id_muc_tieu = package.id
-                        ORDER BY assignment.id LIMIT 1)
+                         ORDER BY assignment.id LIMIT 1),
+                      package.trang_thai,
+                      package.yeu_cau_tham_dinh_hsmt,
+                      package.yeu_cau_tham_dinh_hsmt_code
                  FROM goi_thau AS package
             LEFT JOIN procurement_source_binding AS binding
                    ON binding.organization_id = package.organization_id
@@ -324,6 +332,9 @@ class ProcurementImportRepository:
             "noticeKind": (source_fields.get("noticeLink") or {}).get("kind") or "UNKNOWN",
             "noticeFields": deepcopy(source_fields.get("noticeFields") or {}),
             "stableExternalId": row[10], "assigneeUserId": row[16],
+            "localStatus": str(row[17] or "UNKNOWN").upper(),
+            "appraisalRequired": row[18],
+            "appraisalRequiredCode": row[19],
             "binding": {
                 "familyNo": row[11], "planRevisionId": row[12],
                 "idDetail": row[13], "stableExternalId": row[10],
@@ -576,11 +587,14 @@ class ProcurementImportRepository:
             mapped_status = "UNKNOWN"
         if not exact_tbmt and mapped_status not in {"UNKNOWN", "PREPARING"}:
             mapped_status = "UNKNOWN"
-        actual_opening_at = (
-            notice_fields.get("actualOpeningAt")
-            or notice_fields.get("bidOpeningAt")
-        )
-        financial_opening_at = notice_fields.get("financialActualOpeningAt")
+        if (
+            row.get("cloneFromSnapshotId") is None
+            and mapped_status in {
+                "OPENED", "EVALUATING", "PARTIALLY_AWARDED", "AWARDED",
+                "CANCELLED",
+            }
+        ):
+            mapped_status = "INVITED" if exact_tbmt else "UNKNOWN"
         self.cursor.execute(
             """INSERT INTO goi_thau (
                    id, organization_id, owner_type, id_goc, ma_goi_thau,
@@ -593,9 +607,11 @@ class ProcurementImportRepository:
                    thoi_gian_dong_thau, thoi_gian_mo_thau,
                    thoi_gian_mo_ehsdxtc, so_quyet_dinh,
                    ngay_quyet_dinh, gia_tri_dam_bao_du_thau,
+                   yeu_cau_tham_dinh_hsmt,
+                   yeu_cau_tham_dinh_hsmt_code,
                    trang_thai, row_version, sync_version)
                VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
@@ -610,11 +626,12 @@ class ProcurementImportRepository:
                 fields.get("selectionStart"), fields.get("evaluationMethod"),
                 normalize_datetime_value(notice_fields.get("publishedAt")),
                 normalize_datetime_value(notice_fields.get("bidClosingAt")),
-                normalize_datetime_value(actual_opening_at),
-                normalize_datetime_value(financial_opening_at),
+                None,
+                None,
                 fields.get("approvalDecisionNo"),
                 fields.get("approvalDecisionDate"),
                 fields.get("bidGuaranteeVnd"),
+                "Không", "NOT_REQUIRED",
                 mapped_status, self.sync_version,
             ),
         )
@@ -628,20 +645,15 @@ class ProcurementImportRepository:
         if not exact_tbmt:
             return
         closing_at = normalize_datetime_value(notice_fields.get("bidClosingAt"))
-        opening_at = normalize_datetime_value(
-            notice_fields.get("actualOpeningAt")
-            or notice_fields.get("bidOpeningAt")
-        )
         mapped_status = str(row.get("initialStatus") or "UNKNOWN").upper()
         self.cursor.execute(
             """UPDATE goi_thau
                   SET thoi_gian_dong_thau = COALESCE(?, thoi_gian_dong_thau),
-                      thoi_gian_mo_thau = COALESCE(?, thoi_gian_mo_thau),
                       trang_thai = CASE
-                          WHEN ? != 'UNKNOWN' THEN ? ELSE trang_thai END
+                           WHEN ? != 'UNKNOWN' THEN ? ELSE trang_thai END
                 WHERE organization_id = ? AND id = ?""",
             (
-                closing_at, opening_at, mapped_status, mapped_status,
+                closing_at, mapped_status, mapped_status,
                 organization_id, row["id"],
             ),
         )
@@ -683,8 +695,7 @@ class ProcurementImportRepository:
             "trong_nuoc_quoc_te", "thoi_gian_thuc_hien", "nguon_von",
             "linh_vuc", "thoi_gian_to_chuc", "thoi_gian_bat_dau_to_chuc",
             "phuong_phap_danh_gia", "thoi_gian_dang_tai",
-            "thoi_gian_dong_thau", "thoi_gian_mo_thau",
-            "thoi_gian_mo_ehsdxtc", "so_quyet_dinh",
+            "thoi_gian_dong_thau", "so_quyet_dinh",
             "ngay_quyet_dinh", "gia_tri_dam_bao_du_thau",
         }
         protected = {

@@ -9,7 +9,9 @@ from backend.procurement_import.domain import (
     ImportConflict,
     canonical_digest,
     derive_import_lifecycle_status,
+    has_exact_published_notice,
     package_source_fields,
+    project_source_lifecycle_to_bidding,
     revision_sort_key,
     source_revision_version,
 )
@@ -338,11 +340,17 @@ class ProcurementNoticeReconciler:
             "noticeRevisionId": revision_id,
             "noticeVersion": revision_number,
             "noticeFields": notice_fields,
-            "initialStatus": derive_import_lifecycle_status({
-                **notice,
-                "noticeLink": source_fields["noticeLink"],
-                "noticeFields": notice_fields,
-            }),
+            "initialStatus": project_source_lifecycle_to_bidding(
+                derive_import_lifecycle_status({
+                    **notice,
+                    "noticeLink": source_fields["noticeLink"],
+                    "noticeFields": notice_fields,
+                }),
+                existing_status=(
+                    target.get("localStatus") or target.get("initialStatus")
+                ),
+                has_published_notice=True,
+            ),
             "sourceFields": source_fields,
             "canonicalSourceFields": source_fields,
             "assigneeUserId": target.get("assigneeUserId"),
@@ -586,9 +594,14 @@ class ProcurementPlanReconciler:
                 "noticeRevisionId": notice.get("noticeRevisionId"),
                 "noticeVersion": notice.get("noticeVersion"),
                 "noticeFields": deepcopy(observation.get("noticeFields") or {}),
-                "initialStatus": (
+                "initialStatus": project_source_lifecycle_to_bidding(
                     observation.get("lifecycleStatus")
-                    or derive_import_lifecycle_status(observation)
+                    or derive_import_lifecycle_status(observation),
+                    existing_status=(
+                        (matched or {}).get("localStatus")
+                        or (matched or {}).get("initialStatus")
+                    ),
+                    has_published_notice=has_exact_published_notice(observation),
                 ),
                 "sourceFields": source_fields,
                 "canonicalSourceFields": canonical_source_fields,

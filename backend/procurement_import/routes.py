@@ -222,7 +222,7 @@ def _prepare_blocking(request, payload):
     try:
         cursor = connection.cursor()
         if not has_module_permission(
-            cursor, session, session.user_id, organization_id, "kehoach", "edit"
+            cursor, session, session.user_id, organization_id, "kehoach", "view"
         ):
             raise ProcurementRouteError(
                 "ORGANIZATION_ACCESS_DENIED",
@@ -419,6 +419,63 @@ def _cancel_import_session_blocking(request, session_id):
         connection.close()
 
 
+def _load_opening_from_raw_snapshot(
+    source,
+    raw_repository,
+    organization_id,
+    notice_no,
+    selected_revision,
+    *,
+    max_age_seconds=900,
+):
+    """Project an exact complete opening snapshot without an upstream call."""
+
+    loader = getattr(raw_repository, "load_fresh_notice_bundle", None)
+    projector = getattr(source, "lookup_from_raw_bundle", None)
+    if not callable(loader) or not callable(projector):
+        return None
+    revision_number = str(
+        selected_revision.get("revisionNumber") or ""
+    ).strip()
+    raw_bundle = loader(
+        organization_id,
+        notice_no,
+        detail_level="COMPLETE",
+        revision_mode="SELECTED",
+        revision_numbers=[revision_number],
+        max_age_seconds=max_age_seconds,
+    )
+    if not isinstance(raw_bundle, dict) or raw_bundle.get("complete") is not True:
+        return None
+    projected = projector(
+        notice_no,
+        raw_bundle,
+        revision_mode="SELECTED",
+        detail_level="COMPLETE",
+    )
+    revisions = (projected.get("canonical") or {}).get("revisions") or []
+    revision = next((
+        row for row in revisions
+        if str(row.get("revisionId") or "")
+        == str(selected_revision.get("revisionId") or "")
+        and str(row.get("revisionNumber") or "") == revision_number
+    ), None)
+    opening = (revision or {}).get("opening")
+    if not isinstance(opening, dict) or not isinstance(opening.get("bidders"), list):
+        return None
+    return {
+        **deepcopy(opening),
+        "schemaVersion": "biddingflow-opening-bundle-v1",
+        "partial": False,
+        "failedOperations": [],
+        "source": {
+            "provider": getattr(source, "name", "MUASAMCONG"),
+            "driver": "raw-snapshot",
+            "retrievedAt": raw_bundle.get("retrievedAt"),
+        },
+    }
+
+
 def _prepare_opening_blocking(request, payload):
     session, organization_id, lease = _request_context(
         request, payload.get("workspaceLease")
@@ -516,7 +573,22 @@ def _prepare_opening_blocking(request, payload):
         raise ProcurementRouteError(
             "PROCUREMENT_REVISION_INVALID", "Phiên bản TBMT không hợp lệ.", 400
         )
-    opening = source.get_opening_bundle(notice_no, selected["revisionId"])
+    raw_repository = ProcurementRawSnapshotRepository(database=database)
+    opening = _load_opening_from_raw_snapshot(
+        source,
+        raw_repository,
+        organization_id,
+        notice_no,
+        selected,
+        max_age_seconds=(
+            ProcurementLookupSettings.from_environ().raw_cache_ttl_seconds
+        ),
+    )
+    if opening is None:
+        opening = source.get_opening_bundle(notice_no, selected["revisionId"])
+        captured_bundle = opening.pop("rawBundle", None)
+        if isinstance(captured_bundle, dict):
+            raw_repository.save_bundle(organization_id, captured_bundle)
     canonical = {
         "schemaVersion": "biddingflow-opening-import-preview-v1",
         "importKind": "OPENING",

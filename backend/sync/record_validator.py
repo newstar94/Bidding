@@ -76,6 +76,7 @@ class SyncRecordValidator:
         iter_payloads,
         canonicalize_item,
         server_inherited_assignment_ids=None,
+        trusted_import_package_ids=None,
     ):
         self.transaction = transaction_context
         self.payload = payload
@@ -88,6 +89,11 @@ class SyncRecordValidator:
         self.server_inherited_assignment_ids = {
             str(record_id)
             for record_id in (server_inherited_assignment_ids or ())
+            if record_id
+        }
+        self.trusted_import_package_ids = {
+            str(record_id)
+            for record_id in (trusted_import_package_ids or ())
             if record_id
         }
 
@@ -368,6 +374,9 @@ class SyncRecordValidator:
                     item_errors.extend(validate_package_status_transition(
                         current_record.get("trang_thai"),
                         item,
+                        allow_source_reconciliation=(
+                            record_id in self.trusted_import_package_ids
+                        ),
                     ))
                     item_errors.extend(validate_package_locked_fields(
                         current_record,

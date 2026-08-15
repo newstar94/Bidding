@@ -10,6 +10,7 @@ from backend.procurement_import.domain import (
     RequiredFieldIssue,
     derive_import_lifecycle_status,
     normalize_procurement_code,
+    project_source_lifecycle_to_bidding,
     three_way_merge_field,
 )
 from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
@@ -125,6 +126,40 @@ def test_procurement_code_normalization_separates_base_and_requested_revision():
         ),
         (
             {
+                "kind": "TBMT",
+                "noticeNo": "IB2600291864",
+                "revisionId": "notice-00",
+                "revisionNumber": "00",
+                "status": "PUB_KQLCNT",
+                "approvalDecisionNo": "206/QĐ-TTYT",
+                "name": "Gói đã phê duyệt E-HSMT",
+                "priceVnd": 1,
+                "executionPeriod": "30 ngày",
+                "capitalDetail": "Ngân sách",
+                "selectionDuration": "30 ngày",
+                "selectionStart": "2026-02",
+            },
+            "AWARDED",
+        ),
+        (
+            {
+                "kind": "TBMT",
+                "noticeNo": "IB2600291864",
+                "revisionId": "notice-00",
+                "revisionNumber": "00",
+                "sourceStatus": "AWARDED",
+                "approvalDecisionNo": "206/QĐ-TTYT",
+                "name": "Gói đã có kết quả",
+                "priceVnd": 1,
+                "executionPeriod": "30 ngày",
+                "capitalDetail": "Ngân sách",
+                "selectionDuration": "30 ngày",
+                "selectionStart": "2026-02",
+            },
+            "AWARDED",
+        ),
+        (
+            {
                 "noticeLink": {
                     "state": "LINKED", "noticeNo": "IB2600000001",
                     "kind": "TBMT", "noticeRevisionId": "notice-00",
@@ -150,7 +185,7 @@ def test_procurement_code_normalization_separates_base_and_requested_revision():
                 "executionPeriod": "30 ngày", "capitalDetail": "Ngân sách",
                 "selectionDuration": "30 ngày", "selectionStart": "2026-02",
             },
-            "UNKNOWN",
+            "INVITED",
         ),
         (
             {
@@ -170,21 +205,106 @@ def test_import_lifecycle_mapping_is_conservative(package, expected):
 
 
 @pytest.mark.parametrize(
+    ("source_status", "has_published_notice", "expected"),
+    [
+        ("PREPARING", False, "PREPARING"),
+        ("INVITED", True, "INVITED"),
+        ("OPENED", True, "INVITED"),
+        ("EVALUATING", True, "INVITED"),
+        ("PARTIALLY_AWARDED", True, "INVITED"),
+        ("AWARDED", True, "INVITED"),
+        ("CANCELLED", True, "INVITED"),
+        ("CANCELLED", False, "UNKNOWN"),
+    ],
+)
+def test_source_lifecycle_projects_to_invitation_bounded_local_status(
+    source_status, has_published_notice, expected,
+):
+    assert project_source_lifecycle_to_bidding(
+        source_status,
+        has_published_notice=has_published_notice,
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("existing_status", "source_status", "expected"),
+    [
+        ("PREPARING", "OPENED", "INVITED"),
+        ("INVITED", "EVALUATING", "INVITED"),
+        ("EVALUATING", "AWARDED", "EVALUATING"),
+        ("AWARDED", "EVALUATING", "AWARDED"),
+    ],
+)
+def test_source_resync_preserves_user_controlled_local_workflow(
+    existing_status, source_status, expected,
+):
+    assert project_source_lifecycle_to_bidding(
+        source_status,
+        existing_status=existing_status,
+        has_published_notice=True,
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("source_fields", "source_truth"),
+    [
+        ({"status": "OPEN_BID"}, "OPENED"),
+        ({"status": "OPEN_DXKT"}, "OPENED"),
+        ({"status": "OPEN_DXTC"}, "OPENED"),
+        ({"status": "DANG XET THAU"}, "EVALUATING"),
+        ({"status": "DANG CHAM THAU"}, "EVALUATING"),
+        ({"status": "PUB_DSNTKT"}, "EVALUATING"),
+        ({"status": "PARTIALLY_AWARDED"}, "PARTIALLY_AWARDED"),
+        ({"status": "AWARDED"}, "AWARDED"),
+        ({"status": "CANCELLED"}, "CANCELLED"),
+    ],
+)
+def test_source_truth_is_retained_while_local_projection_stops_at_invitation(
+    source_fields, source_truth,
+):
+    package = {
+        "noticeLink": {
+            "state": "LINKED", "noticeNo": "IB2600000001",
+            "kind": "TBMT", "noticeRevisionId": "notice-00",
+            "noticeVersion": "00",
+        },
+        "noticeFields": source_fields,
+    }
+
+    observed = derive_import_lifecycle_status(package)
+
+    assert observed == source_truth
+    assert project_source_lifecycle_to_bidding(
+        observed,
+        has_published_notice=True,
+    ) == "INVITED"
+
+
+@pytest.mark.parametrize(
     ("source_status", "bidding_status"),
     [
         ("UNKNOWN", "Chưa xác định"),
         ("PREPARING", "Chuẩn bị"),
         ("INVITED", "Đang mời thầu"),
-        ("OPENED", "Đã mở thầu"),
-        ("EVALUATING", "Đang chấm thầu"),
-        ("PARTIALLY_AWARDED", "Đã có kết quả một phần"),
-        ("AWARDED", "Đã có kết quả"),
-        ("CANCELLED", "Hủy thầu"),
+        ("OPENED", "Đang mời thầu"),
+        ("EVALUATING", "Đang mời thầu"),
+        ("PARTIALLY_AWARDED", "Đang mời thầu"),
+        ("AWARDED", "Đang mời thầu"),
+        ("CANCELLED", "Chưa xác định"),
     ],
 )
 def test_package_draft_maps_source_lifecycle_to_bidding_status(
     source_status, bidding_status,
 ):
+    notice_link = (
+        {
+            "state": "LINKED", "noticeNo": "IB2600000001",
+            "kind": "TBMT", "noticeRevisionId": "notice-00",
+            "noticeVersion": "00",
+        }
+        if source_status not in {"UNKNOWN", "PREPARING", "CANCELLED"}
+        else {"state": "UNLINKED"}
+    )
     draft = map_package_canonical_to_draft(
         "MUASAMCONG", "PL2600000001",
         {"revisionId": "rev-00", "revisionNumber": "00"},
@@ -192,13 +312,14 @@ def test_package_draft_maps_source_lifecycle_to_bidding_status(
             "planDetailRevisionId": "detail-a-00",
             "name": "Gói A",
             "lifecycleStatus": source_status,
+            "noticeLink": notice_link,
         },
     )
 
     assert draft["trangThai"] == bidding_status
 
 
-def test_package_draft_maps_notice_business_fields_and_actual_opening_time():
+def test_package_draft_maps_invitation_fields_without_opening_materialization():
     draft = map_package_canonical_to_draft(
         "MUASAMCONG", "PL2600184109",
         {"revisionId": "plan-00", "revisionNumber": "00"},
@@ -207,10 +328,16 @@ def test_package_draft_maps_notice_business_fields_and_actual_opening_time():
             "effectiveFields": {
                 "name": "Gói đang xét thầu",
                 "lifecycleStatus": "EVALUATING",
+                "bidValidityDays": 90,
                 "bidGuaranteeVnd": 52_183_040,
                 "approvalDecisionNo": "123/QĐ-E-HSMT",
                 "approvalDecisionDate": "2026-07-15T00:00:00",
                 "financialActualOpeningAt": "2026-08-03T16:20:00",
+                "noticeLink": {
+                    "state": "LINKED", "noticeNo": "IB2600184109",
+                    "kind": "TBMT", "noticeRevisionId": "notice-00",
+                    "noticeVersion": "00",
+                },
                 "noticeFields": {
                     "publishedAt": "2026-07-16T09:00:00",
                     "bidClosingAt": "2026-08-03T13:00:00",
@@ -221,14 +348,18 @@ def test_package_draft_maps_notice_business_fields_and_actual_opening_time():
         },
     )
 
-    assert draft["trangThai"] == "Đang chấm thầu"
+    assert draft["trangThai"] == "Đang mời thầu"
+    assert draft["hieuLucHsdt"] == 90
+    assert draft["hieuLucDamBaoDuThau"] == 120
     assert draft["giaTriBaoDamDuThau"] == 52_183_040
     assert draft["soQuyetDinh"] == "123/QĐ-E-HSMT"
     assert draft["ngayQuyetDinh"] == "2026-07-15T00:00:00"
     assert draft["thoiGianDangTai"] == "2026-07-16T09:00:00"
     assert draft["thoiGianDongThau"] == "2026-08-03T13:00:00"
-    assert draft["thoiGianMoThau"] == "2026-08-03T13:08:42"
-    assert draft["thoiGianMoEhsdxtc"] == "2026-08-03T16:20:00"
+    assert "thoiGianMoThau" not in draft
+    assert "thoiGianMoEhsdxtc" not in draft
+    assert draft["yeuCauThamDinhHsmt"] == "Không"
+    assert draft["yeuCauThamDinhHsmtCode"] == "NOT_REQUIRED"
 
 
 def test_direct_notice_draft_derives_evaluating_from_status_for_notify():
@@ -260,10 +391,10 @@ def test_direct_notice_draft_derives_evaluating_from_status_for_notify():
         },
     )
 
-    assert draft["trangThai"] == "Đang chấm thầu"
+    assert draft["trangThai"] == "Đang mời thầu"
     assert draft["thoiGianDangTai"] == "2026-07-16T09:00:00"
     assert draft["thoiGianDongThau"] == "2026-08-03T13:00:00"
-    assert draft["thoiGianMoThau"] == "2026-08-03T13:08:42"
+    assert "thoiGianMoThau" not in draft
 
 
 def test_prepare_latest_previews_full_snapshot_and_warns_about_older_history(tmp_path):
@@ -719,7 +850,7 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
         def lookup_with_options(
             self, code, kind, *, detail_level, revision_mode, revision_numbers
         ):
-            expected_detail = "COMPLETE" if kind == "PLAN" else "INVITATION"
+            expected_detail = "COMPLETE"
             assert (detail_level, revision_mode, revision_numbers) == (
                 expected_detail, "ALL", [],
             )
@@ -743,7 +874,7 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             assert revision_mode == "ALL"
             kind = (bundle.get("entity") or {}).get("kind")
             assert detail_level == (
-                "COMPLETE" if kind == "PLAN" else "INVITATION"
+                "COMPLETE"
             )
             revisions = (
                 [self._plan_revision()] if kind == "PLAN"
@@ -759,10 +890,10 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             }
 
         def list_notice_revisions(self, *_args, **_kwargs):
-            raise AssertionError("linked notice enrichment must use INVITATION bundle")
+            raise AssertionError("linked notice enrichment must use COMPLETE bundle")
 
         def get_notice_revision(self, *_args, **_kwargs):
-            raise AssertionError("linked notice enrichment must use INVITATION bundle")
+            raise AssertionError("linked notice enrichment must use COMPLETE bundle")
 
     reset_recorded_metrics_for_tests()
     source = CompleteSource()
@@ -784,9 +915,11 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
     assert source.upstream == [
         ("PLAN", "PL2600000001"),
         ("PACKAGE", "IB2600000002"),
+    ]
+    assert raw_cache.saved == [
+        ("PLAN", "PL2600000001"),
         ("PACKAGE", "IB2600000002"),
     ]
-    assert raw_cache.saved == [("PLAN", "PL2600000001")]
     for preview in (cold, warm):
         package = preview["packages"][0]
         assert package["noticeLink"]["noticeVersion"] == "00"
@@ -795,11 +928,11 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             "2026-03-01T09:00:00+07:00"
         )
     phases = snapshot_recorded_metrics().database_phase_count
-    assert phases[("procurement_import", "source_cache", "miss")] == 3
-    assert phases[("procurement_import", "source_cache", "hit")] == 1
+    assert phases[("procurement_import", "source_cache", "miss")] == 2
+    assert phases[("procurement_import", "source_cache", "hit")] == 2
 
 
-def test_plan_linked_notice_uses_invitation_scope_and_caps_post_opening_data():
+def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
     class InvitationSource:
         name = "MUASAMCONG"
 
@@ -861,22 +994,34 @@ def test_plan_linked_notice_uses_invitation_scope_and_caps_post_opening_data():
     )
 
     assert source.calls == [(
-        "IB2600374868", "PACKAGE", "INVITATION", "ALL", [],
+        "IB2600374868", "PACKAGE", "COMPLETE", "ALL", [],
     )]
     package = preview["packages"][0]
     effective = package["effectiveFields"]
-    assert effective["lifecycleStatus"] == "INVITED"
+    assert effective["lifecycleStatus"] == "EVALUATING"
     assert effective["bidValidityDays"] == 90
     assert effective["bidGuaranteeVnd"] == 52_183_040
     assert effective["approvalDecisionNo"] == "123/QD-E-HSMT"
     assert effective["approvalDecisionDate"] == "2026-07-15T00:00:00"
     assert effective["noticeFields"] == {
-        "status": "PUBLISHED",
+        "status": "OPEN_DXKT",
+        "statusForNotify": "DXT",
         "publishedAt": "2026-07-16T09:00:00",
         "bidClosingAt": "2026-08-03T13:00:00",
+        "bidOpeningAt": "2026-08-03T13:00:00",
+        "actualOpeningAt": "2026-08-03T13:08:42",
+        "financialActualOpeningAt": "2026-08-03T16:20:00",
     }
+    assert effective["sourceStatus"] == "OPEN_DXKT"
     for field in ("actualOpeningAt", "financialActualOpeningAt", "opening", "result"):
         assert field not in effective
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG",
+        "PL2600184109",
+        {"revisionId": "plan-00", "revisionNumber": "00"},
+        {"planDetailRevisionId": "detail-00", "effectiveFields": effective},
+    )
+    assert draft["trangThai"] == "Đang mời thầu"
 
 
 def test_prepare_all_orders_revisions_numerically_even_when_provider_is_unsorted(tmp_path):

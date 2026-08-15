@@ -189,7 +189,7 @@ class ProcurementImportPreparer:
             if notice_no not in complete_cache:
                 complete = self._lookup_complete_bundle(
                     notice_no, "PACKAGE", organization_id,
-                    detail_level="INVITATION",
+                    detail_level="COMPLETE",
                 )
                 complete_cache[notice_no] = complete
             if complete is not None:
@@ -236,15 +236,18 @@ class ProcurementImportPreparer:
             notice_fields = {
                 field: deepcopy(detail.get(field))
                 for field in (
-                    "publishedAt", "bidClosingAt",
+                    "status", "statusForNotify", "publishedAt", "bidClosingAt",
+                    "bidOpeningAt", "actualOpeningAt",
+                    "financialActualOpeningAt",
                     "selectionForm", "selectionMode", "contractType",
                     "publicUrl",
                 )
                 if detail.get(field) not in (None, "")
             }
-            notice_fields["status"] = "PUBLISHED"
             if notice_fields:
                 package["noticeFields"] = notice_fields
+            if detail.get("status") not in (None, ""):
+                package["sourceStatus"] = deepcopy(detail["status"])
             for field in (
                 "bidGuaranteeVnd",
                 "bidValidityDays",

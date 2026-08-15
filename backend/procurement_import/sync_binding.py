@@ -245,6 +245,11 @@ def validate_import_session_mutation(
         "revisionId": str(revision.get("revisionId") or ""),
         "revisionNumber": context["revisionNumber"],
         "revisionDigest": digest,
+        "packageIds": tuple(
+            str(record.get("id")).strip()
+            for record in context["packages"]
+            if str(record.get("id") or "").strip()
+        ),
     }
 
 
