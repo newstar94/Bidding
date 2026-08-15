@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import asyncio
+import re
 from contextlib import suppress
 
 from starlette.requests import Request
@@ -174,6 +175,14 @@ async def send_ai_message_api(request: Request):
     try:
         content = validate_message(data.get("content"))
         current_route = str(data.get("route") or "/").strip()
+        client_request_id = str(data.get("requestId") or "").strip()
+        if client_request_id and not re.fullmatch(
+            r"[A-Za-z0-9_-]{8,80}", client_request_id
+        ):
+            return _error(
+                request,
+                ai_error("AI_INVALID_MESSAGE", "Mã yêu cầu trợ lý không hợp lệ."),
+            )
         if len(current_route) > 160 or not current_route.startswith("/") or current_route.startswith("//"):
             return _error(request, ai_error("AI_INVALID_MESSAGE", "Route ứng dụng không hợp lệ."))
         conversation_id = str(request.path_params.get("conversation_id") or "").strip()
@@ -196,6 +205,7 @@ async def send_ai_message_api(request: Request):
             conversation_id,
             content,
             current_route=current_route,
+            client_request_id=client_request_id or None,
             quota_consumed=True,
         )
         try:
@@ -216,6 +226,17 @@ async def send_ai_message_api(request: Request):
                 if await request.is_disconnected():
                     return
                 yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n".encode("utf-8")
+        except AiError as exc:
+            event = {"type": "message.failed", "code": exc.code, "message": exc.message}
+            yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n".encode("utf-8")
+        except (DatabaseError, BlockingIOBusyError, BlockingIOTimeoutError) as exc:
+            log_error(exc, "ai_stream_data")
+            event = {
+                "type": "message.failed",
+                "code": "AI_DATA_UNAVAILABLE",
+                "message": "Dữ liệu trợ lý tạm thời không khả dụng.",
+            }
+            yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n".encode("utf-8")
         finally:
             with suppress(Exception):
                 await provider_stream.aclose()

@@ -47,6 +47,18 @@ def test_app_structure_search_prefers_list_route_for_create_questions():
     assert result.records[0]["route"] == "/goi-thau"
 
 
+def test_app_structure_search_includes_plan_modal_procurement_control():
+    result = search_app_structure(
+        context(),
+        "Có lấy dữ liệu từ muasamcong về được không?",
+        current_route="/ke-hoach",
+        limit=5,
+    )
+
+    plan = next(record for record in result.records if record["route"] == "/ke-hoach")
+    assert "Lấy từ MSC" in plan["actions"]
+
+
 def test_app_structure_search_filters_admin_routes_for_non_admin_users():
     result = search_app_structure(context(), "quản lý tài khoản", current_route="/tong-quan", limit=5)
 

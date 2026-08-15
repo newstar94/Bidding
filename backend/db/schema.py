@@ -207,6 +207,7 @@ SCHEMA_DINH_NGHIA = {
             "input_tokens": "INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0)",
             "output_tokens": "INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0)",
             "error_code": "TEXT",
+            "client_request_id": "TEXT CHECK(client_request_id IS NULL OR (length(client_request_id) BETWEEN 8 AND 80))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
         "foreign_keys": [

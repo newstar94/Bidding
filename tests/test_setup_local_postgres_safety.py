@@ -6,12 +6,40 @@ import scripts.setup_local_postgres as local_postgres
 
 from scripts.setup_local_postgres import (
     assert_safe_reset_environment,
+    bootstrap_bundled_ai_knowledge,
     effective_reset_environment,
     ensure_local_postgres_running,
     initialize_application_schemas,
     main,
     should_auto_start_local_postgres,
 )
+
+
+def test_local_reset_bootstraps_every_bundled_approved_ai_document(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        local_postgres,
+        "_run",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    bootstrap_bundled_ai_knowledge()
+
+    assert len(calls) == len(local_postgres.BUNDLED_AI_KNOWLEDGE)
+    for call, (document_path, metadata_path) in zip(
+        calls,
+        local_postgres.BUNDLED_AI_KNOWLEDGE,
+        strict=True,
+    ):
+        assert call == (
+            local_postgres.sys.executable,
+            str(local_postgres.ROOT / "scripts" / "ingest_ai_knowledge.py"),
+            "--file",
+            str(document_path),
+            "--metadata",
+            str(metadata_path),
+            "--approved-by-sole-super-admin",
+        )
 
 
 def test_database_existence_probe_uses_psql_value_binding_via_stdin():
@@ -228,7 +256,7 @@ def test_ensure_local_postgres_running_retries_after_reload_shutdown(monkeypatch
     assert starts == [expected, expected]
 
 
-def test_pg_ctl_is_detached_from_windows_reload_console(monkeypatch):
+def test_pg_ctl_runs_without_a_windows_reload_console(monkeypatch):
     calls = []
     monkeypatch.setattr(local_postgres, "_pg_ctl_creation_flags", lambda: 0x08000200)
     monkeypatch.setattr(
@@ -241,3 +269,12 @@ def test_pg_ctl_is_detached_from_windows_reload_console(monkeypatch):
 
     assert calls[0][1]["creationflags"] == 0x08000200
     assert calls[0][1]["stdin"] is subprocess.DEVNULL
+
+
+@pytest.mark.skipif(local_postgres.os.name != "nt", reason="Windows process flags only")
+def test_pg_ctl_creation_flags_suppress_the_windows_console():
+    flags = local_postgres._pg_ctl_creation_flags()
+
+    assert flags & subprocess.CREATE_NO_WINDOW
+    assert flags & subprocess.CREATE_NEW_PROCESS_GROUP
+    assert not flags & subprocess.DETACHED_PROCESS

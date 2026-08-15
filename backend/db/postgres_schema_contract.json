@@ -582,6 +582,13 @@
       "table": "ai_knowledge_documents",
       "valid": true
     },
+    "idx_ai_messages_client_request": {
+      "definition": "CREATE UNIQUE INDEX idx_ai_messages_client_request ON $SCHEMA.ai_messages USING btree (organization_id, conversation_id, client_request_id) WHERE (client_request_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "ai_messages",
+      "valid": true
+    },
     "idx_ai_messages_conversation_created": {
       "definition": "CREATE INDEX idx_ai_messages_conversation_created ON $SCHEMA.ai_messages USING btree (organization_id, conversation_id, created_at)",
       "live": true,
@@ -2831,7 +2838,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 61,
+  "schemaVersion": 62,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -3519,6 +3526,13 @@
     },
     "ai_messages": {
       "columns": {
+        "client_request_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "content": {
           "default": null,
           "generated": "",
@@ -3598,6 +3612,13 @@
         }
       },
       "constraints": {
+        "ai_messages_client_request_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (client_request_id IS NULL OR length(client_request_id) >= 8 AND length(client_request_id) <= 80)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
         "ai_messages_input_tokens_check": {
           "deferrable": false,
           "definition": "CHECK (input_tokens IS NULL OR input_tokens >= 0)",

@@ -8,7 +8,7 @@ import pytest
 
 from backend.ai.client import ResponsesProvider, _iter_sse
 from backend.ai.configuration import get_ai_config
-from backend.ai.errors import AiError
+from backend.ai.errors import AiError, ai_error
 from backend.ai.redaction import redact_json
 from backend.ai.tool_registry import tool_definitions, validate_tool_arguments
 from backend.analytics.semantic_registry import get_metric, supported_metrics
@@ -261,6 +261,71 @@ def test_ai_route_disconnect_closes_stream_and_releases_active_metric(monkeypatc
     assert closed.wait(1)
     assert ("ai_active_streams", 1) in increments
     assert ("ai_active_streams", -1) in increments
+
+
+def test_ai_route_serializes_pre_stream_ai_errors_as_sse(monkeypatch):
+    captured = {}
+
+    class Request:
+        path_params = {"conversation_id": "conversation-1"}
+
+        async def is_disconnected(self):
+            return False
+
+    async def provider_stream(*_args, **kwargs):
+        captured.update(kwargs)
+        raise ai_error(
+            "AI_SOURCE_UNAVAILABLE",
+            "Không thể tìm nguồn pháp luật chính thống trên Internet.",
+        )
+        yield  # pragma: no cover - keeps this function an async generator
+
+    context = AiRequestContext(
+        user_id="user-1",
+        organization_id="org-1",
+        organization_name="HCP",
+        platform_role="user",
+        membership_role="manager",
+        scope_type="organization",
+        active_role="manager",
+        permissions={"goithau": "view"},
+    )
+    monkeypatch.setattr(
+        ai_routes,
+        "_context_or_response",
+        lambda _request: asyncio.sleep(0, result=(context, None)),
+    )
+
+    async def read_json(_request):
+        return {
+            "content": "Các hình thức lựa chọn nhà thầu",
+            "route": "/ke-hoach",
+            "requestId": "air-stable-request-1",
+        }, None
+
+    monkeypatch.setattr(ai_routes, "read_json_object", read_json)
+    monkeypatch.setattr(
+        ai_routes,
+        "run_database_read",
+        lambda *args, **kwargs: asyncio.sleep(0, result=None),
+    )
+    monkeypatch.setattr(
+        ai_routes,
+        "run_database_write",
+        lambda *args, **kwargs: asyncio.sleep(0, result=None),
+    )
+    monkeypatch.setattr(ai_routes, "stream_message", provider_stream)
+
+    async def consume_response():
+        response = await ai_routes.send_ai_message_api(Request())
+        return b"".join([chunk async for chunk in response.body_iterator]).decode()
+
+    body = asyncio.run(consume_response())
+
+    assert '"type":"message.failed"' in body
+    assert '"code":"AI_SOURCE_UNAVAILABLE"' in body
+    assert "<!DOCTYPE" not in body
+    assert captured["client_request_id"] == "air-stable-request-1"
 
 
 def test_fake_provider_uses_workspace_search_for_unmodeled_business_entities(monkeypatch):

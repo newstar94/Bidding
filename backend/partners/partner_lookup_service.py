@@ -24,7 +24,7 @@ _partner_worker_started = False
 _partner_worker_lock = threading.Lock()
 _partner_work_event = threading.Event()
 _lookup_locks = tuple(threading.Lock() for _ in range(64))
-PARTNER_LOOKUP_CACHE_VERSION = "3"
+PARTNER_LOOKUP_CACHE_VERSION = "4"
 
 
 class PartnerLookupBusyError(RuntimeError):
@@ -351,6 +351,53 @@ def _fetch_muasamcong_area_name(code, service_base=MUASAMCONG_CONTRACTOR_SERVICE
         return ""
 
 
+def _normalize_muasamcong_text(value):
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _normalize_muasamcong_phone(value):
+    text = _normalize_muasamcong_text(value)
+    if not text:
+        return ""
+    digits = re.sub(r"\D", "", text)
+    if not digits:
+        return ""
+    has_international_prefix = re.match(r"^[\s(]*\+", str(value or "")) is not None
+    return f"+{digits}" if has_international_prefix else digits
+
+
+def _normalize_muasamcong_partner_info(info):
+    """Normalize mapped MSC fields while preserving the raw audit payload."""
+
+    normalized = dict(info or {})
+    for field in (
+        "address",
+        "short_name",
+        "english_name",
+        "representative_position",
+        "business_type",
+    ):
+        normalized[field] = _normalize_muasamcong_text(normalized.get(field))
+    normalized["name"] = normalize_organization_name(
+        _normalize_muasamcong_text(normalized.get("name"))
+    )
+    normalized["representative_name"] = normalize_person_name(
+        _normalize_muasamcong_text(normalized.get("representative_name"))
+    )
+    normalized["org_code"] = normalize_procurement_org_code(
+        normalized.get("org_code")
+    ) or ""
+    normalized["tax_code"] = extract_clean_tax_code(
+        normalized.get("tax_code")
+    ) or ""
+    normalized["phone"] = _normalize_muasamcong_phone(normalized.get("phone"))
+    normalized["head_position"] = derive_investor_head_position(
+        normalized.get("representative_position")
+    )
+    return normalized
+
+
 def _build_muasamcong_partner_info(data, org_code, area_names=None):
     if not isinstance(data, dict) or not data.get("orgFullName"):
         return None
@@ -367,7 +414,7 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
     address = compose_external_address(data.get("officeAdd"), *administrative_names)
 
     representative_position = clean_text(data.get("repPosition"))
-    return {
+    return _normalize_muasamcong_partner_info({
         "name": normalize_organization_name(data.get("orgFullName")),
         "address": address,
         "short_name": clean_text(data.get("orgShortName")),
@@ -382,7 +429,7 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
         "business_type": clean_text(data.get("businessType")),
         "businesses": data.get("businesses") or [],
         "procurement_data": data,
-    }
+    })
 
 
 def _muasamcong_status_key(value):

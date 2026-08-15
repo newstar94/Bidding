@@ -16,7 +16,7 @@ function contentType(pathname) {
 }
 
 async function startServer({ listDelayMs = 0, failMessageAttempts = 0 } = {}) {
-  const state = { sentPath: "", requests: [], deletedPaths: [], createdCount: 0, messageAttempts: 0, activeWorkspace: "org-a" };
+  const state = { sentPath: "", requests: [], requestIds: [], deletedPaths: [], createdCount: 0, messageAttempts: 0, activeWorkspace: "org-a" };
   const conversations = [
     { id: "aic-help", mode: "app_help", title: "Cách dùng ứng dụng", updated_at: "2026-08-05T10:00:00Z" },
     { id: "aic-data-new", mode: "data", title: "Gói cần mở hôm nay", updated_at: "2026-08-05T09:00:00Z" },
@@ -93,6 +93,9 @@ async function startServer({ listDelayMs = 0, failMessageAttempts = 0 } = {}) {
       if (pathname === "/api/ai/conversations/aic-data-new/messages" && request.method === "POST") {
         state.sentPath = pathname;
         state.messageAttempts += 1;
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        state.requestIds.push(JSON.parse(Buffer.concat(chunks).toString("utf8")).requestId);
         response.writeHead(200, { "content-type": "text/event-stream" });
         if (state.messageAttempts <= failMessageAttempts) {
           response.end('data: {"type":"message.failed","code":"AI_PROVIDER_UNAVAILABLE","message":"AI provider tam thoi khong kha dung."}\n\n');
@@ -276,6 +279,9 @@ test("assistant removes failed placeholder and retry does not duplicate the user
 
     const afterRetry = await page.locator(".bf-assistant-bubble").allTextContents();
     assert.equal(state.messageAttempts, 2);
+    assert.equal(state.requestIds.length, 2);
+    assert.ok(state.requestIds[0]);
+    assert.equal(state.requestIds[0], state.requestIds[1]);
     assert.equal(afterRetry.filter((text) => text === "How many packages open today?").length, 1);
     assert.equal(afterRetry.filter((text) => text === "").length, 0);
     assert.equal(await page.locator(".bf-assistant-error").count(), 0);

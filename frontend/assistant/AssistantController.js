@@ -45,6 +45,15 @@ function isExternalSourceUrl(value) {
   return String(value || "").trim().startsWith("https://");
 }
 
+let assistantRequestCounter = 0;
+
+function createAssistantRequestId() {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `air_${uuid}`;
+  assistantRequestCounter += 1;
+  return `air_${Date.now().toString(36)}_${assistantRequestCounter.toString(36)}`;
+}
+
 function activeWorkspaceName(controller) {
   const id = getActiveOrganizationId();
   const user = controller?.model?.state?.activeuser || {};
@@ -76,6 +85,7 @@ class AssistantController {
     this.conversationId = "";
     this.abortController = null;
     this.lastQuestion = "";
+    this.lastRequestId = "";
     this.activeMessage = null;
     this.activeUserMessage = null;
     this.workspaceId = getActiveOrganizationId();
@@ -681,10 +691,11 @@ class AssistantController {
     this.messages.scrollTop = this.messages.scrollHeight;
   }
 
-  async send(question = null) {
+  async send(question = null, requestId = "") {
     if (this.abortController) return;
     const content = String(question ?? this.input.value ?? "").trim();
     if (!content) { this.input.focus(); return; }
+    const clientRequestId = String(requestId || "").trim() || createAssistantRequestId();
     const operation = new AbortController();
     this.abortController = operation;
     this.sendButton.disabled = true;
@@ -694,6 +705,7 @@ class AssistantController {
       await this.historyReady;
       if (operation.signal.aborted || this.abortController !== operation) return;
       this.lastQuestion = content;
+      this.lastRequestId = clientRequestId;
       this.input.value = "";
       this.sourceList = null;
       this.sourceKeys.clear();
@@ -703,7 +715,13 @@ class AssistantController {
       this.activeMessage = assistant;
       const id = await this.ensureConversation();
       this.rememberConversationTitle(id, content);
-      const response = await assistantApi.sendMessage(id, content, operation.signal);
+      const response = await assistantApi.sendMessage(
+        id,
+        content,
+        operation.signal,
+        globalThis.location?.pathname || "/",
+        clientRequestId,
+      );
       await consumeAssistantStream(response, (event) => this.onEvent(event), operation.signal);
     } catch (error) {
       if (error?.name !== "AbortError") this.showFailure(error?.message || "Không thể nhận câu trả lời.");
@@ -784,7 +802,18 @@ class AssistantController {
     const failedUserRow = this.activeUserMessage?.row || null;
     this.activeMessage?.row?.remove();
     const failure = make("div", "bf-assistant-error"); failure.append(make("span", "", message));
-    if (this.lastQuestion) { const retry = make("button", "bf-assistant-retry", "Thử lại"); retry.type = "button"; retry.addEventListener("click", () => { failure.remove(); failedUserRow?.remove(); this.send(this.lastQuestion); }); failure.appendChild(retry); }
+    if (this.lastQuestion) {
+      const retryQuestion = this.lastQuestion;
+      const retryRequestId = this.lastRequestId;
+      const retry = make("button", "bf-assistant-retry", "Thử lại");
+      retry.type = "button";
+      retry.addEventListener("click", () => {
+        failure.remove();
+        failedUserRow?.remove();
+        this.send(retryQuestion, retryRequestId);
+      });
+      failure.appendChild(retry);
+    }
     if (code === "AI_DISABLED") this.addNotice("Trợ lý hiện đang tắt theo cấu hình hệ thống.");
     this.messages.appendChild(failure); this.messages.scrollTop = this.messages.scrollHeight;
   }

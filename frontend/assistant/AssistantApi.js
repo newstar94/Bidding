@@ -1,11 +1,15 @@
 import { apiFetch } from "../shared/apiClient.js";
 
 async function readPayload(response) {
-  const type = response.headers?.get?.("content-type") || "";
-  if (type.includes("application/json")) {
+  const type = String(response.headers?.get?.("content-type") || "").toLowerCase();
+  if (type.includes("json")) {
     try { return await response.json(); } catch (_) { return {}; }
   }
-  return { message: await response.text() };
+  const text = await response.text();
+  if (type.includes("text/plain") && text && !/[<>]/.test(text)) {
+    return { message: text.slice(0, 500) };
+  }
+  return {};
 }
 
 async function requestJson(url, options = {}) {
@@ -28,10 +32,10 @@ export const assistantApi = {
   listMessages(id, { limit = 40, offset = 0 } = {}) { return requestJson(`/api/ai/conversations/${encodeURIComponent(id)}/messages?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`, { method: "GET", timeoutMs: 15000, retries: 0 }); },
   deleteConversation(id) { return requestJson(`/api/ai/conversations/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: 15000, retries: 0 }); },
   getSuggestedQuestions(route) { return requestJson(`/api/ai/suggested-questions?route=${encodeURIComponent(route || "/")}`, { method: "GET", timeoutMs: 10000, retries: 0 }); },
-  sendMessage(id, content, signal, route = globalThis.location?.pathname || "/") {
+  sendMessage(id, content, signal, route = globalThis.location?.pathname || "/", requestId = "") {
     return apiFetch(`/api/ai/conversations/${encodeURIComponent(id)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content, route }),
+      body: JSON.stringify({ content, route, requestId }),
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       timeoutMs: 120000,
       retries: 0,

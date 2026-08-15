@@ -2294,6 +2294,24 @@ def _upgrade_to_v61_rename_default_workspace(cursor, _context):
             WHERE ten_to_chuc = 'HTD'"""
     )
 
+
+def _upgrade_to_v62_add_ai_message_idempotency(cursor, _context):
+    """Deduplicate retried assistant sends without altering conversation history."""
+
+    cursor.execute(
+        """ALTER TABLE ai_messages
+           ADD COLUMN IF NOT EXISTS client_request_id TEXT
+           CHECK (
+             client_request_id IS NULL
+             OR length(client_request_id) BETWEEN 8 AND 80
+           )"""
+    )
+    cursor.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_messages_client_request
+           ON ai_messages (organization_id, conversation_id, client_request_id)
+           WHERE client_request_id IS NOT NULL"""
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2590,6 +2608,11 @@ UPGRADES = (
         61,
         "rename_default_workspace",
         _upgrade_to_v61_rename_default_workspace,
+    ),
+    DatabaseUpgrade(
+        62,
+        "add_ai_message_idempotency",
+        _upgrade_to_v62_add_ai_message_idempotency,
     ),
 )
 

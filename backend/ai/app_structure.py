@@ -77,6 +77,11 @@ class _TabTextParser(HTMLParser):
         elif tag in {"button", "a"}:
             self._capture = "action"
             self._buffer = []
+        elif tag == "label" and "procurement-source-toggle" in str(
+            attributes.get("class") or ""
+        ).split():
+            self._capture = "action"
+            self._buffer = []
         elif attributes.get("aria-label"):
             self.actions.append(_text(attributes["aria-label"]))
 
@@ -87,7 +92,7 @@ class _TabTextParser(HTMLParser):
     def handle_endtag(self, tag):
         if not self._capture:
             return
-        if (self._capture == "heading" and tag in {"h1", "h2", "h3", "h4"}) or (self._capture == "action" and tag in {"button", "a"}):
+        if (self._capture == "heading" and tag in {"h1", "h2", "h3", "h4"}) or (self._capture == "action" and tag in {"button", "a", "label"}):
             value = _text(" ".join(self._buffer))
             if value:
                 (self.headings if self._capture == "heading" else self.actions).append(value)
@@ -100,6 +105,7 @@ def _source_signature() -> tuple[tuple[str, int], ...]:
         ROOT / "views" / "vendor" / "initial-route.js",
         ROOT / "views" / "components" / "sidebar.html",
         *sorted((ROOT / "views" / "tabs").glob("tab_*.html")),
+        *sorted((ROOT / "views" / "modals").glob("modal_*.html")),
     ]
     return tuple((str(path), path.stat().st_mtime_ns if path.is_file() else 0) for path in paths)
 
@@ -122,6 +128,24 @@ def _load_manifest(signature: tuple[tuple[str, int], ...]) -> tuple[dict, ...]:
         tab_details[path.stem.removeprefix("tab_")] = {
             "headings": tuple(dict.fromkeys(parser.headings))[:8],
             "actions": tuple(dict.fromkeys(parser.actions))[:12],
+        }
+
+    for path in sorted((ROOT / "views" / "modals").glob("modal_*.html")):
+        modal_key = path.stem.removeprefix("modal_")
+        candidate_tabs = (modal_key, modal_key.removeprefix("detail_"))
+        tab = next((item for item in candidate_tabs if item in tab_details), None)
+        if not tab:
+            continue
+        parser = _TabTextParser()
+        parser.feed(path.read_text(encoding="utf-8"))
+        current = tab_details[tab]
+        tab_details[tab] = {
+            "headings": tuple(
+                dict.fromkeys((*current["headings"], *parser.headings))
+            )[:8],
+            "actions": tuple(
+                dict.fromkeys((*current["actions"], *parser.actions))
+            )[:12],
         }
 
     records = []

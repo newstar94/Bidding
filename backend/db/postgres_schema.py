@@ -540,6 +540,7 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_workspace_updated ON ai_conversations (user_id, organization_id, updated_at DESC) WHERE status = 'active'",
         "CREATE INDEX IF NOT EXISTS idx_ai_conversations_workspace_created ON ai_conversations (organization_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_created ON ai_messages (organization_id, conversation_id, created_at ASC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_messages_client_request ON ai_messages (organization_id, conversation_id, client_request_id) WHERE client_request_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_conversation_created ON ai_tool_executions (organization_id, conversation_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_message ON ai_tool_executions (organization_id, message_id)",
         "CREATE INDEX IF NOT EXISTS idx_ai_tool_executions_user ON ai_tool_executions (user_id, organization_id)",
@@ -1215,6 +1216,12 @@ def _historical_v46_catalog(latest_catalog):
     account = catalog["tables"]["tai_khoan"]
     account["columns"].pop("trang_thai", None)
     account["constraints"].pop("tai_khoan_trang_thai_check", None)
+    ai_messages = catalog["tables"]["ai_messages"]
+    ai_messages["columns"].pop("client_request_id", None)
+    ai_messages["constraints"].pop(
+        "ai_messages_client_request_id_check", None
+    )
+    catalog["indexes"].pop("idx_ai_messages_client_request", None)
     websocket_events = catalog["tables"]["websocket_events"]
     websocket_events["columns"].pop("dispatched_at", None)
     status_constraint = websocket_events["constraints"].get(

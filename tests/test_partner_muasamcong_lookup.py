@@ -64,3 +64,36 @@ def test_terminated_contractor_detail_is_not_selected(monkeypatch):
         "vn2100716104",
         role_name="NT",
     ) is None
+
+
+def test_muasamcong_partner_fields_are_normalized_before_form_mapping():
+    result = partner_lookup_service._build_muasamcong_partner_info(
+        {
+            "orgCode": " VN 3900786617 ",
+            "orgFullName": "  Trung tâm   Y tế Khu vực Tân Châu ",
+            "orgShortName": "  TTYT   TC ",
+            "orgEnName": "  TAN   CHAU MEDICAL CENTER ",
+            "taxCode": " 39.007.866.17 ",
+            "repName": "  TRẦN   VIỆT HÙNG ",
+            "repPosition": "  GIÁM   ĐỐC ",
+            "officeAdd": "  Số 58,  đường   Lê Duẩn ",
+            "officeDis": "25516",
+            "officePro": "80",
+            "officePhone": " (+84) 2763.875052 ",
+            "businessType": "  NON_BUSINESS_UNIT ",
+        },
+        "vn3900786617",
+        {"80": " Tỉnh  Tây Ninh ", "25516": " Xã  Tân Châu "},
+    )
+
+    assert result["org_code"] == "vn3900786617"
+    assert result["tax_code"] == "3900786617"
+    assert result["name"] == "Trung tâm Y tế Khu vực Tân Châu"
+    assert result["short_name"] == "TTYT TC"
+    assert result["english_name"] == "TAN CHAU MEDICAL CENTER"
+    assert result["representative_name"] == "Trần Việt Hùng"
+    assert result["representative_position"] == "GIÁM ĐỐC"
+    assert result["address"] == "Số 58, đường Lê Duẩn, Xã Tân Châu, Tỉnh Tây Ninh"
+    assert result["phone"] == "+842763875052"
+    assert result["business_type"] == "NON_BUSINESS_UNIT"
+    assert result["procurement_data"]["officePhone"] == " (+84) 2763.875052 "

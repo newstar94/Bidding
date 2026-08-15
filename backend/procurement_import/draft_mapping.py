@@ -59,6 +59,7 @@ def map_plan_canonical_to_draft(provider, family_no, revision):
             "code": revision.get("investorCode"),
             "name": revision.get("investorName"),
             "taxCode": revision.get("investorTaxCode"),
+            "approvalDecisionNo": revision.get("approvalDecisionNo") or "",
         },
         "sourceRevision": source,
     }

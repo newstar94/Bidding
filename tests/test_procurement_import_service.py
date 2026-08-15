@@ -15,13 +15,31 @@ from backend.procurement_import.domain import (
 from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_import.repository import ProcurementImportSessionRepository
-from backend.procurement_import.draft_mapping import map_package_canonical_to_draft
+from backend.procurement_import.draft_mapping import (
+    map_package_canonical_to_draft,
+    map_plan_canonical_to_draft,
+)
 from backend.integrations.vneps.fake_procurement_provider import FixtureProcurementSource
 from backend.observability.recording import (
     reset_recorded_metrics_for_tests,
     snapshot_recorded_metrics,
 )
 from backend.observability import metrics as observability_metrics
+
+
+def test_plan_draft_carries_approval_decision_for_investor_short_name():
+    draft = map_plan_canonical_to_draft(
+        "MUASAMCONG",
+        "PL2600164871",
+        {
+            "revisionId": "revision-00",
+            "revisionNumber": "00",
+            "investorCode": "vn3900786617",
+            "approvalDecisionNo": "547-QĐ/BPTTH",
+        },
+    )
+
+    assert draft["investorSource"]["approvalDecisionNo"] == "547-QĐ/BPTTH"
 
 
 def _source(tmp_path):

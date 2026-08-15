@@ -185,7 +185,16 @@ def _legal_source_footer(sources: tuple[dict, ...] | list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def stream_message(request, context: AiRequestContext, conversation_id: str, content: str, *, current_route: str = "/", quota_consumed: bool = False) -> AsyncIterator[dict]:
+async def stream_message(
+    request,
+    context: AiRequestContext,
+    conversation_id: str,
+    content: str,
+    *,
+    current_route: str = "/",
+    client_request_id: str | None = None,
+    quota_consumed: bool = False,
+) -> AsyncIterator[dict]:
     config = get_ai_config()
     if not config.enabled:
         raise ai_error("AI_DISABLED", "Trợ lý AI đang được tắt.")
@@ -196,7 +205,14 @@ async def stream_message(request, context: AiRequestContext, conversation_id: st
         raise ai_error("AI_UNSUPPORTED_MODE", "Chế độ trợ lý không được hỗ trợ.")
     if not quota_consumed:
         await run_database_write(consume_request, context, config)
-    user_message_id = await run_database_write(add_message, context, conversation_id, "user", content)
+    user_message_id = await run_database_write(
+        add_message,
+        context,
+        conversation_id,
+        "user",
+        content,
+        client_request_id=client_request_id,
+    )
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."

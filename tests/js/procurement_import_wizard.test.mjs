@@ -17,7 +17,10 @@ import {
   summarizePreview,
 } from "../../frontend/procurement/PlanImportWizard.js";
 import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
-import { resolveImportedInvestorDraft } from "../../frontend/procurement/InvestorResolver.js";
+import {
+  deriveInvestorShortName,
+  resolveImportedInvestorDraft,
+} from "../../frontend/procurement/InvestorResolver.js";
 import {
   buildInitialPartnerVersion,
   normalizePartnerRecord,
@@ -721,9 +724,21 @@ test("investor resolver reuses an existing investor by normalized tax code", asy
   assert.equal(lookupCalls, 0);
 });
 
+test("investor short name is derived only from a QĐ decision suffix", () => {
+  assert.equal(deriveInvestorShortName("547-QĐ/BPTTH"), "BPTTH");
+  assert.equal(deriveInvestorShortName("1679/QĐ-BVQY"), "BVQY");
+  assert.equal(deriveInvestorShortName(" 1679 / QĐ - bvqy "), "BVQY");
+  assert.equal(deriveInvestorShortName("1679/BVQY"), "");
+  assert.equal(deriveInvestorShortName("1679/QĐ-BVQY/2026"), "");
+  assert.equal(deriveInvestorShortName(""), "");
+});
+
 test("investor resolver creates one pending initial version through shared validation", async () => {
   const result = await resolveImportedInvestorDraft({
-    source: { code: "vn0101234567-01" },
+    source: {
+      code: "vn0101234567-01",
+      approvalDecisionNo: "547-QĐ/BPTTH",
+    },
     records: [],
     lookup: async () => ({
       org_code: "vn0101234567", tax_code: "0101234567", name: "Bệnh viện A",
@@ -737,8 +752,27 @@ test("investor resolver creates one pending initial version through shared valid
   assert.equal(result.status, "NEW");
   assert.equal(result.investor.id, "investor-draft");
   assert.equal(result.investor.phienBan, "00");
+  assert.equal(result.investor.tenVietTat, "BPTTH");
   assert.equal(result.investor.maChuDauTu, "vn0101234567");
   assert.equal(result.investor.tenChuDauTu, "Bệnh viện A");
+});
+
+test("investor resolver leaves short name blank for an unsupported decision format", async () => {
+  const result = await resolveImportedInvestorDraft({
+    source: {
+      code: "vn0101234567",
+      approvalDecisionNo: "547/BPTTH",
+    },
+    records: [],
+    lookup: async () => ({
+      org_code: "vn0101234567", tax_code: "0101234567", name: "Hospital A",
+      short_name: "UPSTREAM", representative_name: "Nguyen Van A",
+      representative_position: "Director", address: "1 Hanoi",
+    }),
+    createId: () => "investor-draft",
+  });
+
+  assert.equal(result.investor.tenVietTat, "");
 });
 
 test("investor resolver retry reuses the pending version without another lookup", async () => {

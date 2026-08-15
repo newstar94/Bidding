@@ -85,16 +85,72 @@ def delete_conversation(context: AiRequestContext, conversation_id: str) -> None
         connection.close()
 
 
-def add_message(context: AiRequestContext, conversation_id: str, role: str, content: str, *, status: str = "completed", model: str | None = None, input_tokens: int | None = None, output_tokens: int | None = None, error_code: str | None = None) -> str:
+def add_message(
+    context: AiRequestContext,
+    conversation_id: str,
+    role: str,
+    content: str,
+    *,
+    status: str = "completed",
+    model: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    error_code: str | None = None,
+    client_request_id: str | None = None,
+) -> str:
     message_id = _id("aim")
     connection = database.get_connection()
     try:
-        connection.execute(
-            """INSERT INTO ai_messages
-               (id, organization_id, conversation_id, role, content, status, model, input_tokens, output_tokens, error_code)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (message_id, context.organization_id, conversation_id, role, content, status, model, input_tokens, output_tokens, error_code),
-        )
+        normalized_request_id = str(client_request_id or "").strip() or None
+        if normalized_request_id:
+            row = connection.execute(
+                """INSERT INTO ai_messages
+                   (id, organization_id, conversation_id, role, content, status,
+                    model, input_tokens, output_tokens, error_code, client_request_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (organization_id, conversation_id, client_request_id)
+                     WHERE client_request_id IS NOT NULL
+                   DO UPDATE SET client_request_id = excluded.client_request_id
+                   RETURNING id, role, content""",
+                (
+                    message_id,
+                    context.organization_id,
+                    conversation_id,
+                    role,
+                    content,
+                    status,
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    error_code,
+                    normalized_request_id,
+                ),
+            ).fetchone()
+            if not row or str(row["role"]) != role or str(row["content"]) != content:
+                raise ai_error(
+                    "AI_INVALID_MESSAGE",
+                    "Mã yêu cầu trợ lý đã được dùng cho nội dung khác.",
+                )
+            message_id = str(row["id"])
+        else:
+            connection.execute(
+                """INSERT INTO ai_messages
+                   (id, organization_id, conversation_id, role, content, status,
+                    model, input_tokens, output_tokens, error_code)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    message_id,
+                    context.organization_id,
+                    conversation_id,
+                    role,
+                    content,
+                    status,
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    error_code,
+                ),
+            )
         connection.execute(
             """UPDATE ai_conversations SET updated_at = CURRENT_TIMESTAMP,
                       title = CASE WHEN title IS NULL AND ? = 'user' THEN LEFT(?, 120) ELSE title END

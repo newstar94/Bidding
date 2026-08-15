@@ -46,6 +46,16 @@ LOCAL_DATABASES = (
 )
 SAFE_RESET_ENVIRONMENTS = frozenset({"development", "dev", "test", "testing"})
 LOCAL_DATABASE_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+BUNDLED_AI_KNOWLEDGE = (
+    (
+        ROOT / "docs" / "ai" / "knowledge" / "BIDDINGFLOW_APP_GUIDE.md",
+        ROOT / "docs" / "ai" / "knowledge" / "BIDDINGFLOW_APP_GUIDE.metadata.json",
+    ),
+    (
+        ROOT / "docs" / "ai" / "knowledge" / "Nghị định 214 - 4.8.2025.docx",
+        ROOT / "docs" / "ai" / "knowledge" / "Nghị định 214 - 4.8.2025.metadata.json",
+    ),
+)
 DATABASE_URL_KEYS = (
     "DATABASE_URL",
     "DATABASE_ADMIN_URL",
@@ -91,11 +101,11 @@ def _run(
 
 
 def _pg_ctl_creation_flags() -> int:
-    """Detach a managed postmaster from Uvicorn's reload console on Windows."""
+    """Start pg_ctl without a closeable console window on Windows."""
 
     if os.name != "nt":
         return 0
-    return int(getattr(subprocess, "DETACHED_PROCESS", 0)) | int(
+    return int(getattr(subprocess, "CREATE_NO_WINDOW", 0)) | int(
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     )
 
@@ -350,6 +360,21 @@ def initialize_application_schemas(
             sys.executable,
             str(ROOT / "scripts" / "manage_database.py"),
             env=child_environment,
+        )
+
+
+def bootstrap_bundled_ai_knowledge() -> None:
+    """Restore expert-approved bundled knowledge after a local database reset."""
+
+    for document_path, metadata_path in BUNDLED_AI_KNOWLEDGE:
+        _run(
+            sys.executable,
+            str(ROOT / "scripts" / "ingest_ai_knowledge.py"),
+            "--file",
+            str(document_path),
+            "--metadata",
+            str(metadata_path),
+            "--approved-by-sole-super-admin",
         )
 
 
@@ -727,6 +752,9 @@ def main() -> None:
             load_test_url,
         )
     )
+    if args.reset:
+        print("Restoring approved AI knowledge...", flush=True)
+        bootstrap_bundled_ai_knowledge()
     _run(
         sys.executable,
         str(ROOT / "scripts" / "configure_database_roles.py"),

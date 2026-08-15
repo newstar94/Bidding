@@ -14,6 +14,14 @@ function sourceCode(value) {
   return normalizeProcurementOrgCode(String(value || "").split("-", 1)[0]);
 }
 
+export function deriveInvestorShortName(approvalDecisionNo) {
+  const normalized = String(approvalDecisionNo || "").normalize("NFKC").trim();
+  const match = normalized.match(
+    /(?:^|[-/])\s*QĐ\s*[-/]\s*([\p{L}\p{N}]+)\s*$/iu,
+  );
+  return match ? match[1].toLocaleUpperCase("vi") : "";
+}
+
 function findExisting(records, code, taxCode) {
   return (records || []).find((record) => (
     code && normalizeProcurementOrgCode(record?.maChuDauTu) === code
@@ -77,8 +85,14 @@ export async function resolveImportedInvestorDraft({
   const resolvedTax = normalizeVietnamTaxCode(info?.tax_code || taxCode);
   const raced = findExisting(records, resolvedCode, resolvedTax);
   if (raced) return { status: "EXISTING", investor: raced };
+  const shortName = deriveInvestorShortName(source?.approvalDecisionNo);
   const investor = buildPendingInvestor(
-    { ...info, org_code: resolvedCode, tax_code: resolvedTax },
+    {
+      ...info,
+      org_code: resolvedCode,
+      tax_code: resolvedTax,
+      short_name: shortName,
+    },
     { createId, timestamp, effectiveDate, records },
   );
   return { status: "NEW", investor };
