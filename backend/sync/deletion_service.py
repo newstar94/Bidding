@@ -31,7 +31,6 @@ from backend.sync.queries import TABLE_KEYS
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, VERSIONED_TABLES
 from backend.sync.aggregate_mutability import (
     PACKAGE_CHILD_TABLES,
-    authorized_package_family_deletion_ids,
     build_aggregate_mutability_context,
     historical_parent_mutation_error,
 )
@@ -134,11 +133,18 @@ def _is_actor_personal_scope(organization_id, actor_user_id):
     return str(organization_id or "").strip() == f"personal:{str(actor_user_id or '').strip()}"
 
 
-def _historical_delete_is_part_of_package_family(
+def _historical_delete_is_part_of_package_deletion(
     table_name,
     record,
-    authorized_package_ids,
+    deleted_package_ids,
 ):
+    """Allow history removal only as part of an explicit package deletion.
+
+    This exception belongs to the delete command, not to the general mutation
+    policy. Package-owned child rows inherit it only when their parent package
+    is present in the same delete batch.
+    """
+
     package_id = None
     if table_name == "goi_thau":
         package_id = record.get("id")
@@ -149,7 +155,7 @@ def _historical_delete_is_part_of_package_family(
         and str(record.get("loai_doi_tuong") or "").strip() == "goithau"
     ):
         package_id = record.get("id_muc_tieu")
-    return bool(package_id and str(package_id) in authorized_package_ids)
+    return bool(package_id and str(package_id) in deleted_package_ids)
 
 
 def _append_row_version_conflict(
@@ -319,12 +325,7 @@ def apply_sync_deletions(
         },
         records_by_table,
     )
-    authorized_package_deletion_ids = authorized_package_family_deletion_ids(
-        cursor,
-        organization_id,
-        records_by_table,
-        aggregate_mutability_context,
-    )
+    deleted_package_ids = set(records_by_table.get("goi_thau", {}))
 
     for deletion in deletions:
         if not isinstance(deletion, dict):
@@ -355,10 +356,10 @@ def apply_sync_deletions(
         if not record:
             continue
         parent_history_error = None
-        if not _historical_delete_is_part_of_package_family(
+        if not _historical_delete_is_part_of_package_deletion(
             table_name,
             record,
-            authorized_package_deletion_ids,
+            deleted_package_ids,
         ):
             parent_history_error = historical_parent_mutation_error(
                 aggregate_mutability_context,

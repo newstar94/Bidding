@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend.sync.payload_validation import (
+    validate_package_locked_fields,
     validate_package_status_transition,
     validate_sync_payload_shape,
 )
@@ -34,6 +35,26 @@ def test_trusted_procurement_reconciliation_allows_unknown_to_invited():
     )
 
     assert errors == []
+
+
+def test_invited_package_scheduling_fields_are_server_locked():
+    previous = {
+        "trang_thai": "INVITED",
+        "thoi_gian_thuc_hien": "120 ngày",
+        "thoi_gian_to_chuc": "90 ngày",
+        "thoi_gian_bat_dau_to_chuc": "Quý III/2026",
+    }
+    errors = validate_package_locked_fields(previous, {
+        "thoiGianThucHien": "150 ngày",
+        "thoiGianToChuc": "100 ngày",
+        "thoiGianBatDauToChuc": "Quý IV/2026",
+    })
+
+    assert {error["field"] for error in errors} == {
+        "thoiGianThucHien",
+        "thoiGianToChuc",
+        "thoiGianBatDauToChuc",
+    }
 
 
 def test_mutating_sync_payload_requires_client_mutation_id():
@@ -274,7 +295,7 @@ def test_direct_package_mutability_guard_locks_owning_plan_and_fails_closed():
     assert historical.parameters == ("org-1", "package-1")
 
 
-def test_complete_package_family_deletion_may_remove_historical_snapshots(monkeypatch):
+def test_package_deletion_may_remove_historical_snapshots(monkeypatch):
     packages = {
         "package-history": {
             "id": "package-history",
@@ -379,7 +400,7 @@ def test_complete_package_family_deletion_may_remove_historical_snapshots(monkey
         lambda *_args, **_kwargs: None,
     )
 
-    denied = deletion_service.apply_sync_deletions(
+    historical_only = deletion_service.apply_sync_deletions(
         Cursor(),
         [{"table": "goithau", "id": "package-history", "expectedVersion": 1}],
         organization_id="org-1",
@@ -391,9 +412,10 @@ def test_complete_package_family_deletion_may_remove_historical_snapshots(monkey
         ip_address="127.0.0.1",
     )
 
-    assert [error["code"] for error in denied["errors"]] == [
-        "HISTORICAL_PARENT_IMMUTABLE"
-    ]
+    assert historical_only["errors"] == []
+    assert {item["id"] for item in historical_only["impacts"]} == {
+        "package-history",
+    }
 
     result = deletion_service.apply_sync_deletions(
         Cursor(),
@@ -415,3 +437,18 @@ def test_complete_package_family_deletion_may_remove_historical_snapshots(monkey
         "package-history",
         "package-current",
     }
+
+
+def test_historical_child_delete_exception_requires_parent_package_in_batch():
+    record = {"goi_thau_id": "package-history"}
+
+    assert not deletion_service._historical_delete_is_part_of_package_deletion(
+        "thong_tin_mo_thau",
+        record,
+        set(),
+    )
+    assert deletion_service._historical_delete_is_part_of_package_deletion(
+        "thong_tin_mo_thau",
+        record,
+        {"package-history"},
+    )

@@ -54,6 +54,9 @@ PACKAGE_LOCKED_FIELDS_AFTER_INVITATION = {
     "linhVuc": "linh_vuc",
     "nguonVon": "nguon_von",
     "phanLo": "phan_lo",
+    "thoiGianThucHien": "thoi_gian_thuc_hien",
+    "thoiGianToChuc": "thoi_gian_to_chuc",
+    "thoiGianBatDauToChuc": "thoi_gian_bat_dau_to_chuc",
     "tuyChonMuaThem": "tuy_chon_mua_them",
 }
 

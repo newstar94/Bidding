@@ -35,6 +35,7 @@ const CONTRACT = Object.freeze({
     "giaGoiThau", "hinhThucLuaChon", "keHoachId", "linhVuc", "loaiHopDong",
     "maGoiThau", "nguonVon", "phanLo", "phuongPhapDanhGia",
     "phuongThucLuaChon", "quaMang", "tenGoiThau", "trongNuocQuocTe",
+    "thoiGianBatDauToChuc", "thoiGianThucHien", "thoiGianToChuc",
     "tuyChonMuaThem",
   ]),
 });

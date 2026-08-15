@@ -612,6 +612,10 @@ export async function editGoiThau(id, isReadOnly = false) {
   if (!isReadOnly && !isOpenedOrLater && this.handleHinhThucChange) {
     this.handleHinhThucChange();
   }
+  // Legacy modal setup toggles several controls after applying lifecycle
+  // policy. Re-apply the policy last so INVITED packages stay visible but
+  // their source/base fields cannot be edited.
+  this.updatePackageFieldsVisibility(isReadOnly);
   if (isReadOnly) {
     form.querySelectorAll("input, select, textarea").forEach((el) => {
       el.disabled = true;

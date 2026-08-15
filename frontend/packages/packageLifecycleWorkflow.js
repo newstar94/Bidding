@@ -107,7 +107,8 @@ export async function refreshPackageDeleteDependencies(controller, deleteContext
   );
   return getPackageDeleteContext(
     controller.model.state.goithau,
-    deleteContext.targetPackage.id
+    deleteContext.targetPackage.id,
+    controller.model.state.kehoach,
   );
 }
 export async function deleteGoiThau(id) {
@@ -128,12 +129,20 @@ export async function deleteGoiThau(id) {
   }
   const refreshedTarget = await refreshRecordBeforeDelete(this, "goithau", id);
   await hydratePackageFamilyAcrossPlanVersions(this, refreshedTarget);
-  let deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
+  let deleteContext = getPackageDeleteContext(
+    this.model.state.goithau,
+    id,
+    this.model.state.kehoach,
+  );
   if (!deleteContext) return;
   for (const planId of deleteContext.planIds.filter(Boolean)) {
     await hydratePackageOwnedRows(this, planId);
   }
-  deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
+  deleteContext = getPackageDeleteContext(
+    this.model.state.goithau,
+    id,
+    this.model.state.kehoach,
+  );
   if (!deleteContext) return;
   deleteContext = await refreshPackageDeleteDependencies(this, deleteContext);
   if (!deleteContext) return;

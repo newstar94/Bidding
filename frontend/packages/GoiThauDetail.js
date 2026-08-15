@@ -24,6 +24,7 @@ import { renderPackageGoodsPanel } from "./PackageGoodsWorkflow.js";
 import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 import { restoreDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
+import { linkedPlanIdsForPackage } from "./detail/packagePlanApprovals.js";
 export { checkBidQualified };
 
 export function resetDetailedEvaluationNavigationForPackageChange(
@@ -92,6 +93,15 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   );
   if (requestedPackage) {
     await hydrateVersionFamily(appController, "goithau", requestedPackage);
+    const linkedPlanIds = linkedPlanIdsForPackage(this.model, requestedPackage);
+    const loadedPlanIds = new Set(
+      (this.model?.state?.kehoach || []).map((plan) => String(plan?.id || "")),
+    );
+    await Promise.all(
+      linkedPlanIds
+        .filter((planId) => !loadedPlanIds.has(String(planId)))
+        .map((planId) => appController.fetchRecordByLookup("kehoach", planId)),
+    );
   }
   const detail = buildPackageDetailViewModel({
     model: this.model,

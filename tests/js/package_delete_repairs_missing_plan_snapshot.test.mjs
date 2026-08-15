@@ -2,6 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { deleteGoiThau } from "../../frontend/packages/packageLifecycleWorkflow.js";
+import { getPackageDeleteContext } from "../../frontend/packages/packageDeleteHelpers.js";
+
+test("legacy plan snapshots with split package roots are deleted as one package", () => {
+  const plans = [
+    { id: "plan-00", rootId: "plan-root", phienBan: "00", isLatest: 0 },
+    { id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1 },
+  ];
+  const packages = [
+    {
+      id: "pkg-plan00", rootId: "pkg-plan00", keHoachId: "plan-00",
+      tenGoiThau: "Gói thầu MS", maGoiThau: "",
+    },
+    {
+      id: "pkg-plan01", rootId: "pkg-plan01", keHoachId: "plan-01",
+      tenGoiThau: "Gói thầu MS", maGoiThau: "IB2600444548",
+    },
+  ];
+
+  const context = getPackageDeleteContext(packages, "pkg-plan01", plans);
+
+  assert.deepEqual(new Set(context.relatedIds), new Set([
+    "pkg-plan00", "pkg-plan01",
+  ]));
+  assert.deepEqual(new Set(context.planIds), new Set(["plan-00", "plan-01"]));
+});
 
 test("deleting -02 removes its complete package family instead of repairing history", async () => {
   const previousDocument = globalThis.document;

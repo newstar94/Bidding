@@ -32,6 +32,7 @@ LOCKED_AFTER_INVITATION = (
     "giaGoiThau", "hinhThucLuaChon", "keHoachId", "linhVuc", "loaiHopDong",
     "maGoiThau", "nguonVon", "phanLo", "phuongPhapDanhGia",
     "phuongThucLuaChon", "quaMang", "tenGoiThau", "trongNuocQuocTe",
+    "thoiGianBatDauToChuc", "thoiGianThucHien", "thoiGianToChuc",
     "tuyChonMuaThem",
 )
 

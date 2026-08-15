@@ -7,11 +7,43 @@ import {
   evaluationMethodLabel,
   isCombinedEvaluationMethod,
 } from "../evaluationMethodRules.js";
+import {
+  resolveLinkedPlanSnapshot,
+  resolvePackagePlanApprovals,
+} from "./packagePlanApprovals.js";
+
+function renderPlanApprovalRows(view, gt, khObj) {
+  const approvals = resolvePackagePlanApprovals(view.model, gt);
+  if (approvals.length === 0) {
+    const label = khObj?.pheDuyet === "Kế hoạch"
+      ? "Phê duyệt kế hoạch"
+      : "Phê duyệt dự toán và kế hoạch";
+    return `
+      <div class="package-info-row">
+        <span class="package-info-label">${escapeHtml(label)}</span>
+        <span class="package-info-value">--</span>
+      </div>`;
+  }
+  return approvals.map((approval) => {
+    const versionLabel = approval.planVersions.length > 0
+      ? ` (KH phiên bản ${approval.planVersions.join(", ")})`
+      : "";
+    const dateLabel = approval.approvalDate
+      ? view.model.formatDate(approval.approvalDate)
+      : "";
+    const value = [approval.decisionNumber, dateLabel].filter(Boolean).join(" · ") || "--";
+    return `
+      <div class="package-info-row">
+        <span class="package-info-label">${escapeHtml(approval.approvalType + versionLabel)}</span>
+        <span class="package-info-value">${escapeHtml(value)}</span>
+      </div>`;
+  }).join("");
+}
 
 // eslint-disable-next-line complexity -- Legacy preparation markup is isolated for a dedicated refactor.
 export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, isEditable, appController }) {
       if (true) {
-        const khObj = view.model.getLatestPlan(gt.keHoachId);
+        const khObj = resolveLinkedPlanSnapshot(view.model, gt);
         const cdtObj = khObj ? view.model.state.chudautu.find((c) => c.id === khObj.chuDauTuId) : null;
         const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : "Không rõ";
         const tenKhStr = khObj ? khObj.tenKeHoach : "Không rõ";
@@ -116,10 +148,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                         <span class="package-info-label">Bắt đầu tổ chức</span>
                                         <span class="package-info-value">${escapeHtml(gt.thoiGianBatDauToChuc || "--")}</span>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between; border-bottom: ${gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt" ? "none" : "1px solid rgba(226, 232, 240, 0.5)"}; padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span class="package-info-label">${khObj && khObj.pheDuyet === "Kế hoạch" ? "Phê duyệt kế hoạch" : "Phê duyệt dự toán và kế hoạch"}</span>
-                                        <span class="package-info-value">${khObj && khObj.ngayPheDuyet ? view.model.formatDate(khObj.ngayPheDuyet) : "--"}</span>
-                                    </div>
+                                    ${renderPlanApprovalRows(view, gt, khObj)}
                                     ${gt.hinhThucLuaChon !== "Chỉ định thầu rút gọn" && gt.hinhThucLuaChon !== "Lựa chọn nhà thầu trong trường hợp đặc biệt" ? `
                                     <div class="package-info-row">
                                         <span class="package-info-label">Thời gian đăng tải</span>

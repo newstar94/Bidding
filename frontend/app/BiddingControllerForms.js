@@ -26,6 +26,19 @@ function setDynamicFieldLabel(label, text, required = false) {
   label.appendChild(marker);
 }
 
+function setPackageLockedContainerState(container, locked) {
+  if (!container) return;
+  container.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    if (locked) {
+      if (!control.disabled) control.dataset.packageLockDisabled = "true";
+      setDisabled(control, true);
+    } else if (control.dataset.packageLockDisabled === "true") {
+      setDisabled(control, false);
+      delete control.dataset.packageLockDisabled;
+    }
+  });
+}
+
 export function packageFieldsLockedAfterInvitation(
   originalStatus,
   statusOrder,
@@ -445,12 +458,23 @@ export function setupActionListeners() {
     }
     setDisabled(gtPhuongPhapDanhGiaSelect, false);
     setRequired(gtPhuongPhapDanhGiaSelect, true);
-    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(methods
+    const isExistingPackage = Boolean(
+      document.getElementById("form-goithau-id")?.value,
+    );
+    const preserveMissingSourceValue = !forceDefault
+      && !evaluationMethodLabel(currentVal)
+      && isExistingPackage;
+    const missingOption = preserveMissingSourceValue
+      ? '<option value="">-- Chưa có dữ liệu --</option>'
+      : "";
+    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(missingOption + methods
       .map((method) => `<option value="${escapeHtml(method)}">${escapeHtml(method)}</option>`)
       .join(""));
     const currentLabel = evaluationMethodLabel(currentVal);
     if (!forceDefault && currentLabel && methods.includes(currentLabel)) {
       gtPhuongPhapDanhGiaSelect.value = currentLabel;
+    } else if (preserveMissingSourceValue) {
+      gtPhuongPhapDanhGiaSelect.value = "";
     } else {
       gtPhuongPhapDanhGiaSelect.value = linhVucVal === "Tư vấn"
         ? EVALUATION_METHODS.COMBINED
@@ -722,12 +746,15 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     });
   }
   const fieldControlIds = {
-    keHoachId: "gt-kehoachid", tenGoiThau: "gt-ten", giaGoiThau: "gt-gia",
+    maGoiThau: "gt-ma", keHoachId: "gt-kehoachid", tenGoiThau: "gt-ten", giaGoiThau: "gt-gia",
     thoiGianThucHien: "gt-thoigian", linhVuc: "gt-linhvuc",
     hinhThucLuaChon: "gt-hinhthuc", phuongThucLuaChon: "gt-phuongthuc",
+    phuongPhapDanhGia: "gt-phuongphapdanhgia",
     quaMang: "gt-quatmang", trongNuocQuocTe: "gt-trongnuocquocte",
     tuyChonMuaThem: "gt-tuychonmuathem", phanLo: "gt-phanlo",
-    nguonVon: "gt-nguonvon", loaiHopDong: "gt-loaihopdong"
+    nguonVon: "gt-nguonvon", loaiHopDong: "gt-loaihopdong",
+    thoiGianToChuc: "gt-thoigiantochuc",
+    thoiGianBatDauToChuc: "gt-thoigianbatdautochuc",
   };
   const lockedFields = (fieldPolicy.lockedAfterInvitation || [])
     .map((field) => fieldControlIds[field]).filter(Boolean);
@@ -741,7 +768,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     if (!input) return;
     const formGroup = input.closest(".form-group");
     if (isLocked) {
-      setVisible(formGroup, false);
+      setVisible(formGroup, true);
       setDisabled(input, true);
     } else {
       setDisabled(input, false);
@@ -783,10 +810,12 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   });
   const tuyChonTable = document.getElementById("gt-tuychonmuathem-table-container");
   const phanLoTable = document.getElementById("gt-phanlo-table-container");
-  if (isLocked) {
-    setVisible(tuyChonTable, false);
-    setVisible(phanLoTable, false);
-  }
+  const hasAdditionalPurchase = document.getElementById("gt-tuychonmuathem")?.value === "Có";
+  const hasLots = document.getElementById("gt-phanlo")?.value === "Có";
+  setVisible(tuyChonTable, hasAdditionalPurchase, "block");
+  setVisible(phanLoTable, hasLots, "block");
+  setPackageLockedContainerState(tuyChonTable, isLocked);
+  setPackageLockedContainerState(phanLoTable, isLocked);
   const phuongThuc = document.getElementById("gt-phuongthuc")?.value || "";
   const is1G2T = phuongThuc === "Một giai đoạn hai túi hồ sơ";
   const isOpenedOrLaterStatus = ["Đã mở thầu", "Đang chấm thầu", "Đã có kết quả một phần", "Đã có kết quả", "Hủy thầu"].includes(trangThai);
@@ -923,7 +952,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
   const gtGoiThauThuocContainer = document.getElementById("gt-goithauthuoc-container");
   if (gtGoiThauThuocContainer) {
     if (isLocked) {
-      setVisible(gtGoiThauThuocContainer, false);
+      setVisible(gtGoiThauThuocContainer, linhVuc === "Hàng hóa");
       gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach((r) => setDisabled(r, true));
     } else {
       setVisible(gtGoiThauThuocContainer, linhVuc === "Hàng hóa");
