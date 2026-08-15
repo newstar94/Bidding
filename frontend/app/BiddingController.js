@@ -8,6 +8,7 @@ import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
 import { APP_DEBUG } from "./appConfig.js";
 import { setAppController } from "./controllerRef.js";
 import { hideInitLoader, isAuthTransitionActive } from "../auth/authRuntimeState.js";
+import { isSessionAuthenticationFailure } from "../auth/AuthSessionController.js";
 import { quarantineForcedSession } from "../auth/logoutMutationSafety.js";
 import {
   applyAccessContext,
@@ -695,15 +696,10 @@ export class BiddingController {
         if (response.status === 403 && errorMsg === "Không có quyền truy cập tổ chức này!") {
           if (await this.recoverActiveOrgAccess()) return { retry: true };
         }
-        const sessionErrors = new Set([
-          "Thiếu thông tin xác thực phiên làm việc!",
-          "Tài khoản không tồn tại!",
-          "Phiên làm việc đã hết hạn hoặc không hợp lệ!",
-          "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
-        ]);
-        const isSessionError = response.status === 401 || sessionErrors.has(errorMsg);
+        const isSessionError = isSessionAuthenticationFailure(response.status, data);
         if (isSessionError) {
           if (isAuthTransitionActive()) return null;
+          void this._checkSessionNow?.();
           const overlay = document.getElementById("auth-overlay");
           if (overlay && getComputedStyle(overlay).display !== "flex") {
             void quarantineForcedSession(this).catch((error) => {

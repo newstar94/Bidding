@@ -8,6 +8,35 @@ import {
   updateServerCapabilitiesFromSession,
 } from "./serverCapabilities.js";
 
+const SESSION_AUTHENTICATION_CODES = new Set([
+  "AUTH_REQUIRED",
+  "SESSION_REQUIRED",
+  "SESSION_INVALID",
+  "SESSION_EXPIRED",
+  "SESSION_REVOKED",
+]);
+
+const SESSION_AUTHENTICATION_MESSAGES = new Set([
+  "Thiếu thông tin xác thực phiên làm việc!",
+  "Tài khoản không tồn tại!",
+  "Phiên làm việc đã hết hạn hoặc không hợp lệ!",
+  "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại.",
+  "Phiên người dùng không còn hợp lệ.",
+  "Phiên làm việc không còn hiệu lực.",
+]);
+
+export function isSessionAuthenticationFailure(status, data = null) {
+  const normalizedStatus = Number(status);
+  if (normalizedStatus === 401) return true;
+  if (normalizedStatus !== 403) return false;
+
+  const code = String(data?.code || data?.error_code || "").trim().toUpperCase();
+  if (SESSION_AUTHENTICATION_CODES.has(code)) return true;
+
+  const message = String(data?.error || data?.message || "").trim();
+  return SESSION_AUTHENTICATION_MESSAGES.has(message);
+}
+
 export function getSessionTerminationNotice(reason, timeoutHours = 10) {
   if (reason === "logged_in_elsewhere" || reason === "session_revoked") {
     return {
