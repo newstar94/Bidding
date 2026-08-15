@@ -5,7 +5,7 @@ import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js"
 import { buildPackageGoodsPreview, packageGoodsHeaders, parsePackageGoodsRows } from "../../frontend/packages/PackageGoodsExcel.js";
 import { clonePackageGoodsForSnapshot } from "../../frontend/packages/packageGoodsVersioning.js";
 import { supportsGoodsWorkflow } from "../../frontend/packages/goodsWorkflowSupport.js";
-import { isPackageGoodsEditable } from "../../frontend/packages/packageGoodsValidation.js";
+import { isPackageGoodsDeletable, isPackageGoodsEditable } from "../../frontend/packages/packageGoodsValidation.js";
 import {
   bindPackageGoodsLiveSearch,
   buildPackageGoodsDisplayRows,
@@ -167,7 +167,10 @@ test("goods tab and editing support goods and mixed procurement packages", () =>
   assert.ok(!buildPackageTabs({ linhVuc: "Tư vấn", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
   assert.ok(!buildPackageTabs({ linhVuc: "Xây lắp", trangThai: "Chuẩn bị" }).tabs.some((tab) => tab.id === "goods"));
   assert.equal(isPackageGoodsEditable({ linhVuc: "Hỗn hợp", trangThai: "Chuẩn bị" }), true);
+  assert.equal(isPackageGoodsEditable({ linhVuc: "Hỗn hợp", trangThai: "Đang mời thầu" }), true);
   assert.equal(isPackageGoodsEditable({ linhVuc: "Hỗn hợp", trangThai: "Đang chấm thầu" }), false);
+  assert.equal(isPackageGoodsDeletable({ linhVuc: "Hỗn hợp", trangThai: "Chuẩn bị" }), true);
+  assert.equal(isPackageGoodsDeletable({ linhVuc: "Hỗn hợp", trangThai: "Đang mời thầu" }), false);
 });
 
 test("goods pagination uses the same centered five-page window as other tables", () => {

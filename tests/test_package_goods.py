@@ -4,6 +4,8 @@ from backend.db.schema import MONEY_COLUMNS, ROW_VERSION_TABLES, SCHEMA_DINH_NGH
 from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.shared.access_policy import (
     BatchWriteAuthorizationContext,
+    authorize_package_goods_delete_from_context,
+    authorize_record_write,
     authorize_record_write_from_context,
 )
 from backend.domain.goods_workflow import supports_goods_workflow
@@ -90,11 +92,67 @@ def test_package_goods_write_inherits_package_assignment_and_status_lock():
     assert not authorize_record_write_from_context(
         _access_context(assigned=False), "goithauhanghoa", "goi_thau_hang_hoa", item
     ).allowed
-    locked = authorize_record_write_from_context(
+    invited = authorize_record_write_from_context(
         _access_context(status="INVITED"), "goithauhanghoa", "goi_thau_hang_hoa", item
+    )
+    assert invited.allowed
+    invited_label = authorize_record_write_from_context(
+        _access_context(status="Đang mời thầu"), "goithauhanghoa", "goi_thau_hang_hoa", item
+    )
+    assert invited_label.allowed
+    locked = authorize_record_write_from_context(
+        _access_context(status="OPENED"), "goithauhanghoa", "goi_thau_hang_hoa", item
     )
     assert not locked.allowed
     assert "Chuẩn bị" in locked.message
+    assert "Đang mời thầu" in locked.message
+
+
+class _PackageStatusCursor:
+    def __init__(self, status):
+        self.status = status
+
+    def execute(self, sql, _params):
+        assert "SELECT trang_thai FROM goi_thau" in sql
+        return self
+
+    def fetchone(self):
+        return (self.status,)
+
+
+def test_direct_package_goods_authorization_accepts_invited_status():
+    manager = SimpleNamespace(active_role="super_admin")
+    item = {"id": "goods-1", "goiThauId": "package-1"}
+
+    assert authorize_record_write(
+        _PackageStatusCursor("INVITED"),
+        manager,
+        "manager-1",
+        "org-1",
+        "goithauhanghoa",
+        "goi_thau_hang_hoa",
+        item,
+    ).allowed
+    assert not authorize_record_write(
+        _PackageStatusCursor("OPENED"),
+        manager,
+        "manager-1",
+        "org-1",
+        "goithauhanghoa",
+        "goi_thau_hang_hoa",
+        item,
+    ).allowed
+
+
+def test_package_goods_delete_remains_locked_after_preparation():
+    item = {"id": "goods-1", "goiThauId": "package-1"}
+
+    assert authorize_package_goods_delete_from_context(
+        _access_context(status="PREPARING"), item
+    ).allowed
+    assert not authorize_package_goods_delete_from_context(
+        _access_context(status="INVITED"), item
+    ).allowed
 
 
 def test_awarded_snapshot_allows_only_new_cloned_package_goods():

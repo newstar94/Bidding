@@ -1,4 +1,5 @@
 import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
+import { normalizeStatus } from "./LifecyclePolicy.js";
 
 export function normalizeGoodsCode(value) {
   return String(value || "").trim().toLocaleLowerCase("vi");
@@ -39,5 +40,10 @@ export function findDuplicateGoodsCodes(items) {
 }
 
 export function isPackageGoodsEditable(pkg) {
-  return supportsGoodsWorkflow(pkg) && pkg?.trangThai === "Chuẩn bị";
+  return supportsGoodsWorkflow(pkg)
+    && ["PREPARING", "INVITED"].includes(normalizeStatus(pkg?.trangThai));
+}
+
+export function isPackageGoodsDeletable(pkg) {
+  return supportsGoodsWorkflow(pkg) && normalizeStatus(pkg?.trangThai) === "PREPARING";
 }

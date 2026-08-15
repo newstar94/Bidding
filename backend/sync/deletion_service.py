@@ -7,6 +7,7 @@ from backend.db.db_helper import IntegrityError
 
 from backend.shared.helpers import clean_id
 from backend.shared.access_policy import (
+    authorize_package_goods_delete_from_context,
     authorize_record_write_from_context,
     build_batch_write_authorization_context,
     can_read_record,
@@ -352,6 +353,24 @@ def apply_sync_deletions(
                 "message": "Không có quyền thực hiện thay đổi này.",
             })
             continue
+        if table_name == "goi_thau_hang_hoa":
+            parent_id = authorization_context.goods_parent_by_id.get(
+                str(record_id)
+            )
+            if str(parent_id or "") not in deleted_package_ids:
+                delete_access = authorize_package_goods_delete_from_context(
+                    authorization_context,
+                    {"id": record_id},
+                )
+                if not delete_access.allowed:
+                    result["errors"].append({
+                        "table": table_name,
+                        "id": record_id,
+                        "field": "$record",
+                        "code": "RECORD_ACCESS_DENIED",
+                        "message": "Không có quyền thực hiện thay đổi này.",
+                    })
+                    continue
         record = records_by_table.get(table_name, {}).get(str(record_id))
         if not record:
             continue

@@ -43,6 +43,13 @@ BIDDER_GOODS_EDITABLE_PACKAGE_STATUSES = frozenset({
     "Đã có kết quả một phần",
 })
 
+PACKAGE_GOODS_EDITABLE_PACKAGE_STATUSES = frozenset({
+    "PREPARING",
+    "INVITED",
+    "Chuẩn bị",
+    "Đang mời thầu",
+})
+
 
 @dataclass(frozen=True)
 class AccessDecision:
@@ -807,6 +814,26 @@ def _resolve_child_parent(parent_by_record_id, item):
     return stored_parent or requested_parent, parent_changed
 
 
+def authorize_package_goods_delete_from_context(context, item):
+    """Keep individual goods deletion in the preparation stage only."""
+
+    parent_id, parent_changed = _resolve_child_parent(
+        context.goods_parent_by_id,
+        item,
+    )
+    if parent_changed:
+        return AccessDecision(False, "Không được thay đổi gói thầu cha của hàng hóa.")
+    if context.package_status_by_id.get(parent_id) not in {
+        "PREPARING",
+        "Chuẩn bị",
+    }:
+        return AccessDecision(
+            False,
+            "Hàng hóa chỉ được xóa khi gói thầu ở trạng thái Chuẩn bị.",
+        )
+    return AccessDecision(True)
+
+
 def authorize_record_write_from_context(context, payload_key, table_name, item):
     """Authorize one record using only prefetched batch context."""
 
@@ -872,9 +899,13 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
         if (
             not creates_snapshot_child
             and context.package_status_by_id.get(goods_parent_id)
-            not in {"PREPARING", "Chuẩn bị"}
+            not in PACKAGE_GOODS_EDITABLE_PACKAGE_STATUSES
         ):
-            return AccessDecision(False, "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái Chuẩn bị.")
+            return AccessDecision(
+                False,
+                "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái "
+                "Chuẩn bị hoặc Đang mời thầu.",
+            )
     bidder_goods_parent_id = None
     if table_name == "hang_hoa_du_thau_nha_thau":
         bidder_goods_parent_id = child_parent_id
@@ -997,8 +1028,12 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
                 (organization_id, goods_parent_id),
             ).fetchone()
             goods_status = str(row[0] or "") if row else ""
-        if goods_status not in {"PREPARING", "Chuẩn bị"}:
-            return AccessDecision(False, "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái Chuẩn bị.")
+        if goods_status not in PACKAGE_GOODS_EDITABLE_PACKAGE_STATUSES:
+            return AccessDecision(
+                False,
+                "Danh mục hàng hóa chỉ được sửa khi gói thầu ở trạng thái "
+                "Chuẩn bị hoặc Đang mời thầu.",
+            )
     bidder_goods_parent_id = None
     if table_name == "hang_hoa_du_thau_nha_thau":
         bidder_goods_parent_id = clean_id(item.get("goiThauId") or item.get("goi_thau_id"))

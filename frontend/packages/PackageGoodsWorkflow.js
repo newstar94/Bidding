@@ -5,7 +5,7 @@ import { getAppController } from "../app/controllerRef.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import { downloadPackageGoodsWorkbook, buildPackageGoodsPreview, readPackageGoodsExcel } from "./PackageGoodsExcel.js";
-import { isPackageGoodsEditable, validatePackageGoodsItem } from "./packageGoodsValidation.js";
+import { isPackageGoodsDeletable, isPackageGoodsEditable, validatePackageGoodsItem } from "./packageGoodsValidation.js";
 import { renderPackageSummary } from "./detail/PackageSummary.js";
 
 function packageGoods(model, packageId) {
@@ -378,7 +378,9 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   const allGoods = packageGoods(view.model, pkg.id);
   const editable = isPackageGoodsEditable(pkg) && view.model.hasPermission?.(view.model.state.activeuser?.id, "goithau", "edit") !== false;
   const personalWorkspace = String(view.model.workspaceScope?.organizationId || view.model.workspaceScope?.key || "").includes("personal:");
-  const canDelete = editable && (personalWorkspace || view.model.state.activerole !== "employee");
+  const canDelete = isPackageGoodsDeletable(pkg)
+    && editable
+    && (personalWorkspace || view.model.state.activerole !== "employee");
   const selected = String(view._packageGoodsLotFilter || "");
   const search = String(view._packageGoodsSearch || "").trim().toLocaleLowerCase("vi");
   const scoped = allGoods.filter((item) => !selected || String(item.phanLoId) === selected);
