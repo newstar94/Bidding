@@ -42,7 +42,7 @@ body.bf-init-loading #initial-route-loading-state {
     flex: 0 0 42px;
     border: 1px solid rgba(59, 130, 246, 0.16);
     border-radius: 50%;
-    background: #fff url("/assets/favicon.png?v=transparent-corners-20260814") center / 34px 34px no-repeat;
+    background: #fff url("/assets/app-brand-icon.webp?v=d308bf4310b5dbba1d17fa6bbd0c1d51eedbcefcc6c3f7034ee223447b9a06f6") center / 34px 34px no-repeat;
     box-shadow: 0 5px 14px rgba(37, 99, 235, 0.15);
 }
 

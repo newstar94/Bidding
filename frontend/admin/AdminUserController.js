@@ -387,17 +387,25 @@ export function setupRBACEvents() {
       const employeeName = document.getElementById("emp-name").value.trim();
       const employeePhone = document.getElementById("emp-phone").value.trim();
       const emailInput = document.getElementById("emp-email").value.trim().toLowerCase();
+      let lookupFailureMessage = "";
       try {
-        const res = await apiFetch(`/api/auth/users?email=${encodeURIComponent(emailInput)}`);
+        const res = await apiFetch(`/api/organizations/membership-candidate?email=${encodeURIComponent(emailInput)}`);
+        const lookupResult = await res.json();
         if (res.ok) {
-          const matchedUsers = await res.json();
-          foundUser = matchedUsers.find((u) => u.email && u.email.trim().toLowerCase() === emailInput);
+          foundUser = lookupResult.candidate;
+        } else {
+          lookupFailureMessage = lookupResult.error || "Không thể tra cứu tài khoản nhân sự.";
         }
       } catch (err) {
         console.error("Failed to load account information:", err);
+        lookupFailureMessage = "Không thể kết nối máy chủ để tra cứu tài khoản.";
       }
       if (!foundUser) {
-        await this.view.customAlert("Thông báo", "Nhân sự chưa có tài khoản trên hệ thống!", "alert-triangle");
+        await this.view.customAlert(
+          "Thông báo",
+          lookupFailureMessage || "Nhân sự chưa có tài khoản đang hoạt động và đã xác minh trên hệ thống!",
+          "alert-triangle"
+        );
         return;
       }
       if (id) {

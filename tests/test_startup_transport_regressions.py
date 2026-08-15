@@ -142,6 +142,15 @@ def test_content_hash_static_version_is_immutable():
     assert headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
+def test_content_hash_webp_version_is_immutable():
+    headers = _response_headers_for(
+        "/assets/app-brand-icon.webp",
+        f"v={'b' * 64}".encode("ascii"),
+    )
+
+    assert headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
 def test_dynamic_response_keeps_defensive_chunked_framing():
     headers = _response_headers_for("/api/example")
     assert "content-length" not in headers

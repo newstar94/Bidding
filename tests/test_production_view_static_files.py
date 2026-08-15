@@ -9,6 +9,7 @@ def test_production_view_allows_public_auth_visual():
 
 def test_production_view_allows_public_brand_icon():
     assert app_module._is_production_view_asset_allowed("assets/favicon.png")
+    assert app_module._is_production_view_asset_allowed("assets/app-brand-icon.webp")
 
 
 def test_production_view_does_not_broaden_asset_access():

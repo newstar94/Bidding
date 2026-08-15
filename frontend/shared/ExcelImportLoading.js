@@ -40,10 +40,10 @@ function ensureOverlay(documentRef) {
   const visual = makeElement(documentRef, "div", "excel-import-loading-visual");
   visual.setAttribute("aria-hidden", "true");
   const visualIcon = makeElement(documentRef, "img", "excel-import-loading-icon");
-  visualIcon.src = "/assets/favicon.png?v=transparent-corners-20260814";
+  visualIcon.src = "/assets/app-brand-icon.webp?v=d308bf4310b5dbba1d17fa6bbd0c1d51eedbcefcc6c3f7034ee223447b9a06f6";
   visualIcon.alt = "";
-  visualIcon.width = 1254;
-  visualIcon.height = 1254;
+  visualIcon.width = 96;
+  visualIcon.height = 96;
   visual.appendChild(visualIcon);
 
   const copy = makeElement(documentRef, "div", "excel-import-loading-copy");

@@ -1,9 +1,12 @@
 from backend.db.db_helper import IntegrityError
+import hashlib
 import json
 import re
 import time
 from starlette.responses import JSONResponse
 from backend.auth.security_notifications import build_security_notification_batch
+from backend.auth.auth_service import get_rate_limit_decision, rate_limit_response
+from backend.auth.identity import normalize_email
 
 from backend.shared.helpers import (
     database,
@@ -28,6 +31,8 @@ from backend.shared.membership_invariants import (
 )
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import vietnam_date_from_epoch, vietnam_now_sql
+from backend.shared.async_io import BlockingIOBusyError
+from backend.shared.database_io import run_database_write
 from backend.notifications.service import (
     queue_assignment_state_changes,
     queue_membership_notification,
@@ -40,6 +45,7 @@ from backend.activity.service import (
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+_MEMBERSHIP_CANDIDATE_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _QUERY_CHUNK_SIZE = 500
 
 
@@ -429,6 +435,146 @@ async def update_organization_subscription_api(request):
     finally:
         if conn:
             conn.close()
+
+def _lookup_membership_candidate_sync(request, role_or_err):
+    email = normalize_email(request.query_params.get("email"))
+    if (
+        not email
+        or len(email) > 254
+        or not _MEMBERSHIP_CANDIDATE_EMAIL_RE.fullmatch(email)
+    ):
+        return error_response(
+            request,
+            "MEMBERSHIP_CANDIDATE_EMAIL_INVALID",
+            "Địa chỉ email không hợp lệ.",
+            status_code=400,
+        )
+
+    conn = None
+    try:
+        organization_id = get_active_org(request, role_or_err.user_id)
+        conn = database.get_connection()
+        conn.execute("BEGIN")
+        cursor = conn.cursor()
+        if not is_business_organization(cursor, organization_id):
+            conn.rollback()
+            return error_response(
+                request,
+                "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN",
+                "Không thể thêm thành viên vào không gian cá nhân.",
+                status_code=409,
+            )
+        if not is_organization_manager(
+            cursor, role_or_err, role_or_err.user_id, organization_id
+        ):
+            conn.rollback()
+            return error_response(
+                request,
+                "MEMBERSHIP_CANDIDATE_LOOKUP_FORBIDDEN",
+                "Bạn không có quyền tra cứu tài khoản để thêm nhân sự.",
+                status_code=403,
+            )
+
+        row = cursor.execute(
+            """SELECT id, ho_ten AS name, email, vai_tro AS platform_role
+               FROM tai_khoan
+               WHERE email_norm = ?
+                 AND trang_thai = 'active'
+                 AND da_xac_minh = 1
+               LIMIT 1""",
+            (email,),
+        ).fetchone()
+        actor_roles = get_effective_roles(role_or_err)
+        if (
+            row
+            and "super_admin" not in actor_roles
+            and "super_admin" in get_effective_roles(row["platform_role"] or "")
+        ):
+            row = None
+
+        candidate = None
+        if row:
+            candidate = {
+                "id": row["id"],
+                "name": row["name"] or "",
+                "email": row["email"] or "",
+            }
+        log_audit(
+            "organization.membership_candidate_looked_up",
+            actor_user_id=role_or_err.user_id,
+            organization_id=organization_id,
+            target_type="account",
+            target_id=candidate["id"] if candidate else None,
+            request=request,
+            metadata={
+                "found": candidate is not None,
+                "email_digest": hashlib.sha256(email.encode("utf-8")).hexdigest()[:16],
+            },
+            cursor=cursor,
+            required=True,
+        )
+        conn.commit()
+        return JSONResponse({"candidate": candidate})
+    except OrgPermissionError:
+        if conn:
+            conn.rollback()
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        return log_and_error(
+            request,
+            exc,
+            "lookup_membership_candidate_api",
+            "MEMBERSHIP_CANDIDATE_LOOKUP_FAILED",
+            "Không thể tra cứu tài khoản nhân sự.",
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+async def lookup_membership_candidate_api(request):
+    is_valid, role_or_err = verify_session(request)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+    try:
+        decision = await run_database_write(
+            get_rate_limit_decision,
+            f"membership_candidate:{role_or_err.user_id}",
+            max_attempts=20,
+            window_seconds=60,
+        )
+        if decision.storage_failed:
+            return error_response(
+                request,
+                "MEMBERSHIP_CANDIDATE_RATE_LIMIT_UNAVAILABLE",
+                "Chưa thể kiểm tra giới hạn tra cứu. Vui lòng thử lại sau.",
+                status_code=503,
+            )
+        if not decision.allowed:
+            return rate_limit_response(
+                "Bạn đã tra cứu quá nhiều tài khoản. Vui lòng thử lại sau.",
+                decision,
+            )
+        return await run_database_write(
+            _lookup_membership_candidate_sync, request, role_or_err
+        )
+    except BlockingIOBusyError:
+        response = error_response(
+            request,
+            "DATABASE_WRITE_QUEUE_FULL",
+            "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
 
 async def add_user_to_org_api(request):
     conn = None

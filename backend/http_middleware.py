@@ -223,7 +223,7 @@ class SecurityHeadersMiddleware:
                 or _CONTENT_HASH_VERSION.fullmatch(
                     request.query_params.get("v") or ""
                 )
-            ) and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
+            ) and path.endswith(('.js', '.css', '.png', '.webp', '.woff2', '.woff', '.ttf')):
                 headers["Cache-Control"] = "public, max-age=31536000, immutable"
             elif path.endswith(('.js', '.css')):
                 headers["Cache-Control"] = "public, max-age=0, must-revalidate"
