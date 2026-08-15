@@ -40,6 +40,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     compatibilityMode: "",
     portal: false,
     showToggle: true,
+    openOnFocus: true,
     formatSelectedLabel: null,
     displayEmptyOptionLabel: false,
     ...initialConfig
@@ -281,8 +282,10 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
 
   input.addEventListener("focus", () => {
     renderOptions(config.searchable ? "" : input.value);
-    setOpen(true);
-    if (config.searchable) input.select();
+    if (config.openOnFocus) {
+      setOpen(true);
+      if (config.searchable) input.select();
+    }
   });
   input.addEventListener("click", () => setOpen(true));
   input.addEventListener("input", () => {

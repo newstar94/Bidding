@@ -11,6 +11,7 @@ import {
   buildPackageGoodsDisplayRows,
   formatPackageGoodsQuantity,
   nextPackageGoodsSequence,
+  packageGoodsLotComboboxConfig,
   packageGoodsPaginationPages,
   refreshPackageGoodsIcons,
   renderPackageGoodsInlineCreateRow,
@@ -219,9 +220,17 @@ test("goods editing renders controls inside the current table row", () => {
   assert.match(markup, /name="tenHangHoa"/);
   assert.match(markup, /name="donViTinh" value="Hộp"/);
   assert.match(markup, /name="soLuong"[^>]*value="18"/);
-  assert.match(markup, /data-save-goods="goods-1"/);
-  assert.match(markup, /data-cancel-goods="goods-1"/);
+  assert.match(markup, /class="[^"]*package-goods-inline-action--save[^"]*"[^>]*data-save-goods="goods-1"[^>]*title="Lưu hàng hóa"[^>]*aria-label="Lưu hàng hóa"/);
+  assert.match(markup, /class="[^"]*package-goods-inline-action--cancel[^"]*"[^>]*data-cancel-goods="goods-1"[^>]*title="Hủy chỉnh sửa"[^>]*aria-label="Hủy chỉnh sửa"/);
+  assert.doesNotMatch(markup, />\s*(?:Lưu|Hủy)\s*<\/button>/);
   assert.doesNotMatch(markup, /package-goods-editor/);
+});
+
+test("goods lot combobox waits for an explicit user action before opening", () => {
+  const config = packageGoodsLotComboboxConfig();
+
+  assert.equal(config.openOnFocus, false);
+  assert.equal(config.searchable, true);
 });
 
 test("adding goods renders a blank editable row instead of a separate panel", () => {
@@ -237,8 +246,8 @@ test("adding goods renders a blank editable row instead of a separate panel", ()
   assert.match(markup, /name="tenHangHoa"/);
   assert.match(markup, /name="donViTinh"/);
   assert.match(markup, /name="soLuong"/);
-  assert.match(markup, /data-save-new-goods/);
-  assert.match(markup, /data-cancel-new-goods/);
+  assert.match(markup, /data-save-new-goods[^>]*title="Lưu hàng hóa"[^>]*aria-label="Lưu hàng hóa"/);
+  assert.match(markup, /data-cancel-new-goods[^>]*title="Hủy thêm mới"[^>]*aria-label="Hủy thêm mới"/);
   assert.doesNotMatch(markup, /package-goods-editor|name="maHangHoa"/);
 });
 

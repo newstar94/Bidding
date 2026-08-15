@@ -198,6 +198,28 @@ test("generic custom select exposes keyboard and screen-reader combobox behavior
   });
 });
 
+test("combobox can stay closed on focus and still open on explicit interaction", async () => {
+  await withSelectPage(async (page) => {
+    await page.evaluate(async () => {
+      const { initAccessibleCombobox } = await import("/frontend/shared/accessibleCombobox.js");
+      initAccessibleCombobox(document.getElementById("province-select"), {
+        openOnFocus: false,
+      });
+    });
+
+    const combobox = page.getByRole("combobox", { name: "Tỉnh thành" });
+    await combobox.focus();
+    assert.equal(await combobox.getAttribute("aria-expanded"), "false");
+
+    await combobox.press("ArrowDown");
+    assert.equal(await combobox.getAttribute("aria-expanded"), "true");
+    await combobox.press("Escape");
+
+    await combobox.click();
+    assert.equal(await combobox.getAttribute("aria-expanded"), "true");
+  });
+});
+
 
 test("global select enhancement preserves an active filter combobox", async () => {
   await withSelectPage(async (page) => {

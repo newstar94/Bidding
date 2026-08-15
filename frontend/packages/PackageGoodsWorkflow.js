@@ -161,6 +161,15 @@ export function renderPackageGoodsRowActions({ id, editable, canDelete }) {
   return `<td class="package-goods-actions-cell"><div class="action-btn-group"><button type="button" class="action-btn btn-edit" data-edit-goods="${escapeHtml(id)}" title="Sửa hàng hóa" aria-label="Sửa hàng hóa"><i data-lucide="pencil" aria-hidden="true"></i></button>${canDelete ? `<button type="button" class="action-btn btn-delete" data-delete-goods="${escapeHtml(id)}" title="Xóa hàng hóa" aria-label="Xóa hàng hóa"><i data-lucide="trash-2" aria-hidden="true"></i></button>` : ""}</div></td>`;
 }
 
+export function packageGoodsLotComboboxConfig() {
+  return {
+    searchable: true,
+    openOnFocus: false,
+    placeholder: "Tìm mã hoặc tên phần lô",
+    noResultsText: "Không tìm thấy phần lô phù hợp",
+  };
+}
+
 export function renderPackageGoodsInlineEditRow(item, lots, { hasLotColumns = true, sequence = "" } = {}) {
   const lotOptions = (lots || []).map((lot) => `<option value="${escapeHtml(lot.id)}" ${String(item.phanLoId || "") === String(lot.id) ? "selected" : ""}>${escapeHtml(lotLabel(lot))}</option>`).join("");
   return `<tr class="package-goods-item-row package-goods-item-row--editing" data-inline-edit-row="${escapeHtml(item.id)}" aria-label="Chỉnh sửa hàng hóa ${escapeHtml(item.maHangHoa || "")}">
@@ -169,7 +178,7 @@ export function renderPackageGoodsInlineEditRow(item, lots, { hasLotColumns = tr
     <td><textarea class="form-control package-goods-inline-control package-goods-inline-name" name="tenHangHoa" aria-label="Danh mục hàng hóa" rows="2" required>${escapeHtml(item.tenHangHoa || "")}</textarea></td>
     <td class="package-goods-unit"><input class="form-control package-goods-inline-control package-goods-inline-unit" name="donViTinh" value="${escapeHtml(item.donViTinh || "")}" aria-label="Đơn vị tính" required></td>
     <td><input class="form-control package-goods-inline-control package-goods-inline-number" name="soLuong" type="number" min="0.0001" step="any" value="${escapeHtml(item.soLuong ?? "")}" aria-label="Khối lượng" required></td>
-    <td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button type="button" class="btn btn-sm btn-primary" data-save-goods="${escapeHtml(item.id)}"><i data-lucide="save" aria-hidden="true"></i>Lưu</button><button type="button" class="btn btn-sm btn-outline" data-cancel-goods="${escapeHtml(item.id)}">Hủy</button></div></td>
+    <td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button type="button" class="action-btn btn-edit package-goods-inline-action package-goods-inline-action--save" data-save-goods="${escapeHtml(item.id)}" title="Lưu hàng hóa" aria-label="Lưu hàng hóa"><i data-lucide="save" aria-hidden="true"></i></button><button type="button" class="action-btn package-goods-inline-action package-goods-inline-action--cancel" data-cancel-goods="${escapeHtml(item.id)}" title="Hủy chỉnh sửa" aria-label="Hủy chỉnh sửa"><i data-lucide="x" aria-hidden="true"></i></button></div></td>
   </tr>`;
 }
 
@@ -181,7 +190,7 @@ export function renderPackageGoodsInlineCreateRow(lots, { hasLotColumns = true, 
     <td><textarea class="form-control package-goods-inline-control package-goods-inline-name" name="tenHangHoa" aria-label="Danh mục hàng hóa" rows="2" required></textarea></td>
     <td class="package-goods-unit"><input class="form-control package-goods-inline-control package-goods-inline-unit" name="donViTinh" aria-label="Đơn vị tính" required></td>
     <td><input class="form-control package-goods-inline-control package-goods-inline-number" name="soLuong" type="number" min="0.0001" step="any" aria-label="Khối lượng" required></td>
-    <td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button type="button" class="btn btn-sm btn-primary" data-save-new-goods><i data-lucide="save" aria-hidden="true"></i>Lưu</button><button type="button" class="btn btn-sm btn-outline" data-cancel-new-goods>Hủy</button></div></td>
+    <td class="package-goods-actions-cell"><div class="package-goods-inline-actions"><button type="button" class="action-btn btn-edit package-goods-inline-action package-goods-inline-action--save" data-save-new-goods title="Lưu hàng hóa" aria-label="Lưu hàng hóa"><i data-lucide="save" aria-hidden="true"></i></button><button type="button" class="action-btn package-goods-inline-action package-goods-inline-action--cancel" data-cancel-new-goods title="Hủy thêm mới" aria-label="Hủy thêm mới"><i data-lucide="x" aria-hidden="true"></i></button></div></td>
   </tr>`;
 }
 
@@ -345,11 +354,10 @@ function bindEditor(view, root, pkg, lots, editable, rerender) {
   const inlineRow = root.querySelector("[data-inline-edit-row], [data-inline-create-row]");
   const inlineLotSelect = inlineRow?.querySelector('[name="phanLoId"]');
   if (inlineLotSelect) {
-    view._packageGoodsLotCombobox = initAccessibleCombobox(inlineLotSelect, {
-      searchable: true,
-      placeholder: "Tìm mã hoặc tên phần lô",
-      noResultsText: "Không tìm thấy phần lô phù hợp",
-    });
+    view._packageGoodsLotCombobox = initAccessibleCombobox(
+      inlineLotSelect,
+      packageGoodsLotComboboxConfig(),
+    );
   }
   inlineRow?.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) return;
@@ -361,7 +369,7 @@ function bindEditor(view, root, pkg, lots, editable, rerender) {
       inlineRow.querySelector("[data-save-goods], [data-save-new-goods]")?.click();
     }
   });
-  inlineRow?.querySelector(pkg.phanLo === "Có" ? ".bf-combobox-input" : '[name="tenHangHoa"]')?.focus();
+  inlineRow?.querySelector('[name="tenHangHoa"]')?.focus();
   root.querySelectorAll("[data-delete-goods]").forEach((button) => button.addEventListener("click", async () => {
     if (!editable || !await view.customConfirm("Xóa hàng hóa", "Bạn có chắc muốn xóa hàng hóa này?", "trash-2")) return;
     await view.model.deleteRecord("goithauhanghoa", button.dataset.deleteGoods);
