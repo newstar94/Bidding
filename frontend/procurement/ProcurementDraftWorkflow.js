@@ -16,15 +16,106 @@ function yesNo(value, fallback = "Không") {
   return normalized === null ? fallback : normalized ? "Có" : "Không";
 }
 
-function mapLots(lots) {
+function normalizedSourceCode(value) {
+  return String(value || "").trim().toLocaleLowerCase("vi");
+}
+
+function mapLots(lots, { createId = null, existingLots = [] } = {}) {
+  const existingByCode = new Map((Array.isArray(existingLots) ? existingLots : [])
+    .map((lot) => [normalizedSourceCode(lot?.maPhanLo), lot])
+    .filter(([code]) => code));
   return (Array.isArray(lots) ? lots : []).map((lot) => ({
-    id: lot.id || lot.lotId || null,
+    id: lot.id
+      || lot.lotId
+      || existingByCode.get(normalizedSourceCode(lot.maPhanLo || lot.lotNo))?.id
+      || createId?.("phanlo")
+      || null,
     maPhanLo: lot.maPhanLo || lot.lotNo || "",
     tenPhanLo: lot.tenPhanLo || lot.lotName || "",
     giaTriPhanLo: lot.giaTriPhanLo ?? lot.lotPrice ?? 0,
     baoDamDuThau: lot.baoDamDuThau ?? lot.bidGuarantee ?? 0,
     thoiGianThucHien: lot.thoiGianThucHien || lot.executionPeriod || "",
   }));
+}
+
+function mapProcurementGoods(items, packageRecord, createId) {
+  const hasLots = packageRecord?.phanLo === "Có";
+  const lotByCode = new Map((packageRecord?.phanLoList || [])
+    .map((lot) => [normalizedSourceCode(lot?.maPhanLo), lot])
+    .filter(([code, lot]) => code && lot?.id));
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(items) ? items : []).forEach((item, index) => {
+    const lot = hasLots
+      ? lotByCode.get(normalizedSourceCode(item?.maPhanLo || item?.lotNo))
+      : null;
+    const code = String(
+      item?.maHangHoa || item?.code || item?.sourceIndex || item?.sourceItemId || "",
+    ).trim();
+    const name = String(item?.tenHangHoa || item?.name || "").trim();
+    const unit = String(item?.donViTinh || item?.unit || "").trim();
+    const quantity = Number(item?.soLuong ?? item?.quantity);
+    if ((hasLots && !lot) || !code || !name || !unit) return;
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    const identity = `${lot?.id || ""}::${normalizedSourceCode(code)}`;
+    if (seen.has(identity)) return;
+    seen.add(identity);
+    result.push({
+      id: createId("goithauhanghoa"),
+      goiThauId: packageRecord.id,
+      phanLoId: hasLots ? lot.id : null,
+      maHangHoa: code,
+      tenHangHoa: name,
+      nhomHangHoa: String(item?.nhomHangHoa || item?.group || "").trim(),
+      donViTinh: unit,
+      soLuong: quantity,
+      yeuCauKyThuat: String(
+        item?.yeuCauKyThuat || item?.technicalRequirement || "",
+      ).trim(),
+      kyMaHieuThamChieu: String(
+        item?.kyMaHieuThamChieu || item?.referenceCode || "",
+      ).trim(),
+      xuatXuYeuCau: String(
+        item?.xuatXuYeuCau || item?.requiredOrigin || "",
+      ).trim(),
+      diaDiemGiaoHang: String(
+        item?.diaDiemGiaoHang || item?.deliveryLocation || "",
+      ).trim(),
+      thoiGianGiaoHang: String(
+        item?.thoiGianGiaoHang || item?.deliveryTime || "",
+      ).trim(),
+      donGiaDuToan: item?.donGiaDuToan ?? null,
+      thanhTienDuToan: item?.thanhTienDuToan ?? null,
+      ghiChu: String(item?.ghiChu || item?.note || "").trim(),
+      sortOrder: index,
+    });
+  });
+  return result;
+}
+
+function seedProcurementGoods(
+  state,
+  packageRecord,
+  sourcePackage,
+  createId,
+  aggregate = null,
+) {
+  state.goithauhanghoa ||= [];
+  const alreadyMaterialized = state.goithauhanghoa.some(
+    (item) => String(item?.goiThauId || "") === String(packageRecord?.id || ""),
+  );
+  if (alreadyMaterialized) return [];
+  const rows = mapProcurementGoods(
+    sourcePackage?.danhSachHangHoa,
+    packageRecord,
+    createId,
+  );
+  state.goithauhanghoa.push(...rows);
+  if (aggregate) {
+    aggregate.goithauhanghoa ||= [];
+    aggregate.goithauhanghoa.push(...rows);
+  }
+  return rows;
 }
 
 function mapAdditionalPurchaseItems(items, createId) {
@@ -137,7 +228,7 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
   state.kehoach.push(plan);
   const packages = (revisionDraft?.packageDrafts || []).map((sourcePackage) => {
     const packageId = createId("goithau");
-    const lots = mapLots(sourcePackage.danhSachPhanLo);
+    const lots = mapLots(sourcePackage.danhSachPhanLo, { createId });
     const packageRecord = createInitialVersion({
       ...sourcePackage,
       id: packageId,
@@ -165,6 +256,14 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
     return packageRecord;
   });
   state.goithau.push(...packages);
+  packages.forEach((packageRecord, index) => {
+    seedProcurementGoods(
+      state,
+      packageRecord,
+      revisionDraft?.packageDrafts?.[index],
+      createId,
+    );
+  });
   draft.planId = planId;
   return { draft, plan, packages };
 }
@@ -251,7 +350,7 @@ export function materializeProcurementRevisionIntoExisting(
         ...importedAppraisal(),
         tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
         phanLo: yesNo(sourcePackage.phanLo),
-        phanLoList: mapLots(sourcePackage.danhSachPhanLo),
+        phanLoList: mapLots(sourcePackage.danhSachPhanLo, { createId }),
         tuyChonMuaThemList: mapAdditionalPurchaseItems(
           sourcePackage.tuyChonMuaThemList,
           createId,
@@ -263,6 +362,7 @@ export function materializeProcurementRevisionIntoExisting(
       created.phienBan = sourcePackageVersion(sourcePackage);
       created._procurementImportCurrent = true;
       state.goithau.push(created);
+      seedProcurementGoods(state, created, sourcePackage, createId);
       return created;
     }
     const existingRowVersion = existing.rowVersion;
@@ -284,7 +384,10 @@ export function materializeProcurementRevisionIntoExisting(
       ...appraisal,
       tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
       phanLo: yesNo(sourcePackage.phanLo),
-      phanLoList: mapLots(sourcePackage.danhSachPhanLo),
+      phanLoList: mapLots(sourcePackage.danhSachPhanLo, {
+        createId,
+        existingLots: existing.phanLoList,
+      }),
       tuyChonMuaThemList: mapAdditionalPurchaseItems(
         sourcePackage.tuyChonMuaThemList,
         createId,
@@ -297,6 +400,7 @@ export function materializeProcurementRevisionIntoExisting(
       ),
       _procurementImportCurrent: true,
     });
+    seedProcurementGoods(state, existing, sourcePackage, createId);
     existingByIdentity.delete(identity);
     return existing;
   });
@@ -405,7 +509,10 @@ export function materializeProcurementRevisionFromPrevious(
       ),
       phanLo: yesNo(source.phanLo, packageRecord.phanLo || "Không"),
       phanLoList: Array.isArray(source.danhSachPhanLo)
-        ? mapLots(source.danhSachPhanLo)
+        ? mapLots(source.danhSachPhanLo, {
+          createId,
+          existingLots: packageRecord.phanLoList,
+        })
         : packageRecord.phanLoList,
       tuyChonMuaThemList: Array.isArray(source.tuyChonMuaThemList)
         ? mapAdditionalPurchaseItems(source.tuyChonMuaThemList, createId)
@@ -420,6 +527,7 @@ export function materializeProcurementRevisionFromPrevious(
         existingGuaranteeValidity,
       ),
     });
+    seedProcurementGoods(state, packageRecord, source, createId, aggregate);
     sourceByIdentity.delete(sourcePackageIdentity(source));
   });
   const removedPackageIds = new Set(
@@ -444,7 +552,7 @@ export function materializeProcurementRevisionFromPrevious(
       ...importedAppraisal(),
       tuyChonMuaThem: yesNo(source.tuyChonMuaThem),
       phanLo: yesNo(source.phanLo),
-      phanLoList: mapLots(source.danhSachPhanLo),
+      phanLoList: mapLots(source.danhSachPhanLo, { createId }),
       tuyChonMuaThemList: mapAdditionalPurchaseItems(
         source.tuyChonMuaThemList,
         createId,
@@ -457,6 +565,7 @@ export function materializeProcurementRevisionFromPrevious(
     created._procurementImportCurrent = true;
     state.goithau.push(created);
     aggregate.goithau.push(created);
+    seedProcurementGoods(state, created, source, createId, aggregate);
   });
   draft.planId = planId;
   return { draft, plan, packages: aggregate.goithau, aggregate };

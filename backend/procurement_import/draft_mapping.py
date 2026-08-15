@@ -117,6 +117,26 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         for item in (effective.get("additionalPurchaseItems") or [])
         if isinstance(item, dict)
     ]
+    goods_items = [
+        {
+            "sourceItemId": item.get("sourceItemId"),
+            "sourceIndex": item.get("sourceIndex"),
+            "maPhanLo": item.get("lotNo") or "",
+            "tenPhanLo": item.get("lotName") or "",
+            "maHangHoa": item.get("code") or "",
+            "tenHangHoa": item.get("name") or "",
+            "donViTinh": item.get("unit") or "",
+            "soLuong": item.get("quantity"),
+            "yeuCauKyThuat": item.get("technicalRequirement") or "",
+            "kyMaHieuThamChieu": item.get("referenceCode") or "",
+            "xuatXuYeuCau": item.get("requiredOrigin") or "",
+            "diaDiemGiaoHang": item.get("deliveryLocation") or "",
+            "thoiGianGiaoHang": item.get("deliveryTime") or "",
+            "ghiChu": item.get("note") or "",
+        }
+        for item in (effective.get("goodsItems") or [])
+        if isinstance(item, dict)
+    ]
     return {
         # MSC bidNo/symbol may be a BP... package number. Bidding's package
         # code is the IB... notice number only; an unlinked package has no
@@ -141,6 +161,7 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         "phanLo": effective.get("isMultiLot"),
         "goiThauThuoc": effective.get("isMedicinePackage"),
         "danhSachPhanLo": deepcopy(effective.get("lots") or []),
+        "danhSachHangHoa": goods_items,
         "soTuyen": effective.get("isPrequalification"),
         "muaSamTapTrung": effective.get("isConcentrateShopping"),
         "tuyChonMuaThem": effective.get("additionalPurchaseOption"),

@@ -189,6 +189,143 @@ def normalize_additional_purchase_items(row):
     return result
 
 
+_GOODS_FORM_CODES = {"BD.MT.02.1224"}
+
+
+def _decoded_form_value(value):
+    for _ in range(3):
+        if not isinstance(value, str):
+            break
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+    return value
+
+
+def _form_values(raw, form_codes):
+    """Decode values only from explicitly supported MSC form contracts."""
+
+    values = []
+    expected = {str(code).strip().upper() for code in form_codes}
+    for item in _walk(raw):
+        if not isinstance(item, dict):
+            continue
+        form_code = str(item.get("formCode") or "").strip().upper()
+        if form_code not in expected:
+            continue
+        value = _decoded_form_value(item.get("formValue"))
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def _form_rows(raw, form_codes):
+    rows = []
+    for value in _form_values(raw, form_codes):
+        if isinstance(value, dict):
+            value = pick(
+                value,
+                "Table",
+                "table",
+                "items",
+                "rows",
+                "data",
+                "value",
+                default=[],
+            )
+        if isinstance(value, list):
+            rows.extend(row for row in value if isinstance(row, dict))
+    return rows
+
+
+def _text(value):
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def normalize_goods_items(raw):
+    """Normalize invitation goods without treating lot headings as goods.
+
+    ``BD.MT.02.1224`` interleaves parent lot rows and actual goods rows.  A
+    materializable goods row must carry the three values required by Bidding:
+    name, unit, and a positive quantity.  Missing values are not fabricated.
+    """
+
+    result = []
+    seen = set()
+    inherited_lot_no = None
+    inherited_lot_name = None
+    for row in _form_rows(raw, _GOODS_FORM_CODES):
+        row_lot_no = _text(pick(row, "lotNo", "lotCode", "maPhanLo"))
+        row_lot_name = _text(pick(row, "lotName", "tenPhanLo"))
+        if row_lot_no:
+            inherited_lot_no = row_lot_no
+            inherited_lot_name = row_lot_name
+        source_index = _text(pick(
+            row, "currentItemIndex", "itemIndex", "stt", "sequence"
+        ))
+        source_item_id = _text(pick(
+            row, "sourceItemId", "id", "itemId", default=source_index
+        ))
+        code = _text(pick(
+            row, "code", "itemCode", "goodsCode", "maHangHoa",
+            default=source_index,
+        ))
+        name = _text(pick(
+            row, "name", "goodsName", "itemName", "tenHangHoa"
+        ))
+        unit = _text(pick(
+            row, "uom", "unit", "unitName", "donViTinh"
+        ))
+        quantity = _number(pick(
+            row, "qty", "quantity", "amount", "soLuong"
+        ))
+        if not source_item_id or not code or not name or not unit:
+            continue
+        if quantity is None or quantity <= 0:
+            continue
+        lot_no = row_lot_no or inherited_lot_no
+        identity = (lot_no or "", source_item_id)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append({
+            "sourceItemId": source_item_id,
+            "sourceIndex": source_index,
+            "lotNo": lot_no,
+            "lotName": row_lot_name or inherited_lot_name,
+            "code": code,
+            "name": name,
+            "unit": unit,
+            "quantity": quantity,
+            "technicalRequirement": _text(pick(
+                row,
+                "description",
+                "technicalRequirement",
+                "technicalSpecifications",
+                "specification",
+                "yeuCauKyThuat",
+            )),
+            "referenceCode": _text(pick(
+                row, "referenceCode", "modelNo", "model", "kyMaHieuThamChieu"
+            )),
+            "requiredOrigin": _text(pick(
+                row, "requiredOrigin", "origin", "xuatXuYeuCau"
+            )),
+            "deliveryLocation": _text(pick(
+                row, "deliveryLocation", "deliveryPlace", "diaDiemGiaoHang"
+            )),
+            "deliveryTime": _text(pick(
+                row, "deliveryTime", "deliveryPeriod", "thoiGianGiaoHang"
+            )),
+            "note": _text(pick(row, "note", "notes", "ghiChu")),
+        })
+    return result
+
+
 def _period(row):
     explicit = pick(row, "implementationPeriod", "executionPeriod")
     if explicit not in (None, ""):
@@ -287,13 +424,22 @@ def normalize_lots(row):
 def _notice_lots(raw):
     """Return the fullest authoritative tender lot list in notice sidecars."""
 
+    searchable = [raw, *_form_values(raw, {"BD_DATA_TABLE"})]
     candidates = [
         lots
-        for item in _walk(raw)
+        for source in searchable
+        for item in _walk(source)
         if isinstance(item, dict)
         and (lots := normalize_lots(item))
     ]
-    return max(candidates, key=len, default=None)
+    return max(
+        candidates,
+        key=lambda rows: (
+            sum(row.get("bidGuarantee") is not None for row in rows),
+            len(rows),
+        ),
+        default=None,
+    )
 
 
 def _source_flag(raw, *aliases):
@@ -678,6 +824,7 @@ def normalize_notice_revision(
         ),
         "isMultiLot": is_multi_lot,
         "lots": lots,
+        "goodsItems": normalize_goods_items(raw),
         "bidOpenId": pick(notice, "bidOpenId"),
         "inputResultId": pick(notice, "inputResultId"),
         "techReqId": pick(notice, "techReqId"),
@@ -1332,6 +1479,7 @@ def normalize_notice_complete_bundle(bundle: dict):
             "sourceBidPriceVnd", "estimatePriceVnd",
             "executionPeriod", "contractType", "selectionMode",
             "isMedicinePackage", "isMultiLot", "lots",
+            "goodsItems",
             "additionalPurchaseOption", "additionalPurchaseItems",
             "bidValidityDays", "selectionDuration", "selectionStart",
             "linkedPlanRevisionId", "linkedPlanVersion",
@@ -1352,6 +1500,8 @@ def normalize_notice_complete_bundle(bundle: dict):
                     "selectionStart",
                 } and plan_package is not None:
                     operation = plan_detail_source.get("operation")
+                if field == "goodsItems":
+                    operation = (sources.get("hsmt") or {}).get("operation")
                 field_sources[f"revisions.{revision_number}.{field}"] = {
                     "operation": operation,
                     "revision": str(revision_number),

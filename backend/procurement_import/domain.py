@@ -290,6 +290,7 @@ SOURCE_OWNED_PACKAGE_FIELDS = (
     "onlineMode",
     "domesticOrInternational",
     "lots",
+    "goodsItems",
     "isMultiLot",
     "isPrequalification",
     "isConcentrateShopping",

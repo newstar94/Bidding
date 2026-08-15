@@ -83,3 +83,7 @@ _Avoid_: Tổ chức đã xóa, decommission vật lý
 **Loại kế hoạch Bidding**:
 Phân loại kế hoạch nội bộ chỉ gồm “Dự án” và “Dự toán mua sắm”. Phân loại Mua Sắm Công `DTPT` hoặc `DTMS` thuộc “Dự án”; `TX` hoặc `KHAC` thuộc “Dự toán mua sắm”.
 _Avoid_: Lưu trực tiếp mã phân loại nguồn vào loại kế hoạch nội bộ
+
+**Danh mục hàng hóa mời thầu**:
+Các mặt hàng thực có tên, đơn vị tính và số lượng dương thuộc phạm vi một gói hoặc một phần lô; dòng tiêu đề phần lô từ nguồn ngoài không phải là hàng hóa.
+_Avoid_: Dòng biểu mẫu nguồn, dòng nhóm, tiêu đề phần lô

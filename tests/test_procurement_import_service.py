@@ -955,6 +955,14 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
                     "name": "Goi thau", "priceVnd": 1_000,
                     "executionPeriod": "30 ngay", "capitalDetail": "Ngan sach",
                     "selectionDuration": "30 ngay", "selectionStart": "2026-02",
+                    "isMultiLot": True,
+                    "lots": [{
+                        "lotNo": "PP2600000001", "lotName": "Phần 1",
+                        "lotPrice": 600,
+                    }, {
+                        "lotNo": "PP2600000002", "lotName": "Phần 2",
+                        "lotPrice": 400,
+                    }],
                     "noticeLink": {
                         "state": "LINKED", "noticeNo": "IB2600374868",
                         "kind": "TBMT", "noticeVersion": "00",
@@ -975,11 +983,25 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
                     "bidClosingAt": "2026-08-03T13:00:00",
                     "bidOpeningAt": "2026-08-03T13:00:00",
                     "actualOpeningAt": "2026-08-03T13:08:42",
-                        "financialActualOpeningAt": "2026-08-03T16:20:00",
-                        "bidGuaranteeVnd": 52_183_040,
-                        "bidValidityDays": 90,
-                        "approvalDecisionNo": "123/QD-E-HSMT",
+                    "financialActualOpeningAt": "2026-08-03T16:20:00",
+                    "bidGuaranteeVnd": 52_183_040,
+                    "bidValidityDays": 90,
+                    "approvalDecisionNo": "123/QD-E-HSMT",
                     "approvalDecisionDate": "2026-07-15T00:00:00",
+                    "lots": [{
+                        "lotNo": "PP2600000001", "lotName": "Phần 1",
+                        "lotPrice": 600, "bidGuarantee": 12_000_000,
+                    }, {
+                        "lotNo": "PP2600000002", "lotName": "Phần 2",
+                        "lotPrice": 400, "bidGuarantee": 8_000_000,
+                    }],
+                    "goodsItems": [{
+                        "sourceItemId": "1.1", "sourceIndex": "1.1",
+                        "lotNo": "PP2600000001", "lotName": "Phần 1",
+                        "code": "1.1", "name": "Hàng hóa A",
+                        "unit": "Hộp", "quantity": 12,
+                        "technicalRequirement": "Yêu cầu A",
+                    }],
                     "opening": {"bidders": [{"code": "bidder-1"}]},
                     "result": {"status": "APPROVED"},
                 }]},
@@ -1003,6 +1025,10 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
     assert effective["bidGuaranteeVnd"] == 52_183_040
     assert effective["approvalDecisionNo"] == "123/QD-E-HSMT"
     assert effective["approvalDecisionDate"] == "2026-07-15T00:00:00"
+    assert [lot["bidGuarantee"] for lot in effective["lots"]] == [
+        12_000_000, 8_000_000,
+    ]
+    assert effective["goodsItems"][0]["name"] == "Hàng hóa A"
     assert effective["noticeFields"] == {
         "status": "OPEN_DXKT",
         "statusForNotify": "DXT",
@@ -1022,6 +1048,23 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
         {"planDetailRevisionId": "detail-00", "effectiveFields": effective},
     )
     assert draft["trangThai"] == "Đang mời thầu"
+    assert draft["danhSachPhanLo"][0]["bidGuarantee"] == 12_000_000
+    assert draft["danhSachHangHoa"][0] == {
+        "sourceItemId": "1.1",
+        "sourceIndex": "1.1",
+        "maPhanLo": "PP2600000001",
+        "tenPhanLo": "Phần 1",
+        "maHangHoa": "1.1",
+        "tenHangHoa": "Hàng hóa A",
+        "donViTinh": "Hộp",
+        "soLuong": 12,
+        "yeuCauKyThuat": "Yêu cầu A",
+        "kyMaHieuThamChieu": "",
+        "xuatXuYeuCau": "",
+        "diaDiemGiaoHang": "",
+        "thoiGianGiaoHang": "",
+        "ghiChu": "",
+    }
 
 
 def test_prepare_all_orders_revisions_numerically_even_when_provider_is_unsorted(tmp_path):

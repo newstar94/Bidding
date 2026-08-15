@@ -97,6 +97,53 @@ test("procurement resync preserves existing appraisal and workflow state", () =>
   assert.equal(result.packages[0].yeuCauThamDinhHsmtCode, "REQUIRED");
 });
 
+test("procurement resync preserves existing goods and stable lot ids", () => {
+  let sequence = 0;
+  const state = {
+    kehoach: [{ id: "plan-00", rootId: "plan-00", phienBan: "00", rowVersion: 1 }],
+    goithau: [{
+      id: "package-1",
+      rootId: "package-1",
+      keHoachId: "plan-00",
+      phienBan: "00",
+      rowVersion: 3,
+      trangThai: "Đang mời thầu",
+      phanLo: "Có",
+      phanLoList: [{ id: "lot-local-1", maPhanLo: "PP01", tenPhanLo: "Phần 1" }],
+      sourceRevision: { stablePackageId: "stable-1" },
+    }],
+    goithauhanghoa: [{
+      id: "goods-local-1",
+      goiThauId: "package-1",
+      phanLoId: "lot-local-1",
+      maHangHoa: "1.1",
+      tenHangHoa: "Tên người dùng đã chỉnh",
+      donViTinh: "Hộp",
+      soLuong: 9,
+    }],
+  };
+
+  materializeProcurementRevisionIntoExisting(state, "plan-00", {
+    revisionNumber: "00",
+    packageDrafts: [{
+      tenGoiThau: "Gói nguồn",
+      phanLo: true,
+      danhSachPhanLo: [{ lotNo: "pp01", lotName: "Phần 1" }],
+      danhSachHangHoa: [{
+        maPhanLo: "PP01", maHangHoa: "1.1", tenHangHoa: "Tên từ MSC",
+        donViTinh: "Hộp", soLuong: 12,
+      }],
+      sourceRevision: { stablePackageId: "stable-1" },
+    }],
+  }, { createId: (kind) => `${kind}-${++sequence}` });
+
+  assert.equal(state.goithau[0].phanLoList[0].id, "lot-local-1");
+  assert.equal(state.goithauhanghoa.length, 1);
+  assert.equal(state.goithauhanghoa[0].id, "goods-local-1");
+  assert.equal(state.goithauhanghoa[0].tenHangHoa, "Tên người dùng đã chỉnh");
+  assert.equal(state.goithauhanghoa[0].soLuong, 9);
+});
+
 test("package procurement draft fills lifecycle and tender milestone controls", () => {
   const controls = new Map([
     "gt-ma", "gt-ten", "gt-gia", "gt-thoigian", "gt-linhvuc",
@@ -206,9 +253,18 @@ test("prepared plan revision materializes source packages into one memory-only b
       trangThai: "PREPARING",
       phanLo: true, danhSachPhanLo: [{ lotNo: "01", lotName: "Lô 1", lotPrice: 100 }],
       sourceRevision: { revisionId: "rev-00", revisionNumber: "00", packageObservationId: "detail-a" },
+      danhSachHangHoa: [{
+        sourceItemId: "1.1", sourceIndex: "1.1",
+        maPhanLo: "01", tenPhanLo: "Lô 1", maHangHoa: "1.1",
+        tenHangHoa: "Hóa chất A", donViTinh: "Hộp", soLuong: 12,
+        yeuCauKyThuat: "Yêu cầu kỹ thuật A",
+      }],
     }],
   }, {
-    createId: (kind) => `${kind}-draft`,
+    createId: (() => {
+      const ids = {};
+      return (kind) => `${kind}-draft-${ids[kind] = (ids[kind] || 0) + 1}`;
+    })(),
     timestamp: "2026-08-13 10:00:00",
   });
 
@@ -218,6 +274,15 @@ test("prepared plan revision materializes source packages into one memory-only b
   assert.equal(state.goithau[0].phanLo, "Có");
   assert.equal(state.goithau[0].trangThai, "Chuẩn bị");
   assert.equal(state.goithau[0].phanLoList[0].maPhanLo, "01");
+  assert.ok(state.goithau[0].phanLoList[0].id);
+  assert.equal(state.goithauhanghoa.length, 1);
+  assert.equal(state.goithauhanghoa[0].goiThauId, state.goithau[0].id);
+  assert.equal(state.goithauhanghoa[0].phanLoId, state.goithau[0].phanLoList[0].id);
+  assert.equal(state.goithauhanghoa[0].maHangHoa, "1.1");
+  assert.equal(state.goithauhanghoa[0].tenHangHoa, "Hóa chất A");
+  assert.equal(state.goithauhanghoa[0].donViTinh, "Hộp");
+  assert.equal(state.goithauhanghoa[0].soLuong, 12);
+  assert.equal(state.goithauhanghoa[0].yeuCauKyThuat, "Yêu cầu kỹ thuật A");
   assert.equal(state.goithau[0].phienBan, "00");
   assert.equal(state.goithau[0].sourceRevision.packageObservationId, "detail-a");
   assert.equal(state.kehoach[0]._procurementImportCurrent, true);

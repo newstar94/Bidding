@@ -24,6 +24,42 @@ from backend.procurement_import.domain import (
 from backend.observability.recording import record_database_phase
 
 
+def _lot_code(value):
+    return str(value or "").strip().casefold()
+
+
+def _merge_notice_lots(plan_lots, notice_lots):
+    """Enrich plan lots from TBMT by exact stable lot code only."""
+
+    if not isinstance(notice_lots, list) or not notice_lots:
+        return deepcopy(plan_lots)
+    if not isinstance(plan_lots, list) or not plan_lots:
+        return deepcopy(notice_lots)
+    notice_by_code = {
+        _lot_code(row.get("lotNo")): row
+        for row in notice_lots
+        if isinstance(row, dict) and _lot_code(row.get("lotNo"))
+    }
+    merged = []
+    for plan_lot in plan_lots:
+        if not isinstance(plan_lot, dict):
+            continue
+        target = deepcopy(plan_lot)
+        notice_lot = notice_by_code.get(_lot_code(plan_lot.get("lotNo")))
+        if notice_lot is not None:
+            if notice_lot.get("bidGuarantee") not in (None, ""):
+                target["bidGuarantee"] = deepcopy(
+                    notice_lot["bidGuarantee"]
+                )
+            for field in ("lotName", "lotPrice", "executionPeriod"):
+                if target.get(field) in (None, "") and notice_lot.get(
+                    field
+                ) not in (None, ""):
+                    target[field] = deepcopy(notice_lot[field])
+        merged.append(target)
+    return merged
+
+
 @dataclass(frozen=True, slots=True)
 class StoredPreview:
     preview_id: str
@@ -252,11 +288,16 @@ class ProcurementImportPreparer:
                 "bidGuaranteeVnd",
                 "bidValidityDays",
                 "additionalPurchaseItems",
+                "goodsItems",
                 "approvalDecisionNo",
                 "approvalDecisionDate",
             ):
                 if detail.get(field) not in (None, ""):
                     package[field] = deepcopy(detail[field])
+            if detail.get("lots"):
+                package["lots"] = _merge_notice_lots(
+                    package.get("lots"), detail.get("lots")
+                )
 
     @staticmethod
     def _match_candidates(observation, local_packages):

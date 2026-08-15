@@ -1028,13 +1028,13 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                                             "lotNo": "PP2600000001",
                                             "lotName": "Thuốc A",
                                             "lotEstimatePrice": 400000000,
-                                            "lotGuaranteeValue": 4000000,
+                                            "lotGuaranteeValue": None,
                                         },
                                         {
                                             "lotNo": "PP2600000002",
                                             "lotName": "Thuốc B",
                                             "lotEstimatePrice": 587654321,
-                                            "lotGuaranteeValue": 5000000,
+                                            "lotGuaranteeValue": None,
                                         },
                                     ],
                                 }
@@ -1046,12 +1046,54 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                         "success": True,
                         "response": {
                             "bidaInvChapterConfList": [{"isMultiLot": 1}],
-                            "bidoInvBiddingDTO": [{
-                                "formCode": "BD_DATA_TABLE",
-                                "formValue": json.dumps({
-                                    "effectTimeHSDT": 90,
-                                }),
-                            }],
+                            "bidoInvBiddingDTO": [
+                                {
+                                    "formCode": "BD_DATA_TABLE",
+                                    "formValue": json.dumps({
+                                        "effectTimeHSDT": 90,
+                                        "lotDTOList": [{
+                                            "lotNo": "PP2600000001",
+                                            "lotName": "Thuốc A",
+                                            "lotEstimatePrice": 400000000,
+                                            "lotGuaranteeValue": 4000000,
+                                        }, {
+                                            "lotNo": "PP2600000002",
+                                            "lotName": "Thuốc B",
+                                            "lotEstimatePrice": 587654321,
+                                            "lotGuaranteeValue": 5000000,
+                                        }],
+                                    }),
+                                },
+                                {
+                                    "formCode": "BD.MT.02.1224",
+                                    "formValue": json.dumps({"Table": [
+                                        {
+                                            "lotNo": "PP2600000001",
+                                            "lotName": "Thuốc A",
+                                        },
+                                        {
+                                            "id": "source-goods-1",
+                                            "currentItemIndex": "1.1",
+                                            "name": "Hóa chất xét nghiệm A",
+                                            "uom": "Hộp",
+                                            "qty": 12,
+                                            "description": "Quy cách kỹ thuật A",
+                                        },
+                                        {
+                                            "lotNo": "PP2600000002",
+                                            "lotName": "Thuốc B",
+                                        },
+                                        {
+                                            "id": "source-goods-2",
+                                            "currentItemIndex": "2.1",
+                                            "name": "Sinh phẩm xét nghiệm B",
+                                            "uom": "Chai",
+                                            "qty": "2,5",
+                                            "description": "Quy cách kỹ thuật B",
+                                        },
+                                    ]}, ensure_ascii=False),
+                                },
+                            ],
                             "resultDecision": {
                                 "decisionNo": "KHÔNG-ĐƯỢC-LẤY",
                                 "decisionDate": "2026-04-01T07:30:00",
@@ -1224,6 +1266,40 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
             "lotPrice": 587654321,
             "bidGuarantee": 5000000,
             "executionPeriod": None,
+        },
+    ]
+    assert revision["goodsItems"] == [
+        {
+            "sourceItemId": "source-goods-1",
+            "sourceIndex": "1.1",
+            "lotNo": "PP2600000001",
+            "lotName": "Thuốc A",
+            "code": "1.1",
+            "name": "Hóa chất xét nghiệm A",
+            "unit": "Hộp",
+            "quantity": 12,
+            "technicalRequirement": "Quy cách kỹ thuật A",
+            "referenceCode": None,
+            "requiredOrigin": None,
+            "deliveryLocation": None,
+            "deliveryTime": None,
+            "note": None,
+        },
+        {
+            "sourceItemId": "source-goods-2",
+            "sourceIndex": "2.1",
+            "lotNo": "PP2600000002",
+            "lotName": "Thuốc B",
+            "code": "2.1",
+            "name": "Sinh phẩm xét nghiệm B",
+            "unit": "Chai",
+            "quantity": 2.5,
+            "technicalRequirement": "Quy cách kỹ thuật B",
+            "referenceCode": None,
+            "requiredOrigin": None,
+            "deliveryLocation": None,
+            "deliveryTime": None,
+            "note": None,
         },
     ]
     assert revision["opening"]["bidders"][0]["contractorCode"] == (
