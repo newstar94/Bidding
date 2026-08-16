@@ -1799,6 +1799,8 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                                     "contractorName": "Nhà thầu A",
                                     "bidPrice": 900000000,
                                     "bidValidity": 90,
+                                    "bidGuarantee": 12_000_000,
+                                    "bidGuaranteeValidity": 120,
                                 }]
                             }
                         },
@@ -1812,6 +1814,7 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                             "lotNo": "PP01",
                             "lotName": "Lô 1",
                             "lotFinalPrice": 900000000,
+                            "bidGuarantee": None,
                         }],
                     },
                     "opening_bid_2": {
@@ -1948,6 +1951,10 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     )
     assert revision["opening"]["bidders"][0]["lotNo"] == "PP01"
     assert revision["opening"]["bidders"][0]["lotName"] == "Lô 1"
+    assert revision["opening"]["bidders"][0]["bidGuarantee"] == 12_000_000
+    assert revision["opening"]["bidders"][0][
+        "bidGuaranteeValidityDays"
+    ] == 120
     assert revision["result"]["hasSelectionResult"] is True
     assert revision["result"]["hasTechnicalResult"] is True
     assert canonical["contracts"][0]["contractCode"] == "HD2600000001"
