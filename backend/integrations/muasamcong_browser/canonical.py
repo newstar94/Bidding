@@ -218,7 +218,10 @@ _GOODS_FORM_CODES = (
     "BD.MT.02.1224",
     "BD.MT.02.1281",
 )
-_EVALUATION_METHOD_FORM_CODES = {"BD.CG.02.0113"}
+_EVALUATION_METHOD_FORM_CODES = {
+    "BD.CG.02.0113",
+    "BD.DT.02.1843",
+}
 
 
 def _decoded_form_value(value):

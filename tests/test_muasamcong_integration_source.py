@@ -96,6 +96,30 @@ def test_ib2600271825_evaluation_method_comes_from_ehsmt_form():
     assert revision["evaluationMethod"] == "Giá thấp nhất"
 
 
+def test_ib2600212155_evaluation_method_comes_from_dt_1843_form():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600212155",
+            "notifyId": "notice-01",
+            "bidName": "Gói thầu thuốc thử",
+            "bidField": "HH",
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.DT.02.1843",
+                "formValue": json.dumps({"method": "1"}),
+            }],
+        },
+        notice_no="IB2600212155",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600212155", revision, revision
+    )
+
+    assert revision["evaluationMethod"] == "Giá thấp nhất"
+    assert draft["phuongPhapDanhGia"] == "Giá thấp nhất"
+
+
 def test_complete_notice_uses_plan_package_lot_rows_when_goods_form_is_absent():
     bundle = {
         "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
