@@ -22,6 +22,7 @@ const startupMark = (name) => {
 startupMark("app-module-start");
 const isLandingPath = () => window.location.pathname === "/";
 const isLegalPath = () => window.location.pathname === "/legal";
+const isNotFoundPage = () => document.querySelector('meta[name="bf-not-found"]')?.content === "true";
 const readSessionBootstrap = () => {
   try {
     const node = document.getElementById("bf-session-bootstrap");
@@ -133,6 +134,17 @@ const bootstrapApplication = async () => {
   if (isLegalPath()) {
     const { bootstrapLegalPage } = await import("../legal/LegalPage.js");
     await bootstrapLegalPage();
+    requestAnimationFrame(() => {
+      loadAndRenderLucideIcons().then((loaded) => {
+        if (loaded) window.lucide.createIcons();
+      });
+      scheduleServiceWorkerRegistration();
+    });
+    return;
+  }
+  if (isNotFoundPage()) {
+    const { bootstrapNotFoundPage } = await import("../errors/NotFoundPage.js");
+    await bootstrapNotFoundPage();
     requestAnimationFrame(() => {
       loadAndRenderLucideIcons().then((loaded) => {
         if (loaded) window.lucide.createIcons();

@@ -50,9 +50,24 @@ import {
   setWorkflowActionVisibility,
   WORKFLOW_ACTION_MODE,
 } from "./workflowActionState.js";
+import {
+  enhanceTableRowPagination,
+  paginateTableRows,
+} from "../shared/TablePagination.js";
 export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./openingContractorLookup.js";
 
 export * from "./bidProcessTenderLifecycle.js";
+
+export function refreshOpeningDraftPagination(owner = {}, packageId = "", options = {}) {
+  const table = document.getElementById("mothau-table");
+  if (table) return enhanceTableRowPagination(table, options);
+  return paginateTableRows(
+    owner,
+    `openingDraft:${String(packageId || "unknown")}`,
+    document.getElementById("mothau-table-tbody"),
+    document.getElementById("mothau-table-pagination"),
+  );
+}
 
 export function buildOpeningActionState({
   pkg,
@@ -333,6 +348,7 @@ export function renderMoThauPanel() {
     } else {
       bids.forEach((bid) => this.addMoThauRow(caseType, gt, bid, isReadOnly));
     }
+    refreshOpeningDraftPagination(this, gtId);
     lucide.createIcons();
   };
   select.onchange = handlePackageSelection;
@@ -356,6 +372,7 @@ export function renderMoThauPanel() {
       else if (!isTuVan && is1G2T) caseType = hasPhanLo ? "1G2T_WITH_LOT" : "1G2T_NO_LOT";
       else if (is1G1T) caseType = hasPhanLo ? "1G1T_WITH_LOT" : "1G1T_NO_LOT";
       this.addMoThauRow(caseType, gt);
+      refreshOpeningDraftPagination(this, gt.id, { showLastPage: true });
       lucide.createIcons();
     };
   }
@@ -497,18 +514,13 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G2T_WITH_LOT") {
-    let defaultLotBaoDam = "";
-    if (bidData.maPhanLo) {
-      const foundLot = lotList.find((l) => l.maPhanLo === bidData.maPhanLo);
-      if (foundLot) defaultLotBaoDam = this.model.formatVND(foundLot.baoDamDuThau) || "";
-    }
     cellHtml = readOnly ? `
             <td style="min-width: 11rem">${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
             <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
-            <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
+            <td>${this.model.formatVND(bidData.giaTriDamBao) || "--"}</td>
             <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
         ` : `
@@ -525,7 +537,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
-            <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Số tiền ĐB"></td>
+            <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || ""}" required placeholder="Số tiền ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" placeholder="Hiệu lực ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
@@ -559,11 +571,6 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G1T_WITH_LOT") {
-    let defaultLotBaoDam = "";
-    if (bidData.maPhanLo) {
-      const foundLot = lotList.find((l) => l.maPhanLo === bidData.maPhanLo);
-      if (foundLot) defaultLotBaoDam = this.model.formatVND(foundLot.baoDamDuThau) || "";
-    }
     cellHtml = readOnly ? `
             <td style="min-width: 11rem">${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
@@ -574,7 +581,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td class="bf-s-5f326564a5">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
             <td>${bidData.hieuLucHsdt || gt.hieuLucHsdt || 90 ? (bidData.hieuLucHsdt || gt.hieuLucHsdt || 90) + " ngày" : "--"}</td>
-            <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
+            <td>${this.model.formatVND(bidData.giaTriDamBao) || "--"}</td>
             <td class="bf-s-5f326564a5">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
             <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
@@ -595,7 +602,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-8b424f074a" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required placeholder="Tỷ lệ %"></td>
             <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
-            <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Giá trị ĐB"></td>
+            <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || ""}" required placeholder="Giá trị ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay bf-s-8b424f074a" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Thực hiện"></td>
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
@@ -658,14 +665,6 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       const nameInput = tr.querySelector(".mt-ten-phan-lo");
       if (nameInput) {
         nameInput.value = selectedOpt ? selectedOpt.getAttribute("data-name") || "" : "";
-      }
-      const selectedLotCode = rowLotSelect.value;
-      const chosenLot = lotList.find((l) => l.maPhanLo === selectedLotCode);
-      if (chosenLot) {
-        const dbInput = tr.querySelector(".mt-dam-bao-du-thau");
-        if (dbInput) dbInput.value = this.model.formatVND(chosenLot.baoDamDuThau) || "";
-        const gtDbInput = tr.querySelector(".mt-gia-tri-dam-bao");
-        if (gtDbInput) gtDbInput.value = this.model.formatVND(chosenLot.baoDamDuThau) || "";
       }
     };
     rowLotSelect.addEventListener("change", syncSelectedLot);
@@ -873,6 +872,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
           this.addMoThauRow(caseType, gt);
           lucide.createIcons();
         }
+        refreshOpeningDraftPagination(this, gt.id);
       }
     };
   }

@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { ProcurementImportClient } from "../../frontend/procurement/ProcurementImportClient.js";
 import {
+  applyOpeningImportToDraft,
   canApplyOpeningPreview,
   countOpeningContractors,
   mapOpeningBidder,
@@ -363,6 +364,8 @@ test("opening mapper preserves lot and bid values without prefilling venture mem
     lotNo: "01",
     bidPrice: 100,
     priceAfterDiscount: 90,
+    bidGuarantee: 1_000_000,
+    bidGuaranteeValidityDays: 120,
     jointVentureMembers: [
       { contractorCode: "0100000001", contractorName: "A", isLeader: true },
       { contractorCode: "0100000002", contractorName: "B" },
@@ -373,6 +376,8 @@ test("opening mapper preserves lot and bid values without prefilling venture mem
   assert.equal(mapped.maPhanLo, "01");
   assert.equal(mapped.giaDuThau, 100);
   assert.equal(mapped.giaSauGiamGia, 90);
+  assert.equal(mapped.giaTriDamBao, 1_000_000);
+  assert.equal(mapped.hieuLucBaoDamNgay, 120);
   assert.deepEqual(mapped.thanhVienLienDanh, []);
   assert.equal(
     canApplyOpeningPreview(
@@ -442,6 +447,60 @@ test("opening draft merge preserves local rows while overwrite replaces them", (
   assert.deepEqual(overwritten.rows.map((row) => row.tenNhaThau), [
     "Tên nguồn", "Nhà thầu mới",
   ]);
+});
+
+
+test("opening overwrite removes the initial blank draft row before adding bidders", () => {
+  const originalDocument = globalThis.document;
+  const tbody = {
+    children: [],
+    querySelectorAll(selector) {
+      return selector === "tr" ? this.children : [];
+    },
+    replaceChildren(...children) {
+      this.children = children;
+    },
+  };
+  const blankRow = {
+    querySelector() { return { value: "" }; },
+    remove() {
+      tbody.children = tbody.children.filter((row) => row !== this);
+    },
+  };
+  tbody.children = [blankRow];
+  globalThis.document = {
+    getElementById(id) {
+      return id === "mothau-table-tbody" ? tbody : null;
+    },
+  };
+  const controller = {
+    model: { formatForDatetimeLocal: (value) => value },
+    addMoThauRow(_caseType, _pkg, bidder) {
+      tbody.children.push({ bidder });
+    },
+  };
+
+  try {
+    const result = applyOpeningImportToDraft.call(controller, {
+      pkg: { id: "package-1" },
+      applied: {
+        opening: {
+          bidders: [{
+            contractorCode: "vn0100000001",
+            contractorName: "Nhà thầu 01",
+            bidPrice: 100,
+          }],
+        },
+      },
+      action: "OVERWRITE",
+    });
+
+    assert.equal(result.added, 1);
+    assert.equal(tbody.children.length, 1);
+    assert.equal(tbody.children[0].bidder.maNhaThau, "vn0100000001");
+  } finally {
+    globalThis.document = originalDocument;
+  }
 });
 
 

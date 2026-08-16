@@ -1837,6 +1837,15 @@ textarea[disabled] {
   color: var(--text-muted);
   margin-bottom: 24px;
 }
+.table-container.has-row-pagination,
+.table-responsive.has-row-pagination,
+.package-table-frame.has-row-pagination {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  margin-bottom: 0 !important;
+}
+.table-row-pagination {
+  margin-top: 0;
+}
 .pagination-info {
   font-weight: 500;
   flex: 0 1 auto;

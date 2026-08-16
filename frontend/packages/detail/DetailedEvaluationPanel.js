@@ -749,7 +749,7 @@ export function renderDetailedEvaluationPanel(container, {
         ${bidderGoodsLayout ? renderBidderGoodsPanelMarkup(bidderGoodsState || {}) : `
         ${technicalMethodRequired ? '<div class="package-panel-empty detailed-technical-method-empty">Chọn phương pháp đánh giá kỹ thuật hoặc nhập file Excel để tiếp tục.</div>' : `
         <div class="table-container package-table-frame has-bottom-space detailed-evaluation-table-frame">
-        <table class="data-table detailed-evaluation-table ${binaryLayout ? `detailed-evaluation-table-binary detailed-evaluation-table-${activeGroup}` : financialLayout ? "detailed-evaluation-table-financial" : technicalPassFailLayout ? "detailed-evaluation-table-technical-pass-fail" : technicalScoreLayout ? "detailed-evaluation-table-technical-score" : ""}" data-no-sort="true" data-density="comfortable">
+        <table class="data-table detailed-evaluation-table ${binaryLayout ? `detailed-evaluation-table-binary detailed-evaluation-table-${activeGroup}` : financialLayout ? "detailed-evaluation-table-financial" : technicalPassFailLayout ? "detailed-evaluation-table-technical-pass-fail" : technicalScoreLayout ? "detailed-evaluation-table-technical-score" : ""}" data-no-sort="true" data-density="comfortable" data-row-pagination="true" aria-label="Báo cáo đánh giá chi tiết">
           ${binaryLayout ? binaryColgroup : financialLayout ? financialColgroup : technicalPassFailLayout ? technicalPassFailColgroup : technicalScoreLayout ? technicalScoreColgroup : standardColgroup}
           ${binaryLayout ? binaryHeader : financialLayout ? financialHeader : technicalPassFailLayout || technicalScoreLayout ? technicalHeader : standardHeader}
           <tbody id="detailed-evaluation-criteria-body">${criterionRows}</tbody>

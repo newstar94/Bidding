@@ -10,6 +10,9 @@ Một gói thầu có thể có nhiều snapshot phiên bản nhưng vẫn là m
 
 Quy tắc timeline được xác nhận:
 
+- Bộ chọn `Kế hoạch LCNT` chỉ hiển thị một đại diện phiên bản mới nhất cho mỗi
+  dòng kế hoạch theo `rootId`, kể cả khi state tạm thời có nhiều snapshot cùng
+  mang cờ `isLatest`.
 - Bộ chọn `Gói thầu` chỉ hiển thị một đại diện mới nhất cho mỗi `rootId`.
 - Các snapshot `00`, `01`, ... của cùng dòng gói chỉ xuất hiện trong bộ chọn `Phiên bản`.
 - Mốc `QĐ phê duyệt E-HSMT` lấy số và ngày quyết định từ phiên bản gói thấp nhất trong cùng dòng phiên bản.
@@ -20,7 +23,8 @@ Timeline tải phiên bản gốc theo metadata `allVersions` khi bản ghi đ�
 
 ## Tác động tương thích
 
-- Không gộp hoặc xóa bản ghi phiên bản; thay đổi chỉ áp dụng cho cách chọn gói và dựng nguồn timeline.
+- Không gộp hoặc xóa bản ghi phiên bản; thay đổi chỉ áp dụng cho cách chọn kế hoạch,
+  chọn gói và dựng nguồn timeline.
 - Bộ chọn phiên bản, chỉnh sửa timeline, lưu và xuất Excel tiếp tục làm việc trên đúng snapshot được chọn.
 - Mốc timeline đặt `sourceMode = MANUAL` tiếp tục giữ giá trị người dùng đã nhập; quy tắc phả hệ áp dụng cho nguồn tự động.
 - Không thay đổi role, permission, tenant isolation, assignment scope, record scope, entitlement, masking hoặc quyền đọc dữ liệu.
@@ -32,6 +36,7 @@ Không cần migration schema hoặc dữ liệu. Timeline hiện có được d
 ## Regression tests
 
 - `tests/js/timeline_rule_engine.test.mjs` — `timeline package picker shows one package family and leaves revisions to the version picker`
+- `tests/js/timeline_rule_engine.test.mjs` — `timeline plan selector shows one representative for each version lineage`
 - `tests/js/timeline_rule_engine.test.mjs` — `timeline keeps the original E-HSMT approval and maps revision 01 as adjustment 1`
 - `tests/js/version_resolver.test.mjs` — kiểm tra chọn đại diện mới nhất ổn định theo `rootId`.
 - `tests/js/workspace_loader_lease.test.mjs` — kiểm tra tải gói timeline không ghi dữ liệu sang workspace khác.

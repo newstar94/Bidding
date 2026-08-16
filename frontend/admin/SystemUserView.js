@@ -6,6 +6,12 @@ import { registerCommandArgs } from "../shared/commandArgs.js";
 import { normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import {
+  paginateOwnedTable,
+  paginateTableRows,
+  renderTablePagination,
+  setTablePage,
+} from "../shared/TablePagination.js";
 
 const ROLE_UI_CONTEXT = Object.freeze({
   super_admin: Object.freeze({
@@ -355,8 +361,17 @@ export function renderManagerNhanVienPanel() {
   const pkgNameSpan = document.getElementById("manager-package-name");
   if (pkgNameSpan) pkgNameSpan.textContent = pkg ? pkg.name : "--";
   const tbody = document.getElementById("manager-employees-tbody");
+  const formerEmployees = Array.isArray(this.model.state.formerEmployees)
+    ? this.model.state.formerEmployees
+    : [];
+  const employeePageKey = `managerEmployees:${activeOrg || "all"}`;
+  const matrixPageKey = `managerMatrix:${activeOrg || "all"}`;
+  const employeePage = paginateOwnedTable(this, employeePageKey, [
+    ...orgEmployees.map((employee) => ({ employee, former: false })),
+    ...formerEmployees.map((employee) => ({ employee, former: true })),
+  ]);
   if (tbody) {
-    const activeRows = orgEmployees.map((emp) => {
+    const activeRows = employeePage.items.filter((entry) => !entry.former).map(({ employee: emp }) => {
       const viewArgsKey = registerCommandArgs([String(emp.id || "")]);
       const editArgsKey = registerCommandArgs([String(emp.id || "")]);
       const deleteArgsKey = registerCommandArgs([String(emp.id || "")]);
@@ -378,7 +393,7 @@ export function renderManagerNhanVienPanel() {
                 </tr>
             `;
     }).join("");
-    const formerRows = (this.model.state.formerEmployees || []).map((emp) => {
+    const formerRows = employeePage.items.filter((entry) => entry.former).map(({ employee: emp }) => {
       const viewArgsKey = registerCommandArgs([String(emp.id || "")]);
       const reAddArgsKey = registerCommandArgs([String(emp.id || ""), null]);
       const leftDate = emp.leftAt ? formatDateOnly(emp.leftAt) : "";
@@ -406,6 +421,14 @@ export function renderManagerNhanVienPanel() {
         <td colspan="5" class="text-center text-muted">Chưa có nhân viên trong danh sách.</td>
       </tr>`);
   }
+  renderTablePagination(
+    document.getElementById("manager-employees-pagination"),
+    employeePage,
+    (page) => {
+      setTablePage(this, employeePageKey, page);
+      this.renderManagerNhanVienPanel();
+    },
+  );
   const matrixTbody = document.getElementById("manager-matrix-tbody");
   if (matrixTbody) {
     matrixTbody.innerHTML = trustedHTML(orgEmployees.map((emp) => {
@@ -442,6 +465,12 @@ export function renderManagerNhanVienPanel() {
             `;
     }).join(""));
   }
+  paginateTableRows(
+    this,
+    matrixPageKey,
+    matrixTbody,
+    document.getElementById("manager-matrix-pagination"),
+  );
   lucide.createIcons();
 }
 
@@ -513,12 +542,14 @@ export function renderManagerHoSoGiayPanel() {
   const orgStatuses = Array.isArray(this.model.state.customcontractstatuses)
     ? this.model.state.customcontractstatuses
     : [];
+  const statusPageKey = `managerContractStatuses:${getActiveOrganizationId() || "all"}`;
+  const statusPage = paginateOwnedTable(this, statusPageKey, orgStatuses);
   const tbody = document.getElementById("manager-hosogiay-tbody");
   if (tbody) {
     if (orgStatuses.length === 0) {
       tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Chưa cấu hình trạng thái hợp đồng nào.</td></tr>`);
     } else {
-      tbody.innerHTML = trustedHTML(orgStatuses.map((status) => {
+      tbody.innerHTML = trustedHTML(statusPage.items.map((status) => {
         const safeName = escapeHTML(status.name);
         const safeColor = /^#[0-9a-fA-F]{6}$/.test(String(status.color || "")) ? status.color : "#64748b";
         const editArgsKey = registerCommandArgs([String(status.id || "")]);
@@ -538,6 +569,14 @@ export function renderManagerHoSoGiayPanel() {
       }).join(""));
     }
   }
+  renderTablePagination(
+    document.getElementById("manager-hosogiay-pagination"),
+    statusPage,
+    (page) => {
+      setTablePage(this, statusPageKey, page);
+      this.renderManagerHoSoGiayPanel();
+    },
+  );
   lucide.createIcons();
 }
 export function renderProfileTab(user) {
@@ -589,8 +628,11 @@ export function renderProfileTab(user) {
 export function renderSystemUsersTable(usersList, currentUsername) {
   const tbody = document.getElementById("sa-users-tbody");
   if (!tbody) return;
+  const users = Array.isArray(usersList) ? usersList : [];
+  const usersPage = paginateOwnedTable(this, "systemUsers", users);
   if (!usersList || usersList.length === 0) {
     tbody.innerHTML = trustedHTML(`<tr><td colspan="7" class="text-center text-muted">Không có người dùng nào.</td></tr>`);
+    renderTablePagination(document.getElementById("sa-users-pagination"), usersPage);
     return;
   }
   const calculateRemainingDays = (endDateStr) => {
@@ -628,7 +670,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     };
     return map[pkgId] || '<span class="text-muted bf-s-51a7b72acc">Chưa chọn gói</span>';
   };
-  tbody.innerHTML = trustedHTML(usersList.map((user) => {
+  tbody.innerHTML = trustedHTML(usersPage.items.map((user) => {
     const subscription = normalizeOrganizations(user).find((organization) => organization.status === "active")?.subscription
       || normalizeOrganizations(user)[0]?.subscription
       || {};
@@ -654,5 +696,13 @@ export function renderSystemUsersTable(usersList, currentUsername) {
             </tr>
         `;
   }).join(""));
+  renderTablePagination(
+    document.getElementById("sa-users-pagination"),
+    usersPage,
+    (page) => {
+      setTablePage(this, "systemUsers", page);
+      this.renderSystemUsersTable(users, currentUsername);
+    },
+  );
   lucide.createIcons();
 }

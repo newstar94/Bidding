@@ -87,7 +87,7 @@ export function renderEvaluationPanel(container, pkg, {
         </div>
       </div>
       <div class="table-container package-table-frame has-bottom-space">
-        <table class="data-table" id="danhgiahsdt-table"><thead id="danhgiahsdt-table-thead"></thead><tbody id="danhgiahsdt-table-tbody"></tbody></table>
+        <table class="data-table" id="danhgiahsdt-table" data-row-pagination="true" aria-label="Báo cáo đánh giá hồ sơ dự thầu"><thead id="danhgiahsdt-table-thead"></thead><tbody id="danhgiahsdt-table-tbody"></tbody></table>
       </div>
       <div class="workflow-action-row">
         <button class="btn btn-primary workflow-primary-action" id="btn-danhgiahsdt-save"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>

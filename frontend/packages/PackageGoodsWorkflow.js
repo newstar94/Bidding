@@ -7,6 +7,7 @@ import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import { downloadPackageGoodsWorkbook, buildPackageGoodsPreview, readPackageGoodsExcel } from "./PackageGoodsExcel.js";
 import { isPackageGoodsDeletable, isPackageGoodsEditable, validatePackageGoodsItem } from "./packageGoodsValidation.js";
 import { renderPackageSummary } from "./detail/PackageSummary.js";
+import { TABLE_PAGE_SIZE } from "../shared/TablePagination.js";
 
 function packageGoods(model, packageId) {
   return (model?.state?.goithauhanghoa || [])
@@ -261,7 +262,7 @@ function renderPreview(container, rows, lots) {
   const displayRows = buildPackageGoodsDisplayRows(rows, lots, { hasLots });
   const columnCount = (hasLots ? 6 : 4) + 4;
   container.innerHTML = trustedHTML(`
-    <div class="table-responsive"><table class="data-table package-goods-hierarchy-table package-goods-preview-table" data-no-sort="true">
+    <div class="table-responsive"><table class="data-table package-goods-hierarchy-table package-goods-preview-table" data-no-sort="true" data-row-pagination="true" aria-label="Xem trước danh mục hàng hóa nhập từ Excel">
       <thead><tr><th>STT</th>${hasLots ? "<th>Mã phần (lô)</th><th>Tên phần lô</th>" : ""}<th>Danh mục hàng hóa</th><th class="package-goods-unit">Đơn vị tính</th><th class="package-goods-quantity">Khối lượng</th><th>Dòng Excel</th><th>Thao tác dự kiến</th><th>Trạng thái</th><th>Chi tiết lỗi</th></tr></thead>
       <tbody>${displayRows.map((displayRow) => displayRow.kind === "lot" ? `<tr class="package-goods-lot-row">
         <td>${escapeHtml(displayRow.sequence)}</td><td>${escapeHtml(displayRow.lotCode)}</td><td>${escapeHtml(displayRow.lotName)}</td><td colspan="${columnCount - 3}"></td>
@@ -412,7 +413,7 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   const search = String(view._packageGoodsSearch || "").trim().toLocaleLowerCase("vi");
   const scoped = allGoods.filter((item) => !selected || String(item.phanLoId) === selected);
   const filtered = scoped.filter((item) => !search || [item.maHangHoa, item.tenHangHoa, item.nhomHangHoa, item.donViTinh].some((value) => String(value || "").toLocaleLowerCase("vi").includes(search)));
-  const pageSize = 100;
+  const pageSize = TABLE_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const page = Math.min(pageCount, Math.max(1, Number(view._packageGoodsPage || 1)));
   const visibleGoods = filtered.slice((page - 1) * pageSize, page * pageSize);

@@ -41,6 +41,8 @@ from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.responses import JSONResponse, HTMLResponse, Response, FileResponse
+from starlette.requests import Request
+from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -462,7 +464,7 @@ def _initial_route_preload_tag(html_content):
     return f'<link rel="preload" href="{script_match.group("src")}" as="script">'
 
 
-async def index(request):
+async def index(request, *, not_found=False):
     """Return the compiled application shell with browser ETag caching."""
     global _index_response_cache
     if IS_PRODUCTION and _index_response_cache is not None:
@@ -489,6 +491,7 @@ async def index(request):
     html_content = html_content.replace("__BF_PAGE_TITLE__", html.escape(page_title))
     html_content = html_content.replace("__BF_PAGE_DESCRIPTION__", html.escape(page_description, quote=True))
     html_content = html_content.replace("__BF_CANONICAL_LINK__", canonical_link)
+    html_content = html_content.replace("__BF_NOT_FOUND__", "true" if not_found else "false")
     html_content = _page_shell(html_content, request_path)
     workspace_preload = "" if request_path in {"/", "/legal"} else _workspace_preload_tag(session_bootstrap)
     html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
@@ -745,7 +748,41 @@ def _is_production_view_asset_allowed(path):
     )
 
 
-class ProductionViewStaticFiles(StaticFiles):
+async def not_found_handler(request, _exception):
+    """Render the branded 404 page for browser navigations only."""
+
+    path = str(request.url.path or "")
+    accepts = str(request.headers.get("accept") or "").lower()
+    is_browser_navigation = (
+        request.method in {"GET", "HEAD"}
+        and "text/html" in accepts
+        and not path.startswith(("/api/", "/ws/", "/css/", "/vendor/", "/frontend/", "/dist/", "/assets/"))
+    )
+    if not is_browser_navigation:
+        if path.startswith(("/api/", "/ws/")):
+            return JSONResponse({"error": "NOT_FOUND", "path": path}, status_code=404)
+        return Response("Not found", status_code=404)
+    response = await index(request, not_found=True)
+    response.status_code = 404
+    return response
+
+
+class NotFoundViewStaticFiles(StaticFiles):
+    """Serve view assets while rendering the branded fallback for missing pages."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            response = await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return await not_found_handler(Request(scope), exc)
+        if getattr(response, "status_code", None) == 404:
+            return await not_found_handler(Request(scope), None)
+        return response
+
+
+class ProductionViewStaticFiles(NotFoundViewStaticFiles):
     async def get_response(self, path: str, scope):
         if not _is_production_view_asset_allowed(path):
             return Response("Access Denied", status_code=403)
@@ -1035,7 +1072,7 @@ if APP_DEBUG:
         ),
         Mount("/frontend", app=SafeStaticFiles(directory=os.path.join(project_root, 'frontend')), name="frontend"),
         Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
-        Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
+        Mount("/", app=NotFoundViewStaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
     ])
 else:
     routes.append(
@@ -1198,7 +1235,10 @@ app = Starlette(
     routes=routes,
     middleware=middleware,
     lifespan=lifespan,
-    exception_handlers={OrgPermissionError: org_permission_handler}
+    exception_handlers={
+        OrgPermissionError: org_permission_handler,
+        404: not_found_handler,
+    }
 )
 
 

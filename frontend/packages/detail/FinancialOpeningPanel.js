@@ -69,7 +69,7 @@ export function renderFinancialOpeningTable({
   }).join("");
   return `<p class="text-muted package-help-text">Nhập giá dự thầu, tỷ lệ giảm giá của các nhà thầu vượt qua bước đánh giá kỹ thuật.</p>
     <div class="table-container package-table-frame has-bottom-space">
-      <table class="data-table table-full-width" id="opening-fin-table"><thead><tr>
+      <table class="data-table table-full-width" id="opening-fin-table" data-row-pagination="true" aria-label="Biên bản mở hồ sơ đề xuất tài chính"><thead><tr>
         ${hasLots ? '<th class="col-number">Mã phần lô</th><th class="col-lot-name">Tên phần lô</th>' : ""}
         <th>Mã nhà thầu</th><th>Tên nhà thầu</th>${hasTechnicalScore ? '<th class="col-score text-center">Điểm kỹ thuật</th>' : ""}
         <th class="col-price">Giá dự thầu (VNĐ)</th><th class="col-index">Tỷ lệ %</th><th class="col-price">Giá sau giảm</th>

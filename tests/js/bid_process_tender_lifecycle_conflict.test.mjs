@@ -138,7 +138,11 @@ test("opening from Mua Sắm Công fills the time then applies bidders to the op
       package: { id: "package-1", rowVersion: 4 },
       opening: {
         openingAt: "2026-08-07T09:00:00",
-        bidders: [{ contractorCode: "0100000001", contractorName: "Nhà thầu 01" }],
+        bidders: [
+          { contractorCode: "0100000001", contractorName: "Nhà thầu 01", lotNo: "PP01" },
+          { contractorCode: "0100000001", contractorName: "Nhà thầu 01", lotNo: "PP02" },
+          { contractorCode: "0100000002", contractorName: "Nhà thầu 02", lotNo: "PP03" },
+        ],
       },
     },
   };
@@ -170,7 +174,11 @@ test("opening from Mua Sắm Công fills the time then applies bidders to the op
       return prepared;
     },
     applyOpeningImportToDraft(payload) {
-      calls.push(["apply-opening-draft", payload.applied.opening.bidders.length]);
+      calls.push([
+        "apply-opening-draft",
+        payload.applied.opening.bidders.length,
+        payload.action,
+      ]);
       return { added: 1 };
     },
     async fetchRecordByLookup() { return localPackage; },
@@ -186,11 +194,11 @@ test("opening from Mua Sắm Công fills the time then applies bidders to the op
 
   assert.deepEqual(calls, [
     ["prepare-opening", "package-1"],
-    ["prompt-import-status", "Đã lấy 1 nhà thầu từ Mua sắm công."],
+    ["prompt-import-status", "Đã lấy 2 nhà thầu từ Mua sắm công."],
     ["stage", "goithau", "2026-08-07T09:00:00"],
     ["persist", "goithau"],
     ["sync"],
     ["switch-tab", "goithau-detail", "package-1"],
-    ["apply-opening-draft", 1],
+    ["apply-opening-draft", 3, "OVERWRITE"],
   ]);
 });

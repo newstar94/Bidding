@@ -1052,6 +1052,91 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             for child in value[:2_000]:
                 yield from opening_objects(child, inherited_lot, depth + 1)
 
+    def opening_phase(source_key):
+        return "FINANCIAL" if str(source_key).endswith("_2") else "TECHNICAL"
+
+    def opening_bidder_identity(item):
+        code = str(pick(
+            item,
+            "contractorCode",
+            "contractorCodeStr",
+            "taxCode",
+            "orgCode",
+            "bidderCode",
+            default="",
+        ) or "").strip()
+        name = str(pick(
+            item,
+            "contractorName",
+            "contractorNameStr",
+            "orgName",
+            "bidderName",
+            default="",
+        ) or "").strip()
+        return code.casefold() if code else name.casefold()
+
+    # lotOpenDetail exposes the contractor-lot rows but can return a null
+    # guarantee. bid-open is authoritative for the bidder's submitted
+    # guarantee, so capture it independently of concurrent response order.
+    bid_open_security = {}
+    for source_key, source_payload in raw_bundle.items():
+        if not str(source_key).casefold().startswith("opening_bid"):
+            continue
+        phase = opening_phase(source_key)
+        for item in opening_objects(source_payload):
+            if not isinstance(item, dict):
+                continue
+            contractor_identity = opening_bidder_identity(item)
+            if not contractor_identity:
+                continue
+            key = (contractor_identity, lot_scope(item) or "", phase)
+            security = bid_open_security.setdefault(key, {
+                "bidGuarantee": None,
+                "bidGuaranteeValidityDays": None,
+            })
+            guarantee = _money(pick(
+                item,
+                "bidGuarantee",
+                "bidGuaranteed",
+                "bidGuaranteeValue",
+                "totalGuaranteeValue",
+                "bidSecurity",
+                "bidSecurityValue",
+                "guaranteeValue",
+            ))
+            validity = pick(
+                item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
+            )
+            if guarantee is not None:
+                security["bidGuarantee"] = guarantee
+            if validity not in (None, ""):
+                security["bidGuaranteeValidityDays"] = validity
+
+    def authoritative_bid_open_security(bidder):
+        contractor_identity = opening_bidder_identity(bidder)
+        if not contractor_identity:
+            return None
+        phase = bidder.get("phase") or "TECHNICAL"
+        lot_no = str(bidder.get("lotNo") or "")
+        exact = bid_open_security.get((contractor_identity, lot_no, phase))
+        summary = bid_open_security.get((contractor_identity, "", phase))
+        if exact is None and summary is None:
+            return None
+        exact = exact or {}
+        summary = summary or {}
+        return {
+            "bidGuarantee": (
+                exact.get("bidGuarantee")
+                if exact.get("bidGuarantee") is not None
+                else summary.get("bidGuarantee")
+            ),
+            "bidGuaranteeValidityDays": (
+                exact.get("bidGuaranteeValidityDays")
+                if exact.get("bidGuaranteeValidityDays") not in (None, "")
+                else summary.get("bidGuaranteeValidityDays")
+            ),
+        }
+
     bidders = []
     seen = set()
     bidders_by_identity = {}
@@ -1069,7 +1154,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             candidates.append(value)
 
     for source_key, source_payload in raw_bundle.items():
-        phase = "FINANCIAL" if str(source_key).endswith("_2") else "TECHNICAL"
+        phase = opening_phase(source_key)
         for item in opening_objects(source_payload):
             if not isinstance(item, dict):
                 continue
@@ -1237,6 +1322,12 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
         lot_no = bidder.get("lotNo")
         if lot_no not in (None, ""):
             bidder["lotName"] = lot_names_by_no.get(str(lot_no))
+        security = authoritative_bid_open_security(bidder)
+        if security is not None:
+            bidder["bidGuarantee"] = security["bidGuarantee"]
+            bidder["bidGuaranteeValidityDays"] = security[
+                "bidGuaranteeValidityDays"
+            ]
 
     # Opening endpoints expose both package-level contractor summaries and
     # contractor-lot bid rows. Once a phase has lot-scoped rows, the unscoped

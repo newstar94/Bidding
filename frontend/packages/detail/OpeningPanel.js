@@ -22,7 +22,7 @@ export function renderOpeningPanel(container, pkg, { isDirectOrSpecial = false }
         </div>
       </div>
       <div class="table-container package-table-frame has-bottom-space">
-        <table class="data-table table-full-width" id="mothau-table">
+        <table class="data-table table-full-width" id="mothau-table" data-row-pagination="true" aria-label="Biên bản mở thầu">
           <thead id="mothau-table-thead"></thead>
           <tbody id="mothau-table-tbody"></tbody>
         </table>

@@ -1,6 +1,7 @@
 import { apiFetch, requestJson } from "../../shared/apiClient.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { TABLE_PAGE_SIZE } from "../../shared/TablePagination.js";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -288,7 +289,7 @@ export function bindAwardResultExcelExport(root, {
     const query = new URLSearchParams({
       validationToken,
       page: String(targetPage),
-      pageSize: "100",
+      pageSize: String(TABLE_PAGE_SIZE),
     });
     for (const [key, value] of Object.entries(previewFilters)) {
       if (value !== "" && value !== null && value !== undefined) query.set(key, String(value));

@@ -5,6 +5,7 @@ import { persistAndSync, replaceTableProjection } from "../shared/MutationServic
 import { workspaceDataStoreFor } from "../app/WorkspaceDataStore.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { TABLE_PAGE_SIZE } from "../shared/TablePagination.js";
 import {
   downloadBidderGoodsTemplate,
   downloadBidderGoodsWorkbook,
@@ -30,7 +31,7 @@ import {
   PREFERENCE_DESCRIPTIONS,
 } from "./bidderGoodsPreference.js";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = TABLE_PAGE_SIZE;
 const BIDDER_GOODS_EDITABLE_FIELDS = new Set([
   "kyMaHieu",
   "nhanHieu",
@@ -578,7 +579,7 @@ function previewMarkup(preview) {
       </div>
       ${preview.preferenceNotice ? `<div class="alert alert-info" role="status">${escapeHtml(preview.preferenceNotice)}</div>` : ""}
       <div class="table-container package-table-frame">
-        <table class="data-table bidder-goods-preview-table" data-no-sort="true">
+        <table class="data-table bidder-goods-preview-table" data-no-sort="true" data-row-pagination="true" aria-label="Xem trước hàng hóa dự thầu nhập từ Excel">
           <thead><tr><th>Dòng 12.1B</th><th>Dòng 15A</th><th>STT</th><th>Phần lô</th><th>Danh mục hàng hóa</th><th>Ưu đãi</th><th>Thành tiền</th><th>Trạng thái ghép</th></tr></thead>
           <tbody>${preview.rows.map((row) => `<tr><td>${row.sourceRowNumber}</td><td>${row.uuDaiSourceRow || "—"}</td><td>${escapeHtml(row.sttNguon)}</td><td>${escapeHtml(row.maPhanLoNguon || "Không phân lô")}</td><td>${escapeHtml(row.danhMucHangHoa)}</td><td>${row.maUuDai ?? 0}</td><td class="numeric-cell">${currency(row.thanhTienDuThau)}</td><td>${mappingBadge(row.mappingStatus)}</td></tr>`).join("")}</tbody>
         </table>

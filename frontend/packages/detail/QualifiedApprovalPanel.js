@@ -159,7 +159,7 @@ function renderQualifiedTable(view, state) {
   }
   return `
     <div class="table-container bf-s-674afada30">
-      <table class="data-table bf-s-448ca2b6ae">
+      <table class="data-table bf-s-448ca2b6ae" data-row-pagination="true" aria-label="Danh sách nhà thầu đáp ứng kỹ thuật">
         <thead><tr>
           ${pkg.phanLo === "Có" ? '<th class="bf-s-ad8c93e5fe">Mã phần lô</th><th class="bf-s-a01153c965">Tên phần lô</th>' : ""}
           <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>

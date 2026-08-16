@@ -5,6 +5,11 @@ import { normalizeOrganizations } from "../auth/accessContext.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
+import {
+  paginateOwnedTable,
+  renderTablePagination,
+  setTablePage,
+} from "../shared/TablePagination.js";
 const PACKAGE_STATUS_COLORS = {
   "Chưa xác định": "var(--text-muted)",
   "Chuẩn bị": "#74829a",
@@ -631,10 +636,11 @@ export async function renderSuperAdminDashboard() {
     const orgListContainer = document.getElementById("sad-recent-orgs-tbody");
     if (orgListContainer) {
       const list = summary.organizations;
+      const organizationPage = paginateOwnedTable(this, "superAdminOrganizations", list);
       if (list.length === 0) {
         orgListContainer.innerHTML = trustedHTML(`<tr><td colspan="7" class="text-center text-muted">Chưa có tổ chức nào đăng ký thầu</td></tr>`);
       } else {
-        orgListContainer.innerHTML = trustedHTML(list.map((org) => {
+        orgListContainer.innerHTML = trustedHTML(organizationPage.items.map((org) => {
           const pkgName = org.package_id === "diamond" ? "Gói Kim Cương" : org.package_id === "gold" ? "Gói Vàng" : org.package_id === "silver" ? "Gói Bạc" : "Chưa đăng ký";
           const pkgClass = org.package_id === "diamond" ? "badge-primary" : org.package_id === "gold" ? "badge-warning" : org.package_id === "silver" ? "badge-success" : "badge-neutral";
           const isActive = org.status === "active";
@@ -653,6 +659,14 @@ export async function renderSuperAdminDashboard() {
                         `;
         }).join(""));
       }
+      renderTablePagination(
+        document.getElementById("sad-recent-orgs-pagination"),
+        organizationPage,
+        (page) => {
+          setTablePage(this, "superAdminOrganizations", page);
+          void this.renderSuperAdminDashboard();
+        },
+      );
     }
   this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));
 }

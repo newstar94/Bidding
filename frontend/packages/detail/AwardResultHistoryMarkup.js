@@ -63,7 +63,7 @@ export function buildOfficialResultHistoryMarkup(
           <div><span>Ngày QĐ phê duyệt</span><strong>${escapeHtml(result.ngayQuyetDinhKetQua ? view.model.formatDate(result.ngayQuyetDinhKetQua) : "--")}</strong></div>
           <div><span>Phạm vi</span><strong>${escapeHtml((batch.lotCodes || []).join(", ") || "--")}</strong></div>
         </div>
-        <div class="table-container package-table-frame evaluation-round-table"><table class="data-table"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết quả</th><th>Giá/Lý do</th></tr></thead>
+        <div class="table-container package-table-frame evaluation-round-table"><table class="data-table" data-row-pagination="true" aria-label="Lịch sử kết quả lựa chọn nhà thầu"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết quả</th><th>Giá/Lý do</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="4" class="text-muted">Không có hồ sơ trong đợt.</td></tr>'}</tbody></table></div>
         ${isEditable ? `<div class="workflow-action-row evaluation-round-action-row">
           <button type="button" class="btn btn-primary action-strong evaluation-round-edit-button" data-edit-official-result-batch="${safeAttr(batch.batchId)}" aria-label="Chỉnh sửa kết quả Lần ${batch.sequenceNo}">

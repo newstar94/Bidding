@@ -50,7 +50,7 @@ export function buildAwardedResultPanelMarkup({
     </div>
     <h5 class="package-list-heading"><i data-lucide="list"></i> Danh sách Nhà thầu tham dự và kết quả đánh giá</h5>
     <div class="table-container package-table-frame has-bottom-space table-card-bg">
-      <table class="data-table table-full-width"><thead>${tableHeaderHtml}</thead><tbody>${bidderRowsHtml}</tbody></table>
+      <table class="data-table table-full-width" data-row-pagination="true" aria-label="Kết quả lựa chọn nhà thầu"><thead>${tableHeaderHtml}</thead><tbody>${bidderRowsHtml}</tbody></table>
     </div>
     ${isEditable && !hasOfficialResultHistory ? '<div class="workflow-action-row with-top-space"><button class="btn btn-primary action-strong" id="btn-edit-result-bottom"><i data-lucide="edit-3"></i> Sửa kết quả</button></div>' : ""}
     ${resultHistoryHtml}

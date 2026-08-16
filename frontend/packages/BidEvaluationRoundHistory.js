@@ -80,7 +80,7 @@ export function renderBidEvaluationRoundHistory({
           <div><span>Ngày QĐ phê duyệt</span><strong>${escapeHtml(formatRoundDate(model, result.ngayQuyetDinhKetQua))}</strong></div>
         </div>
         <div class="table-container package-table-frame evaluation-round-table">
-          <table class="data-table"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết luận</th><th>Giá xếp hạng</th><th>Giá đề nghị trúng thầu</th><th>Xử lý giá dưới 50%</th><th>Xếp hạng tài chính</th></tr></thead>
+          <table class="data-table" data-row-pagination="true" aria-label="Lịch sử vòng đánh giá"><thead><tr><th>Phần lô</th><th>Nhà thầu</th><th>Kết luận</th><th>Giá xếp hạng</th><th>Giá đề nghị trúng thầu</th><th>Xử lý giá dưới 50%</th><th>Xếp hạng tài chính</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="7" class="text-muted">Không có hồ sơ trong phạm vi đợt.</td></tr>'}</tbody></table>
         </div>
       </article>`;

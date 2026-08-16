@@ -210,7 +210,7 @@ export async function renderPlanVersionDetails(versionId) {
             <div class="detail-sub-section bf-s-2e21a57cf0">
                 <h5 class="detail-sub-title bf-s-fcb5ddef65">I. Phần công việc đã thực hiện</h5>
                 <div class="phanlo-table-wrap bf-s-d49e7f30b4">
-                    <table class="phanlo-table bf-s-a2e921d929">
+                    <table class="phanlo-table bf-s-a2e921d929" data-row-pagination="true" aria-label="Danh sách gói thầu trong kế hoạch">
                         <thead>
                             <tr class="bf-s-b2b45352a8">
                                 <th class="bf-s-c3fc104bea">Tên phần công việc</th>
@@ -240,7 +240,7 @@ export async function renderPlanVersionDetails(versionId) {
             <div class="detail-sub-section bf-s-93688d4ac4">
                 <h5 class="detail-sub-title bf-s-fcb5ddef65">II. Phần công việc không áp dụng được hình thức LCNT</h5>
                 <div class="phanlo-table-wrap bf-s-d49e7f30b4">
-                    <table class="phanlo-table bf-s-a2e921d929">
+                    <table class="phanlo-table bf-s-a2e921d929" data-row-pagination="true" aria-label="Danh sách phần công việc">
                         <thead>
                             <tr class="bf-s-b2b45352a8">
                                 <th class="bf-s-c3fc104bea">Tên phần công việc</th>
@@ -268,7 +268,7 @@ export async function renderPlanVersionDetails(versionId) {
             <div class="detail-sub-section bf-s-93688d4ac4">
                 <h5 class="detail-sub-title bf-s-fcb5ddef65">III. Phần công việc chưa đủ điều kiện lập kế hoạch LCNT</h5>
                 <div class="phanlo-table-wrap bf-s-d49e7f30b4">
-                    <table class="phanlo-table bf-s-a2e921d929">
+                    <table class="phanlo-table bf-s-a2e921d929" data-row-pagination="true" aria-label="Danh sách dự phòng kế hoạch">
                         <thead>
                             <tr class="bf-s-b2b45352a8">
                                 <th class="bf-s-c3fc104bea">Tên phần công việc</th>

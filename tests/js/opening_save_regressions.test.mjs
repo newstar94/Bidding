@@ -44,6 +44,42 @@ test("opening rows without a bid-price field remain valid", () => {
   assert.equal(validateOpeningRows([openingRow({ includePrice: false })]).valid, true);
 });
 
+test("unsaved opening draft paginates rows without removing saveable inputs", async () => {
+  const workflow = await import("../../frontend/packages/BidProcessWorkflow.js");
+  assert.equal(typeof workflow.refreshOpeningDraftPagination, "function");
+
+  const originalDocument = globalThis.document;
+  const rows = Array.from({ length: 11 }, () => ({ dataset: {}, hidden: false }));
+  const tableBody = { children: rows };
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "mothau-table-tbody") return tableBody;
+      return null;
+    },
+  };
+  try {
+    const pagination = workflow.refreshOpeningDraftPagination({}, "package-1");
+    assert.equal(pagination.totalItems, 11);
+    assert.equal(pagination.totalPages, 2);
+    assert.equal(rows.filter((row) => !row.hidden).length, 10);
+    assert.equal(tableBody.children.length, 11);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test("opening and evaluation tables opt into shared row pagination", () => {
+  const openingPanel = fs.readFileSync("frontend/packages/detail/OpeningPanel.js", "utf8");
+  const evaluationPanel = fs.readFileSync("frontend/packages/detail/EvaluationPanel.js", "utf8");
+  const financialOpeningPanel = fs.readFileSync("frontend/packages/detail/FinancialOpeningPanel.js", "utf8");
+  const viewSource = fs.readFileSync("frontend/app/BiddingView.js", "utf8");
+
+  assert.match(openingPanel, /id="mothau-table"[^>]*data-row-pagination="true"/u);
+  assert.match(evaluationPanel, /id="danhgiahsdt-table"[^>]*data-row-pagination="true"/u);
+  assert.match(financialOpeningPanel, /id="opening-fin-table"[^>]*data-row-pagination="true"/u);
+  assert.match(viewSource, /table\.dataset\.rowPagination === "true"[^\n]*enhanceTableRowPagination\(table\)/u);
+});
+
 test("opening lot-code controls use the full fixed lot-code column", () => {
   const styles = fs.readFileSync("views/css/views.css", "utf8");
   assert.match(
@@ -53,6 +89,19 @@ test("opening lot-code controls use the full fixed lot-code column", () => {
   assert.match(
     styles,
     /\.mt-ma-phan-lo\s*\{[\s\S]*width: 100% !important;/u,
+  );
+});
+
+test("lot opening security uses bidder bidGuarantee without tender-lot fallback", () => {
+  const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+
+  assert.doesNotMatch(
+    source,
+    /formatVND\(bidData\.giaTriDamBao\) \|\| defaultLotBaoDam/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /(?:dbInput|gtDbInput)\.value = this\.model\.formatVND\(chosenLot\.baoDamDuThau\)/u,
   );
 });
 

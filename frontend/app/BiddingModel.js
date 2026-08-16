@@ -10,6 +10,7 @@ import { generateUUID as createUUID } from "../shared/idUtils.js";
 import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
 import { serializeOutboundRecord } from "./outboundSerializer.js";
 import { isSyncedStateKey } from "../shared/persistencePolicy.js";
+import { TABLE_PAGE_SIZE } from "../shared/TablePagination.js";
 import { BrowserDB, BrowserDBError } from "./BrowserDB.js";
 import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
@@ -111,7 +112,7 @@ export class BiddingModel {
       chuyengia: 1,
       hopdong: 1
     };
-    this.pageSize = 10;
+    this.pageSize = TABLE_PAGE_SIZE;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
     this._storageLoadPromises = /* @__PURE__ */ new Map();
     this._storageReadFailures = /* @__PURE__ */ new Map();

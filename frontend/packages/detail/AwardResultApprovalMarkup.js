@@ -385,7 +385,7 @@ export function buildAwardResultApprovalMarkup(view, {
                     </div>
 
                     <div class="table-container bf-s-674afada30">
-                        <table class="data-table bf-s-448ca2b6ae">
+                        <table class="data-table bf-s-448ca2b6ae" data-row-pagination="true" aria-label="Danh sách phê duyệt kết quả lựa chọn nhà thầu">
                             <thead>
                                 <tr>
                                     ${gt.phanLo === "Có" ? `

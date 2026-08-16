@@ -37,8 +37,8 @@ test("Word template upload processes every selected file and refreshes once", as
 test("Word template rows render a one-based sequence number", async () => {
   const source = await readFile(partnerViewSource, "utf8");
 
-  assert.match(source, /templatesList\.map\(\(tpl, index\) =>/);
-  assert.match(source, /word-template-index-cell[^`]*\$\{index \+ 1\}/);
+  assert.match(source, /templatesPage\.items\.map\(\(tpl, index\) =>/);
+  assert.match(source, /word-template-index-cell[^`]*\$\{templatesPage\.startIndex \+ index \+ 1\}/);
 });
 
 test("Word dictionary and templates use one full-width column on desktop", async () => {

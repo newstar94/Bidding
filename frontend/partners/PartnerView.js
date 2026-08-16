@@ -11,6 +11,11 @@ import {
   getWordColumnLabel,
   getWordSourceTableLabel,
 } from "../documents/wordVariableManifest.js";
+import {
+  paginateOwnedTable,
+  renderTablePagination,
+  setTablePage,
+} from "../shared/TablePagination.js";
 export {
   renderChuDauTuTable,
   showChuDauTuDetails,
@@ -57,16 +62,19 @@ export function buildWordTemplateFileLink(tpl) {
 export function renderBieumauTab(templatesList = []) {
   const tbody = document.getElementById("word-templates-tbody");
   if (!tbody) return;
+  const templates = Array.isArray(templatesList) ? templatesList : [];
+  const templatesPage = paginateOwnedTable(this, "wordTemplates", templates);
   const canManageWordVariables = canManageWorkspaceWordVariables(
     this.model.state.activeuser || {},
     this.model.state.activerole,
   );
-  if (templatesList.length === 0) {
+  if (templates.length === 0) {
     tbody.innerHTML = trustedHTML(`<tr><td colspan="5" class="text-center text-muted word-template-empty-state"><i data-lucide="file-plus-2"></i><span>Chưa có biểu mẫu Word. Hãy thêm biểu mẫu đầu tiên.</span></td></tr>`);
+    renderTablePagination(document.getElementById("word-templates-pagination"), templatesPage);
     lucide.createIcons({ root: tbody });
     return;
   }
-  tbody.innerHTML = trustedHTML(templatesList.map((tpl, index) => {
+  tbody.innerHTML = trustedHTML(templatesPage.items.map((tpl, index) => {
     const safeFilename = safeAttr(tpl.filename);
     const isAvailable = tpl.is_available !== false;
     const activeBadge = !isAvailable
@@ -80,7 +88,7 @@ export function renderBieumauTab(templatesList = []) {
     const fileLink = buildWordTemplateFileLink(tpl);
     return `
             <tr data-word-template-row data-filename="${safeFilename}">
-                <td class="text-center word-template-index-cell">${index + 1}</td>
+                <td class="text-center word-template-index-cell">${templatesPage.startIndex + index + 1}</td>
                 <td class="fw-bold word-template-name-cell"><span data-word-template-display>${escapeHtml(tpl.name)}</span></td>
                 <td class="word-template-file-cell">${fileLink}</td>
                 <td class="word-template-status-cell">${activeBadge}</td>
@@ -88,6 +96,14 @@ export function renderBieumauTab(templatesList = []) {
             </tr>
         `;
   }).join(""));
+  renderTablePagination(
+    document.getElementById("word-templates-pagination"),
+    templatesPage,
+    (page) => {
+      setTablePage(this, "wordTemplates", page);
+      this.renderBieumauTab(templates);
+    },
+  );
   lucide.createIcons({ root: tbody });
 }
 export function renderDictionary(group) {
@@ -513,11 +529,14 @@ export function renderDictionary(group) {
   if (filterColumn) {
     variables = variables.filter((v) => v.sourceColumn === filterColumn);
   }
+  const dictionaryPageKey = `dictionary:${group}:${filterTable || "all"}:${filterColumn || "all"}`;
+  const dictionaryPage = paginateOwnedTable(this, dictionaryPageKey, variables);
   if (variables.length === 0) {
     tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Chưa có biến nào trong nhóm này.</td></tr>`);
+    renderTablePagination(document.getElementById("dictionary-pagination"), dictionaryPage);
     return;
   }
-  tbody.innerHTML = trustedHTML(variables.map((v) => {
+  tbody.innerHTML = trustedHTML(dictionaryPage.items.map((v) => {
     let codeHTML = "";
     let actionHTML = "";
     const safeVariableName = escapeHtml(v.tenBien || "");
@@ -617,6 +636,14 @@ export function renderDictionary(group) {
             </tr>
         `;
   }).join(""));
+  renderTablePagination(
+    document.getElementById("dictionary-pagination"),
+    dictionaryPage,
+    (page) => {
+      setTablePage(this, dictionaryPageKey, page);
+      this.renderDictionary(group);
+    },
+  );
   lucide.createIcons({ root: tbody });
 }
 export function renderWordMappingsTable() {

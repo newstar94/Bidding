@@ -197,6 +197,7 @@ test("preview pagination fetches filters and renders per-column old/new/source d
   assert.equal(previewUrl.pathname, "/api/packages/pkg%2F01/award-result-excel/preview");
   assert.equal(previewUrl.searchParams.get("validationToken"), "token-page");
   assert.equal(previewUrl.searchParams.get("page"), "2");
+  assert.equal(previewUrl.searchParams.get("pageSize"), "10");
   assert.equal(previewUrl.searchParams.get("writable"), "true");
   assert.equal(ui.validationCalls[1][1].method, "GET");
   assert.match(String(ui.summary.innerHTML), /Giá trị cũ/);

@@ -46,7 +46,7 @@ export function renderExcelPreview(rows, importType) {
                 <div class="modal-body bf-s-829c923308">
                     <div id="excel-preview-container" class="bf-s-65d1f1c3d7">
                         <div class="table-container bf-s-c90c7cddfd">
-                            <table class="data-table bf-s-448ca2b6ae">
+                            <table class="data-table bf-s-448ca2b6ae" data-row-pagination="true" aria-label="Danh sách dữ liệu gói thầu">
                                 <thead id="excel-preview-header"></thead>
                                 <tbody id="excel-preview-tbody"></tbody>
                             </table>

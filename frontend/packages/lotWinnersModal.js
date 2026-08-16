@@ -68,7 +68,7 @@ export function buildLotWinnersModalHtml({ packageCode = "", packageName = "", w
       </div>
       <div class="modal-body lot-winners-modal-body">
         <div class="phanlo-table-wrap">
-          <table class="phanlo-table lot-winners-table" data-mobile-layout="cards" data-no-sort="true">
+          <table class="phanlo-table lot-winners-table" data-mobile-layout="cards" data-no-sort="true" data-row-pagination="true" aria-label="Danh sách nhà thầu trúng thầu theo phần lô">
             <thead>
               <tr>
                 <th>Mã phần lô</th>

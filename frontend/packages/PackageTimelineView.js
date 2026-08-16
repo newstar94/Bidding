@@ -28,6 +28,10 @@ import {
   timelineDisplayCode,
   timelineIsOverdue
 } from "./packageTimelineRows.js";
+import {
+  paginateTableItems,
+  renderTablePagination,
+} from "../shared/TablePagination.js";
 
 const STATUS_LABELS = Object.freeze({
   PENDING: "Chưa thực hiện",
@@ -91,6 +95,7 @@ function timelineState(view) {
     packageOptions: [],
     packageQuery: "",
     filters: { status: "" },
+    page: 1,
     dirty: false,
     loading: false,
     restoreAttempted: false,
@@ -115,6 +120,7 @@ export function resetTimelineSession(view) {
     state.packageOptions = [];
     state.packageQuery = "";
     state.filters = { status: "" };
+    state.page = 1;
     state.dirty = false;
     state.loading = false;
     state.restoreAttempted = true;
@@ -168,10 +174,11 @@ export function timelinePlanProgressStatus(planId, packages = []) {
     : "Hoàn thành";
 }
 
-function selectableTimelinePlans(view) {
+export function selectableTimelinePlans(view) {
   const packages = view.model.state.goithau || [];
-  return (view.model.state.kehoach || [])
-    .filter((plan) => plan.isLatest !== false && plan.isLatest !== 0 && !plan.archivedAt)
+  const currentPlans = (view.model.state.kehoach || [])
+    .filter((plan) => plan.isLatest !== false && plan.isLatest !== 0 && !plan.archivedAt);
+  return selectLatestVersionsByRoot(currentPlans)
     .filter((plan) => timelinePlanProgressStatus(plan.id, packages) !== "Hoàn thành");
 }
 
@@ -465,9 +472,11 @@ function renderTimelineTable(view) {
   if (!tbody || !state.package) return;
   const editable = state.package.canEdit !== false;
   const disabled = editable ? "" : " disabled";
+  const timelinePage = paginateTableItems(filteredRows(state), state.page);
+  state.page = timelinePage.page;
   let activeGroup = "";
   const html = [];
-  filteredRows(state).forEach((row) => {
+  timelinePage.items.forEach((row) => {
     if (row.sectionKey !== activeGroup) {
       activeGroup = row.sectionKey;
       html.push(`<tr class="timeline-group-row"><th scope="rowgroup">${escapeHtml(row.displayGroupCode || row.maNhom)}</th><th colspan="6">${escapeHtml(row.tenNhom)}</th></tr>`);
@@ -498,6 +507,10 @@ function renderTimelineTable(view) {
   if (!html.length) html.push(`<tr><td colspan="7" class="timeline-no-results">Không có mốc phù hợp với bộ lọc.</td></tr>`);
   tbody.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
   tbody.innerHTML = trustedHTML(html.join(""));
+  renderTablePagination(element("timeline-pagination"), timelinePage, (page) => {
+    state.page = page;
+    renderTimelineTable(view);
+  });
   view.initFlatpickr(tbody);
   view.createIconsScoped(element("timeline-table-wrap"));
 }
@@ -574,6 +587,7 @@ async function selectPackage(view, packageId) {
     state.initialPackage = null;
     state.plan = null;
     state.rows = [];
+    state.page = 1;
     setHidden("timeline-empty", false);
     setHidden("timeline-table-wrap", true);
     setActionAvailability(state);
@@ -602,6 +616,7 @@ async function selectPackage(view, packageId) {
       findContracts(view, pkg),
       timelineRuleContext(state),
     );
+    state.page = 1;
     state.dirty = false;
     saveTimelineSelection(view.model, {
       planId: pkg.keHoachId || state.plan?.id,
@@ -812,6 +827,7 @@ function bindTimelineEvents(view, pane) {
   element("timeline-version-select")?.addEventListener("change", (event) => selectPackage(view, event.target.value));
   element("timeline-status-filter")?.addEventListener("change", (event) => {
     timelineState(view).filters.status = event.target.value;
+    timelineState(view).page = 1;
     renderTimelineTable(view);
   });
   element("timeline-table-body")?.addEventListener("change", (event) => {
@@ -902,6 +918,7 @@ export function resetPackageTimeline() {
   const tbody = element("timeline-table-body");
   tbody?.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
   if (tbody) tbody.innerHTML = trustedHTML("");
+  renderTablePagination(element("timeline-pagination"), paginateTableItems([], 1));
   setHidden("timeline-empty", false);
   setHidden("timeline-loading", true);
   setHidden("timeline-error", true);

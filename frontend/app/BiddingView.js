@@ -11,6 +11,7 @@ import { getAppController } from "./controllerRef.js";
 import { renderPackageStatusBadge } from "../shared/statusBadges.js";
 import { normalizeToastFeedback } from "../shared/toastFeedback.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
+import { enhanceTableRowPagination } from "../shared/TablePagination.js";
 
 export function toastDeduplicationKey(title, message, type) {
   return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
@@ -124,7 +125,7 @@ export class BiddingView {
     setTimeout(() => this.enhanceVisibleContent(), 100);
   }
   mutationsNeedEnhancement(mutations = []) {
-    const selector = "table, select, input.flatpickr-date, input.flatpickr-datetime";
+    const selector = "table, tr, select, input.flatpickr-date, input.flatpickr-datetime";
     return mutations.some((mutation) => {
       const nodes = [...(mutation.addedNodes || []), ...(mutation.removedNodes || [])];
       return nodes.some((node) => (
@@ -169,6 +170,7 @@ export class BiddingView {
       if (!this.isEnhancementTargetActive(table)) return;
       this.enhanceTableHeaders(table);
       this.enhanceResponsiveTable(table);
+      if (table.dataset.rowPagination === "true") enhanceTableRowPagination(table);
     });
     this.upgradeAllSelects(root);
     this.initFlatpickr(root);

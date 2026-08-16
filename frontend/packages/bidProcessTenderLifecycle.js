@@ -12,6 +12,7 @@ import {
   PROCUREMENT_IMPORT_CAPABILITY,
 } from "../auth/serverCapabilities.js";
 import { isDirectOrSpecialPackage } from "./bidProcessValidation.js";
+import { countOpeningContractors } from "../procurement/OpeningImportWizard.js";
 
 function runExclusivePackageWorkflow(controller, key, workflow) {
   controller._packageWorkflowPromises = controller._packageWorkflowPromises || new Map();
@@ -106,12 +107,13 @@ async function performMoThauGoiThau(id) {
             (bidder) => bidder.phase !== "FINANCIAL",
           );
           if (!bidders.length) throw new Error("PROCUREMENT_OPENING_EMPTY");
+          const contractorCount = countOpeningContractors(bidders);
           preparedOpening = result;
           return {
             value: result.applied.opening?.openingAt
               ? this.model.formatForDatetimeLocal(result.applied.opening.openingAt)
               : "",
-            status: `Đã lấy ${bidders.length} nhà thầu từ Mua sắm công.`,
+            status: `Đã lấy ${contractorCount} nhà thầu từ Mua sắm công.`,
           };
         },
       } : null,
@@ -224,7 +226,7 @@ async function performMoThauGoiThau(id) {
       pkg: gt,
       preview: preparedOpening.preview,
       applied: preparedOpening.applied,
-      action: "MERGE",
+      action: "OVERWRITE",
     })
     : null;
   await this.view.customAlert(

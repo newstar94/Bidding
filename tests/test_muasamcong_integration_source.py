@@ -852,6 +852,8 @@ def test_opening_fixtures_cover_normal_lots_and_two_envelope_phases():
     }
     assert normal_by_code["0100000001"]["bidPrice"] == 95_000_000
     assert normal_by_code["0100000001"]["priceAfterDiscount"] == 90_250_000
+    assert normal_by_code["0100000001"]["bidGuarantee"] == 1_000_000
+    assert normal_by_code["0100000001"]["bidGuaranteeValidityDays"] == 120
     assert normal_by_code["0100000005"]["bidPrice"] == 0
     assert [row["lotNo"] for row in lots["lots"]] == ["01", "02"]
     assert lots["bidders"][0]["lotNo"] == "01"
@@ -1008,6 +1010,41 @@ def test_ib2600212155_opening_keeps_only_lot_bids_and_attaches_lot_names():
     assert len(opening["bidders"]) == 12
     assert all(row["lotNo"] for row in opening["bidders"])
     assert opening["bidders"][0]["lotName"] == "Thuốc 1"
+
+
+def test_lot_opening_bid_guarantee_comes_from_bid_open_not_lot_open_detail():
+    lot_detail = [{
+        "contractorCode": "vn0100000001",
+        "contractorName": "Nhà thầu A",
+        "lotNo": "PP01",
+        "lotName": "Lô 1",
+        "lotFinalPrice": 900_000_000,
+        "bidGuarantee": None,
+    }]
+    bid_open = {
+        "bidSubmissionDTOList": [{
+            "contractorCode": "vn0100000001",
+            "contractorName": "Nhà thầu A",
+            "bidGuarantee": 12_000_000,
+            "bidGuaranteeValidity": 120,
+        }],
+    }
+
+    for raw in (
+        # These upstream calls run concurrently; either response can arrive first.
+        {"opening_lot_detail_0": lot_detail, "opening_bid_0": bid_open},
+        {"opening_bid_0": bid_open, "opening_lot_detail_0": lot_detail},
+    ):
+        opening = normalize_opening_bundle(
+            raw,
+            notice_no="IB2600212155",
+            revision_id="notice-01",
+        )
+
+        assert len(opening["bidders"]) == 1
+        assert opening["bidders"][0]["lotNo"] == "PP01"
+        assert opening["bidders"][0]["bidGuarantee"] == 12_000_000
+        assert opening["bidders"][0]["bidGuaranteeValidityDays"] == 120
 
 
 def test_opening_parser_preserves_zero_and_missing_optional_prices():

@@ -18,7 +18,7 @@ function renderListCard({ title, addButtonId, addLabel, tableId, bodyId, headers
         </button>
       </div>
       <div class="table-container package-table-frame">
-        <table class="data-table table-full-width" id="${tableId}">
+        <table class="data-table table-full-width" id="${tableId}" data-row-pagination="true" aria-label="Danh sách phát hành hồ sơ mời thầu">
           <thead><tr>${headers.map((header) => `<th class="${HEADER_CLASS_BY_STYLE[header.style] || ""}">${header.label}</th>`).join("")}<th class="col-actions-sm ${editClass}"></th></tr></thead>
           <tbody id="${bodyId}"></tbody>
         </table>

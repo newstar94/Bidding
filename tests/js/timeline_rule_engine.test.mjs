@@ -14,9 +14,38 @@ import {
 } from "../../frontend/shared/VersionedEntityService.js";
 import {
   findTimelineContracts,
+  selectableTimelinePlans,
   timelineInitialPackageReference,
   timelinePackageRepresentatives,
 } from "../../frontend/packages/PackageTimelineView.js";
+
+test("timeline plan selector shows one representative for each version lineage", () => {
+  const historical = {
+    id: "plan-v00",
+    rootId: "plan-root",
+    maKeHoach: "PL2600150284",
+    tenKeHoach: "Kế hoạch thử nghiệm",
+    phienBan: "00",
+    isLatest: 1,
+  };
+  const current = {
+    ...historical,
+    id: "plan-v01",
+    phienBan: "01",
+  };
+  const view = { model: { state: {
+    kehoach: [historical, current],
+    goithau: [
+      { id: "package-v00", keHoachId: historical.id, trangThai: "Đang mời thầu", isLatest: 1 },
+      { id: "package-v01", keHoachId: current.id, trangThai: "Đang mời thầu", isLatest: 1 },
+    ],
+  } } };
+
+  assert.deepEqual(
+    selectableTimelinePlans(view).map((plan) => plan.id),
+    [current.id],
+  );
+});
 
 const base = {
   hinhThucLuaChon: "Đấu thầu rộng rãi",

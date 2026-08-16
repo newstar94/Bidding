@@ -1,6 +1,7 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { currentWorkspaceToken, workspaceChangedError } from "../app/workspaceLease.js";
+import { enhanceTableRowPagination } from "../shared/TablePagination.js";
 
 
 function openingCaseType(pkg) {
@@ -191,6 +192,8 @@ export function applyOpeningImportToDraft({
     packageId: pkg.id,
     packageRowVersion: preview?.package?.rowVersion || applied.package?.rowVersion || null,
   };
+  const table = document.getElementById("mothau-table");
+  if (table) enhanceTableRowPagination(table);
   globalThis.lucide?.createIcons?.();
   return { added: additions.length };
 }
