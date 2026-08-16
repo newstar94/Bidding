@@ -169,7 +169,7 @@ function renderQualifiedTable(view, state) {
         </tr></thead>
         <tbody>${qualifiedBids.map((bid) => `
           <tr>
-            ${pkg.phanLo === "Có" ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenPhanLo || "--")}</td>` : ""}
+            ${pkg.phanLo === "Có" ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td class="package-lot-name-cell">${escapeHtml(bid.tenPhanLo || "--")}</td>` : ""}
             <td>${escapeHtml(formatPartnerIdentityCode(bid.maNhaThau || bid.maDinhDanh, "--"))}</td>
             <td>${renderBidContractorLink(
               view.model,

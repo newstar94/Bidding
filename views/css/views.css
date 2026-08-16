@@ -2845,10 +2845,21 @@ table th {
   min-width: 100% !important;
 }
 #tab-goithau-detail #mothau-table .package-lot-name-column,
-#tab-goithau-detail #mothau-table td:has(.mt-ten-phan-lo) {
+#tab-goithau-detail #mothau-table td:has(.mt-ten-phan-lo),
+#tab-goithau-detail #mothau-table td.package-lot-name-cell,
+.package-lot-name-cell {
   /* 80% of the 18rem contractor-name column. */
   width: 14.4rem;
   min-width: 14.4rem;
+  max-width: 20rem;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  text-align: left;
+  line-height: 1.4;
+}
+#tab-goithau-detail #mothau-table .mt-ten-phan-lo {
+  width: 100%;
 }
 #mothau-table-tbody tr.invalid td {
   background-color: var(--danger-soft);

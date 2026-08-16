@@ -53,7 +53,7 @@ export function renderFinancialOpeningTable({
       `${pkg.id}_financial_${isReadOnly ? "readonly" : "edit"}_${bid.id}`,
       { owner: cacheOwner },
     );
-    const lotCells = hasLots ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenPhanLo || "--")}</td>` : "";
+    const lotCells = hasLots ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td class="package-lot-name-cell">${escapeHtml(bid.tenPhanLo || "--")}</td>` : "";
     const scoreCell = hasTechnicalScore ? `<td class="text-center">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : "";
     if (isReadOnly) {
       const validityText = validity ? `${validity}${String(validity).includes("ngày") ? "" : " ngày"}` : "--";

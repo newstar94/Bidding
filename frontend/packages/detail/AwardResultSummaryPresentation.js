@@ -96,7 +96,7 @@ function buildBidderRows(model, pkg, summary, owner) {
       return `
         <tr>
           <td>${escapeHtml(bid.maPhanLo || "—")}</td>
-          <td>${escapeHtml(bid.tenPhanLo || "—")}</td>
+          <td class="package-lot-name-cell">${escapeHtml(bid.tenPhanLo || "—")}</td>
           <td>${escapeHtml(formatPartnerIdentityCode(bid.maNhaThau || bid.maDinhDanh, "--"))}</td>
           <td>${contractorMarkup}</td>
           <td class="fw-bold text-success">${awardPrice}</td>

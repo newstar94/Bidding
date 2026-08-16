@@ -67,7 +67,7 @@ function buildIdentityCells({ pkg, bid, contractor }) {
   const lotCells = pkg.phanLo === "Có"
     ? `
       <td>${escapeHtml(bid.maPhanLo || "--")}</td>
-      <td>${escapeHtml(bid.tenPhanLo || "--")}</td>
+      <td class="package-lot-name-cell">${escapeHtml(bid.tenPhanLo || "--")}</td>
     `
     : "";
   return `${lotCells}

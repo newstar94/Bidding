@@ -1047,6 +1047,55 @@ def test_lot_opening_bid_guarantee_comes_from_bid_open_not_lot_open_detail():
         assert opening["bidders"][0]["bidGuaranteeValidityDays"] == 120
 
 
+def test_lot_opening_bid_guarantee_is_reused_for_each_lot_of_the_bidder():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidOpenView": [
+                    {
+                        "contractorCode": "vn0100000001",
+                        "contractorName": "Nhà thầu A",
+                        "lotNo": "L01",
+                        "bidGuarantee": 12_000_000,
+                        "bidGuaranteeValidity": 120,
+                    },
+                    {
+                        "contractorCode": "vn0100000001",
+                        "contractorName": "Nhà thầu A",
+                        "lotNo": "L02",
+                        # bid-open may omit the contractor-level value on
+                        # subsequent lot rows; it is still the same bidder.
+                    },
+                ],
+            },
+            "opening_lot_detail_0": [
+                {
+                    "contractorCode": "vn0100000001",
+                    "contractorName": "Nhà thầu A",
+                    "lotNo": "L01",
+                    "bidGuarantee": None,
+                },
+                {
+                    "contractorCode": "vn0100000001",
+                    "contractorName": "Nhà thầu A",
+                    "lotNo": "L02",
+                    "bidGuarantee": None,
+                },
+            ],
+        },
+        notice_no="IB2600212155",
+        revision_id="notice-01",
+    )
+
+    bidders = {
+        row["lotNo"]: row
+        for row in opening["bidders"]
+    }
+    assert bidders["L01"]["bidGuarantee"] == 12_000_000
+    assert bidders["L02"]["bidGuarantee"] == 12_000_000
+    assert bidders["L02"]["bidGuaranteeValidityDays"] == 120
+
+
 def test_opening_parser_preserves_zero_and_missing_optional_prices():
     opening = normalize_opening_bundle(
         {

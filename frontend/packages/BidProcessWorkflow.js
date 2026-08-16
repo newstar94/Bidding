@@ -516,7 +516,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   } else if (caseType === "1G2T_WITH_LOT") {
     cellHtml = readOnly ? `
             <td style="min-width: 11rem">${lotCodeDisplay}</td>
-            <td>${lotNameDisplay}</td>
+            <td class="package-lot-name-cell">${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
             <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
@@ -530,7 +530,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                     ${lotOptions}
                 </select>
             </td>
-            <td><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
+            <td class="package-lot-name-cell"><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
             <td>${typeSelectHtml}</td>
             <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
@@ -573,7 +573,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   } else if (caseType === "1G1T_WITH_LOT") {
     cellHtml = readOnly ? `
             <td style="min-width: 11rem">${lotCodeDisplay}</td>
-            <td>${lotNameDisplay}</td>
+            <td class="package-lot-name-cell">${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
             <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
@@ -591,7 +591,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                     ${lotOptions}
                 </select>
             </td>
-            <td><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
+            <td class="package-lot-name-cell"><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
             <td>${typeSelectHtml}</td>
             <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
@@ -630,7 +630,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
     cellHtml = readOnly ? `
             <td style="min-width: 11rem">${lotCodeDisplay}</td>
-            <td>${lotNameDisplay}</td>
+            <td class="package-lot-name-cell">${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
             <td>${readOnlyContractorIdentity(contractorNameDisplay, "mt-ten-nha-thau")}${jvDetailsHtml}</td>
@@ -643,7 +643,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                     ${lotOptions}
                 </select>
             </td>
-            <td><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
+            <td class="package-lot-name-cell"><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
             <td>${typeSelectHtml}</td>
             <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
