@@ -289,15 +289,21 @@ class ProcurementImportPreparer:
                 "bidValidityDays",
                 "additionalPurchaseItems",
                 "goodsItems",
+                "evaluationMethod",
                 "approvalDecisionNo",
                 "approvalDecisionDate",
             ):
                 if detail.get(field) not in (None, ""):
                     package[field] = deepcopy(detail[field])
-            if detail.get("lots"):
+            notice_is_multi_lot = detail.get("isMultiLot")
+            if isinstance(notice_is_multi_lot, bool):
+                package["isMultiLot"] = notice_is_multi_lot
+            if package.get("isMultiLot") is True and detail.get("lots"):
                 package["lots"] = _merge_notice_lots(
                     package.get("lots"), detail.get("lots")
                 )
+            elif package.get("isMultiLot") is not True:
+                package["lots"] = []
 
     @staticmethod
     def _match_candidates(observation, local_packages):

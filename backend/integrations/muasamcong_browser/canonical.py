@@ -11,6 +11,7 @@ from backend.procurement_import.source import ProcurementSourceError
 from backend.integrations.muasamcong_browser.code_mapping import (
     map_contract_type,
     map_domestic_scope,
+    map_evaluation_method,
     map_online_mode,
     map_optional_boolean,
     map_package_field,
@@ -74,6 +75,27 @@ def _embedded_form_pick(raw, *aliases):
         result = pick(parsed, *aliases)
         if result not in (None, ""):
             return result
+    return None
+
+
+def _fallback_package_field(raw):
+    """Read the package field from observed source and plan-detail contracts."""
+
+    if isinstance(raw, dict):
+        direct = pick(raw, "bidField", "investField", "field")
+        if direct not in (None, ""):
+            return _source_scalar(direct)
+
+    for item in _walk(raw):
+        if not isinstance(item, dict):
+            continue
+        for key in ("bidpPlanDetail", "bidpPlanDetailDTO"):
+            nested = item.get(key)
+            if not isinstance(nested, dict):
+                continue
+            value = pick(nested, "bidField", "investField", "field")
+            if value not in (None, ""):
+                return _source_scalar(value)
     return None
 
 
@@ -189,7 +211,12 @@ def normalize_additional_purchase_items(row):
     return result
 
 
-_GOODS_FORM_CODES = {"BD.MT.02.1224"}
+_GOODS_FORM_CODES = (
+    "BD.MT.02.0812",
+    "BD.MT.02.1224",
+    "BD.MT.02.1281",
+)
+_EVALUATION_METHOD_FORM_CODES = {"BD.CG.02.0113"}
 
 
 def _decoded_form_value(value):
@@ -239,6 +266,16 @@ def _form_rows(raw, form_codes):
     return rows
 
 
+def normalize_evaluation_method_form(raw, bid_field):
+    """Read the overall evaluation method from its supported E-HSMT form."""
+
+    for value in _form_values(raw, _EVALUATION_METHOD_FORM_CODES):
+        if not isinstance(value, dict):
+            continue
+        return map_evaluation_method(value.get("method"), bid_field)
+    return None
+
+
 def _text(value):
     if value in (None, ""):
         return None
@@ -246,26 +283,71 @@ def _text(value):
     return normalized or None
 
 
-def normalize_goods_items(raw):
-    """Normalize invitation goods without treating lot headings as goods.
+def _goods_lot_indexes(rows):
+    by_source_id = {}
+    by_code = {}
+    for row in rows:
+        lot_no = _text(pick(row, "lotNo", "lotCode", "maPhanLo"))
+        if not lot_no:
+            continue
+        lot = (lot_no, _text(pick(row, "lotName", "tenPhanLo")))
+        source_lot_id = _text(pick(row, "sourceLotId", "id", "itemId"))
+        if source_lot_id:
+            by_source_id[source_lot_id] = lot
+        by_code[lot_no.casefold()] = lot
+    return by_source_id, by_code
 
-    ``BD.MT.02.1224`` interleaves parent lot rows and actual goods rows.  A
-    materializable goods row must carry the three values required by Bidding:
-    name, unit, and a positive quantity.  Missing values are not fabricated.
-    """
 
+def _goods_row_lot(
+    row,
+    *,
+    lot_by_source_id,
+    lot_by_code,
+    inherited_lot,
+    allow_inherited_lot,
+):
+    explicit_lot_no = _text(pick(row, "lotNo", "lotCode", "maPhanLo"))
+    if explicit_lot_no:
+        return lot_by_code.get(
+            explicit_lot_no.casefold(),
+            (explicit_lot_no, _text(pick(row, "lotName", "tenPhanLo"))),
+        )
+
+    parent_ids = {
+        parent_id
+        for alias in ("parent", "tempParent")
+        if (parent_id := _text(row.get(alias)))
+    }
+    if parent_ids:
+        parent_lots = {
+            lot_by_source_id[parent_id]
+            for parent_id in parent_ids
+            if parent_id in lot_by_source_id
+        }
+        if len(parent_lots) == 1:
+            return parent_lots.pop()
+        # A declared but unresolved/conflicting parent is not safe to replace
+        # with the nearest preceding lot.
+        return None
+
+    if allow_inherited_lot:
+        return inherited_lot
+    return None
+
+
+def _normalize_goods_form_rows(rows, *, allow_inherited_lot, is_multi_lot):
     result = []
-    seen = set()
+    lot_by_source_id, lot_by_code = _goods_lot_indexes(rows)
     inherited_lot_no = None
     inherited_lot_name = None
-    for row in _form_rows(raw, _GOODS_FORM_CODES):
+    for row in rows:
         row_lot_no = _text(pick(row, "lotNo", "lotCode", "maPhanLo"))
         row_lot_name = _text(pick(row, "lotName", "tenPhanLo"))
         if row_lot_no:
             inherited_lot_no = row_lot_no
             inherited_lot_name = row_lot_name
         source_index = _text(pick(
-            row, "currentItemIndex", "itemIndex", "stt", "sequence"
+            row, "currentItemIndex", "itemIndex", "stt", "sequence", "pos"
         ))
         source_item_id = _text(pick(
             row, "sourceItemId", "id", "itemId", default=source_index
@@ -287,16 +369,24 @@ def normalize_goods_items(raw):
             continue
         if quantity is None or quantity <= 0:
             continue
-        lot_no = row_lot_no or inherited_lot_no
-        identity = (lot_no or "", source_item_id)
-        if identity in seen:
+        lot = _goods_row_lot(
+            row,
+            lot_by_source_id=lot_by_source_id,
+            lot_by_code=lot_by_code,
+            inherited_lot=(inherited_lot_no, inherited_lot_name),
+            allow_inherited_lot=allow_inherited_lot,
+        )
+        has_parent = any(
+            _text(row.get(alias)) for alias in ("parent", "tempParent")
+        )
+        if is_multi_lot is not False and has_parent and lot is None:
             continue
-        seen.add(identity)
+        lot_no, lot_name = lot or (None, None)
         result.append({
             "sourceItemId": source_item_id,
             "sourceIndex": source_index,
             "lotNo": lot_no,
-            "lotName": row_lot_name or inherited_lot_name,
+            "lotName": lot_name,
             "code": code,
             "name": name,
             "unit": unit,
@@ -323,6 +413,38 @@ def normalize_goods_items(raw):
             )),
             "note": _text(pick(row, "note", "notes", "ghiChu")),
         })
+    return result
+
+
+def normalize_goods_items(raw, *, is_multi_lot=None):
+    """Normalize goods from verified MSC forms and preserve their lot scope.
+
+    Form ``0812`` carries package-scoped goods whose parent is a non-lot group.
+    Form ``1224`` is a legacy interleaved table, so goods without an explicit
+    parent inherit the preceding lot heading. Form ``1281`` carries an exact
+    ``parent``/``tempParent`` link to the source lot row. Positional fallback
+    is deliberately disabled outside ``1224``. Missing values are not
+    fabricated and lot headings are never materialized as goods.
+    """
+
+    result = []
+    seen = set()
+    for form_code in _GOODS_FORM_CODES:
+        rows = _form_rows(raw, {form_code})
+        normalized_rows = _normalize_goods_form_rows(
+            rows,
+            allow_inherited_lot=form_code == "BD.MT.02.1224",
+            is_multi_lot=is_multi_lot,
+        )
+        for item in normalized_rows:
+            if is_multi_lot is False:
+                item["lotNo"] = None
+                item["lotName"] = None
+            identity = (item.get("lotNo") or "", item["sourceItemId"])
+            if identity in seen:
+                continue
+            seen.add(identity)
+            result.append(item)
     return result
 
 
@@ -724,10 +846,16 @@ def normalize_notice_revision(
         if execution_period not in (None, ""):
             break
     process_apply = str(pick(notice, "processApply", default="LDT")).upper()
+    bid_field = (
+        related_pick("bidField", "investField", "field")
+        or _fallback_package_field(raw)
+    )
     lots = _notice_lots(raw)
     is_multi_lot = _source_flag(raw, "isMultiLot")
     if lots and len(lots) > 1:
         is_multi_lot = True
+    if is_multi_lot is not True:
+        lots = []
     selection_row = next((
         row
         for row in related
@@ -793,9 +921,8 @@ def normalize_notice_revision(
         "capitalDetail": related_pick(
             "capitalDetail", "investmentFunds"
         ),
-        "field": map_package_field(
-            related_pick("bidField", "investField", "field")
-        ),
+        "field": map_package_field(bid_field),
+        "evaluationMethod": normalize_evaluation_method_form(raw, bid_field),
         "executionPeriod": execution_period,
         "contractType": map_contract_type(
             related_pick("ctype", "contractType")
@@ -824,7 +951,7 @@ def normalize_notice_revision(
         ),
         "isMultiLot": is_multi_lot,
         "lots": lots,
-        "goodsItems": normalize_goods_items(raw),
+        "goodsItems": normalize_goods_items(raw, is_multi_lot=is_multi_lot),
         "bidOpenId": pick(notice, "bidOpenId"),
         "inputResultId": pick(notice, "inputResultId"),
         "techReqId": pick(notice, "techReqId"),
@@ -1479,6 +1606,7 @@ def normalize_notice_complete_bundle(bundle: dict):
             "sourceBidPriceVnd", "estimatePriceVnd",
             "executionPeriod", "contractType", "selectionMode",
             "isMedicinePackage", "isMultiLot", "lots",
+            "evaluationMethod",
             "goodsItems",
             "additionalPurchaseOption", "additionalPurchaseItems",
             "bidValidityDays", "selectionDuration", "selectionStart",
@@ -1502,10 +1630,18 @@ def normalize_notice_complete_bundle(bundle: dict):
                     operation = plan_detail_source.get("operation")
                 if field == "goodsItems":
                     operation = (sources.get("hsmt") or {}).get("operation")
+                if field == "evaluationMethod":
+                    operation = (sources.get("hsmt") or {}).get("operation")
+                source_path = field
+                if field == "evaluationMethod":
+                    source_path = (
+                        "bidoInvBiddingDTO[formCode=BD.CG.02.0113]."
+                        "formValue.method"
+                    )
                 field_sources[f"revisions.{revision_number}.{field}"] = {
                     "operation": operation,
                     "revision": str(revision_number),
-                    "sourcePath": field,
+                    "sourcePath": source_path,
                 }
         if revision.get("opening") is not None:
             field_sources[f"revisions.{revision_number}.opening"] = {

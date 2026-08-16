@@ -368,13 +368,18 @@ def validate_package_status_transition(
     return []
 
 
-def validate_package_locked_fields(previous_record, item):
+def validate_package_locked_fields(
+    previous_record,
+    item,
+    *,
+    allow_source_reconciliation=False,
+):
     """Reject material edits on an already-issued package version."""
     previous_status = enum_label("goi_thau", "trang_thai", (previous_record or {}).get("trang_thai"))
     previous_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
         str(previous_status or "Chuẩn bị").strip(), str(previous_status or "Chuẩn bị").strip(),
     )
-    if previous_status == "Chuẩn bị":
+    if previous_status == "Chuẩn bị" or allow_source_reconciliation:
         return []
 
     errors = []
@@ -692,7 +697,13 @@ def parse_date(val):
     return parse_datetime_value(val)
 
 
-def validate_sync_item(table_name, item, allowed_contract_status_names=None):
+def validate_sync_item(
+    table_name,
+    item,
+    allowed_contract_status_names=None,
+    *,
+    allow_source_option_without_items=False,
+):
     allowed_contract_status_names = allowed_contract_status_names or set()
     errors = []
 
@@ -1049,7 +1060,14 @@ def validate_sync_item(table_name, item, allowed_contract_status_names=None):
                 )
 
         option_list = _as_list(item.get("tuyChonMuaThemList"))
-        if str(item.get("tuyChonMuaThem") or "").strip() == "Có" and not option_list:
+        # MSC can publish the package-level option flag in a plan revision
+        # before it publishes any item detail. The caller enables this narrow
+        # exception only after validating the active procurement import session.
+        if (
+            str(item.get("tuyChonMuaThem") or "").strip() == "Có"
+            and not option_list
+            and not allow_source_option_without_items
+        ):
             errors.append("Gói có tùy chọn mua thêm phải khai báo ít nhất một hạng mục.")
         if str(item.get("tuyChonMuaThem") or "").strip() != "Có" and option_list:
             errors.append("Gói không có tùy chọn mua thêm không được chứa danh sách tùy chọn.")

@@ -144,6 +144,44 @@ test("procurement resync preserves existing goods and stable lot ids", () => {
   assert.equal(state.goithauhanghoa[0].soLuong, 9);
 });
 
+test("procurement resync backfills goods when the existing package has none", () => {
+  let sequence = 0;
+  const state = {
+    kehoach: [{ id: "plan-00", rootId: "plan-00", phienBan: "00", rowVersion: 1 }],
+    goithau: [{
+      id: "package-1",
+      rootId: "package-1",
+      keHoachId: "plan-00",
+      phienBan: "00",
+      rowVersion: 3,
+      trangThai: "Đang mời thầu",
+      phanLo: "Có",
+      phanLoList: [{ id: "lot-local-1", maPhanLo: "PP01", tenPhanLo: "Phần 1" }],
+      sourceRevision: { stablePackageId: "stable-1" },
+    }],
+    goithauhanghoa: [],
+  };
+
+  materializeProcurementRevisionIntoExisting(state, "plan-00", {
+    revisionNumber: "00",
+    packageDrafts: [{
+      tenGoiThau: "Gói nguồn",
+      phanLo: true,
+      danhSachPhanLo: [{ lotNo: "PP01", lotName: "Phần 1" }],
+      danhSachHangHoa: [{
+        maPhanLo: "PP01", maHangHoa: "1.1", tenHangHoa: "Tên từ MSC",
+        donViTinh: "Hộp", soLuong: 12,
+      }],
+      sourceRevision: { stablePackageId: "stable-1" },
+    }],
+  }, { createId: (kind) => `${kind}-${++sequence}` });
+
+  assert.equal(state.goithauhanghoa.length, 1);
+  assert.equal(state.goithauhanghoa[0].goiThauId, "package-1");
+  assert.equal(state.goithauhanghoa[0].phanLoId, "lot-local-1");
+  assert.equal(state.goithauhanghoa[0].maHangHoa, "1.1");
+});
+
 test("package procurement draft fills lifecycle and tender milestone controls", () => {
   const controls = new Map([
     "gt-ma", "gt-ten", "gt-gia", "gt-thoigian", "gt-linhvuc",
@@ -289,6 +327,48 @@ test("prepared plan revision materializes source packages into one memory-only b
   assert.equal(state.goithau[0]._procurementImportCurrent, true);
   assert.equal(result.draft.active, true);
   assert.deepEqual(result.draft.snapshot.goithau, []);
+});
+
+test("non-lot procurement package drops a synthetic source lot before sync", () => {
+  const state = {
+    kehoach: [], goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  materializeProcurementRevisionDraft(state, {
+    revisionNumber: "00",
+    planDraft: {
+      maKeHoach: "PL2600048068",
+      tenKeHoach: "Mua may giat cong nghiep va may phan tich huyet hoc",
+    },
+    packageDrafts: [{
+      tenGoiThau: "Mua may giat cong nghiep va may phan tich huyet hoc",
+      phanLo: false,
+      danhSachPhanLo: [{
+        lotNo: "BP2600113130",
+        lotName: "Mua may giat cong nghiep va may phan tich huyet hoc",
+        lotPrice: 898_000_000,
+      }],
+      danhSachHangHoa: [{
+        sourceItemId: "source-goods-1",
+        maPhanLo: "BP2600113130",
+        maHangHoa: "1",
+        tenHangHoa: "May giat cong nghiep",
+        donViTinh: "Cai",
+        soLuong: 1,
+      }],
+    }],
+  }, {
+    createId: (() => {
+      let sequence = 0;
+      return (kind) => `${kind}-non-lot-${++sequence}`;
+    })(),
+    timestamp: "2026-08-15T00:00:00Z",
+  });
+
+  assert.equal(state.goithau[0].phanLo, "Không");
+  assert.deepEqual(state.goithau[0].phanLoList, []);
+  assert.equal(state.goithauhanghoa.length, 1);
+  assert.equal(state.goithauhanghoa[0].phanLoId, null);
 });
 
 test("revision 01 keeps procurement purchase-option flags sync-safe for inherited and new packages", () => {

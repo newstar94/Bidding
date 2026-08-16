@@ -160,7 +160,11 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         "trongNuocQuocTe": effective.get("domesticOrInternational"),
         "phanLo": effective.get("isMultiLot"),
         "goiThauThuoc": effective.get("isMedicinePackage"),
-        "danhSachPhanLo": deepcopy(effective.get("lots") or []),
+        "danhSachPhanLo": (
+            deepcopy(effective.get("lots") or [])
+            if effective.get("isMultiLot") is True
+            else []
+        ),
         "danhSachHangHoa": goods_items,
         "soTuyen": effective.get("isPrequalification"),
         "muaSamTapTrung": effective.get("isConcentrateShopping"),

@@ -7,6 +7,7 @@ import pytest
 
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
+    normalize_notice_revision,
     normalize_opening_bundle,
     normalize_plan_revision,
     normalize_result_bundle,
@@ -14,6 +15,7 @@ from backend.integrations.muasamcong_browser.canonical import (
 from backend.integrations.muasamcong_browser.code_mapping import (
     map_contract_type,
     map_domestic_scope,
+    map_evaluation_method,
     map_online_mode,
     map_optional_boolean,
     map_package_field,
@@ -42,6 +44,392 @@ FIXTURES = Path(__file__).parent / "fixtures" / "muasamcong"
 
 def fixture(*parts):
     return json.loads((FIXTURES.joinpath(*parts)).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("method", "bid_field", "expected"),
+    [
+        ("1", "HH", "Giá thấp nhất"),
+        ("1", "TV", "Giá thấp nhất"),
+        ("2", "TV", "Giá cố định"),
+        ("2", "HH", "Giá đánh giá"),
+        ("2", "XL", "Giá đánh giá"),
+        ("2", "PTV", "Giá đánh giá"),
+        ("3", "TV", "Kết hợp giữa kỹ thuật và giá"),
+        ("3", "HH", "Kết hợp giữa kỹ thuật và giá"),
+        ("4", "TV", "Dựa trên kỹ thuật"),
+        ("4", "HH", "Dựa trên kỹ thuật"),
+        (None, "HH", None),
+        ("5", "HH", None),
+        ("2", None, None),
+    ],
+)
+def test_evaluation_method_mapping_depends_on_method_and_raw_package_field(
+    method, bid_field, expected
+):
+    assert map_evaluation_method(method, bid_field) == expected
+
+
+def test_ib2600271825_evaluation_method_comes_from_ehsmt_form():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600271825",
+            "notifyId": "notice-00",
+            "bidName": "Goi thau so 35",
+            "bidField": "HH",
+            "evalMethod": None,
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.CG.02.0104",
+                "formValue": json.dumps({"evalTechnical": "1"}),
+            }, {
+                "formCode": "BD.CG.02.0113",
+                "formValue": json.dumps({"method": "1", "cost": None}),
+            }],
+        },
+        notice_no="IB2600271825",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["field"] == "Hàng hóa"
+    assert revision["evaluationMethod"] == "Giá thấp nhất"
+
+
+def test_evaluation_method_form_returns_none_for_invalid_json():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600000099",
+            "notifyId": "notice-00",
+            "bidName": "Invalid evaluation form",
+            "bidField": "HH",
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.CG.02.0113",
+                "formValue": "{invalid-json",
+            }],
+        },
+        notice_no="IB2600000099",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["evaluationMethod"] is None
+
+
+def test_ib2600079201_consulting_method_three_uses_ehsmt_form():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600079201",
+            "notifyId": "notice-00",
+            "bidName": "Consulting package",
+            "bidField": "TV",
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.CG.02.0113",
+                "formValue": json.dumps({"method": "3", "cost": None}),
+            }],
+        },
+        notice_no="IB2600079201",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["field"] == "Tư vấn"
+    assert revision["evaluationMethod"] == "Kết hợp giữa kỹ thuật và giá"
+
+
+def test_method_two_uses_nested_plan_detail_field_when_notice_field_is_missing():
+    revision = normalize_notice_revision(
+        {
+            "notice": {
+                "notifyNo": "IB2600000098",
+                "notifyId": "notice-00",
+                "bidName": "Consulting package",
+            },
+            "bidpPlanDetailDTO": {"bidField": "TV"},
+            "forms": [{
+                "formCode": "BD.CG.02.0113",
+                "formValue": json.dumps({"method": "2", "cost": None}),
+            }],
+        },
+        notice_no="IB2600000098",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["field"] == "Tư vấn"
+    assert revision["evaluationMethod"] == "Giá cố định"
+
+
+def test_method_two_uses_top_level_source_field_when_notice_field_is_missing():
+    revision = normalize_notice_revision(
+        {
+            "bidField": "HH",
+            "notice": {
+                "notifyNo": "IB2600000097",
+                "notifyId": "notice-00",
+                "bidName": "Goods package",
+            },
+            "forms": [{
+                "formCode": "BD.CG.02.0113",
+                "formValue": json.dumps({"method": "2", "cost": None}),
+            }],
+        },
+        notice_no="IB2600000097",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["field"] == "Hàng hóa"
+    assert revision["evaluationMethod"] == "Giá đánh giá"
+
+
+def test_non_lot_notice_normalization_drops_single_package_summary_lot():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600082707",
+            "notifyId": "notice-00",
+            "bidNo": "BP2600113130",
+            "bidName": "Mua may giat cong nghiep va may phan tich huyet hoc",
+            "isMultiLot": 0,
+            "bidpBidLotList": [{
+                "lotNo": "BP2600113130",
+                "lotName": (
+                    "Mua may giat cong nghiep va may phan tich huyet hoc"
+                ),
+                "lotPrice": 898_000_000,
+            }],
+        },
+        notice_no="IB2600082707",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["isMultiLot"] is False
+    assert revision["lots"] == []
+
+
+def test_goods_form_1281_maps_parent_linked_items_to_their_source_lots():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600291864",
+            "notifyId": "notice-00",
+            "bidName": "Goods package with multiple lots",
+            "bidField": "HH",
+            "isMultiLot": 1,
+            "bidpBidLotList": [{
+                "lotNo": "PP2600239575",
+                "lotName": "Lot one",
+            }, {
+                "lotNo": "PP2600239576",
+                "lotName": "Lot two",
+            }],
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.MT.02.1281",
+                "formValue": json.dumps({"Table": [{
+                    "id": "source-lot-1",
+                    "lotNo": "PP2600239575",
+                    "lotName": "Lot one",
+                    "name": None,
+                    "uom": None,
+                    "qty": None,
+                }, {
+                    "id": "source-lot-2",
+                    "lotNo": "PP2600239576",
+                    "lotName": "Lot two",
+                    "name": None,
+                    "uom": None,
+                    "qty": None,
+                }, {
+                    "id": "source-goods-1",
+                    "parent": "source-lot-1",
+                    "tempParent": "source-lot-1",
+                    "currentItemIndex": "1.1",
+                    "name": "Digital x-ray film",
+                    "uom": "Sheet",
+                    "qty": 20_000,
+                    "description": "According to Chapter V",
+                }, {
+                    "id": "source-goods-2",
+                    "parent": "source-lot-2",
+                    "tempParent": "source-lot-2",
+                    "currentItemIndex": "2.1",
+                    "name": "Test chemical",
+                    "uom": "Box",
+                    "qty": 12,
+                }, {
+                    "id": "source-goods-3",
+                    "parent": "source-lot-1",
+                    "tempParent": "source-lot-1",
+                    "currentItemIndex": "1.2",
+                    "name": "Medical film printer cartridge",
+                    "uom": "Cartridge",
+                    "qty": 4,
+                }]}, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600291864",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert [(item["code"], item["lotNo"]) for item in revision["goodsItems"]] == [
+        ("1.1", "PP2600239575"),
+        ("2.1", "PP2600239576"),
+        ("1.2", "PP2600239575"),
+    ]
+    assert revision["goodsItems"][0]["technicalRequirement"] == (
+        "According to Chapter V"
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600291864", revision, revision
+    )
+    assert draft["phanLo"] is True
+    assert [item["maPhanLo"] for item in draft["danhSachHangHoa"]] == [
+        "PP2600239575",
+        "PP2600239576",
+        "PP2600239575",
+    ]
+
+
+def test_goods_form_1281_keeps_non_lot_items_at_package_scope():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600320117",
+            "notifyId": "notice-00",
+            "bidName": "Goods package without lots",
+            "bidField": "HH",
+            "isMultiLot": 0,
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.MT.02.1281",
+                "formValue": json.dumps({"Table": [{
+                    "id": "source-goods-1",
+                    "pos": "1",
+                    "lotNo": "BP2600320117",
+                    "lotName": "Goods package without lots",
+                    "name": "Industrial washing machine",
+                    "uom": "Unit",
+                    "qty": 1,
+                }]}, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600320117",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert revision["isMultiLot"] is False
+    assert revision["lots"] == []
+    assert [(item["code"], item["lotNo"]) for item in revision["goodsItems"]] == [
+        ("1", None),
+    ]
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600320117", revision, revision
+    )
+    assert draft["phanLo"] is False
+    assert draft["danhSachPhanLo"] == []
+    assert draft["danhSachHangHoa"][0]["maPhanLo"] == ""
+
+
+def test_goods_form_1281_maps_one_item_per_lot_using_pos_index():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600271822",
+            "notifyId": "notice-00",
+            "bidName": "One goods item per lot",
+            "bidField": "HH",
+            "isMultiLot": 1,
+            "bidpBidLotList": [{
+                "lotNo": "PP2600210001",
+                "lotName": "Lot one",
+            }, {
+                "lotNo": "PP2600210002",
+                "lotName": "Lot two",
+            }],
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.MT.02.1281",
+                "formValue": json.dumps({"Table": [{
+                    "id": 2600210001,
+                    "pos": "1",
+                    "lotNo": "PP2600210001",
+                    "lotName": "Lot one",
+                    "name": "Medical supply one",
+                    "uom": "Box",
+                    "qty": 10,
+                    "parent": 0,
+                }, {
+                    "id": 2600210002,
+                    "pos": "2",
+                    "lotNo": "PP2600210002",
+                    "lotName": "Lot two",
+                    "name": "Medical supply two",
+                    "uom": "Bottle",
+                    "qty": 5,
+                    "parent": 0,
+                }]}, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600271822",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert [(item["code"], item["lotNo"]) for item in revision["goodsItems"]] == [
+        ("1", "PP2600210001"),
+        ("2", "PP2600210002"),
+    ]
+
+
+def test_ib2600082707_goods_form_0812_maps_non_lot_group_children():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600082707",
+            "notifyId": "notice-00",
+            "bidName": "Industrial washing machine and blood analyzer",
+            "bidField": "HH",
+            "isMultiLot": 0,
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.MT.02.0812",
+                "formValue": json.dumps({"Table": [{
+                    "id": 81001,
+                    "parent": 81000,
+                    "currentItemIndex": "1",
+                    "pos": "1",
+                    "name": "Industrial washing machine",
+                    "uom": "Unit",
+                    "qty": 1,
+                    "description": "Technical requirements one",
+                    "place": "Delivery location one",
+                    "fromDate": "2026-08-01",
+                    "toDate": "2026-09-01",
+                }, {
+                    "id": 81002,
+                    "parent": 81000,
+                    "currentItemIndex": "2",
+                    "pos": "2",
+                    "name": "Blood analyzer",
+                    "uom": "Unit",
+                    "qty": 1,
+                    "description": "Technical requirements two",
+                }]}, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600082707",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+
+    assert [(item["code"], item["lotNo"]) for item in revision["goodsItems"]] == [
+        ("1", None),
+        ("2", None),
+    ]
+    assert revision["goodsItems"][0]["technicalRequirement"] == (
+        "Technical requirements one"
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600082707", revision, revision
+    )
+    assert draft["phanLo"] is False
+    assert len(draft["danhSachHangHoa"]) == 2
+    assert all(not item["maPhanLo"] for item in draft["danhSachHangHoa"])
 
 
 def test_plan_fixture_maps_packages_without_conflating_plan_symbol_and_tbmt():
@@ -1065,6 +1453,13 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
                                     }),
                                 },
                                 {
+                                    "formCode": "BD.CG.02.0113",
+                                    "formValue": json.dumps({
+                                        "method": "2",
+                                        "cost": None,
+                                    }),
+                                },
+                                {
                                     "formCode": "BD.MT.02.1224",
                                     "formValue": json.dumps({"Table": [
                                         {
@@ -1237,6 +1632,7 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert revision["financialActualOpeningAt"] == "2026-03-02T10:05:12"
     assert revision["bidOpeningAt"] == "2026-03-01T09:15:00"
     assert revision["isMedicinePackage"] is True
+    assert revision["evaluationMethod"] == "Giá đánh giá"
     assert revision["isMultiLot"] is True
     assert revision["additionalPurchaseOption"] is True
     assert revision["additionalPurchaseItems"] == [{
@@ -1317,6 +1713,7 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
     assert projected["data"]["onlineMode"] == "Không qua mạng"
     assert projected["data"]["bidGuarantee"] == 45_000_000
     assert projected["data"]["isMedicinePackage"] is True
+    assert projected["data"]["evaluationMethod"] == "Giá đánh giá"
     assert projected["data"]["isMultiLot"] is True
     assert projected["data"]["additionalPurchaseOption"] is True
     assert projected["data"]["additionalPurchaseItems"] == (
@@ -1335,6 +1732,14 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
         "requestCount": 0,
         "networkMs": 0,
     }
+    assert canonical["fieldSources"][
+        "revisions.01.evaluationMethod"
+    ]["operation"] == "NOTICE_HSMT"
+    assert canonical["fieldSources"][
+        "revisions.01.evaluationMethod"
+    ]["sourcePath"] == (
+        "bidoInvBiddingDTO[formCode=BD.CG.02.0113].formValue.method"
+    )
 
 
 def test_unified_lookup_falls_back_to_browser_extractors_when_api_is_unavailable():

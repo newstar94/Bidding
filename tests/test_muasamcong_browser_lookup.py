@@ -113,6 +113,28 @@ def test_package_lookup_uses_exact_identifier_and_stable_package_contract():
     }
 
 
+def test_non_lot_package_parser_drops_single_source_lot():
+    parsed = PackageParserV1().parse(
+        {
+            "notifyNo": "IB2600082707",
+            "notifyId": "notice-00",
+            "bidName": "Mua may giat cong nghiep va may phan tich huyet hoc",
+            "isMultiLot": 0,
+            "lotDTOList": [{
+                "lotNo": "BP2600113130",
+                "lotName": (
+                    "Mua may giat cong nghiep va may phan tich huyet hoc"
+                ),
+                "lotPrice": 898_000_000,
+            }],
+        },
+        "IB2600082707",
+    )
+
+    assert parsed["isMultiLot"] is False
+    assert parsed["lots"] is None
+
+
 def test_exact_identifier_mismatch_is_not_accepted_even_with_known_schema():
     runtime = FixtureBrowserRuntime("package_normal.json")
     runtime.artifact["networkResponses"][0]["body"]["renamedNoticeState"][

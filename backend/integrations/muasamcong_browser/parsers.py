@@ -148,6 +148,8 @@ def parse_package_row(row):
     is_multi_lot = map_optional_boolean(row.get("isMultiLot"))
     if is_multi_lot is None and lots and len(lots) > 1:
         is_multi_lot = True
+    if is_multi_lot is not True:
+        lots = None
     source_bid_price = _first_money(row.get("bidPrice"))
     estimate_price = _first_money_field(
         row, "bidEstimatePrice", "estimatePriceVnd"

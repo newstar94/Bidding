@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from backend.sync.payload_validation import (
     validate_package_locked_fields,
     validate_package_status_transition,
+    validate_sync_item,
     validate_sync_payload_shape,
 )
 from backend.sync.request_contract import (
@@ -55,6 +56,72 @@ def test_invited_package_scheduling_fields_are_server_locked():
         "thoiGianToChuc",
         "thoiGianBatDauToChuc",
     }
+
+
+def test_manual_invited_package_evaluation_method_remains_server_locked():
+    errors = validate_package_locked_fields(
+        {
+            "trang_thai": "INVITED",
+            "phuong_phap_danh_gia": "Giá thấp nhất",
+        },
+        {"phuongPhapDanhGia": "Kết hợp giữa kỹ thuật và giá"},
+    )
+
+    assert errors == [{
+        "field": "phuongPhapDanhGia",
+        "code": "PACKAGE_FIELD_LOCKED",
+        "message": (
+            "Trường này không được sửa sau khi phát hành mời thầu; "
+            "hãy tạo phiên bản gói thầu mới."
+        ),
+    }]
+
+
+def test_trusted_procurement_reconciliation_can_refresh_invited_locked_fields():
+    previous = {
+        "trang_thai": "INVITED",
+        "phuong_phap_danh_gia": "Giá thấp nhất",
+        "thoi_gian_thuc_hien": "120 ngày",
+    }
+
+    errors = validate_package_locked_fields(
+        previous,
+        {
+            "phuongPhapDanhGia": "Kết hợp giữa kỹ thuật và giá",
+            "thoiGianThucHien": "150 ngày",
+        },
+        allow_source_reconciliation=True,
+    )
+
+    assert errors == []
+
+
+def test_trusted_msc_plan_option_flag_can_wait_for_unpublished_item_details():
+    def package():
+        return {
+            "keHoachId": "plan-00",
+            "tenGoiThau": "Gói có tùy chọn mua thêm từ MSC",
+            "giaGoiThau": "1000000",
+            "thoiGianThucHien": "30 ngày",
+            "nguonVon": "Ngân sách nhà nước",
+            "thoiGianToChuc": "30 ngày",
+            "thoiGianBatDauToChuc": "Quý III/2026",
+            "phanLo": "Không",
+            "phanLoList": [],
+            "tuyChonMuaThem": "Có",
+            "tuyChonMuaThemList": [],
+        }
+
+    message = "Gói có tùy chọn mua thêm phải khai báo ít nhất một hạng mục."
+    _, manual_errors, _ = validate_sync_item("goi_thau", package())
+    _, imported_errors, _ = validate_sync_item(
+        "goi_thau",
+        package(),
+        allow_source_option_without_items=True,
+    )
+
+    assert message in manual_errors
+    assert message not in imported_errors
 
 
 def test_mutating_sync_payload_requires_client_mutation_id():

@@ -300,6 +300,29 @@ test("package preview maps linked plan scheduling fields", () => {
 });
 
 
+test("package preview maps the normalized E-HSMT evaluation method", () => {
+  const evaluationMethod = control("", [
+    "Giá thấp nhất",
+    "Giá đánh giá",
+    "Giá cố định",
+    "Kết hợp giữa kỹ thuật và giá",
+    "Dựa trên kỹ thuật",
+  ]);
+  const rows = buildComparisonRows("PACKAGE", {
+    evaluationMethod: "Giá đánh giá",
+  }, {
+    getControl: (id) => (
+      id === "gt-phuongphapdanhgia" ? evaluationMethod : null
+    ),
+  });
+  const mapped = rows.find((row) => row.field === "evaluationMethod");
+
+  assert.equal(mapped.controlId, "gt-phuongphapdanhgia");
+  assert.equal(mapped.draftValue, "Giá đánh giá");
+  assert.equal(mapped.apply, true);
+});
+
+
 test("inline package lookup fills bid guarantee without saving", async () => {
   const previousDocument = globalThis.document;
   const identity = { value: "package-a" };

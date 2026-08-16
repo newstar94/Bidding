@@ -44,6 +44,10 @@ _Avoid_: Phiên bản tạm, revision cục bộ
 Việc so sánh một snapshot nguồn với binding đã lưu để phân loại đối tượng thành giữ nguyên, thay đổi, mới, bị loại hoặc mơ hồ trước khi áp dụng quy tắc phiên bản nội bộ.
 _Avoid_: Ghép tự động bằng tên hoặc số thứ tự
 
+**Đối chiếu nguồn có thẩm quyền**:
+Lần nhập hoặc đồng bộ lại từ Mua Sắm Công có phiên nguồn được máy chủ xác thực, được phép làm mới trường thuộc nguồn trên snapshot hiện hành dù lifecycle đang khóa thao tác sửa thủ công.
+_Avoid_: Payload tự khai nguồn, sửa tay trường đã khóa
+
 **Disposition nhập liệu**:
 Phân loại có thẩm quyền của một revision nguồn, xác định revision đó tạo snapshot nghiệp vụ, đồng bộ lại, chỉ lưu bằng chứng nguồn hay đã được xử lý trước đó.
 _Avoid_: Trạng thái giao diện, lựa chọn materialize của client
@@ -87,3 +91,7 @@ _Avoid_: Lưu trực tiếp mã phân loại nguồn vào loại kế hoạch n�
 **Danh mục hàng hóa mời thầu**:
 Các mặt hàng thực có tên, đơn vị tính và số lượng dương thuộc phạm vi một gói hoặc một phần lô; dòng tiêu đề phần lô từ nguồn ngoài không phải là hàng hóa.
 _Avoid_: Dòng biểu mẫu nguồn, dòng nhóm, tiêu đề phần lô
+
+**Phạm vi hàng hóa mời thầu**:
+Một hàng hóa thuộc trực tiếp gói không phân lô hoặc thuộc đúng một phần lô của gói phân lô; một phần lô có thể chứa một hoặc nhiều hàng hóa mà không tạo loại bản ghi khác.
+_Avoid_: Tự tạo phần lô cho gói không phân lô, mô hình riêng cho quan hệ một-một và một-nhiều

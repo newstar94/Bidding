@@ -76,6 +76,13 @@ PLAN_TYPES = _table(
     (("TX", "KHAC"), "Dự toán mua sắm"),
 )
 
+EVALUATION_METHODS = {
+    "1": "Giá thấp nhất",
+    "3": "Kết hợp giữa kỹ thuật và giá",
+    "4": "Dựa trên kỹ thuật",
+}
+_CONSULTING_PACKAGE_FIELDS = {_key("TV"), _key("Tư vấn")}
+
 
 def _map_open(value: object, table: dict[str, str]):
     if value is None:
@@ -111,6 +118,26 @@ def map_plan_type(value: object):
     if not text:
         return None
     return PLAN_TYPES.get(_key(text))
+
+
+def map_evaluation_method(method: object, bid_field: object):
+    """Map the E-HSMT method code using the raw package field contract."""
+
+    if method is None:
+        return None
+    normalized_method = str(method).strip()
+    if not normalized_method:
+        return None
+    if normalized_method == "2":
+        normalized_field = _key(bid_field)
+        if not normalized_field:
+            return None
+        return (
+            "Giá cố định"
+            if normalized_field in _CONSULTING_PACKAGE_FIELDS
+            else "Giá đánh giá"
+        )
+    return EVALUATION_METHODS.get(normalized_method)
 
 
 def normalize_investor_code(value: object):

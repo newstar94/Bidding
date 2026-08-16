@@ -349,11 +349,21 @@ class SyncRecordValidator:
                 if parent_history_error:
                     item_errors.append(parent_history_error)
 
-                item, pure_errors, _requested_statuses = validate_sync_item(
-                    table_name,
-                    item,
-                    allowed_statuses,
-                )
+                if table_name == "goi_thau":
+                    item, pure_errors, _requested_statuses = validate_sync_item(
+                        table_name,
+                        item,
+                        allowed_statuses,
+                        allow_source_option_without_items=(
+                            record_id in self.trusted_import_package_ids
+                        ),
+                    )
+                else:
+                    item, pure_errors, _requested_statuses = validate_sync_item(
+                        table_name,
+                        item,
+                        allowed_statuses,
+                    )
                 item_errors.extend(pure_errors)
                 if table_name == "thong_tin_mo_thau" and "danhGiaKyThuat" in item:
                     package_id = self._opening_package_id(item, current_record)
@@ -381,6 +391,9 @@ class SyncRecordValidator:
                     item_errors.extend(validate_package_locked_fields(
                         current_record,
                         item,
+                        allow_source_reconciliation=(
+                            record_id in self.trusted_import_package_ids
+                        ),
                     ))
                     item_errors.extend(validate_package_goods_configuration_change(
                         cursor,

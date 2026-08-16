@@ -322,7 +322,7 @@ def _measure_sync_authorization_queries(monkeypatch, record_count):
     monkeypatch.setattr(
         record_validator,
         "validate_sync_item",
-        lambda _table, item, _statuses: (item, [], set()),
+        lambda _table, item, _statuses, **_kwargs: (item, [], set()),
     )
     monkeypatch.setattr(
         record_validator,
@@ -691,7 +691,7 @@ def _measure_sync_uniqueness_queries(monkeypatch, record_count):
     monkeypatch.setattr(
         record_validator,
         "validate_sync_item",
-        lambda _table, item, _statuses: (item, [], set()),
+        lambda _table, item, _statuses, **_kwargs: (item, [], set()),
     )
     monkeypatch.setattr(
         record_validator,

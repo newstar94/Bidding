@@ -38,6 +38,21 @@ function mapLots(lots, { createId = null, existingLots = [] } = {}) {
   }));
 }
 
+function packageRecordHasLots(packageRecord) {
+  return packageRecord?.phanLo === yesNo(true);
+}
+
+function mapSourcePackageLots(sourcePackage, {
+  createId = null,
+  existingLots = [],
+  fallbackHasLots = false,
+} = {}) {
+  const sourceHasLots = sourceBoolean(sourcePackage?.phanLo);
+  const hasLots = sourceHasLots === null ? fallbackHasLots : sourceHasLots;
+  if (!hasLots) return [];
+  return mapLots(sourcePackage?.danhSachPhanLo, { createId, existingLots });
+}
+
 function mapProcurementGoods(items, packageRecord, createId) {
   const hasLots = packageRecord?.phanLo === "Có";
   const lotByCode = new Map((packageRecord?.phanLoList || [])
@@ -228,7 +243,7 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
   state.kehoach.push(plan);
   const packages = (revisionDraft?.packageDrafts || []).map((sourcePackage) => {
     const packageId = createId("goithau");
-    const lots = mapLots(sourcePackage.danhSachPhanLo, { createId });
+    const lots = mapSourcePackageLots(sourcePackage, { createId });
     const packageRecord = createInitialVersion({
       ...sourcePackage,
       id: packageId,
@@ -350,7 +365,7 @@ export function materializeProcurementRevisionIntoExisting(
         ...importedAppraisal(),
         tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
         phanLo: yesNo(sourcePackage.phanLo),
-        phanLoList: mapLots(sourcePackage.danhSachPhanLo, { createId }),
+        phanLoList: mapSourcePackageLots(sourcePackage, { createId }),
         tuyChonMuaThemList: mapAdditionalPurchaseItems(
           sourcePackage.tuyChonMuaThemList,
           createId,
@@ -384,7 +399,7 @@ export function materializeProcurementRevisionIntoExisting(
       ...appraisal,
       tuyChonMuaThem: yesNo(sourcePackage.tuyChonMuaThem),
       phanLo: yesNo(sourcePackage.phanLo),
-      phanLoList: mapLots(sourcePackage.danhSachPhanLo, {
+      phanLoList: mapSourcePackageLots(sourcePackage, {
         createId,
         existingLots: existing.phanLoList,
       }),
@@ -508,10 +523,14 @@ export function materializeProcurementRevisionFromPrevious(
         packageRecord.tuyChonMuaThem || "Không",
       ),
       phanLo: yesNo(source.phanLo, packageRecord.phanLo || "Không"),
-      phanLoList: Array.isArray(source.danhSachPhanLo)
-        ? mapLots(source.danhSachPhanLo, {
+      phanLoList: (
+        Array.isArray(source.danhSachPhanLo)
+        || sourceBoolean(source.phanLo) !== null
+      )
+        ? mapSourcePackageLots(source, {
           createId,
           existingLots: packageRecord.phanLoList,
+          fallbackHasLots: packageRecordHasLots(packageRecord),
         })
         : packageRecord.phanLoList,
       tuyChonMuaThemList: Array.isArray(source.tuyChonMuaThemList)
@@ -552,7 +571,7 @@ export function materializeProcurementRevisionFromPrevious(
       ...importedAppraisal(),
       tuyChonMuaThem: yesNo(source.tuyChonMuaThem),
       phanLo: yesNo(source.phanLo),
-      phanLoList: mapLots(source.danhSachPhanLo, { createId }),
+      phanLoList: mapSourcePackageLots(source, { createId }),
       tuyChonMuaThemList: mapAdditionalPurchaseItems(
         source.tuyChonMuaThemList,
         createId,
@@ -658,8 +677,11 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
   if (medicinePackage !== null) {
     setRadioValue(document, "gt-goithauthuoc", medicinePackage ? "1" : "0");
   }
-  if (Array.isArray(packageDraft?.danhSachPhanLo)) {
-    controller?._loadPhanLoRows?.(mapLots(packageDraft.danhSachPhanLo));
+  if (
+    Array.isArray(packageDraft?.danhSachPhanLo)
+    || sourceBoolean(packageDraft?.phanLo) !== null
+  ) {
+    controller?._loadPhanLoRows?.(mapSourcePackageLots(packageDraft));
   }
   if (Array.isArray(packageDraft?.tuyChonMuaThemList)) {
     controller?._loadTuyChonMuaThemRows?.(packageDraft.tuyChonMuaThemList);

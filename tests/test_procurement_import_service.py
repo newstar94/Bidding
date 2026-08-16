@@ -330,6 +330,7 @@ def test_package_draft_maps_invitation_fields_without_opening_materialization():
                 "lifecycleStatus": "EVALUATING",
                 "bidValidityDays": 90,
                 "bidGuaranteeVnd": 52_183_040,
+                "evaluationMethod": "Giá đánh giá",
                 "approvalDecisionNo": "123/QĐ-E-HSMT",
                 "approvalDecisionDate": "2026-07-15T00:00:00",
                 "financialActualOpeningAt": "2026-08-03T16:20:00",
@@ -352,6 +353,7 @@ def test_package_draft_maps_invitation_fields_without_opening_materialization():
     assert draft["hieuLucHsdt"] == 90
     assert draft["hieuLucDamBaoDuThau"] == 120
     assert draft["giaTriBaoDamDuThau"] == 52_183_040
+    assert draft["phuongPhapDanhGia"] == "Giá đánh giá"
     assert draft["soQuyetDinh"] == "123/QĐ-E-HSMT"
     assert draft["ngayQuyetDinh"] == "2026-07-15T00:00:00"
     assert draft["thoiGianDangTai"] == "2026-07-16T09:00:00"
@@ -986,6 +988,7 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
                     "financialActualOpeningAt": "2026-08-03T16:20:00",
                     "bidGuaranteeVnd": 52_183_040,
                     "bidValidityDays": 90,
+                    "evaluationMethod": "Giá đánh giá",
                     "approvalDecisionNo": "123/QD-E-HSMT",
                     "approvalDecisionDate": "2026-07-15T00:00:00",
                     "lots": [{
@@ -1023,6 +1026,7 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
     assert effective["lifecycleStatus"] == "EVALUATING"
     assert effective["bidValidityDays"] == 90
     assert effective["bidGuaranteeVnd"] == 52_183_040
+    assert effective["evaluationMethod"] == "Giá đánh giá"
     assert effective["approvalDecisionNo"] == "123/QD-E-HSMT"
     assert effective["approvalDecisionDate"] == "2026-07-15T00:00:00"
     assert [lot["bidGuarantee"] for lot in effective["lots"]] == [
@@ -1048,6 +1052,7 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
         {"planDetailRevisionId": "detail-00", "effectiveFields": effective},
     )
     assert draft["trangThai"] == "Đang mời thầu"
+    assert draft["phuongPhapDanhGia"] == "Giá đánh giá"
     assert draft["danhSachPhanLo"][0]["bidGuarantee"] == 12_000_000
     assert draft["danhSachHangHoa"][0] == {
         "sourceItemId": "1.1",
@@ -1065,6 +1070,98 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
         "thoiGianGiaoHang": "",
         "ghiChu": "",
     }
+
+
+def test_non_lot_plan_ignores_synthetic_single_lot_from_linked_notice():
+    class NonLotInvitationSource:
+        name = "MUASAMCONG"
+
+        def list_plan_revisions(self, code):
+            assert code == "PL2600048068"
+            return [{"revisionId": "plan-00", "revisionNumber": "00"}]
+
+        def get_plan_revision(self, code, revision_id):
+            assert (code, revision_id) == ("PL2600048068", "plan-00")
+            return {
+                "revisionId": "plan-00",
+                "revisionNumber": "00",
+                "name": "Mua may giat cong nghiep va may phan tich huyet hoc",
+                "planType": "Du toan mua sam",
+                "approvalDecisionNo": "88/QD-TTYT",
+                "approvalDecisionDate": "2026-03-04",
+                "packages": [{
+                    "planDetailRevisionId": "detail-00",
+                    "stablePackageId": "BP2600113130",
+                    "symbol": "BP2600113130",
+                    "name": "Mua may giat cong nghiep va may phan tich huyet hoc",
+                    "priceVnd": 898_000_000,
+                    "executionPeriod": "2 thang",
+                    "capitalDetail": "Nguon thu",
+                    "selectionDuration": "30 ngay",
+                    "selectionStart": "2026-03",
+                    "isMultiLot": False,
+                    "lots": [],
+                    "noticeLink": {
+                        "state": "LINKED",
+                        "noticeNo": "IB2600082707",
+                        "kind": "TBMT",
+                        "noticeVersion": "00",
+                    },
+                }],
+            }
+
+        def lookup_with_options(
+            self, code, kind, *, detail_level, revision_mode, revision_numbers
+        ):
+            assert (code, kind, detail_level, revision_mode) == (
+                "IB2600082707", "PACKAGE", "COMPLETE", "ALL",
+            )
+            assert revision_numbers == []
+            return {
+                "canonical": {"revisions": [{
+                    "noticeNo": code,
+                    "kind": "TBMT",
+                    "revisionId": "notice-00",
+                    "revisionNumber": "00",
+                    "status": "PUB_KQLCNT",
+                    "isMultiLot": False,
+                    "lots": [{
+                        "lotNo": "BP2600113130",
+                        "lotName": (
+                            "Mua may giat cong nghiep va may phan tich huyet hoc"
+                        ),
+                        "lotPrice": 898_000_000,
+                        "bidGuarantee": 10_000_000,
+                    }],
+                }]},
+                "metrics": {"cache": {"hit": False}},
+            }
+
+    preview = ProcurementImportPreparer(
+        NonLotInvitationSource(), PreviewStore()
+    ).prepare_plan(
+        code="PL2600048068",
+        revision_mode="LATEST",
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+        local_state=None,
+        include_linked_notices=True,
+    )
+
+    package = preview["packages"][0]
+    effective = package["effectiveFields"]
+    assert effective["isMultiLot"] is False
+    assert effective["lots"] == []
+
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG",
+        "PL2600048068",
+        {"revisionId": "plan-00", "revisionNumber": "00"},
+        {"planDetailRevisionId": "detail-00", "effectiveFields": effective},
+    )
+    assert draft["phanLo"] is False
+    assert draft["danhSachPhanLo"] == []
 
 
 def test_prepare_all_orders_revisions_numerically_even_when_provider_is_unsorted(tmp_path):

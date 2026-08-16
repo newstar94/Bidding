@@ -685,6 +685,9 @@ class MuaSamCongProcurementSource:
                     "bidPrice": package.get("priceVnd"),
                     "capitalDetail": package.get("capitalDetail"),
                     "bidField": package.get("field"),
+                    **({
+                        "evaluationMethod": package.get("evaluationMethod"),
+                    } if package.get("evaluationMethod") not in (None, "") else {}),
                     "bidForm": package.get("selectionForm"),
                     "bidMode": package.get("selectionMode"),
                     "contractType": package.get("contractType"),
@@ -880,6 +883,9 @@ class MuaSamCongProcurementSource:
             "implementationPeriod": revision.get("executionPeriod"),
             "capitalDetail": revision.get("capitalDetail"),
             "bidField": revision.get("field"),
+            **({
+                "evaluationMethod": revision.get("evaluationMethod"),
+            } if revision.get("evaluationMethod") not in (None, "") else {}),
             "bidForm": revision.get("selectionForm"),
             "bidMode": revision.get("selectionMode"),
             "processApply": revision.get("processApply"),
@@ -1238,6 +1244,9 @@ class MuaSamCongProcurementSource:
                     ),
                     "capitalDetail": revision.get("capitalDetail"),
                     "bidField": revision.get("field"),
+                    **({
+                        "evaluationMethod": revision.get("evaluationMethod"),
+                    } if revision.get("evaluationMethod") not in (None, "") else {}),
                     "bidForm": revision.get("selectionForm"),
                     "bidMode": revision.get("selectionMode"),
                     "processApply": revision.get("processApply"),
