@@ -73,3 +73,24 @@ mới được phân biệt bằng `detailLevel` và chỉ phục vụ enrichmen
 - `tests/js/muasamcong_session_transport.test.mjs` kiểm tra mức `INVITATION` vẫn
   lấy tender/HSMT/plan-package nhưng không gọi opening/result/contract.
 - `tests/test_procurement_raw_snapshot.py::test_invitation_notice_snapshot_excludes_post_opening_sources`
+
+## Bổ sung 2026-08-16: tùy chọn mua thêm trong phiên bản kế hoạch lịch sử
+
+- `PLAN_PACKAGE_DETAIL.formValue` là nguồn có thẩm quyền cho danh sách hạng mục
+  tùy chọn mua thêm của từng gói, kể cả khi phiên bản kế hoạch chưa liên kết
+  TBMT. Sidecar này phải được chuẩn hóa thành `additionalPurchaseItems` và ghép
+  vào đúng package observation cùng phiên bản.
+- `additionalChoise`/`additionalPurchaseOption` từ package detail được ghép cùng
+  danh sách để không tạo trạng thái “Có” nhưng không có hạng mục. Không sao chép
+  danh sách từ phiên bản kế hoạch mới hơn sang phiên bản lịch sử.
+- Compatibility impact: các phiên bản lịch sử trước đây hiển thị thiếu danh sách
+  nay hiển thị đầy đủ dữ liệu nguồn mà người dùng vốn được phép xem. Không thay
+  đổi role, permission, tenant isolation, assignment scope, record scope,
+  masking hoặc entitlement. Mapping schema tăng từ `v6` lên `v7`.
+- Migration strategy: không cần migration database. Raw snapshot hiện có được
+  remap bằng mapper `v7`; import session/draft đã tạo bằng mapper cũ cần được
+  chuẩn bị lại từ kế hoạch để nhận dữ liệu đã sửa.
+- Regression test:
+  `tests/test_muasamcong_integration_source.py::test_plan_complete_bundle_maps_package_detail_sidecar_fields`
+  xác nhận cờ, danh sách, field provenance và draft tùy chọn mua thêm đều được
+  giữ từ package sidecar.

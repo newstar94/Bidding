@@ -14,6 +14,7 @@ import time
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
     _walk,
+    normalize_additional_purchase_items,
     normalize_notice_complete_bundle,
     normalize_lots,
     pick,
@@ -109,7 +110,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.13.3"
+    parser_version = "2026.08.16.1"
 
     def __init__(
         self,
@@ -775,6 +776,7 @@ class MuaSamCongProcurementSource:
                     "selectionForm", "bidMode", "selectionMode", "ctype",
                     "contractType", "isInternet", "isDomestic", "isMultiLot",
                     "isPrequalification", "isConcentrateShopping",
+                    "additionalChoise", "additionalPurchaseOption", "formValue",
                 }
                 response = max(
                     (
@@ -810,6 +812,17 @@ class MuaSamCongProcurementSource:
                     map_optional_boolean,
                     ("isConcentrateShopping",),
                 ),
+                "additionalPurchaseOption": (
+                    map_optional_boolean,
+                    ("additionalChoise", "additionalPurchaseOption"),
+                ),
+                "additionalPurchaseItems": (
+                    normalize_additional_purchase_items,
+                    (
+                        "formValue", "additionalPurchaseItems",
+                        "additionalChoiceList", "additionalChoiseList",
+                    ),
+                ),
                 "lots": (normalize_lots, ()),
             }
             for package in canonical.get("packages") or []:
@@ -829,7 +842,15 @@ class MuaSamCongProcurementSource:
                 for field, (mapper, aliases) in package_mapping.items():
                     if field == "lots" and package.get("isMultiLot") is not True:
                         continue
-                    value = response if field == "lots" else pick(response, *aliases)
+                    if field == "lots":
+                        value = response
+                    elif field == "additionalPurchaseItems":
+                        raw_value = pick(response, *aliases)
+                        value = (
+                            response if raw_value not in (None, "") else None
+                        )
+                    else:
+                        value = pick(response, *aliases)
                     if value not in (None, ""):
                         mapped = mapper(value)
                         if mapped is None:
@@ -845,6 +866,8 @@ class MuaSamCongProcurementSource:
                                 "bidpBidLotList/lotDTOList/lots/lotList/"
                                 "bidpPlanDetailLotList"
                                 if field == "lots"
+                                else "formValue"
+                                if field == "additionalPurchaseItems"
                                 else "/".join(aliases)
                             ),
                             "schemaFingerprint": package_source.get(
@@ -865,7 +888,7 @@ class MuaSamCongProcurementSource:
                     }
         return {
             "schemaVersion": "biddingflow-procurement-canonical-v2",
-            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v6",
+            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v7",
             "kind": "PLAN",
             "canonicalCode": family_no,
             "revisions": revisions,
@@ -1157,7 +1180,7 @@ class MuaSamCongProcurementSource:
                 ]
                 canonical = {
                     "schemaVersion": "biddingflow-procurement-canonical-v2",
-                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v6",
+                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v7",
                     "kind": normalized_kind,
                     "canonicalCode": family_no,
                     "revisions": selected,

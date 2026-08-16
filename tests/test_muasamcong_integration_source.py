@@ -1439,6 +1439,15 @@ def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
                                     "isInternet": 0,
                                     "isDomestic": 0,
                                     "isMultiLot": 1,
+                                    "additionalChoise": 1,
+                                    "formValue": json.dumps([{
+                                        "id": "option-plan-1",
+                                        "category": "Vật tư mua thêm",
+                                        "unit": "Hộp",
+                                        "qty": 12,
+                                        "percentage": 30,
+                                        "estimateValue": 6_000_000,
+                                    }], ensure_ascii=False),
                                     "bidpBidLotList": [
                                         {
                                             "lotNo": "PP2600305188",
@@ -1501,6 +1510,15 @@ def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
     assert package["onlineMode"] == "Không qua mạng"
     assert package["domesticOrInternational"] == "Quốc tế"
     assert package["isMultiLot"] is True
+    assert package["additionalPurchaseOption"] is True
+    assert package["additionalPurchaseItems"] == [{
+        "sourceItemId": "option-plan-1",
+        "name": "Vật tư mua thêm",
+        "unit": "Hộp",
+        "quantity": 12,
+        "percentage": 30,
+        "estimateValueVnd": 6_000_000,
+    }]
     assert package["lots"] == [
         {
             "lotNo": "PP2600305188",
@@ -1523,11 +1541,16 @@ def test_plan_complete_bundle_maps_package_detail_sidecar_fields():
     assert canonical["fieldSources"][
         "revisions.01.packages.detail-a-01.lots"
     ]["operation"] == "PLAN_PACKAGE_DETAIL"
+    assert canonical["fieldSources"][
+        "revisions.01.packages.detail-a-01.additionalPurchaseItems"
+    ]["sourcePath"] == "formValue"
     draft = map_package_canonical_to_draft(
         "MUASAMCONG", "PL2600000001", canonical["revisions"][0], package
     )
     assert draft["phanLo"] is True
     assert draft["danhSachPhanLo"] == package["lots"]
+    assert draft["tuyChonMuaThem"] is True
+    assert draft["tuyChonMuaThemList"][0]["hangMuc"] == "Vật tư mua thêm"
     non_multi_lot = canonical["revisions"][0]["packages"][1]
     assert non_multi_lot["isMultiLot"] is False
     assert non_multi_lot["lots"] is None

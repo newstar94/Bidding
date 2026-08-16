@@ -1850,7 +1850,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         }
     return {
         "schemaVersion": "biddingflow-procurement-canonical-v2",
-        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v6",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v7",
         "kind": "NOTICE",
         "canonicalCode": notice_no,
         "revisions": revisions,
