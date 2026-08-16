@@ -17,6 +17,7 @@ from backend.integrations.muasamcong_browser.canonical import (
     normalize_additional_purchase_items,
     normalize_notice_complete_bundle,
     normalize_lots,
+    opening_source_payload_info,
     pick,
 )
 from backend.integrations.muasamcong_browser.code_mapping import (
@@ -518,16 +519,29 @@ class MuaSamCongProcurementSource:
             notice_no=notice_no,
             revision_id=str(revision_id),
         )
+        consistency_partial = bool(canonical.get("partial"))
+        failures = deepcopy(result.get("failures") or [])
+        if consistency_partial:
+            failures.append({
+                "operation": "OPENING_CONSISTENCY",
+                "code": "PROCUREMENT_PARTIAL_DATA",
+                "missingBidderSummaries": (
+                    (canonical.get("consistency") or {}).get(
+                        "missingBidderSummaries", 0
+                    )
+                ),
+            })
+        partial = bool(failures)
         canonical.update(
             {
                 "schemaVersion": "biddingflow-opening-bundle-v1",
                 "processApply": result.get("processApply"),
                 "bidMode": result.get("bidMode"),
-                "partial": bool(result.get("failures")),
-                "failedOperations": deepcopy(result.get("failures") or []),
+                "partial": partial,
+                "failedOperations": failures,
                 "classification": str(
                     classify_upstream_error(
-                        partial=bool(result.get("failures"))
+                        partial=partial
                     )
                 ),
                 "source": self._source_metadata(result),
@@ -535,7 +549,7 @@ class MuaSamCongProcurementSource:
                     notice_no,
                     str(revision_id),
                     str(hint.get("revisionNumber") or ""),
-                    result,
+                    {**result, "failures": failures},
                 ),
             }
         )
@@ -545,6 +559,7 @@ class MuaSamCongProcurementSource:
     @staticmethod
     def _opening_raw_bundle(notice_no, revision_id, revision_number, result):
         raw = result.get("raw") or {}
+        source_requests = result.get("sourceRequests") or {}
         retrieved_at = result.get("retrievedAt")
         failures = result.get("failures") or []
         sources = {}
@@ -558,6 +573,27 @@ class MuaSamCongProcurementSource:
             else:
                 operation = re.sub(r"_\d+$", "", str(key)).upper()
             operation = operation.upper()
+            fallback_request = {
+                "notifyNo": notice_no,
+                "notifyId": revision_id,
+                "type": "TBMT",
+                **({"packType": pack_type} if pack_type is not None else {}),
+            }
+            if operation == "OPENING_FINANCIAL_AVAILABLE":
+                fallback_request = {"id": revision_id}
+            captured_request = source_requests.get(key)
+            request = (
+                {
+                    field: deepcopy(captured_request[field])
+                    for field in (
+                        "notifyNo", "notifyId", "type", "packType", "id",
+                        "viewType",
+                    )
+                    if field in captured_request
+                }
+                if isinstance(captured_request, dict)
+                else fallback_request
+            )
             sources[str(key)] = {
                 "operation": operation,
                 # Opening responses are returned as a compact raw map rather
@@ -566,15 +602,7 @@ class MuaSamCongProcurementSource:
                 "endpoint": _OPENING_ENDPOINTS.get(
                     operation, f"internal:opening/{operation.lower()}"
                 ),
-                "request": {
-                    "noticeNo": notice_no,
-                    "revisionId": revision_id,
-                    **(
-                        {"packType": pack_type}
-                        if pack_type is not None
-                        else {}
-                    ),
-                },
+                "request": request,
                 "response": deepcopy(response),
                 "error": None,
                 "success": True,
@@ -583,6 +611,9 @@ class MuaSamCongProcurementSource:
                 ),
                 "retrievedAt": retrieved_at,
             }
+            source_info = opening_source_payload_info(operation, response)
+            if operation.startswith("OPENING_"):
+                sources[str(key)]["schemaValid"] = source_info["schemaValid"]
         return {
             "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
             "provider": "MUASAMCONG",

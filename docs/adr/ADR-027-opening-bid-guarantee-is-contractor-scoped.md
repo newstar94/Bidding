@@ -16,6 +16,11 @@ Nếu lập chỉ mục theo `(nhà thầu, lô, phase)`, một dòng lô có gi
 
 - `bid-open` là nguồn có thẩm quyền cho `bidGuarantee` và thời hạn bảo đảm của
   nhà thầu trong biên bản mở thầu.
+- Trong bidder summary của `OPENING_BID`, `bidGuarantee` là giá trị chính và
+  `totalGuaranteeValue` chỉ là fallback khi giá trị chính là `null`/thiếu.
+  Các alias rộng (`bidGuaranteed`, `bidSecurity`, `guaranteeValue`, …) không
+  được dùng cho bảo đảm bidder; đặc biệt `bidGuaranteed` nested của lô không
+  có cùng semantic đã được xác minh.
 - Khóa mapping là `(định danh nhà thầu, phase mở thầu)`, không bao gồm mã lô.
   Mọi dòng lô của cùng nhà thầu trong cùng phase nhận cùng giá trị bảo đảm.
 - `lotOpenDetail` chỉ cung cấp phạm vi lô/tên lô và dữ liệu mở thầu khác; giá
@@ -46,8 +51,17 @@ Nếu lập chỉ mục theo `(nhà thầu, lô, phase)`, một dòng lô có gi
   thêm pack tài chính `2` khi trạng thái nguồn cho phép mở tài chính.
 - Khi notice hoặc response opening khai báo phân lô, `OPENING_LOT` và
   `OPENING_LOT_DETAIL` là nguồn bắt buộc của pack tương ứng. Cache chỉ được reuse
-  khi mọi nguồn bắt buộc thành công và response `OPENING_BID` vẫn đạt schema
-  contract; envelope thiếu response không phải bằng chứng hợp lệ.
+  khi mọi nguồn bắt buộc thành công, đạt schema contract tối thiểu và bidder
+  trong các dòng lô có bidder summary tương ứng. Envelope thiếu response,
+  shape sai hoặc mismatch cross-source không phải bằng chứng hợp lệ.
+- `OPENING_ROUND`, `OPENING_LOT` và `OPENING_LOT_DETAIL` có validator semantic
+  riêng; HTTP thành công với object/root shape sai được phân loại
+  `PROCUREMENT_SCHEMA_CHANGED`, không được cache reuse.
+- Raw snapshot lưu request provenance đã sanitize theo request collector thực
+  hiện (`notifyNo`, `notifyId`, `type`, `packType`); không lưu token, cookie,
+  authorization hoặc captcha.
+- Import E-HSĐXTC dùng `financialOpeningAt` của phase tài chính; chỉ fallback
+  về `openingAt` khi canonical cũ chưa có timestamp riêng.
 - Snapshot tham chiếu `WEB_DAU_THAU` tại commit
   `0ccebd94a7819413730778ee9dec517a016cfbd0` gọi `notify`, `roundmng`,
   `bid-open`, `lot-open` và `lotOpenDetail`. Endpoint `/submission` chỉ được khai
@@ -72,7 +86,12 @@ chọn theo khóa cũ, không xóa dữ liệu nguồn hay lịch sử.
 - `tests/test_muasamcong_integration_source.py::test_bidder_level_opening_fields_do_not_cross_map_between_bidders`
 - `tests/test_muasamcong_integration_source.py::test_bidder_level_opening_security_stays_with_its_two_envelope_phase`
 - `tests/test_muasamcong_integration_source.py::test_opening_source_marks_invalid_required_bid_open_as_partial`
+- `tests/test_muasamcong_integration_source.py::test_opening_bidder_guarantee_ignores_nested_bid_guaranteed_alias`
+- `tests/test_muasamcong_integration_source.py::test_opening_marks_lot_bidder_missing_from_bid_open_as_partial`
 - `tests/test_procurement_import_routes.py::test_opening_cached_projection_matches_fresh_bidder_level_fields`
 - `tests/test_procurement_import_routes.py::test_opening_prepare_rejects_cached_invalid_bid_open_schema`
+- `tests/test_procurement_import_routes.py::test_opening_prepare_rejects_cached_cross_source_bidder_mismatch`
 - `tests/js/muasamcong_session_transport.test.mjs` kiểm tra schema `OPENING_BID`,
-  required-source metadata, gói phân lô do notice khai báo và valid empty list.
+  `OPENING_LOT`, `OPENING_LOT_DETAIL`, required-source metadata, gói phân lô do
+  notice khai báo và valid empty list.
+- `tests/js/procurement_import_wizard.test.mjs::financial opening import prefers the financial phase timestamp`

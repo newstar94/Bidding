@@ -1065,6 +1065,57 @@ def normalize_notice_revision(
     }
 
 
+def opening_bidder_summary_rows(payload):
+    """Return only the documented bidder-summary collection from bid-open."""
+
+    if not isinstance(payload, dict):
+        return None
+    response = payload.get("bidSubmissionByContractorViewResponse")
+    if isinstance(response, dict):
+        rows = response.get("bidSubmissionDTOList")
+        return rows if isinstance(rows, list) else None
+    # Older captured fixtures expose the same bidder-summary collection at the
+    # top level.  Keep this compatibility branch deliberately narrow.
+    for key in ("bidSubmissionDTOList", "bidOpenView"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            return rows
+    return None
+
+
+def opening_source_payload_info(operation, payload):
+    """Return the minimum validated shape and count for an opening source."""
+
+    normalized = str(operation or "").strip().upper()
+    if normalized == "OPENING_BID":
+        rows = opening_bidder_summary_rows(payload)
+        return {"schemaValid": rows is not None, "recordCount": len(rows or [])}
+    if normalized == "OPENING_ROUND":
+        valid = isinstance(payload, dict) and bool(payload)
+        return {"schemaValid": valid, "recordCount": 1 if valid else 0}
+    if normalized == "OPENING_LOT":
+        rows = (
+            payload
+            if isinstance(payload, list)
+            else payload.get("lotNoValueDTOList")
+            if isinstance(payload, dict)
+            else None
+        )
+        return {"schemaValid": isinstance(rows, list), "recordCount": len(rows or [])}
+    if normalized == "OPENING_LOT_DETAIL":
+        rows = payload if isinstance(payload, list) else None
+        if isinstance(payload, dict):
+            rows = next((
+                payload.get(key)
+                for key in (
+                    "lotOpenDetailDTOList", "bidOpenDetailDTOList", "items",
+                )
+                if isinstance(payload.get(key), list)
+            ), None)
+        return {"schemaValid": isinstance(rows, list), "recordCount": len(rows or [])}
+    return {"schemaValid": isinstance(payload, (dict, list)), "recordCount": 0}
+
+
 def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: str):
     package_bid_numbers = {
         str(item.get("bidNo") or "").strip()
@@ -1112,7 +1163,17 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             "bidderName",
             default="",
         ) or "").strip()
-        return code.casefold() if code else name.casefold()
+        if code:
+            return "code:" + re.sub(r"\s+", "", code).casefold()
+        if name:
+            return "name:" + re.sub(r"\s+", "", name).casefold()
+        return ""
+
+    def opening_bidder_guarantee(item):
+        primary = _money(item.get("bidGuarantee"))
+        if primary is not None:
+            return primary
+        return _money(item.get("totalGuaranteeValue"))
 
     # lotOpenDetail exposes the contractor-lot rows but can return a null
     # guarantee. bid-open is authoritative for the bidder's submitted
@@ -1125,7 +1186,10 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
         if not str(source_key).casefold().startswith("opening_bid"):
             continue
         phase = opening_phase(source_key)
-        for item in opening_objects(source_payload):
+        summary_rows = opening_bidder_summary_rows(source_payload)
+        if summary_rows is None:
+            continue
+        for item in summary_rows:
             if not isinstance(item, dict):
                 continue
             contractor_identity = opening_bidder_identity(item)
@@ -1140,16 +1204,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 "jointVentureName": None,
                 "jointVentureMembers": [],
             })
-            guarantee = _money(pick(
-                item,
-                "bidGuarantee",
-                "bidGuaranteed",
-                "bidGuaranteeValue",
-                "totalGuaranteeValue",
-                "bidSecurity",
-                "bidSecurityValue",
-                "guaranteeValue",
-            ))
+            guarantee = opening_bidder_guarantee(item)
             validity = pick(
                 item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
             )
@@ -1301,7 +1356,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 )
             )
             identity = (
-                code.casefold() if code else name.casefold(),
+                opening_bidder_identity(item),
                 lot_scope(item) or "",
                 phase,
             )
@@ -1352,14 +1407,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 "bidValidityDays": pick(
                     item, "bidValidity", "bidValidityDays", "bidValidityNum"
                 ),
-                "bidGuarantee": _money(
-                    pick(
-                        item,
-                        "bidGuarantee",
-                        "bidGuaranteed",
-                        "totalGuaranteeValue",
-                    )
-                ),
+                "bidGuarantee": opening_bidder_guarantee(item),
                 "bidGuaranteeValidityDays": pick(
                     item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
                 ),
@@ -1463,6 +1511,32 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
     scheduled_opening_at = (
         scheduled_by_phase["TECHNICAL"] or scheduled_by_phase["FINANCIAL"]
     )
+    source_diagnostics = {}
+    lot_bidder_keys = set()
+    for source_key, source_payload in raw_bundle.items():
+        operation = re.sub(r"_\d+$", "", str(source_key)).upper()
+        if not operation.startswith("OPENING_"):
+            continue
+        pack_match = re.search(r"_(\d+)$", str(source_key))
+        pack_type = int(pack_match.group(1)) if pack_match else None
+        diagnostic_key = f"{operation}:{pack_type if pack_type is not None else ''}"
+        source_diagnostics[diagnostic_key] = {
+            "success": True,
+            **opening_source_payload_info(operation, source_payload),
+        }
+        if operation not in {"OPENING_LOT", "OPENING_LOT_DETAIL"}:
+            continue
+        phase = opening_phase(source_key)
+        for item in opening_objects(source_payload):
+            if not isinstance(item, dict) or lot_scope(item) is None:
+                continue
+            identity = opening_bidder_identity(item)
+            if identity:
+                lot_bidder_keys.add((identity, phase))
+    missing_summaries = lot_bidder_keys - set(bid_open_security)
+    consistency = {
+        "missingBidderSummaries": len(missing_summaries),
+    }
     return {
         "noticeNo": notice_no,
         "revisionId": str(revision_id),
@@ -1472,6 +1546,9 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
         "financialOpeningAt": effective_by_phase["FINANCIAL"],
         "bidders": bidders,
         "lots": lots,
+        "partial": bool(missing_summaries),
+        "sourceDiagnostics": source_diagnostics,
+        "consistency": consistency,
     }
 
 

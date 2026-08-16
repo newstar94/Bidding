@@ -1428,18 +1428,11 @@ def test_bidder_level_opening_fields_do_not_cross_map_between_bidders():
     assert all(row["contractorType"] == "INDEPENDENT" for row in bidder_b)
 
 
-@pytest.mark.parametrize(
-    "guarantee_field",
-    [
-        "bidGuarantee",
-        "bidGuaranteeValue",
-        "totalGuaranteeValue",
-        "bidSecurity",
-        "bidSecurityValue",
-        "guaranteeValue",
-    ],
-)
-def test_bidder_level_opening_guarantee_aliases_map_to_flat_lot_rows(
+@pytest.mark.parametrize("guarantee_field", [
+    "bidGuarantee",
+    "totalGuaranteeValue",
+])
+def test_bidder_level_opening_guarantee_contract_maps_to_flat_lot_rows(
     guarantee_field,
 ):
     opening = normalize_opening_bundle(
@@ -1461,6 +1454,142 @@ def test_bidder_level_opening_guarantee_aliases_map_to_flat_lot_rows(
         revision_id="notice-00",
     )
 
+    assert opening["bidders"][0]["bidGuarantee"] == 100_000_000
+
+
+def test_opening_bidder_guarantee_ignores_nested_bid_guaranteed_alias():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "NT-01",
+                        "bidGuarantee": None,
+                        "totalGuaranteeValue": None,
+                        "lotDetail": {
+                            "contractorCode": "NT-01",
+                            "bidGuaranteed": 20_000_000,
+                        },
+                    }],
+                },
+            },
+            "opening_lot_detail_0": [{
+                "contractorCode": "NT-01",
+                "lotNo": "L01",
+                "bidGuaranteed": 20_000_000,
+            }],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert opening["bidders"][0]["bidGuarantee"] is None
+
+
+@pytest.mark.parametrize(
+    ("bid_guarantee", "total_guarantee", "expected"),
+    [
+        (100_000_000, 120_000_000, 100_000_000),
+        (None, 120_000_000, 120_000_000),
+        (0, 120_000_000, 0),
+    ],
+)
+def test_opening_bidder_guarantee_uses_primary_then_total_fallback(
+    bid_guarantee, total_guarantee, expected,
+):
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "NT-01",
+                        "bidGuarantee": bid_guarantee,
+                        "totalGuaranteeValue": total_guarantee,
+                    }],
+                },
+            },
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert opening["bidders"][0]["bidGuarantee"] == expected
+
+
+@pytest.mark.parametrize("unsupported_field", [
+    "bidGuaranteeValue",
+    "bidSecurity",
+    "bidSecurityValue",
+    "guaranteeValue",
+])
+def test_opening_bidder_guarantee_does_not_accept_unsupported_aliases(
+    unsupported_field,
+):
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "NT-01",
+                        unsupported_field: 100_000_000,
+                    }],
+                },
+            },
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert opening["bidders"][0]["bidGuarantee"] is None
+
+
+def test_opening_marks_lot_bidder_missing_from_bid_open_as_partial():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "NT-A",
+                        "bidGuarantee": 100_000_000,
+                    }],
+                },
+            },
+            "opening_lot_detail_0": [
+                {"contractorCode": "NT-A", "lotNo": "L01"},
+                {"contractorCode": "NT-B", "lotNo": "L02"},
+            ],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert opening["partial"] is True
+    assert opening["consistency"] == {"missingBidderSummaries": 1}
+    assert opening["bidders"][1]["bidGuarantee"] is None
+
+
+def test_opening_matches_bidder_code_despite_case_and_whitespace():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "vn 0100000001",
+                        "bidGuarantee": 100_000_000,
+                    }],
+                },
+            },
+            "opening_lot_detail_0": [{
+                "contractorCode": "VN0100000001",
+                "lotNo": "L01",
+            }],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert len(opening["bidders"]) == 1
+    assert opening["bidders"][0]["contractorCode"] == "VN0100000001"
     assert opening["bidders"][0]["bidGuarantee"] == 100_000_000
 
 
@@ -1840,6 +1969,58 @@ def test_opening_source_marks_invalid_required_bid_open_as_partial():
     }]
     assert opening["rawBundle"]["complete"] is False
     assert opening["rawBundle"]["status"] == "FOUND_PARTIAL"
+
+
+def test_opening_source_marks_cross_source_bidder_mismatch_as_partial():
+    class InconsistentOpeningRuntime(FakeRuntime):
+        def get_opening_bundle(self, notice_no, revision_id):
+            return {
+                "raw": {
+                    "noticeDetail": {"notifyNo": notice_no},
+                    "opening_round_0": {"bidStatus": "OPEN_BID"},
+                    "opening_bid_0": {
+                        "bidSubmissionByContractorViewResponse": {
+                            "bidSubmissionDTOList": [{
+                                "contractorCode": "NT-A",
+                                "bidGuarantee": 100_000_000,
+                            }],
+                        },
+                    },
+                    "opening_lot_detail_0": [{
+                        "contractorCode": "NT-B",
+                        "lotNo": "L01",
+                        "secret": "must-not-leak",
+                    }],
+                },
+                "fingerprint": "opening:v1:cross-source-mismatch",
+                "retrievedAt": "2026-08-16T00:00:00Z",
+                "processApply": "LDT",
+                "bidMode": "1_MTHS",
+                "requiredOpeningSources": [
+                    {"operation": "OPENING_ROUND", "packType": 0},
+                    {"operation": "OPENING_BID", "packType": 0},
+                    {"operation": "OPENING_LOT_DETAIL", "packType": 0},
+                ],
+                "failures": [],
+                "metadata": {
+                    "profile": "2026.08",
+                    "operation": "OPENING_BUNDLE",
+                },
+            }
+
+    opening = MuaSamCongProcurementSource(
+        InconsistentOpeningRuntime()
+    ).get_opening_bundle("IB2600000002", "notice-01")
+
+    assert opening["partial"] is True
+    assert opening["consistency"] == {"missingBidderSummaries": 1}
+    assert opening["failedOperations"] == [{
+        "operation": "OPENING_CONSISTENCY",
+        "code": "PROCUREMENT_PARTIAL_DATA",
+        "missingBidderSummaries": 1,
+    }]
+    assert opening["rawBundle"]["complete"] is False
+    assert "must-not-leak" not in json.dumps(opening["sourceDiagnostics"])
 
 
 def test_complete_lookup_maps_from_raw_bundle_and_can_reprocess_without_refetch():

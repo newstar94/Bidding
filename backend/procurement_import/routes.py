@@ -19,6 +19,10 @@ from backend.integrations.vneps.procurement_provider import VnepsProcurementSour
 from backend.integrations.muasamcong_browser.registry import (
     get_muasamcong_source,
 )
+from backend.integrations.muasamcong_browser.canonical import (
+    normalize_opening_bundle,
+    opening_source_payload_info,
+)
 from backend.procurement_import.command import (
     ProcurementNoticeReconciler,
     ProcurementPlanReconciler,
@@ -777,19 +781,15 @@ def _raw_snapshot_has_complete_opening_sources(
         opening_sources.add((operation, pack_type))
         if source.get("success") is not True:
             return False
-        if operation == "OPENING_BID":
-            response = source.get("response")
-            bidder_response = (
-                response.get("bidSubmissionByContractorViewResponse")
-                if isinstance(response, dict)
-                else None
-            )
-            if (
-                not isinstance(bidder_response, dict)
-                or not isinstance(
-                    bidder_response.get("bidSubmissionDTOList"), list
-                )
-            ):
+        if operation in {
+            "OPENING_BID", "OPENING_ROUND", "OPENING_LOT",
+            "OPENING_LOT_DETAIL",
+        }:
+            if source.get("schemaValid") is False:
+                return False
+            if not opening_source_payload_info(
+                operation, source.get("response")
+            )["schemaValid"]:
                 return False
     if not opening_sources:
         return False
@@ -838,6 +838,19 @@ def _raw_snapshot_has_complete_opening_sources(
         operation = str(failure.get("operation") or "").strip().upper()
         if operation.startswith("OPENING"):
             return False
+    opening_raw = {
+        key: source.get("response")
+        for key, source in (revision.get("sources") or {}).items()
+        if isinstance(source, dict)
+        and str(source.get("operation") or key).upper().startswith("OPENING")
+    }
+    opening = normalize_opening_bundle(
+        opening_raw,
+        notice_no=str((raw_bundle.get("entity") or {}).get("canonicalCode") or ""),
+        revision_id=str(revision.get("revisionId") or ""),
+    )
+    if opening.get("partial"):
+        return False
     return True
 
 
@@ -887,7 +900,11 @@ def _load_opening_from_raw_snapshot(
         and str(row.get("revisionNumber") or "") == revision_number
     ), None)
     opening = (revision or {}).get("opening")
-    if not isinstance(opening, dict) or not isinstance(opening.get("bidders"), list):
+    if (
+        not isinstance(opening, dict)
+        or not isinstance(opening.get("bidders"), list)
+        or opening.get("partial")
+    ):
         return None
     return {
         **deepcopy(opening),

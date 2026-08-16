@@ -112,6 +112,11 @@ export function mapOpeningBidder(bidder) {
 }
 
 
+export function financialOpeningTimestamp(opening) {
+  return opening?.financialOpeningAt ?? opening?.openingAt ?? null;
+}
+
+
 export function canApplyOpeningPreview(preview, pkg) {
   return Boolean(
     preview?.previewId
@@ -338,12 +343,10 @@ export async function importFinancialOpeningFromMuasamcong({
       price?.dispatchEvent(new Event("input", { bubbles: true }));
     });
     const openingTime = contentWrapper.querySelector("#op-fin-thoigianmothau");
-    if (
-      openingTime
-      && applied.opening?.openingAt
-    ) {
+    const financialOpeningAt = financialOpeningTimestamp(applied.opening);
+    if (openingTime && financialOpeningAt) {
       openingTime.value = view.model.formatForDatetimeLocal(
-        applied.opening.openingAt,
+        financialOpeningAt,
       );
       openingTime.dispatchEvent(new Event("change", { bubbles: true }));
     }

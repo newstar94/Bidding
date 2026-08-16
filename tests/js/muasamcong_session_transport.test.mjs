@@ -572,6 +572,15 @@ test("two-envelope opening loads financial data only after the source round allo
   );
   assert.ok(result.raw.opening_bid_2);
   assert.ok(result.raw.opening_financial_detail_2);
+  assert.deepEqual(result.sourceRequests.opening_bid_1, {
+    notifyNo: "IB2600000002",
+    notifyId: "notice-01",
+    type: "TBMT",
+    packType: 1,
+  });
+  assert.deepEqual(result.sourceRequests.opening_financial_available, {
+    id: "notice-01",
+  });
   assert.deepEqual(
     calls.find(([operation]) => operation === "OPENING_FINANCIAL_AVAILABLE"),
     ["OPENING_FINANCIAL_AVAILABLE", { id: "notice-01" }],
@@ -605,6 +614,15 @@ test("opening calls lot endpoints only when the source marks the package multi-l
         data: { bidoBidroundMngViewDTO: { isMultiLot: 1, bidStatus: "OPEN_BID" } },
         metadata: { operation },
       };
+      if (operation === "OPENING_BID") return {
+        data: {
+          bidSubmissionByContractorViewResponse: { bidSubmissionDTOList: [] },
+        },
+        metadata: { operation },
+      };
+      if (["OPENING_LOT", "OPENING_LOT_DETAIL"].includes(operation)) {
+        return { data: [], metadata: { operation } };
+      }
       return { data: { operation }, metadata: { operation } };
     },
   };
@@ -696,6 +714,47 @@ test("opening marks an invalid bid-open payload as a schema failure", async () =
     assert.equal(result.raw.opening_bid_0, undefined);
     assert.deepEqual(result.failures, [{
       operation: "OPENING_BID",
+      packType: 0,
+      error: "PROCUREMENT_SCHEMA_CHANGED",
+    }]);
+  }
+});
+
+
+test("opening marks invalid required lot payloads as schema failures", async () => {
+  for (const invalidOperation of ["OPENING_LOT", "OPENING_LOT_DETAIL"]) {
+    const client = {
+      request: async (operation) => {
+        if (operation === "NOTICE_LDT_DETAIL") return {
+          data: {
+            notifyNo: "IB2600000007", notifyId: "notice-01",
+            bidMode: "1_MTHS", processApply: "LDT", isMultiLot: 1,
+          },
+          metadata: { operation },
+        };
+        if (operation === "OPENING_ROUND") return {
+          data: { bidoBidroundMngViewDTO: { bidStatus: "OPEN_BID" } },
+          metadata: { operation },
+        };
+        if (operation === "OPENING_BID") return {
+          data: {
+            bidSubmissionByContractorViewResponse: { bidSubmissionDTOList: [] },
+          },
+          metadata: { operation },
+        };
+        if (operation === invalidOperation) {
+          return { data: {}, metadata: { operation } };
+        }
+        return { data: [], metadata: { operation } };
+      },
+    };
+
+    const result = await new MscCollectors({ client }).getOpeningBundle(
+      "IB2600000007", "notice-01",
+    );
+
+    assert.deepEqual(result.failures, [{
+      operation: invalidOperation,
       packType: 0,
       error: "PROCUREMENT_SCHEMA_CHANGED",
     }]);

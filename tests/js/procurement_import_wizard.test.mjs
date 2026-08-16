@@ -7,6 +7,7 @@ import {
   applyOpeningImportToDraft,
   canApplyOpeningPreview,
   countOpeningContractors,
+  financialOpeningTimestamp,
   mapOpeningBidder,
   prepareOpeningForLifecycle,
   reconcileOpeningDrafts,
@@ -399,6 +400,21 @@ test("opening mapper fills the lot name paired with the imported lot code", () =
 
   assert.equal(mapped.maPhanLo, "PP2600198304");
   assert.equal(mapped.tenPhanLo, "Atropin sulfat");
+});
+
+
+test("financial opening import prefers the financial phase timestamp", () => {
+  assert.equal(
+    financialOpeningTimestamp({
+      openingAt: "2026-08-01T08:00:00",
+      financialOpeningAt: "2026-08-10T09:00:00",
+    }),
+    "2026-08-10T09:00:00",
+  );
+  assert.equal(
+    financialOpeningTimestamp({ openingAt: "2026-08-01T08:00:00" }),
+    "2026-08-01T08:00:00",
+  );
 });
 
 

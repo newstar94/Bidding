@@ -35,9 +35,10 @@ def test_opening_prepare_reuses_complete_exact_raw_snapshot():
                         "revisionId": "notice-01",
                         "revisionNumber": "01",
                         "sources": {
-                            "opening_round_0": {
-                                "operation": "OPENING_ROUND",
-                                "success": True,
+                                "opening_round_0": {
+                                    "operation": "OPENING_ROUND",
+                                    "success": True,
+                                    "response": {"bidStatus": "OPEN_BID"},
                             },
                             "opening_bid_0": {
                                 "operation": "OPENING_BID",
@@ -115,6 +116,7 @@ def test_opening_prepare_reuses_opening_sources_from_partial_notice_snapshot():
                             "opening_round_0": {
                                 "operation": "OPENING_ROUND",
                                 "success": True,
+                                "response": {"bidStatus": "OPEN_BID"},
                             },
                             "opening_bid": {
                                 "operation": "OPENING_BID",
@@ -128,10 +130,12 @@ def test_opening_prepare_reuses_opening_sources_from_partial_notice_snapshot():
                             "opening_lot_0": {
                                 "operation": "OPENING_LOT",
                                 "success": True,
+                                "response": [],
                             },
                             "opening_lot_detail": {
                                 "operation": "OPENING_LOT_DETAIL",
                                 "success": True,
+                                "response": [],
                             },
                         },
                     },
@@ -191,6 +195,61 @@ def test_opening_prepare_rejects_cached_lot_rows_without_bid_open():
             raise AssertionError(
                 "lot rows without bid-open are not complete opening evidence"
             )
+
+    assert _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    ) is None
+
+
+def test_opening_prepare_rejects_cached_cross_source_bidder_mismatch():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {
+                "complete": True,
+                "entity": {"kind": "NOTICE", "canonicalCode": "IB2600000002"},
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "sources": {
+                            "opening_round_0": {
+                                "operation": "OPENING_ROUND",
+                                "success": True,
+                                "response": {"bidStatus": "OPEN_BID"},
+                            },
+                            "opening_bid_0": {
+                                "operation": "OPENING_BID",
+                                "success": True,
+                                "response": {
+                                    "bidSubmissionByContractorViewResponse": {
+                                        "bidSubmissionDTOList": [
+                                            {"contractorCode": "NT-A"},
+                                        ],
+                                    },
+                                },
+                            },
+                            "opening_lot_0": {
+                                "operation": "OPENING_LOT",
+                                "success": True,
+                                "response": [{
+                                    "lotNo": "L01",
+                                    "bidOpenView": [{"contractorCode": "NT-B"}],
+                                }],
+                            },
+                            "opening_lot_detail_0": {
+                                "operation": "OPENING_LOT_DETAIL",
+                                "success": True,
+                                "response": [{"contractorCode": "NT-B", "lotNo": "L01"}],
+                            },
+                        },
+                    },
+                },
+            }
+
+    class Source:
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            raise AssertionError("cross-source inconsistent opening is not reusable")
 
     assert _load_opening_from_raw_snapshot(
         Source(), RawRepository(), "org-1", "IB2600000002",
@@ -331,11 +390,24 @@ def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
             "raw": {
                 "noticeDetail": {"notifyNo": "IB2600000002"},
                 "opening_notify_0": {"bidStatus": "OPEN"},
-                "opening_bid_0": {"bidders": []},
+                "opening_bid_0": {
+                    "bidSubmissionByContractorViewResponse": {
+                        "bidSubmissionDTOList": [],
+                    },
+                },
             },
             "retrievedAt": "2026-08-16T00:00:00Z",
             "fingerprint": "opening:v1:test",
             "noticeDetailOperation": "NOTICE_LDT_DETAIL",
+            "sourceRequests": {
+                "opening_bid_0": {
+                    "notifyNo": "IB2600000002",
+                    "notifyId": "actual-notify-id",
+                    "type": "TBMT",
+                    "packType": 0,
+                    "authorization": "must-not-persist",
+                },
+            },
             "requiredOpeningSources": [
                 {"operation": "OPENING_ROUND", "packType": 0},
                 {"operation": "OPENING_BID", "packType": 0},
@@ -355,6 +427,15 @@ def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
         {"operation": "OPENING_BID", "packType": 0},
     ]
     assert all(str(source["endpoint"]).strip() for source in sources.values())
+    assert sources["opening_bid_0"]["request"] == {
+        "notifyNo": "IB2600000002",
+        "notifyId": "actual-notify-id",
+        "type": "TBMT",
+        "packType": 0,
+    }
+    assert not {
+        "authorization", "token", "cookie", "captcha",
+    } & set(sources["opening_bid_0"]["request"])
 
 
 def test_opening_cached_projection_matches_fresh_bidder_level_fields():
