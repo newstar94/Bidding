@@ -391,6 +391,16 @@ test("searchable select filters, selects, and follows native option state access
     assert.equal(await page.locator("#province-select").inputValue(), "dn");
     assert.equal(await page.locator("body").getAttribute("data-province-change-count"), "1");
 
+    await combobox.click();
+    await combobox.press("Backspace");
+    assert.equal(await combobox.inputValue(), "");
+    assert.equal(await options.count(), 4);
+    assert.equal(await page.locator("#province-select").inputValue(), "dn");
+
+    await combobox.type("ha");
+    await combobox.press("Backspace");
+    assert.equal(await combobox.inputValue(), "h");
+
     await page.locator("#province-select").evaluate((select) => {
       select.disabled = true;
     });

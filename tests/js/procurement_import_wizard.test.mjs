@@ -5,6 +5,7 @@ import { ProcurementImportClient } from "../../frontend/procurement/ProcurementI
 import {
   canApplyOpeningPreview,
   mapOpeningBidder,
+  prepareOpeningForLifecycle,
   reconcileOpeningDrafts,
 } from "../../frontend/procurement/OpeningImportWizard.js";
 import {
@@ -305,6 +306,50 @@ test("opening client keeps canonical opening payload server-side", async () => {
     () => client.applyOpening({ ...request, bidders: [{ bidPrice: 1 }] }),
     /previewId/,
   );
+});
+
+
+test("opening lifecycle preparation validates one server preview before the package transition", async () => {
+  const calls = [];
+  const client = {
+    async prepareOpening(request) {
+      calls.push(["prepare", request]);
+      return {
+        previewId: "opening-preview",
+        package: { id: "package-1", rowVersion: 4 },
+        opening: { bidders: [{ contractorCode: "0100000001" }] },
+      };
+    },
+    async applyOpening(request) {
+      calls.push(["apply", request]);
+      return {
+        package: { id: "package-1", rowVersion: 4 },
+        opening: { bidders: [{ contractorCode: "0100000001" }] },
+      };
+    },
+  };
+  const controller = {
+    model: { getWorkspaceToken: () => "org-1" },
+  };
+  const result = await prepareOpeningForLifecycle.call(
+    controller,
+    { id: "package-1", rowVersion: 3, maGoiThau: "IB2600000002-01" },
+    { client },
+  );
+
+  assert.equal(result.applied.opening.bidders.length, 1);
+  assert.deepEqual(calls, [
+    ["prepare", {
+      packageId: "package-1",
+      noticeNo: "IB2600000002",
+      workspaceLease: "org-1",
+    }],
+    ["apply", {
+      previewId: "opening-preview",
+      expectedPackageRowVersion: 4,
+      workspaceLease: "org-1",
+    }],
+  ]);
 });
 
 

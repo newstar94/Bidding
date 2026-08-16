@@ -88,10 +88,19 @@ class ProcurementRouteError(RuntimeError):
 
 
 def _enabled():
-    return os.environ.get(
+    import_enabled = os.environ.get(
         "PROCUREMENT_IMPORT_ENABLED",
         os.environ.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"),
     ).strip().casefold() == "true"
+    if import_enabled:
+        return True
+    # Mua Sam Cong lookup and import use the same connector.  On deployments
+    # that only set PROCUREMENT_LOOKUP_ENABLED, expose the import routes too
+    # so the frontend capability and backend availability stay in sync.
+    lookup_enabled = os.environ.get(
+        "PROCUREMENT_LOOKUP_ENABLED", "false"
+    ).strip().casefold() == "true"
+    return lookup_enabled and _provider_name() in {"muasamcong", "web_dau_thau"}
 
 
 def _provider_name():

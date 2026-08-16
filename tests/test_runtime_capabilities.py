@@ -44,6 +44,18 @@ def test_procurement_lookup_capability_is_advertised_only_when_enabled(monkeypat
     assert PROCUREMENT_LOOKUP_V1 not in disabled["serverCapabilities"]
 
 
+def test_muasamcong_lookup_also_advertises_opening_import_capability(monkeypatch):
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
+    monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "disabled")
+    monkeypatch.setenv("PROCUREMENT_LOOKUP_ENABLED", "true")
+
+    capabilities = with_server_capabilities({"valid": True})["serverCapabilities"]
+
+    assert PROCUREMENT_IMPORT_V2 in capabilities
+
+
 def test_procurement_import_capability_is_not_advertised_for_unusable_vneps(
     monkeypatch,
 ):

@@ -15,6 +15,8 @@ export function renderOpeningPanel(container, pkg, { isDirectOrSpecial = false }
       <div class="package-section-header">
         <h4 id="mothau-table-title" class="package-section-title is-neutral">${title}</h4>
         <div class="compact-action-group">
+          <button class="btn btn-outline btn-sm compact-action" id="btn-mothau-import-msc" type="button" aria-describedby="mothau-import-msc-description"><i data-lucide="cloud-download"></i> Lấy dữ liệu mở thầu từ Mua sắm công</button>
+          <span id="mothau-import-msc-description" class="sr-only">Lấy dữ liệu nguồn, xem preview rồi áp dụng vào bản nháp trước khi lưu.</span>
           <button class="btn-excel-action btn-download-excel-template-direct" data-type="mothau" id="btn-mothau-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
           <button class="btn-excel-action btn-import-excel-direct" data-type="mothau" id="btn-mothau-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
           <button class="btn btn-outline btn-sm compact-action" id="btn-mothau-add-bid"><i data-lucide="plus"></i> ${addLabel}</button>

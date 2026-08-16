@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { buildPackageTabs } from "../../frontend/packages/detail/PackageTabs.js";
@@ -24,4 +25,14 @@ test("package opening tabs use icons matching their current meaning", () => {
     openingTab({ trangThai: "Đã mở thầu", hinhThucLuaChon: "Chỉ định thầu rút gọn" }),
     { id: "opening", label: "Dữ liệu nhà thầu", icon: "users" },
   );
+});
+
+test("package opening detail exposes the Mua Sắm Công import action", async () => {
+  const source = await readFile(
+    new URL("../../frontend/packages/detail/OpeningPanel.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /id="btn-mothau-import-msc"/u);
+  assert.match(source, /data-lucide="cloud-download"/u);
+  assert.match(source, /aria-describedby="mothau-import-msc-description"/u);
 });

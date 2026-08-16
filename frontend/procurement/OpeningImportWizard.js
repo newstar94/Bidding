@@ -89,6 +89,82 @@ export function canApplyOpeningPreview(preview, pkg) {
 }
 
 
+function openingNoticeNo(pkg) {
+  return /^IB\d{10}(?:-\d{2})?$/i.test(String(pkg?.maGoiThau || ""))
+    ? String(pkg.maGoiThau).slice(0, 12)
+    : null;
+}
+
+
+export async function prepareOpeningForLifecycle(
+  pkg,
+  { client = new ProcurementImportClient() } = {},
+) {
+  if (!pkg) throw new TypeError("Gói thầu không hợp lệ.");
+  const workspaceToken = currentWorkspaceToken(this.model);
+  const assertCurrentWorkspace = () => {
+    if (currentWorkspaceToken(this.model) !== workspaceToken) throw workspaceChangedError();
+  };
+  const preview = await client.prepareOpening({
+    packageId: pkg.id,
+    noticeNo: openingNoticeNo(pkg),
+    workspaceLease: workspaceToken || null,
+  });
+  assertCurrentWorkspace();
+  if (!preview?.previewId || String(preview.package?.id) !== String(pkg.id)) {
+    throw new Error("PROCUREMENT_PREVIEW_STALE");
+  }
+  const applied = await client.applyOpening({
+    previewId: preview.previewId,
+    expectedPackageRowVersion: preview.package.rowVersion,
+    workspaceLease: workspaceToken || null,
+  });
+  assertCurrentWorkspace();
+  return { preview, applied };
+}
+
+
+export function applyOpeningImportToDraft({
+  pkg,
+  preview,
+  applied,
+  action = "MERGE",
+} = {}) {
+  const tbody = document.getElementById("mothau-table-tbody");
+  if (!pkg || !tbody || !applied?.opening) return { added: 0 };
+  const currentRows = Array.from(tbody.querySelectorAll("tr"));
+  const currentIdentities = new Set(currentRows.map((row) => openingBidIdentity({
+    maNhaThau: row.querySelector(".mt-ma-nha-thau, .mt-ma-dinh-danh")?.value,
+    tenNhaThau: row.querySelector(".mt-ten-nha-thau")?.value,
+    maPhanLo: row.querySelector(".mt-ma-phan-lo")?.value,
+  })));
+  const bidders = (applied.opening.bidders || [])
+    .filter((bidder) => bidder.phase !== "FINANCIAL")
+    .map(mapOpeningBidder);
+  if (action === "OVERWRITE") tbody.replaceChildren();
+  const additions = action === "MERGE"
+    ? bidders.filter((bidder) => !currentIdentities.has(openingBidIdentity(bidder)))
+    : bidders;
+  additions.forEach((bidder) => this.addMoThauRow(openingCaseType(pkg), pkg, bidder));
+  const openingInput = document.getElementById("op-thoigianmothau");
+  if (
+    openingInput
+    && applied.opening.openingAt
+    && (action === "OVERWRITE" || !openingInput.value)
+  ) {
+    openingInput.value = this.model.formatForDatetimeLocal(applied.opening.openingAt);
+    openingInput.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  this._openingImportPreview = {
+    previewId: preview?.previewId || "",
+    packageId: pkg.id,
+    packageRowVersion: preview?.package?.rowVersion || applied.package?.rowVersion || null,
+  };
+  globalThis.lucide?.createIcons?.();
+  return { added: additions.length };
+}
+
+
 export async function importOpeningFromMuasamcong() {
   const select = document.getElementById("mothau-goithau-select");
   const button = document.getElementById("btn-mothau-import-msc");
@@ -107,12 +183,9 @@ export async function importOpeningFromMuasamcong() {
   };
   try {
     const client = new ProcurementImportClient();
-    const possibleNotice = /^IB\d{10}(?:-\d{2})?$/i.test(String(pkg.maGoiThau || ""))
-      ? String(pkg.maGoiThau).slice(0, 12)
-      : null;
     const preview = await client.prepareOpening({
       packageId: pkg.id,
-      noticeNo: possibleNotice,
+      noticeNo: openingNoticeNo(pkg),
       workspaceLease: workspaceToken || null,
     });
     assertCurrentWorkspace();
@@ -165,31 +238,7 @@ export async function importOpeningFromMuasamcong() {
     if (Number(current?.rowVersion || 1) !== Number(applied.package.rowVersion)) {
       throw new Error("PROCUREMENT_PREVIEW_STALE");
     }
-    const bidders = (applied.opening?.bidders || [])
-      .filter((bidder) => bidder.phase !== "FINANCIAL")
-      .map(mapOpeningBidder);
-    if (action === "OVERWRITE") tbody?.replaceChildren();
-    const additions = action === "MERGE"
-      ? bidders.filter((bidder) => !currentIdentities.has(openingBidIdentity(bidder)))
-      : bidders;
-    additions.forEach((bidder) => this.addMoThauRow(openingCaseType(pkg), pkg, bidder));
-    const openingInput = document.getElementById("op-thoigianmothau");
-    if (
-      openingInput
-      && applied.opening?.openingAt
-      && (action === "OVERWRITE" || !openingInput.value)
-    ) {
-      openingInput.value = this.model.formatForDatetimeLocal(
-        applied.opening.openingAt,
-      );
-      openingInput.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    this._openingImportPreview = {
-      previewId: preview.previewId,
-      packageId: pkg.id,
-      packageRowVersion: preview.package.rowVersion,
-    };
-    globalThis.lucide?.createIcons?.();
+    applyOpeningImportToDraft.call(this, { pkg, preview, applied, action });
   } catch (error) {
     const stale = String(error?.message || error).includes("PROCUREMENT_PREVIEW_STALE");
     await this.view.customAlert(

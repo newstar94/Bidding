@@ -126,6 +126,18 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
 
   let visibleOptions = [];
   let activeIndex = -1;
+  let clearSelectedLabelOnBackspace = false;
+
+  const armSelectedLabelClear = () => {
+    const currentLabel = selectedLabel(
+      select,
+      config.formatSelectedLabel,
+      config.displayEmptyOptionLabel,
+    );
+    clearSelectedLabelOnBackspace = Boolean(
+      config.searchable && currentLabel && input.value === currentLabel,
+    );
+  };
 
   const positionPortalList = () => {
     if (!config.portal) return;
@@ -305,19 +317,31 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
 
   input.addEventListener("focus", () => {
     renderOptions(config.searchable ? "" : input.value);
+    armSelectedLabelClear();
     if (config.openOnFocus) {
       setOpen(true);
       if (config.searchable) input.select();
     }
   });
-  input.addEventListener("click", () => setOpen(true));
+  input.addEventListener("click", () => {
+    armSelectedLabelClear();
+    setOpen(true);
+  });
   input.addEventListener("input", () => {
+    clearSelectedLabelOnBackspace = false;
     renderOptions(input.value);
     setOpen(true);
     config.onQuery?.(input.value);
   });
   input.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown") {
+    if (event.key === "Backspace" && clearSelectedLabelOnBackspace) {
+      event.preventDefault();
+      clearSelectedLabelOnBackspace = false;
+      input.value = "";
+      renderOptions("");
+      setOpen(true);
+      config.onQuery?.("");
+    } else if (event.key === "ArrowDown") {
       event.preventDefault();
       setOpen(true);
       setActiveIndex(activeIndex + 1);

@@ -57,6 +57,90 @@ test("package detail version selector uses the shared styled dropdown", async ()
   assert.match(index, /components\.css\?v=2\.0/u);
 });
 
+test("package detail keeps the back action at the upper right when the title wraps", async () => {
+  const [components, generated] = await Promise.all([
+    readFile(new URL("../../views/css/components.css", import.meta.url), "utf8"),
+    readFile(new URL("../../views/css/generated-static-styles.css", import.meta.url), "utf8"),
+  ]);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 920, height: 600 } });
+    await page.setContent(`<!doctype html><html><head><meta charset="utf-8">
+      <style>${components}</style>
+      <style>${generated}</style>
+    </head><body>
+      <section style="width: 840px">
+        <div class="card bf-s-115a326dbb" id="detail-workflow-card">
+          <div class="card-header bf-s-b9d70c9b32">
+            <div class="bf-s-bd53bc7485" id="package-detail-heading">
+              <div class="bf-s-0a8a14e03e">
+                <span id="detail-workflow-code">IB2600212155</span>
+                <span>01</span>
+                <span>Đang mời thầu</span>
+              </div>
+              <h3 id="detail-workflow-title" class="bf-s-4749e65682">
+                Mua sắm thuốc Generic bổ sung phục vụ công tác khám bệnh, chữa bệnh năm 2026
+                của Trung tâm Y tế khu vực Trạm Tấu và các đơn vị trực thuộc
+              </h3>
+            </div>
+            <div id="detail-workflow-actions" class="bf-s-ea34a9fdaf">
+              <button class="btn btn-outline bf-s-884f09ff2f">Quay lại danh sách</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </body></html>`);
+
+    const layout = await page.evaluate(() => {
+      const header = document.querySelector("#detail-workflow-card > .card-header");
+      const heading = document.getElementById("package-detail-heading");
+      const title = document.getElementById("detail-workflow-title");
+      const actions = document.getElementById("detail-workflow-actions");
+      const button = actions.querySelector("button");
+      const rect = (element) => element.getBoundingClientRect();
+      const headerRect = rect(header);
+      const headingRect = rect(heading);
+      const titleRect = rect(title);
+      const actionsRect = rect(actions);
+      const buttonRect = rect(button);
+      return {
+        headerTop: headerRect.top,
+        headerHeight: headerRect.height,
+        headingTop: headingRect.top,
+        headingHeight: headingRect.height,
+        headingRight: headingRect.right,
+        titleHeight: titleRect.height,
+        actionsTop: actionsRect.top,
+        actionsHeight: actionsRect.height,
+        actionsLeft: actionsRect.left,
+        buttonRight: buttonRect.right,
+        headerRight: headerRect.right,
+        overflowsHorizontally: header.scrollWidth > header.clientWidth,
+      };
+    });
+
+    assert.ok(
+      Math.abs(
+        (layout.actionsTop + layout.actionsHeight / 2)
+        - (layout.headingTop + layout.headingHeight / 2),
+      ) <= 2,
+      `back action must be vertically centered with the heading: ${JSON.stringify(layout)}`,
+    );
+    assert.ok(
+      layout.actionsLeft >= layout.headingRight,
+      `back action must remain in the right column: ${JSON.stringify(layout)}`,
+    );
+    assert.ok(
+      layout.titleHeight > 30,
+      `long title must wrap inside the left column: ${JSON.stringify(layout)}`,
+    );
+    assert.ok(layout.buttonRight <= layout.headerRight + 1);
+    assert.equal(layout.overflowsHorizontally, false);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("package detail version selector survives switching from version 01 to 00", async () => {
   const server = createServer(async (request, response) => {
     try {

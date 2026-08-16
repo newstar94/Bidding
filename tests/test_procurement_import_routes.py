@@ -135,6 +135,18 @@ def test_import_reuses_active_muasamcong_lookup_when_new_provider_is_unset(
     assert build_procurement_source() is expected
 
 
+def test_lookup_flag_alone_enables_muasamcong_import_source(monkeypatch):
+    expected = SimpleNamespace(name="MUASAMCONG")
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "disabled")
+    monkeypatch.setenv("PROCUREMENT_LOOKUP_ENABLED", "true")
+    monkeypatch.setattr(routes_module, "get_muasamcong_source", lambda: expected)
+
+    assert build_procurement_source() is expected
+
+
 def test_import_preparer_uses_configured_raw_snapshot_ttl(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_RAW_CACHE_TTL_SECONDS", "450")
     source = SimpleNamespace(name="MUASAMCONG")

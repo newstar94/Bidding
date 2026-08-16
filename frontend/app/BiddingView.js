@@ -514,18 +514,22 @@ export class BiddingView {
         gridOverlay = document.createElement("div");
         gridOverlay.className = "flatpickr-grid-overlay";
         setRuntimeStyle(gridOverlay, "display", "none");
+        const innerContainer = container2.querySelector(".flatpickr-innerContainer");
         const footerEl = container2.querySelector(".flatpickr-footer");
-        if (footerEl) {
+        if (innerContainer) {
+          container2.insertBefore(gridOverlay, innerContainer);
+        } else if (footerEl) {
           container2.insertBefore(gridOverlay, footerEl);
         } else {
           container2.appendChild(gridOverlay);
         }
       }
       const showGrid = (type) => {
+        container2.classList.add("flatpickr-grid-open");
         const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        if (innerContainer) setRuntimeStyle(innerContainer, "display", "none");
+        if (innerContainer) setRuntimeStyle(innerContainer, "display", "none!important");
         const timeContainer = container2.querySelector(".flatpickr-time");
-        if (timeContainer) setRuntimeStyle(timeContainer, "display", "none");
+        if (timeContainer) setRuntimeStyle(timeContainer, "display", "none!important");
         const prevMonth = container2.querySelector(".flatpickr-prev-month");
         const nextMonth = container2.querySelector(".flatpickr-next-month");
         if (prevMonth) setRuntimeStyle(prevMonth, "display", "none");
@@ -599,6 +603,7 @@ export class BiddingView {
         }
       };
       const hideGrid = () => {
+        container2.classList.remove("flatpickr-grid-open");
         setRuntimeStyle(gridOverlay, "display", "none");
         const innerContainer = container2.querySelector(".flatpickr-innerContainer");
         if (innerContainer) setRuntimeStyle(innerContainer, "display", "");
@@ -1379,7 +1384,16 @@ export class BiddingView {
       modal.classList.add("active");
     });
   }
-  customPrompt(title, message, defaultValue = "", placeholder = "", isDatePicker = false, validateFn = null, inputType = "text") {
+  customPrompt(
+    title,
+    message,
+    defaultValue = "",
+    placeholder = "",
+    isDatePicker = false,
+    validateFn = null,
+    inputType = "text",
+    promptOptions = {},
+  ) {
     return new Promise((resolve) => {
       const modal = document.getElementById("modal-custom-dialog");
       const titleEl = document.getElementById("dialog-title");
@@ -1400,6 +1414,17 @@ export class BiddingView {
       setRuntimeStyle(inputContainer, "marginTop", "8px");
       setRuntimeStyle(inputContainer, "marginBottom", "20px");
       setRuntimeStyle(inputContainer, "textAlign", "left");
+      const inputLabel = String(promptOptions?.inputLabel || "").trim();
+      if (inputLabel) {
+        const labelEl = document.createElement("label");
+        labelEl.htmlFor = "dialog-prompt-input";
+        labelEl.textContent = inputLabel;
+        setRuntimeStyle(labelEl, "display", "block");
+        setRuntimeStyle(labelEl, "marginBottom", "8px");
+        setRuntimeStyle(labelEl, "fontWeight", "700");
+        setRuntimeStyle(labelEl, "color", "var(--text-main)");
+        inputContainer.appendChild(labelEl);
+      }
       const inputEl = document.createElement("input");
       inputEl.type = inputType;
       inputEl.id = "dialog-prompt-input";
@@ -1416,6 +1441,67 @@ export class BiddingView {
       setRuntimeStyle(inputEl, "outline", "none");
       setRuntimeStyle(inputEl, "boxSizing", "border-box");
       inputContainer.appendChild(inputEl);
+      const secondaryAction = promptOptions?.secondaryAction;
+      let secondaryButton = null;
+      let secondaryStatus = null;
+      let onSecondaryAction = null;
+      if (secondaryAction && typeof secondaryAction.run === "function") {
+        secondaryButton = document.createElement("button");
+        secondaryButton.type = "button";
+        secondaryButton.className = "btn btn-outline";
+        secondaryButton.setAttribute("aria-describedby", "dialog-prompt-secondary-status");
+        secondaryButton.innerHTML = trustedHTML(
+          `<i data-lucide="${escapeHtml(secondaryAction.icon || "cloud-download")}"></i> ${escapeHtml(secondaryAction.label || "Lấy dữ liệu")}`,
+        );
+        setRuntimeStyle(secondaryButton, "width", "100%");
+        setRuntimeStyle(secondaryButton, "minHeight", "44px");
+        setRuntimeStyle(secondaryButton, "marginTop", "12px");
+        setRuntimeStyle(secondaryButton, "justifyContent", "center");
+        secondaryStatus = document.createElement("p");
+        secondaryStatus.id = "dialog-prompt-secondary-status";
+        secondaryStatus.setAttribute("role", "status");
+        secondaryStatus.setAttribute("aria-live", "polite");
+        secondaryStatus.textContent = secondaryAction.description || "";
+        setRuntimeStyle(secondaryStatus, "margin", "8px 0 0");
+        setRuntimeStyle(secondaryStatus, "minHeight", "20px");
+        setRuntimeStyle(secondaryStatus, "fontSize", "0.8rem");
+        setRuntimeStyle(secondaryStatus, "lineHeight", "1.5");
+        setRuntimeStyle(secondaryStatus, "color", "var(--text-muted)");
+        inputContainer.appendChild(secondaryButton);
+        inputContainer.appendChild(secondaryStatus);
+        onSecondaryAction = async () => {
+          if (secondaryButton.dataset.loading === "true") return;
+          const originalLabel = secondaryButton.innerHTML;
+          secondaryButton.dataset.loading = "true";
+          secondaryButton.disabled = true;
+          secondaryButton.setAttribute("aria-busy", "true");
+          secondaryButton.textContent = secondaryAction.loadingLabel || "Đang lấy dữ liệu…";
+          secondaryStatus.textContent = secondaryAction.loadingStatus || "Đang kết nối Mua sắm công…";
+          setRuntimeStyle(secondaryStatus, "color", "var(--text-muted)");
+          try {
+            const result = await secondaryAction.run();
+            if (result?.value) {
+              if (inputEl._flatpickr) inputEl._flatpickr.setDate(result.value, true);
+              else inputEl.value = result.value;
+              inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+              inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            secondaryStatus.textContent = result?.status || "Đã lấy dữ liệu thành công.";
+            setRuntimeStyle(secondaryStatus, "color", "var(--success)");
+          } catch {
+            secondaryStatus.textContent = secondaryAction.errorMessage
+              || "Không thể lấy dữ liệu. Vui lòng thử lại.";
+            setRuntimeStyle(secondaryStatus, "color", "var(--danger)");
+          } finally {
+            delete secondaryButton.dataset.loading;
+            secondaryButton.disabled = false;
+            secondaryButton.removeAttribute("aria-busy");
+            secondaryButton.innerHTML = trustedHTML(originalLabel);
+            globalThis.lucide?.createIcons?.();
+          }
+        };
+        secondaryButton.addEventListener("click", onSecondaryAction);
+      }
       messageEl.parentNode.insertBefore(inputContainer, messageEl.nextSibling);
       if (isDatePicker) {
         inputEl.classList.add("flatpickr-datetime");
@@ -1482,6 +1568,9 @@ export class BiddingView {
         }
         okBtn.removeEventListener("click", onOk);
         cancelBtn.removeEventListener("click", onCancel);
+        if (secondaryButton && onSecondaryAction) {
+          secondaryButton.removeEventListener("click", onSecondaryAction);
+        }
         if (closeBtn) closeBtn.removeEventListener("click", onClose);
         modal.classList.remove("active");
         setTimeout(() => {

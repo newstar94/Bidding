@@ -7,6 +7,11 @@ import {
 } from "../shared/MutationService.js";
 import { derivePackagePrice } from "./packagePricing.js";
 import { normalizeStatus } from "./LifecyclePolicy.js";
+import {
+  hasServerCapability,
+  PROCUREMENT_IMPORT_CAPABILITY,
+} from "../auth/serverCapabilities.js";
+import { isDirectOrSpecialPackage } from "./bidProcessValidation.js";
 
 function runExclusivePackageWorkflow(controller, key, workflow) {
   controller._packageWorkflowPromises = controller._packageWorkflowPromises || new Map();
@@ -36,6 +41,10 @@ async function performMoThauGoiThau(id) {
   let gt = resolveLatestPackage(this.model, requestedPackage || id);
   if (!gt) return;
   id = gt.id;
+  let preparedOpening = null;
+  const canImportOpening = !isDirectOrSpecialPackage(gt)
+    && hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY)
+    && typeof this.prepareOpeningForLifecycle === "function";
   const thoiGianMoThauStr = await this.view.customPrompt(
     "Chọn thời gian mở thầu",
     `Chọn Thời gian mở thầu cho gói thầu "${gt.tenGoiThau}":`,
@@ -79,7 +88,34 @@ async function performMoThauGoiThau(id) {
         }
       }
       return null;
-    }
+    },
+    "text",
+    {
+      inputLabel: "Thời gian mở thầu",
+      secondaryAction: canImportOpening ? {
+        label: "Lấy dữ liệu mở thầu từ Mua sắm công",
+        icon: "cloud-download",
+        description: "Tự điền thời gian và dữ liệu nhà thầu vào biên bản mở thầu.",
+        loadingLabel: "Đang lấy dữ liệu…",
+        loadingStatus: "Đang kết nối và đọc biên bản mở thầu từ Mua sắm công…",
+        errorMessage: "Không thể lấy biên bản mở thầu. Vui lòng kiểm tra mã TBMT và thử lại.",
+        run: async () => {
+          preparedOpening = null;
+          const result = await this.prepareOpeningForLifecycle(gt);
+          const bidders = (result.applied?.opening?.bidders || []).filter(
+            (bidder) => bidder.phase !== "FINANCIAL",
+          );
+          if (!bidders.length) throw new Error("PROCUREMENT_OPENING_EMPTY");
+          preparedOpening = result;
+          return {
+            value: result.applied.opening?.openingAt
+              ? this.model.formatForDatetimeLocal(result.applied.opening.openingAt)
+              : "",
+            status: `Đã lấy ${bidders.length} nhà thầu từ Mua sắm công.`,
+          };
+        },
+      } : null,
+    },
   );
   if (thoiGianMoThauStr === null) {
     return;
@@ -123,6 +159,18 @@ async function performMoThauGoiThau(id) {
       "alert-triangle",
     );
     return { ok: false, code: "PACKAGE_NOT_FOUND" };
+  }
+  if (
+    preparedOpening
+    && Number(preparedOpening.applied?.package?.rowVersion || 0)
+      !== Number(gt.rowVersion || 1)
+  ) {
+    await this.view.customAlert(
+      "Dữ liệu gói thầu đã thay đổi",
+      "Bản ghi gói thầu đã thay đổi sau khi lấy dữ liệu Mua sắm công. Vui lòng mở lại thao tác và lấy dữ liệu mới.",
+      "alert-triangle",
+    );
+    return { ok: false, code: "PROCUREMENT_PREVIEW_STALE" };
   }
   const currentStatus = normalizeStatus(gt.trangThai);
   if (currentStatus === "OPENED") {
@@ -171,9 +219,19 @@ async function performMoThauGoiThau(id) {
     : "opening";
   const detailPackageId = selectPackageDetailTab(this.view, targetTab, gt, this.model);
   await this.switchTab("goithau-detail", detailPackageId);
+  const importedDraft = preparedOpening && typeof this.applyOpeningImportToDraft === "function"
+    ? this.applyOpeningImportToDraft({
+      pkg: gt,
+      preview: preparedOpening.preview,
+      applied: preparedOpening.applied,
+      action: "MERGE",
+    })
+    : null;
   await this.view.customAlert(
     "Thành công",
-    `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
+    importedDraft
+      ? `Đã mở thầu và điền ${importedDraft.added || 0} dòng dữ liệu từ Mua sắm công vào biên bản. Vui lòng kiểm tra và lưu lại.`
+      : `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
     "check-circle"
   );
 }

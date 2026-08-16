@@ -9,24 +9,33 @@ SERVER_CAPABILITIES = (AGGREGATE_VERSION_V1,)
 
 
 def _procurement_import_available(environ):
-    enabled = str(
+    import_enabled = str(
         environ.get(
             "PROCUREMENT_IMPORT_ENABLED",
             environ.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"),
         )
     ).strip().casefold() == "true"
-    provider = str(
-        environ.get(
-            "PROCUREMENT_PROVIDER",
-            environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
-        )
-    ).strip().casefold()
+    lookup_enabled = str(
+        environ.get("PROCUREMENT_LOOKUP_ENABLED", "false")
+    ).strip().casefold() == "true"
+    explicit_provider = str(environ.get("PROCUREMENT_PROVIDER") or "").strip()
+    if explicit_provider:
+        provider = explicit_provider.casefold()
+    elif lookup_enabled:
+        # The lookup connector is the Mua Sam Cong connector when no
+        # dedicated import provider has been configured.  Keep capability
+        # advertisement aligned with procurement_import.routes._provider_name.
+        provider = "muasamcong"
+    else:
+        provider = str(
+            environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
+        ).strip().casefold()
     app_env = str(environ.get("APP_ENV", "development")).strip().casefold()
     fixture_path = str(
         environ.get("VNEPS_PROCUREMENT_FIXTURE_PATH", "")
     ).strip()
     return bool(
-        enabled
+        (import_enabled or lookup_enabled)
         and (
             provider in {"muasamcong", "web_dau_thau"}
             or (
