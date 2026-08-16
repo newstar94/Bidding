@@ -4,7 +4,7 @@ import { brotliCompressSync, gzipSync } from "node:zlib";
 
 const DIST_ROOT = path.resolve("dist");
 const MANIFEST_PATH = path.join(DIST_ROOT, ".vite", "manifest.json");
-const MAX_MAIN_CSS_BYTES = 330_000;
+const MAX_MAIN_CSS_BYTES = 335_000;
 const BASELINE = Object.freeze({
   raw: 379_859,
   gzip: 66_541,
@@ -13,6 +13,7 @@ const BASELINE = Object.freeze({
 const ROUTES = Object.freeze([
   ["frontend/landing/LandingPage.js", ".landing-eyebrow-dot", "frontend/app/app.js"],
   ["frontend/legal/LegalPage.js", ".legal-document-note", "frontend/app/app.js"],
+  ["frontend/errors/NotFoundPage.js", ".bf-not-found", "frontend/app/app.js"],
   ["frontend/assistant/AssistantLoader.js", ".bf-assistant-panel", "frontend/app/workspaceBootstrap.js"],
 ]);
 

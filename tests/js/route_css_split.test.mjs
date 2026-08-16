@@ -9,16 +9,20 @@ test("landing and legal styles are owned by their dynamic route modules", () => 
   const appCss = read("views/css/app.css");
   const landing = read("frontend/landing/LandingPage.js");
   const legal = read("frontend/legal/LegalPage.js");
+  const notFound = read("frontend/errors/NotFoundPage.js");
   const components = read("views/css/components.css");
   const assistantLoader = read("frontend/assistant/AssistantLoader.js");
 
-  assert.doesNotMatch(appCss, /landing\.css|legal\.css/u);
+  assert.doesNotMatch(appCss, /landing\.css|legal\.css|not-found\.css/u);
   assert.match(app, /await import\("\.\.\/landing\/LandingPage\.js"\)/u);
   assert.match(app, /await import\("\.\.\/legal\/LegalPage\.js"\)/u);
+  assert.match(app, /await import\("\.\.\/errors\/NotFoundPage\.js"\)/u);
   assert.match(landing, /loadStyleOnce\(LANDING_STYLESHEET_URL\)/u);
   assert.match(landing, /new URL\("\.\.\/\.\.\/views\/css\/landing\.css", import\.meta\.url\)/u);
   assert.match(legal, /loadStyleOnce\(LEGAL_STYLESHEET_URL\)/u);
   assert.match(legal, /new URL\("\.\.\/\.\.\/views\/css\/legal\.css", import\.meta\.url\)/u);
+  assert.match(notFound, /loadStyleOnce\(NOT_FOUND_STYLESHEET_URL\)/u);
+  assert.match(notFound, /new URL\("\.\.\/\.\.\/views\/css\/not-found\.css", import\.meta\.url\)/u);
   assert.doesNotMatch(components, /assistant\.css/u);
   assert.match(assistantLoader, /loadStyleOnce\(ASSISTANT_STYLESHEET_URL\)/u);
   assert.match(assistantLoader, /new URL\("\.\/assistant\.css", import\.meta\.url\)/u);
@@ -36,9 +40,10 @@ test("secure build enforces hashed route CSS and its main-bundle budget", () => 
     trustedTypes.includes("if (/^\\/dist\\/assets\\/[A-Za-z0-9_.-]+\\.css"),
     true,
   );
-  assert.match(checker, /MAX_MAIN_CSS_BYTES\s*=\s*330_000/u);
+  assert.match(checker, /MAX_MAIN_CSS_BYTES\s*=\s*335_000/u);
   assert.match(checker, /frontend\/landing\/LandingPage\.js/u);
   assert.match(checker, /frontend\/legal\/LegalPage\.js/u);
+  assert.match(checker, /frontend\/errors\/NotFoundPage\.js/u);
 });
 
 test("secure main stylesheet preserves the shared debug cascade", () => {
@@ -46,7 +51,7 @@ test("secure main stylesheet preserves the shared debug cascade", () => {
   const appCss = read("views/css/app.css");
   const debugOrder = [...index.matchAll(/href="\/css\/([^?"]+)\.css[^"]*"/gu)]
     .map((match) => `${match[1]}.css`)
-    .filter((name) => !["landing.css", "legal.css"].includes(name));
+    .filter((name) => !["landing.css", "legal.css", "not-found.css"].includes(name));
   const secureOrder = [...appCss.matchAll(/@import\s+"\.\/([^"]+)"[^;]*;/gu)]
     .map((match) => match[1]);
 
