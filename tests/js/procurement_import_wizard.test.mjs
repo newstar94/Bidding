@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import { ProcurementImportClient } from "../../frontend/procurement/ProcurementImportClient.js";
 import {
   canApplyOpeningPreview,
+  countOpeningContractors,
   mapOpeningBidder,
   prepareOpeningForLifecycle,
   reconcileOpeningDrafts,
@@ -353,7 +355,7 @@ test("opening lifecycle preparation validates one server preview before the pack
 });
 
 
-test("opening mapper preserves lot, joint venture, and bid values", () => {
+test("opening mapper preserves lot and bid values without prefilling venture members", () => {
   const mapped = mapOpeningBidder({
     contractorCode: "0100000001",
     contractorName: "Liên danh mẫu",
@@ -371,10 +373,7 @@ test("opening mapper preserves lot, joint venture, and bid values", () => {
   assert.equal(mapped.maPhanLo, "01");
   assert.equal(mapped.giaDuThau, 100);
   assert.equal(mapped.giaSauGiamGia, 90);
-  assert.deepEqual(
-    mapped.thanhVienLienDanh.map((row) => row.vaiTro),
-    ["Đứng đầu liên danh", "Thành viên liên danh"],
-  );
+  assert.deepEqual(mapped.thanhVienLienDanh, []);
   assert.equal(
     canApplyOpeningPreview(
       { previewId: "p", package: { id: "package-1", rowVersion: 3 } },
@@ -382,6 +381,45 @@ test("opening mapper preserves lot, joint venture, and bid values", () => {
     ),
     true,
   );
+});
+
+
+test("opening mapper fills the lot name paired with the imported lot code", () => {
+  const mapped = mapOpeningBidder({
+    contractorCode: "vn0100000001",
+    contractorName: "Nhà thầu 1",
+    lotNo: "PP2600198304",
+    lotName: "Atropin sulfat",
+  });
+
+  assert.equal(mapped.maPhanLo, "PP2600198304");
+  assert.equal(mapped.tenPhanLo, "Atropin sulfat");
+});
+
+
+test("opening preview counts unique contractors across lot bid rows", () => {
+  const bidders = [
+    { contractorCode: "vn0100000001", contractorName: "Nhà thầu 1", lotNo: "PP01" },
+    { contractorCode: "vn0100000001", contractorName: "Nhà thầu 1", lotNo: "PP02" },
+    { contractorCode: "vn0100000002", contractorName: "Nhà thầu 2", lotNo: "PP03" },
+  ];
+
+  assert.equal(countOpeningContractors(bidders), 2);
+});
+
+
+test("opening mapper detects venture markers even when member details are absent", () => {
+  const mapped = mapOpeningBidder({
+    contractorCode: "vn-pt",
+    contractorName: "Công ty TNHH dịch vụ thương mại P&T",
+    jointVentureCode: "PC2600320117",
+    jointVentureName: "Liên danh P&T - KN",
+  });
+
+  assert.equal(mapped.loaiNhaThau, "Liên danh");
+  assert.equal(mapped.maNhaThau, "vn-pt");
+  assert.equal(mapped.tenNhaThau, "Liên danh P&T - KN");
+  assert.deepEqual(mapped.thanhVienLienDanh, []);
 });
 
 
@@ -404,6 +442,18 @@ test("opening draft merge preserves local rows while overwrite replaces them", (
   assert.deepEqual(overwritten.rows.map((row) => row.tenNhaThau), [
     "Tên nguồn", "Nhà thầu mới",
   ]);
+});
+
+
+test("opening imports overwrite drafts without asking for confirmation", () => {
+  const source = fs.readFileSync("frontend/procurement/OpeningImportWizard.js", "utf8");
+
+  assert.doesNotMatch(source, /customSelectConfirm/u);
+  assert.doesNotMatch(source, /customConfirm/u);
+  assert.match(
+    source,
+    /applyOpeningImportToDraft\.call\(this, \{[\s\S]*action: "OVERWRITE"/u,
+  );
 });
 
 

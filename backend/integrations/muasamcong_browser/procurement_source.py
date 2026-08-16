@@ -56,6 +56,26 @@ _ALLOWED_ERRORS = {
     "PROCUREMENT_ADAPTER_UNSUPPORTED",
 }
 
+# The opening collector returns raw response payloads keyed by operation, but
+# unlike the complete plan/notice collectors it does not carry the endpoint
+# path alongside each response.  Keep the evidence envelope compatible with
+# procurement_raw_snapshot's non-empty endpoint contract.
+_OPENING_ENDPOINTS = {
+    "NOTICE_LDT_DETAIL": "/expose/lcnt/bid-po-bido-notify-contractor-view/get-by-id",
+    "NOTICE_OTHER_DETAIL": "/expose/lcnt/bid-notify-contractor-out/get-by-id",
+    "NOTICE_ADB_DETAIL": "/expose/lcnt/bid-notify-contractor-out-adb-wb/get-by-id",
+    "OPENING_NOTIFY": "/exposeldtkqmt/bid-notification-p/notify",
+    "OPENING_ROUND": "/expose/ldtkqmt/bid-notification-p/roundmng",
+    "OPENING_SUBMISSION": "/expose/ldtkqmt/bid-notification-p/submission",
+    "OPENING_BID": "/expose/ldtkqmt/bid-notification-p/bid-open",
+    "OPENING_LOT": "/expose/ldtkqmt/bid-notification-p/lot-open",
+    "OPENING_LOT_DETAIL": "/expose/ldtkqmt/bid-notification-p/lotOpenDetail",
+    "OPENING_FINANCIAL_DETAIL": "/expose/ldtkqmt/bid-notification-p/get-by-id-v2",
+    "OPENING_FINANCIAL_AVAILABLE": "/hsdxtc/is-opened",
+    "OPENING_OTHER": "/expose/kqmt/bid-notify-contractor-out/get-by-id",
+    "OPENING_ADB": "/expose/kqmt/bid-notify-contractor-out-adb-wb/get-by-id",
+}
+
 
 def _first_present(mapping, *keys):
     for key in keys:
@@ -534,9 +554,15 @@ class MuaSamCongProcurementSource:
                 )
             else:
                 operation = re.sub(r"_\d+$", "", str(key)).upper()
+            operation = operation.upper()
             sources[str(key)] = {
                 "operation": operation,
-                "endpoint": "",
+                # Opening responses are returned as a compact raw map rather
+                # than the normal collector envelopes.  Reattach the catalog
+                # path here so persistence satisfies the evidence contract.
+                "endpoint": _OPENING_ENDPOINTS.get(
+                    operation, f"internal:opening/{operation.lower()}"
+                ),
                 "request": {
                     "noticeNo": notice_no,
                     "revisionId": revision_id,

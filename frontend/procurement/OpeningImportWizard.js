@@ -42,6 +42,26 @@ export function openingBidIdentity(bidder) {
 }
 
 
+export function countOpeningContractors(bidders) {
+  const identities = new Set();
+  (Array.isArray(bidders) ? bidders : []).forEach((bidder) => {
+    const identity = bidder?.jointVentureCode
+      || bidder?.ventureCode
+      || bidder?.contractorCode
+      || bidder?.maNhaThau
+      || bidder?.maDinhDanh
+      || bidder?.jointVentureName
+      || bidder?.ventureName
+      || bidder?.contractorName
+      || bidder?.tenNhaThau
+      || "";
+    const normalized = String(identity).replace(/\s+/g, "").toUpperCase();
+    if (normalized) identities.add(normalized);
+  });
+  return identities.size;
+}
+
+
 export function reconcileOpeningDrafts(existing, source, mode = "MERGE") {
   const mappedSource = (Array.isArray(source) ? source : []).map(mapOpeningBidder);
   if (mode === "OVERWRITE") {
@@ -61,13 +81,23 @@ export function reconcileOpeningDrafts(existing, source, mode = "MERGE") {
 export function mapOpeningBidder(bidder) {
   const members = mapJointVentureMembers(bidder?.jointVentureMembers);
   const isJointVenture = members.length > 0
+    || Boolean(
+      bidder?.jointVentureCode
+      || bidder?.ventureCode
+      || bidder?.jointVentureName
+      || bidder?.ventureName,
+    )
     || /joint|liên danh/i.test(String(bidder?.contractorType || ""));
+  const jointVentureName = bidder?.jointVentureName || bidder?.ventureName || "";
   return {
     maDinhDanh: bidder?.contractorCode || "",
     maNhaThau: bidder?.contractorCode || "",
-    tenNhaThau: bidder?.contractorName || "",
+    tenNhaThau: (isJointVenture && jointVentureName)
+      ? jointVentureName
+      : (bidder?.contractorName || ""),
     loaiNhaThau: isJointVenture ? "Liên danh" : "Độc lập",
-    thanhVienLienDanh: members,
+    // Thành viên liên danh do người dùng nhập và xác nhận thủ công.
+    thanhVienLienDanh: [],
     giaDuThau: bidder?.bidPrice ?? null,
     tyLeGiamGia: bidder?.discountRate ?? null,
     giaSauGiamGia: bidder?.priceAfterDiscount ?? null,
@@ -76,6 +106,7 @@ export function mapOpeningBidder(bidder) {
     hieuLucBaoDamNgay: bidder?.bidGuaranteeValidityDays ?? null,
     thoiGianThucHien: bidder?.executionPeriod || "",
     maPhanLo: bidder?.lotNo || "",
+    tenPhanLo: bidder?.lotName || "",
   };
 }
 
@@ -192,40 +223,6 @@ export async function importOpeningFromMuasamcong() {
     if (!canApplyOpeningPreview(preview, pkg)) {
       throw new Error("PROCUREMENT_PREVIEW_STALE");
     }
-    const bidderCount = preview.opening?.bidders?.length || 0;
-    const lotCount = preview.opening?.lots?.length || 0;
-    const partial = (preview.warnings || []).length > 0
-      ? " Một số nguồn phụ chưa trả dữ liệu; hãy kiểm tra kỹ preview."
-      : "";
-    const tbody = document.getElementById("mothau-table-tbody");
-    const currentRows = Array.from(tbody?.querySelectorAll?.("tr") || []);
-    const sourceTechnical = (preview.opening?.bidders || [])
-      .filter((bidder) => bidder.phase !== "FINANCIAL");
-    const currentIdentities = new Set(currentRows.map((row) => openingBidIdentity({
-      maNhaThau: row.querySelector(".mt-ma-nha-thau, .mt-ma-dinh-danh")?.value,
-      tenNhaThau: row.querySelector(".mt-ten-nha-thau")?.value,
-      maPhanLo: row.querySelector(".mt-ma-phan-lo")?.value,
-    })));
-    const conflicts = sourceTechnical.filter(
-      (bidder) => currentIdentities.has(openingBidIdentity(bidder)),
-    ).length;
-    const previewMessage = `TBMT ${preview.notice.noticeNo}-${preview.notice.selectedRevision}: ${bidderCount} nhà thầu${lotCount ? `, ${lotCount} phần lô` : ""}; ${conflicts} dòng trùng với draft.${partial}`;
-    const action = currentRows.length
-      ? await this.view.customSelectConfirm(
-        "Preview dữ liệu mở thầu",
-        `${previewMessage} Chọn cách áp dụng:`,
-        [
-          { value: "MERGE", label: "Gộp — giữ dữ liệu local" },
-          { value: "OVERWRITE", label: "Ghi đè toàn bộ draft" },
-        ],
-      )
-      : await this.view.customConfirm(
-        "Preview dữ liệu mở thầu",
-        `${previewMessage} Áp dụng vào bản nháp hiện tại?`,
-        "download-cloud",
-      ) ? "OVERWRITE" : null;
-    assertCurrentWorkspace();
-    if (!action) return;
     const applied = await client.applyOpening({
       previewId: preview.previewId,
       expectedPackageRowVersion: preview.package.rowVersion,
@@ -238,7 +235,12 @@ export async function importOpeningFromMuasamcong() {
     if (Number(current?.rowVersion || 1) !== Number(applied.package.rowVersion)) {
       throw new Error("PROCUREMENT_PREVIEW_STALE");
     }
-    applyOpeningImportToDraft.call(this, { pkg, preview, applied, action });
+    applyOpeningImportToDraft.call(this, {
+      pkg,
+      preview,
+      applied,
+      action: "OVERWRITE",
+    });
   } catch (error) {
     const stale = String(error?.message || error).includes("PROCUREMENT_PREVIEW_STALE");
     await this.view.customAlert(
@@ -294,31 +296,6 @@ export async function importFinancialOpeningFromMuasamcong({
     if (!canApplyOpeningPreview(preview, pkg)) {
       throw new Error("PROCUREMENT_PREVIEW_STALE");
     }
-    const financialBidders = (preview.opening?.bidders || []).filter(
-      (bidder) => bidder.phase === "FINANCIAL",
-    );
-    const localPriceInputs = Array.from(
-      contentWrapper.querySelectorAll("#opening-fin-table .op-gia-du-thau"),
-    );
-    const hasLocalValues = localPriceInputs.some(
-      (input) => String(input.value || "").trim(),
-    );
-    const action = hasLocalValues
-      ? await view.customSelectConfirm(
-        "Preview mở E-HSĐXTC",
-        `TBMT ${preview.notice.noticeNo}-${preview.notice.selectedRevision}: ${financialBidders.length} giá dự thầu. Chọn cách xử lý giá đã nhập:`,
-        [
-          { value: "MERGE", label: "Gộp — chỉ điền ô trống" },
-          { value: "OVERWRITE", label: "Ghi đè giá từ nguồn" },
-        ],
-      )
-      : await view.customConfirm(
-        "Preview mở E-HSĐXTC",
-        `TBMT ${preview.notice.noticeNo}-${preview.notice.selectedRevision}: ${financialBidders.length} giá dự thầu tài chính. Áp dụng vào bản nháp hiện tại?`,
-        "download-cloud",
-      ) ? "OVERWRITE" : null;
-    assertCurrentWorkspace();
-    if (!action) return false;
     const applied = await client.applyOpening({
       previewId: preview.previewId,
       expectedPackageRowVersion: preview.package.rowVersion,
@@ -346,14 +323,12 @@ export async function importFinancialOpeningFromMuasamcong({
       if (
         price
         && source.bidPrice != null
-        && (action === "OVERWRITE" || !String(price.value || "").trim())
       ) {
         price.value = view.model.formatVND(source.bidPrice);
       }
       if (
         discount
         && source.discountRate != null
-        && (action === "OVERWRITE" || !String(discount.value || "").trim())
       ) {
         discount.value = String(source.discountRate).replace(".", ",");
       }
@@ -363,7 +338,6 @@ export async function importFinancialOpeningFromMuasamcong({
     if (
       openingTime
       && applied.opening?.openingAt
-      && (action === "OVERWRITE" || !openingTime.value)
     ) {
       openingTime.value = view.model.formatForDatetimeLocal(
         applied.opening.openingAt,

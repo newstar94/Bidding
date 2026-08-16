@@ -34,5 +34,6 @@ test("package opening detail exposes the Mua Sắm Công import action", async (
   );
   assert.match(source, /id="btn-mothau-import-msc"/u);
   assert.match(source, /data-lucide="cloud-download"/u);
-  assert.match(source, /aria-describedby="mothau-import-msc-description"/u);
+  assert.match(source, /mothau-opening-actions/u);
+  assert.doesNotMatch(source, /mothau-import-msc-description/u);
 });

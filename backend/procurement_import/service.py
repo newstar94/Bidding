@@ -6,6 +6,7 @@ from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from queue import Queue
 import secrets
 import os
 import time
@@ -91,6 +92,22 @@ def enrich_plan_package_with_notice_revision(package, notice_no, detail):
     if detail.get("status") not in (None, ""):
         target["sourceStatus"] = deepcopy(detail["status"])
     for field in (
+        "name",
+        "summary",
+        "priceVnd",
+        "estimatePriceVnd",
+        "field",
+        "capitalDetail",
+        "selectionForm",
+        "selectionMode",
+        "selectionDuration",
+        "selectionStart",
+        "contractType",
+        "executionPeriod",
+        "onlineMode",
+        "domesticOrInternational",
+        "isMedicinePackage",
+        "additionalPurchaseOption",
         "bidGuaranteeVnd",
         "bidValidityDays",
         "additionalPurchaseItems",
@@ -233,7 +250,7 @@ class ProcurementImportPreparer:
         captured_bundle = complete.get("rawBundle")
         if (
             not cache_hit
-            and detail_level == "COMPLETE"
+            and detail_level in {"COMPLETE", "INVITATION"}
             and self.raw_snapshot_repository is not None
             and isinstance(captured_bundle, dict)
         ):
@@ -282,7 +299,7 @@ class ProcurementImportPreparer:
             if notice_no not in complete_cache:
                 complete = self._lookup_complete_bundle(
                     notice_no, "PACKAGE", organization_id,
-                    detail_level="COMPLETE",
+                    detail_level="INVITATION",
                 )
                 complete_cache[notice_no] = complete
             if complete is not None:
@@ -366,28 +383,58 @@ class ProcurementImportPreparer:
         workers = max(1, min(int(max_workers or 1), len(notices), 8))
         child_timeout = max(1.0, float(timeout_seconds or 45.0))
 
+        # A source can own a single serialized browser/JSON-lines worker.  In
+        # production ``source_factory`` currently returns that process-wide
+        # singleton, so submitting it concurrently only makes sibling tasks
+        # fail with PROCUREMENT_LOOKUP_BUSY.  Build a bounded pool of distinct
+        # source instances and never lease the same instance to two tasks at
+        # once.  Factories that really create isolated sources retain parallel
+        # enrichment; singleton factories degrade safely to one worker.
+        source_candidates = [self.source]
+        if callable(source_factory):
+            source_candidates = []
+            for _index in range(workers):
+                candidate = source_factory()
+                if candidate is not None:
+                    source_candidates.append(candidate)
+        unique_sources = []
+        seen_source_ids = set()
+        for candidate in source_candidates or [self.source]:
+            identity = id(candidate)
+            if identity in seen_source_ids:
+                continue
+            seen_source_ids.add(identity)
+            unique_sources.append(candidate)
+        source_pool = Queue(maxsize=len(unique_sources))
+        for candidate in unique_sources:
+            source_pool.put(candidate)
+        workers = min(workers, len(unique_sources))
+
         def enrich_one(notice_no):
-            started_at = time.perf_counter()
-            child_source = source_factory() if source_factory else self.source
-            child = ProcurementImportPreparer(
-                child_source,
-                self.preview_store,
-                raw_snapshot_repository=self.raw_snapshot_repository,
-                raw_cache_ttl_seconds=self.raw_cache_ttl_seconds,
-            )
-            child_revisions = deepcopy(revisions)
-            child_history = {}
-            for child_revision in child_revisions:
-                child._enrich_linked_notices(
-                    child_revision,
-                    organization_id=organization_id,
-                    complete_cache={},
-                    revision_history=child_history,
-                    notice_filter=notice_no,
+            child_source = source_pool.get()
+            try:
+                started_at = time.perf_counter()
+                child = ProcurementImportPreparer(
+                    child_source,
+                    self.preview_store,
+                    raw_snapshot_repository=self.raw_snapshot_repository,
+                    raw_cache_ttl_seconds=self.raw_cache_ttl_seconds,
                 )
-            if time.perf_counter() - started_at > child_timeout:
-                raise TimeoutError("PROCUREMENT_ENRICHMENT_TIMEOUT")
-            return notice_no, child_revisions, child_history
+                child_revisions = deepcopy(revisions)
+                child_history = {}
+                for child_revision in child_revisions:
+                    child._enrich_linked_notices(
+                        child_revision,
+                        organization_id=organization_id,
+                        complete_cache={},
+                        revision_history=child_history,
+                        notice_filter=notice_no,
+                    )
+                if time.perf_counter() - started_at > child_timeout:
+                    raise TimeoutError("PROCUREMENT_ENRICHMENT_TIMEOUT")
+                return notice_no, child_revisions, child_history
+            finally:
+                source_pool.put(child_source)
 
         completed = {}
         failures = []

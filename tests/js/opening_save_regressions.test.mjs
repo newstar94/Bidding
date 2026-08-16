@@ -5,6 +5,8 @@ import test from "node:test";
 import { formatPartnerIdentityCode } from "../../frontend/app/domUtils.js";
 import {
   calculateOpeningDiscountedPrice,
+  lotCodeControlWidth,
+  resizeLotCodeControl,
   saveThongTinMoThau,
 } from "../../frontend/packages/BidProcessWorkflow.js";
 import {
@@ -42,6 +44,14 @@ test("opening bids require a positive bid price when the price field exists", ()
 
 test("opening rows without a bid-price field remain valid", () => {
   assert.equal(validateOpeningRows([openingRow({ includePrice: false })]).valid, true);
+});
+
+test("opening lot-code controls reserve room for the complete selected code", () => {
+  assert.equal(lotCodeControlWidth("PP2600198304"), "17ch");
+  assert.equal(lotCodeControlWidth("PP26"), "12ch");
+  const control = { style: {}, value: "PP2600198304" };
+  resizeLotCodeControl(control);
+  assert.equal(control.style.width, "17ch");
 });
 
 test("opening bids use child identities distinct from contractor identities across lots", () => {
@@ -120,6 +130,15 @@ test("discounted price inputs do not expose a placeholder", () => {
     source,
     /class="[^"]*mt-gia-sau-giam-gia[^"]*"[^>]*placeholder=/,
   );
+});
+
+test("opening lot columns size codes from the selected value and keep names at one-and-a-half width", () => {
+  const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+  assert.equal((source.match(/min-width: 11rem/g) || []).length, 3);
+  assert.equal((source.match(/resizeLotCodeControl\(rowLotSelect\)/g) || []).length, 1);
+  assert.doesNotMatch(source, /mt-ma-phan-lo" style="min-width: 11rem"/u);
+  assert.equal((source.match(/bf-s-ad8c93e5fe">Tên phần lô/g) || []).length, 2);
+  assert.equal((source.match(/bf-s-2811ee8f01">Tên phần lô/g) || []).length, 1);
 });
 
 test("contractor codes keep their original letter casing", () => {

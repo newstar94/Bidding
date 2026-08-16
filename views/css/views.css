@@ -2835,6 +2835,17 @@ table th {
   width: 18rem;
   min-width: 18rem;
 }
+#tab-goithau-detail #mothau-table .package-lot-code-column,
+#tab-goithau-detail #mothau-table td:has(.mt-ma-phan-lo) {
+  width: max-content;
+  min-width: max-content;
+}
+#tab-goithau-detail #mothau-table .package-lot-name-column,
+#tab-goithau-detail #mothau-table td:has(.mt-ten-phan-lo) {
+  /* 80% of the 18rem contractor-name column. */
+  width: 14.4rem;
+  min-width: 14.4rem;
+}
 #mothau-table-tbody tr.invalid td {
   background-color: var(--danger-soft);
 }
@@ -3109,6 +3120,14 @@ input#edit-pkg-price {
 .table-card-bg { background: var(--bg-card); }
 .compact-action { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 0.82rem; font-weight: 600; }
 .compact-action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#mothau-bid-container .mothau-opening-actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+}
+#mothau-bid-container .mothau-opening-actions > * { flex: 0 0 auto; }
 .package-help-text { margin-bottom: 20px; font-size: 0.82rem; }
 .evaluation-field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
 .evaluation-field-label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 0.85rem; font-weight: 700; }

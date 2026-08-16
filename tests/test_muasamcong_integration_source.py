@@ -865,6 +865,83 @@ def test_opening_fixtures_cover_normal_lots_and_two_envelope_phases():
     assert len(technical["jointVentureMembers"]) == 2
 
 
+def test_opening_uses_completion_time_and_detects_venture_from_real_shape():
+    opening = normalize_opening_bundle(
+        {
+            # The notification payload is commonly returned before the round
+            # payload and contains only the scheduled opening time.
+            "opening_notify_0": {
+                "bidNoContractorResponse": {
+                    "bidNotification": {
+                        "bidOpenDate": "2026-03-19T08:00:00",
+                    },
+                },
+            },
+            "opening_round_0": {
+                "bidoBidroundMngViewDTO": {
+                    "bidOpenDate": "2026-03-19T08:00:00",
+                    "successBidOpenDate": "2026-03-19T08:23:35",
+                },
+            },
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "vn0107713765",
+                        "contractorName": "CÔNG TY TNHH THIẾT BỊ Y TẾ BÌNH MAI",
+                        "ventureCode": "PC2600005356",
+                        "ventureName": "Liên danh nhà thầu Bình Mai - SMC.",
+                        "createdDateBidOpen": "2026-03-19T08:23:33.893",
+                    }, {
+                        "contractorCode": "vn0107434539",
+                        "contractorName": "CÔNG TY TNHH THIẾT BỊ Y TẾ PHAN NGUYỄN",
+                        "ventureCode": None,
+                        "ventureName": None,
+                        "createdDateBidOpen": "2026-03-19T08:23:34.509",
+                    }],
+                },
+            },
+        },
+        notice_no="IB2600082707",
+        revision_id="notice-00",
+    )
+
+    assert opening["openingAt"] == "2026-03-19T08:23:35"
+    assert opening["completedOpeningAt"] == "2026-03-19T08:23:35"
+    assert opening["scheduledOpeningAt"] == "2026-03-19T08:00:00"
+    bidders = {row["contractorCode"]: row for row in opening["bidders"]}
+    assert bidders["vn0107713765"]["contractorType"] == "JOINT_VENTURE"
+    assert bidders["vn0107713765"]["jointVentureCode"] == "PC2600005356"
+    assert bidders["vn0107713765"]["jointVentureName"] == (
+        "Liên danh nhà thầu Bình Mai - SMC."
+    )
+    assert bidders["vn0107434539"]["contractorType"] == "INDEPENDENT"
+
+
+def test_opening_merges_late_venture_evidence_for_the_same_representative():
+    opening = normalize_opening_bundle(
+        {
+            "opening_submission_0": [{
+                "contractorCode": "vn-pt",
+                "contractorName": "Công ty TNHH dịch vụ thương mại P&T",
+            }],
+            "opening_bid_0": [{
+                "contractorCode": "vn-pt",
+                "contractorName": "Công ty TNHH dịch vụ thương mại P&T",
+                "ventureCode": "PC2600320117",
+                "ventureName": "Liên danh P&T - KN",
+            }],
+        },
+        notice_no="IB2600320117",
+        revision_id="notice-00",
+    )
+
+    assert len(opening["bidders"]) == 1
+    bidder = opening["bidders"][0]
+    assert bidder["contractorType"] == "JOINT_VENTURE"
+    assert bidder["jointVentureCode"] == "PC2600320117"
+    assert bidder["jointVentureName"] == "Liên danh P&T - KN"
+
+
 def test_opening_excludes_package_bid_number_from_lots_and_lot_scopes():
     opening = normalize_opening_bundle(
         {
@@ -897,6 +974,40 @@ def test_opening_excludes_package_bid_number_from_lots_and_lot_scopes():
         "PP2600198307",
     ]
     assert opening["bidders"][0]["lotNo"] is None
+
+
+def test_ib2600212155_opening_keeps_only_lot_bids_and_attaches_lot_names():
+    contractors = [{
+        "contractorCode": f"vn010000000{index}",
+        "contractorName": f"Nhà thầu {index}",
+        "bidPrice": index * 1_000_000,
+    } for index in range(1, 9)]
+    lot_rows = [{
+        "lotNo": f"PP26001983{index:02d}",
+        "lotName": f"Thuốc {index}",
+        "bidOpenView": [{
+            **contractors[(index - 1) % len(contractors)],
+            "lotNo": f"PP26001983{index:02d}",
+        }],
+    } for index in range(1, 13)]
+
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionDTOList": contractors,
+            },
+            "opening_lot_0": {
+                "lotNoValueDTOList": lot_rows,
+            },
+        },
+        notice_no="IB2600212155",
+        revision_id="notice-01",
+    )
+
+    assert len(opening["lots"]) == 12
+    assert len(opening["bidders"]) == 12
+    assert all(row["lotNo"] for row in opening["bidders"])
+    assert opening["bidders"][0]["lotName"] == "Thuốc 1"
 
 
 def test_opening_parser_preserves_zero_and_missing_optional_prices():
@@ -1771,10 +1882,12 @@ def test_complete_notice_bundle_maps_opening_result_and_contract_sources():
             "note": None,
         },
     ]
+    assert len(revision["opening"]["bidders"]) == 1
     assert revision["opening"]["bidders"][0]["contractorCode"] == (
         "vn0100000001"
     )
-    assert revision["opening"]["bidders"][1]["lotNo"] == "PP01"
+    assert revision["opening"]["bidders"][0]["lotNo"] == "PP01"
+    assert revision["opening"]["bidders"][0]["lotName"] == "Lô 1"
     assert revision["result"]["hasSelectionResult"] is True
     assert revision["result"]["hasTechnicalResult"] is True
     assert canonical["contracts"][0]["contractCode"] == "HD2600000001"

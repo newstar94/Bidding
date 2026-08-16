@@ -53,6 +53,17 @@ import {
 export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./openingContractorLookup.js";
 
 export * from "./bidProcessTenderLifecycle.js";
+
+export function lotCodeControlWidth(code) {
+  const characters = Array.from(String(code || "")).length;
+  return `${Math.max(12, characters + 5)}ch`;
+}
+
+export function resizeLotCodeControl(control) {
+  if (!control?.style) return;
+  control.style.width = lotCodeControlWidth(control.value);
+}
+
 export function buildOpeningActionState({
   pkg,
   hasSavedOpeningData = false,
@@ -249,8 +260,8 @@ export function renderMoThauPanel() {
     } else if (caseType === "1G2T_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th class="bf-s-ae54075f01">Mã phần lô</th>
-                    <th class="bf-s-ae54075f01">Tên phần lô</th>
+                    <th class="package-lot-code-column bf-s-ae54075f01">Mã phần lô</th>
+                    <th class="package-lot-name-column bf-s-ad8c93e5fe">Tên phần lô</th>
                     <th class="bf-s-ae54075f01">Loại nhà thầu</th>
                     <th class="package-contractor-code-column bf-s-ad8c93e5fe">Mã nhà thầu</th>
                     <th class="package-contractor-name-column bf-s-a01153c965">Tên nhà thầu</th>
@@ -279,8 +290,8 @@ export function renderMoThauPanel() {
     } else if (caseType === "1G1T_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th class="bf-s-8523765ec6">Mã phần lô</th>
-                    <th class="bf-s-8523765ec6">Tên phần lô</th>
+                    <th class="package-lot-code-column bf-s-8523765ec6">Mã phần lô</th>
+                    <th class="package-lot-name-column bf-s-2811ee8f01">Tên phần lô</th>
                     <th class="bf-s-8523765ec6">Loại nhà thầu</th>
                     <th class="package-contractor-code-column bf-s-2811ee8f01">Mã nhà thầu</th>
                     <th class="package-contractor-name-column bf-s-c264699ce5">Tên nhà thầu</th>
@@ -308,8 +319,8 @@ export function renderMoThauPanel() {
     } else if (caseType === "DIRECT_SPECIAL_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th class="bf-s-ae54075f01">Mã phần lô</th>
-                    <th class="bf-s-ae54075f01">Tên phần lô</th>
+                    <th class="package-lot-code-column bf-s-ae54075f01">Mã phần lô</th>
+                    <th class="package-lot-name-column bf-s-ad8c93e5fe">Tên phần lô</th>
                     <th class="bf-s-ae54075f01">Loại nhà thầu</th>
                     <th class="package-contractor-code-column bf-s-2811ee8f01">Mã nhà thầu</th>
                     <th class="package-contractor-name-column bf-s-fa210469db">Tên nhà thầu</th>
@@ -502,7 +513,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (foundLot) defaultLotBaoDam = this.model.formatVND(foundLot.baoDamDuThau) || "";
     }
     cellHtml = readOnly ? `
-            <td>${lotCodeDisplay}</td>
+            <td style="min-width: 11rem">${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
@@ -564,7 +575,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (foundLot) defaultLotBaoDam = this.model.formatVND(foundLot.baoDamDuThau) || "";
     }
     cellHtml = readOnly ? `
-            <td>${lotCodeDisplay}</td>
+            <td style="min-width: 11rem">${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
@@ -621,7 +632,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   } else if (caseType === "DIRECT_SPECIAL_WITH_LOT") {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
     cellHtml = readOnly ? `
-            <td>${lotCodeDisplay}</td>
+            <td style="min-width: 11rem">${lotCodeDisplay}</td>
             <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
             <td>${readOnlyContractorIdentity(contractorCodeDisplay, "mt-ma-nha-thau")}</td>
@@ -652,7 +663,8 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const rowLotSelect = tr.querySelector(".mt-ma-phan-lo");
   if (rowLotSelect) {
     if (bidData.maPhanLo) rowLotSelect.value = bidData.maPhanLo;
-    rowLotSelect.addEventListener("change", () => {
+    const syncSelectedLot = () => {
+      resizeLotCodeControl(rowLotSelect);
       const selectedOpt = rowLotSelect.options[rowLotSelect.selectedIndex];
       const nameInput = tr.querySelector(".mt-ten-phan-lo");
       if (nameInput) {
@@ -666,7 +678,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         const gtDbInput = tr.querySelector(".mt-gia-tri-dam-bao");
         if (gtDbInput) gtDbInput.value = this.model.formatVND(chosenLot.baoDamDuThau) || "";
       }
-    });
+    };
+    rowLotSelect.addEventListener("change", syncSelectedLot);
+    syncSelectedLot();
   }
   const selectLoai = tr.querySelector(".mt-loai-nha-thau");
   const jvContainer = tr.querySelector(".mt-jv-members-container");

@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from copy import deepcopy
+from threading import Event, Lock
+import time
 
 import pytest
 
@@ -26,6 +28,78 @@ from backend.observability.recording import (
     snapshot_recorded_metrics,
 )
 from backend.observability import metrics as observability_metrics
+
+
+def test_bounded_enrichment_serializes_a_shared_source_instead_of_reporting_busy():
+    """The process-wide Mua Sam Cong source owns one JSON-lines worker."""
+
+    first_lookup_started = Event()
+
+    class SharedSource:
+        name = "MUASAMCONG"
+
+        def __init__(self):
+            self.lock = Lock()
+            self.calls = []
+
+        def lookup_with_options(
+            self, code, kind, *, detail_level, revision_mode, revision_numbers
+        ):
+            if not self.lock.acquire(blocking=False):
+                raise RuntimeError("PROCUREMENT_LOOKUP_BUSY")
+            try:
+                self.calls.append(code)
+                first_lookup_started.set()
+                time.sleep(0.05)
+                return {
+                    "canonical": {"revisions": [{
+                        "revisionId": f"{code}-00",
+                        "revisionNumber": "00",
+                        "noticeNo": code,
+                        "status": "PUBLISHED",
+                    }]},
+                    "metrics": {"cache": {"hit": False}},
+                }
+            finally:
+                self.lock.release()
+
+    revisions = [{
+        "revisionId": "plan-00",
+        "revisionNumber": "00",
+        "packages": [
+            {
+                "planDetailRevisionId": "detail-1",
+                "noticeLink": {
+                    "state": "LINKED",
+                    "noticeNo": "IB2600000001",
+                    "noticeVersion": "00",
+                },
+            },
+            {
+                "planDetailRevisionId": "detail-2",
+                "noticeLink": {
+                    "state": "LINKED",
+                    "noticeNo": "IB2600000002",
+                    "noticeVersion": "00",
+                },
+            },
+        ],
+    }]
+    source = SharedSource()
+    preparer = ProcurementImportPreparer(source, PreviewStore())
+
+    history, failures = preparer._enrich_linked_notices_bounded(
+        revisions,
+        organization_id="org-1",
+        max_workers=2,
+        timeout_seconds=2,
+        source_factory=lambda: source,
+    )
+
+    assert first_lookup_started.is_set()
+    assert failures == []
+    assert set(history) == {"IB2600000001", "IB2600000002"}
+    assert sorted(source.calls) == ["IB2600000001", "IB2600000002"]
 
 
 def test_plan_draft_carries_approval_decision_for_investor_short_name():
@@ -906,7 +980,9 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
         def lookup_with_options(
             self, code, kind, *, detail_level, revision_mode, revision_numbers
         ):
-            expected_detail = "COMPLETE"
+            expected_detail = (
+                "COMPLETE" if kind == "PLAN" else "INVITATION"
+            )
             assert (detail_level, revision_mode, revision_numbers) == (
                 expected_detail, "ALL", [],
             )
@@ -930,7 +1006,7 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             assert revision_mode == "ALL"
             kind = (bundle.get("entity") or {}).get("kind")
             assert detail_level == (
-                "COMPLETE"
+                "COMPLETE" if kind == "PLAN" else "INVITATION"
             )
             revisions = (
                 [self._plan_revision()] if kind == "PLAN"
@@ -946,10 +1022,10 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
             }
 
         def list_notice_revisions(self, *_args, **_kwargs):
-            raise AssertionError("linked notice enrichment must use COMPLETE bundle")
+            raise AssertionError("linked notice enrichment must use INVITATION bundle")
 
         def get_notice_revision(self, *_args, **_kwargs):
-            raise AssertionError("linked notice enrichment must use COMPLETE bundle")
+            raise AssertionError("linked notice enrichment must use INVITATION bundle")
 
     reset_recorded_metrics_for_tests()
     source = CompleteSource()
@@ -988,7 +1064,7 @@ def test_prepare_plan_all_cold_then_warm_uses_raw_cache_and_exact_linked_notice_
     assert phases[("procurement_import", "source_cache", "hit")] == 2
 
 
-def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
+def test_plan_linked_notice_uses_invitation_only_source_and_caps_local_projection():
     class InvitationSource:
         name = "MUASAMCONG"
 
@@ -1038,11 +1114,21 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
                     "publishedAt": "2026-07-16T09:00:00",
                     "bidClosingAt": "2026-08-03T13:00:00",
                     "bidOpeningAt": "2026-08-03T13:00:00",
-                    "actualOpeningAt": "2026-08-03T13:08:42",
-                    "financialActualOpeningAt": "2026-08-03T16:20:00",
                     "bidGuaranteeVnd": 52_183_040,
                     "bidValidityDays": 90,
+                    "field": "Hàng hóa",
+                    "selectionForm": "Đấu thầu rộng rãi",
+                    "selectionMode": "Một giai đoạn một túi hồ sơ",
                     "evaluationMethod": "Giá đánh giá",
+                    "additionalPurchaseOption": True,
+                    "additionalPurchaseItems": [{
+                        "sourceItemId": "option-1",
+                        "name": "Hàng hóa mua thêm A",
+                        "unit": "Hộp",
+                        "quantity": 2,
+                        "percentage": 10,
+                        "estimateValueVnd": 200_000,
+                    }],
                     "approvalDecisionNo": "123/QD-E-HSMT",
                     "approvalDecisionDate": "2026-07-15T00:00:00",
                     "lots": [{
@@ -1059,8 +1145,6 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
                         "unit": "Hộp", "quantity": 12,
                         "technicalRequirement": "Yêu cầu A",
                     }],
-                    "opening": {"bidders": [{"code": "bidder-1"}]},
-                    "result": {"status": "APPROVED"},
                 }]},
                 "metrics": {"cache": {"hit": False}},
             }
@@ -1073,14 +1157,21 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
     )
 
     assert source.calls == [(
-        "IB2600374868", "PACKAGE", "COMPLETE", "ALL", [],
+        "IB2600374868", "PACKAGE", "INVITATION", "ALL", [],
     )]
     package = preview["packages"][0]
     effective = package["effectiveFields"]
     assert effective["lifecycleStatus"] == "EVALUATING"
     assert effective["bidValidityDays"] == 90
     assert effective["bidGuaranteeVnd"] == 52_183_040
+    assert effective["field"] == "Hàng hóa"
+    assert effective["selectionForm"] == "Đấu thầu rộng rãi"
+    assert effective["selectionMode"] == "Một giai đoạn một túi hồ sơ"
     assert effective["evaluationMethod"] == "Giá đánh giá"
+    assert effective["additionalPurchaseOption"] is True
+    assert effective["additionalPurchaseItems"][0]["name"] == (
+        "Hàng hóa mua thêm A"
+    )
     assert effective["approvalDecisionNo"] == "123/QD-E-HSMT"
     assert effective["approvalDecisionDate"] == "2026-07-15T00:00:00"
     assert [lot["bidGuarantee"] for lot in effective["lots"]] == [
@@ -1093,8 +1184,8 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
         "publishedAt": "2026-07-16T09:00:00",
         "bidClosingAt": "2026-08-03T13:00:00",
         "bidOpeningAt": "2026-08-03T13:00:00",
-        "actualOpeningAt": "2026-08-03T13:08:42",
-        "financialActualOpeningAt": "2026-08-03T16:20:00",
+        "selectionForm": "Đấu thầu rộng rãi",
+        "selectionMode": "Một giai đoạn một túi hồ sơ",
     }
     assert effective["sourceStatus"] == "OPEN_DXKT"
     for field in ("actualOpeningAt", "financialActualOpeningAt", "opening", "result"):
@@ -1106,7 +1197,14 @@ def test_plan_linked_notice_stores_complete_source_and_caps_local_projection():
         {"planDetailRevisionId": "detail-00", "effectiveFields": effective},
     )
     assert draft["trangThai"] == "Đang mời thầu"
+    assert draft["linhVuc"] == "Hàng hóa"
+    assert draft["hinhThucLuaChon"] == "Đấu thầu rộng rãi"
+    assert draft["phuongThucLuaChon"] == "Một giai đoạn một túi hồ sơ"
     assert draft["phuongPhapDanhGia"] == "Giá đánh giá"
+    assert draft["tuyChonMuaThem"] is True
+    assert draft["tuyChonMuaThemList"][0]["hangMuc"] == (
+        "Hàng hóa mua thêm A"
+    )
     assert draft["danhSachPhanLo"][0]["bidGuarantee"] == 12_000_000
     assert draft["danhSachHangHoa"][0] == {
         "sourceItemId": "1.1",
@@ -1168,7 +1266,7 @@ def test_non_lot_plan_ignores_synthetic_single_lot_from_linked_notice():
             self, code, kind, *, detail_level, revision_mode, revision_numbers
         ):
             assert (code, kind, detail_level, revision_mode) == (
-                "IB2600082707", "PACKAGE", "COMPLETE", "ALL",
+                "IB2600082707", "PACKAGE", "INVITATION", "ALL",
             )
             assert revision_numbers == []
             return {

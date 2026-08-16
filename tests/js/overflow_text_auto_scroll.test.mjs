@@ -110,3 +110,28 @@ test("package detail gives contractor names more room than contractor codes", ()
     /#tab-goithau-detail #mothau-table td:has\(\.mt-ten-nha-thau\)[\s\S]*min-width: 18rem/u,
   );
 });
+
+test("package detail sizes lot columns independently from the shared header widths", () => {
+  const workflowSource = fs.readFileSync(
+    "frontend/packages/BidProcessWorkflow.js",
+    "utf8",
+  );
+  const styles = fs.readFileSync("views/css/views.css", "utf8");
+
+  assert.equal(
+    (workflowSource.match(/package-lot-code-column/g) || []).length,
+    3,
+  );
+  assert.equal(
+    (workflowSource.match(/package-lot-name-column/g) || []).length,
+    3,
+  );
+  assert.match(
+    styles,
+    /\.package-lot-code-column,[\s\S]*td:has\(\.mt-ma-phan-lo\)[\s\S]*width: max-content;[\s\S]*min-width: max-content;/u,
+  );
+  assert.match(
+    styles,
+    /\.package-lot-name-column,[\s\S]*td:has\(\.mt-ten-phan-lo\)[\s\S]*width: 14\.4rem;[\s\S]*min-width: 14\.4rem;/u,
+  );
+});

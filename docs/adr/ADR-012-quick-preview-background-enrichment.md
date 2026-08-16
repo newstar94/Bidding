@@ -31,3 +31,22 @@ Một kế hoạch lớn như `PL2600150284` có thể liên kết nhiều thôn
 - Service/import tests giữ nguyên kết quả canonical và kiểm tra warning partial.
 - Service test xác nhận session `PENDING` không thể phát draft chưa enrichment.
 - JS tests xác nhận nút áp dụng và luồng checkbox chỉ đọc draft sau khi operation `COMPLETED`.
+
+## Bổ sung 2026-08-16: giới hạn song song theo nguồn thực
+
+- Mỗi nguồn enrichment chỉ được cấp cho một TBMT tại một thời điểm. Nếu
+  `source_factory` trả về cùng một process-wide source, worker pool tự giảm về
+  một nguồn thực và xếp hàng các TBMT thay vì phát sinh
+  `PROCUREMENT_LOOKUP_BUSY`.
+- Chỉ chạy enrichment song song khi factory tạo được các source có identity độc
+  lập. Giới hạn cấu hình worker vẫn được giữ nguyên và tiếp tục là trần trên.
+- Compatibility impact: không thay đổi dữ liệu canonical, quyền, record scope,
+  tenant isolation hoặc API response; chỉ loại bỏ trạng thái `PARTIAL` giả do
+  tranh chấp chính connector nội bộ. Với singleton source, enrichment nền có thể
+  hoàn tất chậm hơn nhưng không chặn thao tác UI và không bỏ sót TBMT.
+- Migration strategy: không cần migration schema hay dữ liệu. Các operation/session
+  cũ đang ở `PARTIAL` giữ nguyên bằng chứng lịch sử; người dùng chuẩn bị lại kế
+  hoạch để tạo operation mới theo cơ chế đã sửa.
+- Regression test: dùng hai TBMT và một shared source có hành vi fail-fast khi bị
+  gọi đồng thời; xác nhận bounded enrichment hoàn tất cả hai và không sinh
+  warning `PROCUREMENT_LOOKUP_BUSY`.

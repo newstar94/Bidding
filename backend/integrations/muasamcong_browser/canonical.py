@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 import math
+import re
 from typing import Iterable
 
 from backend.procurement_import.source import ProcurementSourceError
@@ -1053,21 +1054,39 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
 
     bidders = []
     seen = set()
+    bidders_by_identity = {}
     lot_rows = []
-    opening_at_by_phase = {"TECHNICAL": None, "FINANCIAL": None}
+    opening_times_by_phase = {
+        "TECHNICAL": {"completed": [], "actual": [], "scheduled": []},
+        "FINANCIAL": {"completed": [], "actual": [], "scheduled": []},
+    }
+
+    def remember_opening_time(phase, kind, value):
+        if value in (None, ""):
+            return
+        candidates = opening_times_by_phase[phase][kind]
+        if value not in candidates:
+            candidates.append(value)
+
     for source_key, source_payload in raw_bundle.items():
         phase = "FINANCIAL" if str(source_key).endswith("_2") else "TECHNICAL"
         for item in opening_objects(source_payload):
             if not isinstance(item, dict):
                 continue
-            opening_at_by_phase[phase] = opening_at_by_phase[phase] or pick(
-                item,
-                "successBidOpenDate",
-                "successBidOpenDateTc",
-                "bidRealityOpenDate",
-                "actualOpeningAt",
-                "bidOpenDate",
-                "bidOpeningAt",
+            remember_opening_time(
+                phase,
+                "completed",
+                pick(item, "successBidOpenDate", "successBidOpenDateTc"),
+            )
+            remember_opening_time(
+                phase,
+                "actual",
+                pick(item, "bidRealityOpenDate", "actualOpeningAt"),
+            )
+            remember_opening_time(
+                phase,
+                "scheduled",
+                pick(item, "bidOpenDate", "bidOpeningAt"),
             )
             if isinstance(item.get("lotNoValueDTOList"), list):
                 lot_rows.extend(item["lotNoValueDTOList"])
@@ -1096,64 +1115,94 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             ).strip()
             if not code and not name:
                 continue
+            source_members = pick(
+                item, "jointVentureMembers", "ventureMembers", "memberList"
+            )
+            source_members = source_members if isinstance(source_members, list) else []
+            joint_venture_code = pick(item, "jointVentureCode", "ventureCode")
+            joint_venture_name = pick(item, "jointVentureName", "ventureName")
+            source_type = str(
+                pick(item, "contractorType", "typeName", default="") or ""
+            )
+            is_joint_venture = bool(
+                joint_venture_code
+                or joint_venture_name
+                or source_members
+                or re.search(
+                    r"JOINT|VENTURE|LIEN\s*DANH|LIÊN\s*DANH",
+                    source_type,
+                    re.IGNORECASE,
+                )
+            )
             identity = (
-                code.casefold(),
-                name.casefold(),
+                code.casefold() if code else name.casefold(),
                 lot_scope(item) or "",
                 phase,
             )
             if identity in seen:
+                existing = bidders_by_identity[identity]
+                if is_joint_venture:
+                    existing["contractorType"] = "JOINT_VENTURE"
+                    if joint_venture_code not in (None, ""):
+                        existing["jointVentureCode"] = joint_venture_code
+                    if joint_venture_name not in (None, ""):
+                        existing["jointVentureName"] = joint_venture_name
+                    if source_members and not existing["jointVentureMembers"]:
+                        existing["jointVentureMembers"] = deepcopy(source_members)
                 continue
             seen.add(identity)
             bidder = {
-            "contractorCode": code or None,
-            "contractorName": name or None,
-            "contractorType": pick(item, "contractorType", "typeName", default="INDEPENDENT"),
-            "bidPrice": _money(
-                pick(
-                    item,
-                    "bidPrice",
-                    "bidValue",
-                    "lotPrice",
-                    "bidFinalPrice",
-                    "bidPriceAfterDiscount",
-                    "lotFinalPrice",
-                    "price",
-                )
-            ),
-            "discountRate": pick(
-                item, "discountRate", "discountPercent", "discount"
-            ),
-            "priceAfterDiscount": _money(
-                pick(
-                    item,
-                    "bidPriceAfterDiscount",
-                    "priceAfterDiscount",
-                    "bidFinalPrice",
-                    "lotFinalPrice",
-                )
-            ),
-            "bidValidityDays": pick(
-                item, "bidValidity", "bidValidityDays", "bidValidityNum"
-            ),
-            "bidGuarantee": _money(
-                pick(item, "bidGuarantee", "bidGuaranteed", "totalGuaranteeValue")
-            ),
-            "bidGuaranteeValidityDays": pick(
-                item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
-            ),
-            "executionPeriod": _period(item),
-            "lotNo": lot_scope(item),
-            "jointVentureMembers": deepcopy(
-                pick(item, "jointVentureMembers", "ventureMembers", "memberList")
-                if isinstance(
-                    pick(item, "jointVentureMembers", "ventureMembers", "memberList"),
-                    list,
-                )
-                else []
-            ),
-            "phase": phase,
-        }
+                "contractorCode": code or None,
+                "contractorName": name or None,
+                "contractorType": (
+                    "JOINT_VENTURE" if is_joint_venture else "INDEPENDENT"
+                ),
+                "jointVentureCode": joint_venture_code,
+                "jointVentureName": joint_venture_name,
+                "bidPrice": _money(
+                    pick(
+                        item,
+                        "bidPrice",
+                        "bidValue",
+                        "lotPrice",
+                        "bidFinalPrice",
+                        "bidPriceAfterDiscount",
+                        "lotFinalPrice",
+                        "price",
+                    )
+                ),
+                "discountRate": pick(
+                    item, "discountRate", "discountPercent", "discount"
+                ),
+                "priceAfterDiscount": _money(
+                    pick(
+                        item,
+                        "bidPriceAfterDiscount",
+                        "priceAfterDiscount",
+                        "bidFinalPrice",
+                        "lotFinalPrice",
+                    )
+                ),
+                "bidValidityDays": pick(
+                    item, "bidValidity", "bidValidityDays", "bidValidityNum"
+                ),
+                "bidGuarantee": _money(
+                    pick(
+                        item,
+                        "bidGuarantee",
+                        "bidGuaranteed",
+                        "totalGuaranteeValue",
+                    )
+                ),
+                "bidGuaranteeValidityDays": pick(
+                    item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
+                ),
+                "executionPeriod": _period(item),
+                "lotNo": lot_scope(item),
+                "jointVentureMembers": deepcopy(source_members),
+                "phase": phase,
+            }
+            bidders_by_identity[identity] = bidder
             bidders.append(bidder)
     lot_rows.extend(
         item
@@ -1179,14 +1228,63 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 "lotName": pick(row, "lotName", "name"),
             }
         )
+    lot_names_by_no = {
+        str(lot["lotNo"]): lot.get("lotName")
+        for lot in lots
+        if lot.get("lotNo") not in (None, "")
+    }
+    for bidder in bidders:
+        lot_no = bidder.get("lotNo")
+        if lot_no not in (None, ""):
+            bidder["lotName"] = lot_names_by_no.get(str(lot_no))
+
+    # Opening endpoints expose both package-level contractor summaries and
+    # contractor-lot bid rows. Once a phase has lot-scoped rows, the unscoped
+    # rows in that phase are summaries, not additional opening-record lines.
+    lot_scoped_phases = {
+        bidder.get("phase")
+        for bidder in bidders
+        if bidder.get("lotNo") not in (None, "")
+    }
+    if lot_scoped_phases:
+        bidders = [
+            bidder
+            for bidder in bidders
+            if (
+                bidder.get("lotNo") not in (None, "")
+                or bidder.get("phase") not in lot_scoped_phases
+            )
+        ]
+
+    def first_time(phase, kind):
+        values = opening_times_by_phase[phase][kind]
+        return values[0] if values else None
+
+    completed_by_phase = {
+        phase: first_time(phase, "completed") or first_time(phase, "actual")
+        for phase in opening_times_by_phase
+    }
+    scheduled_by_phase = {
+        phase: first_time(phase, "scheduled")
+        for phase in opening_times_by_phase
+    }
+    effective_by_phase = {
+        phase: completed_by_phase[phase] or scheduled_by_phase[phase]
+        for phase in opening_times_by_phase
+    }
+    completed_opening_at = (
+        completed_by_phase["TECHNICAL"] or completed_by_phase["FINANCIAL"]
+    )
+    scheduled_opening_at = (
+        scheduled_by_phase["TECHNICAL"] or scheduled_by_phase["FINANCIAL"]
+    )
     return {
         "noticeNo": notice_no,
         "revisionId": str(revision_id),
-        "openingAt": (
-            opening_at_by_phase["TECHNICAL"]
-            or opening_at_by_phase["FINANCIAL"]
-        ),
-        "financialOpeningAt": opening_at_by_phase["FINANCIAL"],
+        "openingAt": completed_opening_at or scheduled_opening_at,
+        "completedOpeningAt": completed_opening_at,
+        "scheduledOpeningAt": scheduled_opening_at,
+        "financialOpeningAt": effective_by_phase["FINANCIAL"],
         "bidders": bidders,
         "lots": lots,
     }

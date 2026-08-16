@@ -6,6 +6,9 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
+from backend.integrations.muasamcong_browser.procurement_source import (
+    MuaSamCongProcurementSource,
+)
 import backend.procurement_import.routes as routes_module
 from backend.procurement_import.routes import (
     ProcurementRouteError,
@@ -66,6 +69,33 @@ def test_opening_prepare_rejects_partial_raw_snapshot_for_cache_reuse():
         Source(), RawRepository(), "org-1", "IB2600000002",
         {"revisionId": "notice-01", "revisionNumber": "01"},
     ) is None
+
+
+def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
+    raw_bundle = MuaSamCongProcurementSource._opening_raw_bundle(
+        "IB2600000002",
+        "notice-01",
+        "01",
+        {
+            "raw": {
+                "noticeDetail": {"notifyNo": "IB2600000002"},
+                "opening_notify_0": {"bidStatus": "OPEN"},
+                "opening_bid_0": {"bidders": []},
+            },
+            "retrievedAt": "2026-08-16T00:00:00Z",
+            "fingerprint": "opening:v1:test",
+            "noticeDetailOperation": "NOTICE_LDT_DETAIL",
+        },
+    )
+
+    sources = raw_bundle["revisions"]["01"]["sources"]
+    assert sources["noticeDetail"]["endpoint"] == (
+        "/expose/lcnt/bid-po-bido-notify-contractor-view/get-by-id"
+    )
+    assert sources["opening_notify_0"]["endpoint"] == (
+        "/exposeldtkqmt/bid-notification-p/notify"
+    )
+    assert all(str(source["endpoint"]).strip() for source in sources.values())
 
 
 def test_procurement_import_routes_are_registered():
