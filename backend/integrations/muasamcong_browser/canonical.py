@@ -213,6 +213,7 @@ def normalize_additional_purchase_items(row):
 
 
 _GOODS_FORM_CODES = (
+    "BD.CG.02.0090",
     "BD.MT.02.0812",
     "BD.MT.02.1224",
     "BD.MT.02.1281",
@@ -420,7 +421,8 @@ def _normalize_goods_form_rows(rows, *, allow_inherited_lot, is_multi_lot):
 def normalize_goods_items(raw, *, is_multi_lot=None):
     """Normalize goods from verified MSC forms and preserve their lot scope.
 
-    Form ``0812`` carries package-scoped goods whose parent is a non-lot group.
+    Forms ``0090`` and ``0812`` carry package-scoped goods whose parent is a
+    non-lot group.
     Form ``1224`` is a legacy interleaved table, so goods without an explicit
     parent inherit the preceding lot heading. Form ``1281`` carries an exact
     ``parent``/``tempParent`` link to the source lot row. Positional fallback
@@ -617,7 +619,7 @@ def _notice_lots(raw):
         if isinstance(item, dict)
         and (lots := normalize_lots(item))
     ]
-    return max(
+    lots = max(
         candidates,
         key=lambda rows: (
             sum(row.get("bidGuarantee") is not None for row in rows),
@@ -625,6 +627,34 @@ def _notice_lots(raw):
         ),
         default=None,
     )
+    if not lots:
+        return lots
+
+    form_guarantees = {}
+    for value in _form_values(
+        raw, {*_GOODS_FORM_CODES, "BD_DATA_TABLE"}
+    ):
+        for item in _walk(value):
+            if not isinstance(item, dict):
+                continue
+            lot_no = str(pick(
+                item, "lotNo", "lotCode", default=""
+            ) or "").strip()
+            guarantee = _money(pick(
+                item,
+                "lotGuaranteeValue",
+                "bidGuarantee",
+                "bidGuaranteeValue",
+                "guaranteeValue",
+            ))
+            if lot_no and guarantee is not None:
+                form_guarantees.setdefault(lot_no.casefold(), guarantee)
+
+    for lot in lots:
+        lot_no = str(lot.get("lotNo") or "").strip().casefold()
+        if lot.get("bidGuarantee") is None and lot_no in form_guarantees:
+            lot["bidGuarantee"] = form_guarantees[lot_no]
+    return lots
 
 
 def _source_flag(raw, *aliases):
@@ -1002,7 +1032,12 @@ def normalize_notice_revision(
             selection_row or notice
         ),
         "bidValidityDays": _positive_days(
-            related_pick("bidValidity", "bidValidityDays", "bidValidityNum")
+            related_pick(
+                "bidValidity",
+                "bidValidityDays",
+                "bidValidityNum",
+                "bidValidityPeriod",
+            )
             or _embedded_form_pick(raw, "effectTimeHSDT")
         ),
         "selectionDuration": str(related_pick(
@@ -1095,7 +1130,11 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             key = (contractor_identity, phase)
             security = bid_open_security.setdefault(key, {
                 "bidGuarantee": None,
+                "bidValidityDays": None,
                 "bidGuaranteeValidityDays": None,
+                "jointVentureCode": None,
+                "jointVentureName": None,
+                "jointVentureMembers": [],
             })
             guarantee = _money(pick(
                 item,
@@ -1110,8 +1149,44 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             validity = pick(
                 item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
             )
+            bid_validity = _positive_days(pick(
+                item, "bidValidity", "bidValidityDays", "bidValidityNum"
+            ))
+            joint_venture_code = pick(
+                item, "jointVentureCode", "ventureCode"
+            )
+            joint_venture_name = pick(
+                item, "jointVentureName", "ventureName"
+            )
+            joint_venture_members = pick(
+                item, "jointVentureMembers", "ventureMembers", "memberList"
+            )
+            joint_venture_members = (
+                joint_venture_members
+                if isinstance(joint_venture_members, list)
+                else []
+            )
             if guarantee is not None and security["bidGuarantee"] is None:
                 security["bidGuarantee"] = guarantee
+            if (
+                bid_validity is not None
+                and security["bidValidityDays"] is None
+            ):
+                security["bidValidityDays"] = bid_validity
+            if (
+                joint_venture_code not in (None, "")
+                and security["jointVentureCode"] in (None, "")
+            ):
+                security["jointVentureCode"] = joint_venture_code
+            if (
+                joint_venture_name not in (None, "")
+                and security["jointVentureName"] in (None, "")
+            ):
+                security["jointVentureName"] = joint_venture_name
+            if joint_venture_members and not security["jointVentureMembers"]:
+                security["jointVentureMembers"] = deepcopy(
+                    joint_venture_members
+                )
             if (
                 validity not in (None, "")
                 and security["bidGuaranteeValidityDays"] in (None, "")
@@ -1128,8 +1203,14 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             return None
         return {
             "bidGuarantee": security.get("bidGuarantee"),
+            "bidValidityDays": security.get("bidValidityDays"),
             "bidGuaranteeValidityDays": security.get(
                 "bidGuaranteeValidityDays"
+            ),
+            "jointVentureCode": security.get("jointVentureCode"),
+            "jointVentureName": security.get("jointVentureName"),
+            "jointVentureMembers": deepcopy(
+                security.get("jointVentureMembers") or []
             ),
         }
 
@@ -1321,9 +1402,22 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
         security = authoritative_bid_open_security(bidder)
         if security is not None:
             bidder["bidGuarantee"] = security["bidGuarantee"]
+            if security["bidValidityDays"] is not None:
+                bidder["bidValidityDays"] = security["bidValidityDays"]
             bidder["bidGuaranteeValidityDays"] = security[
                 "bidGuaranteeValidityDays"
             ]
+            if (
+                security["jointVentureCode"] not in (None, "")
+                or security["jointVentureName"] not in (None, "")
+                or security["jointVentureMembers"]
+            ):
+                bidder["contractorType"] = "JOINT_VENTURE"
+                bidder["jointVentureCode"] = security["jointVentureCode"]
+                bidder["jointVentureName"] = security["jointVentureName"]
+                bidder["jointVentureMembers"] = deepcopy(
+                    security["jointVentureMembers"]
+                )
 
     # Opening endpoints expose both package-level contractor summaries and
     # contractor-lot bid rows. Once a phase has lot-scoped rows, the unscoped

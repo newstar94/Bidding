@@ -280,6 +280,52 @@ def test_non_lot_notice_normalization_drops_single_package_summary_lot():
     assert revision["lots"] == []
 
 
+def test_goods_form_0090_maps_real_non_lot_rows_once_across_notice_sources():
+    goods_rows = [
+        {"id": "11196984520628520", "pos": "1", "name": "Thông đuôi ngựa", "uom": "Cây", "qty": 120_000},
+        {"id": "10088914767228820", "pos": "2", "name": "Keo hom", "uom": "Cây", "qty": 79_769},
+        {"id": "7882541245432656", "pos": "3", "name": "Keo tai tượng", "uom": "Cây", "qty": 60_000},
+        {"id": "11419222781906564", "pos": "4", "name": "Keo mô", "uom": "Cây", "qty": 50_000},
+        {"id": "9046070603680520", "pos": "5", "name": "Hồi", "uom": "Cây", "qty": 165_000},
+        {"id": "10449999799535692", "pos": "6", "name": "Lát hoa", "uom": "Cây", "qty": 49_000},
+        {"id": "10482001089796274", "pos": "7", "name": "Quế", "uom": "Cây", "qty": 170_000},
+        {"id": "8648124996961860", "pos": "8", "name": "Dẻ ăn hạt", "uom": "Cây", "qty": 10_000},
+        {"id": "8701135615799683", "pos": "9", "name": "Đinh", "uom": "Cây", "qty": 820},
+        {"id": "11567545767323788", "pos": "10", "name": "Long não", "uom": "Cây", "qty": 1_000},
+        {"id": "10845542338697554", "pos": "11", "name": "Xoan ta", "uom": "Cây", "qty": 3_400},
+    ]
+    form = {
+        "formCode": "BD.CG.02.0090",
+        "formValue": json.dumps({"Table": goods_rows}, ensure_ascii=False),
+    }
+    revision = normalize_notice_revision(
+        {
+            "noticeDetail": {
+                "notifyNo": "IB2600206192",
+                "notifyId": "notice-00",
+                "bidName": "Plant procurement package",
+                "bidField": "HH",
+                "isMultiLot": 0,
+                "bidoInvBiddingDTO": [form],
+            },
+            "hsmt": {"bidoInvBiddingDTO": [form]},
+        },
+        notice_no="IB2600206192",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600206192", revision, revision
+    )
+
+    assert len(revision["goodsItems"]) == 11
+    assert [item["name"] for item in revision["goodsItems"]] == [
+        row["name"] for row in goods_rows
+    ]
+    assert len(draft["danhSachHangHoa"]) == 11
+    assert all(not item["maPhanLo"] for item in draft["danhSachHangHoa"])
+
+
 def test_goods_form_1281_maps_parent_linked_items_to_their_source_lots():
     revision = normalize_notice_revision(
         {
@@ -360,6 +406,63 @@ def test_goods_form_1281_maps_parent_linked_items_to_their_source_lots():
         "PP2600239575",
         "PP2600239576",
         "PP2600239575",
+    ]
+
+
+@pytest.mark.parametrize(
+    "form_code", ["BD.MT.02.1224", "BD.MT.02.1281"]
+)
+def test_hsmt_form_lot_guarantees_enrich_null_notice_lot_values(form_code):
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600212155",
+            "notifyId": "notice-01",
+            "bidName": "Mua sắm thuốc Generic",
+            "bidField": "HH",
+            "isMultiLot": 1,
+            "guaranteeValue": 8_057_000,
+            "lotDTOList": [{
+                "lotNo": "PP2600198304",
+                "lotName": "Atropin sulfat",
+                "lotEstimatePrice": 500_000_000,
+                "lotGuaranteeValue": None,
+            }, {
+                "lotNo": "PP2600198305",
+                "lotName": "Fentanyl",
+                "lotEstimatePrice": 305_700_000,
+                "lotGuaranteeValue": None,
+            }],
+            "bidoInvBiddingDTO": [{
+                "formCode": form_code,
+                "formValue": json.dumps({"Table": [{
+                    "id": "source-lot-1",
+                    "lotNo": "PP2600198304",
+                    "lotName": "Atropin sulfat",
+                    "lotGuaranteeValue": 5_000_000,
+                }, {
+                    "id": "source-lot-2",
+                    "lotNo": "PP2600198305",
+                    "lotName": "Fentanyl",
+                    "lotGuaranteeValue": 3_057_000,
+                }]}, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600212155",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600212155", revision, revision
+    )
+
+    assert revision["bidGuaranteeVnd"] == 8_057_000
+    assert [lot["bidGuarantee"] for lot in revision["lots"]] == [
+        5_000_000,
+        3_057_000,
+    ]
+    assert [lot["bidGuarantee"] for lot in draft["danhSachPhanLo"]] == [
+        5_000_000,
+        3_057_000,
     ]
 
 
@@ -591,6 +694,50 @@ def test_plan_package_normalizes_bid_validity_and_additional_purchase_items():
         "tyLe": 0.3,
         "giaTriUocTinh": 123_360_000,
     }]
+
+
+def test_notice_bid_validity_period_maps_without_embedded_form_fallback():
+    notice = normalize_notice_revision(
+        {
+            "notice": {
+                "notifyNo": "IB2600079201",
+                "notifyId": "notice-00",
+                "bidName": "Consulting package",
+            },
+            "bidNoContractorResponse": {
+                "bidNotification": {
+                    "notifyNo": "IB2600079201",
+                    "bidValidityPeriod": 90,
+                    "bidValidityPeriodUnit": "D",
+                },
+            },
+        },
+        notice_no="IB2600079201",
+        revision_id="notice-00",
+        revision_number="00",
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG",
+        "PL2600029845",
+        {"revisionId": "plan-03", "revisionNumber": "03"},
+        {
+            "planDetailRevisionId": "detail-03",
+            "effectiveFields": {
+                **notice,
+                "lifecycleStatus": "INVITED",
+                "noticeLink": {
+                    "state": "LINKED",
+                    "noticeNo": "IB2600079201",
+                    "kind": "TBMT",
+                    "noticeRevisionId": "notice-00",
+                    "noticeVersion": "00",
+                },
+            },
+        },
+    )
+
+    assert notice["bidValidityDays"] == 90
+    assert draft["hieuLucHsdt"] == 90
 
 
 def test_plan_creator_is_the_investor_code_without_revision_suffix():
@@ -1096,6 +1243,193 @@ def test_lot_opening_bid_guarantee_is_reused_for_each_lot_of_the_bidder():
     assert bidders["L02"]["bidGuaranteeValidityDays"] == 120
 
 
+def test_bidder_level_opening_fields_are_reused_for_every_lot():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "vn0100000001",
+                        "contractorName": "Nhà thầu A",
+                        "bidValidityNum": 90,
+                        "bidGuarantee": None,
+                        "totalGuaranteeValue": 100_000_000,
+                        "bidGuaranteeValidity": 120,
+                    }],
+                },
+            },
+            "opening_lot_detail_0": [
+                {
+                    "contractorCode": "VN0100000001",
+                    "contractorName": "Nhà thầu A",
+                    "lotNo": lot_no,
+                    "lotFinalPrice": price,
+                    "bidGuarantee": 90_000_000,
+                }
+                for lot_no, price in (
+                    ("L01", 500_000_000),
+                    ("L02", 600_000_000),
+                    ("L03", 700_000_000),
+                )
+            ],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert [row["lotNo"] for row in opening["bidders"]] == [
+        "L01", "L02", "L03",
+    ]
+    assert {
+        (
+            row["bidGuarantee"],
+            row["bidValidityDays"],
+            row["bidGuaranteeValidityDays"],
+        )
+        for row in opening["bidders"]
+    } == {(100_000_000, 90, 120)}
+
+
+def test_bidder_level_opening_fields_do_not_cross_map_between_bidders():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [
+                        {
+                            "contractorCode": "vn0100000001",
+                            "contractorName": "Thành viên đứng đầu A",
+                            "ventureCode": "VENTURE-A",
+                            "ventureName": "Liên danh A",
+                            "bidValidityNum": 90,
+                            "bidGuarantee": 100_000_000,
+                            "bidGuaranteeValidity": 120,
+                        },
+                        {
+                            "contractorCode": "vn0100000002",
+                            "contractorName": "Nhà thầu B",
+                            "bidValidityNum": 60,
+                            "bidGuarantee": 250_000_000,
+                            "bidGuaranteeValidity": 100,
+                        },
+                    ],
+                },
+            },
+            "opening_lot_detail_0": [
+                {"contractorCode": "VN0100000001", "lotNo": "L01"},
+                {"contractorCode": "VN0100000001", "lotNo": "L03"},
+                {"contractorCode": "VN0100000002", "lotNo": "L02"},
+                {"contractorCode": "VN0100000002", "lotNo": "L03"},
+            ],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    by_bidder = {}
+    for row in opening["bidders"]:
+        by_bidder.setdefault(row["contractorCode"].casefold(), []).append(row)
+    bidder_a = by_bidder["vn0100000001"]
+    bidder_b = by_bidder["vn0100000002"]
+
+    assert {row["lotNo"] for row in bidder_a} == {"L01", "L03"}
+    assert {
+        (row["bidGuarantee"], row["bidValidityDays"])
+        for row in bidder_a
+    } == {(100_000_000, 90)}
+    assert all(row["contractorType"] == "JOINT_VENTURE" for row in bidder_a)
+    assert all(row["jointVentureCode"] == "VENTURE-A" for row in bidder_a)
+    assert all(row["jointVentureName"] == "Liên danh A" for row in bidder_a)
+
+    assert {row["lotNo"] for row in bidder_b} == {"L02", "L03"}
+    assert {
+        (row["bidGuarantee"], row["bidValidityDays"])
+        for row in bidder_b
+    } == {(250_000_000, 60)}
+    assert all(row["contractorType"] == "INDEPENDENT" for row in bidder_b)
+
+
+@pytest.mark.parametrize(
+    "guarantee_field",
+    [
+        "bidGuarantee",
+        "bidGuaranteeValue",
+        "totalGuaranteeValue",
+        "bidSecurity",
+        "bidSecurityValue",
+        "guaranteeValue",
+    ],
+)
+def test_bidder_level_opening_guarantee_aliases_map_to_flat_lot_rows(
+    guarantee_field,
+):
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_0": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "vn0100000001",
+                        guarantee_field: 100_000_000,
+                    }],
+                },
+            },
+            "opening_lot_detail_0": [{
+                "contractorCode": "VN0100000001",
+                "lotNo": "L01",
+            }],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    assert opening["bidders"][0]["bidGuarantee"] == 100_000_000
+
+
+def test_bidder_level_opening_security_stays_with_its_two_envelope_phase():
+    opening = normalize_opening_bundle(
+        {
+            "opening_bid_1": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "vn0100000001",
+                        "bidGuarantee": 100_000_000,
+                        "bidValidityNum": 90,
+                    }],
+                },
+            },
+            "opening_lot_detail_1": [{
+                "contractorCode": "vn0100000001",
+                "lotNo": "L01",
+            }],
+            "opening_bid_2": {
+                "bidSubmissionByContractorViewResponse": {
+                    "bidSubmissionDTOList": [{
+                        "contractorCode": "vn0100000001",
+                        "bidGuarantee": 250_000_000,
+                        "bidValidityNum": 60,
+                    }],
+                },
+            },
+            "opening_lot_detail_2": [{
+                "contractorCode": "vn0100000001",
+                "lotNo": "L01",
+            }],
+        },
+        notice_no="IB2600270477",
+        revision_id="notice-00",
+    )
+
+    by_phase = {row["phase"]: row for row in opening["bidders"]}
+    assert (
+        by_phase["TECHNICAL"]["bidGuarantee"],
+        by_phase["TECHNICAL"]["bidValidityDays"],
+    ) == (100_000_000, 90)
+    assert (
+        by_phase["FINANCIAL"]["bidGuarantee"],
+        by_phase["FINANCIAL"]["bidValidityDays"],
+    ) == (250_000_000, 60)
+
+
 def test_opening_parser_preserves_zero_and_missing_optional_prices():
     opening = normalize_opening_bundle(
         {
@@ -1384,6 +1718,49 @@ def test_unified_source_exposes_all_revisions_opening_and_lookup_contracts():
         lookup["metrics"]["listMs"] + lookup["metrics"]["detailMs"]
     )
     assert "raw" not in lookup
+
+
+def test_opening_source_marks_invalid_required_bid_open_as_partial():
+    class InvalidOpeningRuntime(FakeRuntime):
+        def get_opening_bundle(self, notice_no, revision_id):
+            return {
+                "raw": {
+                    "noticeDetail": {"notifyNo": notice_no},
+                    "opening_round_0": {
+                        "bidoBidroundMngViewDTO": {"bidStatus": "OPEN_BID"},
+                    },
+                },
+                "fingerprint": "opening:v1:invalid-bid-open",
+                "retrievedAt": "2026-08-16T00:00:00Z",
+                "processApply": "LDT",
+                "bidMode": "1_MTHS",
+                "requiredOpeningSources": [
+                    {"operation": "OPENING_ROUND", "packType": 0},
+                    {"operation": "OPENING_BID", "packType": 0},
+                ],
+                "failures": [{
+                    "operation": "OPENING_BID",
+                    "packType": 0,
+                    "error": "PROCUREMENT_SCHEMA_CHANGED",
+                }],
+                "metadata": {
+                    "profile": "2026.08",
+                    "operation": "OPENING_BUNDLE",
+                },
+            }
+
+    opening = MuaSamCongProcurementSource(
+        InvalidOpeningRuntime()
+    ).get_opening_bundle("IB2600000002", "notice-01")
+
+    assert opening["partial"] is True
+    assert opening["failedOperations"] == [{
+        "operation": "OPENING_BID",
+        "packType": 0,
+        "error": "PROCUREMENT_SCHEMA_CHANGED",
+    }]
+    assert opening["rawBundle"]["complete"] is False
+    assert opening["rawBundle"]["status"] == "FOUND_PARTIAL"
 
 
 def test_complete_lookup_maps_from_raw_bundle_and_can_reprocess_without_refetch():

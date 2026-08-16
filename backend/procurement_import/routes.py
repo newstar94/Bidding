@@ -760,17 +760,76 @@ def _raw_snapshot_has_complete_opening_sources(
     ):
         return False
 
-    opening_operations = []
+    opening_sources = set()
     for key, source in (revision.get("sources") or {}).items():
         if not isinstance(source, dict):
             continue
         operation = str(source.get("operation") or key or "").strip().upper()
         if not operation.startswith("OPENING"):
             continue
-        opening_operations.append(operation)
+        request = source.get("request") or {}
+        pack_type = request.get("packType")
+        if pack_type is None:
+            matched_pack = re.search(r"_(\d+)$", str(key))
+            pack_type = int(matched_pack.group(1)) if matched_pack else None
+        elif str(pack_type).isdigit():
+            pack_type = int(pack_type)
+        opening_sources.add((operation, pack_type))
         if source.get("success") is not True:
             return False
-    if not opening_operations:
+        if operation == "OPENING_BID":
+            response = source.get("response")
+            bidder_response = (
+                response.get("bidSubmissionByContractorViewResponse")
+                if isinstance(response, dict)
+                else None
+            )
+            if (
+                not isinstance(bidder_response, dict)
+                or not isinstance(
+                    bidder_response.get("bidSubmissionDTOList"), list
+                )
+            ):
+                return False
+    if not opening_sources:
+        return False
+
+    opening_operations = {
+        operation for operation, _pack_type in opening_sources
+    }
+
+    required_sources = revision.get("requiredOpeningSources")
+    if isinstance(required_sources, list) and required_sources:
+        for required in required_sources:
+            if not isinstance(required, dict):
+                return False
+            operation = str(
+                required.get("operation") or ""
+            ).strip().upper()
+            pack_type = required.get("packType")
+            if pack_type is not None and str(pack_type).isdigit():
+                pack_type = int(pack_type)
+            if (operation, pack_type) not in opening_sources:
+                return False
+        required_operations = set()
+
+    elif opening_operations & {"OPENING_OTHER", "OPENING_ADB"}:
+        required_operations = opening_operations & {
+            "OPENING_OTHER", "OPENING_ADB"
+        }
+    else:
+        required_operations = {"OPENING_ROUND", "OPENING_BID"}
+        identifiers = revision.get("identifiers") or {}
+        has_lot_sources = bool(opening_operations & {
+            "OPENING_LOT", "OPENING_LOT_DETAIL"
+        })
+        if bool(identifiers.get("isMultiLot")) or has_lot_sources:
+            required_operations.update({
+                "OPENING_LOT", "OPENING_LOT_DETAIL"
+            })
+    if required_operations and not required_operations.issubset(
+        opening_operations
+    ):
         return False
 
     for failure in raw_bundle.get("failures") or []:
@@ -810,11 +869,8 @@ def _load_opening_from_raw_snapshot(
     )
     if not isinstance(raw_bundle, dict):
         return None
-    if (
-        raw_bundle.get("complete") is not True
-        and not _raw_snapshot_has_complete_opening_sources(
-            raw_bundle, selected_revision
-        )
+    if not _raw_snapshot_has_complete_opening_sources(
+        raw_bundle, selected_revision
     ):
         return None
     projected = projector(

@@ -551,6 +551,12 @@ test("two-envelope opening loads financial data only after the source round allo
       if (operation === "OPENING_FINANCIAL_AVAILABLE") {
         return { data: true, metadata: { operation } };
       }
+      if (operation === "OPENING_BID") return {
+        data: {
+          bidSubmissionByContractorViewResponse: { bidSubmissionDTOList: [] },
+        },
+        metadata: { operation },
+      };
       return { data: { operation, packType: payload.packType }, metadata: { operation } };
     },
   };
@@ -570,6 +576,16 @@ test("two-envelope opening loads financial data only after the source round allo
     calls.find(([operation]) => operation === "OPENING_FINANCIAL_AVAILABLE"),
     ["OPENING_FINANCIAL_AVAILABLE", { id: "notice-01" }],
   );
+  assert.deepEqual(result.requiredOpeningSources, [
+    { operation: "OPENING_NOTIFY", packType: 1 },
+    { operation: "OPENING_ROUND", packType: 1 },
+    { operation: "OPENING_BID", packType: 1 },
+    { operation: "OPENING_FINANCIAL_AVAILABLE", packType: null },
+    { operation: "OPENING_NOTIFY", packType: 2 },
+    { operation: "OPENING_ROUND", packType: 2 },
+    { operation: "OPENING_BID", packType: 2 },
+    { operation: "OPENING_FINANCIAL_DETAIL", packType: 2 },
+  ]);
 });
 
 
@@ -604,6 +620,123 @@ test("opening calls lot endpoints only when the source marks the package multi-l
   ].includes(operation)).map(([operation]) => operation).sort(), [
     "OPENING_LOT", "OPENING_LOT_DETAIL",
   ]);
+});
+
+
+test("opening keeps lot sources when the notice declares a multi-lot package", async () => {
+  const calls = [];
+  const client = {
+    request: async (operation, payload) => {
+      calls.push([operation, payload]);
+      if (operation === "NOTICE_LDT_DETAIL") return {
+        data: {
+          notifyNo: "IB2600000006", notifyId: "notice-01",
+          bidMode: "1_MTHS", processApply: "LDT", isMultiLot: 1,
+        },
+        metadata: { operation },
+      };
+      if (operation === "OPENING_ROUND") return {
+        data: { bidoBidroundMngViewDTO: { bidStatus: "OPEN_BID" } },
+        metadata: { operation },
+      };
+      if (operation === "OPENING_BID") return {
+        data: {
+          bidSubmissionByContractorViewResponse: { bidSubmissionDTOList: [] },
+        },
+        metadata: { operation },
+      };
+      return { data: [], metadata: { operation } };
+    },
+  };
+
+  const result = await new MscCollectors({ client }).getOpeningBundle(
+    "IB2600000006", "notice-01",
+  );
+
+  assert.ok(result.raw.opening_lot_0);
+  assert.ok(result.raw.opening_lot_detail_0);
+  assert.deepEqual(result.requiredOpeningSources.slice(-2), [
+    { operation: "OPENING_LOT", packType: 0 },
+    { operation: "OPENING_LOT_DETAIL", packType: 0 },
+  ]);
+});
+
+
+test("opening marks an invalid bid-open payload as a schema failure", async () => {
+  for (const invalidPayload of [
+    123,
+    {},
+    { bidSubmissionByContractorViewResponse: null },
+  ]) {
+    const client = {
+      request: async (operation, payload) => {
+        if (operation === "NOTICE_LDT_DETAIL") return {
+          data: {
+            notifyNo: "IB2600000004", notifyId: "notice-01",
+            bidMode: "1_MTHS", processApply: "LDT",
+          },
+          metadata: { operation },
+        };
+        if (operation === "OPENING_ROUND") return {
+          data: { bidoBidroundMngViewDTO: { isMultiLot: 0, bidStatus: "OPEN_BID" } },
+          metadata: { operation },
+        };
+        if (operation === "OPENING_BID") return {
+          data: invalidPayload,
+          metadata: { operation, packType: payload.packType },
+        };
+        return { data: { operation }, metadata: { operation } };
+      },
+    };
+
+    const result = await new MscCollectors({ client }).getOpeningBundle(
+      "IB2600000004", "notice-01",
+    );
+
+    assert.equal(result.raw.opening_bid_0, undefined);
+    assert.deepEqual(result.failures, [{
+      operation: "OPENING_BID",
+      packType: 0,
+      error: "PROCUREMENT_SCHEMA_CHANGED",
+    }]);
+  }
+});
+
+
+test("opening accepts an explicit empty bidder list", async () => {
+  const client = {
+    request: async (operation) => {
+      if (operation === "NOTICE_LDT_DETAIL") return {
+        data: {
+          notifyNo: "IB2600000005", notifyId: "notice-01",
+          bidMode: "1_MTHS", processApply: "LDT",
+        },
+        metadata: { operation },
+      };
+      if (operation === "OPENING_ROUND") return {
+        data: { bidoBidroundMngViewDTO: { isMultiLot: 0, bidStatus: "OPEN_BID" } },
+        metadata: { operation },
+      };
+      if (operation === "OPENING_BID") return {
+        data: {
+          bidSubmissionByContractorViewResponse: { bidSubmissionDTOList: [] },
+        },
+        metadata: { operation },
+      };
+      return { data: { operation }, metadata: { operation } };
+    },
+  };
+
+  const result = await new MscCollectors({ client }).getOpeningBundle(
+    "IB2600000005", "notice-01",
+  );
+
+  assert.deepEqual(
+    result.raw.opening_bid_0.bidSubmissionByContractorViewResponse
+      .bidSubmissionDTOList,
+    [],
+  );
+  assert.deepEqual(result.failures, []);
 });
 
 
@@ -648,6 +781,12 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
         data: { bidoBidroundMngViewDTO: { isMultiLot: 0, bidStatus: "PUB_KQLCNT" } },
         metadata: { operation },
       };
+      if (operation === "OPENING_BID") return {
+        data: {
+          bidSubmissionByContractorViewResponse: { bidSubmissionDTOList: [] },
+        },
+        metadata: { operation },
+      };
       if (operation === "NOTICE_CONTRACT_LIST") return {
         data: [{ contractCode: "HD-01", contractDate: "2026-01-01" }], metadata: { operation },
       };
@@ -672,6 +811,11 @@ test("complete tender bundle captures sidecars, opening, result and contracts pe
   );
   assert.equal(bundle.revisions["01"].sources.petition.absent, true);
   assert.equal(bundle.revisions["01"].sources.opening_bid_0.success, true);
+  assert.deepEqual(bundle.revisions["01"].requiredOpeningSources, [
+    { operation: "OPENING_NOTIFY", packType: 0 },
+    { operation: "OPENING_ROUND", packType: 0 },
+    { operation: "OPENING_BID", packType: 0 },
+  ]);
   assert.equal(bundle.revisions["01"].sources.selectionResult.success, true);
   assert.equal(bundle.revisions["01"].statusForNotify, "DXT");
   assert.equal(bundle.revisions["01"].sourceStatus, "OPEN_DXKT");

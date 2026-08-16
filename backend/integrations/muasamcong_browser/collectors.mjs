@@ -301,6 +301,23 @@ function flagEnabled(value) {
 }
 
 
+function validateOpeningBidPayload(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("PROCUREMENT_SCHEMA_CHANGED");
+  }
+  const bidderResponse = data.bidSubmissionByContractorViewResponse;
+  if (
+    !bidderResponse
+    || typeof bidderResponse !== "object"
+    || Array.isArray(bidderResponse)
+    || !Array.isArray(bidderResponse.bidSubmissionDTOList)
+  ) {
+    throw new Error("PROCUREMENT_SCHEMA_CHANGED");
+  }
+  return data;
+}
+
+
 function sourceMetrics(metadata) {
   return Object.fromEntries(Object.entries(metadata || {})
     .filter(([, value]) => ["number", "boolean"].includes(typeof value)));
@@ -483,10 +500,14 @@ export class MscCollectors {
     };
     const sources = { noticeDetail: detailResponse.data };
     const failures = [];
+    const requiredOpeningSources = [];
     if (["KHAC", "ADB", "WB"].includes(processApply)) {
       const openingOperation = ["ADB", "WB"].includes(processApply)
         ? "OPENING_ADB"
         : "OPENING_OTHER";
+      requiredOpeningSources.push({
+        operation: openingOperation, packType: null,
+      });
       try {
         sources.opening = (await this.client.request(openingOperation, { id: revisionId })).data;
       } catch (error) {
@@ -496,13 +517,19 @@ export class MscCollectors {
       const collectPackType = async (packType) => {
         const tasks = [];
         const baseOperations = ["OPENING_NOTIFY", "OPENING_ROUND", "OPENING_BID"];
+        requiredOpeningSources.push(...baseOperations.map((openingOperation) => ({
+          operation: openingOperation, packType,
+        })));
         for (const openingOperation of baseOperations) {
           tasks.push((async () => {
             try {
-            const key = `${openingOperation.toLowerCase()}_${packType}`;
-            sources[key] = (
-              await this.client.request(openingOperation, { ...payload, packType })
-            ).data;
+              const key = `${openingOperation.toLowerCase()}_${packType}`;
+              const response = await this.client.request(
+                openingOperation, { ...payload, packType },
+              );
+              sources[key] = openingOperation === "OPENING_BID"
+                ? validateOpeningBidPayload(response.data)
+                : response.data;
             } catch (error) {
               failures.push({ operation: openingOperation, packType, error: String(error.message) });
             }
@@ -511,9 +538,14 @@ export class MscCollectors {
         await Promise.all(tasks);
         const roundData = sources[`opening_round_${packType}`];
         const bidData = sources[`opening_bid_${packType}`];
-        const isMultiLot = flagEnabled(findFirstValue(roundData, "isMultiLot"))
+        const isMultiLot = flagEnabled(findFirstValue(notice, "isMultiLot"))
+          || flagEnabled(findFirstValue(roundData, "isMultiLot"))
           || flagEnabled(findFirstValue(bidData, "isMultiLot"));
         if (isMultiLot) {
+          requiredOpeningSources.push(
+            { operation: "OPENING_LOT", packType },
+            { operation: "OPENING_LOT_DETAIL", packType },
+          );
           await Promise.all(["OPENING_LOT", "OPENING_LOT_DETAIL"].map(async (openingOperation) => {
             try {
               const key = `${openingOperation.toLowerCase()}_${packType}`;
@@ -534,6 +566,9 @@ export class MscCollectors {
         bidMode === "1_HTHS"
         && ["OPEN_DXTC", "PUB_KQLCNT"].includes(bidStatus)
       ) {
+        requiredOpeningSources.push({
+          operation: "OPENING_FINANCIAL_AVAILABLE", packType: null,
+        });
         try {
           sources.opening_financial_available = (
             await this.client.request("OPENING_FINANCIAL_AVAILABLE", { id: payload.notifyId })
@@ -542,6 +577,9 @@ export class MscCollectors {
           failures.push({ operation: "OPENING_FINANCIAL_AVAILABLE", error: String(error.message) });
         }
         await collectPackType(2);
+        requiredOpeningSources.push({
+          operation: "OPENING_FINANCIAL_DETAIL", packType: 2,
+        });
         try {
           sources.opening_financial_detail_2 = (
             await this.client.request("OPENING_FINANCIAL_DETAIL", {
@@ -559,6 +597,7 @@ export class MscCollectors {
     return {
       raw: sources,
       failures,
+      requiredOpeningSources,
       processApply,
       bidMode,
       noticeDetailOperation: operation,
@@ -1091,6 +1130,10 @@ export class MscCollectors {
           });
           opening = { raw: {}, failures: [] };
         }
+        node.requiredOpeningSources = (opening.requiredOpeningSources || []).map((source) => ({
+          operation: String(source?.operation || ""),
+          packType: source?.packType ?? null,
+        }));
         const failuresByKey = new Map((opening.failures || []).map((failure) => [
           `${failure.operation}:${failure.packType ?? ""}`, failure,
         ]));

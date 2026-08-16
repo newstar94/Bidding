@@ -549,6 +549,8 @@ class MuaSamCongProcurementSource:
         failures = result.get("failures") or []
         sources = {}
         for key, response in raw.items():
+            pack_match = re.search(r"_(\d+)$", str(key))
+            pack_type = int(pack_match.group(1)) if pack_match else None
             if key == "noticeDetail":
                 operation = str(
                     result.get("noticeDetailOperation") or "NOTICE_LDT_DETAIL"
@@ -567,6 +569,11 @@ class MuaSamCongProcurementSource:
                 "request": {
                     "noticeNo": notice_no,
                     "revisionId": revision_id,
+                    **(
+                        {"packType": pack_type}
+                        if pack_type is not None
+                        else {}
+                    ),
                 },
                 "response": deepcopy(response),
                 "error": None,
@@ -592,6 +599,13 @@ class MuaSamCongProcurementSource:
                 revision_number: {
                     "revisionId": revision_id,
                     "revisionNumber": revision_number,
+                    "identifiers": {
+                        "processApply": result.get("processApply"),
+                        "bidMode": result.get("bidMode"),
+                    },
+                    "requiredOpeningSources": deepcopy(
+                        result.get("requiredOpeningSources") or []
+                    ),
                     "sources": sources,
                 },
             },

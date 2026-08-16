@@ -27,7 +27,31 @@ def test_opening_prepare_reuses_complete_exact_raw_snapshot():
             assert options["detail_level"] == "COMPLETE"
             assert options["revision_mode"] == "SELECTED"
             assert options["revision_numbers"] == ["01"]
-            return {"complete": True, "entity": {"kind": "NOTICE"}}
+            return {
+                "complete": True,
+                "entity": {"kind": "NOTICE"},
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "sources": {
+                            "opening_round_0": {
+                                "operation": "OPENING_ROUND",
+                                "success": True,
+                            },
+                            "opening_bid_0": {
+                                "operation": "OPENING_BID",
+                                "success": True,
+                                "response": {
+                                    "bidSubmissionByContractorViewResponse": {
+                                        "bidSubmissionDTOList": [],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            }
 
     class Source:
         def lookup_from_raw_bundle(self, notice_no, bundle, **options):
@@ -86,9 +110,23 @@ def test_opening_prepare_reuses_opening_sources_from_partial_notice_snapshot():
                     "01": {
                         "revisionId": "notice-01",
                         "revisionNumber": "01",
+                        "identifiers": {"isMultiLot": True},
                         "sources": {
+                            "opening_round_0": {
+                                "operation": "OPENING_ROUND",
+                                "success": True,
+                            },
                             "opening_bid": {
                                 "operation": "OPENING_BID",
+                                "success": True,
+                                "response": {
+                                    "bidSubmissionByContractorViewResponse": {
+                                        "bidSubmissionDTOList": [],
+                                    },
+                                },
+                            },
+                            "opening_lot_0": {
+                                "operation": "OPENING_LOT",
                                 "success": True,
                             },
                             "opening_lot_detail": {
@@ -129,6 +167,161 @@ def test_opening_prepare_reuses_opening_sources_from_partial_notice_snapshot():
     assert opening["source"]["driver"] == "raw-snapshot"
 
 
+def test_opening_prepare_rejects_cached_lot_rows_without_bid_open():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {
+                "complete": False,
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "sources": {
+                            "opening_lot_detail_0": {
+                                "operation": "OPENING_LOT_DETAIL",
+                                "success": True,
+                            },
+                        },
+                    },
+                },
+            }
+
+    class Source:
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            raise AssertionError(
+                "lot rows without bid-open are not complete opening evidence"
+            )
+
+    assert _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    ) is None
+
+
+def test_opening_prepare_rejects_cached_two_envelope_missing_financial_bid():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {
+                "complete": True,
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "requiredOpeningSources": [
+                            {"operation": "OPENING_ROUND", "packType": 1},
+                            {"operation": "OPENING_BID", "packType": 1},
+                            {"operation": "OPENING_ROUND", "packType": 2},
+                            {"operation": "OPENING_BID", "packType": 2},
+                        ],
+                        "sources": {
+                            "opening_round_1": {
+                                "operation": "OPENING_ROUND",
+                                "request": {"packType": 1},
+                                "success": True,
+                            },
+                            "opening_bid_1": {
+                                "operation": "OPENING_BID",
+                                "request": {"packType": 1},
+                                "success": True,
+                                "response": {
+                                    "bidSubmissionByContractorViewResponse": {
+                                        "bidSubmissionDTOList": [],
+                                    },
+                                },
+                            },
+                            "opening_round_2": {
+                                "operation": "OPENING_ROUND",
+                                "request": {"packType": 2},
+                                "success": True,
+                            },
+                        },
+                    },
+                },
+            }
+
+    class Source:
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            raise AssertionError("financial bid-open evidence is required")
+
+    assert _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    ) is None
+
+
+def test_opening_prepare_rejects_cached_invalid_bid_open_schema():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {
+                "complete": True,
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "requiredOpeningSources": [
+                            {"operation": "OPENING_ROUND", "packType": 0},
+                            {"operation": "OPENING_BID", "packType": 0},
+                        ],
+                        "sources": {
+                            "opening_round_0": {
+                                "operation": "OPENING_ROUND",
+                                "request": {"packType": 0},
+                                "success": True,
+                            },
+                            "opening_bid_0": {
+                                "operation": "OPENING_BID",
+                                "request": {"packType": 0},
+                                "success": True,
+                                "response": {},
+                            },
+                        },
+                    },
+                },
+            }
+
+    class Source:
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            raise AssertionError("invalid bid-open schema cannot be reused")
+
+    assert _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    ) is None
+
+
+def test_opening_prepare_rejects_cached_bid_open_without_response():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {
+                "complete": True,
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "sources": {
+                            "opening_round_0": {
+                                "operation": "OPENING_ROUND",
+                                "success": True,
+                            },
+                            "opening_bid_0": {
+                                "operation": "OPENING_BID",
+                                "success": True,
+                            },
+                        },
+                    },
+                },
+            }
+
+    class Source:
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            raise AssertionError("missing bid-open response cannot be reused")
+
+    assert _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    ) is None
+
+
 def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
     raw_bundle = MuaSamCongProcurementSource._opening_raw_bundle(
         "IB2600000002",
@@ -143,6 +336,10 @@ def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
             "retrievedAt": "2026-08-16T00:00:00Z",
             "fingerprint": "opening:v1:test",
             "noticeDetailOperation": "NOTICE_LDT_DETAIL",
+            "requiredOpeningSources": [
+                {"operation": "OPENING_ROUND", "packType": 0},
+                {"operation": "OPENING_BID", "packType": 0},
+            ],
         },
     )
 
@@ -153,7 +350,107 @@ def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
     assert sources["opening_notify_0"]["endpoint"] == (
         "/exposeldtkqmt/bid-notification-p/notify"
     )
+    assert raw_bundle["revisions"]["01"]["requiredOpeningSources"] == [
+        {"operation": "OPENING_ROUND", "packType": 0},
+        {"operation": "OPENING_BID", "packType": 0},
+    ]
     assert all(str(source["endpoint"]).strip() for source in sources.values())
+
+
+def test_opening_cached_projection_matches_fresh_bidder_level_fields():
+    class Runtime:
+        def list_notice_revisions(self, _notice_no):
+            return {"revisions": [{
+                "revisionId": "notice-01",
+                "revisionNumber": "01",
+            }]}
+
+        def get_opening_bundle(self, notice_no, _revision_id):
+            return {
+                "raw": {
+                    "noticeDetail": {
+                        "notifyNo": notice_no,
+                        "notifyId": "notice-01",
+                        "notifyVersion": "01",
+                        "processApply": "LDT",
+                        "bidMode": "1_MTHS",
+                        "isMultiLot": 1,
+                    },
+                    "opening_round_0": {
+                        "bidoBidroundMngViewDTO": {
+                            "isMultiLot": 1,
+                            "bidStatus": "OPEN_BID",
+                        },
+                    },
+                    "opening_bid_0": {
+                        "bidSubmissionByContractorViewResponse": {
+                            "bidSubmissionDTOList": [{
+                                "contractorCode": "vn0100000001",
+                                "bidValidityNum": 90,
+                                "bidGuarantee": 100_000_000,
+                                "bidGuaranteeValidity": 120,
+                            }],
+                        },
+                    },
+                    "opening_lot_0": [{
+                        "contractorCode": "vn0100000001",
+                        "lotNo": "L01",
+                    }],
+                    "opening_lot_detail_0": [{
+                        "contractorCode": "vn0100000001",
+                        "lotNo": "L01",
+                        "lotFinalPrice": 500_000_000,
+                    }],
+                },
+                "fingerprint": "opening:v1:cache-equivalence",
+                "retrievedAt": "2026-08-16T00:00:00Z",
+                "processApply": "LDT",
+                "bidMode": "1_MTHS",
+                "noticeDetailOperation": "NOTICE_LDT_DETAIL",
+                "requiredOpeningSources": [
+                    {"operation": "OPENING_ROUND", "packType": 0},
+                    {"operation": "OPENING_BID", "packType": 0},
+                    {"operation": "OPENING_LOT", "packType": 0},
+                    {"operation": "OPENING_LOT_DETAIL", "packType": 0},
+                ],
+                "failures": [],
+                "metadata": {
+                    "profile": "2026.08",
+                    "operation": "OPENING_BUNDLE",
+                },
+            }
+
+    source = MuaSamCongProcurementSource(Runtime())
+    fresh = source.get_opening_bundle("IB2600000002", "notice-01")
+    raw_bundle = fresh["rawBundle"]
+
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return deepcopy(raw_bundle)
+
+    cached = _load_opening_from_raw_snapshot(
+        source,
+        RawRepository(),
+        "org-1",
+        "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    )
+
+    assert cached is not None
+    fields = (
+        "contractorCode",
+        "lotNo",
+        "bidGuarantee",
+        "bidValidityDays",
+        "bidGuaranteeValidityDays",
+    )
+    assert [
+        tuple(row.get(field) for field in fields)
+        for row in cached["bidders"]
+    ] == [
+        tuple(row.get(field) for field in fields)
+        for row in fresh["bidders"]
+    ]
 
 
 def test_procurement_import_routes_are_registered():
