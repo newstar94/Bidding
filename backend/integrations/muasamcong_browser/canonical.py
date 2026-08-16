@@ -645,6 +645,7 @@ def _notice_lots(raw):
                 "lotGuaranteeValue",
                 "bidGuarantee",
                 "bidGuaranteeValue",
+                "guaranteedAmount",
                 "guaranteeValue",
             ))
             if lot_no and guarantee is not None:

@@ -20,6 +20,13 @@ chứa `lotGuaranteeValue` trong `formValue` JSON lồng, BiddingFlow giải mã
 và backfill bảo đảm theo `lotNo` khớp chính xác. Giá trị lô ngoài đã có không bị
 ghi đè; tổng bảo đảm cấp gói không được tự phân bổ xuống các lô.
 
+Với gói thầu thuốc, payload ký E-HSMT từ `bido-inv-biddings-sign` có thể đặt
+giá trị từng lô tại
+`BD_DATA_TABLE.formValue.dataRow182.detailLotList[].guaranteedAmount` trong khi
+`lotDTOList[].lotGuaranteeValue` vẫn là `null`. Trường này có cùng semantics
+bảo đảm dự thầu theo lô và chỉ được backfill khi `lotNo` khớp chính xác; thứ tự
+dòng trong form không được dùng để ghép.
+
 Hàng hóa được tạo cùng transaction bản nháp kế hoạch/gói, liên kết tới ID gói và ID lô nội bộ. Gói nhập lại chỉ được backfill hàng hóa nguồn khi chưa có hàng hóa; danh mục người dùng đã lưu không bị ghi đè. Việc này là projection ở giai đoạn mời thầu, không tạo dữ liệu mở thầu, chấm thầu, kết quả hay hợp đồng.
 
 Chủ sản phẩm xác nhận danh mục hàng hóa vẫn được hoàn thiện trong cả trạng thái `PREPARING`/“Chuẩn bị” và `INVITED`/“Đang mời thầu”. Người dùng có quyền sửa gói theo tenant, module, assignment và record scope được thêm, nhập và chỉnh sửa danh mục trong hai trạng thái này. Quyền xóa từng hàng hóa không được mở rộng ngoài “Chuẩn bị”; từ trạng thái mở thầu trở đi, toàn bộ danh mục tiếp tục bị khóa.
@@ -48,6 +55,7 @@ Không cần migration schema. Bản ghi hiện hữu không bị rewrite. Ngư�
 - `tests/test_muasamcong_integration_source.py::test_goods_form_1281_maps_one_item_per_lot_using_pos_index`
 - `tests/test_muasamcong_integration_source.py::test_ib2600082707_goods_form_0812_maps_non_lot_group_children`
 - `tests/test_muasamcong_integration_source.py::test_hsmt_form_lot_guarantees_enrich_null_notice_lot_values`
+- `tests/test_muasamcong_integration_source.py::test_bido_inv_biddings_sign_guaranteed_amount_enriches_lots_by_code`
 - `tests/test_procurement_import_service.py::test_plan_linked_notice_stores_complete_source_and_caps_local_projection`
 - `tests/js/plan_breakdown_draft_transaction.test.mjs::prepared plan revision materializes source packages into one memory-only breakdown draft`
 - `tests/js/plan_breakdown_draft_transaction.test.mjs::procurement resync preserves existing goods and stable lot ids`

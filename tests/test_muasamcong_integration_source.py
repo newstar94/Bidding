@@ -466,6 +466,61 @@ def test_hsmt_form_lot_guarantees_enrich_null_notice_lot_values(form_code):
     ]
 
 
+def test_bido_inv_biddings_sign_guaranteed_amount_enriches_lots_by_code():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600212155",
+            "notifyId": "notice-01",
+            "bidName": "Mua sắm thuốc Generic",
+            "bidField": "HH",
+            "isMultiLot": 1,
+            "guaranteeValue": 30_000,
+            "lotDTOList": [{
+                "lotNo": "PP2600198305",
+                "lotName": "Fentanyl",
+                "lotGuaranteeValue": None,
+            }, {
+                "lotNo": "PP2600198304",
+                "lotName": "Atropin sulfat",
+                "lotGuaranteeValue": None,
+            }],
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD_DATA_TABLE",
+                "formValue": json.dumps({
+                    "dataRow182": {
+                        "guaranteeValue": 30_000,
+                        "detailLotList": [{
+                            "lotNo": "PP2600198304",
+                            "lotName": "Atropin sulfat",
+                            "guaranteedAmount": 13_000,
+                        }, {
+                            "lotNo": "PP2600198305",
+                            "lotName": "Fentanyl",
+                            "guaranteedAmount": 17_000,
+                        }],
+                    },
+                }, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600212155",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600212155", revision, revision
+    )
+
+    assert revision["bidGuaranteeVnd"] == 30_000
+    assert [lot["bidGuarantee"] for lot in revision["lots"]] == [
+        17_000,
+        13_000,
+    ]
+    assert [lot["bidGuarantee"] for lot in draft["danhSachPhanLo"]] == [
+        17_000,
+        13_000,
+    ]
+
+
 def test_goods_form_1281_keeps_non_lot_items_at_package_scope():
     revision = normalize_notice_revision(
         {
