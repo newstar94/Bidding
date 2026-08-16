@@ -22,6 +22,7 @@ from backend.integrations.muasamcong_browser.launchers import (
     BrowserLauncherFactory,
     NodeBrowserRuntime,
     ResearchBrowserLauncher,
+    RestartableBrowserRuntime,
     StandardBrowserLauncher,
 )
 from backend.procurement_lookup.domain import ProcurementLookupError
@@ -462,6 +463,47 @@ def test_node_browser_runtime_times_out_blocked_worker_and_marks_it_unhealthy():
 
     assert time.monotonic() - started < 0.5
     assert runtime.is_healthy() is False
+
+
+def test_restartable_browser_runtime_replaces_a_worker_after_timeout():
+    created = []
+
+    class Runtime:
+        def __init__(self, should_timeout):
+            self.should_timeout = should_timeout
+            self.closed = False
+
+        def is_healthy(self):
+            return not self.closed
+
+        def get_opening_bundle(self, notice_no, revision_id):
+            if self.should_timeout:
+                self.closed = True
+                raise ProcurementLookupError("PROCUREMENT_TIMEOUT")
+            return {"noticeNo": notice_no, "revisionId": revision_id}
+
+        def close(self):
+            self.closed = True
+
+    def runtime_factory(_configuration):
+        runtime = Runtime(should_timeout=not created)
+        created.append(runtime)
+        return runtime
+
+    runtime = RestartableBrowserRuntime(
+        {"browserMode": "standard"},
+        runtime_factory=runtime_factory,
+    )
+
+    with pytest.raises(ProcurementLookupError, match="PROCUREMENT_TIMEOUT"):
+        runtime.get_opening_bundle("IB2600000002", "notice-00")
+
+    assert runtime.get_opening_bundle("IB2600000002", "notice-00") == {
+        "noticeNo": "IB2600000002",
+        "revisionId": "notice-00",
+    }
+    assert len(created) == 2
+    assert created[0].closed is True
 
 
 def test_node_browser_runtime_rejects_a_second_different_lookup_when_busy():

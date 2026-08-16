@@ -43,7 +43,7 @@ const LEGACY_FIELD_ALIASES_BY_TYPE = Object.freeze({
   }),
 });
 const snakeToCamel = (key, type = null) => {
-  if (!key || !key.includes("_")) return key;
+  if (!key || key.startsWith("_") || !key.includes("_")) return key;
   const tableName = type ? resolveSchemaTable(type) : null;
   const tableFieldMap = tableName ? FIELD_MAP_BY_TABLE[tableName] : null;
   if (tableFieldMap?.[key]) return tableFieldMap[key];

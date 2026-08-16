@@ -10,6 +10,66 @@ const ACTIONABLE_PENDING_PHASES = new Set([
   "validationRejected",
 ]);
 
+function isSyncConflict(result) {
+  return Boolean(result?.conflict || result?.status === 409);
+}
+
+export async function resolvePendingSyncConflict(controller, initialResult) {
+  if (!controller || !isSyncConflict(initialResult)) return initialResult;
+
+  let result = initialResult;
+  const rebased = typeof controller.forceSyncData === "function"
+    ? await controller.forceSyncData(false, true)
+    : { ok: false };
+  if (rebased?.ok && typeof controller.autoSync === "function") {
+    result = await controller.autoSync();
+    if (result?.ok) {
+      await controller.forceSyncData?.(false, false);
+      controller.view?.showToast?.(
+        "Đã xử lý xung đột",
+        "Thay đổi cục bộ đã được đồng bộ sau khi tải lại phiên bản mới nhất từ máy chủ.",
+        "success",
+      );
+      return { ...result, conflictCleared: true, retried: true };
+    }
+  }
+
+  const pendingMutation = controller.model?.buildMutationSyncPayload?.();
+  if (!pendingMutation || !isSyncConflict(result)) return result;
+  const discard = Boolean(await controller.view?.customConfirm?.(
+    "Không thể tự động xử lý xung đột",
+    "Các thay đổi cục bộ vẫn xung đột sau khi tải lại dữ liệu máy chủ. "
+      + "Bạn có thể bỏ riêng hàng đợi thay đổi cục bộ này và tải lại dữ liệu đã lưu trên máy chủ. "
+      + "Dữ liệu trên máy chủ sẽ không bị xóa.",
+    "alert-triangle",
+    {
+      confirmLabel: "Bỏ thay đổi cục bộ",
+      cancelLabel: "Giữ lại để xử lý sau",
+    },
+  ));
+  if (!discard) return { ...result, conflictCleared: false };
+
+  controller.model?.discardMutationBatch?.();
+  await controller.model?.flushMutationOutbox?.();
+  const refreshed = typeof controller.forceSyncData === "function"
+    ? await controller.forceSyncData(false, true)
+    : { ok: true };
+  const conflictCleared = refreshed?.ok !== false;
+  if (conflictCleared) {
+    controller.view?.showToast?.(
+      "Đã loại bỏ xung đột",
+      "Đã bỏ hàng đợi thay đổi cục bộ và tải lại dữ liệu mới nhất từ máy chủ.",
+      "success",
+    );
+  }
+  return {
+    ok: conflictCleared,
+    conflictCleared,
+    discarded: true,
+    data: refreshed,
+  };
+}
+
 export function shouldShowLocalPending(currentPhase) {
   return !ACTIONABLE_PENDING_PHASES.has(String(currentPhase || ""));
 }
@@ -61,6 +121,9 @@ export function setupSyncUx() {
     }
     const pushed = await this.autoSync();
     if (pushed?.ok) await this.forceSyncData(false, false);
+    else if (isSyncConflict(pushed)) {
+      await resolvePendingSyncConflict(this, pushed);
+    }
   });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
     this._pendingMutationCount = Math.max(0, Number(pendingCount) || 0);

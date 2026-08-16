@@ -1417,6 +1417,7 @@ def test_three_way_merge_preserves_local_edits_and_surfaces_true_conflict():
 class _MemorySessionRepository:
     def __init__(self):
         self.rows = {}
+        self.package_lineages = []
 
     def create(self, row):
         self.rows[row["id"]] = row
@@ -1437,6 +1438,11 @@ class _MemorySessionRepository:
     def update_progress(self, session_id, *, current_index, status):
         self.rows[session_id]["currentIndex"] = current_index
         self.rows[session_id]["status"] = status
+
+    def find_active_package_lineages(
+        self, organization_id, provider, family_key,
+    ):
+        return deepcopy(self.package_lineages)
 
 
 def test_import_session_orders_manifest_and_serves_revision_draft_without_source():
@@ -1490,6 +1496,43 @@ def test_import_session_orders_manifest_and_serves_revision_draft_without_source
     assert draft["packageDrafts"][0]["sourceRevision"]["revisionId"] == "rev-00"
     assert draft["packageDrafts"][0]["sourceRevision"]["workspaceLease"] == "lease-1"
     assert "sourceCanonical" not in draft["packageDrafts"][0]
+
+
+def test_next_session_draft_carries_the_active_local_package_root():
+    repository = _MemorySessionRepository()
+    repository.package_lineages = [{
+        "stablePackageId": "BP2600546627",
+        "symbol": "BP2600546627",
+        "localRootId": "pkg-01-root",
+    }]
+    service = ProcurementImportSessionService(repository, ttl_seconds=3600)
+    manifest = service.create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600219933"},
+            "revisions": [{
+                "revisionId": "rev-01", "revisionNumber": "01",
+                "name": "Kế hoạch 01", "planType": "Dự toán mua sắm",
+                "packages": [{
+                    "planDetailRevisionId": "detail-01",
+                    "stablePackageId": "BP2600546627",
+                    "symbol": "BP2600546627",
+                    "name": "Gói thầu số 01",
+                    "priceVnd": 100,
+                }],
+            }],
+        },
+        organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    package = service.get_revision_draft(
+        manifest["sessionId"], "01",
+        organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )["packageDrafts"][0]
+
+    assert package["sourceRevision"]["localRootId"] == "pkg-01-root"
 
 
 def test_pending_plan_enrichment_cannot_serve_an_incomplete_revision_draft():

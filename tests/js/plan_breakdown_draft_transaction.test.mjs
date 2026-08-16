@@ -514,6 +514,247 @@ test("linked notice version independently advances the package version", () => {
   assert.equal(result.packages[0].phienBan, "01");
 });
 
+test("a linked notice first seen in the next plan revision keeps every notice version", () => {
+  let sequence = 0;
+  const state = {
+    chudautu: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-root", phienBan: "00", isLatest: 1,
+      maKeHoach: "PL2600219933",
+    }],
+    goithau: [{
+      id: "pkg-plan-00", rootId: "pkg-root", phienBan: "00", isLatest: 1,
+      keHoachId: "plan-00", tenGoiThau: "Gói thầu số 01",
+      noticeLink: { state: "UNLINKED" },
+      sourceRevision: { stablePackageId: "BP2600546627" },
+      phanLo: "Có", phanLoList: [],
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const notice00 = {
+    maGoiThau: "IB2600399197",
+    tenGoiThau: "Gói thầu số 01",
+    noticeLink: {
+      state: "LINKED", kind: "TBMT", noticeNo: "IB2600399197",
+      noticeRevisionId: "notice-00", noticeVersion: "00",
+    },
+    sourceRevision: {
+      stablePackageId: "BP2600546627", packageObservationId: "detail-01",
+      packageRevisionNumber: "00",
+    },
+    phanLo: true,
+    danhSachPhanLo: [{ maPhanLo: "PP01", tenPhanLo: "Phần 1" }],
+    danhSachHangHoa: [{
+      sourceItemId: "goods-00", maPhanLo: "PP01", maHangHoa: "1.1",
+      tenHangHoa: "Hóa chất 00", donViTinh: "ml", soLuong: 10,
+    }],
+  };
+  const notice01 = {
+    ...notice00,
+    noticeLink: {
+      ...notice00.noticeLink,
+      noticeRevisionId: "notice-01", noticeVersion: "01",
+    },
+    sourceRevision: {
+      ...notice00.sourceRevision,
+      packageRevisionNumber: "01",
+    },
+    danhSachHangHoa: [{
+      sourceItemId: "goods-01", maPhanLo: "PP01", maHangHoa: "1.1",
+      tenHangHoa: "Hóa chất 01", donViTinh: "ml", soLuong: 20,
+    }],
+  };
+
+  const result = materializeProcurementRevisionFromPrevious(state, "plan-00", {
+    revisionNumber: "01",
+    planDraft: { maKeHoach: "PL2600219933", phienBan: "01" },
+    packageDrafts: [notice01],
+    packageRevisionHistories: [{
+      packageObservationId: "detail-01",
+      stablePackageId: "BP2600546627",
+      noticeNo: "IB2600399197",
+      revisions: [notice00, notice01],
+    }],
+  }, {
+    createId: (kind) => `${kind}-${++sequence}`,
+    timestamp: "2026-08-17 04:00:00",
+  });
+
+  const lineage = state.goithau.filter(
+    (row) => row.keHoachId === result.plan.id && row.rootId === "pkg-root",
+  ).sort((left, right) => Number(left.phienBan) - Number(right.phienBan));
+  assert.deepEqual(lineage.map((row) => row.phienBan), ["00", "01"]);
+  assert.deepEqual(lineage.map((row) => row.isLatest), [0, 1]);
+  assert.equal(result.packages.length, 1, "only the latest notice version is editable");
+  assert.deepEqual(
+    lineage.map((pkg) => state.goithauhanghoa
+      .filter((item) => item.goiThauId === pkg.id)
+      .map((item) => item.tenHangHoa)),
+    [["Hóa chất 00"], ["Hóa chất 01"]],
+  );
+});
+
+test("resync backfills a missing linked-notice predecessor and its goods", () => {
+  let sequence = 0;
+  const state = {
+    chudautu: [],
+    kehoach: [{
+      id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1,
+      maKeHoach: "PL2600219933", rowVersion: 1,
+    }],
+    goithau: [{
+      id: "pkg-01", rootId: "pkg-root", phienBan: "01", isLatest: 1,
+      keHoachId: "plan-01", tenGoiThau: "Gói thầu số 01",
+      maGoiThau: "IB2600399197", phanLo: "Có", phanLoList: [],
+      noticeLink: {
+        state: "LINKED", kind: "TBMT", noticeNo: "IB2600399197",
+        noticeRevisionId: "notice-01", noticeVersion: "01",
+      },
+      sourceRevision: {
+        stablePackageId: "BP2600546627", packageObservationId: "detail-01",
+        packageRevisionNumber: "01",
+      },
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const notice00 = {
+    maGoiThau: "IB2600399197", tenGoiThau: "Gói thầu số 01",
+    noticeLink: {
+      state: "LINKED", kind: "TBMT", noticeNo: "IB2600399197",
+      noticeRevisionId: "notice-00", noticeVersion: "00",
+    },
+    sourceRevision: {
+      stablePackageId: "BP2600546627", packageObservationId: "detail-01",
+      packageRevisionNumber: "00",
+    },
+    phanLo: true,
+    danhSachPhanLo: [{ maPhanLo: "PP01", tenPhanLo: "Phần 1" }],
+    danhSachHangHoa: [{
+      sourceItemId: "goods-00", maPhanLo: "PP01", maHangHoa: "1.1",
+      tenHangHoa: "Hóa chất 00", donViTinh: "ml", soLuong: 10,
+    }],
+  };
+  const notice01 = {
+    ...notice00,
+    noticeLink: {
+      ...notice00.noticeLink,
+      noticeRevisionId: "notice-01", noticeVersion: "01",
+    },
+    sourceRevision: {
+      ...notice00.sourceRevision,
+      packageRevisionNumber: "01",
+    },
+    danhSachHangHoa: [{
+      sourceItemId: "goods-01", maPhanLo: "PP01", maHangHoa: "1.1",
+      tenHangHoa: "Hóa chất 01", donViTinh: "ml", soLuong: 20,
+    }],
+  };
+
+  const result = materializeProcurementRevisionIntoExisting(state, "plan-01", {
+    revisionNumber: "01",
+    planDraft: { maKeHoach: "PL2600219933", phienBan: "01" },
+    packageDrafts: [notice01],
+    packageRevisionHistories: [{
+      packageObservationId: "detail-01",
+      stablePackageId: "BP2600546627",
+      noticeNo: "IB2600399197",
+      revisions: [notice00, notice01],
+    }],
+  }, {
+    createId: (kind) => `${kind}-${++sequence}`,
+    timestamp: "2026-08-17 04:10:00",
+  });
+
+  const lineage = state.goithau.filter(
+    (row) => row.keHoachId === "plan-01" && row.rootId === "pkg-root",
+  ).sort((left, right) => Number(left.phienBan) - Number(right.phienBan));
+  assert.deepEqual(lineage.map((row) => row.phienBan), ["00", "01"]);
+  assert.deepEqual(lineage.map((row) => row.isLatest), [0, 1]);
+  assert.equal(result.packages.length, 1);
+  assert.deepEqual(
+    lineage.map((pkg) => state.goithauhanghoa
+      .filter((item) => item.goiThauId === pkg.id)
+      .map((item) => item.tenHangHoa)),
+    [["Hóa chất 00"], ["Hóa chất 01"]],
+  );
+});
+
+test("next plan revision backfills notice history when the plan package identity changes", () => {
+  let sequence = 0;
+  const state = {
+    chudautu: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-root", phienBan: "00", isLatest: 1,
+      maKeHoach: "PL2600219933",
+    }],
+    goithau: [{
+      id: "pkg-plan-00", rootId: "pkg-plan-root", phienBan: "00", isLatest: 1,
+      keHoachId: "plan-00", tenGoiThau: "Gói thầu số 01",
+      sourceRevision: { stablePackageId: "plan-detail-01" },
+      noticeLink: { state: "UNLINKED" },
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const notice00 = {
+    maGoiThau: "IB2600399197", tenGoiThau: "Gói thầu số 01",
+    noticeLink: {
+      state: "LINKED", kind: "TBMT", noticeNo: "IB2600399197",
+      noticeRevisionId: "notice-00", noticeVersion: "00",
+    },
+    sourceRevision: {
+      stablePackageId: "BP2600546627", packageObservationId: "notice-detail-01",
+      packageRevisionNumber: "00",
+    },
+    danhSachHangHoa: [{
+      sourceItemId: "goods-00", maHangHoa: "1", tenHangHoa: "Hóa chất 00",
+      donViTinh: "ml", soLuong: 10,
+    }],
+  };
+  const notice01 = {
+    ...notice00,
+    noticeLink: {
+      ...notice00.noticeLink,
+      noticeRevisionId: "notice-01", noticeVersion: "01",
+    },
+    sourceRevision: {
+      ...notice00.sourceRevision,
+      packageRevisionNumber: "01",
+    },
+    danhSachHangHoa: [{
+      sourceItemId: "goods-01", maHangHoa: "1", tenHangHoa: "Hóa chất 01",
+      donViTinh: "ml", soLuong: 20,
+    }],
+  };
+
+  const result = materializeProcurementRevisionFromPrevious(state, "plan-00", {
+    revisionNumber: "01",
+    planDraft: { maKeHoach: "PL2600219933", phienBan: "01" },
+    packageDrafts: [notice01],
+    packageRevisionHistories: [{
+      packageObservationId: "notice-detail-01",
+      stablePackageId: "BP2600546627",
+      noticeNo: "IB2600399197",
+      revisions: [notice00, notice01],
+    }],
+  }, {
+    createId: (kind) => `${kind}-${++sequence}`,
+    timestamp: "2026-08-17 04:20:00",
+  });
+
+  const current = result.packages[0];
+  const lineage = state.goithau.filter(
+    (row) => row.keHoachId === result.plan.id && row.rootId === current.rootId,
+  ).sort((left, right) => Number(left.phienBan) - Number(right.phienBan));
+  assert.deepEqual(lineage.map((row) => row.phienBan), ["00", "01"]);
+  assert.deepEqual(lineage.map((row) => row.isLatest), [0, 1]);
+  assert.deepEqual(
+    lineage.map((pkg) => state.goithauhanghoa
+      .filter((item) => item.goiThauId === pkg.id)
+      .map((item) => item.tenHangHoa)),
+    [["Hóa chất 00"], ["Hóa chất 01"]],
+  );
+});
+
 test("new plan import materializes every prior linked notice revision on one package root", () => {
   let sequence = 0;
   const state = {
@@ -522,7 +763,7 @@ test("new plan import materializes every prior linked notice revision on one pac
   };
   const current = {
     maGoiThau: "IB2600212155",
-    tenGoiThau: "GÃ³i ngÆ°á»i dÃ¹ng cÃ³ thá»ƒ chá»‰nh trÆ°á»›c khi lÆ°u",
+    tenGoiThau: "Gói người dùng có thể chỉnh trước khi lưu",
     phanLo: false,
     noticeLink: {
       state: "LINKED", kind: "TBMT", noticeNo: "IB2600212155",
@@ -535,7 +776,7 @@ test("new plan import materializes every prior linked notice revision on one pac
   };
   const result = materializeProcurementRevisionDraft(state, {
     revisionNumber: "00",
-    planDraft: { maKeHoach: "PL2600122143", tenKeHoach: "Káº¿ hoáº¡ch 00" },
+    planDraft: { maKeHoach: "PL2600122143", tenKeHoach: "Kế hoạch 00" },
     packageDrafts: [current],
     packageRevisionHistories: [{
       packageObservationId: "detail-00",
@@ -543,7 +784,7 @@ test("new plan import materializes every prior linked notice revision on one pac
       noticeNo: "IB2600212155",
       revisions: [{
         ...current,
-        tenGoiThau: "GÃ³i táº¡i TBMT 00",
+        tenGoiThau: "Gói tại TBMT 00",
         noticeLink: { ...current.noticeLink, noticeRevisionId: "notice-00", noticeVersion: "00" },
         sourceRevision: { ...current.sourceRevision, packageRevisionNumber: "00" },
       }, current],
@@ -558,7 +799,7 @@ test("new plan import materializes every prior linked notice revision on one pac
   ).sort((left, right) => Number(left.phienBan) - Number(right.phienBan));
   assert.deepEqual(lineage.map((row) => row.phienBan), ["00", "01"]);
   assert.deepEqual(lineage.map((row) => row.isLatest), [0, 1]);
-  assert.equal(lineage[0].tenGoiThau, "GÃ³i táº¡i TBMT 00");
+  assert.equal(lineage[0].tenGoiThau, "Gói tại TBMT 00");
   assert.equal(lineage[1].tenGoiThau, current.tenGoiThau);
   assert.equal(result.packages.length, 1, "only the latest revision is editable");
 
@@ -573,6 +814,53 @@ test("new plan import materializes every prior linked notice revision on one pac
     bounded.upserts.goithau.map((row) => row.phienBan).sort(),
     ["00", "01"],
   );
+});
+
+test("next plan revision keeps three package lineages when MSC detail ids change", () => {
+  let sequence = 0;
+  const previousPackages = ["01", "02", "03"].map((symbol) => ({
+    id: `pkg-${symbol}-00`,
+    rootId: `pkg-${symbol}-root`,
+    phienBan: "00",
+    isLatest: 1,
+    keHoachId: "plan-00",
+    tenGoiThau: `Gói thầu số ${symbol}`,
+  }));
+  const expectedRoots = previousPackages.map((row) => row.rootId).sort();
+  const state = {
+    chudautu: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-root", phienBan: "00", isLatest: 1,
+      maKeHoach: "PL2600219933",
+    }],
+    goithau: structuredClone(previousPackages),
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const packageDrafts = ["01", "02", "03"].map((symbol) => ({
+    tenGoiThau: `Gói thầu số ${symbol}`,
+    sourceRevision: {
+      stablePackageId: `BP26000000${symbol}`,
+      packageObservationId: `observation-${symbol}-01`,
+      revisionNumber: "01",
+      localRootId: `pkg-${symbol}-root`,
+    },
+  }));
+
+  const result = materializeProcurementRevisionFromPrevious(state, "plan-00", {
+    revisionNumber: "01",
+    planDraft: { maKeHoach: "PL2600219933", phienBan: "01" },
+    packageDrafts,
+  }, {
+    createId: (kind) => `${kind}-${++sequence}`,
+    timestamp: "2026-08-17 05:00:00",
+  });
+
+  assert.equal(result.packages.length, 3);
+  assert.deepEqual(
+    result.packages.map((row) => row.rootId).sort(),
+    expectedRoots,
+  );
+  assert.equal(new Set(state.goithau.map((row) => row.rootId)).size, 3);
 });
 
 test("next plan revision matches changed detail ids by package symbol and drops removed packages", () => {

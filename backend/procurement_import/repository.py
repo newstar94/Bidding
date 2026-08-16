@@ -1098,6 +1098,60 @@ class ProcurementImportSessionRepository:
             "updatedAt": _session_datetime(row[14]),
         }
 
+    def find_active_package_lineages(
+        self, organization_id, provider, family_key,
+    ):
+        rows = self.cursor.execute(
+            """SELECT binding.stable_external_id, binding.symbol,
+                      binding.local_root_id
+                 FROM procurement_source_binding AS binding
+                 JOIN goi_thau AS package
+                   ON package.organization_id = binding.organization_id
+                  AND package.id = binding.local_snapshot_id
+                 JOIN ke_hoach_lcnt AS plan
+                   ON plan.organization_id = package.organization_id
+                  AND plan.id = package.ke_hoach_id
+                WHERE binding.organization_id = ?
+                  AND binding.provider = ?
+                  AND upper(binding.family_key) = upper(?)
+                  AND binding.local_entity_type = 'goithau'
+                  AND package.archived_at IS NULL
+                  AND plan.archived_at IS NULL
+                ORDER BY binding.created_at DESC, binding.id DESC""",
+            (organization_id, provider, family_key),
+        ).fetchall()
+        grouped = {}
+        for stable_id, symbol, root_id in rows:
+            stable_key = str(stable_id or "").strip()
+            symbol_key = str(symbol or "").strip().casefold()
+            for key in (("stable", stable_key), ("symbol", symbol_key)):
+                if key[1]:
+                    grouped.setdefault(key, set()).add(str(root_id))
+        unambiguous = {
+            key: next(iter(roots))
+            for key, roots in grouped.items()
+            if len(roots) == 1
+        }
+        result = []
+        seen = set()
+        for stable_id, symbol, _root_id in rows:
+            stable_key = str(stable_id or "").strip()
+            symbol_key = str(symbol or "").strip().casefold()
+            root_id = (
+                unambiguous.get(("stable", stable_key))
+                or unambiguous.get(("symbol", symbol_key))
+            )
+            marker = (stable_key, symbol_key, root_id)
+            if not root_id or marker in seen:
+                continue
+            seen.add(marker)
+            result.append({
+                "stablePackageId": stable_key or None,
+                "symbol": str(symbol or "").strip() or None,
+                "localRootId": root_id,
+            })
+        return result
+
     def get_for_commit(self, session_id, *, organization_id, user_id):
         row = self.cursor.execute(
             """SELECT id, organization_id, user_id, workspace_lease, provider,

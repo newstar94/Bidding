@@ -26,6 +26,15 @@ def _source(record):
     return value if isinstance(value, dict) else {}
 
 
+def _revision_number_key(value):
+    text = str("" if value is None else value).strip()
+    return ("numeric", int(text)) if text.isdigit() else ("text", text)
+
+
+def _revision_numbers_equal(left, right):
+    return _revision_number_key(left) == _revision_number_key(right)
+
+
 def _record_revision_commit(session, context, organization_id, user_id, started):
     duration = time.perf_counter() - started
     record_database_phase(
@@ -91,8 +100,9 @@ def _validate_session_authority(session, context):
     if (
         session.get("status") not in {"READY", "WAITING_NEXT_CONFIRMATION"}
         or active_revision is None
-        or str(active_revision.get("revisionNumber"))
-        != context["revisionNumber"]
+        or not _revision_numbers_equal(
+            active_revision.get("revisionNumber"), context["revisionNumber"],
+        )
         or active_revision.get("status") == "COMMITTED"
         or str(session.get("provider") or "") != context["provider"]
         or str(session.get("familyNo") or "") != context["familyNo"]
@@ -168,7 +178,9 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
     _validate_session_authority(session, context)
     revision = next((
         row for row in session["canonicalBundle"].get("revisions") or []
-        if str(row.get("revisionNumber")) == context["revisionNumber"]
+        if _revision_numbers_equal(
+            row.get("revisionNumber"), context["revisionNumber"],
+        )
     ), None)
     if revision is None:
         raise ValueError("PROCUREMENT_REVISION_INVALID")
@@ -178,7 +190,9 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
         if (
             str(source.get("revisionId") or "") != str(revision.get("revisionId") or "")
             or str(source.get("revisionDigest") or "") != expected_digest
-            or str(record.get("phienBan") or "") != context["revisionNumber"]
+            or not _revision_numbers_equal(
+                record.get("phienBan"), context["revisionNumber"],
+            )
         ):
             raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
     canonical_packages = revision.get("packages") or []

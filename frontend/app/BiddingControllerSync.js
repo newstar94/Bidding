@@ -31,7 +31,11 @@ export {
   forceSyncData,
 } from "./SyncPullService.js";
 export { autoSync } from "./SyncPushService.js";
-export { prepareExportSnapshot, setupSyncUx } from "./SyncCoordinator.js";
+export {
+  prepareExportSnapshot,
+  resolvePendingSyncConflict,
+  setupSyncUx,
+} from "./SyncCoordinator.js";
 export function setupWebSocketConnection() {
   return webSocketSyncClientFor(this).connect();
 }

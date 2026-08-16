@@ -556,6 +556,8 @@ def validate_sync_payload_shape(payload):
                         "packageObservationId", "stablePackageId",
                         "packageRevisionNumber",
                     }
+                    if table_name == "goi_thau":
+                        allowed_source_fields.add("localRootId")
                     for source_key in sorted(set(value) - allowed_source_fields):
                         errors.append(_field_error(
                             f"{field_path}.{source_key}", "UNKNOWN_FIELD",

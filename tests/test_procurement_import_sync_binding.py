@@ -164,7 +164,10 @@ def test_preflight_returns_only_validated_import_package_ids(monkeypatch):
     assert authority["packageIds"] == ("package-imported",)
 
 
-def test_plan_revision_accepts_an_independent_unchanged_package_version(monkeypatch):
+@pytest.mark.parametrize("serialized_plan_version", ["01", 1])
+def test_plan_revision_accepts_an_independent_unchanged_package_version(
+    monkeypatch, serialized_plan_version,
+):
     revision = {
         "revisionId": "revision-01",
         "revisionNumber": "01",
@@ -200,7 +203,7 @@ def test_plan_revision_accepts_an_independent_unchanged_package_version(monkeypa
         "provider": "MUASAMCONG", "familyNo": "PL2600000001",
         "workspaceLease": "lease-1",
         "plans": [{
-            "id": "plan-01", "phienBan": "01",
+            "id": "plan-01", "phienBan": serialized_plan_version,
             "sourceRevision": _authority("01"),
         }],
         "packages": [{

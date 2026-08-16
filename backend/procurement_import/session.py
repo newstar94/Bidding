@@ -199,6 +199,45 @@ class ProcurementImportSessionService:
                 row["provider"], row["familyNo"], revision, revision
             )]
             package_revision_histories = []
+        lineage_loader = getattr(
+            self.repository, "find_active_package_lineages", None,
+        )
+        active_lineages = (
+            lineage_loader(
+                str(organization_id), row["provider"], row["familyNo"],
+            )
+            if row["kind"] == "PLAN" and lineage_loader is not None
+            else []
+        )
+        lineage_by_stable = {
+            str(item.get("stablePackageId") or "").strip(): item["localRootId"]
+            for item in active_lineages
+            if str(item.get("stablePackageId") or "").strip()
+        }
+        lineage_by_symbol = {
+            str(item.get("symbol") or "").strip().casefold(): item["localRootId"]
+            for item in active_lineages
+            if str(item.get("symbol") or "").strip()
+        }
+
+        def attach_local_root(package_draft):
+            source = package_draft.get("sourceRevision") or {}
+            stable_id = str(source.get("stablePackageId") or "").strip()
+            symbol = str(package_draft.get("soHieuGoiThau") or "").strip().casefold()
+            local_root_id = (
+                lineage_by_stable.get(stable_id)
+                or lineage_by_symbol.get(symbol)
+            )
+            if local_root_id:
+                package_draft["sourceRevision"] = {
+                    **source, "localRootId": local_root_id,
+                }
+
+        for package_draft in package_drafts:
+            attach_local_root(package_draft)
+        for history in package_revision_histories:
+            for package_draft in history["revisions"]:
+                attach_local_root(package_draft)
         authority = {
             "sessionId": row["id"],
             "workspaceLease": row["workspaceLease"],

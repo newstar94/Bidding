@@ -235,6 +235,55 @@ class NodeBrowserRuntime:
                         self._process.kill()
 
 
+class RestartableBrowserRuntime:
+    """Lazily replace an invalidated browser worker between requests."""
+
+    def __init__(self, configuration, *, runtime_factory=NodeBrowserRuntime):
+        self.configuration = dict(configuration)
+        self.runtime_factory = runtime_factory
+        self._runtime = None
+        self._closed = False
+        self._lock = RLock()
+
+    def _get_runtime(self):
+        with self._lock:
+            if self._closed:
+                raise ProcurementLookupError("PROCUREMENT_BROWSER_FAILED")
+            runtime = self._runtime
+            if runtime is not None and runtime.is_healthy():
+                return runtime
+            if runtime is not None:
+                close = getattr(runtime, "close", None)
+                if callable(close):
+                    close()
+            self._runtime = self.runtime_factory(self.configuration)
+            return self._runtime
+
+    def __getattr__(self, name):
+        runtime = self._get_runtime()
+        attribute = getattr(runtime, name, None)
+        if not callable(attribute):
+            raise AttributeError(name)
+        return attribute
+
+    def is_healthy(self):
+        with self._lock:
+            return (
+                not self._closed
+                and self._runtime is not None
+                and self._runtime.is_healthy()
+            )
+
+    def close(self):
+        with self._lock:
+            self._closed = True
+            runtime = self._runtime
+            self._runtime = None
+        close = getattr(runtime, "close", None)
+        if callable(close):
+            close()
+
+
 class StandardBrowserLauncher:
     """Create one safe, headless runtime and keep it warm between lookups."""
 

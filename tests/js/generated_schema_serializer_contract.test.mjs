@@ -5,6 +5,7 @@ import {
   serializeOutboundRecord,
   unknownOutboundFields,
 } from "../../frontend/app/outboundSerializer.js";
+import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 
 
 test("package appraisal decision survives outbound serialization", () => {
@@ -39,6 +40,28 @@ test("current procurement import snapshot sends trusted revision authority", () 
       sourceRevision,
     });
   }
+});
+
+test("record normalization preserves the procurement import authority marker", () => {
+  const model = new BiddingModel();
+  const sourceRevision = {
+    provider: "MUASAMCONG",
+    sessionId: "session-1",
+    workspaceLease: "lease-1",
+    revisionId: "revision-00",
+    revisionNumber: "00",
+    revisionDigest: "sha256:abc",
+  };
+  const normalized = model.normalizeRecordKeys({
+    id: "plan-00",
+    sourceRevision,
+    _procurementImportCurrent: true,
+  }, "kehoach");
+
+  assert.deepEqual(serializeOutboundRecord(normalized, "kehoach"), {
+    id: "plan-00",
+    sourceRevision,
+  });
 });
 
 test("historical procurement snapshots cannot send import authority", () => {

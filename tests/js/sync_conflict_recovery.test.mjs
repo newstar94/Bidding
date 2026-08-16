@@ -4,6 +4,7 @@ import test from "node:test";
 import { reconcileRouteDataAtStartup } from "../../frontend/app/startupReconciliation.js";
 import {
   finalizePulledSyncState,
+  resolvePendingSyncConflict,
   resolveRowVersionConflicts,
 } from "../../frontend/app/BiddingControllerSync.js";
 
@@ -187,4 +188,47 @@ test("row version conflicts always use server data without prompting", async () 
   } finally {
     globalThis.requestAnimationFrame = originalRequestAnimationFrame;
   }
+});
+
+
+test("an unresolved sync conflict can discard only pending local mutations", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      buildMutationSyncPayload: () => ({ clientMutationId: "pending-1" }),
+      discardMutationBatch() { calls.push("discard"); },
+      async flushMutationOutbox() { calls.push("flush"); },
+    },
+    view: {
+      async customConfirm(_title, _message, _icon, options) {
+        calls.push(["confirm", options]);
+        return true;
+      },
+      showToast(title, message) { calls.push(["toast", title, message]); },
+    },
+    async forceSyncData(_background, forceFull) {
+      calls.push(["pull", forceFull]);
+      return { ok: true };
+    },
+    async autoSync() {
+      calls.push("retry");
+      return { ok: false, conflict: true, status: 409 };
+    },
+  };
+
+  const result = await resolvePendingSyncConflict(controller, {
+    ok: false, conflict: true, status: 409,
+  });
+
+  assert.equal(result.conflictCleared, true);
+  assert.deepEqual(calls.slice(0, 3), [
+    ["pull", true],
+    "retry",
+    ["confirm", {
+      confirmLabel: "Bỏ thay đổi cục bộ",
+      cancelLabel: "Giữ lại để xử lý sau",
+    }],
+  ]);
+  assert.deepEqual(calls.slice(3, 6), ["discard", "flush", ["pull", true]]);
+  assert.equal(calls.at(-1)[0], "toast");
 });

@@ -433,6 +433,52 @@ def test_goods_form_1281_maps_parent_linked_items_to_their_source_lots():
     ]
 
 
+def test_goods_form_1265_maps_parent_linked_items_to_their_source_lots():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600399197",
+            "notifyId": "notice-01",
+            "bidName": "Goods package using form 1265",
+            "bidField": "HH",
+            "isMultiLot": 1,
+            "bidpBidLotList": [{
+                "lotNo": "PP2600307264",
+                "lotName": "Phần 1: Hoá chất xét nghiệm sinh hoá",
+            }],
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.MT.02.1265",
+                "formValue": json.dumps({"Table": [{
+                    "id": 2600307264,
+                    "parent": 0,
+                    "lotNo": "PP2600307264",
+                    "lotName": "Phần 1: Hoá chất xét nghiệm sinh hoá",
+                    "name": None,
+                    "uom": None,
+                    "qty": None,
+                }, {
+                    "id": 9391332187538172,
+                    "parent": 2600307264,
+                    "tempParent": 2600307264,
+                    "currentItemIndex": "1.1",
+                    "name": "Hóa chất xét nghiệm Cholesterol",
+                    "uom": "ml",
+                    "qty": 4800,
+                    "description": "Theo Chương V",
+                }]}, ensure_ascii=False),
+            }],
+        },
+        notice_no="IB2600399197",
+        revision_id="notice-01",
+        revision_number="01",
+    )
+
+    assert [(item["code"], item["lotNo"]) for item in revision["goodsItems"]] == [
+        ("1.1", "PP2600307264"),
+    ]
+    assert revision["goodsItems"][0]["quantity"] == 4800
+    assert revision["goodsItems"][0]["technicalRequirement"] == "Theo Chương V"
+
+
 @pytest.mark.parametrize(
     "form_code", ["BD.MT.02.1224", "BD.MT.02.1281"]
 )

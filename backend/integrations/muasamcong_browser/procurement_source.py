@@ -34,7 +34,9 @@ from backend.integrations.muasamcong_browser.code_mapping import (
 from backend.integrations.muasamcong_browser.classifier import (
     classify_upstream_error,
 )
-from backend.integrations.muasamcong_browser.launchers import NodeBrowserRuntime
+from backend.integrations.muasamcong_browser.launchers import (
+    RestartableBrowserRuntime,
+)
 from backend.integrations.muasamcong_browser.diagnostics import DiagnosticRecorder
 from backend.integrations.muasamcong_browser.source import MuaSamCongBrowserSource
 from backend.procurement_import.source import ProcurementSourceError
@@ -233,7 +235,7 @@ class MuaSamCongProcurementSource:
             ),
         )
         return cls(
-            NodeBrowserRuntime(configuration),
+            RestartableBrowserRuntime(configuration),
             diagnostics=diagnostics,
             shadow_parser_enabled=shadow_parser_enabled,
             observer=observer,
