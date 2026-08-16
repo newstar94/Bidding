@@ -1173,6 +1173,39 @@ class ProcurementImportSessionRepository:
             (int(current_index), status, session_id),
         )
 
+    def update_canonical_bundle(
+        self,
+        session_id,
+        *,
+        organization_id,
+        user_id,
+        workspace_lease,
+        bundle,
+        bundle_digest,
+    ):
+        """Replace only the server-owned canonical bundle for enrichment.
+
+        Enrichment never changes the user's revision cursor or permissions.  The
+        scope predicates also make a stale/cancelled worker a no-op.
+        """
+        result = self.cursor.execute(
+            """UPDATE procurement_import_session
+                  SET bundle_digest = ?, canonical_bundle_json = ?,
+                      updated_at = CURRENT_TIMESTAMP
+                WHERE organization_id = ? AND id = ? AND user_id = ?
+                  AND workspace_lease = ? AND status NOT IN ('CANCELLED', 'FAILED')
+            """,
+            (
+                bundle_digest,
+                _json(bundle),
+                organization_id,
+                session_id,
+                user_id,
+                workspace_lease,
+            ),
+        )
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
     def cleanup_expired(self):
         self.cursor.execute(
             "DELETE FROM procurement_import_session WHERE expires_at <= CURRENT_TIMESTAMP"

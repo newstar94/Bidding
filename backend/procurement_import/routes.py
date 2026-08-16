@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 import os
 import re
+import threading
 from uuid import NAMESPACE_URL, uuid5
 
 from starlette.responses import JSONResponse
@@ -25,6 +26,7 @@ from backend.procurement_import.command import (
 from backend.procurement_import.domain import (
     ImportConflict,
     SOURCE_OWNED_PACKAGE_FIELDS,
+    canonical_digest,
     required_package_issues,
 )
 from backend.procurement_import.repository import ProcurementImportRepository
@@ -240,11 +242,20 @@ def _prepare_blocking(request, payload):
     finally:
         connection.rollback()
         connection.close()
+    include_linked_notices = payload.get("includeLinkedNotices", True)
+    quick_enrichment = (
+        bool(include_linked_notices)
+        and str(source.name).upper() == "MUASAMCONG"
+    )
     preview = _build_import_preparer(source).prepare_plan(
         code=payload.get("code"),
         revision_mode=payload.get("revisionMode") or "LATEST",
         selected_revision=payload.get("selectedRevision"),
-        include_linked_notices=payload.get("includeLinkedNotices", True),
+        # Plan/package fields are sufficient for the first response.  Linked
+        # TBMT details are refreshed by the bounded background operation below.
+        include_linked_notices=(
+            False if quick_enrichment else bool(include_linked_notices)
+        ),
         organization_id=organization_id,
         user_id=session.user_id,
         workspace_lease=lease,
@@ -254,6 +265,12 @@ def _prepare_blocking(request, payload):
         preview["previewId"], organization_id=organization_id,
         user_id=session.user_id, workspace_lease=lease,
     )
+    linked = _linked_notice_numbers(stored.canonical_bundle)
+    session_bundle = deepcopy(stored.canonical_bundle)
+    if quick_enrichment:
+        session_bundle["enrichmentStatus"] = (
+            "PENDING" if linked else "COMPLETED"
+        )
     connection = database.get_connection()
     try:
         connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
@@ -261,7 +278,7 @@ def _prepare_blocking(request, payload):
             ProcurementImportSessionRepository(connection.cursor()),
             ttl_seconds=int(os.environ.get("PROCUREMENT_IMPORT_SESSION_TTL_SECONDS", "86400")),
         ).create_from_bundle(
-            stored.canonical_bundle,
+            session_bundle,
             organization_id=organization_id,
             user_id=session.user_id,
             workspace_lease=lease,
@@ -272,7 +289,290 @@ def _prepare_blocking(request, payload):
         raise
     finally:
         connection.close()
-    return {**preview, "importSession": import_session}
+    result = {**preview, "importSession": import_session}
+    if quick_enrichment:
+        if linked:
+            result.update({
+                "previewMode": "QUICK",
+                "enrichmentStatus": "PENDING",
+                "enrichmentWarnings": [{
+                    "code": "PROCUREMENT_ENRICHMENT_PENDING",
+                    "message": "Dữ liệu TBMT liên kết đang được bổ sung trong nền.",
+                }],
+                "_enrichmentContext": {
+                    "sessionId": import_session.get("sessionId"),
+                    "familyNo": str(payload.get("code") or "").split("-", 1)[0].upper(),
+                    "revisionMode": payload.get("revisionMode") or "LATEST",
+                    "selectedRevision": payload.get("selectedRevision"),
+                    "workspaceLease": lease,
+                    "organizationId": organization_id,
+                    "userId": session.user_id,
+                    "provider": source.name,
+                    "linkedNoticeCount": len(linked),
+                },
+            })
+        else:
+            result.update({
+                "previewMode": "QUICK",
+                "enrichmentStatus": "COMPLETED",
+            })
+    return result
+
+
+def _linked_notice_numbers(bundle):
+    notices = []
+    seen = set()
+    for revision in (bundle or {}).get("revisions") or []:
+        for package in revision.get("packages") or []:
+            link = package.get("noticeLink") or {}
+            notice_no = str(link.get("noticeNo") or "").strip().upper()
+            if link.get("state") == "LINKED" and notice_no and notice_no not in seen:
+                seen.add(notice_no)
+                notices.append(notice_no)
+    return notices
+
+
+def _create_enrichment_operation(context, bundle, notices):
+    """Create an idempotent progress record for background TBMT enrichment."""
+    idempotency_key = f"enrichment:{context['sessionId']}"
+    request_hash = sha256(
+        json.dumps({
+            "sessionId": context["sessionId"],
+            "bundleDigest": canonical_digest(bundle),
+            "notices": notices,
+        }, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    manifest = [
+        {"noticeNo": notice, "status": "PENDING"}
+        for notice in notices
+    ]
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        operation = ProcurementImportRepository(connection.cursor()).create_operation({
+            "id": _operation_id(
+                context["organizationId"], context["provider"],
+                context["familyNo"], idempotency_key,
+            ),
+            "organizationId": context["organizationId"],
+            "provider": context["provider"],
+            "familyNo": context["familyNo"],
+            "totalRevisions": len(manifest),
+            "bundleDigest": canonical_digest(bundle),
+            "idempotencyKey": idempotency_key,
+            "requestHash": request_hash,
+            "actorUserId": context["userId"],
+            "revisionResults": manifest,
+        })
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return operation
+
+
+def _record_enrichment_progress(context, operation_id, notice_no, processed, total):
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        repository = ProcurementImportRepository(connection.cursor())
+        operation = repository.get_operation(context["organizationId"], operation_id)
+        if operation is None:
+            return
+        results = operation.get("revisionResults", [])
+        for item in results:
+            if str(item.get("noticeNo") or "").upper() == str(notice_no).upper():
+                item["status"] = "SUCCEEDED"
+        repository.update_operation(
+            context["organizationId"], operation_id,
+            cursor=min(int(processed), int(total)), results=results, status="RUNNING",
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+    finally:
+        connection.close()
+
+
+def _run_plan_enrichment(context, operation_id):
+    """Refresh linked notices without holding the HTTP prepare request open."""
+    try:
+        progress_connection = database.get_connection()
+        try:
+            progress_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+            progress_repo = ProcurementImportRepository(progress_connection.cursor())
+            progress_operation = progress_repo.get_operation(
+                context["organizationId"], operation_id,
+            )
+            if progress_operation is None:
+                return
+            progress_repo.update_operation(
+                context["organizationId"], operation_id,
+                cursor=0,
+                results=progress_operation.get("revisionResults", []),
+                status="RUNNING",
+            )
+            progress_connection.commit()
+        except Exception:
+            progress_connection.rollback()
+            raise
+        finally:
+            progress_connection.close()
+        connection = database.get_connection()
+        try:
+            connection.rollback()
+            session_row = ProcurementImportSessionRepository(
+                connection.cursor()
+            ).get_scoped(
+                context["sessionId"],
+                organization_id=context["organizationId"],
+                user_id=context["userId"],
+                workspace_lease=context["workspaceLease"],
+            )
+        finally:
+            connection.close()
+        if session_row is None:
+            return
+        source = build_procurement_source()
+        preparer = _build_import_preparer(source)
+        code = context["familyNo"]
+        local_connection = database.get_connection()
+        try:
+            local_state = ProcurementImportRepository(
+                local_connection.cursor()
+            ).load_family(
+                context["organizationId"], source.name, code
+            )
+            if local_state.get("latestPlan") is None:
+                local_state = None
+        finally:
+            local_connection.rollback()
+            local_connection.close()
+        refreshed = preparer.prepare_plan(
+            code=code,
+            revision_mode=context["revisionMode"],
+            selected_revision=context.get("selectedRevision"),
+            include_linked_notices=True,
+            organization_id=context["organizationId"],
+            user_id=context["userId"],
+            workspace_lease=context["workspaceLease"],
+            local_state=local_state,
+            enrichment_workers=max(
+                1,
+                min(int(os.environ.get("PROCUREMENT_ENRICHMENT_MAX_WORKERS", "3")), 8),
+            ),
+            enrichment_timeout_seconds=max(
+                5.0,
+                min(float(os.environ.get("PROCUREMENT_ENRICHMENT_CHILD_TIMEOUT_SECONDS", "45")), 120.0),
+            ),
+            enrichment_source_factory=build_procurement_source,
+            enrichment_progress=lambda notice_no, processed, total: _record_enrichment_progress(
+                context, operation_id, notice_no, processed, total,
+            ),
+        )
+        stored = PREVIEW_STORE.get(
+            refreshed["previewId"],
+            organization_id=context["organizationId"],
+            user_id=context["userId"],
+            workspace_lease=context["workspaceLease"],
+        )
+        failed_notices = {
+            str(item.get("noticeNo") or "").strip().upper()
+            for item in (stored.canonical_bundle.get("warnings") or [])
+            if item.get("code") == "PROCUREMENT_ENRICHMENT_PARTIAL"
+        }
+        enriched_bundle = deepcopy(stored.canonical_bundle)
+        enriched_bundle["enrichmentStatus"] = (
+            "PARTIAL" if failed_notices else "COMPLETED"
+        )
+        enriched_digest = canonical_digest(enriched_bundle)
+        update_connection = database.get_connection()
+        try:
+            update_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+            updated = ProcurementImportSessionRepository(
+                update_connection.cursor()
+            ).update_canonical_bundle(
+                context["sessionId"],
+                organization_id=context["organizationId"],
+                user_id=context["userId"],
+                workspace_lease=context["workspaceLease"],
+                bundle=enriched_bundle,
+                bundle_digest=enriched_digest,
+            )
+            results = [
+                {
+                    "noticeNo": notice,
+                    "status": "FAILED" if notice in failed_notices else "SUCCEEDED",
+                    **({"errorCode": "PROCUREMENT_ENRICHMENT_PARTIAL"} if notice in failed_notices else {}),
+                }
+                for notice in _linked_notice_numbers(enriched_bundle)
+            ]
+            ProcurementImportRepository(update_connection.cursor()).update_operation(
+                context["organizationId"], operation_id,
+                cursor=len(results), results=results,
+                status=(
+                    "FAILED" if not updated
+                    else "PARTIAL" if failed_notices
+                    else "COMPLETED"
+                ),
+            )
+            update_connection.commit()
+        except Exception:
+            update_connection.rollback()
+            raise
+        finally:
+            update_connection.close()
+    except Exception as error:  # noqa: BLE001 - background work is reported via operation status.
+        connection = database.get_connection()
+        try:
+            connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+            operation = ProcurementImportRepository(
+                connection.cursor()
+            ).get_operation(context["organizationId"], operation_id)
+            results = operation.get("revisionResults", []) if operation else []
+            for item in results:
+                item["status"] = "FAILED"
+                item["errorCode"] = str(error)[:120]
+            ProcurementImportRepository(connection.cursor()).update_operation(
+                context["organizationId"], operation_id,
+                cursor=0, results=results, status="FAILED",
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+        finally:
+            connection.close()
+
+
+def _start_plan_enrichment(result):
+    context = result.pop("_enrichmentContext", None)
+    if not context:
+        return result
+    bundle = PREVIEW_STORE.get(
+        result["previewId"],
+        organization_id=context["organizationId"],
+        user_id=context["userId"],
+        workspace_lease=context["workspaceLease"],
+    )
+    notices = _linked_notice_numbers(bundle.canonical_bundle)
+    if not notices:
+        result["enrichmentStatus"] = "COMPLETED"
+        return result
+    operation = _create_enrichment_operation(context, bundle.canonical_bundle, notices)
+    result["enrichmentOperationId"] = operation["operationId"]
+    if operation.get("status") in {"COMPLETED", "PARTIAL", "FAILED"}:
+        result["enrichmentStatus"] = operation["status"]
+        return result
+    thread = threading.Thread(
+        target=_run_plan_enrichment,
+        args=(context, operation["operationId"]),
+        name="procurement-plan-enrichment",
+        daemon=True,
+    )
+    thread.start()
+    return result
 
 
 def _prepare_notice_blocking(request, payload):
@@ -1494,6 +1794,20 @@ def _public_error(request, error):
                 "Không tìm thấy phiên bản nguồn phù hợp với mã đã nhập.",
                 status_code=400,
             )
+        if error.args[0] == "PROCUREMENT_ENRICHMENT_PENDING":
+            return error_response(
+                request,
+                "PROCUREMENT_ENRICHMENT_PENDING",
+                "Dữ liệu TBMT liên kết đang được bổ sung; hãy thử lại sau khi tiến trình hoàn tất.",
+                status_code=409,
+            )
+        if error.args[0] == "PROCUREMENT_ENRICHMENT_INCOMPLETE":
+            return error_response(
+                request,
+                "PROCUREMENT_ENRICHMENT_INCOMPLETE",
+                "Chưa thể lấy đầy đủ dữ liệu TBMT liên kết; hãy chuẩn bị lại kế hoạch.",
+                status_code=409,
+            )
     if isinstance(error, ValueError) and error.args:
         messages = {
             "PROCUREMENT_CODE_INVALID": "Mã procurement không hợp lệ.",
@@ -1550,7 +1864,7 @@ async def prepare_plan_import(request):
             _prepare_blocking, request, payload,
             timeout_seconds=_source_timeout_seconds(),
         )
-        return JSONResponse(result)
+        return JSONResponse(_start_plan_enrichment(result))
     except Exception as error:  # noqa: BLE001 - sanitized boundary.
         response = _public_error(request, error)
         return response or log_and_error(

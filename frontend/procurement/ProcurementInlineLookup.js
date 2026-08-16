@@ -15,6 +15,56 @@ import { currentWorkspaceToken } from "../app/workspaceLease.js";
 
 const PREVIEW_SCHEMA = "biddingflow-procurement-preview-v1";
 const CODE_PATTERN = /^(PL|IB)\d{10}(?:-\d{2})?$/i;
+const ENRICHMENT_TERMINAL_STATUSES = new Set(["COMPLETED", "PARTIAL", "FAILED"]);
+
+function waitForDelay(milliseconds, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      globalThis.clearTimeout(timer);
+      signal?.removeEventListener?.("abort", onAbort);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForPlanEnrichment(client, preview, {
+  signal,
+  onProgress = () => undefined,
+} = {}) {
+  const initialStatus = String(
+    preview?.enrichmentStatus
+    || preview?.importSession?.enrichmentStatus
+    || "COMPLETED",
+  ).toUpperCase();
+  if (initialStatus === "COMPLETED") return null;
+  const operationId = String(preview?.enrichmentOperationId || "").trim();
+  if (!operationId) {
+    throw new Error("Phiên bổ sung dữ liệu TBMT chưa sẵn sàng.");
+  }
+  let operation = await client.getOperation(operationId, { signal });
+  while (!ENRICHMENT_TERMINAL_STATUSES.has(String(operation?.status || "").toUpperCase())) {
+    onProgress(operation);
+    await waitForDelay(500, signal);
+    operation = await client.getOperation(operationId, { signal });
+  }
+  const finalStatus = String(operation?.status || "").toUpperCase();
+  if (finalStatus !== "COMPLETED") {
+    throw new Error(
+      finalStatus === "PARTIAL"
+        ? "Chưa lấy đủ dữ liệu của tất cả TBMT liên kết. Vui lòng thử lại."
+        : "Không thể bổ sung dữ liệu TBMT liên kết. Vui lòng thử lại.",
+    );
+  }
+  return operation;
+}
 
 function baseCode(code) {
   return String(code || "").trim().toUpperCase().replace(/-\d{2}$/, "");
@@ -151,6 +201,30 @@ export class ProcurementInlineLookup {
         const importSession = preview?.importSession;
         if (!importSession?.sessionId || !(importSession.revisions || []).length) {
           throw new Error("Phiên nhập gói thầu chưa sẵn sàng.");
+        }
+        if (normalizedKind === "PLAN") {
+          await waitForPlanEnrichment(this.importClient, preview, {
+            signal: this.lookupController.signal,
+            onProgress: (operation) => this.setStatus(
+              status,
+              `Đang bổ sung dữ liệu TBMT ${operation?.nextRevisionIndex || 0}/${operation?.totalRevisions || 0}…`,
+              "loading",
+            ),
+          });
+          const changedWhileEnriching = (
+            generation !== this.requestGeneration
+            || formIdentity(form) !== identity
+            || String(codeInput?.value || "").trim().toUpperCase() !== code
+            || currentWorkspaceToken(this.controller?.model) !== workspaceLease
+          );
+          if (changedWhileEnriching) {
+            this.setStatus(
+              status,
+              "Biểu mẫu hoặc workspace đã thay đổi. Hãy lấy dữ liệu lại.",
+              "error",
+            );
+            return null;
+          }
         }
         const sequential = new SequentialRevisionController({
           revisions: importSession.revisions,

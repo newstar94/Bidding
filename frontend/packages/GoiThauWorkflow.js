@@ -70,6 +70,9 @@ import {
   applyDraftAssignmentSelection,
   isPlanBreakdownDraftActive,
 } from "../plans/planBreakdownDraft.js";
+import {
+  materializeProcurementPackageGoods,
+} from "../procurement/ProcurementDraftWorkflow.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function persistPackageFormChanges(controller, explicitUpserts, {
@@ -1130,6 +1133,14 @@ export async function handleGoiThauSubmit(e) {
       newPackage.phienBan = String(procurementPackageDraft.sourceRevision.revisionNumber);
     }
     assignNewPackageLotIds(newPackage);
+    if (procurementPackageDraft?.danhSachHangHoa) {
+      materializeProcurementPackageGoods(
+        this.model.state,
+        newPackage,
+        procurementPackageDraft,
+        { lots: newPackage.phanLoList },
+      );
+    }
     if (rebidFrom) {
       const sourcePackage = this.model.state.goithau.find((item) => String(item.id) === String(rebidFrom));
       if (sourcePackage) {

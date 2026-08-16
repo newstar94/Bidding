@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import secrets
+import os
 import time
 from threading import RLock
 
@@ -58,6 +60,57 @@ def _merge_notice_lots(plan_lots, notice_lots):
                     target[field] = deepcopy(notice_lot[field])
         merged.append(target)
     return merged
+
+
+def enrich_plan_package_with_notice_revision(package, notice_no, detail):
+    """Project one exact TBMT revision onto its plan package snapshot."""
+
+    target = deepcopy(package)
+    kind = str(detail.get("kind") or "UNKNOWN").upper()
+    if kind not in {"TBMT", "PRE_NOTIFY"}:
+        kind = "UNKNOWN"
+    target["noticeLink"] = {
+        "state": "LINKED",
+        "noticeNo": str(notice_no or "").strip().upper(),
+        "kind": kind,
+        "noticeRevisionId": detail.get("revisionId"),
+        "noticeVersion": str(detail.get("revisionNumber")),
+    }
+    notice_fields = {
+        field: deepcopy(detail.get(field))
+        for field in (
+            "status", "statusForNotify", "publishedAt", "bidClosingAt",
+            "bidOpeningAt", "actualOpeningAt",
+            "financialActualOpeningAt", "selectionForm", "selectionMode",
+            "contractType", "publicUrl",
+        )
+        if detail.get(field) not in (None, "")
+    }
+    if notice_fields:
+        target["noticeFields"] = notice_fields
+    if detail.get("status") not in (None, ""):
+        target["sourceStatus"] = deepcopy(detail["status"])
+    for field in (
+        "bidGuaranteeVnd",
+        "bidValidityDays",
+        "additionalPurchaseItems",
+        "goodsItems",
+        "evaluationMethod",
+        "approvalDecisionNo",
+        "approvalDecisionDate",
+    ):
+        if detail.get(field) not in (None, ""):
+            target[field] = deepcopy(detail[field])
+    notice_is_multi_lot = detail.get("isMultiLot")
+    if isinstance(notice_is_multi_lot, bool):
+        target["isMultiLot"] = notice_is_multi_lot
+    if target.get("isMultiLot") is True and detail.get("lots"):
+        target["lots"] = _merge_notice_lots(
+            target.get("lots"), detail.get("lots")
+        )
+    elif target.get("isMultiLot") is not True:
+        target["lots"] = []
+    return target
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,11 +266,15 @@ class ProcurementImportPreparer:
 
     def _enrich_linked_notices(
         self, revision, *, organization_id, complete_cache=None,
+        revision_history=None, notice_filter=None,
     ):
         complete_cache = complete_cache if complete_cache is not None else {}
+        revision_history = revision_history if revision_history is not None else {}
         for package in revision.get("packages", []):
             link = package.get("noticeLink") or {}
             notice_no = str(link.get("noticeNo") or "").strip().upper()
+            if notice_filter and notice_no != str(notice_filter).strip().upper():
+                continue
             if link.get("state") != "LINKED" or not notice_no:
                 continue
             desired_version = str(link.get("noticeVersion") or "").strip()
@@ -258,52 +315,124 @@ class ProcurementImportPreparer:
                 ), available[-1] if not desired_version else None)
                 if selected is None:
                     raise LookupError("PROCUREMENT_REVISION_INVALID")
-                detail = self.source.get_notice_revision(
-                    notice_no, selected.get("revisionId")
+                details_by_id = {}
+                for row in available:
+                    row_id = row.get("revisionId")
+                    fetched = self.source.get_notice_revision(notice_no, row_id)
+                    details_by_id[str(row_id)] = {
+                        **(fetched if isinstance(fetched, dict) else {}),
+                        "revisionId": (
+                            (fetched or {}).get("revisionId") or row_id
+                        ),
+                        "revisionNumber": (
+                            (fetched or {}).get("revisionNumber")
+                            or row.get("revisionNumber")
+                        ),
+                    }
+                revisions = [
+                    details_by_id[str(row.get("revisionId"))]
+                    for row in available
+                ]
+                detail = details_by_id[str(selected.get("revisionId"))]
+            revision_history[notice_no] = deepcopy(revisions)
+            enriched = enrich_plan_package_with_notice_revision(
+                package, notice_no, detail
+            )
+            package.clear()
+            package.update(enriched)
+
+    def _enrich_linked_notices_bounded(
+        self,
+        revisions,
+        *,
+        organization_id,
+        max_workers=1,
+        timeout_seconds=None,
+        source_factory=None,
+        progress_callback=None,
+    ):
+        """Enrich unique notices with bounded concurrency and explicit partials."""
+        notices = []
+        seen = set()
+        for revision in revisions:
+            for package in revision.get("packages", []):
+                link = package.get("noticeLink") or {}
+                notice_no = str(link.get("noticeNo") or "").strip().upper()
+                if link.get("state") == "LINKED" and notice_no and notice_no not in seen:
+                    seen.add(notice_no)
+                    notices.append(notice_no)
+        if not notices:
+            return {}, []
+        workers = max(1, min(int(max_workers or 1), len(notices), 8))
+        child_timeout = max(1.0, float(timeout_seconds or 45.0))
+
+        def enrich_one(notice_no):
+            started_at = time.perf_counter()
+            child_source = source_factory() if source_factory else self.source
+            child = ProcurementImportPreparer(
+                child_source,
+                self.preview_store,
+                raw_snapshot_repository=self.raw_snapshot_repository,
+                raw_cache_ttl_seconds=self.raw_cache_ttl_seconds,
+            )
+            child_revisions = deepcopy(revisions)
+            child_history = {}
+            for child_revision in child_revisions:
+                child._enrich_linked_notices(
+                    child_revision,
+                    organization_id=organization_id,
+                    complete_cache={},
+                    revision_history=child_history,
+                    notice_filter=notice_no,
                 )
-            kind = str(detail.get("kind") or "UNKNOWN").upper()
-            if kind not in {"TBMT", "PRE_NOTIFY"}:
-                kind = "UNKNOWN"
-            package["noticeLink"] = {
-                "state": "LINKED", "noticeNo": notice_no, "kind": kind,
-                "noticeRevisionId": selected.get("revisionId"),
-                "noticeVersion": str(selected.get("revisionNumber")),
-            }
-            notice_fields = {
-                field: deepcopy(detail.get(field))
-                for field in (
-                    "status", "statusForNotify", "publishedAt", "bidClosingAt",
-                    "bidOpeningAt", "actualOpeningAt",
-                    "financialActualOpeningAt",
-                    "selectionForm", "selectionMode", "contractType",
-                    "publicUrl",
-                )
-                if detail.get(field) not in (None, "")
-            }
-            if notice_fields:
-                package["noticeFields"] = notice_fields
-            if detail.get("status") not in (None, ""):
-                package["sourceStatus"] = deepcopy(detail["status"])
-            for field in (
-                "bidGuaranteeVnd",
-                "bidValidityDays",
-                "additionalPurchaseItems",
-                "goodsItems",
-                "evaluationMethod",
-                "approvalDecisionNo",
-                "approvalDecisionDate",
-            ):
-                if detail.get(field) not in (None, ""):
-                    package[field] = deepcopy(detail[field])
-            notice_is_multi_lot = detail.get("isMultiLot")
-            if isinstance(notice_is_multi_lot, bool):
-                package["isMultiLot"] = notice_is_multi_lot
-            if package.get("isMultiLot") is True and detail.get("lots"):
-                package["lots"] = _merge_notice_lots(
-                    package.get("lots"), detail.get("lots")
-                )
-            elif package.get("isMultiLot") is not True:
-                package["lots"] = []
+            if time.perf_counter() - started_at > child_timeout:
+                raise TimeoutError("PROCUREMENT_ENRICHMENT_TIMEOUT")
+            return notice_no, child_revisions, child_history
+
+        completed = {}
+        failures = []
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="procurement-enrich") as pool:
+            futures = {pool.submit(enrich_one, notice): notice for notice in notices}
+            try:
+                for future in as_completed(futures, timeout=child_timeout * len(notices)):
+                    notice_no = futures[future]
+                    try:
+                        completed[notice_no] = future.result(timeout=child_timeout)
+                    except Exception as error:  # noqa: BLE001 - reported per notice.
+                        failures.append({"noticeNo": notice_no, "error": str(error)[:160]})
+                    if progress_callback:
+                        progress_callback(notice_no, len(completed) + len(failures), len(notices))
+            except FutureTimeoutError:
+                for notice_no, future in futures.items():
+                    if not future.done():
+                        failures.append({"noticeNo": notice_no, "error": "PROCUREMENT_ENRICHMENT_TIMEOUT"})
+
+        history = {}
+        for notice_no, (_name, child_revisions, child_history) in completed.items():
+            history.update(child_history)
+            for target_revision, child_revision in zip(revisions, child_revisions):
+                target_by_key = {
+                    str(
+                        package.get("planDetailRevisionId")
+                        or package.get("stablePackageId")
+                        or package.get("symbol")
+                    ): package
+                    for package in target_revision.get("packages", [])
+                }
+                for package in child_revision.get("packages", []):
+                    link = package.get("noticeLink") or {}
+                    if str(link.get("noticeNo") or "").strip().upper() != notice_no:
+                        continue
+                    key = str(
+                        package.get("planDetailRevisionId")
+                        or package.get("stablePackageId")
+                        or package.get("symbol")
+                    )
+                    target = target_by_key.get(key)
+                    if target is not None:
+                        target.clear()
+                        target.update(deepcopy(package))
+        return history, failures
 
     @staticmethod
     def _match_candidates(observation, local_packages):
@@ -424,6 +553,10 @@ class ProcurementImportPreparer:
         local_state,
         selected_revision=None,
         include_linked_notices=True,
+        enrichment_workers=1,
+        enrichment_timeout_seconds=None,
+        enrichment_source_factory=None,
+        enrichment_progress=None,
     ):
         prepare_started = time.perf_counter()
         normalized = normalize_procurement_code(code)
@@ -463,13 +596,29 @@ class ProcurementImportPreparer:
                 for row in selected
             ]
         if include_linked_notices:
-            linked_notice_cache = {}
-            for revision in revisions:
-                self._enrich_linked_notices(
-                    revision,
+            if int(enrichment_workers or 1) > 1:
+                linked_notice_revisions, enrichment_failures = self._enrich_linked_notices_bounded(
+                    revisions,
                     organization_id=organization_id,
-                    complete_cache=linked_notice_cache,
+                    max_workers=enrichment_workers,
+                    timeout_seconds=enrichment_timeout_seconds,
+                    source_factory=enrichment_source_factory,
+                    progress_callback=enrichment_progress,
                 )
+            else:
+                linked_notice_cache = {}
+                linked_notice_revisions = {}
+                enrichment_failures = []
+                for revision in revisions:
+                    self._enrich_linked_notices(
+                        revision,
+                        organization_id=organization_id,
+                        complete_cache=linked_notice_cache,
+                        revision_history=linked_notice_revisions,
+                    )
+        else:
+            linked_notice_revisions = {}
+            enrichment_failures = []
         record_database_phase(
             "procurement_import", "source_fetch",
             time.perf_counter() - source_started,
@@ -554,6 +703,24 @@ class ProcurementImportPreparer:
                 if package.get("action") != PackageAction.REMOVED.value:
                     package["action"] = PackageAction.ALREADY_IMPORTED.value
         warnings = lifecycle_warnings
+        warnings.extend({
+            "code": "PROCUREMENT_ENRICHMENT_PARTIAL",
+            "message": "Một số thông báo mời thầu liên kết chưa thể bổ sung.",
+            **failure,
+        } for failure in enrichment_failures)
+        if not include_linked_notices:
+            linked_count = sum(
+                1
+                for revision in revisions
+                for package in revision.get("packages", [])
+                if (package.get("noticeLink") or {}).get("state") == "LINKED"
+            )
+            if linked_count:
+                warnings.append({
+                    "code": "PROCUREMENT_LINKED_NOTICE_NOT_ENRICHED",
+                    "message": "Dữ liệu thông báo mời thầu liên kết chưa được bổ sung.",
+                    "count": linked_count,
+                })
         if local_state is None and mode != "ALL" and len(available) > 1:
             warnings.append({
                 "code": "OLDER_REVISIONS_PROVENANCE_ONLY_AFTER_APPLY",
@@ -582,6 +749,7 @@ class ProcurementImportPreparer:
             },
             "revisionPreviews": revision_previews,
             "revisions": revisions,
+            "linkedNoticeRevisions": linked_notice_revisions,
             "reconciliationByRevision": reconciliation_by_revision,
             "packages": packages,
             "blockingIssues": blocking_issues,
@@ -595,7 +763,10 @@ class ProcurementImportPreparer:
         )
         response = {
             key: deepcopy(value) for key, value in bundle.items()
-            if key not in {"revisions", "reconciliationByRevision"}
+            if key not in {
+                "revisions", "linkedNoticeRevisions",
+                "reconciliationByRevision",
+            }
         }
         response.update({
             "previewId": stored.preview_id,

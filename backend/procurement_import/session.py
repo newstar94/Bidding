@@ -8,9 +8,13 @@ import secrets
 import time
 
 from backend.procurement_import.domain import canonical_digest, revision_sort_key
+from backend.procurement_import.domain import derive_import_lifecycle_status
 from backend.procurement_import.draft_mapping import (
     map_package_canonical_to_draft,
     map_plan_canonical_to_draft,
+)
+from backend.procurement_import.service import (
+    enrich_plan_package_with_notice_revision,
 )
 from backend.observability.recording import record_database_phase
 
@@ -75,6 +79,10 @@ class ProcurementImportSessionService:
 
     @staticmethod
     def _public_manifest(row):
+        enrichment_status = str(
+            (row.get("canonicalBundle") or {}).get("enrichmentStatus")
+            or "COMPLETED"
+        ).upper()
         return {
             "sessionId": row["id"],
             "kind": row["kind"],
@@ -82,6 +90,7 @@ class ProcurementImportSessionService:
             "provider": row["provider"],
             "bundleDigest": row["bundleDigest"],
             "status": row["status"],
+            "enrichmentStatus": enrichment_status,
             "currentIndex": int(row.get("currentIndex") or 0),
             "expiresAt": row["expiresAt"].isoformat(),
             "revisions": deepcopy(row["revisions"]),
@@ -119,6 +128,14 @@ class ProcurementImportSessionService:
             workspace_lease=workspace_lease,
             now=now,
         )
+        enrichment_status = str(
+            (row.get("canonicalBundle") or {}).get("enrichmentStatus")
+            or "COMPLETED"
+        ).upper()
+        if row["kind"] == "PLAN" and enrichment_status in {"PENDING", "RUNNING"}:
+            raise LookupError("PROCUREMENT_ENRICHMENT_PENDING")
+        if row["kind"] == "PLAN" and enrichment_status in {"PARTIAL", "FAILED"}:
+            raise LookupError("PROCUREMENT_ENRICHMENT_INCOMPLETE")
         revision_number = str(revision_number)
         revision = next((
             item for item in row["canonicalBundle"].get("revisions") or []
@@ -136,11 +153,52 @@ class ProcurementImportSessionService:
                 )
                 for package in revision.get("packages") or []
             ]
+            package_revision_histories = []
+            linked_notice_revisions = (
+                row["canonicalBundle"].get("linkedNoticeRevisions") or {}
+            )
+            for package in revision.get("packages") or []:
+                link = package.get("noticeLink") or {}
+                notice_no = str(link.get("noticeNo") or "").strip().upper()
+                selected_version = str(link.get("noticeVersion") or "").strip()
+                available_history = sorted(
+                    deepcopy(linked_notice_revisions.get(notice_no) or []),
+                    key=lambda item: revision_sort_key(
+                        item.get("revisionNumber")
+                    ),
+                )
+                if selected_version:
+                    available_history = [
+                        item for item in available_history
+                        if revision_sort_key(item.get("revisionNumber"))
+                        <= revision_sort_key(selected_version)
+                    ]
+                history_drafts = []
+                for notice_revision in available_history:
+                    snapshot = enrich_plan_package_with_notice_revision(
+                        package, notice_no, notice_revision
+                    )
+                    snapshot["lifecycleStatus"] = (
+                        derive_import_lifecycle_status(snapshot)
+                    )
+                    history_drafts.append(map_package_canonical_to_draft(
+                        row["provider"], row["familyNo"], revision, snapshot
+                    ))
+                if len(history_drafts) > 1:
+                    package_revision_histories.append({
+                        "packageObservationId": package.get(
+                            "planDetailRevisionId"
+                        ),
+                        "stablePackageId": package.get("stablePackageId"),
+                        "noticeNo": notice_no,
+                        "revisions": history_drafts,
+                    })
         else:
             plan_draft = None
             package_drafts = [map_package_canonical_to_draft(
                 row["provider"], row["familyNo"], revision, revision
             )]
+            package_revision_histories = []
         authority = {
             "sessionId": row["id"],
             "workspaceLease": row["workspaceLease"],
@@ -160,6 +218,11 @@ class ProcurementImportSessionService:
             package_draft["sourceRevision"] = {
                 **package_draft.get("sourceRevision", {}), **authority,
             }
+        for history in package_revision_histories:
+            for package_draft in history["revisions"]:
+                package_draft["sourceRevision"] = {
+                    **package_draft.get("sourceRevision", {}), **authority,
+                }
         response = {
             "sessionId": row["id"],
             "kind": row["kind"],
@@ -168,6 +231,7 @@ class ProcurementImportSessionService:
             "revisionNumber": revision_number,
             "planDraft": plan_draft,
             "packageDrafts": package_drafts,
+            "packageRevisionHistories": package_revision_histories,
             "investorResolution": deepcopy(row.get("investorResolution") or {}),
             "warnings": deepcopy(row["canonicalBundle"].get("warnings") or []),
         }

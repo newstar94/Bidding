@@ -15,7 +15,7 @@ import {
 import { packageNoticeLabel, planPreviewFields } from "./fieldMapping.js";
 import { currentWorkspaceToken } from "../app/workspaceLease.js";
 
-const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED"]);
+const TERMINAL_STATUSES = new Set(["COMPLETED", "PARTIAL", "FAILED"]);
 const DRAFT_KEY = "procurement_plan_import_draft_v1";
 
 export class PlanImportDraftStore {
@@ -87,6 +87,12 @@ export function canApplyPreview(preview, decisions = {}) {
 
 export function canStartSequentialImport(preview) {
   if (!preview?.importSession?.sessionId) return false;
+  const enrichmentStatus = String(
+    preview?.enrichmentStatus
+    || preview?.importSession?.enrichmentStatus
+    || "COMPLETED",
+  ).toUpperCase();
+  if (enrichmentStatus !== "COMPLETED") return false;
   return !(preview.packages || []).some((row) => row.action === "AMBIGUOUS");
 }
 
@@ -241,6 +247,7 @@ export class PlanImportWizard {
     this.decisions = { packageMatches: {}, fieldConflicts: {}, fieldValues: {} };
     this.prepareController = null;
     this.applyController = null;
+    this.enrichmentController = null;
     this.requestGeneration = 0;
     this.workspaceLease = currentWorkspaceToken(controller?.model);
     this.draftStore = new PlanImportDraftStore(
@@ -378,13 +385,56 @@ export class PlanImportWizard {
         `${summary.total} gói · ${preview.plan?.selectedRevisions?.length || 0} phiên bản nguồn`;
       this.refreshApplyGate();
       this.saveDraft();
-      this.setStatus(canStartSequentialImport(preview)
-        ? "Dữ liệu đã sẵn sàng. Phiên bản đầu tiên sẽ mở trong biểu mẫu Kế hoạch."
-        : "Preview còn trường hợp ghép gói mơ hồ cần xử lý.",
-        !canStartSequentialImport(preview));
+      const enrichmentPending = preview.enrichmentStatus === "PENDING";
+      this.setStatus(
+        enrichmentPending
+          ? "Preview kế hoạch đã sẵn sàng; đang bổ sung đầy đủ dữ liệu TBMT liên kết…"
+          : canStartSequentialImport(preview)
+            ? "Dữ liệu đã sẵn sàng. Phiên bản đầu tiên sẽ mở trong biểu mẫu Kế hoạch."
+            : "Preview còn trường hợp ghép gói mơ hồ hoặc enrichment chưa hoàn tất.",
+        !enrichmentPending && !canStartSequentialImport(preview),
+      );
+      if (preview.enrichmentStatus === "PENDING" && preview.enrichmentOperationId) {
+        this.trackEnrichment(preview.enrichmentOperationId);
+      }
     } catch (error) {
       if (error?.name === "AbortError") return;
       this.setStatus(error?.message || "Không thể chuẩn bị preview.", true);
+    }
+  }
+
+  async trackEnrichment(operationId) {
+    this.enrichmentController?.abort();
+    this.enrichmentController = new AbortController();
+    const generation = this.requestGeneration;
+    try {
+      let operation = await this.client.getOperation(operationId, {
+        signal: this.enrichmentController.signal,
+      });
+      while (!TERMINAL_STATUSES.has(operation.status)) {
+        if (generation !== this.requestGeneration) return;
+        this.setStatus(
+          `Preview kế hoạch đã sẵn sàng; đang bổ sung dữ liệu TBMT ${operation.nextRevisionIndex || 0}/${operation.totalRevisions || 0}…`,
+        );
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 700));
+        operation = await this.client.getOperation(operationId, {
+          signal: this.enrichmentController.signal,
+        });
+      }
+      if (generation !== this.requestGeneration) return;
+      if (operation.status === "COMPLETED") {
+        this.preview = { ...this.preview, enrichmentStatus: "COMPLETED" };
+        this.refreshApplyGate();
+        this.setStatus("Đã bổ sung đầy đủ dữ liệu TBMT; có thể tiếp tục nhập.");
+      } else {
+        this.preview = { ...this.preview, enrichmentStatus: operation.status };
+        this.refreshApplyGate();
+        this.setStatus("Preview kế hoạch vẫn sẵn sàng; một phần dữ liệu TBMT chưa lấy được.", true);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError" && generation === this.requestGeneration) {
+        this.setStatus("Preview kế hoạch vẫn sẵn sàng; enrichment nền tạm thời chưa hoàn tất.", true);
+      }
     }
   }
 
@@ -396,6 +446,7 @@ export class PlanImportWizard {
       return;
     }
     this.applyController?.abort();
+    this.enrichmentController?.abort();
     this.applyController = new AbortController();
     const button = this.modal.querySelector("[data-procurement-apply]");
     button.disabled = true;

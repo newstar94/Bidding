@@ -16,6 +16,36 @@ from backend.shared.access_policy import AccessDecision
 from backend.sync import deletion_service
 
 
+def test_plan_submission_numbers_and_dates_are_optional_for_both_approval_modes():
+    plan_fields = {
+        "id": "plan-optional-submissions",
+        "pheDuyet": "Kế hoạch",
+        "ngayPheDuyetDuToan": "2026-01-01",
+        "soQdPheDuyetDuToan": "01/QĐ-DT",
+        "ngayPheDuyet": "2026-01-02",
+        "quyetDinhPheDuyet": "02/QĐ-KH",
+        "soToTrinhDuToan": "",
+        "ngayTrinhDuToan": "",
+        "soToTrinhKeHoach": "",
+        "ngayTrinhKeHoach": "",
+    }
+    _, plan_errors, _ = validate_sync_item("ke_hoach_lcnt", plan_fields)
+    assert not any("tờ trình" in error for error in plan_errors)
+
+    combined_fields = {
+        "id": "plan-optional-combined",
+        "pheDuyet": "Dự toán và kế hoạch",
+        "ngayPheDuyet": "2026-01-02",
+        "quyetDinhPheDuyet": "02/QĐ-KH",
+        "soToTrinhDuToanKeHoach": "",
+        "ngayTrinhKeHoach": "",
+    }
+    _, combined_errors, _ = validate_sync_item(
+        "ke_hoach_lcnt", combined_fields,
+    )
+    assert not any("tờ trình" in error for error in combined_errors)
+
+
 def test_manual_unknown_to_invited_package_transition_remains_rejected():
     errors = validate_package_status_transition(
         "Chưa xác định",

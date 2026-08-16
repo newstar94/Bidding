@@ -133,6 +133,27 @@ function seedProcurementGoods(
   return rows;
 }
 
+export function materializeProcurementPackageGoods(
+  state,
+  packageRecord,
+  sourcePackage,
+  { createId = generateRecordId, lots = null } = {},
+) {
+  if (!packageRecord || !sourcePackage) return [];
+  state.goithauhanghoa ||= [];
+  const sourceHasLots = sourceBoolean(sourcePackage.phanLo);
+  if (sourceHasLots !== null) {
+    packageRecord.phanLo = yesNo(sourceHasLots);
+    packageRecord.phanLoList = sourceHasLots
+      ? (lots || mapSourcePackageLots(sourcePackage, {
+        createId,
+        existingLots: packageRecord.phanLoList,
+      }))
+      : [];
+  }
+  return seedProcurementGoods(state, packageRecord, sourcePackage, createId);
+}
+
 function mapAdditionalPurchaseItems(items, createId) {
   return (Array.isArray(items) ? items : []).map((item) => ({
     id: createId("tuychonmuathem"),
@@ -241,12 +262,17 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
   state.kehoach ||= [];
   state.goithau ||= [];
   state.kehoach.push(plan);
-  const packages = (revisionDraft?.packageDrafts || []).map((sourcePackage) => {
+  const historicalMaterializations = [];
+  const createPackageRecord = (sourcePackage, {
+    rootId = null,
+    isLatest = 1,
+  } = {}) => {
     const packageId = createId("goithau");
     const lots = mapSourcePackageLots(sourcePackage, { createId });
     const packageRecord = createInitialVersion({
       ...sourcePackage,
       id: packageId,
+      rootId: rootId || packageId,
       keHoachId: planId,
       phienBan: sourcePackageVersion(sourcePackage),
       trangThai: resolveProcurementImportedPackageStatus({
@@ -266,11 +292,48 @@ export function materializeProcurementRevisionDraft(state, revisionDraft, {
       giaTriDamBaoDuThau: sourcePackage.giaTriBaoDamDuThau ?? 0,
       hieuLucDamBaoDuThau: packageGuaranteeValidity(sourcePackage),
     }, { id: packageId, timestamp });
+    packageRecord.rootId = rootId || packageRecord.rootId || packageId;
     packageRecord.phienBan = sourcePackageVersion(sourcePackage);
-    packageRecord._procurementImportCurrent = true;
+    packageRecord.isLatest = isLatest;
+    packageRecord._procurementImportCurrent = isLatest === 1;
     return packageRecord;
+  };
+  const packages = (revisionDraft?.packageDrafts || []).map((sourcePackage) => {
+    const currentVersion = Number(sourcePackageVersion(sourcePackage));
+    const predecessors = packageRevisionHistory(
+      revisionDraft,
+      sourcePackage,
+    ).filter((candidate) => {
+      const version = Number(sourcePackageVersion(candidate));
+      return Number.isInteger(version) && version < currentVersion;
+    }).sort((left, right) => (
+      Number(sourcePackageVersion(left)) - Number(sourcePackageVersion(right))
+    ));
+    let rootId = null;
+    const seenVersions = new Set();
+    predecessors.forEach((historicalSource) => {
+      const version = sourcePackageVersion(historicalSource);
+      if (seenVersions.has(version)) return;
+      seenVersions.add(version);
+      const historicalRecord = createPackageRecord(historicalSource, {
+        rootId,
+        isLatest: 0,
+      });
+      rootId ||= historicalRecord.rootId;
+      historicalMaterializations.push({
+        packageRecord: historicalRecord,
+        sourcePackage: historicalSource,
+      });
+    });
+    return createPackageRecord(sourcePackage, { rootId, isLatest: 1 });
   });
-  state.goithau.push(...packages);
+  state.goithau.push(
+    ...historicalMaterializations.map((row) => row.packageRecord),
+    ...packages,
+  );
+  historicalMaterializations.forEach(({ packageRecord, sourcePackage }) => {
+    seedProcurementGoods(state, packageRecord, sourcePackage, createId);
+  });
   packages.forEach((packageRecord, index) => {
     seedProcurementGoods(
       state,
@@ -301,6 +364,21 @@ function sourcePackageVersion(source, fallback = "00") {
   const text = String(value ?? "").trim();
   if (/^\d+$/.test(text)) return text.padStart(2, "0");
   return source ? "00" : String(fallback || "00");
+}
+
+function packageRevisionHistory(revisionDraft, sourcePackage) {
+  const source = sourcePackage?.sourceRevision || {};
+  const observationId = String(source.packageObservationId || "");
+  const stableId = String(source.stablePackageId || "");
+  const noticeNo = String(
+    sourcePackage?.noticeLink?.noticeNo || sourcePackage?.maGoiThau || "",
+  ).trim().toUpperCase();
+  const history = (revisionDraft?.packageRevisionHistories || []).find((row) => (
+    (observationId && String(row?.packageObservationId || "") === observationId)
+    || (stableId && String(row?.stablePackageId || "") === stableId)
+    || (noticeNo && String(row?.noticeNo || "").trim().toUpperCase() === noticeNo)
+  ));
+  return Array.isArray(history?.revisions) ? history.revisions : [];
 }
 
 export function procurementRevisionNumbersEqual(left, right) {
@@ -681,7 +759,25 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
     Array.isArray(packageDraft?.danhSachPhanLo)
     || sourceBoolean(packageDraft?.phanLo) !== null
   ) {
-    controller?._loadPhanLoRows?.(mapSourcePackageLots(packageDraft));
+    const mappedLots = mapSourcePackageLots(packageDraft, {
+      createId: generateRecordId,
+    });
+    const form = document?.getElementById?.("form-goithau");
+    const packageId = form?.querySelector?.(
+      "input[type='hidden']",
+    )?.value || document?.getElementById?.("form-goithau-id")?.value;
+    const packageRecord = (controller?.model?.state?.goithau || []).find(
+      (candidate) => String(candidate?.id || "") === String(packageId || ""),
+    );
+    if (packageRecord && Array.isArray(packageDraft?.danhSachHangHoa)) {
+      materializeProcurementPackageGoods(
+        controller.model.state,
+        packageRecord,
+        packageDraft,
+        { lots: mappedLots },
+      );
+    }
+    controller?._loadPhanLoRows?.(mappedLots);
   }
   if (Array.isArray(packageDraft?.tuyChonMuaThemList)) {
     controller?._loadTuyChonMuaThemRows?.(packageDraft.tuyChonMuaThemList);

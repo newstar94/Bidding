@@ -395,6 +395,66 @@ test("inline package lookup fills bid guarantee without saving", async () => {
 });
 
 
+test("inline package import materializes source goods before the package form is saved", async () => {
+  const previousDocument = globalThis.document;
+  const identity = { value: "package-a" };
+  const form = {
+    querySelector: (selector) => (
+      selector === "input[type='hidden']" ? identity : null
+    ),
+  };
+  const lotRows = [];
+  const document = {
+    getElementById(id) {
+      if (id === "form-goithau") return form;
+      return null;
+    },
+  };
+  const state = {
+    goithau: [{ id: "package-a", phanLo: "CÃ³", phanLoList: [] }],
+    goithauhanghoa: [],
+  };
+  state.goithau[0].phanLo = String.fromCharCode(67, 195, 179);
+  const controller = {
+    model: { state, getWorkspaceToken: () => "org-1" },
+    _loadPhanLoRows: (rows) => lotRows.push(...rows),
+    _loadTuyChonMuaThemRows: () => undefined,
+  };
+
+  globalThis.document = document;
+  try {
+    await startProcurementPackageImport.call(controller, {
+      currentDraft: {
+        revisionNumber: "00",
+        packageDrafts: [{
+          maGoiThau: "IB2600271825",
+          phanLo: true,
+          danhSachPhanLo: [{ maPhanLo: "PP1", tenPhanLo: "Lot 1" }],
+          danhSachHangHoa: [{
+            maPhanLo: "PP1", tenPhanLo: "Lot 1",
+            maHangHoa: "1", tenHangHoa: "Goods A",
+            donViTinh: "Box", soLuong: 2,
+          }],
+          sourceRevision: { revisionNumber: "00" },
+        }],
+      },
+      session: { sessionId: "session-package" },
+      controller: { revisions: [] },
+    });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.equal(lotRows.length, 1);
+  assert.equal(state.goithauhanghoa.length, 1);
+  assert.equal(state.goithauhanghoa[0].goiThauId, "package-a");
+  assert.equal(
+    state.goithauhanghoa[0].phanLoId,
+    state.goithau[0].phanLoList[0].id,
+  );
+});
+
 test("package details select medicine and multi-lot then load authoritative lots", () => {
   const medicineYes = control("1");
   medicineYes.checked = false;
@@ -758,6 +818,78 @@ test("inline plan lookup prepares all revisions and opens editable revision 00 w
 });
 
 
+test("inline plan lookup waits for enrichment before loading the revision draft", async () => {
+  const identity = { value: "plan-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600000001");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const calls = [];
+  const lookup = new ProcurementInlineLookup({
+    controller: {
+      model: { getWorkspaceToken: () => "org-1" },
+      async startProcurementPlanImport(flow) {
+        calls.push(["start", flow.currentDraft.packageDrafts[0].trangThai]);
+      },
+    },
+    importClient: {
+      async preparePlan() {
+        calls.push(["prepare"]);
+        return {
+          enrichmentStatus: "PENDING",
+          enrichmentOperationId: "enrichment-1",
+          importSession: {
+            sessionId: "session-plan",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getOperation(operationId) {
+        calls.push(["operation", operationId]);
+        return { status: "COMPLETED", nextRevisionIndex: 1, totalRevisions: 1 };
+      },
+      async getPlanRevisionDraft() {
+        calls.push(["draft"]);
+        return {
+          revisionNumber: "00",
+          planDraft: { maKeHoach: "PL2600000001" },
+          packageDrafts: [{
+            maGoiThau: "IB2600082707",
+            trangThai: "Đang mời thầu",
+          }],
+        };
+      },
+    },
+    client: { async lookup() { assert.fail("plan import must use its session"); } },
+    document: {
+      getElementById(id) {
+        return {
+          "form-kehoach": form,
+          "kh-ma": code,
+          "btn-open-procurement-lookup-plan": button,
+          "procurement-lookup-plan-status": status,
+        }[id] || null;
+      },
+    },
+  });
+
+  await lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.deepEqual(calls.map(([kind]) => kind), [
+    "prepare", "operation", "draft", "start",
+  ]);
+  assert.equal(calls.at(-1)[1], "Đang mời thầu");
+});
+
+
 test("inline lookup discards a response after the active form changes", async () => {
   let resolvePrepare;
   const status = inlineStatus();
@@ -862,6 +994,19 @@ test("plan and package forms expose inline lookup without a comparison modal", (
     planWorkflow,
     /getElementById\("kh-pheduyet"\)\.value = "Dự toán và kế hoạch"/,
   );
+  for (const fieldId of [
+    "kh-sototrinhdutoan",
+    "kh-ngaytrinhdutoan",
+    "kh-sototrinhkehoach",
+    "kh-ngaytrinhkehoach",
+    "kh-sototrinhdutoankehoach",
+  ]) {
+    const fieldPattern = new RegExp(
+      `<input[^>]*id="${fieldId}"[^>]*\\brequired(?:\\s|=|>)`,
+      "u",
+    );
+    assert.doesNotMatch(planModal, fieldPattern);
+  }
   assert.match(packageModal, /id="procurement-lookup-package-enabled"/);
   assert.match(packageModal, /id="procurement-lookup-package-loading"/);
   assert.match(packageModal, /class="package-identity-grid col-span-2"/);

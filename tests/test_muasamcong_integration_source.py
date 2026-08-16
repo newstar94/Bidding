@@ -7,6 +7,7 @@ import pytest
 
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
+    normalize_notice_complete_bundle,
     normalize_notice_revision,
     normalize_opening_bundle,
     normalize_plan_revision,
@@ -93,6 +94,78 @@ def test_ib2600271825_evaluation_method_comes_from_ehsmt_form():
 
     assert revision["field"] == "Hàng hóa"
     assert revision["evaluationMethod"] == "Giá thấp nhất"
+
+
+def test_complete_notice_uses_plan_package_lot_rows_when_goods_form_is_absent():
+    bundle = {
+        "schemaVersion": "biddingflow-muasamcong-raw-bundle-v2",
+        "entity": {"kind": "NOTICE", "canonicalCode": "IB2600212155"},
+        "revisions": {
+            "00": {
+                "revisionId": "notice-00",
+                "sources": {
+                    "noticeDetail": {
+                        "success": True,
+                        "operation": "NOTICE_LDT_DETAIL",
+                        "response": {
+                            "notifyNo": "IB2600212155",
+                            "notifyId": "notice-00",
+                            "planNo": "PL2600122143",
+                            "bidNo": "BP2600291019",
+                            "bidName": "Goi thuoc",
+                            "isMultiLot": 1,
+                        },
+                    },
+                    "planDetail": {
+                        "success": True,
+                        "operation": "PLAN_DETAIL",
+                        "response": {
+                            "planNo": "PL2600122143",
+                            "bidpPlanDetailToProjectList": [{
+                                "id": "detail-1",
+                                "bidNo": "BP2600291019",
+                                "bidName": "Goi thuoc",
+                            }],
+                        },
+                    },
+                    "planPackageDetail": {
+                        "success": True,
+                        "operation": "PLAN_PACKAGE_DETAIL",
+                        "response": {
+                            "bidpBidLotList": [{
+                                "id": "item-1",
+                                "lotNo": "PP2600198304",
+                                "lotName": "Atropin sulfat",
+                                "medicineCode": "GE01",
+                                "tenThuoc": "Atropin sulfat",
+                                "uom": "Unit",
+                                "quantity": 200,
+                            }],
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    canonical = normalize_notice_complete_bundle(bundle)
+
+    assert canonical["revisions"][0]["goodsItems"] == [{
+        "sourceItemId": "item-1",
+        "sourceIndex": "1",
+        "lotNo": "PP2600198304",
+        "lotName": "Atropin sulfat",
+        "code": "GE01",
+        "name": "Atropin sulfat",
+        "unit": "Unit",
+        "quantity": 200,
+        "technicalRequirement": None,
+        "referenceCode": None,
+        "requiredOrigin": None,
+        "deliveryLocation": None,
+        "deliveryTime": None,
+        "note": None,
+    }]
 
 
 def test_evaluation_method_form_returns_none_for_invalid_json():

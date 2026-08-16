@@ -448,6 +448,68 @@ def normalize_goods_items(raw, *, is_multi_lot=None):
     return result
 
 
+def normalize_plan_package_goods(raw, *, is_multi_lot=None):
+    """Normalize item rows embedded in PLAN_PACKAGE_DETAIL lot DTOs.
+
+    Some MSC medicine packages do not publish an 0812/1224/1281 goods form.
+    Their actual item rows are still present in ``bidpBidLotList``.  A lot
+    row is an item only when it has a positive quantity, name, unit and a
+    stable item/medicine code; otherwise it remains lot metadata.
+    """
+
+    if not isinstance(raw, dict):
+        return []
+    result = []
+    seen = set()
+    for container in _walk(raw):
+        if not isinstance(container, dict):
+            continue
+        rows = container.get("bidpBidLotList")
+        if not isinstance(rows, list):
+            continue
+        for index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                continue
+            adapted = {
+                "id": pick(row, "sourceItemId", "id", "itemId", default=str(index)),
+                "currentItemIndex": pick(
+                    row, "currentItemIndex", "itemIndex", "stt", "pos",
+                    default=str(index),
+                ),
+                "lotNo": pick(row, "lotNo", "lotCode", "maPhanLo"),
+                "lotName": pick(row, "lotName", "tenPhanLo"),
+                "code": pick(
+                    row, "code", "itemCode", "goodsCode", "medicineCode",
+                    default=str(index),
+                ),
+                "name": pick(
+                    row, "name", "goodsName", "itemName", "tenHangHoa",
+                    "tenThuoc", "lotName",
+                ),
+                "uom": pick(row, "uom", "unit", "unitName", "donViTinh"),
+                "qty": pick(row, "qty", "quantity", "amount", "soLuong"),
+                "description": pick(
+                    row, "description", "technicalRequirement",
+                    "qualityStandards", "specification",
+                ),
+                "modelNo": pick(row, "modelNo", "model"),
+                "origin": pick(row, "origin", "requiredOrigin"),
+                "note": pick(row, "note", "notes"),
+            }
+            normalized = _normalize_goods_form_rows(
+                [adapted],
+                allow_inherited_lot=False,
+                is_multi_lot=is_multi_lot,
+            )
+            for item in normalized:
+                identity = (item.get("lotNo") or "", item["sourceItemId"])
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                result.append(item)
+    return result
+
+
 def _period(row):
     explicit = pick(row, "implementationPeriod", "executionPeriod")
     if explicit not in (None, ""):
@@ -1466,6 +1528,7 @@ def normalize_notice_complete_bundle(bundle: dict):
                 ]
                 if len(name_matches) == 1:
                     plan_package = name_matches[0]
+        goods_from_plan_package = False
         if plan_package is not None:
             plan_package_detail_source = sources.get("planPackageDetail") or {}
             plan_package_detail = (
@@ -1473,6 +1536,15 @@ def normalize_notice_complete_bundle(bundle: dict):
                 if plan_package_detail_source.get("success") is True
                 else None
             )
+            plan_package_goods = normalize_plan_package_goods(
+                plan_package_detail or plan_package,
+                is_multi_lot=notice.get("isMultiLot"),
+            )
+            goods_from_plan_package = bool(
+                plan_package_goods and not notice.get("goodsItems")
+            )
+            if goods_from_plan_package:
+                notice["goodsItems"] = plan_package_goods
             additional_purchase_items = normalize_additional_purchase_items(
                 plan_package_detail or {}
             )
@@ -1629,7 +1701,11 @@ def normalize_notice_complete_bundle(bundle: dict):
                 } and plan_package is not None:
                     operation = plan_detail_source.get("operation")
                 if field == "goodsItems":
-                    operation = (sources.get("hsmt") or {}).get("operation")
+                    operation = (
+                        plan_package_detail_source.get("operation")
+                        if goods_from_plan_package
+                        else (sources.get("hsmt") or {}).get("operation")
+                    )
                 if field == "evaluationMethod":
                     operation = (sources.get("hsmt") or {}).get("operation")
                 source_path = field

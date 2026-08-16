@@ -1120,18 +1120,13 @@ def validate_sync_item(
             ), errors)
         if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
             _require_fields(item, (
-                ("soToTrinhDuToan", "Số tờ trình dự toán"),
-                ("ngayTrinhDuToan", "Ngày trình dự toán"),
                 ("ngayPheDuyetDuToan", "Ngày phê duyệt dự toán"),
                 ("soQdPheDuyetDuToan", "Số quyết định phê duyệt dự toán"),
-                ("soToTrinhKeHoach", "Số tờ trình kế hoạch"),
-                ("ngayTrinhKeHoach", "Ngày trình kế hoạch"),
             ), errors)
         elif str(item.get("pheDuyet") or "").strip() == "Dự toán và kế hoạch":
-            _require_fields(item, (
-                ("soToTrinhDuToanKeHoach", "Số tờ trình dự toán và kế hoạch"),
-                ("ngayTrinhKeHoach", "Ngày trình dự toán và kế hoạch"),
-            ), errors)
+            # Số/ngày tờ trình là thông tin bổ sung; quyết định phê duyệt
+            # vẫn được kiểm tra ở phần trường dùng chung bên dưới.
+            pass
         plan_date_pairs = (
             ("ngayTrinhDuToan", "ngayPheDuyetDuToan", "Ngày phê duyệt dự toán không được trước ngày trình dự toán."),
             ("ngayTrinhKeHoach", "ngayPheDuyet", "Ngày phê duyệt kế hoạch không được trước ngày trình kế hoạch."),

@@ -100,7 +100,7 @@ test("goods workflow supports trimmed goods and mixed fields only", () => {
   assert.equal(supportsGoodsWorkflow("Xây lắp"), false);
 });
 
-test("goods display mirrors spreadsheet lot headings and nested item numbering", () => {
+test("goods display keeps one-lot-many nested and collapses one-lot-one into one row", () => {
   const rows = [
     { id: "goods-1", phanLoId: "lot-1", maHangHoa: "HH-CRP", tenHangHoa: "Hóa chất CRP", donViTinh: "Hộp", soLuong: 18 },
     { id: "goods-2", phanLoId: "lot-1", maHangHoa: "HH-HC", tenHangHoa: "Chất hiệu chuẩn", donViTinh: "Hộp", soLuong: 2 },
@@ -119,8 +119,7 @@ test("goods display mirrors spreadsheet lot headings and nested item numbering",
     { kind: "lot", sequence: "1", lotCode: "PP01", lotName: "Phần 1", itemId: undefined },
     { kind: "item", sequence: "1.1", lotCode: undefined, lotName: undefined, itemId: "goods-1" },
     { kind: "item", sequence: "1.2", lotCode: undefined, lotName: undefined, itemId: "goods-2" },
-    { kind: "lot", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: undefined },
-    { kind: "item", sequence: "2.1", lotCode: undefined, lotName: undefined, itemId: "goods-3" },
+    { kind: "item", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: "goods-3" },
   ]);
   assert.equal(formatPackageGoodsQuantity(18), "18");
   assert.equal(formatPackageGoodsQuantity(1_000), "1.000");
@@ -172,6 +171,28 @@ test("goods tab and editing support goods and mixed procurement packages", () =>
   assert.equal(isPackageGoodsEditable({ linhVuc: "Hỗn hợp", trangThai: "Đang chấm thầu" }), false);
   assert.equal(isPackageGoodsDeletable({ linhVuc: "Hỗn hợp", trangThai: "Chuẩn bị" }), true);
   assert.equal(isPackageGoodsDeletable({ linhVuc: "Hỗn hợp", trangThai: "Đang mời thầu" }), false);
+});
+
+test("goods display uses the complete lot size when a multi-item lot is filtered", () => {
+  const allGoods = [
+    { id: "goods-1", phanLoId: "lot-1", tenHangHoa: "Hóa chất CRP" },
+    { id: "goods-2", phanLoId: "lot-1", tenHangHoa: "Chất hiệu chuẩn" },
+  ];
+
+  const displayRows = buildPackageGoodsDisplayRows([allGoods[0]], lots, {
+    hasLots: true,
+    allGoods,
+  });
+
+  assert.deepEqual(displayRows.map((row) => ({
+    kind: row.kind,
+    sequence: row.sequence,
+    lotCode: row.lotCode,
+    itemId: row.item?.id,
+  })), [
+    { kind: "lot", sequence: "1", lotCode: "PP01", itemId: undefined },
+    { kind: "item", sequence: "1.1", lotCode: undefined, itemId: "goods-1" },
+  ]);
 });
 
 test("goods pagination uses the same centered five-page window as other tables", () => {

@@ -631,6 +631,60 @@ def test_prepare_enriches_exact_linked_notice_without_creating_another_package(t
     assert changed_notice["bundleDigest"] != preview["bundleDigest"]
 
 
+def test_plan_session_keeps_all_linked_notice_revisions_on_one_package_lineage(tmp_path):
+    source = _source(tmp_path)
+    source._notices["IB2600000002"] = {
+        "noticeNo": "IB2600000002",
+        "revisions": [{
+            "revisionId": "notice-rev-01", "revisionNumber": "01",
+            "kind": "TBMT", "status": "OPENED",
+            "bidClosingAt": "2026-03-16T09:00:00+07:00",
+        }, {
+            "revisionId": "notice-rev-00", "revisionNumber": "00",
+            "kind": "TBMT", "status": "PUBLISHED",
+            "bidClosingAt": "2026-03-15T09:00:00+07:00",
+        }],
+    }
+    store = PreviewStore()
+    preview = ProcurementImportPreparer(source, store).prepare_plan(
+        code="PL2600000001-01", revision_mode="SELECTED",
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+        local_state=None, include_linked_notices=True,
+    )
+    stored = store.get(
+        preview["previewId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        stored.canonical_bundle,
+        organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "01",
+        organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    history = next(
+        row for row in draft["packageRevisionHistories"]
+        if row["noticeNo"] == "IB2600000002"
+    )
+    assert [
+        row["sourceRevision"]["packageRevisionNumber"]
+        for row in history["revisions"]
+    ] == ["00", "01"]
+    assert history["revisions"][0]["thoiGianDongThau"] == (
+        "2026-03-15T09:00:00+07:00"
+    )
+    assert history["revisions"][1]["thoiGianDongThau"] == (
+        "2026-03-16T09:00:00+07:00"
+    )
+
+
 def test_prepare_standalone_notice_targets_existing_package_without_orphan(tmp_path):
     source = _source(tmp_path)
     source._notices["IB2600000002"] = {
@@ -1338,6 +1392,107 @@ def test_import_session_orders_manifest_and_serves_revision_draft_without_source
     assert draft["packageDrafts"][0]["sourceRevision"]["revisionId"] == "rev-00"
     assert draft["packageDrafts"][0]["sourceRevision"]["workspaceLease"] == "lease-1"
     assert "sourceCanonical" not in draft["packageDrafts"][0]
+
+
+def test_pending_plan_enrichment_cannot_serve_an_incomplete_revision_draft():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository, ttl_seconds=3600)
+    manifest = service.create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600000001"},
+            "enrichmentStatus": "PENDING",
+            "revisions": [{
+                "revisionId": "plan-00",
+                "revisionNumber": "00",
+                "name": "Kế hoạch 00",
+                "packages": [{
+                    "planDetailRevisionId": "detail-1",
+                    "name": "Mua máy giặt công nghiệp và máy phân tích huyết học",
+                    "noticeLink": {
+                        "state": "LINKED",
+                        "noticeNo": "IB2600082707",
+                        "noticeVersion": "00",
+                    },
+                }],
+            }],
+        },
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    with pytest.raises(LookupError, match="PROCUREMENT_ENRICHMENT_PENDING"):
+        service.get_revision_draft(
+            manifest["sessionId"],
+            "00",
+            organization_id="org-1",
+            user_id="user-1",
+            workspace_lease="lease-1",
+        )
+
+
+def test_completed_plan_enrichment_serves_full_invitation_package_data():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository, ttl_seconds=3600)
+    manifest = service.create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600000001"},
+            "enrichmentStatus": "COMPLETED",
+            "revisions": [{
+                "revisionId": "plan-00",
+                "revisionNumber": "00",
+                "name": "Kế hoạch 00",
+                "packages": [{
+                    "planDetailRevisionId": "detail-1",
+                    "effectiveFields": {
+                        "name": "Mua máy giặt công nghiệp và máy phân tích huyết học",
+                        "lifecycleStatus": "INVITED",
+                        "bidGuaranteeVnd": 28_000_000,
+                        "approvalDecisionNo": "123/QĐ-E-HSMT",
+                        "approvalDecisionDate": "2026-07-15",
+                        "noticeLink": {
+                            "state": "LINKED",
+                            "noticeNo": "IB2600082707",
+                            "kind": "TBMT",
+                            "noticeRevisionId": "notice-00",
+                            "noticeVersion": "00",
+                        },
+                        "noticeFields": {
+                            "publishedAt": "2026-07-16T09:00:00",
+                        },
+                        "goodsItems": [{
+                            "sourceItemId": "item-1",
+                            "sourceIndex": "1",
+                            "code": "1",
+                            "name": "Máy giặt công nghiệp",
+                            "unit": "Cái",
+                            "quantity": 1,
+                        }],
+                    },
+                }],
+            }],
+        },
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    package = service.get_revision_draft(
+        manifest["sessionId"],
+        "00",
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+    )["packageDrafts"][0]
+
+    assert package["trangThai"] == "Đang mời thầu"
+    assert package["soQuyetDinh"] == "123/QĐ-E-HSMT"
+    assert package["ngayQuyetDinh"] == "2026-07-15"
+    assert package["thoiGianDangTai"] == "2026-07-16T09:00:00"
+    assert package["giaTriBaoDamDuThau"] == 28_000_000
+    assert package["danhSachHangHoa"][0]["tenHangHoa"] == "Máy giặt công nghiệp"
 
 
 def test_unlinked_plan_package_never_uses_bp_bid_number_as_bidding_code():

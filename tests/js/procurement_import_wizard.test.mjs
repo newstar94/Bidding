@@ -11,6 +11,7 @@ import {
   PlanImportWizard,
   PlanImportDraftStore,
   canApplyPreview,
+  canStartSequentialImport,
   createDebouncedPreparer,
   renderIssues,
   renderPackages,
@@ -408,6 +409,29 @@ test("summary and apply gate block ambiguous or incomplete preview", () => {
   assert.equal(canApplyPreview(ready), true);
   assert.equal(canApplyPreview({ ...ready, blockingIssues: [{ field: "priceVnd" }] }), false);
   assert.equal(canApplyPreview({ ...ready, packages: [{ action: "AMBIGUOUS" }] }), false);
+});
+
+
+test("sequential plan import waits until linked-notice enrichment is complete", () => {
+  const preview = {
+    importSession: {
+      sessionId: "session-plan",
+      revisions: [{ revisionNumber: "00" }],
+    },
+    packages: [],
+  };
+  assert.equal(canStartSequentialImport({
+    ...preview, enrichmentStatus: "PENDING",
+  }), false);
+  assert.equal(canStartSequentialImport({
+    ...preview, enrichmentStatus: "PARTIAL",
+  }), false);
+  assert.equal(canStartSequentialImport({
+    ...preview, enrichmentStatus: "FAILED",
+  }), false);
+  assert.equal(canStartSequentialImport({
+    ...preview, enrichmentStatus: "COMPLETED",
+  }), true);
 });
 
 

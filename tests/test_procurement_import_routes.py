@@ -278,6 +278,123 @@ def test_employee_with_plan_view_access_may_prepare_muasamcong_plan(monkeypatch)
     assert permission_actions == ["view"]
 
 
+def test_muasamcong_plan_prepare_returns_quick_preview_for_linked_notices(monkeypatch):
+    calls = []
+    session_bundles = []
+
+    class Connection:
+        def cursor(self):
+            return object()
+
+        def execute(self, _sql):
+            return self
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def load_family(self, *_args):
+            return {"latestPlan": None}
+
+    class Preparer:
+        def prepare_plan(self, **options):
+            calls.append(options["include_linked_notices"])
+            assert options["include_linked_notices"] is False
+            return {"previewId": "preview-quick"}
+
+    class PreviewStore:
+        def get(self, *_args, **_kwargs):
+            return SimpleNamespace(canonical_bundle={
+                "revisions": [{"packages": [{
+                    "noticeLink": {"state": "LINKED", "noticeNo": "IB2600000002"},
+                }]}],
+            })
+
+    class SessionService:
+        def __init__(self, _repository, **_options):
+            pass
+
+        def create_from_bundle(self, _bundle, **_context):
+            session_bundles.append(_bundle)
+            return {"sessionId": "session-quick"}
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (SimpleNamespace(user_id="user-1"), "org-1", "workspace-1"),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(
+        routes_module, "build_procurement_source",
+        lambda: SimpleNamespace(name="MUASAMCONG"),
+    )
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(routes_module.database, "get_connection", Connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "_build_import_preparer", lambda _source: Preparer())
+    monkeypatch.setattr(routes_module, "PREVIEW_STORE", PreviewStore())
+    monkeypatch.setattr(routes_module, "ProcurementImportSessionRepository", Repository)
+    monkeypatch.setattr(routes_module, "ProcurementImportSessionService", SessionService)
+
+    result = routes_module._prepare_blocking(
+        object(),
+        {"code": "PL2600000001", "revisionMode": "ALL", "includeLinkedNotices": True},
+    )
+
+    assert calls == [False]
+    assert result["previewMode"] == "QUICK"
+    assert result["enrichmentStatus"] == "PENDING"
+    assert result["_enrichmentContext"]["linkedNoticeCount"] == 1
+    assert session_bundles[0]["enrichmentStatus"] == "PENDING"
+
+
+def test_start_plan_enrichment_hides_internal_context_and_returns_operation_id(monkeypatch):
+    bundle = {"revisions": [{"packages": [{
+        "noticeLink": {"state": "LINKED", "noticeNo": "IB2600000002"},
+    }]}]}
+
+    class PreviewStore:
+        def get(self, *_args, **_kwargs):
+            return SimpleNamespace(canonical_bundle=bundle)
+
+    class Thread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(routes_module, "PREVIEW_STORE", PreviewStore())
+    monkeypatch.setattr(
+        routes_module,
+        "_create_enrichment_operation",
+        lambda *_args: {"operationId": "enrich-op-1"},
+    )
+    monkeypatch.setattr(routes_module.threading, "Thread", Thread)
+
+    result = routes_module._start_plan_enrichment({
+        "previewId": "preview-1",
+        "_enrichmentContext": {
+            "sessionId": "session-1", "organizationId": "org-1",
+            "userId": "user-1", "workspaceLease": "workspace-1",
+            "provider": "MUASAMCONG", "familyNo": "PL2600000001",
+            "revisionMode": "ALL", "selectedRevision": None,
+        },
+    })
+
+    assert result["enrichmentOperationId"] == "enrich-op-1"
+    assert "_enrichmentContext" not in result
+
+
 def test_plan_prepare_still_denies_member_without_plan_view_access(monkeypatch):
     permission_actions = []
 

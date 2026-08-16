@@ -514,6 +514,67 @@ test("linked notice version independently advances the package version", () => {
   assert.equal(result.packages[0].phienBan, "01");
 });
 
+test("new plan import materializes every prior linked notice revision on one package root", () => {
+  let sequence = 0;
+  const state = {
+    chudautu: [], kehoach: [], goithau: [], goithauhanghoa: [],
+    thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const current = {
+    maGoiThau: "IB2600212155",
+    tenGoiThau: "GÃ³i ngÆ°á»i dÃ¹ng cÃ³ thá»ƒ chá»‰nh trÆ°á»›c khi lÆ°u",
+    phanLo: false,
+    noticeLink: {
+      state: "LINKED", kind: "TBMT", noticeNo: "IB2600212155",
+      noticeRevisionId: "notice-01", noticeVersion: "01",
+    },
+    sourceRevision: {
+      stablePackageId: "BP2600291019", packageObservationId: "detail-00",
+      packageRevisionNumber: "01",
+    },
+  };
+  const result = materializeProcurementRevisionDraft(state, {
+    revisionNumber: "00",
+    planDraft: { maKeHoach: "PL2600122143", tenKeHoach: "Káº¿ hoáº¡ch 00" },
+    packageDrafts: [current],
+    packageRevisionHistories: [{
+      packageObservationId: "detail-00",
+      stablePackageId: "BP2600291019",
+      noticeNo: "IB2600212155",
+      revisions: [{
+        ...current,
+        tenGoiThau: "GÃ³i táº¡i TBMT 00",
+        noticeLink: { ...current.noticeLink, noticeRevisionId: "notice-00", noticeVersion: "00" },
+        sourceRevision: { ...current.sourceRevision, packageRevisionNumber: "00" },
+      }, current],
+    }],
+  }, {
+    createId: (kind) => `${kind}-${++sequence}`,
+    timestamp: "2026-08-16 09:00:00",
+  });
+
+  const lineage = state.goithau.filter(
+    (row) => row.rootId === result.packages[0].rootId,
+  ).sort((left, right) => Number(left.phienBan) - Number(right.phienBan));
+  assert.deepEqual(lineage.map((row) => row.phienBan), ["00", "01"]);
+  assert.deepEqual(lineage.map((row) => row.isLatest), [0, 1]);
+  assert.equal(lineage[0].tenGoiThau, "GÃ³i táº¡i TBMT 00");
+  assert.equal(lineage[1].tenGoiThau, current.tenGoiThau);
+  assert.equal(result.packages.length, 1, "only the latest revision is editable");
+
+  const bounded = boundProcurementRevisionChanges(
+    collectPlanBreakdownDraftChanges(state, {
+      planId: result.plan.id,
+      snapshot: result.draft.snapshot,
+    }),
+    result.plan.id,
+  );
+  assert.deepEqual(
+    bounded.upserts.goithau.map((row) => row.phienBan).sort(),
+    ["00", "01"],
+  );
+});
+
 test("next plan revision matches changed detail ids by package symbol and drops removed packages", () => {
   let sequence = 0;
   const state = {

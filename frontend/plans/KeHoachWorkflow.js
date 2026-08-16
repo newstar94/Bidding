@@ -254,27 +254,41 @@ export async function editKeHoach(id, {
     marker.textContent = "*";
     label.append(marker);
   };
+  const setOptionalLabel = (label, text) => {
+    if (!label) return;
+    label.textContent = text;
+  };
   const togglePheDuyetFields = () => {
     const label = document.getElementById("lbl-ngaytrinhkehoach");
     const labelPheDuyet = document.getElementById("lbl-ngaypheduyet");
     const labelQuyetDinh = document.getElementById("lbl-quyetdinh");
+    const findLabel = (selector) => document.querySelector?.(selector) || null;
+    const labelSoTrinhDuToan = findLabel('label[for="kh-sototrinhdutoan"]');
+    const labelNgayTrinhDuToan = findLabel('label[for="kh-ngaytrinhdutoan"]');
+    const labelSoTrinhKeHoach = findLabel('label[for="kh-sototrinhkehoach"]');
+    const labelSoTrinhDuToanKeHoach = findLabel('label[for="kh-sototrinhdutoankehoach"]');
     setRuntimeStyle(approvalRecords, "display", pheDuyetSelect.value ? "grid" : "none");
     if (pheDuyetSelect.value === "Kế hoạch") {
       setSectionAvailability(pheDuyetFields, true);
       setSectionAvailability(commonPheDuyetFields, true);
-      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", true, true);
-      setFieldAvailability("kh-sototrinhkehoach-container", "kh-sototrinhkehoach", true, true);
+      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", true);
+      setFieldAvailability("kh-sototrinhkehoach-container", "kh-sototrinhkehoach", true);
       setFieldAvailability("kh-sototrinhdutoankehoach-container", "kh-sototrinhdutoankehoach", false);
-      setRequiredLabel(label, "Ngày trình kế hoạch");
+      setOptionalLabel(label, "Ngày trình kế hoạch");
+      setOptionalLabel(labelSoTrinhDuToan, "Số tờ trình dự toán");
+      setOptionalLabel(labelNgayTrinhDuToan, "Ngày trình dự toán");
+      setOptionalLabel(labelSoTrinhKeHoach, "Số tờ trình kế hoạch");
+      setOptionalLabel(labelSoTrinhDuToanKeHoach, "Số tờ trình dự toán và kế hoạch");
       setRequiredLabel(labelPheDuyet, "Ngày phê duyệt kế hoạch");
       setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt kế hoạch");
     } else if (pheDuyetSelect.value === "Dự toán và kế hoạch") {
       setSectionAvailability(pheDuyetFields, false);
       setSectionAvailability(commonPheDuyetFields, true);
-      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", true, true);
+      setFieldAvailability("kh-ngaytrinhkehoach-container", "kh-ngaytrinhkehoach", true);
       setFieldAvailability("kh-sototrinhkehoach-container", "kh-sototrinhkehoach", false);
-      setFieldAvailability("kh-sototrinhdutoankehoach-container", "kh-sototrinhdutoankehoach", true, true);
-      setRequiredLabel(label, "Ngày trình dự toán và kế hoạch");
+      setFieldAvailability("kh-sototrinhdutoankehoach-container", "kh-sototrinhdutoankehoach", true);
+      setOptionalLabel(label, "Ngày trình dự toán và kế hoạch");
+      setOptionalLabel(labelSoTrinhDuToanKeHoach, "Số tờ trình dự toán và kế hoạch");
       setRequiredLabel(labelPheDuyet, "Ngày phê duyệt dự toán và kế hoạch");
       setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt dự toán và kế hoạch");
     } else {
