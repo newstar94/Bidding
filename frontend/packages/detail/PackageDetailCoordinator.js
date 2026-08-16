@@ -26,6 +26,10 @@ function renderVersionSelector(view, detail) {
   if (!verSelect) return () => {};
 
   const cleanupDropdown = () => {
+    if (verSelect.__bfAccessibleCombobox) {
+      verSelect.__bfAccessibleCombobox.destroy();
+      return;
+    }
     verSelect.parentElement
       ?.querySelector('.custom-select-container[data-target="detail-workflow-version-select"]')
       ?.remove();

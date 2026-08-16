@@ -122,7 +122,12 @@ function buildRelated(packageData, relatedEntities = {}) {
 function sourceRecord(definition, packageData, planData, related, entity) {
   const source = definition.source || {};
   if (source.entity) return entity || {};
-  if (source.record === "package") return packageData;
+  if (source.record === "package") {
+    if (definition.milestoneKey === "E_HSMT_APPROVAL" && related.initialPackage) {
+      return related.initialPackage;
+    }
+    return packageData;
+  }
   if (source.record === "plan") return planData;
   return related[source.record] || {};
 }

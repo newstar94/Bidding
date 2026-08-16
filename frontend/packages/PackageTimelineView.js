@@ -7,7 +7,13 @@ import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
-import { sortVersionsDescending } from "../shared/versionResolver.js";
+import {
+  selectLatestVersion,
+  selectLatestVersionsByRoot,
+  sortVersionsDescending,
+  versionNumber,
+  versionRootId,
+} from "../shared/versionResolver.js";
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
@@ -79,6 +85,7 @@ function timelineState(view) {
   view._packageTimelineState ||= {
     workspaceToken,
     package: null,
+    initialPackage: null,
     plan: null,
     rows: [],
     packageOptions: [],
@@ -102,6 +109,7 @@ export function resetTimelineSession(view) {
   if (state) {
     clearTimeout(state.packageSearchTimer);
     state.package = null;
+    state.initialPackage = null;
     state.plan = null;
     state.rows = [];
     state.packageOptions = [];
@@ -138,6 +146,10 @@ function updateLiveStatus(message) {
 
 function findPlan(view, packageRecord) {
   return (view.model.state.kehoach || []).find((plan) => String(plan.id) === String(packageRecord?.keHoachId)) || {};
+}
+
+function timelineRuleContext(state) {
+  return { initialPackage: state?.initialPackage || state?.package || null };
 }
 
 export function timelinePlanProgressStatus(planId, packages = []) {
@@ -296,7 +308,11 @@ function renderPackageOptions(view, records, search = "") {
   const select = element("timeline-package-select");
   if (!select) return;
   const hasPlan = Boolean(element("timeline-plan-select")?.value);
-  const selectedId = state.package?.id || select.value;
+  const selectedRootId = versionRootId(state.package);
+  const selectedRepresentative = selectedRootId
+    ? records.find((pkg) => versionRootId(pkg) === selectedRootId)
+    : null;
+  const selectedId = selectedRepresentative?.id || select.value;
   select.disabled = !hasPlan;
   select.innerHTML = trustedHTML(`<option value="">${hasPlan ? "Chọn gói thầu" : "Chọn kế hoạch trước"}</option>${records.map((pkg) => (
     `<option value="${safeAttr(pkg.id)}" data-search="${safeAttr(`${pkg.maGoiThau || ""} ${pkg.tenGoiThau || ""}`)}">${escapeHtml(pkg.maGoiThau || "--")} — ${escapeHtml(pkg.tenGoiThau || "")}</option>`
@@ -309,6 +325,46 @@ function renderPackageOptions(view, records, search = "") {
     hasPlan ? "Chọn gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước",
     { query: search, preserveQuery: Boolean(search), keepOpen: Boolean(search) }
   );
+}
+
+export function timelinePackageRepresentatives(records = []) {
+  return selectLatestVersionsByRoot(Array.isArray(records) ? records : []);
+}
+
+export function timelineInitialPackageReference(records = [], pkg = null) {
+  if (!pkg) return null;
+  const rootId = versionRootId(pkg);
+  const versionIds = new Set(
+    (Array.isArray(pkg.allVersions) ? pkg.allVersions : [])
+      .map((version) => String(version?.id || ""))
+      .filter(Boolean),
+  );
+  const byId = new Map();
+  [
+    ...(Array.isArray(pkg.allVersions) ? pkg.allVersions : []),
+    ...(Array.isArray(records) ? records : []),
+    pkg,
+  ].forEach((candidate) => {
+    if (!candidate?.id) return;
+    const existing = byId.get(String(candidate.id));
+    byId.set(String(candidate.id), existing ? { ...candidate, ...existing } : candidate);
+  });
+  const family = [...byId.values()].filter((candidate) => (
+    String(candidate.id) === String(pkg.id)
+    || versionIds.has(String(candidate.id))
+    || versionRootId(candidate) === rootId
+    || String(candidate.rootId || "") === rootId
+  ));
+  const firstVersion = Math.min(...family.map(versionNumber));
+  return selectLatestVersion(
+    family.filter((candidate) => versionNumber(candidate) === firstVersion),
+  ) || pkg;
+}
+
+async function fetchTimelineInitialPackage(view, pkg) {
+  const reference = timelineInitialPackageReference(view.model.state.goithau || [], pkg);
+  if (!reference || String(reference.id) === String(pkg.id)) return pkg;
+  return await fetchTimelinePackage(view, reference.id) || pkg;
 }
 
 async function loadPackageOptions(view, search = timelineState(view).packageQuery) {
@@ -332,8 +388,9 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
       ...(planId ? { keHoachId: planId } : {})
     });
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
-    renderPackageOptions(view, result.items, search);
-    updateLiveStatus(`Đã tìm thấy ${result.totalItems} gói thầu.`);
+    const representatives = timelinePackageRepresentatives(result.items);
+    renderPackageOptions(view, representatives, search);
+    updateLiveStatus(`Đã tìm thấy ${representatives.length} gói thầu.`);
   } catch (error) {
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
     if (error?.name !== "AbortError") {
@@ -476,7 +533,12 @@ async function removeEhsmtAdjustment(view, row) {
   state.package.ehsmtAdjustments = list.map((item) => String(item.id) === String(row.instanceKey)
     ? { ...item, archivedAt: new Date().toISOString() }
     : item);
-  state.rows = mergeTimelineRows(state.package, state.plan, findContracts(view, state.package));
+  state.rows = mergeTimelineRows(
+    state.package,
+    state.plan,
+    findContracts(view, state.package),
+    timelineRuleContext(state),
+  );
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã ẩn lần điều chỉnh; hãy lưu thay đổi.");
@@ -492,7 +554,12 @@ async function resolveEhsmtAppraisalConflict(view) {
   if (!confirmed) return;
   state.package.yeuCauThamDinhHsmtCode = "REQUIRED";
   state.package.yeuCauThamDinhHsmt = "Có";
-  state.rows = mergeTimelineRows(state.package, state.plan, findContracts(view, state.package));
+  state.rows = mergeTimelineRows(
+    state.package,
+    state.plan,
+    findContracts(view, state.package),
+    timelineRuleContext(state),
+  );
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã xác nhận có thẩm định E-HSMT; hãy lưu thay đổi.");
@@ -504,6 +571,7 @@ async function selectPackage(view, packageId) {
   state.selectionRequestVersion = requestVersion;
   if (!packageId) {
     state.package = null;
+    state.initialPackage = null;
     state.plan = null;
     state.rows = [];
     setHidden("timeline-empty", false);
@@ -520,9 +588,20 @@ async function selectPackage(view, packageId) {
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
     if (!pkg) throw new Error("Không tìm thấy gói thầu đã chọn.");
     state.package = pkg;
-    state.plan = await fetchTimelinePlan(view, pkg.keHoachId) || findPlan(view, pkg);
+    state.initialPackage = null;
+    const [initialPackage, selectedPlan] = await Promise.all([
+      fetchTimelineInitialPackage(view, pkg),
+      fetchTimelinePlan(view, pkg.keHoachId),
+    ]);
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
-    state.rows = mergeTimelineRows(pkg, state.plan, findContracts(view, pkg));
+    state.initialPackage = initialPackage;
+    state.plan = selectedPlan || findPlan(view, pkg);
+    state.rows = mergeTimelineRows(
+      pkg,
+      state.plan,
+      findContracts(view, pkg),
+      timelineRuleContext(state),
+    );
     state.dirty = false;
     saveTimelineSelection(view.model, {
       planId: pkg.keHoachId || state.plan?.id,
@@ -570,12 +649,16 @@ async function restoreTimelineSelection(view, selection) {
     syncTimelineSelectValue(planSelect, actualPlanId);
     await loadPackageOptions(view, "");
 
-    const selectedId = String(state.package.id);
-    if (!state.packageOptions.some((pkg) => String(pkg.id) === selectedId)) {
+    const selectedRootId = versionRootId(state.package);
+    let selectedRepresentative = state.packageOptions.find(
+      (pkg) => versionRootId(pkg) === selectedRootId,
+    );
+    if (!selectedRepresentative) {
       renderPackageOptions(view, [state.package, ...state.packageOptions], "");
+      selectedRepresentative = state.package;
     }
     const packageSelect = element("timeline-package-select");
-    syncTimelineSelectValue(packageSelect, selectedId);
+    syncTimelineSelectValue(packageSelect, selectedRepresentative.id);
   } finally {
     state.restoringSelection = false;
   }
@@ -694,11 +777,16 @@ async function copyPreviousTimeline(view) {
   state.rows = copyTimelineForNewVersion(mergeTimelineRows(
     previousPackage,
     findPlan(view, previousPackage),
-    findContracts(view, previousPackage)
+    findContracts(view, previousPackage),
+    timelineRuleContext(state),
   ));
   const contracts = findContracts(view, pkg);
-  state.rows = applyAutomaticTimelineSources(state.rows, pkg, state.plan, contracts);
-  state.rows = applyTimelineApplicability(state.rows, pkg, state.plan, contracts);
+  state.rows = applyAutomaticTimelineSources(
+    state.rows, pkg, state.plan, contracts, timelineRuleContext(state),
+  );
+  state.rows = applyTimelineApplicability(
+    state.rows, pkg, state.plan, contracts, timelineRuleContext(state),
+  );
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã sao chép từ phiên bản trước; hãy lưu thay đổi.");
@@ -750,13 +838,25 @@ function bindTimelineEvents(view, pane) {
     const row = state.rows.find((item) => item.id === entryId);
     if (!row) return;
     row.sourceMode = button.dataset.sourceAction === "restore" || row.sourceMode === "MANUAL" ? "AUTO" : "MANUAL";
-    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan, findContracts(view, state.package));
+    state.rows = applyAutomaticTimelineSources(
+      state.rows,
+      state.package,
+      state.plan,
+      findContracts(view, state.package),
+      timelineRuleContext(state),
+    );
     state.dirty = true;
     renderTimelineTable(view);
   });
   element("timeline-refresh-auto")?.addEventListener("click", () => {
     const state = timelineState(view);
-    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan, findContracts(view, state.package));
+    state.rows = applyAutomaticTimelineSources(
+      state.rows,
+      state.package,
+      state.plan,
+      findContracts(view, state.package),
+      timelineRuleContext(state),
+    );
     state.dirty = true;
     renderTimelineTable(view);
     updateLiveStatus("Đã làm mới các mốc tự động; hãy lưu thay đổi.");
@@ -834,7 +934,12 @@ export function renderPackageTimeline() {
     if (refreshed) {
       state.package = refreshed;
       state.plan = findPlan(this, refreshed);
-      state.rows = mergeTimelineRows(refreshed, state.plan, findContracts(this, refreshed));
+      state.rows = mergeTimelineRows(
+        refreshed,
+        state.plan,
+        findContracts(this, refreshed),
+        timelineRuleContext(state),
+      );
     }
   }
   setActionAvailability(state);

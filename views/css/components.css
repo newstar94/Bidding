@@ -1517,12 +1517,17 @@ textarea[disabled] {
 .custom-select-options li {
   padding: 8px 14px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   font-size: 0.85rem;
   color: var(--text-main);
   cursor: pointer;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
   transition: background-color var(--transition-fast), color var(--transition-fast);
+  white-space: normal;
+}
+.custom-select-options.bf-combobox-list--fit-content li {
+  overflow-wrap: normal;
   white-space: nowrap;
 }
 .custom-select-options li:hover,

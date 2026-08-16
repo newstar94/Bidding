@@ -43,6 +43,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     openOnFocus: true,
     formatSelectedLabel: null,
     displayEmptyOptionLabel: false,
+    fitContent: false,
     ...initialConfig
   };
   const original = {
@@ -134,7 +135,28 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     const scrollY = window.scrollY || window.pageYOffset;
     const viewportPadding = 8;
     const availableWidth = Math.max(0, window.innerWidth - (viewportPadding * 2));
-    const dropdownWidth = Math.min(rect.width, availableWidth);
+    const pixels = (value) => Number.parseFloat(value) || 0;
+    const contentWidth = config.fitContent
+      ? Math.max(0, ...Array.from(list.children).map((item) => {
+        const range = document.createRange();
+        range.selectNodeContents(item);
+        const style = getComputedStyle(item);
+        return range.getBoundingClientRect().width
+          + pixels(style.paddingLeft)
+          + pixels(style.paddingRight)
+          + pixels(style.borderLeftWidth)
+          + pixels(style.borderRightWidth);
+      }))
+      : 0;
+    const listStyle = getComputedStyle(list);
+    const listChrome = pixels(listStyle.paddingLeft)
+      + pixels(listStyle.paddingRight)
+      + pixels(listStyle.borderLeftWidth)
+      + pixels(listStyle.borderRightWidth);
+    const intrinsicWidth = config.fitContent
+      ? Math.max(rect.width, contentWidth + listChrome)
+      : rect.width;
+    const dropdownWidth = Math.min(Math.ceil(intrinsicWidth), availableWidth);
     const left = Math.min(
       Math.max(rect.left, viewportPadding),
       Math.max(viewportPadding, window.innerWidth - dropdownWidth - viewportPadding),
@@ -245,6 +267,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
   };
 
   const refresh = ({ query, preserveQuery = false, keepOpen = false } = {}) => {
+    list.classList.toggle("bf-combobox-list--fit-content", config.fitContent === true);
     input.disabled = select.disabled;
     input.readOnly = !config.searchable;
     input.setAttribute("aria-autocomplete", config.searchable ? "list" : "none");

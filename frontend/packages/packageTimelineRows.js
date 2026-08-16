@@ -6,24 +6,24 @@ import {
 
 export { TIMELINE_TEMPLATE_VERSION };
 
-function related(plan = {}, contracts = []) {
-  return { plan, contracts };
+function related(plan = {}, contracts = [], context = {}) {
+  return { ...context, plan, contracts };
 }
 
 export function createDefaultTimelineRows() {
   return buildEffectiveTimeline({}, { plan: {} }, [], { includeNotApplicable: true });
 }
 
-export function applyTimelineApplicability(rows, pkg = {}, plan = {}, contracts = []) {
-  return buildEffectiveTimeline(pkg, related(plan, contracts), rows);
+export function applyTimelineApplicability(rows, pkg = {}, plan = {}, contracts = [], context = {}) {
+  return buildEffectiveTimeline(pkg, related(plan, contracts, context), rows);
 }
 
-export function applyAutomaticTimelineSources(rows, pkg = {}, plan = {}, contracts = []) {
-  return buildEffectiveTimeline(pkg, related(plan, contracts), rows);
+export function applyAutomaticTimelineSources(rows, pkg = {}, plan = {}, contracts = [], context = {}) {
+  return buildEffectiveTimeline(pkg, related(plan, contracts, context), rows);
 }
 
-export function mergeTimelineRows(pkg = {}, plan = {}, contracts = []) {
-  return buildEffectiveTimeline(pkg, related(plan, contracts), Array.isArray(pkg.timelineItems) ? pkg.timelineItems : []);
+export function mergeTimelineRows(pkg = {}, plan = {}, contracts = [], context = {}) {
+  return buildEffectiveTimeline(pkg, related(plan, contracts, context), Array.isArray(pkg.timelineItems) ? pkg.timelineItems : []);
 }
 
 export function preserveHiddenTimelineRows(existingEntries = [], effectiveRows = []) {

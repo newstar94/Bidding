@@ -12,7 +12,11 @@ import {
   ensureVersionEhsmtAdjustment,
   preparePackageSnapshot
 } from "../../frontend/shared/VersionedEntityService.js";
-import { findTimelineContracts } from "../../frontend/packages/PackageTimelineView.js";
+import {
+  findTimelineContracts,
+  timelineInitialPackageReference,
+  timelinePackageRepresentatives,
+} from "../../frontend/packages/PackageTimelineView.js";
 
 const base = {
   hinhThucLuaChon: "Đấu thầu rộng rãi",
@@ -173,6 +177,58 @@ test("timeline contract projection resolves package lineage", () => {
     findTimelineContracts(view, current).map((contract) => contract.id),
     [exact.id, inherited.id],
   );
+});
+
+test("timeline package picker shows one package family and leaves revisions to the version picker", () => {
+  const package00 = {
+    id: "package-00", rootId: "package-root", phienBan: "00",
+    maGoiThau: "IB2600212155", tenGoiThau: "Mua sắm thuốc Generic",
+  };
+  const package01 = {
+    ...package00,
+    id: "package-01", phienBan: "01", isLatest: 1,
+    allVersions: [
+      { id: "package-00", phienBan: "00" },
+      { id: "package-01", phienBan: "01" },
+    ],
+  };
+
+  const representatives = timelinePackageRepresentatives([package00, package01]);
+
+  assert.deepEqual(
+    representatives.map((pkg) => ({ id: pkg.id, rootId: pkg.rootId })),
+    [{ id: "package-01", rootId: "package-root" }],
+  );
+  assert.equal(
+    timelineInitialPackageReference([package01], package01).id,
+    package00.id,
+  );
+});
+
+test("timeline keeps the original E-HSMT approval and maps revision 01 as adjustment 1", () => {
+  const original = {
+    ...base,
+    id: "package-00", rootId: "package-root", phienBan: "00",
+    soQuyetDinh: "124/QĐ-TTYT", ngayQuyetDinh: "2026-05-19",
+  };
+  const revision01 = {
+    ...original,
+    id: "package-01", phienBan: "01",
+    soQuyetDinh: "125/QĐ-TTYT", ngayQuyetDinh: "2026-05-20",
+  };
+
+  const rows = buildEffectiveTimeline(revision01, {
+    plan: { pheDuyet: "Kế hoạch" },
+    initialPackage: original,
+  }, []);
+  const approval = rows.find((row) => row.milestoneKey === "E_HSMT_APPROVAL");
+  const adjustment = rows.find((row) => row.milestoneKey === "E_HSMT_ADJUSTMENT_APPROVAL");
+
+  assert.equal(approval.soVanBan, "124/QĐ-TTYT");
+  assert.equal(approval.ngayThucTe, "2026-05-19");
+  assert.equal(adjustment.title, "QĐ phê duyệt điều chỉnh E-HSMT lần 1");
+  assert.equal(adjustment.soVanBan, "125/QĐ-TTYT");
+  assert.equal(adjustment.ngayThucTe, "2026-05-20");
 });
 
 test("bid evaluation report title follows the package envelope method", () => {

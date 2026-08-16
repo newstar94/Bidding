@@ -141,6 +141,7 @@ export function initCustomSelect(selectId) {
   return initAccessibleCombobox(select, {
     compatibilityMode: "custom-select",
     displayEmptyOptionLabel: true,
+    fitContent: select.dataset.dropdownFitContent === "true",
     formatSelectedLabel: isFullDateFilter ? null : compactMonthLabel,
     includeEmptyOption: true,
     placeholder: emptyOptionLabel || "Chọn dữ liệu",

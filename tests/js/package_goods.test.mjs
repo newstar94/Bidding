@@ -115,11 +115,12 @@ test("goods display keeps one-lot-many nested and collapses one-lot-one into one
     lotCode: row.lotCode,
     lotName: row.lotName,
     itemId: row.item?.id,
+    singleItemLot: row.singleItemLot,
   })), [
-    { kind: "lot", sequence: "1", lotCode: "PP01", lotName: "Phần 1", itemId: undefined },
-    { kind: "item", sequence: "1.1", lotCode: undefined, lotName: undefined, itemId: "goods-1" },
-    { kind: "item", sequence: "1.2", lotCode: undefined, lotName: undefined, itemId: "goods-2" },
-    { kind: "item", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: "goods-3" },
+    { kind: "lot", sequence: "1", lotCode: "PP01", lotName: "Phần 1", itemId: undefined, singleItemLot: undefined },
+    { kind: "item", sequence: "1.1", lotCode: undefined, lotName: undefined, itemId: "goods-1", singleItemLot: undefined },
+    { kind: "item", sequence: "1.2", lotCode: undefined, lotName: undefined, itemId: "goods-2", singleItemLot: undefined },
+    { kind: "item", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: "goods-3", singleItemLot: true },
   ]);
   assert.equal(formatPackageGoodsQuantity(18), "18");
   assert.equal(formatPackageGoodsQuantity(1_000), "1.000");

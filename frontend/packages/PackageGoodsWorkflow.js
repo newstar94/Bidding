@@ -63,8 +63,9 @@ export function bindPackageGoodsLiveSearch(view, contentWrapper, rerender, { del
   });
 }
 
-export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true } = {}) {
+export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true, allGoods = goods } = {}) {
   const items = Array.isArray(goods) ? goods : [];
+  const completeItems = Array.isArray(allGoods) ? allGoods : items;
   const lotList = Array.isArray(lots) ? lots : [];
   if (!hasLots) {
     return items.map((item, index) => ({
@@ -82,6 +83,11 @@ export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true } = {
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(item);
   });
+  const completeGroupSizes = new Map();
+  completeItems.forEach((item) => {
+    const key = String(item.phanLoId || "");
+    completeGroupSizes.set(key, (completeGroupSizes.get(key) || 0) + 1);
+  });
   const orderedKeys = [
     ...lotList.map((lot) => String(lot.id)).filter((key) => grouped.has(key)),
     ...[...grouped.keys()].filter((key) => !lotById.has(key)),
@@ -91,12 +97,25 @@ export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true } = {
     const lot = lotById.get(key);
     const sequence = String(lotPosition.get(key) || groupIndex + 1);
     const groupItems = grouped.get(key) || [];
+    const lotCode = String(lot?.maPhanLo || groupItems[0]?._lotCode || "").trim();
+    const lotName = String(lot?.tenPhanLo || "Phần lô chưa xác định").trim();
+    if ((completeGroupSizes.get(key) || groupItems.length) === 1 && groupItems.length === 1) {
+      return [{
+        kind: "item",
+        sequence,
+        item: groupItems[0],
+        lotCode,
+        lotName,
+        lotId: key,
+        singleItemLot: true,
+      }];
+    }
     return [
       {
         kind: "lot",
         sequence,
-        lotCode: String(lot?.maPhanLo || groupItems[0]?._lotCode || "").trim(),
-        lotName: String(lot?.tenPhanLo || "Phần lô chưa xác định").trim(),
+        lotCode,
+        lotName,
         lotId: key,
       },
       ...groupItems.map((item, itemIndex) => ({
@@ -247,7 +266,7 @@ function renderPreview(container, rows, lots) {
       <tbody>${displayRows.map((displayRow) => displayRow.kind === "lot" ? `<tr class="package-goods-lot-row">
         <td>${escapeHtml(displayRow.sequence)}</td><td>${escapeHtml(displayRow.lotCode)}</td><td>${escapeHtml(displayRow.lotName)}</td><td colspan="${columnCount - 3}"></td>
       </tr>` : `<tr class="package-goods-item-row">
-        <td class="package-goods-sequence">${escapeHtml(displayRow.sequence)}</td>${hasLots ? "<td></td><td></td>" : ""}
+        <td class="package-goods-sequence">${escapeHtml(displayRow.sequence)}</td>${hasLots ? `<td>${escapeHtml(displayRow.lotCode || "")}</td><td>${escapeHtml(displayRow.lotName || "")}</td>` : ""}
         <td>${escapeHtml(displayRow.item.tenHangHoa)}</td><td class="package-goods-unit">${escapeHtml(displayRow.item.donViTinh)}</td><td class="package-goods-quantity">${escapeHtml(formatPackageGoodsQuantity(displayRow.item.soLuong))}</td>
         <td>${displayRow.item._rowNumber || ""}</td><td>${escapeHtml(operationLabel(displayRow.item._operation))}</td><td>${displayRow.item._valid ? "Hợp lệ" : "Lỗi"}</td><td>${escapeHtml(displayRow.item._comment || "")}</td>
       </tr>`).join("")}</tbody>
@@ -398,7 +417,10 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
   const page = Math.min(pageCount, Math.max(1, Number(view._packageGoodsPage || 1)));
   const visibleGoods = filtered.slice((page - 1) * pageSize, page * pageSize);
   const hasLotColumns = pkg.phanLo === "Có";
-  const displayRows = buildPackageGoodsDisplayRows(visibleGoods, lots, { hasLots: hasLotColumns });
+  const displayRows = buildPackageGoodsDisplayRows(visibleGoods, lots, {
+    hasLots: hasLotColumns,
+    allGoods,
+  });
   const editingId = editable ? String(view._packageGoodsEditingId || "") : "";
   const columnCount = (hasLotColumns ? 6 : 4) + (editable ? 1 : 0);
   const startIndex = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -418,7 +440,7 @@ export async function renderPackageGoodsPanel(view, { contentWrapper, pkg }) {
       ? `<tr class="package-goods-lot-row"><td>${escapeHtml(displayRow.sequence)}</td><td>${escapeHtml(displayRow.lotCode)}</td><td>${escapeHtml(displayRow.lotName)}</td><td colspan="${columnCount - 3}"></td></tr>`
       : String(displayRow.item.id) === editingId
         ? renderPackageGoodsInlineEditRow(displayRow.item, lots, { hasLotColumns, sequence: displayRow.sequence })
-        : `<tr class="package-goods-item-row"><td class="package-goods-sequence">${escapeHtml(displayRow.sequence)}</td>${hasLotColumns ? "<td></td><td></td>" : ""}<td class="package-goods-name">${escapeHtml(displayRow.item.tenHangHoa)}</td><td class="package-goods-unit">${escapeHtml(displayRow.item.donViTinh)}</td><td class="package-goods-quantity">${escapeHtml(formatPackageGoodsQuantity(displayRow.item.soLuong))}</td>${renderPackageGoodsRowActions({ id: displayRow.item.id, editable, canDelete })}</tr>`,
+        : `<tr class="package-goods-item-row"><td class="package-goods-sequence">${escapeHtml(displayRow.sequence)}</td>${hasLotColumns ? `<td>${escapeHtml(displayRow.lotCode || "")}</td><td>${escapeHtml(displayRow.lotName || "")}</td>` : ""}<td class="package-goods-name">${escapeHtml(displayRow.item.tenHangHoa)}</td><td class="package-goods-unit">${escapeHtml(displayRow.item.donViTinh)}</td><td class="package-goods-quantity">${escapeHtml(formatPackageGoodsQuantity(displayRow.item.soLuong))}</td>${renderPackageGoodsRowActions({ id: displayRow.item.id, editable, canDelete })}</tr>`,
   }));
   if (creating) {
     const createMarkup = renderPackageGoodsInlineCreateRow(lots, {

@@ -15,6 +15,22 @@ function contentType(pathname) {
   return "text/html; charset=utf-8";
 }
 
+test("package status and procurement-method filters opt into content-fit lists", async () => {
+  const template = await readFile(
+    new URL("../../views/tabs/tab_goithau.html", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    template,
+    /id="filter-goithau-trangthai"[^>]*data-dropdown-fit-content="true"/u,
+  );
+  assert.match(
+    template,
+    /id="filter-goithau-hinhthuc"[^>]*data-dropdown-fit-content="true"/u,
+  );
+});
+
 test("custom select inside a label stays open and allows choosing an option", async () => {
   const server = createServer(async (request, response) => {
     try {
@@ -52,6 +68,18 @@ test("custom select inside a label stays open and allows choosing an option", as
           <select id="table-version-select" class="form-control version-droplist bf-s-b41ce2ea44" aria-label="Chọn phiên bản gói thầu E2E-1786271582853-GT">
             <option value="v00" selected>00</option><option value="v01">01</option>
           </select>
+        </div>
+        <div id="regular-filter-cell" style="width: 180px; margin-top: 24px">
+          <select id="regular-filter-select" class="form-control">
+            <option value="">Tất cả trạng thái</option>
+            <option value="evaluating">Đang chấm thầu và đánh giá hồ sơ dự thầu</option>
+          </select>
+        </div>
+        <div id="plan-detail-cell" style="width: 120px; margin-top: 24px">
+          <select id="plan-detail-select" class="form-control" data-dropdown-fit-content="true">
+            <option value="00">Phiên bản kế hoạch lựa chọn nhà thầu số 00</option>
+            <option value="01">Phiên bản kế hoạch lựa chọn nhà thầu số 01</option>
+          </select>
         </div></body></html>`);
         return;
       }
@@ -79,6 +107,8 @@ test("custom select inside a label stays open and allows choosing an option", as
       initCustomSelect("lot-select");
       initCustomSelect("version-select");
       initCustomSelect("table-version-select");
+      initCustomSelect("regular-filter-select");
+      initCustomSelect("plan-detail-select");
     });
 
     const tableVersionGeometry = await page.locator('#table-version-cell').evaluate((cell) => {
@@ -154,6 +184,66 @@ test("custom select inside a label stays open and allows choosing an option", as
     assert.notEqual(versionStyles.boxShadow, "none");
     assert.equal(versionStyles.optionFontSize, "12px");
     assert.equal(versionStyles.optionTextAlign, "center");
+
+    await page.locator('.custom-select-container[data-target="regular-filter-select"] .custom-select-trigger').click();
+    const regularGeometry = await page.locator('.custom-select-options[data-parent="regular-filter-select"]').evaluate((list) => {
+      const trigger = document.getElementById("regular-filter-select-combobox");
+      const option = list.querySelector('[data-value="evaluating"]');
+      return {
+        listWidth: Math.round(list.getBoundingClientRect().width),
+        triggerWidth: Math.round(trigger.getBoundingClientRect().width),
+        optionClientWidth: option.clientWidth,
+        optionScrollWidth: option.scrollWidth,
+        optionHeight: Math.round(option.getBoundingClientRect().height),
+        lineHeight: parseFloat(getComputedStyle(option).lineHeight)
+          || parseFloat(getComputedStyle(option).fontSize) * 1.2,
+        whiteSpace: getComputedStyle(option).whiteSpace,
+        textOverflow: getComputedStyle(option).textOverflow,
+      };
+    });
+    assert.equal(regularGeometry.listWidth, regularGeometry.triggerWidth);
+    assert.ok(regularGeometry.optionHeight > regularGeometry.lineHeight * 1.5, JSON.stringify(regularGeometry));
+    assert.ok(regularGeometry.optionScrollWidth <= regularGeometry.optionClientWidth);
+    assert.equal(regularGeometry.whiteSpace, "normal");
+    assert.equal(regularGeometry.textOverflow, "clip");
+
+    await page.locator('#regular-filter-select-combobox').press("Escape");
+    await page.locator('.custom-select-container[data-target="plan-detail-select"] .custom-select-trigger').click();
+    const planDetailGeometry = await page.locator('.custom-select-options[data-parent="plan-detail-select"]').evaluate((list) => {
+      const trigger = document.getElementById("plan-detail-select-combobox");
+      const option = list.querySelector('[data-value="00"]');
+      const pixels = (value) => Number.parseFloat(value) || 0;
+      const contentWidth = Math.max(...Array.from(list.children).map((item) => {
+        const range = document.createRange();
+        range.selectNodeContents(item);
+        const style = getComputedStyle(item);
+        return range.getBoundingClientRect().width
+          + pixels(style.paddingLeft)
+          + pixels(style.paddingRight)
+          + pixels(style.borderLeftWidth)
+          + pixels(style.borderRightWidth);
+      }));
+      const listStyle = getComputedStyle(list);
+      const listChrome = pixels(listStyle.paddingLeft)
+        + pixels(listStyle.paddingRight)
+        + pixels(listStyle.borderLeftWidth)
+        + pixels(listStyle.borderRightWidth);
+      return {
+        listWidth: Math.round(list.getBoundingClientRect().width),
+        triggerWidth: Math.round(trigger.getBoundingClientRect().width),
+        expectedWidth: Math.ceil(Math.max(trigger.getBoundingClientRect().width, contentWidth + listChrome)),
+        listRight: Math.round(list.getBoundingClientRect().right),
+        viewportWidth: window.innerWidth,
+        whiteSpace: getComputedStyle(option).whiteSpace,
+      };
+    });
+    assert.ok(planDetailGeometry.listWidth > planDetailGeometry.triggerWidth, JSON.stringify(planDetailGeometry));
+    assert.ok(
+      Math.abs(planDetailGeometry.listWidth - planDetailGeometry.expectedWidth) <= 1,
+      JSON.stringify(planDetailGeometry),
+    );
+    assert.ok(planDetailGeometry.listRight <= planDetailGeometry.viewportWidth - 8, JSON.stringify(planDetailGeometry));
+    assert.equal(planDetailGeometry.whiteSpace, "nowrap");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
@@ -234,9 +324,9 @@ test("searchable portal dropdown stays within the viewport for long options", as
     assert.equal(geometry.leftDelta, 0);
     assert.equal(geometry.widthDelta, 0);
     assert.ok(geometry.right <= geometry.viewportWidth - 8, JSON.stringify(geometry));
-    assert.equal(geometry.overflow, "hidden");
-    assert.equal(geometry.textOverflow, "ellipsis");
-    assert.equal(geometry.whiteSpace, "nowrap");
+    assert.equal(geometry.overflow, "visible");
+    assert.equal(geometry.textOverflow, "clip");
+    assert.equal(geometry.whiteSpace, "normal");
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

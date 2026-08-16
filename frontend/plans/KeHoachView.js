@@ -356,7 +356,7 @@ export async function renderPlanVersionDetails(versionId) {
                     <div class="bf-s-bbf072f32c">
                         <span class="detail-code bf-s-4ec19854c0">${this.model.getPlanBaseCode(kh.maKeHoach) ? escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span>
                         <span class="version-separator bf-s-ada7b4c5a3">-</span>
-                        <select id="fullpage-kh-version-select" class="page-version-select" ${allVersions.length < 2 ? "disabled" : ""}>
+                        <select id="fullpage-kh-version-select" class="page-version-select" data-dropdown-fit-content="true" ${allVersions.length < 2 ? "disabled" : ""}>
                             ${allVersions.map((k) => `<option value="${safeAttr(k.id)}" ${k.id === versionId ? "selected" : ""}>${escapeHtml(getVersionLabel(k.phienBan))}</option>`).join("")}
                         </select>
                     </div>
