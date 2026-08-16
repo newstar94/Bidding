@@ -71,6 +71,64 @@ def test_opening_prepare_rejects_partial_raw_snapshot_for_cache_reuse():
     ) is None
 
 
+def test_opening_prepare_reuses_opening_sources_from_partial_notice_snapshot():
+    class RawRepository:
+        def load_fresh_notice_bundle(self, *_args, **_kwargs):
+            return {
+                "complete": False,
+                "sources": {
+                    "otherVersionList": {
+                        "operation": "NOTICE_OTHER_VERSION_LIST",
+                        "success": False,
+                    },
+                },
+                "revisions": {
+                    "01": {
+                        "revisionId": "notice-01",
+                        "revisionNumber": "01",
+                        "sources": {
+                            "opening_bid": {
+                                "operation": "OPENING_BID",
+                                "success": True,
+                            },
+                            "opening_lot_detail": {
+                                "operation": "OPENING_LOT_DETAIL",
+                                "success": True,
+                            },
+                        },
+                    },
+                },
+            }
+
+    class Source:
+        name = "MUASAMCONG"
+
+        def lookup_from_raw_bundle(self, *_args, **_kwargs):
+            return {"canonical": {"revisions": [{
+                "revisionId": "notice-01",
+                "revisionNumber": "01",
+                "opening": {
+                    "openingAt": "2026-08-16T08:51:09Z",
+                    "bidders": [{
+                        "contractorCode": "C-01",
+                        "bidGuarantee": 119_830_000,
+                    }],
+                    "lots": [],
+                },
+            }]}}
+
+        def get_opening_bundle(self, *_args):
+            raise AssertionError("opening source must be reused from raw snapshot")
+
+    opening = _load_opening_from_raw_snapshot(
+        Source(), RawRepository(), "org-1", "IB2600000002",
+        {"revisionId": "notice-01", "revisionNumber": "01"},
+    )
+
+    assert opening["bidders"][0]["bidGuarantee"] == 119_830_000
+    assert opening["source"]["driver"] == "raw-snapshot"
+
+
 def test_opening_raw_bundle_keeps_catalog_endpoint_for_snapshot_contract():
     raw_bundle = MuaSamCongProcurementSource._opening_raw_bundle(
         "IB2600000002",

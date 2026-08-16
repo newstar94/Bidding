@@ -728,6 +728,60 @@ def _cancel_import_session_blocking(request, session_id):
         connection.close()
 
 
+def _raw_snapshot_has_complete_opening_sources(
+    raw_bundle,
+    selected_revision,
+):
+    """Allow opening projection when unrelated notice sources are partial.
+
+    A COMPLETE notice capture can be marked partial by an optional sidecar
+    (for example, a version-list endpoint) even though every source needed by
+    the opening record was captured successfully.  Reusing that opening
+    evidence is safe only when the selected revision contains opening source
+    envelopes and none of those envelopes (or recorded failures) failed.
+    """
+
+    revisions = raw_bundle.get("revisions") or {}
+    revision_number = str(
+        selected_revision.get("revisionNumber") or ""
+    ).strip()
+    revision = revisions.get(revision_number)
+    if not isinstance(revision, dict):
+        revision = next((
+            candidate for candidate in revisions.values()
+            if isinstance(candidate, dict)
+            and str(candidate.get("revisionNumber") or "").strip()
+            == revision_number
+        ), None)
+    if not isinstance(revision, dict):
+        return False
+    if str(revision.get("revisionId") or "") != str(
+        selected_revision.get("revisionId") or ""
+    ):
+        return False
+
+    opening_operations = []
+    for key, source in (revision.get("sources") or {}).items():
+        if not isinstance(source, dict):
+            continue
+        operation = str(source.get("operation") or key or "").strip().upper()
+        if not operation.startswith("OPENING"):
+            continue
+        opening_operations.append(operation)
+        if source.get("success") is not True:
+            return False
+    if not opening_operations:
+        return False
+
+    for failure in raw_bundle.get("failures") or []:
+        if not isinstance(failure, dict):
+            continue
+        operation = str(failure.get("operation") or "").strip().upper()
+        if operation.startswith("OPENING"):
+            return False
+    return True
+
+
 def _load_opening_from_raw_snapshot(
     source,
     raw_repository,
@@ -754,7 +808,14 @@ def _load_opening_from_raw_snapshot(
         revision_numbers=[revision_number],
         max_age_seconds=max_age_seconds,
     )
-    if not isinstance(raw_bundle, dict) or raw_bundle.get("complete") is not True:
+    if not isinstance(raw_bundle, dict):
+        return None
+    if (
+        raw_bundle.get("complete") is not True
+        and not _raw_snapshot_has_complete_opening_sources(
+            raw_bundle, selected_revision
+        )
+    ):
         return None
     projected = projector(
         notice_no,
