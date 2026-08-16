@@ -5,8 +5,6 @@ import test from "node:test";
 import { formatPartnerIdentityCode } from "../../frontend/app/domUtils.js";
 import {
   calculateOpeningDiscountedPrice,
-  lotCodeControlWidth,
-  resizeLotCodeControl,
   saveThongTinMoThau,
 } from "../../frontend/packages/BidProcessWorkflow.js";
 import {
@@ -46,12 +44,16 @@ test("opening rows without a bid-price field remain valid", () => {
   assert.equal(validateOpeningRows([openingRow({ includePrice: false })]).valid, true);
 });
 
-test("opening lot-code controls reserve room for the complete selected code", () => {
-  assert.equal(lotCodeControlWidth("PP2600198304"), "17ch");
-  assert.equal(lotCodeControlWidth("PP26"), "12ch");
-  const control = { style: {}, value: "PP2600198304" };
-  resizeLotCodeControl(control);
-  assert.equal(control.style.width, "17ch");
+test("opening lot-code controls use the full fixed lot-code column", () => {
+  const styles = fs.readFileSync("views/css/views.css", "utf8");
+  assert.match(
+    styles,
+    /\.package-lot-code-column,[\s\S]*td:has\(\.mt-ma-phan-lo\)[\s\S]*width: 14rem !important;[\s\S]*min-width: 14rem !important;/u,
+  );
+  assert.match(
+    styles,
+    /\.mt-ma-phan-lo\s*\{[\s\S]*width: 100% !important;/u,
+  );
 });
 
 test("opening bids use child identities distinct from contractor identities across lots", () => {
@@ -135,7 +137,7 @@ test("discounted price inputs do not expose a placeholder", () => {
 test("opening lot columns size codes from the selected value and keep names at one-and-a-half width", () => {
   const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
   assert.equal((source.match(/min-width: 11rem/g) || []).length, 3);
-  assert.equal((source.match(/resizeLotCodeControl\(rowLotSelect\)/g) || []).length, 1);
+  assert.equal((source.match(/resizeLotCodeControl\(rowLotSelect\)/g) || []).length, 0);
   assert.doesNotMatch(source, /mt-ma-phan-lo" style="min-width: 11rem"/u);
   assert.equal((source.match(/bf-s-ad8c93e5fe">Tên phần lô/g) || []).length, 2);
   assert.equal((source.match(/bf-s-2811ee8f01">Tên phần lô/g) || []).length, 1);
@@ -230,44 +232,12 @@ test("opening save always reports unexpected failures and restores the button", 
   assert.equal(button.dataset.openingSaveBusy, undefined);
 });
 
-test("opening save reports a pre-effective contractor version actionably", async () => {
-  const originalDocument = globalThis.document;
-  const originalConsoleError = console.error;
-  const button = {
-    dataset: {},
-    disabled: false,
-    textContent: "Lưu thông tin mở thầu",
-    setAttribute(name, value) { this[name] = value; },
-    removeAttribute(name) { delete this[name]; },
-  };
-  const alerts = [];
-  const versionError = Object.assign(new Error("no effective contractor"), {
-    code: "PARTNER_VERSION_NO_EFFECTIVE_MATCH",
-    firstEffectiveDate: "2026-01-01",
-  });
-  globalThis.document = {
-    getElementById(id) {
-      if (id === "btn-mothau-save") return button;
-      throw versionError;
-    },
-  };
-  console.error = () => assert.fail("expected business no-match must not be logged as an app failure");
-  try {
-    await saveThongTinMoThau.call({
-      view: {
-        async customAlert(...args) { alerts.push(args); },
-      },
-    });
-  } finally {
-    globalThis.document = originalDocument;
-    console.error = originalConsoleError;
-  }
+test("opening save does not block on a contractor version's effective date", () => {
+  const workflowSource = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+  const openingDataSource = fs.readFileSync("frontend/packages/bidProcessOpeningData.js", "utf8");
 
-  assert.equal(alerts.length, 1);
-  assert.equal(alerts[0][0], "Không có phiên bản nhà thầu có hiệu lực");
-  assert.match(alerts[0][1], /2026-01-01/);
-  assert.equal(button.disabled, false);
-  assert.equal(button.dataset.openingSaveBusy, undefined);
+  assert.doesNotMatch(workflowSource, /PARTNER_VERSION_NO_EFFECTIVE_MATCH/u);
+  assert.doesNotMatch(openingDataSource, /PARTNER_VERSION_NO_EFFECTIVE_MATCH/u);
 });
 
 test("opening save partner lookup has a bounded timeout", () => {

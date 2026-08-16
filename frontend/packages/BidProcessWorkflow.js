@@ -54,16 +54,6 @@ export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./op
 
 export * from "./bidProcessTenderLifecycle.js";
 
-export function lotCodeControlWidth(code) {
-  const characters = Array.from(String(code || "")).length;
-  return `${Math.max(12, characters + 5)}ch`;
-}
-
-export function resizeLotCodeControl(control) {
-  if (!control?.style) return;
-  control.style.width = lotCodeControlWidth(control.value);
-}
-
 export function buildOpeningActionState({
   pkg,
   hasSavedOpeningData = false,
@@ -664,7 +654,6 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (rowLotSelect) {
     if (bidData.maPhanLo) rowLotSelect.value = bidData.maPhanLo;
     const syncSelectedLot = () => {
-      resizeLotCodeControl(rowLotSelect);
       const selectedOpt = rowLotSelect.options[rowLotSelect.selectedIndex];
       const nameInput = tr.querySelector(".mt-ten-phan-lo");
       if (nameInput) {
@@ -1087,14 +1076,6 @@ export async function saveThongTinMoThau() {
   try {
     await performSaveThongTinMoThau.call(this);
   } catch (error) {
-    if (error?.code === "PARTNER_VERSION_NO_EFFECTIVE_MATCH") {
-      await this.view.customAlert(
-        "Không có phiên bản nhà thầu có hiệu lực",
-        `Ngày mở thầu trước ngày hiệu lực đầu tiên ${error.firstEffectiveDate}. Vui lòng chọn rõ phiên bản lịch sử hoặc điều chỉnh ngày mở thầu.`,
-        "alert-triangle",
-      );
-      return;
-    }
     console.error("Saving bid opening information failed:", error);
     await this.view.customAlert(
       "Không thể lưu thông tin mở thầu",

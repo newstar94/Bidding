@@ -2837,8 +2837,12 @@ table th {
 }
 #tab-goithau-detail #mothau-table .package-lot-code-column,
 #tab-goithau-detail #mothau-table td:has(.mt-ma-phan-lo) {
-  width: max-content;
-  min-width: max-content;
+  width: 14rem !important;
+  min-width: 14rem !important;
+}
+#tab-goithau-detail #mothau-table .mt-ma-phan-lo {
+  width: 100% !important;
+  min-width: 100% !important;
 }
 #tab-goithau-detail #mothau-table .package-lot-name-column,
 #tab-goithau-detail #mothau-table td:has(.mt-ten-phan-lo) {

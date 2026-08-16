@@ -193,7 +193,7 @@ test("joint-venture lookup details survive reload on member snapshots without re
   }]);
 });
 
-test("opening before the first contractor version fails before mutating state", () => {
+test("opening before the first contractor version keeps the linked contractor available", () => {
   const contractors = [{
     id: "contractor-v1",
     rootId: "contractor-v1",
@@ -215,13 +215,15 @@ test("opening before the first contractor version fails before mutating state", 
   row.dataset.contractorVersionId = "contractor-v1";
   row.dataset.contractorBindingSource = "lookup";
 
-  assert.throws(() => collectOpeningBidsFromRows({
+  const bids = collectOpeningBidsFromRows({
     rows: [row],
     gtId: "package-1",
     model,
     isDirectOrSpecial: false,
     changedContractors,
-  }), (error) => error?.code === "PARTNER_VERSION_NO_EFFECTIVE_MATCH");
+  });
+
+  assert.equal(bids[0].nhaThauId, "contractor-v1");
   assert.deepEqual(model.state.nhathau, before);
   assert.deepEqual(changedContractors, []);
 });

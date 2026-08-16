@@ -111,7 +111,7 @@ test("package detail gives contractor names more room than contractor codes", ()
   );
 });
 
-test("package detail sizes lot columns independently from the shared header widths", () => {
+test("package detail gives lot codes a fixed full-display column width", () => {
   const workflowSource = fs.readFileSync(
     "frontend/packages/BidProcessWorkflow.js",
     "utf8",
@@ -128,7 +128,7 @@ test("package detail sizes lot columns independently from the shared header widt
   );
   assert.match(
     styles,
-    /\.package-lot-code-column,[\s\S]*td:has\(\.mt-ma-phan-lo\)[\s\S]*width: max-content;[\s\S]*min-width: max-content;/u,
+    /\.package-lot-code-column,[\s\S]*td:has\(\.mt-ma-phan-lo\)[\s\S]*width: 14rem !important;[\s\S]*min-width: 14rem !important;/u,
   );
   assert.match(
     styles,

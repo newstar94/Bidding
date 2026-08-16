@@ -32,8 +32,8 @@ thầu–phần lô tạo thành 20 dòng. Các dòng tổng hợp không có m�
 - Preview đếm “nhà thầu” theo định danh nhà thầu/liên danh duy nhất, không theo số
   dòng dự thầu. Với gói phân lô, preview hiển thị riêng số nhà thầu, số phần lô và
   số dòng dự thầu.
-- Dropdown mã phần lô tự cấp chiều rộng theo toàn bộ mã đang chọn, gồm phần đệm
-  cho nút mở dropdown; không cắt mã bằng dấu ba chấm.
+- Cột và dropdown mã phần lô dùng chiều rộng cố định `14rem`, đủ hiển thị mã phần
+  lô chuẩn cùng nút mở dropdown mà không cắt bằng dấu ba chấm.
 
 ## Tác động tương thích
 
