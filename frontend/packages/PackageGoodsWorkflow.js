@@ -77,30 +77,62 @@ export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true, allG
   }
 
   const lotById = new Map(lotList.map((lot) => [String(lot.id), lot]));
-  const lotPosition = new Map(lotList.map((lot, index) => [String(lot.id), index + 1]));
   const grouped = new Map();
   items.forEach((item) => {
     const key = String(item.phanLoId || "");
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(item);
   });
-  const completeGroupSizes = new Map();
+  const completeGrouped = new Map();
   completeItems.forEach((item) => {
     const key = String(item.phanLoId || "");
-    completeGroupSizes.set(key, (completeGroupSizes.get(key) || 0) + 1);
+    if (!completeGrouped.has(key)) completeGrouped.set(key, []);
+    completeGrouped.get(key).push(item);
   });
-  const orderedKeys = [
+  const hasMultiItemLot = [...completeGrouped.values()]
+    .some((groupItems) => groupItems.length > 1);
+  const naturalKeys = [
     ...lotList.map((lot) => String(lot.id)).filter((key) => grouped.has(key)),
     ...[...grouped.keys()].filter((key) => !lotById.has(key)),
   ];
+  const sourceLotNumber = (key) => {
+    for (const item of completeGrouped.get(key) || grouped.get(key) || []) {
+      const match = String(item.maHangHoa || "").trim().match(/^(\d+)(?:\.|$)/);
+      if (match) return Number(match[1]);
+    }
+    return null;
+  };
+  const sourceItemSequence = (item, key, lotSequence) => {
+    const sourceCode = String(item.maHangHoa || "").trim();
+    const sourceMatch = sourceCode.match(/^(\d+)\.(\d+)(?:\.|$)/);
+    if (sourceMatch && Number(sourceMatch[1]) === Number(lotSequence)) {
+      return `${lotSequence}.${Number(sourceMatch[2])}`;
+    }
+    const completeGroup = completeGrouped.get(key) || grouped.get(key) || [];
+    const completeIndex = completeGroup.findIndex((candidate) => (
+      candidate === item || (item.id != null && String(candidate.id) === String(item.id))
+    ));
+    return `${lotSequence}.${Math.max(0, completeIndex) + 1}`;
+  };
+  const orderedKeys = naturalKeys
+    .map((key, index) => ({ key, index, sourceNumber: sourceLotNumber(key) }))
+    .sort((left, right) => {
+      if (left.sourceNumber != null && right.sourceNumber != null) {
+        return left.sourceNumber - right.sourceNumber || left.index - right.index;
+      }
+      if (left.sourceNumber != null) return -1;
+      if (right.sourceNumber != null) return 1;
+      return left.index - right.index;
+    })
+    .map(({ key }) => key);
 
   return orderedKeys.flatMap((key, groupIndex) => {
     const lot = lotById.get(key);
-    const sequence = String(lotPosition.get(key) || groupIndex + 1);
+    const sequence = String(sourceLotNumber(key) ?? groupIndex + 1);
     const groupItems = grouped.get(key) || [];
     const lotCode = String(lot?.maPhanLo || groupItems[0]?._lotCode || "").trim();
     const lotName = String(lot?.tenPhanLo || "Phần lô chưa xác định").trim();
-    if ((completeGroupSizes.get(key) || groupItems.length) === 1 && groupItems.length === 1) {
+    if (!hasMultiItemLot && groupItems.length === 1) {
       return [{
         kind: "item",
         sequence,
@@ -119,9 +151,9 @@ export function buildPackageGoodsDisplayRows(goods, lots, { hasLots = true, allG
         lotName,
         lotId: key,
       },
-      ...groupItems.map((item, itemIndex) => ({
+      ...groupItems.map((item) => ({
         kind: "item",
-        sequence: `${sequence}.${itemIndex + 1}`,
+        sequence: sourceItemSequence(item, key, sequence),
         item,
       })),
     ];

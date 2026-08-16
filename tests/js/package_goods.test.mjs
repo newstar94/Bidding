@@ -100,7 +100,7 @@ test("goods workflow supports trimmed goods and mixed fields only", () => {
   assert.equal(supportsGoodsWorkflow("Xây lắp"), false);
 });
 
-test("goods display keeps one-lot-many nested and collapses one-lot-one into one row", () => {
+test("goods display uses one hierarchy for every lot when any lot has multiple items", () => {
   const rows = [
     { id: "goods-1", phanLoId: "lot-1", maHangHoa: "HH-CRP", tenHangHoa: "Hóa chất CRP", donViTinh: "Hộp", soLuong: 18 },
     { id: "goods-2", phanLoId: "lot-1", maHangHoa: "HH-HC", tenHangHoa: "Chất hiệu chuẩn", donViTinh: "Hộp", soLuong: 2 },
@@ -120,7 +120,8 @@ test("goods display keeps one-lot-many nested and collapses one-lot-one into one
     { kind: "lot", sequence: "1", lotCode: "PP01", lotName: "Phần 1", itemId: undefined, singleItemLot: undefined },
     { kind: "item", sequence: "1.1", lotCode: undefined, lotName: undefined, itemId: "goods-1", singleItemLot: undefined },
     { kind: "item", sequence: "1.2", lotCode: undefined, lotName: undefined, itemId: "goods-2", singleItemLot: undefined },
-    { kind: "item", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: "goods-3", singleItemLot: true },
+    { kind: "lot", sequence: "2", lotCode: "PP02", lotName: "Phần 2", itemId: undefined, singleItemLot: undefined },
+    { kind: "item", sequence: "2.1", lotCode: undefined, lotName: undefined, itemId: "goods-3", singleItemLot: undefined },
   ]);
   assert.equal(formatPackageGoodsQuantity(18), "18");
   assert.equal(formatPackageGoodsQuantity(1_000), "1.000");
@@ -174,6 +175,86 @@ test("goods tab and editing support goods and mixed procurement packages", () =>
   assert.equal(isPackageGoodsDeletable({ linhVuc: "Hỗn hợp", trangThai: "Đang mời thầu" }), false);
 });
 
+test("goods display numbers only visible lot groups from one", () => {
+  const lotsWithAnEmptySourceLot = [
+    { id: "lot-empty", maPhanLo: "PP00", tenPhanLo: "Phần không có hàng" },
+    ...lots,
+  ];
+  const rows = [
+    { id: "goods-1", phanLoId: "lot-1", tenHangHoa: "Hóa chất CRP" },
+    { id: "goods-2", phanLoId: "lot-1", tenHangHoa: "Chất hiệu chuẩn" },
+    { id: "goods-3", phanLoId: "lot-2", tenHangHoa: "Ống nghiệm" },
+  ];
+
+  const displayRows = buildPackageGoodsDisplayRows(
+    rows, lotsWithAnEmptySourceLot, { hasLots: true },
+  );
+
+  assert.deepEqual(
+    displayRows.map((row) => [row.kind, row.sequence, row.item?.id]),
+    [
+      ["lot", "1", undefined],
+      ["item", "1.1", "goods-1"],
+      ["item", "1.2", "goods-2"],
+      ["lot", "2", undefined],
+      ["item", "2.1", "goods-3"],
+    ],
+  );
+});
+
+test("goods display follows numeric source item order instead of a misplaced lot sort order", () => {
+  const sourceLots = [
+    { id: "lot-21", maPhanLo: "PP21", tenPhanLo: "PHẦN 21: Khí y tế" },
+    { id: "lot-1", maPhanLo: "PP01", tenPhanLo: "PHẦN 1: Phim" },
+    { id: "lot-2", maPhanLo: "PP02", tenPhanLo: "PHẦN 2: Scanner" },
+    { id: "lot-3", maPhanLo: "PP03", tenPhanLo: "PHẦN 3: Hóa chất" },
+  ];
+  const rows = [
+    { id: "goods-21", phanLoId: "lot-21", maHangHoa: "21.1" },
+    { id: "goods-1", phanLoId: "lot-1", maHangHoa: "1.1" },
+    { id: "goods-2", phanLoId: "lot-2", maHangHoa: "2.1" },
+    { id: "goods-3a", phanLoId: "lot-3", maHangHoa: "3.1" },
+    { id: "goods-3b", phanLoId: "lot-3", maHangHoa: "3.2" },
+  ];
+
+  const displayRows = buildPackageGoodsDisplayRows(rows, sourceLots, {
+    hasLots: true,
+  });
+
+  assert.deepEqual(
+    displayRows
+      .filter((row) => row.kind === "lot")
+      .map((row) => [row.sequence, row.lotCode]),
+    [["1", "PP01"], ["2", "PP02"], ["3", "PP03"], ["21", "PP21"]],
+  );
+});
+
+test("a visible source lot keeps its global lot and item numbers", () => {
+  const sourceLots = [
+    { id: "lot-21", maPhanLo: "PP21", tenPhanLo: "PHẦN 21: KHÍ Y TẾ" },
+    { id: "lot-1", maPhanLo: "PP01", tenPhanLo: "PHẦN 1: PHIM" },
+  ];
+  const allGoods = [
+    { id: "goods-1", phanLoId: "lot-1", maHangHoa: "1.1" },
+    { id: "goods-21a", phanLoId: "lot-21", maHangHoa: "21.1" },
+    { id: "goods-21b", phanLoId: "lot-21", maHangHoa: "21.2" },
+  ];
+
+  const displayRows = buildPackageGoodsDisplayRows(allGoods.slice(1), sourceLots, {
+    hasLots: true,
+    allGoods,
+  });
+
+  assert.deepEqual(
+    displayRows.map((row) => [row.kind, row.sequence, row.item?.id]),
+    [
+      ["lot", "21", undefined],
+      ["item", "21.1", "goods-21a"],
+      ["item", "21.2", "goods-21b"],
+    ],
+  );
+});
+
 test("goods display uses the complete lot size when a multi-item lot is filtered", () => {
   const allGoods = [
     { id: "goods-1", phanLoId: "lot-1", tenHangHoa: "Hóa chất CRP" },
@@ -194,6 +275,24 @@ test("goods display uses the complete lot size when a multi-item lot is filtered
     { kind: "lot", sequence: "1", lotCode: "PP01", itemId: undefined },
     { kind: "item", sequence: "1.1", lotCode: undefined, itemId: "goods-1" },
   ]);
+});
+
+test("a filtered single-item lot stays hierarchical when another lot has many items", () => {
+  const allGoods = [
+    { id: "goods-1", phanLoId: "lot-1", tenHangHoa: "Hóa chất CRP" },
+    { id: "goods-2", phanLoId: "lot-1", tenHangHoa: "Chất hiệu chuẩn" },
+    { id: "goods-3", phanLoId: "lot-2", tenHangHoa: "Ống nghiệm" },
+  ];
+
+  const displayRows = buildPackageGoodsDisplayRows([allGoods[2]], lots, {
+    hasLots: true,
+    allGoods,
+  });
+
+  assert.deepEqual(
+    displayRows.map((row) => [row.kind, row.sequence, row.item?.id]),
+    [["lot", "1", undefined], ["item", "1.1", "goods-3"]],
+  );
 });
 
 test("goods pagination uses the same centered five-page window as other tables", () => {
