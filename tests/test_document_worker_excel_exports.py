@@ -231,10 +231,24 @@ def test_financial_evaluation_excel_contains_ranking_and_proposed_award_prices(m
     assert "Giá đề nghị trúng thầu (VND)" in spec["headers"]
     assert "Xử lý giá đề nghị trúng thầu dưới 50%" in spec["headers"]
     assert "Đánh giá tài chính (Điểm hoặc Xếp hạng)" not in spec["headers"]
+    assert "Giá sau giảm giá (nếu có)" not in spec["headers"]
+    for header in (
+        "Đánh giá tính hợp lệ",
+        "Làm rõ tính hợp lệ (nếu có)",
+        "Đánh giá năng lực kinh nghiệm",
+        "Làm rõ năng lực kinh nghiệm (nếu có)",
+        "Đánh giá kỹ thuật",
+        "Làm rõ kỹ thuật (nếu có)",
+        "Làm rõ tài chính (nếu có)",
+    ):
+        assert header in spec["headers"]
     ranking_index = spec["headers"].index("Giá xếp hạng (VND)")
     proposed_index = spec["headers"].index("Giá đề nghị trúng thầu (VND)")
     assert spec["rows"][0][ranking_index] == 950
     assert spec["rows"][0][proposed_index] == 940
+    assert spec["rows"][0][spec["headers"].index("Đánh giá tính hợp lệ")] == "Đạt"
+    assert spec["rows"][0][spec["headers"].index("Đánh giá năng lực kinh nghiệm")] == "Đạt"
+    assert spec["rows"][0][spec["headers"].index("Đánh giá kỹ thuật")] == "Đạt"
     decision_index = spec["headers"].index("Xử lý giá đề nghị trúng thầu dưới 50%")
     assert spec["rows"][0][decision_index] == "Không chấp thuận"
     assert spec["options_map"]["Xử lý giá đề nghị trúng thầu dưới 50%"] == [

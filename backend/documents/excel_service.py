@@ -223,22 +223,33 @@ def prepare_danhgiahsdt_template_spec(
         if has_phan_lo:
             headers = [
                 'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Thành viên liên danh',
-                'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
+                'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)',
                 'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
                 'Xử lý giá đề nghị trúng thầu dưới 50%',
+                'Đánh giá tính hợp lệ', 'Làm rõ tính hợp lệ (nếu có)', 'Nguyên nhân không đạt hợp lệ (nếu có)',
+                'Đánh giá năng lực kinh nghiệm', 'Làm rõ năng lực kinh nghiệm (nếu có)', 'Nguyên nhân không đạt năng lực (nếu có)',
+                'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật (nếu có)', 'Nguyên nhân không đạt kỹ thuật (nếu có)',
                 'Làm rõ tài chính (nếu có)'
             ]
         else:
             headers = [
                 'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Thành viên liên danh',
-                'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
+                'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)',
                 'Giá xếp hạng (VND)', 'Giá đề nghị trúng thầu (VND)',
                 'Xử lý giá đề nghị trúng thầu dưới 50%',
+                'Đánh giá tính hợp lệ', 'Làm rõ tính hợp lệ (nếu có)', 'Nguyên nhân không đạt hợp lệ (nếu có)',
+                'Đánh giá năng lực kinh nghiệm', 'Làm rõ năng lực kinh nghiệm (nếu có)', 'Nguyên nhân không đạt năng lực (nếu có)',
+                'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật (nếu có)', 'Nguyên nhân không đạt kỹ thuật (nếu có)',
                 'Làm rõ tài chính (nếu có)'
             ]
         options_map['Xử lý giá đề nghị trúng thầu dưới 50%'] = [
             'Chấp thuận', 'Không chấp thuận'
         ]
+        options_map.update({
+            'Đánh giá tính hợp lệ': ['Đạt', 'Không đạt'],
+            'Đánh giá năng lực kinh nghiệm': ['Đạt', 'Không đạt'],
+            'Đánh giá kỹ thuật': ['Đạt', 'Không đạt'],
+        })
 
     if has_phan_lo and scoped_lot_codes:
         options_map['Mã phần lô'] = scoped_lot_codes
@@ -264,17 +275,23 @@ def prepare_danhgiahsdt_template_spec(
         elif has_phan_lo:
             row_values = [
                 bid[0], bid[1], bid[2], bid[3], bid[4], member_description,
-                bid[5] or "", bid[6] or "", bid[7] or "",
+                bid[5] or "", bid[6] or "",
                 bid[23] or "", bid[24] or "",
                 "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
+                bid[12] or "", bid[15] or "", bid[20] or "",
+                bid[13] or "", bid[16] or "", bid[21] or "",
+                bid[14] or "", bid[17] or "", bid[22] or "",
                 bid[18] or "",
             ]
         else:
             row_values = [
                 bid[0], bid[3], bid[4], member_description,
-                bid[5] or "", bid[6] or "", bid[7] or "",
+                bid[5] or "", bid[6] or "",
                 bid[23] or "", bid[24] or "",
                 "" if bid[25] is None else ("Chấp thuận" if bid[25] else "Không chấp thuận"),
+                bid[12] or "", bid[15] or "", bid[20] or "",
+                bid[13] or "", bid[16] or "", bid[21] or "",
+                bid[14] or "", bid[17] or "", bid[22] or "",
                 bid[18] or "",
             ]
         rows.append(row_values)

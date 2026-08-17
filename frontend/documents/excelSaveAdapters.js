@@ -445,6 +445,15 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
       bid.hieuLucHsdt = row.hieuLucHsdt || 0;
       bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || "";
       bid.lamRoTaiChinh = row.lamRoTaiChinh || "";
+      bid.danhGiaHopLe = row.danhGiaHopLe || "";
+      bid.danhGiaNangLuc = row.danhGiaNangLuc || "";
+      bid.danhGiaKyThuat = row.danhGiaKyThuat || "";
+      bid.lamRoHopLe = row.lamRoHopLe || "";
+      bid.lamRoNangLuc = row.lamRoNangLuc || "";
+      bid.lamRoKyThuat = row.lamRoKyThuat || "";
+      bid.nguyenNhanKhongDatHopLe = bid.danhGiaHopLe === "Không đạt" ? row.nguyenNhanKhongDatHopLe || "" : "";
+      bid.nguyenNhanKhongDatNangLuc = bid.danhGiaNangLuc === "Không đạt" ? row.nguyenNhanKhongDatNangLuc || "" : "";
+      bid.nguyenNhanKhongDatKyThuat = bid.danhGiaKyThuat === "Không đạt" ? row.nguyenNhanKhongDatKyThuat || "" : "";
       changedBids.push(bid);
       return;
     }
