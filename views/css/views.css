@@ -135,11 +135,11 @@
   border-radius: 50%;
   background:
     conic-gradient(
-      var(--primary) 0% 35%,
-      var(--success) 35% 65%,
-      var(--warning) 65% 85%,
-      #9333ea 85% 95%,
-      #f43f5e 95% 100%);
+      #3B82F6 0% 35%,
+      #22C55E 35% 65%,
+      #F59E0B 65% 85%,
+      #A855F7 85% 95%,
+      #F43F5E 95% 100%);
   display: flex;
   align-items: center;
   justify-content: center;

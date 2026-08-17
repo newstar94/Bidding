@@ -10,19 +10,41 @@ import {
   renderTablePagination,
   setTablePage,
 } from "../shared/TablePagination.js";
-const PACKAGE_STATUS_COLORS = {
-  "Chưa xác định": "var(--text-muted)",
-  "Chuẩn bị": "#74829a",
-  "Đang mời thầu": "var(--dashboard-blue)",
-  "Đã mở thầu": "var(--dashboard-amber)",
-  "Đang chấm thầu": "var(--dashboard-violet)",
-  "Đã có kết quả một phần": "var(--dashboard-green)",
-  "Đã có kết quả": "var(--success)",
-  "Hủy thầu": "var(--danger)"
-};
+export const DASHBOARD_STATUS_COLORS = Object.freeze({
+  neutral: "#64748B",
+  active: "#3B82F6",
+  attention: "#F59E0B",
+  review: "#A855F7",
+  partial: "#14B8A6",
+  complete: "#22C55E",
+  cancelled: "#F43F5E",
+});
+export const PACKAGE_STATUS_COLORS = Object.freeze({
+  "Chưa xác định": "#94A3B8",
+  "Chuẩn bị": DASHBOARD_STATUS_COLORS.neutral,
+  "Đang mời thầu": DASHBOARD_STATUS_COLORS.active,
+  "Đã mở thầu": DASHBOARD_STATUS_COLORS.attention,
+  "Đang chấm thầu": DASHBOARD_STATUS_COLORS.review,
+  "Đã có kết quả một phần": DASHBOARD_STATUS_COLORS.partial,
+  "Đã có kết quả": DASHBOARD_STATUS_COLORS.complete,
+  "Hủy thầu": DASHBOARD_STATUS_COLORS.cancelled,
+});
 const PACKAGE_STATUS_ORDER = Object.keys(PACKAGE_STATUS_COLORS);
+export const PLAN_STATUS_COLORS = Object.freeze({
+  "Chưa triển khai": DASHBOARD_STATUS_COLORS.neutral,
+  "Đang thực hiện": DASHBOARD_STATUS_COLORS.active,
+  "Hoàn thành": DASHBOARD_STATUS_COLORS.complete,
+});
 const PLAN_STATUS_ORDER = ["Chưa triển khai", "Đang thực hiện", "Hoàn thành"];
-const CONTRACT_STATUS_COLORS = Object.freeze({
+export const CONTRACT_STATUS_COLORS = Object.freeze({
+  "Chưa hiệu lực": DASHBOARD_STATUS_COLORS.neutral,
+  "Đang thực hiện": DASHBOARD_STATUS_COLORS.active,
+  "Tạm dừng": DASHBOARD_STATUS_COLORS.attention,
+  "Đã hoàn thành": DASHBOARD_STATUS_COLORS.complete,
+  "Đã thanh lý": DASHBOARD_STATUS_COLORS.partial,
+  "Đã hủy": DASHBOARD_STATUS_COLORS.cancelled,
+});
+const LEGACY_DEFAULT_CONTRACT_STATUS_COLORS = Object.freeze({
   "Chưa hiệu lực": "#64748B",
   "Đang thực hiện": "#2563EB",
   "Tạm dừng": "#D97706",
@@ -130,9 +152,13 @@ export function getContractStatusCatalog(model) {
     return {
       ...status,
       name,
-      color: /^#[0-9a-fA-F]{6}$/.test(configuredColor)
-        ? configuredColor
-        : CONTRACT_STATUS_COLORS[name] || "#64748B",
+      color: Object.hasOwn(CONTRACT_STATUS_COLORS, name)
+        && (!/^#[0-9a-fA-F]{6}$/.test(configuredColor)
+          || configuredColor.toUpperCase() === LEGACY_DEFAULT_CONTRACT_STATUS_COLORS[name])
+        ? CONTRACT_STATUS_COLORS[name]
+        : /^#[0-9a-fA-F]{6}$/.test(configuredColor)
+          ? configuredColor
+          : CONTRACT_STATUS_COLORS[name] || DASHBOARD_STATUS_COLORS.neutral,
     };
   };
   if (configured.length) return configured.map(withFallbackColor);
@@ -443,12 +469,12 @@ export function shouldUseServerDashboardSummary(summary, scopedPackages = []) {
     && recentPackageCount > 0;
 }
 
-function renderMetricBreakdown(containerId, counts, formatter = (value) => String(value)) {
+function renderMetricBreakdown(containerId, counts, colors, formatter = (value) => String(value)) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  container.innerHTML = trustedHTML(Object.entries(counts || {}).map(([status, value], index) => `
+  container.innerHTML = trustedHTML(Object.entries(counts || {}).map(([status, value]) => `
     <div class="dashboard-metric-row">
-      <span><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span>
+      <span><i class="dashboard-status-dot" style="background-color: ${colors?.[status] || DASHBOARD_STATUS_COLORS.neutral};"></i>${escapeHtml(status)}</span>
       <strong>${escapeHtml(formatter(value))}</strong>
     </div>
   `).join(""));
@@ -579,7 +605,7 @@ function renderDashboardSnapshot(view, data) {
   if (data.evaluationDelayDays) {
     setText("dashboard-evaluation-rule", `Báo cáo đánh giá được cảnh báo khi quá ${data.evaluationDelayDays} ngày sau mở thầu.`);
   }
-  renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts);
+  renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts, PLAN_STATUS_COLORS);
   renderContractSummary(data.contractStatusCounts, data.contractValues, data.contractStatusCatalog);
   renderDashboardAlerts(data.alerts);
   renderPackageDonut(data.packageStatusCounts);
