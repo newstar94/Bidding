@@ -36,6 +36,8 @@ _provinces_lock = asyncio.Lock()
 _wards_locks = {}
 
 PROVINCES_API_BASE = "https://provinces.open-api.vn/api/v2"
+PARTNER_LOOKUP_IP_RATE_LIMIT = 120
+PARTNER_LOOKUP_USER_RATE_LIMIT = 60
 
 
 def _authenticate_partner_lookup(request):
@@ -154,7 +156,7 @@ async def lookup_tax_code_api(request):
         ip_limit = await run_database_write(
             get_rate_limit_decision,
             f"partner_lookup_ip:{client_ip}",
-            max_attempts=12,
+            max_attempts=PARTNER_LOOKUP_IP_RATE_LIMIT,
             window_seconds=60,
         )
     except BlockingIOBusyError:
@@ -216,7 +218,7 @@ async def lookup_tax_code_api(request):
         user_limit = await run_database_write(
             get_rate_limit_decision,
             f"partner_lookup_user:{user_id}",
-            max_attempts=8,
+            max_attempts=PARTNER_LOOKUP_USER_RATE_LIMIT,
             window_seconds=60,
         )
     except BlockingIOBusyError:

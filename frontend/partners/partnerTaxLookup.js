@@ -6,7 +6,13 @@ import {
 } from "../app/domUtils.js";
 import { getJson } from "../shared/apiClient.js";
 const LOOKUP_DELAY_MS = 400;
-export async function lookupPartnerInfo({ orgCode = "", taxCode = "", partnerRole = "NT", signal } = {}) {
+export async function lookupPartnerInfo({
+  orgCode = "",
+  taxCode = "",
+  partnerRole = "NT",
+  signal,
+  throwOnError = false,
+} = {}) {
   const normalizedOrgCode = normalizeProcurementOrgCode(orgCode);
   const normalizedTaxCode = normalizeVietnamTaxCode(taxCode);
   if (!normalizedOrgCode && !isVietnamTaxCode(normalizedTaxCode)) return null;
@@ -18,6 +24,7 @@ export async function lookupPartnerInfo({ orgCode = "", taxCode = "", partnerRol
     return data?.found !== false && data?.name ? data : null;
   } catch (error) {
     if (error?.name === "AbortError") throw error;
+    if (throwOnError) throw error;
     return null;
   }
 }

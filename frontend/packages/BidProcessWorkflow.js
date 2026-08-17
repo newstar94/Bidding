@@ -1046,10 +1046,16 @@ async function performSaveThongTinMoThau() {
     );
     return;
   }
-  await refreshSavedOpeningViolationChecks(gtId, tempBids);
   this.view.renderGoiThauTable();
   const successMsg = isDirectOrSpecial ? "Đã lưu thành công dữ liệu nhà thầu" : `Đã lưu toàn bộ thông tin mở thầu (E-HSDT / E-HSĐXKT) của gói thầu "${gt.tenGoiThau}" thành công! Trạng thái gói thầu đã được chuyển sang Đang chấm thầu.`;
   this.renderMoThauPanel();
+  const successAlert = this.view.customAlert("Lưu thành công", successMsg, "check-circle");
+  void refreshSavedOpeningViolationChecks(gtId, tempBids).then(() => {
+    this.view.renderGoiThauTable();
+    this.renderMoThauPanel();
+  }).catch((error) => {
+    console.error("Post-commit bid-opening violation refresh failed:", error);
+  });
   const detailPane = document.getElementById("tab-goithau-detail");
   if (detailPane && detailPane.classList.contains("active")) {
     const detailPackageId = selectPackageDetailTab(
@@ -1058,9 +1064,11 @@ async function performSaveThongTinMoThau() {
       gt,
       this.model
     );
-    await this.view.showPackageDetails(detailPackageId);
+    void Promise.resolve().then(() => this.view.showPackageDetails(detailPackageId)).catch((error) => {
+      console.error("Post-commit package detail refresh failed:", error);
+    });
   }
-  await this.view.customAlert("Lưu thành công", successMsg, "check-circle");
+  await successAlert;
 }
 
 export async function saveThongTinMoThau() {

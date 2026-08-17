@@ -7,6 +7,8 @@ import { resolveOpeningLookupNames } from "./bidProcessOpeningData.js";
 import { postJson } from "../shared/apiClient.js";
 
 const OPENING_SAVE_LOOKUP_TIMEOUT_MS = 3000;
+const OPENING_LOOKUP_CONCURRENCY = 3;
+const OPENING_VIOLATION_CONCURRENCY = 3;
 export const VIOLATION_CONFIRMED = "VIOLATION_CONFIRMED";
 export const VIOLATION_NOT_CHECKED = "NOT_CHECKED";
 export const VIOLATION_LOOKUP_FAILED = "LOOKUP_FAILED";
@@ -90,48 +92,72 @@ export async function resolveBidOpeningContractor({
   );
 }
 
+async function runWithConcurrency(items, concurrency, worker) {
+  const queue = Array.from(items || []);
+  if (queue.length === 0) return;
+  let nextIndex = 0;
+  const workerCount = Math.min(queue.length, Math.max(1, Number(concurrency) || 1));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < queue.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await worker(queue[index], index);
+    }
+  }));
+}
+
 export async function refreshSavedOpeningViolationChecks(packageId, bids) {
-  await Promise.all((bids || []).map(async (bid) => {
+  const tasks = [];
+  const jointVentureBids = [];
+  for (const bid of bids || []) {
     const isJointVenture = String(bid?.loaiNhaThau || "").trim().toLocaleLowerCase("vi-VN") === "liên danh";
     // A joint-venture bid whose member rows are not loaded locally still has to
     // be checked. Resolving it per member only would silently report
     // NO_ACTIVE_VIOLATION for an empty member list.
     if (!isJointVenture || (bid.thanhVienLienDanh || []).length === 0) {
-      try {
-        const result = await resolveBidOpeningContractor({
-          packageId,
-          contractorIdentifier: bid.maDinhDanh || bid.maNhaThau || "",
-          lotId: bid.phanLoId || null,
-          bidOpeningRecordId: bid.id
-        });
-        bid.violationStatus = result?.violationStatus || VIOLATION_LOOKUP_FAILED;
-        bid.violationBidClosingAt = result?.bidClosingAt || null;
-      } catch (error) {
-        if (error?.name !== "AbortError") {
-          console.error("Stored bid-opening violation lookup failed:", error);
+      tasks.push(async () => {
+        try {
+          const result = await resolveBidOpeningContractor({
+            packageId,
+            contractorIdentifier: bid.maDinhDanh || bid.maNhaThau || "",
+            lotId: bid.phanLoId || null,
+            bidOpeningRecordId: bid.id
+          });
+          bid.violationStatus = result?.violationStatus || VIOLATION_LOOKUP_FAILED;
+          bid.violationBidClosingAt = result?.bidClosingAt || null;
+        } catch (error) {
+          if (error?.name !== "AbortError") {
+            console.error("Stored bid-opening violation lookup failed:", error);
+          }
+          bid.violationStatus = VIOLATION_LOOKUP_FAILED;
         }
-        bid.violationStatus = VIOLATION_LOOKUP_FAILED;
-      }
-      return;
+      });
+      continue;
     }
-    await Promise.all((bid.thanhVienLienDanh || []).map(async (member) => {
-      try {
-        const result = await resolveBidOpeningContractor({
-          packageId,
-          contractorIdentifier: member.maNhaThau || member.maSoThue || "",
-          lotId: bid.phanLoId || null,
-          bidOpeningRecordId: bid.id,
-          jointVentureMemberId: member.id
-        });
-        member.violationStatus = result?.violationStatus || VIOLATION_LOOKUP_FAILED;
-        member.violationBidClosingAt = result?.bidClosingAt || null;
-      } catch (error) {
-        if (error?.name !== "AbortError") {
-          console.error("Stored joint-venture member violation lookup failed:", error);
+    jointVentureBids.push(bid);
+    for (const member of bid.thanhVienLienDanh || []) {
+      tasks.push(async () => {
+        try {
+          const result = await resolveBidOpeningContractor({
+            packageId,
+            contractorIdentifier: member.maNhaThau || member.maSoThue || "",
+            lotId: bid.phanLoId || null,
+            bidOpeningRecordId: bid.id,
+            jointVentureMemberId: member.id
+          });
+          member.violationStatus = result?.violationStatus || VIOLATION_LOOKUP_FAILED;
+          member.violationBidClosingAt = result?.bidClosingAt || null;
+        } catch (error) {
+          if (error?.name !== "AbortError") {
+            console.error("Stored joint-venture member violation lookup failed:", error);
+          }
+          member.violationStatus = VIOLATION_LOOKUP_FAILED;
         }
-        member.violationStatus = VIOLATION_LOOKUP_FAILED;
-      }
-    }));
+      });
+    }
+  }
+  await runWithConcurrency(tasks, OPENING_VIOLATION_CONCURRENCY, (task) => task());
+  for (const bid of jointVentureBids) {
     bid.violationStatus = (bid.thanhVienLienDanh || []).some(
       (member) => isViolationConfirmed(member.violationStatus)
     ) ? VIOLATION_CONFIRMED : (
@@ -139,7 +165,7 @@ export async function refreshSavedOpeningViolationChecks(packageId, bids) {
         (member) => member.violationStatus && member.violationStatus !== "NO_ACTIVE_VIOLATION"
       )?.violationStatus || "NO_ACTIVE_VIOLATION"
     );
-  }));
+  }
 }
 
 function normalizeContractorLookupCode(value) {
@@ -153,11 +179,17 @@ function findContractorByCode(list, code) {
   ) || null;
 }
 
-async function lookupPartnerInfoBeforeSave(lookupInput) {
+async function lookupPartnerInfoBeforeSave(lookupInput, timeoutMs = OPENING_SAVE_LOOKUP_TIMEOUT_MS) {
+  if (!(timeoutMs > 0)) return null;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), OPENING_SAVE_LOOKUP_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT", signal: controller.signal });
+    return await lookupPartnerInfo({
+      ...lookupInput,
+      partnerRole: "NT",
+      signal: controller.signal,
+      throwOnError: true,
+    });
   } catch (error) {
     if (error?.name !== "AbortError") {
       console.error("Contractor lookup before saving bid opening failed:", error);
@@ -191,53 +223,65 @@ export async function mapPartnerLookupToContractor(code, info = {}, { normalizeA
 }
 async function enrichOpeningRowsWithPartnerInfo(rows, model) {
   const latestContractors = model.getLatestNhaThau();
-  await Promise.all(Array.from(rows || []).map(async (row) => {
-    const codeInput = row.querySelector(".mt-ma-nha-thau");
+  const pendingByCode = new Map();
+
+  const applyInfoToRow = async (row, code, info) => {
     const nameInput = row.querySelector(".mt-ten-nha-thau");
+    row._leadMemberLookupData = await mapPartnerLookupToContractor(
+      code,
+      info,
+      { normalizeAddress: false },
+    );
+    const names = resolveOpeningLookupNames(
+      row.querySelector(".mt-loai-nha-thau")?.value,
+      nameInput?.value,
+      info.name || info.tenNhaThau,
+      row._leadMemberName,
+    );
+    if (nameInput) nameInput.value = names.bidName;
+    row._leadMemberName = names.leadMemberName;
+  };
+
+  for (const row of Array.from(rows || [])) {
+    const codeInput = row.querySelector(".mt-ma-nha-thau");
     const code = codeInput?.value.trim() || "";
-    if (!code) return;
+    if (!code) continue;
     const existing = findContractorByCode(latestContractors, code);
     if (existing) {
-      row._leadMemberLookupData = await mapPartnerLookupToContractor(
-        code,
-        existing,
-        { normalizeAddress: false },
-      );
-      const names = resolveOpeningLookupNames(
-        row.querySelector(".mt-loai-nha-thau")?.value,
-        nameInput?.value,
-        existing.tenNhaThau,
-        row._leadMemberName
-      );
-      if (nameInput) nameInput.value = names.bidName;
-      row._leadMemberName = names.leadMemberName;
-      return;
+      await applyInfoToRow(row, code, existing);
+      if (String(existing.nguoiDaiDien || "").trim()) continue;
     }
     const lookupInput = getPartnerLookupInput(code);
-    if (!lookupInput) return;
-    try {
-      if (codeInput) setRuntimeStyle(codeInput, "opacity", "0.7");
-      const info = await lookupPartnerInfoBeforeSave(lookupInput);
-      if (!info?.name) return;
-      row._leadMemberLookupData = await mapPartnerLookupToContractor(
-        code,
-        info,
-        { normalizeAddress: false },
-      );
-      const names = resolveOpeningLookupNames(
-        row.querySelector(".mt-loai-nha-thau")?.value,
-        nameInput?.value,
-        info.name,
-        row._leadMemberName
-      );
-      if (nameInput) nameInput.value = names.bidName;
-      row._leadMemberName = names.leadMemberName;
-    } catch (error) {
-      console.error("Contractor lookup before saving bid opening failed:", error);
-    } finally {
-      if (codeInput) setRuntimeStyle(codeInput, "opacity", "1");
+    if (!lookupInput) continue;
+    const normalizedCode = normalizeContractorLookupCode(code);
+    if (!pendingByCode.has(normalizedCode)) {
+      pendingByCode.set(normalizedCode, { code, lookupInput, rows: [] });
     }
-  }));
+    pendingByCode.get(normalizedCode).rows.push(row);
+  }
+
+  const deadline = Date.now() + OPENING_SAVE_LOOKUP_TIMEOUT_MS;
+  await runWithConcurrency(
+    pendingByCode.values(),
+    OPENING_LOOKUP_CONCURRENCY,
+    async ({ code, lookupInput, rows: matchingRows }) => {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) return;
+      const codeInputs = matchingRows
+        .map((row) => row.querySelector(".mt-ma-nha-thau"))
+        .filter(Boolean);
+      try {
+        codeInputs.forEach((input) => setRuntimeStyle(input, "opacity", "0.7"));
+        const info = await lookupPartnerInfoBeforeSave(lookupInput, remainingMs);
+        if (!info?.name) return;
+        await Promise.all(matchingRows.map((row) => applyInfoToRow(row, code, info)));
+      } catch (error) {
+        console.error("Contractor lookup before saving bid opening failed:", error);
+      } finally {
+        codeInputs.forEach((input) => setRuntimeStyle(input, "opacity", "1"));
+      }
+    },
+  );
 }
 function resolveLeadMemberName(contractor, leadCode) {
   if (!contractor) return "";

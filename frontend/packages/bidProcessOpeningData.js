@@ -18,6 +18,22 @@ function findLatestContractorByCode(latestNhaThauList, code) {
     (n) => normalizeOpeningCode(n.maNhaThau) === normalizedCode || normalizeOpeningCode(n.maSoThue) === normalizedCode
   ) || null;
 }
+const CONTRACTOR_ENRICHMENT_FIELDS = [
+  "nguoiDaiDien",
+  "chucVuDaiDien",
+];
+function completeMissingContractorFields(contractor, lookupData) {
+  if (!contractor || !lookupData) return false;
+  let changed = false;
+  for (const field of CONTRACTOR_ENRICHMENT_FIELDS) {
+    if (String(contractor[field] || "").trim()) continue;
+    const value = lookupData[field];
+    if (!String(value || "").trim()) continue;
+    contractor[field] = value;
+    changed = true;
+  }
+  return changed;
+}
 function isJointVentureType(value) {
   return String(value || "").trim().toLowerCase() === "liên danh";
 }
@@ -90,7 +106,11 @@ function ensureContractor({
   const boundMatchesCode = bound && normalizeOpeningCode(bound.maNhaThau || bound.maSoThue) === normalizeOpeningCode(maNhaThau);
   const preserveSavedBinding = boundMatchesCode
     && row.dataset.contractorBindingSource === "saved";
-  const candidate = boundMatchesCode ? bound : findLatestContractorByCode(latestNhaThauList, maNhaThau);
+  const latestCandidate = findLatestContractorByCode(latestNhaThauList, maNhaThau);
+  const candidate = boundMatchesCode ? bound : latestCandidate;
+  if (completeMissingContractorFields(latestCandidate, row._leadMemberLookupData)) {
+    changedContractors.push(latestCandidate);
+  }
   let foundNt = preserveSavedBinding
     ? bound
     : selectOpeningPartner(model, candidate, businessDate);
