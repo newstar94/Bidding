@@ -524,7 +524,7 @@ def _lookup_membership_candidate_sync(request, role_or_err):
             "Không có quyền truy cập tổ chức này.",
             status_code=403,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - sanitized HTTP transaction boundary.
         if conn:
             conn.rollback()
         return log_and_error(

@@ -5,6 +5,7 @@ import test from "node:test";
 import { parseBidEvaluationImport } from "../../frontend/documents/excelImportAdapters.js";
 import { saveBusinessExcelImport } from "../../frontend/documents/excelSaveAdapters.js";
 import { buildBidEvaluationTablePresentation } from "../../frontend/packages/BidEvaluationTablePresentation.js";
+import { buildEvaluationPriceCells } from "../../frontend/packages/BidEvaluationPriceCells.js";
 import { resolveBidEvaluationRowReadOnly } from "../../frontend/packages/BidEvaluationRowRenderer.js";
 import { applyAwardResultToPackage } from "../../frontend/packages/bidProcessAwardResult.js";
 import {
@@ -15,6 +16,13 @@ import { checkBidQualified } from "../../frontend/packages/detail/PackageTabs.js
 import { calculateRankings } from "../../frontend/shared/BiddingCalculations.js";
 import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.js";
 import { stageBidEvaluationMutation } from "../../frontend/packages/bidEvaluationActions.js";
+
+function financialRendererSource() {
+  return [
+    fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8"),
+    fs.readFileSync("frontend/packages/BidEvaluationPriceCells.js", "utf8"),
+  ].join("\n");
+}
 
 test("serializes bid evaluation money as bigint-safe decimal strings", () => {
   const serialized = serializeOutboundRecord({
@@ -118,7 +126,7 @@ test("imports both price columns from a unified 1G1T evaluation workbook", async
 });
 
 test("renders editable controls for both persisted prices", () => {
-  const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
+  const source = financialRendererSource();
   assert.doesNotMatch(source, /class="form-control mt-gia-du-thau[^>]*readonly/);
   assert.match(source, /class="form-control mt-ty-le-giam-gia/);
   assert.match(source, /class="form-control mt-gia-sau-giam-gia/);
@@ -128,7 +136,7 @@ test("renders editable controls for both persisted prices", () => {
 });
 
 test("renders automatic ranking as display-only text", () => {
-  const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
+  const source = financialRendererSource();
   assert.doesNotMatch(source, /<input[^>]*class="[^"]*mt-dg-tai-chinh/);
   assert.match(source, /<span[^>]*class="mt-dg-tai-chinh[^"]*"/);
 });
@@ -228,6 +236,24 @@ test("combined evaluation renders a required numeric technical-score control", (
   const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
   assert.match(source, /type="number" inputmode="decimal" min="0" step="any" required/);
   assert.match(source, /requiresTechnicalScoreInput\(pkg\)/);
+});
+
+test("price-cell seam preserves controls and a false low-price decision", () => {
+  const html = buildEvaluationPriceCells({
+    pkg: { phanLo: "Không", giaGoiThau: 1_000 },
+    bid: {
+      id: "bid-1",
+      giaXepHang: 800,
+      giaDeNghiTrungThau: 400,
+      chapThuanGiaDeNghiTrungThauDuoi50: false,
+    },
+    model: { formatVND: (value) => String(value) },
+    rowReadOnly: false,
+  });
+
+  assert.match(html, /mt-gia-xep-hang/);
+  assert.match(html, /mt-gia-de-nghi-trung-thau is-low-price-warning/);
+  assert.match(html, /mt-low-price-acceptance[^>]*value="false" checked/);
 });
 
 test("a detailed evaluation report does not lock the outer summary row", () => {

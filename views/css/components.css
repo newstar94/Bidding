@@ -1401,7 +1401,7 @@ select.form-control:focus {
 input:not([readonly]):not([disabled]),
 select:not([readonly]):not([disabled]),
 textarea:not([readonly]):not([disabled]) {
-  background-color: white !important;
+  background-color: white;
   background: white !important;
   color: #0f172a !important;
 }
@@ -1647,12 +1647,12 @@ textarea[disabled] {
   cursor: not-allowed !important;
 }
 .custom-select-container.disabled .custom-select-trigger {
-  background-color: var(--neutral-soft) !important;
-  background: var(--neutral-soft) !important;
-  border-color: var(--border-color) !important;
-  color: var(--text-main) !important;
+  background-color: var(--neutral-soft);
+  background: var(--neutral-soft);
+  border-color: var(--border-color);
+  color: var(--text-main);
   pointer-events: none !important;
-  cursor: not-allowed !important;
+  cursor: not-allowed;
 }
 .custom-select-container.open .custom-select-trigger {
   background-color: var(--bg-card, #ffffff);
@@ -1841,7 +1841,7 @@ textarea[disabled] {
 .table-responsive.has-row-pagination,
 .package-table-frame.has-row-pagination {
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  margin-bottom: 0 !important;
+  margin-bottom: 0;
 }
 .table-row-pagination {
   margin-top: 0;

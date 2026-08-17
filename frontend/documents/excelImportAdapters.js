@@ -4,10 +4,13 @@
   isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
 import { normalizeLowPriceAcceptance } from "../packages/bidEvaluationLowPriceRules.js";
-import {
-  requiresTechnicalScoreInput,
-  validateTechnicalScore,
-} from "../packages/evaluationMethodRules.js";
+import { validateTechnicalScore } from "../packages/evaluationMethodRules.js";
+import { requiresTechnicalScore } from "../packages/technicalEvaluationMethod.js";
+import { readEvaluationExcelValue } from "./bidEvaluationExcelColumns.js";
+
+function readEvaluationExcelText(row, columnKey) {
+  return String(readEvaluationExcelValue(row, columnKey, "") ?? "").trim();
+}
 
 function findOpeningPackage(controller, context = {}) {
   const select = context.packageId
@@ -88,15 +91,15 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
   const activeLotDetails = getActiveEvaluationLotScope(controller, goiThau);
   const isPartialScope = isPartialEvaluationLotScope(activeLotDetails);
   const evaluationTab = context.evaluationTab || controller.currentDanhGiaTab || "technical";
-  const technicalScoreRequired = requiresTechnicalScoreInput(goiThau)
+  const technicalScoreRequired = requiresTechnicalScore(goiThau)
     && evaluationTab === "technical";
   return rows.map((row) => {
-    const maNhaThau = String(row["Mã nhà thầu"] || row["Mã định danh"] || row["Mã số thuế"] || row["Mã"] || "").trim();
-    const tenNhaThau = String(row["Tên nhà thầu"] || row["Nhà thầu"] || "").trim();
-    const maPhanLo = String(row["Mã phần lô"] || row["Phần lô"] || row["Mã lô"] || "").trim();
+    const maNhaThau = readEvaluationExcelText(row, "contractorCode");
+    const tenNhaThau = readEvaluationExcelText(row, "contractorName");
+    const maPhanLo = readEvaluationExcelText(row, "lotCode");
     const foundBid = findEvaluationBid(controller, gtId, maNhaThau, tenNhaThau, maPhanLo, hasPhanLo);
     const inSelectedScope = !isPartialScope || isBidWithinEvaluationLotDetails(foundBid, activeLotDetails);
-    const technicalScore = String(row["Đánh giá kỹ thuật"] || row["Kỹ thuật"] || "").trim();
+    const technicalScore = readEvaluationExcelText(row, "technicalEvaluation");
     const technicalValidation = technicalScoreRequired
       ? validateTechnicalScore(technicalScore, { required: true })
       : { valid: true };
@@ -109,19 +112,17 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
           ? `${technicalValidation.message} Không được nhập Đạt/Không đạt.`
         : "Không tìm thấy nhà thầu/lô tương ứng trong thông tin mở thầu của gói thầu này!";
     if (["financial", "unified"].includes(context.evaluationTab || controller.currentDanhGiaTab)) {
-      const giaDuThauRaw = String(row["Giá dự thầu (VND)"] || row["Giá dự thầu (VND)"] || row["Giá dự thầu"] || row["Giá"] || "0").trim();
-      const tyLeGiamRaw = String(row["Tỷ lệ %"] || row["Tỷ lệ giảm giá (%)"] || row["Tỷ lệ"] || "0").trim();
+      const giaDuThauRaw = readEvaluationExcelText(row, "bidPrice") || "0";
+      const tyLeGiamRaw = readEvaluationExcelText(row, "discountPercent") || "0";
       const hieuLucHsdtRaw = String(row["Hiệu lực HSDT"] || row["Hiệu lực HSDT (ngày)"] || "").trim();
       const thoiGianThucHien = String(row["Thời gian thực hiện"] || row["Thời gian thực hiện (ngày)"] || row["Thời gian TH"] || "").trim();
-      const lamRoTaiChinh = String(row["Làm rõ tài chính"] || "").trim();
-      const giaXepHang = controller.model.parseVND(row["Giá xếp hạng (VND)"] || row["Giá xếp hạng"] || "") || 0;
+      const lamRoTaiChinh = readEvaluationExcelText(row, "financialClarification");
+      const giaXepHang = controller.model.parseVND(readEvaluationExcelValue(row, "rankingPrice", "")) || 0;
       const giaDeNghiTrungThau = controller.model.parseVND(
-        row["Giá đề nghị trúng thầu (VND)"] || row["Giá đề nghị trúng thầu"] || "",
+        readEvaluationExcelValue(row, "proposedAwardPrice", ""),
       ) || 0;
       const chapThuanGiaDeNghiTrungThauDuoi50 = normalizeLowPriceAcceptance(
-        row["Xử lý giá đề nghị trúng thầu dưới 50%"]
-          || row["Chấp thuận giá đề nghị trúng thầu dưới 50%"]
-          || "",
+        readEvaluationExcelValue(row, "lowPriceAcceptance", ""),
       );
       const giaDuThau = controller.model.parseVND(giaDuThauRaw) || 0;
       const tyLeGiamGia = parseFloat(tyLeGiamRaw.replace(/,/g, ".")) || 0;
@@ -132,15 +133,15 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
         id: foundBid ? foundBid.id : "",
         maNhaThau: foundBid ? foundBid.maNhaThau : maNhaThau,
         tenNhaThau: foundBid ? foundBid.tenNhaThau : tenNhaThau,
-        danhGiaHopLe: String(row["Đánh giá hợp lệ"] || row["Đánh giá tính hợp lệ"] || row["Hợp lệ"] || "").trim(),
-        danhGiaNangLuc: String(row["Đánh giá năng lực"] || row["Đánh giá năng lực kinh nghiệm"] || row["Năng lực"] || "").trim(),
+        danhGiaHopLe: readEvaluationExcelText(row, "validityResult"),
+        danhGiaNangLuc: readEvaluationExcelText(row, "capacityResult"),
         danhGiaKyThuat: technicalScore,
-        lamRoHopLe: String(row["Làm rõ hợp lệ"] || row["Làm rõ tính hợp lệ"] || "").trim(),
-        lamRoNangLuc: String(row["Làm rõ năng lực"] || row["Làm rõ năng lực kinh nghiệm"] || "").trim(),
-        lamRoKyThuat: String(row["Làm rõ kỹ thuật"] || "").trim(),
-        nguyenNhanKhongDatHopLe: String(row["Lý do không đạt hợp lệ"] || "").trim(),
-        nguyenNhanKhongDatNangLuc: String(row["Lý do không đạt năng lực"] || "").trim(),
-        nguyenNhanKhongDatKyThuat: String(row["Lý do không đạt kỹ thuật"] || "").trim(),
+        lamRoHopLe: readEvaluationExcelText(row, "validityClarification"),
+        lamRoNangLuc: readEvaluationExcelText(row, "capacityClarification"),
+        lamRoKyThuat: readEvaluationExcelText(row, "technicalClarification"),
+        nguyenNhanKhongDatHopLe: readEvaluationExcelText(row, "validityFailureReason"),
+        nguyenNhanKhongDatNangLuc: readEvaluationExcelText(row, "capacityFailureReason"),
+        nguyenNhanKhongDatKyThuat: readEvaluationExcelText(row, "technicalFailureReason"),
         giaDuThau,
         tyLeGiamGia,
         giaSauGiamGia,
@@ -163,17 +164,17 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
       id: foundBid ? foundBid.id : "",
       maNhaThau: foundBid ? foundBid.maNhaThau : maNhaThau,
       tenNhaThau: foundBid ? foundBid.tenNhaThau : tenNhaThau,
-      danhGiaHopLe: String(row["Đánh giá hợp lệ"] || row["Đánh giá tính hợp lệ"] || row["Hợp lệ"] || "").trim(),
-      danhGiaNangLuc: String(row["Đánh giá năng lực"] || row["Đánh giá năng lực kinh nghiệm"] || row["Năng lực"] || "").trim(),
+      danhGiaHopLe: readEvaluationExcelText(row, "validityResult"),
+      danhGiaNangLuc: readEvaluationExcelText(row, "capacityResult"),
       danhGiaKyThuat: technicalScore,
       danhGiaKetLuan: String(row["Kết luận"] || row["Kết quả"] || "").trim(),
-      lamRoHopLe: String(row["Làm rõ hợp lệ"] || row["Làm rõ tính hợp lệ"] || "").trim(),
-      lamRoNangLuc: String(row["Làm rõ năng lực"] || row["Làm rõ năng lực kinh nghiệm"] || "").trim(),
-      lamRoKyThuat: String(row["Làm rõ kỹ thuật"] || "").trim(),
-      lamRoTaiChinh: String(row["Làm rõ tài chính"] || "").trim(),
-      nguyenNhanKhongDatHopLe: String(row["Lý do không đạt hợp lệ"] || "").trim(),
-      nguyenNhanKhongDatNangLuc: String(row["Lý do không đạt năng lực"] || "").trim(),
-      nguyenNhanKhongDatKyThuat: String(row["Lý do không đạt kỹ thuật"] || "").trim()
+      lamRoHopLe: readEvaluationExcelText(row, "validityClarification"),
+      lamRoNangLuc: readEvaluationExcelText(row, "capacityClarification"),
+      lamRoKyThuat: readEvaluationExcelText(row, "technicalClarification"),
+      lamRoTaiChinh: readEvaluationExcelText(row, "financialClarification"),
+      nguyenNhanKhongDatHopLe: readEvaluationExcelText(row, "validityFailureReason"),
+      nguyenNhanKhongDatNangLuc: readEvaluationExcelText(row, "capacityFailureReason"),
+      nguyenNhanKhongDatKyThuat: readEvaluationExcelText(row, "technicalFailureReason")
     };
     if (hasPhanLo) {
       rec.maPhanLo = foundBid ? foundBid.maPhanLo : maPhanLo;

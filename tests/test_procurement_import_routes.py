@@ -555,7 +555,11 @@ def test_procurement_import_routes_are_registered():
 
 
 def test_provider_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_LOOKUP_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
     monkeypatch.delenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("VNEPS_PROCUREMENT_PROVIDER", raising=False)
     try:
         build_procurement_source()
     except ProcurementRouteError as error:

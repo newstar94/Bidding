@@ -99,7 +99,10 @@ class _EvaluationCursor:
         self._one = None
         self._rows = []
         if normalized.startswith("SELECT linh_vuc"):
-            self._one = ("Hàng hóa", "Một giai đoạn hai túi hồ sơ", "Không")
+            self._one = (
+                "Hàng hóa", "Đấu thầu rộng rãi",
+                "Một giai đoạn hai túi hồ sơ", "Giá thấp nhất", "Không",
+            )
         elif "FROM goi_thau_phan_lo" in normalized:
             self._rows = []
         elif "FROM thong_tin_mo_thau_lien_danh_thanh_vien" in normalized:
@@ -136,7 +139,10 @@ class _LottedEvaluationCursor(_EvaluationCursor):
         normalized = " ".join(str(sql).split())
         super().execute(sql, params)
         if normalized.startswith("SELECT linh_vuc"):
-            self._one = ("Hàng hóa", "Một giai đoạn hai túi hồ sơ", "Có")
+            self._one = (
+                "Hàng hóa", "Đấu thầu rộng rãi",
+                "Một giai đoạn hai túi hồ sơ", "Giá thấp nhất", "Có",
+            )
         elif "FROM goi_thau_phan_lo" in normalized:
             self._rows = [("PL1",), ("PL2",)]
         elif "FROM thong_tin_mo_thau m" in normalized:
@@ -256,6 +262,113 @@ def test_financial_evaluation_excel_contains_ranking_and_proposed_award_prices(m
     ]
     assert spec["formats_map"]["Giá xếp hạng (VND)"] == "currency"
     assert spec["formats_map"]["Giá đề nghị trúng thầu (VND)"] == "currency"
+
+
+class _ScoreEvaluationCursor(_EvaluationCursor):
+    def execute(self, sql, params=()):
+        normalized = " ".join(str(sql).split())
+        result = super().execute(sql, params)
+        if normalized.startswith("SELECT linh_vuc"):
+            self._one = (
+                "Tư vấn", "Đấu thầu rộng rãi",
+                "Một giai đoạn hai túi hồ sơ", "Kết hợp giữa kỹ thuật và giá", "Không",
+            )
+        elif "FROM thong_tin_mo_thau m" in normalized:
+            self._rows[0][14] = 0
+        return result
+
+
+class _PassFailEvaluationCursor(_EvaluationCursor):
+    def execute(self, sql, params=()):
+        normalized = " ".join(str(sql).split())
+        result = super().execute(sql, params)
+        if normalized.startswith("SELECT linh_vuc"):
+            self._one = (
+                "Hàng hóa", "Chào hàng cạnh tranh",
+                "Một giai đoạn một túi hồ sơ", "Giá thấp nhất", "Không",
+            )
+        return result
+
+
+def test_score_evaluation_excel_uses_numeric_validation_and_preserves_zero(monkeypatch):
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_ScoreEvaluationCursor()),
+    )
+
+    spec = excel_service.prepare_danhgiahsdt_template_spec("gt-1", "org-1", "technical")
+    technical_header = "Đánh giá kỹ thuật"
+    technical_index = spec["headers"].index(technical_header)
+    assert technical_header not in spec["options_map"]
+    assert spec["numeric_constraints"][technical_header] == {"minimum": 0}
+    assert spec["formats_map"][technical_header] == "decimal"
+    assert spec["rows"][0][technical_index] == 0
+
+    workbook = excel_service.create_excel_from_spec(spec)
+    sheet = workbook["Danh gia HSDT"]
+    assert sheet.cell(2, technical_index + 1).value == 0
+    assert sheet.cell(2, technical_index + 1).number_format == "0.##########"
+    validations = [
+        validation for validation in sheet.data_validations.dataValidation
+        if validation.type == "decimal"
+    ]
+    assert len(validations) == 1
+    assert validations[0].operator == "greaterThanOrEqual"
+    assert validations[0].formula1 == "0"
+
+
+def test_pass_fail_and_unknown_evaluation_excel_do_not_share_wrong_dropdown(monkeypatch):
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_PassFailEvaluationCursor()),
+    )
+    pass_fail = excel_service.prepare_danhgiahsdt_template_spec("gt-1", "org-1", "technical")
+    assert pass_fail["options_map"]["Đánh giá kỹ thuật"] == ["Đạt", "Không đạt"]
+
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_EvaluationCursor()),
+    )
+    unknown = excel_service.prepare_danhgiahsdt_template_spec("gt-1", "org-1", "technical")
+    assert "Đánh giá kỹ thuật" not in unknown["options_map"]
+    assert unknown["numeric_constraints"] == {}
+
+
+def test_evaluation_workbook_headers_are_authoritatively_loaded_from_manifest(monkeypatch):
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_PassFailEvaluationCursor()),
+    )
+
+    technical = excel_service.prepare_danhgiahsdt_template_spec(
+        "gt-1", "org-1", "technical"
+    )
+    financial = excel_service.prepare_danhgiahsdt_template_spec(
+        "gt-1", "org-1", "financial"
+    )
+    expected_technical = {
+        excel_service.evaluation_excel_header(key)
+        for key in (
+            "contractorType", "contractorCode", "contractorName",
+            "jointVentureMembers", "validityResult", "validityClarification",
+            "validityFailureReason", "capacityResult", "capacityClarification",
+            "capacityFailureReason", "technicalEvaluation",
+            "technicalClarification", "technicalFailureReason",
+        )
+    }
+    assert expected_technical <= set(technical["headers"])
+    assert expected_technical <= set(financial["headers"])
+    assert {
+        excel_service.evaluation_excel_header(key)
+        for key in (
+            "bidPrice", "discountPercent", "rankingPrice", "proposedAwardPrice",
+            "lowPriceAcceptance", "financialClarification",
+        )
+    } <= set(financial["headers"])
 
 
 class _JointVentureEvaluationCursor(_EvaluationCursor):

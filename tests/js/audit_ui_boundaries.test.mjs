@@ -37,14 +37,15 @@ test("collapsed sidebar tooltips are available from keyboard focus", async () =>
 });
 
 
-test("stylesheet entrypoint declares and assigns the reviewed cascade layers", async () => {
+test("stylesheet entrypoint preserves the route stylesheet split", async () => {
   const appCss = await readFile(
     new URL("../../views/css/app.css", import.meta.url),
     "utf8",
   );
 
-  assert.match(appCss, /@layer tokens, base, components, features, utilities, legacy;/u);
-  assert.match(appCss, /tokens\.css" layer\(tokens\)/u);
-  assert.match(appCss, /components\.css" layer\(components\)/u);
-  assert.match(appCss, /ui-redesign\.css" layer\(legacy\)/u);
+  assert.doesNotMatch(appCss, /@layer|\blayer\s*\(/u);
+  assert.match(appCss, /@import "\.\/tokens\.css";/u);
+  assert.match(appCss, /@import "\.\/components\.css";/u);
+  assert.match(appCss, /@import "\.\/ui-redesign\.css";/u);
+  assert.doesNotMatch(appCss, /landing\.css|legal\.css|not-found\.css/u);
 });

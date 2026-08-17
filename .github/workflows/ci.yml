@@ -8,41 +8,30 @@ on:
 permissions:
   contents: read
 
+env:
+  APP_ENV: test
+  APP_DEBUG: "False"
+  APP_SECURE_COOKIES: "False"
+  APP_PUBLIC_URL: http://127.0.0.1:8000
+  DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
+  MIGRATOR_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
+  TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_unit_test?sslmode=disable
+  API_TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_api_test?sslmode=disable
+  DATABASE_AUTO_MIGRATE: "false"
+  ADMIN_USERNAME: admin
+  ADMIN_PASSWORD: CI-only-admin-password-2026!
+  E2E_USERNAME: admin
+  E2E_PASSWORD: CI-only-admin-password-2026!
+  AUDIT_CHECKPOINT_DIR: ""
+  ENABLE_IMAGE_CACHE_PREWARM: "false"
+  ENABLE_PARTNER_LOOKUP_WORKER: "false"
+  TURNSTILE_ENABLED: "false"
+
 jobs:
-  test-build-package:
+  quality:
+    name: Quality and static contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci-database-password
-          POSTGRES_DB: biddingflow_ci_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres -d biddingflow_ci_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      APP_ENV: test
-      APP_DEBUG: "False"
-      APP_SECURE_COOKIES: "False"
-      APP_PUBLIC_URL: http://127.0.0.1:8000
-      DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
-      MIGRATOR_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_test?sslmode=disable
-      TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_unit_test?sslmode=disable
-      API_TEST_DATABASE_URL: postgresql://postgres:ci-database-password@127.0.0.1:5432/biddingflow_ci_api_test?sslmode=disable
-      DATABASE_AUTO_MIGRATE: "false"
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: CI-only-admin-password-2026!
-      E2E_USERNAME: admin
-      E2E_PASSWORD: CI-only-admin-password-2026!
-      AUDIT_CHECKPOINT_DIR: ""
-      ENABLE_IMAGE_CACHE_PREWARM: "false"
-      ENABLE_PARTNER_LOOKUP_WORKER: "false"
-      TURNSTILE_ENABLED: "false"
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -61,7 +50,49 @@ jobs:
           python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
           python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
           npm ci
-          npx playwright install --with-deps chromium firefox webkit
+      - name: Canonical static quality
+        run: |
+          set -o pipefail
+          npm run check:static 2>&1 | tee quality.log
+      - name: Upload quality diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-quality-diagnostics-${{ github.sha }}
+          path: quality.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  unit-python:
+    name: Python unit and integration coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-database-password
+          POSTGRES_DB: biddingflow_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d biddingflow_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
       - name: Create isolated test databases
         env:
           PGPASSWORD: ci-database-password
@@ -73,15 +104,92 @@ jobs:
           python scripts/manage_database.py
           DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
           DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
-      - name: Canonical quality and secure build
+      - name: Python coverage and critical-module ratchet
         env:
           PYTEST_ADDOPTS: >-
             --junitxml=pytest-junit.xml
             --cov-report=xml:coverage.xml
+        run: |
+          set -o pipefail
+          python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=45 2>&1 | tee python-tests.log
+          python scripts/check_critical_coverage.py coverage.json
+      - name: Upload Python test diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-python-test-diagnostics-${{ github.sha }}
+          path: |
+            pytest-junit.xml
+            coverage.xml
+            coverage.json
+            python-tests.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  unit-js:
+    name: JavaScript unit coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: JavaScript coverage and critical-module ratchet
+        env:
           JS_JUNIT_PATH: javascript-junit.xml
         run: |
           set -o pipefail
-          npm run check:ci 2>&1 | tee secure-build.log
+          npm run test:js:coverage 2>&1 | tee javascript-tests.log
+      - name: Upload JavaScript test diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-javascript-test-diagnostics-${{ github.sha }}
+          path: |
+            javascript-junit.xml
+            javascript-tests.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build:
+    name: Secure production build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
+          npm ci
+      - name: Secure frontend build and artifact verification
+        run: |
+          set -o pipefail
+          npm run build:secure 2>&1 | tee secure-build.log
+      - name: Upload secure build for dependent gates
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-secure-build-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload private client symbols
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -89,14 +197,124 @@ jobs:
           path: release/private-symbols/
           if-no-files-found: error
           retention-days: 30
+      - name: Upload secure build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-build-diagnostics-${{ github.sha }}
+          path: secure-build.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  database:
+    name: PostgreSQL schema and FK audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-database-password
+          POSTGRES_DB: biddingflow_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d biddingflow_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
+      - name: Create isolated test databases
+        env:
+          PGPASSWORD: ci-database-password
+        run: |
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_unit_test
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_api_test
+      - name: Initialize fresh PostgreSQL schemas
+        run: |
+          python scripts/manage_database.py
+          DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
+          DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
       - name: FK and index audit
-        run: python scripts/audit_fk_indexes.py
-      - name: Production package validation
         run: |
           set -o pipefail
-          python scripts/package_production.py --check 2>&1 | tee package-validation.log
-      - name: SBOM
-        run: npm run sbom
+          python scripts/audit_fk_indexes.py 2>&1 | tee database-audit.log
+      - name: Upload database diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-database-diagnostics-${{ github.sha }}
+          path: database-audit.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: Cross-browser and workflow E2E
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-database-password
+          POSTGRES_DB: biddingflow_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d biddingflow_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+      - name: Install pinned dependencies and browser matrix
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
+          npm ci
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Restore verified secure build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: biddingflow-secure-build-${{ github.sha }}
+          path: dist
+      - name: Create isolated test databases
+        env:
+          PGPASSWORD: ci-database-password
+        run: |
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_unit_test
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_api_test
+      - name: Initialize fresh PostgreSQL schemas
+        run: |
+          python scripts/manage_database.py
+          DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
+          DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
       - name: Start isolated E2E application
         run: |
           python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --no-proxy-headers > /tmp/biddingflow-e2e.log 2>&1 &
@@ -107,8 +325,6 @@ jobs:
           done
           cat /tmp/biddingflow-e2e.log
           exit 1
-      - name: Performance budget
-        run: npm run test:performance
       - name: Cross-browser Playwright matrix
         run: npm run test:e2e:smoke
       - name: Full role and workflow E2E
@@ -131,25 +347,12 @@ jobs:
         run: |
           if [ -f /tmp/biddingflow-e2e.pid ]; then kill "$(cat /tmp/biddingflow-e2e.pid)" || true; fi
           if [ "${{ job.status }}" != "success" ]; then cat /tmp/biddingflow-e2e.log || true; fi
-      - name: Dependency audit
-        run: |
-          set -o pipefail
-          npm run audit:dependencies 2>&1 | tee dependency-audit.log
-      - name: Build reproducible production archive
-        run: npm run package:production:from-build
-      - name: Upload CI diagnostics
+      - name: Upload E2E diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: biddingflow-ci-diagnostics-${{ github.sha }}
+          name: biddingflow-e2e-diagnostics-${{ github.sha }}
           path: |
-            pytest-junit.xml
-            coverage.xml
-            coverage.json
-            javascript-junit.xml
-            secure-build.log
-            package-validation.log
-            dependency-audit.log
             e2e-tests.log
             playwright-report
             test-results/e2e-junit.xml
@@ -159,8 +362,189 @@ jobs:
             playwright-report/
           if-no-files-found: ignore
           retention-days: 14
+
+  performance:
+    name: Startup performance budget
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-database-password
+          POSTGRES_DB: biddingflow_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d biddingflow_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+      - name: Install pinned dependencies and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Restore verified secure build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: biddingflow-secure-build-${{ github.sha }}
+          path: dist
+      - name: Create isolated test databases
+        env:
+          PGPASSWORD: ci-database-password
+        run: |
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_unit_test
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_api_test
+      - name: Initialize fresh PostgreSQL schemas
+        run: |
+          python scripts/manage_database.py
+          DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
+          DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
+      - name: Start isolated performance application
+        run: |
+          python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --no-proxy-headers > /tmp/biddingflow-performance.log 2>&1 &
+          echo $! > /tmp/biddingflow-performance.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health/live > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/biddingflow-performance.log
+          exit 1
+      - name: Performance budget
+        run: npm run test:performance
+      - name: Stop performance application
+        if: always()
+        run: |
+          if [ -f /tmp/biddingflow-performance.pid ]; then kill "$(cat /tmp/biddingflow-performance.pid)" || true; fi
+          if [ "${{ job.status }}" != "success" ]; then cat /tmp/biddingflow-performance.log || true; fi
+      - name: Upload performance diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-performance-diagnostics-${{ github.sha }}
+          path: |
+            data/logs/startup-performance.json
+            /tmp/biddingflow-performance.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  package:
+    name: Package and dependency gates
+    needs: [build, database]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-database-password
+          POSTGRES_DB: biddingflow_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d biddingflow_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
+          npm ci
+      - name: Restore verified secure build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: biddingflow-secure-build-${{ github.sha }}
+          path: dist
+      - name: Create isolated test databases
+        env:
+          PGPASSWORD: ci-database-password
+        run: |
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_unit_test
+          createdb --host 127.0.0.1 --username postgres biddingflow_ci_api_test
+      - name: Initialize fresh PostgreSQL schemas
+        run: |
+          python scripts/manage_database.py
+          DATABASE_URL="$TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$TEST_DATABASE_URL" python scripts/manage_database.py
+          DATABASE_URL="$API_TEST_DATABASE_URL" MIGRATOR_DATABASE_URL="$API_TEST_DATABASE_URL" python scripts/manage_database.py
+      - name: Production package validation
+        run: |
+          set -o pipefail
+          python scripts/package_production.py --check 2>&1 | tee package-validation.log
+      - name: SBOM
+        run: npm run sbom
+      - name: Dependency audit
+        run: |
+          set -o pipefail
+          npm run audit:dependencies 2>&1 | tee dependency-audit.log
+      - name: Build reproducible production archive candidate
+        run: npm run package:production:from-build
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-package-diagnostics-${{ github.sha }}
+          path: |
+            package-validation.log
+            dependency-audit.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload production package candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: biddingflow-production-candidate-${{ github.sha }}
+          path: |
+            release/biddingflow-production.zip
+            release/npm-sbom.cdx.json
+            release/python-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish verified production artifact
+    needs: [quality, unit-python, unit-js, build, database, e2e, performance, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Restore verified production package candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: biddingflow-production-candidate-${{ github.sha }}
+          path: release
       - name: Upload production artifact
-        if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: biddingflow-production-${{ github.sha }}

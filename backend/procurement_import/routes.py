@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
 from hashlib import sha256
 import json
+import logging
 import os
 import re
 import threading
@@ -19,10 +19,7 @@ from backend.integrations.vneps.procurement_provider import VnepsProcurementSour
 from backend.integrations.muasamcong_browser.registry import (
     get_muasamcong_source,
 )
-from backend.integrations.muasamcong_browser.canonical import (
-    normalize_opening_bundle,
-    opening_source_payload_info,
-)
+from backend.procurement_import import opening_snapshot
 from backend.procurement_import.command import (
     ProcurementNoticeReconciler,
     ProcurementPlanReconciler,
@@ -39,6 +36,13 @@ from backend.procurement_import.service import ProcurementImportPreparer, Previe
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_raw import ProcurementRawSnapshotRepository
 from backend.procurement_import.source import ProcurementSourceError
+from backend.procurement_import.runtime import (
+    ProcurementRouteError,
+    build_procurement_source as _build_runtime_source,
+    procurement_import_enabled,
+    procurement_provider_name,
+    procurement_source_timeout_seconds,
+)
 from backend.procurement_lookup.config import ProcurementLookupSettings
 from backend.shared.async_io import (
     BlockingIOBusyError,
@@ -49,6 +53,16 @@ from backend.shared.helpers import OrgPermissionError, database, get_active_org,
 from backend.shared.access_policy import has_module_permission
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object
+
+
+LOGGER = logging.getLogger(__name__)
+
+# Compatibility aliases for tests and callers that used the original route
+# helpers while the raw-snapshot policy moves behind its dedicated seam.
+_load_opening_from_raw_snapshot = opening_snapshot.load_complete_opening_snapshot
+_raw_snapshot_has_complete_opening_sources = (
+    opening_snapshot.raw_snapshot_has_complete_opening_sources
+)
 
 
 PREVIEW_STORE = PreviewStore(
@@ -81,100 +95,23 @@ _OPENING_APPLY_FIELDS = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class ProcurementRouteError(RuntimeError):
-    code: str
-    message: str
-    status_code: int
-
-    def __str__(self):
-        return self.message
-
-
 def _enabled():
-    import_enabled = os.environ.get(
-        "PROCUREMENT_IMPORT_ENABLED",
-        os.environ.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"),
-    ).strip().casefold() == "true"
-    if import_enabled:
-        return True
-    # Mua Sam Cong lookup and import use the same connector.  On deployments
-    # that only set PROCUREMENT_LOOKUP_ENABLED, expose the import routes too
-    # so the frontend capability and backend availability stay in sync.
-    lookup_enabled = os.environ.get(
-        "PROCUREMENT_LOOKUP_ENABLED", "false"
-    ).strip().casefold() == "true"
-    return lookup_enabled and _provider_name() in {"muasamcong", "web_dau_thau"}
+    return procurement_import_enabled()
 
 
 def _provider_name():
-    explicit = str(os.environ.get("PROCUREMENT_PROVIDER") or "").strip()
-    if explicit:
-        return explicit.casefold()
-    lookup_enabled = str(
-        os.environ.get("PROCUREMENT_LOOKUP_ENABLED") or ""
-    ).strip().casefold() == "true"
-    if lookup_enabled:
-        return "muasamcong"
-    return str(
-        os.environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
-    ).strip().casefold()
+    return procurement_provider_name()
 
 
 def _source_timeout_seconds():
-    provider = _provider_name()
-    if provider in {"muasamcong", "web_dau_thau"}:
-        return max(
-            20.0,
-            min(
-                float(
-                    os.environ.get(
-                        "MUASAMCONG_REQUEST_TIMEOUT_SECONDS", "60"
-                    )
-                ),
-                120.0,
-            ),
-        )
-    return max(
-        1.0,
-        min(
-            float(os.environ.get("VNEPS_PROCUREMENT_TIMEOUT_SECONDS", "8")),
-            120.0,
-        ),
-    )
+    return procurement_source_timeout_seconds()
 
 
 def build_procurement_source():
-    if not _enabled():
-        raise ProcurementRouteError(
-            "PROCUREMENT_LOOKUP_DISABLED",
-            "Tính năng nhập Mua Sắm Công chưa được bật.",
-            503,
-        )
-    provider = _provider_name()
-    if provider == "fixture":
-        if os.environ.get("APP_ENV", "").strip().casefold() not in {
-            "test", "testing",
-        }:
-            raise ProcurementRouteError(
-                "PROCUREMENT_LOOKUP_DISABLED",
-                "Fixture procurement chỉ được phép trong APP_ENV=test.",
-                503,
-            )
-        path = os.environ.get("VNEPS_PROCUREMENT_FIXTURE_PATH", "").strip()
-        if not path:
-            raise ProcurementRouteError(
-                "PROCUREMENT_LOOKUP_DISABLED", "Chưa cấu hình fixture provider.", 503
-            )
-        return FixtureProcurementSource(path)
-    if provider == "vneps":
-        return VnepsProcurementSource()
-    if provider in {"muasamcong", "web_dau_thau"}:
-        return get_muasamcong_source()
-    raise ProcurementRouteError(
-        "PROCUREMENT_LOOKUP_DISABLED",
-        "Connector procurement chưa được cấu hình.",
-        503,
+    return _build_runtime_source(
+        fixture_source_factory=FixtureProcurementSource,
+        vneps_source_factory=VnepsProcurementSource,
+        muasamcong_source_factory=get_muasamcong_source,
     )
 
 
@@ -403,8 +340,13 @@ def _record_enrichment_progress(context, operation_id, notice_no, processed, tot
             cursor=min(int(processed), int(total)), results=results, status="RUNNING",
         )
         connection.commit()
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort progress must not abort enrichment.
         connection.rollback()
+        LOGGER.warning(
+            "Unable to record procurement enrichment progress",
+            extra={"operation_id": operation_id, "notice_no": notice_no},
+            exc_info=True,
+        )
     finally:
         connection.close()
 
@@ -553,8 +495,13 @@ def _run_plan_enrichment(context, operation_id):
                 cursor=0, results=results, status="FAILED",
             )
             connection.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001 - preserve the original background failure.
             connection.rollback()
+            LOGGER.warning(
+                "Unable to mark procurement enrichment operation as failed",
+                extra={"operation_id": operation_id},
+                exc_info=True,
+            )
         finally:
             connection.close()
 
@@ -730,193 +677,6 @@ def _cancel_import_session_blocking(request, session_id):
         raise
     finally:
         connection.close()
-
-
-def _raw_snapshot_has_complete_opening_sources(
-    raw_bundle,
-    selected_revision,
-):
-    """Allow opening projection when unrelated notice sources are partial.
-
-    A COMPLETE notice capture can be marked partial by an optional sidecar
-    (for example, a version-list endpoint) even though every source needed by
-    the opening record was captured successfully.  Reusing that opening
-    evidence is safe only when the selected revision contains opening source
-    envelopes and none of those envelopes (or recorded failures) failed.
-    """
-
-    revisions = raw_bundle.get("revisions") or {}
-    revision_number = str(
-        selected_revision.get("revisionNumber") or ""
-    ).strip()
-    revision = revisions.get(revision_number)
-    if not isinstance(revision, dict):
-        revision = next((
-            candidate for candidate in revisions.values()
-            if isinstance(candidate, dict)
-            and str(candidate.get("revisionNumber") or "").strip()
-            == revision_number
-        ), None)
-    if not isinstance(revision, dict):
-        return False
-    if str(revision.get("revisionId") or "") != str(
-        selected_revision.get("revisionId") or ""
-    ):
-        return False
-
-    opening_sources = set()
-    for key, source in (revision.get("sources") or {}).items():
-        if not isinstance(source, dict):
-            continue
-        operation = str(source.get("operation") or key or "").strip().upper()
-        if not operation.startswith("OPENING"):
-            continue
-        request = source.get("request") or {}
-        pack_type = request.get("packType")
-        if pack_type is None:
-            matched_pack = re.search(r"_(\d+)$", str(key))
-            pack_type = int(matched_pack.group(1)) if matched_pack else None
-        elif str(pack_type).isdigit():
-            pack_type = int(pack_type)
-        opening_sources.add((operation, pack_type))
-        if source.get("success") is not True:
-            return False
-        if operation in {
-            "OPENING_BID", "OPENING_ROUND", "OPENING_LOT",
-            "OPENING_LOT_DETAIL",
-        }:
-            if source.get("schemaValid") is False:
-                return False
-            if not opening_source_payload_info(
-                operation, source.get("response")
-            )["schemaValid"]:
-                return False
-    if not opening_sources:
-        return False
-
-    opening_operations = {
-        operation for operation, _pack_type in opening_sources
-    }
-
-    required_sources = revision.get("requiredOpeningSources")
-    if isinstance(required_sources, list) and required_sources:
-        for required in required_sources:
-            if not isinstance(required, dict):
-                return False
-            operation = str(
-                required.get("operation") or ""
-            ).strip().upper()
-            pack_type = required.get("packType")
-            if pack_type is not None and str(pack_type).isdigit():
-                pack_type = int(pack_type)
-            if (operation, pack_type) not in opening_sources:
-                return False
-        required_operations = set()
-
-    elif opening_operations & {"OPENING_OTHER", "OPENING_ADB"}:
-        required_operations = opening_operations & {
-            "OPENING_OTHER", "OPENING_ADB"
-        }
-    else:
-        required_operations = {"OPENING_ROUND", "OPENING_BID"}
-        identifiers = revision.get("identifiers") or {}
-        has_lot_sources = bool(opening_operations & {
-            "OPENING_LOT", "OPENING_LOT_DETAIL"
-        })
-        if bool(identifiers.get("isMultiLot")) or has_lot_sources:
-            required_operations.update({
-                "OPENING_LOT", "OPENING_LOT_DETAIL"
-            })
-    if required_operations and not required_operations.issubset(
-        opening_operations
-    ):
-        return False
-
-    for failure in raw_bundle.get("failures") or []:
-        if not isinstance(failure, dict):
-            continue
-        operation = str(failure.get("operation") or "").strip().upper()
-        if operation.startswith("OPENING"):
-            return False
-    opening_raw = {
-        key: source.get("response")
-        for key, source in (revision.get("sources") or {}).items()
-        if isinstance(source, dict)
-        and str(source.get("operation") or key).upper().startswith("OPENING")
-    }
-    opening = normalize_opening_bundle(
-        opening_raw,
-        notice_no=str((raw_bundle.get("entity") or {}).get("canonicalCode") or ""),
-        revision_id=str(revision.get("revisionId") or ""),
-    )
-    if opening.get("partial"):
-        return False
-    return True
-
-
-def _load_opening_from_raw_snapshot(
-    source,
-    raw_repository,
-    organization_id,
-    notice_no,
-    selected_revision,
-    *,
-    max_age_seconds=900,
-):
-    """Project an exact complete opening snapshot without an upstream call."""
-
-    loader = getattr(raw_repository, "load_fresh_notice_bundle", None)
-    projector = getattr(source, "lookup_from_raw_bundle", None)
-    if not callable(loader) or not callable(projector):
-        return None
-    revision_number = str(
-        selected_revision.get("revisionNumber") or ""
-    ).strip()
-    raw_bundle = loader(
-        organization_id,
-        notice_no,
-        detail_level="COMPLETE",
-        revision_mode="SELECTED",
-        revision_numbers=[revision_number],
-        max_age_seconds=max_age_seconds,
-    )
-    if not isinstance(raw_bundle, dict):
-        return None
-    if not _raw_snapshot_has_complete_opening_sources(
-        raw_bundle, selected_revision
-    ):
-        return None
-    projected = projector(
-        notice_no,
-        raw_bundle,
-        revision_mode="SELECTED",
-        detail_level="COMPLETE",
-    )
-    revisions = (projected.get("canonical") or {}).get("revisions") or []
-    revision = next((
-        row for row in revisions
-        if str(row.get("revisionId") or "")
-        == str(selected_revision.get("revisionId") or "")
-        and str(row.get("revisionNumber") or "") == revision_number
-    ), None)
-    opening = (revision or {}).get("opening")
-    if (
-        not isinstance(opening, dict)
-        or not isinstance(opening.get("bidders"), list)
-        or opening.get("partial")
-    ):
-        return None
-    return {
-        **deepcopy(opening),
-        "schemaVersion": "biddingflow-opening-bundle-v1",
-        "partial": False,
-        "failedOperations": [],
-        "source": {
-            "provider": getattr(source, "name", "MUASAMCONG"),
-            "driver": "raw-snapshot",
-            "retrievedAt": raw_bundle.get("retrievedAt"),
-        },
-    }
 
 
 def _prepare_opening_blocking(request, payload):

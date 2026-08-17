@@ -3,8 +3,25 @@ import re
 import tomllib
 from pathlib import Path
 
+import yaml
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _ci_workflow():
+    return yaml.safe_load(
+        (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _job_runs(workflow, job_name):
+    return "\n".join(
+        str(step.get("run") or "")
+        for step in workflow["jobs"][job_name].get("steps", [])
+    )
 
 
 def test_starlette_test_client_dependency_is_explicitly_pinned():
@@ -20,35 +37,48 @@ def test_starlette_test_client_dependency_is_explicitly_pinned():
     )
 
 
-def test_full_ci_installs_chromium_before_running_browser_tests():
-    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
-    )
+def test_full_ci_runs_independent_gates_and_installs_required_browsers():
+    workflow = _ci_workflow()
+    jobs = workflow["jobs"]
 
-    install = "npx playwright install --with-deps chromium firefox webkit"
-    assert install in workflow
-    required_gates = (
-        "- name: Canonical quality and secure build",
-        "- name: Cross-browser Playwright matrix",
-        "- name: FK and index audit",
-        "- name: Production package validation",
-        "- name: SBOM",
-        "- name: Full role and workflow E2E",
-        "- name: Dependency audit",
-    )
-    for gate in required_gates:
-        assert gate in workflow
-        assert workflow.index(install) < workflow.index(gate)
+    assert set(jobs) == {
+        "quality",
+        "unit-python",
+        "unit-js",
+        "build",
+        "database",
+        "e2e",
+        "performance",
+        "package",
+        "release",
+    }
+    assert jobs["e2e"]["needs"] == "build"
+    assert jobs["performance"]["needs"] == "build"
+    assert jobs["package"]["needs"] == ["build", "database"]
+    assert set(jobs["release"]["needs"]) == set(jobs) - {"release"}
+
+    e2e_runs = _job_runs(workflow, "e2e")
+    performance_runs = _job_runs(workflow, "performance")
+    package_runs = _job_runs(workflow, "package")
+    assert "npx playwright install --with-deps chromium firefox webkit" in e2e_runs
+    assert "npx playwright install --with-deps chromium" in performance_runs
+    for gate, runs in (
+        ("npm run test:e2e:smoke", e2e_runs),
+        ("npm run test:performance", performance_runs),
+        ("python scripts/package_production.py --check", package_runs),
+        ("npm run sbom", package_runs),
+        ("npm run audit:dependencies", package_runs),
+        ("python scripts/audit_fk_indexes.py", _job_runs(workflow, "database")),
+    ):
+        assert gate in runs
 
 
 def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
-    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = _ci_workflow()
     config = (PROJECT_ROOT / "playwright.config.mjs").read_text(encoding="utf-8")
     smoke = PROJECT_ROOT / "e2e" / "specs" / "browser-matrix.spec.mjs"
 
-    assert "npm run test:e2e:smoke" in workflow
+    assert "npm run test:e2e:smoke" in _job_runs(workflow, "e2e")
     for browser in ("chromium", "firefox", "webkit"):
         assert f'name: "{browser}"' in config
     assert "contractorViolationReady" in config
@@ -59,9 +89,7 @@ def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
 def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
     package_text = (PROJECT_ROOT / "package.json").read_text(encoding="utf-8")
     package = json.loads(package_text)
-    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = _ci_workflow()
 
     assert package_text.count("--cov-fail-under=45") == 1
     assert package["scripts"]["check:ci"] == (
@@ -78,29 +106,31 @@ def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
     ):
         assert required in static_gate
     assert package["scripts"]["test:js:coverage"] == "node scripts/run_js_coverage.mjs"
-    assert workflow.count("npm run check:ci") == 1
-    assert "PYTEST_ADDOPTS:" in workflow
-    assert "--junitxml=pytest-junit.xml" in workflow
-    assert "--cov-report=xml:coverage.xml" in workflow
-    assert "JS_JUNIT_PATH: javascript-junit.xml" in workflow
-    assert "npm run test:js:coverage" not in workflow
-
-
-def test_full_ci_does_not_duplicate_canonical_quality_or_build_commands():
-    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
+    assert "npm run check:ci" not in str(workflow)
+    python_runs = _job_runs(workflow, "unit-python")
+    js_runs = _job_runs(workflow, "unit-js")
+    assert "python -m pytest -q" in python_runs
+    assert "--cov-fail-under=45" in python_runs
+    assert "python scripts/check_critical_coverage.py coverage.json" in python_runs
+    assert "--junitxml=pytest-junit.xml" in str(workflow["jobs"]["unit-python"])
+    assert "--cov-report=xml:coverage.xml" in str(workflow["jobs"]["unit-python"])
+    js_coverage_step = next(
+        step
+        for step in workflow["jobs"]["unit-js"]["steps"]
+        if step.get("name") == "JavaScript coverage and critical-module ratchet"
     )
+    assert js_coverage_step["env"]["JS_JUNIT_PATH"] == "javascript-junit.xml"
+    assert "npm run test:js:coverage" in js_runs
 
-    for duplicated_command in (
-        "python -m compileall -q backend scripts tests",
-        "npm run lint:python",
-        "npm run lint:security",
-        "npm run lint:debt",
-        "npm run build:secure",
-        "python -m pytest -q",
-    ):
-        assert duplicated_command not in workflow
-    assert "npm run package:production:from-build" in workflow
+
+def test_full_ci_decomposes_canonical_check_without_duplicating_its_gates():
+    workflow = _ci_workflow()
+
+    assert _job_runs(workflow, "quality").count("npm run check:static") == 1
+    assert _job_runs(workflow, "build").count("npm run build:secure") == 1
+    assert _job_runs(workflow, "unit-python").count("python -m pytest -q") == 1
+    assert _job_runs(workflow, "unit-js").count("npm run test:js:coverage") == 1
+    assert "npm run package:production:from-build" in _job_runs(workflow, "package")
 
 
 def test_full_npm_lock_audit_is_enforced_in_ci_and_scheduled_security():
@@ -175,20 +205,25 @@ def test_python_ci_installs_hashed_locks_before_the_project_without_resolution()
 
 
 def test_full_ci_keeps_runtime_and_integration_databases_isolated():
-    workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+    workflow = _ci_workflow()
+    workflow_source = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
 
     configured_databases = re.findall(
         r"^\s+(?:DATABASE_URL|TEST_DATABASE_URL|API_TEST_DATABASE_URL):\s+"
         r"postgresql://[^/]+/([^?\s]+)",
-        workflow,
+        workflow_source,
         flags=re.MULTILINE,
     )
     assert len(configured_databases) == 3
     assert len(set(configured_databases)) == 3
-    assert "createdb --host 127.0.0.1" in workflow
-    assert workflow.count("python scripts/manage_database.py") == 3
+    for job_name in ("unit-python", "database", "e2e", "performance", "package"):
+        job = workflow["jobs"][job_name]
+        assert "postgres" in job["services"]
+        runs = _job_runs(workflow, job_name)
+        assert "createdb --host 127.0.0.1" in runs
+        assert runs.count("python scripts/manage_database.py") == 3
 
 
 def test_performance_probe_authenticates_once_and_reuses_session_state():

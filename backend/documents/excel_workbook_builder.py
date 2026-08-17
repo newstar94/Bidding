@@ -60,6 +60,8 @@ def _format_cell(cell, field_format):
         cell.number_format = "dd/mm/yyyy"
     elif field_format == "datetime":
         cell.number_format = 'hh:mm "ngày" dd/mm/yyyy'
+    elif field_format == "decimal":
+        cell.number_format = "0.##########"
 
 
 def _finalize_widths(sheet):
@@ -77,6 +79,7 @@ def _build_configured_workbook(
     rows=None,
     options_map=None,
     formats_map=None,
+    numeric_constraints=None,
     empty_rows=0,
     validation_padding=10,
 ):
@@ -85,6 +88,7 @@ def _build_configured_workbook(
     sheet.title = title
     rows = list(rows or [])
     formats_map = formats_map or {}
+    numeric_constraints = numeric_constraints or {}
     option_ranges = _add_dropdown_sheet(workbook, options_map or {})
 
     sheet.append(headers)
@@ -132,6 +136,27 @@ def _build_configured_workbook(
         sheet.add_data_validation(validation)
         validation.add(f"{column_letter}2:{column_letter}{validation_end}")
 
+    for column_index, header in enumerate(headers, start=1):
+        constraint = numeric_constraints.get(header)
+        if not constraint:
+            continue
+        minimum = constraint.get("minimum")
+        if not isinstance(minimum, (int, float)) or isinstance(minimum, bool):
+            raise ValueError("Excel numeric constraint minimum must be a number.")
+        column_letter = get_column_letter(column_index)
+        validation = DataValidation(
+            type="decimal",
+            operator="greaterThanOrEqual",
+            formula1=str(minimum),
+            allow_blank=True,
+        )
+        validation.error = "Giá trị nhập không hợp lệ."
+        validation.errorTitle = "Lỗi nhập dữ liệu"
+        validation.prompt = f"Vui lòng nhập số lớn hơn hoặc bằng {minimum}."
+        validation.promptTitle = header
+        sheet.add_data_validation(validation)
+        validation.add(f"{column_letter}2:{column_letter}{validation_end}")
+
     _finalize_widths(sheet)
     return workbook
 
@@ -146,6 +171,7 @@ def create_excel_from_spec(spec):
         "rows",
         "options_map",
         "formats_map",
+        "numeric_constraints",
         "empty_rows",
         "validation_padding",
     }

@@ -3,10 +3,9 @@ import re
 import unicodedata
 import uuid
 
-from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
+from backend.db.schema import MONEY_COLUMNS
 from backend.domain.goods_workflow import supports_goods_workflow
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
-from backend.shared.domain_enums import enum_label
 from backend.shared.date_utils import normalize_date_value, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
@@ -18,130 +17,27 @@ from backend.sync.bid_evaluation_rules import (
 from backend.timeline.effective_timeline import CATALOG as TIMELINE_CATALOG
 from backend.shared.text_utils import (
     clean_id,
-    normalize_business_identifier,
     normalize_lot_code,
     normalize_organization_name,
     normalize_person_name,
     safe_float,
-    to_camel_case,
 )
+from backend.sync import payload_mapping
+
+# Compatibility aliases: external sync adapters have historically imported
+# these mapping functions from ``mapper``.  Keep that interface stable while
+# the implementation lives at the payload-mapping seam.
+canonicalize_payload_item = payload_mapping.canonicalize_payload_item
+db_column_for_json_key = payload_mapping.db_column_for_json_key
+get_payload_value = payload_mapping.get_payload_value
+json_key_for_column = payload_mapping.json_key_for_column
+map_db_to_json = payload_mapping.map_db_to_json
 
 LEGACY_TIMELINE_KEYS = {
     code: milestone["milestoneKey"]
     for milestone in TIMELINE_CATALOG["milestones"]
     for code in milestone.get("legacyCodes", [])
 }
-
-
-def json_key_for_column(table_name, col):
-    table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
-    field_map = table_spec.get("field_map", {})
-    return field_map.get(col) or ("rootId" if col == "id_goc" else to_camel_case(col))
-
-
-def db_column_for_json_key(table_name, json_key):
-    table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
-    columns = table_spec.get("columns", {})
-    for col in columns.keys():
-        if json_key_for_column(table_name, col) == json_key:
-            return col
-    return re.sub(r'(?<!^)(?=[A-Z])', '_', json_key).lower()
-
-
-def get_payload_value(table_name, item, col):
-    json_key = json_key_for_column(table_name, col)
-    return item.get(json_key)
-
-
-def canonicalize_payload_item(table_name, item):
-    if not isinstance(item, dict):
-        return {}
-    table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
-    columns = table_spec.get("columns", {})
-    schema_keys = set(columns.keys())
-    normalized = {key: value for key, value in item.items() if key not in schema_keys}
-    for col in columns.keys():
-        json_key = json_key_for_column(table_name, col)
-        if json_key in item:
-            normalized[json_key] = item.get(json_key)
-        elif col in item:
-            normalized[json_key] = item.get(col)
-    business_key_fields = {
-        "chu_dau_tu": (("maChuDauTu", False), ("maSoThue", True)),
-        "ke_hoach_lcnt": (("maKeHoach", False),),
-        "goi_thau": (("maGoiThau", False),),
-        "nha_thau": (("maNhaThau", False), ("maSoThue", True)),
-        "chuyen_gia": (("soCCCD", True),),
-        "hop_dong": (("soHopDong", False),),
-    }
-    for field_name, digits_only in business_key_fields.get(table_name, ()):
-        if field_name in normalized and normalized.get(field_name) not in (None, ""):
-            normalized[field_name] = normalize_business_identifier(
-                normalized[field_name],
-                digits_only=digits_only,
-                preserve_case=(table_name, field_name) in {
-                    ("chu_dau_tu", "maChuDauTu"),
-                    ("nha_thau", "maNhaThau"),
-                },
-            )
-    if table_name == "chu_dau_tu" and normalized.get("tenChuDauTu"):
-        normalized["tenChuDauTu"] = normalize_organization_name(normalized["tenChuDauTu"])
-    elif table_name == "nha_thau" and normalized.get("tenNhaThau"):
-        normalized["tenNhaThau"] = normalize_organization_name(normalized["tenNhaThau"])
-    elif table_name == "goi_thau" and str(normalized.get("hinhThucLuaChon") or "").strip().lower() == "chào hàng cạnh tranh":
-        normalized["yeuCauThamDinhHsmt"] = "Không"
-        normalized["soBaoCaoThamDinhHsmt"] = ""
-        normalized["ngayBaoCaoThamDinhHsmt"] = ""
-        normalized["toThamDinh"] = []
-        raw_metadata = normalized.get("danhGiaHsdtMetadata")
-        try:
-            metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) and raw_metadata.strip() else raw_metadata
-        except (TypeError, ValueError, json.JSONDecodeError):
-            metadata = None
-        if isinstance(metadata, dict):
-            if isinstance(metadata.get("technical"), dict):
-                metadata["technical"].pop("soBctdKt", None)
-                metadata["technical"].pop("ngayBctdKt", None)
-            if isinstance(metadata.get("result"), dict):
-                metadata["result"].pop("soBctdKetQua", None)
-                metadata["result"].pop("ngayBctdKetQua", None)
-            normalized["danhGiaHsdtMetadata"] = json.dumps(metadata, ensure_ascii=False) if isinstance(raw_metadata, str) else metadata
-    return normalized
-
-
-def map_db_to_json(table_name, row_dict):
-    item = {}
-    table_spec = SCHEMA_DINH_NGHIA[table_name]
-    explicit_json_fields = set(table_spec.get("json_fields", []))
-    for col in table_spec["columns"].keys():
-        json_key = json_key_for_column(table_name, col)
-        val = enum_label(table_name, col, row_dict.get(col))
-        if (
-            (table_name == "chu_dau_tu" and col == "dai_dien_cdt")
-            or (table_name == "nha_thau" and col == "nguoi_dai_dien")
-        ):
-            val = normalize_person_name(val)
-        elif table_name == "chu_dau_tu" and col == "ten_chu_dau_tu":
-            val = normalize_organization_name(val)
-        elif table_name == "nha_thau" and col == "ten_nha_thau":
-            val = normalize_organization_name(val)
-        if (table_name, col) in MONEY_COLUMNS:
-            val = money_json_value(val)
-        is_json_field = (
-            col in explicit_json_fields
-            or col.endswith("_list")
-            or col.startswith("cv_")
-        )
-        if is_json_field:
-            if val:
-                try:
-                    val = json.loads(val)
-                except (TypeError, json.JSONDecodeError):
-                    val = []
-            else:
-                val = []
-        item[json_key] = val
-    return item
 
 
 PLAN_CHILD_LISTS = {

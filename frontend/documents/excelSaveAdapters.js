@@ -5,10 +5,8 @@ import {
   getActiveEvaluationLotScope,
   isPartialEvaluationLotScope
 } from "../packages/lotEvaluationScope.js";
-import {
-  requiresTechnicalScoreInput,
-  validateTechnicalScore,
-} from "../packages/evaluationMethodRules.js";
+import { validateTechnicalScore } from "../packages/evaluationMethodRules.js";
+import { requiresTechnicalScore } from "../packages/technicalEvaluationMethod.js";
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
 import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
@@ -411,7 +409,7 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
   const evaluationTab = context.evaluationTab || controller.currentDanhGiaTab || "technical";
   const activeScopeKey = `${String(gtId)}:${String(evaluationTab)}`;
   const activeScope = controller._evaluationLotScopes?.[activeScopeKey];
-  if (requiresTechnicalScoreInput(pkg) && evaluationTab === "technical") {
+  if (requiresTechnicalScore(pkg) && evaluationTab === "technical") {
     const invalidRow = (validRows || []).find((row) => (
       !validateTechnicalScore(row.danhGiaKyThuat, { required: true }).valid
     ));

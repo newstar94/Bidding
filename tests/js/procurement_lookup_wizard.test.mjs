@@ -411,7 +411,7 @@ test("inline package import materializes source goods before the package form is
     },
   };
   const state = {
-    goithau: [{ id: "package-a", phanLo: "CÃ³", phanLoList: [] }],
+    goithau: [{ id: "package-a", phanLo: "", phanLoList: [] }],
     goithauhanghoa: [],
   };
   state.goithau[0].phanLo = String.fromCharCode(67, 195, 179);

@@ -1,0 +1,26 @@
+{
+  "contractVersion": 1,
+  "columns": {
+    "contractorType": {"canonical": "Loại nhà thầu", "aliases": []},
+    "lotCode": {"canonical": "Mã phần lô", "aliases": ["Phần lô", "Mã lô"]},
+    "lotName": {"canonical": "Tên phần lô (Tự động điền)", "aliases": ["Tên phần lô", "Tên lô"]},
+    "contractorCode": {"canonical": "Mã nhà thầu", "aliases": ["Mã định danh", "Mã số thuế", "Mã"]},
+    "contractorName": {"canonical": "Tên nhà thầu (Nhập chính xác)", "aliases": ["Tên nhà thầu", "Nhà thầu"]},
+    "jointVentureMembers": {"canonical": "Thành viên liên danh", "aliases": []},
+    "validityResult": {"canonical": "Đánh giá tính hợp lệ", "aliases": ["Đánh giá hợp lệ", "Hợp lệ"]},
+    "validityClarification": {"canonical": "Làm rõ tính hợp lệ (nếu có)", "aliases": ["Làm rõ tính hợp lệ", "Làm rõ hợp lệ"]},
+    "validityFailureReason": {"canonical": "Nguyên nhân không đạt hợp lệ (nếu có)", "aliases": ["Nguyên nhân không đạt hợp lệ", "Lý do không đạt hợp lệ"]},
+    "capacityResult": {"canonical": "Đánh giá năng lực kinh nghiệm", "aliases": ["Đánh giá năng lực", "Năng lực"]},
+    "capacityClarification": {"canonical": "Làm rõ năng lực kinh nghiệm (nếu có)", "aliases": ["Làm rõ năng lực kinh nghiệm", "Làm rõ năng lực"]},
+    "capacityFailureReason": {"canonical": "Nguyên nhân không đạt năng lực (nếu có)", "aliases": ["Nguyên nhân không đạt năng lực", "Lý do không đạt năng lực"]},
+    "technicalEvaluation": {"canonical": "Đánh giá kỹ thuật", "aliases": ["Kỹ thuật"]},
+    "technicalClarification": {"canonical": "Làm rõ kỹ thuật (nếu có)", "aliases": ["Làm rõ kỹ thuật"]},
+    "technicalFailureReason": {"canonical": "Nguyên nhân không đạt kỹ thuật (nếu có)", "aliases": ["Nguyên nhân không đạt kỹ thuật", "Lý do không đạt kỹ thuật"]},
+    "financialClarification": {"canonical": "Làm rõ tài chính (nếu có)", "aliases": ["Làm rõ tài chính"]},
+    "bidPrice": {"canonical": "Giá dự thầu (VND)", "aliases": ["Giá dự thầu", "Giá"]},
+    "discountPercent": {"canonical": "Tỷ lệ giảm giá (%)", "aliases": ["Tỷ lệ %", "Tỷ lệ"]},
+    "rankingPrice": {"canonical": "Giá xếp hạng (VND)", "aliases": ["Giá xếp hạng"]},
+    "proposedAwardPrice": {"canonical": "Giá đề nghị trúng thầu (VND)", "aliases": ["Giá đề nghị trúng thầu"]},
+    "lowPriceAcceptance": {"canonical": "Xử lý giá đề nghị trúng thầu dưới 50%", "aliases": ["Chấp thuận giá đề nghị trúng thầu dưới 50%"]}
+  }
+}

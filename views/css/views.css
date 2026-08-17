@@ -2444,7 +2444,7 @@ table th {
   width: 100% !important;
   max-width: 100%;
   min-height: 46px;
-  overflow: visible !important;
+  overflow: visible;
 }
 .google-signin-container iframe {
   box-sizing: border-box;
@@ -2852,7 +2852,7 @@ table th {
   width: 14.4rem;
   min-width: 14.4rem;
   max-width: 20rem;
-  white-space: normal !important;
+  white-space: normal;
   word-break: break-word;
   overflow-wrap: break-word;
   text-align: left;

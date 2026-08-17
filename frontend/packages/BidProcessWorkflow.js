@@ -12,7 +12,6 @@ import {
   canSaveOpeningInfo,
   getAwardRequiredFieldIds,
   isDirectOrSpecialPackage,
-  isNextEvaluationStepSaved,
   validateOpeningTime
 } from "./bidProcessValidation.js";
 import { collectOpeningBidsFromRows, resolveOpeningLookupNames, validateOpeningJointVentureMembers, validateOpeningParticipantScopes, validateOpeningRows } from "./bidProcessOpeningData.js";
@@ -37,7 +36,6 @@ import {
   mapPartnerLookupToContractor,
   normalizeContractorLookupCode,
   refreshSavedOpeningViolationChecks,
-  isViolationConfirmed,
   resolveBidOpeningContractor,
   resolveLeadMemberName,
   shouldRefreshSavedOpeningViolationCheck,
@@ -46,7 +44,10 @@ import {
   VIOLATION_NOT_CHECKED
 } from "./openingContractorLookup.js";
 import {
-  resolveWorkflowActionMode,
+  buildOpeningActionState,
+  buildOpeningContractorIdentity,
+} from "./bidProcessOpeningState.js";
+import {
   setWorkflowActionVisibility,
   WORKFLOW_ACTION_MODE,
 } from "./workflowActionState.js";
@@ -55,6 +56,7 @@ import {
   paginateTableRows,
 } from "../shared/TablePagination.js";
 export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./openingContractorLookup.js";
+export { buildOpeningActionState, buildOpeningContractorIdentity } from "./bidProcessOpeningState.js";
 
 export * from "./bidProcessTenderLifecycle.js";
 
@@ -67,38 +69,6 @@ export function refreshOpeningDraftPagination(owner = {}, packageId = "", option
     document.getElementById("mothau-table-tbody"),
     document.getElementById("mothau-table-pagination"),
   );
-}
-
-export function buildOpeningActionState({
-  pkg,
-  hasSavedOpeningData = false,
-  isEditing = false,
-  effectiveStatus = resolvePackageResultStatus(pkg),
-} = {}) {
-  const isNextStepSaved = isNextEvaluationStepSaved(pkg);
-  const isCompleted = Boolean(
-    hasSavedOpeningData
-    || (
-      pkg?.trangThai !== "Đang mời thầu"
-      && pkg?.trangThai !== "Đã mở thầu"
-      && isNextStepSaved
-    ),
-  );
-  const isFinal = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
-  const actionMode = resolveWorkflowActionMode({
-    isCompleted,
-    isEditing,
-    isNextStepSaved,
-    isFinal,
-  });
-  return {
-    actionMode,
-    isCompleted,
-    isEditable: actionMode === WORKFLOW_ACTION_MODE.SAVE,
-    isFinal,
-    isNextStepSaved,
-    isReadOnly: actionMode !== WORKFLOW_ACTION_MODE.SAVE,
-  };
 }
 
 export function renderMoThauPanel() {
@@ -385,20 +355,6 @@ export function calculateOpeningDiscountedPrice(model, bidPriceValue, discountVa
     String(discountValue || "0").replace(/,/g, ".")
   ) || 0;
   return model.formatVND(price * (1 - discountPercent / 100));
-}
-
-export function buildOpeningContractorIdentity({
-  value,
-  className,
-  contractorVersionId = "",
-  violationStatus = VIOLATION_NOT_CHECKED,
-} = {}) {
-  const violationConfirmed = isViolationConfirmed(violationStatus);
-  const violationClass = violationConfirmed ? " bidder-name--violator" : "";
-  const linkColorClass = violationConfirmed ? "" : " text-blue";
-  return contractorVersionId
-    ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorVersionId)}" class="${className} link-hover${linkColorClass}${violationClass}">${value}</a>`
-    : `<span class="${className}${violationClass}">${value}</span>`;
 }
 
 // eslint-disable-next-line complexity -- Legacy row orchestration is isolated for a dedicated refactor.

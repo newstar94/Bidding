@@ -323,7 +323,10 @@ test("joint-venture member controls use one replaceable runtime display rule", (
 });
 
 test("saved opening rows keep a clickable contractor identity", () => {
-  const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
+  const source = [
+    fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8"),
+    fs.readFileSync("frontend/packages/bidProcessOpeningState.js", "utf8"),
+  ].join("\n");
   assert.match(
     source,
     /data-bf-action="show-contractor"[^>]*data-id=/,

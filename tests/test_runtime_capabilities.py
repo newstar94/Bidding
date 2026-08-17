@@ -59,6 +59,9 @@ def test_muasamcong_lookup_also_advertises_opening_import_capability(monkeypatch
 def test_procurement_import_capability_is_not_advertised_for_unusable_vneps(
     monkeypatch,
 ):
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_LOOKUP_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
     monkeypatch.setenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true")
     monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "vneps")
     monkeypatch.setenv("VNEPS_PROCUREMENT_API_AUTHORIZATION_CONFIRMED", "false")
