@@ -190,6 +190,23 @@ test("timeline toolbar exports an editable Excel workbook", () => {
   assert.doesNotMatch(source, /Timeline_goi_thau_\$\{code\}\.docx/);
 });
 
+test("timeline renders every filtered milestone without pagination", () => {
+  const source = fs.readFileSync("frontend/packages/PackageTimelineView.js", "utf8");
+  const markup = fs.readFileSync("views/tabs/tab_goithau_timeline.html", "utf8");
+
+  assert.match(source, /const rows = filteredRows\(state\);[\s\S]*?rows\.forEach\(\(row\) => \{/);
+  assert.doesNotMatch(source, /paginateTableItems|renderTablePagination|timeline-pagination/);
+  assert.doesNotMatch(markup, /timeline-pagination|Phân trang timeline/);
+});
+
+test("timeline sticky header stays above row controls while scrolling", () => {
+  const css = fs.readFileSync("views/css/views.css", "utf8");
+  const headerRule = css.match(/\.timeline-table thead th\s*\{([^}]*)\}/u)?.[1] || "";
+  const headerZIndex = Number(headerRule.match(/z-index:\s*(\d+)/u)?.[1] || 0);
+
+  assert.ok(headerZIndex > 5, "timeline header must layer above timeline controls");
+});
+
 test("timeline contract projection resolves package lineage", () => {
   const historical = { id: "package-v1", rootId: "package-root" };
   const current = { id: "package-v2", rootId: "package-root" };
