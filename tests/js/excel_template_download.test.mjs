@@ -119,6 +119,64 @@ test("evaluation template download sends the selected lot scope", async () => {
   }
 });
 
+test("evaluation template download keeps the client filename short for many lots", async () => {
+  const previousDocument = globalThis.document;
+  const previousFetch = globalThis.fetch;
+  const previousCreateObjectURL = globalThis.URL.createObjectURL;
+  const previousRevokeObjectURL = globalThis.URL.revokeObjectURL;
+  let requestedFilename = "";
+  globalThis.document = {
+    getElementById(id) {
+      return id === "danhgiahsdt-goithau-select" ? { value: "gt-1" } : null;
+    },
+    createElement() {
+      return {
+        set download(value) { requestedFilename = value; },
+        click() {},
+        remove() {},
+      };
+    },
+    body: { appendChild() {} },
+  };
+  globalThis.fetch = async () => new Response(new Blob(["xlsx"]), { status: 200 });
+  globalThis.URL.createObjectURL = () => "blob:test";
+  globalThis.URL.revokeObjectURL = () => {};
+  const lots = Array.from({ length: 21 }, (_, index) => ({
+    id: `lot-${index + 1}`,
+    maPhanLo: `PP2600239${String(575 + index).padStart(3, "0")}`,
+  }));
+  const controller = {
+    currentDanhGiaTab: "technical",
+    _evaluationLotScopes: {
+      "gt-1:technical": {
+        mode: "selected",
+        selectedLotIds: lots.map((lot) => lot.id),
+        availableLotIds: lots.map((lot) => lot.id),
+      },
+    },
+    model: {
+      state: {
+        goithau: [{
+          id: "gt-1",
+          maGoiThau: "IB2600291864",
+          phanLo: "Có",
+          phanLoList: lots,
+        }],
+      },
+    },
+  };
+
+  try {
+    await triggerExcelTemplateDownload(controller, "danhgiahsdt");
+    assert.equal(requestedFilename, "DanhGia_HSDT_IB2600291864.xlsx");
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.fetch = previousFetch;
+    globalThis.URL.createObjectURL = previousCreateObjectURL;
+    globalThis.URL.revokeObjectURL = previousRevokeObjectURL;
+  }
+});
+
 
 test("download workflow reports server errors instead of leaking a rejection", async () => {
   const previousDocument = globalThis.document;

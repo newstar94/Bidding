@@ -62,7 +62,6 @@ export function renderEvaluationPanel(container, pkg, {
             <h4 id="danhgiahsdt-scope-title">Phạm vi đánh giá</h4>
             <p>Chọn đánh giá toàn bộ gói thầu hoặc lập đợt xử lý cho một hay nhiều phần lô.</p>
           </div>
-          <span id="danhgiahsdt-scope-badge" class="evaluation-lot-scope-badge"></span>
         </div>
         <div class="evaluation-lot-scope-modes" role="radiogroup" aria-labelledby="danhgiahsdt-scope-title">
           <label class="evaluation-lot-scope-mode">
@@ -73,6 +72,10 @@ export function renderEvaluationPanel(container, pkg, {
             <input type="radio" name="danhgiahsdt-scope-mode" value="selected">
             <span><strong>Đánh giá một hoặc nhiều phần lô</strong><small>Chọn các phần lô cần xử lý trước; phần còn lại tiếp tục ở đợt sau.</small></span>
           </label>
+        </div>
+        <div id="danhgiahsdt-lot-actions" class="evaluation-lot-actions is-hidden">
+          <button type="button" class="btn btn-outline btn-sm" id="danhgiahsdt-select-all-lots">Chọn tất cả</button>
+          <button type="button" class="btn btn-outline btn-sm" id="danhgiahsdt-clear-all-lots">Bỏ chọn tất cả</button>
         </div>
         <div id="danhgiahsdt-lot-options" class="evaluation-lot-options" aria-live="polite"></div>
         <p id="danhgiahsdt-scope-feedback" class="evaluation-lot-scope-feedback"></p>

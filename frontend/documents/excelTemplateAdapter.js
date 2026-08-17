@@ -44,8 +44,7 @@ function downloadEvaluationTemplate(controller) {
   const scopeQuery = lotCodes.length
     ? `&lot_codes=${encodeURIComponent(lotCodes.join(","))}`
     : "";
-  const scopeSuffix = lotCodes.length ? `_${lotCodes.join("_")}` : "";
-  return authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${controller.currentDanhGiaTab || "technical"}${scopeQuery}`, `DanhGia_HSDT_${safeCode}${scopeSuffix}.xlsx`);
+  return authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${controller.currentDanhGiaTab || "technical"}${scopeQuery}`, `DanhGia_HSDT_${safeCode}.xlsx`);
 }
 function downloadAwardResultTemplate(controller) {
   const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");

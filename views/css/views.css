@@ -3155,7 +3155,6 @@ input#edit-pkg-price {
 .evaluation-lot-scope-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .evaluation-lot-scope-heading h4 { margin: 0 0 4px; color: var(--text-main); font-size: 0.95rem; }
 .evaluation-lot-scope-heading p { margin: 0; color: var(--text-muted); font-size: 0.8rem; line-height: 1.5; }
-.evaluation-lot-scope-badge { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; color: var(--primary); background: rgba(59, 91, 219, 0.09); font-size: 0.75rem; font-weight: 700; }
 .evaluation-lot-scope-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .evaluation-lot-scope-mode { display: flex; align-items: flex-start; gap: 10px; min-height: 76px; padding: 13px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; }
 .evaluation-lot-scope-mode:has(input:checked) { border-color: var(--primary); background: rgba(59, 91, 219, 0.05); }
@@ -3163,6 +3162,7 @@ input#edit-pkg-price {
 .evaluation-lot-scope-mode span { display: grid; gap: 4px; }
 .evaluation-lot-scope-mode strong { color: var(--text-main); font-size: 0.84rem; }
 .evaluation-lot-scope-mode small { color: var(--text-muted); font-size: 0.76rem; line-height: 1.45; }
+.evaluation-lot-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .evaluation-lot-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 12px; }
 .evaluation-lot-option { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--neutral-soft); }
 .evaluation-lot-option input { margin-top: 3px; }
@@ -3206,7 +3206,6 @@ input#edit-pkg-price {
 @media (max-width: 760px) {
   .evaluation-lot-scope-modes { grid-template-columns: 1fr; }
   .evaluation-lot-scope-heading { display: grid; }
-  .evaluation-lot-scope-badge { justify-self: start; }
   .evaluation-round-card-header, .evaluation-round-continuation { align-items: flex-start; flex-direction: column; }
   .evaluation-round-card-actions { width: 100%; align-items: flex-start; flex-direction: column; }
   .official-result-form-actions { width: 100%; align-items: stretch; flex-direction: column; }

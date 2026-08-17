@@ -160,7 +160,9 @@ function normalizePackageEvaluationLots(lots) {
     name: String(lot?.tenPhanLo || lot?.ten_phan_lo || "").trim(),
     sortOrder: Number(lot?.sortOrder ?? lot?.sort_order ?? index),
   })).filter((lot) => lot.id && lot.code).sort((a, b) => (
-    a.sortOrder - b.sortOrder || a.code.localeCompare(b.code, "vi", { numeric: true })
+    a.code.localeCompare(b.code, "vi", { numeric: true, sensitivity: "base" })
+    || a.sortOrder - b.sortOrder
+    || a.id.localeCompare(b.id)
   ));
 }
 

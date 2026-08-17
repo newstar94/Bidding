@@ -20,9 +20,11 @@ export function renderBidEvaluationLotScope({
     throw new TypeError("Bid evaluation lot scope received an invalid context.");
   }
   const container = view.getActiveElement("danhgiahsdt-scope-container");
+  const lotActions = view.getActiveElement("danhgiahsdt-lot-actions");
+  const selectAllLotsButton = view.getActiveElement("danhgiahsdt-select-all-lots");
+  const clearAllLotsButton = view.getActiveElement("danhgiahsdt-clear-all-lots");
   const options = view.getActiveElement("danhgiahsdt-lot-options");
   const feedback = view.getActiveElement("danhgiahsdt-scope-feedback");
-  const badge = view.getActiveElement("danhgiahsdt-scope-badge");
   const title = view.getActiveElement("danhgiahsdt-table-title");
   const allLots = getPackageEvaluationLots(pkg);
   const availableSet = new Set(scope?.availableLotIds || []);
@@ -55,35 +57,50 @@ export function renderBidEvaluationLotScope({
   }
 
   const selectedSet = new Set(scope.selectedLotIds || []);
+  const isSelectedMode = scope.mode === EVALUATION_LOT_SCOPE_MODE.SELECTED;
   if (options) {
-    options.innerHTML = trustedHTML(lots.map((lot) => {
-      const disabled = scope.mode !== EVALUATION_LOT_SCOPE_MODE.SELECTED || isLocked;
-      return `
-        <label class="evaluation-lot-option ${disabled ? "is-disabled" : ""}">
-          <input type="checkbox" data-evaluation-lot-id="${escapeHtml(lot.id)}"
-            ${selectedSet.has(lot.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
-          <span><strong>${escapeHtml(lot.code)}</strong><small title="${escapeHtml(lot.name)}">${escapeHtml(lot.name || "Chưa có tên phần lô")}</small></span>
-        </label>`;
-    }).join(""));
+    options.classList.toggle("is-hidden", !isSelectedMode);
+    setRuntimeStyle(options, "display", isSelectedMode ? "grid" : "none");
+    if (isSelectedMode) {
+      options.innerHTML = trustedHTML(lots.map((lot) => {
+        const disabled = isLocked;
+        return `
+          <label class="evaluation-lot-option ${disabled ? "is-disabled" : ""}">
+            <input type="checkbox" data-evaluation-lot-id="${escapeHtml(lot.id)}"
+              ${selectedSet.has(lot.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
+            <span><strong>${escapeHtml(lot.code)}</strong><small title="${escapeHtml(lot.name)}">${escapeHtml(lot.name || "Chưa có tên phần lô")}</small></span>
+          </label>`;
+      }).join(""));
+    } else {
+      options.replaceChildren();
+    }
   }
 
   const details = getEvaluationLotScopeDetails(pkg, scope);
   const isPartialScope = isPartialEvaluationLotScope(details);
-  const selectedLabel = details?.lotCodes?.join(", ") || "chưa chọn phần lô";
-  if (badge) {
-    badge.textContent = scope.batchId
-      ? `Đợt ${selectedLabel}`
-      : `Phạm vi: ${selectedLabel}`;
+  if (lotActions) {
+    lotActions.classList.toggle("is-hidden", !isSelectedMode);
+    setRuntimeStyle(lotActions, "display", isSelectedMode ? "flex" : "none");
+  }
+  if (selectAllLotsButton) {
+    selectAllLotsButton.disabled = !isSelectedMode || isLocked || details?.lotIds?.length === lots.length;
+    selectAllLotsButton.setAttribute("aria-disabled", selectAllLotsButton.disabled ? "true" : "false");
+  }
+  if (clearAllLotsButton) {
+    clearAllLotsButton.disabled = !isSelectedMode || isLocked || !details?.lotIds?.length;
+    clearAllLotsButton.setAttribute("aria-disabled", clearAllLotsButton.disabled ? "true" : "false");
   }
   if (feedback) {
     const hasSelection = Boolean(details?.lotIds?.length);
-    feedback.textContent = hasSelection
+    feedback.classList.toggle("is-hidden", !isSelectedMode);
+    setRuntimeStyle(feedback, "display", isSelectedMode ? "block" : "none");
+    feedback.textContent = !isSelectedMode ? "" : hasSelection
       ? `${details.lotIds.length}/${lots.length} phần lô còn lại sẽ được đưa vào báo cáo chính thức của đợt này.${isPartialScope ? " Nhập/xuất Excel chỉ áp dụng cho các phần lô đang chọn." : ""}`
       : "Vui lòng chọn ít nhất một phần lô trước khi lưu đánh giá.";
-    feedback.classList.toggle("is-error", !hasSelection);
+    feedback.classList.toggle("is-error", isSelectedMode && !hasSelection);
   }
   if (title) {
-    title.textContent = `Đánh giá E-HSDT — ${selectedLabel}`;
+    title.textContent = "Đánh giá E-HSDT";
   }
   [
     view.getActiveElement("btn-danhgiahsdt-download-excel"),
@@ -101,6 +118,24 @@ export function renderBidEvaluationLotScope({
   if (allRadio) allRadio.onchange = () => applyMode(EVALUATION_LOT_SCOPE_MODE.ALL);
   if (selectedRadio) {
     selectedRadio.onchange = () => applyMode(EVALUATION_LOT_SCOPE_MODE.SELECTED);
+  }
+  if (selectAllLotsButton) {
+    selectAllLotsButton.onclick = () => {
+      if (!isSelectedMode || isLocked) return;
+      onChange(updateEvaluationLotScope(scope, lots, {
+        mode: EVALUATION_LOT_SCOPE_MODE.SELECTED,
+        selectedLotIds: lots.map((lot) => lot.id),
+      }));
+    };
+  }
+  if (clearAllLotsButton) {
+    clearAllLotsButton.onclick = () => {
+      if (!isSelectedMode || isLocked) return;
+      onChange(updateEvaluationLotScope(scope, lots, {
+        mode: EVALUATION_LOT_SCOPE_MODE.SELECTED,
+        selectedLotIds: [],
+      }));
+    };
   }
   options?.querySelectorAll("[data-evaluation-lot-id]").forEach((checkbox) => {
     checkbox.onchange = () => {

@@ -1,4 +1,3 @@
-import { getEvaluationLotScopeDetails } from "./lotEvaluationScope.js";
 import { isCombinedTechnicalPriceMethod } from "./technicalEvaluationMethod.js";
 
 function cell(label, className) {
@@ -155,7 +154,6 @@ export function buildBidEvaluationTablePresentation({
   pkg,
   isTwoEnvelope = false,
   currentTab = "unified",
-  lotScope = null,
 } = {}) {
   if (!pkg) throw new TypeError("Bid evaluation table presentation requires a package.");
   const isConsulting = pkg.linhVuc === "Tư vấn";
@@ -179,7 +177,6 @@ export function buildBidEvaluationTablePresentation({
   const isCombinedMethod = isCombinedTechnicalPriceMethod(pkg);
   const showCombinedScore = isCombinedMethod
     && !(isTwoEnvelope && currentTab === "technical");
-  const lotLabel = getEvaluationLotScopeDetails(pkg, lotScope)?.lotCodes?.join(", ");
   let baseTitle = "Đánh giá E-HSDT";
   if (isTwoEnvelope || isConsulting) {
     baseTitle = currentTab === "technical"
@@ -194,7 +191,7 @@ export function buildBidEvaluationTablePresentation({
     hasLots,
     isCombinedMethod,
     showCombinedScore,
-    title: lotLabel ? `${baseTitle} — ${lotLabel}` : baseTitle,
+    title: baseTitle,
     headerHtml: buildHeader(caseType, {
       isConsulting,
       isCombinedMethod,
