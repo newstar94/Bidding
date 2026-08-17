@@ -14,8 +14,10 @@ import {
 } from "../../frontend/shared/VersionedEntityService.js";
 import {
   findTimelineContracts,
+  buildTimelineLineagePresentation,
   selectableTimelinePlans,
   timelineInitialPackageReference,
+  timelinePackageFamily,
   timelinePackageRepresentatives,
 } from "../../frontend/packages/PackageTimelineView.js";
 
@@ -225,7 +227,7 @@ test("timeline contract projection resolves package lineage", () => {
   );
 });
 
-test("timeline package picker shows one package family and leaves revisions to the version picker", () => {
+test("timeline package picker shows one package family without exposing revisions", () => {
   const package00 = {
     id: "package-00", rootId: "package-root", phienBan: "00",
     maGoiThau: "IB2600212155", tenGoiThau: "Mua sắm thuốc Generic",
@@ -249,6 +251,60 @@ test("timeline package picker shows one package family and leaves revisions to t
     timelineInitialPackageReference([package01], package01).id,
     package00.id,
   );
+  assert.deepEqual(
+    timelinePackageFamily([package00, package01], package01).map((pkg) => pkg.id),
+    [package00.id, package01.id],
+  );
+});
+
+test("timeline aggregates every dated milestone from the package lineage without version labels", () => {
+  const currentRows = [{
+    id: "approval-current",
+    milestoneKey: "E_HSMT_APPROVAL",
+    sectionKey: "E_HSMT",
+    sortOrder: 30,
+    ngayThucTe: "2026-06-15",
+  }];
+  const presentation = buildTimelineLineagePresentation(currentRows, [
+    {
+      packageId: "package-00",
+      rows: [
+        {
+          id: "approval-original",
+          milestoneKey: "E_HSMT_APPROVAL",
+          sectionKey: "E_HSMT",
+          sortOrder: 30,
+          ngayDuKien: "2026-06-01",
+          ngayThucTe: "2026-06-03",
+        },
+        {
+          id: "opening-original",
+          milestoneKey: "BID_OPENING_MINUTES",
+          sectionKey: "SELECTION_RESULT",
+          sortOrder: 50,
+          ngayThucTe: "2026-06-05",
+        },
+      ],
+    },
+    { packageId: "package-01", rows: currentRows },
+  ]);
+
+  assert.equal(presentation.rows.length, 2);
+  assert.equal(presentation.rows[0].id, "approval-current");
+  assert.equal(presentation.rows[1].isHistorical, true);
+  assert.deepEqual(presentation.dateHistoryByMilestone.E_HSMT_APPROVAL, [
+    { field: "ngayDuKien", value: "2026-06-01" },
+    { field: "ngayThucTe", value: "2026-06-03" },
+    { field: "ngayThucTe", value: "2026-06-15" },
+  ]);
+  assert.deepEqual(presentation.dateHistoryByMilestone.BID_OPENING_MINUTES, [
+    { field: "ngayThucTe", value: "2026-06-05" },
+  ]);
+
+  const source = fs.readFileSync("frontend/packages/PackageTimelineView.js", "utf8");
+  const markup = fs.readFileSync("views/tabs/tab_goithau_timeline.html", "utf8");
+  assert.doesNotMatch(source, /timeline-version-select/);
+  assert.doesNotMatch(markup, /timeline-version-select/);
 });
 
 test("timeline keeps the original E-HSMT approval and maps revision 01 as adjustment 1", () => {

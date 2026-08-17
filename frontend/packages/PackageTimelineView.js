@@ -5,7 +5,6 @@ import { getJson } from "../shared/apiClient.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
-import { getVersionLabel } from "../shared/formatters.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import {
   selectLatestVersion,
@@ -87,6 +86,9 @@ function timelineState(view) {
     initialPackage: null,
     plan: null,
     rows: [],
+    lineageRows: [],
+    displayRows: [],
+    dateHistoryByMilestone: {},
     packageOptions: [],
     packageQuery: "",
     filters: { status: "" },
@@ -111,6 +113,9 @@ export function resetTimelineSession(view) {
     state.initialPackage = null;
     state.plan = null;
     state.rows = [];
+    state.lineageRows = [];
+    state.displayRows = [];
+    state.dateHistoryByMilestone = {};
     state.packageOptions = [];
     state.packageQuery = "";
     state.filters = { status: "" };
@@ -221,11 +226,6 @@ function initTimelineComboboxes(view) {
       state.packageSearchTimer = setTimeout(() => loadPackageOptions(view, query), 300);
     }
   });
-  initAccessibleCombobox(element("timeline-version-select"), {
-    searchable: false,
-    placeholder: "--",
-    noResultsText: "Không có phiên bản khác"
-  });
   initAccessibleCombobox(element("timeline-status-filter"), {
     searchable: false,
     includeEmptyOption: true,
@@ -331,6 +331,36 @@ export function timelinePackageRepresentatives(records = []) {
   return selectLatestVersionsByRoot(Array.isArray(records) ? records : []);
 }
 
+export function timelinePackageFamily(records = [], pkg = null) {
+  if (!pkg?.id) return [];
+  const rootId = versionRootId(pkg);
+  const knownVersionIds = new Set(
+    (Array.isArray(pkg.allVersions) ? pkg.allVersions : [])
+      .map((version) => String(version?.id || ""))
+      .filter(Boolean),
+  );
+  const byId = new Map();
+  [
+    ...(Array.isArray(pkg.allVersions) ? pkg.allVersions : []),
+    ...(Array.isArray(records) ? records : []),
+    pkg,
+  ].forEach((candidate) => {
+    if (!candidate?.id) return;
+    const candidateId = String(candidate.id);
+    const matchesFamily = candidateId === String(pkg.id)
+      || knownVersionIds.has(candidateId)
+      || versionRootId(candidate) === rootId
+      || String(candidate.rootId || "") === rootId;
+    if (!matchesFamily) return;
+    const existing = byId.get(candidateId);
+    byId.set(candidateId, existing ? { ...existing, ...candidate } : candidate);
+  });
+  return [...byId.values()].sort((left, right) => (
+    versionNumber(left) - versionNumber(right)
+    || String(left.id || "").localeCompare(String(right.id || ""))
+  ));
+}
+
 export function timelineInitialPackageReference(records = [], pkg = null) {
   if (!pkg) return null;
   const rootId = versionRootId(pkg);
@@ -361,10 +391,19 @@ export function timelineInitialPackageReference(records = [], pkg = null) {
   ) || pkg;
 }
 
-async function fetchTimelineInitialPackage(view, pkg) {
-  const reference = timelineInitialPackageReference(view.model.state.goithau || [], pkg);
-  if (!reference || String(reference.id) === String(pkg.id)) return pkg;
-  return await fetchTimelinePackage(view, reference.id) || pkg;
+async function fetchTimelineLineagePackages(view, pkg) {
+  const references = timelinePackageFamily(view.model.state.goithau || [], pkg);
+  const results = await Promise.allSettled(references.map((reference) => (
+    fetchTimelinePackage(view, reference.id)
+  )));
+  const packages = results
+    .filter((result) => result.status === "fulfilled" && result.value)
+    .map((result) => result.value);
+  return [...new Map(packages.map((item) => [String(item.id), item])).values()]
+    .sort((left, right) => (
+      versionNumber(left) - versionNumber(right)
+      || String(left.id || "").localeCompare(String(right.id || ""))
+    ));
 }
 
 async function loadPackageOptions(view, search = timelineState(view).packageQuery) {
@@ -404,28 +443,91 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
   }
 }
 
-function renderVersionOptions(pkg) {
-  const select = element("timeline-version-select");
-  if (!select) return;
-  const versions = sortVersionsDescending(Array.isArray(pkg?.allVersions) && pkg.allVersions.length
-    ? [...pkg.allVersions]
-    : pkg ? [{ id: pkg.id, phienBan: pkg.phienBan || "00" }] : []);
-  select.innerHTML = trustedHTML(versions.map((version) => (
-    `<option value="${safeAttr(version.id)}">Phiên bản ${escapeHtml(getVersionLabel(version.phienBan))}</option>`
-  )).join("") || `<option value="">--</option>`);
-  select.value = pkg?.id || "";
-  select.disabled = versions.length <= 1;
-  prepareTimelineSelect(select, "Chọn phiên bản timeline");
-}
-
 function statusOptions(current) {
   return Object.entries(STATUS_LABELS).map(([value, label]) => (
     `<option value="${value}"${value === current ? " selected" : ""}>${label}</option>`
   )).join("");
 }
 
+function timelineMilestoneKey(row) {
+  return String(row?.milestoneKey || row?.maMoc || "").trim();
+}
+
+function timelineDateRecords(row) {
+  return ["ngayDuKien", "ngayThucTe"]
+    .map((field) => ({ field, value: String(row?.[field] || "").trim() }))
+    .filter((date) => Boolean(date.value));
+}
+
+export function buildTimelineLineagePresentation(currentRows = [], versionRows = []) {
+  const current = Array.isArray(currentRows) ? currentRows : [];
+  const currentKeys = new Set(current.map(timelineMilestoneKey).filter(Boolean));
+  const datesByMilestone = new Map();
+  const historicalRows = new Map();
+
+  (Array.isArray(versionRows) ? versionRows : []).forEach((version) => {
+    const packageId = String(version?.packageId || "").trim();
+    (Array.isArray(version?.rows) ? version.rows : []).forEach((row) => {
+      const milestoneKey = timelineMilestoneKey(row);
+      const dates = timelineDateRecords(row);
+      if (!milestoneKey || dates.length === 0) return;
+      const milestones = datesByMilestone.get(milestoneKey) || new Map();
+      dates.forEach((date) => milestones.set(`${date.field}\u0000${date.value}`, date));
+      datesByMilestone.set(milestoneKey, milestones);
+      if (!currentKeys.has(milestoneKey) && !historicalRows.has(milestoneKey)) {
+        historicalRows.set(milestoneKey, {
+          ...row,
+          id: `history:${packageId || "package"}:${row.id || milestoneKey}`,
+          isHistorical: true,
+        });
+      }
+    });
+  });
+
+  const rows = [...current, ...historicalRows.values()].sort((left, right) => (
+    Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+    || Number(Boolean(left.isHistorical)) - Number(Boolean(right.isHistorical))
+    || String(left.id || "").localeCompare(String(right.id || ""))
+  ));
+  const dateHistoryByMilestone = Object.fromEntries(
+    [...datesByMilestone.entries()].map(([milestoneKey, values]) => [
+      milestoneKey,
+      [...values.values()].sort((left, right) => (
+        String(left.value).localeCompare(String(right.value))
+        || left.field.localeCompare(right.field)
+      )),
+    ]),
+  );
+  return { rows, dateHistoryByMilestone };
+}
+
+function refreshTimelineLineagePresentation(state) {
+  const currentPackageId = String(state.package?.id || "");
+  const versionRows = (state.lineageRows || []).map((version) => (
+    String(version.packageId) === currentPackageId
+      ? { ...version, rows: state.rows }
+      : version
+  ));
+  const presentation = buildTimelineLineagePresentation(state.rows, versionRows);
+  state.displayRows = presentation.rows;
+  state.dateHistoryByMilestone = presentation.dateHistoryByMilestone;
+}
+
+function renderTimelineDateHistory(state, row, dateBinding) {
+  const history = state.dateHistoryByMilestone?.[timelineMilestoneKey(row)] || [];
+  const additionalDates = history.filter((date) => (
+    date.field !== dateBinding.field || date.value !== dateBinding.value
+  ));
+  if (!additionalDates.length) return "";
+  return `<span class="timeline-date-history">${additionalDates.map((date) => {
+    const label = date.field === "ngayThucTe" ? "Thực tế" : "Dự kiến";
+    return `<span>${label}: ${escapeHtml(formatTimelineDate(date.value) || date.value)}</span>`;
+  }).join("")}</span>`;
+}
+
 function filteredRows(state) {
-  return state.rows.filter((row) => {
+  const rows = Array.isArray(state.displayRows) ? state.displayRows : state.rows;
+  return rows.filter((row) => {
     if (state.filters.status && row.trangThai !== state.filters.status) return false;
     return true;
   });
@@ -464,7 +566,6 @@ function renderTimelineTable(view) {
   const tbody = element("timeline-table-body");
   if (!tbody || !state.package) return;
   const editable = state.package.canEdit !== false;
-  const disabled = editable ? "" : " disabled";
   const rows = filteredRows(state);
   let activeGroup = "";
   const html = [];
@@ -474,6 +575,7 @@ function renderTimelineTable(view) {
       html.push(`<tr class="timeline-group-row"><th scope="rowgroup">${escapeHtml(row.displayGroupCode || row.maNhom)}</th><th colspan="6">${escapeHtml(row.tenNhom)}</th></tr>`);
     }
     const overdue = timelineIsOverdue(row);
+    const disabled = editable && !row.isHistorical ? "" : " disabled";
     const sourceLabel = row.sourceMode === "AUTO" ? "Tự động" : "Thủ công";
     const dateBinding = timelineDateBinding(row);
     const displayCode = timelineDisplayCode(row, state.rows);
@@ -486,12 +588,12 @@ function renderTimelineTable(view) {
       ? `<button type="button" class="timeline-restore-source" data-appraisal-action="require" title="Xác nhận có thẩm định E-HSMT" aria-label="Xác nhận chuyển yêu cầu thẩm định E-HSMT sang Có"${disabled}><i data-lucide="badge-check"></i></button>`
       : "";
     html.push(`
-      <tr class="timeline-item-row${overdue ? " is-overdue" : ""}${conditional ? " is-conditional" : ""}" data-entry-id="${safeAttr(row.id)}">
+      <tr class="timeline-item-row${overdue ? " is-overdue" : ""}${conditional ? " is-conditional" : ""}${row.isHistorical ? " is-history" : ""}" data-entry-id="${safeAttr(row.id)}">
         <th scope="row" title="Mã mốc nghiệp vụ ${safeAttr(row.milestoneKey || row.maMoc)}">${escapeHtml(displayCode)}</th>
         <td><span class="timeline-work-title">${escapeHtml(row.congViec)}</span>${conditional ? `<span class="timeline-conditional" title="${safeAttr(row.applicabilityReason)}">${escapeHtml(conditionalLabel)}</span>` : ""}</td>
         <td><input type="text" data-timeline-field="donViBanHanh" value="${safeAttr(row.donViBanHanh)}" maxlength="300" aria-label="Đơn vị ban hành mốc ${safeAttr(row.maMoc)}"${disabled}></td>
         <td><input type="text" data-timeline-field="soVanBan" value="${safeAttr(row.soVanBan)}" maxlength="300" aria-label="Số văn bản mốc ${safeAttr(row.maMoc)}"${disabled}></td>
-        <td><input type="text" class="flatpickr-date" data-timeline-field="${dateBinding.field}" value="${safeAttr(formatTimelineDate(dateBinding.value))}" placeholder="dd/MM/yyyy" aria-label="${dateBinding.label} mốc ${safeAttr(row.maMoc)}"${disabled}></td>
+        <td class="timeline-time-cell"><input type="text" class="flatpickr-date" data-timeline-field="${dateBinding.field}" value="${safeAttr(formatTimelineDate(dateBinding.value))}" placeholder="dd/MM/yyyy" aria-label="${dateBinding.label} mốc ${safeAttr(row.maMoc)}"${disabled}>${renderTimelineDateHistory(state, row, dateBinding)}</td>
         <td><select data-timeline-field="trangThai" aria-label="Trạng thái mốc ${safeAttr(row.maMoc)}"${disabled}>${statusOptions(row.trangThai)}</select>${overdue ? `<span class="timeline-overdue-label"><i data-lucide="alert-triangle"></i> Quá hạn</span>` : ""}</td>
         <td><button type="button" class="timeline-source-badge ${row.sourceMode === "AUTO" ? "is-auto" : "is-manual"}" data-source-action="toggle" aria-label="Chuyển nguồn mốc ${safeAttr(row.milestoneKey || row.maMoc)}"${disabled}>${sourceLabel}</button>${row.sourceKey && row.sourceMode === "MANUAL" ? `<button type="button" class="timeline-restore-source" data-source-action="restore" title="Khôi phục dữ liệu hệ thống" aria-label="Khôi phục dữ liệu hệ thống mốc ${safeAttr(row.milestoneKey || row.maMoc)}"${disabled}><i data-lucide="rotate-ccw"></i></button>` : ""}${appraisalConflictControl}${adjustmentControls}</td>
       </tr>`);
@@ -540,6 +642,7 @@ async function removeEhsmtAdjustment(view, row) {
     findContracts(view, state.package),
     timelineRuleContext(state),
   );
+  refreshTimelineLineagePresentation(state);
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã ẩn lần điều chỉnh; hãy lưu thay đổi.");
@@ -561,6 +664,7 @@ async function resolveEhsmtAppraisalConflict(view) {
     findContracts(view, state.package),
     timelineRuleContext(state),
   );
+  refreshTimelineLineagePresentation(state);
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã xác nhận có thẩm định E-HSMT; hãy lưu thay đổi.");
@@ -575,6 +679,9 @@ async function selectPackage(view, packageId) {
     state.initialPackage = null;
     state.plan = null;
     state.rows = [];
+    state.lineageRows = [];
+    state.displayRows = [];
+    state.dateHistoryByMilestone = {};
     setHidden("timeline-empty", false);
     setHidden("timeline-table-wrap", true);
     setActionAvailability(state);
@@ -585,35 +692,60 @@ async function selectPackage(view, packageId) {
   setHidden("timeline-loading", false);
   setHidden("timeline-error", true);
   try {
-    const pkg = await fetchTimelinePackage(view, packageId);
+    const requestedPackage = await fetchTimelinePackage(view, packageId);
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
-    if (!pkg) throw new Error("Không tìm thấy gói thầu đã chọn.");
+    if (!requestedPackage) throw new Error("Không tìm thấy gói thầu đã chọn.");
+    const lineagePackages = await fetchTimelineLineagePackages(view, requestedPackage);
+    if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
+    const pkg = selectLatestVersion(lineagePackages) || requestedPackage;
     state.package = pkg;
-    state.initialPackage = null;
-    const [initialPackage, selectedPlan] = await Promise.all([
-      fetchTimelineInitialPackage(view, pkg),
-      fetchTimelinePlan(view, pkg.keHoachId),
-    ]);
+    const initialReference = timelineInitialPackageReference(lineagePackages, pkg) || pkg;
+    state.initialPackage = lineagePackages.find(
+      (version) => String(version.id) === String(initialReference.id),
+    ) || initialReference;
+    const selectedPlan = await fetchTimelinePlan(view, pkg.keHoachId);
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
-    state.initialPackage = initialPackage;
     state.plan = selectedPlan || findPlan(view, pkg);
-    state.rows = mergeTimelineRows(
+    const lineageRows = await Promise.all(lineagePackages.map(async (version) => {
+      let plan = state.plan;
+      if (String(version.keHoachId || "") !== String(pkg.keHoachId || "")) {
+        try {
+          plan = await fetchTimelinePlan(view, version.keHoachId);
+        } catch {
+          plan = findPlan(view, version);
+        }
+      }
+      return {
+        packageId: version.id,
+        rows: mergeTimelineRows(
+          version,
+          plan || {},
+          findContracts(view, version),
+          timelineRuleContext(state),
+        ),
+      };
+    }));
+    if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
+    state.lineageRows = lineageRows;
+    state.rows = lineageRows.find(
+      (version) => String(version.packageId) === String(pkg.id),
+    )?.rows || mergeTimelineRows(
       pkg,
       state.plan,
       findContracts(view, pkg),
       timelineRuleContext(state),
     );
+    refreshTimelineLineagePresentation(state);
     state.dirty = false;
     saveTimelineSelection(view.model, {
       planId: pkg.keHoachId || state.plan?.id,
       packageId: pkg.id
     });
-    renderVersionOptions(pkg);
     setHidden("timeline-table-wrap", false);
     renderTimelineTable(view);
     setActionAvailability(state);
     const applicableCount = state.rows.filter((row) => row.applicability === "APPLICABLE").length;
-    updateLiveStatus("Đã tải " + applicableCount + " mốc áp dụng của gói " + (pkg.maGoiThau || "") + ".");
+    updateLiveStatus("Đã tải " + applicableCount + " mốc áp dụng và tổng hợp thời gian lịch sử của gói " + (pkg.maGoiThau || "") + ".");
   } catch (error) {
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
     if ([403, 404].includes(Number(error?.status)) || /Không tìm thấy/.test(String(error?.message || ""))) {
@@ -681,6 +813,7 @@ function updateRowFromControl(view, control) {
   }
   row[field] = nextValue;
   if (["donViBanHanh", "soVanBan", "ngayThucTe"].includes(field) && row.sourceKey) row.sourceMode = "MANUAL";
+  refreshTimelineLineagePresentation(state);
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Có thay đổi chưa lưu.");
@@ -788,6 +921,7 @@ async function copyPreviousTimeline(view) {
   state.rows = applyTimelineApplicability(
     state.rows, pkg, state.plan, contracts, timelineRuleContext(state),
   );
+  refreshTimelineLineagePresentation(state);
   state.dirty = true;
   renderTimelineTable(view);
   updateLiveStatus("Đã sao chép từ phiên bản trước; hãy lưu thay đổi.");
@@ -810,7 +944,6 @@ function bindTimelineEvents(view, pane) {
     timelineState(view).packageQuery = "";
     selectPackage(view, event.target.value);
   });
-  element("timeline-version-select")?.addEventListener("change", (event) => selectPackage(view, event.target.value));
   element("timeline-status-filter")?.addEventListener("change", (event) => {
     timelineState(view).filters.status = event.target.value;
     renderTimelineTable(view);
@@ -846,6 +979,7 @@ function bindTimelineEvents(view, pane) {
       findContracts(view, state.package),
       timelineRuleContext(state),
     );
+    refreshTimelineLineagePresentation(state);
     state.dirty = true;
     renderTimelineTable(view);
   });
@@ -858,6 +992,7 @@ function bindTimelineEvents(view, pane) {
       findContracts(view, state.package),
       timelineRuleContext(state),
     );
+    refreshTimelineLineagePresentation(state);
     state.dirty = true;
     renderTimelineTable(view);
     updateLiveStatus("Đã làm mới các mốc tự động; hãy lưu thay đổi.");
@@ -894,7 +1029,6 @@ export function resetPackageTimeline() {
     prepareTimelineSelect(packageSelect, "Chọn kế hoạch trước");
     syncTimelineSelectValue(packageSelect, "");
   }
-  renderVersionOptions(null);
   const statusFilter = element("timeline-status-filter");
   if (statusFilter) {
     statusFilter.value = "";
@@ -941,6 +1075,7 @@ export function renderPackageTimeline() {
         findContracts(this, refreshed),
         timelineRuleContext(state),
       );
+      refreshTimelineLineagePresentation(state);
     }
   }
   setActionAvailability(state);
