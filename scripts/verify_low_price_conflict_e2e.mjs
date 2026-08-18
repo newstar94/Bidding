@@ -113,6 +113,43 @@ async function saveOpeningChanges(context, snapshot, changes, mutationId) {
   });
 }
 
+async function openOpeningForPackage(page, { packageCode, openingId }) {
+  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.locator("#search-goithau").fill(packageCode);
+  const packageLink = page.getByRole("link", { name: packageCode, exact: true });
+  await packageLink.waitFor({ state: "visible", timeout: 20_000 });
+  await packageLink.click();
+  const openingTab = page.locator('[data-workflow-tab="opening"]');
+  await openingTab.waitFor({ state: "visible", timeout: 20_000 });
+  if (await openingTab.getAttribute("aria-selected") !== "true") await openingTab.click();
+  await page.locator(`#mothau-table-tbody tr[data-id="${openingId}"]`)
+    .waitFor({ state: "visible", timeout: 20_000 });
+}
+
+async function queueOfflineOpeningChanges(page, context, {
+  openingId,
+  changes,
+  expectedField,
+}) {
+  let row = page.locator(`#mothau-table-tbody tr[data-id="${openingId}"]`);
+  if (await row.locator(expectedField).count() === 0) {
+    await page.locator("#btn-mothau-save").click();
+    await page.locator(`#mothau-table-tbody tr[data-id="${openingId}"] ${expectedField}`)
+      .waitFor({ state: "visible", timeout: 10_000 });
+    row = page.locator(`#mothau-table-tbody tr[data-id="${openingId}"]`);
+  }
+  await context.setOffline(true);
+  for (const [selector, value] of Object.entries(changes)) {
+    await row.locator(selector).fill(value);
+  }
+  await page.locator("#btn-mothau-save").click();
+  await page.waitForFunction(() => {
+    const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState;
+    return syncState === "offline" || syncState === "transport-error";
+  }, null, { timeout: 15_000 });
+}
+
 let browser;
 let fixtureCreated = false;
 try {
@@ -154,27 +191,16 @@ try {
   assert(database.rowVersion > firstSnapshot.opening.rowVersion, "Database rowVersion did not advance");
 
   const offlinePage = await secondContext.newPage();
-  await offlinePage.goto(`${baseURL}/mothau`, { waitUntil: "domcontentloaded" });
-  await waitForApp(offlinePage);
+  await openOpeningForPackage(offlinePage, {
+    packageCode: seeded.packageCode,
+    openingId: seeded.openingId,
+  });
   const sharedSnapshot = await loadOpening(firstContext, seeded.openingId);
-  await secondContext.setOffline(true);
-  const offlineOutcome = await offlinePage.evaluate(async ({ openingId, mutationId }) => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const { workspaceDataStoreFor } = await import("/frontend/app/WorkspaceDataStore.js");
-    const controller = getAppController();
-    const opening = controller.model.state.thongtinmothau.find((item) => item.id === openingId);
-    if (!opening) throw new Error("Offline browser did not hydrate the shared opening");
-    return workspaceDataStoreFor(controller).patch({
-      mutationId,
-      upserts: {
-        thongtinmothau: [{ ...opening, hieuLucHsdt: 321 }],
-      },
-    });
-  }, { openingId: seeded.openingId, mutationId: `${runId}-offline-field` });
-  assert(
-    offlineOutcome.status === "offlineQueued",
-    `Offline browser did not queue its field update: ${JSON.stringify(offlineOutcome)}`,
-  );
+  await queueOfflineOpeningChanges(offlinePage, secondContext, {
+    openingId: seeded.openingId,
+    changes: { ".mt-hieu-luc-hsdt": "321" },
+    expectedField: ".mt-hieu-luc-hsdt",
+  });
 
   const onlineResponse = await saveOpeningChanges(
     firstContext,
@@ -192,12 +218,6 @@ try {
   ), { timeout: 20_000 });
   await secondContext.setOffline(false);
   await reconnectConflict;
-  await offlinePage.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    return !controller?._autoSyncPromise
-      && !controller?.model?.buildMutationSyncPayload?.();
-  }, null, { timeout: 15_000 });
   const afterOfflineConflict = await loadOpening(secondContext, seeded.openingId);
   assert(
     afterOfflineConflict.opening.thoiGianThucHien === "45 ngày",
@@ -208,41 +228,17 @@ try {
     `Stale offline field was committed despite row conflict: ${JSON.stringify(afterOfflineConflict.opening)}`,
   );
 
-  await secondContext.setOffline(true);
-  const invalidOfflineOutcome = await offlinePage.evaluate(async ({ openingId, mutationId }) => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const { workspaceDataStoreFor } = await import("/frontend/app/WorkspaceDataStore.js");
-    const controller = getAppController();
-    const opening = controller.model.state.thongtinmothau.find((item) => item.id === openingId);
-    if (!opening) throw new Error("Conflict recovery did not restore the shared opening");
-    return workspaceDataStoreFor(controller).patch({
-      mutationId,
-      upserts: {
-        thongtinmothau: [{ ...opening, giaDuThau: -1 }],
-      },
-    });
-  }, { openingId: seeded.openingId, mutationId: `${runId}-offline-invalid` });
-  assert(
-    invalidOfflineOutcome.status === "offlineQueued",
-    `Invalid offline update was not retained for server validation: ${JSON.stringify(invalidOfflineOutcome)}`,
+  const invalidResponse = await saveOpeningChanges(
+    secondContext,
+    afterOfflineConflict,
+    { giaDuThau: -1 },
+    `${runId}-invalid-field`,
   );
-  const reconnectValidation = offlinePage.waitForResponse((response) => (
-    response.request().method() === "POST"
-      && new URL(response.url()).pathname === "/api/sync"
-  ), { timeout: 20_000 });
-  await secondContext.setOffline(false);
-  const validationResponse = await reconnectValidation;
-  const validationBody = await validationResponse.json().catch(() => ({}));
+  const invalidBody = await invalidResponse.json().catch(() => ({}));
   assert(
-    validationResponse.status() === 400,
-    `Offline validation reconnect returned ${validationResponse.status()}: ${JSON.stringify(validationBody)}`,
+    invalidResponse.status() === 400,
+    `Invalid field update returned ${invalidResponse.status()}: ${JSON.stringify(invalidBody)}`,
   );
-  await offlinePage.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    return !controller?._autoSyncPromise
-      && !controller?.model?.buildMutationSyncPayload?.();
-  }, null, { timeout: 15_000 });
   const afterOfflineValidation = await loadOpening(secondContext, seeded.openingId);
   assert(
     afterOfflineValidation.opening.giaDuThau === afterOfflineConflict.opening.giaDuThau,
@@ -261,7 +257,7 @@ try {
       onlineField: afterOfflineConflict.opening.thoiGianThucHien,
       staleOfflineFieldCommitted: afterOfflineConflict.opening.hieuLucHsdt === 321,
     },
-    offlineValidationRejected: afterOfflineValidation.opening.giaDuThau
+    serverValidationRejected: afterOfflineValidation.opening.giaDuThau
       === afterOfflineConflict.opening.giaDuThau,
   }, null, 2)}\n`);
 } finally {

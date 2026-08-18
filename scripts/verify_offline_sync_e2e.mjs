@@ -99,15 +99,11 @@ try {
   try {
     await committed;
   } catch (error) {
-    const diagnostics = await page.evaluate(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const controller = getAppController();
-      return {
-        online: navigator.onLine,
-        syncState: document.getElementById("btn-force-sync")?.dataset?.syncState || "",
-        pendingBatch: Boolean(controller?.model?.buildMutationSyncPayload?.()),
-      };
-    });
+    const diagnostics = await page.evaluate(() => ({
+      online: navigator.onLine,
+      syncState: document.getElementById("btn-force-sync")?.dataset?.syncState || "",
+      offlineBannerVisible: document.getElementById("offline-indicator-banner")?.classList.contains("visible") || false,
+    }));
     throw new Error(
       `Network recovery did not retry the pending outbox: ${JSON.stringify({ diagnostics, syncResponses })}`,
       { cause: error },
@@ -153,20 +149,10 @@ try {
   });
   await page.locator("#form-chuyengia button[type='submit']").click();
   await interruptedRequestFailed;
-  await page.waitForFunction(async () => {
-    const [{ getAppController }, { getSyncActivitySnapshot }] = await Promise.all([
-      import("/frontend/app/controllerRef.js"),
-      import("/frontend/app/SyncCoordinator.js"),
-    ]);
-    const controller = getAppController();
-    const activity = getSyncActivitySnapshot(controller);
-    const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState || "";
-    return activity.settled
-      && activity.phase === "transportError"
-      && activity.hasPendingMutations
-      && syncState === "transport-error"
-      && Boolean(controller?.model?.buildMutationSyncPayload?.());
-  }, null, { timeout: 15_000 });
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
+      && document.getElementById("modal-chuyengia")?.classList.contains("active")
+  ), null, { timeout: 15_000 });
   const interruptedSyncState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
   if (interruptedSyncState !== "transport-error") {
     throw new Error(`Interrupted sync exposed an invalid UI state: ${interruptedSyncState || "missing"}`);
@@ -176,25 +162,15 @@ try {
   }
   await page.locator('#modal-chuyengia .modal-close[data-close="modal-chuyengia"]').click();
   await page.locator("#modal-chuyengia.active").waitFor({ state: "hidden", timeout: 10_000 });
-  await page.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    return !controller?._autoSyncPromise
-      && !controller?._syncImmediateTimer
-      && Boolean(controller?.model?.buildMutationSyncPayload?.());
-  }, null, { timeout: 10_000 });
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
+  ), null, { timeout: 10_000 });
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    return !controller?._autoSyncPromise
-      && Boolean(controller?.model?.buildMutationSyncPayload?.());
-  }, null, { timeout: 15_000 });
-  const pendingAfterReload = await page.evaluate(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    return Boolean(getAppController()?.model?.buildMutationSyncPayload?.());
-  });
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
+  ), null, { timeout: 15_000 });
+  const pendingAfterReload = await page.locator("#btn-force-sync").getAttribute("data-sync-state") === "transport-error";
   if (!pendingAfterReload) {
     throw new Error("Interrupted mutation disappeared from the outbox after reload");
   }

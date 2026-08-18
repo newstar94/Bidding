@@ -264,6 +264,10 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Keep optional contractor-risk lookups deterministic and offline during
+      # the workflow suite; production still uses the configured VNEPS service.
+      VNEPS_VIOLATION_FIXTURE_PATH: tests/fixtures/vneps_contractor_violations.json
     services:
       postgres:
         image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10

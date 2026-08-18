@@ -96,6 +96,15 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
   });
 }
 
+export function packageFamilyUpsertsForPlan(packages, finalPackage) {
+  const rootId = String(finalPackage?.rootId || finalPackage?.id || "");
+  const planId = String(finalPackage?.keHoachId || "");
+  return packages.filter((item) => (
+    String(item.rootId || item.id) === rootId
+    && String(item.keHoachId || "") === planId
+  ));
+}
+
 export async function createOfficialPackageVersionFromForm(
   controller,
   sourcePackage,
@@ -1171,15 +1180,12 @@ export async function handleGoiThauSubmit(e) {
     updateModalReturnAction(finalGtId);
   }
   const finalPackage = this.model.state.goithau.find((item) => String(item.id) === String(finalGtId));
-  const finalPackageRootId = String(finalPackage?.rootId || finalPackage?.id || "");
   const explicitUpserts = {
     goithau: this.procurementPackageImport?.controller
       ? this.model.state.goithau.filter(
         (item) => String(item.id) === String(finalGtId),
       )
-      : this.model.state.goithau.filter(
-        (item) => String(item.rootId || item.id) === finalPackageRootId,
-      ),
+      : packageFamilyUpsertsForPlan(this.model.state.goithau, finalPackage),
     goithauhanghoa: this.model.state.goithauhanghoa.filter(
       (item) => String(item.goiThauId) === String(finalGtId),
     ),

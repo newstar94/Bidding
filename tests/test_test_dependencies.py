@@ -110,6 +110,9 @@ def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
     smoke = PROJECT_ROOT / "e2e" / "specs" / "browser-matrix.spec.mjs"
 
     assert "npm run test:e2e:smoke" in _job_runs(workflow, "e2e")
+    assert workflow["jobs"]["e2e"]["env"]["VNEPS_VIOLATION_FIXTURE_PATH"] == (
+        "tests/fixtures/vneps_contractor_violations.json"
+    )
     for browser in ("chromium", "firefox", "webkit"):
         assert f'name: "{browser}"' in config
     assert "contractorViolationReady" in config

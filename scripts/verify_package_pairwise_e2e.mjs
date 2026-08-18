@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
-import { isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
+import { isExpectedSyncReset, isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -141,6 +141,7 @@ try {
       && !isExpectedTelemetryBackpressure(response)) {
       let body = "";
       try { body = await response.text(); } catch {}
+      if (isExpectedSyncReset(response, body)) return;
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
     }
   });

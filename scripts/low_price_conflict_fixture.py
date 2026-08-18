@@ -134,7 +134,7 @@ def _setup(data: dict) -> dict:
                              'Hàng hóa', 'Đấu thầu rộng rãi',
                              'Một giai đoạn một túi hồ sơ', 'Giá thấp nhất',
                              '90 ngày', 'Ngân sách', '30 ngày', 'Quý III/2026',
-                             'Không', 'EVALUATING', 1)""",
+                             'Không', 'OPENED', 1)""",
                 (package_id, organization_id, package_id, f"{run_id}-GT", plan_id, f"Gói {run_id}"),
             )
             cursor.execute(
@@ -166,7 +166,11 @@ def _setup(data: dict) -> dict:
                 (organization_id,),
             )
             cursor.execute("DELETE FROM rate_limit_buckets")
-    return {"openingId": opening_id, "packageId": package_id}
+    return {
+        "openingId": opening_id,
+        "packageId": package_id,
+        "packageCode": f"{run_id}-GT",
+    }
 
 
 def _verify(data: dict) -> dict:

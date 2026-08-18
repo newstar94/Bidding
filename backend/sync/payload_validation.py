@@ -88,6 +88,9 @@ SYNC_CHILD_FIELDS = {
 SYNC_VIRTUAL_FIELDS = {
     "goi_thau": {"danhGiaHsdtMetadata"},
     "thong_tin_mo_thau": {
+        # The opening table persists the lot code, while aggregate versioning
+        # carries this transient ID to validate and remap the cloned lot graph.
+        "phanLoId",
         "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
         "giaXepHang", "giaDeNghiTrungThau", "chapThuanGiaDeNghiTrungThauDuoi50",
         "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "lamRoHopLe",

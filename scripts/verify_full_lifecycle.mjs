@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import vm from "node:vm";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
-import { isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
+import { isExpectedSyncReset, isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -16,6 +16,8 @@ if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configure
 const runId = `E2E-${Date.now()}`;
 const runDigits = String(Date.now()).slice(-9);
 const result = { runId, steps: [] };
+const pageErrors = [];
+const httpErrors = [];
 process.stdout.write(`[E2E] run ${runId}\n`);
 
 function loadSheetJs() {
@@ -161,19 +163,22 @@ const submitModal = async (page, formSelector, modalSelector, { diagnostics = nu
         },
       };
     }, { formSelector, modalSelector });
-    throw new Error(`${diagnostics} submit failed: ${JSON.stringify(browserState)}; ${error.message}`);
+    throw new Error(`${diagnostics} submit failed: ${JSON.stringify({
+      browserState,
+      recentHttpErrors: httpErrors.slice(-8),
+    })}; ${error.message}`);
   }
 };
 
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
 
-const confirmDialog = async (page) => {
-  await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
-  await page.locator("#btn-dialog-ok").click();
-  await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
-};
+  const confirmDialog = async (page) => {
+    await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
+    await page.locator("#btn-dialog-ok").click();
+    await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
+  };
 
-const selectFirstAddress = async (page, provinceSelector, wardSelector) => {
+  const selectFirstAddress = async (page, provinceSelector, wardSelector) => {
   await select(page, provinceSelector, { index: 1 });
   await page.waitForFunction((selector) => {
     const ward = document.querySelector(selector);
@@ -184,14 +189,13 @@ const selectFirstAddress = async (page, provinceSelector, wardSelector) => {
 
 try {
   const page = await browser.newPage({ locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" });
-  const pageErrors = [];
-  const httpErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
   page.on("response", async (response) => {
     if (response.status() >= 400 && response.url().includes("/api/")
       && !isExpectedTelemetryBackpressure(response)) {
       let body = "";
       try { body = await response.text(); } catch {}
+      if (isExpectedSyncReset(response, body)) return;
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
     }
   });
@@ -494,12 +498,40 @@ try {
       while (await page.locator("#phanlo-tbody tr").count() < lots.length) {
         await page.locator("#btn-them-phanlo").click();
       }
-      for (let index = 0; index < lots.length; index += 1) {
-        const row = page.locator("#phanlo-tbody tr").nth(index);
-        await row.locator(".pl-code-input").fill(lots[index].code);
-        await row.locator(".pl-name-input").fill(lots[index].name);
-        await row.locator(".pl-price-input").fill(String(lots[index].price));
-        await row.locator(".pl-duration-input").fill("90 ngày");
+      let lotIndex = 0;
+      while (lotIndex < lots.length) {
+        const visibleRows = page.locator("#phanlo-tbody tr:not([hidden])");
+        await visibleRows.first().waitFor({ state: "visible", timeout: 10_000 });
+        const visibleRowCount = await visibleRows.count();
+        if (!visibleRowCount) throw new Error("No visible package-lot rows are available for input.");
+
+        for (let rowIndex = 0; rowIndex < visibleRowCount && lotIndex < lots.length; rowIndex += 1) {
+          const row = visibleRows.nth(rowIndex);
+          const lot = lots[lotIndex];
+          await row.locator(".pl-code-input").fill(lot.code);
+          await row.locator(".pl-name-input").fill(lot.name);
+          await row.locator(".pl-price-input").fill(String(lot.price));
+          await row.locator(".pl-duration-input").fill("90 ngày");
+          lotIndex += 1;
+        }
+        if (lotIndex >= lots.length) break;
+
+        const lotTable = page.locator("#phanlo-tbody").locator("xpath=ancestor::table[1]");
+        const tableId = await lotTable.getAttribute("id");
+        if (!tableId) throw new Error("Package-lot table is missing its pagination identity.");
+        const pagination = page.locator(`nav[data-table-pagination-for="${tableId}"]`);
+        const activePage = pagination.locator("[aria-current='page']");
+        const currentPage = await activePage.getAttribute("data-table-page");
+        const nextPage = pagination.getByRole("button", { name: "Trang sau", exact: true });
+        if (!currentPage || !await nextPage.isEnabled()) {
+          throw new Error(`Package-lot pagination ended after ${lotIndex} of ${lots.length} lots.`);
+        }
+        await nextPage.click();
+        await page.waitForFunction(({ tableId: expectedTableId, currentPage: expectedCurrentPage }) => {
+          const paginationNav = [...document.querySelectorAll("nav[data-table-pagination-for]")]
+            .find((nav) => nav.dataset.tablePaginationFor === expectedTableId);
+          return paginationNav?.querySelector("[aria-current='page']")?.getAttribute("data-table-page") !== expectedCurrentPage;
+        }, { tableId, currentPage }, { timeout: 10_000 });
       }
     }
     await page.locator("#gt-nguonvon").fill("Ngân sách nhà nước");
@@ -804,9 +836,18 @@ try {
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "hidden", timeout: 15_000 });
   await page.locator('button[data-fn="moThauGoiThau"]').click();
   await page.locator("#dialog-prompt-input").fill(testClock.dateTime(5, "10:00"));
+  const lotOpeningSync = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/sync"
+      && response.ok()
+  ), { timeout: 20_000 });
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
+  await lotOpeningSync;
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
+  await page.waitForFunction(() => (
+    document.getElementById("detail-workflow-status-badge")?.textContent?.includes("Đã mở thầu")
+  ), null, { timeout: 15_000 });
 
   while (await page.locator("#mothau-table-tbody tr").count() < 2) {
     await page.locator("#btn-mothau-add-bid").click();

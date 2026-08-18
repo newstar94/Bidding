@@ -84,6 +84,55 @@ test("plan version inheritance hydrates source packages when the browser cache i
   }
 });
 
+test("plan snapshot is domain-equivalent with a cold or warm package cache", async () => {
+  const previousFetch = globalThis.fetch;
+  const sourcePackage = {
+    id: "pkg-v01-plan00",
+    rootId: "pkg-root",
+    phienBan: "01",
+    isLatest: 1,
+    keHoachId: "plan-00",
+    maGoiThau: "GT-01",
+    tenGoiThau: "Gói thầu kiểm thử",
+    phanLoList: [],
+  };
+  globalThis.fetch = async () => response({
+    items: [sourcePackage], totalItems: 1, hasMore: false, nextCursor: null,
+  });
+
+  const modelFor = (packages) => ({
+    useServerSidePagination: true,
+    state: {
+      goithau: packages.map((item) => ({ ...item })),
+      goithauhanghoa: [],
+      thongtinmothau: [],
+      hanghoaduthaunhathau: [],
+      assignments: [],
+    },
+    normalizeRecordKeys: (record) => record,
+  });
+  const snapshotFor = async (model) => {
+    await hydratePlanPackageRecords(model, "plan-00");
+    let sequence = 0;
+    return snapshotPlanAggregate(model.state, {
+      sourcePlanId: "plan-00",
+      targetPlanId: "plan-01",
+      timestamp: "2026-08-07 14:00:00",
+      createId: (type) => `${type}-${++sequence}`,
+    });
+  };
+
+  try {
+    const cold = await snapshotFor(modelFor([]));
+    const warm = await snapshotFor(modelFor([sourcePackage]));
+
+    assert.deepEqual(warm, cold);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 test("plan package hydration rejects a stale workspace response without touching the new state or database", async () => {
   const previousFetch = globalThis.fetch;
   const request = deferred();

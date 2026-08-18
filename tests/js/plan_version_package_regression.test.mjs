@@ -18,7 +18,10 @@ import {
   loadBreakdownPackageDetails,
   savePlanBreakdown,
 } from "../../frontend/plans/KeHoachWorkflow.js";
-import { createOfficialPackageVersionFromForm } from "../../frontend/packages/GoiThauWorkflow.js";
+import {
+  createOfficialPackageVersionFromForm,
+  packageFamilyUpsertsForPlan,
+} from "../../frontend/packages/GoiThauWorkflow.js";
 
 function replaceTableState(table, records) {
   this.state[table] = records;
@@ -709,6 +712,34 @@ test("creating a package version demotes only its representative in the same pla
     state.goithau.find((pkg) => pkg.id === "goithau-next")?.isLatest,
     1,
   );
+});
+
+test("package copy-on-write sync excludes the historical plan snapshot", () => {
+  const historicalPackage = {
+    id: "package-plan-v00",
+    rootId: "package-root",
+    keHoachId: "plan-v00",
+    isLatest: 0,
+  };
+  const currentSource = {
+    id: "package-plan-v01",
+    rootId: "package-root",
+    keHoachId: "plan-v01",
+    isLatest: 0,
+  };
+  const copiedPackage = {
+    id: "package-plan-v02",
+    rootId: "package-root",
+    keHoachId: "plan-v01",
+    isLatest: 1,
+  };
+
+  const upserts = packageFamilyUpsertsForPlan(
+    [historicalPackage, currentSource, copiedPackage],
+    copiedPackage,
+  );
+
+  assert.deepEqual(upserts, [currentSource, copiedPackage]);
 });
 
 test("plan detail opens its package snapshot without upgrading to the latest plan snapshot", () => {

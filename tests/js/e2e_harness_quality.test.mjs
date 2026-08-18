@@ -100,3 +100,15 @@ test("lifecycle E2E creates portable Excel fixtures when paths are not configure
   assert.match(source, /rmSync\(generatedExcelFixtures\.directory/u);
   assert.doesNotMatch(source, /OneDrive/u);
 });
+
+test("production E2E harnesses do not import development source modules", () => {
+  for (const name of [
+    "verify_bidder_goods_e2e.cjs",
+    "verify_joint_venture_e2e.mjs",
+    "verify_low_price_conflict_e2e.mjs",
+    "verify_offline_sync_e2e.mjs",
+  ]) {
+    const source = fs.readFileSync(path.join(scriptsRoot, name), "utf8");
+    assert.doesNotMatch(source, /import\(["']\/frontend\//u, name);
+  }
+});

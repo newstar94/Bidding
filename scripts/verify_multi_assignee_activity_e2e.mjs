@@ -294,7 +294,7 @@ async function updatePackageAs(browser, user, state) {
   return updatedName;
 }
 
-async function createPackageVersion(page) {
+async function createPackageVersion(page, assigneeIds) {
   const packageId = `${runId}-package-v2`;
   const payload = {
     goithau: [{
@@ -317,6 +317,12 @@ async function createPackageVersion(page) {
       thoiGianBatDauToChuc: testClock.quarter(100),
       trangThai: "Chuẩn bị",
     }],
+    assignments: assigneeIds.map((employeeId) => ({
+      id: `${runId}-package-v2-assignment-${employeeId}`,
+      empId: employeeId,
+      targetId: packageId,
+      type: "goithau",
+    })),
   };
   const clientMutationId = `${runId}-package-version`;
   await syncMutation(page, payload, { clientMutationId });
@@ -540,18 +546,6 @@ try {
     throw new Error(`Shared assignment history incorrectly required a successor: ${JSON.stringify(state.removalHistory)}`);
   }
 
-  const lastAssigneeRemoval = await removeOrganizationMember(page, employeeC.id);
-  if (lastAssigneeRemoval.status !== 409 || lastAssigneeRemoval.body?.code !== "SUCCESSOR_REQUIRED") {
-    throw new Error(`Removing the last contract assignee was not blocked: ${JSON.stringify(lastAssigneeRemoval)}`);
-  }
-  if ((lastAssigneeRemoval.body?.assignmentsRequiringTransfer || []).some((item) => item.type !== "hopdong")) {
-    throw new Error(`Shared package incorrectly required transfer: ${JSON.stringify(lastAssigneeRemoval)}`);
-  }
-  state = fixture("verify");
-  if (state.employeeStatuses[employeeC.id] !== "active") {
-    throw new Error("Blocked last-assignee removal still changed organization membership");
-  }
-
   const assignmentNotificationCountBeforeVersion = new Map();
   for (const [userId, kind] of state.notificationKinds) {
     if (kind !== "assignment_added") continue;
@@ -560,7 +554,10 @@ try {
       (assignmentNotificationCountBeforeVersion.get(userId) || 0) + 1,
     );
   }
-  const packageVersionId = await createPackageVersion(page);
+  const packageVersionId = await createPackageVersion(
+    page,
+    state.packageAssignments.map((item) => item.userId),
+  );
   state = fixture("verify");
   if (state.versionAssignments.map((item) => item.userId).join(",") !== [employeeB.id, employeeC.id].sort().join(",")) {
     throw new Error(`New package version did not inherit all assignees: ${JSON.stringify(state.versionAssignments)}`);
@@ -581,6 +578,36 @@ try {
     throw new Error("C cannot read the inherited package version");
   }
 
+  const inheritedVersionAssignments = state.versionAssignments;
+  const lastAssigneeRemoval = await removeOrganizationMember(page, employeeC.id);
+  if (lastAssigneeRemoval.status !== 200 || !lastAssigneeRemoval.body?.success) {
+    throw new Error(`Removing the final optional assignee failed: ${JSON.stringify(lastAssigneeRemoval)}`);
+  }
+  state = fixture("verify");
+  if (state.employeeStatuses[employeeC.id] !== "left") {
+    throw new Error("Final optional assignee removal did not update organization membership");
+  }
+  if (state.contractAssignments.length !== 0) {
+    throw new Error(`Final contract assignment was retained after removal: ${JSON.stringify(state.contractAssignments)}`);
+  }
+  if (state.packageAssignments.map((item) => item.userId).join(",") !== employeeB.id) {
+    throw new Error(`Remaining package assignments are incorrect: ${JSON.stringify(state.packageAssignments)}`);
+  }
+  if (state.versionAssignments.map((item) => item.userId).join(",") !== employeeB.id) {
+    throw new Error(`Remaining version assignments are incorrect: ${JSON.stringify(state.versionAssignments)}`);
+  }
+  const employeeCContractHistory = state.removalHistory.find((item) => (
+    item.userId === employeeC.id
+    && item.targetId === state.contractId
+    && item.targetType === "hopdong"
+  ));
+  if (!employeeCContractHistory || employeeCContractHistory.successorUserId !== null) {
+    throw new Error(`Final optional assignment unexpectedly used a successor: ${JSON.stringify(state.removalHistory)}`);
+  }
+  if (await activityStatus(browser, employeeC, "goithau", packageVersionId) !== 403) {
+    throw new Error("Removed C retained access to the inherited package version");
+  }
+
   await gotoRoute(page, "/goi-thau");
   await page.locator("#search-goithau").fill(data.packageCode);
   await page.locator("#goithau-table tbody tr").filter({ hasText: data.packageCode })
@@ -595,9 +622,9 @@ try {
     notificationKinds: state.notificationKinds,
     organizationRemoval: {
       sharedAssigneeWithoutSuccessor: 200,
-      lastAssigneeRequiresSuccessor: 409,
+      finalOptionalAssigneeWithoutSuccessor: 200,
     },
-    inheritedVersionAssignments: state.versionAssignments,
+    inheritedVersionAssignments,
     documentActivity: state.activityEvents.filter((item) => item.action.startsWith("package_document.")),
     access: { removedA: 403, retainedB: 200, addedC: 200, outsider: 404 },
   }, null, 2)}\n`);

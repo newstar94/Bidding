@@ -11,6 +11,7 @@ from backend.versioning.aggregate_validator import (
     AggregateGraphValidationError,
     validate_generated_aggregate_graph,
 )
+from backend.sync.payload_validation import validate_sync_payload_shape
 
 
 def _ids():
@@ -219,6 +220,16 @@ def test_plan_snapshot_uses_complete_server_state_without_browser_hydration():
     assert inherited_package["timelineItems"][0]["sourceEntityId"] == inherited_package["phanLoList"][0]["id"]
     assert inherited_package["yeuCauLamRoList"][0]["id"] != "clarification-source"
     assert inherited_package["giaHanList"][0]["id"] != "extension-source"
+
+    # `phanLoId` is a transient graph reference carried by lotted openings.
+    # The generated aggregate must remain a valid sync payload after cloning.
+    assert validate_sync_payload_shape({
+        "clientMutationId": "plan-snapshot-lot-reference",
+        "thongtinmothau": [{
+            "id": aggregate["thongtinmothau"][0]["id"],
+            "phanLoId": aggregate["thongtinmothau"][0]["phanLoId"],
+        }],
+    }) == []
 
 
 def test_plan_snapshot_can_exclude_removed_package_roots():

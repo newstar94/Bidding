@@ -464,33 +464,16 @@ async function importAndPersist(page, packageData, workflowTab) {
       '[data-detailed-evaluation-group="financial"]',
     ).waitFor({ state: "visible", timeout: 20_000 });
   } catch (error) {
-    const diagnostics = await page.evaluate(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const controller = getAppController();
+    const diagnostics = await page.evaluate(() => {
       const currentBidId = String(
         document.querySelector("#detailed-evaluation-bid-select")?.value || "",
       );
       return {
         currentBidId,
-        selectedGroup: controller?.selectedDetailedEvaluationTab || "",
         tabs: [...document.querySelectorAll("[data-detailed-evaluation-group]")]
           .map((tab) => ({ group: tab.dataset.detailedEvaluationGroup, hidden: tab.hidden })),
-        openings: (controller?.model?.state?.thongtinmothau || [])
-          .filter((item) => !currentBidId || String(item.id) === currentBidId)
-          .map((item) => ({
-            id: item.id,
-            lot: item.maPhanLo,
-            preferenceStatus: item.trangThaiTinhUuDai,
-            comparisonPrice: item.giaSoSanhSauUuDai,
-          })),
-        goods: (controller?.model?.state?.hanghoaduthaunhathau || [])
-          .filter((item) => !currentBidId || String(item.thongTinMoThauId) === currentBidId)
-          .map((item) => ({
-            id: item.id,
-            openingId: item.thongTinMoThauId,
-            isDraft: item.isDraft,
-            preferenceStatus: item.trangThaiUuDai,
-          })),
+        renderedRows: [...document.querySelectorAll(".bidder-goods-table tbody tr")]
+          .map((row) => row.textContent?.trim() || ""),
       };
     });
     throw new Error(`${packageData.code}: financial group stayed locked after reload: ${JSON.stringify(diagnostics)}; ${error.message}`);
@@ -510,7 +493,7 @@ async function importAndPersist(page, packageData, workflowTab) {
 }
 
 (async () => {
-  const { isExpectedTelemetryBackpressure } = await import("./lib/e2eHttpErrors.mjs");
+  const { isExpectedSyncReset, isExpectedTelemetryBackpressure } = await import("./lib/e2eHttpErrors.mjs");
   const parser = await import(pathToFileURL(
     path.join(root, "frontend", "packages", "BidderGoodsExcel.js"),
   ));
@@ -563,6 +546,7 @@ async function importAndPersist(page, packageData, workflowTab) {
       ) return;
       let body = "";
       try { body = await response.text(); } catch {}
+      if (isExpectedSyncReset(response, body)) return;
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
       process.stderr.write(`[HTTP ERROR] ${httpErrors.at(-1)}\n`);
     });
