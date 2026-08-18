@@ -180,15 +180,13 @@ def test_shared_reference_permission_is_enforced_and_invalid_module_fails_closed
     )
 
 
-def test_manager_employee_persona_uses_explicit_least_privilege_permissions():
+def test_manager_employee_persona_inherits_view_and_honors_explicit_edit_permission():
     class ManagerEmployeeCursor(_AuthorizationCursor):
         def execute(self, sql, params=()):
             super().execute(sql, params)
             normalized = " ".join(str(sql).split())
             if normalized.startswith("SELECT lower(trim(vai_tro_trong_to_chuc))"):
                 self.one = ("manager",)
-            elif normalized.startswith("SELECT goithau FROM ma_tran_phan_quyen"):
-                self.one = ("view",)
             return self
 
     role = SimpleNamespace(active_role="employee", platform_role="user")
@@ -199,13 +197,48 @@ def test_manager_employee_persona_uses_explicit_least_privilege_permissions():
     ) is False
     assert access_policy.has_inherited_specialist_access(
         cursor, role, "specialist-1", "org-1"
-    ) is False
+    ) is True
     assert access_policy.has_module_permission(
         cursor, role, "specialist-1", "org-1", "goithau", "edit"
-    ) is False
+    ) is True
     assert access_policy.has_module_permission(
         cursor, role, "specialist-1", "org-1", "goithau", "view"
     ) is True
+
+    context = access_policy.build_batch_write_authorization_context(
+        cursor,
+        role,
+        "specialist-1",
+        "org-1",
+        {"goi_thau": [{"id": "package-A"}]},
+    )
+    assert context.inherited_specialist_access is True
+    assert context.permissions["goithau"] == "edit"
+    assert access_policy._context_has_module_permission(
+        context, "goithau", "edit"
+    ) is True
+
+
+def test_manager_employee_persona_does_not_inherit_edit_permission():
+    class ManagerEmployeeWithoutMatrixCursor(_AuthorizationCursor):
+        def execute(self, sql, params=()):
+            super().execute(sql, params)
+            normalized = " ".join(str(sql).split())
+            if normalized.startswith("SELECT lower(trim(vai_tro_trong_to_chuc))"):
+                self.one = ("manager",)
+            elif normalized.startswith("SELECT goithau FROM ma_tran_phan_quyen"):
+                self.one = None
+            return self
+
+    role = SimpleNamespace(active_role="employee", platform_role="user")
+    assert access_policy.has_module_permission(
+        ManagerEmployeeWithoutMatrixCursor(),
+        role,
+        "specialist-1",
+        "org-1",
+        "goithau",
+        "edit",
+    ) is False
 
 
 @pytest.mark.parametrize(

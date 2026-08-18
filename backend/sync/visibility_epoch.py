@@ -8,7 +8,7 @@ import json
 from backend.shared.workspace_scope import is_personal_scope_for_user
 
 
-VISIBILITY_POLICY_VERSION = 4
+VISIBILITY_POLICY_VERSION = 5
 _PERMISSION_COLUMNS = (
     "kehoach",
     "goithau",

@@ -6,7 +6,7 @@ import {
   getSyncActivitySnapshot,
   shouldShowLocalPending,
 } from "../../frontend/app/SyncCoordinator.js";
-import { autoSync } from "../../frontend/app/SyncPushService.js";
+import { applyFailedPush, autoSync } from "../../frontend/app/SyncPushService.js";
 
 
 test("sync status distinguishes durable, pending, validation, transport, and offline states", () => {
@@ -113,4 +113,42 @@ test("auto sync repairs a duplicate pending plan before building its payload", a
   assert.equal(result.ok, true);
   assert.equal(result.skipped, true);
   assert.deepEqual(calls, ["repair", "build", "idle"]);
+});
+
+test("terminal validation flushes the rejected batch and clears the persistent pill", async () => {
+  const calls = [];
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  const controller = {
+    model: {
+      state: { goithau: [] },
+      discardRejectedMutations(errors, snapshot, options) {
+        calls.push(["discard", errors, snapshot, options]);
+        return [{ type: "goithau", id: "package-1", operation: "upsert", conflictingId: "" }];
+      },
+      async flushMutationOutbox() { calls.push(["flush"]); },
+      buildMutationSyncPayload: () => null,
+      db: { async deleteRecord() {} },
+    },
+    async fetchRecordByLookup() { return null; },
+    updateSyncState(state) { calls.push(["state", state.phase]); },
+  };
+
+  try {
+    const result = await applyFailedPush(controller, {
+      status: 400,
+      data: {
+        status: "error",
+        errors: [{ field: "$record", code: "HISTORICAL_PARENT_IMMUTABLE", message: "Rejected" }],
+      },
+      snapshot: { id: "receipt-1" },
+    });
+
+    assert.equal(result.validation, true);
+    assert.equal(calls.some(([kind]) => kind === "flush"), true);
+    assert.deepEqual(calls.at(-1), ["state", "idle"]);
+    assert.deepEqual(calls[0][3], { fallbackToBatch: true });
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

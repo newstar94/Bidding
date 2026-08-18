@@ -361,6 +361,47 @@ def test_existing_historical_plan_in_sync_batch_remains_immutable():
     assert error["code"] == "HISTORICAL_PARENT_IMMUTABLE"
 
 
+def test_existing_current_plan_ignores_stale_client_latest_flag_for_assignment():
+    class Cursor:
+        def execute(self, _sql, _parameters=()):
+            raise AssertionError("complete incoming ownership must not query PostgreSQL")
+
+    context = build_aggregate_mutability_context(
+        Cursor(),
+        "org-1",
+        {
+            "ke_hoach_lcnt": [{"id": "plan-current", "isLatest": 0}],
+            "goi_thau": [{"id": "package-1", "keHoachId": "plan-current"}],
+            "phan_cong_nhan_su": [{
+                "id": "assignment-1",
+                "type": "goithau",
+                "targetId": "package-1",
+                "empId": "user-1",
+            }],
+        },
+        current_records_by_table={
+            "ke_hoach_lcnt": {
+                "plan-current": {"id": "plan-current", "is_latest": 1},
+            },
+            "goi_thau": {
+                "package-1": {
+                    "id": "package-1",
+                    "ke_hoach_id": "plan-current",
+                },
+            },
+        },
+    )
+
+    error = historical_parent_mutation_error(
+        context,
+        "phan_cong_nhan_su",
+        {"type": "goithau", "targetId": "package-1"},
+    )
+
+    assert error is None
+    assert context.plan_is_latest_by_id == {"plan-current": True}
+
+
 def test_sync_has_no_successor_requirement_for_optional_assignments():
     service_source = Path("backend/sync/service.py").read_text(encoding="utf-8")
 

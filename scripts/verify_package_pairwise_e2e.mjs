@@ -107,9 +107,17 @@ async function createPackage(page, testCase, httpErrors) {
   await page.locator("#gt-nhanvienphutrach").selectOption({ index: 1 }, { force: true });
 
   const expertSectionVisible = await page.locator("#to-chuyengia-section").isVisible();
-  if (expertSectionVisible) await page.locator('#to-chuyengia-tbody input[name="tochuyengia-select"]').first().check();
+  if (expertSectionVisible) {
+    const expertCheckbox = page.locator('#to-chuyengia-tbody input[name="tochuyengia-select"]').first();
+    await expertCheckbox.waitFor({ state: "visible", timeout: 10_000 });
+    await expertCheckbox.check();
+  }
   const appraisalSectionVisible = await page.locator("#to-thamdinh-section").isVisible();
-  if (appraisalSectionVisible) await page.locator('#to-thamdinh-tbody input[name="tothamdinh-select"]').nth(1).check();
+  if (appraisalSectionVisible) {
+    const appraisalCheckbox = page.locator('#to-thamdinh-tbody input[name="tothamdinh-select"]').nth(1);
+    await appraisalCheckbox.waitFor({ state: "visible", timeout: 10_000 });
+    await appraisalCheckbox.check();
+  }
 
   await page.locator("#form-goithau button[type='submit']").click();
   try {

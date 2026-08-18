@@ -1943,7 +1943,8 @@ table th {
   gap: 6px;
   border: 1px solid color-mix(in srgb, var(--status-color) 28%, var(--border-color));
   background-color: color-mix(in srgb, var(--status-color) 12%, var(--bg-card));
-  color: color-mix(in srgb, var(--status-color) 76%, var(--ink));
+  /* Match shared status badges: bright tint, readable foreground. */
+  color: color-mix(in srgb, var(--status-color) 52%, var(--ink));
   box-shadow: none;
 }
 .security-lock-overlay-wrapper {

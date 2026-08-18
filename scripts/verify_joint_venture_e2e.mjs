@@ -98,11 +98,18 @@ async function waitForApp(page) {
     return loader?.getAttribute("aria-busy") === "false"
       && getComputedStyle(loader).visibility === "hidden";
   }, null, { timeout: 20_000 });
+  await waitForWorkflowSettled(page);
+}
+
+async function waitForWorkflowSettled(page) {
   // The startup shell can finish before its last delta-sync projection
   // replaces the active workflow panel. Interact only after that response
   // stream has been quiet, so an in-flight sync cannot discard unsaved DOM
   // values immediately after an otherwise valid user action.
   await page.waitForLoadState("networkidle", { timeout: 20_000 });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
 }
 
 const workflowTabReadySelectors = {
@@ -183,7 +190,17 @@ async function loginAndSelectWorkspace(page) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
+  try {
+    await page.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      usernameError: document.getElementById("login-username")?.getAttribute("aria-invalid") || "",
+      passwordError: document.getElementById("login-password")?.getAttribute("aria-invalid") || "",
+      errorText: document.querySelector("#auth-error, .auth-error, [role='alert']")?.textContent?.trim() || "",
+      submitDisabled: Boolean(document.querySelector("#form-auth-login button[type='submit']")?.disabled),
+    }));
+    throw new Error(`Joint-venture login did not complete: ${JSON.stringify(diagnostics)}`, { cause: error });
+  }
   await waitForApp(page);
   await page.setExtraHTTPHeaders({ "X-Active-Org": encodeURIComponent(organizationId) });
   const activation = await page.evaluate(async (orgId) => {
@@ -399,12 +416,15 @@ async function waitForTwoEnvelopeTechnicalEvaluation(page) {
   }
 }
 
-async function waitForEvaluationSave(page, httpErrors, pageErrors) {
+async function waitForEvaluationSave(page, httpErrors, pageErrors, { previousSuccessToast = null } = {}) {
   try {
-    await page.waitForFunction(() => (
-      Boolean(document.querySelector(".bf-toast.toast-success:not(.toast-hiding)"))
+    await page.waitForFunction((previousToast) => (
+      (() => {
+        const currentToast = document.querySelector(".bf-toast.toast-success:not(.toast-hiding)");
+        return Boolean(currentToast && currentToast !== previousToast);
+      })()
       || document.getElementById("modal-custom-dialog")?.classList.contains("active")
-    ), null, { timeout: 20_000 });
+    ), previousSuccessToast, { timeout: 20_000 });
   } catch (error) {
     const diagnostics = await page.evaluate(() => {
       return ({
@@ -432,9 +452,24 @@ async function waitForEvaluationSave(page, httpErrors, pageErrors) {
   if (await page.locator("#modal-custom-dialog.active").isVisible()) {
     throw new Error(`Evaluation save blocked: ${await page.locator("#modal-custom-dialog").innerText()}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}`);
   }
-  const successToast = page.locator(".toast-success").last();
+  const successToast = page.locator(".bf-toast.toast-success:not(.toast-hiding)").last();
   await successToast.waitFor({ state: "visible", timeout: 10_000 });
   await successToast.waitFor({ state: "hidden", timeout: 10_000 });
+}
+
+async function saveEvaluationAndWait(page, httpErrors, pageErrors) {
+  // Retain the currently visible toast so the save barrier can distinguish a
+  // new notification from one left by the preceding workflow transition.
+  const previousSuccessToast = await page.evaluateHandle(() => {
+    const toasts = document.querySelectorAll(".bf-toast.toast-success:not(.toast-hiding)");
+    return toasts.item(toasts.length - 1) || null;
+  });
+  await page.locator("#btn-danhgiahsdt-save").click();
+  try {
+    await waitForEvaluationSave(page, httpErrors, pageErrors, { previousSuccessToast });
+  } finally {
+    await previousSuccessToast?.dispose();
+  }
 }
 
 async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
@@ -450,6 +485,7 @@ async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
       throw new Error(`${label} blocked: ${dialogText}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}`);
     }
     await activateWorkflowTab(page, "eval_tech", { activate: false });
+    await waitForWorkflowSettled(page);
   } catch (error) {
     const diagnostics = await page.evaluate(() => ({
       dialogClass: document.getElementById("modal-custom-dialog")?.className || "",
@@ -469,7 +505,10 @@ async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
 let browser;
 let fixtureCreated = false;
 try {
-  fixture("setup");
+  const setupEvidence = fixture("setup");
+  if (setupEvidence.credentialsVerified !== true) {
+    throw new Error("Joint-venture fixture did not seed a usable active account");
+  }
   fixtureCreated = true;
   const wordTemplateEvidence = fixture("create_word_template");
   browser = await chromium.launch({ headless: true });
@@ -695,8 +734,7 @@ try {
   await page.locator("#btn-dialog-ok").click();
   const jointEvaluationRow = evaluationRows.filter({ hasText: "Liên danh" });
   await jointEvaluationRow.locator('.mt-low-price-acceptance[value="false"]').check();
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await waitForEvaluationSave(page, httpErrors, pageErrors);
+  await saveEvaluationAndWait(page, httpErrors, pageErrors);
   const rejectedEvaluation = fixture("verify_evaluation", { expectedLowPriceDecision: false });
   mark("low-price-joint-venture-rejected", rejectedEvaluation);
 
@@ -712,8 +750,7 @@ try {
     .locator('.mt-low-price-acceptance[value="true"]');
   await acceptedRadio.waitFor({ state: "visible", timeout: 10_000 });
   await acceptedRadio.check();
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await waitForEvaluationSave(page, httpErrors, pageErrors);
+  await saveEvaluationAndWait(page, httpErrors, pageErrors);
   const acceptedEvaluation = fixture("verify_evaluation", { expectedLowPriceDecision: true });
   mark("low-price-rejection-changed-to-acceptance", acceptedEvaluation);
 
@@ -768,8 +805,7 @@ try {
   if (!await boundaryRow.locator(".evaluation-low-price-decision").isHidden()) {
     throw new Error("Exactly 50% incorrectly shows a low-price warning");
   }
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await waitForEvaluationSave(page, httpErrors, pageErrors);
+  await saveEvaluationAndWait(page, httpErrors, pageErrors);
   const exactHalfEvidence = fixture("verify_evaluation", { expectedLowPriceDecision: null });
   mark("low-price-exact-half-persisted", exactHalfEvidence);
 
@@ -805,8 +841,7 @@ try {
   }
   await page.locator("#btn-dialog-ok").click();
   await boundaryRow.locator('.mt-low-price-acceptance[value="true"]').check();
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await waitForEvaluationSave(page, httpErrors, pageErrors);
+  await saveEvaluationAndWait(page, httpErrors, pageErrors);
   const boundaryTransitionEvidence = fixture("verify_evaluation", { expectedLowPriceDecision: true });
   mark("low-price-ui-boundaries-and-transition-verified", boundaryTransitionEvidence);
 
@@ -1026,18 +1061,41 @@ try {
     if (await scopedRows.count() !== expectedRows) {
       throw new Error(`Lot ${lot.code} expected ${expectedRows} evaluation rows, got ${await scopedRows.count()}`);
     }
-    for (const row of await scopedRows.all()) {
-      await row.locator(".mt-dg-hop-le").selectOption({ label: "Đạt" }, { force: true });
-      await row.locator(".mt-dg-nang-luc").selectOption({ label: "Đạt" }, { force: true });
-      await row.locator(".mt-dg-ky-thuat").fill("Đạt");
-      const isJoint = (await row.innerText()).includes("Liên danh");
-      const price = isJoint ? jointPrice : independentPrice;
-      await row.locator(".mt-gia-xep-hang").fill(String(price));
-      await row.locator(".mt-gia-de-nghi-trung-thau").fill(String(price));
-      if (isJoint && rejectJoint) {
-        await row.locator('.mt-low-price-acceptance[value="false"]').check();
-      }
-    }
+    // Apply the entire lot in one event turn. Individual Playwright fill calls
+    // cross animation-frame boundaries, which lets the batched ranking
+    // projection observe a transient, partially-entered multi-lot row set.
+    await scopedRows.evaluateAll((rows, {
+      jointPriceValue,
+      independentPriceValue,
+      rejectJointValue,
+    }) => {
+      const change = (row, selector, value) => {
+        const input = row.querySelector(selector);
+        if (!input) throw new Error(`Missing evaluation input ${selector}`);
+        input.value = String(value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      rows.forEach((row) => {
+        const isJoint = row.textContent?.includes("Liên danh") === true;
+        const price = isJoint ? jointPriceValue : independentPriceValue;
+        change(row, ".mt-dg-hop-le", "Đạt");
+        change(row, ".mt-dg-nang-luc", "Đạt");
+        change(row, ".mt-dg-ky-thuat", "Đạt");
+        change(row, ".mt-gia-xep-hang", price);
+        change(row, ".mt-gia-de-nghi-trung-thau", price);
+        if (isJoint && rejectJointValue) {
+          const rejectRadio = row.querySelector('.mt-low-price-acceptance[value="false"]');
+          if (!rejectRadio) throw new Error("Missing low-price rejection control");
+          rejectRadio.checked = true;
+          rejectRadio.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    }, {
+      jointPriceValue: jointPrice,
+      independentPriceValue: independentPrice,
+      rejectJointValue: rejectJoint,
+    });
     // Ranking/conclusion updates are intentionally batched to animation frames.
     // Wait for that public UI state to settle before submitting the report so
     // the click cannot race the pending low-price/conclusion projection.
@@ -1078,6 +1136,28 @@ try {
           selectedMode: document.querySelector(
             'input[name="danhgiahsdt-scope-mode"][value="selected"]',
           )?.checked || false,
+          detailPaneActive: document.getElementById("tab-goithau-detail")?.classList.contains("active") || false,
+          activeWorkflowTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+            ?.getAttribute("data-workflow-tab") || "",
+          resultPanelRendered: Boolean(document.querySelector(
+            "#detail-workflow-content-wrapper #approve-bidders-tbody, #detail-workflow-content-wrapper .award-result-card",
+          )),
+          saveControl: (() => {
+            const button = document.getElementById("btn-danhgiahsdt-save");
+            const packageSelect = document.getElementById("danhgiahsdt-goithau-select");
+            const reportNumber = document.getElementById("danhgiahsdt-so-baocao");
+            const reportDate = document.getElementById("danhgiahsdt-ngay-baocao");
+            return {
+              connected: button?.isConnected === true,
+              disabled: Boolean(button?.disabled),
+              packageId: packageSelect?.value || "",
+              reportNumber: reportNumber?.value || "",
+              reportDate: reportDate?.value || "",
+              invalidFields: [...document.querySelectorAll(
+                "#detail-workflow-content-wrapper :invalid, #detail-workflow-content-wrapper [aria-invalid='true']",
+              )].map((input) => input.id || input.className || input.tagName),
+            };
+          })(),
           checkedLotIds: [...document.querySelectorAll(
             "#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked",
           )].map((input) => input.getAttribute("data-evaluation-lot-id")),
@@ -1094,6 +1174,7 @@ try {
         diagnostics,
         httpErrors,
         pageErrors,
+        responseTrace,
       })}; ${error.message}`);
     }
   };
@@ -1250,8 +1331,7 @@ try {
     });
   });
   await waitForTwoEnvelopeTechnicalEvaluation(page);
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await waitForEvaluationSave(page, httpErrors, pageErrors);
+  await saveEvaluationAndWait(page, httpErrors, pageErrors);
   await activateWorkflowTab(page, "qualified");
   const qualifiedText = await page.locator("#detail-workflow-content-wrapper").innerText();
   if (!qualifiedText.includes(contractors[0].name) || qualifiedText.includes(contractors[3].name)) {

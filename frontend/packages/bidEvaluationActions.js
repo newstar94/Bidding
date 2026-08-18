@@ -629,7 +629,7 @@ export async function saveDanhGiaHsdt() {
       ? evaluationBatch?.id || evaluationLotScope?.batchId || ""
       : "";
     const detailPackageId = selectPackageDetailTab(this.view, targetTab, gt, this.model);
-    await this.view.showPackageDetails(detailPackageId);
+    await this.view.showPackageDetails(detailPackageId, false, targetTab);
   }
   const scopeMessage = evaluationLotDetails
     ? ` cho ${evaluationLotDetails.lotCodes.join(", ")}`

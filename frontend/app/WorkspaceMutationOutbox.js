@@ -388,13 +388,37 @@ export class WorkspaceMutationOutbox {
     return changed;
   }
 
-  reject(receipt, errors = []) {
+  reject(receipt, errors = [], { fallbackToBatch = false } = {}) {
     const rejectedKeys = new Set();
+    let hasUnscopedError = false;
     (errors || []).forEach((error) => {
       const type = this.resolveServerTable(error?.table) || error?.table;
       const id = String(error?.id || "");
       if (type && id) rejectedKeys.add(`${type}:${id}`);
+      else hasUnscopedError = true;
     });
+    const receiptContains = (key) => {
+      const separator = key.indexOf(":");
+      const type = key.slice(0, separator);
+      const id = key.slice(separator + 1);
+      return receipt?.upserts?.[type]?.[id] !== undefined
+        || receipt?.deletes?.[recordKey("delete", type, id)] !== undefined;
+    };
+    const scopedReceiptMatch = [...rejectedKeys].some(receiptContains);
+    const rejectEntireReceipt = Boolean(
+      fallbackToBatch
+      && (errors || []).length > 0
+      && (hasUnscopedError || !scopedReceiptMatch)
+    );
+    if (rejectEntireReceipt) {
+      Object.entries(receipt?.upserts || {}).forEach(([table, records]) => {
+        Object.keys(records || {}).forEach((id) => rejectedKeys.add(`${table}:${id}`));
+      });
+      Object.keys(receipt?.deletes || {}).forEach((key) => {
+        const [, table, ...idParts] = key.split(":");
+        if (table && idParts.length > 0) rejectedKeys.add(`${table}:${idParts.join(":")}`);
+      });
+    }
     let dependencyAdded = true;
     while (dependencyAdded) {
       dependencyAdded = false;
@@ -472,6 +496,16 @@ export class WorkspaceMutationOutbox {
         conflictingId: String(error?.conflictingId || existing?.conflictingId || ""),
       });
     });
+    if (rejectEntireReceipt) {
+      Object.entries(receipt?.dirtyTables || {}).forEach(([table, generation]) => {
+        if (this.tableGenerations.get(table) !== generation) return;
+        if (this.queue.dirtyTables?.[table]) {
+          delete this.queue.dirtyTables[table];
+          changed = true;
+        }
+        this.tableGenerations.delete(table);
+      });
+    }
     if (changed) {
       if (mutationQueueHasChanges(this.queue)) this._touchForNewPayload();
       this._persist();

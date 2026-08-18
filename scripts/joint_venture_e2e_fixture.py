@@ -16,7 +16,7 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.auth.auth_helper import hash_password
+from backend.auth.auth_helper import hash_password, verify_password
 from backend.shared.paths import WORD_TEMPLATE_DIR
 
 
@@ -56,6 +56,7 @@ def _setup(data: dict) -> dict:
             account = data.get("account")
             if account:
                 user_id = str(account["id"])
+                password_hash = hash_password(str(data["password"]))
                 cursor.execute(
                     """INSERT INTO tai_khoan (
                            id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
@@ -63,7 +64,7 @@ def _setup(data: dict) -> dict:
                        ) VALUES (%s, %s, %s, %s, %s, 'user', %s, %s, 1, 1)""",
                     (
                         user_id, account["username"], str(account["username"]).lower(),
-                        hash_password(str(data["password"])), account["name"],
+                        password_hash, account["name"],
                         account["email"], str(account["email"]).lower(),
                     ),
                 )
@@ -262,11 +263,25 @@ def _setup(data: dict) -> dict:
                         user_id, two_envelope_package["id"],
                     ),
                 )
+    credential_row = None
+    if account:
+        with psycopg.connect(_database_url()) as connection:
+            with connection.cursor() as cursor:
+                credential_row = cursor.execute(
+                    "SELECT mat_khau, trang_thai FROM tai_khoan WHERE id = %s",
+                    (user_id,),
+                ).fetchone()
+    credentials_verified = bool(
+        credential_row
+        and str(credential_row[1] or "").strip().casefold() == "active"
+        and verify_password(str(credential_row[0] or ""), str(data["password"])),
+    )
     return {
         "organizationId": organization_id,
         "packageId": package["id"],
         "lotPackageId": data.get("lotPackage", {}).get("id"),
         "twoEnvelopePackageId": data.get("twoEnvelopePackage", {}).get("id"),
+        "credentialsVerified": credentials_verified,
     }
 
 
@@ -689,6 +704,12 @@ def _cleanup(data: dict) -> dict:
                 "sync_mutations",
                 "deleted_records",
             ):
+                # The fixture supports both the current migration chain and
+                # the leaner isolated audit schema, where some optional
+                # workflow-projection tables do not exist yet.
+                cursor.execute("SELECT to_regclass(%s)", (table_name,))
+                if cursor.fetchone()[0] is None:
+                    continue
                 cursor.execute(f"DELETE FROM {table_name} WHERE organization_id = %s", (organization_id,))
             cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE organization_id = %s", (organization_id,))
             cursor.execute("DELETE FROM sync_metadata WHERE organization_id = %s", (organization_id,))

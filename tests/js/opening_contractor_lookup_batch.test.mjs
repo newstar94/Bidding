@@ -197,9 +197,11 @@ test("saved-opening violation refresh is also concurrency bounded", async () => 
 });
 
 
-test("post-commit opening checks do not block the save success path", () => {
+test("post-commit opening checks stay nonblocking without replacing an active detail workflow", () => {
   const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");
 
   assert.doesNotMatch(source, /await\s+refreshSavedOpeningViolationChecks\s*\(/u);
   assert.doesNotMatch(source, /await\s+this\.view\.showPackageDetails\s*\(detailPackageId\)/u);
+  assert.match(source, /const detailIsActive = document\.getElementById\("tab-goithau-detail"\)\?\.classList\.contains\("active"\)/u);
+  assert.match(source, /if \(detailIsActive\) return;/u);
 });

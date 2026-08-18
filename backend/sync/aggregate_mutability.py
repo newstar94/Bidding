@@ -135,9 +135,11 @@ def build_aggregate_mutability_context(
         current = current_records_by_table.get("ke_hoach_lcnt", {}).get(
             str(plan_id), {}
         )
-        latest = _value(plan, "isLatest", "is_latest")
+        # Existing plan latest-ness is server-managed. A stale browser snapshot
+        # must neither downgrade the current plan nor promote historical data.
+        latest = current.get("is_latest") if current else None
         if latest is None:
-            latest = current.get("is_latest")
+            latest = _value(plan, "isLatest", "is_latest")
         if latest is None and not current:
             # ``is_latest`` is server-managed and therefore absent from a
             # normal client payload. A plan that is both incoming and absent

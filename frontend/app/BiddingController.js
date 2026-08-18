@@ -488,7 +488,10 @@ export class BiddingController {
       this.packageWizard = { active: false, planId: null, totalCount: 0, currentCount: 0 };
       this.model.endWorkspaceTransition?.();
       if (!options.localOnly && typeof this.forceSyncData === "function") {
-        await this.forceSyncData(false, false);
+        // A workspace may retain a current delta cursor while its locally
+        // hydrated route tables are empty. Cross the scope boundary with an
+        // authoritative snapshot so the new workspace cannot render stale data.
+        await this.forceSyncData(false, true);
       }
       this.model.dashboardSummary = this.model.dashboardSummary || null;
       if (this.view) this.view._dashboardAggregateCache = null;

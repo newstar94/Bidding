@@ -30,6 +30,7 @@ import {
 } from "../shared/MultiAssigneeSelect.js";
 import { derivePackagePrice } from "./packagePricing.js";
 import { parseLotListForDisplay } from "./lotJsonParser.js";
+import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
@@ -103,6 +104,36 @@ export function packageFamilyUpsertsForPlan(packages, finalPackage) {
     String(item.rootId || item.id) === rootId
     && String(item.keHoachId || "") === planId
   ));
+}
+
+/**
+ * The package form needs the complete organization expert catalog to build its
+ * two team selectors. Route startup intentionally loads only the data needed
+ * to render a list page, so a cold cache must hydrate this catalog on demand
+ * before the modal is populated.
+ */
+export async function hydratePackageExpertOptions(model, {
+  loadRecords = loadPaginatedRecords,
+  pageSize = 200,
+} = {}) {
+  if (!model?.useServerSidePagination) return model?.state?.chuyengia || [];
+
+  const experts = [];
+  let cursor = "";
+  do {
+    const page = await loadRecords(model, "chuyengia", {
+      pageSize,
+      pagination: "cursor",
+      sortBy: "id",
+      sortOrder: "asc",
+      ...(cursor ? { cursor } : {}),
+    });
+    experts.push(...(Array.isArray(page?.items) ? page.items : []));
+    const nextCursor = String(page?.nextCursor || "");
+    if (!page?.hasMore || !nextCursor || nextCursor === cursor) break;
+    cursor = nextCursor;
+  } while (cursor);
+  return experts;
 }
 
 export async function createOfficialPackageVersionFromForm(
@@ -237,6 +268,17 @@ export async function editGoiThau(id, isReadOnly = false) {
       _populateEmpDropdown();
     }
   };
+  try {
+    await hydratePackageExpertOptions(this.model);
+  } catch (error) {
+    console.error("Failed to load experts for the package team selectors:", error);
+    this.view.showToast(
+      "Không thể tải chuyên gia",
+      "Không thể tải danh sách chuyên gia để lập tổ. Vui lòng thử lại.",
+      "error",
+    );
+    return;
+  }
   const toChuyenGiaTbody = document.getElementById("to-chuyengia-tbody");
   toChuyenGiaTbody.innerHTML = trustedHTML(this.model.state.chuyengia.map((cg) => `
         <tr data-expert-id="${escapeHtml(cg.id)}">

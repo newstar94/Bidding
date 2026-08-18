@@ -626,7 +626,9 @@
 .badge-status-cancelled {
   border: 1px solid color-mix(in srgb, var(--status-color) 28%, var(--border-color));
   background-color: color-mix(in srgb, var(--status-color) 12%, var(--bg-card));
-  color: color-mix(in srgb, var(--status-color) 76%, var(--ink));
+  /* Keep the semantic hue vivid while giving the compact 12px badge text
+     enough contrast against its light status tint. */
+  color: color-mix(in srgb, var(--status-color) 52%, var(--ink));
 }
 .rating-stars {
   color: #f59e0b;

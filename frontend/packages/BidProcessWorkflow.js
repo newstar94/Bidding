@@ -1007,6 +1007,12 @@ async function performSaveThongTinMoThau() {
   this.renderMoThauPanel();
   const successAlert = this.view.customAlert("Lưu thành công", successMsg, "check-circle");
   void refreshSavedOpeningViolationChecks(gtId, tempBids).then(() => {
+    const detailIsActive = document.getElementById("tab-goithau-detail")?.classList.contains("active")
+      && String(this.view._currentWorkflowPackageId || "") === String(gtId);
+    // The asynchronous verification is display-only. Never let its eventual
+    // completion replace a later evaluation form and discard the user's
+    // unsaved inputs.
+    if (detailIsActive) return;
     this.view.renderGoiThauTable();
     this.renderMoThauPanel();
   }).catch((error) => {

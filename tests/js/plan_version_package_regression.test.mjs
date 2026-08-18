@@ -637,6 +637,77 @@ test("plan snapshot loader hydrates owned child tables even when local paginatio
   }]);
 });
 
+test("plan breakdown coalesces repeated detail loads for the same plan", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousDocument = globalThis.document;
+  const previousLucide = globalThis.lucide;
+  const callsByTable = new Map();
+  const pendingResponses = [];
+  globalThis.fetch = (input, { signal } = {}) => {
+    const table = new URL(String(input), "http://localhost").searchParams.get("table");
+    const calls = (callsByTable.get(table) || 0) + 1;
+    callsByTable.set(table, calls);
+    return new Promise((resolve, reject) => {
+      pendingResponses.push(resolve);
+      signal?.addEventListener("abort", () => {
+        reject(new DOMException("signal is aborted without reason", "AbortError"));
+      }, { once: true });
+    });
+  };
+  globalThis.document = {
+    getElementById: (id) => id === "breakdown-plan-id" ? { value: "plan-current" } : null,
+  };
+  globalThis.lucide = { createIcons() {} };
+  const controller = {
+    model: {
+      useServerSidePagination: false,
+      state: {
+        goithau: [],
+        goithauhanghoa: [],
+        thongtinmothau: [],
+        hanghoaduthaunhathau: [],
+        assignments: [],
+      },
+      getLatestPackagesForPlan() { return []; },
+    },
+    fetchRecordByLookup: async () => null,
+    renderBreakdownPackagesList() {},
+    updateBreakdownTotal() {},
+  };
+
+  try {
+    const loading = Promise.all([
+      loadBreakdownPackageDetails.call(controller, "plan-current"),
+      loadBreakdownPackageDetails.call(controller, "plan-current"),
+    ]);
+    await new Promise((resolve) => setImmediate(resolve));
+    pendingResponses.forEach((resolve) => {
+      resolve(new Response(JSON.stringify({ items: [], totalItems: 0, hasMore: false }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    });
+    await loading;
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousLucide === undefined) delete globalThis.lucide;
+    else globalThis.lucide = previousLucide;
+  }
+
+  assert.deepEqual(
+    Object.fromEntries(callsByTable),
+    {
+      goithauhanghoa: 1,
+      thongtinmothau: 1,
+      hanghoaduthaunhathau: 1,
+      assignments: 1,
+    },
+  );
+});
+
 test("each plan version resolves only its own frozen package snapshot", () => {
   const model = new BiddingModel();
   model.state.kehoach = [

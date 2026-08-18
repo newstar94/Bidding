@@ -70,6 +70,39 @@ test("canonical E2E harnesses derive calendar values from the test clock", () =>
   assert.deepEqual(violations, []);
 });
 
+test("isolated E2E runs use the deterministic contractor-risk fixture from CI", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "run_isolated_audit_e2e.ps1"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /VNEPS_VIOLATION_FIXTURE_PATH\s*=\s*"tests\/fixtures\/vneps_contractor_violations\.json"/u,
+  );
+});
+
+test("isolated E2E runs scope browser origins to their selected local port", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "run_isolated_audit_e2e.ps1"),
+    "utf8",
+  );
+  assert.match(source, /\$env:CSRF_TRUSTED_ORIGINS\s*=\s*\$baseUrl/u);
+  assert.match(source, /\$env:CORS_ORIGINS\s*=\s*\$baseUrl/u);
+  assert.match(source, /\$env:ALLOWED_WS_ORIGINS\s*=\s*\$baseUrl/u);
+});
+
+test("isolated browser E2E exercises the secure production asset path", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "run_isolated_audit_e2e.ps1"),
+    "utf8",
+  );
+  assert.match(source, /\$env:APP_DEBUG\s*=\s*"false"/u);
+  assert.doesNotMatch(
+    source,
+    /\$env:APP_DEBUG\s*=\s*if\s*\(\$Suite\s+-eq\s+"performance"/u,
+  );
+});
+
 
 test("plan approval E2E selections use the stable stored value, not its display label", () => {
   for (const name of [
@@ -99,6 +132,19 @@ test("lifecycle E2E creates portable Excel fixtures when paths are not configure
   assert.match(source, /Generated CI Excel fixtures/u);
   assert.match(source, /rmSync\(generatedExcelFixtures\.directory/u);
   assert.doesNotMatch(source, /OneDrive/u);
+});
+
+test("lifecycle E2E fills only editable visible package-lot rows", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /#phanlo-tbody tr:has\(\.pl-code-input\)/u,
+  );
+  assert.match(source, /if \(!await row\.isVisible\(\)\) continue;/u);
+  assert.doesNotMatch(source, /#phanlo-tbody tr:not\(\[hidden\]\)/u);
 });
 
 test("production E2E harnesses do not import development source modules", () => {

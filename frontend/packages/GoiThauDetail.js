@@ -43,8 +43,12 @@ export function resetDetailedEvaluationNavigationForPackageChange(
   return true;
 }
 
-export async function showPackageDetails(id, isSwitchingVersion = false) {
+export async function showPackageDetails(id, isSwitchingVersion = false, requestedWorkflowTab = "") {
   const appController = getAppController();
+  const requestedTab = String(requestedWorkflowTab || "").trim();
+  const renderVersion = Number(this._packageDetailRenderVersion || 0) + 1;
+  this._packageDetailRenderVersion = renderVersion;
+  const isCurrentRender = () => this._packageDetailRenderVersion === renderVersion;
   const requestedSnapshotId = String(this._requestedPackageSnapshotId || "");
   const requestedPlanSnapshotId = String(this._requestedPlanSnapshotId || "");
   const preservePlanSnapshot = Boolean(requestedPlanSnapshotId) && (
@@ -66,6 +70,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   ) {
     try {
       await appController.ensureBiddingWorkflows();
+      if (!isCurrentRender()) return;
     } catch (error) {
       console.error("Failed to load package workflow modules:", error);
       appController.view?.showToast?.(
@@ -79,11 +84,13 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   if (!hasHolidays()) {
     apiFetch("/api/holidays").then((r) => r.json()).then((data) => {
       setHolidays(data);
-      this.showPackageDetails(id, isSwitchingVersion);
+      if (!isCurrentRender()) return;
+      this.showPackageDetails(id, isSwitchingVersion, requestedTab);
     }).catch((e) => {
       console.error("Failed to load holidays:", e);
       setHolidays({});
-      this.showPackageDetails(id, isSwitchingVersion);
+      if (!isCurrentRender()) return;
+      this.showPackageDetails(id, isSwitchingVersion, requestedTab);
     });
     return;
   }
@@ -93,6 +100,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   );
   if (requestedPackage) {
     await hydrateVersionFamily(appController, "goithau", requestedPackage);
+    if (!isCurrentRender()) return;
     const linkedPlanIds = linkedPlanIdsForPackage(this.model, requestedPackage);
     const loadedPlanIds = new Set(
       (this.model?.state?.kehoach || []).map((plan) => String(plan?.id || "")),
@@ -102,6 +110,15 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         .filter((planId) => !loadedPlanIds.has(String(planId)))
         .map((planId) => appController.fetchRecordByLookup("kehoach", planId)),
     );
+    if (!isCurrentRender()) return;
+  }
+  // A save can trigger a refresh from a concurrent workflow action while its
+  // target panel is still being resolved. The explicit navigation intent must
+  // win so the user reaches the next lifecycle step instead of being returned
+  // to the default package overview.
+  if (requestedTab) {
+    this._currentWorkflowPackageId = String(id || "");
+    this._currentWorkflowTab = requestedTab;
   }
   const detail = buildPackageDetailViewModel({
     model: this.model,

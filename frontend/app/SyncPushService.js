@@ -154,7 +154,7 @@ async function applySuccessfulPush(controller, {
   return { ok: true, status, data };
 }
 
-async function applyFailedPush(controller, { status, data, snapshot }) {
+export async function applyFailedPush(controller, { status, data, snapshot }) {
   const validationErrors = getSyncValidationErrors(data);
   if (status === 409 || data.status === "conflict") {
     void reportSyncConflict({
@@ -187,8 +187,13 @@ async function applyFailedPush(controller, { status, data, snapshot }) {
   }
   if (validationErrors.length > 0) {
     const rejected = typeof controller.model?.discardRejectedMutations === "function"
-      ? controller.model.discardRejectedMutations(validationErrors, snapshot)
+      ? controller.model.discardRejectedMutations(
+        validationErrors,
+        snapshot,
+        { fallbackToBatch: true },
+      )
       : [];
+    await controller.model?.flushMutationOutbox?.();
     await restoreRejectedRecords(controller, rejected);
     logValidationErrors(validationErrors, data.requestId);
     showSyncErrorReport(controller, validationErrors, rejected.length);
@@ -196,10 +201,18 @@ async function applyFailedPush(controller, { status, data, snapshot }) {
     console.error("[Sync Error]", data.error || data.message || "Đồng bộ thất bại");
     controller.view?.showToast?.("Thất bại", "Không thể lưu thay đổi. Vui lòng thử lại.", "error");
   }
+  const pendingAfterRejection = validationErrors.length > 0
+    && typeof controller.model?.buildMutationSyncPayload === "function"
+    ? Boolean(controller.model.buildMutationSyncPayload())
+    : null;
   controller.updateSyncState({
-    phase: validationErrors.length > 0 ? "validationRejected" : "error",
+    phase: validationErrors.length > 0
+      ? (pendingAfterRejection === null
+        ? "validationRejected"
+        : pendingAfterRejection ? "localPending" : "idle")
+      : "error",
     message: validationErrors.length > 0
-      ? `${validationErrors.length} lỗi dữ liệu · Nhấn để xem`
+      ? `${validationErrors.length} lỗi dữ liệu`
       : data.error || data.message || "Lỗi đồng bộ",
   });
   return { ok: false, status, data, validation: validationErrors.length > 0 };

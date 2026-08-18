@@ -257,7 +257,7 @@ def test_complete_record_read_contract_has_no_runtime_field_capability_controls(
     assert "sensitive_record_read_capabilities" not in combined
     assert "sensitive_read_capabilities" not in combined
     assert "data-sensitive-read-capability" not in combined
-    assert VISIBILITY_POLICY_VERSION >= 3
+    assert VISIBILITY_POLICY_VERSION >= 5
 
 
 def test_document_entitlement_changes_do_not_change_record_visibility_token():
@@ -352,6 +352,59 @@ def test_record_access_and_word_export_have_distinct_sensitive_policies():
             "maNganHang": "VCB",
             "anhDau": "images/nha_thau/stamp.png",
         }
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
+def test_manager_employee_persona_reads_only_assigned_records_without_matrix():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, manager_id, package_id = _seed_denied_package(cursor)
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc
+               SET vai_tro_trong_to_chuc = 'manager'
+               WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, manager_id),
+        )
+        cursor.execute(
+            "DELETE FROM ma_tran_phan_quyen WHERE organization_id = ? AND emp_id = ?",
+            (organization_id, manager_id),
+        )
+        cursor.execute(
+            """UPDATE phan_cong_nhan_su
+               SET id_nhan_vien = ?
+               WHERE organization_id = ? AND id_muc_tieu = ?""",
+            (manager_id, organization_id, package_id),
+        )
+        role = SessionRole(
+            "user",
+            manager_id,
+            platform_role="user",
+            active_role="employee",
+        )
+        package = dict(cursor.execute(
+            "SELECT * FROM goi_thau WHERE organization_id = ? AND id = ?",
+            (organization_id, package_id),
+        ).fetchone())
+
+        assert can_read_record(
+            cursor, role, manager_id, organization_id,
+            "goithau", "goi_thau", package,
+        )
+
+        cursor.execute(
+            """DELETE FROM phan_cong_nhan_su
+               WHERE organization_id = ? AND id_nhan_vien = ? AND id_muc_tieu = ?""",
+            (organization_id, manager_id, package_id),
+        )
+        assert not can_read_record(
+            cursor, role, manager_id, organization_id,
+            "goithau", "goi_thau", package,
+        )
     finally:
         connection.rollback()
         connection.close()

@@ -226,6 +226,20 @@ try {
   ];
   for (const [key, role, allowedId, allowedVisible, deniedId, deniedVisible] of roleExpectations) {
     const { context, page } = await uiLogin(browser, accounts[key], role);
+    await page.waitForFunction(({ allowed, shouldAllow, denied, shouldDeny }) => {
+      const visible = (id) => {
+        const item = document.getElementById(id);
+        if (!item) return false;
+        const style = getComputedStyle(item);
+        return style.display !== "none" && style.visibility !== "hidden" && item.getClientRects().length > 0;
+      };
+      return visible(allowed) === shouldAllow && visible(denied) === shouldDeny;
+    }, {
+      allowed: allowedId,
+      shouldAllow: allowedVisible,
+      denied: deniedId,
+      shouldDeny: deniedVisible,
+    }, { timeout: 10_000 });
     assert(await page.locator(`#${allowedId}`).isVisible() === allowedVisible, `${role}: wrong allowed-menu visibility`);
     assert(await page.locator(`#${deniedId}`).isVisible() === deniedVisible, `${role}: wrong denied-menu visibility`);
     await page.reload({ waitUntil: "domcontentloaded" });

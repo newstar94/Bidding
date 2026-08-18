@@ -187,10 +187,14 @@ def has_active_organization_membership(cursor, role_str, user_id, organization_i
 
 
 def has_inherited_specialist_access(cursor, role_str, user_id, organization_id):
-    """Employee persona is a real least-privilege security boundary."""
+    """Allow an organization manager in employee mode to inherit read access."""
 
-    del cursor, role_str, user_id, organization_id
-    return False
+    if getattr(role_str, "active_role", None) != "employee":
+        return False
+    return (
+        organization_membership_role(cursor, user_id, organization_id)
+        in ORGANIZATION_MANAGER_ROLES
+    )
 
 
 def _stored_document_export_capabilities(cursor, user_id, organization_id):
@@ -251,8 +255,11 @@ def has_module_permission(cursor, role_str, user_id, organization_id, module_nam
         return True
     if is_personal_workspace_owner(cursor, user_id, organization_id):
         return True
-    if has_inherited_specialist_access(
-        cursor, role_str, user_id, organization_id
+    if (
+        action != "edit"
+        and has_inherited_specialist_access(
+            cursor, role_str, user_id, organization_id
+        )
     ):
         return True
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
@@ -546,7 +553,9 @@ def build_batch_write_authorization_context(
     )
     personal_owner = is_personal_workspace_owner(cursor, user_id, organization_id)
     active_membership = bool(platform_manager or membership_role is not None)
-    inherited_access = False
+    inherited_access = has_inherited_specialist_access(
+        cursor, role_str, user_id, organization_id
+    )
     context = BatchWriteAuthorizationContext(
         role_str=role_str,
         user_id=str(user_id),
@@ -568,7 +577,6 @@ def build_batch_write_authorization_context(
         and active_membership
         and not organization_manager
         and not personal_owner
-        and not inherited_access
     ):
         row = cursor.execute(
             f"SELECT {', '.join(modules)} FROM ma_tran_phan_quyen "
@@ -790,11 +798,9 @@ def build_batch_write_authorization_context(
 
 
 def _context_has_module_permission(context, module_name, action="view"):
-    if (
-        context.organization_manager
-        or context.personal_workspace_owner
-        or context.inherited_specialist_access
-    ):
+    if context.organization_manager or context.personal_workspace_owner:
+        return True
+    if context.inherited_specialist_access and action != "edit":
         return True
     if not context.active_membership:
         return False

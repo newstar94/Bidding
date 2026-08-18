@@ -755,8 +755,8 @@ export class BiddingModel {
     if (restored) await this._getMutationOutbox().flush();
     return restored;
   }
-  discardRejectedMutations(errors, snapshot = null) {
-    return this._getMutationOutbox().reject(snapshot, errors);
+  discardRejectedMutations(errors, snapshot = null, options = {}) {
+    return this._getMutationOutbox().reject(snapshot, errors, options);
   }
   acknowledgeServerDeletions(deletionsByTable = {}) {
     return this._getMutationOutbox().enqueue({
@@ -1260,9 +1260,10 @@ export class BiddingModel {
     return sourceRoles.some((role) => BiddingModel.getEffectiveRoles(role).has("manager"));
   }
   hasPermission(empId, moduleName, permissionType) {
-    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager") || this.hasInheritedSpecialistAccess()) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
       return true;
     }
+    if (this.hasInheritedSpecialistAccess() && permissionType !== "edit") return true;
     const matrix = this.state.permissionmatrix.find((m) => m.empId === empId);
     if (!matrix) return false;
     const perm = matrix[moduleName];

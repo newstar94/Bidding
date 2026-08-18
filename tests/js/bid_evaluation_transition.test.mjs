@@ -66,6 +66,7 @@ test("waits for the paginated package refresh before opening the result step", a
 
   let packageRefreshFinished = false;
   let detailOpened = false;
+  let detailNavigation = null;
   const model = {
     useServerSidePagination: true,
     state: { goithau: [packageRecord], thongtinmothau: [bid] },
@@ -89,8 +90,9 @@ test("waits for the paginated package refresh before opening the result step", a
         await new Promise((resolve) => setTimeout(resolve, 10));
         packageRefreshFinished = true;
       },
-      async showPackageDetails() {
+      async showPackageDetails(...args) {
         assert.equal(packageRefreshFinished, true, "detail opened before package refresh completed");
+        detailNavigation = args;
         detailOpened = true;
       },
       async customAlert() {},
@@ -100,6 +102,7 @@ test("waits for the paginated package refresh before opening the result step", a
   await saveDanhGiaHsdt.call(controller);
 
   assert.equal(detailOpened, true);
+  assert.deepEqual(detailNavigation, [packageRecord.id, false, "result"]);
   assert.equal(packageRecord.danhGiaHsdtMetadata.includes('"saved":true'), true);
   assert.equal(bid.giaDuThau, 800_000_000);
   assert.equal(bid.tyLeGiamGia, 5);

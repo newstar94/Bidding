@@ -726,15 +726,14 @@ export async function openPlanBreakdownModal(planId) {
   lucide.createIcons();
   await this.loadBreakdownPackageDetails(planId);
 }
-export async function loadBreakdownPackageDetails(planId) {
-  if (!planId || typeof this.fetchRecordByLookup !== "function") return;
-  const packages = this.model.getLatestPackagesForPlan(planId);
+async function loadBreakdownPackageDetailsForPlan(controller, planId) {
+  const packages = controller.model.getLatestPackagesForPlan(planId);
   const incompletePackages = packages.filter((gt) => gt.referenceOnly === true ||
     gt.giaGoiThau === void 0 || gt.giaGoiThau === null ||
     gt.hinhThucLuaChon === void 0 || gt.hinhThucLuaChon === null || gt.hinhThucLuaChon === "");
   if (incompletePackages.length > 0) {
     await Promise.all(incompletePackages.map((gt) =>
-      this.fetchRecordByLookup("goithau", gt.id || gt.maGoiThau).catch((error) => {
+      controller.fetchRecordByLookup("goithau", gt.id || gt.maGoiThau).catch((error) => {
         console.error("Failed to load package details for plan breakdown:", error);
         return null;
       })
@@ -743,7 +742,7 @@ export async function loadBreakdownPackageDetails(planId) {
   const loadPlanTable = async (table) => {
     let cursor = "";
     do {
-      const page = await loadPaginatedRecords(this.model, table, {
+      const page = await loadPaginatedRecords(controller.model, table, {
         pageSize: 200,
         pagination: "cursor",
         sortBy: "id",
@@ -763,9 +762,25 @@ export async function loadBreakdownPackageDetails(planId) {
     loadPlanTable("assignments"),
   ]);
   if (String(document.getElementById("breakdown-plan-id")?.value || "") !== String(planId)) return;
-  this.renderBreakdownPackagesList(planId);
-  this.updateBreakdownTotal(planId);
+  controller.renderBreakdownPackagesList(planId);
+  controller.updateBreakdownTotal(planId);
   lucide.createIcons();
+}
+
+export function loadBreakdownPackageDetails(planId) {
+  if (!planId || typeof this.fetchRecordByLookup !== "function") return Promise.resolve();
+  const requestKey = String(planId);
+  this._breakdownPackageDetailRequests ||= new Map();
+  const existing = this._breakdownPackageDetailRequests.get(requestKey);
+  if (existing) return existing;
+
+  const request = loadBreakdownPackageDetailsForPlan(this, planId).finally(() => {
+    if (this._breakdownPackageDetailRequests.get(requestKey) === request) {
+      this._breakdownPackageDetailRequests.delete(requestKey);
+    }
+  });
+  this._breakdownPackageDetailRequests.set(requestKey, request);
+  return request;
 }
 export function renderBreakdownPackagesList(planId) {
   const tbody = document.getElementById("tbody-breakdown-goithau");

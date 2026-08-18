@@ -72,6 +72,10 @@ _Avoid_: Tự chọn fail-closed, tự hạ quyền, sửa test để hợp th�
 Vai trò quyền hạn tối thiểu mà tài khoản chủ động chọn trong một workspace; chọn “Chuyên viên” thực sự hạ quyền backend và phạm vi dữ liệu, không chỉ đổi giao diện.
 _Avoid_: Persona chỉ để trình bày, vai trò nền tảng
 
+**Chuyên viên kế thừa từ quản lý**:
+Thành viên quản lý chủ động chọn vai trò hoạt động “Chuyên viên” được kế thừa quyền xem phân hệ, nhưng vẫn chịu assignment scope và record scope như chuyên viên khác; quyền sửa không được kế thừa.
+_Avoid_: Quản lý ẩn, chế độ xem thử toàn quyền, kế thừa quyền sửa
+
 **Thông báo liên kết**:
 Thông báo trên Mua Sắm Công được nối từ một gói trong KHLCNT để bổ sung dữ liệu ở giai đoạn thông báo. Liên kết này là nguồn làm giàu dữ liệu, không thay thế định danh dòng gói thầu.
 _Avoid_: Gói thầu mới, khóa duy nhất của gói

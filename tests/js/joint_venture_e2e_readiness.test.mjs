@@ -26,11 +26,11 @@ test("joint-venture relogin readiness tolerates a detached auth overlay", async 
   assert.match(source, /page\.waitForFunction\(evaluationControlsBarrier/);
   assert.doesNotMatch(source, /__bfE2eController|getAppController/);
   assert.match(source, /qualified: \["#qualified-so-bctd"\]/);
-  assert.match(source, /await waitForEvaluationSave\(page, httpErrors, pageErrors\);\s+await activateWorkflowTab\(page, "qualified"\);/);
+  assert.match(source, /await saveEvaluationAndWait\(page, httpErrors, pageErrors\);\s+await activateWorkflowTab\(page, "qualified"\);/);
   assert.match(source, /function initialJointVentureEvaluationBarrier/);
   assert.match(source, /await waitForInitialJointVentureEvaluation\(page\);\s+await page\.locator\("#btn-danhgiahsdt-save"\)\.click\(\)/);
   assert.match(source, /function twoEnvelopeTechnicalEvaluationBarrier/);
-  assert.match(source, /await waitForTwoEnvelopeTechnicalEvaluation\(page\);\s+await page\.locator\("#btn-danhgiahsdt-save"\)\.click\(\)/);
+  assert.match(source, /await waitForTwoEnvelopeTechnicalEvaluation\(page\);\s+await saveEvaluationAndWait\(page, httpErrors, pageErrors\)/);
   assert.match(source, /page\.locator\("#btn-danhgiahsdt-save:visible"\)\.click\(\)/);
   assert.doesNotMatch(source, /readinessDeadline|activeButton\.click\(\)|waitForTimeout/);
   assert.match(source, /automaticRanking\.filter\(\{ hasText: "Xếp hạng" \}\)/);

@@ -500,20 +500,26 @@ try {
       }
       let lotIndex = 0;
       while (lotIndex < lots.length) {
-        const visibleRows = page.locator("#phanlo-tbody tr:not([hidden])");
-        await visibleRows.first().waitFor({ state: "visible", timeout: 10_000 });
-        const visibleRowCount = await visibleRows.count();
-        if (!visibleRowCount) throw new Error("No visible package-lot rows are available for input.");
-
-        for (let rowIndex = 0; rowIndex < visibleRowCount && lotIndex < lots.length; rowIndex += 1) {
-          const row = visibleRows.nth(rowIndex);
+        // The accessibility enhancer paginates this form table asynchronously.
+        // Re-check each row's rendered visibility instead of trusting a locator
+        // snapshot captured while the pagination update is still in flight.
+        const editableRows = page.locator("#phanlo-tbody tr:has(.pl-code-input)");
+        await page.waitForFunction(() => [...document.querySelectorAll("#phanlo-tbody tr")]
+          .some((row) => !row.hidden && Boolean(row.querySelector(".pl-code-input"))), null, { timeout: 10_000 });
+        const editableRowCount = await editableRows.count();
+        let filledOnCurrentPage = 0;
+        for (let rowIndex = 0; rowIndex < editableRowCount && lotIndex < lots.length; rowIndex += 1) {
+          const row = editableRows.nth(rowIndex);
+          if (!await row.isVisible()) continue;
           const lot = lots[lotIndex];
           await row.locator(".pl-code-input").fill(lot.code);
           await row.locator(".pl-name-input").fill(lot.name);
           await row.locator(".pl-price-input").fill(String(lot.price));
           await row.locator(".pl-duration-input").fill("90 ngày");
           lotIndex += 1;
+          filledOnCurrentPage += 1;
         }
+        if (!filledOnCurrentPage) throw new Error("No visible package-lot rows are available for input.");
         if (lotIndex >= lots.length) break;
 
         const lotTable = page.locator("#phanlo-tbody").locator("xpath=ancestor::table[1]");
@@ -739,14 +745,51 @@ try {
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
   mark("two-envelope-technical-opening-saved");
 
-  await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG-KT`);
-  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-2));
   const technicalEvaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" });
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", { label: "Đạt" });
   await technicalEvaluationRow.locator(".mt-dg-ky-thuat").fill("Đạt");
+  await page.waitForFunction(() => {
+    const row = document.querySelector("#danhgiahsdt-table-tbody tr[data-bid-id]");
+    return row?.querySelector(".mt-dg-ky-thuat")?.value === "Đạt"
+      && row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt";
+  }, null, { timeout: 10_000 });
+  await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG-KT`);
+  await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-2));
+  const technicalEvaluationSubmission = await page.evaluate(() => ({
+    packageId: document.getElementById("danhgiahsdt-goithau-select")?.value || "",
+    reportNumber: document.getElementById("danhgiahsdt-so-baocao")?.value || "",
+    reportDate: document.getElementById("danhgiahsdt-ngay-baocao")?.value || "",
+    technical: document.querySelector("#danhgiahsdt-table-tbody .mt-dg-ky-thuat")?.value || "",
+    conclusion: document.querySelector("#danhgiahsdt-table-tbody .mt-ketluan-cell")?.textContent?.trim() || "",
+  }));
   await page.locator("#btn-danhgiahsdt-save").click();
-  await page.locator('button[data-workflow-tab="qualified"]').waitFor({ state: "visible", timeout: 20_000 });
+  await page.locator('button[data-workflow-tab="qualified"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => ({
+      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
+      evaluation: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")].map((row) => ({
+        bidId: row.getAttribute("data-bid-id"),
+        validity: row.querySelector(".mt-dg-hop-le")?.value || "",
+        capacity: row.querySelector(".mt-dg-nang-luc")?.value || "",
+        technical: row.querySelector(".mt-dg-ky-thuat")?.value || "",
+        conclusion: row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
+      })),
+      content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 700) || "",
+    }));
+    throw new Error(`Technical evaluation did not expose qualified approval: ${JSON.stringify({ technicalEvaluationSubmission, state, pageErrors, httpErrors })}; ${error.message}`);
+  });
+  await page.locator("#qualified-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => ({
+      selectedTab: document.querySelector('[data-workflow-tab][aria-selected="true"]')?.getAttribute("data-workflow-tab") || "",
+      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => ({
+        id: item.getAttribute("data-workflow-tab"),
+        selected: item.getAttribute("aria-selected") === "true",
+      })),
+      content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 1000) || "",
+      dialog: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent?.trim() || "",
+    }));
+    throw new Error(`Qualified approval panel did not become active: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
+  });
   mark("two-envelope-technical-evaluation-saved");
 
   await page.locator("#qualified-so-bctd").fill(`${runId}/BC-TD-KT`);
@@ -897,17 +940,76 @@ try {
       await lotChoice.waitFor({ state: "visible", timeout: 10_000 });
       if (!await lotChoice.isChecked()) await lotChoice.check();
     }
+    const row = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: lotCode }).first();
+    await page.waitForFunction((code) => {
+      const selectedLotInputs = [...document.querySelectorAll("#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked")];
+      const selectedCurrentLot = selectedLotInputs.length === 1
+        && selectedLotInputs[0].closest("label")?.textContent?.includes(code);
+      const rows = [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")];
+      const candidate = rows.find((item) => item.textContent?.includes(code));
+      return selectedCurrentLot
+        && rows.length === 1
+        && [".mt-dg-hop-le", ".mt-dg-nang-luc", ".mt-dg-ky-thuat"].every((selector) => {
+          const control = candidate?.querySelector(selector);
+          return control && !control.disabled;
+        });
+    }, lotCode, { timeout: 15_000 }).catch(async (error) => {
+      const state = await page.evaluate((code) => ({
+        tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
+        selectedLot: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")]
+          .filter((item) => item.textContent?.includes(code))
+          .map((item) => ({
+            disabled: item.querySelector(".mt-dg-hop-le")?.disabled ?? null,
+            validity: item.querySelector(".mt-dg-hop-le")?.value || "",
+            conclusion: item.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
+          })),
+        save: (() => {
+          const item = document.getElementById("btn-danhgiahsdt-save");
+          return item ? { text: item.textContent?.trim() || "", hidden: item.hidden, disabled: item.disabled } : null;
+        })(),
+        report: (() => {
+          const item = document.getElementById("danhgiahsdt-so-baocao");
+          return item ? { readOnly: item.readOnly, disabled: item.disabled } : null;
+        })(),
+        scope: document.getElementById("danhgiahsdt-scope-feedback")?.textContent?.trim() || "",
+        content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 1000) || "",
+      }), code);
+      throw new Error(`Lot evaluation row stayed read-only: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
+    });
     await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-${reportSuffix}`);
     await page.locator("#danhgiahsdt-ngay-baocao").fill(reportSuffix === "LOT-1" ? testClock.date(6) : testClock.date(9));
-    const row = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: lotCode }).first();
-    await row.waitFor({ state: "visible", timeout: 15_000 });
-    await row.locator(".mt-dg-hop-le").selectOption({ label: "Đạt" }, { force: true });
-    await row.locator(".mt-dg-nang-luc").selectOption({ label: "Đạt" }, { force: true });
+    // Fresh evaluation rows default validity and capacity to “Đạt”. Re-selecting
+    // those enhanced controls can race their progressive enablement; entering
+    // the technical result is the user action that completes this row.
     await row.locator(".mt-dg-ky-thuat").fill("Đạt");
+    await page.waitForFunction((code) => {
+      const candidate = [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")]
+        .find((item) => item.textContent?.includes(code));
+      return candidate?.querySelector(".mt-dg-ky-thuat")?.value === "Đạt"
+        && candidate.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt";
+    }, lotCode, { timeout: 10_000 });
     if (await row.locator(".mt-gia-xep-hang").count()) await row.locator(".mt-gia-xep-hang").fill(price);
     if (await row.locator(".mt-gia-de-nghi-trung-thau").count()) await row.locator(".mt-gia-de-nghi-trung-thau").fill(price);
+    const lowPriceAcceptance = row.locator('.mt-low-price-acceptance[value="true"]');
+    if (await lowPriceAcceptance.isVisible()) {
+      await lowPriceAcceptance.check();
+    }
     await page.locator("#btn-danhgiahsdt-save").click();
-    await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
+    await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+      const state = await page.evaluate(() => ({
+        tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
+        evaluation: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")].map((row) => ({
+          bidId: row.getAttribute("data-bid-id"),
+          lotCode: row.querySelector(".mt-ma-phan-lo")?.value || row.textContent?.trim() || "",
+          validity: row.querySelector(".mt-dg-hop-le")?.value || "",
+          capacity: row.querySelector(".mt-dg-nang-luc")?.value || "",
+          technical: row.querySelector(".mt-dg-ky-thuat")?.value || "",
+          conclusion: row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
+        })),
+        content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 1000) || "",
+      }));
+      throw new Error(`Lot evaluation did not expose award approval: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
+    });
   };
 
   const approveCurrentLot = async ({ sequence, price }) => {

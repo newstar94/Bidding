@@ -101,3 +101,70 @@ test("outbox hydrate, restore, rebase, discard and rejection edges are durable",
   assert.equal(outbox.discard(), false);
   assert.equal(persisted.at(-1).queue, null);
 });
+
+test("terminal unscoped validation rejects only the sent outbox generation", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "1",
+    createId: (() => {
+      let id = 0;
+      return () => `mutation-${++id}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ id: "package-1", tenGoiThau: "Rejected value" }],
+  });
+  const sent = outbox.snapshotForSync({});
+
+  const rejected = outbox.reject(sent.snapshot, [{
+    field: "$record",
+    code: "HISTORICAL_PARENT_IMMUTABLE",
+  }], { fallbackToBatch: true });
+
+  assert.deepEqual(rejected, [{
+    type: "goithau",
+    id: "package-1",
+    operation: "upsert",
+    conflictingId: "",
+  }]);
+  assert.deepEqual(outbox.snapshot().upserts, {});
+});
+
+test("terminal validation cannot discard a newer edit made after the sent receipt", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "1",
+    createId: (() => {
+      let id = 0;
+      return () => `mutation-${++id}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ id: "package-1", tenGoiThau: "Sent value" }],
+  });
+  const sent = outbox.snapshotForSync({});
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ id: "package-1", tenGoiThau: "Newer value" }],
+  });
+
+  const rejected = outbox.reject(sent.snapshot, [{
+    field: "$record",
+    code: "HISTORICAL_PARENT_IMMUTABLE",
+  }], { fallbackToBatch: true });
+
+  assert.deepEqual(rejected, []);
+  assert.equal(
+    outbox.snapshot().upserts.goithau["package-1"].tenGoiThau,
+    "Newer value",
+  );
+});
