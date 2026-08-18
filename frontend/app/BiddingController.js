@@ -17,8 +17,14 @@ import {
   selectActiveOrganization
 } from "../auth/accessContext.js";
 import {
+  awaitAuthoritativeMutationBoundary as awaitStartupAuthoritativeMutationBoundary,
+  completeStartupReconciliation,
+  getStartupReconciliationState as readStartupReconciliationState,
+  initializeStartupReconciliation,
   reconcileRouteDataAtStartup,
   scheduleInitialRouteReconciliation,
+  STARTUP_RECONCILIATION_PHASE,
+  transitionStartupReconciliation,
 } from "./startupReconciliation.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { resolveCommandArgs } from "../shared/commandArgs.js";
@@ -300,6 +306,15 @@ export class BiddingController {
   async reconcileInitialRouteData() {
     return reconcileRouteDataAtStartup(this);
   }
+  getStartupReconciliationState() {
+    return readStartupReconciliationState(this);
+  }
+  initializeStartupReconciliation() {
+    return initializeStartupReconciliation(this);
+  }
+  async awaitAuthoritativeMutationBoundary() {
+    return awaitStartupAuthoritativeMutationBoundary(this);
+  }
   getWorkflowModuleLoader() {
     if (!this._workflowModuleLoader) {
       this._workflowModuleLoader = new WorkflowModuleLoader({
@@ -486,6 +501,7 @@ export class BiddingController {
         organizationId,
         priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname)
       });
+      this.initializeStartupReconciliation();
       this._workspacePullGenerations?.clear?.();
       this._pendingDetailRecordLoads?.clear?.();
       this.packageWizard = { active: false, planId: null, totalCount: 0, currentCount: 0 };
@@ -494,7 +510,16 @@ export class BiddingController {
         // A workspace may retain a current delta cursor while its locally
         // hydrated route tables are empty. Cross the scope boundary with an
         // authoritative snapshot so the new workspace cannot render stale data.
-        await this.forceSyncData(false, true);
+        const workspaceToken = this.model?.getWorkspaceToken?.()
+          || this.model?.workspaceScope?.key
+          || "";
+        transitionStartupReconciliation(
+          this,
+          STARTUP_RECONCILIATION_PHASE.RECONCILING,
+          { workspaceToken },
+        );
+        const pullResult = await this.forceSyncData(false, true);
+        completeStartupReconciliation(this, pullResult, workspaceToken);
       }
       this.model.dashboardSummary = this.model.dashboardSummary || null;
       if (this.view) this.view._dashboardAggregateCache = null;
@@ -783,6 +808,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       organizationId: getActiveOrganizationId(),
       priorityKeys: startupPriorityKeys
     });
+    this.initializeStartupReconciliation();
     this.markStartup("model:init");
     const banner = document.createElement("div");
     banner.id = "offline-indicator-banner";

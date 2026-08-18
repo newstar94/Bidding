@@ -27,6 +27,14 @@ import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { linkedPlanIdsForPackage } from "./detail/packagePlanApprovals.js";
 export { checkBidQualified };
 
+export function capturePackageDetailNavigationIntent(view, packageId, requestedTab) {
+  const tab = String(requestedTab || "").trim();
+  if (!view || !tab) return false;
+  view._currentWorkflowPackageId = String(packageId || "");
+  view._currentWorkflowTab = tab;
+  return true;
+}
+
 export function resetDetailedEvaluationNavigationForPackageChange(
   appController,
   currentPackageId,
@@ -49,6 +57,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
   const renderVersion = Number(this._packageDetailRenderVersion || 0) + 1;
   this._packageDetailRenderVersion = renderVersion;
   const isCurrentRender = () => this._packageDetailRenderVersion === renderVersion;
+  capturePackageDetailNavigationIntent(this, id, requestedTab);
   const requestedSnapshotId = String(this._requestedPackageSnapshotId || "");
   const requestedPlanSnapshotId = String(this._requestedPlanSnapshotId || "");
   const preservePlanSnapshot = Boolean(requestedPlanSnapshotId) && (
@@ -112,14 +121,8 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
     );
     if (!isCurrentRender()) return;
   }
-  // A save can trigger a refresh from a concurrent workflow action while its
-  // target panel is still being resolved. The explicit navigation intent must
-  // win so the user reaches the next lifecycle step instead of being returned
-  // to the default package overview.
-  if (requestedTab) {
-    this._currentWorkflowPackageId = String(id || "");
-    this._currentWorkflowTab = requestedTab;
-  }
+  // The explicit intent is captured before asynchronous hydration above, so a
+  // concurrent refresh resolves the same target instead of the default panel.
   const detail = buildPackageDetailViewModel({
     model: this.model,
     packageId: id,

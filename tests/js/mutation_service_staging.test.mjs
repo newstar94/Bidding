@@ -52,6 +52,90 @@ test("synced tables use explicit record-level changes", async () => {
   }]);
 });
 
+test("startup_does_not_commit_a_stale_package_before_authoritative_reconciliation", async () => {
+  const calls = [];
+  let releaseBoundary;
+  const boundary = new Promise((resolve) => {
+    releaseBoundary = resolve;
+  });
+  const controller = {
+    model: {
+      state: {},
+      async flushMutationOutbox() {
+        calls.push("flush");
+      },
+      async persistChanges() {
+        calls.push("persist");
+      },
+    },
+    async awaitAuthoritativeMutationBoundary() {
+      calls.push("boundary:start");
+      await boundary;
+      calls.push("boundary:end");
+    },
+    async autoSync() {
+      calls.push("push");
+      return { ok: true };
+    },
+  };
+
+  const mutation = persistAndSync(controller, "goithau", {
+    changes: { upserts: { goithau: [{ id: "pkg-1", rowVersion: 1 }] } },
+  });
+  await Promise.resolve();
+
+  assert.deepEqual(calls, ["boundary:start"]);
+  releaseBoundary();
+  await mutation;
+  assert.deepEqual(calls, ["boundary:start", "boundary:end", "persist", "flush", "push"]);
+});
+
+test("state mutation waits for startup reconciliation before staging the outbox", async () => {
+  const calls = [];
+  let releaseBoundary;
+  const boundary = new Promise((resolve) => {
+    releaseBoundary = resolve;
+  });
+  const model = {
+    state: { goithau: [{ id: "pkg-1", rowVersion: 1, name: "stale" }] },
+    normalizeRecordKeys: (record) => ({ ...record }),
+    commitLocalMutation() { calls.push("stage"); },
+    async persistChanges() { calls.push("persist"); },
+    async flushMutationOutbox() { calls.push("flush"); },
+  };
+  const controller = {
+    model,
+    async awaitAuthoritativeMutationBoundary() {
+      calls.push("boundary:start");
+      await boundary;
+      calls.push("boundary:end");
+    },
+    async autoSync() {
+      calls.push("push");
+      return { ok: true };
+    },
+  };
+
+  const commit = mutatePersistAndSync(controller, {
+    upserts: { goithau: { id: "pkg-1", rowVersion: 1, name: "edited" } },
+  });
+  await Promise.resolve();
+  assert.deepEqual(calls, ["boundary:start"]);
+  assert.equal(model.state.goithau[0].name, "stale");
+
+  releaseBoundary();
+  await commit;
+  assert.deepEqual(calls, [
+    "boundary:start",
+    "boundary:end",
+    "stage",
+    "persist",
+    "flush",
+    "push",
+  ]);
+  assert.equal(model.state.goithau[0].name, "edited");
+});
+
 test("local-only tables keep compatibility persistence without an opt-in", async () => {
   const { calls, controller } = persistenceController();
 

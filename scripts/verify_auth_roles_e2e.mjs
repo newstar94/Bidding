@@ -162,8 +162,8 @@ async function waitForApp(page) {
   }, null, { timeout: 20_000 });
 }
 
-async function uiLogin(browser, accountData, expectedRole) {
-  const context = await browser.newContext({ locale: "vi-VN" });
+async function uiLogin(browser, accountData, expectedRole, contextOptions = {}) {
+  const context = await browser.newContext({ locale: "vi-VN", ...contextOptions });
   const page = await context.newPage();
   await page.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
   await waitForApp(page);
@@ -309,7 +309,37 @@ try {
   await adminUi.context.close();
   mark("manager-employee-ui-create-update-remove");
 
-  const workspaceUi = await uiLogin(browser, accounts.manager, "manager");
+  const workspaceUi = await uiLogin(browser, accounts.manager, "manager", {
+    serviceWorkers: "block",
+  });
+  let releasePrimaryPull;
+  let signalPrimaryPull;
+  const primaryPullRelease = new Promise((resolve) => {
+    releasePrimaryPull = resolve;
+  });
+  const primaryPullStarted = new Promise((resolve) => {
+    signalPrimaryPull = resolve;
+  });
+  const holdPrimaryPull = async (route) => {
+    const requestOrg = decodeURIComponent(route.request().headers()["x-active-org"] || "");
+    if (requestOrg !== organizationId) {
+      await route.continue();
+      return;
+    }
+    signalPrimaryPull();
+    await primaryPullRelease;
+    await route.continue();
+  };
+  await workspaceUi.page.route("**/api/get-all-data?**", holdPrimaryPull);
+  await workspaceUi.page.route("**/api/sync/delta?**", holdPrimaryPull);
+  const latePrimaryResponse = workspaceUi.page.waitForResponse((candidate) => {
+    const pathname = new URL(candidate.url()).pathname;
+    const requestOrg = decodeURIComponent(candidate.request().headers()["x-active-org"] || "");
+    return ["/api/get-all-data", "/api/sync/delta"].includes(pathname)
+      && requestOrg === organizationId;
+  }, { timeout: 20_000 });
+  await workspaceUi.page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await primaryPullStarted;
   await workspaceUi.page.waitForFunction(() => document.__bfProfileDropdownEventsBound === true, null, { timeout: 20_000 });
   await workspaceUi.page.locator("#header-profile-trigger").click();
   await workspaceUi.page.locator("#profile-dropdown-menu").waitFor({ state: "visible", timeout: 10_000 });
@@ -323,6 +353,20 @@ try {
       || localStorage.getItem("bf_active_org") === expected
       || document.getElementById("header-active-org-name")?.textContent?.includes("other")
   ), otherOrganizationId, { timeout: 20_000 });
+  releasePrimaryPull();
+  await latePrimaryResponse;
+  await workspaceUi.page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const postRaceWorkspace = await workspaceUi.page.evaluate(() => ({
+    activeOrganizationId: sessionStorage.getItem("bf_active_org")
+      || localStorage.getItem("bf_active_org"),
+    headerOrganization: document.getElementById("header-active-org-name")?.textContent || "",
+  }));
+  assert(
+    postRaceWorkspace.activeOrganizationId === otherOrganizationId,
+    `Late primary-workspace reconciliation changed the active workspace: ${JSON.stringify(postRaceWorkspace)}`,
+  );
   const switchDialogVisible = await workspaceUi.page.locator("#modal-custom-dialog.active")
     .waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
   if (switchDialogVisible) {
@@ -359,7 +403,7 @@ try {
   }));
   assert(workspaceSession.body.user?.active_org_id === otherOrganizationId, "Workspace selection was lost after reload");
   await workspaceUi.context.close();
-  mark("workspace-switch-ui-reload-and-server-session");
+  mark("workspace-switch-race-ui-reload-and-server-session");
 
   const managerContext = await browser.newContext();
   auth = await apiLogin(managerContext, accounts.manager, password, organizationId);

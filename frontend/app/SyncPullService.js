@@ -37,6 +37,37 @@ const ACTIONABLE_PENDING_SYNC_PHASES = new Set([
   "validationRejected",
 ]);
 
+function beginPullProgress(controller, { isBackground, syncIcon, syncStatusText }) {
+  const preserveActionablePhase = isBackground && ACTIONABLE_PENDING_SYNC_PHASES.has(
+    String(controller?._syncUxState?.phase || ""),
+  );
+  if (preserveActionablePhase) return true;
+  controller.updateSyncState({ phase: "syncing" });
+  syncIcon?.classList.add("anim-spin");
+  if (syncStatusText) syncStatusText.textContent = "Đang đồng bộ...";
+  return false;
+}
+
+function updatePullProgressLabel(syncStatusText, {
+  preserveActionablePhase,
+  isBackground,
+  hasLocalDataForCurrentRoute,
+}) {
+  if (!syncStatusText || preserveActionablePhase) return;
+  syncStatusText.textContent = !isBackground && !hasLocalDataForCurrentRoute
+    ? "Đang tải dữ liệu lần đầu..."
+    : "Đang đồng bộ...";
+}
+
+function updatePullFailureState(controller, syncStatusText, {
+  preserveActionablePhase,
+  message,
+}) {
+  if (preserveActionablePhase) return;
+  if (syncStatusText) syncStatusText.textContent = message;
+  controller.updateSyncState({ phase: "error", message });
+}
+
 export function finalizePulledSyncState(controller, timestamp = Date.now()) {
   const localMutationsPending = Boolean(
     controller?.model?.buildMutationSyncPayload?.(),
@@ -184,7 +215,7 @@ async function settleOutboxBeforeAuthoritativePull(controller) {
   return { ok: false, error, storageDegraded: true };
 }
 
-export async function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
+async function executeForceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
   const outboxFailure = await settleOutboxBeforeAuthoritativePull(this);
@@ -200,19 +231,21 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
   const storage = currentWorkspaceStorage(this);
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
-  this.updateSyncState({ phase: "syncing" });
-  if (syncIcon) syncIcon.classList.add("anim-spin");
-  if (syncStatusText) syncStatusText.textContent = "Đang đồng bộ...";
+  const preserveActionablePhase = beginPullProgress(this, {
+    isBackground,
+    syncIcon,
+    syncStatusText,
+  });
   const hasLocalDataForCurrentRoute = typeof this.hasLocalDataForRoute === "function"
     ? this.hasLocalDataForRoute(window.location.pathname)
     : typeof this.hasLocalWorkspaceData === "function"
       ? this.hasLocalWorkspaceData()
       : false;
-  if (syncStatusText) {
-    syncStatusText.textContent = !isBackground && !hasLocalDataForCurrentRoute
-      ? "Đang tải dữ liệu lần đầu..."
-      : "Đang đồng bộ...";
-  }
+  updatePullProgressLabel(syncStatusText, {
+    preserveActionablePhase,
+    isBackground,
+    hasLocalDataForCurrentRoute,
+  });
   const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute
     && this.view && this.view.showLoader;
   if (shouldShowFullLoader) this.view.showLoader();
@@ -262,8 +295,10 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       const isAuthError = ["xác thực", "phiên", "đăng nhập", "tài khoản", "authentication", "session"]
         .some((term) => normalized.includes(term));
       if (isAuthError || isBackground) {
-        if (syncStatusText) syncStatusText.textContent = "Cần đăng nhập lại";
-        this.updateSyncState({ phase: "error", message: "Cần đăng nhập lại" });
+        updatePullFailureState(this, syncStatusText, {
+          preserveActionablePhase,
+          message: "Cần đăng nhập lại",
+        });
         return { ok: false, status: response.status, error: errorMsg };
       }
     }
@@ -321,8 +356,10 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       return { ok: false, stale: true, superseded: true };
     }
     console.error("Failed to sync data from server:", error);
-    this.updateSyncState({ phase: "error", message: "Lỗi đồng bộ" });
-    if (syncStatusText) syncStatusText.textContent = "Lỗi đồng bộ";
+    updatePullFailureState(this, syncStatusText, {
+      preserveActionablePhase,
+      message: "Lỗi đồng bộ",
+    });
     const banner = document.getElementById("offline-indicator-banner");
     if (banner) {
       banner.hidden = false;
@@ -343,8 +380,45 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     return { ok: false, error };
   } finally {
     if (pullIsCurrent()) {
-      if (syncIcon) syncIcon.classList.remove("anim-spin");
+      if (!preserveActionablePhase) syncIcon?.classList.remove("anim-spin");
       if (shouldShowFullLoader && this.view && this.view.hideLoader) this.view.hideLoader();
     }
   }
+}
+
+function pullFlightKey(workspace) {
+  return String(workspace?.token || workspace?.organizationId || "");
+}
+
+export function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
+  const workspace = captureWorkspace(this);
+  if (!workspace.organizationId) {
+    return Promise.resolve({ ok: false, error: "No active workspace" });
+  }
+  const key = pullFlightKey(workspace);
+  this._workspacePullFlights ||= new Map();
+  let flights = this._workspacePullFlights.get(key);
+  if (!flights) {
+    flights = new Set();
+    this._workspacePullFlights.set(key, flights);
+  }
+
+  const activePush = this._autoSyncPromise;
+  const run = Promise.resolve(activePush)
+    .catch(() => null)
+    .then(() => {
+      if (!workspaceIsCurrent(this, workspace)) {
+        return { ok: false, stale: true, superseded: true };
+      }
+      return executeForceSyncData.call(this, isBackground, forceFull, routeOnly);
+    });
+  let tracked;
+  tracked = run.finally(() => {
+    flights.delete(tracked);
+    if (flights.size === 0 && this._workspacePullFlights?.get(key) === flights) {
+      this._workspacePullFlights.delete(key);
+    }
+  });
+  flights.add(tracked);
+  return tracked;
 }

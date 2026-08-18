@@ -26,6 +26,7 @@ def test_critical_coverage_floors_cannot_drop_below_reviewed_risk_baseline():
         "backend/shared/media_helper.py": (45.0, 30.0),
         "backend/sync/conflict_projection.py": (100.0, 100.0),
         "backend/sync/delta_paging.py": (45.0, 30.0),
+        "backend/sync/evaluation_persistence.py": (85.0, 60.0),
         "backend/versioning/aggregate_snapshot.py": (80.0, 60.0),
         "backend/versioning/command.py": (85.0, 70.0),
         "backend/versioning/repository.py": (92.0, 65.0),

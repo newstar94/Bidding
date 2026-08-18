@@ -2,14 +2,39 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  awaitAuthoritativeMutationBoundary,
+  getStartupReconciliationState,
+  initializeStartupReconciliation,
   reconcileRouteDataAtStartup,
   scheduleInitialRouteReconciliation,
+  STARTUP_RECONCILIATION_PHASE,
+  transitionStartupReconciliation,
 } from "../../frontend/app/startupReconciliation.js";
 import {
   finalizePulledSyncState,
   resolvePendingSyncConflict,
   resolveRowVersionConflicts,
 } from "../../frontend/app/BiddingControllerSync.js";
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function withNavigatorOnline(value, callback) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: value },
+  });
+  return Promise.resolve(callback()).finally(() => {
+    if (previous) Object.defineProperty(globalThis, "navigator", previous);
+    else delete globalThis.navigator;
+  });
+}
 
 
 test("startup does not submit the same mutation again after a conflict", async () => {
@@ -79,6 +104,202 @@ test("startup replays only mutations produced while reconciling the pull", async
   assert.deepEqual(telemetry, [["retry", { workspaceKey: "user:org-a" }]]);
 });
 
+test("stale-window mutation is pulled before its first push", async () => {
+  const calls = [];
+  let generation = 0;
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      getMutationOutboxGeneration: () => generation,
+    },
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: true };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: true };
+    },
+  };
+
+  await withNavigatorOnline(true, async () => {
+    initializeStartupReconciliation(controller);
+    generation = 1;
+    assert.equal(await reconcileRouteDataAtStartup(controller), true);
+    assert.deepEqual(calls, ["pull", "push"]);
+  });
+});
+
+test("startup reconciliation exposes an operation-backed state contract", async () => {
+  const pull = deferred();
+  const model = {
+    workspaceScope: { key: "user:org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (token) => token === "user:org-a@1",
+  };
+  const controller = {
+    model,
+    markStartup() {},
+    async autoSync() { return { ok: true, skipped: true }; },
+    async forceSyncData() { return pull.promise; },
+  };
+
+  await withNavigatorOnline(true, async () => {
+    initializeStartupReconciliation(controller);
+    assert.equal(
+      getStartupReconciliationState(controller).phase,
+      STARTUP_RECONCILIATION_PHASE.LOCAL_READY,
+    );
+
+    const reconciliation = reconcileRouteDataAtStartup(controller);
+    assert.equal(
+      getStartupReconciliationState(controller).phase,
+      STARTUP_RECONCILIATION_PHASE.RECONCILING,
+    );
+    pull.resolve({ ok: true, localMutationsPending: false });
+    assert.equal(await reconciliation, true);
+    assert.equal(
+      getStartupReconciliationState(controller).phase,
+      STARTUP_RECONCILIATION_PHASE.RECONCILED,
+    );
+  });
+});
+
+test("offline startup allows only the explicit durable-local mutation boundary", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+    async reconcileInitialRouteData() { calls.push("reconcile"); },
+  };
+
+  await withNavigatorOnline(false, async () => {
+    initializeStartupReconciliation(controller);
+    assert.deepEqual(await awaitAuthoritativeMutationBoundary(controller), {
+      authoritative: false,
+      offline: true,
+    });
+    assert.equal(
+      getStartupReconciliationState(controller).phase,
+      STARTUP_RECONCILIATION_PHASE.OFFLINE_LOCAL,
+    );
+    assert.deepEqual(calls, []);
+  });
+});
+
+test("an unresolved startup conflict blocks authoritative mutation commit", async () => {
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+  };
+  transitionStartupReconciliation(
+    controller,
+    STARTUP_RECONCILIATION_PHASE.RECONCILING,
+    { workspaceToken: "user:org-a@1" },
+  );
+  transitionStartupReconciliation(
+    controller,
+    STARTUP_RECONCILIATION_PHASE.CONFLICT,
+    { workspaceToken: "user:org-a@1" },
+  );
+
+  await assert.rejects(
+    awaitAuthoritativeMutationBoundary(controller),
+    (error) => error?.code === "STARTUP_RECONCILIATION_CONFLICT",
+  );
+});
+
+test("startup state machine rejects impossible success without reconciliation", () => {
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+  };
+  initializeStartupReconciliation(controller);
+
+  assert.throws(
+    () => transitionStartupReconciliation(
+      controller,
+      STARTUP_RECONCILIATION_PHASE.RECONCILED,
+      { workspaceToken: "user:org-a@1" },
+    ),
+    (error) => error?.code === "INVALID_STARTUP_RECONCILIATION_TRANSITION",
+  );
+});
+
+test("workspace_a_reconciliation_cannot_mutate_workspace_b_startup_state", async () => {
+  const push = deferred();
+  let token = "user:org-a@1";
+  const model = {
+    workspaceScope: { key: "user:org-a" },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+  };
+  const controller = {
+    model,
+    markStartup() {},
+    async autoSync() { return push.promise; },
+    async forceSyncData() {
+      throw new Error("workspace A must stop before pulling into workspace B");
+    },
+  };
+
+  await withNavigatorOnline(true, async () => {
+    initializeStartupReconciliation(controller);
+    const reconciliationA = reconcileRouteDataAtStartup(controller);
+    token = "user:org-b@2";
+    model.workspaceScope = { key: "user:org-b" };
+    initializeStartupReconciliation(controller);
+    push.resolve({ ok: true, skipped: true });
+
+    assert.equal(await reconciliationA, false);
+    const stateB = getStartupReconciliationState(controller);
+    assert.equal(stateB.workspaceToken, "user:org-b@2");
+    assert.equal(stateB.phase, STARTUP_RECONCILIATION_PHASE.LOCAL_READY);
+  });
+});
+
+test("concurrent startup reconciliation requests share one push-pull pipeline", async () => {
+  const push = deferred();
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return push.promise;
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: false };
+    },
+  };
+
+  await withNavigatorOnline(true, async () => {
+    initializeStartupReconciliation(controller);
+    const first = reconcileRouteDataAtStartup(controller);
+    const second = reconcileRouteDataAtStartup(controller);
+    push.resolve({ ok: true, skipped: true });
+    assert.deepEqual(await Promise.all([first, second]), [true, true]);
+    assert.deepEqual(calls, ["push", "pull"]);
+  });
+});
+
 
 test("initial route reconciliation is deferred until the shell can become interactive", async () => {
   const calls = [];
@@ -129,7 +350,7 @@ test("caught startup reconciliation failure emits redacted structured context", 
 });
 
 
-test("startup keeps the local snapshot when the pull is offline", async () => {
+test("startup keeps the local snapshot without retrying after an offline initial push", async () => {
   const calls = [];
   const controller = {
     markStartup() {},
@@ -144,7 +365,45 @@ test("startup keeps the local snapshot when the pull is offline", async () => {
   };
 
   assert.equal(await reconcileRouteDataAtStartup(controller), false);
-  assert.deepEqual(calls, ["push", "pull"]);
+  assert.deepEqual(calls, ["push"]);
+});
+
+test("startup transport failure stays actionable and is not replayed automatically", async () => {
+  const calls = [];
+  const controller = {
+    _syncUxState: { phase: "transportError", online: true },
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      getMutationOutboxGeneration: () => 1,
+    },
+    markStartup() {},
+    updateSyncState(patch) {
+      this._syncUxState = { ...this._syncUxState, ...patch };
+    },
+    async autoSync() {
+      calls.push("push");
+      return { ok: false, error: new TypeError("network unavailable") };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: true };
+    },
+  };
+
+  await withNavigatorOnline(true, async () => {
+    initializeStartupReconciliation(controller);
+    assert.equal(await reconcileRouteDataAtStartup(controller), false);
+    assert.equal(
+      getStartupReconciliationState(controller).phase,
+      STARTUP_RECONCILIATION_PHASE.SYNC_ERROR,
+    );
+  });
+
+  assert.deepEqual(calls, ["push"]);
+  assert.equal(controller._syncUxState.phase, "transportError");
+  assert.equal(controller._syncUxState.online, true);
 });
 
 
@@ -189,7 +448,7 @@ test("a successful pull reports synced after the outbox is empty", () => {
 });
 
 
-test("row version conflicts always use server data without prompting", async () => {
+test("row version conflicts preserve the local outbox until explicit resolution", async () => {
   const calls = [];
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
   globalThis.requestAnimationFrame = () => 0;
@@ -224,9 +483,15 @@ test("row version conflicts always use server data without prompting", async () 
       snapshot: { id: "receipt-1" },
     });
 
-    assert.deepEqual(result, { resolved: true, choice: "server", automatic: true });
-    assert.equal(calls.some(([kind]) => kind === "discard"), true);
-    assert.equal(calls.some(([kind]) => kind === "fetch"), true);
+    assert.deepEqual(result, {
+      resolved: false,
+      choice: null,
+      automatic: false,
+      conflicts: 1,
+      snapshot: { id: "receipt-1" },
+    });
+    assert.equal(calls.some(([kind]) => kind === "discard"), false);
+    assert.equal(calls.some(([kind]) => kind === "fetch"), false);
     assert.equal(calls.some(([kind]) => kind === "toast"), true);
   } finally {
     globalThis.requestAnimationFrame = originalRequestAnimationFrame;

@@ -38,6 +38,9 @@ export function scheduleBackgroundSync(delay = 500) {
     }
     this._backgroundSyncRunning = true;
     try {
+      const startupReconciliation = this._startupReconciliationPromise;
+      if (startupReconciliation) await startupReconciliation;
+      if (!workspaceIsCurrent(this, workspace)) return;
       await this.forceSyncData(true);
     } catch (err) {
       console.error("Background sync failed:", err);

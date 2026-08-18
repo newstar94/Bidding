@@ -34,6 +34,7 @@ export { autoSync } from "./SyncPushService.js";
 export {
   prepareExportSnapshot,
   resolvePendingSyncConflict,
+  runManualSyncRetry,
   setupSyncUx,
 } from "./SyncCoordinator.js";
 export function setupWebSocketConnection() {

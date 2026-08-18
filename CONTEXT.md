@@ -99,3 +99,19 @@ _Avoid_: Dòng biểu mẫu nguồn, dòng nhóm, tiêu đề phần lô
 **Phạm vi hàng hóa mời thầu**:
 Một hàng hóa thuộc trực tiếp gói không phân lô hoặc thuộc đúng một phần lô của gói phân lô; một phần lô có thể chứa một hoặc nhiều hàng hóa mà không tạo loại bản ghi khác.
 _Avoid_: Tự tạo phần lô cho gói không phân lô, mô hình riêng cho quan hệ một-một và một-nhiều
+
+**Ảnh chụp cục bộ chưa đối soát**:
+Dữ liệu workspace đã lưu bền vững trên thiết bị và có thể dùng để render nhanh, nhưng chưa được xác nhận là phản ánh phạm vi và phiên bản có thẩm quyền hiện tại của máy chủ.
+_Avoid_: Dữ liệu hiện hành, dữ liệu authoritative
+
+**Ranh giới mutation có thẩm quyền**:
+Điểm trước khi một thay đổi trực tuyến được phép persist hoặc gửi lên máy chủ, tại đó workspace phải hoàn tất đối soát có thẩm quyền hoặc đã được xác định là đang làm việc offline thực sự.
+_Avoid_: Khóa toàn bộ giao diện, kiểm tra quyền phía client
+
+**Mutation trong cửa sổ stale**:
+Thay đổi được người dùng tạo sau khi ảnh chụp cục bộ đã render nhưng trước khi đối soát khởi động hoàn tất; thay đổi này phải đi qua authoritative pull trước lần push đầu tiên.
+_Avoid_: Mutation khởi động có sẵn, mutation đã được máy chủ xác nhận
+
+**Xung đột đồng bộ chưa giải quyết**:
+Mutation cục bộ đã bị máy chủ từ chối do phiên bản hoặc trạng thái có thẩm quyền thay đổi và vẫn được giữ bền vững cho đến khi retry/rebase thành công hoặc người dùng xác nhận bỏ riêng thay đổi đó.
+_Avoid_: Tự động server-wins, lỗi đã xử lý

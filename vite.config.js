@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'path';
 import JavaScriptObfuscator from 'javascript-obfuscator';
+import { localSecureReleaseId } from './scripts/secure_release_id.mjs';
 
 const appEntry = path.resolve(__dirname, 'frontend/app/app.js');
 const stylesEntry = '/views/css/app.css';
@@ -188,7 +189,10 @@ function secureObfuscatorPlugin(releaseId = 'development') {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const releaseId = String(env.APP_RELEASE_ID || process.env.GITHUB_SHA || 'development')
+  const configuredReleaseId = env.APP_RELEASE_ID || process.env.GITHUB_SHA;
+  const releaseId = String(
+    configuredReleaseId || (mode === 'secure' ? localSecureReleaseId() : 'development')
+  )
     .trim()
     .slice(0, 128) || 'development';
   const isProductionBuild = mode === 'production' || mode === 'secure';

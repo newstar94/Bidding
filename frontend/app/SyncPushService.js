@@ -201,15 +201,9 @@ export async function applyFailedPush(controller, { status, data, snapshot }) {
     console.error("[Sync Error]", data.error || data.message || "Đồng bộ thất bại");
     controller.view?.showToast?.("Thất bại", "Không thể lưu thay đổi. Vui lòng thử lại.", "error");
   }
-  const pendingAfterRejection = validationErrors.length > 0
-    && typeof controller.model?.buildMutationSyncPayload === "function"
-    ? Boolean(controller.model.buildMutationSyncPayload())
-    : null;
   controller.updateSyncState({
     phase: validationErrors.length > 0
-      ? (pendingAfterRejection === null
-        ? "validationRejected"
-        : pendingAfterRejection ? "localPending" : "idle")
+      ? "validationRejected"
       : "error",
     message: validationErrors.length > 0
       ? `${validationErrors.length} lỗi dữ liệu`
@@ -221,16 +215,47 @@ export async function applyFailedPush(controller, { status, data, snapshot }) {
 export function autoSync(options = {}) {
   const deferPostCommitRender = this._deferPostCommitRender === true;
   this._deferPostCommitRender = false;
+  if (options.startupReconciliation !== true) {
+    const startupState = this.getStartupReconciliationState?.();
+    if (["LOCAL_READY", "RECONCILING"].includes(startupState?.phase)) {
+      const barrier = startupState?.promise || this._startupReconciliationPromise;
+      if (barrier) {
+        return Promise.resolve(barrier).then(() => {
+          const settledPhase = this.getStartupReconciliationState?.().phase;
+          if (settledPhase === "RECONCILED") return this.autoSync(options);
+          return {
+            ok: false,
+            conflict: settledPhase === "CONFLICT",
+            reconciliationRequired: true,
+          };
+        });
+      }
+      return Promise.resolve({ ok: false, reconciliationRequired: true });
+    }
+  }
   if (this._autoSyncPromise) {
     this._autoSyncQueued = true;
     return this._autoSyncPromise.then((result) => {
-      if (!this._autoSyncQueued) return result;
+      if (!this._autoSyncQueued || result?.ok !== true) {
+        this._autoSyncQueued = false;
+        return result;
+      }
       this._autoSyncQueued = false;
       return this.autoSync();
     });
   }
-  if (this._syncRepairPromise) return this._syncRepairPromise;
   const workspace = captureWorkspace(this);
+  const pullKey = String(workspace.token || workspace.organizationId || "");
+  const activePulls = [...(this._workspacePullFlights?.get(pullKey) || [])];
+  if (activePulls.length > 0) {
+    return Promise.allSettled(activePulls).then(() => {
+      if (!workspaceIsCurrent(this, workspace)) {
+        return { ok: false, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
+      }
+      return this.autoSync(options);
+    });
+  }
+  if (this._syncRepairPromise) return this._syncRepairPromise;
   if (!workspace.organizationId) {
     return Promise.resolve({ ok: false, error: new Error("No active workspace") });
   }

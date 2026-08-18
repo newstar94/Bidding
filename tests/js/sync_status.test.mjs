@@ -4,6 +4,7 @@ import test from "node:test";
 import { deriveSyncStatus } from "../../frontend/app/syncStatus.js";
 import {
   getSyncActivitySnapshot,
+  runManualSyncRetry,
   shouldShowLocalPending,
 } from "../../frontend/app/SyncCoordinator.js";
 import { applyFailedPush, autoSync } from "../../frontend/app/SyncPushService.js";
@@ -59,9 +60,12 @@ test("sync activity is settled only after queued work and outbox durability fini
 
   for (const activeState of [
     { _autoSyncPromise: Promise.resolve() },
+    { _manualSyncPromise: Promise.resolve() },
+    { _startupReconciliationPromise: Promise.resolve() },
     { _syncImmediateTimer: 1 },
     { _autoSyncQueued: true },
     { _deferImmediateSync: true },
+    { _backgroundSyncRunning: true },
   ]) {
     assert.equal(
       getSyncActivitySnapshot({ ...controller, ...activeState }).settled,
@@ -115,7 +119,84 @@ test("auto sync repairs a duplicate pending plan before building its payload", a
   assert.deepEqual(calls, ["repair", "build", "idle"]);
 });
 
-test("terminal validation flushes the rejected batch and clears the persistent pill", async () => {
+test("automatic push waits behind startup authoritative reconciliation", async () => {
+  let releaseBarrier;
+  const barrier = new Promise((resolve) => {
+    releaseBarrier = resolve;
+  });
+  let phase = "RECONCILING";
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { organizationId: "org-1" },
+      getWorkspaceToken: () => "workspace-1",
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      repairPendingDuplicatePlanVersions: () => null,
+      buildMutationSyncPayload: () => {
+        calls.push("build");
+        return null;
+      },
+    },
+    autoSync,
+    getStartupReconciliationState: () => ({ phase, promise: barrier }),
+    updateSyncState(state) { calls.push(state.phase); },
+  };
+
+  const pending = autoSync.call(controller);
+  await Promise.resolve();
+  assert.deepEqual(calls, []);
+  phase = "RECONCILED";
+  releaseBarrier(true);
+
+  assert.deepEqual(await pending, { ok: true, skipped: true });
+  assert.deepEqual(calls, ["build", "idle"]);
+});
+
+test("queued automatic sync does not retry an actionable transport failure", async () => {
+  const previousFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  let fetchCalls = 0;
+  console.error = () => {};
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new TypeError("simulated transport failure");
+  };
+  const phases = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      repairPendingDuplicatePlanVersions: () => null,
+      buildMutationSyncPayload: () => ({
+        payload: { chuyengia: [{ id: "expert-1" }] },
+        snapshot: { id: "receipt-1" },
+      }),
+    },
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState(patch) { phases.push(patch.phase); },
+  };
+
+  try {
+    const first = autoSync.call(controller);
+    const queued = autoSync.call(controller);
+    const [firstResult, queuedResult] = await Promise.all([first, queued]);
+
+    assert.equal(firstResult.ok, false);
+    assert.equal(queuedResult.ok, false);
+    assert.equal(fetchCalls, 1);
+    assert.equal(controller._autoSyncQueued, false);
+    assert.equal(phases.at(-1), "transportError");
+  } finally {
+    console.error = originalConsoleError;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("terminal validation flushes the rejected batch and keeps an actionable validation state", async () => {
   const calls = [];
   const originalConsoleError = console.error;
   console.error = () => {};
@@ -146,9 +227,141 @@ test("terminal validation flushes the rejected batch and clears the persistent p
 
     assert.equal(result.validation, true);
     assert.equal(calls.some(([kind]) => kind === "flush"), true);
-    assert.deepEqual(calls.at(-1), ["state", "idle"]);
+    assert.deepEqual(calls.at(-1), ["state", "validationRejected"]);
     assert.deepEqual(calls[0][3], { fallbackToBatch: true });
   } finally {
     console.error = originalConsoleError;
   }
+});
+
+test("row-version rejection remains conflict and does not acknowledge the local outbox", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      workspaceStorage: { setItem() {} },
+      discardRejectedMutations() {
+        calls.push("discard");
+        return [];
+      },
+    },
+    updateSyncState(state) { calls.push(["state", state.phase]); },
+    view: {
+      showToast(_title, _message, kind) { calls.push(["toast", kind]); },
+    },
+  };
+
+  const result = await applyFailedPush(controller, {
+    status: 409,
+    data: {
+      status: "conflict",
+      currentSyncVersion: 12,
+      errors: [{
+        table: "goithau",
+        id: "package-1",
+        code: "ROW_VERSION_CONFLICT",
+        serverRecord: { id: "package-1", maGoiThau: "PKG-1" },
+      }],
+    },
+    snapshot: { id: "receipt-1" },
+  });
+
+  assert.equal(result.conflict, true);
+  assert.equal(calls.includes("discard"), false);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), true);
+});
+
+test("double-click retry shares one push and one authoritative verification pull", async () => {
+  let releasePush;
+  const push = new Promise((resolve) => {
+    releasePush = resolve;
+  });
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    async autoSync() {
+      calls.push("push");
+      return push;
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true };
+    },
+  };
+
+  const first = runManualSyncRetry(controller);
+  const second = runManualSyncRetry(controller);
+  assert.equal(first, second);
+  assert.deepEqual(calls, ["push"]);
+  releasePush({ ok: true });
+  assert.deepEqual(await Promise.all([first, second]), [{ ok: true }, { ok: true }]);
+  assert.deepEqual(calls, ["push", "pull"]);
+});
+
+test("startup error retry reuses reconciliation verification without a duplicate pull", async () => {
+  const calls = [];
+  let phase = "SYNC_ERROR";
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+    getStartupReconciliationState: () => ({ phase }),
+    async reconcileInitialRouteData() {
+      calls.push("reconcile");
+      phase = "RECONCILED";
+      return true;
+    },
+    async autoSync() {
+      calls.push("push");
+      return { ok: true };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true };
+    },
+  };
+
+  assert.deepEqual(await runManualSyncRetry(controller), { ok: true, reconciled: true });
+  assert.deepEqual(calls, ["reconcile"]);
+});
+
+test("retry completion from workspace A cannot verify or clear state in workspace B", async () => {
+  let releasePush;
+  const push = new Promise((resolve) => {
+    releasePush = resolve;
+  });
+  let token = "user:org-a@1";
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => token,
+      isWorkspaceCurrent: (candidate) => candidate === token,
+    },
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    async autoSync() { return push; },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true };
+    },
+  };
+
+  const retry = runManualSyncRetry(controller);
+  token = "user:org-b@2";
+  controller.model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  releasePush({ ok: true });
+
+  assert.deepEqual(await retry, {
+    ok: false,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+  });
+  assert.deepEqual(calls, []);
 });

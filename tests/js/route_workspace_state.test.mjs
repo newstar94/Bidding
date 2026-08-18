@@ -68,6 +68,7 @@ test("package workspace owns transitions, subscriptions and serializable snapsho
   const selected = workspace.transition({ type: "SELECT_TAB", tab: "eval_tech" });
   workspace.transition({ type: "SELECT_BID", bidId: "bid-1" });
   workspace.transition({ type: "SET_DIRTY", dirty: true });
+  assert.equal(workspace.isDirty(), true);
   const blocked = workspace.transition({ type: "LOAD_ROUTE", route: { packageId: "package-2" } });
 
   assert.equal(selected.state.workflowTab, "eval_tech");

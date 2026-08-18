@@ -6,6 +6,7 @@ import { selectPackageDetailTab } from "./PackageDetailState.js";
 import { renderWorkflowActions } from "./WorkflowActions.js";
 import { getAppController } from "../../app/controllerRef.js";
 import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigation.js";
+import { packageWorkspaceFor } from "./PackageWorkspaceState.js";
 
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
   if (!container) return () => {};
@@ -103,7 +104,18 @@ export function bindPackageDetailChrome(view, detail) {
       await view.showPackageDetails(packageId);
     },
   );
+  const content = document.getElementById("detail-workflow-content-wrapper");
+  const markDraftDirty = (event) => {
+    const tagName = String(event?.target?.tagName || "").toLowerCase();
+    if (!["input", "select", "textarea"].includes(tagName)
+      && event?.target?.getAttribute?.("contenteditable") !== "true") return;
+    packageWorkspaceFor(view).transition({ type: "SET_DIRTY", dirty: true });
+  };
+  content?.addEventListener?.("input", markDraftDirty, true);
+  content?.addEventListener?.("change", markDraftDirty, true);
   return () => {
+    content?.removeEventListener?.("input", markDraftDirty, true);
+    content?.removeEventListener?.("change", markDraftDirty, true);
     disposeTabs();
     disposeVersionSelector();
   };

@@ -819,6 +819,9 @@ export class BiddingModel {
   buildMutationSyncPayload() {
     return this._getMutationOutbox().snapshotForSync(this.state);
   }
+  getMutationOutboxGeneration() {
+    return Number(this._getMutationOutbox().generation || 0);
+  }
   repairPendingDuplicatePlanVersions() {
     const outbox = this._getMutationOutbox();
     const checkpoint = outbox.checkpoint();

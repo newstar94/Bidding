@@ -1,9 +1,13 @@
+import json
+
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION
-from backend.sync.mapper import (
-    _attach_bid_evaluation_results,
-    _save_bid_evaluation_result,
+from backend.sync import mapper
+from backend.sync.evaluation_persistence import (
+    save_bid_evaluation_result,
+    save_evaluation_rounds,
 )
+from backend.sync.mapper import _attach_bid_evaluation_results
 from backend.sync.bid_evaluation_rules import is_inherited_legacy_technical_result
 from backend.sync.payload_validation import (
     SYNC_VIRTUAL_FIELDS,
@@ -21,6 +25,18 @@ class _CaptureCursor:
         self.sql = sql
         self.params = params
         return self
+
+
+class _EvaluationPersistenceCursor:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return self
+
+    def fetchall(self):
+        return []
 
 
 class _EvaluationReadCursor:
@@ -66,7 +82,7 @@ def test_sync_contract_persists_both_bid_evaluation_prices():
     assert item["chapThuanGiaDeNghiTrungThauDuoi50"] is False
 
     cursor = _CaptureCursor()
-    _save_bid_evaluation_result(
+    save_bid_evaluation_result(
         cursor,
         "bid-1",
         {
@@ -86,6 +102,77 @@ def test_sync_contract_persists_both_bid_evaluation_prices():
     assert cursor.sql.count("?") == len(cursor.params)
     assert 1200000 in cursor.params
     assert 1150000 in cursor.params
+
+
+def test_evaluation_persistence_interface_preserves_round_and_criterion_values():
+    cursor = _EvaluationPersistenceCursor()
+    save_evaluation_rounds(
+        cursor,
+        "package-1",
+        {
+            "danhGiaHsdtMetadata": {
+                "schemaVersion": 1,
+                "is1G2T": True,
+                "technical": {
+                    "saved": True,
+                    "qualifiedSaved": True,
+                    "soBaoCao": "BC-01",
+                    "ngayBaoCao": "2026-08-18",
+                    "criteria": [{
+                        "code": "KT-01",
+                        "name": "Kỹ thuật",
+                        "maxScore": 0,
+                        "weight": "12.5",
+                        "required": False,
+                        "note": "preserved",
+                    }],
+                },
+                "financial": {},
+            },
+        },
+        "org-1",
+        "organization",
+        7,
+        "2026-08-18 10:00:00",
+    )
+
+    round_params = [
+        params
+        for sql, params in cursor.calls
+        if "INSERT INTO vong_danh_gia" in sql
+    ]
+    assert [params[4] for params in round_params] == ["technical", "financial"]
+    assert round_params[0][6:11] == (
+        "completed",
+        "BC-01",
+        "2026-08-18",
+        1,
+        "2026-08-18 10:00:00",
+    )
+
+    criterion_params = next(
+        params
+        for sql, params in cursor.calls
+        if "INSERT INTO tieu_chi_danh_gia" in sql
+    )
+    assert criterion_params[4:11] == (
+        "KT-01",
+        "Kỹ thuật",
+        0.0,
+        12.5,
+        "technical",
+        "pass_fail",
+        0,
+    )
+    assert json.loads(criterion_params[13]) == {
+        "note": "preserved",
+        "schemaVersion": 1,
+    }
+
+
+def test_mapper_keeps_evaluation_persistence_compatibility_aliases():
+    assert mapper._save_evaluation_rounds is save_evaluation_rounds
+    assert mapper._save_bid_evaluation_result is save_bid_evaluation_result
 
 
 def test_sync_payload_shape_accepts_boolean_low_price_decision():

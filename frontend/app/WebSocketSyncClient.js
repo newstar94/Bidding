@@ -5,6 +5,7 @@ import {
   reportWebSocketReconnect,
   reportWebSocketMessageFailure,
 } from "../shared/releaseDiagnostics.js";
+import { shouldRefreshRouteAfterBackgroundSync } from "./SyncRenderCoordinator.js";
 
 
 const NON_RETRYABLE_CLOSE_CODES = new Set([1000, 4001, 4003, 4401, 4403]);
@@ -126,6 +127,7 @@ export class WebSocketSyncClient {
             packageId
             && String(controller.view?._currentWorkflowPackageId || "") === packageId
             && typeof controller.view?.showPackageDetails === "function"
+            && shouldRefreshRouteAfterBackgroundSync(document, controller)
           ) {
             void controller.view.showPackageDetails(packageId, true);
           }

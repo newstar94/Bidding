@@ -1,3 +1,5 @@
+import { packageWorkspaceFor } from "../packages/detail/PackageWorkspaceState.js";
+
 const DASHBOARD_SUMMARY_KEYS = new Set([
   "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments"
 ]);
@@ -52,8 +54,13 @@ export function selectPostCommitRenderKeys(committedKeys, {
   );
 }
 
-export function shouldRefreshRouteAfterBackgroundSync(root = globalThis.document) {
-  return !root?.querySelector?.(".modal-overlay.active:not(#modal-custom-dialog)");
+export function shouldRefreshRouteAfterBackgroundSync(
+  root = globalThis.document,
+  controller = null,
+) {
+  if (root?.querySelector?.(".modal-overlay.active:not(#modal-custom-dialog)")) return false;
+  if (controller?.view && packageWorkspaceFor(controller.view).isDirty()) return false;
+  return true;
 }
 
 export function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
@@ -77,7 +84,7 @@ export function renderChangedState(controller, changedKeys, { isBackground = fal
   renderIfChanged(["hopdong", "goithau", "nhathau", "chudautu"], controller.view.renderHopDongTable, "tab-hopdong");
   if (isBackground) {
     requestAnimationFrame(() => {
-      if (!shouldRefreshRouteAfterBackgroundSync(document)) return;
+      if (!shouldRefreshRouteAfterBackgroundSync(document, controller)) return;
       const detailTabs = new Set([
         "kehoach-detail",
         "goithau-detail",

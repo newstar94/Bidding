@@ -44,6 +44,8 @@ export class PackageWorkspaceState {
       effects = [{ type: "RENDER_WORKSPACE" }];
     } else if (event.type === "SELECT_TAB") {
       next.workflowTab = String(event.tab || "preparation");
+      next.dirty = false;
+      next.draft = null;
       this.#state = workspaceState(next);
       effects = [{ type: "SYNC_ROUTE" }];
     } else if (event.type === "SELECT_BID") {
@@ -73,6 +75,11 @@ export class PackageWorkspaceState {
     this.#assertActive();
     const { dirty: _dirty, draft: _draft, pathname: _pathname, ...route } = this.#state;
     return clone(route);
+  }
+
+  isDirty() {
+    this.#assertActive();
+    return this.#state.dirty === true;
   }
 
   subscribe(listener) {

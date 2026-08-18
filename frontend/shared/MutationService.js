@@ -22,6 +22,7 @@ function explicitTableChanges(changes, table) {
 export async function persistAndSync(controller, tableKeys, {
   afterPersist,
   allowLegacyPersistence = false,
+  authoritativeBoundaryChecked = false,
   changes = null,
   workspaceMutation = null,
 } = {}) {
@@ -35,6 +36,10 @@ export async function persistAndSync(controller, tableKeys, {
       error.table = key;
       throw error;
     }
+  }
+  if (!authoritativeBoundaryChecked
+    && typeof controller?.awaitAuthoritativeMutationBoundary === "function") {
+    await controller.awaitAuthoritativeMutationBoundary();
   }
   const model = controller.model;
   const ownsMutation = !workspaceMutation
@@ -201,6 +206,9 @@ export function applyStateMutations(
 
 export async function mutatePersistAndSync(controller, mutation, options = {}) {
   const model = controller.model;
+  if (typeof controller?.awaitAuthoritativeMutationBoundary === "function") {
+    await controller.awaitAuthoritativeMutationBoundary();
+  }
   const ownsMutation = !options.workspaceMutation
     && typeof model?.beginWorkspaceMutation === "function";
   const workspaceMutation = options.workspaceMutation
@@ -210,6 +218,7 @@ export async function mutatePersistAndSync(controller, mutation, options = {}) {
     const tableKeys = options.tableKeys || changedTables;
     return await persistAndSync(controller, tableKeys, {
       ...options,
+      authoritativeBoundaryChecked: true,
       changes: mutation,
       workspaceMutation,
     });

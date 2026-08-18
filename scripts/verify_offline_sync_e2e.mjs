@@ -59,7 +59,11 @@ try {
   fixture("setup");
   fixtureCreated = true;
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" });
+  const context = await browser.newContext({
+    locale: "vi-VN",
+    timezoneId: "Asia/Ho_Chi_Minh",
+    serviceWorkers: "block",
+  });
   const page = await context.newPage();
   const syncRequests = [];
   const syncResponses = [];
@@ -165,11 +169,27 @@ try {
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
   ), null, { timeout: 10_000 });
+  const interruptedReplayFailed = page.waitForEvent("requestfailed", {
+    predicate: (request) => (
+      request.method() === "POST"
+        && new URL(request.url()).pathname === "/api/sync"
+    ),
+    timeout: 20_000,
+  });
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.waitForFunction(() => (
-    document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
-  ), null, { timeout: 15_000 });
+  await interruptedReplayFailed;
+  try {
+    await page.waitForFunction(() => (
+      document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
+    ), null, { timeout: 15_000 });
+  } catch (error) {
+    const reloadedState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
+    throw new Error(
+      `Interrupted replay was aborted ${abortedSyncCount} time(s) but exposed ${reloadedState || "missing"} after reload`,
+      { cause: error },
+    );
+  }
   const pendingAfterReload = await page.locator("#btn-force-sync").getAttribute("data-sync-state") === "transport-error";
   if (!pendingAfterReload) {
     throw new Error("Interrupted mutation disappeared from the outbox after reload");

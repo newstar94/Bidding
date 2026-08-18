@@ -1,4 +1,8 @@
-import { currentWorkspaceStorage } from "./SyncWorkspaceContext.js";
+import {
+  captureWorkspace,
+  currentWorkspaceStorage,
+  workspaceIsCurrent,
+} from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
 
 
@@ -79,11 +83,17 @@ export function getSyncActivitySnapshot(controller) {
   const outboxStatus = controller?.model?.getMutationOutboxStatus?.() || {};
   const hasPendingMutations = Number(controller?._pendingMutationCount || 0) > 0
     || Boolean(controller?.model?.buildMutationSyncPayload?.());
+  const hasActivePull = [...(controller?._workspacePullFlights?.values?.() || [])]
+    .some((flights) => Number(flights?.size || 0) > 0);
   return {
     settled: !controller?._autoSyncPromise
+      && !controller?._manualSyncPromise
+      && !controller?._startupReconciliationPromise
       && !controller?._syncImmediateTimer
       && !controller?._autoSyncQueued
       && !controller?._deferImmediateSync
+      && !controller?._backgroundSyncRunning
+      && !hasActivePull
       && Number(controller?.model?._workspaceMutations?.size || 0) === 0
       && outboxStatus.state !== "pending",
     phase: String(controller?._syncUxState?.phase || "idle"),
@@ -91,40 +101,65 @@ export function getSyncActivitySnapshot(controller) {
   };
 }
 
+export function runManualSyncRetry(controller) {
+  if (!controller) return Promise.resolve({ ok: false });
+  if (controller._manualSyncPromise) return controller._manualSyncPromise;
+  const workspace = captureWorkspace(controller);
+  const run = (async () => {
+    if (Array.isArray(controller.model?.syncErrors) && controller.model.syncErrors.length > 0) {
+      showSyncErrorDetails(controller, controller.model.syncErrors);
+      return { ok: false, validation: true };
+    }
+    if (controller.model?.hasMutationOutboxDurabilityFailure?.()) {
+      try {
+        await controller.model.recoverMutationOutbox?.();
+      } catch (error) {
+        console.error("Mutation outbox recovery failed:", error);
+      }
+      if (controller.model.hasMutationOutboxDurabilityFailure()) {
+        controller.updateSyncState({
+          phase: "storageError",
+          message: "Chưa thể khôi phục thay đổi cục bộ · Vui lòng thử lại",
+        });
+        return { ok: false, storageDegraded: true };
+      }
+    }
+    if (controller.model?.hasStorageReadFailures?.()) {
+      return controller.forceSyncData(false, true);
+    }
+    const startupPhase = controller.getStartupReconciliationState?.().phase;
+    if (startupPhase && startupPhase !== "RECONCILED") {
+      const reconciled = await controller.reconcileInitialRouteData?.();
+      if (!workspaceIsCurrent(controller, workspace)) {
+        return { ok: false, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
+      }
+      if (reconciled) return { ok: true, reconciled: true };
+      if (controller.getStartupReconciliationState?.().phase === "OFFLINE_LOCAL") {
+        return { ok: false, offline: true };
+      }
+      return { ok: false, reconciliationRequired: true };
+    }
+    const pushed = await controller.autoSync();
+    if (!workspaceIsCurrent(controller, workspace)) {
+      return { ok: false, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
+    }
+    if (pushed?.ok) return controller.forceSyncData(false, false);
+    if (isSyncConflict(pushed)) return resolvePendingSyncConflict(controller, pushed);
+    return pushed;
+  })();
+  const tracked = run.finally(() => {
+    if (controller._manualSyncPromise === tracked) controller._manualSyncPromise = null;
+  });
+  controller._manualSyncPromise = tracked;
+  return tracked;
+}
+
 
 export function setupSyncUx() {
   if (this._syncUxInstalled) return;
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
-  button?.addEventListener("click", async () => {
-    if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
-      showSyncErrorDetails(this, this.model.syncErrors);
-      return;
-    }
-    if (this.model?.hasMutationOutboxDurabilityFailure?.()) {
-      try {
-        await this.model.recoverMutationOutbox?.();
-      } catch (error) {
-        console.error("Mutation outbox recovery failed:", error);
-      }
-      if (this.model.hasMutationOutboxDurabilityFailure()) {
-        this.updateSyncState({
-          phase: "storageError",
-          message: "Chưa thể khôi phục thay đổi cục bộ · Vui lòng thử lại",
-        });
-        return;
-      }
-    }
-    if (this.model?.hasStorageReadFailures?.()) {
-      await this.forceSyncData(false, true);
-      return;
-    }
-    const pushed = await this.autoSync();
-    if (pushed?.ok) await this.forceSyncData(false, false);
-    else if (isSyncConflict(pushed)) {
-      await resolvePendingSyncConflict(this, pushed);
-    }
-  });
+  button?.addEventListener("click", () => runManualSyncRetry(this));
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
     this._pendingMutationCount = Math.max(0, Number(pendingCount) || 0);
     if (pendingCount && shouldShowLocalPending(this._syncUxState?.phase)) {
@@ -151,6 +186,10 @@ export function setupSyncUx() {
   const updateOnline = () => {
     const online = navigator.onLine;
     this.updateSyncState({ online });
+    if (online && this.getStartupReconciliationState?.().phase === "OFFLINE_LOCAL") {
+      void this.reconcileInitialRouteData?.();
+      return;
+    }
     if (online && this._pendingMutationCount > 0) void this.autoSync();
   };
   window.addEventListener("online", updateOnline);
