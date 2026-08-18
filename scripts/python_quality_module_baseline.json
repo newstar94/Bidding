@@ -1,7 +1,7 @@
 {
   "BLE001": {
     "backend/api/org_routes.py": 5,
-    "backend/app.py": 8,
+    "backend/app.py": 7,
     "backend/auth/admin_user_routes.py": 3,
     "backend/auth/auth_routes.py": 15,
     "backend/auth/auth_service.py": 1,

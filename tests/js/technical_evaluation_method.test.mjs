@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   TECHNICAL_EVALUATION_METHODS,
   applyTechnicalEvaluationMethod,
   resolveTechnicalEvaluationMethod,
+  technicalEvaluationRoundType,
 } from "../../frontend/packages/technicalEvaluationMethod.js";
 import {
   collectActiveGroupRows,
@@ -14,6 +16,24 @@ import { validateDetailedEvaluationRow } from "../../frontend/packages/detailedE
 import { applyDetailedEvaluationProjection } from "../../frontend/packages/DetailedEvaluationState.js";
 
 const { PASS_FAIL, SCORE } = TECHNICAL_EVALUATION_METHODS;
+const TECHNICAL_METHOD_CASES = JSON.parse(readFileSync(
+  new URL("../../shared/technical_evaluation_method_cases.json", import.meta.url),
+  "utf8",
+)).cases;
+
+test("technical evaluation method follows the shared frontend/backend cases", () => {
+  TECHNICAL_METHOD_CASES.forEach((caseDefinition) => {
+    const expected = caseDefinition.expected === "unknown" ? "" : caseDefinition.expected;
+    assert.equal(
+      resolveTechnicalEvaluationMethod({
+        pkg: caseDefinition.package,
+        roundType: caseDefinition.roundType,
+      }),
+      expected,
+      caseDefinition.id,
+    );
+  });
+});
 
 test("technical evaluation method is forced when package rules determine it", () => {
   assert.equal(resolveTechnicalEvaluationMethod({ pkg: { linhVuc: "Tư vấn" } }), SCORE);
@@ -115,6 +135,21 @@ test("technical score rows derive pass-fail status from the minimum score", () =
   const [row] = collectActiveGroupRows(container, { id: "report-1", chiTietList: [] }, [criterion]);
   assert.equal(row.diem, 65);
   assert.equal(row.ketQua, "fail");
+});
+
+test("technical evaluation round follows the two-envelope package contract", () => {
+  assert.equal(technicalEvaluationRoundType({
+    phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
+    danhGiaHsdtMetadata: { schemaVersion: 1, technicalEvaluationMethod: SCORE },
+  }), "single");
+  assert.equal(technicalEvaluationRoundType({
+    phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ",
+    danhGiaHsdtMetadata: {
+      schemaVersion: 1,
+      is1G2T: true,
+      technical: { technicalEvaluationMethod: SCORE },
+    },
+  }), "technical");
 });
 
 test("combined packages project the detailed technical score instead of a pass/fail label", () => {

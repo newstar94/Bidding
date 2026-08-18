@@ -304,11 +304,11 @@ def _upgrade_to_v11_replace_paper_status_with_contract_catalog(cursor, context):
            ) AS org
            CROSS JOIN (VALUES
                ('Chưa hiệu lực', '#64748B'),
-               ('Đang thực hiện', '#2563EB'),
-               ('Tạm dừng', '#D97706'),
-               ('Đã hoàn thành', '#059669'),
-               ('Đã thanh lý', '#0F766E'),
-               ('Đã hủy', '#DC2626')
+               ('Đang thực hiện', '#3B82F6'),
+               ('Tạm dừng', '#F59E0B'),
+               ('Đã hoàn thành', '#22C55E'),
+               ('Đã thanh lý', '#14B8A6'),
+               ('Đã hủy', '#F43F5E')
            ) AS status(name, color)
            ON CONFLICT (organization_id, name) DO NOTHING"""
     )

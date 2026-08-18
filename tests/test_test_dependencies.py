@@ -73,6 +73,37 @@ def test_full_ci_runs_independent_gates_and_installs_required_browsers():
         assert gate in runs
 
 
+def test_secure_build_artifact_keeps_hidden_manifest_and_is_verified_after_restore():
+    workflow = _ci_workflow()
+    build_steps = workflow["jobs"]["build"]["steps"]
+    upload = next(
+        step
+        for step in build_steps
+        if step.get("name") == "Upload secure build for dependent gates"
+    )
+
+    assert upload["with"]["path"] == "dist/"
+    assert upload["with"]["include-hidden-files"] is True
+    assert upload["with"]["if-no-files-found"] == "error"
+
+    for job_name in ("e2e", "performance", "package"):
+        steps = workflow["jobs"][job_name]["steps"]
+        restore_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Restore verified secure build"
+        )
+        verification_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Verify restored secure build artifact"
+        )
+        assert verification_index > restore_index
+        assert "python scripts/verify_secure_build_artifact.py" in str(
+            steps[verification_index].get("run") or ""
+        )
+
+
 def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
     workflow = _ci_workflow()
     config = (PROJECT_ROOT / "playwright.config.mjs").read_text(encoding="utf-8")

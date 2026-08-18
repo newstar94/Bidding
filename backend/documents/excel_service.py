@@ -17,6 +17,7 @@ from backend.documents.technical_evaluation_method import (
     SCORE,
     resolve_technical_evaluation_method,
 )
+from backend.sync.evaluation_metadata import parse_evaluation_metadata
 
 
 def _excel_value(value):
@@ -147,6 +148,43 @@ def create_opening_fin_template(pkg_id_clean, org_name):
         prepare_opening_fin_template_spec(pkg_id_clean, org_name)
     )
 
+
+def _stored_evaluation_metadata(cursor, package_id, organization_id):
+    """Rebuild just the persisted round metadata needed by Excel export."""
+
+    cursor.execute(
+        """SELECT loai_vong, extension_json
+             FROM vong_danh_gia
+            WHERE goi_thau_id = ? AND organization_id = ?
+            ORDER BY thu_tu, id""",
+        (package_id, organization_id),
+    )
+    metadata = {"schemaVersion": 1}
+    for row in cursor.fetchall():
+        if isinstance(row, dict):
+            round_type = row.get("loai_vong")
+            raw_extension = row.get("extension_json")
+        else:
+            round_type, raw_extension = row[0], row[1]
+        try:
+            extension = parse_evaluation_metadata(
+                raw_extension, require_version=False,
+            )
+        except ValueError:
+            continue
+        if round_type == "single":
+            metadata.update(extension)
+        elif round_type in {"technical", "financial"}:
+            metadata[round_type] = extension
+            metadata["is1G2T"] = True
+    return metadata
+
+
+def _technical_metadata_round(metadata):
+    if isinstance(metadata.get("technical"), dict):
+        return "technical"
+    return "single"
+
 def prepare_danhgiahsdt_template_spec(
     pkg_id_clean, org_name, eval_type, selected_lot_codes=None
 ):
@@ -172,12 +210,16 @@ def prepare_danhgiahsdt_template_spec(
         phuong_phap_danh_gia,
         phan_lo,
     ) = gt_row
+    stored_evaluation_metadata = _stored_evaluation_metadata(
+        cursor, pkg_id_clean, org_name,
+    )
     technical_evaluation_method = resolve_technical_evaluation_method({
         "linh_vuc": linh_vuc,
         "hinh_thuc_lua_chon": hinh_thuc_lua_chon,
         "phuong_thuc_lua_chon": phuong_thuc_lua_chon,
         "phuong_phap_danh_gia": phuong_phap_danh_gia,
-    })
+        "danh_gia_hsdt_metadata": stored_evaluation_metadata,
+    }, round_type=_technical_metadata_round(stored_evaluation_metadata))
     lot_codes = fetch_package_lot_codes(cursor, pkg_id_clean, org_name)
     known_lot_codes = {str(code).strip().casefold(): code for code in lot_codes}
     requested_lot_codes = [

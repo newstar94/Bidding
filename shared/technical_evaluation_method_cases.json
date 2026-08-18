@@ -1,0 +1,96 @@
+{
+  "contractVersion": 1,
+  "cases": [
+    {
+      "id": "consulting-uses-score",
+      "package": {"linhVuc": "Tư vấn"},
+      "roundType": "single",
+      "expected": "score"
+    },
+    {
+      "id": "competitive-quotation-uses-pass-fail",
+      "package": {"hinhThucLuaChon": "Chào hàng cạnh tranh"},
+      "roundType": "single",
+      "expected": "pass_fail"
+    },
+    {
+      "id": "direct-appointment-uses-pass-fail",
+      "package": {"hinhThucLuaChon": "Chỉ định thầu"},
+      "roundType": "single",
+      "expected": "pass_fail"
+    },
+    {
+      "id": "abbreviated-direct-appointment-uses-pass-fail",
+      "package": {"hinhThucLuaChon": "Chỉ định thầu rút gọn"},
+      "roundType": "single",
+      "expected": "pass_fail"
+    },
+    {
+      "id": "special-case-uses-pass-fail",
+      "package": {"hinhThucLuaChon": "Lựa chọn nhà thầu trong trường hợp đặc biệt"},
+      "roundType": "single",
+      "expected": "pass_fail"
+    },
+    {
+      "id": "combined-technical-price-uses-score",
+      "package": {"phuongPhapDanhGia": "Kết hợp giữa kỹ thuật và giá"},
+      "roundType": "single",
+      "expected": "score"
+    },
+    {
+      "id": "technical-based-uses-score",
+      "package": {"phuongPhapDanhGia": "Dựa trên kỹ thuật"},
+      "roundType": "single",
+      "expected": "score"
+    },
+    {
+      "id": "stored-single-score-method",
+      "package": {
+        "danhGiaHsdtMetadata": {"schemaVersion": 1, "technicalEvaluationMethod": "score"}
+      },
+      "roundType": "single",
+      "expected": "score"
+    },
+    {
+      "id": "stored-single-pass-fail-method",
+      "package": {
+        "danhGiaHsdtMetadata": {"schemaVersion": 1, "phuongPhapDanhGiaKyThuat": "pass_fail"}
+      },
+      "roundType": "single",
+      "expected": "pass_fail"
+    },
+    {
+      "id": "round-specific-technical-score-method",
+      "package": {
+        "phuongThucLuaChon": "Một giai đoạn hai túi hồ sơ",
+        "danhGiaHsdtMetadata": {
+          "schemaVersion": 1,
+          "is1G2T": true,
+          "technical": {"technicalEvaluationMethod": "score"},
+          "financial": {"technicalEvaluationMethod": "pass_fail"}
+        }
+      },
+      "roundType": "technical",
+      "expected": "score"
+    },
+    {
+      "id": "technical-round-metadata-overrides-unknown-overall-method",
+      "package": {
+        "phuongPhapDanhGia": "Giá thấp nhất",
+        "danhGiaHsdtMetadata": {
+          "schemaVersion": 1,
+          "is1G2T": true,
+          "technical": {"phuongPhapDanhGiaKyThuat": "score"}
+        }
+      },
+      "roundType": "technical",
+      "expected": "score"
+    },
+    {
+      "id": "unknown-without-a-domain-or-stored-method",
+      "package": {"phuongPhapDanhGia": "Giá thấp nhất"},
+      "roundType": "single",
+      "expected": "unknown"
+    }
+  ]
+}

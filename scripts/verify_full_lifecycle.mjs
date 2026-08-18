@@ -1,5 +1,8 @@
 import process from "node:process";
-import { existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import vm from "node:vm";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
 import { isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
@@ -14,18 +17,78 @@ const runId = `E2E-${Date.now()}`;
 const runDigits = String(Date.now()).slice(-9);
 const result = { runId, steps: [] };
 process.stdout.write(`[E2E] run ${runId}\n`);
-const excelFixtures = {
-  noLot: process.env.E2E_PACKAGE_GOODS_NO_LOT
-    || "C:\\Users\\newst\\OneDrive - 79401\\Không phân lô.xlsx",
-  oneLotOneItem: process.env.E2E_PACKAGE_GOODS_ONE_LOT_ONE_ITEM
-    || "C:\\Users\\newst\\OneDrive - 79401\\Phân lô - 1 lô 1 mặt hàng.xlsx",
-  oneLotManyItems: process.env.E2E_PACKAGE_GOODS_ONE_LOT_MANY_ITEMS
-    || "C:\\Users\\newst\\OneDrive - 79401\\Phân lô - 1 lô nhiều mặt hàng.xlsx",
-};
-for (const [fixtureName, fixturePath] of Object.entries(excelFixtures)) {
-  if (!existsSync(fixturePath)) {
-    throw new Error(`Missing Excel fixture ${fixtureName}: ${fixturePath}`);
+
+function loadSheetJs() {
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(
+    readFileSync(resolve("views", "vendor", "xlsx", "xlsx.full.min.js"), "utf8"),
+    context,
+    { filename: "views/vendor/xlsx/xlsx.full.min.js" },
+  );
+  if (!context.XLSX?.utils || !context.XLSX?.write) {
+    throw new Error("Vendored SheetJS runtime is unavailable for lifecycle E2E fixtures.");
   }
+  return context.XLSX;
+}
+
+function createLifecycleExcelFixtures() {
+  const directory = mkdtempSync(join(tmpdir(), "biddingflow-lifecycle-e2e-"));
+  const XLSX = loadSheetJs();
+  const cases = {
+    noLot: {
+      filename: "no-lot.xlsx",
+      rows: [
+        ["STT", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+        ["1", "Máy tính xách tay", "Bộ", 2, 10_000_000, 20_000_000],
+        ["2", "Màn hình", "Cái", 3, 5_000_000, 15_000_000],
+      ],
+    },
+    oneLotOneItem: {
+      filename: "one-lot-one-item.xlsx",
+      rows: [
+        ["STT", "Mã phần lô", "Tên phần lô", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+        ["1", "PP2600224818", "Lô 01", "Máy in", "Cái", 1, 8_000_000, 8_000_000],
+      ],
+    },
+    oneLotManyItems: {
+      filename: "one-lot-many-items.xlsx",
+      rows: [
+        ["STT", "Mã phần lô", "Tên phần lô", "Danh mục hàng hóa", "Đơn vị tính", "Khối lượng", "Đơn giá dự thầu", "Thành tiền"],
+        ["1", "PL1", "Lô 1", "Máy chủ", "Bộ", 1, 50_000_000, 50_000_000],
+        ["2", "PL1", "Lô 1", "Switch mạng", "Cái", 2, 10_000_000, 20_000_000],
+      ],
+    },
+  };
+  const paths = {};
+  for (const [name, definition] of Object.entries(cases)) {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet(definition.rows),
+      "Mẫu số 12.1B. Bảng giá dự thầu",
+    );
+    const path = join(directory, definition.filename);
+    writeFileSync(path, XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+    paths[name] = path;
+  }
+  return { directory, paths };
+}
+
+const configuredExcelFixtures = {
+  noLot: String(process.env.E2E_PACKAGE_GOODS_NO_LOT || "").trim(),
+  oneLotOneItem: String(process.env.E2E_PACKAGE_GOODS_ONE_LOT_ONE_ITEM || "").trim(),
+  oneLotManyItems: String(process.env.E2E_PACKAGE_GOODS_ONE_LOT_MANY_ITEMS || "").trim(),
+};
+const generatedExcelFixtures = Object.values(configuredExcelFixtures).every(Boolean)
+  ? null
+  : createLifecycleExcelFixtures();
+const excelFixtures = Object.fromEntries(Object.entries(configuredExcelFixtures).map(([name, path]) => [
+  name,
+  path || generatedExcelFixtures.paths[name],
+]));
+if (generatedExcelFixtures) {
+  process.stdout.write(`[E2E] Generated CI Excel fixtures in ${generatedExcelFixtures.directory}\n`);
 }
 const launchOptions = { headless: true };
 if (process.env.STARTUP_BROWSER_CHANNEL) launchOptions.channel = process.env.STARTUP_BROWSER_CHANNEL;
@@ -999,4 +1062,7 @@ try {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
   await browser.close();
+  if (generatedExcelFixtures) {
+    rmSync(generatedExcelFixtures.directory, { recursive: true, force: true });
+  }
 }

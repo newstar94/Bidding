@@ -39,10 +39,15 @@ test("required browser renders public routes, shell, and filter dropdowns", asyn
 
   await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
   await waitForApp(page);
+  const loginResponse = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === "/api/auth/login"
+    && response.request().method() === "POST"
+  ));
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.locator("#auth-overlay").waitFor({ state: "hidden" });
+  expect((await loginResponse).ok()).toBe(true);
+  await expect(page.locator("#auth-overlay")).toBeHidden();
   await waitForApp(page);
 
   await page.goto("/tong-quan", { waitUntil: "domcontentloaded" });

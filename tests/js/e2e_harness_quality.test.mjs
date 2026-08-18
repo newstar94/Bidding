@@ -89,3 +89,14 @@ test("plan approval E2E selections use the stable stored value, not its display 
     );
   }
 });
+
+test("lifecycle E2E creates portable Excel fixtures when paths are not configured", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+  assert.match(source, /function createLifecycleExcelFixtures\(/u);
+  assert.match(source, /Generated CI Excel fixtures/u);
+  assert.match(source, /rmSync\(generatedExcelFixtures\.directory/u);
+  assert.doesNotMatch(source, /OneDrive/u);
+});

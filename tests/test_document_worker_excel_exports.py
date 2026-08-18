@@ -290,6 +290,23 @@ class _PassFailEvaluationCursor(_EvaluationCursor):
         return result
 
 
+class _StoredTechnicalMethodEvaluationCursor(_EvaluationCursor):
+    def execute(self, sql, params=()):
+        normalized = " ".join(str(sql).split())
+        result = super().execute(sql, params)
+        if normalized.startswith("SELECT linh_vuc"):
+            self._one = (
+                "Hàng hóa", "Đấu thầu rộng rãi",
+                "Một giai đoạn hai túi hồ sơ", "Giá thấp nhất", "Không",
+            )
+        elif "FROM vong_danh_gia" in normalized:
+            self._rows = [
+                ("technical", '{"schemaVersion":1,"technicalEvaluationMethod":"score"}'),
+                ("financial", '{"schemaVersion":1}'),
+            ]
+        return result
+
+
 def test_score_evaluation_excel_uses_numeric_validation_and_preserves_zero(monkeypatch):
     monkeypatch.setattr(
         excel_service.database,
@@ -316,6 +333,22 @@ def test_score_evaluation_excel_uses_numeric_validation_and_preserves_zero(monke
     assert len(validations) == 1
     assert validations[0].operator == "greaterThanOrEqual"
     assert validations[0].formula1 == "0"
+
+
+def test_evaluation_excel_uses_persisted_technical_round_method(monkeypatch):
+    monkeypatch.setattr(
+        excel_service.database,
+        "get_connection",
+        lambda: _Connection(_StoredTechnicalMethodEvaluationCursor()),
+    )
+
+    spec = excel_service.prepare_danhgiahsdt_template_spec(
+        "gt-1", "org-1", "technical",
+    )
+
+    assert "Đánh giá kỹ thuật" not in spec["options_map"]
+    assert spec["numeric_constraints"]["Đánh giá kỹ thuật"] == {"minimum": 0}
+    assert spec["formats_map"]["Đánh giá kỹ thuật"] == "decimal"
 
 
 def test_pass_fail_and_unknown_evaluation_excel_do_not_share_wrong_dropdown(monkeypatch):

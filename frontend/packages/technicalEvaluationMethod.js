@@ -45,11 +45,22 @@ export function isCombinedTechnicalPriceMethod(valueOrPackage = {}) {
   return isCombinedEvaluationMethod(valueOrPackage);
 }
 
+function evaluationMetadata(pkg) {
+  return parseEvaluationMetadataForDisplay(pkg?.danhGiaHsdtMetadata).metadata;
+}
+
 function metadataBlock(pkg, roundType) {
-  const metadata = parseEvaluationMetadataForDisplay(
-    pkg?.danhGiaHsdtMetadata,
-  ).metadata;
+  const metadata = evaluationMetadata(pkg);
   return roundType === "single" ? metadata : metadata?.[roundType] || {};
+}
+
+export function technicalEvaluationRoundType(pkg = {}, evaluationTab = "technical") {
+  if (evaluationTab !== "technical") return "single";
+  const metadata = evaluationMetadata(pkg);
+  if (metadata?.is1G2T) return "technical";
+  return normalize(pkg?.phuongThucLuaChon).includes("hai tui")
+    ? "technical"
+    : "single";
 }
 
 export function getStoredTechnicalEvaluationMethod(pkg = {}, roundType = "single") {

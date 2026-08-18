@@ -171,3 +171,25 @@ test("score packages reject pass/fail text while lotted rows resolve their own b
   assert.equal(lotted.maPhanLo, "PL2");
   assert.equal(lotted.tenPhanLo, "Lô 2");
 });
+
+
+test("technical Excel import respects a score method stored in the 1G2T technical round", async () => {
+  const pkg = {
+    id: "pkg-round-score",
+    phanLo: "Không",
+    phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ",
+    danhGiaHsdtMetadata: {
+      schemaVersion: 1,
+      is1G2T: true,
+      technical: { technicalEvaluationMethod: "score" },
+    },
+  };
+  const [record] = await parseBidEvaluationImport(evaluationController(pkg), [{
+    [evaluationExcelColumnLabel("contractorCode")]: "NT-01",
+    [evaluationExcelColumnLabel("contractorName")]: "Nhà thầu Một",
+    [evaluationExcelColumnLabel("technicalEvaluation")]: "Đạt",
+  }], { packageId: pkg.id, evaluationTab: "technical" });
+
+  assert.equal(record._valid, false);
+  assert.match(record._comment, /Không được nhập Đạt\/Không đạt/u);
+});

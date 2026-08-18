@@ -617,6 +617,17 @@
   background-color: var(--danger-soft);
   color: var(--danger);
 }
+.badge-status-neutral,
+.badge-status-active,
+.badge-status-opened,
+.badge-status-review,
+.badge-status-partial,
+.badge-status-complete,
+.badge-status-cancelled {
+  border: 1px solid color-mix(in srgb, var(--status-color) 28%, var(--border-color));
+  background-color: color-mix(in srgb, var(--status-color) 12%, var(--bg-card));
+  color: color-mix(in srgb, var(--status-color) 76%, var(--ink));
+}
 .rating-stars {
   color: #f59e0b;
   display: inline-flex;

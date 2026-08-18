@@ -10,48 +10,18 @@ import {
   renderTablePagination,
   setTablePage,
 } from "../shared/TablePagination.js";
-export const DASHBOARD_STATUS_COLORS = Object.freeze({
-  neutral: "#64748B",
-  active: "#3B82F6",
-  attention: "#F59E0B",
-  review: "#A855F7",
-  partial: "#14B8A6",
-  complete: "#22C55E",
-  cancelled: "#F43F5E",
-});
-export const PACKAGE_STATUS_COLORS = Object.freeze({
-  "Chưa xác định": "#94A3B8",
-  "Chuẩn bị": DASHBOARD_STATUS_COLORS.neutral,
-  "Đang mời thầu": DASHBOARD_STATUS_COLORS.active,
-  "Đã mở thầu": DASHBOARD_STATUS_COLORS.attention,
-  "Đang chấm thầu": DASHBOARD_STATUS_COLORS.review,
-  "Đã có kết quả một phần": DASHBOARD_STATUS_COLORS.partial,
-  "Đã có kết quả": DASHBOARD_STATUS_COLORS.complete,
-  "Hủy thầu": DASHBOARD_STATUS_COLORS.cancelled,
-});
+import {
+  CONTRACT_STATUS_COLORS,
+  PACKAGE_STATUS_COLORS,
+  PLAN_STATUS_COLORS,
+  STATUS_COLORS,
+  resolveContractStatusColor,
+} from "../shared/statusPresentation.js";
+
+export const DASHBOARD_STATUS_COLORS = STATUS_COLORS;
+export { CONTRACT_STATUS_COLORS, PACKAGE_STATUS_COLORS, PLAN_STATUS_COLORS };
 const PACKAGE_STATUS_ORDER = Object.keys(PACKAGE_STATUS_COLORS);
-export const PLAN_STATUS_COLORS = Object.freeze({
-  "Chưa triển khai": DASHBOARD_STATUS_COLORS.neutral,
-  "Đang thực hiện": DASHBOARD_STATUS_COLORS.active,
-  "Hoàn thành": DASHBOARD_STATUS_COLORS.complete,
-});
 const PLAN_STATUS_ORDER = ["Chưa triển khai", "Đang thực hiện", "Hoàn thành"];
-export const CONTRACT_STATUS_COLORS = Object.freeze({
-  "Chưa hiệu lực": DASHBOARD_STATUS_COLORS.neutral,
-  "Đang thực hiện": DASHBOARD_STATUS_COLORS.active,
-  "Tạm dừng": DASHBOARD_STATUS_COLORS.attention,
-  "Đã hoàn thành": DASHBOARD_STATUS_COLORS.complete,
-  "Đã thanh lý": DASHBOARD_STATUS_COLORS.partial,
-  "Đã hủy": DASHBOARD_STATUS_COLORS.cancelled,
-});
-const LEGACY_DEFAULT_CONTRACT_STATUS_COLORS = Object.freeze({
-  "Chưa hiệu lực": "#64748B",
-  "Đang thực hiện": "#2563EB",
-  "Tạm dừng": "#D97706",
-  "Đã hoàn thành": "#059669",
-  "Đã thanh lý": "#0F766E",
-  "Đã hủy": "#DC2626",
-});
 const CONTRACT_STATUS_ORDER = Object.keys(CONTRACT_STATUS_COLORS);
 const CONTRACT_EXPIRY_WARNING_DAYS = 10;
 export const ALERT_META = {
@@ -148,17 +118,10 @@ export function getContractStatusCatalog(model) {
     : [];
   const withFallbackColor = (status) => {
     const name = String(status?.name || "").trim();
-    const configuredColor = String(status?.color || "");
     return {
       ...status,
       name,
-      color: Object.hasOwn(CONTRACT_STATUS_COLORS, name)
-        && (!/^#[0-9a-fA-F]{6}$/.test(configuredColor)
-          || configuredColor.toUpperCase() === LEGACY_DEFAULT_CONTRACT_STATUS_COLORS[name])
-        ? CONTRACT_STATUS_COLORS[name]
-        : /^#[0-9a-fA-F]{6}$/.test(configuredColor)
-          ? configuredColor
-          : CONTRACT_STATUS_COLORS[name] || DASHBOARD_STATUS_COLORS.neutral,
+      color: resolveContractStatusColor(name, configured),
     };
   };
   if (configured.length) return configured.map(withFallbackColor);

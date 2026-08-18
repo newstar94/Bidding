@@ -188,6 +188,7 @@ jobs:
         with:
           name: biddingflow-secure-build-${{ github.sha }}
           path: dist/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
       - name: Upload private client symbols
@@ -304,6 +305,8 @@ jobs:
         with:
           name: biddingflow-secure-build-${{ github.sha }}
           path: dist
+      - name: Verify restored secure build artifact
+        run: python scripts/verify_secure_build_artifact.py
       - name: Create isolated test databases
         env:
           PGPASSWORD: ci-database-password
@@ -409,6 +412,8 @@ jobs:
         with:
           name: biddingflow-secure-build-${{ github.sha }}
           path: dist
+      - name: Verify restored secure build artifact
+        run: python scripts/verify_secure_build_artifact.py
       - name: Create isolated test databases
         env:
           PGPASSWORD: ci-database-password
@@ -489,6 +494,8 @@ jobs:
         with:
           name: biddingflow-secure-build-${{ github.sha }}
           path: dist
+      - name: Verify restored secure build artifact
+        run: python scripts/verify_secure_build_artifact.py
       - name: Create isolated test databases
         env:
           PGPASSWORD: ci-database-password

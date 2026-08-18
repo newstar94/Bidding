@@ -53,6 +53,12 @@ sys.path.insert(0, project_root)
 
 from backend.shared.client_ip import parse_ip_networks
 from backend.shared.origin_policy import get_allowed_websocket_origins
+from backend.frontend_assets import (
+    APP_ENTRY,
+    FrontendAssetError,
+    assert_production_frontend_ready,
+    resolve_preload_graph,
+)
 
 
 env_path = os.path.join(project_root, '.env')
@@ -221,31 +227,40 @@ def compile_html(file_path):
             compiled,
         )
         bundle_src = "/dist/assets/appbundle.js"
-        bundle_is_content_hashed = False
         bundled_stylesheet = None
-        manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
-        if os.path.exists(manifest_path):
-            try:
-                with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
-                    manifest = json.load(manifest_file)
-                bundle_file = manifest.get('frontend/app/app.js', {}).get('file')
-                if bundle_file:
-                    bundle_src = f"/dist/{bundle_file}"
-                    bundle_is_content_hashed = True
-                bundled_stylesheet = manifest.get('views/css/app.css', {}).get('file')
-                if not bundled_stylesheet:
-                    app_styles = manifest.get('frontend/app/app.js', {}).get('css') or []
-                    bundled_stylesheet = app_styles[0] if app_styles else None
-            except Exception as exc:
-                log_error(exc, "frontend_manifest")
-        if not bundle_is_content_hashed:
-            bundle_path = os.path.join(project_root, bundle_src.lstrip('/').replace('/', os.sep))
-            try:
-                bundle_stat = os.stat(bundle_path)
-                bundle_version = f"{bundle_stat.st_mtime_ns:x}-{bundle_stat.st_size:x}"
-                bundle_src = f"{bundle_src}?v={bundle_version}"
-            except OSError:
-                pass
+        if IS_PRODUCTION:
+            frontend_assets = assert_production_frontend_ready(project_root)
+            bundle_src = f"/dist/{frontend_assets.app_file}"
+            bundled_stylesheet = (
+                frontend_assets.stylesheets[0]
+                if frontend_assets.stylesheets
+                else None
+            )
+        else:
+            bundle_is_content_hashed = False
+            manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
+                        manifest = json.load(manifest_file)
+                    bundle_file = manifest.get(APP_ENTRY, {}).get('file')
+                    if bundle_file:
+                        bundle_src = f"/dist/{bundle_file}"
+                        bundle_is_content_hashed = True
+                    bundled_stylesheet = manifest.get('views/css/app.css', {}).get('file')
+                    if not bundled_stylesheet:
+                        app_styles = manifest.get(APP_ENTRY, {}).get('css') or []
+                        bundled_stylesheet = app_styles[0] if app_styles else None
+                except Exception as exc:
+                    log_error(exc, "frontend_manifest")
+            if not bundle_is_content_hashed:
+                bundle_path = os.path.join(project_root, bundle_src.lstrip('/').replace('/', os.sep))
+                try:
+                    bundle_stat = os.stat(bundle_path)
+                    bundle_version = f"{bundle_stat.st_mtime_ns:x}-{bundle_stat.st_size:x}"
+                    bundle_src = f"{bundle_src}?v={bundle_version}"
+                except OSError:
+                    pass
         compiled = re.sub(
             r'<script\s+type="module"\s+src="/frontend/app/app\.js(?:\?v=[^"]*)?"></script>',
             f'<script type="module" src="{bundle_src}"></script>',
@@ -295,17 +310,22 @@ def _prewarm_frontend_assets():
     """Read the small critical graph once so the first user does not pay cold file I/O."""
     if APP_DEBUG:
         return 0, 0
-    manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
-    dist_root = os.path.realpath(os.path.join(project_root, 'dist'))
     roots = (
-        'frontend/app/app.js',
+        APP_ENTRY,
         'frontend/app/workspaceBootstrap.js',
         'frontend/admin/AdminUserController.js',
         'views/css/app.css',
     )
     try:
-        with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
-            manifest = json.load(manifest_file)
+        if IS_PRODUCTION:
+            frontend_assets = assert_production_frontend_ready(project_root)
+            manifest = frontend_assets.manifest
+            dist_root = os.fspath(frontend_assets.dist_root)
+        else:
+            manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
+            dist_root = os.path.realpath(os.path.join(project_root, 'dist'))
+            with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
+                manifest = json.load(manifest_file)
         pending = [key for key in roots if key in manifest]
         visited = set()
         warmed_files = 0
@@ -339,10 +359,18 @@ def _prewarm_frontend_assets():
                             pass
                     warmed_files += 1
                     warmed_bytes += size
-                except (OSError, ValueError):
+                except (OSError, ValueError) as error:
+                    if IS_PRODUCTION:
+                        raise FrontendAssetError(
+                            f"production frontend asset cannot be prewarmed: {entry_file}"
+                        ) from error
                     continue
         return warmed_files, warmed_bytes
+    except FrontendAssetError:
+        raise
     except Exception as exc:
+        if IS_PRODUCTION:
+            raise FrontendAssetError("production frontend assets cannot be prewarmed") from exc
         log_error(exc, "frontend_asset_prewarm", level="WARN")
         return 0, 0
 
@@ -378,6 +406,22 @@ def _workspace_preload_tag(session_bootstrap):
         return "\n".join(
             f'<link rel="modulepreload" href="{module_src}">'
             for module_src in dict.fromkeys(preload_sources)
+        )
+
+    if IS_PRODUCTION:
+        frontend_assets = assert_production_frontend_ready(project_root)
+        workspace_entry = 'frontend/app/workspaceBootstrap.js'
+        preload_roots = [APP_ENTRY]
+        if session_bootstrap.get("valid") and workspace_entry in frontend_assets.manifest:
+            preload_roots.append(workspace_entry)
+        preload_files = resolve_preload_graph(
+            frontend_assets.manifest,
+            frontend_assets.dist_root,
+            tuple(preload_roots),
+        )
+        return "\n".join(
+            f'<link rel="modulepreload" href="/dist/{bundle_file}">'
+            for bundle_file in preload_files
         )
 
     manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')

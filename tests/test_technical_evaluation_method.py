@@ -1,9 +1,27 @@
+import json
+from pathlib import Path
+
 from backend.documents.technical_evaluation_method import (
     PASS_FAIL,
     SCORE,
     UNKNOWN,
     resolve_technical_evaluation_method,
 )
+
+
+TECHNICAL_METHOD_CASES = json.loads(
+    (Path(__file__).parents[1] / "shared" / "technical_evaluation_method_cases.json")
+    .read_text(encoding="utf-8")
+)["cases"]
+
+
+def test_technical_evaluation_method_matches_shared_frontend_backend_cases():
+    for case in TECHNICAL_METHOD_CASES:
+        expected = UNKNOWN if case["expected"] == "unknown" else case["expected"]
+        actual = resolve_technical_evaluation_method(
+            case["package"], round_type=case["roundType"],
+        )
+        assert actual == expected, case["id"]
 
 
 def test_technical_evaluation_method_matches_frontend_domain_rules():

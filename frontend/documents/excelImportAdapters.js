@@ -5,7 +5,10 @@
 } from "../packages/lotEvaluationScope.js";
 import { normalizeLowPriceAcceptance } from "../packages/bidEvaluationLowPriceRules.js";
 import { validateTechnicalScore } from "../packages/evaluationMethodRules.js";
-import { requiresTechnicalScore } from "../packages/technicalEvaluationMethod.js";
+import {
+  requiresTechnicalScore,
+  technicalEvaluationRoundType,
+} from "../packages/technicalEvaluationMethod.js";
 import { readEvaluationExcelValue } from "./bidEvaluationExcelColumns.js";
 
 function readEvaluationExcelText(row, columnKey) {
@@ -91,7 +94,10 @@ export async function parseBidEvaluationImport(controller, rows, context = {}) {
   const activeLotDetails = getActiveEvaluationLotScope(controller, goiThau);
   const isPartialScope = isPartialEvaluationLotScope(activeLotDetails);
   const evaluationTab = context.evaluationTab || controller.currentDanhGiaTab || "technical";
-  const technicalScoreRequired = requiresTechnicalScore(goiThau)
+  const technicalScoreRequired = requiresTechnicalScore(
+    goiThau,
+    technicalEvaluationRoundType(goiThau, evaluationTab),
+  )
     && evaluationTab === "technical";
   return rows.map((row) => {
     const maNhaThau = readEvaluationExcelText(row, "contractorCode");
