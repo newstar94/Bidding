@@ -17,7 +17,6 @@ from backend.integrations.muasamcong_browser.canonical import (
     normalize_additional_purchase_items,
     normalize_notice_complete_bundle,
     normalize_lots,
-    opening_source_payload_info,
     pick,
 )
 from backend.integrations.muasamcong_browser.code_mapping import (
@@ -39,6 +38,10 @@ from backend.integrations.muasamcong_browser.launchers import (
 )
 from backend.integrations.muasamcong_browser.diagnostics import DiagnosticRecorder
 from backend.integrations.muasamcong_browser.source import MuaSamCongBrowserSource
+from backend.procurement_import.source_contracts import (
+    source_operation_endpoint,
+    source_payload_info,
+)
 from backend.procurement_import.source import ProcurementSourceError
 from backend.procurement_lookup.domain import ProcurementLookupError
 
@@ -59,27 +62,6 @@ _ALLOWED_ERRORS = {
     "PROCUREMENT_BROWSER_FAILED",
     "PROCUREMENT_ADAPTER_UNSUPPORTED",
 }
-
-# The opening collector returns raw response payloads keyed by operation, but
-# unlike the complete plan/notice collectors it does not carry the endpoint
-# path alongside each response.  Keep the evidence envelope compatible with
-# procurement_raw_snapshot's non-empty endpoint contract.
-_OPENING_ENDPOINTS = {
-    "NOTICE_LDT_DETAIL": "/expose/lcnt/bid-po-bido-notify-contractor-view/get-by-id",
-    "NOTICE_OTHER_DETAIL": "/expose/lcnt/bid-notify-contractor-out/get-by-id",
-    "NOTICE_ADB_DETAIL": "/expose/lcnt/bid-notify-contractor-out-adb-wb/get-by-id",
-    "OPENING_NOTIFY": "/exposeldtkqmt/bid-notification-p/notify",
-    "OPENING_ROUND": "/expose/ldtkqmt/bid-notification-p/roundmng",
-    "OPENING_SUBMISSION": "/expose/ldtkqmt/bid-notification-p/submission",
-    "OPENING_BID": "/expose/ldtkqmt/bid-notification-p/bid-open",
-    "OPENING_LOT": "/expose/ldtkqmt/bid-notification-p/lot-open",
-    "OPENING_LOT_DETAIL": "/expose/ldtkqmt/bid-notification-p/lotOpenDetail",
-    "OPENING_FINANCIAL_DETAIL": "/expose/ldtkqmt/bid-notification-p/get-by-id-v2",
-    "OPENING_FINANCIAL_AVAILABLE": "/hsdxtc/is-opened",
-    "OPENING_OTHER": "/expose/kqmt/bid-notify-contractor-out/get-by-id",
-    "OPENING_ADB": "/expose/kqmt/bid-notify-contractor-out-adb-wb/get-by-id",
-}
-
 
 def _first_present(mapping, *keys):
     for key in keys:
@@ -601,9 +583,8 @@ class MuaSamCongProcurementSource:
                 # Opening responses are returned as a compact raw map rather
                 # than the normal collector envelopes.  Reattach the catalog
                 # path here so persistence satisfies the evidence contract.
-                "endpoint": _OPENING_ENDPOINTS.get(
-                    operation, f"internal:opening/{operation.lower()}"
-                ),
+                "endpoint": source_operation_endpoint(operation)
+                or f"internal:opening/{operation.lower()}",
                 "request": request,
                 "response": deepcopy(response),
                 "error": None,
@@ -613,7 +594,7 @@ class MuaSamCongProcurementSource:
                 ),
                 "retrievedAt": retrieved_at,
             }
-            source_info = opening_source_payload_info(operation, response)
+            source_info = source_payload_info(operation, response)
             if operation.startswith("OPENING_"):
                 sources[str(key)]["schemaValid"] = source_info["schemaValid"]
         return {

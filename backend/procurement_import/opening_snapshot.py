@@ -10,58 +10,20 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 
-from backend.integrations.muasamcong_browser.canonical import (
-    normalize_opening_bundle,
-    opening_source_payload_info,
+from backend.integrations.muasamcong_browser.canonical import normalize_opening_bundle
+from backend.procurement_import.source_contracts import (
+    OPENING_OPERATION_CONTRACTS,
+    opening_operation_contract,
+    source_payload_info,
 )
 
 
-# These contracts record semantic authority rather than creating aliases that
-# could accidentally merge distinct upstream facts.
-OPENING_OPERATION_CONTRACTS = {
-    "OPENING_ROUND": {
-        "expectedRootShape": "object",
-        "requiredContainers": (),
-        "knownAliases": (),
-        "semanticAuthority": "opening-round schedule/status",
-        "normalizer": "normalize_opening_bundle",
-        "validator": "opening_source_payload_info",
-        "fixture": "tests/fixtures/muasamcong/opening",
-    },
-    "OPENING_BID": {
-        "expectedRootShape": "object",
-        "requiredContainers": ("bidSubmissionByContractorViewResponse.bidSubmissionDTOList",),
-        "knownAliases": (),
-        "semanticAuthority": "bidder-level summary",
-        "normalizer": "normalize_opening_bundle",
-        "validator": "opening_source_payload_info",
-        "fixture": "tests/fixtures/muasamcong/opening",
-    },
-    "OPENING_LOT": {
-        "expectedRootShape": "array-or-object",
-        "requiredContainers": ("lotNoValueDTOList",),
-        "knownAliases": (),
-        "semanticAuthority": "bidder-lot relation",
-        "normalizer": "normalize_opening_bundle",
-        "validator": "opening_source_payload_info",
-        "fixture": "tests/fixtures/muasamcong/opening",
-    },
-    "OPENING_LOT_DETAIL": {
-        "expectedRootShape": "array-or-object",
-        "requiredContainers": ("lotOpenDetailDTOList", "bidOpenDetailDTOList", "items"),
-        "knownAliases": (),
-        "semanticAuthority": "lot detail",
-        "normalizer": "normalize_opening_bundle",
-        "validator": "opening_source_payload_info",
-        "fixture": "tests/fixtures/muasamcong/opening",
-    },
-}
-
-
-def opening_operation_contract(operation):
-    """Return reviewed metadata for a known opening operation, if any."""
-
-    return OPENING_OPERATION_CONTRACTS.get(str(operation or "").strip().upper())
+__all__ = [
+    "OPENING_OPERATION_CONTRACTS",
+    "opening_operation_contract",
+    "raw_snapshot_has_complete_opening_sources",
+    "load_complete_opening_snapshot",
+]
 
 
 def raw_snapshot_has_complete_opening_sources(raw_bundle, selected_revision):
@@ -103,7 +65,7 @@ def raw_snapshot_has_complete_opening_sources(raw_bundle, selected_revision):
         if opening_operation_contract(operation) is not None:
             if source.get("schemaValid") is False:
                 return False
-            if not opening_source_payload_info(operation, source.get("response"))["schemaValid"]:
+            if not source_payload_info(operation, source.get("response"))["schemaValid"]:
                 return False
     if not opening_sources:
         return False
