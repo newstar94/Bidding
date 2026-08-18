@@ -327,6 +327,47 @@ test("initial route reconciliation is deferred until the shell can become intera
   assert.deepEqual(calls.slice(1), ["push", "pull"]);
 });
 
+test("scheduled_reconciliation_from_workspace_a_does_not_start_after_switch_to_workspace_b", async () => {
+  const calls = [];
+  let scheduledA = null;
+  let token = "user:org-a@1";
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+  };
+  const controller = {
+    model,
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: true, skipped: true };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: false };
+    },
+  };
+
+  initializeStartupReconciliation(controller);
+  scheduleInitialRouteReconciliation(controller, (task) => {
+    scheduledA = task;
+  });
+  assert.equal(typeof scheduledA, "function");
+
+  token = "user:org-b@2";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  const stateB = initializeStartupReconciliation(controller);
+  const promiseB = Promise.resolve("workspace-b-reconciliation");
+  controller._startupReconciliationPromise = promiseB;
+
+  assert.equal(await scheduledA(), false);
+  assert.deepEqual(calls, []);
+  assert.equal(getStartupReconciliationState(controller).phase, stateB.phase);
+  assert.equal(getStartupReconciliationState(controller).workspaceToken, "user:org-b@2");
+  assert.equal(controller._startupReconciliationPromise, promiseB);
+});
+
 
 test("caught startup reconciliation failure emits redacted structured context", async () => {
   const telemetry = [];

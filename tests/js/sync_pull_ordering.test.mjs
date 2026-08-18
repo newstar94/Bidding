@@ -21,6 +21,221 @@ function memoryStorage() {
   };
 }
 
+function installPullGlobals(fetchImpl, pathname = "/goi-thau") {
+  const previous = {
+    fetch: globalThis.fetch,
+    document: globalThis.document,
+    window: globalThis.window,
+    navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+  };
+  globalThis.fetch = fetchImpl;
+  globalThis.document = { getElementById: () => null };
+  globalThis.window = { location: { pathname } };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: true },
+  });
+  return () => {
+    if (previous.fetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previous.fetch;
+    if (previous.document === undefined) delete globalThis.document;
+    else globalThis.document = previous.document;
+    if (previous.window === undefined) delete globalThis.window;
+    else globalThis.window = previous.window;
+    if (previous.navigator) {
+      Object.defineProperty(globalThis, "navigator", previous.navigator);
+    } else {
+      delete globalThis.navigator;
+    }
+  };
+}
+
+function outboxSettleWorkspaceRaceController({ storageA, storageB, flush }) {
+  let token = "user:org-a@1";
+  let outboxPending = true;
+  const patches = [];
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storageA,
+    state: { goithau: [] },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    getMutationOutboxStatus: () => outboxPending
+      ? { state: "pending", trusted: true }
+      : { state: "ready", trusted: true },
+    async flushMutationOutbox() {
+      await flush.promise;
+      outboxPending = false;
+    },
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => null,
+    rebaseMutationBatch() {},
+    db: { async applySyncChanges() {} },
+  };
+  const controller = {
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState(patch) { patches.push(patch); },
+    hasLocalWorkspaceData: () => true,
+  };
+  return {
+    controller,
+    patches,
+    switchToB() {
+      token = "user:org-b@2";
+      model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+      model.workspaceStorage = storageB;
+    },
+  };
+}
+
+test("workspace_change_during_outbox_settle_cannot_touch_new_workspace_cursor", async () => {
+  const flush = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  storageB.setItem("bf_last_sync_version", "91");
+  storageB.setItem("bf_last_sync_timestamp", "org-b-time");
+  storageB.setItem("bf_visibility_token", "org-b-visibility");
+  let fetchCalls = 0;
+  const restore = installPullGlobals(async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ syncVersion: 1, timestamp: "org-a" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const race = outboxSettleWorkspaceRaceController({ storageA, storageB, flush });
+
+  try {
+    const pull = forceSyncData.call(race.controller, true, false, false);
+    await new Promise((resolve) => setImmediate(resolve));
+    race.switchToB();
+    flush.resolve();
+    const result = await pull;
+
+    assert.equal(fetchCalls, 0);
+    assert.equal(storageB.getItem("bf_last_sync_version"), "91");
+    assert.equal(storageB.getItem("bf_last_sync_timestamp"), "org-b-time");
+    assert.equal(storageB.getItem("bf_visibility_token"), "org-b-visibility");
+    assert.deepEqual(race.patches, []);
+    assert.equal(result.workspaceChanged, true);
+    assert.equal(result.stale, true);
+  } finally {
+    flush.resolve();
+    restore();
+  }
+});
+
+test("workspace_change_before_full_sync_reset_cannot_clear_new_workspace_cursor", async () => {
+  const resetPayload = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  storageB.setItem("bf_last_sync_version", "92");
+  storageB.setItem("bf_last_sync_timestamp", "org-b-time");
+  storageB.setItem("bf_visibility_token", "org-b-visibility");
+  let fetchCalls = 0;
+  const restore = installPullGlobals(async () => {
+    fetchCalls += 1;
+    return {
+      ok: false,
+      status: 409,
+      headers: new Headers({ "content-type": "application/json" }),
+      clone: () => ({ json: () => resetPayload.promise }),
+    };
+  });
+  const race = outboxSettleWorkspaceRaceController({
+    storageA,
+    storageB,
+    flush: deferred(),
+  });
+  race.controller.model.getMutationOutboxStatus = () => ({ state: "ready", trusted: true });
+  race.controller.forceSyncData = () => ({
+    ok: false,
+    stale: true,
+    superseded: true,
+    workspaceChanged: true,
+  });
+
+  try {
+    const pull = forceSyncData.call(race.controller, true, false, false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fetchCalls, 1);
+    const patchesBeforeSwitch = structuredClone(race.patches);
+    race.switchToB();
+    resetPayload.resolve({
+      code: "FULL_SYNC_REQUIRED",
+      requiresFullSync: true,
+    });
+    const result = await pull;
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(storageB.getItem("bf_last_sync_version"), "92");
+    assert.equal(storageB.getItem("bf_last_sync_timestamp"), "org-b-time");
+    assert.equal(storageB.getItem("bf_visibility_token"), "org-b-visibility");
+    assert.deepEqual(race.patches, patchesBeforeSwitch);
+    assert.equal(result.workspaceChanged, true);
+  } finally {
+    resetPayload.resolve({});
+    restore();
+  }
+});
+
+test("workspace_change_during_snapshot_persistence_cannot_mark_new_workspace_recovered", async () => {
+  const persistence = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  let token = "user:org-a@1";
+  const recovered = [];
+  const patches = [];
+  const restore = installPullGlobals(async () => new Response(JSON.stringify({
+    goithau: [{ id: "package-a", name: "Workspace A" }],
+    syncVersion: 4,
+    timestamp: "org-a-time",
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storageA,
+    state: { goithau: [] },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => null,
+    markStorageTablesRecovered(keys) { recovered.push([...keys]); },
+    db: { async applySyncChanges() { await persistence.promise; } },
+  };
+  const controller = {
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState(patch) { patches.push(patch); },
+    hasLocalWorkspaceData: () => true,
+  };
+
+  try {
+    const pull = forceSyncData.call(controller, true, false, false);
+    await new Promise((resolve) => setImmediate(resolve));
+    token = "user:org-b@2";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    model.workspaceStorage = storageB;
+    model.state = { goithau: [] };
+    persistence.resolve();
+
+    const result = await pull;
+    assert.equal(result.workspaceChanged, true);
+    assert.deepEqual(recovered, []);
+    assert.deepEqual(patches, [{ phase: "syncing" }]);
+    assert.equal(storageB.getItem("bf_last_sync_version"), null);
+  } finally {
+    persistence.resolve();
+    restore();
+  }
+});
+
 function coordinatedController() {
   const storage = memoryStorage();
   let pending = true;
@@ -224,6 +439,79 @@ test("background pull preserves an actionable conflict while local mutations rem
     assert.equal(result.ok, true);
     assert.equal(result.localMutationsPending, true);
     assert.equal(controller._syncUxState.phase, "conflict");
+    assert.deepEqual(phases, []);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousNavigator) {
+      Object.defineProperty(globalThis, "navigator", previousNavigator);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+});
+
+test("full_sync_retry_preserves_actionable_phase_with_pending_outbox", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const responses = [
+    new Response(JSON.stringify({
+      code: "FULL_SYNC_REQUIRED",
+      requiresFullSync: true,
+    }), { status: 409, headers: { "content-type": "application/json" } }),
+    new Response(JSON.stringify({
+      syncVersion: 10,
+      timestamp: "v10",
+    }), { status: 200, headers: { "content-type": "application/json" } }),
+  ];
+  globalThis.fetch = async () => responses.shift();
+  globalThis.document = { getElementById: () => null };
+  globalThis.window = { location: { pathname: "/chuyen-gia/tao-moi" } };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: true },
+  });
+
+  const storage = memoryStorage();
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storage,
+    state: {},
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => ({ payload: { chuyengia: [{ id: "expert-1" }] } }),
+    rebaseMutationBatch() {},
+    db: { async applySyncChanges() {} },
+  };
+  const phases = [];
+  const controller = {
+    _syncUxState: { phase: "transportError" },
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState(patch) {
+      phases.push(patch.phase);
+      this._syncUxState = { ...this._syncUxState, ...patch };
+    },
+    hasLocalWorkspaceData: () => true,
+  };
+  controller.forceSyncData = (...args) => forceSyncData.call(controller, ...args);
+
+  try {
+    const result = await controller.forceSyncData(true, false, false);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.localMutationsPending, true);
+    assert.equal(controller._syncUxState.phase, "transportError");
     assert.deepEqual(phases, []);
   } finally {
     if (previousFetch === undefined) delete globalThis.fetch;

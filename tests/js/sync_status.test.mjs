@@ -8,6 +8,7 @@ import {
   shouldShowLocalPending,
 } from "../../frontend/app/SyncCoordinator.js";
 import { applyFailedPush, autoSync } from "../../frontend/app/SyncPushService.js";
+import { hashWorkspaceScope } from "../../frontend/shared/releaseDiagnostics.js";
 
 
 test("sync status distinguishes durable, pending, validation, transport, and offline states", () => {
@@ -152,6 +153,48 @@ test("automatic push waits behind startup authoritative reconciliation", async (
   assert.deepEqual(calls, ["build", "idle"]);
 });
 
+test("automatic push cannot replay a mutation after startup reconciliation conflicts", async () => {
+  const previousFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ status: "success" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      repairPendingDuplicatePlanVersions: () => null,
+      buildMutationSyncPayload: () => ({
+        payload: { chuyengia: [{ id: "expert-1" }] },
+        snapshot: { id: "receipt-1" },
+      }),
+    },
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "CONFLICT" }),
+    updateSyncState() {},
+  };
+
+  try {
+    const result = await autoSync.call(controller);
+
+    assert.deepEqual(result, {
+      ok: false,
+      conflict: true,
+      reconciliationRequired: true,
+    });
+    assert.equal(fetchCalls, 0);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 test("queued automatic sync does not retry an actionable transport failure", async () => {
   const previousFetch = globalThis.fetch;
   const originalConsoleError = console.error;
@@ -193,6 +236,80 @@ test("queued automatic sync does not retry an actionable transport failure", asy
     console.error = originalConsoleError;
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;
+  }
+});
+
+test("late_transport_failure_from_workspace_a_cannot_update_workspace_b", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousDocument = globalThis.document;
+  const originalConsoleError = console.error;
+  let rejectSync;
+  const syncRequest = new Promise((_resolve, reject) => {
+    rejectSync = reject;
+  });
+  let resolveDiagnostic;
+  const diagnosticPosted = new Promise((resolve) => {
+    resolveDiagnostic = resolve;
+  });
+  const diagnostics = [];
+  globalThis.document = { cookie: "csrf_token=test" };
+  console.error = () => {};
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).includes("/api/client-errors")) {
+      diagnostics.push(JSON.parse(options.body));
+      resolveDiagnostic();
+      return new Response(null, { status: 204 });
+    }
+    return syncRequest;
+  };
+
+  let token = "user:org-a@1";
+  const patches = [];
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+    repairPendingDuplicatePlanVersions: () => null,
+    buildMutationSyncPayload: () => ({
+      payload: { goithau: [{ id: "package-1", rowVersion: 4 }] },
+      snapshot: { id: "receipt-org-a" },
+    }),
+  };
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState(patch) { patches.push(patch); },
+  };
+
+  try {
+    const push = autoSync.call(controller);
+    await new Promise((resolve) => setImmediate(resolve));
+    token = "user:org-b@2";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    patches.length = 0;
+    const error = Object.assign(new TypeError("org A transport failed"), {
+      requestId: "request-org-a",
+    });
+    rejectSync(error);
+
+    const result = await push;
+    await diagnosticPosted;
+    assert.equal(result.ok, false);
+    assert.equal(result.stale, true);
+    assert.equal(result.workspaceChanged, true);
+    assert.deepEqual(patches, []);
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0].workspaceHash, await hashWorkspaceScope("user:org-a"));
+    assert.notEqual(diagnostics[0].workspaceHash, await hashWorkspaceScope("user:org-b"));
+  } finally {
+    rejectSync?.(new Error("cleanup"));
+    console.error = originalConsoleError;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
   }
 });
 

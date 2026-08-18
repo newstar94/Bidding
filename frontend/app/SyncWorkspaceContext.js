@@ -13,6 +13,8 @@ export function captureWorkspace(controller) {
     token: controller.model?.getWorkspaceToken?.() || "",
     organizationId: controller.model?.workspaceScope?.organizationId
       || getActiveOrganizationId(),
+    workspaceKey: controller.model?.workspaceScope?.key || "",
+    storage: controller.model?.workspaceStorage || null,
   };
 }
 

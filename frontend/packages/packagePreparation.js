@@ -26,10 +26,7 @@ async function hydratePackageAggregate(controller, pkg) {
   if (!packageId) return pkg;
   let hydrated = pkg;
   if (pkg?.referenceOnly === true && typeof controller.fetchRecordByLookup === "function") {
-    hydrated = await controller.fetchRecordByLookup("goithau", packageId).catch((error) => {
-      console.error("Failed to load the package before creating a version:", error);
-      return null;
-    }) || pkg;
+    hydrated = await controller.fetchRecordByLookup("goithau", packageId) || pkg;
   }
   if (!model?.useServerSidePagination) return hydrated;
   // /api/paginate scopes these owned tables by plan, not by package.
@@ -46,9 +43,6 @@ async function hydratePackageAggregate(controller, pkg) {
         sortOrder: "asc",
         keHoachId: planId,
         ...(cursor ? { cursor } : {}),
-      }).catch((error) => {
-        console.error(`Failed to load ${table} of plan ${planId} before versioning:`, error);
-        return null;
       });
       const nextCursor = String(page?.nextCursor || "");
       if (!page?.hasMore || !nextCursor || nextCursor === cursor) break;
@@ -96,6 +90,24 @@ export function createPackagePreparationVersionSnapshot(
   });
 }
 
+function commandWorkspaceToken(model) {
+  return model?.getWorkspaceToken?.() || "";
+}
+
+function assertPackageCommandWorkspace(model, workspaceToken) {
+  if (!workspaceToken || model?.isWorkspaceCurrent?.(workspaceToken) !== false) return;
+  const error = new Error("Workspace changed while saving package preparation");
+  error.name = "AbortError";
+  error.code = "WORKSPACE_CHANGED";
+  throw error;
+}
+
+function authoritativePackageUnavailable(packageId) {
+  const error = new Error(`Package ${packageId} is no longer available after authoritative refresh`);
+  error.code = "AUTHORITATIVE_PACKAGE_UNAVAILABLE";
+  return error;
+}
+
 export async function savePackagePreparation(controller, pkg, changes, {
   generateRecordId = defaultGenerateRecordId,
   createAggregateVersion = createOfficialAggregateVersion,
@@ -103,11 +115,40 @@ export async function savePackagePreparation(controller, pkg, changes, {
   const { model } = controller;
   const nextData = { ...changes };
   clearCompetitiveQuotationAppraisal(nextData);
-  let createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
-  if (createVersion && pkg?.referenceOnly === true && typeof controller.fetchRecordByLookup === "function") {
-    pkg = await controller.fetchRecordByLookup("goithau", pkg.id) || pkg;
-    createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  const workspaceToken = commandWorkspaceToken(model);
+  const boundaryChecked = typeof controller?.awaitAuthoritativeMutationBoundary === "function";
+  const boundaryResult = boundaryChecked
+    ? await controller.awaitAuthoritativeMutationBoundary()
+    : null;
+  assertPackageCommandWorkspace(model, workspaceToken);
+
+  const packageId = String(pkg?.id || "");
+  const packageFromAuthoritativeState = model.state.goithau.find(
+    (candidate) => String(candidate.id) === packageId,
+  ) || null;
+  pkg = boundaryResult?.authoritative === true
+    ? packageFromAuthoritativeState
+    : packageFromAuthoritativeState || pkg;
+  const shouldRefreshAuthoritatively = boundaryResult?.authoritative === true;
+  const shouldRefreshLegacyReference = !boundaryChecked
+    && pkg?.referenceOnly === true
+    && shouldCreatePackagePreparationVersion(pkg, nextData);
+  const shouldHydrateOwnedRows = shouldRefreshAuthoritatively || shouldRefreshLegacyReference;
+  if (
+    (shouldRefreshAuthoritatively || shouldRefreshLegacyReference)
+    && typeof controller.fetchRecordByLookup === "function"
+  ) {
+    const refreshed = await controller.fetchRecordByLookup("goithau", packageId);
+    assertPackageCommandWorkspace(model, workspaceToken);
+    pkg = refreshed
+      || model.state.goithau.find((candidate) => String(candidate.id) === packageId)
+      || pkg;
   }
+  if (shouldRefreshAuthoritatively && !pkg) {
+    throw authoritativePackageUnavailable(packageId);
+  }
+
+  let createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
   if (createVersion && Number(pkg?.rowVersion) > 0) {
     const officialResult = await createAggregateVersion(controller, {
       kind: "package",
@@ -116,6 +157,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
       changes: nextData,
       clientMutationId: generateRecordId("version-command"),
     });
+    assertPackageCommandWorkspace(model, workspaceToken);
     if (officialResult?.authoritative) {
       const packageRootId = String(pkg.rootId || pkg.id);
       const savedPackage = model.state.goithau.find((candidate) => (
@@ -131,11 +173,12 @@ export async function savePackagePreparation(controller, pkg, changes, {
       return savedPackage;
     }
   }
-  if (createVersion) {
+  if (createVersion && shouldHydrateOwnedRows) {
     // Inheriting from a partial local copy would silently reset status and
     // assignees, so refresh the aggregate first and re-evaluate the decision
     // against the authoritative record.
     pkg = await hydratePackageAggregate(controller, pkg);
+    assertPackageCommandWorkspace(model, workspaceToken);
     createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
   }
   let tables = ["goithau"];
@@ -143,6 +186,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
   let previousLatestPackages = [];
 
   if (createVersion) {
+    assertPackageCommandWorkspace(model, workspaceToken);
     const timestamp = model.getCurrentDateTimeString();
     const packageId = generateRecordId("goithau");
     const latestPlan = model.getLatestPlan(pkg.keHoachId);
@@ -180,6 +224,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
     rememberSelectedVersion(model.state, "selectedPackageVersion", savedPackage);
     tables = ["goithau", "goithauhanghoa", "hanghoaduthaunhathau", "thongtinmothau", "assignments"];
   } else {
+    assertPackageCommandWorkspace(model, workspaceToken);
     const latestPlan = model.getLatestPlan(pkg.keHoachId);
     Object.assign(pkg, nextData, {
       keHoachId: latestPlan?.id || pkg.keHoachId,
@@ -202,6 +247,7 @@ export async function savePackagePreparation(controller, pkg, changes, {
     });
   }
   await persistAndSync(controller, tables, {
+    authoritativeBoundaryChecked: boundaryChecked,
     changes: { upserts: explicitUpserts },
   });
   return savedPackage;

@@ -217,6 +217,16 @@ export function autoSync(options = {}) {
   this._deferPostCommitRender = false;
   if (options.startupReconciliation !== true) {
     const startupState = this.getStartupReconciliationState?.();
+    if (startupState?.phase === "CONFLICT") {
+      return Promise.resolve({
+        ok: false,
+        conflict: true,
+        reconciliationRequired: true,
+      });
+    }
+    if (startupState?.phase === "SYNC_ERROR") {
+      return Promise.resolve({ ok: false, reconciliationRequired: true });
+    }
     if (["LOCAL_READY", "RECONCILING"].includes(startupState?.phase)) {
       const barrier = startupState?.promise || this._startupReconciliationPromise;
       if (barrier) {
@@ -353,10 +363,18 @@ export function autoSync(options = {}) {
     });
   }).catch((error) => {
     void reportOutboxFailure({
-      workspaceKey: this.model?.workspaceScope?.key,
+      workspaceKey: workspace.workspaceKey,
       correlationId: error?.requestId,
     });
     console.error("Automatic sync transport failed; structured diagnostic submitted.");
+    if (!workspaceIsCurrent(this, workspace)) {
+      return {
+        ok: false,
+        stale: true,
+        workspaceChanged: true,
+        error,
+      };
+    }
     this.updateSyncState({ phase: "transportError", message: "Không thể kết nối máy chủ" });
     return { ok: false, error };
   });

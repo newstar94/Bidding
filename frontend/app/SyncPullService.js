@@ -220,6 +220,14 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
   const outboxFailure = await settleOutboxBeforeAuthoritativePull(this);
   if (outboxFailure) return outboxFailure;
+  if (!workspaceIsCurrent(this, workspace)) {
+    return {
+      ok: false,
+      stale: true,
+      superseded: true,
+      workspaceChanged: true,
+    };
+  }
   const pullKey = workspace.token || workspace.organizationId;
   this._workspacePullGenerations ||= new Map();
   const pullGeneration = (this._workspacePullGenerations.get(pullKey) || 0) + 1;
@@ -228,7 +236,15 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     workspaceIsCurrent(this, workspace)
     && this._workspacePullGenerations.get(pullKey) === pullGeneration
   );
-  const storage = currentWorkspaceStorage(this);
+  const stalePullResult = () => workspaceIsCurrent(this, workspace)
+    ? { ok: false, stale: true, superseded: true }
+    : {
+        ok: false,
+        stale: true,
+        superseded: true,
+        workspaceChanged: true,
+      };
+  const storage = workspace.storage || currentWorkspaceStorage(this);
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
   const preserveActionablePhase = beginPullProgress(this, {
@@ -278,9 +294,11 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
         headers: requestHeaders,
       });
     }
+    if (!pullIsCurrent()) return stalePullResult();
     if (response.status === 409 && !forceFull) {
       let resyncPayload = null;
       try { resyncPayload = await response.clone().json(); } catch { resyncPayload = null; }
+      if (!pullIsCurrent()) return stalePullResult();
       if (["FULL_SYNC_REQUIRED", "SYNC_VISIBILITY_RESET_REQUIRED"].includes(resyncPayload?.code) || resyncPayload?.requiresFullSync) {
         storage.removeItem("bf_last_sync_version");
         storage.removeItem("bf_last_sync_timestamp");
@@ -291,6 +309,7 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     if (response.status === 401 || response.status === 403) {
       let errorMsg = "";
       try { errorMsg = (await response.clone().json())?.error || ""; } catch { errorMsg = ""; }
+      if (!pullIsCurrent()) return stalePullResult();
       const normalized = errorMsg.toLowerCase();
       const isAuthError = ["xác thực", "phiên", "đăng nhập", "tài khoản", "authentication", "session"]
         .some((term) => normalized.includes(term));
@@ -314,7 +333,7 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     }
     dbData ||= await response.json();
     if (!pullIsCurrent()) {
-      return { ok: false, stale: true, superseded: true };
+      return stalePullResult();
     }
     const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(
       this.model,
@@ -322,16 +341,17 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
       { useVersionDelta, since },
     );
     await persistencePromise;
-    this.model?.markStorageTablesRecovered?.(changedKeys);
     if (!pullIsCurrent()) {
-      return { ok: false, stale: true, superseded: true };
+      return stalePullResult();
     }
+    this.model?.markStorageTablesRecovered?.(changedKeys);
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
     const committedCursor = commitSyncCursor(storage, dbData);
     if (committedCursor.syncVersion !== null) {
       this.model?.rebaseMutationBatch?.(committedCursor.syncVersion);
     }
     await renderChangedState(this, changedKeys, { isBackground });
+    if (!pullIsCurrent()) return stalePullResult();
     if (!isBackground) {
       const cleanPath = window.location.pathname.startsWith("/")
         ? window.location.pathname.substring(1)
@@ -353,7 +373,7 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     return { ok: true, data: dbData, localMutationsPending };
   } catch (error) {
     if (!pullIsCurrent()) {
-      return { ok: false, stale: true, superseded: true };
+      return stalePullResult();
     }
     console.error("Failed to sync data from server:", error);
     updatePullFailureState(this, syncStatusText, {
@@ -408,7 +428,12 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
     .catch(() => null)
     .then(() => {
       if (!workspaceIsCurrent(this, workspace)) {
-        return { ok: false, stale: true, superseded: true };
+        return {
+          ok: false,
+          stale: true,
+          superseded: true,
+          workspaceChanged: true,
+        };
       }
       return executeForceSyncData.call(this, isBackground, forceFull, routeOnly);
     });

@@ -272,6 +272,15 @@ export function scheduleInitialRouteReconciliation(controller, scheduleTask) {
   );
   scheduleTask(async () => {
     try {
+      if (!isCurrentWorkspace(controller, workspaceToken)) {
+        resolveScheduled({
+          ok: false,
+          stale: true,
+          superseded: true,
+          workspaceChanged: true,
+        });
+        return false;
+      }
       const result = await reconcileRouteDataAtStartup(controller);
       resolveScheduled(result);
       return result;
