@@ -16,7 +16,10 @@ import {
   organizationEmployeeProfile,
   selectActiveOrganization
 } from "../auth/accessContext.js";
-import { reconcileRouteDataAtStartup } from "./startupReconciliation.js";
+import {
+  reconcileRouteDataAtStartup,
+  scheduleInitialRouteReconciliation,
+} from "./startupReconciliation.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { resolveCommandArgs } from "../shared/commandArgs.js";
 import {
@@ -841,7 +844,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
       routePreparationTasks.push(this.ensureLazyTab(initialTabName));
     }
-    routePreparationTasks.push(this.reconcileInitialRouteData());
     await Promise.all(routePreparationTasks);
     await this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
@@ -852,6 +854,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();
+    scheduleInitialRouteReconciliation(this, (task, options) => this.schedulePostStartupTask(task, options));
     this.schedulePostStartupTask(() => this.preloadPrimaryModals(), { timeout: 1800, delay: 400 });
     this.schedulePostStartupTask(() => {
       this.setupFileUploads();

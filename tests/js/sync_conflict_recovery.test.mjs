@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { reconcileRouteDataAtStartup } from "../../frontend/app/startupReconciliation.js";
+import {
+  reconcileRouteDataAtStartup,
+  scheduleInitialRouteReconciliation,
+} from "../../frontend/app/startupReconciliation.js";
 import {
   finalizePulledSyncState,
   resolvePendingSyncConflict,
@@ -77,6 +80,33 @@ test("startup replays only mutations produced while reconciling the pull", async
 });
 
 
+test("initial route reconciliation is deferred until the shell can become interactive", async () => {
+  const calls = [];
+  let scheduledTask = null;
+  const controller = {
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: true, skipped: true };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: false };
+    },
+  };
+
+  scheduleInitialRouteReconciliation(controller, (task, options) => {
+    scheduledTask = task;
+    calls.push(["scheduled", options]);
+  });
+
+  assert.deepEqual(calls, [["scheduled", { timeout: 2200, delay: 0 }]]);
+  assert.equal(typeof scheduledTask, "function");
+  await scheduledTask();
+  assert.deepEqual(calls.slice(1), ["push", "pull"]);
+});
+
+
 test("caught startup reconciliation failure emits redacted structured context", async () => {
   const telemetry = [];
   const controller = {
@@ -131,6 +161,19 @@ test("a successful pull cannot report synced while the outbox is pending", () =>
     online: true,
     message: "Đã lưu cục bộ · Chờ đồng bộ",
   }]);
+});
+
+
+test("a background pull preserves an actionable interrupted-sync state while the outbox remains pending", () => {
+  const patches = [];
+  const controller = {
+    _syncUxState: { phase: "transportError" },
+    model: { buildMutationSyncPayload: () => ({ clientMutationId: "pending-1" }) },
+    updateSyncState(patch) { patches.push(patch); },
+  };
+
+  assert.equal(finalizePulledSyncState(controller, 123), true);
+  assert.deepEqual(patches, []);
 });
 
 

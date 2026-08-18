@@ -29,10 +29,26 @@ const DETAIL_ROUTE_TABLE = {
   "nhathau-detail": "nhathau"
 };
 
+const ACTIONABLE_PENDING_SYNC_PHASES = new Set([
+  "conflict",
+  "error",
+  "storageError",
+  "transportError",
+  "validationRejected",
+]);
+
 export function finalizePulledSyncState(controller, timestamp = Date.now()) {
   const localMutationsPending = Boolean(
     controller?.model?.buildMutationSyncPayload?.(),
   );
+  const currentPhase = String(controller?._syncUxState?.phase || "");
+  // A background pull can finish after an interrupted mutation has already
+  // reported a recoverable failure. Keep that actionable state visible until
+  // the user explicitly retries, rather than replacing it with a generic
+  // local-pending label.
+  if (localMutationsPending && ACTIONABLE_PENDING_SYNC_PHASES.has(currentPhase)) {
+    return true;
+  }
   controller?.updateSyncState?.(localMutationsPending
     ? {
         phase: "localPending",

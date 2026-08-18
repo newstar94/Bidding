@@ -3,6 +3,22 @@ import {
   reportStartupReconciliationFailure,
 } from "../shared/releaseDiagnostics.js";
 
+/**
+ * Reconciliation can write a substantial server snapshot to IndexedDB.  It is
+ * intentionally deferred until the route shell is interactive so browser
+ * storage throughput cannot hold the application loader open.  The task
+ * retains the same push/pull sequence as a blocking reconciliation.
+ */
+export function scheduleInitialRouteReconciliation(controller, scheduleTask) {
+  if (typeof scheduleTask !== "function") return null;
+  return scheduleTask(
+    () => (typeof controller?.reconcileInitialRouteData === "function"
+      ? controller.reconcileInitialRouteData()
+      : reconcileRouteDataAtStartup(controller)),
+    { timeout: 2200, delay: 0 },
+  );
+}
+
 export async function reconcileRouteDataAtStartup(controller, {
   reportRetry = reportOutboxRetry,
   reportFailure = reportStartupReconciliationFailure,
