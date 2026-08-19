@@ -34,6 +34,8 @@ function sourcePackage(overrides = {}) {
 
 function buildController(pkg = sourcePackage()) {
   const staged = [];
+  const persisted = [];
+  const flushes = [];
   const state = {
     goithau: [pkg],
     goithauhanghoa: [],
@@ -48,8 +50,8 @@ function buildController(pkg = sourcePackage()) {
     commitLocalMutation(table, { records }) {
       staged.push([table, ...records.map((record) => record.id)]);
     },
-    async persistData() {},
-    async flushMutationOutbox() {},
+    async persistData(table) { persisted.push(table); },
+    async flushMutationOutbox() { flushes.push("flush"); },
   };
   return {
     controller: {
@@ -59,6 +61,8 @@ function buildController(pkg = sourcePackage()) {
     model,
     state,
     staged,
+    persisted,
+    flushes,
   };
 }
 
@@ -98,6 +102,77 @@ test("package_preparation_waits_for_authority_before_version_api", async () => {
     aggregate.resolve({ authoritative: false });
     await saving;
   }
+});
+
+test("offline_package_preparation_does_not_call_authoritative_version_api", async () => {
+  const scenario = buildController();
+  let aggregateCalls = 0;
+  scenario.controller.awaitAuthoritativeMutationBoundary = async () => ({
+    authoritative: false,
+    offline: true,
+  });
+  scenario.controller.autoSync = async () => ({ ok: false, offline: true });
+
+  const saved = await savePackagePreparation(
+    scenario.controller,
+    scenario.state.goithau[0],
+    { thoiGianDongThau: "2026-08-11 08:00:00" },
+    {
+      generateRecordId: deterministicIds(),
+      createAggregateVersion: async () => {
+        aggregateCalls += 1;
+        throw new Error("offline flow must not call the authoritative version API");
+      },
+    },
+  );
+
+  assert.equal(aggregateCalls, 0);
+  assert.notEqual(saved.id, "package-00");
+  assert.equal(saved.isLatest, 1);
+  assert.equal(scenario.state.goithau.find((row) => row.id === "package-00").isLatest, 0);
+  assert.equal(scenario.state.goithau.length, 2);
+  assert.ok(scenario.staged.some(([table, ...ids]) => table === "goithau" && ids.includes(saved.id)));
+  assert.deepEqual(
+    new Set(scenario.persisted),
+    new Set(["goithau", "goithauhanghoa", "hanghoaduthaunhathau", "thongtinmothau", "assignments"]),
+  );
+  assert.equal(scenario.flushes.length, 1);
+});
+
+test("offline_package_version_is_durable_and_replayed_after_reconnect", async () => {
+  const scenario = buildController();
+  const pending = new Map();
+  const replayed = [];
+  let online = false;
+  scenario.model.commitLocalMutation = (table, { records }) => {
+    pending.set(table, [...(pending.get(table) || []), ...records]);
+  };
+  scenario.controller.awaitAuthoritativeMutationBoundary = async () => ({
+    authoritative: false,
+    offline: true,
+  });
+  scenario.controller.autoSync = async () => {
+    if (!online) return { ok: false, offline: true };
+    for (const [table, records] of pending) {
+      replayed.push([table, ...records.map((record) => record.id)]);
+    }
+    pending.clear();
+    return { ok: true };
+  };
+
+  const saved = await savePackagePreparation(
+    scenario.controller,
+    scenario.state.goithau[0],
+    { thoiGianDongThau: "2026-08-12 08:00:00" },
+    { generateRecordId: deterministicIds() },
+  );
+
+  assert.ok(pending.get("goithau")?.some((record) => record.id === saved.id));
+  assert.equal(scenario.flushes.length, 1);
+  online = true;
+  assert.equal((await scenario.controller.autoSync()).ok, true);
+  assert.ok(replayed.some(([table, ...ids]) => table === "goithau" && ids.includes(saved.id)));
+  assert.equal(pending.size, 0);
 });
 
 test("package_preparation_recomputes_version_decision_after_authoritative_refresh", async () => {

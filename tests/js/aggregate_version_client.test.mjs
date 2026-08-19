@@ -19,6 +19,12 @@ function jsonResponse(body, status = 200) {
   });
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 
 test("official aggregate version command refreshes authoritative server state", async () => {
   const requests = [];
@@ -58,6 +64,49 @@ test("official aggregate version command refreshes authoritative server state", 
   assert.equal(requests[1].url, "/api/versioning/aggregate");
   assert.equal(requests[1].options.headers.get("Idempotency-Key"), "version-command-1");
   assert.deepEqual(JSON.parse(requests[1].options.body), command);
+});
+
+test("workspace_change_during_capability_check_cannot_post_aggregate_version_in_new_workspace", async () => {
+  const session = deferred();
+  const requests = [];
+  const pulls = [];
+  let token = "user:org-a@1";
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: {},
+      getWorkspaceToken: () => token,
+      isWorkspaceCurrent: (candidate) => candidate === token,
+    },
+    async forceSyncData() { pulls.push(token); return { ok: true }; },
+  };
+  const command = {
+    kind: "package",
+    sourceId: "package-a",
+    expectedRowVersion: 4,
+    changes: { tenGoiThau: "A" },
+    clientMutationId: "version-command-a",
+  };
+
+  const pending = createOfficialAggregateVersion(controller, command, {
+    fetchImpl: async (url) => {
+      requests.push(url);
+      if (url === "/api/auth/check-session") return session.promise;
+      return jsonResponse({ status: "success" });
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  token = "user:org-b@2";
+  controller.model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  session.resolve(jsonResponse({
+    valid: true,
+    user: { id: "user-1" },
+    serverCapabilities: ["aggregate-version-v1"],
+  }));
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(requests, ["/api/auth/check-session"]);
+  assert.deepEqual(pulls, []);
 });
 
 

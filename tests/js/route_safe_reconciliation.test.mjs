@@ -125,3 +125,47 @@ test("background reconciliation preserves an editable package workflow draft", a
     else globalThis.requestAnimationFrame = previousAnimationFrame;
   }
 });
+
+test("background_render_scheduled_in_workspace_a_does_not_render_after_switch_to_b", async () => {
+  const previousDocument = globalThis.document;
+  const previousAnimationFrame = globalThis.requestAnimationFrame;
+  let animationFrame = null;
+  let token = "user:org-a@1";
+  globalThis.document = {
+    getElementById() { return null; },
+    querySelector() { return null; },
+  };
+  globalThis.requestAnimationFrame = (callback) => {
+    animationFrame = callback;
+    return 1;
+  };
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: {},
+      getWorkspaceToken: () => token,
+      isWorkspaceCurrent: (candidate) => candidate === token,
+      state: { activetab: "goithau-detail", activeaction: "package-a" },
+    },
+    view: {},
+    renderTabData(...args) { calls.push(args); },
+  };
+
+  try {
+    await renderChangedState(controller, new Set(["goithau"]), { isBackground: true });
+    token = "user:org-a@2";
+    controller.model.state = {
+      activetab: "hopdong-detail",
+      activeaction: "contract-b",
+    };
+    animationFrame();
+
+    assert.deepEqual(calls, []);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = previousAnimationFrame;
+  }
+});

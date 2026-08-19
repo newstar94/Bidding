@@ -84,11 +84,12 @@ export async function hydratePlanPackageRecords(model, planId) {
   if (!model?.useServerSidePagination || !normalizedPlanId) return [];
 
   model._planPackageHydrationRequests ||= new Map();
-  const existing = model._planPackageHydrationRequests.get(normalizedPlanId);
-  if (existing) return existing.promise || existing;
-
   const controller = new AbortController();
   const lease = captureWorkspaceLease(model, { controller });
+  const requestKey = `${lease.token}:${normalizedPlanId}`;
+  const existing = model._planPackageHydrationRequests.get(requestKey);
+  if (existing) return existing.promise || existing;
+
   const request = (async () => {
     const hydrated = [];
     let cursor = "";
@@ -111,12 +112,12 @@ export async function hydratePlanPackageRecords(model, planId) {
     } while (cursor);
     return hydrated;
   })().finally(() => {
-    if (model._planPackageHydrationRequests.get(normalizedPlanId)?.promise === request) {
-      model._planPackageHydrationRequests.delete(normalizedPlanId);
+    if (model._planPackageHydrationRequests.get(requestKey)?.promise === request) {
+      model._planPackageHydrationRequests.delete(requestKey);
     }
   });
 
-  model._planPackageHydrationRequests.set(normalizedPlanId, { controller, lease, promise: request });
+  model._planPackageHydrationRequests.set(requestKey, { controller, lease, promise: request });
   return request;
 }
 

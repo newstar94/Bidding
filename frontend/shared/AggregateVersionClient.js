@@ -4,6 +4,10 @@ import {
   reportLegacyVersionFallback,
 } from "./releaseDiagnostics.js";
 import { resolveServerCapabilities } from "../auth/serverCapabilities.js";
+import {
+  captureWorkspace,
+  workspaceIsCurrent,
+} from "../app/SyncWorkspaceContext.js";
 
 
 export const AGGREGATE_VERSION_CAPABILITY = "aggregate-version-v1";
@@ -16,6 +20,14 @@ const reportWithoutBreakingVersionFlow = (reporter, value) => {
     // Diagnostics are an isolation boundary and must not change version semantics.
   }
 };
+
+function assertAggregateVersionWorkspace(controller, workspace) {
+  if (!workspace || workspaceIsCurrent(controller, workspace)) return;
+  const error = new Error("Workspace changed while creating aggregate version");
+  error.name = "AbortError";
+  error.code = "WORKSPACE_CHANGED";
+  throw error;
+}
 
 
 async function supportsAuthoritativeAggregateVersion(fetchImpl) {
@@ -42,7 +54,10 @@ export async function createOfficialAggregateVersion(
   if (!clientMutationId) {
     throw new TypeError("clientMutationId is required for aggregate version creation.");
   }
-  if (!await supportsAuthoritativeAggregateVersion(fetchImpl)) {
+  const workspace = controller?.model ? captureWorkspace(controller) : null;
+  const supportsAggregateVersion = await supportsAuthoritativeAggregateVersion(fetchImpl);
+  assertAggregateVersionWorkspace(controller, workspace);
+  if (!supportsAggregateVersion) {
     reportWithoutBreakingVersionFlow(reportFallback, "capability_missing");
     return { authoritative: false, fallbackRequired: true };
   }
@@ -56,9 +71,11 @@ export async function createOfficialAggregateVersion(
       },
       fetchImpl,
     );
+    assertAggregateVersionWorkspace(controller, workspace);
     const refresh = typeof controller?.forceSyncData === "function"
       ? await controller.forceSyncData(true)
       : null;
+    assertAggregateVersionWorkspace(controller, workspace);
     return { authoritative: true, data, refresh };
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {

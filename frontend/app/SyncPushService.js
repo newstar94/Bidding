@@ -60,9 +60,20 @@ function logValidationErrors(errors, requestId) {
   });
 }
 
-async function restoreRejectedRecords(controller, rejectedRecords) {
+function staleWorkspaceResult(extra = {}) {
+  return {
+    ok: false,
+    stale: true,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+    ...extra,
+  };
+}
+
+async function restoreRejectedRecords(controller, rejectedRecords, workspace) {
   const changedKeys = new Set();
   for (const rejected of rejectedRecords) {
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult();
     let serverRecord = null;
     try {
       serverRecord = await controller.fetchRecordByLookup(
@@ -72,28 +83,34 @@ async function restoreRejectedRecords(controller, rejectedRecords) {
     } catch (error) {
       console.error("Failed to restore rejected server record:", error);
     }
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult();
     if (Array.isArray(controller.model.state[rejected.type]) && (!serverRecord || String(serverRecord.id) !== rejected.id)) {
       const records = controller.model.state[rejected.type];
       records.splice(0, records.length, ...records.filter(
         (item) => String(item.id) !== rejected.id
       ));
       await controller.model.db?.deleteRecord?.(rejected.type, rejected.id);
+      if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult();
     }
     changedKeys.add(rejected.type);
   }
   if (changedKeys.size > 0) {
     await renderChangedState(controller, changedKeys, { isBackground: true });
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult();
   }
+  return { ok: true };
 }
 
-async function applySuccessfulPush(controller, {
+export async function applySuccessfulPush(controller, {
   data,
   payload,
   snapshot,
   deferPostCommitRender,
   status,
+  workspace = captureWorkspace(controller),
 }) {
-  const storage = currentWorkspaceStorage(controller);
+  if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+  const storage = workspace.storage || currentWorkspaceStorage(controller);
   if (data.timestamp) storage.setItem("bf_last_sync_timestamp", data.timestamp);
   if (data.syncVersion !== void 0 && data.syncVersion !== null) {
     storage.setItem("bf_last_sync_version", data.syncVersion.toString());
@@ -106,6 +123,7 @@ async function applySuccessfulPush(controller, {
   }
   if (Array.isArray(data.rowVersions) && typeof controller.model?.applyCommittedRowVersions === "function") {
     await controller.model.applyCommittedRowVersions(data.rowVersions);
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
   }
   let orphanStateChanged = false;
   for (const orphan of Array.isArray(data.orphanedIds) ? data.orphanedIds : []) {
@@ -119,7 +137,8 @@ async function applySuccessfulPush(controller, {
       (item) => String(item.id) !== String(orphan.id)
     );
     if (controller.model.state[stateKey].length < before) {
-      controller.model.persistData(stateKey, { trackMutation: false });
+      await controller.model.persistData(stateKey, { trackMutation: false });
+      if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
       orphanStateChanged = true;
     }
   }
@@ -140,7 +159,10 @@ async function applySuccessfulPush(controller, {
     hasDeletions: deletedKeys.size > 0,
     serverStateChanged: orphanStateChanged,
   });
-  if (!deferPostCommitRender) await renderChangedState(controller, renderKeys);
+  if (!deferPostCommitRender) {
+    await renderChangedState(controller, renderKeys);
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+  }
   if (Array.isArray(data.deleteImpacts) && data.deleteImpacts.length > 0) {
     controller.view?.showToast?.(
       "Thành công",
@@ -154,14 +176,21 @@ async function applySuccessfulPush(controller, {
   return { ok: true, status, data };
 }
 
-export async function applyFailedPush(controller, { status, data, snapshot }) {
+export async function applyFailedPush(controller, {
+  status,
+  data,
+  snapshot,
+  workspace = captureWorkspace(controller),
+}) {
+  if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
   const validationErrors = getSyncValidationErrors(data);
   if (status === 409 || data.status === "conflict") {
     void reportSyncConflict({
-      workspaceKey: controller.model?.workspaceScope?.key,
+      workspaceKey: workspace.workspaceKey,
       correlationId: data.requestId,
     });
     const resolution = await resolveRowVersionConflicts(controller, { data, snapshot });
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
     if (resolution.resolved) {
       controller._syncConflict = null;
       controller.updateSyncState({ phase: "idle", online: true, lastSyncedAt: Date.now() });
@@ -173,7 +202,7 @@ export async function applyFailedPush(controller, { status, data, snapshot }) {
     };
     controller.updateSyncState({ phase: "conflict" });
     if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
-      currentWorkspaceStorage(controller).setItem(
+      (workspace.storage || currentWorkspaceStorage(controller)).setItem(
         "bf_conflict_server_sync_version",
         String(data.currentSyncVersion),
       );
@@ -194,7 +223,11 @@ export async function applyFailedPush(controller, { status, data, snapshot }) {
       )
       : [];
     await controller.model?.flushMutationOutbox?.();
-    await restoreRejectedRecords(controller, rejected);
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+    const restoreResult = await restoreRejectedRecords(controller, rejected, workspace);
+    if (restoreResult?.workspaceChanged || !workspaceIsCurrent(controller, workspace)) {
+      return staleWorkspaceResult({ status, data });
+    }
     logValidationErrors(validationErrors, data.requestId);
     showSyncErrorReport(controller, validationErrors, rejected.length);
   } else {
@@ -213,6 +246,8 @@ export async function applyFailedPush(controller, { status, data, snapshot }) {
 }
 
 export function autoSync(options = {}) {
+  const workspace = captureWorkspace(this);
+  const workspaceToken = String(workspace.token || workspace.organizationId || "");
   const deferPostCommitRender = this._deferPostCommitRender === true;
   this._deferPostCommitRender = false;
   if (options.startupReconciliation !== true) {
@@ -231,6 +266,7 @@ export function autoSync(options = {}) {
       const barrier = startupState?.promise || this._startupReconciliationPromise;
       if (barrier) {
         return Promise.resolve(barrier).then(() => {
+          if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
           const settledPhase = this.getStartupReconciliationState?.().phase;
           if (settledPhase === "RECONCILED") return this.autoSync(options);
           return {
@@ -243,18 +279,22 @@ export function autoSync(options = {}) {
       return Promise.resolve({ ok: false, reconciliationRequired: true });
     }
   }
-  if (this._autoSyncPromise) {
+  const activeSync = this._autoSyncOwner;
+  if (activeSync?.workspaceToken === workspaceToken && activeSync.promise) {
+    activeSync.queued = true;
     this._autoSyncQueued = true;
-    return this._autoSyncPromise.then((result) => {
-      if (!this._autoSyncQueued || result?.ok !== true) {
-        this._autoSyncQueued = false;
+    return activeSync.promise.then((result) => {
+      if (!activeSync.queued || result?.ok !== true) {
+        activeSync.queued = false;
+        if (this._autoSyncOwner === activeSync) this._autoSyncQueued = false;
         return result;
       }
-      this._autoSyncQueued = false;
-      return this.autoSync();
+      activeSync.queued = false;
+      if (this._autoSyncOwner === activeSync) this._autoSyncQueued = false;
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
+      return this.autoSync(options);
     });
   }
-  const workspace = captureWorkspace(this);
   const pullKey = String(workspace.token || workspace.organizationId || "");
   const activePulls = [...(this._workspacePullFlights?.get(pullKey) || [])];
   if (activePulls.length > 0) {
@@ -265,13 +305,17 @@ export function autoSync(options = {}) {
       return this.autoSync(options);
     });
   }
-  if (this._syncRepairPromise) return this._syncRepairPromise;
+  const activeRepair = this._syncRepairOwner;
+  if (activeRepair?.workspaceToken === workspaceToken && activeRepair.promise) {
+    return activeRepair.promise;
+  }
   if (!workspace.organizationId) {
     return Promise.resolve({ ok: false, error: new Error("No active workspace") });
   }
   const outboxStatus = this.model?.getMutationOutboxStatus?.();
   if (outboxStatus?.state === "pending" && typeof this.model?.flushMutationOutbox === "function") {
     return this.model.flushMutationOutbox().then(() => {
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
       const settledStatus = this.model?.getMutationOutboxStatus?.();
       if (settledStatus?.trusted !== false) return this.autoSync();
       const error = Object.assign(new Error("Mutation outbox durability is pending"), {
@@ -279,6 +323,7 @@ export function autoSync(options = {}) {
       });
       return { ok: false, error, storageDegraded: true };
     }).catch((error) => {
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
       this.updateSyncState?.({
         phase: "storageError",
         message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
@@ -303,19 +348,30 @@ export function autoSync(options = {}) {
   ) {
     const repair = this.model.repairPendingDuplicatePlanVersions();
     if (repair) {
+      const repairOwner = { workspaceToken, promise: null };
       const trackedRepair = Promise.resolve(repair).then(() => {
-        this._syncRepairPromise = null;
+        if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
+        if (this._syncRepairOwner === repairOwner) {
+          this._syncRepairOwner = null;
+          if (this._syncRepairPromise === trackedRepair) this._syncRepairPromise = null;
+        }
         if (deferPostCommitRender) this._deferPostCommitRender = true;
         return this.autoSync({ skipDuplicatePlanRepair: true });
       }).catch((error) => {
+        if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
         this.updateSyncState?.({
           phase: "storageError",
           message: "Không thể sửa hàng đợi đồng bộ cục bộ",
         });
         return { ok: false, error, storageDegraded: true };
       }).finally(() => {
-        if (this._syncRepairPromise === trackedRepair) this._syncRepairPromise = null;
+        if (this._syncRepairOwner === repairOwner) {
+          this._syncRepairOwner = null;
+          if (this._syncRepairPromise === trackedRepair) this._syncRepairPromise = null;
+        }
       });
+      repairOwner.promise = trackedRepair;
+      this._syncRepairOwner = repairOwner;
       this._syncRepairPromise = trackedRepair;
       return trackedRepair;
     }
@@ -323,7 +379,11 @@ export function autoSync(options = {}) {
   const mutationBatch = this.model?.buildMutationSyncPayload?.() || null;
   const preparedOutboxStatus = this.model?.getMutationOutboxStatus?.();
   if (preparedOutboxStatus?.state === "pending" && typeof this.model?.flushMutationOutbox === "function") {
-    return this.model.flushMutationOutbox().then(() => this.autoSync()).catch((error) => {
+    return this.model.flushMutationOutbox().then(() => {
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
+      return this.autoSync(options);
+    }).catch((error) => {
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
       this.updateSyncState?.({
         phase: "storageError",
         message: "Không thể xác nhận thay đổi cục bộ · Thử khôi phục bộ nhớ trước khi đồng bộ",
@@ -350,9 +410,9 @@ export function autoSync(options = {}) {
     status: response.status,
     data,
   }))).then(async ({ ok, status, data }) => {
-    if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true, status, data };
+    if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult({ status, data });
     if (!ok || data.status === "error") {
-      return applyFailedPush(this, { status, data, snapshot });
+      return applyFailedPush(this, { status, data, snapshot, workspace });
     }
     return applySuccessfulPush(this, {
       data,
@@ -360,6 +420,7 @@ export function autoSync(options = {}) {
       snapshot,
       deferPostCommitRender,
       status,
+      workspace,
     });
   }).catch((error) => {
     void reportOutboxFailure({
@@ -368,19 +429,21 @@ export function autoSync(options = {}) {
     });
     console.error("Automatic sync transport failed; structured diagnostic submitted.");
     if (!workspaceIsCurrent(this, workspace)) {
-      return {
-        ok: false,
-        stale: true,
-        workspaceChanged: true,
-        error,
-      };
+      return staleWorkspaceResult({ error });
     }
     this.updateSyncState({ phase: "transportError", message: "Không thể kết nối máy chủ" });
     return { ok: false, error };
   });
+  const syncOwner = { workspaceToken, promise: null, queued: false };
   const trackedRequest = request.finally(() => {
-    if (this._autoSyncPromise === trackedRequest) this._autoSyncPromise = null;
+    if (this._autoSyncOwner === syncOwner) {
+      this._autoSyncOwner = null;
+      this._autoSyncQueued = false;
+      if (this._autoSyncPromise === trackedRequest) this._autoSyncPromise = null;
+    }
   });
+  syncOwner.promise = trackedRequest;
+  this._autoSyncOwner = syncOwner;
   this._autoSyncPromise = trackedRequest;
   return trackedRequest;
 }

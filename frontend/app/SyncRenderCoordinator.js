@@ -1,4 +1,8 @@
 import { packageWorkspaceFor } from "../packages/detail/PackageWorkspaceState.js";
+import {
+  captureWorkspace,
+  workspaceIsCurrent,
+} from "./SyncWorkspaceContext.js";
 
 const DASHBOARD_SUMMARY_KEYS = new Set([
   "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments"
@@ -83,7 +87,10 @@ export function renderChangedState(controller, changedKeys, { isBackground = fal
   renderIfChanged(["chuyengia", "assignments"], controller.view.renderChuyenGiaTable, "tab-chuyengia");
   renderIfChanged(["hopdong", "goithau", "nhathau", "chudautu"], controller.view.renderHopDongTable, "tab-hopdong");
   if (isBackground) {
+    const workspace = captureWorkspace(controller);
+    const hasWorkspaceCapability = Boolean(workspace.token || workspace.organizationId);
     requestAnimationFrame(() => {
+      if (hasWorkspaceCapability && !workspaceIsCurrent(controller, workspace)) return;
       if (!shouldRefreshRouteAfterBackgroundSync(document, controller)) return;
       const detailTabs = new Set([
         "kehoach-detail",

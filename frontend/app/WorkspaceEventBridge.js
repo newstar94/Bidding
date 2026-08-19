@@ -24,18 +24,43 @@ export function shouldScheduleBackgroundSyncForStorageEvent(event, scope) {
 }
 
 export function scheduleBackgroundSync(delay = 500) {
-  if (this._backgroundSyncTimer) {
-    this._backgroundSyncQueued = true;
-    return;
-  }
   const workspace = captureWorkspace(this);
-  this._backgroundSyncTimer = setTimeout(async () => {
-    this._backgroundSyncTimer = null;
-    if (!workspaceIsCurrent(this, workspace)) return;
-    if (this._backgroundSyncRunning) {
+  const workspaceToken = String(workspace.token || workspace.organizationId || "");
+  if (this._backgroundSyncTimer) {
+    const timerOwner = this._backgroundSyncTimerOwner;
+    if (timerOwner?.workspaceToken === workspaceToken) {
+      timerOwner.queued = true;
       this._backgroundSyncQueued = true;
       return;
     }
+    clearTimeout(this._backgroundSyncTimer);
+    this._backgroundSyncTimer = null;
+    this._backgroundSyncTimerOwner = null;
+    this._backgroundSyncQueued = false;
+  }
+  const timerOwner = { workspace, workspaceToken, timer: null, queued: false };
+  const timer = setTimeout(async () => {
+    if (this._backgroundSyncTimerOwner !== timerOwner) return;
+    this._backgroundSyncTimer = null;
+    this._backgroundSyncTimerOwner = null;
+    this._backgroundSyncQueued = false;
+    if (!workspaceIsCurrent(this, workspace)) return;
+    const activeRun = this._backgroundSyncRunOwner;
+    if (activeRun) {
+      if (activeRun.workspaceToken === workspaceToken) {
+        activeRun.queued = true;
+      } else {
+        activeRun.nextWorkspace = workspace;
+      }
+      this._backgroundSyncQueued = true;
+      return;
+    }
+    const runOwner = {
+      workspace,
+      workspaceToken,
+      queued: timerOwner.queued,
+    };
+    this._backgroundSyncRunOwner = runOwner;
     this._backgroundSyncRunning = true;
     try {
       const startupReconciliation = this._startupReconciliationPromise;
@@ -45,13 +70,24 @@ export function scheduleBackgroundSync(delay = 500) {
     } catch (err) {
       console.error("Background sync failed:", err);
     } finally {
-      this._backgroundSyncRunning = false;
-      if (this._backgroundSyncQueued) {
+      if (this._backgroundSyncRunOwner === runOwner) {
+        this._backgroundSyncRunOwner = null;
+        this._backgroundSyncRunning = false;
         this._backgroundSyncQueued = false;
-        this.scheduleBackgroundSync(delay);
+        if (
+          runOwner.nextWorkspace
+          && workspaceIsCurrent(this, runOwner.nextWorkspace)
+        ) {
+          this.scheduleBackgroundSync(delay);
+        } else if (runOwner.queued && workspaceIsCurrent(this, runOwner.workspace)) {
+          this.scheduleBackgroundSync(delay);
+        }
       }
     }
   }, delay);
+  timerOwner.timer = timer;
+  this._backgroundSyncTimerOwner = timerOwner;
+  this._backgroundSyncTimer = timer;
 }
 
 export function setupAutoSyncBackground() {

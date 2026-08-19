@@ -89,6 +89,11 @@ function outboxSettleWorkspaceRaceController({ storageA, storageB, flush }) {
       model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
       model.workspaceStorage = storageB;
     },
+    switchToSameOrgNewEpoch() {
+      token = "user:org-a@2";
+      model.workspaceScope = { key: "user:org-a", organizationId: "org-a" };
+      model.workspaceStorage = storageB;
+    },
   };
 }
 
@@ -123,6 +128,38 @@ test("workspace_change_during_outbox_settle_cannot_touch_new_workspace_cursor", 
     assert.deepEqual(race.patches, []);
     assert.equal(result.workspaceChanged, true);
     assert.equal(result.stale, true);
+  } finally {
+    flush.resolve();
+    restore();
+  }
+});
+
+test("same_org_new_epoch_rejects_late_pull_completion", async () => {
+  const flush = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  storageB.setItem("bf_last_sync_version", "101");
+  let fetchCalls = 0;
+  const restore = installPullGlobals(async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ syncVersion: 1, timestamp: "old-epoch" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const race = outboxSettleWorkspaceRaceController({ storageA, storageB, flush });
+
+  try {
+    const pull = forceSyncData.call(race.controller, true, false, false);
+    await new Promise((resolve) => setImmediate(resolve));
+    race.switchToSameOrgNewEpoch();
+    flush.resolve();
+
+    const result = await pull;
+    assert.equal(result.workspaceChanged, true);
+    assert.equal(result.code, "WORKSPACE_CHANGED");
+    assert.equal(fetchCalls, 0);
+    assert.equal(storageB.getItem("bf_last_sync_version"), "101");
   } finally {
     flush.resolve();
     restore();
@@ -740,7 +777,56 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
       Object.defineProperty(globalThis, "navigator", previousNavigator);
     } else {
       delete globalThis.navigator;
-    }
-  }
+}
+}
 });
 }
+
+test("workspace_change_during_pull_outbox_flush_with_new_workspace_storage_failure_does_not_update_new_workspace", async () => {
+  const flush = deferred();
+  const fetchCalls = [];
+  const restoreGlobals = installPullGlobals((...args) => {
+    fetchCalls.push(args);
+    throw new Error("pull must not start after the workspace changes");
+  });
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  let token = "user:org-a@1";
+  let outboxStatus = { state: "pending", trusted: true };
+  const updates = [];
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storageA,
+    state: {},
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    getMutationOutboxStatus: () => outboxStatus,
+    flushMutationOutbox: () => flush.promise,
+  };
+  const controller = {
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState: (patch) => updates.push(patch),
+    hasLocalWorkspaceData: () => true,
+  };
+
+  try {
+    const pending = forceSyncData.call(controller, true, false, false);
+    await new Promise((resolve) => setImmediate(resolve));
+    token = "user:org-b@2";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    model.workspaceStorage = storageB;
+    outboxStatus = { state: "ready", trusted: false, code: "B_STORAGE_FAILED" };
+    flush.resolve();
+
+    const result = await pending;
+    assert.equal(result.workspaceChanged, true);
+    assert.equal(result.stale, true);
+    assert.deepEqual(updates, []);
+    assert.deepEqual(fetchCalls, []);
+  } finally {
+    flush.resolve();
+    restoreGlobals();
+  }
+});

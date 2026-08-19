@@ -301,6 +301,7 @@ export function reconcileRouteDataAtStartup(controller, {
   reportFailure = reportStartupReconciliationFailure,
 } = {}) {
   const workspaceToken = currentWorkspaceToken(controller);
+  const workspaceKey = controller?.model?.workspaceScope?.key;
   const existing = getStartupReconciliationState(controller);
   if (
     existing.workspaceToken === workspaceToken
@@ -369,7 +370,7 @@ export function reconcileRouteDataAtStartup(controller, {
       return true;
     } catch (error) {
       void reportFailure({
-        workspaceKey: controller?.model?.workspaceScope?.key,
+        workspaceKey,
         correlationId: error?.requestId,
       });
       console.warn("Initial route reconciliation failed; using the local workspace snapshot.");

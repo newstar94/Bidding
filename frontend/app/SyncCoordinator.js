@@ -18,17 +18,33 @@ function isSyncConflict(result) {
   return Boolean(result?.conflict || result?.status === 409);
 }
 
-export async function resolvePendingSyncConflict(controller, initialResult) {
+function syncWorkspaceIsCurrent(controller, workspace) {
+  if (!workspace?.token && !workspace?.organizationId) return true;
+  return workspaceIsCurrent(controller, workspace);
+}
+
+function workspaceChangedResult() {
+  return { ok: false, stale: true, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
+}
+
+export async function resolvePendingSyncConflict(
+  controller,
+  initialResult,
+  workspace = captureWorkspace(controller),
+) {
   if (!controller || !isSyncConflict(initialResult)) return initialResult;
 
   let result = initialResult;
   const rebased = typeof controller.forceSyncData === "function"
     ? await controller.forceSyncData(false, true)
     : { ok: false };
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   if (rebased?.ok && typeof controller.autoSync === "function") {
     result = await controller.autoSync();
+    if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
     if (result?.ok) {
       await controller.forceSyncData?.(false, false);
+      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
       controller.view?.showToast?.(
         "Đã xử lý xung đột",
         "Thay đổi cục bộ đã được đồng bộ sau khi tải lại phiên bản mới nhất từ máy chủ.",
@@ -51,13 +67,16 @@ export async function resolvePendingSyncConflict(controller, initialResult) {
       cancelLabel: "Giữ lại để xử lý sau",
     },
   ));
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   if (!discard) return { ...result, conflictCleared: false };
 
   controller.model?.discardMutationBatch?.();
   await controller.model?.flushMutationOutbox?.();
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   const refreshed = typeof controller.forceSyncData === "function"
     ? await controller.forceSyncData(false, true)
     : { ok: true };
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   const conflictCleared = refreshed?.ok !== false;
   if (conflictCleared) {
     controller.view?.showToast?.(
@@ -103,8 +122,12 @@ export function getSyncActivitySnapshot(controller) {
 
 export function runManualSyncRetry(controller) {
   if (!controller) return Promise.resolve({ ok: false });
-  if (controller._manualSyncPromise) return controller._manualSyncPromise;
   const workspace = captureWorkspace(controller);
+  const workspaceToken = String(workspace.token || workspace.organizationId || "");
+  const activeRetry = controller._manualSyncOwner;
+  if (activeRetry?.workspaceToken === workspaceToken && activeRetry.promise) {
+    return activeRetry.promise;
+  }
   const run = (async () => {
     if (Array.isArray(controller.model?.syncErrors) && controller.model.syncErrors.length > 0) {
       showSyncErrorDetails(controller, controller.model.syncErrors);
@@ -116,6 +139,7 @@ export function runManualSyncRetry(controller) {
       } catch (error) {
         console.error("Mutation outbox recovery failed:", error);
       }
+      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
       if (controller.model.hasMutationOutboxDurabilityFailure()) {
         controller.updateSyncState({
           phase: "storageError",
@@ -125,14 +149,14 @@ export function runManualSyncRetry(controller) {
       }
     }
     if (controller.model?.hasStorageReadFailures?.()) {
-      return controller.forceSyncData(false, true);
+      const refreshed = await controller.forceSyncData(false, true);
+      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+      return refreshed;
     }
     const startupPhase = controller.getStartupReconciliationState?.().phase;
     if (startupPhase && startupPhase !== "RECONCILED") {
       const reconciled = await controller.reconcileInitialRouteData?.();
-      if (!workspaceIsCurrent(controller, workspace)) {
-        return { ok: false, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
-      }
+      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
       if (reconciled) return { ok: true, reconciled: true };
       if (controller.getStartupReconciliationState?.().phase === "OFFLINE_LOCAL") {
         return { ok: false, offline: true };
@@ -140,16 +164,24 @@ export function runManualSyncRetry(controller) {
       return { ok: false, reconciliationRequired: true };
     }
     const pushed = await controller.autoSync();
-    if (!workspaceIsCurrent(controller, workspace)) {
-      return { ok: false, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
+    if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+    if (pushed?.ok) {
+      const verified = await controller.forceSyncData(false, false);
+      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+      return verified;
     }
-    if (pushed?.ok) return controller.forceSyncData(false, false);
-    if (isSyncConflict(pushed)) return resolvePendingSyncConflict(controller, pushed);
+    if (isSyncConflict(pushed)) return resolvePendingSyncConflict(controller, pushed, workspace);
     return pushed;
   })();
+  const retryOwner = { workspaceToken, promise: null };
   const tracked = run.finally(() => {
-    if (controller._manualSyncPromise === tracked) controller._manualSyncPromise = null;
+    if (controller._manualSyncOwner === retryOwner) {
+      controller._manualSyncOwner = null;
+      if (controller._manualSyncPromise === tracked) controller._manualSyncPromise = null;
+    }
   });
+  retryOwner.promise = tracked;
+  controller._manualSyncOwner = retryOwner;
   controller._manualSyncPromise = tracked;
   return tracked;
 }

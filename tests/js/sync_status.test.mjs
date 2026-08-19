@@ -10,6 +10,210 @@ import {
 import { applyFailedPush, autoSync } from "../../frontend/app/SyncPushService.js";
 import { hashWorkspaceScope } from "../../frontend/shared/releaseDiagnostics.js";
 
+function deferredResult() {
+  let resolve;
+  let reject;
+  const promise = new Promise((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function pushRaceModel({ tokenRef, flush = null, repair = null, build = () => null } = {}) {
+  return {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: { setItem() {}, removeItem() {} },
+    getWorkspaceToken: () => tokenRef.value,
+    isWorkspaceCurrent: (candidate) => candidate === tokenRef.value,
+    getMutationOutboxStatus: () => ({
+      state: flush && !flush.settled ? "pending" : "ready",
+      trusted: true,
+    }),
+    flushMutationOutbox: flush ? async () => {
+      await flush.promise;
+      flush.settled = true;
+    } : undefined,
+    repairPendingDuplicatePlanVersions: repair ? () => repair.promise : () => null,
+    buildMutationSyncPayload: build,
+  };
+}
+
+test("workspace_change_during_outbox_flush_cannot_start_auto_sync_for_new_workspace", async () => {
+  const tokenRef = { value: "user:org-a@1" };
+  const flush = deferredResult();
+  const builds = [];
+  const phases = [];
+  const model = pushRaceModel({
+    tokenRef,
+    flush,
+    build: () => { builds.push(tokenRef.value); return null; },
+  });
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState: (patch) => phases.push(patch.phase),
+  };
+
+  const pending = autoSync.call(controller);
+  await new Promise((resolve) => setImmediate(resolve));
+  tokenRef.value = "user:org-b@2";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  flush.resolve();
+
+  assert.deepEqual(await pending, {
+    ok: false,
+    stale: true,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+  });
+  assert.deepEqual(builds, []);
+  assert.deepEqual(phases, []);
+});
+
+test("workspace_change_during_outbox_flush_failure_cannot_set_storage_error_on_new_workspace", async () => {
+  const tokenRef = { value: "user:org-a@1" };
+  const flush = deferredResult();
+  const phases = [];
+  const model = pushRaceModel({ tokenRef, flush });
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState: (patch) => phases.push(patch.phase),
+  };
+
+  const pending = autoSync.call(controller);
+  await new Promise((resolve) => setImmediate(resolve));
+  tokenRef.value = "user:org-b@2";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  flush.reject(new Error("org A outbox failed"));
+
+  assert.deepEqual(await pending, {
+    ok: false,
+    stale: true,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+  });
+  assert.deepEqual(phases, []);
+});
+
+test("duplicate_plan_repair_from_workspace_a_cannot_resume_sync_in_workspace_b", async () => {
+  const tokenRef = { value: "user:org-a@1" };
+  const repair = deferredResult();
+  let repairOffered = true;
+  const builds = [];
+  const model = pushRaceModel({
+    tokenRef,
+    build: () => { builds.push(tokenRef.value); return null; },
+  });
+  model.repairPendingDuplicatePlanVersions = () => {
+    if (!repairOffered) return null;
+    repairOffered = false;
+    return repair.promise;
+  };
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState() {},
+  };
+
+  const pending = autoSync.call(controller);
+  await new Promise((resolve) => setImmediate(resolve));
+  tokenRef.value = "user:org-b@2";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  repair.resolve({ duplicatePlanIds: ["plan-a-duplicate"] });
+
+  assert.deepEqual(await pending, {
+    ok: false,
+    stale: true,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+  });
+  assert.deepEqual(builds, []);
+});
+
+test("workspace_b_does_not_reuse_workspace_a_sync_repair_promise", async () => {
+  const tokenRef = { value: "user:org-a@1" };
+  const repairA = deferredResult();
+  const repairB = deferredResult();
+  const model = pushRaceModel({ tokenRef });
+  model.repairPendingDuplicatePlanVersions = () => (
+    tokenRef.value.endsWith("@1") ? repairA.promise : repairB.promise
+  );
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState() {},
+  };
+
+  const pendingA = autoSync.call(controller);
+  tokenRef.value = "user:org-b@2";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  const pendingB = autoSync.call(controller);
+
+  assert.notEqual(pendingB, pendingA);
+  repairA.resolve({ duplicatePlanIds: ["a"] });
+  repairB.resolve({ duplicatePlanIds: ["b"] });
+  const [resultA, resultB] = await Promise.all([pendingA, pendingB]);
+  assert.equal(resultA.workspaceChanged, true);
+  assert.equal(resultB.ok, true);
+});
+
+test("workspace_b_does_not_reuse_workspace_a_auto_sync_promise", async () => {
+  const previousFetch = globalThis.fetch;
+  const tokenRef = { value: "user:org-a@1" };
+  const requests = [];
+  globalThis.fetch = () => {
+    const request = deferredResult();
+    requests.push(request);
+    return request.promise;
+  };
+  const model = pushRaceModel({
+    tokenRef,
+    build: () => ({
+      payload: { goithau: [{ id: `package-${tokenRef.value}` }] },
+      snapshot: { id: `receipt-${tokenRef.value}` },
+    }),
+  });
+  model.clearCommittedMutationBatch = () => {};
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState() {},
+  };
+
+  try {
+    const pendingA = autoSync.call(controller);
+    await new Promise((resolve) => setImmediate(resolve));
+    tokenRef.value = "user:org-a@2";
+    model.workspaceScope = { key: "user:org-a", organizationId: "org-a" };
+    const pendingB = autoSync.call(controller);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(requests.length, 2, "new workspace epoch waited for the old push promise");
+    requests[0].resolve(new Response(JSON.stringify({ status: "success" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    requests[1].resolve(new Response(JSON.stringify({ status: "success" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const [resultA, resultB] = await Promise.all([pendingA, pendingB]);
+    assert.equal(resultA.stale, true);
+    assert.equal(resultB.ok, true);
+  } finally {
+    requests.forEach((request) => request.resolve?.(new Response("{}", { status: 200 })));
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 
 test("sync status distinguishes durable, pending, validation, transport, and offline states", () => {
   assert.equal(deriveSyncStatus({ phase: "serverSaved", lastSyncedAt: 1 }).state, "server-saved");
@@ -319,6 +523,10 @@ test("terminal validation flushes the rejected batch and keeps an actionable val
   console.error = () => {};
   const controller = {
     model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: { setItem() {}, removeItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
       state: { goithau: [] },
       discardRejectedMutations(errors, snapshot, options) {
         calls.push(["discard", errors, snapshot, options]);
@@ -355,8 +563,10 @@ test("row-version rejection remains conflict and does not acknowledge the local 
   const calls = [];
   const controller = {
     model: {
-      workspaceScope: { key: "user:org-a" },
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
       workspaceStorage: { setItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
       discardRejectedMutations() {
         calls.push("discard");
         return [];
@@ -477,8 +687,54 @@ test("retry completion from workspace A cannot verify or clear state in workspac
 
   assert.deepEqual(await retry, {
     ok: false,
+    stale: true,
     workspaceChanged: true,
     code: "WORKSPACE_CHANGED",
   });
   assert.deepEqual(calls, []);
+});
+
+test("workspace_b_does_not_reuse_workspace_a_manual_retry_promise", async () => {
+  const pushA = deferredResult();
+  let token = "user:org-a@1";
+  const autoCalls = [];
+  const pullCalls = [];
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: { setItem() {}, removeItem() {} },
+    syncErrors: [],
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    hasMutationOutboxDurabilityFailure: () => false,
+    hasStorageReadFailures: () => false,
+  };
+  const controller = {
+    model,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    autoSync() {
+      autoCalls.push(token);
+      return token === "user:org-a@1" ? pushA.promise : Promise.resolve({ ok: true });
+    },
+    forceSyncData() {
+      pullCalls.push(token);
+      return Promise.resolve({ ok: true });
+    },
+  };
+
+  const retryA = runManualSyncRetry(controller);
+  await new Promise((resolve) => setImmediate(resolve));
+  token = "user:org-b@2";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  model.workspaceStorage = { setItem() {}, removeItem() {} };
+  const retryB = runManualSyncRetry(controller);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.notEqual(retryB, retryA);
+  assert.deepEqual(autoCalls, ["user:org-a@1", "user:org-b@2"]);
+  assert.equal((await retryB).ok, true);
+  assert.deepEqual(pullCalls, ["user:org-b@2"]);
+
+  pushA.resolve({ ok: true });
+  const resultA = await retryA;
+  assert.equal(resultA.workspaceChanged, true);
 });

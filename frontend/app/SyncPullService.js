@@ -178,7 +178,8 @@ export function ensureDetailRecordLoaded(tabName, action) {
   const tableKey = DETAIL_ROUTE_TABLE[tabName];
   if (!tableKey || !action || !this.model?.useServerSidePagination) return null;
   if (detailRecordExists(this.model, tableKey, action)) return null;
-  const pendingKey = `${tableKey}:${action}`;
+  const workspace = captureWorkspace(this);
+  const pendingKey = `${pullFlightKey(workspace)}:${tableKey}:${action}`;
   this._pendingDetailRecordLoads ||= new Map();
   if (this._pendingDetailRecordLoads.has(pendingKey)) {
     return this._pendingDetailRecordLoads.get(pendingKey);
@@ -187,13 +188,25 @@ export function ensureDetailRecordLoaded(tabName, action) {
     console.error("Failed to fetch detail record:", error);
     return null;
   }).finally(() => {
-    this._pendingDetailRecordLoads.delete(pendingKey);
+    if (this._pendingDetailRecordLoads.get(pendingKey) === promise) {
+      this._pendingDetailRecordLoads.delete(pendingKey);
+    }
   });
   this._pendingDetailRecordLoads.set(pendingKey, promise);
   return promise;
 }
 
-async function settleOutboxBeforeAuthoritativePull(controller) {
+function staleWorkspacePullResult() {
+  return {
+    ok: false,
+    stale: true,
+    superseded: true,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+  };
+}
+
+async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
   let status = controller.model?.getMutationOutboxStatus?.();
   if (status?.state === "pending" && typeof controller.model?.flushMutationOutbox === "function") {
     try {
@@ -201,6 +214,7 @@ async function settleOutboxBeforeAuthoritativePull(controller) {
     } catch {
       // Status below carries the bounded durability failure without exposing queue contents.
     }
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspacePullResult();
     status = controller.model?.getMutationOutboxStatus?.();
   }
   if (status?.trusted !== false) return null;
@@ -218,7 +232,7 @@ async function settleOutboxBeforeAuthoritativePull(controller) {
 async function executeForceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
-  const outboxFailure = await settleOutboxBeforeAuthoritativePull(this);
+  const outboxFailure = await settleOutboxBeforeAuthoritativePull(this, workspace);
   if (outboxFailure) return outboxFailure;
   if (!workspaceIsCurrent(this, workspace)) {
     return {
@@ -423,7 +437,9 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
     this._workspacePullFlights.set(key, flights);
   }
 
-  const activePush = this._autoSyncPromise;
+  const activePush = this._autoSyncOwner?.workspaceToken === key
+    ? this._autoSyncOwner.promise
+    : null;
   const run = Promise.resolve(activePush)
     .catch(() => null)
     .then(() => {

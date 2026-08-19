@@ -149,7 +149,11 @@ export async function savePackagePreparation(controller, pkg, changes, {
   }
 
   let createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
-  if (createVersion && Number(pkg?.rowVersion) > 0) {
+  if (
+    createVersion
+    && boundaryResult?.offline !== true
+    && Number(pkg?.rowVersion) > 0
+  ) {
     const officialResult = await createAggregateVersion(controller, {
       kind: "package",
       sourceId: pkg.id,
