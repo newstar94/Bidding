@@ -104,6 +104,9 @@ test("waits for the paginated package refresh before opening the result step", a
   assert.equal(detailOpened, true);
   assert.deepEqual(detailNavigation, [packageRecord.id, false, "result"]);
   assert.equal(packageRecord.danhGiaHsdtMetadata.includes('"saved":true'), true);
+  const completedMetadata = JSON.parse(packageRecord.danhGiaHsdtMetadata);
+  assert.equal(completedMetadata.trangThai, "completed");
+  assert.match(completedMetadata.hoanThanhLuc, /^\d{4}-\d{2}-\d{2}T/u);
   assert.equal(bid.giaDuThau, 800_000_000);
   assert.equal(bid.tyLeGiamGia, 5);
   assert.equal(bid.giaSauGiamGia, 760_000_000);

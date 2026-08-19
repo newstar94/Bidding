@@ -563,25 +563,238 @@ phải cho phép người dùng hiểu dữ liệu hiện đang ở trạng thá
 
 ---
 
-## 12.4. Trạng thái tiến độ
+## 12.4. Thanh tiến trình đánh giá — BẮT BUỘC
 
-Có thể bổ sung progress **nhẹ và không phá giao diện**.
+Phải bổ sung một **thanh tiến trình compact**, thân thiện và hiện đại nhưng không làm thay đổi bố cục hiện tại.
 
-Ưu tiên dùng nội dung nhỏ gần header/table, ví dụ:
+Vị trí ưu tiên:
+
+- ngay phía trên bảng đánh giá hoặc sát khu vực tiêu đề của bảng;
+- cùng container hiện có nếu có thể;
+- không tạo dashboard/card lớn;
+- không đẩy bảng xuống quá nhiều;
+- không thay đổi cấu trúc hoặc thứ tự cột.
+
+Gợi ý hiển thị:
 
 ```text
+Tiến độ đánh giá                                      31%
+████████░░░░░░░░░░░░░░░░░░
+
 Hợp lệ 20/20 · Năng lực 8/20 · Kỹ thuật 3/20
+Đã lưu nháp lúc 14:32
 ```
 
-Không tạo dashboard lớn.
+Trên màn hình nhỏ có thể wrap dòng chi tiết nhưng thanh tiến trình phải giữ full width của container hiện tại.
 
-Không thêm card lớn chiếm diện tích.
+### 12.4.1. Màu gradient động theo phần trăm hoàn thành
 
-Không đổi table hiện tại thành layout khác.
+Người dùng yêu cầu màu sắc thanh tiến trình **thay đổi theo tỷ lệ % hoàn thành dưới dạng gradient**.
 
-Nếu việc thêm progress làm layout hiện tại chật hoặc phức tạp thì có thể bỏ trong iteration đầu.
+Màu phải chuyển dần theo hướng trực quan:
 
-Chức năng lưu nháp quan trọng hơn progress visual.
+```text
+0%        : chưa có fill / neutral track
+1–25%     : đỏ -> cam đỏ
+26–50%    : cam -> vàng
+51–75%    : vàng -> xanh non
+76–99%    : xanh non -> xanh lá
+100%      : xanh lá hoàn thành
+```
+
+Ưu tiên chuyển màu **liên tục** thay vì chỉ đổi class theo ngưỡng.
+
+Một cách triển khai tham khảo:
+
+```text
+progressHue = clamp(percent, 0, 100) * 1.2
+
+0%   -> hue ~ 0°   (đỏ)
+50%  -> hue ~ 60°  (vàng)
+100% -> hue ~ 120° (xanh)
+```
+
+Fill có thể dùng gradient cục bộ, ví dụ về nguyên tắc:
+
+```css
+background:
+  linear-gradient(
+    90deg,
+    hsl(startHue ...),
+    hsl(endHue ...)
+  );
+width: var(--progress-percent);
+```
+
+Codex không bắt buộc phải dùng đúng đoạn CSS trên; phải lựa chọn implementation tương thích với browser target và CSS architecture hiện tại.
+
+Yêu cầu bắt buộc:
+
+- gradient chỉ áp dụng cho **progress component**, không thay đổi global theme;
+- không thêm global CSS gây side effect;
+- ưu tiên CSS variable/scoped class;
+- track nền dùng neutral/border token hiện có;
+- màu phải đủ tương phản;
+- vẫn hiển thị con số `%` nên không phụ thuộc màu để truyền đạt trạng thái;
+- `100%` phải có trạng thái hoàn thành rõ ràng;
+- `0%` không được hiển thị một thanh đỏ gây cảm giác lỗi; nên là neutral/empty.
+
+Nếu browser/support architecture khiến continuous HSL gradient không phù hợp, cho phép fallback sang các gradient theo ngưỡng ở trên, nhưng vẫn phải là gradient chứ không phải một màu phẳng.
+
+### 12.4.2. Công thức tính tiến độ theo từng bước
+
+Không được tính đơn giản theo “số nhà thầu đã hoàn thành toàn bộ”.
+
+Phải phản ánh việc người dùng có thể đánh giá từng phần.
+
+Ví dụ:
+
+```text
+Hợp lệ     20/20
+Năng lực    8/15
+Kỹ thuật    3/8
+Tài chính   0/3
+```
+
+Mẫu số của từng bước chỉ bao gồm các nhà thầu **thực sự cần đánh giá bước đó** theo rule nghiệp vụ hiện tại.
+
+Ví dụ:
+
+```text
+20 nhà thầu ban đầu
+5 nhà thầu Không đạt Hợp lệ
+=> Năng lực có denominator = 15
+
+7/15 nhà thầu Không đạt Năng lực
+=> chỉ các nhà thầu đủ điều kiện mới đi tiếp Kỹ thuật
+```
+
+Không được coi các bước bị khóa do upstream failure là “chưa làm”.
+
+Chúng phải được coi là:
+
+```text
+NOT_APPLICABLE / RESOLVED_BY_UPSTREAM
+```
+
+### 12.4.3. Công thức % tổng thể
+
+Để % tổng thể không bị sai khi nhà thầu bị loại ở bước trước, dùng khái niệm **resolved work**.
+
+Mỗi nhà thầu có tập các bước đánh giá tiềm năng theo cấu hình gói thầu.
+
+Một bước được coi là `resolved` khi:
+
+1. người dùng đã nhập một kết quả hợp lệ cho bước đó; hoặc
+2. bước đó không còn áp dụng vì một bước upstream đã kết luận nhà thầu không được đi tiếp.
+
+Gợi ý:
+
+```text
+overallPercent =
+  resolvedEvaluationSlots / potentialEvaluationSlots * 100
+```
+
+Trong đó:
+
+- `potentialEvaluationSlots`: tổng số bước đánh giá tiềm năng của các nhà thầu trong scope hiện tại;
+- `resolvedEvaluationSlots`: số bước đã có kết quả hợp lệ + số bước downstream đã trở thành N/A do kết luận upstream.
+
+Mục tiêu:
+
+- tiến độ phản ánh đúng lượng công việc còn lại;
+- nhà thầu bị loại sớm không khiến progress mãi thấp vì các bước sau không bao giờ cần làm;
+- không tính một ô trống chưa đủ điều kiện là đã hoàn thành;
+- kết quả phải deterministic và test được.
+
+Nếu codebase có business rule đặc thù khiến công thức trên chưa phù hợp ở một workflow, Codex phải giữ cùng nguyên tắc “resolved work” và ghi rõ công thức thực tế trong báo cáo triển khai.
+
+### 12.4.4. Trạng thái theo từng nhà thầu/bước
+
+Nên derive từ dữ liệu hiện tại, không cần thêm DB column nếu không cần thiết:
+
+```text
+NOT_STARTED
+IN_PROGRESS
+COMPLETED
+NOT_APPLICABLE
+```
+
+Không persist progress percentage như source of truth nếu có thể tính lại từ dữ liệu đánh giá.
+
+Progress là **derived UI state**.
+
+### 12.4.5. Phần lô
+
+Với gói phân lô, progress phải tính theo **scope phần lô đang xem/chọn**, không cộng lẫn các lô ngoài scope.
+
+Ví dụ:
+
+```text
+Lô 01, 02 — Tiến độ 45%
+Hợp lệ 10/10 · Năng lực 7/10 · Kỹ thuật 2/7
+```
+
+Khi đổi scope phần lô:
+
+- progress phải recompute;
+- không làm thay đổi dữ liệu;
+- không finalize batch;
+- không dùng progress để suy ra package lifecycle.
+
+Có thể bổ sung progress tổng của toàn gói nếu UI hiện có vị trí phù hợp, nhưng không bắt buộc. Progress của scope hiện tại là bắt buộc.
+
+### 12.4.6. 1G2T
+
+Tách progress theo vòng.
+
+Ví dụ vòng kỹ thuật:
+
+```text
+Hồ sơ kỹ thuật — 65%
+Hợp lệ 20/20 · Năng lực 18/20 · Kỹ thuật 11/18
+```
+
+Khi kỹ thuật chưa hoàn thành:
+
+- Financial vẫn locked theo rule hiện tại;
+- progress kỹ thuật không được dùng để unlock Financial.
+
+Sau khi technical hoàn thành, vòng Financial có progress riêng:
+
+```text
+Hồ sơ tài chính — 30%
+Tài chính 3/10 · Xếp hạng 0/10
+```
+
+Các bước thực tế phải dựa trên workflow hiện hành, không hard-code field không tồn tại.
+
+### 12.4.7. Báo cáo chi tiết
+
+Với báo cáo chi tiết, progress nên dựa trên các tiêu chí bắt buộc/applicable trong group hoặc round đang xem.
+
+Nguyên tắc:
+
+```text
+completed/applicable criteria
+```
+
+Các tiêu chí bị vô hiệu hóa bởi hierarchy/upstream result phải là `NOT_APPLICABLE`, không phải “chưa làm”.
+
+Không được persist % vào report nếu có thể derive lại từ criteria results.
+
+### 12.4.8. Hiệu năng
+
+Không được mỗi lần gõ một ký tự lại scan/recalculate toàn bộ ứng dụng.
+
+Có thể:
+
+- chỉ recompute progress của current package/scope;
+- debounce cập nhật visual nếu cần;
+- dùng dữ liệu row hiện có;
+- tránh server call chỉ để tính progress.
+
+Thanh progress phải cập nhật gần realtime khi người dùng thay đổi các lựa chọn đánh giá, nhưng đây chỉ là UI-derived state và không được tạo server mutation riêng.
 
 ---
 
@@ -1007,6 +1220,30 @@ Không làm regression import/export Excel của scope đánh giá.
 Không làm regression package lifecycle/versioning.
 
 ## AC25
+
+Thanh tiến trình hiển thị % tổng thể và breakdown theo các bước đánh giá mà không làm thay đổi layout/table hiện tại.
+
+## AC26
+
+Màu fill của thanh tiến trình chuyển theo tỷ lệ hoàn thành dưới dạng gradient từ vùng đỏ/cam ở tiến độ thấp sang vàng và xanh ở tiến độ cao; 0% dùng neutral/empty.
+
+## AC27
+
+Nhà thầu bị loại ở bước upstream không làm các bước downstream bị tính sai thành “chưa hoàn thành”; các bước đó được xử lý như NOT_APPLICABLE/RESOLVED.
+
+## AC28
+
+Progress của gói phân lô chỉ tính trên scope phần lô đang xem/chọn.
+
+## AC29
+
+Progress Technical/Financial của 1G2T độc lập và progress không được sử dụng để bypass điều kiện unlock workflow.
+
+## AC30
+
+Progress là derived UI state, không tạo server mutation hoặc lưu % như source of truth nếu không cần thiết.
+
+## AC31
 
 Test suite và build/security checks liên quan pass.
 
@@ -1593,19 +1830,145 @@ Nếu offline:
 
 ---
 
-# PROGRESS INDICATOR — OPTIONAL NHƯNG ƯU TIÊN NẾU KHÔNG PHÁ UI
+# PROGRESS INDICATOR — BẮT BUỘC
 
-Nếu có thể bổ sung rất nhẹ:
+Hãy triển khai một thanh tiến trình đánh giá compact, đặt gần header/bảng đánh giá mà **không redesign hoặc làm thay đổi cấu trúc table**.
+
+Ví dụ:
 
 ```text
-Hợp lệ 20/20 · Năng lực 8/20 · Kỹ thuật 3/20
+Tiến độ đánh giá                                      31%
+████████░░░░░░░░░░░░░░░░░░
+
+Hợp lệ 20/20 · Năng lực 8/15 · Kỹ thuật 3/8
 ```
 
-Không tạo dashboard/card lớn.
+## Gradient màu theo %
 
-Không đổi table layout.
+Thanh fill phải đổi màu theo tỷ lệ hoàn thành dưới dạng **gradient động**:
 
-Nếu không thể thêm mà không phá layout, bỏ feature này và ghi rõ lý do.
+```text
+0%        neutral/empty
+1–25%     đỏ -> cam đỏ
+26–50%    cam -> vàng
+51–75%    vàng -> xanh non
+76–99%    xanh non -> xanh lá
+100%      xanh lá hoàn thành
+```
+
+Ưu tiên continuous mapping:
+
+```text
+hue = clamp(percent, 0, 100) * 1.2
+```
+
+tương ứng:
+
+```text
+0%   ≈ red
+50%  ≈ yellow
+100% ≈ green
+```
+
+Có thể dùng CSS custom property + scoped gradient hoặc JS tính màu nếu phù hợp kiến trúc hiện tại.
+
+Không hard-code style global.
+
+Không thay đổi palette của ứng dụng.
+
+Progress vẫn phải có text `%` để accessibility không phụ thuộc màu.
+
+`0%` dùng neutral track, không hiển thị đỏ như lỗi.
+
+## Tính tiến độ
+
+Không tính theo số nhà thầu hoàn thành toàn bộ.
+
+Per-stage denominator phải dựa trên bidder thực sự applicable:
+
+```text
+Hợp lệ:
+all bidders in current scope
+
+Năng lực:
+chỉ bidder đã Đạt Hợp lệ và workflow yêu cầu bước này
+
+Kỹ thuật:
+chỉ bidder đủ điều kiện từ các bước trước
+
+Tài chính:
+chỉ bidder đủ điều kiện tài chính theo workflow/1G2T
+```
+
+Các bước downstream bị khóa vì nhà thầu đã fail upstream phải được coi là:
+
+```text
+NOT_APPLICABLE / RESOLVED_BY_UPSTREAM
+```
+
+không phải pending.
+
+## Overall percentage
+
+Dùng nguyên tắc resolved work:
+
+```text
+overallPercent =
+  resolvedEvaluationSlots / potentialEvaluationSlots * 100
+```
+
+`resolvedEvaluationSlots` gồm:
+
+- bước đã có giá trị/kết quả hợp lệ;
+- bước downstream đã trở thành không áp dụng do upstream failure.
+
+`potentialEvaluationSlots` là toàn bộ bước đánh giá tiềm năng theo cấu hình workflow đối với bidder trong scope.
+
+Không persist percentage làm source of truth.
+
+Hãy tạo pure helper có test để derive progress từ dữ liệu đánh giá hiện tại.
+
+## Lot scope
+
+Progress phải tính theo phần lô đang chọn/xem.
+
+Đổi lot scope phải recompute progress nhưng:
+
+```text
+không persist
+không finalize
+không thay lifecycle
+```
+
+## 1G2T
+
+Technical và Financial có progress độc lập.
+
+Technical progress không được unlock Financial.
+
+Financial chỉ unlock theo official completion rule hiện tại.
+
+## Detailed evaluation
+
+Progress của báo cáo chi tiết dựa trên:
+
+```text
+completed required/applicable criteria
+/
+required/applicable criteria
+```
+
+và tôn trọng hierarchy/NOT_APPLICABLE.
+
+## Performance
+
+Không server call chỉ để tính progress.
+
+Không tạo mutation khi progress thay đổi.
+
+Không scan toàn app trên mỗi keystroke.
+
+Recompute current package/scope; debounce visual update nếu cần.
 
 ---
 
@@ -1712,14 +2075,37 @@ Hãy search test convention hiện tại và thêm test tại đúng vị trí.
 34. stale tab does not overwrite unrelated field where architecture supports field-level update.
 ```
 
+## Progress
+
+```text
+35. 0% renders empty/neutral progress state.
+36. low percentage uses red/orange gradient range.
+37. middle percentage transitions through orange/yellow.
+38. high percentage transitions toward green.
+39. 100% renders completed green gradient state.
+40. percent text matches derived numeric progress.
+41. bidder failed at Hợp lệ makes downstream stages NOT_APPLICABLE, not pending.
+42. bidder failed at Năng lực makes technical downstream NOT_APPLICABLE.
+43. per-stage denominator excludes non-applicable bidders.
+44. overall resolved-work percentage is deterministic.
+45. lot-scope progress excludes bidders/lots outside current scope.
+46. switching lot scope recomputes progress without persistence mutation.
+47. technical and financial 1G2T progress are independent.
+48. technical progress never unlocks financial by itself.
+49. detailed report progress respects required/applicable criteria and hierarchy.
+50. progress updates do not cause server mutation.
+```
+
 ## UI
 
 ```text
-35. draft button visible only in valid edit/save mode.
-36. draft button hidden/disabled in read-only/locked status.
-37. completion button behavior unchanged.
-38. keyboard accessibility.
-39. no duplicate event handler after rerender.
+51. draft button visible only in valid edit/save mode.
+52. draft button hidden/disabled in read-only/locked status.
+53. completion button behavior unchanged.
+54. keyboard accessibility.
+55. no duplicate event handler after rerender.
+56. progress component has accessible percent/status text and does not rely on color alone.
+57. progress component does not alter existing table column order/layout.
 ```
 
 ---
@@ -1913,8 +2299,13 @@ Feature chỉ được coi là hoàn thành khi:
 11. UI mới hòa nhập hoàn toàn với giao diện hiện tại.
 12. Không redesign.
 13. Không thay đổi table/layout không cần thiết.
-14. Tests liên quan pass.
-15. Build/security checks liên quan không regression.
+14. Thanh tiến trình hiển thị đúng tiến độ theo từng phần đánh giá và scope.
+15. Gradient của progress thay đổi theo % hoàn thành, từ vùng đỏ/cam -> vàng -> xanh, 0% neutral.
+16. Nhà thầu bị loại ở upstream không làm sai mẫu số hoặc % tiến độ.
+17. Progress của phần lô và 1G2T đúng scope/round và không ảnh hưởng lifecycle.
+18. Progress là derived UI state, không tạo mutation riêng.
+19. Tests liên quan pass.
+20. Build/security checks liên quan không regression.
 
 ---
 

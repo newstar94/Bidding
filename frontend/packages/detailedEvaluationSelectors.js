@@ -2,6 +2,7 @@ import { resolveBidContractorName } from "../partners/contractorVersionBinding.j
 import { checkBidQualified } from "./detail/PackageTabs.js";
 import { createDefaultDetailedEvaluationCriteria } from "./detailedEvaluationTemplates.js";
 import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
+import { deriveDetailedEvaluationProgress } from "./BidEvaluationProgress.js";
 
 
 function isTwoEnvelope(pkg) {
@@ -98,25 +99,5 @@ export function getCriteriaForGroup(pkg, roundType, group, {
 }
 
 export function getDetailedEvaluationProgress(report, criteria = []) {
-  const rows = new Map(
-    (report?.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
-  );
-  const evaluableCriteria = criteria.filter(
-    (criterion) => criterion.isSection !== true && criterion.hasChildren !== true,
-  );
-  const completed = evaluableCriteria.filter((criterion) => {
-    const row = rows.get(String(criterion.id));
-    return row && row.ketQua && row.ketQua !== "pending";
-  }).length;
-  const requiredCriteria = evaluableCriteria.filter((criterion) => criterion.required !== false);
-  const requiredCompleted = requiredCriteria.filter((criterion) => {
-    const row = rows.get(String(criterion.id));
-    return row && row.ketQua && row.ketQua !== "pending";
-  }).length;
-  return {
-    completed,
-    total: evaluableCriteria.length,
-    requiredCompleted,
-    requiredTotal: requiredCriteria.length,
-  };
+  return deriveDetailedEvaluationProgress({ report, criteria });
 }

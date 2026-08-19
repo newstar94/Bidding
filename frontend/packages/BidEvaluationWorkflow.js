@@ -20,6 +20,8 @@ import {
 import { syncDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
 import { checkBidQualified } from "./detail/PackageTabs.js";
 import { configureBidTechnicalScoreInputs } from "./technicalEvaluationMethod.js";
+import { bindBidEvaluationDraftTracking } from "./BidEvaluationDraftRecovery.js";
+import { renderCurrentBidEvaluationProgress } from "./BidEvaluationProgressView.js";
 
 function getEvaluationScopeStore(controller) {
   if (!controller._evaluationLotScopes) controller._evaluationLotScopes = {};
@@ -190,7 +192,11 @@ export function renderDanhGiaHsdtPanel() {
       isTwoEnvelope: is1G2T,
       isReadOnly,
     });
-    const updateAllRankings = (dirtyRow) => rankingController.schedule(dirtyRow);
+    let scheduleProgress = () => {};
+    const updateAllRankings = (dirtyRow) => {
+      rankingController.schedule(dirtyRow);
+      scheduleProgress();
+    };
     if (!is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
       bids.sort((a, b) => {
         const priceA = BigInt(this.model.parseVND(a.giaSauGiamGia || a.giaDuThau) || 0);
@@ -220,6 +226,50 @@ export function renderDanhGiaHsdtPanel() {
     };
     const finalizeRowRender = () => {
       configureBidTechnicalScoreInputs(tbody, gt, is1G2T ? "technical" : "single");
+      const renderedRows = Array.from(tbody.querySelectorAll("tr[data-bid-id]"));
+      const round = is1G2T ? this.currentDanhGiaTab : "technical";
+      const lotIds = lotScope?.selectedLotIds || [];
+      let draftBinding = null;
+      let progressQueued = false;
+      const renderProgress = () => {
+        progressQueued = false;
+        const status = this._bidEvaluationSaveStatusByKey?.get(draftBinding?.recoveryKey)
+          || (panelState.activeMeta?.draftSavedAt
+            ? `Đã lưu nháp lúc ${new Date(panelState.activeMeta.draftSavedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`
+            : "");
+        return renderCurrentBidEvaluationProgress({
+          controller: this,
+          pkg: gt,
+          rows: renderedRows,
+          bids,
+          round,
+          dirtyState: draftBinding?.dirtyState,
+          statusText: status,
+        });
+      };
+      scheduleProgress = () => {
+        if (progressQueued) return;
+        progressQueued = true;
+        queueMicrotask(renderProgress);
+      };
+      draftBinding = bindBidEvaluationDraftTracking({
+        controller: this,
+        pkg: gt,
+        rows: renderedRows,
+        bids,
+        round: is1G2T ? this.currentDanhGiaTab : "single",
+        lotIds,
+        onChange: () => {
+          this._bidEvaluationSaveStatusByKey ||= new Map();
+          this._bidEvaluationSaveStatusByKey.set(
+            draftBinding?.recoveryKey,
+            "Có thay đổi chưa lưu trên máy chủ",
+          );
+          scheduleProgress();
+        },
+      });
+      this._renderBidEvaluationProgress = renderProgress;
+      renderProgress();
       lucide.createIcons();
       if (typeof this.unifyTableInputsHeight === "function") {
         this.unifyTableInputsHeight(document);

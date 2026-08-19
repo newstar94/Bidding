@@ -6903,6 +6903,68 @@ input#edit-pkg-price {
 .bidder-name--violator {
   color: var(--color-danger);
 }
+
+.evaluation-progress-host:empty {
+  display: none;
+}
+
+.evaluation-progress-compact {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 10px;
+  color: var(--text-main);
+  font-size: 0.78rem;
+}
+
+.evaluation-progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 700;
+}
+
+.evaluation-progress-percent {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.evaluation-progress-track {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--neutral-soft);
+}
+
+.evaluation-progress-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 180ms ease, background-image 180ms ease;
+}
+
+.evaluation-progress-compact[data-progress-state="complete"] .evaluation-progress-track {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--border-color));
+}
+
+.evaluation-progress-breakdown,
+.evaluation-progress-status {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.evaluation-progress-status:empty {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evaluation-progress-fill {
+    transition: none;
+  }
+}
 input.form-control.bidder-name--violator {
   color: var(--color-danger) !important;
 }

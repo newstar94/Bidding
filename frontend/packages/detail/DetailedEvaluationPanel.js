@@ -10,6 +10,7 @@ import {
   aggregateDetailedEvaluationAutomatic,
 } from "../detailedEvaluationAggregation.js";
 import { getEvaluationLotScopeDetails } from "../lotEvaluationScope.js";
+import { renderEvaluationProgressComponent } from "../BidEvaluationProgressView.js";
 
 const GROUP_LABELS = Object.freeze({
   validity: "Tính hợp lệ",
@@ -607,8 +608,6 @@ export function renderDetailedEvaluationPanel(container, {
       status,
     }),
   );
-  const progressTotal = Math.max(Number(progress.total) || 0, 1);
-  const progressCompleted = Math.min(Number(progress.completed) || 0, progressTotal);
   const selectedIndex = bids.findIndex((bid) => String(bid.id) === String(selectedBidId));
   const bidderNavigation = bids.length > 1 ? `
     <div class="detailed-evaluation-navigation" aria-label="Điều hướng hồ sơ dự thầu">
@@ -732,9 +731,7 @@ export function renderDetailedEvaluationPanel(container, {
           <strong id="detailed-evaluation-status" class="badge ${statusClass}">${status}</strong>
         </div>
         <div class="detailed-evaluation-metric">
-          <span class="detailed-evaluation-metric-label">Tiến độ</span>
-          <strong id="detailed-evaluation-progress">${progress.completed}/${progress.total} tiêu chí</strong>
-          <progress class="detailed-evaluation-progress" max="${progressTotal}" value="${progressCompleted}" aria-label="Tiến độ đánh giá"></progress>
+          <div id="detailed-evaluation-progress" class="detailed-evaluation-progress-host"></div>
         </div>
         ${lowPriceDecisionSummary}
       </div>
@@ -762,6 +759,18 @@ export function renderDetailedEvaluationPanel(container, {
       ${actionButtons ? `<div class="workflow-action-row detailed-evaluation-actions with-divider">${actionButtons}</div>` : ""}
     </section>
   `);
+  renderEvaluationProgressComponent(
+    container.querySelector?.("#detailed-evaluation-progress"),
+    {
+      percent: progress.percent,
+      stages: [{
+        label: "Tiêu chí",
+        completed: progress.requiredCompleted,
+        applicable: progress.requiredTotal,
+      }],
+    },
+    { title: "Tiến độ tiêu chí bắt buộc" },
+  );
   container._detailedEvaluationRowRenderRevision = (
     container._detailedEvaluationRowRenderRevision || 0
   ) + 1;

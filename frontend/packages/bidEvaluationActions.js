@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
+import { validateEvaluationReportForMode } from "./bidEvaluationValidation.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
 import { persistAndSync } from "../shared/MutationService.js";
@@ -29,6 +29,7 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
+import { executeBidEvaluationDraftSave } from "./BidEvaluationDraftWorkflow.js";
 
 export function stageBidEvaluationMutation(model, pkg, bids = []) {
   if (!model || !pkg?.id || typeof model.commitLocalMutation !== "function") {
@@ -81,6 +82,7 @@ export function findInvalidRequiredTechnicalScore({
   rows = [],
   isTwoEnvelope = false,
   currentEvaluationTab = "technical",
+  mode = "complete",
 } = {}) {
   if (
     !requiresTechnicalScoreInput(pkg)
@@ -91,7 +93,7 @@ export function findInvalidRequiredTechnicalScore({
   for (let index = 0; index < activeRows.length; index += 1) {
     const input = activeRows[index]?.querySelector?.(".mt-dg-ky-thuat");
     if (!input || input.disabled) continue;
-    const validation = validateTechnicalScore(input.value, { required: true });
+    const validation = validateTechnicalScore(input.value, { required: mode !== "draft" });
     if (typeof input.setCustomValidity === "function") {
       input.setCustomValidity(validation.valid ? "" : validation.message);
     }
@@ -108,6 +110,18 @@ export function findInvalidRequiredTechnicalScore({
     };
   }
   return null;
+}
+
+export function normalizeBidEvaluationSaveMode(options = {}) {
+  const mode = options?.mode ?? "complete";
+  if (mode !== "draft" && mode !== "complete") {
+    throw new TypeError(`Unsupported bid evaluation save mode: ${String(mode)}`);
+  }
+  return mode;
+}
+
+function isLockedEvaluationStatus(status) {
+  return status === "Đã có kết quả" || status === "Hủy thầu";
 }
 
 export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false) {
@@ -224,7 +238,8 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
     }
   }
 }
-export async function saveDanhGiaHsdt() {
+export async function saveDanhGiaHsdt(options = {}) {
+  const mode = normalizeBidEvaluationSaveMode(options);
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
   if (!select) return;
   let gtId = select.value;
@@ -237,7 +252,7 @@ export async function saveDanhGiaHsdt() {
   if (!gt) return;
   gtId = gt.id;
   const effectiveStatus = resolvePackageResultStatus(gt);
-  if (effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu") {
+  if (isLockedEvaluationStatus(effectiveStatus)) {
     await this.view.customAlert(
       "Báo cáo đánh giá đã được khóa",
       `Không thể chỉnh sửa báo cáo đánh giá vì gói thầu đang ở trạng thái "${effectiveStatus}".`,
@@ -259,9 +274,15 @@ export async function saveDanhGiaHsdt() {
   const ngayDoiChieuRaw = inpNgayDoiChieu?.value.trim() || "";
   const ngayMoiDoiChieu = ngayMoiDoiChieuRaw ? this.model.convertDMYToYMD(ngayMoiDoiChieuRaw) : "";
   const ngayDoiChieu = ngayDoiChieuRaw ? this.model.convertDMYToYMD(ngayDoiChieuRaw) : "";
-  const reportValidation = validateRequiredEvaluationReportFields({
+  const letterDateInputs = ["list-cv-lamro", "list-cv-traloi", "list-cv-guicdt"]
+    .flatMap((containerId) => Array.from(
+      this.view.getActiveElement(containerId)?.querySelectorAll?.(".letter-ngay-cv") || [],
+    ));
+  const reportValidation = validateEvaluationReportForMode({
+    mode,
     reportNumberInput: inpSo,
-    reportDateInput: inpNgay
+    reportDateInput: inpNgay,
+    optionalDateInputs: [inpNgayMoiDoiChieu, inpNgayDoiChieu, ...letterDateInputs],
   });
   if (!reportValidation.valid) {
     const first = reportValidation.errorInputs[0];
@@ -275,6 +296,7 @@ export async function saveDanhGiaHsdt() {
     rows,
     isTwoEnvelope: is1G2T,
     currentEvaluationTab: this.currentDanhGiaTab,
+    mode,
   });
   if (invalidTechnicalScore) {
     this.view.focusInvalidControl(invalidTechnicalScore.input);
@@ -319,23 +341,42 @@ export async function saveDanhGiaHsdt() {
       );
       return;
     }
-    try {
-      evaluationBatch = await ensureEvaluationLotBatch({
-        packageId: gtId,
-        lotIds: evaluationLotDetails.lotIds,
-        fetcher: apiFetch
-      });
-      evaluationBatch.lotCodes = evaluationLotDetails.lotCodes;
-      evaluationLotScope.batchId = evaluationBatch.id;
-    } catch (error) {
-      await this.view.customAlert(
-        "Không thể tạo đợt đánh giá",
-        error?.message || "Không thể xác lập phạm vi phần lô. Vui lòng thử lại.",
-        "alert-triangle",
-        this.view.getActiveElement("danhgiahsdt-scope-container")
-      );
-      return;
+    if (mode === "complete") {
+      try {
+        evaluationBatch = await ensureEvaluationLotBatch({
+          packageId: gtId,
+          lotIds: evaluationLotDetails.lotIds,
+          fetcher: apiFetch
+        });
+        evaluationBatch.lotCodes = evaluationLotDetails.lotCodes;
+        evaluationLotScope.batchId = evaluationBatch.id;
+      } catch (error) {
+        await this.view.customAlert(
+          "Không thể tạo đợt đánh giá",
+          error?.message || "Không thể xác lập phạm vi phần lô. Vui lòng thử lại.",
+          "alert-triangle",
+          this.view.getActiveElement("danhgiahsdt-scope-container")
+        );
+        return;
+      }
     }
+  }
+  if (mode === "draft") {
+    return executeBidEvaluationDraftSave({
+      controller: this,
+      pkg: gt,
+      rows,
+      round: is1G2T ? this.currentDanhGiaTab : "single",
+      lotDetails: evaluationLotDetails,
+      report: {
+        soBaoCao,
+        ngayBaoCao,
+        ngayMoiDoiChieu,
+        ngayDoiChieu,
+      },
+      includeExtraFields: !isDirectOrSpecial
+        && (!is1G2T || this.currentDanhGiaTab === "financial"),
+    });
   }
   const collectLetters = (containerId) => {
     const list = [];
@@ -369,7 +410,9 @@ export async function saveDanhGiaHsdt() {
     cvTraLoi,
     cvGuiCdt,
     quyTrinhDanhGia: gt.quyTrinhDanhGia || "quytrinh1",
-    saved: true
+    saved: true,
+    trangThai: "completed",
+    hoanThanhLuc: new Date().toISOString(),
   };
   if (evaluationLotDetails) {
     activeBlock.lotIds = evaluationLotDetails.lotIds;

@@ -241,6 +241,15 @@ function bindReportForm({ appController, pkg, panelState }) {
   }
 
   const saveButton = get("btn-danhgiahsdt-save");
+  const draftButton = get("btn-danhgiahsdt-save-draft");
+  if (draftButton) {
+    setWorkflowActionVisibility(draftButton, actionMode === WORKFLOW_ACTION_MODE.SAVE);
+    setDisabled(draftButton, actionMode !== WORKFLOW_ACTION_MODE.SAVE);
+    draftButton.className = "btn btn-secondary";
+    draftButton.onclick = actionMode === WORKFLOW_ACTION_MODE.SAVE
+      ? () => appController.saveDanhGiaHsdt({ mode: "draft" })
+      : null;
+  }
   if (saveButton) {
     setWorkflowActionVisibility(saveButton, actionMode !== WORKFLOW_ACTION_MODE.HIDDEN);
     if (actionMode === WORKFLOW_ACTION_MODE.HIDDEN) {
@@ -257,9 +266,9 @@ function bindReportForm({ appController, pkg, panelState }) {
         };
       } else {
         saveButton.innerHTML = trustedHTML(lotScope
-          ? '<i data-lucide="save"></i> Lưu báo cáo đánh giá'
-          : '<i data-lucide="save"></i> Lưu báo cáo đánh giá');
-        saveButton.onclick = () => appController.saveDanhGiaHsdt();
+          ? '<i data-lucide="check-circle"></i> Hoàn thành báo cáo đánh giá'
+          : '<i data-lucide="check-circle"></i> Hoàn thành báo cáo đánh giá');
+        saveButton.onclick = () => appController.saveDanhGiaHsdt({ mode: "complete" });
       }
     }
   }

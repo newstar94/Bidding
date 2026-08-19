@@ -136,6 +136,7 @@
                                 id="btn-danhgiahsdt-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                         </div>
                     </div>
+                    <div id="danhgiahsdt-progress" class="evaluation-progress-host"></div>
                     <div class="table-container bf-s-d4e7ea1f46"
                        >
                         <table class="data-table bf-s-448ca2b6ae" id="danhgiahsdt-table" data-row-pagination="true" aria-label="Báo cáo đánh giá hồ sơ dự thầu">
@@ -147,9 +148,12 @@
                     <div class="bf-s-7ecb73148b">
                         <button class="btn btn-outline bf-s-797135b735" data-bf-action="switch-tab" data-tab="goithau"
                            >Quay lại danh sách</button>
-                        <button class="btn btn-primary bf-s-8b00aa151b" id="btn-danhgiahsdt-save"
+                        <button type="button" class="btn btn-secondary" id="btn-danhgiahsdt-save-draft">
+                            <i data-lucide="save"></i> Lưu nháp
+                        </button>
+                        <button type="button" class="btn btn-primary bf-s-8b00aa151b" id="btn-danhgiahsdt-save"
                            >
-                            <i data-lucide="save"></i> Lưu thông tin đánh giá
+                            <i data-lucide="check-circle"></i> Hoàn thành báo cáo đánh giá
                         </button>
                     </div>
                 </div>

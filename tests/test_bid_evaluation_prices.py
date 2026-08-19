@@ -104,6 +104,24 @@ def test_sync_contract_persists_both_bid_evaluation_prices():
     assert 1150000 in cursor.params
 
 
+def test_evaluation_upsert_uses_field_presence_for_partial_draft_updates():
+    cursor = _CaptureCursor()
+    save_bid_evaluation_result(
+        cursor,
+        "bid-1",
+        {"goiThauId": "gt-1", "danhGiaHopLe": "Đạt"},
+        "org-1",
+        "organization",
+        4,
+        "2026-08-19 09:00:00",
+    )
+
+    presence_flags = cursor.params[25:]
+    assert presence_flags[0] is True
+    assert all(flag is False for flag in presence_flags[1:])
+    assert "danh_gia_nang_luc=CASE WHEN ?" in cursor.sql
+
+
 def test_evaluation_persistence_interface_preserves_round_and_criterion_values():
     cursor = _EvaluationPersistenceCursor()
     save_evaluation_rounds(

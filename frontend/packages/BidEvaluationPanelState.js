@@ -9,6 +9,7 @@ import {
   WORKFLOW_ACTION_MODE,
 } from "./workflowActionState.js";
 import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
+import { evaluationDraftScopeKey } from "./BidEvaluationDraftState.js";
 
 const EMPTY_REPORT_METADATA = Object.freeze({
   soBaoCao: "",
@@ -52,6 +53,14 @@ function normalizeTab(requestedTab, isTwoEnvelope) {
   return requestedTab === "financial" ? "financial" : "technical";
 }
 
+function latestDraftScope(block = {}) {
+  return Object.values(block?.draftScopes || {})
+    .filter((draft) => Array.isArray(draft?.lotIds) && draft.lotIds.length > 0)
+    .sort((left, right) => String(right.draftSavedAt || "").localeCompare(
+      String(left.draftSavedAt || ""),
+    ))[0] || null;
+}
+
 export function evaluationScopeKey(packageId, tab) {
   return `${String(packageId || "")}:${String(tab || "technical")}`;
 }
@@ -83,16 +92,24 @@ export function buildBidEvaluationPanelState({
     : metadata;
   const lifecycleScopeMeta = isTwoEnvelope ? metadata.technical || {} : baseMeta;
   const scopeKey = evaluationScopeKey(pkg.id, currentTab);
+  const cachedScope = cachedScopes?.[scopeKey];
+  const draftScope = !cachedScope ? latestDraftScope(baseMeta) : null;
   const lotScope = initializeEvaluationLotScope(
     pkg,
     lifecycleScopeMeta,
-    cachedScopes?.[scopeKey],
+    cachedScope || (draftScope ? {
+      mode: "selected",
+      selectedLotIds: draftScope.lotIds,
+    } : null),
   );
   const scopedMeta = lotScope
     ? findScopedEvaluationMetadata(baseMeta, lotScope.selectedLotIds)
     : null;
+  const scopedDraftMeta = lotScope
+    ? baseMeta?.draftScopes?.[evaluationDraftScopeKey(lotScope.selectedLotIds)] || null
+    : null;
   const hasScopedHistory = Boolean(baseMeta?.lotBatches && Object.keys(baseMeta.lotBatches).length);
-  const activeMeta = scopedMeta || (!hasScopedHistory ? baseMeta : {});
+  const activeMeta = scopedMeta || scopedDraftMeta || (!hasScopedHistory ? baseMeta : {});
   const isCompleted = Boolean(activeMeta.saved);
   const stepKey = currentTab === "financial" ? "eval_fin" : "eval_tech";
   const isEditing = Boolean(editingState?.[stepKey]);
