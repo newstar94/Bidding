@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 import os
@@ -98,6 +99,63 @@ def test_finalize_validator_rejects_ids_that_already_exist_in_the_workspace():
             "org-1",
             valid_payload(),
         )
+    assert caught.value.code == "DRAFT_ALREADY_PERSISTED"
+
+
+@pytest.mark.parametrize("invalid_version", ["abc", "٠", -1, None, True, 0.0])
+def test_backend_rejects_malformed_plan_version(invalid_version):
+    payload = valid_payload()
+    payload["kehoach"][0]["phienBan"] = invalid_version
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(Cursor(), "org-1", payload)
+    assert caught.value.code == "DRAFT_VERSION_SEQUENCE_INVALID"
+
+
+def test_backend_rejects_unknown_assignment_type():
+    payload = valid_payload()
+    payload["assignments"][0]["type"] = "unknown"
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(Cursor(), "org-1", payload)
+    assert caught.value.code == "DRAFT_REFERENCE_INVALID"
+
+
+@pytest.mark.parametrize("field", ["rowVersion", "expectedVersion"])
+def test_backend_rejects_malformed_new_record_version(field):
+    payload = valid_payload()
+    payload["kehoach"][0][field] = "abc"
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(Cursor(), "org-1", payload)
+    assert caught.value.code == "DRAFT_ALREADY_PERSISTED"
+
+
+@pytest.mark.parametrize(
+    ("table", "value"),
+    [("goithauhanghoa", "abc"), ("chuyengia", -1)],
+)
+def test_backend_rejects_malformed_child_and_shared_record_versions(table, value):
+    payload = valid_payload()
+    if not payload.get(table):
+        payload[table] = [{"id": f"{table}-1"}]
+    payload[table][0]["rowVersion"] = value
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(Cursor(), "org-1", payload)
+    assert caught.value.code == "DRAFT_REFERENCE_INVALID"
+
+
+@pytest.mark.parametrize(
+    "existing",
+    [
+        {"ke_hoach_lcnt": {"plan-01"}},
+        {"goi_thau": {"package-b"}},
+    ],
+    ids=[
+        "finalize_draft_cannot_modify_existing_historical_plan",
+        "finalize_draft_cannot_modify_existing_historical_package",
+    ],
+)
+def test_finalize_draft_cannot_modify_existing_historical_parent(existing):
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(Cursor(existing), "org-1", valid_payload())
     assert caught.value.code == "DRAFT_ALREADY_PERSISTED"
 
 
@@ -262,7 +320,6 @@ def test_three_intermediate_versions_stay_absent_until_one_atomic_final_save(mon
             before.close()
 
         invalid = deepcopy(payload)
-        invalid["clientMutationId"] = f"invalid-{token}"
         invalid["goithauhanghoa"][-1]["soLuong"] = 0
         failed = sync_service.execute_sync_mutation(
             request, invalid, finalize_draft_command=True,
@@ -282,11 +339,30 @@ def test_three_intermediate_versions_stay_absent_until_one_atomic_final_save(mon
         finally:
             after_failure.close()
 
-        response = sync_service.execute_sync_mutation(
-            request, payload, finalize_draft_command=True,
-        )
-        body = json.loads(response.body)
-        assert response.status_code == 200, body
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(
+                lambda _index: sync_service.execute_sync_mutation(
+                    request, deepcopy(payload), finalize_draft_command=True,
+                ),
+                range(2),
+            ))
+        successful = [response for response in responses if response.status_code == 200]
+        assert successful, [
+            (response.status_code, json.loads(response.body)) for response in responses
+        ]
+        body = json.loads(successful[0].body)
+        for concurrent_response in responses:
+            if concurrent_response.status_code == 200:
+                assert json.loads(concurrent_response.body) == body
+                continue
+            concurrent_error = json.loads(concurrent_response.body)
+            assert concurrent_response.status_code == 409
+            assert concurrent_error["code"] == "VERSION_CREATION_CONFLICT"
+            conflict_retry = sync_service.execute_sync_mutation(
+                request, deepcopy(payload), finalize_draft_command=True,
+            )
+            assert conflict_retry.status_code == 200
+            assert json.loads(conflict_retry.body) == body
         retry = sync_service.execute_sync_mutation(
             request, deepcopy(payload), finalize_draft_command=True,
         )

@@ -27,6 +27,10 @@ import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 import {
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
+} from "../app/workspaceLease.js";
+import {
   capturePlanBreakdownDraft,
   boundProcurementRevisionChanges,
   collectPlanBreakdownDraftChanges,
@@ -41,6 +45,78 @@ import {
   refreshPlanVersionDraftSession,
   savePlanVersionDraftSession,
 } from "./PlanVersionDraftSession.js";
+
+const INTERMEDIATE_DRAFT_STATE_KEYS = Object.freeze([
+  "kehoach",
+  "goithau",
+  "goithauhanghoa",
+  "thongtinmothau",
+  "hanghoaduthaunhathau",
+  "assignments",
+  "selectedPlanVersion",
+  "selectedPackageVersion",
+  "selectedPackageVersionIntent",
+]);
+
+function cloneDraftValue(value) {
+  if (value === undefined) return undefined;
+  return typeof structuredClone === "function"
+    ? structuredClone(value)
+    : JSON.parse(JSON.stringify(value));
+}
+
+function stalePlanFinalizeResult() {
+  return {
+    ok: false,
+    stale: true,
+    workspaceChanged: true,
+    code: "WORKSPACE_CHANGED",
+  };
+}
+
+function captureIntermediateDraftCheckpoint(controller) {
+  const state = controller.model.state;
+  return {
+    state: Object.fromEntries(INTERMEDIATE_DRAFT_STATE_KEYS.map((key) => [
+      key,
+      {
+        present: Object.prototype.hasOwnProperty.call(state, key),
+        value: cloneDraftValue(state[key]),
+      },
+    ])),
+    sessions: cloneDraftValue(controller.model.planVersionDraftSessions || []),
+    tempPlanData: cloneDraftValue(controller.tempPlanData),
+    tempPlanAction: controller.tempPlanAction,
+    planBreakdownDraft: controller.planBreakdownDraft,
+    breakdownPlanId: controller.planBreakdownDraft?.planId,
+    backupKeHoachState: cloneDraftValue(controller.backupKeHoachState),
+    backupGoiThauState: cloneDraftValue(controller.backupGoiThauState),
+  };
+}
+
+async function restoreIntermediateDraftCheckpoint(controller, checkpoint) {
+  for (const [key, captured] of Object.entries(checkpoint.state)) {
+    if (!captured.present) delete controller.model.state[key];
+    else controller.model.state[key] = cloneDraftValue(captured.value);
+    controller.model.entityIndexes?.invalidate?.(key);
+  }
+  controller.model.planVersionDraftSessions = cloneDraftValue(checkpoint.sessions);
+  controller.tempPlanData = cloneDraftValue(checkpoint.tempPlanData);
+  controller.tempPlanAction = checkpoint.tempPlanAction;
+  controller.planBreakdownDraft = checkpoint.planBreakdownDraft;
+  if (checkpoint.planBreakdownDraft) {
+    checkpoint.planBreakdownDraft.planId = checkpoint.breakdownPlanId;
+  }
+  controller.backupKeHoachState = cloneDraftValue(checkpoint.backupKeHoachState);
+  controller.backupGoiThauState = cloneDraftValue(checkpoint.backupGoiThauState);
+  const renderResults = await Promise.allSettled([
+    Promise.resolve(controller.view?.renderKeHoachTable?.()),
+    Promise.resolve(controller.view?.renderGoiThauTable?.()),
+  ]);
+  renderResults.filter((result) => result.status === "rejected").forEach((result) => {
+    console.warn("Failed to render restored intermediate plan draft state:", result.reason);
+  });
+}
 
 /**
  * Load every package attached to the given plan versions so reference guards
@@ -587,6 +663,7 @@ export async function handleKeHoachSubmit(e) {
     await this.view.customAlert("Dữ liệu không hợp lệ", `${totalFieldName} không được nhỏ hơn 0.`, "alert-triangle", tmInput);
     return;
   }
+  const initialDraftCheckpoint = captureIntermediateDraftCheckpoint(this);
   const resumingPlanDraft = isPlanBreakdownDraftActive(this, id);
   const durableVersionDraft = findPlanVersionDraftSession(this.model, id);
   if (!resumingPlanDraft) {
@@ -652,7 +729,12 @@ export async function handleKeHoachSubmit(e) {
       ...this.tempPlanData
     });
     const versionDraft = createPlanVersionDraftSession(this.model.state, planId);
-    await savePlanVersionDraftSession(this.model, versionDraft);
+    try {
+      await savePlanVersionDraftSession(this.model, versionDraft);
+    } catch (error) {
+      await restoreIntermediateDraftCheckpoint(this, initialDraftCheckpoint);
+      throw error;
+    }
   }
   if (isTongMucTuDong) {
     this.recalculatePlanTotal(targetPlanId);
@@ -1025,44 +1107,53 @@ export async function saveIntermediatePlanVersion() {
   if (typeof this.loadBreakdownPackageDetails === "function") {
     await this.loadBreakdownPackageDetails(planId);
   }
-  const currentPlan = updatePlanBreakdownDraftRows(this, planId);
-  const session = findPlanVersionDraftSession(this.model, planId);
-  if (!currentPlan || !session) {
-    throw new Error("Chỉ kế hoạch mới chưa lưu mới có thể lưu phiên bản nháp.");
-  }
-  const timestamp = this.model.getCurrentDateTimeString();
-  const nextPlanId = generateRecordId("kehoach");
-  const nextPlan = createNextVersion(
-    this.model.state.kehoach,
-    currentPlan,
-    currentPlan,
-    { id: nextPlanId, timestamp },
-  );
-  nextPlan.createdAt = currentPlan.createdAt || timestamp;
-  this.model.state.kehoach.push(nextPlan);
+  const checkpoint = captureIntermediateDraftCheckpoint(this);
+  let nextPlan;
+  try {
+    const currentPlan = updatePlanBreakdownDraftRows(this, planId);
+    const currentSession = findPlanVersionDraftSession(this.model, planId);
+    if (!currentPlan || !currentSession) {
+      throw new Error("Chỉ kế hoạch mới chưa lưu mới có thể lưu phiên bản nháp.");
+    }
+    const timestamp = this.model.getCurrentDateTimeString();
+    const nextPlanId = generateRecordId("kehoach");
+    nextPlan = createNextVersion(
+      this.model.state.kehoach,
+      currentPlan,
+      currentPlan,
+      { id: nextPlanId, timestamp },
+    );
+    nextPlan.createdAt = currentPlan.createdAt || timestamp;
+    this.model.state.kehoach.push(nextPlan);
 
-  const inheritedAggregate = snapshotPlanAggregate(this.model.state, {
-    sourcePlanId: currentPlan.id,
-    targetPlanId: nextPlan.id,
-    timestamp,
-    sourcePackages: this.model.state.goithau,
-  });
-  applyPlanAggregateSnapshot(this.model.state, inheritedAggregate);
-  const planAssignments = (this.model.state.assignments || []).filter((assignment) => (
-    assignment.type === "kehoach"
-    && String(assignment.targetId) === String(currentPlan.id)
-  ));
-  planAssignments.forEach((assignment) => {
-    const cloned = { ...assignment };
-    delete cloned.rowVersion;
-    delete cloned.expectedVersion;
-    cloned.id = generateRecordId("assignments");
-    cloned.targetId = nextPlan.id;
-    this.model.state.assignments.push(cloned);
-  });
-  rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
-  refreshPlanVersionDraftSession(session, this.model.state, nextPlan.id);
-  await savePlanVersionDraftSession(this.model, session);
+    const inheritedAggregate = snapshotPlanAggregate(this.model.state, {
+      sourcePlanId: currentPlan.id,
+      targetPlanId: nextPlan.id,
+      timestamp,
+      sourcePackages: this.model.state.goithau,
+    });
+    applyPlanAggregateSnapshot(this.model.state, inheritedAggregate);
+    const planAssignments = (this.model.state.assignments || []).filter((assignment) => (
+      assignment.type === "kehoach"
+      && String(assignment.targetId) === String(currentPlan.id)
+    ));
+    planAssignments.forEach((assignment) => {
+      const cloned = { ...assignment };
+      delete cloned.rowVersion;
+      delete cloned.expectedVersion;
+      cloned.id = generateRecordId("assignments");
+      cloned.targetId = nextPlan.id;
+      this.model.state.assignments.push(cloned);
+    });
+    rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
+    const refreshedSession = refreshPlanVersionDraftSession(
+      cloneDraftValue(currentSession), this.model.state, nextPlan.id,
+    );
+    await savePlanVersionDraftSession(this.model, refreshedSession);
+  } catch (error) {
+    await restoreIntermediateDraftCheckpoint(this, checkpoint);
+    throw error;
+  }
 
   if (this.planBreakdownDraft?.active) this.planBreakdownDraft.planId = nextPlan.id;
   this.tempPlanAction = "create";
@@ -1243,18 +1334,32 @@ export async function savePlanBreakdown() {
   const finalDraftSession = findPlanVersionDraftSession(this.model, finalPlanId);
   let syncResult;
   if (finalDraftSession) {
+    const finalizeLease = captureWorkspaceLease(this.model);
+    const finalizeStorage = this.model.workspaceStorage;
+    const finalizeIsCurrent = () => (
+      isWorkspaceLeaseCurrent(this.model, finalizeLease)
+      && this.model.workspaceStorage === finalizeStorage
+    );
     try {
-      await finalizePlanVersionDraft(this, finalDraftSession, {
+      const finalizeResult = await finalizePlanVersionDraft(this, finalDraftSession, {
         send: this.finalizePlanDraft,
       });
+      if (finalizeResult?.workspaceChanged || !finalizeIsCurrent()) {
+        return stalePlanFinalizeResult();
+      }
       if (typeof this.forceSyncData === "function") {
         try {
-          await this.forceSyncData(true, true);
+          const pullResult = await this.forceSyncData(true, true);
+          if (pullResult?.workspaceChanged || !finalizeIsCurrent()) {
+            return stalePlanFinalizeResult();
+          }
         } catch (pullError) {
+          if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
           console.warn("Plan draft committed but canonical refresh is pending:", pullError);
         }
       }
       await renderVersionTables();
+      if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
       syncResult = { ok: true };
     } catch (error) {
       await this.view.customAlert(

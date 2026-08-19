@@ -7,6 +7,7 @@ from typing import Any
 
 
 _QUERY_CHUNK_SIZE = 500
+_MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,10 +32,37 @@ def _root_id(row: dict[str, Any]) -> str:
 
 
 def _version(row: dict[str, Any]) -> int:
-    try:
-        return int(row.get("phienBan", row.get("phien_ban", 0)))
-    except (TypeError, ValueError):
+    value = row.get("phienBan", row.get("phien_ban"))
+    if isinstance(value, bool):
         return -1
+    if isinstance(value, int):
+        return value if 0 <= value <= _MAX_SAFE_INTEGER else -1
+    if isinstance(value, str) and value.strip().isascii() and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed <= _MAX_SAFE_INTEGER else -1
+    return -1
+
+
+def _declared_version(item: dict[str, Any]) -> int:
+    return _version({"phienBan": item.get("version")})
+
+
+def _is_unpersisted(row: dict[str, Any]) -> bool:
+    values = [
+        row[field]
+        for field in ("rowVersion", "expectedVersion")
+        if field in row and row[field] is not None
+    ]
+    return all(_declared_version({"version": value}) == 0 for value in values)
+
+
+def _has_valid_record_versions(row: dict[str, Any]) -> bool:
+    values = [
+        row[field]
+        for field in ("rowVersion", "expectedVersion")
+        if field in row and row[field] is not None
+    ]
+    return all(_declared_version({"version": value}) >= 0 for value in values)
 
 
 def _unique_ids(rows: list[Any], *, label: str) -> set[str]:
@@ -75,6 +103,16 @@ def validate_plan_draft_finalize(cursor, organization_id: str, data: dict[str, A
         _fail("DRAFT_COMMAND_INVALID", "Thiếu định danh draft hoặc idempotency key.")
     if data.get("deletions") not in (None, []):
         _fail("DRAFT_DELETIONS_NOT_ALLOWED", "Kế hoạch mới chưa lưu không được chứa thao tác xóa server.")
+    for payload_key in (
+        "chudautu", "chuyengia", "nhathau",
+        "goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau", "assignments",
+    ):
+        rows = data.get(payload_key) or []
+        if isinstance(rows, list) and any(
+            isinstance(row, dict) and not _has_valid_record_versions(row)
+            for row in rows
+        ):
+            _fail("DRAFT_REFERENCE_INVALID", "Phiên bản bản ghi trong bản nháp không hợp lệ.")
 
     plans = data.get("kehoach")
     versions = data.get("versions")
@@ -87,19 +125,16 @@ def validate_plan_draft_finalize(cursor, organization_id: str, data: dict[str, A
     if plan_versions != list(range(len(ordered_plans))):
         _fail("DRAFT_VERSION_SEQUENCE_INVALID", "Phiên bản kế hoạch phải duy nhất và liên tục từ 00.")
     declared = []
-    try:
-        declared = [
-            (str(item.get("id") or ""), int(item.get("version", -1)))
-            for item in versions if isinstance(item, dict)
-        ]
-    except (TypeError, ValueError):
-        _fail("DRAFT_VERSION_SEQUENCE_INVALID", "Số phiên bản kế hoạch không hợp lệ.")
+    declared = [
+        (str(item.get("id") or ""), _declared_version(item))
+        for item in versions if isinstance(item, dict)
+    ]
     actual = [(_record_id(row), _version(row)) for row in ordered_plans]
     if declared != actual:
         _fail("DRAFT_VERSION_SEQUENCE_INVALID", "Danh sách phiên bản không khớp chuỗi kế hoạch.")
     if not root_id or any(_root_id(row) != root_id for row in plans):
         _fail("DRAFT_ROOT_INVALID", "Các phiên bản kế hoạch không cùng một rootId.")
-    if any(int(row.get("rowVersion") or row.get("expectedVersion") or 0) > 0 for row in plans):
+    if any(not _is_unpersisted(row) for row in plans):
         _fail("DRAFT_ALREADY_PERSISTED", "Chuỗi kế hoạch draft đã chứa bản ghi server.")
 
     packages = data.get("goithau") or []
@@ -108,7 +143,7 @@ def validate_plan_draft_finalize(cursor, organization_id: str, data: dict[str, A
     package_ids = _unique_ids(packages, label="Danh sách gói thầu")
     if any(
         str(row.get("keHoachId") or row.get("ke_hoach_id") or "") not in plan_ids
-        or int(row.get("rowVersion") or row.get("expectedVersion") or 0) > 0
+        or not _is_unpersisted(row)
         for row in packages
     ):
         _fail("DRAFT_REFERENCE_INVALID", "Gói thầu không thuộc một phiên bản kế hoạch draft hợp lệ.")

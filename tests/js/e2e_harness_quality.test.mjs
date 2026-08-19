@@ -148,13 +148,17 @@ test("lifecycle E2E fills only editable visible package-lot rows", () => {
 });
 
 test("production E2E harnesses do not import development source modules", () => {
-  for (const name of [
+  const harnesses = [
     "verify_bidder_goods_e2e.cjs",
     "verify_joint_venture_e2e.mjs",
     "verify_low_price_conflict_e2e.mjs",
     "verify_offline_sync_e2e.mjs",
-  ]) {
-    const source = fs.readFileSync(path.join(scriptsRoot, name), "utf8");
-    assert.doesNotMatch(source, /import\(["']\/frontend\//u, name);
+  ].map((name) => path.join(scriptsRoot, name));
+  harnesses.push(...fs.readdirSync(path.resolve("e2e/specs"))
+    .filter((name) => name.endsWith(".spec.mjs"))
+    .map((name) => path.resolve("e2e/specs", name)));
+  for (const harness of harnesses) {
+    const source = fs.readFileSync(harness, "utf8");
+    assert.doesNotMatch(source, /import\(["']\/frontend\//u, harness);
   }
 });

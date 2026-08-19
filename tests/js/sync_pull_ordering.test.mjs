@@ -273,6 +273,149 @@ test("workspace_change_during_snapshot_persistence_cannot_mark_new_workspace_rec
   }
 });
 
+for (const workspaceRace of [
+  { name: "workspace_change_during_pull_persistence_cannot_reapply_new_workspace_plan_drafts", token: "user:org-b@2", organizationId: "org-b" },
+  { name: "same_org_new_epoch_pull_cannot_reapply_old_epoch_plan_drafts", token: "user:org-a@2", organizationId: "org-a" },
+]) {
+  test(workspaceRace.name, async () => {
+    const persistence = deferred();
+    const storageA = memoryStorage();
+    const storageB = memoryStorage();
+    let token = "user:org-a@1";
+    const restore = installPullGlobals(async () => new Response(JSON.stringify({
+      kehoach: [],
+      syncVersion: 7,
+      timestamp: "org-a-time",
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const model = {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: storageA,
+      state: { kehoach: [] },
+      planVersionDraftSessions: [],
+      getWorkspaceToken: () => token,
+      isWorkspaceCurrent: (candidate) => candidate === token,
+      normalizeRecordKeys: (record) => structuredClone(record),
+      getMutationQueue: () => null,
+      suspendMutationTracking: (callback) => callback(),
+      buildMutationSyncPayload: () => null,
+      db: { async applySyncChanges() { await persistence.promise; } },
+    };
+    const controller = {
+      model,
+      view: null,
+      routeMap: {},
+      updateSyncState() {},
+      hasLocalWorkspaceData: () => true,
+    };
+
+    try {
+      const pull = forceSyncData.call(controller, true, false, false);
+      await new Promise((resolve) => setImmediate(resolve));
+      token = workspaceRace.token;
+      model.workspaceScope = {
+        key: workspaceRace.token.split("@")[0],
+        organizationId: workspaceRace.organizationId,
+      };
+      model.workspaceStorage = storageB;
+      model.db = { async applySyncChanges() {} };
+      model.state = { kehoach: [] };
+      model.planVersionDraftSessions = [{
+        draftId: "draft-new-workspace",
+        rootId: "plan-new-workspace",
+        aggregate: {
+          kehoach: [{
+            id: "plan-new-workspace",
+            rootId: "plan-new-workspace",
+            phienBan: "00",
+          }],
+        },
+      }];
+      persistence.resolve();
+
+      const result = await pull;
+      assert.equal(result.workspaceChanged, true);
+      assert.deepEqual(model.state.kehoach, []);
+      assert.equal(storageB.getItem("bf_last_sync_version"), null);
+    } finally {
+      persistence.resolve();
+      restore();
+    }
+  });
+}
+
+test("workspace_change_before_plan_draft_cleanup_cannot_remove_new_workspace_session", async () => {
+  const cleanupStarted = deferred();
+  const releaseCleanup = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  let token = "user:org-a@1";
+  let envelope = {
+    version: 2,
+    sessions: [{
+      draftId: "draft-a",
+      rootId: "plan-a",
+      revision: 1,
+      aggregate: { kehoach: [{ id: "plan-a", rootId: "plan-a", phienBan: "00" }] },
+    }],
+    tombstones: {},
+  };
+  const dbA = {
+    async applySyncChanges() {},
+    async update(_key, updater) {
+      cleanupStarted.resolve();
+      await releaseCleanup.promise;
+      envelope = updater(structuredClone(envelope));
+      return structuredClone(envelope);
+    },
+  };
+  const restore = installPullGlobals(async () => new Response(JSON.stringify({
+    kehoach: [{ id: "plan-a", rootId: "plan-a", phienBan: "00", rowVersion: 4 }],
+    syncVersion: 8,
+    timestamp: "org-a-time",
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storageA,
+    state: { kehoach: [] },
+    planVersionDraftSessions: structuredClone(envelope.sessions),
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => null,
+    db: dbA,
+  };
+  const controller = {
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState() {},
+    hasLocalWorkspaceData: () => true,
+  };
+
+  try {
+    const pull = forceSyncData.call(controller, true, false, false);
+    await cleanupStarted.promise;
+    const draftB = { draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } };
+    token = "user:org-b@2";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    model.workspaceStorage = storageB;
+    model.state = { kehoach: [{ id: "plan-b" }] };
+    model.db = { async applySyncChanges() {} };
+    model.planVersionDraftSessions = [draftB];
+    releaseCleanup.resolve();
+
+    const result = await pull;
+    assert.equal(result.workspaceChanged, true);
+    assert.deepEqual(model.planVersionDraftSessions, [draftB]);
+    assert.equal(storageB.getItem("bf_last_sync_version"), null);
+  } finally {
+    releaseCleanup.resolve();
+    restore();
+  }
+});
+
 function coordinatedController() {
   const storage = memoryStorage();
   let pending = true;

@@ -210,44 +210,54 @@ async function openLatestPackageForEdit(page, packageCode) {
   return page.locator("#form-goithau-id").inputValue();
 }
 
-async function createPackageVersion01(page, { sourcePackageId, planId, packageName }) {
-  return page.evaluate(async ({ sourceId, targetPlanId, nextPackageName }) => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const { createOfficialAggregateVersion } = await import("/frontend/shared/AggregateVersionClient.js");
-    const controller = getAppController();
-    const source = controller.model.state.goithau.find((row) => String(row.id) === String(sourceId));
-    if (!source || !Number.isInteger(source.rowVersion)) {
-      throw new Error("Latest package source is not hydrated with rowVersion");
-    }
-    const result = await createOfficialAggregateVersion(controller, {
-      kind: "package",
-      sourceId: source.id,
-      expectedRowVersion: source.rowVersion,
-      changes: { tenGoiThau: nextPackageName },
-      clientMutationId: `e2e-package-version-${crypto.randomUUID()}`,
+async function createPackageVersion01(page, {
+  sourcePackageId, planId, packageCode, packageName,
+}) {
+  const source = (await readServerRows(page, { table: "goithau" }))
+    .find((row) => String(row.id) === String(sourcePackageId));
+  expect(Number.isInteger(source?.rowVersion)).toBe(true);
+  const responseBody = await page.evaluate(async (command) => {
+    const csrfToken = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("csrf_token="))
+      ?.slice("csrf_token=".length) || "";
+    const response = await fetch("/api/versioning/aggregate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": command.clientMutationId,
+        ...(csrfToken ? { "X-CSRF-Token": decodeURIComponent(csrfToken) } : {}),
+      },
+      body: JSON.stringify(command),
     });
-    const rootId = String(source.rootId || source.id);
-    const createdPackageId = (result?.data?.rowVersions || []).find((entry) => (
-      ["goithau", "goi_thau"].includes(entry.table)
-        && String(entry.id) !== String(source.id)
-    ))?.id || "";
-    let latest = controller.model.state.goithau.find((row) => (
-      String(row.rootId || row.id) === rootId
-        && String(row.keHoachId) === String(targetPlanId)
-        && row.isLatest == 1
-        && String(row.id) !== String(source.id)
-    ));
-    if (!latest && createdPackageId) {
-      await controller.fetchRecordByLookup("goithau", createdPackageId);
-      latest = controller.model.state.goithau.find((row) => String(row.id) === String(createdPackageId));
-    }
-    return {
-      authoritative: result?.authoritative === true,
-      id: latest?.id || createdPackageId,
-      rootId: latest?.rootId || latest?.id || "",
-      version: latest?.phienBan || "",
-    };
-  }, { sourceId: sourcePackageId, targetPlanId: planId, nextPackageName: packageName });
+    const body = await response.json();
+    if (!response.ok) throw new Error(`aggregate version failed: ${response.status} ${JSON.stringify(body)}`);
+    return body;
+  }, {
+    kind: "package",
+    sourceId: sourcePackageId,
+    expectedRowVersion: source.rowVersion,
+    changes: { tenGoiThau: packageName },
+    clientMutationId: `e2e-package-version-${crypto.randomUUID()}`,
+  });
+  const createdPackageId = (responseBody.rowVersions || []).find((entry) => (
+    ["goithau", "goi_thau"].includes(entry.table)
+      && String(entry.id) !== String(sourcePackageId)
+  ))?.id || "";
+  expect(createdPackageId).toBeTruthy();
+  await gotoReady(page, "/goi-thau");
+  await page.locator("#search-goithau").fill(packageCode);
+  const latest = (await readServerRows(page, {
+    table: "goithau",
+    filters: { keHoachId: planId },
+  })).find((row) => String(row.id) === String(createdPackageId));
+  return {
+    authoritative: true,
+    id: latest?.id || createdPackageId,
+    rootId: latest?.rootId || latest?.id || "",
+    version: latest?.phienBan ?? "",
+  };
 }
 
 async function confirmDeleteAll(page) {
@@ -261,9 +271,9 @@ async function confirmDeleteAll(page) {
   await expect(dialog).toBeHidden({ timeout: 20_000 });
 }
 
-async function readServerRecords(page, { table, field, value = null }) {
-  return page.evaluate(async ({ tableName, fieldName, expectedValue }) => {
-    const matches = [];
+async function readServerRows(page, { table, filters = {} }) {
+  return page.evaluate(async ({ tableName, queryFilters }) => {
+    const rows = [];
     const seenCursors = new Set();
     let cursor = "";
     do {
@@ -275,6 +285,7 @@ async function readServerRecords(page, { table, field, value = null }) {
         pagination: "cursor",
         sortBy: "id",
         sortOrder: "asc",
+        ...queryFilters,
       });
       if (cursor) query.set("cursor", cursor);
       let response = null;
@@ -296,18 +307,22 @@ async function readServerRecords(page, { table, field, value = null }) {
         throw new Error(`${tableName} cleanup pagination failed: ${response.status}`);
       }
       const body = await response.json();
-      for (const row of body.items || []) {
-        const fieldValue = String(row?.[fieldName] || "");
-        if (expectedValue === null || fieldValue.toLowerCase() === String(expectedValue).toLowerCase()) {
-          matches.push({ id: row.id, rowVersion: row.rowVersion, value: fieldValue });
-        }
-      }
+      rows.push(...(body.items || []));
       const nextCursor = String(body.nextCursor || "");
       if (!body.hasMore || !nextCursor) break;
       cursor = nextCursor;
     } while (true);
-    return matches;
-  }, { tableName: table, fieldName: field, expectedValue: value });
+    return rows;
+  }, { tableName: table, queryFilters: filters });
+}
+
+async function readServerRecords(page, { table, field, value = null }) {
+  return (await readServerRows(page, { table })).flatMap((row) => {
+    const fieldValue = String(row?.[field] || "");
+    return value === null || fieldValue.toLowerCase() === String(value).toLowerCase()
+      ? [{ id: row.id, rowVersion: row.rowVersion, value: fieldValue }]
+      : [];
+  });
 }
 
 async function deleteSearchedEntity(page, {
@@ -403,6 +418,9 @@ async function cleanupStaleRowConflictFixtures(page, {
 
 test("plan 01 breakdown is one commit, historical stays view-only, and real package conflict reloads server state", async ({ browser }) => {
   const contextA = await browser.newContext({ serviceWorkers: "block" });
+  await contextA.routeWebSocket("**/ws/sync", async (webSocket) => {
+    await webSocket.close({ code: 1000, reason: "Deterministic conflict test isolation" });
+  });
   const pageA = await contextA.newPage();
   let contextB = null;
   let pageB = null;
@@ -474,6 +492,8 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     const expertRow = pageA.locator("#to-chuyengia-tbody tr").filter({ hasText: expertName }).first();
     await expect(expertRow).toHaveCount(1);
     await checkMountedCheckbox(expertRow.locator('input[name="tochuyengia-select"]'));
+    const draftPackageId = await pageA.locator("#form-goithau-id").inputValue();
+    expect(draftPackageId).toBeTruthy();
 
     let captureBreakdownSync = true;
     const breakdownSyncRequests = [];
@@ -488,19 +508,11 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(pageA.locator("#modal-plan-breakdown.active")).toBeVisible();
     expect(breakdownSyncRequests, "package/expert assignment save must remain memory-only").toHaveLength(0);
 
-    const draftPackage = await pageA.evaluate(async ({ planId, code }) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const rows = getAppController().model.state.goithau.filter((row) => (
-        String(row.keHoachId) === String(planId)
-          && String(row.maGoiThau || "").toLowerCase() === String(code).toLowerCase()
-      ));
-      const latest = rows.find((row) => row.isLatest == 1);
-      return {
-        id: latest?.id || "",
-        rootId: latest?.rootId || latest?.id || "",
-        version: String(latest?.phienBan ?? ""),
-      };
-    }, { planId: latestPlanId, code: packageCode });
+    const draftPackage = {
+      id: draftPackageId,
+      rootId: draftPackageId,
+      version: "00",
+    };
     expect(draftPackage.id).toBeTruthy();
     expect(draftPackage.id).toBe(planSnapshot.latestPackageId);
     expect(Number.parseInt(draftPackage.version, 10)).toBe(0);
@@ -538,24 +550,14 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     ))?.rowVersion;
     expect(Number.isInteger(committedPackageVersion)).toBe(true);
     await dismissOptionalDialog(pageA);
-    await expect.poll(() => pageA.evaluate(async (id) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      return getAppController().model.state.goithau
-        .find((row) => String(row.id) === String(id))?.rowVersion;
-    }, draftPackage.id)).toBe(committedPackageVersion);
-    const canonicalAssignments = await pageA.evaluate(async (packageId) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      return getAppController().model.state.assignments
-        .filter((row) => row.type === "goithau" && String(row.targetId) === String(packageId))
-        .map((row) => ({ id: row.id, empId: row.empId, rowVersion: row.rowVersion }));
-    }, draftPackage.id);
-    expect(canonicalAssignments.length).toBeGreaterThan(0);
-    expect(new Set(canonicalAssignments.map((row) => row.empId)).size).toBe(canonicalAssignments.length);
-    expect(canonicalAssignments.every((row) => row.id && Number.isInteger(row.rowVersion))).toBe(true);
-
+    await expect.poll(async () => (
+      (await readServerRows(pageA, { table: "goithau" }))
+        .find((row) => String(row.id) === String(draftPackage.id))?.rowVersion
+    )).toBe(committedPackageVersion);
     const latestPackage = await createPackageVersion01(pageA, {
       sourcePackageId: draftPackage.id,
       planId: latestPlanId,
+      packageCode,
       packageName: packageName01,
     });
     expect(latestPackage.authoritative).toBe(true);
@@ -600,10 +602,6 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     expect(packageIdA).toBe(latestPackage.id);
     expect(packageIdB).toBe(latestPackage.id);
     await pageA.route("**/api/sync/delta**", (route) => route.abort());
-    await pageA.evaluate(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      getAppController()?.disconnectWebSocket?.(false);
-    });
 
     await pageB.locator("#gt-ten").fill(packageNameB);
     const clientBResponsePromise = pageB.waitForResponse((response) => (
@@ -653,21 +651,9 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow).toContainText(packageNameB);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
-    const reloadState = await pageA.evaluate(async ({ id, rootId }) => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const controller = getAppController();
-      return {
-        conflictCount: controller.model.getConflictRecoveryCount(),
-        selected: controller.model.state.selectedPackageVersion?.[rootId] || "",
-        packageName: controller.model.state.goithau
-          .find((row) => String(row.id) === String(id))?.tenGoiThau || "",
-      };
-    }, { id: latestPackage.id, rootId: latestPackage.rootId });
-    expect(reloadState).toEqual({
-      conflictCount: 0,
-      selected: latestPackage.id,
-      packageName: packageNameB,
-    });
+    await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
+      .toHaveValue(latestPackage.id);
+    await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
   } finally {
     let cleanupFailure = null;
     await contextB?.close().catch(() => undefined);

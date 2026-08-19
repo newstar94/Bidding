@@ -232,6 +232,37 @@ function staleWorkspacePullResult() {
   };
 }
 
+function capturePullResources(controller) {
+  return {
+    state: controller.model?.state,
+    db: controller.model?.db,
+    entityIndexes: controller.model?.entityIndexes,
+  };
+}
+
+function pullResourcesAreCurrent(controller, workspace, resources, pullKey, generation) {
+  return workspaceIsCurrent(controller, workspace)
+    && controller.model?.state === resources.state
+    && controller.model?.db === resources.db
+    && controller._workspacePullGenerations.get(pullKey) === generation;
+}
+
+async function reapplyCapturedPlanDraftSessions(controller, resources, pullIsCurrent) {
+  if (!pullIsCurrent()) return false;
+  const draftResources = {
+    state: resources.state,
+    db: resources.db,
+    entityIndexes: resources.entityIndexes,
+    planVersionDraftSessions: structuredClone(
+      controller.model?.planVersionDraftSessions || [],
+    ),
+  };
+  await reapplyPlanVersionDraftSessions(draftResources);
+  if (!pullIsCurrent()) return false;
+  controller.model.planVersionDraftSessions = draftResources.planVersionDraftSessions;
+  return true;
+}
+
 async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
   let status = controller.model?.getMutationOutboxStatus?.();
   if (status?.state === "pending" && typeof controller.model?.flushMutationOutbox === "function") {
@@ -258,6 +289,7 @@ async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
 async function executeForceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
+  const pullResources = capturePullResources(this);
   const outboxFailure = await settleOutboxBeforeAuthoritativePull(this, workspace);
   if (outboxFailure) return outboxFailure;
   if (!workspaceIsCurrent(this, workspace)) {
@@ -272,9 +304,8 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
   this._workspacePullGenerations ||= new Map();
   const pullGeneration = (this._workspacePullGenerations.get(pullKey) || 0) + 1;
   this._workspacePullGenerations.set(pullKey, pullGeneration);
-  const pullIsCurrent = () => (
-    workspaceIsCurrent(this, workspace)
-    && this._workspacePullGenerations.get(pullKey) === pullGeneration
+  const pullIsCurrent = () => pullResourcesAreCurrent(
+    this, workspace, pullResources, pullKey, pullGeneration,
   );
   const stalePullResult = () => workspaceIsCurrent(this, workspace)
     ? { ok: false, stale: true, superseded: true }
@@ -383,10 +414,10 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     );
     reconcilePulledPlanBreakdownState(this, draftLocalState, changedKeys);
     await persistencePromise;
-    await reapplyPlanVersionDraftSessions(this.model);
-    if (!pullIsCurrent()) {
-      return stalePullResult();
-    }
+    const draftsReapplied = await reapplyCapturedPlanDraftSessions(
+      this, pullResources, pullIsCurrent,
+    );
+    if (!draftsReapplied) return stalePullResult();
     this.model?.markStorageTablesRecovered?.(changedKeys);
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
     const committedCursor = commitSyncCursor(storage, dbData);
