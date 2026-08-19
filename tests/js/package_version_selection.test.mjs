@@ -5,6 +5,10 @@ import {
   applyPlanAggregateSnapshot,
   snapshotPlanAggregate,
 } from "../../frontend/plans/planAggregateSnapshot.js";
+import {
+  normalizePackageVersionSelection,
+  selectPackageVersion,
+} from "../../frontend/shared/versionResolver.js";
 
 /**
  * Mirrors the selection logic of renderGoiThauTable: which row of the version
@@ -126,4 +130,28 @@ test("a remembered historical package version follows the inherited current snap
     inheritedRow.id,
     "a plan version must not retain a historical package selection",
   );
+});
+
+test("force sync normalizes a stale physical package id to the latest plan snapshot", () => {
+  const state = planWithPackage();
+  const inheritedRow = createPlanVersion(state);
+  state.selectedPackageVersion["pkg-a"] = "pkg-a";
+  delete state.selectedPackageVersionIntent?.["pkg-a"];
+
+  normalizePackageVersionSelection(state);
+
+  assert.equal(state.selectedPackageVersion["pkg-a"], inheritedRow.id);
+  assert.equal(state.selectedPackageVersionIntent["pkg-a"], "latest");
+});
+
+test("force sync preserves an explicitly selected historical package", () => {
+  const state = planWithPackage();
+  const historicalRow = state.goithau[0];
+  createPlanVersion(state);
+  selectPackageVersion(state, "pkg-a", historicalRow.id);
+
+  normalizePackageVersionSelection(state);
+
+  assert.equal(state.selectedPackageVersion["pkg-a"], historicalRow.id);
+  assert.equal(state.selectedPackageVersionIntent["pkg-a"], "historical");
 });

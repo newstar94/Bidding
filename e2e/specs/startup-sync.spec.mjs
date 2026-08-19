@@ -221,6 +221,7 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
   await expect(page.locator("#chuyengia-table")).toBeVisible();
   await page.waitForFunction(() => globalThis.__bfStartupSyncReadGate?.started === true);
   expect(new URL(page.url()).pathname).toBe("/chuyen-gia");
+  await page.locator("#search-chuyengia").fill(expertName);
   await expect(
     page.locator("#chuyengia-table tbody tr").filter({ hasText: expertName }).first(),
   ).toBeVisible();

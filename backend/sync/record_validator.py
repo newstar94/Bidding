@@ -77,6 +77,7 @@ class SyncRecordValidator:
         canonicalize_item,
         server_inherited_assignment_ids=None,
         trusted_import_package_ids=None,
+        allow_new_historical_parents=False,
     ):
         self.transaction = transaction_context
         self.payload = payload
@@ -96,6 +97,7 @@ class SyncRecordValidator:
             for record_id in (trusted_import_package_ids or ())
             if record_id
         }
+        self.allow_new_historical_parents = allow_new_historical_parents
 
     def validate_payload(self) -> list[dict[str, Any]]:
         cursor = self.transaction.cursor
@@ -211,6 +213,11 @@ class SyncRecordValidator:
             records_by_table,
             current_records_by_table,
         )
+        if self.allow_new_historical_parents:
+            for plan in records_by_table.get("ke_hoach_lcnt", ()):
+                plan_id = self.clean_record_id("ke_hoach_lcnt", plan.get("id"))
+                if plan_id and plan_id not in current_records_by_table.get("ke_hoach_lcnt", {}):
+                    aggregate_mutability_context.plan_is_latest_by_id[str(plan_id)] = True
         owner_reference_context = build_owner_reference_context(
             cursor,
             organization_id,

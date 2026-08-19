@@ -90,6 +90,51 @@ export function resolveLatestPackageVersion(packages, plans, reference) {
   return selectLatestVersion(family, packageVersionResolutionOptions(planList));
 }
 
+export function selectPackageVersion(state, rootId, selectedId) {
+  if (!state || !rootId || !selectedId) return null;
+  state.selectedPackageVersion ||= {};
+  state.selectedPackageVersionIntent ||= {};
+  const root = String(rootId);
+  const selected = (state.goithau || []).find(
+    (pkg) => String(pkg?.id || "") === String(selectedId),
+  );
+  const latest = resolveLatestPackageVersion(state.goithau, state.kehoach, root);
+  state.selectedPackageVersion[root] = selectedId;
+  state.selectedPackageVersionIntent[root] = selected && latest
+    && String(selected.id) !== String(latest.id)
+    ? "historical"
+    : "latest";
+  return selected || null;
+}
+
+export function normalizePackageVersionSelection(state) {
+  if (!state) return {};
+  state.selectedPackageVersion ||= {};
+  state.selectedPackageVersionIntent ||= {};
+  const roots = new Set([
+    ...(state.goithau || []).map((pkg) => versionRootId(pkg)),
+    ...Object.keys(state.selectedPackageVersion),
+  ]);
+  roots.forEach((root) => {
+    if (!root) return;
+    const selectedId = state.selectedPackageVersion[root];
+    const selected = (state.goithau || []).find(
+      (pkg) => versionRootId(pkg) === root && String(pkg?.id || "") === String(selectedId || ""),
+    );
+    const latest = resolveLatestPackageVersion(state.goithau, state.kehoach, root);
+    const explicitHistorical = state.selectedPackageVersionIntent[root] === "historical";
+    if (explicitHistorical && selected && latest && String(selected.id) !== String(latest.id)) return;
+    if (latest?.id) {
+      state.selectedPackageVersion[root] = latest.id;
+      state.selectedPackageVersionIntent[root] = "latest";
+      return;
+    }
+    delete state.selectedPackageVersion[root];
+    delete state.selectedPackageVersionIntent[root];
+  });
+  return state.selectedPackageVersion;
+}
+
 export function selectLatestVersionsByRoot(records, options = {}) {
   const latestByRoot = new Map();
   (Array.isArray(records) ? records : []).forEach((record) => {

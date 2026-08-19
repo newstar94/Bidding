@@ -177,6 +177,10 @@ export function rememberSelectedVersion(state, selectionKey, record) {
   if (!state || !selectionKey || !record?.id) return;
   state[selectionKey] = state[selectionKey] || {};
   state[selectionKey][record.rootId || record.id] = record.id;
+  if (selectionKey === "selectedPackageVersion") {
+    state.selectedPackageVersionIntent ||= {};
+    state.selectedPackageVersionIntent[record.rootId || record.id] = "latest";
+  }
 }
 
 export function findVersionReferences(targets, relationships = []) {

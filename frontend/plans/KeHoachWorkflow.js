@@ -31,8 +31,16 @@ import {
   boundProcurementRevisionChanges,
   collectPlanBreakdownDraftChanges,
   isPlanBreakdownDraftActive,
+  rebasePlanBreakdownDraftAfterServerMerge,
 } from "./planBreakdownDraft.js";
 import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
+import {
+  createPlanVersionDraftSession,
+  finalizePlanVersionDraft,
+  findPlanVersionDraftSession,
+  refreshPlanVersionDraftSession,
+  savePlanVersionDraftSession,
+} from "./PlanVersionDraftSession.js";
 
 /**
  * Load every package attached to the given plan versions so reference guards
@@ -580,12 +588,14 @@ export async function handleKeHoachSubmit(e) {
     return;
   }
   const resumingPlanDraft = isPlanBreakdownDraftActive(this, id);
+  const durableVersionDraft = findPlanVersionDraftSession(this.model, id);
   if (!resumingPlanDraft) {
     this.backupKeHoachState = JSON.parse(JSON.stringify(this.model.state.kehoach));
     this.backupGoiThauState = JSON.parse(JSON.stringify(this.model.state.goithau));
-    this.planBreakdownDraft = id
-      ? null
-      : capturePlanBreakdownDraft(this.model.state, { action: "create" });
+    this.planBreakdownDraft = capturePlanBreakdownDraft(this.model.state, {
+      planId: id,
+      action: durableVersionDraft ? "create" : (id ? "edit" : "create"),
+    });
   }
   const loaiHinhVal = document.getElementById("kh-loaihinh").value;
   this.tempPlanData = {
@@ -619,7 +629,7 @@ export async function handleKeHoachSubmit(e) {
     soQdPheDuyetDuToan: pheDuyet === "Kế hoạch" ? soQdPheDuyetDuToan : ""
   };
   if (id) {
-    this.tempPlanAction = resumingPlanDraft ? "create" : "edit";
+    this.tempPlanAction = this.planBreakdownDraft?.action === "create" ? "create" : "edit";
     this.tempPlanData.id = id;
     const oldKh = this.model.state.kehoach.find((k) => k.id === id);
     if (oldKh) {
@@ -641,6 +651,8 @@ export async function handleKeHoachSubmit(e) {
       updatedAt: this.model.getCurrentDateTimeString(),
       ...this.tempPlanData
     });
+    const versionDraft = createPlanVersionDraftSession(this.model.state, planId);
+    await savePlanVersionDraftSession(this.model, versionDraft);
   }
   if (isTongMucTuDong) {
     this.recalculatePlanTotal(targetPlanId);
@@ -700,7 +712,38 @@ export async function openPlanBreakdownModal(planId) {
     };
   }
   const btnSave = document.getElementById("btn-save-plan-breakdown");
-  btnSave.onclick = () => this.savePlanBreakdown();
+  btnSave.disabled = false;
+  btnSave.onclick = async () => {
+    if (btnSave.disabled) return;
+    btnSave.disabled = true;
+    btnSave.setAttribute("aria-busy", "true");
+    try {
+      await this.savePlanBreakdown();
+    } finally {
+      btnSave.disabled = false;
+      btnSave.removeAttribute("aria-busy");
+    }
+  };
+  const versionDraft = findPlanVersionDraftSession(this.model, planId);
+  const btnIntermediate = document.getElementById("btn-save-plan-version-draft");
+  if (btnIntermediate) {
+    btnIntermediate.hidden = !versionDraft;
+    btnIntermediate.disabled = false;
+    btnIntermediate.onclick = versionDraft
+      ? async () => {
+        if (btnIntermediate.disabled) return;
+        btnIntermediate.disabled = true;
+        btnIntermediate.setAttribute("aria-busy", "true");
+        try {
+          await this.saveIntermediatePlanVersion();
+        } finally {
+          btnIntermediate.disabled = false;
+          btnIntermediate.removeAttribute("aria-busy");
+        }
+      }
+      : null;
+  }
+  btnSave.textContent = versionDraft ? "Lưu & hoàn tất" : "Lưu kế hoạch";
   const btnBack = document.getElementById("btn-back-plan-breakdown");
   if (btnBack) btnBack.onclick = () => this.backToPlanDraft();
   const tabBtns = document.querySelectorAll(".breakdown-tab-btn");
@@ -774,11 +817,39 @@ export function loadBreakdownPackageDetails(planId) {
   const existing = this._breakdownPackageDetailRequests.get(requestKey);
   if (existing) return existing;
 
-  const request = loadBreakdownPackageDetailsForPlan(this, planId).finally(() => {
-    if (this._breakdownPackageDetailRequests.get(requestKey) === request) {
-      this._breakdownPackageDetailRequests.delete(requestKey);
-    }
-  });
+  const hydratedTables = [
+    "goithau",
+    "goithauhanghoa",
+    "thongtinmothau",
+    "hanghoaduthaunhathau",
+    "assignments",
+  ];
+  const activeDraft = isPlanBreakdownDraftActive(this, planId)
+    ? this.planBreakdownDraft
+    : null;
+  const localBefore = activeDraft
+    ? Object.fromEntries(hydratedTables.map((table) => [
+      table,
+      structuredClone(this.model.state?.[table] || []),
+    ]))
+    : null;
+
+  const request = loadBreakdownPackageDetailsForPlan(this, planId)
+    .then(() => {
+      if (activeDraft?.active && this.planBreakdownDraft === activeDraft) {
+        rebasePlanBreakdownDraftAfterServerMerge(
+          this.model,
+          activeDraft,
+          localBefore,
+          new Set(hydratedTables),
+        );
+      }
+    })
+    .finally(() => {
+      if (this._breakdownPackageDetailRequests.get(requestKey) === request) {
+        this._breakdownPackageDetailRequests.delete(requestKey);
+      }
+    });
   this._breakdownPackageDetailRequests.set(requestKey, request);
   return request;
 }
@@ -937,7 +1008,7 @@ function collectBreakdownRows(controller, type) {
   return rows;
 }
 
-function updatePlanBreakdownDraftRows(controller, planId) {
+export function updatePlanBreakdownDraftRows(controller, planId) {
   const plan = controller.model.state.kehoach.find(
     (candidate) => String(candidate.id) === String(planId),
   );
@@ -946,6 +1017,60 @@ function updatePlanBreakdownDraftRows(controller, planId) {
   plan.cvKhongApDungList = collectBreakdownRows(controller, "khongapdung");
   plan.cvChuaDuDieuKienList = collectBreakdownRows(controller, "chuadudieuKien");
   return plan;
+}
+
+export async function saveIntermediatePlanVersion() {
+  const planId = document.getElementById("breakdown-plan-id")?.value;
+  if (!planId) return null;
+  if (typeof this.loadBreakdownPackageDetails === "function") {
+    await this.loadBreakdownPackageDetails(planId);
+  }
+  const currentPlan = updatePlanBreakdownDraftRows(this, planId);
+  const session = findPlanVersionDraftSession(this.model, planId);
+  if (!currentPlan || !session) {
+    throw new Error("Chỉ kế hoạch mới chưa lưu mới có thể lưu phiên bản nháp.");
+  }
+  const timestamp = this.model.getCurrentDateTimeString();
+  const nextPlanId = generateRecordId("kehoach");
+  const nextPlan = createNextVersion(
+    this.model.state.kehoach,
+    currentPlan,
+    currentPlan,
+    { id: nextPlanId, timestamp },
+  );
+  nextPlan.createdAt = currentPlan.createdAt || timestamp;
+  this.model.state.kehoach.push(nextPlan);
+
+  const inheritedAggregate = snapshotPlanAggregate(this.model.state, {
+    sourcePlanId: currentPlan.id,
+    targetPlanId: nextPlan.id,
+    timestamp,
+    sourcePackages: this.model.state.goithau,
+  });
+  applyPlanAggregateSnapshot(this.model.state, inheritedAggregate);
+  const planAssignments = (this.model.state.assignments || []).filter((assignment) => (
+    assignment.type === "kehoach"
+    && String(assignment.targetId) === String(currentPlan.id)
+  ));
+  planAssignments.forEach((assignment) => {
+    const cloned = { ...assignment };
+    delete cloned.rowVersion;
+    delete cloned.expectedVersion;
+    cloned.id = generateRecordId("assignments");
+    cloned.targetId = nextPlan.id;
+    this.model.state.assignments.push(cloned);
+  });
+  rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
+  refreshPlanVersionDraftSession(session, this.model.state, nextPlan.id);
+  await savePlanVersionDraftSession(this.model, session);
+
+  if (this.planBreakdownDraft?.active) this.planBreakdownDraft.planId = nextPlan.id;
+  this.tempPlanAction = "create";
+  this.tempPlanData = { ...nextPlan };
+  this.view.renderKeHoachTable?.();
+  this.view.renderGoiThauTable?.();
+  await this.openPlanBreakdownModal(nextPlan.id);
+  return { ok: true, planId: nextPlan.id, version: nextPlan.phienBan };
 }
 
 export async function backToPlanDraft() {
@@ -1091,7 +1216,7 @@ export async function savePlanBreakdown() {
     explicitChanges.upserts.kehoach = this.model.state.kehoach.filter(
       (plan) => String(plan.rootId || plan.id) === targetPlanRootId,
     );
-    if (this.planBreakdownDraft?.active && this.planBreakdownDraft.action === "create") {
+    if (isPlanBreakdownDraftActive(this, finalPlanId)) {
       explicitChanges = collectPlanBreakdownDraftChanges(this.model.state, {
         planId: finalPlanId,
         snapshot: this.planBreakdownDraft.snapshot,
@@ -1115,17 +1240,43 @@ export async function savePlanBreakdown() {
       ));
     }
   }
-  const syncResult = officialVersionCommitted
-    ? (await renderVersionTables(), { ok: true })
-    : await mutatePersistAndSync(this, explicitChanges, {
-      tableKeys: [
-        ...new Set([
-          ...Object.keys(explicitChanges.upserts),
-          ...Object.keys(explicitChanges.deletions),
-        ]),
-      ],
-      afterPersist: renderVersionTables,
-    });
+  const finalDraftSession = findPlanVersionDraftSession(this.model, finalPlanId);
+  let syncResult;
+  if (finalDraftSession) {
+    try {
+      await finalizePlanVersionDraft(this, finalDraftSession, {
+        send: this.finalizePlanDraft,
+      });
+      if (typeof this.forceSyncData === "function") {
+        try {
+          await this.forceSyncData(true, true);
+        } catch (pullError) {
+          console.warn("Plan draft committed but canonical refresh is pending:", pullError);
+        }
+      }
+      await renderVersionTables();
+      syncResult = { ok: true };
+    } catch (error) {
+      await this.view.customAlert(
+        "Chưa thể hoàn tất kế hoạch",
+        error?.message || "Máy chủ chưa xác nhận toàn bộ chuỗi phiên bản. Bản nháp vẫn được giữ trên thiết bị.",
+        "alert-triangle",
+      );
+      return { ok: false, error };
+    }
+  } else {
+    syncResult = officialVersionCommitted
+      ? (await renderVersionTables(), { ok: true })
+      : await mutatePersistAndSync(this, explicitChanges, {
+        tableKeys: [
+          ...new Set([
+            ...Object.keys(explicitChanges.upserts),
+            ...Object.keys(explicitChanges.deletions),
+          ]),
+        ],
+        afterPersist: renderVersionTables,
+      });
+  }
   if (!syncResult?.ok) return;
   this.backupKeHoachState = null;
   this.backupGoiThauState = null;

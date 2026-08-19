@@ -335,6 +335,33 @@ function activityModel(model) {
   };
 }
 
+test("successful push row versions update canonical state, durable store, and newer outbox work", async () => {
+  const writes = [];
+  const queued = [];
+  const model = new BiddingModel();
+  model.state.goithau = [{ id: "package-1", rowVersion: 4, tenGoiThau: "Local" }];
+  model.db = {
+    stores: ["goithau"],
+    async putRecord(table, record) { writes.push([table, structuredClone(record)]); },
+  };
+  model._getMutationOutbox = () => ({
+    enqueue(operation) { queued.push(structuredClone(operation)); },
+  });
+
+  await model.applyCommittedRowVersions([
+    { table: "goithau", id: "package-1", rowVersion: 5 },
+  ]);
+
+  assert.equal(model.state.goithau[0].rowVersion, 5);
+  assert.deepEqual(writes, [["goithau", {
+    id: "package-1", rowVersion: 5, tenGoiThau: "Local",
+  }]]);
+  assert.deepEqual(queued, [{
+    kind: "server-row-version",
+    entries: [{ table: "goithau", id: "package-1", rowVersion: 5 }],
+  }]);
+});
+
 test("model persists recovery before clearing and flushing the active outbox", async () => {
   const checkpoint = {
     queue: {
@@ -368,6 +395,58 @@ test("model persists recovery before clearing and flushing the active outbox", a
   assert.equal(draft.id, "recovery-1");
   assert.deepEqual(calls, ["discard", "flush"]);
   assert.deepEqual(savedCheckpoint, checkpoint);
+});
+
+test("row conflict quarantine keeps unrelated records from the same receipt active", async () => {
+  const sentCheckpoint = {
+    queue: {
+      clientMutationId: "mutation-xy", baseSyncVersion: "11", revision: 2,
+      dirtyTables: {},
+      upserts: {
+        goithau: {
+          "package-x": { id: "package-x", rowVersion: 1, tenGoiThau: "X" },
+          "package-y": { id: "package-y", rowVersion: 2, tenGoiThau: "Y" },
+        },
+      },
+      patches: {}, deletes: [],
+    },
+    localDeletions: [],
+  };
+  const calls = [];
+  let quarantined = null;
+  const model = new BiddingModel();
+  model._getMutationOutbox = () => ({
+    checkpoint: () => structuredClone(sentCheckpoint),
+    checkpointForReceipt: () => structuredClone(sentCheckpoint),
+    ack() { calls.push("ack"); return true; },
+    enqueue(command) { calls.push(["enqueue", structuredClone(command)]); return true; },
+    async flush() { calls.push("flush"); },
+  });
+  model._getConflictRecoveryStore = () => ({
+    quarantine(checkpoint) {
+      quarantined = structuredClone(checkpoint);
+      return { id: "conflict-x" };
+    },
+  });
+
+  const result = await model.quarantineMutationBatch({
+    data: {
+      errors: [{ table: "goithau", id: "package-x", code: "ROW_VERSION_CONFLICT" }],
+    },
+    snapshot: { id: "receipt-xy" },
+  });
+
+  assert.equal(result.id, "conflict-x");
+  assert.deepEqual(Object.keys(quarantined.queue.upserts.goithau), ["package-x"]);
+  assert.deepEqual(calls, [
+    "ack",
+    ["enqueue", {
+      kind: "upsert",
+      table: "goithau",
+      records: [{ id: "package-y", rowVersion: 2, tenGoiThau: "Y" }],
+    }],
+    "flush",
+  ]);
 });
 
 test("model never clears the active outbox when recovery persistence fails", async () => {
@@ -426,41 +505,6 @@ test("model restores the active outbox when quarantine flushing fails", async ()
   assert.equal(await model.quarantineMutationBatch({ data: {} }), null);
   assert.deepEqual(calls, ["discard", "flush-1", ["restore", checkpoint], "flush-2"]);
   assert.deepEqual(removed, ["recovery-rollback"]);
-});
-
-test("model recovery restore enforces guards and removes a staged draft", async () => {
-  const model = new BiddingModel();
-  model.hasPendingMutationOutboxChanges = () => true;
-  assert.deepEqual(await model.restoreConflictRecoveryDraft("draft-1"), {
-    ok: false,
-    code: "ACTIVE_MUTATIONS_PENDING",
-  });
-
-  model.hasPendingMutationOutboxChanges = () => false;
-  model.getConflictRecoveryDrafts = () => [];
-  assert.deepEqual(await model.restoreConflictRecoveryDraft("missing"), {
-    ok: false,
-    code: "RECOVERY_DRAFT_NOT_FOUND",
-  });
-
-  const draft = { id: "draft-1", checkpoint: { queue: { revision: 1 } } };
-  model.getConflictRecoveryDrafts = () => [draft];
-  model._getMutationOutbox = () => ({ restore: () => false });
-  assert.deepEqual(await model.restoreConflictRecoveryDraft(draft.id), {
-    ok: false,
-    code: "RECOVERY_DRAFT_INVALID",
-  });
-
-  const calls = [];
-  model._getMutationOutbox = () => ({
-    restore(value) { calls.push(["restore", value]); return true; },
-    async flush() { calls.push("flush"); },
-  });
-  model._getConflictRecoveryStore = () => ({
-    remove(id) { calls.push(["remove", id]); return true; },
-  });
-  assert.deepEqual(await model.restoreConflictRecoveryDraft(draft.id), { ok: true, draft });
-  assert.deepEqual(calls, [["restore", draft.checkpoint], "flush", ["remove", draft.id]]);
 });
 
 test("hydrated_patch_without_loaded_canonical_record_is_still_reported_pending", () => {
@@ -869,11 +913,11 @@ test("row-version rejection is quarantined without blocking later syncs", async 
   assert.equal(result.conflict, undefined);
   assert.equal(result.recoveryDraftId, "recovery-1");
   assert.deepEqual(calls[0], ["quarantine", { data, snapshot }]);
-  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), false);
-  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "recoveryPending"), true);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), true);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "recoveryPending"), false);
 });
 
-test("background auto sync refreshes authoritative state after quarantining a conflict", async () => {
+test("background auto sync keeps the visible state until F5 after quarantining a conflict", async () => {
   const previousFetch = globalThis.fetch;
   const previousDocument = globalThis.document;
   const calls = [];
@@ -910,8 +954,8 @@ test("background auto sync refreshes authoritative state after quarantining a co
   try {
     const result = await autoSync.call(controller);
     assert.equal(result.conflictQuarantined, true);
-    assert.equal(result.authoritativeRefresh, true);
-    assert.deepEqual(calls, [["pull", true]]);
+    assert.equal(result.authoritativeRefresh, undefined);
+    assert.deepEqual(calls, []);
   } finally {
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;
@@ -987,7 +1031,7 @@ test("double-click retry shares one push and one authoritative verification pull
   assert.deepEqual(calls, ["push", "pull"]);
 });
 
-test("manual sync applies a quarantined draft onto authoritative state", async () => {
+test("manual sync does not apply a quarantined row-conflict draft", async () => {
   const calls = [];
   const controller = {
     model: {
@@ -1025,15 +1069,13 @@ test("manual sync applies a quarantined draft onto authoritative state", async (
 
   const result = await runManualSyncRetry(controller);
 
-  assert.equal(result.ok, true);
-  assert.equal(result.recoveryApplied, true);
-  assert.deepEqual(calls.slice(0, 5), [
-    "dialog",
-    ["restore", "recovery-1"],
-    ["pull", true],
-    "push",
-    ["pull", false],
-  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.reloadRequired, true);
+  assert.equal(calls.includes("dialog"), false);
+  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "restore"), false);
+  assert.equal(calls.includes("push"), false);
+  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "pull"), false);
+  assert.equal(calls.at(-1)[0], "toast");
 });
 
 test("startup error retry reuses reconciliation verification without a duplicate pull", async () => {

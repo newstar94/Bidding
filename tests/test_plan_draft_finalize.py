@@ -1,0 +1,324 @@
+import asyncio
+from copy import deepcopy
+import json
+import os
+from types import SimpleNamespace
+import uuid
+
+import pytest
+from starlette.responses import JSONResponse
+
+from backend.plan_drafts.finalize import (
+    PlanDraftValidationError,
+    finalize_response_metadata,
+    validate_plan_draft_finalize,
+)
+from backend.plan_drafts import service
+from backend.auth.auth_helper import SessionRole
+from backend.db.db_helper import PostgresDatabase
+from backend.sync import service as sync_service
+
+
+class Cursor:
+    def __init__(self, existing=None):
+        self.existing = existing or {}
+
+    def execute(self, sql, params):
+        table = "ke_hoach_lcnt" if "ke_hoach_lcnt" in sql else "goi_thau"
+        ids = set(str(value) for value in params[1:])
+        rows = [(value,) for value in self.existing.get(table, set()) if value in ids]
+        return type("Result", (), {"fetchall": lambda _self: rows})()
+
+
+def valid_payload():
+    return {
+        "draftId": "draft-1",
+        "planRootId": "plan-00",
+        "clientMutationId": "finalize-1",
+        "versions": [
+            {"id": "plan-00", "version": 0},
+            {"id": "plan-01", "version": 1},
+            {"id": "plan-02", "version": 2},
+        ],
+        "kehoach": [
+            {"id": "plan-00", "rootId": "plan-00", "phienBan": 0, "isLatest": 0},
+            {"id": "plan-01", "rootId": "plan-00", "phienBan": 1, "isLatest": 0},
+            {"id": "plan-02", "rootId": "plan-00", "phienBan": 2, "isLatest": 1},
+        ],
+        "goithau": [
+            {"id": "package-a", "rootId": "package-a", "keHoachId": "plan-00", "tenGoiThau": "A"},
+            {"id": "package-b", "rootId": "package-a", "keHoachId": "plan-01", "tenGoiThau": "B"},
+            {"id": "package-c", "rootId": "package-a", "keHoachId": "plan-02", "tenGoiThau": "C"},
+        ],
+        "goithauhanghoa": [
+            {"id": "goods-a", "goiThauId": "package-a"},
+            {"id": "goods-b", "goiThauId": "package-b"},
+            {"id": "goods-c", "goiThauId": "package-c"},
+        ],
+        "thongtinmothau": [],
+        "hanghoaduthaunhathau": [],
+        "assignments": [
+            {"id": "assign-00", "type": "goithau", "targetId": "package-a", "empId": "e1"},
+            {"id": "assign-01-e1", "type": "goithau", "targetId": "package-b", "empId": "e1"},
+            {"id": "assign-01-e2", "type": "goithau", "targetId": "package-b", "empId": "e2"},
+            {"id": "assign-02", "type": "goithau", "targetId": "package-c", "empId": "e2"},
+        ],
+        "deletions": [],
+    }
+
+
+def test_finalize_validator_accepts_complete_contiguous_new_aggregate():
+    payload = valid_payload()
+    validate_plan_draft_finalize(Cursor(), "org-1", payload)
+    assert [row["isLatest"] for row in payload["kehoach"]] == [0, 0, 1]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "code"),
+    [
+        (lambda data: data["versions"].__setitem__(1, {"id": "plan-01", "version": 2}), "DRAFT_VERSION_SEQUENCE_INVALID"),
+        (lambda data: data["goithau"][1].__setitem__("keHoachId", "missing"), "DRAFT_REFERENCE_INVALID"),
+        (lambda data: data["assignments"][0].__setitem__("targetId", "missing"), "DRAFT_REFERENCE_INVALID"),
+        (lambda data: data.__setitem__("deletions", [{"table": "goithau", "id": "x"}]), "DRAFT_DELETIONS_NOT_ALLOWED"),
+        (lambda data: data["kehoach"][0].__setitem__("rowVersion", 1), "DRAFT_ALREADY_PERSISTED"),
+    ],
+)
+def test_finalize_validator_rejects_invalid_or_partly_persisted_graph(mutate, code):
+    payload = valid_payload()
+    mutate(payload)
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(Cursor(), "org-1", payload)
+    assert caught.value.code == code
+
+
+def test_finalize_validator_rejects_ids_that_already_exist_in_the_workspace():
+    with pytest.raises(PlanDraftValidationError) as caught:
+        validate_plan_draft_finalize(
+            Cursor({"ke_hoach_lcnt": {"plan-01"}}),
+            "org-1",
+            valid_payload(),
+        )
+    assert caught.value.code == "DRAFT_ALREADY_PERSISTED"
+
+
+def test_finalize_response_returns_identity_mapping_and_latest_plan():
+    metadata = finalize_response_metadata(valid_payload())
+    assert metadata["draftId"] == "draft-1"
+    assert metadata["persistedPlanIds"] == ["plan-00", "plan-01", "plan-02"]
+    assert metadata["persistedPackageIds"] == ["package-a", "package-b", "package-c"]
+    assert metadata["latestPlanId"] == "plan-02"
+    assert metadata["idMapping"]["plans"]["plan-01"] == "plan-01"
+
+
+def test_http_adapter_dispatches_finalize_to_atomic_sync_lane(monkeypatch):
+    command = valid_payload()
+    captured = {}
+
+    async def read_json_object(_request):
+        return command, None
+
+    async def run_database_write(function, *args, **kwargs):
+        captured.update({"function": function, "args": args, "kwargs": kwargs})
+        return JSONResponse({"status": "success"})
+
+    monkeypatch.setattr(service, "read_json_object", read_json_object)
+    monkeypatch.setattr(service, "run_database_write", run_database_write)
+    response = asyncio.run(service.process_plan_draft_finalize_request(object()))
+
+    assert response.status_code == 200
+    assert captured["args"][1] == command
+    assert captured["kwargs"] == {"finalize_draft_command": True}
+
+
+def test_atomic_finalize_mode_uses_serializable_and_no_record_savepoints():
+    from pathlib import Path
+    from backend.sync import service as sync_service
+
+    source = Path(sync_service.__file__).read_text(encoding="utf-8")
+    assert "aggregate_version_command or finalize_draft_command" in source
+    atomic_branch = source.index("if atomic_command:", source.index("for payload_key"))
+    savepoint = source.index('cursor.execute("SAVEPOINT sync_item")', atomic_branch)
+    assert source.index("continue", atomic_branch, savepoint) < savepoint
+
+
+def test_three_intermediate_versions_stay_absent_until_one_atomic_final_save(monkeypatch):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for plan draft integration test")
+    database = PostgresDatabase(database_url)
+    token = uuid.uuid4().hex
+    organization_id = f"org-plan-draft-{token}"
+    actor_id = f"actor-plan-draft-{token}"
+    expert_1 = f"expert-1-{token}"
+    expert_2 = f"expert-2-{token}"
+    investor_id = f"investor-plan-draft-{token}"
+    plan_ids = [f"plan-{index}-{token}" for index in range(3)]
+    package_ids = [f"package-{index}-{token}" for index in range(3)]
+
+    setup = database.get_connection()
+    try:
+        setup.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            (organization_id, "Tổ chức kiểm thử plan draft"),
+        )
+        for user_id, role in ((actor_id, "manager"), (expert_1, "employee"), (expert_2, "employee")):
+            email = f"{user_id}@example.test"
+            setup.execute(
+                """INSERT INTO tai_khoan
+                       (id, mat_khau, email, email_norm, ho_ten, vai_tro,
+                        da_xac_minh, trang_thai)
+                   VALUES (?, 'test-hash', ?, ?, ?, 'user', 1, 'active')""",
+                (user_id, email, email, user_id),
+            )
+            setup.execute(
+                """INSERT INTO thanh_vien_to_chuc
+                       (user_id, organization_id, vai_tro_trong_to_chuc)
+                   VALUES (?, ?, ?)""",
+                (user_id, organization_id, role),
+            )
+        setup.execute(
+            """INSERT INTO chu_dau_tu
+                   (id, organization_id, owner_type, id_goc, ma_chu_dau_tu,
+                    ten_chu_dau_tu, phien_ban, is_latest)
+               VALUES (?, ?, 'organization', ?, ?, ?, '00', 1)""",
+            (investor_id, organization_id, investor_id, f"INV-{token[:8]}", "Chủ đầu tư A"),
+        )
+        setup.commit()
+    finally:
+        setup.close()
+
+    monkeypatch.setattr(sync_service, "database", database)
+    monkeypatch.setattr(
+        sync_service,
+        "verify_session",
+        lambda _request: (
+            True,
+            SessionRole(
+                "user", actor_id, platform_role="user", active_role="manager",
+                active_role_organization_id=organization_id,
+            ),
+        ),
+    )
+    request = SimpleNamespace(
+        headers={"X-Active-Org": organization_id},
+        state=SimpleNamespace(),
+        client=SimpleNamespace(host="127.0.0.1"),
+        method="POST",
+    )
+
+    def plan(index):
+        return {
+            "id": plan_ids[index], "rootId": plan_ids[0], "phienBan": index,
+            "isLatest": 1 if index == 2 else 0, "maKeHoach": f"KH-{token[:8]}",
+            "tenKeHoach": f"Kế hoạch {index}", "tenDuAnDuToan": "Dự toán kiểm thử",
+            "loaiHinhMuaSam": "Dự toán mua sắm", "chuDauTuId": investor_id,
+            "ngayPheDuyet": "2026-08-19", "quyetDinhPheDuyet": f"QD-{index}",
+        }
+
+    def package(index):
+        return {
+            "id": package_ids[index], "rootId": package_ids[0], "keHoachId": plan_ids[index],
+            "phienBan": 0, "isLatest": 1, "maGoiThau": f"GT-{token[:8]}",
+            "tenGoiThau": ["A", "B", "C"][index], "giaGoiThau": 100 + index,
+            "thoiGianThucHien": "30 ngày", "nguonVon": "Ngân sách",
+            "thoiGianToChuc": "30 ngày", "thoiGianBatDauToChuc": "Quý III/2026",
+            "quaMang": "Qua mạng", "trongNuocQuocTe": "Trong nước",
+            "phanLo": "Không", "tuyChonMuaThem": "Không", "trangThai": "Chuẩn bị",
+            "linhVuc": "Hàng hóa",
+        }
+
+    assignments = [
+        {"id": f"a-00-e1-{token}", "type": "goithau", "targetId": package_ids[0], "empId": expert_1},
+        {"id": f"a-01-e1-{token}", "type": "goithau", "targetId": package_ids[1], "empId": expert_1},
+        {"id": f"a-01-e2-{token}", "type": "goithau", "targetId": package_ids[1], "empId": expert_2},
+        {"id": f"a-02-e2-{token}", "type": "goithau", "targetId": package_ids[2], "empId": expert_2},
+    ]
+    payload = {
+        "draftId": f"draft-{token}", "planRootId": plan_ids[0],
+        "clientMutationId": f"finalize-{token}",
+        "versions": [{"id": plan_ids[index], "version": index} for index in range(3)],
+        "kehoach": [plan(index) for index in range(3)],
+        "goithau": [package(index) for index in range(3)],
+        "goithauhanghoa": [
+            {
+                "id": f"goods-{index}-{token}", "goiThauId": package_ids[index],
+                "maHangHoa": f"HH-{index}", "tenHangHoa": f"Hàng hóa {index}",
+                "donViTinh": "Cái", "soLuong": index + 1, "donGiaDuToan": 100,
+            }
+            for index in range(3)
+        ],
+        "thongtinmothau": [], "hanghoaduthaunhathau": [],
+        "assignments": assignments, "deletions": [],
+    }
+
+    try:
+        before = database.get_connection()
+        try:
+            assert before.execute(
+                "SELECT COUNT(*) FROM ke_hoach_lcnt WHERE organization_id = ? AND id_goc = ?",
+                (organization_id, plan_ids[0]),
+            ).fetchone()[0] == 0
+        finally:
+            before.close()
+
+        invalid = deepcopy(payload)
+        invalid["clientMutationId"] = f"invalid-{token}"
+        invalid["goithauhanghoa"][-1]["soLuong"] = 0
+        failed = sync_service.execute_sync_mutation(
+            request, invalid, finalize_draft_command=True,
+        )
+        assert failed.status_code == 400
+
+        after_failure = database.get_connection()
+        try:
+            assert after_failure.execute(
+                "SELECT COUNT(*) FROM ke_hoach_lcnt WHERE organization_id = ? AND id_goc = ?",
+                (organization_id, plan_ids[0]),
+            ).fetchone()[0] == 0
+            assert after_failure.execute(
+                "SELECT COUNT(*) FROM goi_thau WHERE organization_id = ? AND id IN (?, ?, ?)",
+                (organization_id, *package_ids),
+            ).fetchone()[0] == 0
+        finally:
+            after_failure.close()
+
+        response = sync_service.execute_sync_mutation(
+            request, payload, finalize_draft_command=True,
+        )
+        body = json.loads(response.body)
+        assert response.status_code == 200, body
+        retry = sync_service.execute_sync_mutation(
+            request, deepcopy(payload), finalize_draft_command=True,
+        )
+        assert retry.status_code == 200
+        assert json.loads(retry.body) == body
+
+        check = database.get_connection()
+        try:
+            plans = check.execute(
+                """SELECT phien_ban, is_latest FROM ke_hoach_lcnt
+                    WHERE organization_id = ? AND id_goc = ? ORDER BY phien_ban""",
+                (organization_id, plan_ids[0]),
+            ).fetchall()
+            assert [tuple(row) for row in plans] == [(0, 0), (1, 0), (2, 1)]
+            packages = check.execute(
+                """SELECT ten_goi_thau FROM goi_thau
+                    WHERE organization_id = ? AND id IN (?, ?, ?) ORDER BY ke_hoach_id""",
+                (organization_id, *package_ids),
+            ).fetchall()
+            assert [row[0] for row in packages] == ["A", "B", "C"]
+            assignment_rows = check.execute(
+                """SELECT id_muc_tieu, id_nhan_vien FROM phan_cong_nhan_su
+                    WHERE organization_id = ? AND id_nhan_vien IN (?, ?)""",
+                (organization_id, expert_1, expert_2),
+            ).fetchall()
+            actual = {(row[0], row[1]) for row in assignment_rows}
+            assert actual == {
+                (package_ids[0], expert_1),
+                (package_ids[1], expert_1), (package_ids[1], expert_2),
+                (package_ids[2], expert_2),
+            }
+        finally:
+            check.close()
+    finally:
+        database.close()

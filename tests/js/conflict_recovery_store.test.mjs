@@ -64,3 +64,20 @@ test("repeated conflict for the same records replaces one recovery draft", () =>
   assert.equal(store.count(), 1);
   assert.equal(store.latest().checkpoint.queue.revision, 2);
 });
+
+test("reload cleanup clears only the current workspace conflict store", () => {
+  const workspaceAStorage = memoryStorage();
+  const workspaceBStorage = memoryStorage();
+  const workspaceA = new WorkspaceConflictRecoveryStore({ workspaceAStorage, storage: workspaceAStorage });
+  const workspaceB = new WorkspaceConflictRecoveryStore({ workspaceBStorage, storage: workspaceBStorage });
+  workspaceA.quarantine({ queue: { revision: 1 } }, {
+    errors: [{ table: "goithau", id: "package-a", code: "ROW_VERSION_CONFLICT" }],
+  });
+  workspaceB.quarantine({ queue: { revision: 2 } }, {
+    errors: [{ table: "goithau", id: "package-b", code: "ROW_VERSION_CONFLICT" }],
+  });
+
+  assert.equal(workspaceA.clear(), true);
+  assert.equal(workspaceA.count(), 0);
+  assert.equal(workspaceB.count(), 1);
+});

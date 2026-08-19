@@ -83,6 +83,11 @@ from backend.versioning.command import (
     build_aggregate_version_payload,
 )
 from backend.versioning.repository import AggregateVersionRepository
+from backend.plan_drafts.finalize import (
+    PlanDraftValidationError,
+    finalize_response_metadata,
+    validate_plan_draft_finalize,
+)
 from backend.procurement_import.sync_binding import (
     persist_import_session_provenance,
     resolve_pending_imported_investor,
@@ -636,6 +641,7 @@ def execute_sync_mutation(
     broadcast_callback=None,
     *,
     aggregate_version_command=False,
+    finalize_draft_command=False,
 ):
     """
     [POST] /api/sync
@@ -650,6 +656,7 @@ def execute_sync_mutation(
     staged_assets = []
     server_inherited_assignment_ids = set()
     batch_limit = _sync_batch_limit()
+    atomic_command = aggregate_version_command or finalize_draft_command
     try:
         envelope = SyncMutationEnvelope.from_payload(data)
         actor_context, early_response = _resolve_sync_actor_context(
@@ -670,7 +677,7 @@ def execute_sync_mutation(
         conn = database.get_connection()
         conn.execute(
             "BEGIN ISOLATION LEVEL SERIALIZABLE"
-            if aggregate_version_command
+            if atomic_command
             else "BEGIN"
         )
         cursor = conn.cursor()
@@ -763,6 +770,37 @@ def execute_sync_mutation(
                     },
                 )
 
+        if finalize_draft_command:
+            validate_plan_draft_finalize(cursor, org_name, data)
+            shape_errors = validate_sync_payload_shape({
+                key: value
+                for key, value in data.items()
+                if key not in {"draftId", "planRootId", "versions"}
+            })
+            if shape_errors:
+                conn.rollback()
+                return error_response(
+                    request,
+                    "SYNC_VALIDATION_FAILED",
+                    "Dữ liệu hoàn tất kế hoạch không hợp lệ.",
+                    status_code=400,
+                    fields={"errors": shape_errors},
+                )
+            generated_batch_size = _sync_batch_size(data)
+            generated_batch_limit = _generated_aggregate_batch_limit()
+            if generated_batch_size > generated_batch_limit:
+                conn.rollback()
+                return error_response(
+                    request,
+                    "SYNC_BATCH_TOO_LARGE",
+                    "Số lượng bản ghi của kế hoạch vượt quá giới hạn cho phép.",
+                    status_code=413,
+                    fields={
+                        "maxItems": generated_batch_limit,
+                        "receivedItems": generated_batch_size,
+                    },
+                )
+
         # Re-evaluate this permission in the write transaction. A manager may
         # have been demoted after the initial session/organization lookup.
         transaction_can_upload_assets = can_upload_workspace_assets(
@@ -821,7 +859,7 @@ def execute_sync_mutation(
         try:
             effective_batch_limit = (
                 _generated_aggregate_batch_limit()
-                if aggregate_version_command
+                if atomic_command
                 else batch_limit
             )
             augment_default_assignments(
@@ -891,6 +929,7 @@ def execute_sync_mutation(
             canonicalize_item=canonicalize_payload_item,
             server_inherited_assignment_ids=server_inherited_assignment_ids,
             trusted_import_package_ids=trusted_import_package_ids,
+            allow_new_historical_parents=finalize_draft_command,
         )
         validation_errors = record_validator.validate_payload()
 
@@ -929,7 +968,7 @@ def execute_sync_mutation(
                     table_name,
                     incoming_record_id,
                 )
-                if aggregate_version_command:
+                if atomic_command:
                     db_row_data = record_serializer.serialize(
                         table_name,
                         item,
@@ -1113,6 +1152,11 @@ def execute_sync_mutation(
             delete_impacts=mutation_outcome.delete_impacts,
             orphaned_ids=mutation_outcome.orphaned_ids,
             procurement_import=procurement_import_result,
+            extra_fields=(
+                {"draftFinalize": finalize_response_metadata(data)}
+                if finalize_draft_command
+                else None
+            ),
         )
         transaction_committed = True
         return _run_post_commit_side_effects(
@@ -1162,6 +1206,13 @@ def execute_sync_mutation(
     except (ValueError, ImportConflict) as validation_error:
         if conn:
             conn.rollback()
+        if isinstance(validation_error, PlanDraftValidationError):
+            return error_response(
+                request,
+                validation_error.code,
+                str(validation_error),
+                status_code=409 if validation_error.code == "DRAFT_ALREADY_PERSISTED" else 400,
+            )
         if not aggregate_version_command:
             code = str(validation_error.args[0]) if validation_error.args else ""
             procurement_errors = {
@@ -1214,7 +1265,7 @@ def execute_sync_mutation(
                 conn.rollback()
             except DatabaseError:
                 pass
-        if aggregate_version_command and getattr(e, "sqlstate", None) in {
+        if atomic_command and getattr(e, "sqlstate", None) in {
             "40001",
             "40P01",
         }:

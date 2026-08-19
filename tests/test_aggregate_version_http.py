@@ -137,6 +137,6 @@ def test_version_command_is_built_after_serializable_begin_and_conflicts_return_
 
 def test_generated_aggregate_write_lane_does_not_use_per_record_savepoints():
     source = Path(sync_service.__file__).read_text(encoding="utf-8")
-    aggregate_branch = source.index("if aggregate_version_command:", source.index("for payload_key"))
-    savepoint = source.index('cursor.execute("SAVEPOINT sync_item")', aggregate_branch)
-    assert source.index("continue", aggregate_branch, savepoint) < savepoint
+    atomic_branch = source.index("if atomic_command:", source.index("for payload_key"))
+    savepoint = source.index('cursor.execute("SAVEPOINT sync_item")', atomic_branch)
+    assert source.index("continue", atomic_branch, savepoint) < savepoint

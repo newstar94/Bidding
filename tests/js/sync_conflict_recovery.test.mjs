@@ -100,6 +100,35 @@ test("startup pulls authoritative state and completes after quarantining a row c
   assert.equal(getStartupReconciliationState(controller).phase, "RECONCILED");
 });
 
+test("F5 discards conflict markers before pulling and preserves unrelated outbox work", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a" },
+      getConflictRecoveryCount: () => 1,
+      discardAllConflictRecoveryDrafts() {
+        calls.push("discard-conflict");
+        return true;
+      },
+    },
+    markStartup() {},
+    async forceSyncData(_background, forceFull) {
+      calls.push(["pull", forceFull]);
+      return { ok: true, localMutationsPending: true };
+    },
+    async autoSync() {
+      calls.push("push-unrelated");
+      return { ok: true };
+    },
+    view: {
+      customRecoveryDialog() { assert.fail("reload must not ask to restore a conflict draft"); },
+    },
+  };
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.deepEqual(calls, ["discard-conflict", ["pull", true], "push-unrelated"]);
+});
+
 
 test("startup flushes once, pulls once, and skips an empty replay", async () => {
   const calls = [];
@@ -583,7 +612,7 @@ test("row version conflicts preserve the local outbox until explicit resolution"
 });
 
 
-test("an unresolved sync conflict can discard only pending local mutations", async () => {
+test("an unresolved sync conflict asks for F5 without retrying, discarding, or opening a dialog", async () => {
   const calls = [];
   const controller = {
     model: {
@@ -612,15 +641,11 @@ test("an unresolved sync conflict can discard only pending local mutations", asy
     ok: false, conflict: true, status: 409,
   });
 
-  assert.equal(result.conflictCleared, true);
-  assert.deepEqual(calls.slice(0, 3), [
-    ["pull", true],
-    "retry",
-    ["confirm", {
-      confirmLabel: "Bỏ thay đổi cục bộ",
-      cancelLabel: "Giữ lại để xử lý sau",
-    }],
-  ]);
-  assert.deepEqual(calls.slice(3, 6), ["discard", "flush", ["pull", true]]);
+  assert.equal(result.conflictCleared, false);
+  assert.equal(result.reloadRequired, true);
+  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "confirm"), false);
+  assert.equal(calls.includes("discard"), false);
+  assert.equal(calls.includes("retry"), false);
+  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "pull"), false);
   assert.equal(calls.at(-1)[0], "toast");
 });

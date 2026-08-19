@@ -74,13 +74,20 @@ import {
 import {
   materializeProcurementPackageGoods,
 } from "../procurement/ProcurementDraftWorkflow.js";
+import { persistActivePlanVersionDraftSession } from "../plans/PlanVersionDraftSession.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function persistPackageFormChanges(controller, explicitUpserts, {
   draft = false,
   afterPersist,
 } = {}) {
-  if (draft) return { ok: true, draft: true };
+  if (draft) {
+    const planId = explicitUpserts?.goithau?.[0]?.keHoachId
+      || explicitUpserts?.kehoach?.[0]?.id
+      || controller?.planBreakdownDraft?.planId;
+    await persistActivePlanVersionDraftSession(controller, planId);
+    return { ok: true, draft: true };
+  }
   Object.entries(explicitUpserts).forEach(([table, records]) => {
     stageLocalRecords(controller.model, table, records);
   });
@@ -95,6 +102,21 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     changes: { upserts: explicitUpserts },
     afterPersist,
   });
+}
+
+export function shouldShowPackageSyncFailureDialog(syncResult) {
+  return Boolean(
+    syncResult?.ok === false
+    && syncResult?.conflictQuarantined !== true
+    && syncResult?.reloadRequired !== true,
+  );
+}
+
+export function packageSyncRequiresReload(syncResult) {
+  return Boolean(
+    syncResult?.conflictQuarantined === true
+    || syncResult?.reloadRequired === true,
+  );
 }
 
 export function packageFamilyUpsertsForPlan(packages, finalPackage) {
@@ -1252,7 +1274,8 @@ export async function handleGoiThauSubmit(e) {
       this.view.renderKeHoachTable();
     },
   });
-  if (syncResult && syncResult.ok === false) {
+  if (packageSyncRequiresReload(syncResult)) return;
+  if (shouldShowPackageSyncFailureDialog(syncResult)) {
     await this.view.customAlert(
       "Lỗi đồng bộ",
       "Dữ liệu đã được lưu tạm trên máy nhưng chưa ghi được vào cơ sở dữ liệu. Vui lòng kiểm tra lỗi đồng bộ và thử lưu lại.",
@@ -1284,7 +1307,7 @@ export async function handleGoiThauSubmit(e) {
   } else if (draftPackageSave) {
     await this.view.customAlert(
       "Đã thêm vào bản nháp",
-      "Gói thầu chỉ được lưu tạm. Dữ liệu sẽ được ghi chính thức khi bạn bấm Lưu kế hoạch.",
+      "Gói thầu chỉ được lưu tạm. Dữ liệu sẽ được ghi chính thức khi bạn bấm Lưu & hoàn tất.",
       "check-circle",
     );
   } else {

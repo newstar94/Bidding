@@ -7,6 +7,8 @@ import {
   stageLocalRecords,
 } from "../shared/MutationService.js";
 import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
+import { isPlanBreakdownEditSessionActive } from "../plans/planBreakdownDraft.js";
+import { markPlanVersionDraftRecordsDirty } from "../plans/PlanVersionDraftSession.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import {
   createInitialVersion,
@@ -28,6 +30,25 @@ const CHUYEN_GIA_FORM_FIELDS = {
   donViCapChungChi: "cg-donvicapchungchi",
   ngayCapChungChi: "cg-ngaycapchungchi"
 };
+
+export async function persistExpertFormChanges(controller, changedExperts, {
+  draft = isPlanBreakdownEditSessionActive(controller),
+} = {}) {
+  if (draft) {
+    await markPlanVersionDraftRecordsDirty(controller, "chuyengia", changedExperts);
+    await controller.closeModal("modal-chuyengia");
+    controller.view.renderChuyenGiaTable();
+    return { ok: true, draft: true };
+  }
+  stageLocalRecords(controller.model, "chuyengia", changedExperts);
+  return persistAndSync(controller, "chuyengia", {
+    changes: { upserts: { chuyengia: changedExperts } },
+    afterPersist: async () => {
+      await controller.closeModal("modal-chuyengia");
+      controller.view.renderChuyenGiaTable();
+    },
+  });
+}
 
 const safeExpertImageSrc = (value) => {
   return safeImageSrc(value);
@@ -324,13 +345,6 @@ export async function handleChuyenGiaSubmit(e) {
   }
   rememberSelectedVersion(this.model.state, "selectedChuyenGiaVersion", data);
   const changedExperts = getVersionFamily(this.model.state.chuyengia, data);
-  stageLocalRecords(this.model, "chuyengia", changedExperts);
-  await persistAndSync(this, "chuyengia", {
-    changes: { upserts: { chuyengia: changedExperts } },
-    afterPersist: async () => {
-      await this.closeModal("modal-chuyengia");
-      this.view.renderChuyenGiaTable();
-    }
-  });
+  await persistExpertFormChanges(this, changedExperts);
 }
 import { generateRecordId } from "../shared/idUtils.js";

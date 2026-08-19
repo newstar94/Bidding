@@ -2,6 +2,10 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { restorePlanBreakdownDraft } from "../plans/planBreakdownDraft.js";
+import {
+  findPlanVersionDraftSession,
+  persistActivePlanVersionDraftSession,
+} from "../plans/PlanVersionDraftSession.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
@@ -720,7 +724,15 @@ export async function closeModal(modalId, options = {}) {
   }
   if (modalId === "modal-plan-breakdown") {
     if (this.planBreakdownDraft?.active) {
-      restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+      const activePlanId = document.getElementById("breakdown-plan-id")?.value
+        || this.planBreakdownDraft.planId;
+      const durableDraft = findPlanVersionDraftSession(this.model, activePlanId);
+      if (durableDraft) {
+        this.updatePlanBreakdownDraftRows?.(this, activePlanId);
+        await persistActivePlanVersionDraftSession(this, activePlanId);
+      } else {
+        restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+      }
       this.planBreakdownDraft = null;
       this.backupKeHoachState = null;
       this.backupGoiThauState = null;
@@ -749,7 +761,12 @@ export async function closeModal(modalId, options = {}) {
   if (modalId === "modal-kehoach" && this.planBreakdownDraft?.active) {
     const formPlanId = document.getElementById("form-kehoach-id")?.value;
     if (String(formPlanId || "") === String(this.planBreakdownDraft.planId || "")) {
-      restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+      const durableDraft = findPlanVersionDraftSession(this.model, formPlanId);
+      if (durableDraft) {
+        await persistActivePlanVersionDraftSession(this, formPlanId);
+      } else {
+        restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+      }
       this.planBreakdownDraft = null;
       this.backupKeHoachState = null;
       this.backupGoiThauState = null;

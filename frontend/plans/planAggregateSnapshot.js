@@ -90,6 +90,10 @@ function repointSelectedPackageVersions(state, aggregate) {
   Object.entries(selection).forEach(([rootId, selectedId]) => {
     const replacementId = mapping?.get(String(selectedId))
       || rootMapping?.get(String(rootId));
-    if (replacementId) selection[rootId] = replacementId;
+    if (replacementId) {
+      selection[rootId] = replacementId;
+      state.selectedPackageVersionIntent ||= {};
+      state.selectedPackageVersionIntent[rootId] = "latest";
+    }
   });
 }

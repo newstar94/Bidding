@@ -21,6 +21,14 @@ async def aggregate_version_api(request):
     )
 
 
+async def finalize_plan_draft_api(request):
+    from backend.plan_drafts.service import process_plan_draft_finalize_request
+    return await process_plan_draft_finalize_request(
+        request,
+        broadcast_websocket_event,
+    )
+
+
 async def restore_record_api(request):
     from backend.sync.restore_service import process_restore_request
     return await process_restore_request(request, broadcast_websocket_event)
@@ -59,6 +67,7 @@ def sync_http_routes(Route):
             aggregate_version_api,
             methods=["POST"],
         ),
+        Route("/api/plans/finalize-draft", finalize_plan_draft_api, methods=["POST"]),
         Route("/api/sync/restore", restore_record_api, methods=["POST"]),
         Route("/api/sync/delta", delta_sync_api, methods=["GET"]),
         Route("/api/sync-version", current_sync_version_api, methods=["GET"]),
@@ -71,6 +80,7 @@ def sync_http_routes(Route):
 __all__ = [
     "active_connections",
     "aggregate_version_api",
+    "finalize_plan_draft_api",
     "broadcast_websocket_event",
     "current_sync_version_api",
     "delta_sync_api",

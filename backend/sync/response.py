@@ -22,6 +22,7 @@ def commit_sync_response(
     delete_impacts,
     orphaned_ids,
     procurement_import=None,
+    extra_fields=None,
 ):
     response = {
         "status": "success",
@@ -40,6 +41,8 @@ def commit_sync_response(
         response["orphanedIds"] = orphaned_ids
     if procurement_import:
         response["procurementImport"] = procurement_import
+    if extra_fields:
+        response.update(extra_fields)
     if client_mutation_id:
         cursor.execute(
             "INSERT INTO sync_mutations "

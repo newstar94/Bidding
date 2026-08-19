@@ -70,6 +70,20 @@ function staleWorkspaceResult(extra = {}) {
   };
 }
 
+function logRowVersionConflicts(data, snapshot, workspace) {
+  for (const error of getSyncValidationErrors(data)) {
+    if (error?.code !== "ROW_VERSION_CONFLICT") continue;
+    console.warn("[Sync ROW_VERSION_CONFLICT]", {
+      table: String(error.table || ""),
+      id: String(error.id || ""),
+      expectedVersion: Number.isInteger(error.expectedVersion) ? error.expectedVersion : null,
+      currentVersion: Number.isInteger(error.currentVersion) ? error.currentVersion : null,
+      mutationId: String(snapshot?.id || snapshot?.clientMutationId || ""),
+      workspace: String(workspace?.workspaceKey || workspace?.organizationId || ""),
+    });
+  }
+}
+
 async function restoreRejectedRecords(controller, rejectedRecords, workspace) {
   const changedKeys = new Set();
   for (const rejected of rejectedRecords) {
@@ -215,18 +229,19 @@ export async function applyFailedPush(controller, {
     && hasRowVersionConflict
     && typeof controller.model?.quarantineMutationBatch === "function"
   ) {
+    logRowVersionConflicts(data, snapshot, workspace);
     const recoveryDraft = await controller.model.quarantineMutationBatch({ data, snapshot });
     if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
     if (recoveryDraft?.id) {
       controller._syncConflict = null;
       controller.updateSyncState({
-        phase: "recoveryPending",
+        phase: "conflict",
         online: true,
-        message: "Có bản nháp phục hồi cần xử lý",
+        message: "Dữ liệu đã thay đổi trên máy chủ · Nhấn F5 để tải lại",
       });
       controller.view?.showToast?.(
-        "Đã giữ bản nháp phục hồi",
-        "Dữ liệu máy chủ chưa bị thay đổi. Bạn có thể tiếp tục làm việc và áp lại bản nháp sau.",
+        "Dữ liệu đã thay đổi trên máy chủ",
+        "Nhấn F5 để tải lại dữ liệu mới nhất.",
         "warning",
       );
       return {
@@ -501,23 +516,7 @@ export function autoSync(options = {}) {
     }
   });
   let completion;
-  completion = trackedRequest.then(async (result) => {
-    if (
-      result?.conflictQuarantined === true
-      && options.startupReconciliation !== true
-      && typeof this.forceSyncData === "function"
-      && workspaceIsCurrent(this, workspace)
-    ) {
-      const pullResult = await this.forceSyncData(false, true);
-      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
-      return {
-        ...result,
-        authoritativeRefresh: pullResult?.ok === true,
-        refreshResult: pullResult,
-      };
-    }
-    return result;
-  }).finally(() => {
+  completion = trackedRequest.finally(() => {
     if (this._autoSyncPromise === completion) this._autoSyncPromise = null;
   });
   syncOwner.promise = completion;

@@ -13,6 +13,12 @@ import {
   workspaceIsCurrent,
 } from "./SyncWorkspaceContext.js";
 import { renderChangedState } from "./SyncRenderCoordinator.js";
+import { normalizePackageVersionSelection } from "../shared/versionResolver.js";
+import {
+  PLAN_BREAKDOWN_DRAFT_TABLES,
+  rebasePlanBreakdownDraftAfterServerMerge,
+} from "../plans/planBreakdownDraft.js";
+import { reapplyPlanVersionDraftSessions } from "../plans/PlanVersionDraftSession.js";
 import { hideOfflineBanner } from "./SyncPresenter.js";
 import {
   assertWorkspaceLeaseCurrent,
@@ -66,6 +72,25 @@ function updatePullFailureState(controller, syncStatusText, {
   if (preserveActionablePhase) return;
   if (syncStatusText) syncStatusText.textContent = message;
   controller.updateSyncState({ phase: "error", message });
+}
+
+function captureActivePlanBreakdownState(controller) {
+  if (!controller?.planBreakdownDraft?.active) return null;
+  return Object.fromEntries(PLAN_BREAKDOWN_DRAFT_TABLES.map((table) => [
+    table,
+    structuredClone(controller.model.state?.[table] || []),
+  ]));
+}
+
+function reconcilePulledPlanBreakdownState(controller, localBefore, changedKeys) {
+  rebasePlanBreakdownDraftAfterServerMerge(
+    controller.model,
+    controller.planBreakdownDraft,
+    localBefore,
+    changedKeys,
+  );
+  const versionStateChanged = changedKeys.has?.("kehoach") || changedKeys.has?.("goithau");
+  if (versionStateChanged) normalizePackageVersionSelection(controller.model.state);
 }
 
 export function finalizePulledSyncState(controller, timestamp = Date.now()) {
@@ -350,12 +375,15 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     if (!pullIsCurrent()) {
       return stalePullResult();
     }
+    const draftLocalState = captureActivePlanBreakdownState(this);
     const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(
       this.model,
       dbData,
       { useVersionDelta, since },
     );
+    reconcilePulledPlanBreakdownState(this, draftLocalState, changedKeys);
     await persistencePromise;
+    await reapplyPlanVersionDraftSessions(this.model);
     if (!pullIsCurrent()) {
       return stalePullResult();
     }

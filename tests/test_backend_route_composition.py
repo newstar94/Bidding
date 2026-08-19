@@ -26,6 +26,7 @@ def test_feature_route_registries_keep_critical_endpoints_registered():
     assert ("/api/sync/delta", ("GET",)) in registrations
     assert ("/api/sync/restore", ("POST",)) in registrations
     assert ("/api/versioning/aggregate", ("POST",)) in registrations
+    assert ("/api/plans/finalize-draft", ("POST",)) in registrations
     assert ("/api/packages/{package_id}/documents", ("GET",)) in registrations
     assert ("/api/document-jobs/{job_id}/download", ("GET",)) in registrations
     assert ("/api/contracts/package-lifecycle", ("GET",)) in registrations

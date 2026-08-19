@@ -10,6 +10,7 @@ import {
   isPlanBreakdownDraftActive,
   removeDraftPackageAggregate,
 } from "../plans/planBreakdownDraft.js";
+import { persistActivePlanVersionDraftSession } from "../plans/PlanVersionDraftSession.js";
 
 async function hydratePackageOwnedRows(controller, planId) {
   if (!controller.model?.useServerSidePagination || !planId) return;
@@ -121,6 +122,7 @@ export async function deleteGoiThau(id) {
     );
     if (!confirmed) return;
     removeDraftPackageAggregate(this.model, id);
+    await persistActivePlanVersionDraftSession(this, localTarget.keHoachId);
     this.recalculatePlanTotal(localTarget.keHoachId);
     this.renderBreakdownPackagesList(localTarget.keHoachId);
     this.updateBreakdownTotal(localTarget.keHoachId);

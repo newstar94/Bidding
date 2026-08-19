@@ -105,6 +105,14 @@ export class WorkspaceConflictRecoveryStore {
     return this._read().drafts.length;
   }
 
+  clear() {
+    const envelope = this._read();
+    if (this.lastError) return false;
+    if (envelope.drafts.length === 0) return true;
+    envelope.drafts = [];
+    return this._write(envelope);
+  }
+
   remove(id) {
     const normalizedId = String(id || "");
     if (!normalizedId) return false;

@@ -34,48 +34,13 @@ async function resolveConflictRecoveryDraft(
 ) {
   const draft = controller.model?.getConflictRecoveryDrafts?.()[0] || null;
   if (!draft) return null;
-  const choice = typeof controller.view?.customRecoveryDialog === "function"
-    ? await controller.view.customRecoveryDialog(
-      "Bản nháp phục hồi",
-      "Thay đổi này từng xung đột với dữ liệu máy chủ. Bạn có thể áp lại lên dữ liệu mới nhất, bỏ bản nháp hoặc để xử lý sau.",
-    )
-    : "later";
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (choice === "later" || !choice) {
-    return { ok: true, skipped: true, recoveryPending: true };
-  }
-  if (choice === "discard") {
-    const discarded = controller.model?.discardConflictRecoveryDraft?.(draft.id) === true;
-    controller.updateSyncState?.({ phase: "idle", message: "" });
-    if (discarded) {
-      controller.view?.showToast?.(
-        "Đã bỏ bản nháp",
-        "Dữ liệu đã lưu trên máy chủ không bị thay đổi.",
-        "success",
-      );
-    }
-    return { ok: discarded, recoveryDiscarded: discarded };
-  }
-  if (choice !== "apply") return { ok: true, skipped: true, recoveryPending: true };
-
-  const restored = await controller.model?.restoreConflictRecoveryDraft?.(draft.id);
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (!restored?.ok) return restored || { ok: false, code: "RECOVERY_RESTORE_FAILED" };
-  const rebased = await controller.forceSyncData?.(false, true);
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (!rebased?.ok) return rebased;
-  const pushed = await controller.autoSync?.();
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (!pushed?.ok) return pushed;
-  const verified = await controller.forceSyncData?.(false, false);
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (verified?.ok === false) return verified;
   controller.view?.showToast?.(
-    "Đã phục hồi bản nháp",
-    "Thay đổi đã được áp lại lên dữ liệu mới nhất và lưu trên máy chủ.",
-    "success",
+    "Dữ liệu đã thay đổi trên máy chủ",
+    "Nhấn F5 để tải lại dữ liệu mới nhất.",
+    "warning",
   );
-  return { ...pushed, recoveryApplied: true, verified };
+  return { ok: false, conflict: true, reloadRequired: true, recoveryDraftId: draft.id };
 }
 
 export async function resolvePendingSyncConflict(
@@ -84,64 +49,13 @@ export async function resolvePendingSyncConflict(
   workspace = captureWorkspace(controller),
 ) {
   if (!controller || !isSyncConflict(initialResult)) return initialResult;
-
-  let result = initialResult;
-  const rebased = typeof controller.forceSyncData === "function"
-    ? await controller.forceSyncData(false, true)
-    : { ok: false };
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (rebased?.ok && typeof controller.autoSync === "function") {
-    result = await controller.autoSync();
-    if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-    if (result?.ok) {
-      await controller.forceSyncData?.(false, false);
-      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-      controller.view?.showToast?.(
-        "Đã xử lý xung đột",
-        "Thay đổi cục bộ đã được đồng bộ sau khi tải lại phiên bản mới nhất từ máy chủ.",
-        "success",
-      );
-      return { ...result, conflictCleared: true, retried: true };
-    }
-  }
-
-  const pendingMutation = controller.model?.buildMutationSyncPayload?.();
-  if (!pendingMutation || !isSyncConflict(result)) return result;
-  const discard = Boolean(await controller.view?.customConfirm?.(
-    "Không thể tự động xử lý xung đột",
-    "Các thay đổi cục bộ vẫn xung đột sau khi tải lại dữ liệu máy chủ. "
-      + "Bạn có thể bỏ riêng hàng đợi thay đổi cục bộ này và tải lại dữ liệu đã lưu trên máy chủ. "
-      + "Dữ liệu trên máy chủ sẽ không bị xóa.",
-    "alert-triangle",
-    {
-      confirmLabel: "Bỏ thay đổi cục bộ",
-      cancelLabel: "Giữ lại để xử lý sau",
-    },
-  ));
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (!discard) return { ...result, conflictCleared: false };
-
-  controller.model?.discardMutationBatch?.();
-  await controller.model?.flushMutationOutbox?.();
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  const refreshed = typeof controller.forceSyncData === "function"
-    ? await controller.forceSyncData(false, true)
-    : { ok: true };
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  const conflictCleared = refreshed?.ok !== false;
-  if (conflictCleared) {
-    controller.view?.showToast?.(
-      "Đã loại bỏ xung đột",
-      "Đã bỏ hàng đợi thay đổi cục bộ và tải lại dữ liệu mới nhất từ máy chủ.",
-      "success",
-    );
-  }
-  return {
-    ok: conflictCleared,
-    conflictCleared,
-    discarded: true,
-    data: refreshed,
-  };
+  controller.view?.showToast?.(
+    "Dữ liệu đã thay đổi trên máy chủ",
+    "Nhấn F5 để tải lại dữ liệu mới nhất.",
+    "warning",
+  );
+  return { ...initialResult, conflictCleared: false, reloadRequired: true };
 }
 
 export function shouldShowLocalPending(currentPhase) {

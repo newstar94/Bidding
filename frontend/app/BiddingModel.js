@@ -39,6 +39,88 @@ import {
 const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
   Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
 );
+
+function splitConflictCheckpoint(checkpoint, data = {}) {
+  const conflictKeys = new Set((data.errors || [])
+    .filter((error) => error?.code === "ROW_VERSION_CONFLICT" && error?.id)
+    .map((error) => {
+      const table = STATE_KEY_BY_SERVER_TABLE[error.table] || String(error.table || "");
+      return `${table}:${String(error.id)}`;
+    }));
+  if (!checkpoint?.queue || conflictKeys.size === 0) {
+    return { conflicting: checkpoint, unrelated: null };
+  }
+  const createPartition = () => ({
+    queue: {
+      baseSyncVersion: checkpoint.queue.baseSyncVersion,
+      clientMutationId: checkpoint.queue.clientMutationId,
+      revision: checkpoint.queue.revision,
+      dirtyTables: {}, upserts: {}, patches: {}, deletes: [],
+    },
+    localDeletions: [],
+  });
+  const conflicting = createPartition();
+  const unrelated = createPartition();
+  for (const operation of ["upserts", "patches"]) {
+    Object.entries(checkpoint.queue[operation] || {}).forEach(([table, records]) => {
+      Object.entries(records || {}).forEach(([id, record]) => {
+        const target = conflictKeys.has(`${table}:${String(id)}`) ? conflicting : unrelated;
+        target.queue[operation][table] ||= {};
+        target.queue[operation][table][id] = structuredClone(record);
+      });
+    });
+  }
+  for (const deletion of checkpoint.queue.deletes || []) {
+    const target = conflictKeys.has(`${deletion.table}:${String(deletion.id)}`)
+      ? conflicting : unrelated;
+    target.queue.deletes.push(structuredClone(deletion));
+  }
+  for (const deletion of checkpoint.localDeletions || []) {
+    const target = conflictKeys.has(`${deletion.table}:${String(deletion.id)}`)
+      ? conflicting : unrelated;
+    target.localDeletions.push(structuredClone(deletion));
+  }
+  Object.entries(checkpoint.queue.dirtyTables || {}).forEach(([table, value]) => {
+    const conflictsInTable = [...conflictKeys].some((key) => key.startsWith(`${table}:`));
+    const target = conflictsInTable ? conflicting : unrelated;
+    target.queue.dirtyTables[table] = value;
+  });
+  return {
+    conflicting: mutationQueueHasChanges(conflicting.queue) ? conflicting : checkpoint,
+    unrelated: mutationQueueHasChanges(unrelated.queue) ? unrelated : null,
+  };
+}
+
+function requeueCheckpoint(outbox, checkpoint, state) {
+  if (!checkpoint?.queue) return false;
+  Object.entries(checkpoint.queue.upserts || {}).forEach(([table, records]) => {
+    outbox.enqueue({ kind: "upsert", table, records: Object.values(records || {}) });
+  });
+  Object.entries(checkpoint.queue.patches || {}).forEach(([table, records]) => {
+    outbox.enqueue({ kind: "patch", table, records: Object.values(records || {}) });
+  });
+  Object.keys(checkpoint.queue.dirtyTables || {}).forEach((table) => {
+    outbox.enqueue({ kind: "replace-table", table, records: state?.[table] || [] });
+  });
+  const deletionsByTable = (checkpoint.queue.deletes || []).reduce((grouped, deletion) => {
+    grouped[deletion.table] ||= [];
+    grouped[deletion.table].push(deletion);
+    return grouped;
+  }, {});
+  Object.entries(deletionsByTable).forEach(([table, deletions]) => {
+    outbox.enqueue({
+      kind: "delete",
+      table,
+      records: deletions.map((deletion) => ({
+        id: deletion.id,
+        ...(Number.isInteger(deletion.expectedVersion)
+          ? { rowVersion: deletion.expectedVersion }
+          : {}),
+      })),
+    });
+  });
+  return true;
+}
 const LEGACY_FIELD_ALIASES_BY_TYPE = Object.freeze({
   kehoach: Object.freeze({
     diadiemQuymo: "diaDiemQuyMo",
@@ -90,6 +172,7 @@ export class BiddingModel {
       systempackages: [],
       selectedPlanVersion: {},
       selectedPackageVersion: {},
+      selectedPackageVersionIntent: {},
       // Explicitly define RBAC and dynamic keys to ensure proper serialization and sync
       organizations: [],
       employees: [],
@@ -313,6 +396,7 @@ export class BiddingModel {
     this.dashboardSummary = null;
     this.state.selectedPlanVersion = {};
     this.state.selectedPackageVersion = {};
+    this.state.selectedPackageVersionIntent = {};
     this.useServerSidePagination = false;
     this._hasPersistedWorkspaceData = false;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
@@ -719,6 +803,11 @@ export class BiddingModel {
   getConflictRecoveryCount() {
     return this._getConflictRecoveryStore().count();
   }
+  discardAllConflictRecoveryDrafts() {
+    const cleared = this._getConflictRecoveryStore().clear();
+    if (cleared) this.workspaceStorage?.removeItem?.("bf_conflict_server_sync_version");
+    return cleared;
+  }
   async quarantineMutationBatch({ data, snapshot } = {}) {
     const outbox = this._getMutationOutbox();
     const activeCheckpoint = outbox.checkpoint();
@@ -728,7 +817,8 @@ export class BiddingModel {
       : activeCheckpoint;
     if (!checkpoint) return null;
     if (!mutationQueueHasChanges(checkpoint.queue)) return null;
-    const draft = this._getConflictRecoveryStore().quarantine(checkpoint, {
+    const { conflicting, unrelated } = splitConflictCheckpoint(checkpoint, data);
+    const draft = this._getConflictRecoveryStore().quarantine(conflicting, {
       ...data,
       receiptId: snapshot?.id || null,
     });
@@ -736,6 +826,7 @@ export class BiddingModel {
     try {
       if (scopedReceipt) outbox.ack(snapshot);
       else outbox.discard();
+      if (unrelated) requeueCheckpoint(outbox, unrelated, this.state);
       await outbox.flush();
       return draft;
     } catch (_error) {
@@ -744,25 +835,6 @@ export class BiddingModel {
       this._getConflictRecoveryStore().remove(draft.id);
       return null;
     }
-  }
-  async restoreConflictRecoveryDraft(id) {
-    if (this.hasPendingMutationOutboxChanges()) {
-      return { ok: false, code: "ACTIVE_MUTATIONS_PENDING" };
-    }
-    const draft = this.getConflictRecoveryDrafts().find(
-      (item) => String(item.id) === String(id),
-    );
-    if (!draft?.checkpoint) return { ok: false, code: "RECOVERY_DRAFT_NOT_FOUND" };
-    const restored = this._getMutationOutbox().restore(draft.checkpoint);
-    if (!restored) return { ok: false, code: "RECOVERY_DRAFT_INVALID" };
-    await this._getMutationOutbox().flush();
-    if (!this._getConflictRecoveryStore().remove(draft.id)) {
-      return { ok: false, code: "RECOVERY_DRAFT_REMOVE_FAILED" };
-    }
-    return { ok: true, draft };
-  }
-  discardConflictRecoveryDraft(id) {
-    return this._getConflictRecoveryStore().remove(id);
   }
   async hydrateMutationOutbox(options = {}) {
     const snapshot = await this._getMutationOutbox().hydrate(options);

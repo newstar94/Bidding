@@ -4,7 +4,11 @@ import test from "node:test";
 import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.js";
-import { persistPackageFormChanges } from "../../frontend/packages/GoiThauWorkflow.js";
+import {
+  packageSyncRequiresReload,
+  persistPackageFormChanges,
+  shouldShowPackageSyncFailureDialog,
+} from "../../frontend/packages/GoiThauWorkflow.js";
 import { deleteGoiThau } from "../../frontend/packages/packageLifecycleWorkflow.js";
 import {
   backToPlanDraft,
@@ -18,6 +22,8 @@ import {
   capturePlanBreakdownDraft,
   boundProcurementRevisionChanges,
   collectPlanBreakdownDraftChanges,
+  isPlanBreakdownDraftActive,
+  rebasePlanBreakdownDraftAfterServerMerge,
   restorePlanBreakdownDraft,
 } from "../../frontend/plans/planBreakdownDraft.js";
 import {
@@ -29,6 +35,7 @@ import {
   resolveProcurementImportedPackageStatus,
 } from "../../frontend/procurement/ProcurementDraftWorkflow.js";
 import { closeModal } from "../../frontend/app/BiddingControllerUI.js";
+import { persistExpertFormChanges } from "../../frontend/experts/ChuyenGiaWorkflow.js";
 import {
   completeProcurementPlanImportRevision,
   startProcurementPlanImport,
@@ -930,6 +937,94 @@ test("saving a package inside plan breakdown remains a memory-only draft", async
   assert.deepEqual(calls, [], "a child modal must not make the draft durable or sync it");
 });
 
+test("confirmed package row conflict uses the F5 toast without a second failure dialog", () => {
+  assert.equal(shouldShowPackageSyncFailureDialog({
+    ok: false,
+    conflictQuarantined: true,
+  }), false);
+  assert.equal(shouldShowPackageSyncFailureDialog({
+    ok: false,
+    reloadRequired: true,
+  }), false);
+  assert.equal(shouldShowPackageSyncFailureDialog({
+    ok: false,
+    status: 500,
+  }), true);
+  assert.equal(shouldShowPackageSyncFailureDialog({
+    ok: false,
+    status: 400,
+  }), true);
+  assert.equal(packageSyncRequiresReload({
+    ok: false,
+    conflictQuarantined: true,
+  }), true);
+  assert.equal(packageSyncRequiresReload({
+    ok: false,
+    status: 500,
+  }), false);
+});
+
+test("editing an existing plan activates the same memory-only breakdown boundary", async () => {
+  const calls = [];
+  const state = {
+    kehoach: [{ id: "plan-01", rootId: "plan-root", phienBan: "01", rowVersion: 7 }],
+    goithau: [{ id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01", rowVersion: 4 }],
+    assignments: [],
+  };
+  const controller = {
+    planBreakdownDraft: capturePlanBreakdownDraft(state, {
+      planId: "plan-01",
+      action: "edit",
+    }),
+    model: {
+      commitLocalMutation: () => calls.push("commitLocalMutation"),
+      persistChanges: async () => calls.push("persistChanges"),
+      flushMutationOutbox: async () => calls.push("flushMutationOutbox"),
+    },
+    autoSync: async () => {
+      calls.push("autoSync");
+      return { ok: true };
+    },
+  };
+
+  const draftActive = isPlanBreakdownDraftActive(controller, "plan-01");
+  const result = await persistPackageFormChanges(controller, {
+    goithau: [{ ...state.goithau[0], tenGoiThau: "Gói đã sửa" }],
+    assignments: [{
+      id: "assignment-01",
+      targetId: "pkg-01",
+      type: "goithau",
+      empId: "expert-01",
+    }],
+  }, { draft: draftActive });
+
+  assert.equal(draftActive, true);
+  assert.deepEqual(result, { ok: true, draft: true });
+  assert.deepEqual(calls, [], "editing an existing plan must not push a child save");
+});
+
+test("saving an expert inside an edit breakdown session remains memory-only", async () => {
+  const calls = [];
+  const controller = {
+    planBreakdownDraft: { active: true, action: "edit", planId: "plan-01" },
+    model: {
+      commitLocalMutation: () => calls.push("commitLocalMutation"),
+      persistChanges: async () => calls.push("persistChanges"),
+      flushMutationOutbox: async () => calls.push("flushMutationOutbox"),
+    },
+    autoSync: async () => { calls.push("autoSync"); return { ok: true }; },
+    async closeModal() { calls.push("closeModal"); },
+    view: { renderChuyenGiaTable() { calls.push("render"); } },
+  };
+
+  const result = await persistExpertFormChanges(controller, [{
+    id: "expert-01", rootId: "expert-01", isLatest: 1, hoTen: "Chuyên gia mới",
+  }]);
+
+  assert.deepEqual(result, { ok: true, draft: true });
+  assert.deepEqual(calls, ["closeModal", "render"]);
+});
+
 test("draft assignments are changed in memory without calling model persistence methods", () => {
   const state = {
     assignments: [
@@ -954,13 +1049,37 @@ test("draft assignments are changed in memory without calling model persistence 
   ]);
 });
 
+test("draft assignment selection preserves the cloned assignment identity for plan 01", () => {
+  const cloned = {
+    id: "assignment-plan-01",
+    targetId: "pkg-plan-01",
+    type: "goithau",
+    empId: "employee-1",
+    rowVersion: 1,
+  };
+  const state = { assignments: [cloned] };
+  const model = { state, entityIndexes: { invalidate() {} } };
+
+  const selected = applyDraftAssignmentSelection(model, {
+    targetId: "pkg-plan-01",
+    type: "goithau",
+    selectedIds: ["employee-1"],
+    createId: () => assert.fail("unchanged assignment must not receive a new id"),
+  });
+
+  assert.equal(selected[0], cloned);
+  assert.deepEqual(state.assignments, [cloned]);
+});
+
 test("committing plan breakdown includes its draft packages, children, assignments and removals", () => {
   const snapshot = {
+    chuyengia: [{ id: "expert-1", rootId: "expert-1", isLatest: 1, hoTen: "Before" }],
     assignments: [
       { id: "a-removed", targetId: "pkg-1", type: "goithau", empId: "employee-old" },
     ],
   };
   const state = {
+    chuyengia: [{ id: "expert-1", rootId: "expert-1", isLatest: 1, hoTen: "After" }],
     kehoach: [{ id: "plan-1", rootId: "plan-1" }],
     goithau: [{ id: "pkg-1", keHoachId: "plan-1" }],
     goithauhanghoa: [{ id: "goods-1", goiThauId: "pkg-1" }],
@@ -981,7 +1100,248 @@ test("committing plan breakdown includes its draft packages, children, assignmen
   assert.deepEqual(changes.upserts.thongtinmothau.map((row) => row.id), ["opening-1"]);
   assert.deepEqual(changes.upserts.hanghoaduthaunhathau.map((row) => row.id), ["bid-goods-1"]);
   assert.deepEqual(changes.upserts.assignments.map((row) => row.id), ["a-new"]);
+  assert.deepEqual(changes.upserts.chuyengia.map((row) => row.id), ["expert-1"]);
   assert.deepEqual(changes.deletions.assignments, ["a-removed"]);
+});
+
+test("editing plan 01 commits only changed rows from its mutable snapshot", () => {
+  const snapshot = {
+    kehoach: [
+      { id: "plan-00", rootId: "plan-root", phienBan: "00", isLatest: 0, rowVersion: 9 },
+      { id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1, rowVersion: 3, tenKeHoach: "Before" },
+    ],
+    goithau: [
+      { id: "pkg-00", rootId: "pkg-root-1", keHoachId: "plan-00", rowVersion: 8 },
+      { id: "pkg-01", rootId: "pkg-root-1", keHoachId: "plan-01", rowVersion: 2, tenGoiThau: "Before" },
+      { id: "pkg-02", rootId: "pkg-root-2", keHoachId: "plan-01", rowVersion: 2, tenGoiThau: "Untouched" },
+    ],
+    goithauhanghoa: [
+      { id: "goods-01", goiThauId: "pkg-01", tenHangHoa: "Before" },
+      { id: "goods-02", goiThauId: "pkg-02", tenHangHoa: "Untouched" },
+    ],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [
+      { id: "assignment-old", targetId: "pkg-01", type: "goithau", empId: "expert-old" },
+    ],
+    chudautu: [],
+  };
+  const state = structuredClone(snapshot);
+  state.kehoach.find((row) => row.id === "plan-01").tenKeHoach = "After";
+  state.goithau.find((row) => row.id === "pkg-01").tenGoiThau = "After";
+  state.goithauhanghoa.find((row) => row.id === "goods-01").tenHangHoa = "After";
+  state.assignments = [{
+    id: "assignment-new",
+    targetId: "pkg-01",
+    type: "goithau",
+    empId: "expert-new",
+  }];
+
+  const changes = collectPlanBreakdownDraftChanges(state, {
+    planId: "plan-01",
+    snapshot,
+  });
+
+  assert.deepEqual(changes.upserts.kehoach.map((row) => row.id), ["plan-01"]);
+  assert.deepEqual(changes.upserts.goithau.map((row) => row.id), ["pkg-01"]);
+  assert.deepEqual(changes.upserts.goithauhanghoa.map((row) => row.id), ["goods-01"]);
+  assert.deepEqual(changes.upserts.assignments.map((row) => row.id), ["assignment-new"]);
+  assert.deepEqual(changes.deletions.assignments, ["assignment-old"]);
+  assert.equal(JSON.stringify(changes).includes("plan-00"), false);
+  assert.equal(JSON.stringify(changes).includes("pkg-00"), false);
+  assert.equal(JSON.stringify(changes).includes("pkg-02"), false);
+  assert.equal(JSON.stringify(changes).includes("goods-02"), false);
+});
+
+test("row-version-only delta rebases an active edit draft without losing local fields", () => {
+  const baselinePackage = {
+    id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01",
+    rowVersion: 2, tenGoiThau: "Before",
+  };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(baselinePackage)] },
+  };
+  const localBefore = {
+    goithau: [{ ...baselinePackage, tenGoiThau: "Local edit" }],
+  };
+  const model = {
+    state: {
+      goithau: [{ ...baselinePackage, rowVersion: 3 }],
+    },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, new Set(["goithau"]));
+
+  assert.deepEqual(model.state.goithau[0], {
+    ...baselinePackage,
+    rowVersion: 3,
+    tenGoiThau: "Local edit",
+  });
+  assert.equal(draft.snapshot.goithau[0].rowVersion, 3);
+});
+
+test("hydration metadata rebases without turning a local package edit into a false conflict", () => {
+  const baselinePackage = {
+    id: "pkg-01", keHoachId: "plan-01", rowVersion: 2,
+    referenceOnly: true, tenGoiThau: "Before",
+  };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(baselinePackage)] },
+  };
+  const localBefore = {
+    goithau: [{ ...baselinePackage, tenGoiThau: "Local edit" }],
+  };
+  const model = {
+    state: {
+      goithau: [{ ...baselinePackage, rowVersion: 3, referenceOnly: false }],
+    },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, new Set(["goithau"]));
+
+  assert.equal(model.state.goithau[0].tenGoiThau, "Local edit");
+  assert.equal(model.state.goithau[0].rowVersion, 3);
+  assert.equal(model.state.goithau[0].referenceOnly, false);
+  assert.equal(draft.snapshot.goithau[0].referenceOnly, false);
+});
+
+test("delta for an unrelated record leaves the active package draft intact", () => {
+  const localBase = { id: "pkg-01", keHoachId: "plan-01", rowVersion: 2, tenGoiThau: "Before" };
+  const otherBase = { id: "pkg-other", keHoachId: "plan-other", rowVersion: 4, tenGoiThau: "Other" };
+  const localEdit = { ...localBase, tenGoiThau: "Local edit" };
+  const draft = {
+    active: true, action: "edit", planId: "plan-01",
+    snapshot: { goithau: [structuredClone(localBase), structuredClone(otherBase)] },
+  };
+  const model = {
+    state: { goithau: [localEdit, { ...otherBase, rowVersion: 5, tenGoiThau: "Server edit" }] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(
+    model,
+    draft,
+    { goithau: [localEdit, otherBase] },
+    new Set(["goithau"]),
+  );
+
+  assert.deepEqual(model.state.goithau.find((row) => row.id === "pkg-01"), localEdit);
+  assert.equal(model.state.goithau.find((row) => row.id === "pkg-other").rowVersion, 5);
+});
+
+test("same-record business delta preserves stale rowVersion so a real concurrent edit conflicts", () => {
+  const baselinePackage = {
+    id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01",
+    rowVersion: 2, tenGoiThau: "Before",
+  };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(baselinePackage)] },
+  };
+  const localBefore = { goithau: [{ ...baselinePackage, tenGoiThau: "Local edit" }] };
+  const model = {
+    state: { goithau: [{ ...baselinePackage, rowVersion: 3, tenGoiThau: "Server edit" }] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, new Set(["goithau"]));
+
+  assert.equal(model.state.goithau[0].tenGoiThau, "Local edit");
+  assert.equal(model.state.goithau[0].rowVersion, 2);
+  assert.equal(draft.snapshot.goithau[0].rowVersion, 2);
+});
+
+test("server-added package becomes the draft baseline instead of an outgoing local change", () => {
+  const baselinePackage = {
+    id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01",
+    rowVersion: 2, tenGoiThau: "Existing",
+  };
+  const serverPackage = {
+    id: "pkg-server", rootId: "pkg-server-root", keHoachId: "plan-01",
+    rowVersion: 1, tenGoiThau: "Server added",
+  };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(baselinePackage)] },
+  };
+  const localBefore = { goithau: [structuredClone(baselinePackage)] };
+  const model = {
+    state: { goithau: [structuredClone(baselinePackage), structuredClone(serverPackage)] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, new Set(["goithau"]));
+
+  assert.deepEqual(model.state.goithau, [baselinePackage, serverPackage]);
+  assert.deepEqual(draft.snapshot.goithau, [baselinePackage, serverPackage]);
+});
+
+test("server deletion cannot erase a concurrent local edit from the active draft", () => {
+  const baselinePackage = {
+    id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01",
+    rowVersion: 2, tenGoiThau: "Before",
+  };
+  const localPackage = { ...baselinePackage, tenGoiThau: "Local edit" };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(baselinePackage)] },
+  };
+  const model = {
+    state: { goithau: [] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(
+    model,
+    draft,
+    { goithau: [structuredClone(localPackage)] },
+    new Set(["goithau"]),
+  );
+
+  assert.deepEqual(model.state.goithau, [localPackage]);
+  assert.deepEqual(draft.snapshot.goithau, [baselinePackage]);
+});
+
+test("concurrent server business edit keeps a local deletion on its stale baseline", () => {
+  const baselinePackage = {
+    id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01",
+    rowVersion: 2, tenGoiThau: "Before",
+  };
+  const serverPackage = { ...baselinePackage, rowVersion: 3, tenGoiThau: "Server edit" };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(baselinePackage)] },
+  };
+  const model = {
+    state: { goithau: [structuredClone(serverPackage)] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(
+    model,
+    draft,
+    { goithau: [] },
+    new Set(["goithau"]),
+  );
+
+  assert.deepEqual(model.state.goithau, []);
+  assert.deepEqual(draft.snapshot.goithau, [baselinePackage]);
 });
 
 test("imported revision commit excludes immutable predecessor plan and package rows", () => {
@@ -1007,8 +1367,8 @@ test("imported revision commit excludes immutable predecessor plan and package r
     },
   });
 
-  assert.ok(changes.upserts.kehoach.some((row) => row.id === "plan-00"));
-  assert.ok(changes.upserts.goithau.some((row) => row.id === "pkg-00"));
+  assert.deepEqual(changes.upserts.kehoach.map((row) => row.id), ["plan-01"]);
+  assert.deepEqual(changes.upserts.goithau.map((row) => row.id), ["pkg-01"]);
   const bounded = boundProcurementRevisionChanges(changes, "plan-01");
   assert.deepEqual(bounded.upserts.kehoach.map((row) => row.id), ["plan-01"]);
   assert.deepEqual(bounded.upserts.goithau.map((row) => row.id), ["pkg-01"]);
@@ -1211,6 +1571,85 @@ test("saving plan breakdown commits the new plan and package aggregate in one sy
   );
   const packageWrite = persisted.find(({ table }) => table === "goithau");
   assert.deepEqual(packageWrite.changes.upserts.map((row) => row.id), ["pkg-draft"]);
+  assert.equal(controller.planBreakdownDraft, null);
+});
+
+test("saving an edited plan 01 commits its changed aggregate exactly once", async () => {
+  const previousDocument = globalThis.document;
+  const emptyBody = { querySelectorAll: () => [] };
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "breakdown-plan-id") return { value: "plan-01" };
+      if (id.startsWith("tbody-breakdown-")) return emptyBody;
+      return null;
+    },
+  };
+  const baseline = {
+    chudautu: [],
+    kehoach: [{
+      id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1,
+      rowVersion: 3, tenKeHoach: "Before", isTongMucTuDong: false,
+    }],
+    goithau: [{
+      id: "pkg-01", rootId: "pkg-root", keHoachId: "plan-01",
+      rowVersion: 2, tenGoiThau: "Before",
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const state = structuredClone(baseline);
+  state.kehoach[0].tenKeHoach = "After";
+  state.goithau[0].tenGoiThau = "After";
+  state.assignments.push({
+    id: "assignment-01", targetId: "pkg-01", type: "goithau", empId: "expert-01",
+  });
+  const persisted = [];
+  let syncCount = 0;
+  const controller = {
+    tempPlanAction: "edit",
+    tempPlanData: { id: "plan-01", thoiGianDangMa: "" },
+    backupKeHoachState: structuredClone(baseline.kehoach),
+    backupGoiThauState: structuredClone(baseline.goithau),
+    planBreakdownDraft: {
+      active: true, action: "edit", planId: "plan-01", snapshot: structuredClone(baseline),
+    },
+    model: {
+      state,
+      parseVND: Number,
+      commitLocalMutation() {},
+      async persistChanges(table, changes) { persisted.push({ table, changes }); },
+      async flushMutationOutbox() {},
+    },
+    autoSync: async () => { syncCount += 1; return { ok: true }; },
+    updateBreakdownTotal() {},
+    closeModal() {},
+    view: {
+      renderKeHoachTable: async () => {},
+      renderGoiThauTable: async () => {},
+      customAlert: async () => {},
+    },
+  };
+
+  try {
+    await savePlanBreakdown.call(controller);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.equal(syncCount, 1);
+  assert.deepEqual(
+    persisted.find(({ table }) => table === "kehoach").changes.upserts.map((row) => row.id),
+    ["plan-01"],
+  );
+  assert.deepEqual(
+    persisted.find(({ table }) => table === "goithau").changes.upserts.map((row) => row.id),
+    ["pkg-01"],
+  );
+  assert.deepEqual(
+    persisted.find(({ table }) => table === "assignments").changes.upserts.map((row) => row.id),
+    ["assignment-01"],
+  );
   assert.equal(controller.planBreakdownDraft, null);
 });
 
@@ -1865,11 +2304,12 @@ test("back from breakdown reopens the same plan draft and keeps breakdown rows i
   assert.equal(controller.planBreakdownDraft.active, true);
 });
 
-test("plan breakdown footer uses the requested back and save labels", async () => {
+test("new plan breakdown exposes distinct intermediate and final save actions", async () => {
   const markup = await import("node:fs/promises").then(({ readFile }) => (
     readFile(new URL("../../views/modals/modal_plan_breakdown.html", import.meta.url), "utf8")
   ));
   assert.match(markup, /id="btn-back-plan-breakdown"[^>]*>Quay lại</);
+  assert.match(markup, /id="btn-save-plan-version-draft"[^>]*>Lưu phiên bản nháp</);
   assert.match(markup, /id="btn-save-plan-breakdown"[\s\S]*?Lưu kế hoạch/);
   assert.doesNotMatch(markup, />Bỏ qua</);
   assert.doesNotMatch(markup, /Lưu phân chia công việc/);

@@ -35,6 +35,8 @@ import {
 import { apiFetch, configureApiClient } from "../shared/apiClient.js";
 import { showLotWinnersModal as renderLotWinnersModal } from "../packages/lotWinnersModal.js";
 import { selectExpertVersion } from "../experts/ExpertVersionSelection.js";
+import { selectPackageVersion } from "../shared/versionResolver.js";
+import { hydratePlanVersionDraftSessions } from "../plans/PlanVersionDraftSession.js";
 import {
   WorkflowModuleLoader,
   workflowRequirementForMethod,
@@ -501,6 +503,7 @@ export class BiddingController {
         organizationId,
         priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname)
       });
+      await hydratePlanVersionDraftSessions(this.model);
       this.initializeStartupReconciliation();
       this._workspacePullGenerations?.clear?.();
       this._pendingDetailRecordLoads?.clear?.();
@@ -808,6 +811,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       organizationId: getActiveOrganizationId(),
       priorityKeys: startupPriorityKeys
     });
+    await hydratePlanVersionDraftSessions(this.model);
     this.initializeStartupReconciliation();
     this.markStartup("model:init");
     const banner = document.createElement("div");
@@ -920,10 +924,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.view.renderKeHoachTable();
     };
     const changePackageRowVersion = (root, selectedId) => {
-      if (!this.model.state.selectedPackageVersion) {
-        this.model.state.selectedPackageVersion = {};
-      }
-      this.model.state.selectedPackageVersion[root] = selectedId;
+      selectPackageVersion(this.model.state, root, selectedId);
       this.view.renderGoiThauTable();
     };
     const changeChuDauTuRowVersion = (root, selectedId) => {

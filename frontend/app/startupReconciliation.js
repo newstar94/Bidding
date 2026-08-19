@@ -322,6 +322,40 @@ export function reconcileRouteDataAtStartup(controller, {
   const run = (async () => {
     controller?.markStartup?.("route-data-sync:start");
     try {
+      const conflictRecoveryCount = Number(
+        controller?.model?.getConflictRecoveryCount?.() || 0,
+      );
+      if (conflictRecoveryCount > 0) {
+        const discarded = controller?.model?.discardAllConflictRecoveryDrafts?.() === true;
+        if (!discarded) {
+          const cleanupFailure = {
+            ok: false,
+            storageDegraded: true,
+            code: "CONFLICT_RECOVERY_CLEANUP_FAILED",
+          };
+          completeStartupReconciliation(controller, cleanupFailure, workspaceToken);
+          return false;
+        }
+        let pullResult = { ok: true, skipped: true, localMutationsPending: false };
+        if (typeof controller?.forceSyncData === "function") {
+          pullResult = await controller.forceSyncData(true, true, true);
+        }
+        if (!isCurrentWorkspace(controller, workspaceToken)) return false;
+        if (!pullResult?.ok) {
+          completeStartupReconciliation(controller, pullResult, workspaceToken);
+          return false;
+        }
+        if (pullResult?.localMutationsPending && typeof controller?.autoSync === "function") {
+          const replay = await controller.autoSync({ startupReconciliation: true });
+          if (!isCurrentWorkspace(controller, workspaceToken)) return false;
+          if (!replay?.ok) {
+            completeStartupReconciliation(controller, replay, workspaceToken);
+            return false;
+          }
+        }
+        completeStartupReconciliation(controller, { ok: true }, workspaceToken);
+        return true;
+      }
       const currentGeneration = Number(
         controller?.model?.getMutationOutboxGeneration?.() || 0,
       );

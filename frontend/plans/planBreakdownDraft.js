@@ -3,6 +3,7 @@ import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 
 export const PLAN_BREAKDOWN_DRAFT_TABLES = [
   "chudautu",
+  "chuyengia",
   "kehoach",
   "goithau",
   "goithauhanghoa",
@@ -17,10 +18,92 @@ function clone(value) {
     : JSON.parse(JSON.stringify(value));
 }
 
+const SERVER_OWNED_DRAFT_FIELDS = new Set([
+  "rowVersion", "expectedVersion", "syncVersion", "organizationId",
+  "createdAt", "updatedAt", "referenceOnly", "allVersions", "canEdit",
+  "_valid", "_comment", "_operation",
+]);
+
+function changedFieldNames(current = {}, baseline = {}) {
+  const fields = new Set([...Object.keys(current || {}), ...Object.keys(baseline || {})]);
+  return [...fields].filter((field) => (
+    !SERVER_OWNED_DRAFT_FIELDS.has(field)
+    && JSON.stringify(current?.[field]) !== JSON.stringify(baseline?.[field])
+  ));
+}
+
+export function rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, changedTables) {
+  if (!draft?.active || !draft?.snapshot || !localBefore) return false;
+  const changed = new Set(changedTables || []);
+  let rebased = false;
+  PLAN_BREAKDOWN_DRAFT_TABLES.forEach((table) => {
+    if (!changed.has(table)) return;
+    const baseline = draft.snapshot[table] || [];
+    const localRows = localBefore[table] || [];
+    const serverRows = model.state?.[table] || [];
+    const baselineById = new Map(baseline.map((row) => [String(row?.id || ""), row]));
+    const localById = new Map(localRows.map((row) => [String(row?.id || ""), row]));
+    const serverById = new Map(serverRows.map((row) => [String(row?.id || ""), row]));
+    const serverIds = new Set(serverById.keys());
+    const nextSnapshotById = new Map(baselineById);
+
+    serverById.forEach((serverRow, id) => {
+      const baseRow = baselineById.get(id);
+      const localRow = localById.get(id);
+      if (!baseRow) {
+        if (localRow) serverById.set(id, clone(localRow));
+        else nextSnapshotById.set(id, clone(serverRow));
+        return;
+      }
+      if (!localRow) {
+        const serverFields = changedFieldNames(serverRow, baseRow);
+        serverById.delete(id);
+        if (serverFields.length === 0) nextSnapshotById.set(id, clone(serverRow));
+        return;
+      }
+      const localFields = changedFieldNames(localRow, baseRow);
+      if (localFields.length === 0) {
+        nextSnapshotById.set(id, clone(serverRow));
+        return;
+      }
+      const serverFields = changedFieldNames(serverRow, baseRow);
+      if (serverFields.length > 0) {
+        serverById.set(id, clone(localRow));
+        return;
+      }
+      const merged = clone(serverRow);
+      localFields.forEach((field) => { merged[field] = clone(localRow[field]); });
+      serverById.set(id, merged);
+      nextSnapshotById.set(id, clone(serverRow));
+      rebased = true;
+    });
+
+    localById.forEach((localRow, id) => {
+      const baseRow = baselineById.get(id);
+      if (!baseRow && !serverById.has(id)) {
+        serverById.set(id, clone(localRow));
+        return;
+      }
+      if (baseRow && !serverById.has(id)) {
+        const localFields = changedFieldNames(localRow, baseRow);
+        if (localFields.length > 0) serverById.set(id, clone(localRow));
+        else nextSnapshotById.delete(id);
+      }
+    });
+    baselineById.forEach((_baseRow, id) => {
+      if (!localById.has(id) && !serverIds.has(id)) nextSnapshotById.delete(id);
+    });
+    model.state[table] = [...serverById.values()];
+    draft.snapshot[table] = [...nextSnapshotById.values()];
+    model.entityIndexes?.invalidate?.(table);
+  });
+  return rebased;
+}
+
 export function capturePlanBreakdownDraft(state, { planId, action } = {}) {
   const snapshot = {};
   PLAN_BREAKDOWN_DRAFT_TABLES.forEach((table) => {
-    snapshot[table] = clone(state?.[table] || []);
+    if (Array.isArray(state?.[table])) snapshot[table] = clone(state[table]);
   });
   return {
     active: true,
@@ -33,15 +116,20 @@ export function capturePlanBreakdownDraft(state, { planId, action } = {}) {
 export function isPlanBreakdownDraftActive(controller, planId) {
   const draft = controller?.planBreakdownDraft;
   return Boolean(
-    draft?.active
-    && draft.action === "create"
+    isPlanBreakdownEditSessionActive(controller)
     && String(draft.planId || "") === String(planId || ""),
   );
+}
+
+export function isPlanBreakdownEditSessionActive(controller) {
+  const draft = controller?.planBreakdownDraft;
+  return Boolean(draft?.active && ["create", "edit"].includes(draft.action));
 }
 
 export function restorePlanBreakdownDraft(model, draft) {
   if (!draft?.snapshot) return false;
   PLAN_BREAKDOWN_DRAFT_TABLES.forEach((table) => {
+    if (!Object.prototype.hasOwnProperty.call(draft.snapshot, table)) return;
     const liveRecords = model?.state?.[table] || [];
     const snapshotRecords = draft.snapshot[table] || [];
     const restored = restoreRecordSnapshot(
@@ -91,7 +179,18 @@ export function applyDraftAssignmentSelection(model, {
     String(assignment?.targetId || "") === target
     && String(assignment?.type || "") === assignmentType
   ));
-  const replacements = selected.map((empId) => ({
+  const existingByEmployee = new Map();
+  (model?.state?.assignments || []).forEach((assignment) => {
+    if (
+      String(assignment?.targetId || "") !== target
+      || String(assignment?.type || "") !== assignmentType
+    ) return;
+    const employeeId = String(assignment?.empId || "");
+    if (employeeId && !existingByEmployee.has(employeeId)) {
+      existingByEmployee.set(employeeId, assignment);
+    }
+  });
+  const replacements = selected.map((empId) => existingByEmployee.get(empId) || ({
     id: createId("assignments"),
     empId,
     targetId,
@@ -153,12 +252,25 @@ function removedIds(before, after) {
     .map((row) => row.id);
 }
 
+function changedRows(currentRows, previousRows) {
+  const previousById = new Map(
+    (previousRows || []).map((row) => [String(row?.id || ""), row]),
+  );
+  return (currentRows || []).filter((row) => {
+    const previous = previousById.get(String(row?.id || ""));
+    return previous === undefined || JSON.stringify(row) !== JSON.stringify(previous);
+  });
+}
+
 export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} } = {}) {
   const targetPlanId = String(planId || "");
   const targetPlan = (state?.kehoach || []).find(
     (plan) => String(plan?.id || "") === targetPlanId,
   );
-  const targetPlanRootId = String(targetPlan?.rootId || targetPlan?.id || "");
+  const currentPlans = targetPlan ? [targetPlan] : [];
+  const previousPlans = (snapshot.kehoach || []).filter(
+    (plan) => String(plan?.id || "") === targetPlanId,
+  );
   const currentPackages = (state?.goithau || []).filter(
     (pkg) => String(pkg?.keHoachId || "") === targetPlanId,
   );
@@ -168,13 +280,6 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
   const packageIds = new Set(
     [...currentPackages, ...previousPackages].map((pkg) => String(pkg?.id || "")),
   );
-  const packageRootIds = new Set(
-    currentPackages.map((pkg) => String(pkg?.rootId || pkg?.id || "")),
-  );
-  const packageFamilyRows = (state?.goithau || []).filter(
-    (pkg) => packageRootIds.has(String(pkg?.rootId || pkg?.id || "")),
-  );
-  packageFamilyRows.forEach((pkg) => packageIds.add(String(pkg?.id || "")));
   const currentTargetIds = new Set([targetPlanId, ...packageIds]);
   const currentAssignments = (state?.assignments || []).filter((assignment) => (
     (assignment.type === "kehoach" && String(assignment.targetId || "") === targetPlanId)
@@ -187,42 +292,62 @@ export function collectPlanBreakdownDraftChanges(state, { planId, snapshot = {} 
   const investorIds = new Set([
     String(targetPlan?.chuDauTuId || ""),
   ].filter(Boolean));
+  const currentGoods = rowsForIds(state?.goithauhanghoa, "goiThauId", packageIds);
+  const previousGoods = rowsForIds(snapshot.goithauhanghoa, "goiThauId", packageIds);
+  const currentOpeningInfo = rowsForIds(state?.thongtinmothau, "goiThauId", packageIds);
+  const previousOpeningInfo = rowsForIds(snapshot.thongtinmothau, "goiThauId", packageIds);
+  const currentBidderGoods = rowsForIds(state?.hanghoaduthaunhathau, "goiThauId", packageIds);
+  const previousBidderGoods = rowsForIds(snapshot.hanghoaduthaunhathau, "goiThauId", packageIds);
+  const currentExperts = state?.chuyengia || [];
+  const previousExperts = snapshot.chuyengia || [];
+  const changedExperts = changedRows(currentExperts, previousExperts)
+    .filter((expert) => expert?.isLatest == 1);
   const upserts = {
     chudautu: (state?.chudautu || []).filter((investor) => (
       investorIds.has(String(investor?.id || ""))
       && investor?.referenceOnly !== true
       && !(Number(investor?.rowVersion) > 0)
     )),
-    kehoach: (state?.kehoach || []).filter((plan) => (
-      String(plan?.rootId || plan?.id || "") === targetPlanRootId
-    )),
-    goithau: packageFamilyRows,
-    goithauhanghoa: rowsForIds(state?.goithauhanghoa, "goiThauId", packageIds),
-    thongtinmothau: rowsForIds(state?.thongtinmothau, "goiThauId", packageIds),
-    hanghoaduthaunhathau: rowsForIds(state?.hanghoaduthaunhathau, "goiThauId", packageIds),
-    assignments: currentAssignments,
+    kehoach: changedRows(currentPlans, previousPlans),
+    goithau: changedRows(currentPackages, previousPackages),
+    goithauhanghoa: changedRows(currentGoods, previousGoods),
+    thongtinmothau: changedRows(currentOpeningInfo, previousOpeningInfo),
+    hanghoaduthaunhathau: changedRows(currentBidderGoods, previousBidderGoods),
+    assignments: changedRows(currentAssignments, previousAssignments),
   };
   const previous = {
     chudautu: (snapshot.chudautu || []).filter(
       (investor) => investorIds.has(String(investor?.id || "")),
     ),
-    kehoach: (snapshot.kehoach || []).filter((plan) => (
-      String(plan?.rootId || plan?.id || "") === targetPlanRootId
-    )),
-    goithau: (snapshot.goithau || []).filter(
-      (pkg) => packageRootIds.has(String(pkg?.rootId || pkg?.id || "")),
-    ),
-    goithauhanghoa: rowsForIds(snapshot.goithauhanghoa, "goiThauId", packageIds),
-    thongtinmothau: rowsForIds(snapshot.thongtinmothau, "goiThauId", packageIds),
-    hanghoaduthaunhathau: rowsForIds(snapshot.hanghoaduthaunhathau, "goiThauId", packageIds),
+    kehoach: previousPlans,
+    goithau: previousPackages,
+    goithauhanghoa: previousGoods,
+    thongtinmothau: previousOpeningInfo,
+    hanghoaduthaunhathau: previousBidderGoods,
     assignments: previousAssignments,
+  };
+  const current = {
+    chudautu: (state?.chudautu || []).filter(
+      (investor) => investorIds.has(String(investor?.id || "")),
+    ),
+    kehoach: currentPlans,
+    goithau: currentPackages,
+    goithauhanghoa: currentGoods,
+    thongtinmothau: currentOpeningInfo,
+    hanghoaduthaunhathau: currentBidderGoods,
+    assignments: currentAssignments,
   };
   const deletions = {};
   Object.keys(upserts).forEach((table) => {
     if (table === "chudautu") return;
-    const ids = removedIds(previous[table], upserts[table]);
+    const ids = removedIds(previous[table], current[table]);
     if (ids.length) deletions[table] = ids;
   });
+  const removedExpertIds = removedIds(previousExperts, currentExperts);
+  if (changedExperts.length > 0 || removedExpertIds.length > 0) {
+    upserts.chuyengia = changedExperts;
+    if (removedExpertIds.length > 0) deletions.chuyengia = removedExpertIds;
+  }
   return { upserts, deletions };
 }
 

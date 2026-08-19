@@ -113,5 +113,13 @@ Thay đổi được người dùng tạo sau khi ảnh chụp cục bộ đã r
 _Avoid_: Mutation khởi động có sẵn, mutation đã được máy chủ xác nhận
 
 **Xung đột đồng bộ chưa giải quyết**:
-Mutation cục bộ đã bị máy chủ từ chối do phiên bản hoặc trạng thái có thẩm quyền thay đổi và vẫn được giữ bền vững cho đến khi retry/rebase thành công hoặc người dùng xác nhận bỏ riêng thay đổi đó.
-_Avoid_: Tự động server-wins, lỗi đã xử lý
+Mutation cục bộ đã bị máy chủ xác nhận từ chối bằng `ROW_VERSION_CONFLICT`; batch đó được cách ly khỏi outbox hoạt động, giữ tạm làm marker trong phiên hiện tại và tự động bỏ khi tải lại trang trước khi lấy server state mới nhất. Mutation khác không thuộc batch xung đột vẫn được bảo toàn.
+_Avoid_: Tự động merge field nhạy cảm, force overwrite, xóa toàn bộ outbox, áp lại conflict draft sau F5
+
+**Plan breakdown edit session**:
+Hydration/delta sau khi draft được mở phải rebase vào snapshot ba chiều, không ghi đè business edit local. Assignment clone không đổi phải giữ `id`/`rowVersion`; không phát sinh assignment mới chỉ vì form được lưu lại.
+_Avoid_: Pull ngay trước commit làm mất draft, thay identity assignment không đổi, gửi lại historical/unmodified rows
+
+**Plan version draft session**:
+Chuỗi snapshot của một kế hoạch mới chưa từng persist, được lưu bền vững theo workspace và chỉ commit toàn bộ qua final save nguyên tử; intermediate save chỉ sinh snapshot local và phiên bản kế tiếp.
+_Avoid_: Ghi từng phiên bản trung gian lên server, dùng outbox như draft chain, clear draft trước server acknowledgement
