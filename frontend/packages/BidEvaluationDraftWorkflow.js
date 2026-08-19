@@ -146,12 +146,17 @@ function resolveDirtyBidTargets({
   const targets = new Map();
   for (const dirtyBidId of dirtyBidIds) {
     const sourceId = String(dirtyBidId || "");
+    const source = capturedById.get(sourceId);
     const exact = authoritativeById.get(sourceId);
     if (exact) {
+      const sourceIdentity = logicalBidIdentity(source, requestedPackage);
+      const targetIdentity = logicalBidIdentity(exact, authoritativePackage);
+      if ((sourceIdentity || targetIdentity) && sourceIdentity !== targetIdentity) {
+        return { ok: false, targets: new Map() };
+      }
       targets.set(sourceId, exact);
       continue;
     }
-    const source = capturedById.get(sourceId);
     const identity = logicalBidIdentity(source, requestedPackage);
     const candidates = identity ? authoritativeByIdentity.get(identity) || [] : [];
     if (candidates.length !== 1) return { ok: false, targets: new Map() };
@@ -186,6 +191,46 @@ function collectRetargetedBidPatches({ rows, bids, dirtyState, targets, parseMon
     },
     parseMoney,
   });
+}
+
+function saveRetargetedRecovery({
+  controller,
+  recovery,
+  recoveryKey,
+  targetRecoveryKey,
+  recoverySaved,
+  targetResolution,
+  targetPackageId,
+  round,
+  requestedLotIds,
+  reportDraft,
+  bidPatches,
+}) {
+  if (!targetResolution.ok) {
+    return {
+      recoverySaved,
+      activeRecoveryKey: recoveryKey,
+      recoveryKeys: [recoveryKey],
+    };
+  }
+  const recoveryKeys = targetRecoveryKey === recoveryKey
+    ? [recoveryKey]
+    : [recoveryKey, targetRecoveryKey];
+  if (targetRecoveryKey !== recoveryKey) {
+    shareBidEvaluationDirtyState(controller, recoveryKey, targetRecoveryKey);
+  }
+  const targetRecoverySaved = recovery.save(targetRecoveryKey, {
+    packageId: targetPackageId,
+    round,
+    lotIds: requestedLotIds,
+    report: reportDraft,
+    bidderPatches: bidPatches,
+  });
+  return {
+    recoverySaved: recoverySaved || targetRecoverySaved,
+    activeRecoveryKey: targetRecoverySaved ? targetRecoveryKey : recoveryKey,
+    recoveryKeys,
+  };
 }
 
 function resolveAuthoritativeDraftLotDetails(pkg, requestedDetails) {
@@ -311,7 +356,7 @@ export async function executeBidEvaluationDraftSave({
     bidderPatches: capturedRecoveryBidPatches,
   });
   let activeRecoveryKey = recoveryKey;
-  const recoveryKeys = [recoveryKey];
+  let recoveryKeys = [recoveryKey];
   let failedStatus = recoverySaved
     ? "Chưa đồng bộ máy chủ · bản khôi phục vẫn còn trên thiết bị"
     : "Chưa đồng bộ máy chủ · khôi phục cục bộ không khả dụng";
@@ -368,24 +413,22 @@ export async function executeBidEvaluationDraftSave({
     report,
     includeExtraFields,
   });
-  if (targetResolution.ok) {
-    if (targetRecoveryKey !== recoveryKey) {
-      shareBidEvaluationDirtyState(controller, recoveryKey, targetRecoveryKey);
-      recoveryKeys.push(targetRecoveryKey);
-    }
-    const targetRecoverySaved = recovery.save(targetRecoveryKey, {
-      packageId: targetPackageId,
-      round,
-      lotIds: requestedLotIds,
-      report: reportDraft,
-      bidderPatches: bidPatches,
-    });
-    recoverySaved = recoverySaved || targetRecoverySaved;
-    if (targetRecoverySaved) activeRecoveryKey = targetRecoveryKey;
-    failedStatus = recoverySaved
-      ? "Chưa đồng bộ máy chủ · bản khôi phục vẫn còn trên thiết bị"
-      : "Chưa đồng bộ máy chủ · khôi phục cục bộ không khả dụng";
-  }
+  ({ recoverySaved, activeRecoveryKey, recoveryKeys } = saveRetargetedRecovery({
+    controller,
+    recovery,
+    recoveryKey,
+    targetRecoveryKey,
+    recoverySaved,
+    targetResolution,
+    targetPackageId,
+    round,
+    requestedLotIds,
+    reportDraft,
+    bidPatches,
+  }));
+  failedStatus = recoverySaved
+    ? "Chưa đồng bộ máy chủ · bản khôi phục vẫn còn trên thiết bị"
+    : "Chưa đồng bộ máy chủ · khôi phục cục bộ không khả dụng";
   if (evaluationShapeChanged(pkg, canonicalPackage)) {
     controller._bidEvaluationSaveStatusByKey ||= new Map();
     controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);

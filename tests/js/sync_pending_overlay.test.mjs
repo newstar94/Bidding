@@ -359,6 +359,47 @@ test("newer_patch_generation_is_not_acked_by_older_materialized_receipt", () => 
   assert.equal(outbox.snapshot().patches.records["record-a"].localValue, "generation-2");
 });
 
+test("conflict checkpoint contains only rejected generations and preserves newer work", () => {
+  const outbox = createOutbox();
+  const canonical = {
+    records: [
+      { id: "record-a", rowVersion: 4 },
+      { id: "record-b", rowVersion: 7 },
+    ],
+  };
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", value: "rejected" }],
+  });
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-b", value: "sent-old" }],
+  });
+  const sent = outbox.snapshotForSync(canonical);
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-b", value: "newer-local" }],
+  });
+  outbox.enqueue({
+    kind: "upsert",
+    table: "records",
+    records: [{ id: "record-c", value: "created-after-request" }],
+  });
+
+  const checkpoint = outbox.checkpointForReceipt(sent.snapshot);
+  outbox.ack(sent.snapshot);
+
+  assert.deepEqual(checkpoint.queue.patches.records, {
+    "record-a": { id: "record-a", value: "rejected" },
+  });
+  assert.equal(checkpoint.queue.patches.records["record-b"], undefined);
+  assert.equal(outbox.snapshot().patches.records["record-b"].value, "newer-local");
+  assert.equal(outbox.snapshot().upserts.records["record-c"].value, "created-after-request");
+});
+
 test("server_deleted_record_invalidates_unsendable_patch_without_resurrection", () => {
   const outbox = createOutbox();
   outbox.enqueue({

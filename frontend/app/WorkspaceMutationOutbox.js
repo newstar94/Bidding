@@ -159,6 +159,52 @@ export class WorkspaceMutationOutbox {
     };
   }
 
+  checkpointForReceipt(receipt) {
+    if (!receipt || typeof receipt !== "object") return null;
+    const queue = createEmptyMutationQueue(
+      this.queue.baseSyncVersion,
+      receipt.clientMutationId || this.queue.clientMutationId,
+    );
+    queue.revision = Number(receipt.revision || this.queue.revision || 0);
+    const copyRecords = (operation) => {
+      Object.entries(receipt[operation] || {}).forEach(([table, records]) => {
+        Object.entries(records || {}).forEach(([id, generation]) => {
+          const key = recordKey(operation === "patches" ? "patch" : "upsert", table, id);
+          if (this.recordGenerations.get(key) !== generation) return;
+          const record = this.queue[operation]?.[table]?.[id];
+          if (!record) return;
+          queue[operation][table] ||= {};
+          queue[operation][table][id] = cloneValue(record);
+        });
+      });
+    };
+    copyRecords("upserts");
+    copyRecords("patches");
+    Object.entries(receipt.dirtyTables || {}).forEach(([table, generation]) => {
+      if (this.tableGenerations.get(table) !== generation || !this.queue.dirtyTables?.[table]) return;
+      queue.dirtyTables[table] = true;
+    });
+    const deletionKeys = new Set();
+    Object.entries(receipt.deletes || {}).forEach(([key, generation]) => {
+      if (this.recordGenerations.get(key) !== generation) return;
+      const [, table, ...idParts] = key.split(":");
+      const id = idParts.join(":");
+      const deletion = this.queue.deletes.find(
+        (item) => item.table === table && String(item.id) === id,
+      );
+      if (!deletion) return;
+      queue.deletes.push(cloneValue(deletion));
+      deletionKeys.add(`${table}:${id}`);
+    });
+    if (!mutationQueueHasChanges(queue)) return null;
+    return {
+      queue,
+      localDeletions: this.localDeletions
+        .filter((item) => deletionKeys.has(`${item.table}:${String(item.id)}`))
+        .map((item) => cloneValue(item)),
+    };
+  }
+
   restore(checkpoint) {
     if (!checkpoint || typeof checkpoint !== "object") return false;
     this.queue = normalizeMutationQueue(cloneValue(checkpoint.queue), {

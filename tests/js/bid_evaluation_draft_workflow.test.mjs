@@ -669,6 +669,36 @@ test("draft_save_aborts_when_cloned_bid_identity_is_ambiguous", async () => {
   );
 });
 
+test("draft_save_aborts_when_authority_reuses_bid_id_for_a_different_contractor", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const latest = {
+    ...fixture.pkg,
+    id: "pkg-2",
+    phienBan: "02",
+    rowVersion: 99,
+  };
+  fixture.controller.model.state.goithau = [{ ...fixture.pkg, isLatest: 0 }, latest];
+  fixture.controller.model.state.thongtinmothau = [{
+    ...fixture.bids[0],
+    goiThauId: latest.id,
+    nhaThauId: "contractor-replacement",
+    rowVersion: 100,
+  }];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, false);
+  assert.deepEqual(fixture.staged, []);
+  assert.deepEqual(fixture.persisted, []);
+  assert.equal(
+    generalBidEvaluationRecoveryFor(fixture.controller)
+      .restore(fixture.recoveryKey)?.pendingServerSync,
+    true,
+  );
+});
+
 test("draft_save_targets_package_in_latest_plan_snapshot_before_package_version_number", async () => {
   const authority = deferred();
   const fixture = createController({ authority });

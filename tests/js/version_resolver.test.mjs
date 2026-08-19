@@ -5,6 +5,7 @@ import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { resolveLatestNhaThauVersionId } from "../../frontend/partners/NhaThauComponent.js";
 import { resolveLatestPackage } from "../../frontend/packages/detail/PackageDetailState.js";
 import {
+  resolveLatestPackageVersion,
   resolveLatestVersion,
   selectLatestVersion,
   selectLatestVersionsByRoot,
@@ -97,6 +98,18 @@ test("package resolution does not fall back to a historical plan snapshot", () =
 
   assert.equal(model.getLatestPackage(historicalPackage.id), null);
   assert.equal(model.getLatestPackage("pkg-root"), null);
+});
+
+test("package resolution handles missing and planless families deterministically", () => {
+  const planlessV1 = row("pkg-v1", "pkg-root", "01", 1);
+  const planlessV2 = row("pkg-v2", "pkg-root", "02", 0);
+
+  assert.equal(resolveLatestPackageVersion([], [], null), null);
+  assert.equal(resolveLatestPackageVersion(null, null, "missing"), null);
+  assert.equal(
+    resolveLatestPackageVersion([planlessV1, planlessV2], [], "pkg-root"),
+    planlessV2,
+  );
 });
 
 test("partner and contract list/single getters use the same version-first contract", () => {

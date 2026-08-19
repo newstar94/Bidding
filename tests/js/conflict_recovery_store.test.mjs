@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { WorkspaceConflictRecoveryStore } from "../../frontend/app/WorkspaceConflictRecoveryStore.js";
 
 function memoryStorage() {
@@ -64,68 +63,4 @@ test("repeated conflict for the same records replaces one recovery draft", () =>
 
   assert.equal(store.count(), 1);
   assert.equal(store.latest().checkpoint.queue.revision, 2);
-});
-
-test("model persists recovery before clearing and flushing the active outbox", async () => {
-  const storage = memoryStorage();
-  const recoveryStore = new WorkspaceConflictRecoveryStore({
-    storage,
-    createId: () => "recovery-1",
-  });
-  const checkpoint = {
-    queue: {
-      clientMutationId: "mutation-1",
-      baseSyncVersion: "11",
-      dirtyTables: {},
-      upserts: { assignments: { "assignment-1": { id: "assignment-1" } } },
-      patches: {},
-      deletes: [],
-      revision: 1,
-    },
-    localDeletions: [],
-  };
-  const calls = [];
-  const outbox = {
-    checkpoint: () => structuredClone(checkpoint),
-    discard() { calls.push("discard"); return true; },
-    async flush() { calls.push("flush"); },
-  };
-  const model = new BiddingModel();
-  model._getMutationOutbox = () => outbox;
-  model._getConflictRecoveryStore = () => recoveryStore;
-
-  const draft = await model.quarantineMutationBatch({
-    data: {
-      errors: [{ table: "assignments", id: "assignment-1", code: "ROW_VERSION_CONFLICT" }],
-    },
-    snapshot: { id: "receipt-1" },
-  });
-
-  assert.equal(draft.id, "recovery-1");
-  assert.deepEqual(calls, ["discard", "flush"]);
-  assert.deepEqual(recoveryStore.latest().checkpoint, checkpoint);
-});
-
-test("model never clears the active outbox when recovery persistence fails", async () => {
-  const calls = [];
-  const checkpoint = {
-    queue: {
-      clientMutationId: "mutation-1",
-      dirtyTables: {},
-      upserts: { goithau: { "package-1": { id: "package-1" } } },
-      patches: {},
-      deletes: [],
-    },
-    localDeletions: [],
-  };
-  const model = new BiddingModel();
-  model._getMutationOutbox = () => ({
-    checkpoint: () => checkpoint,
-    discard() { calls.push("discard"); },
-    async flush() { calls.push("flush"); },
-  });
-  model._getConflictRecoveryStore = () => ({ quarantine: () => null });
-
-  assert.equal(await model.quarantineMutationBatch({ data: {} }), null);
-  assert.deepEqual(calls, []);
 });

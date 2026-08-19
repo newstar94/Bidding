@@ -335,6 +335,134 @@ function activityModel(model) {
   };
 }
 
+test("model persists recovery before clearing and flushing the active outbox", async () => {
+  const checkpoint = {
+    queue: {
+      clientMutationId: "mutation-1",
+      baseSyncVersion: "11",
+      dirtyTables: {},
+      upserts: { assignments: { "assignment-1": { id: "assignment-1" } } },
+      patches: {},
+      deletes: [],
+      revision: 1,
+    },
+    localDeletions: [],
+  };
+  const calls = [];
+  let savedCheckpoint = null;
+  const model = new BiddingModel();
+  model._getMutationOutbox = () => ({
+    checkpoint: () => structuredClone(checkpoint),
+    discard() { calls.push("discard"); return true; },
+    async flush() { calls.push("flush"); },
+  });
+  model._getConflictRecoveryStore = () => ({
+    quarantine(value) {
+      savedCheckpoint = structuredClone(value);
+      return { id: "recovery-1", checkpoint: value };
+    },
+  });
+
+  const draft = await model.quarantineMutationBatch({ data: {}, snapshot: { id: "receipt-1" } });
+
+  assert.equal(draft.id, "recovery-1");
+  assert.deepEqual(calls, ["discard", "flush"]);
+  assert.deepEqual(savedCheckpoint, checkpoint);
+});
+
+test("model never clears the active outbox when recovery persistence fails", async () => {
+  const calls = [];
+  const model = new BiddingModel();
+  model._getMutationOutbox = () => ({
+    checkpoint: () => ({
+      queue: {
+        clientMutationId: "mutation-1",
+        dirtyTables: {},
+        upserts: { goithau: { "package-1": { id: "package-1" } } },
+        patches: {},
+        deletes: [],
+      },
+      localDeletions: [],
+    }),
+    discard() { calls.push("discard"); },
+    async flush() { calls.push("flush"); },
+  });
+  model._getConflictRecoveryStore = () => ({ quarantine: () => null });
+
+  assert.equal(await model.quarantineMutationBatch({ data: {} }), null);
+  assert.deepEqual(calls, []);
+});
+
+test("model restores the active outbox when quarantine flushing fails", async () => {
+  const checkpoint = {
+    queue: {
+      clientMutationId: "mutation-rollback",
+      dirtyTables: {},
+      upserts: { goithau: { "package-1": { id: "package-1" } } },
+      patches: {},
+      deletes: [],
+    },
+    localDeletions: [],
+  };
+  const calls = [];
+  let flushCount = 0;
+  const model = new BiddingModel();
+  model._getMutationOutbox = () => ({
+    checkpoint: () => structuredClone(checkpoint),
+    discard() { calls.push("discard"); },
+    restore(value) { calls.push(["restore", value]); return true; },
+    async flush() {
+      flushCount += 1;
+      calls.push(`flush-${flushCount}`);
+      if (flushCount === 1) throw new Error("disk unavailable");
+    },
+  });
+  const removed = [];
+  model._getConflictRecoveryStore = () => ({
+    quarantine: () => ({ id: "recovery-rollback" }),
+    remove(id) { removed.push(id); return true; },
+  });
+
+  assert.equal(await model.quarantineMutationBatch({ data: {} }), null);
+  assert.deepEqual(calls, ["discard", "flush-1", ["restore", checkpoint], "flush-2"]);
+  assert.deepEqual(removed, ["recovery-rollback"]);
+});
+
+test("model recovery restore enforces guards and removes a staged draft", async () => {
+  const model = new BiddingModel();
+  model.hasPendingMutationOutboxChanges = () => true;
+  assert.deepEqual(await model.restoreConflictRecoveryDraft("draft-1"), {
+    ok: false,
+    code: "ACTIVE_MUTATIONS_PENDING",
+  });
+
+  model.hasPendingMutationOutboxChanges = () => false;
+  model.getConflictRecoveryDrafts = () => [];
+  assert.deepEqual(await model.restoreConflictRecoveryDraft("missing"), {
+    ok: false,
+    code: "RECOVERY_DRAFT_NOT_FOUND",
+  });
+
+  const draft = { id: "draft-1", checkpoint: { queue: { revision: 1 } } };
+  model.getConflictRecoveryDrafts = () => [draft];
+  model._getMutationOutbox = () => ({ restore: () => false });
+  assert.deepEqual(await model.restoreConflictRecoveryDraft(draft.id), {
+    ok: false,
+    code: "RECOVERY_DRAFT_INVALID",
+  });
+
+  const calls = [];
+  model._getMutationOutbox = () => ({
+    restore(value) { calls.push(["restore", value]); return true; },
+    async flush() { calls.push("flush"); },
+  });
+  model._getConflictRecoveryStore = () => ({
+    remove(id) { calls.push(["remove", id]); return true; },
+  });
+  assert.deepEqual(await model.restoreConflictRecoveryDraft(draft.id), { ok: true, draft });
+  assert.deepEqual(calls, [["restore", draft.checkpoint], "flush", ["remove", draft.id]]);
+});
+
 test("hydrated_patch_without_loaded_canonical_record_is_still_reported_pending", () => {
   const model = modelWithColdCachePatch();
 

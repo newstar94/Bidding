@@ -721,7 +721,12 @@ export class BiddingModel {
   }
   async quarantineMutationBatch({ data, snapshot } = {}) {
     const outbox = this._getMutationOutbox();
-    const checkpoint = outbox.checkpoint();
+    const activeCheckpoint = outbox.checkpoint();
+    const scopedReceipt = snapshot && typeof outbox.checkpointForReceipt === "function";
+    const checkpoint = scopedReceipt
+      ? outbox.checkpointForReceipt(snapshot)
+      : activeCheckpoint;
+    if (!checkpoint) return null;
     if (!mutationQueueHasChanges(checkpoint.queue)) return null;
     const draft = this._getConflictRecoveryStore().quarantine(checkpoint, {
       ...data,
@@ -729,11 +734,12 @@ export class BiddingModel {
     });
     if (!draft) return null;
     try {
-      outbox.discard();
+      if (scopedReceipt) outbox.ack(snapshot);
+      else outbox.discard();
       await outbox.flush();
       return draft;
-    } catch (error) {
-      outbox.restore(checkpoint);
+    } catch (_error) {
+      outbox.restore(activeCheckpoint);
       try { await outbox.flush(); } catch { /* store exposes the durability failure */ }
       this._getConflictRecoveryStore().remove(draft.id);
       return null;
