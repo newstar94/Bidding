@@ -70,7 +70,8 @@ function updatePullFailureState(controller, syncStatusText, {
 
 export function finalizePulledSyncState(controller, timestamp = Date.now()) {
   const localMutationsPending = Boolean(
-    controller?.model?.buildMutationSyncPayload?.(),
+    controller?.model?.hasPendingMutationOutboxChanges?.()
+    || controller?.model?.buildMutationSyncPayload?.(),
   );
   const currentPhase = String(controller?._syncUxState?.phase || "");
   // A background pull can finish after an interrupted mutation has already

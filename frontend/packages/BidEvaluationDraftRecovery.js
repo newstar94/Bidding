@@ -63,6 +63,15 @@ export function bidEvaluationDirtyStateFor(controller, recoveryKey) {
   return controller._bidEvaluationDirtyStates.get(recoveryKey);
 }
 
+export function shareBidEvaluationDirtyState(controller, sourceKey, targetKey) {
+  if (!controller || !sourceKey || !targetKey || sourceKey === targetKey) {
+    return bidEvaluationDirtyStateFor(controller, sourceKey || targetKey);
+  }
+  const source = bidEvaluationDirtyStateFor(controller, sourceKey);
+  controller._bidEvaluationDirtyStates.set(targetKey, source);
+  return source;
+}
+
 const REPORT_FIELDS = Object.freeze({
   "danhgiahsdt-so-baocao": "soBaoCao",
   "danhgiahsdt-ngay-baocao": "ngayBaoCao",
@@ -167,10 +176,10 @@ export function bindBidEvaluationDraftTracking({
   const dirtyState = bidEvaluationDirtyStateFor(controller, recoveryKey);
   const recovery = generalBidEvaluationRecoveryFor(controller);
   const scheduleRecovery = () => {
-    recovery.schedule(recoveryKey, () => ({
+    const capturedSnapshot = structuredClone({
       packageId: pkg.id,
       round,
-      lotIds,
+      lotIds: [...lotIds],
       report: reportSnapshot(controller),
       bidderPatches: collectBidEvaluationDraftPatches({
         rows,
@@ -178,7 +187,8 @@ export function bindBidEvaluationDraftTracking({
         dirtyState,
         parseMoney: (value) => controller.model.parseVND(value),
       }),
-    }));
+    });
+    recovery.schedule(recoveryKey, () => capturedSnapshot);
     onChange();
   };
   Object.entries(REPORT_FIELDS).forEach(([id, field]) => {

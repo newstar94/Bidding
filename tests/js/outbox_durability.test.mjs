@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { forceSyncData } from "../../frontend/app/SyncPullService.js";
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
+import { WorkspaceMutationOutbox } from "../../frontend/app/WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "../../frontend/app/WorkspaceMutationOutboxStore.js";
 
 function clone(value) {
@@ -153,6 +154,87 @@ function queueWithPatch(id, value = id) {
   };
 }
 
+function outboxForStore(store) {
+  return new WorkspaceMutationOutbox({
+    store,
+    getBaseSyncVersion: () => "2",
+    createId: () => "upgraded-mutation",
+    isSyncedType: () => true,
+    normalizeRecord: (record) => clone(record),
+    serializeRecord: (record) => clone(record),
+  });
+}
+
+test("legacy_outbox_without_patches_hydrates_with_empty_patch_map", async () => {
+  const store = new WorkspaceMutationOutboxStore(dualBackends({
+    databaseValue: pendingEnvelope(),
+  }));
+
+  const hydrated = await store.hydrate({ createId: () => "new-id" });
+
+  assert.deepEqual(hydrated.queue.patches, {});
+});
+
+test("legacy_outbox_without_patches_can_replace_table_after_upgrade", async () => {
+  const store = new WorkspaceMutationOutboxStore(dualBackends({
+    databaseValue: pendingEnvelope(),
+  }));
+  const outbox = outboxForStore(store);
+  await outbox.hydrate();
+
+  assert.equal(outbox.enqueue({
+    kind: "replace-table",
+    table: "goithau",
+    records: [{ id: "package-2", name: "replacement" }],
+  }), true);
+  assert.deepEqual(outbox.snapshot().patches, {});
+});
+
+test("legacy_outbox_without_patches_can_enqueue_patch_after_upgrade", async () => {
+  const store = new WorkspaceMutationOutboxStore(dualBackends({
+    databaseValue: pendingEnvelope(),
+  }));
+  const outbox = outboxForStore(store);
+  await outbox.hydrate();
+
+  outbox.enqueue({
+    kind: "patch",
+    table: "goithau",
+    records: [{ id: "package-2", name: "patched" }],
+  });
+
+  assert.equal(outbox.snapshot().patches.goithau["package-2"].name, "patched");
+});
+
+test("legacy_outbox_pending_upserts_survive_patch_schema_upgrade", async () => {
+  const store = new WorkspaceMutationOutboxStore(dualBackends({
+    databaseValue: pendingEnvelope(),
+  }));
+
+  const hydrated = await store.hydrate({ createId: () => "new-id" });
+
+  assert.equal(hydrated.queue.upserts.goithau["package-1"].name, "LOCAL PENDING");
+  assert.deepEqual(hydrated.queue.deletes, []);
+  assert.equal(hydrated.queue.clientMutationId, "pending-mutation");
+  assert.equal(hydrated.queue.revision, 1);
+});
+
+test("legacy_dual_backend_outbox_merge_preserves_existing_mutations_and_initializes_patches", async () => {
+  const local = pendingEnvelope(2);
+  const indexed = pendingEnvelope(3);
+  indexed.queue.deletes = [{ table: "goithau", id: "package-deleted", expectedVersion: 4 }];
+  const store = new WorkspaceMutationOutboxStore(dualBackends({
+    localValue: local,
+    databaseValue: indexed,
+  }));
+
+  const hydrated = await store.hydrate({ createId: () => "new-id" });
+
+  assert.equal(hydrated.queue.upserts.goithau["package-1"].name, "LOCAL PENDING");
+  assert.deepEqual(hydrated.queue.deletes, indexed.queue.deletes);
+  assert.deepEqual(hydrated.queue.patches, {});
+});
+
 test("localStorage read failure still hydrates IndexedDB evidence but marks it untrusted", async () => {
   const backends = dualBackends({ databaseValue: pendingEnvelope() });
   backends.setLocalReadError(new Error("localStorage denied"));
@@ -216,7 +298,10 @@ test("corrupt local outbox cannot hide valid IndexedDB evidence", async () => {
   await store.flush();
 
   assert.equal(recovered.durability.state, "ready");
-  assert.deepEqual(backends.localValue.queue, pendingEnvelope(4).queue);
+  assert.deepEqual(backends.localValue.queue, {
+    ...pendingEnvelope(4).queue,
+    patches: {},
+  });
 });
 
 test("malformed localStorage JSON is explicit corruption rather than an empty queue", async () => {
@@ -275,8 +360,9 @@ test("a later healthy hydrate reconciles both backends and clears degraded state
 
   assert.equal(recovered.durability.state, "ready");
   assert.equal(recovered.durability.trusted, true);
-  assert.deepEqual(backends.localValue.queue, envelope.queue);
-  assert.deepEqual(backends.databaseValue.queue, envelope.queue);
+  const canonicalQueue = { ...envelope.queue, patches: {} };
+  assert.deepEqual(backends.localValue.queue, canonicalQueue);
+  assert.deepEqual(backends.databaseValue.queue, canonicalQueue);
   assert.equal(store.getStatus().state, "ready");
 });
 

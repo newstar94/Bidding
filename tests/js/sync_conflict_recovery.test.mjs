@@ -57,6 +57,49 @@ test("startup does not submit the same mutation again after a conflict", async (
   assert.deepEqual(calls, ["push", "pull"]);
 });
 
+test("startup rebases and replays a preserved outbox after idempotency key reuse", async () => {
+  const calls = [];
+  let pushCount = 0;
+  const controller = {
+    model: { workspaceScope: { key: "user:org-a" } },
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      pushCount += 1;
+      return pushCount === 1
+        ? { ok: false, status: 409, idempotencyKeyReused: true }
+        : { ok: true };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: true };
+    },
+  };
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.deepEqual(calls, ["push", "pull", "push"]);
+});
+
+test("startup pulls authoritative state and completes after quarantining a row conflict", async () => {
+  const calls = [];
+  const controller = {
+    model: { workspaceScope: { key: "user:org-a" } },
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: false, status: 409, conflictQuarantined: true, recoveryDraftId: "recovery-1" };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true, localMutationsPending: false };
+    },
+  };
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), true);
+  assert.deepEqual(calls, ["push", "pull"]);
+  assert.equal(getStartupReconciliationState(controller).phase, "RECONCILED");
+});
+
 
 test("startup flushes once, pulls once, and skips an empty replay", async () => {
   const calls = [];

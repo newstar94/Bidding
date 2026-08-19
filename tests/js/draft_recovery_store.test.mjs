@@ -81,6 +81,44 @@ function trackedRow(bidId, validityControl) {
   };
 }
 
+function trackedControl(value = "") {
+  const listeners = new Map();
+  return {
+    value,
+    disabled: false,
+    matches: () => false,
+    addEventListener(name, callback) {
+      if (!listeners.has(name)) listeners.set(name, []);
+      listeners.get(name).push(callback);
+    },
+    emit(name = "input") {
+      (listeners.get(name) || []).forEach((callback) => callback({ target: this }));
+    },
+  };
+}
+
+function recoveryController({ storage, reportNumber, organizationId = "org-a", epoch = 1 }) {
+  const reportControl = trackedControl(reportNumber);
+  const controls = new Map([["danhgiahsdt-so-baocao", reportControl]]);
+  let workspaceToken = `user-a:${organizationId}@${epoch}`;
+  const controller = {
+    model: {
+      workspaceScope: { userId: "user-a", organizationId },
+      workspaceStorage: storage,
+      getWorkspaceToken: () => workspaceToken,
+      isWorkspaceCurrent: (token) => token === workspaceToken,
+      parseVND: Number,
+    },
+    view: { getActiveElement: (id) => controls.get(id) || null },
+  };
+  return {
+    controller,
+    controls,
+    reportControl,
+    switchEpoch(nextEpoch) { workspaceToken = `user-a:${organizationId}@${nextEpoch}`; },
+  };
+}
+
 test("general evaluation local recovery reapplies a pending dirty field after reload", () => {
   const storage = memoryStorage();
   const pkg = { id: "pkg-1" };
@@ -175,4 +213,128 @@ test("draft_recovery_timer_from_workspace_a_cannot_write_workspace_b_storage", (
 
   assert.equal(storageB.values.size, 0);
   assert.equal(storageA.values.has("bf_general_evaluation_drafts_v1"), true);
+});
+
+test("draft_recovery_timer_from_a_cannot_capture_report_fields_from_b", () => {
+  const storageA = memoryStorage();
+  const fixture = recoveryController({ storage: storageA, reportNumber: "A-01" });
+  const scheduled = [];
+  const recoveryA = generalBidEvaluationRecoveryFor(fixture.controller);
+  recoveryA.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recoveryA.cancelTimer = () => {};
+  const binding = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+    rows: [],
+    bids: [],
+  });
+  fixture.reportControl.emit();
+  fixture.controls.set("danhgiahsdt-so-baocao", trackedControl("B-99"));
+
+  scheduled[0]();
+
+  assert.equal(
+    recoveryA.restore(binding.recoveryKey).draft.report.soBaoCao,
+    "A-01",
+  );
+});
+
+test("draft_recovery_timer_from_a_cannot_capture_bid_fields_from_b", () => {
+  const storageA = memoryStorage();
+  const fixture = recoveryController({ storage: storageA, reportNumber: "A-01" });
+  const validity = {
+    value: "Đạt",
+    disabled: false,
+    matches: (selector) => selector === ".mt-dg-hop-le",
+  };
+  const row = trackedRow("bid-1", validity);
+  const scheduled = [];
+  const recoveryA = generalBidEvaluationRecoveryFor(fixture.controller);
+  recoveryA.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recoveryA.cancelTimer = () => {};
+  const binding = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+    rows: [row],
+    bids: [{ id: "bid-1", rowVersion: 4, danhGiaHopLe: "" }],
+  });
+  row.emit(validity);
+  validity.value = "Không đạt";
+
+  scheduled[0]();
+
+  assert.equal(
+    recoveryA.restore(binding.recoveryKey).draft.bidderPatches[0].danhGiaHopLe,
+    "Đạt",
+  );
+});
+
+test("draft_recovery_scheduled_in_a_still_saves_a_snapshot_after_switch_to_b", () => {
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  const fixture = recoveryController({ storage: storageA, reportNumber: "A-01" });
+  const scheduled = [];
+  const recoveryA = generalBidEvaluationRecoveryFor(fixture.controller);
+  recoveryA.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recoveryA.cancelTimer = () => {};
+  const binding = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+  });
+  fixture.reportControl.emit();
+  fixture.controller.model.workspaceScope = { userId: "user-a", organizationId: "org-b" };
+  fixture.controller.model.workspaceStorage = storageB;
+  fixture.controls.set("danhgiahsdt-so-baocao", trackedControl("B-99"));
+
+  scheduled[0]();
+
+  assert.equal(recoveryA.restore(binding.recoveryKey).draft.report.soBaoCao, "A-01");
+  assert.equal(storageA.values.has("bf_general_evaluation_drafts_v1"), true);
+  assert.equal(storageB.values.size, 0);
+});
+
+test("same_org_new_epoch_recovery_timer_does_not_use_new_epoch_view", () => {
+  const storage = memoryStorage();
+  const fixture = recoveryController({ storage, reportNumber: "epoch-1", epoch: 1 });
+  const scheduled = [];
+  const recovery = generalBidEvaluationRecoveryFor(fixture.controller);
+  recovery.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recovery.cancelTimer = () => {};
+  const binding = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+  });
+  fixture.reportControl.emit();
+  fixture.switchEpoch(2);
+  fixture.controls.set("danhgiahsdt-so-baocao", trackedControl("epoch-2"));
+
+  scheduled[0]();
+
+  assert.equal(recovery.restore(binding.recoveryKey).draft.report.soBaoCao, "epoch-1");
+});
+
+test("recovery_debounce_keeps_latest_snapshot_within_same_workspace", () => {
+  const storage = memoryStorage();
+  const fixture = recoveryController({ storage, reportNumber: "first" });
+  const pending = new Map();
+  let timerId = 0;
+  const recovery = generalBidEvaluationRecoveryFor(fixture.controller);
+  recovery.scheduleTimer = (callback) => {
+    timerId += 1;
+    pending.set(timerId, callback);
+    return timerId;
+  };
+  recovery.cancelTimer = (id) => pending.delete(id);
+  const binding = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+  });
+  fixture.reportControl.emit();
+  fixture.reportControl.value = "second";
+  fixture.reportControl.emit();
+
+  [...pending.values()].forEach((callback) => callback());
+
+  assert.equal(recovery.restore(binding.recoveryKey).draft.report.soBaoCao, "second");
+  assert.equal(pending.size, 1);
 });

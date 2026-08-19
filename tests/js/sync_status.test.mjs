@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { deriveSyncStatus } from "../../frontend/app/syncStatus.js";
 import {
   getSyncActivitySnapshot,
@@ -225,6 +226,11 @@ test("sync status distinguishes durable, pending, validation, transport, and off
   assert.equal(deriveSyncStatus({ phase: "validationRejected" }).state, "validation-rejected");
   assert.equal(deriveSyncStatus({ phase: "transportError" }).state, "transport-error");
   assert.equal(deriveSyncStatus({ phase: "serverSaved", online: false }).state, "offline");
+  assert.deepEqual(deriveSyncStatus({ phase: "serverSaved", recoveryCount: 2 }), {
+    state: "recovery-pending",
+    label: "2 bản nháp cần phục hồi",
+    assertive: false,
+  });
 });
 
 
@@ -293,6 +299,107 @@ test("sync activity is settled only after queued work and outbox durability fini
       _workspaceMutations: new Set([{}]),
     },
   }).settled, false);
+});
+
+function modelWithColdCachePatch() {
+  const model = new BiddingModel();
+  model.state.thongtinmothau = [];
+  model._getMutationOutbox().restore({
+    queue: {
+      baseSyncVersion: "8",
+      clientMutationId: "cold-cache-patch",
+      dirtyTables: {},
+      upserts: {},
+      patches: {
+        thongtinmothau: {
+          "bid-1": {
+            id: "bid-1",
+            rowVersion: 4,
+            danhGiaHopLe: "Đạt",
+          },
+        },
+      },
+      deletes: [],
+      revision: 3,
+    },
+    localDeletions: [],
+  });
+  return model;
+}
+
+function activityModel(model) {
+  return {
+    buildMutationSyncPayload: () => model.buildMutationSyncPayload(),
+    getMutationOutboxStatus: () => ({ state: "ready" }),
+    hasPendingMutationOutboxChanges: () => model.hasPendingMutationOutboxChanges(),
+  };
+}
+
+test("hydrated_patch_without_loaded_canonical_record_is_still_reported_pending", () => {
+  const model = modelWithColdCachePatch();
+
+  assert.equal(model.buildMutationSyncPayload(), null);
+  assert.equal(model.hasPendingMutationOutboxChanges(), true);
+});
+
+test("unsendable_patch_does_not_make_sync_activity_settled", async () => {
+  const model = modelWithColdCachePatch();
+
+  assert.deepEqual(getSyncActivitySnapshot({ model: activityModel(model) }), {
+    settled: false,
+    phase: "idle",
+    hasPendingMutations: true,
+  });
+});
+
+test("after_canonical_hydration_patch_becomes_sendable_without_duplicate_queue_entry", () => {
+  const model = modelWithColdCachePatch();
+  model.state.thongtinmothau = [{ id: "bid-1", rowVersion: 4, tenNhaThau: "preserved" }];
+
+  const sent = model.buildMutationSyncPayload();
+
+  assert.deepEqual(sent.payload.thongtinmothau, [{
+    id: "bid-1",
+    expectedVersion: 4,
+    tenNhaThau: "preserved",
+    danhGiaHopLe: "Đạt",
+  }]);
+  assert.deepEqual(Object.keys(model.getMutationQueue().patches.thongtinmothau), ["bid-1"]);
+});
+
+test("after_patch_ack_sync_activity_can_become_settled", async () => {
+  const model = modelWithColdCachePatch();
+  model.state.thongtinmothau = [{ id: "bid-1", rowVersion: 4 }];
+  const sent = model.buildMutationSyncPayload();
+  model.clearCommittedMutationBatch(sent.snapshot);
+
+  assert.deepEqual(getSyncActivitySnapshot({ model: activityModel(model) }), {
+    settled: true,
+    phase: "idle",
+    hasPendingMutations: false,
+  });
+});
+
+test("auto_sync_keeps_local_pending_phase_when_raw_outbox_is_temporarily_unsendable", async () => {
+  const phases = [];
+  const controller = {
+    model: {
+      workspaceScope: { organizationId: "org-1" },
+      getWorkspaceToken: () => "workspace-1",
+      isWorkspaceCurrent: () => true,
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      hasPendingMutationOutboxChanges: () => true,
+      buildMutationSyncPayload: () => null,
+    },
+    updateSyncState(patch) { phases.push(patch); },
+  };
+
+  const result = await autoSync.call(controller);
+
+  assert.equal(result.skipped, true);
+  assert.equal(result.localMutationsPending, true);
+  assert.equal(phases.at(-1).phase, "localPending");
+  assert.equal(phases.some((patch) => patch.phase === "idle"), false);
 });
 
 test("auto sync repairs a duplicate pending plan before building its payload", async () => {
@@ -598,6 +705,128 @@ test("row-version rejection remains conflict and does not acknowledge the local 
   assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), true);
 });
 
+test("row-version rejection is quarantined without blocking later syncs", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: { setItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      async quarantineMutationBatch(details) {
+        calls.push(["quarantine", details]);
+        return { id: "recovery-1" };
+      },
+    },
+    updateSyncState(state) { calls.push(["state", state.phase]); },
+    view: {
+      showToast(title, _message, kind) { calls.push(["toast", title, kind]); },
+    },
+  };
+  const data = {
+    status: "conflict",
+    currentSyncVersion: 12,
+    errors: [{
+      table: "assignments",
+      id: "assignment-1",
+      code: "ROW_VERSION_CONFLICT",
+      serverRecord: { id: "assignment-1" },
+    }],
+  };
+  const snapshot = { id: "receipt-1" };
+
+  const result = await applyFailedPush(controller, { status: 409, data, snapshot });
+
+  assert.equal(result.conflictQuarantined, true);
+  assert.equal(result.conflict, undefined);
+  assert.equal(result.recoveryDraftId, "recovery-1");
+  assert.deepEqual(calls[0], ["quarantine", { data, snapshot }]);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), false);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "recoveryPending"), true);
+});
+
+test("background auto sync refreshes authoritative state after quarantining a conflict", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousDocument = globalThis.document;
+  const calls = [];
+  globalThis.document = { cookie: "csrf_token=test" };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    status: "conflict",
+    currentSyncVersion: 12,
+    errors: [{ table: "assignments", id: "assignment-1", code: "ROW_VERSION_CONFLICT" }],
+  }), { status: 409, headers: { "content-type": "application/json" } });
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: { setItem() {} },
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+    repairPendingDuplicatePlanVersions: () => null,
+    buildMutationSyncPayload: () => ({
+      payload: { assignments: [{ id: "assignment-1", expectedVersion: 3 }] },
+      snapshot: { id: "receipt-1" },
+    }),
+    async quarantineMutationBatch() { return { id: "recovery-1" }; },
+  };
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState() {},
+    async forceSyncData(_background, forceFull) {
+      calls.push(["pull", forceFull]);
+      return { ok: true, localMutationsPending: false };
+    },
+  };
+
+  try {
+    const result = await autoSync.call(controller);
+    assert.equal(result.conflictQuarantined, true);
+    assert.equal(result.authoritativeRefresh, true);
+    assert.deepEqual(calls, [["pull", true]]);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("idempotency key reuse renews the outbox identity without becoming a row conflict", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: { setItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      renewMutationBatchIdentity() {
+        calls.push("renew");
+        return true;
+      },
+      async flushMutationOutbox() { calls.push("flush"); },
+    },
+    updateSyncState(state) { calls.push(["state", state.phase]); },
+    view: {
+      showToast(_title, _message, kind) { calls.push(["toast", kind]); },
+    },
+  };
+
+  const result = await applyFailedPush(controller, {
+    status: 409,
+    data: {
+      code: "IDEMPOTENCY_KEY_REUSED",
+      message: "Mutation key was already used for different content.",
+    },
+    snapshot: { id: "receipt-reused" },
+  });
+
+  assert.equal(result.idempotencyKeyReused, true);
+  assert.equal(result.conflict, undefined);
+  assert.deepEqual(calls.slice(0, 2), ["renew", "flush"]);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), false);
+});
+
 test("double-click retry shares one push and one authoritative verification pull", async () => {
   let releasePush;
   const push = new Promise((resolve) => {
@@ -628,6 +857,55 @@ test("double-click retry shares one push and one authoritative verification pull
   releasePush({ ok: true });
   assert.deepEqual(await Promise.all([first, second]), [{ ok: true }, { ok: true }]);
   assert.deepEqual(calls, ["push", "pull"]);
+});
+
+test("manual sync applies a quarantined draft onto authoritative state", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      hasMutationOutboxDurabilityFailure: () => false,
+      hasStorageReadFailures: () => false,
+      hasPendingMutationOutboxChanges: () => false,
+      getConflictRecoveryCount: () => 1,
+      getConflictRecoveryDrafts: () => [{ id: "recovery-1" }],
+      async restoreConflictRecoveryDraft(id) {
+        calls.push(["restore", id]);
+        return { ok: true };
+      },
+    },
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    view: {
+      async customRecoveryDialog() {
+        calls.push("dialog");
+        return "apply";
+      },
+      showToast(title, _message, kind) { calls.push(["toast", title, kind]); },
+    },
+    async forceSyncData(_background, forceFull) {
+      calls.push(["pull", forceFull]);
+      return { ok: true, localMutationsPending: forceFull };
+    },
+    async autoSync() {
+      calls.push("push");
+      return { ok: true };
+    },
+    updateSyncState(state) { calls.push(["state", state.phase]); },
+  };
+
+  const result = await runManualSyncRetry(controller);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.recoveryApplied, true);
+  assert.deepEqual(calls.slice(0, 5), [
+    "dialog",
+    ["restore", "recovery-1"],
+    ["pull", true],
+    "push",
+    ["pull", false],
+  ]);
 });
 
 test("startup error retry reuses reconciliation verification without a duplicate pull", async () => {

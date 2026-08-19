@@ -105,6 +105,16 @@ export async function persistAndSync(controller, tableKeys, {
   } catch (error) {
     syncResult = { ok: false, transport: true, error };
   }
+  if (
+    syncResult?.idempotencyKeyReused === true
+    && syncResult?.retryable !== false
+    && typeof controller.forceSyncData === "function"
+    && typeof controller.autoSync === "function"
+  ) {
+    const pullResult = await controller.forceSyncData(false, true);
+    if (!pullResult?.ok) return pullResult;
+    syncResult = await controller.autoSync({ idempotencyRecoveryAttempted: true });
+  }
   if (usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
     await afterPersist();
   }

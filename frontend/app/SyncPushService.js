@@ -184,6 +184,60 @@ export async function applyFailedPush(controller, {
 }) {
   if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
   const validationErrors = getSyncValidationErrors(data);
+  if (status === 409 && data?.code === "IDEMPOTENCY_KEY_REUSED") {
+    const renewed = controller.model?.renewMutationBatchIdentity?.() === true;
+    if (renewed) await controller.model?.flushMutationOutbox?.();
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+    controller._syncConflict = null;
+    controller.updateSyncState({
+      phase: "localPending",
+      online: true,
+      message: "Đang làm mới yêu cầu đồng bộ · Thay đổi cục bộ vẫn được giữ lại",
+    });
+    controller.view?.showToast?.(
+      "Đang khôi phục đồng bộ",
+      "Ứng dụng đã giữ nguyên thay đổi cục bộ và đang đối chiếu lại dữ liệu máy chủ.",
+      "warning",
+    );
+    return {
+      ok: false,
+      status,
+      data,
+      idempotencyKeyReused: true,
+      retryable: renewed,
+    };
+  }
+  const hasRowVersionConflict = validationErrors.some(
+    (error) => error?.code === "ROW_VERSION_CONFLICT",
+  );
+  if (
+    (status === 409 || data.status === "conflict")
+    && hasRowVersionConflict
+    && typeof controller.model?.quarantineMutationBatch === "function"
+  ) {
+    const recoveryDraft = await controller.model.quarantineMutationBatch({ data, snapshot });
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+    if (recoveryDraft?.id) {
+      controller._syncConflict = null;
+      controller.updateSyncState({
+        phase: "recoveryPending",
+        online: true,
+        message: "Có bản nháp phục hồi cần xử lý",
+      });
+      controller.view?.showToast?.(
+        "Đã giữ bản nháp phục hồi",
+        "Dữ liệu máy chủ chưa bị thay đổi. Bạn có thể tiếp tục làm việc và áp lại bản nháp sau.",
+        "warning",
+      );
+      return {
+        ok: false,
+        status,
+        data,
+        conflictQuarantined: true,
+        recoveryDraftId: recoveryDraft.id,
+      };
+    }
+  }
   if (status === 409 || data.status === "conflict") {
     void reportSyncConflict({
       workspaceKey: workspace.workspaceKey,
@@ -392,8 +446,13 @@ export function autoSync(options = {}) {
     });
   }
   if (!mutationBatch) {
-    this.updateSyncState({ phase: "idle" });
-    return Promise.resolve({ ok: true, skipped: true });
+    const localMutationsPending = Boolean(this.model?.hasPendingMutationOutboxChanges?.());
+    this.updateSyncState(localMutationsPending
+      ? { phase: "localPending" }
+      : { phase: "idle" });
+    return Promise.resolve(localMutationsPending
+      ? { ok: true, skipped: true, localMutationsPending: true }
+      : { ok: true, skipped: true });
   }
   const { payload, snapshot } = mutationBatch;
   this.updateSyncState({ phase: "syncing" });
@@ -439,11 +498,30 @@ export function autoSync(options = {}) {
     if (this._autoSyncOwner === syncOwner) {
       this._autoSyncOwner = null;
       this._autoSyncQueued = false;
-      if (this._autoSyncPromise === trackedRequest) this._autoSyncPromise = null;
     }
   });
-  syncOwner.promise = trackedRequest;
+  let completion;
+  completion = trackedRequest.then(async (result) => {
+    if (
+      result?.conflictQuarantined === true
+      && options.startupReconciliation !== true
+      && typeof this.forceSyncData === "function"
+      && workspaceIsCurrent(this, workspace)
+    ) {
+      const pullResult = await this.forceSyncData(false, true);
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
+      return {
+        ...result,
+        authoritativeRefresh: pullResult?.ok === true,
+        refreshResult: pullResult,
+      };
+    }
+    return result;
+  }).finally(() => {
+    if (this._autoSyncPromise === completion) this._autoSyncPromise = null;
+  });
+  syncOwner.promise = completion;
   this._autoSyncOwner = syncOwner;
-  this._autoSyncPromise = trackedRequest;
-  return trackedRequest;
+  this._autoSyncPromise = completion;
+  return completion;
 }

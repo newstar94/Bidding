@@ -2,7 +2,8 @@ export function deriveSyncStatus({
   phase = "idle",
   online = true,
   lastSyncedAt = null,
-  message = ""
+  message = "",
+  recoveryCount = 0,
 } = {}) {
   if (phase === "storageError") {
     return { state: "storage-error", label: message || "Không thể đọc dữ liệu cục bộ", assertive: true };
@@ -27,6 +28,14 @@ export function deriveSyncStatus({
   }
   if (phase === "localPending") {
     return { state: "local-pending", label: "Đã lưu cục bộ · Chờ đồng bộ", assertive: false };
+  }
+  if (Number(recoveryCount) > 0 || phase === "recoveryPending") {
+    const count = Math.max(1, Number(recoveryCount) || 0);
+    return {
+      state: "recovery-pending",
+      label: `${count} bản nháp cần phục hồi`,
+      assertive: false,
+    };
   }
   if (lastSyncedAt) {
     const time = new Date(lastSyncedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });

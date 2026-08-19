@@ -1,6 +1,5 @@
 import {
-  packageVersionResolutionOptions,
-  resolveLatestVersion,
+  resolveLatestPackageVersion,
 } from "../../shared/versionResolver.js";
 
 export function resolvePackageDetailState({ tabs, currentTab, currentPackageId, packageId }) {
@@ -24,11 +23,11 @@ export function resolveLatestPackage(model, packageRef) {
     : null;
   if (modelLatest) return modelLatest;
 
-  return resolveLatestVersion(
+  return resolveLatestPackageVersion(
     packages,
+    model?.state?.kehoach,
     requested || requestedId,
-    packageVersionResolutionOptions(model?.state?.kehoach),
-  ) || requested || null;
+  );
 }
 
 export function selectPackageDetailTab(

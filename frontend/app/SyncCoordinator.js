@@ -15,6 +15,7 @@ const ACTIONABLE_PENDING_PHASES = new Set([
 ]);
 
 function isSyncConflict(result) {
+  if (result?.conflictQuarantined || result?.idempotencyKeyReused) return false;
   return Boolean(result?.conflict || result?.status === 409);
 }
 
@@ -25,6 +26,56 @@ function syncWorkspaceIsCurrent(controller, workspace) {
 
 function workspaceChangedResult() {
   return { ok: false, stale: true, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
+}
+
+async function resolveConflictRecoveryDraft(
+  controller,
+  workspace = captureWorkspace(controller),
+) {
+  const draft = controller.model?.getConflictRecoveryDrafts?.()[0] || null;
+  if (!draft) return null;
+  const choice = typeof controller.view?.customRecoveryDialog === "function"
+    ? await controller.view.customRecoveryDialog(
+      "Bản nháp phục hồi",
+      "Thay đổi này từng xung đột với dữ liệu máy chủ. Bạn có thể áp lại lên dữ liệu mới nhất, bỏ bản nháp hoặc để xử lý sau.",
+    )
+    : "later";
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (choice === "later" || !choice) {
+    return { ok: true, skipped: true, recoveryPending: true };
+  }
+  if (choice === "discard") {
+    const discarded = controller.model?.discardConflictRecoveryDraft?.(draft.id) === true;
+    controller.updateSyncState?.({ phase: "idle", message: "" });
+    if (discarded) {
+      controller.view?.showToast?.(
+        "Đã bỏ bản nháp",
+        "Dữ liệu đã lưu trên máy chủ không bị thay đổi.",
+        "success",
+      );
+    }
+    return { ok: discarded, recoveryDiscarded: discarded };
+  }
+  if (choice !== "apply") return { ok: true, skipped: true, recoveryPending: true };
+
+  const restored = await controller.model?.restoreConflictRecoveryDraft?.(draft.id);
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (!restored?.ok) return restored || { ok: false, code: "RECOVERY_RESTORE_FAILED" };
+  const rebased = await controller.forceSyncData?.(false, true);
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (!rebased?.ok) return rebased;
+  const pushed = await controller.autoSync?.();
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (!pushed?.ok) return pushed;
+  const verified = await controller.forceSyncData?.(false, false);
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (verified?.ok === false) return verified;
+  controller.view?.showToast?.(
+    "Đã phục hồi bản nháp",
+    "Thay đổi đã được áp lại lên dữ liệu mới nhất và lưu trên máy chủ.",
+    "success",
+  );
+  return { ...pushed, recoveryApplied: true, verified };
 }
 
 export async function resolvePendingSyncConflict(
@@ -100,8 +151,14 @@ export function shouldShowLocalPending(currentPhase) {
 
 export function getSyncActivitySnapshot(controller) {
   const outboxStatus = controller?.model?.getMutationOutboxStatus?.() || {};
+  const sendableMutation = controller?.model?.buildMutationSyncPayload?.() || null;
+  const hasRawPendingMutation = Boolean(
+    controller?.model?.hasPendingMutationOutboxChanges?.(),
+  );
   const hasPendingMutations = Number(controller?._pendingMutationCount || 0) > 0
-    || Boolean(controller?.model?.buildMutationSyncPayload?.());
+    || hasRawPendingMutation
+    || Boolean(sendableMutation);
+  const hasTemporarilyUnsendableMutation = hasRawPendingMutation && !sendableMutation;
   const hasActivePull = [...(controller?._workspacePullFlights?.values?.() || [])]
     .some((flights) => Number(flights?.size || 0) > 0);
   return {
@@ -114,7 +171,8 @@ export function getSyncActivitySnapshot(controller) {
       && !controller?._backgroundSyncRunning
       && !hasActivePull
       && Number(controller?.model?._workspaceMutations?.size || 0) === 0
-      && outboxStatus.state !== "pending",
+      && outboxStatus.state !== "pending"
+      && !hasTemporarilyUnsendableMutation,
     phase: String(controller?._syncUxState?.phase || "idle"),
     hasPendingMutations,
   };
@@ -162,6 +220,13 @@ export function runManualSyncRetry(controller) {
         return { ok: false, offline: true };
       }
       return { ok: false, reconciliationRequired: true };
+    }
+    const hasActiveMutations = Boolean(
+      controller.model?.hasPendingMutationOutboxChanges?.()
+      || controller.model?.buildMutationSyncPayload?.(),
+    );
+    if (Number(controller.model?.getConflictRecoveryCount?.() || 0) > 0 && !hasActiveMutations) {
+      return resolveConflictRecoveryDraft(controller, workspace);
     }
     const pushed = await controller.autoSync();
     if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();

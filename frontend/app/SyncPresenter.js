@@ -19,6 +19,9 @@ export function updateSyncState(patch = {}) {
     ...this._syncUxState,
     ...patch
   };
+  this._syncUxState.recoveryCount = Number(
+    this.model?.getConflictRecoveryCount?.() || 0,
+  );
   renderSyncStatus(
     document.getElementById("btn-force-sync"),
     this._syncUxState,

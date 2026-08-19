@@ -344,7 +344,10 @@ export function reconcileRouteDataAtStartup(controller, {
         completeStartupReconciliation(controller, initialPush, workspaceToken);
         return false;
       }
-      if (!initialPush?.ok) {
+      const recoveringReusedMutation = initialPush?.idempotencyKeyReused === true
+        && initialPush?.retryable !== false;
+      const quarantinedConflict = initialPush?.conflictQuarantined === true;
+      if (!initialPush?.ok && !recoveringReusedMutation && !quarantinedConflict) {
         completeStartupReconciliation(controller, initialPush, workspaceToken);
         return false;
       }

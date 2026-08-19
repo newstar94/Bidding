@@ -52,6 +52,42 @@ test("synced tables use explicit record-level changes", async () => {
   }]);
 });
 
+test("persist retries a renewed idempotency mutation after authoritative rebase", async () => {
+  const calls = [];
+  let pushCount = 0;
+  const controller = {
+    model: {
+      state: {},
+      async flushMutationOutbox() { calls.push("flush"); },
+      async persistChanges() { calls.push("persist"); },
+    },
+    async autoSync() {
+      calls.push("push");
+      pushCount += 1;
+      return pushCount === 1
+        ? { ok: false, status: 409, idempotencyKeyReused: true }
+        : { ok: true, recovered: true };
+    },
+    async forceSyncData(isBackground, forceFull) {
+      calls.push(["pull", isBackground, forceFull]);
+      return { ok: true, localMutationsPending: true };
+    },
+  };
+
+  const result = await persistAndSync(controller, "goithau", {
+    changes: { upserts: { goithau: [{ id: "pkg-1" }] } },
+  });
+
+  assert.deepEqual(result, { ok: true, recovered: true });
+  assert.deepEqual(calls, [
+    "persist",
+    "flush",
+    "push",
+    ["pull", false, true],
+    "push",
+  ]);
+});
+
 test("startup_does_not_commit_a_stale_package_before_authoritative_reconciliation", async () => {
   const calls = [];
   let releaseBoundary;

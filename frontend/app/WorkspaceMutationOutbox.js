@@ -337,14 +337,6 @@ export class WorkspaceMutationOutbox {
 
   ack(receipt) {
     if (!receipt || !mutationQueueHasChanges(this.queue)) return false;
-    if (
-      receipt.clientMutationId === this.queue.clientMutationId
-      && Number(receipt.revision) === Number(this.queue.revision)
-    ) {
-      this._clear();
-      return true;
-    }
-
     let changed = false;
     Object.entries(receipt.upserts || {}).forEach(([table, records]) => {
       Object.entries(records || {}).forEach(([id, generation]) => {
@@ -553,6 +545,13 @@ export class WorkspaceMutationOutbox {
     return true;
   }
 
+  renewClientMutationId() {
+    if (!mutationQueueHasChanges(this.queue)) return false;
+    this._touchForNewPayload();
+    this._persist();
+    return true;
+  }
+
   _enqueueUpserts(table, records) {
     if (!table || !this.isSyncedType(table)) return false;
     const validRecords = (Array.isArray(records) ? records : [records]).filter(hasRecordId);
@@ -679,6 +678,15 @@ export class WorkspaceMutationOutbox {
       if (patch && patch.rowVersion !== rowVersion) {
         patch.rowVersion = rowVersion;
         changed = true;
+      }
+      for (const deletion of [this.queue.deletes, this.localDeletions]) {
+        const queuedDelete = deletion.find(
+          (item) => item?.table === table && String(item?.id || "") === id,
+        );
+        if (queuedDelete && queuedDelete.expectedVersion !== rowVersion) {
+          queuedDelete.expectedVersion = rowVersion;
+          changed = true;
+        }
       }
     });
     if (changed) this._touchForNewPayload();

@@ -77,6 +77,33 @@ test("outbox only acknowledges the generations that were sent", async () => {
   await outbox.flush();
 });
 
+test("older_upsert_response_advances_newer_delete_expected_version_without_acknowledging_it", () => {
+  const { outbox } = createOutbox();
+  outbox.enqueue({
+    kind: "upsert",
+    table: "goithau",
+    records: [{ id: "package-1", rowVersion: 4 }],
+  });
+  const upsertReceipt = outbox.snapshotForSync({}).snapshot;
+  outbox.enqueue({
+    kind: "delete",
+    table: "goithau",
+    records: [{ id: "package-1", rowVersion: 4 }],
+  });
+
+  outbox.enqueue({
+    kind: "server-row-version",
+    entries: [{ table: "goithau", id: "package-1", rowVersion: 5 }],
+  });
+  outbox.ack(upsertReceipt);
+
+  assert.deepEqual(outbox.snapshot().deletes, [{
+    table: "goithau",
+    id: "package-1",
+    expectedVersion: 5,
+  }]);
+});
+
 
 test("outbox hydrate, restore, rebase, discard and rejection edges are durable", async () => {
   assert.throws(() => new WorkspaceMutationOutbox(), /durable store/u);

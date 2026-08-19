@@ -18,13 +18,44 @@ export function normalizeMutationQueue(queue, { baseSyncVersion = "0", createId 
   normalized.clientMutationId = normalized.clientMutationId || createId();
   normalized.dirtyTables = normalized.dirtyTables && typeof normalized.dirtyTables === "object" ? normalized.dirtyTables : {};
   normalized.upserts = normalized.upserts && typeof normalized.upserts === "object" ? normalized.upserts : {};
-  if (normalized.patches !== undefined
-    && (!normalized.patches || typeof normalized.patches !== "object")) {
-    normalized.patches = {};
-  }
+  normalized.patches = normalized.patches && typeof normalized.patches === "object"
+    ? normalized.patches
+    : {};
   normalized.deletes = Array.isArray(normalized.deletes) ? normalized.deletes : [];
   normalized.revision = Number.isFinite(Number(normalized.revision)) ? Number(normalized.revision) : 0;
   return normalized;
+}
+
+function filterReceiptBySentOperations(snapshot, sent) {
+  if (!snapshot || typeof snapshot !== "object") return snapshot;
+  const filterRecords = (records = {}, sentRecords = {}) => Object.fromEntries(
+    Object.entries(records).flatMap(([table, generations]) => {
+      const ids = sentRecords[table];
+      if (!ids) return [];
+      const filtered = Object.fromEntries(
+        Object.entries(generations || {}).filter(([id]) => ids.has(String(id))),
+      );
+      return Object.keys(filtered).length > 0 ? [[table, filtered]] : [];
+    }),
+  );
+  return {
+    ...snapshot,
+    upserts: filterRecords(snapshot.upserts, sent.upserts),
+    patches: filterRecords(snapshot.patches, sent.patches),
+    deletes: Object.fromEntries(
+      Object.entries(snapshot.deletes || {}).filter(([key]) => sent.deletes.has(key)),
+    ),
+    dirtyTables: Object.fromEntries(
+      Object.entries(snapshot.dirtyTables || {})
+        .filter(([table]) => sent.dirtyTables.has(table)),
+    ),
+  };
+}
+
+function markSentRecord(target, table, id) {
+  if (id === undefined || id === null || String(id) === "") return;
+  target[table] ||= new Set();
+  target[table].add(String(id));
 }
 
 export function mutationQueueHasChanges(queue = {}) {
@@ -47,6 +78,12 @@ export function buildMutationPayload({
     baseSyncVersion: queue.baseSyncVersion,
     deletions: []
   };
+  const sent = {
+    dirtyTables: new Set(),
+    upserts: {},
+    patches: {},
+    deletes: new Set(),
+  };
   const queueSnapshot = snapshot === undefined
     ? JSON.parse(JSON.stringify(queue))
     : snapshot;
@@ -55,6 +92,7 @@ export function buildMutationPayload({
     payload[type] = Array.isArray(state[type])
       ? state[type].map((record) => normalizeRecord(record, type))
       : [];
+    sent.dirtyTables.add(type);
   });
   Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
     if (!isSyncedType(type) || payload[type]) return;
@@ -62,6 +100,7 @@ export function buildMutationPayload({
       .map((record) => normalizeRecord(record, type));
     if (records.length > 0) {
       payload[type] = records;
+      Object.keys(recordsById || {}).forEach((id) => markSentRecord(sent.upserts, type, id));
     }
   });
   Object.entries(queue.patches || {}).forEach(([type, recordsById]) => {
@@ -71,9 +110,11 @@ export function buildMutationPayload({
         .filter((record) => record?.id !== undefined && record?.id !== null)
         .map((record) => [String(record.id), record]),
     );
-    const materialized = Object.values(recordsById || {}).flatMap((patch) => {
+    const materialized = Object.entries(recordsById || {}).flatMap(([id, patch]) => {
       const canonical = canonicalById.get(String(patch?.id || ""));
-      return canonical ? [normalizeRecord(applyRecordPatch(canonical, patch), type)] : [];
+      if (!canonical) return [];
+      markSentRecord(sent.patches, type, id);
+      return [normalizeRecord(applyRecordPatch(canonical, patch), type)];
     });
     if (materialized.length === 0) return;
     const existing = Array.isArray(payload[type]) ? payload[type] : [];
@@ -82,6 +123,10 @@ export function buildMutationPayload({
     payload[type] = [...byId.values()];
   });
   const deleteMap = new Map();
+  (queue.deletes || []).forEach((item) => {
+    if (!item?.table || !item?.id) return;
+    sent.deletes.add(`delete:${item.table}:${String(item.id)}`);
+  });
   [...(queue.deletes || []), ...(localDeletions || [])].forEach((item) => {
     if (!item?.table || !item?.id) return;
     deleteMap.set(`${item.table}::${item.id}`, {
@@ -93,7 +138,7 @@ export function buildMutationPayload({
   payload.deletions = [...deleteMap.values()];
   const hasUpserts = Object.keys(payload).some((key) => !["clientMutationId", "baseSyncVersion", "deletions"].includes(key));
   return hasUpserts || payload.deletions.length
-    ? { payload, snapshot: queueSnapshot }
+    ? { payload, snapshot: filterReceiptBySentOperations(queueSnapshot, sent) }
     : null;
 }
 

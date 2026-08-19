@@ -64,6 +64,32 @@ export function resolveLatestVersion(records, reference, options = {}) {
   );
 }
 
+export function resolveLatestPackageVersion(packages, plans, reference) {
+  if (!reference) return null;
+  const packageList = Array.isArray(packages) ? packages : [];
+  const planList = Array.isArray(plans) ? plans : [];
+  const requested = typeof reference === "object"
+    ? reference
+    : packageList.find((pkg) => String(pkg?.id || "") === String(reference));
+  const familyRoot = requested ? versionRootId(requested) : String(reference);
+  const family = packageList.filter((pkg) => versionRootId(pkg) === familyRoot);
+  const familyReference = requested || family[0] || null;
+  if (!familyReference) return null;
+
+  const requestedPlan = planList.find(
+    (plan) => String(plan?.id || "") === String(familyReference?.keHoachId || ""),
+  );
+  if (requestedPlan) {
+    const latestPlan = resolveLatestVersion(planList, requestedPlan);
+    const latestSnapshotFamily = family.filter(
+      (pkg) => String(pkg?.keHoachId || "") === String(latestPlan?.id || ""),
+    );
+    return selectLatestVersion(latestSnapshotFamily);
+  }
+
+  return selectLatestVersion(family, packageVersionResolutionOptions(planList));
+}
+
 export function selectLatestVersionsByRoot(records, options = {}) {
   const latestByRoot = new Map();
   (Array.isArray(records) ? records : []).forEach((record) => {

@@ -14,6 +14,8 @@ import { TABLE_PAGE_SIZE } from "../shared/TablePagination.js";
 import { BrowserDB, BrowserDBError } from "./BrowserDB.js";
 import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
+import { WorkspaceConflictRecoveryStore } from "./WorkspaceConflictRecoveryStore.js";
+import { mutationQueueHasChanges } from "./mutationQueue.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
 import { EntityIndexes } from "./EntityIndexes.js";
 import {
@@ -29,6 +31,7 @@ import {
 import { clearWorkspaceRenderCaches } from "../shared/workspaceRenderCache.js";
 import {
   packageVersionResolutionOptions,
+  resolveLatestPackageVersion,
   selectLatestVersion,
   selectLatestVersionsByRoot,
   versionRootId,
@@ -127,6 +130,8 @@ export class BiddingModel {
     this._mutationOutboxStore = null;
     this._mutationOutboxStoreStorage = null;
     this._mutationOutboxStoreDatabase = null;
+    this._conflictRecoveryStore = null;
+    this._conflictRecoveryStoreStorage = null;
     this._workspaceEpoch = 0;
     this._workspaceRequestControllers = new Set();
     this._workspaceMutations = new Set();
@@ -320,6 +325,8 @@ export class BiddingModel {
     this._mutationOutboxStore = null;
     this._mutationOutboxStoreStorage = null;
     this._mutationOutboxStoreDatabase = null;
+    this._conflictRecoveryStore = null;
+    this._conflictRecoveryStoreStorage = null;
   }
 
   async deactivateWorkspace() {
@@ -693,6 +700,64 @@ export class BiddingModel {
   async flushMutationOutbox() {
     await this._getMutationOutbox().flush();
   }
+  _getConflictRecoveryStore() {
+    if (
+      !this._conflictRecoveryStore
+      || this._conflictRecoveryStoreStorage !== this.workspaceStorage
+    ) {
+      this._conflictRecoveryStore = new WorkspaceConflictRecoveryStore({
+        storage: this.workspaceStorage,
+        createId: createUUID,
+      });
+      this._conflictRecoveryStoreStorage = this.workspaceStorage;
+    }
+    return this._conflictRecoveryStore;
+  }
+  getConflictRecoveryDrafts() {
+    return this._getConflictRecoveryStore().list();
+  }
+  getConflictRecoveryCount() {
+    return this._getConflictRecoveryStore().count();
+  }
+  async quarantineMutationBatch({ data, snapshot } = {}) {
+    const outbox = this._getMutationOutbox();
+    const checkpoint = outbox.checkpoint();
+    if (!mutationQueueHasChanges(checkpoint.queue)) return null;
+    const draft = this._getConflictRecoveryStore().quarantine(checkpoint, {
+      ...data,
+      receiptId: snapshot?.id || null,
+    });
+    if (!draft) return null;
+    try {
+      outbox.discard();
+      await outbox.flush();
+      return draft;
+    } catch (error) {
+      outbox.restore(checkpoint);
+      try { await outbox.flush(); } catch { /* store exposes the durability failure */ }
+      this._getConflictRecoveryStore().remove(draft.id);
+      return null;
+    }
+  }
+  async restoreConflictRecoveryDraft(id) {
+    if (this.hasPendingMutationOutboxChanges()) {
+      return { ok: false, code: "ACTIVE_MUTATIONS_PENDING" };
+    }
+    const draft = this.getConflictRecoveryDrafts().find(
+      (item) => String(item.id) === String(id),
+    );
+    if (!draft?.checkpoint) return { ok: false, code: "RECOVERY_DRAFT_NOT_FOUND" };
+    const restored = this._getMutationOutbox().restore(draft.checkpoint);
+    if (!restored) return { ok: false, code: "RECOVERY_DRAFT_INVALID" };
+    await this._getMutationOutbox().flush();
+    if (!this._getConflictRecoveryStore().remove(draft.id)) {
+      return { ok: false, code: "RECOVERY_DRAFT_REMOVE_FAILED" };
+    }
+    return { ok: true, draft };
+  }
+  discardConflictRecoveryDraft(id) {
+    return this._getConflictRecoveryStore().remove(id);
+  }
   async hydrateMutationOutbox(options = {}) {
     const snapshot = await this._getMutationOutbox().hydrate(options);
     this._applyMutationOutboxStatus(this._getMutationOutboxStore().getStatus());
@@ -832,6 +897,12 @@ export class BiddingModel {
   }
   buildMutationSyncPayload() {
     return this._getMutationOutbox().snapshotForSync(this.state);
+  }
+  hasPendingMutationOutboxChanges() {
+    return mutationQueueHasChanges(this._getMutationOutbox().snapshot());
+  }
+  renewMutationBatchIdentity() {
+    return this._getMutationOutbox().renewClientMutationId();
   }
   getMutationOutboxGeneration() {
     return Number(this._getMutationOutbox().generation || 0);
@@ -1423,10 +1494,11 @@ export class BiddingModel {
     const pkg = packageIndex.get(String(packageId));
     const family = rootIndex.get(pkg ? versionRootId(pkg) : String(packageId)) || [];
     if (!pkg && family.length === 0) return null;
-    return selectLatestVersion(
+    return resolveLatestPackageVersion(
       family,
-      packageVersionResolutionOptions(this.state.kehoach),
-    ) || pkg;
+      this.state.kehoach,
+      pkg || packageId,
+    );
   }
   getLatestContract(contractId) {
     if (!contractId) return null;

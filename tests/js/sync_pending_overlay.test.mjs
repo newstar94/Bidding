@@ -233,6 +233,231 @@ test("validation_rejection_removes_only_rejected_partial_patch", () => {
   });
 });
 
+test("unsendable_patch_is_not_in_receipt", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "pending" }],
+  });
+  outbox.enqueue({
+    kind: "upsert",
+    table: "records",
+    records: [{ id: "record-b", localValue: "sendable" }],
+  });
+
+  const sent = outbox.snapshotForSync({ records: [] });
+
+  assert.deepEqual(sent.payload.records, [{ id: "record-b", localValue: "sendable" }]);
+  assert.equal(sent.snapshot.patches?.records?.["record-a"], undefined);
+  assert.equal(Number.isInteger(sent.snapshot.upserts.records["record-b"]), true);
+});
+
+test("mixed_batch_success_does_not_ack_patch_missing_canonical_record", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "pending" }],
+  });
+  outbox.enqueue({
+    kind: "upsert",
+    table: "records",
+    records: [{ id: "record-b", localValue: "sendable" }],
+  });
+
+  const sent = outbox.snapshotForSync({ records: [] });
+  outbox.ack(sent.snapshot);
+
+  assert.deepEqual(outbox.snapshot().patches.records["record-a"], {
+    id: "record-a",
+    rowVersion: 4,
+    localValue: "pending",
+  });
+  assert.equal(outbox.snapshot().upserts.records?.["record-b"], undefined);
+});
+
+test("idempotency_recovery_rotates_client_mutation_id_without_discarding_pending_changes", () => {
+  let sequence = 0;
+  const outbox = createOutbox({
+    createId: () => `mutation-${++sequence}`,
+  });
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "pending" }],
+  });
+  const before = outbox.snapshot();
+
+  assert.equal(outbox.renewClientMutationId(), true);
+
+  const after = outbox.snapshot();
+  assert.notEqual(after.clientMutationId, before.clientMutationId);
+  assert.equal(after.revision, before.revision + 1);
+  assert.deepEqual(after.patches, before.patches);
+  assert.deepEqual(after.upserts, before.upserts);
+  assert.deepEqual(after.deletes, before.deletes);
+});
+
+test("patch_missing_canonical_survives_multiple_successful_unrelated_syncs", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "pending" }],
+  });
+
+  for (const id of ["record-b", "record-c"]) {
+    outbox.enqueue({ kind: "upsert", table: "records", records: [{ id }] });
+    const sent = outbox.snapshotForSync({ records: [] });
+    outbox.ack(sent.snapshot);
+    assert.equal(outbox.snapshot().patches.records["record-a"].localValue, "pending");
+  }
+});
+
+test("patch_becomes_sendable_after_canonical_hydration_and_is_then_acknowledged", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "pending" }],
+  });
+
+  assert.equal(outbox.snapshotForSync({ records: [] }), null);
+  const sent = outbox.snapshotForSync({
+    records: [{ id: "record-a", rowVersion: 4, serverValue: "preserved" }],
+  });
+  assert.deepEqual(sent.payload.records, [{
+    id: "record-a",
+    rowVersion: 4,
+    serverValue: "preserved",
+    localValue: "pending",
+  }]);
+  outbox.ack(sent.snapshot);
+
+  assert.equal(outbox.snapshotForSync({ records: [] }), null);
+  assert.deepEqual(outbox.snapshot().patches, {});
+});
+
+test("newer_patch_generation_is_not_acked_by_older_materialized_receipt", () => {
+  const outbox = createOutbox();
+  const canonical = { records: [{ id: "record-a", rowVersion: 4, serverValue: "preserved" }] };
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "generation-1" }],
+  });
+  const generation1 = outbox.snapshotForSync(canonical);
+
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "generation-2" }],
+  });
+  outbox.ack(generation1.snapshot);
+
+  assert.equal(outbox.snapshot().patches.records["record-a"].localValue, "generation-2");
+});
+
+test("server_deleted_record_invalidates_unsendable_patch_without_resurrection", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-a", rowVersion: 4, localValue: "pending" }],
+  });
+  assert.equal(outbox.snapshotForSync({ records: [] }), null);
+
+  outbox.enqueue({
+    kind: "ack-server-deletions",
+    deletionsByTable: { records: ["record-a"] },
+  });
+
+  assert.deepEqual(outbox.snapshot().patches, {});
+  assert.equal(outbox.snapshotForSync({
+    records: [{ id: "record-a", rowVersion: 5, serverValue: "must-not-return" }],
+  }), null);
+});
+
+test("pagination_cold_cache_patch_survives_unrelated_sync_then_sends_after_page_hydration", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{ id: "record-on-later-page", rowVersion: 7, localValue: "pending" }],
+  });
+  outbox.enqueue({
+    kind: "upsert",
+    table: "other_records",
+    records: [{ id: "unrelated", value: "send now" }],
+  });
+
+  const firstSync = outbox.snapshotForSync({ records: [], other_records: [] });
+  assert.equal(firstSync.payload.records, undefined);
+  assert.deepEqual(firstSync.payload.other_records, [{ id: "unrelated", value: "send now" }]);
+  outbox.ack(firstSync.snapshot);
+  assert.equal(
+    outbox.snapshot().patches.records["record-on-later-page"].localValue,
+    "pending",
+  );
+
+  const hydratedPage = {
+    records: [{ id: "record-on-later-page", rowVersion: 7, serverValue: "preserved" }],
+  };
+  const secondSync = outbox.snapshotForSync(hydratedPage);
+  assert.deepEqual(secondSync.payload.records, [{
+    id: "record-on-later-page",
+    rowVersion: 7,
+    serverValue: "preserved",
+    localValue: "pending",
+  }]);
+  outbox.ack(secondSync.snapshot);
+  assert.equal(outbox.snapshotForSync(hydratedPage), null);
+});
+
+test("cross_type_mutation_transitions_keep_one_winner_and_ignore_old_receipts", () => {
+  const canonical = { records: [{ id: "record-a", rowVersion: 4, serverValue: "preserved" }] };
+
+  const patchThenPatch = createOutbox();
+  patchThenPatch.enqueue({ kind: "patch", table: "records", records: [{ id: "record-a", first: 1 }] });
+  patchThenPatch.enqueue({ kind: "patch", table: "records", records: [{ id: "record-a", second: 2 }] });
+  assert.deepEqual(patchThenPatch.snapshot().patches.records["record-a"], {
+    id: "record-a", first: 1, second: 2,
+  });
+
+  const patchThenUpsert = createOutbox();
+  patchThenUpsert.enqueue({ kind: "patch", table: "records", records: [{ id: "record-a", value: "patch" }] });
+  const oldPatchReceipt = patchThenUpsert.snapshotForSync(canonical).snapshot;
+  patchThenUpsert.enqueue({ kind: "upsert", table: "records", records: [{ id: "record-a", value: "upsert" }] });
+  patchThenUpsert.ack(oldPatchReceipt);
+  assert.equal(patchThenUpsert.snapshot().upserts.records["record-a"].value, "upsert");
+  assert.deepEqual(patchThenUpsert.snapshot().patches, {});
+
+  const upsertThenPatch = createOutbox();
+  upsertThenPatch.enqueue({ kind: "upsert", table: "records", records: [{ id: "record-a", first: 1 }] });
+  const oldUpsertReceipt = upsertThenPatch.snapshotForSync({ records: [] }).snapshot;
+  upsertThenPatch.enqueue({ kind: "patch", table: "records", records: [{ id: "record-a", second: 2 }] });
+  upsertThenPatch.ack(oldUpsertReceipt);
+  assert.deepEqual(upsertThenPatch.snapshot().upserts.records["record-a"], {
+    id: "record-a", first: 1, second: 2,
+  });
+  assert.deepEqual(upsertThenPatch.snapshot().patches, {});
+
+  const patchThenDelete = createOutbox();
+  patchThenDelete.enqueue({ kind: "patch", table: "records", records: [{ id: "record-a", value: "patch" }] });
+  patchThenDelete.enqueue({ kind: "delete", table: "records", records: [{ id: "record-a", rowVersion: 4 }] });
+  assert.deepEqual(patchThenDelete.snapshot().patches, {});
+  assert.deepEqual(patchThenDelete.snapshot().deletes, [{
+    table: "records", id: "record-a", expectedVersion: 4,
+  }]);
+
+  const deleteThenUpsert = createOutbox();
+  deleteThenUpsert.enqueue({ kind: "delete", table: "records", records: [{ id: "record-a", rowVersion: 4 }] });
+  deleteThenUpsert.enqueue({ kind: "upsert", table: "records", records: [{ id: "record-a", value: "restored" }] });
+  assert.deepEqual(deleteThenUpsert.snapshot().deletes, []);
+  assert.equal(deleteThenUpsert.snapshot().upserts.records["record-a"].value, "restored");
+});
+
 test("delta pull cannot overwrite a pending local upsert", async () => {
   const persisted = [];
   const localRecord = { id: "package-1", name: "LOCAL UNSYNCED", rowVersion: 3 };

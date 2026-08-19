@@ -1681,6 +1681,45 @@ export class BiddingView {
       modal.classList.add("active");
     });
   }
+  customRecoveryDialog(title, message) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById("modal-custom-dialog");
+      const titleEl = document.getElementById("dialog-title");
+      const messageEl = document.getElementById("dialog-message");
+      const buttonsContainer = document.getElementById("dialog-buttons");
+      const closeBtn = document.getElementById("btn-dialog-close");
+      if (!modal || !titleEl || !messageEl || !buttonsContainer) return resolve("later");
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "none");
+      buttonsContainer.innerHTML = trustedHTML(`
+        <button type="button" class="btn btn-outline" id="btn-recovery-later">Để sau</button>
+        <button type="button" class="btn btn-outline" id="btn-recovery-discard">Bỏ bản nháp</button>
+        <button type="button" class="btn btn-primary" id="btn-recovery-apply">Áp vào dữ liệu mới nhất</button>
+      `);
+      const cleanup = (choice) => {
+        const focused = modal.querySelector(":focus");
+        focused?.blur?.();
+        modal.classList.remove("active");
+        buttonsContainer.innerHTML = trustedHTML(`
+          <button type="button" class="btn btn-outline bf-s-649f9eeb60" id="btn-dialog-cancel">Hủy</button>
+          <button type="button" class="btn btn-primary bf-s-649f9eeb60" id="btn-dialog-ok">Xác nhận</button>
+        `);
+        if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
+        resolve(choice);
+      };
+      document.getElementById("btn-recovery-later")?.addEventListener(
+        "click", () => cleanup("later"), { once: true },
+      );
+      document.getElementById("btn-recovery-discard")?.addEventListener(
+        "click", () => cleanup("discard"), { once: true },
+      );
+      document.getElementById("btn-recovery-apply")?.addEventListener(
+        "click", () => cleanup("apply"), { once: true },
+      );
+      modal.classList.add("active");
+    });
+  }
   getStatusBadge(status) {
     return renderPackageStatusBadge(status);
   }

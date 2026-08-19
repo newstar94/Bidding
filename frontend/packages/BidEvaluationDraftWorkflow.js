@@ -8,11 +8,13 @@ import {
   bidEvaluationDirtyStateFor,
   buildBidEvaluationRecoveryKey,
   generalBidEvaluationRecoveryFor,
+  shareBidEvaluationDirtyState,
 } from "./BidEvaluationDraftRecovery.js";
 import {
   getPackageEvaluationLotsStrict,
   isBidWithinEvaluationLotDetails,
 } from "./lotEvaluationScope.js";
+import { resolveLatestPackage } from "./detail/PackageDetailState.js";
 
 function collectLetters(view, model, containerId) {
   const letters = [];
@@ -76,6 +78,114 @@ function sameIds(left = [], right = []) {
   const a = uniqueIds(left).sort();
   const b = uniqueIds(right).sort();
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+const EVALUATION_SHAPE_FIELDS = [
+  "phuongThucLuaChon",
+  "hinhThucLuaChon",
+  "phuongPhapDanhGia",
+  "quyTrinhDanhGia",
+];
+
+const EVALUATION_SHAPE_DEFAULTS = {
+  quyTrinhDanhGia: "quytrinh1",
+};
+
+function evaluationShapeChanged(requestedPackage, authoritativePackage) {
+  return EVALUATION_SHAPE_FIELDS.some((field) => (
+    String(requestedPackage?.[field] || EVALUATION_SHAPE_DEFAULTS[field] || "")
+      !== String(authoritativePackage?.[field] || EVALUATION_SHAPE_DEFAULTS[field] || "")
+  ));
+}
+
+function normalizedBidLotIdentity(bid, pkg) {
+  if (pkg?.phanLo !== "Có") return "__whole_package__";
+  const lotCode = String(bid?.maPhanLo || bid?.ma_phan_lo || "")
+    .trim()
+    .toLocaleLowerCase("vi-VN")
+    .replace(/\s+/g, " ");
+  if (lotCode) return lotCode;
+  const lotId = String(bid?.phanLoId || bid?.lotId || bid?.lot_id || "").trim();
+  if (!lotId) return "";
+  try {
+    const lot = getPackageEvaluationLotsStrict(pkg).find((item) => item.id === lotId);
+    return String(lot?.code || "").trim().toLocaleLowerCase("vi-VN").replace(/\s+/g, " ");
+  } catch {
+    return "";
+  }
+}
+
+function logicalBidIdentity(bid, pkg) {
+  const contractorId = String(bid?.nhaThauId || "").trim();
+  const lotIdentity = normalizedBidLotIdentity(bid, pkg);
+  return contractorId && lotIdentity ? `${contractorId}\u0000${lotIdentity}` : "";
+}
+
+function resolveDirtyBidTargets({
+  dirtyBidIds,
+  capturedBids,
+  authoritativeBids,
+  requestedPackage,
+  authoritativePackage,
+}) {
+  const capturedById = new Map(
+    capturedBids.map((bid) => [String(bid?.id || ""), bid]),
+  );
+  const authoritativeById = new Map(
+    authoritativeBids.map((bid) => [String(bid?.id || ""), bid]),
+  );
+  const authoritativeByIdentity = new Map();
+  authoritativeBids.forEach((bid) => {
+    const identity = logicalBidIdentity(bid, authoritativePackage);
+    if (!identity) return;
+    const candidates = authoritativeByIdentity.get(identity) || [];
+    candidates.push(bid);
+    authoritativeByIdentity.set(identity, candidates);
+  });
+
+  const targets = new Map();
+  for (const dirtyBidId of dirtyBidIds) {
+    const sourceId = String(dirtyBidId || "");
+    const exact = authoritativeById.get(sourceId);
+    if (exact) {
+      targets.set(sourceId, exact);
+      continue;
+    }
+    const source = capturedById.get(sourceId);
+    const identity = logicalBidIdentity(source, requestedPackage);
+    const candidates = identity ? authoritativeByIdentity.get(identity) || [] : [];
+    if (candidates.length !== 1) return { ok: false, targets: new Map() };
+    targets.set(sourceId, candidates[0]);
+  }
+  return { ok: true, targets };
+}
+
+function collectRetargetedBidPatches({ rows, bids, dirtyState, targets, parseMoney }) {
+  const sourceIdByTargetId = new Map();
+  targets.forEach((target, sourceId) => {
+    sourceIdByTargetId.set(String(target?.id || ""), sourceId);
+  });
+  const retargetedRows = rows.map((row) => {
+    const sourceId = String(row?.getAttribute?.("data-bid-id") || "");
+    const target = targets.get(sourceId);
+    if (!target) return row;
+    return {
+      getAttribute: (name) => (
+        name === "data-bid-id" ? String(target.id) : row.getAttribute?.(name)
+      ),
+      querySelector: (selector) => row.querySelector?.(selector),
+    };
+  });
+  return collectBidEvaluationDraftPatches({
+    rows: retargetedRows,
+    bids,
+    dirtyState: {
+      fieldsForBid: (targetId) => dirtyState.fieldsForBid(
+        sourceIdByTargetId.get(String(targetId || "")) || targetId,
+      ),
+    },
+    parseMoney,
+  });
 }
 
 function resolveAuthoritativeDraftLotDetails(pkg, requestedDetails) {
@@ -153,6 +263,15 @@ export async function executeBidEvaluationDraftSave({
   const dirtyState = bidEvaluationDirtyStateFor(controller, recoveryKey);
   const checkpoint = dirtyState.checkpoint();
   const recovery = generalBidEvaluationRecoveryFor(controller);
+  const capturedBids = (model.state.thongtinmothau || []).filter(
+    (bid) => String(bid?.goiThauId || "") === packageId,
+  );
+  const capturedRecoveryBidPatches = collectBidEvaluationDraftPatches({
+    rows,
+    bids: capturedBids,
+    dirtyState,
+    parseMoney: (value) => model.parseVND(value),
+  });
   const boundaryChecked = typeof controller.awaitAuthoritativeMutationBoundary === "function";
   try {
     if (boundaryChecked) await controller.awaitAuthoritativeMutationBoundary();
@@ -162,35 +281,44 @@ export async function executeBidEvaluationDraftSave({
   }
   if (!workspaceIsCurrent(model, workspaceToken)) return false;
 
-  const canonicalPackage = canonicalRecord(model.state, "goithau", packageId)
-    || (!boundaryChecked ? pkg : null);
-  const bids = model.state.thongtinmothau || [];
-  const recoveryBidPatches = collectBidEvaluationDraftPatches({
-    rows,
-    bids,
-    dirtyState,
-    parseMoney: (value) => model.parseVND(value),
-  });
-  const reportDraft = buildReportDraft({
+  const resolvedPackage = boundaryChecked
+    ? resolveLatestPackage(model, pkg)
+    : canonicalRecord(model.state, "goithau", packageId) || pkg;
+  const canonicalPackage = resolvedPackage
+    ? canonicalRecord(model.state, "goithau", resolvedPackage.id)
+      || (!boundaryChecked ? resolvedPackage : null)
+    : null;
+  const targetPackageId = String(canonicalPackage?.id || packageId);
+  const targetRecoveryKey = canonicalPackage
+    ? buildBidEvaluationRecoveryKey({
+        controller,
+        pkg: canonicalPackage,
+        round,
+        lotIds: requestedLotIds,
+      })
+    : recoveryKey;
+  const capturedReportDraft = buildReportDraft({
     controller,
-    pkg: canonicalPackage || pkg,
+    pkg,
     report,
     includeExtraFields,
   });
-  const recoverySaved = recovery.save(recoveryKey, {
+  let recoverySaved = recovery.save(recoveryKey, {
     packageId,
     round,
     lotIds: requestedLotIds,
-    report: reportDraft,
-    bidderPatches: recoveryBidPatches,
+    report: capturedReportDraft,
+    bidderPatches: capturedRecoveryBidPatches,
   });
-  const failedStatus = recoverySaved
+  let activeRecoveryKey = recoveryKey;
+  const recoveryKeys = [recoveryKey];
+  let failedStatus = recoverySaved
     ? "Chưa đồng bộ máy chủ · bản khôi phục vẫn còn trên thiết bị"
     : "Chưa đồng bộ máy chủ · khôi phục cục bộ không khả dụng";
 
   if (!canonicalPackage) {
     controller._bidEvaluationSaveStatusByKey ||= new Map();
-    controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+    controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
     controller._renderBidEvaluationProgress?.();
     await notifyDraftFailure(
       controller,
@@ -200,15 +328,79 @@ export async function executeBidEvaluationDraftSave({
     return false;
   }
 
+  const bids = (model.state.thongtinmothau || []).filter(
+    (bid) => String(bid?.goiThauId || "") === targetPackageId,
+  );
+  const dirtyBidIds = [...(checkpoint.bidFields?.keys?.() || [])];
   let authoritativeLotScope;
   try {
     authoritativeLotScope = resolveAuthoritativeDraftLotDetails(canonicalPackage, lotDetails);
   } catch (error) {
     authoritativeLotScope = { ok: false, error };
   }
+  const authoritativeLotDetails = authoritativeLotScope.ok
+    ? authoritativeLotScope.details
+    : null;
+  const authoritativeBids = authoritativeLotScope.ok && authoritativeLotDetails
+    ? bids.filter((bid) => isBidWithinEvaluationLotDetails(bid, authoritativeLotDetails))
+    : (authoritativeLotScope.ok ? bids : []);
+  const targetResolution = authoritativeLotScope.ok
+    ? resolveDirtyBidTargets({
+        dirtyBidIds,
+        capturedBids,
+        authoritativeBids,
+        requestedPackage: pkg,
+        authoritativePackage: canonicalPackage,
+      })
+    : { ok: false, targets: new Map() };
+  const bidPatches = targetResolution.ok
+    ? collectRetargetedBidPatches({
+        rows,
+        bids: authoritativeBids,
+        dirtyState,
+        targets: targetResolution.targets,
+        parseMoney: (value) => model.parseVND(value),
+      })
+    : [];
+  const reportDraft = buildReportDraft({
+    controller,
+    pkg: canonicalPackage,
+    report,
+    includeExtraFields,
+  });
+  if (targetResolution.ok) {
+    if (targetRecoveryKey !== recoveryKey) {
+      shareBidEvaluationDirtyState(controller, recoveryKey, targetRecoveryKey);
+      recoveryKeys.push(targetRecoveryKey);
+    }
+    const targetRecoverySaved = recovery.save(targetRecoveryKey, {
+      packageId: targetPackageId,
+      round,
+      lotIds: requestedLotIds,
+      report: reportDraft,
+      bidderPatches: bidPatches,
+    });
+    recoverySaved = recoverySaved || targetRecoverySaved;
+    if (targetRecoverySaved) activeRecoveryKey = targetRecoveryKey;
+    failedStatus = recoverySaved
+      ? "Chưa đồng bộ máy chủ · bản khôi phục vẫn còn trên thiết bị"
+      : "Chưa đồng bộ máy chủ · khôi phục cục bộ không khả dụng";
+  }
+  if (evaluationShapeChanged(pkg, canonicalPackage)) {
+    controller._bidEvaluationSaveStatusByKey ||= new Map();
+    controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
+    controller._renderBidEvaluationProgress?.();
+    await notifyDraftFailure(
+      controller,
+      new Error("Phương thức hoặc quy trình đánh giá đã thay đổi ở phiên bản gói thầu mới nhất. Vui lòng kiểm tra lại trước khi lưu."),
+      recoverySaved,
+    );
+    return false;
+  }
+
   if (!authoritativeLotScope.ok) {
     controller._bidEvaluationSaveStatusByKey ||= new Map();
-    controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+    controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
     controller._renderBidEvaluationProgress?.();
     await notifyDraftFailure(
       controller,
@@ -218,14 +410,17 @@ export async function executeBidEvaluationDraftSave({
     return false;
   }
 
-  const authoritativeLotDetails = authoritativeLotScope.details;
-  const authoritativeBids = authoritativeLotDetails
-    ? bids.filter((bid) => isBidWithinEvaluationLotDetails(bid, authoritativeLotDetails))
-    : bids;
-  const authoritativeBidIds = new Set(authoritativeBids.map((bid) => String(bid?.id || "")));
-  const bidPatches = recoveryBidPatches.filter(
-    (patch) => authoritativeBidIds.has(String(patch?.id || "")),
-  );
+  if (!targetResolution.ok) {
+    controller._bidEvaluationSaveStatusByKey ||= new Map();
+    controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
+    controller._renderBidEvaluationProgress?.();
+    await notifyDraftFailure(
+      controller,
+      new Error("Danh sách hoặc phạm vi hồ sơ dự thầu đã thay đổi sau khi làm mới dữ liệu. Vui lòng kiểm tra lại trước khi lưu."),
+      recoverySaved,
+    );
+    return false;
+  }
   const lotIds = authoritativeLotDetails?.lotIds || [];
   const nextMetadata = buildBidEvaluationDraftMetadata({
     existing: canonicalPackage.danhGiaHsdtMetadata,
@@ -234,7 +429,7 @@ export async function executeBidEvaluationDraftSave({
     report: reportDraft,
   });
   const packagePatch = {
-    id: packageId,
+    id: targetPackageId,
     ...(Number.isInteger(canonicalPackage.rowVersion) ? { rowVersion: canonicalPackage.rowVersion } : {}),
     danhGiaHsdtMetadata: nextMetadata,
   };
@@ -252,7 +447,7 @@ export async function executeBidEvaluationDraftSave({
     const persistedBids = bids.filter((bid) => changedBidIds.has(String(bid.id)));
     const tableKeys = ["goithau", ...(persistedBids.length ? ["thongtinmothau"] : [])];
     controller._bidEvaluationSaveStatusByKey ||= new Map();
-    controller._bidEvaluationSaveStatusByKey.set(recoveryKey, "Đang lưu nháp trên máy chủ…");
+    controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, "Đang lưu nháp trên máy chủ…");
     controller._renderBidEvaluationProgress?.();
     let result;
     try {
@@ -267,13 +462,13 @@ export async function executeBidEvaluationDraftSave({
         },
       });
     } catch (error) {
-      controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+      controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
       controller._renderBidEvaluationProgress?.();
       await notifyDraftFailure(controller, error, recoverySaved);
       return false;
     }
     if (!result?.ok || !workspaceIsCurrent(model, workspaceToken)) {
-      controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+      controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
       controller._renderBidEvaluationProgress?.();
       if (!result?.workspaceChanged && workspaceIsCurrent(model, workspaceToken)) {
         await notifyDraftFailure(controller, null, recoverySaved);
@@ -281,9 +476,9 @@ export async function executeBidEvaluationDraftSave({
       return false;
     }
     dirtyState.acknowledge(checkpoint, result);
-    recovery.acknowledge(recoveryKey, result);
+    recoveryKeys.forEach((key) => recovery.acknowledge(key, result));
     controller._bidEvaluationSaveStatusByKey.set(
-      recoveryKey,
+      activeRecoveryKey,
       `Đã lưu nháp lúc ${new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
     );
     controller._renderBidEvaluationProgress?.();

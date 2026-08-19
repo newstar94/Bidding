@@ -15,6 +15,9 @@ function deferred() {
 function completionScenario() {
   const pkg = {
     id: "pkg-authority",
+    rootId: "pkg-family-authority",
+    phienBan: "01",
+    isLatest: 1,
     rowVersion: 3,
     tenGoiThau: "Gói authority",
     giaGoiThau: 900_000_000,
@@ -150,6 +153,36 @@ test("complete_evaluation_uses_refreshed_bid_row_versions", async () => {
     14,
   );
   assert.equal(refreshedBid.serverOnly, "preserved");
+});
+
+test("complete_evaluation_never_commits_to_historical_package_after_refresh", async () => {
+  const scenario = completionScenario();
+  const saving = saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const historical = { ...scenario.pkg, isLatest: 0 };
+  const latest = {
+    ...scenario.pkg,
+    id: "pkg-authority-v02",
+    phienBan: "02",
+    isLatest: 1,
+    rowVersion: 23,
+    danhGiaHsdtMetadata: "",
+  };
+  scenario.model.state.goithau = [historical, latest];
+  scenario.model.state.thongtinmothau = [{
+    ...scenario.bid,
+    goiThauId: latest.id,
+    rowVersion: 24,
+  }];
+  scenario.authority.resolve({ authoritative: true, offline: false });
+
+  await saving;
+  assert.equal(historical.danhGiaHsdtMetadata, "");
+  assert.equal(latest.danhGiaHsdtMetadata.includes('"saved":true'), true);
+  assert.equal(
+    scenario.staged.find((entry) => entry.table === "goithau").records[0].id,
+    latest.id,
+  );
 });
 
 test("complete_evaluation_does_not_resurrect_removed_bid", async () => {

@@ -85,6 +85,20 @@ test("BiddingModel list and single getters share the canonical tie-break", () =>
   assert.deepEqual(model.getLatestPackagesForPlan(planV2.id), [packageV2NewPlan]);
 });
 
+test("package resolution does not fall back to a historical plan snapshot", () => {
+  const model = new BiddingModel();
+  const planV1 = row("plan-v1", "plan-root", "01", 0);
+  const planV2 = row("plan-v2", "plan-root", "02", 1);
+  const historicalPackage = row("pkg-v1", "pkg-root", "03", 0, {
+    keHoachId: planV1.id,
+  });
+  model.state.kehoach = [planV1, planV2];
+  model.state.goithau = [historicalPackage];
+
+  assert.equal(model.getLatestPackage(historicalPackage.id), null);
+  assert.equal(model.getLatestPackage("pkg-root"), null);
+});
+
 test("partner and contract list/single getters use the same version-first contract", () => {
   const model = new BiddingModel();
   for (const [stateKey, listMethod] of [
