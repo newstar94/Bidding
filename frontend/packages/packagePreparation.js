@@ -10,6 +10,42 @@ import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 import { generateRecordId as defaultGenerateRecordId } from "../shared/idUtils.js";
 
+const PACKAGE_AGGREGATE_OWNED_TABLES = Object.freeze([
+  "assignments",
+  "goithauhanghoa",
+  "thongtinmothau",
+  "hanghoaduthaunhathau",
+]);
+
+function packageAggregateCacheKey(model, packageId) {
+  return `${model?.getWorkspaceToken?.() || "workspace"}:${String(packageId || "")}`;
+}
+
+function markPackageAggregateCacheComplete(model, packageId) {
+  model._completePackageAggregateCaches ||= new Set();
+  model._completePackageAggregateCaches.add(packageAggregateCacheKey(model, packageId));
+}
+
+function isPackageAggregateCacheKnownComplete(model, packageId) {
+  if (model?.useServerSidePagination) {
+    return model._completePackageAggregateCaches?.has(
+      packageAggregateCacheKey(model, packageId),
+    ) === true;
+  }
+  if (typeof model?.getStorageHydrationStatus !== "function") return false;
+  return PACKAGE_AGGREGATE_OWNED_TABLES.every(
+    (table) => model.getStorageHydrationStatus(table)?.state === "ready",
+  );
+}
+
+function offlineAggregateIncompleteError() {
+  const error = new Error(
+    "Cần kết nối mạng và tải đầy đủ dữ liệu liên quan trước khi tạo phiên bản gói thầu.",
+  );
+  error.code = "OFFLINE_PACKAGE_AGGREGATE_INCOMPLETE";
+  return error;
+}
+
 /**
  * Creating a package version copies the aggregate that is present in local
  * state. The detail screen can be reached with a lightweight projection of the
@@ -32,8 +68,7 @@ async function hydratePackageAggregate(controller, pkg) {
   // /api/paginate scopes these owned tables by plan, not by package.
   const planId = String(hydrated?.keHoachId || pkg?.keHoachId || "");
   if (!planId) return hydrated;
-  const ownedTables = ["assignments", "goithauhanghoa", "thongtinmothau", "hanghoaduthaunhathau"];
-  await Promise.all(ownedTables.map(async (table) => {
+  await Promise.all(PACKAGE_AGGREGATE_OWNED_TABLES.map(async (table) => {
     let cursor = "";
     do {
       const page = await loadPaginatedRecords(model, table, {
@@ -49,6 +84,7 @@ async function hydratePackageAggregate(controller, pkg) {
       cursor = nextCursor;
     } while (cursor);
   }));
+  markPackageAggregateCacheComplete(model, packageId);
   return model.state.goithau.find((row) => String(row.id) === packageId) || hydrated;
 }
 
@@ -149,6 +185,13 @@ export async function savePackagePreparation(controller, pkg, changes, {
   }
 
   let createVersion = shouldCreatePackagePreparationVersion(pkg, nextData);
+  if (
+    createVersion
+    && boundaryResult?.offline === true
+    && !isPackageAggregateCacheKnownComplete(model, pkg?.id)
+  ) {
+    throw offlineAggregateIncompleteError();
+  }
   if (
     createVersion
     && boundaryResult?.offline !== true

@@ -45,6 +45,7 @@ function buildController(pkg = sourcePackage()) {
   };
   const model = {
     state,
+    getStorageHydrationStatus: () => ({ state: "ready" }),
     getLatestPlan: () => ({ id: "plan-1" }),
     getCurrentDateTimeString: () => "2026-08-18 12:00:00",
     commitLocalMutation(table, { records }) {
@@ -173,6 +174,132 @@ test("offline_package_version_is_durable_and_replayed_after_reconnect", async ()
   assert.equal((await scenario.controller.autoSync()).ok, true);
   assert.ok(replayed.some(([table, ...ids]) => table === "goithau" && ids.includes(saved.id)));
   assert.equal(pending.size, 0);
+});
+
+test("offline_package_version_with_incomplete_child_cache_does_not_create_incomplete_snapshot", async () => {
+  const scenario = buildController();
+  scenario.model.getStorageHydrationStatus = (table) => ({
+    state: table === "goithauhanghoa" ? "pending" : "ready",
+  });
+  scenario.controller.awaitAuthoritativeMutationBoundary = async () => ({
+    authoritative: false,
+    offline: true,
+  });
+  const before = structuredClone(scenario.state);
+
+  await assert.rejects(
+    savePackagePreparation(
+      scenario.controller,
+      scenario.state.goithau[0],
+      { thoiGianDongThau: "2026-08-13 08:00:00" },
+      { generateRecordId: deterministicIds() },
+    ),
+    (error) => error?.code === "OFFLINE_PACKAGE_AGGREGATE_INCOMPLETE",
+  );
+
+  assert.deepEqual(scenario.state, before);
+  assert.deepEqual(scenario.staged, []);
+  assert.deepEqual(scenario.persisted, []);
+});
+
+test("offline_package_version_with_known_complete_cache_preserves_all_owned_children", async () => {
+  const scenario = buildController();
+  const sourceId = scenario.state.goithau[0].id;
+  scenario.state.assignments.push(
+    { id: "assignment-1", type: "goithau", targetId: sourceId, empId: "employee-1" },
+    { id: "assignment-2", type: "goithau", targetId: sourceId, empId: "employee-2" },
+  );
+  scenario.state.goithauhanghoa.push(
+    { id: "goods-1", goiThauId: sourceId },
+    { id: "goods-2", goiThauId: sourceId },
+  );
+  scenario.state.thongtinmothau.push(
+    { id: "bid-1", goiThauId: sourceId },
+    { id: "bid-2", goiThauId: sourceId },
+  );
+  scenario.controller.awaitAuthoritativeMutationBoundary = async () => ({
+    authoritative: false,
+    offline: true,
+  });
+
+  const saved = await savePackagePreparation(
+    scenario.controller,
+    scenario.state.goithau[0],
+    { thoiGianDongThau: "2026-08-14 08:00:00" },
+    { generateRecordId: deterministicIds() },
+  );
+
+  assert.equal(
+    scenario.state.assignments.filter((row) => row.targetId === saved.id).length,
+    2,
+  );
+  assert.equal(
+    scenario.state.goithauhanghoa.filter((row) => row.goiThauId === saved.id).length,
+    2,
+  );
+  assert.equal(
+    scenario.state.thongtinmothau.filter((row) => row.goiThauId === saved.id).length,
+    2,
+  );
+});
+
+test("offline_package_version_reconnect_replays_without_duplicate_version", async () => {
+  const scenario = buildController();
+  const pending = new Map();
+  const replayedPackageIds = [];
+  let online = false;
+  scenario.model.commitLocalMutation = (table, { records }) => {
+    pending.set(table, [...(pending.get(table) || []), ...records]);
+  };
+  scenario.controller.awaitAuthoritativeMutationBoundary = async () => ({
+    authoritative: false,
+    offline: true,
+  });
+  scenario.controller.autoSync = async () => {
+    if (!online) return { ok: false, offline: true };
+    replayedPackageIds.push(...(pending.get("goithau") || [])
+      .filter((record) => record.phienBan === "01")
+      .map((record) => record.id));
+    pending.clear();
+    return { ok: true };
+  };
+
+  const saved = await savePackagePreparation(
+    scenario.controller,
+    scenario.state.goithau[0],
+    { thoiGianDongThau: "2026-08-15 08:00:00" },
+    { generateRecordId: deterministicIds() },
+  );
+  online = true;
+  await scenario.controller.autoSync();
+  await scenario.controller.autoSync();
+
+  assert.deepEqual(replayedPackageIds, [saved.id]);
+  assert.equal(scenario.state.goithau.filter((row) => row.id === saved.id).length, 1);
+});
+
+test("offline_package_version_same_org_new_epoch_cannot_commit_old_snapshot", async () => {
+  const boundary = deferred();
+  const scenario = buildController();
+  let token = "user:org@1";
+  scenario.model.getWorkspaceToken = () => token;
+  scenario.model.isWorkspaceCurrent = (captured) => captured === token;
+  scenario.controller.awaitAuthoritativeMutationBoundary = () => boundary.promise;
+  const before = structuredClone(scenario.state);
+
+  const saving = savePackagePreparation(
+    scenario.controller,
+    scenario.state.goithau[0],
+    { thoiGianDongThau: "2026-08-16 08:00:00" },
+    { generateRecordId: deterministicIds() },
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  token = "user:org@2";
+  boundary.resolve({ authoritative: false, offline: true });
+
+  await assert.rejects(saving, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(scenario.state, before);
+  assert.deepEqual(scenario.staged, []);
 });
 
 test("package_preparation_recomputes_version_decision_after_authoritative_refresh", async () => {

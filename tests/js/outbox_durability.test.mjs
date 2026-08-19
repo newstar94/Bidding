@@ -141,6 +141,18 @@ function queueWithUpsert(id, name = id) {
   };
 }
 
+function queueWithPatch(id, value = id) {
+  return {
+    baseSyncVersion: "1",
+    clientMutationId: `patch-${id}`,
+    dirtyTables: {},
+    upserts: {},
+    patches: { goithau: { [id]: { id, danhGiaHsdtMetadata: value } } },
+    deletes: [],
+    revision: 1,
+  };
+}
+
 test("localStorage read failure still hydrates IndexedDB evidence but marks it untrusted", async () => {
   const backends = dualBackends({ databaseValue: pendingEnvelope() });
   backends.setLocalReadError(new Error("localStorage denied"));
@@ -296,6 +308,22 @@ test("two stale tabs atomically merge disjoint mutations instead of last-writer-
 
   assert.deepEqual(
     Object.keys(backends.envelope.queue.upserts.goithau).sort(),
+    ["package-a", "package-b"],
+  );
+});
+
+test("two stale tabs durably merge disjoint partial patches", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = new WorkspaceMutationOutboxStore(backends);
+  const tabB = new WorkspaceMutationOutboxStore(backends);
+  await Promise.all([tabA.hydrate(), tabB.hydrate()]);
+
+  tabA.persist(queueWithPatch("package-a", "draft-a"), []);
+  tabB.persist(queueWithPatch("package-b", "draft-b"), []);
+  await Promise.all([tabA.flush(), tabB.flush()]);
+
+  assert.deepEqual(
+    Object.keys(backends.envelope.queue.patches.goithau).sort(),
     ["package-a", "package-b"],
   );
 });

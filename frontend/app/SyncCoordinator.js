@@ -198,8 +198,11 @@ export function setupSyncUx() {
       this.updateSyncState({ phase: "localPending" });
     }
     if (!pendingCount || this._syncImmediateTimer || this._deferImmediateSync) return;
+    const scheduledWorkspaceToken = this.model?.getWorkspaceToken?.() || "";
     this._syncImmediateTimer = setTimeout(() => {
       this._syncImmediateTimer = null;
+      if (scheduledWorkspaceToken
+        && this.model?.isWorkspaceCurrent?.(scheduledWorkspaceToken) === false) return;
       void this.autoSync();
     }, 80);
   };

@@ -4,6 +4,235 @@ import assert from "node:assert/strict";
 import { applyServerSnapshot } from "../../frontend/app/syncMergeUtils.js";
 import { WorkspaceMutationOutbox } from "../../frontend/app/WorkspaceMutationOutbox.js";
 
+function createOutbox() {
+  let id = 0;
+  return new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "5",
+    createId: () => `patch-mutation-${++id}`,
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+    serializeRecord: (record) => structuredClone(record),
+  });
+}
+
+test("pending_partial_package_patch_preserves_authoritative_non_dirty_fields_after_full_pull", async () => {
+  const outbox = createOutbox();
+  assert.equal(outbox.enqueue({
+    kind: "patch",
+    table: "goithau",
+    records: [{ id: "pkg-1", rowVersion: 5, danhGiaHsdtMetadata: "draft" }],
+  }), true);
+  const model = {
+    state: { goithau: [] },
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => outbox.snapshot(),
+    suspendMutationTracking: (callback) => callback(),
+    db: { async applySyncChanges() {} },
+  };
+  const server = {
+    id: "pkg-1",
+    rowVersion: 5,
+    maGoiThau: "G01",
+    tenGoiThau: "Gói A",
+    giaGoiThau: 1_000_000,
+    trangThai: "Đang chấm thầu",
+    danhGiaHsdtMetadata: "old",
+  };
+
+  const result = applyServerSnapshot(model, { goithau: [server] }, {
+    useVersionDelta: false,
+    since: "0",
+  });
+  await result.persistencePromise;
+
+  assert.deepEqual(model.state.goithau, [{ ...server, danhGiaHsdtMetadata: "draft" }]);
+  assert.deepEqual(outbox.snapshotForSync(model.state).payload.goithau, [
+    { ...server, danhGiaHsdtMetadata: "draft" },
+  ]);
+});
+
+test("pending_partial_bid_patch_preserves_authoritative_bid_fields_after_delta_pull", async () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "thongtinmothau",
+    records: [{ id: "bid-1", rowVersion: 8, danhGiaHopLe: "Đạt" }],
+  });
+  const model = {
+    state: { thongtinmothau: [{ id: "bid-1", rowVersion: 7, tenNhaThau: "Tên cũ" }] },
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => outbox.snapshot(),
+    suspendMutationTracking: (callback) => callback(),
+    db: { async applySyncChanges() {} },
+  };
+  const server = {
+    id: "bid-1",
+    rowVersion: 8,
+    goiThauId: "pkg-1",
+    nhaThauId: "contractor-1",
+    tenNhaThau: "Tên mới từ máy chủ",
+    danhGiaHopLe: "",
+  };
+
+  const result = applyServerSnapshot(model, { thongtinmothau: [server] }, {
+    useVersionDelta: true,
+    since: "7",
+  });
+  await result.persistencePromise;
+
+  assert.deepEqual(model.state.thongtinmothau, [{ ...server, danhGiaHopLe: "Đạt" }]);
+});
+
+for (const [name, field, value] of [
+  ["partial_patch_explicit_null_is_preserved", "nullableValue", null],
+  ["partial_patch_explicit_empty_string_is_preserved", "textValue", ""],
+  ["partial_patch_false_and_zero_are_preserved", "booleanValue", false],
+]) {
+  test(name, () => {
+    const outbox = createOutbox();
+    const patch = {
+      id: "record-1",
+      rowVersion: 4,
+      [field]: value,
+      ...(name.includes("false_and_zero") ? { numericValue: 0 } : {}),
+    };
+    outbox.enqueue({ kind: "patch", table: "records", records: [patch] });
+    const state = {
+      records: [{
+        id: "record-1",
+        rowVersion: 4,
+        serverField: "preserved",
+        [field]: "old",
+        ...(name.includes("false_and_zero") ? { numericValue: 9 } : {}),
+      }],
+    };
+
+    const payload = outbox.snapshotForSync(state).payload.records[0];
+
+    assert.equal(payload[field], value);
+    if (name.includes("false_and_zero")) assert.equal(payload.numericValue, 0);
+    assert.equal(payload.serverField, "preserved");
+  });
+}
+
+test("partial patch replaces explicitly supplied nested object and array values atomically", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "records",
+    records: [{
+      id: "record-nested",
+      rowVersion: 2,
+      nested: { dirty: "new" },
+      items: [],
+    }],
+  });
+  const payload = outbox.snapshotForSync({
+    records: [{
+      id: "record-nested",
+      rowVersion: 2,
+      serverField: "preserved",
+      nested: { dirty: "old", serverOnly: "not-deep-merged" },
+      items: [{ id: "old" }],
+    }],
+  }).payload.records[0];
+
+  assert.deepEqual(payload.nested, { dirty: "new" });
+  assert.deepEqual(payload.items, []);
+  assert.equal(payload.serverField, "preserved");
+});
+
+test("partial_patch_does_not_restore_server_deleted_record_when_invalidated", async () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "goithau",
+    records: [{ id: "pkg-1", rowVersion: 5, danhGiaHsdtMetadata: "draft" }],
+  });
+  const model = {
+    state: { goithau: [{ id: "pkg-1", rowVersion: 5, tenGoiThau: "Gói A" }] },
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => outbox.snapshot(),
+    suspendMutationTracking: (callback) => callback(),
+    db: { async applySyncChanges() {} },
+  };
+
+  const result = applyServerSnapshot(model, {
+    deletions: [{ table: "goithau", id: "pkg-1" }],
+  }, { useVersionDelta: true, since: "5" });
+  await result.persistencePromise;
+  outbox.enqueue({ kind: "ack-server-deletions", deletionsByTable: result.deletionsByTable });
+
+  assert.deepEqual(model.state.goithau, []);
+  assert.deepEqual(outbox.snapshot().patches, {});
+  assert.equal(outbox.snapshotForSync(model.state), null);
+});
+
+test("partial patch missing from an authoritative full pull is invalidated", async () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "goithau",
+    records: [{ id: "pkg-removed", rowVersion: 5, danhGiaHsdtMetadata: "draft" }],
+  });
+  const model = {
+    state: { goithau: [{ id: "pkg-removed", rowVersion: 5, tenGoiThau: "Cũ" }] },
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => outbox.snapshot(),
+    suspendMutationTracking: (callback) => callback(),
+    db: { async applySyncChanges() {} },
+  };
+
+  const result = applyServerSnapshot(model, { goithau: [] }, {
+    useVersionDelta: false,
+    since: "0",
+  });
+  await result.persistencePromise;
+  outbox.enqueue({ kind: "ack-server-deletions", deletionsByTable: result.deletionsByTable });
+
+  assert.deepEqual(model.state.goithau, []);
+  assert.deepEqual(outbox.snapshot().patches, {});
+});
+
+test("validation_rejection_removes_only_rejected_partial_patch", () => {
+  const outbox = createOutbox();
+  outbox.enqueue({
+    kind: "patch",
+    table: "thongtinmothau",
+    records: [
+      { id: "bid-1", rowVersion: 2, danhGiaHopLe: "Đạt" },
+      { id: "bid-2", rowVersion: 3, danhGiaHopLe: "Không đạt" },
+    ],
+  });
+  const state = {
+    thongtinmothau: [
+      { id: "bid-1", rowVersion: 2, goiThauId: "pkg-1" },
+      { id: "bid-2", rowVersion: 3, goiThauId: "pkg-1" },
+    ],
+  };
+  const sent = outbox.snapshotForSync(state);
+
+  const rejected = outbox.reject(sent.snapshot, [{
+    table: "thongtinmothau",
+    id: "bid-1",
+    code: "SYNC_ITEM_INVALID",
+  }]);
+
+  assert.deepEqual(rejected, [{
+    type: "thongtinmothau",
+    id: "bid-1",
+    operation: "patch",
+    conflictingId: "",
+  }]);
+  assert.equal(outbox.snapshot().patches.thongtinmothau["bid-1"], undefined);
+  assert.deepEqual(outbox.snapshot().patches.thongtinmothau["bid-2"], {
+    id: "bid-2",
+    rowVersion: 3,
+    danhGiaHopLe: "Không đạt",
+  });
+});
+
 test("delta pull cannot overwrite a pending local upsert", async () => {
   const persisted = [];
   const localRecord = { id: "package-1", name: "LOCAL UNSYNCED", rowVersion: 3 };

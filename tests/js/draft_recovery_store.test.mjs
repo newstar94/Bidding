@@ -136,3 +136,43 @@ test("general evaluation local recovery reapplies a pending dirty field after re
   assert.equal(restoredControl.value, "Đạt");
   assert.equal(binding.dirtyState.fieldsForBid("bid-1").has("danhGiaHopLe"), true);
 });
+
+test("draft_recovery_timer_from_workspace_a_cannot_write_workspace_b_storage", () => {
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  const pkg = { id: "pkg-1" };
+  const bids = [{ id: "bid-1", danhGiaHopLe: "" }];
+  const validity = {
+    value: "Đạt",
+    disabled: false,
+    matches: (selector) => selector === ".mt-dg-hop-le",
+  };
+  const row = trackedRow("bid-1", validity);
+  const controller = {
+    model: {
+      workspaceScope: { userId: "user-a", organizationId: "org-a" },
+      workspaceStorage: storageA,
+      parseVND: Number,
+    },
+    view: { getActiveElement: () => null },
+  };
+  const scheduled = [];
+  const recoveryA = generalBidEvaluationRecoveryFor(controller);
+  recoveryA.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recoveryA.cancelTimer = () => {};
+  bindBidEvaluationDraftTracking({
+    controller,
+    pkg,
+    rows: [row],
+    bids,
+    round: "single",
+  });
+  row.emit(validity);
+
+  controller.model.workspaceScope = { userId: "user-a", organizationId: "org-b" };
+  controller.model.workspaceStorage = storageB;
+  scheduled[0]();
+
+  assert.equal(storageB.values.size, 0);
+  assert.equal(storageA.values.has("bf_general_evaluation_drafts_v1"), true);
+});

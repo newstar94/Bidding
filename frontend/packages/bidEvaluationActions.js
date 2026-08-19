@@ -31,7 +31,7 @@ import {
 } from "./evaluationMetadata.js";
 import { executeBidEvaluationDraftSave } from "./BidEvaluationDraftWorkflow.js";
 
-export function stageBidEvaluationMutation(model, pkg, bids = []) {
+export function stageBidEvaluationMutation(model, pkg, bids = [], workspaceMutation = null) {
   if (!model || !pkg?.id || typeof model.commitLocalMutation !== "function") {
     return { pkg: null, bids: [] };
   }
@@ -46,9 +46,16 @@ export function stageBidEvaluationMutation(model, pkg, bids = []) {
   const canonicalBids = (model.state?.thongtinmothau || []).filter(
     (bid) => requestedBidIds.has(String(bid?.id || "")),
   );
-  model.commitLocalMutation("goithau", { records: canonicalPackage });
+  const stage = (table, records) => {
+    if (workspaceMutation && typeof model.commitWorkspaceMutation === "function") {
+      model.commitWorkspaceMutation(workspaceMutation, table, { records });
+    } else {
+      model.commitLocalMutation(table, { records });
+    }
+  };
+  stage("goithau", canonicalPackage);
   if (canonicalBids.length) {
-    model.commitLocalMutation("thongtinmothau", { records: canonicalBids });
+    stage("thongtinmothau", canonicalBids);
   }
   return { pkg: canonicalPackage, bids: canonicalBids };
 }
@@ -75,6 +82,191 @@ export function reconcileEvaluationLotScopeControls(view, pkg, scope) {
     mode: "selected",
     selectedLotIds,
   });
+}
+
+function buildCompletedEvaluationMetadata({
+  gt,
+  isTwoEnvelope,
+  currentTab,
+  evaluationBatch,
+  activeBlock,
+  packageLots,
+}) {
+  if (!isTwoEnvelope) {
+    return serializeEvaluationMetadata(evaluationBatch
+      ? saveEvaluationScopeMetadata(
+        parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata),
+        evaluationBatch,
+        activeBlock,
+        packageLots.map((lot) => lot.id),
+      )
+      : activeBlock);
+  }
+  let currentMetadata = {
+    is1G2T: true,
+    technical: { saved: false },
+    financial: { saved: false },
+  };
+  if (gt.danhGiaHsdtMetadata) {
+    try {
+      const parsed = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
+      if (parsed.is1G2T) currentMetadata = parsed;
+    } catch (error) {
+      console.error("Error parsing existing metadata:", error);
+    }
+  }
+  const round = currentTab === "technical" ? "technical" : "financial";
+  currentMetadata[round] = evaluationBatch
+    ? saveEvaluationScopeMetadata(
+      currentMetadata[round] || {},
+      evaluationBatch,
+      activeBlock,
+      packageLots.map((lot) => lot.id),
+    )
+    : { ...currentMetadata[round], ...activeBlock };
+  return serializeEvaluationMetadata(currentMetadata);
+}
+
+function applyCompletedBidRows({
+  rows,
+  bidsById,
+  updatedBidsById,
+  rankings,
+  isTwoEnvelope,
+  currentTab,
+  model,
+}) {
+  rows.forEach((tr) => {
+    const bidId = tr.getAttribute("data-bid-id");
+    if (!bidId) return;
+    const bid = bidsById.get(String(bidId));
+    if (!bid) return;
+    const preparedBid = updatedBidsById.get(String(bidId));
+    bid.chapThuanGiaDeNghiTrungThauDuoi50 = preparedBid?.chapThuanGiaDeNghiTrungThauDuoi50 ?? null;
+    bid.lyDoTruot = preparedBid?.lyDoTruot || "";
+    const finalRank = rankings[bid.id];
+    const giaXepHangEl = tr.querySelector(".mt-gia-xep-hang");
+    if (giaXepHangEl) bid.giaXepHang = model.parseVND(giaXepHangEl.value || "");
+    const giaDeNghiTrungThauEl = tr.querySelector(".mt-gia-de-nghi-trung-thau");
+    if (giaDeNghiTrungThauEl) {
+      bid.giaDeNghiTrungThau = model.parseVND(giaDeNghiTrungThauEl.value || "");
+    }
+    bid.giaDuThau = preparedBid?.giaDuThau ?? bid.giaDuThau;
+    bid.tyLeGiamGia = preparedBid?.tyLeGiamGia ?? bid.tyLeGiamGia;
+    bid.giaSauGiamGia = preparedBid?.giaSauGiamGia ?? bid.giaSauGiamGia;
+    if (isTwoEnvelope && currentTab === "financial") {
+      bid.hieuLucHsdt = parseInt(tr.querySelector(".mt-hieu-luc-hsdt")?.value || "0", 10);
+      const giaTriDamBaoEl = tr.querySelector(".mt-gia-tri-dam-bao");
+      if (giaTriDamBaoEl) bid.giaTriDamBao = model.parseVND(giaTriDamBaoEl.value || "");
+      const hieuLucBaoDamNgayEl = tr.querySelector(".mt-hieu-luc-bao-dam-ngay");
+      if (hieuLucBaoDamNgayEl) {
+        bid.hieuLucBaoDamNgay = parseInt(hieuLucBaoDamNgayEl.value || "0", 10);
+      }
+      const thoiGianThucHienEl = tr.querySelector(".mt-thoi-gian-thuc-hien");
+      if (thoiGianThucHienEl) bid.thoiGianThucHien = thoiGianThucHienEl.value.trim();
+      const isFailedFinancial = bid.danhGiaKetLuan && bid.danhGiaKetLuan.startsWith("Không đạt");
+      bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : isFailedFinancial ? "Không xếp hạng" : "--";
+      bid.lamRoTaiChinh = tr.querySelector(".mt-lam-ro-tai-chinh")?.value.trim() || "";
+      return;
+    }
+    bid.danhGiaHopLe = tr.querySelector(".mt-dg-hop-le")?.value.trim() || "";
+    bid.danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
+    bid.danhGiaKyThuat = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
+    const selectKetLuan = tr.querySelector(".mt-dg-ketluan");
+    bid.danhGiaKetLuan = selectKetLuan
+      ? selectKetLuan.value
+      : tr.querySelector(".mt-ketluan-cell")?.textContent.trim() || "";
+    const isFailedTechnical = bid.danhGiaKetLuan.startsWith("Không đạt");
+    bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : isFailedTechnical ? "Không xếp hạng" : "--";
+    for (const [field, selector] of [
+      ["lamRoHopLe", ".mt-lam-ro-hop-le"],
+      ["lamRoNangLuc", ".mt-lam-ro-nang-luc"],
+      ["lamRoKyThuat", ".mt-lam-ro-ky-thuat"],
+      ["lamRoTaiChinh", ".mt-lam-ro-tai-chinh"],
+    ]) {
+      const input = tr.querySelector(selector);
+      if (input) bid[field] = input.value.trim();
+    }
+    bid.nguyenNhanKhongDatHopLe = tr.querySelector(".mt-reason-fail-hople")?.value.trim() || "";
+    bid.nguyenNhanKhongDatNangLuc = tr.querySelector(".mt-reason-fail-nangluc")?.value.trim() || "";
+    bid.nguyenNhanKhongDatKyThuat = tr.querySelector(".mt-reason-fail-kythuat")?.value.trim() || "";
+  });
+}
+
+async function prepareEvaluationLotContext(controller, {
+  pkg,
+  packageId,
+  isTwoEnvelope,
+  mode,
+  workspaceToken,
+}) {
+  const packageLots = getPackageEvaluationLotsStrict(pkg);
+  if (packageLots.length === 0) {
+    return {
+      aborted: false,
+      evaluationBatch: null,
+      evaluationLotDetails: null,
+      evaluationLotScope: null,
+      packageLots,
+    };
+  }
+  const parsedMetadata = parseEvaluationMetadataStrict(pkg.danhGiaHsdtMetadata);
+  const scopeBlock = isTwoEnvelope ? parsedMetadata.technical || {} : parsedMetadata;
+  const scopeKey = `${String(packageId)}:${String(controller.currentDanhGiaTab || "technical")}`;
+  controller._evaluationLotScopes ||= {};
+  let evaluationLotScope = initializeEvaluationLotScope(
+    pkg,
+    scopeBlock,
+    controller._explicitEvaluationLotScopes?.[scopeKey]
+      || controller._evaluationLotScopes[scopeKey],
+  );
+  evaluationLotScope = reconcileEvaluationLotScopeControls(
+    controller.view,
+    pkg,
+    evaluationLotScope,
+  );
+  controller._evaluationLotScopes[scopeKey] = evaluationLotScope;
+  const evaluationLotDetails = getEvaluationLotScopeDetails(pkg, evaluationLotScope);
+  if (!evaluationLotDetails?.lotIds?.length) {
+    await controller.view.customAlert(
+      "Chưa chọn phần lô",
+      "Vui lòng chọn ít nhất một phần lô thuộc phạm vi đánh giá của đợt này.",
+      "alert-triangle",
+      controller.view.getActiveElement("danhgiahsdt-scope-container"),
+    );
+    return { aborted: true, packageLots };
+  }
+  let evaluationBatch = null;
+  if (mode === "complete") {
+    try {
+      evaluationBatch = await ensureEvaluationLotBatch({
+        packageId,
+        lotIds: evaluationLotDetails.lotIds,
+        fetcher: apiFetch,
+      });
+      evaluationBatch.lotCodes = evaluationLotDetails.lotCodes;
+      evaluationLotScope.batchId = evaluationBatch.id;
+      if (workspaceToken
+        && controller.model.isWorkspaceCurrent?.(workspaceToken) === false) {
+        return { aborted: true, packageLots };
+      }
+    } catch (error) {
+      await controller.view.customAlert(
+        "Không thể tạo đợt đánh giá",
+        error?.message || "Không thể xác lập phạm vi phần lô. Vui lòng thử lại.",
+        "alert-triangle",
+        controller.view.getActiveElement("danhgiahsdt-scope-container"),
+      );
+      return { aborted: true, packageLots };
+    }
+  }
+  return {
+    aborted: false,
+    evaluationBatch,
+    evaluationLotDetails,
+    evaluationLotScope,
+    packageLots,
+  };
 }
 
 export function findInvalidRequiredTechnicalScore({
@@ -248,9 +440,23 @@ export async function saveDanhGiaHsdt(options = {}) {
     return;
   }
   const requestedPackage = this.model.state.goithau.find((g) => g.id === gtId);
-  const gt = resolveLatestPackage(this.model, requestedPackage || gtId);
+  let gt = resolveLatestPackage(this.model, requestedPackage || gtId);
   if (!gt) return;
   gtId = gt.id;
+  const completionWorkspaceToken = this.model.getWorkspaceToken?.() || "";
+  const completionBoundaryChecked = mode === "complete"
+    && typeof this.awaitAuthoritativeMutationBoundary === "function";
+  if (completionBoundaryChecked) {
+    await this.awaitAuthoritativeMutationBoundary();
+    if (completionWorkspaceToken
+      && this.model.isWorkspaceCurrent?.(completionWorkspaceToken) === false) return false;
+    const refreshedPackage = this.model.state.goithau.find(
+      (candidate) => String(candidate?.id || "") === String(gtId),
+    );
+    gt = resolveLatestPackage(this.model, refreshedPackage || gtId);
+    if (!gt) return false;
+    gtId = gt.id;
+  }
   const effectiveStatus = resolvePackageResultStatus(gt);
   if (isLockedEvaluationStatus(effectiveStatus)) {
     await this.view.customAlert(
@@ -308,59 +514,20 @@ export async function saveDanhGiaHsdt(options = {}) {
     );
     return;
   }
-  let evaluationLotScope = null;
-  let evaluationLotDetails = null;
-  let evaluationBatch = null;
-  const packageLots = getPackageEvaluationLotsStrict(gt);
-  if (packageLots.length > 0) {
-    const parsedMetadata = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
-    const scopeBlock = is1G2T
-      ? parsedMetadata.technical || {}
-      : parsedMetadata;
-    const scopeKey = `${String(gtId)}:${String(this.currentDanhGiaTab || "technical")}`;
-    this._evaluationLotScopes = this._evaluationLotScopes || {};
-    evaluationLotScope = initializeEvaluationLotScope(
-      gt,
-      scopeBlock,
-      this._explicitEvaluationLotScopes?.[scopeKey] || this._evaluationLotScopes[scopeKey],
-    );
-    evaluationLotScope = reconcileEvaluationLotScopeControls(
-      this.view,
-      gt,
-      evaluationLotScope,
-    );
-    this._evaluationLotScopes[scopeKey] = evaluationLotScope;
-    evaluationLotDetails = getEvaluationLotScopeDetails(gt, evaluationLotScope);
-    if (!evaluationLotDetails?.lotIds?.length) {
-      const scopeControl = this.view.getActiveElement("danhgiahsdt-scope-container");
-      await this.view.customAlert(
-        "Chưa chọn phần lô",
-        "Vui lòng chọn ít nhất một phần lô thuộc phạm vi đánh giá của đợt này.",
-        "alert-triangle",
-        scopeControl
-      );
-      return;
-    }
-    if (mode === "complete") {
-      try {
-        evaluationBatch = await ensureEvaluationLotBatch({
-          packageId: gtId,
-          lotIds: evaluationLotDetails.lotIds,
-          fetcher: apiFetch
-        });
-        evaluationBatch.lotCodes = evaluationLotDetails.lotCodes;
-        evaluationLotScope.batchId = evaluationBatch.id;
-      } catch (error) {
-        await this.view.customAlert(
-          "Không thể tạo đợt đánh giá",
-          error?.message || "Không thể xác lập phạm vi phần lô. Vui lòng thử lại.",
-          "alert-triangle",
-          this.view.getActiveElement("danhgiahsdt-scope-container")
-        );
-        return;
-      }
-    }
-  }
+  const lotContext = await prepareEvaluationLotContext(this, {
+    pkg: gt,
+    packageId: gtId,
+    isTwoEnvelope: is1G2T,
+    mode,
+    workspaceToken: completionWorkspaceToken,
+  });
+  if (lotContext.aborted) return false;
+  const {
+    evaluationBatch,
+    evaluationLotDetails,
+    evaluationLotScope,
+    packageLots,
+  } = lotContext;
   if (mode === "draft") {
     return executeBidEvaluationDraftSave({
       controller: this,
@@ -395,11 +562,12 @@ export async function saveDanhGiaHsdt(options = {}) {
   const cvLamRo = collectLetters("list-cv-lamro");
   const cvTraLoi = collectLetters("list-cv-traloi");
   const cvGuiCdt = collectLetters("list-cv-guicdt");
+  let quyTrinhDanhGia = gt.quyTrinhDanhGia || "quytrinh1";
   const quyTrinhContainer = this.view.getActiveElement("danhgiahsdt-quytrinh-container");
   if (quyTrinhContainer && getComputedStyle(quyTrinhContainer).display !== "none") {
     const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
     if (radio2) {
-      gt.quyTrinhDanhGia = radio2.checked ? "quytrinh2" : "quytrinh1";
+      quyTrinhDanhGia = radio2.checked ? "quytrinh2" : "quytrinh1";
     }
   }
   const hasExtraFields = !isDirectOrSpecial && (!is1G2T || this.currentDanhGiaTab === "financial");
@@ -409,7 +577,7 @@ export async function saveDanhGiaHsdt(options = {}) {
     cvLamRo,
     cvTraLoi,
     cvGuiCdt,
-    quyTrinhDanhGia: gt.quyTrinhDanhGia || "quytrinh1",
+    quyTrinhDanhGia,
     saved: true,
     trangThai: "completed",
     hoanThanhLuc: new Date().toISOString(),
@@ -424,48 +592,14 @@ export async function saveDanhGiaHsdt(options = {}) {
     activeBlock.ngayMoiDoiChieu = ngayMoiDoiChieu;
     activeBlock.ngayDoiChieu = ngayDoiChieu;
   }
-  if (is1G2T) {
-    let currentMetadata = { is1G2T: true, technical: { saved: false }, financial: { saved: false } };
-    if (gt.danhGiaHsdtMetadata) {
-      try {
-        const parsed = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
-        if (parsed.is1G2T) {
-          currentMetadata = parsed;
-        }
-      } catch (e) {
-        console.error("Error parsing existing metadata:", e);
-      }
-    }
-    if (this.currentDanhGiaTab === "technical") {
-      currentMetadata.technical = evaluationBatch
-        ? saveEvaluationScopeMetadata(
-          currentMetadata.technical || {},
-          evaluationBatch,
-          activeBlock,
-          packageLots.map((lot) => lot.id)
-        )
-        : { ...currentMetadata.technical, ...activeBlock };
-    } else {
-      currentMetadata.financial = evaluationBatch
-        ? saveEvaluationScopeMetadata(
-          currentMetadata.financial || {},
-          evaluationBatch,
-          activeBlock,
-          packageLots.map((lot) => lot.id)
-        )
-        : { ...currentMetadata.financial, ...activeBlock };
-    }
-    gt.danhGiaHsdtMetadata = serializeEvaluationMetadata(currentMetadata);
-  } else {
-    gt.danhGiaHsdtMetadata = serializeEvaluationMetadata(evaluationBatch
-      ? saveEvaluationScopeMetadata(
-        parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata),
-        evaluationBatch,
-        activeBlock,
-        packageLots.map((lot) => lot.id)
-      )
-      : activeBlock);
-  }
+  const nextEvaluationMetadata = buildCompletedEvaluationMetadata({
+    gt,
+    isTwoEnvelope: is1G2T,
+    currentTab: this.currentDanhGiaTab,
+    evaluationBatch,
+    activeBlock,
+    packageLots,
+  });
   const bidsById = new Map(
     this.model.state.thongtinmothau.map((bid) => [String(bid.id || ""), bid]),
   );
@@ -570,84 +704,43 @@ export async function saveDanhGiaHsdt(options = {}) {
   }
   const { rankings } = this.calculateRankings(gt, updatedBidsList);
   const updatedBidsById = new Map(updatedBidsList.map((bid) => [String(bid.id), bid]));
-  rows.forEach((tr) => {
-    const bidId = tr.getAttribute("data-bid-id");
-    if (!bidId) return;
-    const bid = bidsById.get(String(bidId));
-    if (bid) {
-      const preparedBid = updatedBidsById.get(String(bidId));
-      bid.chapThuanGiaDeNghiTrungThauDuoi50 = preparedBid?.chapThuanGiaDeNghiTrungThauDuoi50 ?? null;
-      bid.lyDoTruot = preparedBid?.lyDoTruot || "";
-      const finalRank = rankings[bid.id];
-      const giaXepHangEl = tr.querySelector(".mt-gia-xep-hang");
-      if (giaXepHangEl) bid.giaXepHang = this.model.parseVND(giaXepHangEl.value || "");
-      const giaDeNghiTrungThauEl = tr.querySelector(".mt-gia-de-nghi-trung-thau");
-      if (giaDeNghiTrungThauEl) {
-        bid.giaDeNghiTrungThau = this.model.parseVND(giaDeNghiTrungThauEl.value || "");
-      }
-      // The price controls are shared by 1G1T and the 1G2T financial tab.
-      // Copy the values prepared from the row once, before applying the
-      // tab-specific fields below. This keeps 1G1T edits persistent too.
-      bid.giaDuThau = preparedBid?.giaDuThau ?? bid.giaDuThau;
-      bid.tyLeGiamGia = preparedBid?.tyLeGiamGia ?? bid.tyLeGiamGia;
-      bid.giaSauGiamGia = preparedBid?.giaSauGiamGia ?? bid.giaSauGiamGia;
-      if (is1G2T && this.currentDanhGiaTab === "financial") {
-        bid.hieuLucHsdt = parseInt(tr.querySelector(".mt-hieu-luc-hsdt")?.value || "0", 10);
-        const giaTriDamBaoEl = tr.querySelector(".mt-gia-tri-dam-bao");
-        if (giaTriDamBaoEl) {
-          bid.giaTriDamBao = this.model.parseVND(giaTriDamBaoEl.value || "");
-        }
-        const hieuLucBaoDamNgayEl = tr.querySelector(".mt-hieu-luc-bao-dam-ngay");
-        if (hieuLucBaoDamNgayEl) {
-          bid.hieuLucBaoDamNgay = parseInt(hieuLucBaoDamNgayEl.value || "0", 10);
-        }
-        const thoiGianThucHienEl = tr.querySelector(".mt-thoi-gian-thuc-hien");
-        if (thoiGianThucHienEl) {
-          bid.thoiGianThucHien = thoiGianThucHienEl.value.trim();
-        }
-        const isFailedFinancial = bid.danhGiaKetLuan && bid.danhGiaKetLuan.startsWith("Không đạt");
-        bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : isFailedFinancial ? "Không xếp hạng" : "--";
-        bid.lamRoTaiChinh = tr.querySelector(".mt-lam-ro-tai-chinh")?.value.trim() || "";
-      } else {
-        bid.danhGiaHopLe = tr.querySelector(".mt-dg-hop-le")?.value.trim() || "";
-        bid.danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
-        bid.danhGiaKyThuat = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
-        const selectKetLuan = tr.querySelector(".mt-dg-ketluan");
-        if (selectKetLuan) {
-          bid.danhGiaKetLuan = selectKetLuan.value;
-        } else {
-          const cell = tr.querySelector(".mt-ketluan-cell");
-          bid.danhGiaKetLuan = cell ? cell.textContent.trim() : "";
-        }
-        const isFailedTechnical = bid.danhGiaKetLuan && bid.danhGiaKetLuan.startsWith("Không đạt");
-        bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : isFailedTechnical ? "Không xếp hạng" : "--";
-        const inpLamRoHopLe = tr.querySelector(".mt-lam-ro-hop-le");
-        if (inpLamRoHopLe) bid.lamRoHopLe = inpLamRoHopLe.value.trim();
-        const inpLamRoNangLuc = tr.querySelector(".mt-lam-ro-nang-luc");
-        if (inpLamRoNangLuc) bid.lamRoNangLuc = inpLamRoNangLuc.value.trim();
-        const inpLamRoKyThuat = tr.querySelector(".mt-lam-ro-ky-thuat");
-        if (inpLamRoKyThuat) bid.lamRoKyThuat = inpLamRoKyThuat.value.trim();
-        const inpLamRoTaiChinh = tr.querySelector(".mt-lam-ro-tai-chinh");
-        if (inpLamRoTaiChinh) bid.lamRoTaiChinh = inpLamRoTaiChinh.value.trim();
-        bid.nguyenNhanKhongDatHopLe = tr.querySelector(".mt-reason-fail-hople")?.value.trim() || "";
-        bid.nguyenNhanKhongDatNangLuc = tr.querySelector(".mt-reason-fail-nangluc")?.value.trim() || "";
-        bid.nguyenNhanKhongDatKyThuat = tr.querySelector(".mt-reason-fail-kythuat")?.value.trim() || "";
-      }
-    }
+  if (completionWorkspaceToken
+    && this.model.isWorkspaceCurrent?.(completionWorkspaceToken) === false) return false;
+  const ownsWorkspaceMutation = typeof this.model.beginWorkspaceMutation === "function";
+  const workspaceMutation = ownsWorkspaceMutation ? this.model.beginWorkspaceMutation() : null;
+  if (workspaceMutation) this.model.assertWorkspaceMutation?.(workspaceMutation);
+  let syncResult;
+  try {
+  gt.quyTrinhDanhGia = quyTrinhDanhGia;
+  gt.danhGiaHsdtMetadata = nextEvaluationMetadata;
+  applyCompletedBidRows({
+    rows,
+    bidsById,
+    updatedBidsById,
+    rankings,
+    isTwoEnvelope: is1G2T,
+    currentTab: this.currentDanhGiaTab,
+    model: this.model,
   });
   const evaluatedBids = Array.from(rows).map((tr) => (
     bidsById.get(String(tr.getAttribute("data-bid-id") || ""))
   )).filter(Boolean);
-  stageBidEvaluationMutation(this.model, gt, evaluatedBids);
-  const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau"], {
+  stageBidEvaluationMutation(this.model, gt, evaluatedBids, workspaceMutation);
+  const tables = ["goithau", ...(evaluatedBids.length ? ["thongtinmothau"] : [])];
+  syncResult = await persistAndSync(this, tables, {
+    authoritativeBoundaryChecked: completionBoundaryChecked,
+    ...(workspaceMutation ? { workspaceMutation } : {}),
     changes: {
       upserts: {
         goithau: [gt],
-        thongtinmothau: evaluatedBids,
+        ...(evaluatedBids.length ? { thongtinmothau: evaluatedBids } : {}),
       },
     },
     afterPersist: () => this.view.renderGoiThauTable(),
   });
+  } finally {
+    if (ownsWorkspaceMutation) this.model.finishWorkspaceMutation?.(workspaceMutation);
+  }
   if (!syncResult?.ok) return;
   const stepKey = this.currentDanhGiaTab === "financial" ? "eval_fin" : "eval_tech";
   if (this.view._editingState) {

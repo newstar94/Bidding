@@ -199,6 +199,7 @@ export class WorkspaceMutationOutbox {
     const kind = String(command.kind || "");
     let changed = false;
     if (kind === "upsert") changed = this._enqueueUpserts(command.table, command.records);
+    else if (kind === "patch") changed = this._enqueuePatches(command.table, command.records);
     else if (kind === "replace-table") changed = this._replaceTable(command.table, command.records);
     else if (kind === "delete") changed = this._enqueueDeletes(command.table, command.records);
     else if (kind === "server-row-version") changed = this._applyServerRowVersions(command.entries);
@@ -359,6 +360,20 @@ export class WorkspaceMutationOutbox {
         delete this.queue.upserts[table];
       }
     });
+    Object.entries(receipt.patches || {}).forEach(([table, records]) => {
+      Object.entries(records || {}).forEach(([id, generation]) => {
+        const key = recordKey("patch", table, id);
+        if (this.recordGenerations.get(key) !== generation) return;
+        if (this.queue.patches?.[table]?.[id]) {
+          delete this.queue.patches[table][id];
+          changed = true;
+        }
+        this.recordGenerations.delete(key);
+      });
+      if (this.queue.patches?.[table] && Object.keys(this.queue.patches[table]).length === 0) {
+        delete this.queue.patches[table];
+      }
+    });
     Object.entries(receipt.dirtyTables || {}).forEach(([table, generation]) => {
       if (this.tableGenerations.get(table) !== generation) return;
       if (this.queue.dirtyTables?.[table]) {
@@ -402,6 +417,7 @@ export class WorkspaceMutationOutbox {
       const type = key.slice(0, separator);
       const id = key.slice(separator + 1);
       return receipt?.upserts?.[type]?.[id] !== undefined
+        || receipt?.patches?.[type]?.[id] !== undefined
         || receipt?.deletes?.[recordKey("delete", type, id)] !== undefined;
     };
     const scopedReceiptMatch = [...rejectedKeys].some(receiptContains);
@@ -412,6 +428,9 @@ export class WorkspaceMutationOutbox {
     );
     if (rejectEntireReceipt) {
       Object.entries(receipt?.upserts || {}).forEach(([table, records]) => {
+        Object.keys(records || {}).forEach((id) => rejectedKeys.add(`${table}:${id}`));
+      });
+      Object.entries(receipt?.patches || {}).forEach(([table, records]) => {
         Object.keys(records || {}).forEach((id) => rejectedKeys.add(`${table}:${id}`));
       });
       Object.keys(receipt?.deletes || {}).forEach((key) => {
@@ -463,6 +482,21 @@ export class WorkspaceMutationOutbox {
         if (Object.keys(this.queue.upserts[type]).length === 0) delete this.queue.upserts[type];
         this.recordGenerations.delete(upsertKey);
         operation = "upsert";
+        changed = true;
+      }
+
+      const patchKey = recordKey("patch", type, id);
+      const sentPatchGeneration = receipt?.patches?.[type]?.[id];
+      if (
+        !operation
+        && sentPatchGeneration !== undefined
+        && this.recordGenerations.get(patchKey) === sentPatchGeneration
+        && this.queue.patches?.[type]?.[id]
+      ) {
+        delete this.queue.patches[type][id];
+        if (Object.keys(this.queue.patches[type]).length === 0) delete this.queue.patches[type];
+        this.recordGenerations.delete(patchKey);
+        operation = "patch";
         changed = true;
       }
 
@@ -527,6 +561,11 @@ export class WorkspaceMutationOutbox {
     validRecords.forEach((record) => {
       const id = String(record.id);
       this.queue.upserts[table][id] = cloneValue(this.normalizeRecord(record, table));
+      if (this.queue.patches?.[table]) delete this.queue.patches[table][id];
+      if (this.queue.patches?.[table] && Object.keys(this.queue.patches[table]).length === 0) {
+        delete this.queue.patches[table];
+      }
+      this.recordGenerations.delete(recordKey("patch", table, id));
       this.queue.deletes = this.queue.deletes.filter(
         (item) => !(item.table === table && String(item.id) === id)
       );
@@ -540,12 +579,45 @@ export class WorkspaceMutationOutbox {
     return true;
   }
 
+  _enqueuePatches(table, records) {
+    if (!table || !this.isSyncedType(table)) return false;
+    const validRecords = (Array.isArray(records) ? records : [records]).filter(hasRecordId);
+    if (validRecords.length === 0) return false;
+    this.queue.patches ||= {};
+    validRecords.forEach((record) => {
+      const id = String(record.id);
+      const patch = cloneValue(this.normalizeRecord(record, table));
+      const queuedUpsert = this.queue.upserts?.[table]?.[id];
+      if (queuedUpsert) {
+        this.queue.upserts[table][id] = { ...queuedUpsert, ...patch, id: queuedUpsert.id };
+        this._bumpRecord("upsert", table, id);
+      } else {
+        if (!this.queue.patches[table]) this.queue.patches[table] = {};
+        this.queue.patches[table][id] = {
+          ...(this.queue.patches[table][id] || {}),
+          ...patch,
+        };
+        this._bumpRecord("patch", table, id);
+      }
+      this.queue.deletes = this.queue.deletes.filter(
+        (item) => !(item.table === table && String(item.id) === id)
+      );
+      this.localDeletions = this.localDeletions.filter(
+        (item) => !(item.table === table && String(item.id) === id)
+      );
+      this.recordGenerations.delete(recordKey("delete", table, id));
+    });
+    this._touchForNewPayload();
+    return true;
+  }
+
   _replaceTable(table, records) {
     if (!table || !this.isSyncedType(table)) return false;
     const validRecords = (Array.isArray(records) ? records : []).filter(hasRecordId);
     if (validRecords.length === 0) return false;
     this.queue.dirtyTables[table] = false;
     this.queue.upserts[table] = {};
+    delete this.queue.patches[table];
     const currentIds = new Set();
     validRecords.forEach((record) => {
       const id = String(record.id);
@@ -578,6 +650,11 @@ export class WorkspaceMutationOutbox {
         delete this.queue.upserts[table];
       }
       this.recordGenerations.delete(recordKey("upsert", table, id));
+      if (this.queue.patches?.[table]) delete this.queue.patches[table][id];
+      if (this.queue.patches?.[table] && Object.keys(this.queue.patches[table]).length === 0) {
+        delete this.queue.patches[table];
+      }
+      this.recordGenerations.delete(recordKey("patch", table, id));
       this._upsertDeletion(this.queue.deletes, table, id, expectedVersion);
       this._upsertDeletion(this.localDeletions, table, id, expectedVersion);
       this._bumpRecord("delete", table, id);
@@ -598,6 +675,11 @@ export class WorkspaceMutationOutbox {
         queued.rowVersion = rowVersion;
         changed = true;
       }
+      const patch = this.queue.patches?.[table]?.[id];
+      if (patch && patch.rowVersion !== rowVersion) {
+        patch.rowVersion = rowVersion;
+        changed = true;
+      }
     });
     if (changed) this._touchForNewPayload();
     return changed;
@@ -615,6 +697,7 @@ export class WorkspaceMutationOutbox {
     if (acknowledged.size === 0) return false;
     const beforeQueue = this.queue.deletes.length;
     const beforeLocal = this.localDeletions.length;
+    let removedPatches = false;
     this.queue.deletes = this.queue.deletes.filter(
       (item) => !acknowledged.has(`${item.table}:${String(item.id)}`)
     );
@@ -623,14 +706,23 @@ export class WorkspaceMutationOutbox {
     );
     acknowledged.forEach((key) => {
       const separator = key.indexOf(":");
+      const table = key.slice(0, separator);
+      const id = key.slice(separator + 1);
       this.recordGenerations.delete(recordKey(
         "delete",
-        key.slice(0, separator),
-        key.slice(separator + 1)
+        table,
+        id
       ));
+      if (this.queue.patches?.[table]?.[id]) {
+        delete this.queue.patches[table][id];
+        if (Object.keys(this.queue.patches[table]).length === 0) delete this.queue.patches[table];
+        this.recordGenerations.delete(recordKey("patch", table, id));
+        removedPatches = true;
+      }
     });
     const changed = beforeQueue !== this.queue.deletes.length
-      || beforeLocal !== this.localDeletions.length;
+      || beforeLocal !== this.localDeletions.length
+      || removedPatches;
     if (changed && mutationQueueHasChanges(this.queue)) this._touchForNewPayload();
     return changed;
   }
@@ -683,6 +775,9 @@ export class WorkspaceMutationOutbox {
     Object.entries(this.queue.upserts || {}).forEach(([table, records]) => {
       Object.keys(records || {}).forEach((id) => this._bumpRecord("upsert", table, id));
     });
+    Object.entries(this.queue.patches || {}).forEach(([table, records]) => {
+      Object.keys(records || {}).forEach((id) => this._bumpRecord("patch", table, id));
+    });
     (this.queue.deletes || []).forEach((item) => {
       if (item?.table && hasRecordId(item)) this._bumpRecord("delete", item.table, item.id);
     });
@@ -703,6 +798,15 @@ export class WorkspaceMutationOutbox {
         upserts[table][id] = generation;
       });
     });
+    const patches = {};
+    Object.entries(this.queue.patches || {}).forEach(([table, records]) => {
+      Object.keys(records || {}).forEach((id) => {
+        const generation = this.recordGenerations.get(recordKey("patch", table, id));
+        if (generation === undefined) return;
+        if (!patches[table]) patches[table] = {};
+        patches[table][id] = generation;
+      });
+    });
     const deletes = {};
     (this.queue.deletes || []).forEach((item) => {
       const key = recordKey("delete", item.table, item.id);
@@ -720,6 +824,7 @@ export class WorkspaceMutationOutbox {
       clientMutationId: this.queue.clientMutationId,
       revision: this.queue.revision,
       upserts,
+      patches,
       deletes,
       dirtyTables,
     };
@@ -754,7 +859,11 @@ export class WorkspaceMutationOutbox {
       (total, records) => total + Object.keys(records || {}).length,
       0
     );
+    const patches = Object.values(this.queue.patches || {}).reduce(
+      (total, records) => total + Object.keys(records || {}).length,
+      0
+    );
     const deletions = Array.isArray(this.queue.deletes) ? this.queue.deletes.length : 0;
-    this.onChange({ upserts, deletions, pendingCount: upserts + deletions });
+    this.onChange({ upserts, patches, deletions, pendingCount: upserts + patches + deletions });
   }
 }

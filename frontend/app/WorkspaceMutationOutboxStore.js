@@ -25,16 +25,25 @@ function isMutationQueue(value) {
     "clientMutationId",
     "dirtyTables",
     "upserts",
+    "patches",
     "deletes",
     "revision",
   ];
   if (!knownKeys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) return false;
   if (value.dirtyTables !== undefined && !isObject(value.dirtyTables)) return false;
   if (value.upserts !== undefined && !isObject(value.upserts)) return false;
+  if (value.patches !== undefined && !isObject(value.patches)) return false;
   if (value.deletes !== undefined && !Array.isArray(value.deletes)) return false;
   if (
     isObject(value.upserts)
     && Object.values(value.upserts).some((records) => (
+      !isObject(records)
+      || Object.values(records).some((record) => !isObject(record))
+    ))
+  ) return false;
+  if (
+    isObject(value.patches)
+    && Object.values(value.patches).some((records) => (
       !isObject(records)
       || Object.values(records).some((record) => !isObject(record))
     ))
@@ -118,8 +127,8 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
     baseSyncVersion: requestedQueue?.baseSyncVersion || previousQueue?.baseSyncVersion || "0",
     createId: () => requestedQueue?.clientMutationId || previousQueue?.clientMutationId || "",
   });
-  const previous = previousQueue || { dirtyTables: {}, upserts: {}, deletes: [] };
-  const requested = requestedQueue || { dirtyTables: {}, upserts: {}, deletes: [] };
+  const previous = previousQueue || { dirtyTables: {}, upserts: {}, patches: {}, deletes: [] };
+  const requested = requestedQueue || { dirtyTables: {}, upserts: {}, patches: {}, deletes: [] };
 
   const tables = new Set([
     ...Object.keys(previous.upserts || {}),
@@ -134,6 +143,10 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
         if (sameValue(after[id], before[id])) return;
         if (!current.upserts[table]) current.upserts[table] = {};
         current.upserts[table][id] = cloneValue(after[id]);
+        if (current.patches?.[table]) delete current.patches[table][id];
+        if (current.patches?.[table] && Object.keys(current.patches[table]).length === 0) {
+          delete current.patches[table];
+        }
         current.deletes = current.deletes.filter(
           (item) => !(item.table === table && String(item.id) === id),
         );
@@ -145,6 +158,38 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
     });
     if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
       delete current.upserts[table];
+    }
+  });
+
+  const patchTables = new Set([
+    ...Object.keys(previous.patches || {}),
+    ...Object.keys(requested.patches || {}),
+  ]);
+  patchTables.forEach((table) => {
+    const before = previous.patches?.[table] || {};
+    const after = requested.patches?.[table] || {};
+    const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
+    ids.forEach((id) => {
+      if (Object.prototype.hasOwnProperty.call(after, id)) {
+        if (sameValue(after[id], before[id])) return;
+        current.patches ||= {};
+        if (!current.patches[table]) current.patches[table] = {};
+        current.patches[table][id] = cloneValue(after[id]);
+        if (current.upserts?.[table]) delete current.upserts[table][id];
+        if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
+          delete current.upserts[table];
+        }
+        current.deletes = current.deletes.filter(
+          (item) => !(item.table === table && String(item.id) === id),
+        );
+        return;
+      }
+      if (sameValue(current.patches?.[table]?.[id], before[id])) {
+        delete current.patches[table][id];
+      }
+    });
+    if (current.patches?.[table] && Object.keys(current.patches[table]).length === 0) {
+      delete current.patches[table];
     }
   });
 
@@ -160,6 +205,10 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
       if (current.upserts?.[table]) delete current.upserts[table][id];
       if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
         delete current.upserts[table];
+      }
+      if (current.patches?.[table]) delete current.patches[table][id];
+      if (current.patches?.[table] && Object.keys(current.patches[table]).length === 0) {
+        delete current.patches[table];
       }
     } else if (sameValue(currentDeletes.get(key), before)) {
       currentDeletes.delete(key);

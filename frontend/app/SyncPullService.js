@@ -401,6 +401,7 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
       if (window.lucide) window.lucide.createIcons({ root: banner });
       banner.classList.add("visible");
       setTimeout(() => {
+        if (!pullIsCurrent()) return;
         if (navigator.onLine) {
           banner.classList.remove("visible");
           banner.hidden = true;

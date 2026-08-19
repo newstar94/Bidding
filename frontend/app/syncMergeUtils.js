@@ -1,3 +1,5 @@
+import { applyRecordPatch } from "./mutationQueue.js";
+
 export function normalizeIncomingRecords(model, key, records) {
   if (model && typeof model.normalizeRecordKeys === "function") {
     return (records || []).map((record) => model.normalizeRecordKeys(record, key));
@@ -34,6 +36,16 @@ function overlayPendingUpserts(incoming, pendingUpserts) {
     }
   }
   return merged;
+}
+function overlayPendingPatches(records, pendingPatches) {
+  if (!pendingPatches.length) return records;
+  const patchesById = new Map(
+    pendingPatches.map((patch) => [String(patch?.id || ""), patch]),
+  );
+  return records.map((record) => {
+    const patch = patchesById.get(String(record?.id || ""));
+    return patch ? applyRecordPatch(record, patch) : record;
+  });
 }
 const hasMeaningfulValue = (value) => {
   if (Array.isArray(value)) return value.length > 0;
@@ -123,18 +135,34 @@ export function applyServerSnapshot(model, dbData, options = {}) {
         return;
       }
       const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {});
+      const pendingPatches = Object.values(mutationBatch?.patches?.[key] || {});
       const pendingDeleteIds = pendingDeleteIdsByTable.get(key) || new Set();
       const serverRecords = incoming.filter(
         (record) => !pendingDeleteIds.has(String(record?.id || "")),
       );
-      const overlaid = overlayPendingUpserts(serverRecords, pendingUpserts);
+      if (!useServerSidePagination && pendingPatches.length > 0) {
+        const serverIds = new Set(incoming.map((record) => String(record?.id || "")));
+        const invalidatedPatchIds = pendingPatches
+          .map((patch) => String(patch?.id || ""))
+          .filter((id) => id && !serverIds.has(id));
+        if (invalidatedPatchIds.length > 0) {
+          deletionsByTable[key] = [
+            ...new Set([...(deletionsByTable[key] || []), ...invalidatedPatchIds]),
+          ];
+        }
+      }
+      const overlaid = overlayPendingPatches(
+        overlayPendingUpserts(serverRecords, pendingUpserts),
+        pendingPatches,
+      );
       model.state[key] = overlaid;
       changedKeys.add(key);
       replacementsByTable[key] = overlaid;
       return;
     }
     const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {});
-    if (incoming.length === 0 && pendingUpserts.length === 0) return;
+    const pendingPatches = Object.values(mutationBatch?.patches?.[key] || {});
+    if (incoming.length === 0 && pendingUpserts.length === 0 && pendingPatches.length === 0) return;
     const protectedIds = new Set(
       pendingUpserts.map((record) => String(record?.id || "")),
     );
@@ -146,8 +174,16 @@ export function applyServerSnapshot(model, dbData, options = {}) {
     );
     mergeIncomingRecords(model, key, serverIncoming);
     mergeIncomingRecords(model, key, pendingUpserts);
+    const patchedRecords = overlayPendingPatches(model.state[key], pendingPatches)
+      .filter((record, index) => record !== model.state[key][index]);
+    if (patchedRecords.length > 0) {
+      const patchedById = new Map(patchedRecords.map((record) => [String(record.id), record]));
+      model.state[key] = model.state[key].map(
+        (record) => patchedById.get(String(record?.id || "")) || record,
+      );
+    }
     changedKeys.add(key);
-    upsertsByTable[key] = [...serverIncoming, ...pendingUpserts];
+    upsertsByTable[key] = [...serverIncoming, ...pendingUpserts, ...patchedRecords];
   });
   if (typeof model.suspendMutationTracking === "function") {
     model.suspendMutationTracking(applyIncoming);

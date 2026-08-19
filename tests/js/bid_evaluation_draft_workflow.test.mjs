@@ -9,6 +9,14 @@ import {
 } from "../../frontend/packages/BidEvaluationDraftRecovery.js";
 import { parseEvaluationMetadataStrict } from "../../frontend/packages/evaluationMetadata.js";
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function control(value = "") {
   return {
     value,
@@ -31,7 +39,7 @@ function evaluationRow(bidId, values) {
   };
 }
 
-function createController({ syncOk = true } = {}) {
+function createController({ syncOk = true, authority = null } = {}) {
   const pkg = {
     id: "pkg-1",
     rowVersion: 3,
@@ -56,7 +64,9 @@ function createController({ syncOk = true } = {}) {
   const staged = [];
   const persisted = [];
   const alerts = [];
+  const syncCalls = [];
   const storageValues = new Map();
+  let workspaceToken = "user-1:org-1@1";
   const model = {
     workspaceScope: { userId: "user-1", organizationId: "org-1" },
     workspaceStorage: {
@@ -64,6 +74,8 @@ function createController({ syncOk = true } = {}) {
       setItem: (key, value) => storageValues.set(key, value),
     },
     state: { goithau: [pkg], thongtinmothau: bids },
+    getWorkspaceToken: () => workspaceToken,
+    isWorkspaceCurrent: (token) => token === workspaceToken,
     convertDMYToYMD: (value) => value,
     parseVND: Number,
     commitLocalMutation(table, { records }) {
@@ -76,9 +88,13 @@ function createController({ syncOk = true } = {}) {
   };
   const controller = {
     model,
+    ...(authority ? { awaitAuthoritativeMutationBoundary: () => authority.promise } : {}),
     currentDanhGiaTab: "unified",
     calculateRankings() { throw new Error("draft calculated official rankings"); },
-    async autoSync() { return { ok: syncOk }; },
+    async autoSync() {
+      syncCalls.push("sync");
+      return { ok: syncOk };
+    },
     view: {
       getActiveElement: (id) => controls.get(id) || null,
       isGoiThauDetailTabActive: () => true,
@@ -89,8 +105,227 @@ function createController({ syncOk = true } = {}) {
   };
   const recoveryKey = buildBidEvaluationRecoveryKey({ controller, pkg, round: "single" });
   bidEvaluationDirtyStateFor(controller, recoveryKey).markBidField("bid-1", "danhGiaHopLe");
-  return { controller, pkg, bids, staged, persisted, alerts, recoveryKey };
+  return {
+    controller,
+    pkg,
+    bids,
+    staged,
+    persisted,
+    alerts,
+    recoveryKey,
+    syncCalls,
+    switchWorkspace() {
+      workspaceToken = "user-1:org-1@2";
+      model.workspaceScope = { userId: "user-1", organizationId: "org-1" };
+      model.state = { goithau: [], thongtinmothau: [] };
+    },
+  };
 }
+
+test("draft_save_waits_for_authority_before_mutating_state_or_outbox", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const initialPackage = structuredClone(fixture.pkg);
+  const initialBids = structuredClone(fixture.bids);
+
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(fixture.pkg, initialPackage);
+  assert.deepEqual(fixture.bids, initialBids);
+  assert.deepEqual(fixture.staged, []);
+  assert.deepEqual(fixture.persisted, []);
+  assert.deepEqual(fixture.syncCalls, []);
+
+  authority.resolve({ authoritative: true, offline: false });
+  assert.equal(await saving, true);
+});
+
+test("draft_save_rebuilds_patch_after_authoritative_refresh", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const refreshedPackage = {
+    ...fixture.pkg,
+    rowVersion: 9,
+    tenGoiThau: "Tên mới từ máy chủ",
+    danhGiaHsdtMetadata: JSON.stringify({ serverOnly: "preserved" }),
+  };
+  const refreshedBid = {
+    ...fixture.bids[0],
+    rowVersion: 12,
+    danhGiaNangLuc: "Máy chủ vừa cập nhật",
+  };
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  fixture.controller.model.state.goithau = [refreshedPackage];
+  fixture.controller.model.state.thongtinmothau = [refreshedBid, fixture.bids[1]];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, true);
+  assert.equal(refreshedPackage.tenGoiThau, "Tên mới từ máy chủ");
+  assert.equal(refreshedBid.danhGiaNangLuc, "Máy chủ vừa cập nhật");
+  assert.equal(refreshedBid.danhGiaHopLe, "Đạt");
+  assert.equal(fixture.pkg.danhGiaHsdtMetadata, "");
+});
+
+test("draft_save_does_not_stage_lot_scope_removed_by_authoritative_refresh", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  fixture.pkg.phanLo = "Có";
+  fixture.pkg.phanLoList = JSON.stringify([
+    { id: "lot-1", maPhanLo: "L01", tenPhanLo: "Lô 1" },
+    { id: "lot-2", maPhanLo: "L02", tenPhanLo: "Lô 2" },
+  ]);
+  fixture.bids[0].lotId = "lot-1";
+  fixture.controller._explicitEvaluationLotScopes = {
+    "pkg-1:unified": {
+      mode: "selected",
+      selectedLotIds: ["lot-1"],
+      availableLotIds: ["lot-1", "lot-2"],
+      batchId: null,
+    },
+  };
+  const scopedRecoveryKey = buildBidEvaluationRecoveryKey({
+    controller: fixture.controller,
+    pkg: fixture.pkg,
+    round: "single",
+    lotIds: ["lot-1"],
+  });
+  bidEvaluationDirtyStateFor(fixture.controller, scopedRecoveryKey)
+    .markBidField("bid-1", "danhGiaHopLe");
+
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(fixture.staged, []);
+  assert.deepEqual(fixture.persisted, []);
+  assert.deepEqual(fixture.syncCalls, []);
+
+  const refreshedPackage = {
+    ...fixture.pkg,
+    rowVersion: 14,
+    phanLoList: JSON.stringify([
+      { id: "lot-2", maPhanLo: "L02", tenPhanLo: "Lô 2" },
+    ]),
+  };
+  fixture.controller.model.state.goithau = [refreshedPackage];
+  fixture.controller.model.state.thongtinmothau = [];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, false);
+  assert.equal(refreshedPackage.danhGiaHsdtMetadata, "");
+  assert.deepEqual(fixture.staged, []);
+  assert.deepEqual(fixture.persisted, []);
+  assert.deepEqual(fixture.syncCalls, []);
+  assert.equal(
+    generalBidEvaluationRecoveryFor(fixture.controller).restore(scopedRecoveryKey)?.pendingServerSync,
+    true,
+  );
+});
+
+test("draft_save_does_not_stage_bid_moved_out_of_lot_scope_by_authoritative_refresh", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  fixture.pkg.phanLo = "Có";
+  fixture.pkg.phanLoList = JSON.stringify([
+    { id: "lot-1", maPhanLo: "L01", tenPhanLo: "Lô 1" },
+    { id: "lot-2", maPhanLo: "L02", tenPhanLo: "Lô 2" },
+  ]);
+  fixture.bids[0].lotId = "lot-1";
+  fixture.controller._explicitEvaluationLotScopes = {
+    "pkg-1:unified": {
+      mode: "selected",
+      selectedLotIds: ["lot-1"],
+      availableLotIds: ["lot-1", "lot-2"],
+      batchId: null,
+    },
+  };
+  const scopedRecoveryKey = buildBidEvaluationRecoveryKey({
+    controller: fixture.controller,
+    pkg: fixture.pkg,
+    round: "single",
+    lotIds: ["lot-1"],
+  });
+  bidEvaluationDirtyStateFor(fixture.controller, scopedRecoveryKey)
+    .markBidField("bid-1", "danhGiaHopLe");
+
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  fixture.controller.model.state.thongtinmothau = [
+    { ...fixture.bids[0], rowVersion: 18, lotId: "lot-2" },
+    fixture.bids[1],
+  ];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, true);
+  assert.equal(fixture.staged.some((entry) => entry.table === "thongtinmothau"), false);
+  assert.equal(fixture.persisted.some((entry) => entry.table === "thongtinmothau"), false);
+});
+
+test("draft_save_uses_refreshed_row_version", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const refreshedPackage = { ...fixture.pkg, rowVersion: 13 };
+  const refreshedBid = { ...fixture.bids[0], rowVersion: 17 };
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  fixture.controller.model.state.goithau = [refreshedPackage];
+  fixture.controller.model.state.thongtinmothau = [refreshedBid, fixture.bids[1]];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, true);
+  assert.equal(
+    fixture.staged.find((entry) => entry.table === "goithau").records[0].rowVersion,
+    13,
+  );
+  assert.equal(
+    fixture.staged.find((entry) => entry.table === "thongtinmothau").records[0].rowVersion,
+    17,
+  );
+});
+
+test("draft_save_does_not_resurrect_package_removed_by_authoritative_refresh", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  fixture.controller.model.state.goithau = [];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, false);
+  assert.deepEqual(fixture.controller.model.state.goithau, []);
+  assert.deepEqual(fixture.staged, []);
+  assert.deepEqual(fixture.persisted, []);
+  assert.deepEqual(fixture.syncCalls, []);
+});
+
+test("draft_save_does_not_stage_bid_removed_by_authoritative_refresh", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  fixture.controller.model.state.thongtinmothau = [fixture.bids[1]];
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, true);
+  assert.equal(fixture.staged.some((entry) => entry.table === "thongtinmothau"), false);
+  assert.equal(fixture.persisted.some((entry) => entry.table === "thongtinmothau"), false);
+});
+
+test("workspace_change_while_draft_waits_for_authority_aborts_without_mutation", async () => {
+  const authority = deferred();
+  const fixture = createController({ authority });
+  const saving = saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" });
+  await new Promise((resolve) => setImmediate(resolve));
+  fixture.switchWorkspace();
+  authority.resolve({ authoritative: true, offline: false });
+
+  assert.equal(await saving, false);
+  assert.deepEqual(fixture.controller.model.state, { goithau: [], thongtinmothau: [] });
+  assert.deepEqual(fixture.staged, []);
+  assert.deepEqual(fixture.persisted, []);
+  assert.deepEqual(fixture.syncCalls, []);
+});
 
 test("general draft persists non-official metadata and only the dirty bidder patch", async () => {
   const fixture = createController();

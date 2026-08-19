@@ -9,6 +9,10 @@ import {
   buildBidEvaluationRecoveryKey,
   generalBidEvaluationRecoveryFor,
 } from "./BidEvaluationDraftRecovery.js";
+import {
+  getPackageEvaluationLotsStrict,
+  isBidWithinEvaluationLotDetails,
+} from "./lotEvaluationScope.js";
 
 function collectLetters(view, model, containerId) {
   const letters = [];
@@ -38,11 +42,77 @@ function buildReportDraft({ controller, pkg, report, includeExtraFields }) {
   return result;
 }
 
-function stagePartialDraftMutations(model, pkgPatch, bidPatches) {
-  model.commitLocalMutation?.("goithau", { records: [pkgPatch] });
+function stagePartialDraftMutations(model, pkgPatch, bidPatches, workspaceMutation = null) {
+  const stage = (table, records) => {
+    if (workspaceMutation && typeof model.commitWorkspaceMutation === "function") {
+      model.commitWorkspaceMutation(workspaceMutation, table, { mode: "patch", records });
+    } else {
+      model.commitLocalMutation?.(table, { mode: "patch", records });
+    }
+  };
+  stage("goithau", [pkgPatch]);
   if (bidPatches.length) {
-    model.commitLocalMutation?.("thongtinmothau", { records: bidPatches });
+    stage("thongtinmothau", bidPatches);
   }
+}
+
+function workspaceTokenFor(model) {
+  return model?.getWorkspaceToken?.() || "";
+}
+
+function workspaceIsCurrent(model, token) {
+  return !token || model?.isWorkspaceCurrent?.(token) !== false;
+}
+
+function canonicalRecord(state, table, id) {
+  return (state?.[table] || []).find((record) => String(record?.id || "") === String(id || "")) || null;
+}
+
+function uniqueIds(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function sameIds(left = [], right = []) {
+  const a = uniqueIds(left).sort();
+  const b = uniqueIds(right).sort();
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function resolveAuthoritativeDraftLotDetails(pkg, requestedDetails) {
+  const packageLots = getPackageEvaluationLotsStrict(pkg);
+  if (!requestedDetails) {
+    return packageLots.length === 0
+      ? { ok: true, details: null }
+      : { ok: false, details: null };
+  }
+
+  const requestedLotIds = uniqueIds(requestedDetails.lotIds);
+  const packageLotIds = packageLots.map((lot) => lot.id);
+  const previousPackageLotIds = (requestedDetails.packageLots || []).map((lot) => lot.id);
+  const knownLots = new Map(packageLots.map((lot) => [lot.id, lot]));
+  const selectedLots = requestedLotIds.map((lotId) => knownLots.get(lotId)).filter(Boolean);
+  const wholeScopeChanged = requestedDetails.mode !== "selected"
+    && previousPackageLotIds.length > 0
+    && !sameIds(previousPackageLotIds, packageLotIds);
+  if (
+    requestedLotIds.length === 0
+    || selectedLots.length !== requestedLotIds.length
+    || wholeScopeChanged
+  ) {
+    return { ok: false, details: null };
+  }
+
+  return {
+    ok: true,
+    details: {
+      ...requestedDetails,
+      packageLots,
+      selectedLots,
+      lotIds: requestedLotIds,
+      lotCodes: selectedLots.map((lot) => lot.code),
+      isWholePackage: sameIds(requestedLotIds, packageLotIds),
+    },
+  };
 }
 
 async function notifyDraftFailure(controller, error = null, recoverySaved = true) {
@@ -70,99 +140,165 @@ export async function executeBidEvaluationDraftSave({
   if (!controller?.model || !controller?.view || !pkg?.id || typeof commit !== "function") {
     throw new TypeError("Bid evaluation draft workflow received an invalid context.");
   }
-  const lotIds = lotDetails?.lotIds || [];
-  const recoveryKey = buildBidEvaluationRecoveryKey({ controller, pkg, round, lotIds });
+  const model = controller.model;
+  const workspaceToken = workspaceTokenFor(model);
+  const packageId = String(pkg.id);
+  const requestedLotIds = uniqueIds(lotDetails?.lotIds);
+  const recoveryKey = buildBidEvaluationRecoveryKey({
+    controller,
+    pkg,
+    round,
+    lotIds: requestedLotIds,
+  });
   const dirtyState = bidEvaluationDirtyStateFor(controller, recoveryKey);
   const checkpoint = dirtyState.checkpoint();
-  const bids = controller.model.state.thongtinmothau || [];
-  const bidPatches = collectBidEvaluationDraftPatches({
+  const recovery = generalBidEvaluationRecoveryFor(controller);
+  const boundaryChecked = typeof controller.awaitAuthoritativeMutationBoundary === "function";
+  try {
+    if (boundaryChecked) await controller.awaitAuthoritativeMutationBoundary();
+  } catch (error) {
+    await notifyDraftFailure(controller, error, false);
+    return false;
+  }
+  if (!workspaceIsCurrent(model, workspaceToken)) return false;
+
+  const canonicalPackage = canonicalRecord(model.state, "goithau", packageId)
+    || (!boundaryChecked ? pkg : null);
+  const bids = model.state.thongtinmothau || [];
+  const recoveryBidPatches = collectBidEvaluationDraftPatches({
     rows,
     bids,
     dirtyState,
-    parseMoney: (value) => controller.model.parseVND(value),
+    parseMoney: (value) => model.parseVND(value),
   });
   const reportDraft = buildReportDraft({
     controller,
-    pkg,
+    pkg: canonicalPackage || pkg,
     report,
     includeExtraFields,
   });
-  const nextMetadata = buildBidEvaluationDraftMetadata({
-    existing: pkg.danhGiaHsdtMetadata,
-    round,
-    lotIds,
-    report: reportDraft,
-  });
-  const packagePatch = {
-    id: pkg.id,
-    ...(Number.isInteger(pkg.rowVersion) ? { rowVersion: pkg.rowVersion } : {}),
-    danhGiaHsdtMetadata: nextMetadata,
-  };
-  const recovery = generalBidEvaluationRecoveryFor(controller);
   const recoverySaved = recovery.save(recoveryKey, {
-    packageId: pkg.id,
+    packageId,
     round,
-    lotIds,
+    lotIds: requestedLotIds,
     report: reportDraft,
-    bidderPatches: bidPatches,
+    bidderPatches: recoveryBidPatches,
   });
   const failedStatus = recoverySaved
     ? "Chưa đồng bộ máy chủ · bản khôi phục vẫn còn trên thiết bị"
     : "Chưa đồng bộ máy chủ · khôi phục cục bộ không khả dụng";
 
-  pkg.danhGiaHsdtMetadata = nextMetadata;
-  applyBidEvaluationPatches(bids, bidPatches);
-  stagePartialDraftMutations(controller.model, packagePatch, bidPatches);
-  const changedBidIds = new Set(bidPatches.map((patch) => String(patch.id)));
-  const persistedBids = bids.filter((bid) => changedBidIds.has(String(bid.id)));
-  const tableKeys = ["goithau", ...(persistedBids.length ? ["thongtinmothau"] : [])];
-  let result;
-  controller._bidEvaluationSaveStatusByKey ||= new Map();
-  controller._bidEvaluationSaveStatusByKey.set(recoveryKey, "Đang lưu nháp trên máy chủ…");
-  controller._renderBidEvaluationProgress?.();
+  if (!canonicalPackage) {
+    controller._bidEvaluationSaveStatusByKey ||= new Map();
+    controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+    controller._renderBidEvaluationProgress?.();
+    await notifyDraftFailure(
+      controller,
+      new Error("Gói thầu không còn khả dụng sau khi làm mới dữ liệu."),
+      recoverySaved,
+    );
+    return false;
+  }
+
+  let authoritativeLotScope;
   try {
-    result = await commit(controller, tableKeys, {
-      changes: {
-        upserts: {
-          goithau: [pkg],
-          ...(persistedBids.length ? { thongtinmothau: persistedBids } : {}),
-        },
-      },
-    });
+    authoritativeLotScope = resolveAuthoritativeDraftLotDetails(canonicalPackage, lotDetails);
   } catch (error) {
-    controller._bidEvaluationSaveStatusByKey.set(
-      recoveryKey,
-      failedStatus,
-    );
+    authoritativeLotScope = { ok: false, error };
+  }
+  if (!authoritativeLotScope.ok) {
+    controller._bidEvaluationSaveStatusByKey ||= new Map();
+    controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
     controller._renderBidEvaluationProgress?.();
-    await notifyDraftFailure(controller, error, recoverySaved);
+    await notifyDraftFailure(
+      controller,
+      new Error("Phạm vi phần lô đã thay đổi sau khi làm mới dữ liệu. Vui lòng kiểm tra lại phần lô trước khi lưu."),
+      recoverySaved,
+    );
     return false;
   }
-  if (!result?.ok) {
-    controller._bidEvaluationSaveStatusByKey.set(
-      recoveryKey,
-      failedStatus,
-    );
-    controller._renderBidEvaluationProgress?.();
-    await notifyDraftFailure(controller, null, recoverySaved);
-    return false;
-  }
-  dirtyState.acknowledge(checkpoint, result);
-  recovery.acknowledge(recoveryKey, result);
-  controller._bidEvaluationSaveStatusByKey.set(
-    recoveryKey,
-    `Đã lưu nháp lúc ${new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
+
+  const authoritativeLotDetails = authoritativeLotScope.details;
+  const authoritativeBids = authoritativeLotDetails
+    ? bids.filter((bid) => isBidWithinEvaluationLotDetails(bid, authoritativeLotDetails))
+    : bids;
+  const authoritativeBidIds = new Set(authoritativeBids.map((bid) => String(bid?.id || "")));
+  const bidPatches = recoveryBidPatches.filter(
+    (patch) => authoritativeBidIds.has(String(patch?.id || "")),
   );
-  controller._renderBidEvaluationProgress?.();
-  const successMessage = "Bản nháp báo cáo đánh giá đã được lưu trên máy chủ.";
-  if (typeof controller.view.showToast === "function") {
-    controller.view.showToast("Đã lưu nháp", successMessage, "success");
-  } else {
-    await controller.view.customAlert?.(
-      "Đã lưu nháp",
-      successMessage,
-      "check-circle",
+  const lotIds = authoritativeLotDetails?.lotIds || [];
+  const nextMetadata = buildBidEvaluationDraftMetadata({
+    existing: canonicalPackage.danhGiaHsdtMetadata,
+    round,
+    lotIds,
+    report: reportDraft,
+  });
+  const packagePatch = {
+    id: packageId,
+    ...(Number.isInteger(canonicalPackage.rowVersion) ? { rowVersion: canonicalPackage.rowVersion } : {}),
+    danhGiaHsdtMetadata: nextMetadata,
+  };
+
+  const ownsMutation = typeof model.beginWorkspaceMutation === "function";
+  const workspaceMutation = ownsMutation ? model.beginWorkspaceMutation() : null;
+  if (workspaceMutation) model.assertWorkspaceMutation?.(workspaceMutation);
+
+  try {
+    if (!workspaceIsCurrent(model, workspaceToken)) return false;
+    canonicalPackage.danhGiaHsdtMetadata = nextMetadata;
+    applyBidEvaluationPatches(bids, bidPatches);
+    stagePartialDraftMutations(model, packagePatch, bidPatches, workspaceMutation);
+    const changedBidIds = new Set(bidPatches.map((patch) => String(patch.id)));
+    const persistedBids = bids.filter((bid) => changedBidIds.has(String(bid.id)));
+    const tableKeys = ["goithau", ...(persistedBids.length ? ["thongtinmothau"] : [])];
+    controller._bidEvaluationSaveStatusByKey ||= new Map();
+    controller._bidEvaluationSaveStatusByKey.set(recoveryKey, "Đang lưu nháp trên máy chủ…");
+    controller._renderBidEvaluationProgress?.();
+    let result;
+    try {
+      result = await commit(controller, tableKeys, {
+        authoritativeBoundaryChecked: boundaryChecked,
+        ...(workspaceMutation ? { workspaceMutation } : {}),
+        changes: {
+          upserts: {
+            goithau: [canonicalPackage],
+            ...(persistedBids.length ? { thongtinmothau: persistedBids } : {}),
+          },
+        },
+      });
+    } catch (error) {
+      controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+      controller._renderBidEvaluationProgress?.();
+      await notifyDraftFailure(controller, error, recoverySaved);
+      return false;
+    }
+    if (!result?.ok || !workspaceIsCurrent(model, workspaceToken)) {
+      controller._bidEvaluationSaveStatusByKey.set(recoveryKey, failedStatus);
+      controller._renderBidEvaluationProgress?.();
+      if (!result?.workspaceChanged && workspaceIsCurrent(model, workspaceToken)) {
+        await notifyDraftFailure(controller, null, recoverySaved);
+      }
+      return false;
+    }
+    dirtyState.acknowledge(checkpoint, result);
+    recovery.acknowledge(recoveryKey, result);
+    controller._bidEvaluationSaveStatusByKey.set(
+      recoveryKey,
+      `Đã lưu nháp lúc ${new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
     );
+    controller._renderBidEvaluationProgress?.();
+    const successMessage = "Bản nháp báo cáo đánh giá đã được lưu trên máy chủ.";
+    if (typeof controller.view.showToast === "function") {
+      controller.view.showToast("Đã lưu nháp", successMessage, "success");
+    } else {
+      await controller.view.customAlert?.(
+        "Đã lưu nháp",
+        successMessage,
+        "check-circle",
+      );
+    }
+    return true;
+  } finally {
+    if (ownsMutation) model.finishWorkspaceMutation?.(workspaceMutation);
   }
-  return true;
 }

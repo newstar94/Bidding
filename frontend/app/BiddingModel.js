@@ -268,7 +268,7 @@ export class BiddingModel {
       return;
     }
     captured.outbox.enqueue({
-      kind: "upsert",
+      kind: options.mode === "patch" ? "patch" : "upsert",
       table: type,
       records: options.records || [],
     });
@@ -777,6 +777,16 @@ export class BiddingModel {
       records
     });
   }
+  markRecordPatch(type, records) {
+    this._assertWorkspaceWritable();
+    this.assertStorageTablesWritable(type);
+    if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
+    return this._getMutationOutbox().enqueue({
+      kind: "patch",
+      table: type,
+      records
+    });
+  }
   markTableDirty(type) {
     this._assertWorkspaceWritable();
     this.assertStorageTablesWritable(type);
@@ -812,6 +822,10 @@ export class BiddingModel {
     }
     if (options.fullTable) {
       this.markTableDirty(type);
+      return;
+    }
+    if (options.mode === "patch") {
+      this.markRecordPatch(type, options.records || []);
       return;
     }
     this.markRecordDirty(type, options.records || []);
