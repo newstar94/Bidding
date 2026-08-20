@@ -8,6 +8,9 @@ import {
 } from "../app/workspaceLease.js";
 
 export const PLAN_VERSION_DRAFT_STORAGE_KEY = "plan_version_drafts_v1";
+export const PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT = 256;
+const PLAN_VERSION_DRAFT_RETIREMENT_BUCKETS = 64;
+const INVALID_TOMBSTONE_RETIREMENT_TIME = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
 export const PLAN_VERSION_DRAFT_TABLES = Object.freeze([
   "chudautu",
   "chuyengia",
@@ -172,18 +175,83 @@ export function refreshPlanVersionDraftSession(session, state, currentVersionId)
   return session;
 }
 
+function draftRetirementBucket(draftId) {
+  let hash = 2166136261;
+  for (const character of String(draftId || "")) {
+    hash ^= character.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return String((hash >>> 0) % PLAN_VERSION_DRAFT_RETIREMENT_BUCKETS);
+}
+
+function validTimestamp(value) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function normalizeRetirementWatermarks(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([bucket, retiredBefore]) => (
+    /^\d+$/.test(bucket)
+    && Number(bucket) < PLAN_VERSION_DRAFT_RETIREMENT_BUCKETS
+    && validTimestamp(retiredBefore) !== null
+  )));
+}
+
+function recordRetirementWatermark(envelope, draftId, tombstone) {
+  const bucket = draftRetirementBucket(draftId);
+  const capturedRetirement = Math.max(
+    validTimestamp(tombstone?.removedAt) ?? Number.NEGATIVE_INFINITY,
+    validTimestamp(tombstone?.draftCreatedAt) ?? Number.NEGATIVE_INFINITY,
+  );
+  // Corrupted legacy metadata must fail closed: compact it into a permanent
+  // bucket watermark instead of either growing forever or forgetting deletion.
+  const retiredAt = Number.isFinite(capturedRetirement)
+    ? capturedRetirement
+    : INVALID_TOMBSTONE_RETIREMENT_TIME;
+  const previous = validTimestamp(envelope.retiredBefore?.[bucket]);
+  envelope.retiredBefore ||= {};
+  if (previous === null || retiredAt > previous) {
+    envelope.retiredBefore[bucket] = new Date(retiredAt).toISOString();
+  }
+  return true;
+}
+
+function compactDraftTombstones(envelope) {
+  const tombstones = Object.entries(envelope.tombstones || {})
+    .map(([draftId, tombstone]) => ({
+      draftId,
+      tombstone,
+      removedAt: validTimestamp(tombstone?.removedAt),
+    }))
+    .sort((left, right) => (
+      (left.removedAt ?? Number.POSITIVE_INFINITY)
+      - (right.removedAt ?? Number.POSITIVE_INFINITY)
+      || left.draftId.localeCompare(right.draftId)
+    ));
+  let retainedCount = tombstones.length;
+  for (const entry of tombstones) {
+    if (retainedCount <= PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT) break;
+    if (!recordRetirementWatermark(envelope, entry.draftId, entry.tombstone)) continue;
+    delete envelope.tombstones[entry.draftId];
+    retainedCount -= 1;
+  }
+  return envelope;
+}
+
 function normalizeStoredEnvelope(value) {
   if (!value || typeof value !== "object" || !Array.isArray(value.sessions)) {
-    return { version: 2, sessions: [], tombstones: {} };
+    return { version: 3, sessions: [], tombstones: {}, retiredBefore: {} };
   }
   return {
-    version: 2,
+    version: 3,
     sessions: value.sessions.filter((session) => (
       session?.draftId && session?.rootId && session?.aggregate
     )).map((session) => ({ ...clone(session), revision: normalizeRevision(session.revision) })),
     tombstones: value.tombstones && typeof value.tombstones === "object"
       ? clone(value.tombstones)
       : {},
+    retiredBefore: normalizeRetirementWatermarks(value.retiredBefore),
   };
 }
 
@@ -217,7 +285,7 @@ function assertDraftStorageCapability(model, capability) {
 async function updateDraftEnvelope(db, updater) {
   if (typeof db?.update === "function") {
     return db.update(PLAN_VERSION_DRAFT_STORAGE_KEY, (current) => (
-      updater(normalizeStoredEnvelope(current))
+      compactDraftTombstones(updater(normalizeStoredEnvelope(current)))
     ));
   }
   // Compatibility for small test doubles. BrowserDB always provides atomic update().
@@ -227,7 +295,7 @@ async function updateDraftEnvelope(db, updater) {
   const current = typeof db.get === "function"
     ? await db.get(PLAN_VERSION_DRAFT_STORAGE_KEY)
     : null;
-  const next = updater(normalizeStoredEnvelope(current));
+  const next = compactDraftTombstones(updater(normalizeStoredEnvelope(current)));
   await db.set(PLAN_VERSION_DRAFT_STORAGE_KEY, next);
   return next;
 }
@@ -255,6 +323,18 @@ export async function savePlanVersionDraftSession(model, session) {
       throw new Error("Stale plan draft revision cannot resurrect a removed session.");
     }
     const index = current.sessions.findIndex((item) => String(item.draftId) === draftId);
+    if (index < 0 && expectedRevision !== 0) {
+      throw new Error("Stale plan draft revision cannot resurrect a removed session.");
+    }
+    if (index < 0) {
+      const retiredBefore = validTimestamp(
+        current.retiredBefore?.[draftRetirementBucket(draftId)],
+      );
+      const createdAt = validTimestamp(session.createdAt);
+      if (retiredBefore !== null && (createdAt === null || createdAt <= retiredBefore)) {
+        throw new Error("Stale plan draft revision cannot resurrect a removed session.");
+      }
+    }
     const storedRevision = index >= 0
       ? normalizeRevision(current.sessions[index].revision)
       : 0;
@@ -281,17 +361,17 @@ export async function removePlanVersionDraftSession(model, draftId, { expectedRe
   const envelope = await updateDraftEnvelope(capability.lease.db, (current) => {
     const existing = current.sessions.find((session) => String(session.draftId) === id);
     removed = Boolean(existing);
+    if (!existing) return current;
     const storedRevision = normalizeRevision(existing?.revision);
     if (hasExpectedRevision && existing && expected !== storedRevision) {
       throw new Error("Stale plan draft revision cannot remove a newer snapshot.");
     }
-    const currentRevision = normalizeRevision(
-      existing?.revision ?? current.tombstones[id]?.revision,
-    );
+    const currentRevision = normalizeRevision(existing.revision);
     current.sessions = current.sessions.filter((session) => String(session.draftId) !== id);
     current.tombstones[id] = {
       revision: currentRevision + 1,
       removedAt: new Date().toISOString(),
+      draftCreatedAt: existing.createdAt,
     };
     return current;
   });

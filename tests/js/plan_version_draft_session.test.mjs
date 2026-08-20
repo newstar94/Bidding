@@ -1656,6 +1656,91 @@ test("concurrent remove and stale save cannot resurrect a draft after reload", a
   assert.deepEqual(reloaded.planVersionDraftSessions, []);
 });
 
+test("draft tombstone compaction stays bounded without allowing a removed revision to resurrect", async () => {
+  const db = memoryDb();
+  const model = { state: draftState(), db };
+  const stale = createPlanVersionDraftSession(
+    model.state,
+    "plan-00",
+    "2026-08-20T00:00:00.000Z",
+  );
+  stale.draftId = "plan-draft-retired-oldest";
+  stale.revision = 0;
+  const tombstones = {
+    [stale.draftId]: {
+      revision: 2,
+      removedAt: "2026-08-20T01:00:00.000Z",
+    },
+  };
+  for (let index = 0; index < 256; index += 1) {
+    tombstones[`plan-draft-retired-${String(index).padStart(3, "0")}`] = {
+      revision: 2,
+      removedAt: new Date(Date.parse("2026-08-20T02:00:00.000Z") + index).toISOString(),
+    };
+  }
+  await db.set("plan_version_drafts_v1", {
+    version: 2,
+    sessions: [],
+    tombstones,
+  });
+
+  const fresh = createPlanVersionDraftSession(
+    model.state,
+    "plan-00",
+    "2026-08-21T00:00:00.000Z",
+  );
+  await savePlanVersionDraftSession(model, fresh);
+
+  const compacted = await db.get("plan_version_drafts_v1");
+  assert.equal(Object.keys(compacted.tombstones).length, 256);
+  assert.equal(Object.hasOwn(compacted.tombstones, stale.draftId), false);
+  await assert.rejects(
+    savePlanVersionDraftSession(model, stale),
+    /stale/i,
+  );
+  assert.deepEqual(
+    (await db.get("plan_version_drafts_v1")).sessions.map((session) => session.draftId),
+    [fresh.draftId],
+  );
+});
+
+test("malformed legacy tombstones compact fail-closed instead of bypassing the bound", async () => {
+  const db = memoryDb();
+  const model = { state: draftState(), db };
+  const stale = createPlanVersionDraftSession(model.state, "plan-00");
+  stale.draftId = "000-plan-draft-malformed-retired";
+  const tombstones = {};
+  for (let index = 0; index < 257; index += 1) {
+    const draftId = index === 0
+      ? stale.draftId
+      : `plan-draft-malformed-${String(index).padStart(3, "0")}`;
+    tombstones[draftId] = { revision: 2, removedAt: "not-a-date" };
+  }
+  await db.set("plan_version_drafts_v1", {
+    version: 2,
+    sessions: [],
+    tombstones,
+  });
+
+  const fresh = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, fresh);
+
+  const compacted = await db.get("plan_version_drafts_v1");
+  assert.equal(Object.keys(compacted.tombstones).length, 256);
+  assert.equal(Object.hasOwn(compacted.tombstones, stale.draftId), false);
+  await assert.rejects(savePlanVersionDraftSession(model, stale), /stale/i);
+});
+
+test("removing an unknown draft does not allocate a tombstone", async () => {
+  const db = memoryDb();
+  const model = { state: draftState(), db };
+
+  const removed = await removePlanVersionDraftSession(model, "plan-draft-never-persisted");
+
+  assert.equal(removed, false);
+  assert.deepEqual((await db.get("plan_version_drafts_v1")).tombstones, {});
+});
+
 test("stale same-draft remove cannot delete a newer tab snapshot", async () => {
   const db = memoryDb();
   const modelA = { state: draftState(), db };

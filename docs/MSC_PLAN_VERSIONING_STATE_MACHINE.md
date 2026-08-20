@@ -92,3 +92,18 @@ invisible server session.
 - Draft reapply never overwrites authoritative shared references or resurrects
   a tombstoned draft.
 
+## Bounded draft tombstones
+
+The durable draft envelope keeps at most 256 individual tombstones. When older
+entries are compacted, their retirement time is folded into one of 64 bounded
+watermark buckets derived from the draft ID. A draft with no active durable
+session can be created only at revision `0` and only when its creation time is
+newer than the bucket watermark. Consequently, a stale pre-save clone and a
+previously persisted revision remain rejected after their individual tombstone
+has been removed.
+
+Removing an ID that was never durable is a no-op and does not allocate a
+tombstone. Existing version-2 envelopes are normalized to version 3 on the next
+durable mutation; active sessions and their revision CAS semantics are
+unchanged. Malformed legacy retirement timestamps compact fail-closed into a
+permanent bucket watermark, preserving the bound without forgetting deletion.
