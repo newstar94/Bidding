@@ -77,6 +77,9 @@ export async function cancelActiveProcurementImportSession() {
     && String(this[flowSlot]?.session?.sessionId || "") === sessionId
   );
   let remoteCancelled = true;
+  if (kind === "plan") {
+    await discardPlanVersionDraftForImportSession(this.model, sessionId);
+  }
   try {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
       sessionId,
@@ -165,7 +168,9 @@ export async function resumeProcurementImportSession({
     }
     const shouldResume = await this.view?.customConfirm?.(
       "Tiếp tục nhập từ Mua Sắm Công",
-      `Phiên nhập ${session.familyNo} đang dở ở phiên bản ${currentRevision.revisionNumber}. Bạn có muốn tiếp tục không?`,
+      `Phiên nhập ${session.familyNo} đang dở ở phiên bản ${currentRevision.revisionNumber}. `
+        + "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
+        + "Bạn có muốn tiếp tục không?",
       "rotate-ccw",
     );
     assertCurrentWorkspace();

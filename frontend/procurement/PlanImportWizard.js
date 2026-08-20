@@ -566,9 +566,9 @@ export async function openProcurementImportWizard() {
   if (sourceCode || restoredDraft?.code) wizard.debouncedPrepare.schedule();
 }
 
-function latestPlanForFamily(model, familyNo) {
+function latestPlanForFamily(model, familyNo, state = model?.state) {
   const normalized = String(familyNo || "").trim().toUpperCase();
-  return (model?.state?.kehoach || [])
+  return (state?.kehoach || [])
     .filter((plan) => (
       String(model?.getPlanBaseCode?.(plan.maKeHoach) || plan.maKeHoach || "")
         .trim().toUpperCase() === normalized
@@ -640,19 +640,53 @@ function candidatePlanImportState(state) {
   return candidate;
 }
 
+function replaceArrayInPlace(target, nextRows) {
+  const existingById = new Map(
+    (Array.isArray(target) ? target : []).map((row) => [String(row?.id || ""), row]),
+  );
+  const rows = (Array.isArray(nextRows) ? nextRows : []).map((row) => {
+    const existing = existingById.get(String(row?.id || ""));
+    if (!existing) return row;
+    Object.keys(existing).forEach((key) => {
+      if (!Object.hasOwn(row, key)) delete existing[key];
+    });
+    Object.assign(existing, row);
+    return existing;
+  });
+  if (Array.isArray(target)) {
+    target.splice(0, target.length, ...rows);
+    return target;
+  }
+  return rows;
+}
+
 function publishPlanImportCandidate(controller, candidate, sessions) {
+  const state = controller.model.state;
   PLAN_IMPORT_MATERIALIZATION_STATE_KEYS.forEach((key) => {
-    if (!Object.hasOwn(candidate, key)) delete controller.model.state[key];
-    else controller.model.state[key] = candidate[key];
+    if (!Object.hasOwn(candidate, key)) delete state[key];
+    else if (Array.isArray(candidate[key])) {
+      state[key] = replaceArrayInPlace(
+        state[key], candidate[key],
+      );
+    } else {
+      state[key] = candidate[key];
+    }
     controller.model.entityIndexes?.invalidate?.(key);
   });
   controller.model.planVersionDraftSessions = sessions;
 }
 
 function restorePlanImportMaterialization(controller, checkpoint) {
+  const state = controller.model.state;
   for (const [key, captured] of Object.entries(checkpoint.state)) {
-    if (!captured.present) delete controller.model.state[key];
-    else controller.model.state[key] = cloneMaterializationValue(captured.value);
+    if (!captured.present) delete state[key];
+    else if (Array.isArray(captured.value)) {
+      state[key] = replaceArrayInPlace(
+        state[key], captured.value,
+      );
+    } else {
+      state[key] = cloneMaterializationValue(captured.value);
+    }
     controller.model.entityIndexes?.invalidate?.(key);
   }
   controller.model.planVersionDraftSessions = cloneMaterializationValue(
@@ -664,7 +698,7 @@ function restorePlanImportMaterialization(controller, checkpoint) {
   controller.tempPlanAction = checkpoint.tempPlanAction;
 }
 
-function planImportDraftResources(controller, flow, state, sessions) {
+function planImportDraftResources(flow, state, sessions) {
   return {
     state,
     db: flow.importWorkspaceLease.db,
@@ -693,9 +727,7 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     ? (candidateState.kehoach || []).find(
       (plan) => String(plan.id) === String(previousPlanId),
     )
-    : latestPlanForFamily(
-      { ...controller.model, state: candidateState }, revisionDraft.familyNo,
-    );
+    : latestPlanForFamily(controller.model, revisionDraft.familyNo, candidateState);
   const sameRevision = prior
     && procurementRevisionNumbersEqual(
       prior.phienBan,
@@ -736,13 +768,12 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     investorResolution,
     pendingNextRevisionNumber: null,
   };
+  let candidatePersisted = false;
   // MSC materialization creates a new local plan before the normal plan form
   // submits. Establish the durable aggregate draft here so the form keeps the
   // intermediate/final-save boundary instead of falling back to /api/sync.
   if (Number(materialized.plan?.rowVersion || 0) <= 0) {
-    const draftResources = planImportDraftResources(
-      controller, flow, candidateState, checkpoint.sessions,
-    );
+    const draftResources = planImportDraftResources(flow, candidateState, checkpoint.sessions);
     const existingDraft = findPlanVersionDraftSession(draftResources, materialized.plan.id)
       || findPlanVersionDraftSession(draftResources, prior?.id);
     const extendsPersistedPlan = Boolean(
@@ -760,23 +791,23 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
         );
       if (draftSession) {
         await savePlanVersionDraftSession(draftResources, draftSession);
-        nextFlow.materializationDurable = true;
+        candidatePersisted = true;
       }
       assertPlanImportWorkspace(controller, flow, { allowUninstalled });
       nextFlow.durableDraftSessions = draftResources.planVersionDraftSessions;
     }
   }
   assertPlanImportWorkspace(controller, flow, { allowUninstalled });
-  publishPlanImportCandidate(
-    controller,
-    candidateState,
-    nextFlow.durableDraftSessions || checkpoint.sessions,
-  );
-  delete nextFlow.durableDraftSessions;
-  controller.planBreakdownDraft = materialized.draft;
-  controller.procurementPlanImport = nextFlow;
-  rememberProcurementImportSession(controller, nextFlow);
   try {
+    publishPlanImportCandidate(
+      controller,
+      candidateState,
+      nextFlow.durableDraftSessions || checkpoint.sessions,
+    );
+    delete nextFlow.durableDraftSessions;
+    controller.planBreakdownDraft = materialized.draft;
+    controller.procurementPlanImport = nextFlow;
+    rememberProcurementImportSession(controller, nextFlow);
     await controller.plans.edit(materialized.plan.id, {
       keepProcurementCodeEditable: true,
       preserveProcurementLookupSelection: true,
@@ -785,7 +816,7 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     delete nextFlow.pendingNextUiRecovery;
     return materialized;
   } catch (error) {
-    if (nextFlow.materializationDurable) {
+    if (candidatePersisted) {
       nextFlow.pendingNextUiRecovery = { planId: materialized.plan.id };
       error.procurementMaterializationDurable = true;
     } else if (planImportCapabilityIsCurrent(controller, nextFlow)) {
@@ -809,6 +840,7 @@ export async function completeProcurementPlanImportRevision(savedPlanId) {
   if (this.procurementPlanImport !== flow) this.procurementPlanImport = flow;
   assertPlanImportWorkspace(this, flow);
   if (flow.pendingNextUiRecovery?.planId) {
+    rememberProcurementImportSession(this, flow);
     await this.plans.edit(flow.pendingNextUiRecovery.planId, {
       keepProcurementCodeEditable: true,
       preserveProcurementLookupSelection: true,

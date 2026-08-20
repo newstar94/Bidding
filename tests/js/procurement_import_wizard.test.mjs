@@ -1544,6 +1544,93 @@ test("late cancel of old flow cannot clear a new flow in the same workspace", as
   assert.equal(new ProcurementImportResumeStore(storage).load().sessionId, "session-a2");
 });
 
+test("active plan cancel discards its durable local aggregate before cancelling authority", async () => {
+  const storage = memoryStorage();
+  const db = memoryEnvelopeDb();
+  const state = {
+    chudautu: [], chuyengia: [], nhathau: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-00", phienBan: "00", isLatest: 1,
+      sourceRevision: { sessionId: "session-a", revisionNumber: "00" },
+    }],
+    goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  const model = {
+    state, db, workspaceStorage: storage, planVersionDraftSessions: [],
+    getWorkspaceToken: () => "user:org-a@1",
+  };
+  const draft = createPlanVersionDraftSession(state, "plan-00");
+  await savePlanVersionDraftSession(model, draft);
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-a", kind: "PLAN", revisionNumber: "00",
+  });
+  const effects = [];
+  const controller = {
+    model,
+    procurementPlanImport: {
+      session: { sessionId: "session-a" },
+      controller: { cancel: () => effects.push("local-cancel") },
+      client: { cancelImportSession: async () => effects.push("remote-cancel") },
+    },
+  };
+
+  await cancelActiveProcurementImportSession.call(controller);
+
+  assert.deepEqual(effects, ["remote-cancel", "local-cancel"]);
+  assert.deepEqual(model.planVersionDraftSessions, []);
+  assert.deepEqual(state.kehoach, []);
+  assert.equal(new ProcurementImportResumeStore(storage).load(), null);
+  assert.equal(controller.procurementPlanImport, null);
+});
+
+test("workspace change during resume cannot clear or materialize into B", async () => {
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  new ProcurementImportResumeStore(storageA).save({
+    sessionId: "session-a", kind: "PLAN", familyNo: "PL2600000001",
+    revisionNumber: "00",
+  });
+  new ProcurementImportResumeStore(storageB).save({
+    sessionId: "session-b", kind: "PLAN", familyNo: "PL2600000002",
+    revisionNumber: "00",
+  });
+  const sessionReady = deferred();
+  let token = "user:org-a@1";
+  const workspaceA = { state: { kehoach: [] }, db: {}, storage: storageA };
+  const workspaceB = { state: { kehoach: [{ id: "plan-b" }] }, db: {}, storage: storageB };
+  const model = {
+    state: workspaceA.state, db: workspaceA.db, workspaceStorage: workspaceA.storage,
+    getWorkspaceToken: () => token,
+  };
+  const controller = {
+    model,
+    view: { customConfirm: async () => true },
+    startProcurementPlanImport: async () => { throw new Error("must not start A"); },
+  };
+  const pending = resumeProcurementImportSession.call(controller, {
+    client: {
+      async getImportSession() {
+        sessionReady.resolve();
+        return {
+          sessionId: "session-a", kind: "PLAN", familyNo: "PL2600000001",
+          currentIndex: 0, status: "READY", revisions: [{ revisionNumber: "00" }],
+        };
+      },
+    },
+  });
+  await sessionReady.promise;
+  token = "user:org-a@2";
+  model.state = workspaceB.state;
+  model.db = workspaceB.db;
+  model.workspaceStorage = workspaceB.storage;
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.equal(controller.procurementPlanImport, undefined);
+  assert.deepEqual(workspaceB.state, { kehoach: [{ id: "plan-b" }] });
+  assert.equal(new ProcurementImportResumeStore(storageB).load().sessionId, "session-b");
+});
+
 test("package 00 continues with 01 from prepared session without upstream prepare", async () => {
   const loaded = [];
   const sequential = new SequentialRevisionController({
