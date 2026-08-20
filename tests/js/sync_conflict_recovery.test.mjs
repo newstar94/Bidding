@@ -15,6 +15,7 @@ import {
   resolvePendingSyncConflict,
   resolveRowVersionConflicts,
 } from "../../frontend/app/BiddingControllerSync.js";
+import { runManualSyncRetry } from "../../frontend/app/SyncCoordinator.js";
 
 function deferred() {
   let resolve;
@@ -55,6 +56,42 @@ test("startup does not submit the same mutation again after a conflict", async (
 
   assert.equal(result, false);
   assert.deepEqual(calls, ["push", "pull"]);
+});
+
+test("manual retry cannot resubmit a batch after startup entered conflict", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      hasPendingMutationOutboxChanges: () => true,
+      buildMutationSyncPayload: () => ({ payload: {}, snapshot: { id: "receipt-1" } }),
+    },
+    markStartup() {},
+    async autoSync() {
+      calls.push("push");
+      return { ok: false, conflict: true, status: 409 };
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true };
+    },
+    view: { showToast() { calls.push("toast"); } },
+  };
+  controller.getStartupReconciliationState = () => getStartupReconciliationState(controller);
+  controller.reconcileInitialRouteData = () => reconcileRouteDataAtStartup(controller);
+
+  assert.equal(await reconcileRouteDataAtStartup(controller), false);
+  assert.equal(getStartupReconciliationState(controller).phase, "CONFLICT");
+  const retry = await runManualSyncRetry(controller);
+
+  assert.equal(retry.reloadRequired, true);
+  assert.deepEqual(
+    calls.filter((entry) => entry === "push"),
+    ["push"],
+    "the rejected receipt must not be submitted again before F5",
+  );
 });
 
 test("startup rebases and replays a preserved outbox after idempotency key reuse", async () => {

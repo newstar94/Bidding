@@ -126,6 +126,14 @@ export function runManualSyncRetry(controller) {
       return refreshed;
     }
     const startupPhase = controller.getStartupReconciliationState?.().phase;
+    if (startupPhase === "CONFLICT") {
+      return resolvePendingSyncConflict(controller, {
+        ok: false,
+        conflict: true,
+        status: 409,
+        reconciliationRequired: true,
+      }, workspace);
+    }
     if (startupPhase && startupPhase !== "RECONCILED") {
       const reconciled = await controller.reconcileInitialRouteData?.();
       if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
