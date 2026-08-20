@@ -17,6 +17,7 @@ import { currentWorkspaceToken } from "../app/workspaceLease.js";
 import {
   createPlanVersionDraftSession,
   findPlanVersionDraftSession,
+  refreshPlanVersionDraftSession,
   savePlanVersionDraftSession,
 } from "../plans/PlanVersionDraftSession.js";
 
@@ -614,16 +615,19 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
   // MSC materialization creates a new local plan before the normal plan form
   // submits. Establish the durable aggregate draft here so the form keeps the
   // intermediate/final-save boundary instead of falling back to /api/sync.
-  if (
-    Number(materialized.plan?.rowVersion || 0) <= 0
-    && !findPlanVersionDraftSession(controller.model, materialized.plan.id)
-  ) {
-    const draftSession = createPlanVersionDraftSession(
-      controller.model.state,
-      materialized.plan.id,
-      controller.model.getCurrentDateTimeString?.(),
-    );
-    await savePlanVersionDraftSession(controller.model, draftSession);
+  if (Number(materialized.plan?.rowVersion || 0) <= 0) {
+    const existingDraft = findPlanVersionDraftSession(controller.model, materialized.plan.id)
+      || findPlanVersionDraftSession(controller.model, prior?.id);
+    const draftSession = existingDraft
+      ? refreshPlanVersionDraftSession(
+        structuredClone(existingDraft), controller.model.state, materialized.plan.id,
+      )
+      : createPlanVersionDraftSession(
+        controller.model.state,
+        materialized.plan.id,
+        controller.model.getCurrentDateTimeString?.(),
+      );
+    if (draftSession) await savePlanVersionDraftSession(controller.model, draftSession);
   }
   rememberProcurementImportSession(controller, controller.procurementPlanImport);
   await controller.plans.edit(materialized.plan.id, {

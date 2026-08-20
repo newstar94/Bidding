@@ -809,9 +809,12 @@ export async function openPlanBreakdownModal(planId) {
   const versionDraft = findPlanVersionDraftSession(this.model, planId);
   const btnIntermediate = document.getElementById("btn-save-plan-version-draft");
   if (btnIntermediate) {
-    btnIntermediate.hidden = !versionDraft;
+    const hasNextProcurementRevision = !this.procurementPlanImport?.controller
+      || this.procurementPlanImport.controller.hasNext();
+    const canSaveIntermediate = Boolean(versionDraft && hasNextProcurementRevision);
+    btnIntermediate.hidden = !canSaveIntermediate;
     btnIntermediate.disabled = false;
-    btnIntermediate.onclick = versionDraft
+    btnIntermediate.onclick = canSaveIntermediate
       ? async () => {
         if (btnIntermediate.disabled) return;
         btnIntermediate.disabled = true;
@@ -1108,6 +1111,28 @@ export async function saveIntermediatePlanVersion() {
     await this.loadBreakdownPackageDetails(planId);
   }
   const checkpoint = captureIntermediateDraftCheckpoint(this);
+  if (this.procurementPlanImport?.controller) {
+    try {
+      const currentPlan = updatePlanBreakdownDraftRows(this, planId);
+      const currentSession = findPlanVersionDraftSession(this.model, planId);
+      if (!currentPlan || !currentSession) {
+        throw new Error("Không thể lưu phiên bản nguồn hiện tại vào bản nháp kế hoạch.");
+      }
+      const refreshedSession = refreshPlanVersionDraftSession(
+        cloneDraftValue(currentSession), this.model.state, planId,
+      );
+      await savePlanVersionDraftSession(this.model, refreshedSession);
+      await this.completeProcurementPlanImportRevision?.(planId);
+      const nextPlanId = this.procurementPlanImport?.currentPlanId || planId;
+      const nextPlan = this.model.state.kehoach.find(
+        (candidate) => String(candidate.id) === String(nextPlanId),
+      ) || currentPlan;
+      return { ok: true, planId: nextPlan.id, version: nextPlan.phienBan };
+    } catch (error) {
+      await restoreIntermediateDraftCheckpoint(this, checkpoint);
+      throw error;
+    }
+  }
   let nextPlan;
   try {
     const currentPlan = updatePlanBreakdownDraftRows(this, planId);

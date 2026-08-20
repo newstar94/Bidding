@@ -16,6 +16,7 @@ import {
   handleKeHoachSubmit,
   openPlanBreakdownModal,
   renderBreakdownPackagesList,
+  saveIntermediatePlanVersion,
   savePlanBreakdown,
 } from "../../frontend/plans/KeHoachWorkflow.js";
 import {
@@ -36,6 +37,11 @@ import {
   resolveProcurementImportedPackageStatus,
 } from "../../frontend/procurement/ProcurementDraftWorkflow.js";
 import { closeModal } from "../../frontend/app/BiddingControllerUI.js";
+import {
+  createPlanVersionDraftSession,
+  hydratePlanVersionDraftSessions,
+  savePlanVersionDraftSession,
+} from "../../frontend/plans/PlanVersionDraftSession.js";
 import { persistExpertFormChanges } from "../../frontend/experts/ChuyenGiaWorkflow.js";
 import {
   completeProcurementPlanImportRevision,
@@ -1522,6 +1528,84 @@ test("cancelling plan revision 01 keeps committed 00 and removes only draft 01",
   assert.deepEqual(cancellations, ["cancel"]);
 });
 
+test("explicitly cancelling a new MSC plan removes its durable draft aggregate", async () => {
+  const previousDocument = globalThis.document;
+  const controls = new Map([
+    ["breakdown-plan-id", { value: "plan-draft-00" }],
+  ]);
+  globalThis.document = { getElementById: (id) => controls.get(id) || null };
+  const state = {
+    chudautu: [], chuyengia: [], nhathau: [],
+    kehoach: [{
+      id: "plan-unrelated", rootId: "plan-unrelated", phienBan: "00", isLatest: 1,
+    }],
+    goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  const breakdownDraft = capturePlanBreakdownDraft(state, { action: "create" });
+  state.kehoach.push({
+    id: "plan-draft-00", rootId: "plan-draft-00", phienBan: "00", isLatest: 1,
+  });
+  state.goithau.push({
+    id: "package-draft-00", rootId: "package-draft-00", phienBan: "00",
+    keHoachId: "plan-draft-00", isLatest: 1,
+  });
+  breakdownDraft.planId = "plan-draft-00";
+  let envelope = null;
+  const db = {
+    async get() { return structuredClone(envelope); },
+    async update(_key, updater) {
+      envelope = updater(structuredClone(envelope));
+      return structuredClone(envelope);
+    },
+  };
+  const model = {
+    state, db, planVersionDraftSessions: [],
+    replaceTableState(table, rows) { this.state[table] = rows; },
+  };
+  const activeDraft = createPlanVersionDraftSession(state, "plan-draft-00");
+  await savePlanVersionDraftSession(model, activeDraft);
+  const unrelatedDraft = createPlanVersionDraftSession(state, "plan-unrelated");
+  await savePlanVersionDraftSession(model, unrelatedDraft);
+  const cancellations = [];
+  const controller = {
+    model,
+    planBreakdownDraft: breakdownDraft,
+    backupKeHoachState: null,
+    backupGoiThauState: null,
+    tempPlanData: { id: "plan-draft-00" },
+    tempPlanAction: "create",
+    procurementPlanImport: { controller: { cancel() {} } },
+    cancelActiveProcurementImportSession: async () => cancellations.push("cancel"),
+    view: {
+      closeModal() {}, renderKeHoachTable() {}, renderGoiThauTable() {},
+    },
+    switchTab() {},
+  };
+
+  try {
+    await closeModal.call(controller, "modal-plan-breakdown");
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.deepEqual(state.kehoach.map((row) => row.id), ["plan-unrelated"]);
+  assert.deepEqual(state.goithau, []);
+  assert.deepEqual(cancellations, ["cancel"]);
+  assert.deepEqual(
+    model.planVersionDraftSessions.map((session) => session.rootId),
+    ["plan-unrelated"],
+  );
+  const reloaded = {
+    state: structuredClone(state), db, planVersionDraftSessions: [],
+    replaceTableState(table, rows) { this.state[table] = rows; },
+  };
+  await hydratePlanVersionDraftSessions(reloaded);
+  assert.deepEqual(reloaded.state.kehoach.map((row) => row.id), ["plan-unrelated"]);
+  assert.deepEqual(reloaded.state.goithau, []);
+});
+
 test("saving plan breakdown commits the new plan and package aggregate in one sync", async () => {
   const previousDocument = globalThis.document;
   const emptyBody = { querySelectorAll: () => [] };
@@ -1846,6 +1930,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
   const firstDraft = await sequential.loadCurrent();
   const persistedRevisions = [];
   const workspaceMutations = [];
+  const finalizeCalls = [];
   const packageModalEdits = [];
   const planModalEditOptions = [];
   const state = {
@@ -1922,7 +2007,10 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     renderBreakdownPackagesList,
     openPlanBreakdownModal,
     closeModal: async () => {},
-    finalizePlanDraft: async () => ({ status: "success", rowVersions: [] }),
+    finalizePlanDraft: async (payload) => {
+      finalizeCalls.push(payload);
+      return { status: "success", rowVersions: [] };
+    },
     autoSync: async () => {
       const current = state.kehoach.find((row) => row._procurementImportCurrent);
       persistedRevisions.push({
@@ -1942,6 +2030,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     completeProcurementPlanImportRevision.bind(controller)
   );
   controller.handleKeHoachSubmit = handleKeHoachSubmit.bind(controller);
+  controller.saveIntermediatePlanVersion = saveIntermediatePlanVersion.bind(controller);
   controller.savePlanBreakdown = savePlanBreakdown.bind(controller);
 
   try {
@@ -1977,9 +2066,10 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, />125</);
     assert.deepEqual(persistedRevisions, [], "package modal save remains memory-only");
 
-    await controller.savePlanBreakdown();
+    await controller.saveIntermediatePlanVersion();
     assert.deepEqual(workspaceMutations, [], "finalize-draft must bypass the regular sync mutation lane");
     assert.deepEqual(persistedRevisions, [], "intermediate/import save must not write the server before finalization");
+    assert.deepEqual(finalizeCalls, [], "revision 00 must stay local until the last source revision");
     assert.deepEqual(loaded, ["00", "01"]);
     assert.equal(controls.get("form-kehoach-id").value, controller.procurementPlanImport.currentPlanId);
 
@@ -1990,6 +2080,19 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
 
     assert.deepEqual(workspaceMutations, [], "the complete import chain must remain outside /api/sync");
     assert.deepEqual(persistedRevisions, []);
+    assert.equal(finalizeCalls.length, 1, "only the last source revision may finalize the draft chain");
+    assert.deepEqual(
+      finalizeCalls[0].kehoach.map((plan) => plan.sourceRevision?.revisionNumber),
+      ["00", "01"],
+      "atomic finalization must retain MSC provenance for every plan revision",
+    );
+    assert.deepEqual(
+      finalizeCalls[0].goithau
+        .map((pkg) => pkg.sourceRevision?.revisionNumber)
+        .sort(),
+      ["00", "00", "01", "01"],
+      "atomic finalization must retain MSC provenance for historical package snapshots",
+    );
     assert.deepEqual(packageModalEdits, [packageA00.id]);
     assert.equal(controller.procurementPlanImport, null);
   } finally {

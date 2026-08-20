@@ -43,6 +43,10 @@ import {
   ProcurementImportResumeStore,
   resumeProcurementImportSession,
 } from "../../frontend/procurement/ProcurementImportResume.js";
+import {
+  createPlanVersionDraftSession,
+  savePlanVersionDraftSession,
+} from "../../frontend/plans/PlanVersionDraftSession.js";
 
 
 class FakeElement {
@@ -116,6 +120,73 @@ test("refresh resumes the server session at its first uncommitted revision", asy
   assert.equal(resumed, true);
   assert.equal(calls[0].currentDraft.revisionNumber, "01");
   assert.equal(calls[0].controller.currentIndex, 1);
+});
+
+test("declining plan import resume removes the durable local plan aggregate", async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600225773",
+    revisionNumber: "00",
+  });
+  const state = {
+    chudautu: [], chuyengia: [], nhathau: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-00", phienBan: "00", isLatest: 1,
+      sourceRevision: { sessionId: "session-plan", revisionNumber: "00" },
+    }],
+    goithau: [{
+      id: "package-00", rootId: "package-00", phienBan: "00", isLatest: 1,
+      keHoachId: "plan-00",
+      sourceRevision: { sessionId: "session-plan", revisionNumber: "00" },
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  let envelope = null;
+  const model = {
+    state, workspaceStorage: storage, planVersionDraftSessions: [],
+    getWorkspaceToken: () => "lease-1",
+    db: {
+      async get() { return structuredClone(envelope); },
+      async update(_key, updater) {
+        envelope = updater(structuredClone(envelope));
+        return structuredClone(envelope);
+      },
+    },
+  };
+  const draft = createPlanVersionDraftSession(state, "plan-00");
+  await savePlanVersionDraftSession(model, draft);
+  const calls = [];
+  const controller = {
+    model,
+    view: {
+      customConfirm: async () => false,
+      renderKeHoachTable: () => calls.push("plans"),
+      renderGoiThauTable: () => calls.push("packages"),
+    },
+  };
+
+  const resumed = await resumeProcurementImportSession.call(controller, {
+    client: {
+      getImportSession: async () => ({
+        sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600225773",
+        currentIndex: 0, status: "READY", revisions: [{ revisionNumber: "00" }],
+      }),
+      cancelImportSession: async () => calls.push("remote-cancel"),
+    },
+  });
+
+  assert.equal(resumed, false);
+  assert.deepEqual(state.kehoach, []);
+  assert.deepEqual(state.goithau, []);
+  assert.deepEqual(model.planVersionDraftSessions, []);
+  assert.equal(new ProcurementImportResumeStore(storage).load(), null);
+  assert.deepEqual(calls, ["plans", "packages", "remote-cancel"]);
 });
 
 
@@ -900,6 +971,26 @@ test("authoritative package versioning ignores date heuristics and follows sourc
   assert.equal(shouldCreatePackageVersion(previous, changedDates, {
     provider: "MUASAMCONG", revisionNumber: "02",
   }), true);
+  assert.equal(shouldCreatePackageVersion({
+    ...previous,
+    phienBan: "00",
+    _procurementImportCurrent: true,
+    sourceRevision: {
+      provider: "MUASAMCONG",
+      revisionNumber: "01",
+      packageRevisionNumber: "00",
+    },
+  }, changedDates), false, "plan revision 01 must not create TBMT revision 01 when MSC still declares 00");
+  assert.equal(shouldCreatePackageVersion({
+    ...previous,
+    phienBan: "00",
+    _procurementImportCurrent: true,
+    sourceRevision: {
+      provider: "MUASAMCONG",
+      revisionNumber: "01",
+      packageRevisionNumber: "01",
+    },
+  }, changedDates), true, "an actual MSC TBMT revision advance must still create the next package snapshot");
   assert.equal(shouldCreatePackageVersion(previous, changedDates), true);
 });
 

@@ -13,6 +13,7 @@ import pytest
 from backend.db.db_helper import PostgresDatabase
 from backend.auth.auth_helper import SessionRole
 from backend.procurement_import.domain import canonical_digest
+from backend.procurement_import import sync_binding
 from backend.procurement_import.repository import ProcurementImportSessionRepository
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_import.sync_binding import (
@@ -45,6 +46,63 @@ def test_session_records_rejects_mixed_authoritative_revisions():
                 {"id": "plan-01", "sourceRevision": _authority("01")},
             ],
         })
+
+
+def test_plan_draft_validator_accepts_the_complete_authoritative_revision_chain(monkeypatch):
+    validator = getattr(sync_binding, "validate_plan_draft_import_mutation", None)
+    assert callable(validator), "atomic plan finalize needs a multi-revision provenance validator"
+    revisions = [
+        {
+            "revisionId": "revision-00", "revisionNumber": "00",
+            "revisionDigest": "sha256:" + "a" * 64, "packages": [],
+        },
+        {
+            "revisionId": "revision-01", "revisionNumber": "01",
+            "revisionDigest": "sha256:" + "b" * 64, "packages": [],
+        },
+    ]
+    session = {
+        "id": "session-1", "provider": "MUASAMCONG",
+        "familyNo": "PL2600000001", "workspaceLease": "lease-1",
+        "status": "READY", "currentIndex": 0,
+        "expiresAt": datetime.now(timezone.utc) + timedelta(minutes=5),
+        "revisions": [
+            {"revisionNumber": "00", "status": "READY"},
+            {"revisionNumber": "01", "status": "READY"},
+        ],
+        "canonicalBundle": {"revisions": revisions},
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_for_commit(self, *_args, **_kwargs):
+            return session
+
+    monkeypatch.setattr(sync_binding, "ProcurementImportSessionRepository", Repository)
+    payload = {
+        "kehoach": [
+            {
+                "id": "plan-00", "rootId": "plan-00", "phienBan": "00",
+                "sourceRevision": _authority("00"),
+            },
+            {
+                "id": "plan-01", "rootId": "plan-00", "phienBan": "01",
+                "sourceRevision": {
+                    **_authority("01"), "revisionDigest": "sha256:" + "b" * 64,
+                },
+            },
+        ],
+        "goithau": [],
+    }
+
+    authority = validator(
+        object(), payload, organization_id="org-1", user_id="user-1",
+    )
+
+    assert authority["revisionNumbers"] == ("00", "01")
+    assert authority["packageIds"] == ()
 
 
 def test_revision_commit_observability_is_bounded_and_excludes_raw_secrets(

@@ -275,6 +275,51 @@ export async function removePlanVersionDraftSession(model, draftId, { expectedRe
   return removed;
 }
 
+export async function discardPlanVersionDraftSession(model, session) {
+  if (!session?.draftId) return false;
+  const removed = await removePlanVersionDraftSession(model, session.draftId, {
+    expectedRevision: session.revision,
+  });
+  if (!removed) return false;
+  for (const table of PLAN_VERSION_DRAFT_TABLES) {
+    const discardedIds = new Set(
+      (session.aggregate?.[table] || []).map((row) => String(row?.id || "")),
+    );
+    if (discardedIds.size === 0) continue;
+    const retainedIds = new Set(
+      (model.planVersionDraftSessions || []).flatMap(
+        (candidate) => (candidate.aggregate?.[table] || []).map(
+          (row) => String(row?.id || ""),
+        ),
+      ),
+    );
+    model.state[table] = (model.state?.[table] || []).filter((row) => {
+      const id = String(row?.id || "");
+      return !discardedIds.has(id)
+        || retainedIds.has(id)
+        || Number(row?.rowVersion) > 0;
+    });
+    model.entityIndexes?.invalidate?.(table);
+  }
+  return true;
+}
+
+export async function discardPlanVersionDraftForImportSession(model, sessionId) {
+  const sourceSessionId = String(sessionId || "");
+  if (!sourceSessionId) return false;
+  const matches = (model?.planVersionDraftSessions || []).filter((session) => (
+    [
+      ...(session.aggregate?.kehoach || []),
+      ...(session.aggregate?.goithau || []),
+    ].some((row) => String(row?.sourceRevision?.sessionId || "") === sourceSessionId)
+  ));
+  let removed = false;
+  for (const session of matches) {
+    removed = await discardPlanVersionDraftSession(model, session) || removed;
+  }
+  return removed;
+}
+
 export function findPlanVersionDraftSession(model, planId) {
   const id = String(planId || "");
   return (model?.planVersionDraftSessions || []).find((session) => (
@@ -365,11 +410,24 @@ export function buildPlanDraftFinalizePayload(model, session) {
   const aggregate = session?.aggregate || {};
   const plans = [...(aggregate.kehoach || [])]
     .sort((left, right) => strictVersionNumber(left) - strictVersionNumber(right));
-  const serialize = (table, rows) => (rows || []).map((row) => (
-    serializeOutboundRecord(row, table, (value, type) => (
+  const serialize = (table, rows) => (rows || []).map((row) => {
+    const serialized = serializeOutboundRecord(row, table, (value, type) => (
       model?.normalizeRecordKeys?.(value, type) || value
-    ))
-  ));
+    ));
+    // The generic sync lane only emits provenance for the active source row.
+    // Atomic new-plan finalization is different: every unpersisted revision is
+    // committed together and the backend must validate each snapshot against
+    // its own authoritative MSC revision.
+    if (
+      ["kehoach", "goithau"].includes(table)
+      && row?.sourceRevision
+      && typeof row.sourceRevision === "object"
+      && !Array.isArray(row.sourceRevision)
+    ) {
+      serialized.sourceRevision = clone(row.sourceRevision);
+    }
+    return serialized;
+  });
   const changedRelatedRows = (table) => {
     const dirty = new Set(session?.dirtyRelatedRecords?.[table] || []);
     return (aggregate[table] || []).filter((row) => (

@@ -17,6 +17,9 @@ from backend.plan_drafts.finalize import (
 from backend.plan_drafts import service
 from backend.auth.auth_helper import SessionRole
 from backend.db.db_helper import PostgresDatabase
+from backend.procurement_import.domain import canonical_digest
+from backend.procurement_import.repository import ProcurementImportSessionRepository
+from backend.procurement_import.session import ProcurementImportSessionService
 from backend.sync import service as sync_service
 
 
@@ -394,6 +397,168 @@ def test_three_intermediate_versions_stay_absent_until_one_atomic_final_save(mon
                 (package_ids[1], expert_1), (package_ids[1], expert_2),
                 (package_ids[2], expert_2),
             }
+        finally:
+            check.close()
+    finally:
+        database.close()
+
+
+def test_atomic_finalize_commits_all_msc_plan_revisions_with_provenance(monkeypatch):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for plan draft integration test")
+    database = PostgresDatabase(database_url)
+    token = uuid.uuid4().hex
+    organization_id = f"org-plan-import-draft-{token}"
+    actor_id = f"actor-plan-import-draft-{token}"
+    investor_id = f"investor-plan-import-draft-{token}"
+    family_no = f"PL{token[:10].upper()}"
+    workspace_lease = f"lease-{token}"
+    plan_ids = [f"plan-00-{token}", f"plan-01-{token}"]
+    revisions = [
+        {
+            "revisionId": f"revision-00-{token}", "revisionNumber": "00",
+            "name": "Kế hoạch nguồn 00", "planType": "Dự toán mua sắm",
+            "projectName": "Dự toán kiểm thử", "approvalDecisionNo": "00/QĐ",
+            "approvalDecisionDate": "2026-01-01", "packages": [],
+        },
+        {
+            "revisionId": f"revision-01-{token}", "revisionNumber": "01",
+            "name": "Kế hoạch nguồn 01", "planType": "Dự toán mua sắm",
+            "projectName": "Dự toán kiểm thử", "approvalDecisionNo": "01/QĐ",
+            "approvalDecisionDate": "2026-02-01", "packages": [],
+        },
+    ]
+    for revision in revisions:
+        revision["revisionDigest"] = canonical_digest(revision)
+
+    setup = database.get_connection()
+    try:
+        setup.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            (organization_id, "Tổ chức kiểm thử plan import draft"),
+        )
+        email = f"{token}@example.test"
+        setup.execute(
+            """INSERT INTO tai_khoan
+                   (id, mat_khau, email, email_norm, ho_ten, vai_tro,
+                    da_xac_minh, trang_thai)
+               VALUES (?, 'test-hash', ?, ?, 'Importer', 'user', 1, 'active')""",
+            (actor_id, email, email),
+        )
+        setup.execute(
+            """INSERT INTO thanh_vien_to_chuc
+                   (user_id, organization_id, vai_tro_trong_to_chuc)
+               VALUES (?, ?, 'manager')""",
+            (actor_id, organization_id),
+        )
+        setup.execute(
+            """INSERT INTO chu_dau_tu
+                   (id, organization_id, owner_type, id_goc, ma_chu_dau_tu,
+                    ten_chu_dau_tu, phien_ban, is_latest)
+               VALUES (?, ?, 'organization', ?, ?, ?, '00', 1)""",
+            (
+                investor_id, organization_id, investor_id,
+                f"INV-{token[:8]}", "Chủ đầu tư kiểm thử",
+            ),
+        )
+        session = ProcurementImportSessionService(
+            ProcurementImportSessionRepository(setup.cursor())
+        ).create_from_bundle(
+            {
+                "provider": "MUASAMCONG",
+                "plan": {"familyNo": family_no},
+                "revisions": revisions,
+            },
+            organization_id=organization_id,
+            user_id=actor_id,
+            workspace_lease=workspace_lease,
+        )
+        setup.commit()
+    finally:
+        setup.close()
+
+    monkeypatch.setattr(sync_service, "database", database)
+    monkeypatch.setattr(
+        sync_service,
+        "verify_session",
+        lambda _request: (
+            True,
+            SessionRole(
+                "user", actor_id, platform_role="user", active_role="manager",
+                active_role_organization_id=organization_id,
+            ),
+        ),
+    )
+    request = SimpleNamespace(
+        headers={"X-Active-Org": organization_id}, state=SimpleNamespace(),
+        client=SimpleNamespace(host="127.0.0.1"), method="POST",
+    )
+
+    def authority(index):
+        revision = revisions[index]
+        return {
+            "sessionId": session["sessionId"], "workspaceLease": workspace_lease,
+            "provider": "MUASAMCONG", "familyNo": family_no,
+            "revisionId": revision["revisionId"],
+            "revisionNumber": revision["revisionNumber"],
+            "revisionDigest": revision["revisionDigest"],
+        }
+
+    def plan(index):
+        revision = revisions[index]
+        return {
+            "id": plan_ids[index], "rootId": plan_ids[0], "phienBan": index,
+            "isLatest": 1 if index == 1 else 0, "maKeHoach": family_no,
+            "tenKeHoach": revision["name"],
+            "tenDuAnDuToan": revision["projectName"],
+            "loaiHinhMuaSam": revision["planType"], "chuDauTuId": investor_id,
+            "ngayPheDuyet": revision["approvalDecisionDate"],
+            "quyetDinhPheDuyet": revision["approvalDecisionNo"],
+            "sourceRevision": authority(index),
+        }
+
+    payload = {
+        "draftId": f"draft-{token}", "planRootId": plan_ids[0],
+        "clientMutationId": f"finalize-import-{token}",
+        "versions": [{"id": plan_ids[index], "version": index} for index in range(2)],
+        "kehoach": [plan(0), plan(1)], "goithau": [], "goithauhanghoa": [],
+        "thongtinmothau": [], "hanghoaduthaunhathau": [],
+        "assignments": [], "deletions": [],
+    }
+
+    try:
+        response = sync_service.execute_sync_mutation(
+            request, deepcopy(payload), finalize_draft_command=True,
+        )
+        assert response.status_code == 200, json.loads(response.body)
+        body = json.loads(response.body)
+        assert body["procurementImport"]["revisionNumber"] == "01"
+        assert [
+            item["revisionNumber"]
+            for item in body["procurementImport"]["revisions"]
+        ] == ["00", "01"]
+
+        check = database.get_connection()
+        try:
+            plans = check.execute(
+                """SELECT phien_ban, is_latest FROM ke_hoach_lcnt
+                    WHERE organization_id = ? AND id_goc = ? ORDER BY phien_ban""",
+                (organization_id, plan_ids[0]),
+            ).fetchall()
+            assert [tuple(row) for row in plans] == [(0, 0), (1, 1)]
+            session_row = check.execute(
+                """SELECT current_revision_index, status
+                     FROM procurement_import_session
+                    WHERE organization_id = ? AND id = ?""",
+                (organization_id, session["sessionId"]),
+            ).fetchone()
+            assert tuple(session_row) == (2, "COMPLETED")
+            assert check.execute(
+                """SELECT COUNT(*) FROM procurement_source_revision
+                    WHERE organization_id = ? AND family_key = ?""",
+                (organization_id, family_no),
+            ).fetchone()[0] == 2
         finally:
             check.close()
     finally:

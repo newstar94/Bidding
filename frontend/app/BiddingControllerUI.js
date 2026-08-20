@@ -5,6 +5,7 @@ import { restorePlanBreakdownDraft } from "../plans/planBreakdownDraft.js";
 import {
   findPlanVersionDraftSession,
   persistActivePlanVersionDraftSession,
+  removePlanVersionDraftSession,
 } from "../plans/PlanVersionDraftSession.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
@@ -723,13 +724,23 @@ export async function closeModal(modalId, options = {}) {
     if (planSelect) planSelect.disabled = false;
   }
   if (modalId === "modal-plan-breakdown") {
+    const discardImportedPlanDraft = Boolean(
+      this.procurementPlanImport?.controller && !preserveProcurementImport,
+    );
     if (this.planBreakdownDraft?.active) {
       const activePlanId = document.getElementById("breakdown-plan-id")?.value
         || this.planBreakdownDraft.planId;
       const durableDraft = findPlanVersionDraftSession(this.model, activePlanId);
       if (durableDraft) {
-        this.updatePlanBreakdownDraftRows?.(this, activePlanId);
-        await persistActivePlanVersionDraftSession(this, activePlanId);
+        if (discardImportedPlanDraft) {
+          await removePlanVersionDraftSession(this.model, durableDraft.draftId, {
+            expectedRevision: durableDraft.revision,
+          });
+          restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+        } else {
+          this.updatePlanBreakdownDraftRows?.(this, activePlanId);
+          await persistActivePlanVersionDraftSession(this, activePlanId);
+        }
       } else {
         restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
       }
@@ -763,7 +774,14 @@ export async function closeModal(modalId, options = {}) {
     if (String(formPlanId || "") === String(this.planBreakdownDraft.planId || "")) {
       const durableDraft = findPlanVersionDraftSession(this.model, formPlanId);
       if (durableDraft) {
-        await persistActivePlanVersionDraftSession(this, formPlanId);
+        if (this.procurementPlanImport?.controller && !preserveProcurementImport) {
+          await removePlanVersionDraftSession(this.model, durableDraft.draftId, {
+            expectedRevision: durableDraft.revision,
+          });
+          restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
+        } else {
+          await persistActivePlanVersionDraftSession(this, formPlanId);
+        }
       } else {
         restorePlanBreakdownDraft(this.model, this.planBreakdownDraft);
       }

@@ -91,6 +91,55 @@ def _session_records(payload):
     }
 
 
+def _plan_draft_revision_payloads(payload):
+    """Split one atomic plan draft into authoritative source revisions."""
+
+    plans = [
+        row for row in payload.get("kehoach") or []
+        if _source(row).get("sessionId")
+    ]
+    packages = [
+        row for row in payload.get("goithau") or []
+        if _source(row).get("sessionId")
+    ]
+    records = [*plans, *packages]
+    if not records:
+        return []
+    authority = {
+        (
+            str(_source(row).get("sessionId") or ""),
+            str(_source(row).get("provider") or ""),
+            str(_source(row).get("familyNo") or ""),
+            str(_source(row).get("workspaceLease") or ""),
+        )
+        for row in records
+    }
+    if len(authority) != 1:
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    revision_numbers = {
+        str(_source(row).get("revisionNumber") or "") for row in records
+    }
+    if "" in revision_numbers:
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    result = []
+    for revision_number in sorted(revision_numbers, key=_revision_number_key):
+        revision_payload = dict(payload)
+        revision_payload["kehoach"] = [
+            row for row in plans
+            if _revision_numbers_equal(
+                _source(row).get("revisionNumber"), revision_number,
+            )
+        ]
+        revision_payload["goithau"] = [
+            row for row in packages
+            if _revision_numbers_equal(
+                _source(row).get("revisionNumber"), revision_number,
+            )
+        ]
+        result.append(revision_payload)
+    return result
+
+
 def _validate_session_authority(session, context):
     revisions = session.get("revisions") or []
     current_index = int(session.get("currentIndex") or 0)
@@ -168,23 +217,7 @@ def resolve_pending_imported_investor(cursor, payload, organization_id):
     return authoritative_id
 
 
-def _load_trusted_revision(cursor, context, organization_id, user_id):
-    repository = ProcurementImportSessionRepository(cursor)
-    session = repository.get_for_commit(
-        context["sessionId"], organization_id=organization_id, user_id=user_id,
-    )
-    if session is None or session["expiresAt"] <= datetime.now(timezone.utc):
-        raise LookupError("PROCUREMENT_SESSION_EXPIRED")
-    _validate_session_authority(session, context)
-    revision = next((
-        row for row in session["canonicalBundle"].get("revisions") or []
-        if _revision_numbers_equal(
-            row.get("revisionNumber"), context["revisionNumber"],
-        )
-    ), None)
-    if revision is None:
-        raise ValueError("PROCUREMENT_REVISION_INVALID")
-    expected_digest = str(revision.get("revisionDigest") or canonical_digest(revision))
+def _validate_trusted_revision_records(context, revision, expected_digest):
     for record in context["plans"]:
         source = _source(record)
         if (
@@ -240,6 +273,26 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
             or str(record.get("phienBan") or "").zfill(2) != "00"
         ):
             raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+
+
+def _load_trusted_revision(cursor, context, organization_id, user_id):
+    repository = ProcurementImportSessionRepository(cursor)
+    session = repository.get_for_commit(
+        context["sessionId"], organization_id=organization_id, user_id=user_id,
+    )
+    if session is None or session["expiresAt"] <= datetime.now(timezone.utc):
+        raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+    _validate_session_authority(session, context)
+    revision = next((
+        row for row in session["canonicalBundle"].get("revisions") or []
+        if _revision_numbers_equal(
+            row.get("revisionNumber"), context["revisionNumber"],
+        )
+    ), None)
+    if revision is None:
+        raise ValueError("PROCUREMENT_REVISION_INVALID")
+    expected_digest = str(revision.get("revisionDigest") or canonical_digest(revision))
+    _validate_trusted_revision_records(context, revision, expected_digest)
     return session, revision, expected_digest
 
 
@@ -265,6 +318,97 @@ def validate_import_session_mutation(
             if str(record.get("id") or "").strip()
         ),
     }
+
+
+def validate_plan_draft_import_mutation(
+    cursor, payload, *, organization_id, user_id,
+):
+    """Validate every source revision in one atomic new-plan draft."""
+
+    revision_payloads = _plan_draft_revision_payloads(payload)
+    if not revision_payloads:
+        return None
+    contexts = [_session_records(item) for item in revision_payloads]
+    first = contexts[0]
+    repository = ProcurementImportSessionRepository(cursor)
+    session = repository.get_for_commit(
+        first["sessionId"], organization_id=organization_id, user_id=user_id,
+    )
+    if session is None or session["expiresAt"] <= datetime.now(timezone.utc):
+        raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+    if session.get("status") not in {"READY", "WAITING_NEXT_CONFIRMATION"}:
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    for context in contexts:
+        if (
+            context["sessionId"] != first["sessionId"]
+            or str(session.get("provider") or "") != context["provider"]
+            or str(session.get("familyNo") or "") != context["familyNo"]
+            or str(session.get("workspaceLease") or "")
+            != context["workspaceLease"]
+        ):
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    current_index = int(session.get("currentIndex") or 0)
+    remaining = session.get("revisions") or []
+    expected_numbers = [
+        str(row.get("revisionNumber") or "")
+        for row in remaining[current_index:]
+    ]
+    provided_numbers = [context["revisionNumber"] for context in contexts]
+    if (
+        not expected_numbers
+        or len(provided_numbers) != len(expected_numbers)
+        or any(
+            not _revision_numbers_equal(provided, expected)
+            for provided, expected in zip(provided_numbers, expected_numbers)
+        )
+    ):
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    canonical_revisions = session.get("canonicalBundle", {}).get("revisions") or []
+    for context in contexts:
+        revision = next((
+            row for row in canonical_revisions
+            if _revision_numbers_equal(
+                row.get("revisionNumber"), context["revisionNumber"],
+            )
+        ), None)
+        if revision is None:
+            raise ValueError("PROCUREMENT_REVISION_INVALID")
+        expected_digest = str(
+            revision.get("revisionDigest") or canonical_digest(revision)
+        )
+        _validate_trusted_revision_records(context, revision, expected_digest)
+    return {
+        "sessionId": session["id"],
+        "revisionNumbers": tuple(provided_numbers),
+        "packageIds": tuple(
+            str(record.get("id")).strip()
+            for context in contexts
+            for record in context["packages"]
+            if str(record.get("id") or "").strip()
+        ),
+    }
+
+
+def resolve_pending_plan_draft_investor(cursor, payload, organization_id):
+    """Resolve one pending investor while preserving every plan snapshot link."""
+
+    pending = payload.get("chudautu") or []
+    if not pending:
+        return None
+    revision_payloads = _plan_draft_revision_payloads(payload)
+    if not revision_payloads:
+        return resolve_pending_imported_investor(cursor, payload, organization_id)
+    pending_id = str(pending[0].get("id") or "") if len(pending) == 1 else ""
+    probe = dict(revision_payloads[0])
+    probe["chudautu"] = pending
+    reused_id = resolve_pending_imported_investor(cursor, probe, organization_id)
+    if reused_id is None:
+        return None
+    payload["chudautu"] = []
+    for plan in payload.get("kehoach") or []:
+        if str(plan.get("chuDauTuId") or "") == pending_id:
+            plan["chuDauTuId"] = reused_id
+    return reused_id
 
 
 def persist_import_session_provenance(cursor, payload, *, organization_id, user_id):
@@ -384,3 +528,23 @@ def persist_import_session_provenance(cursor, payload, *, organization_id, user_
         session, context, organization_id, user_id, started,
     )
     return result
+
+
+def persist_plan_draft_import_provenance(
+    cursor, payload, *, organization_id, user_id,
+):
+    """Commit provenance for an atomic plan draft in source revision order."""
+
+    results = []
+    for revision_payload in _plan_draft_revision_payloads(payload):
+        result = persist_import_session_provenance(
+            cursor,
+            revision_payload,
+            organization_id=organization_id,
+            user_id=user_id,
+        )
+        if result is not None:
+            results.append(result)
+    if not results:
+        return None
+    return {**results[-1], "revisions": results}

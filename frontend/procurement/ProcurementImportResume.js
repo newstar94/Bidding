@@ -1,6 +1,7 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { SequentialRevisionController } from "./SequentialRevisionController.js";
 import { currentWorkspaceToken, workspaceChangedError } from "../app/workspaceLease.js";
+import { discardPlanVersionDraftForImportSession } from "../plans/PlanVersionDraftSession.js";
 
 const RESUME_KEY = "procurement_import_resume_v1";
 const ACTIVE_STATUSES = new Set(["READY", "EDITING_REVISION", "WAITING_NEXT_CONFIRMATION"]);
@@ -114,6 +115,14 @@ export async function resumeProcurementImportSession({
     );
     assertCurrentWorkspace();
     if (!shouldResume) {
+      if (session.kind !== "PACKAGE") {
+        await discardPlanVersionDraftForImportSession(
+          this.model, session.sessionId,
+        );
+        assertCurrentWorkspace();
+        this.view?.renderKeHoachTable?.();
+        this.view?.renderGoiThauTable?.();
+      }
       try {
         await client.cancelImportSession(session.sessionId, {
           workspaceLease: workspaceLease || null,

@@ -90,8 +90,11 @@ from backend.plan_drafts.finalize import (
 )
 from backend.procurement_import.sync_binding import (
     persist_import_session_provenance,
+    persist_plan_draft_import_provenance,
     resolve_pending_imported_investor,
+    resolve_pending_plan_draft_investor,
     validate_import_session_mutation,
+    validate_plan_draft_import_mutation,
 )
 from backend.procurement_import.domain import ImportConflict
 
@@ -693,13 +696,22 @@ def execute_sync_mutation(
         owner_type = transaction_context.owner_type
         current_time = transaction_context.current_time
 
-        import_authority = validate_import_session_mutation(
-            cursor, data, organization_id=org_name, user_id=user_id,
+        import_authority = (
+            validate_plan_draft_import_mutation(
+                cursor, data, organization_id=org_name, user_id=user_id,
+            )
+            if finalize_draft_command
+            else validate_import_session_mutation(
+                cursor, data, organization_id=org_name, user_id=user_id,
+            )
         )
         trusted_import_package_ids = set(
             (import_authority or {}).get("packageIds") or ()
         )
-        resolve_pending_imported_investor(cursor, data, org_name)
+        if finalize_draft_command:
+            resolve_pending_plan_draft_investor(cursor, data, org_name)
+        else:
+            resolve_pending_imported_investor(cursor, data, org_name)
 
         if aggregate_version_command:
             command_kind = str(data.get("kind") or "").strip().lower()
@@ -1130,11 +1142,20 @@ def execute_sync_mutation(
             events=mutation_tracker.activity_events,
         )
 
-        procurement_import_result = persist_import_session_provenance(
-            cursor,
-            data,
-            organization_id=org_name,
-            user_id=user_id,
+        procurement_import_result = (
+            persist_plan_draft_import_provenance(
+                cursor,
+                data,
+                organization_id=org_name,
+                user_id=user_id,
+            )
+            if finalize_draft_command
+            else persist_import_session_provenance(
+                cursor,
+                data,
+                organization_id=org_name,
+                user_id=user_id,
+            )
         )
 
         mutation_outcome = mutation_tracker.outcome()

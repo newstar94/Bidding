@@ -38,8 +38,15 @@ import { presentStatus } from "./LifecyclePolicy.js";
 import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
 
 export function shouldCreatePackageVersion(previousPackage, nextPackage, sourceRevision = null) {
-  const authoritative = sourceRevision?.provider === "MUASAMCONG";
-  const sourceVersion = Number(sourceRevision?.revisionNumber);
+  const effectiveSourceRevision = sourceRevision
+    || (previousPackage?._procurementImportCurrent === true
+      ? previousPackage?.sourceRevision
+      : null);
+  const authoritative = effectiveSourceRevision?.provider === "MUASAMCONG";
+  const sourceVersion = Number(
+    effectiveSourceRevision?.packageRevisionNumber
+      ?? effectiveSourceRevision?.revisionNumber,
+  );
   if (authoritative) {
     return Number.isInteger(sourceVersion)
       && sourceVersion > Number(previousPackage?.phienBan || 0);
