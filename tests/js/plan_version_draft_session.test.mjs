@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   buildPlanDraftFinalizePayload,
   createPlanVersionDraftSession,
+  discardPlanVersionDraftSession,
   finalizePlanVersionDraft,
   hydratePlanVersionDraftSessions,
+  markPlanVersionDraftRecordsDirty,
   reapplyPlanVersionDraftSessions,
   refreshPlanVersionDraftSession,
   removePlanVersionDraftSession,
@@ -112,6 +114,209 @@ test("draft sessions recover only from the active workspace database", async () 
   await hydratePlanVersionDraftSessions(modelB);
   assert.deepEqual(modelB.planVersionDraftSessions, []);
   assert.deepEqual(modelB.state.kehoach, []);
+});
+
+test("workspace change during plan draft save cannot publish A sessions into B", async () => {
+  const model = workspaceModel();
+  const stateA = model.state;
+  const storageA = model.workspaceStorage;
+  const writeFinished = deferred();
+  const allowCompletion = deferred();
+  const dbA = model.db;
+  const originalUpdate = dbA.update.bind(dbA);
+  dbA.update = async (key, updater) => {
+    const envelope = await originalUpdate(key, updater);
+    writeFinished.resolve();
+    await allowCompletion.promise;
+    return envelope;
+  };
+  const sessionA = createPlanVersionDraftSession(model.state, "plan-00");
+  const pending = savePlanVersionDraftSession(model, sessionA);
+  await writeFinished.promise;
+
+  const stateB = draftState();
+  stateB.kehoach[0].id = "plan-b";
+  const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-b@1";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  model.state = stateB;
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowCompletion.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+  assert.equal(model.state.kehoach[0].id, "plan-b");
+  const storedA = await dbA.get("plan_version_drafts_v1");
+  assert.equal(storedA.sessions[0].draftId, sessionA.draftId);
+
+  stateA.kehoach = [];
+  stateA.goithau = [];
+  model.token = "user:org-a@1";
+  model.workspaceScope = { key: "user:org-a", organizationId: "org-a" };
+  model.state = stateA;
+  model.db = dbA;
+  model.workspaceStorage = storageA;
+  model.planVersionDraftSessions = [];
+  await hydratePlanVersionDraftSessions(model);
+  assert.equal(model.planVersionDraftSessions[0].draftId, sessionA.draftId);
+  assert.deepEqual(model.state.kehoach.map((plan) => plan.id), ["plan-00"]);
+});
+
+test("same-org new epoch rejects late plan draft save completion", async () => {
+  const model = workspaceModel();
+  const writeFinished = deferred();
+  const allowCompletion = deferred();
+  const originalUpdate = model.db.update.bind(model.db);
+  model.db.update = async (key, updater) => {
+    const envelope = await originalUpdate(key, updater);
+    writeFinished.resolve();
+    await allowCompletion.promise;
+    return envelope;
+  };
+  const pending = savePlanVersionDraftSession(
+    model, createPlanVersionDraftSession(model.state, "plan-00"),
+  );
+  await writeFinished.promise;
+
+  const sessionsB = [{ draftId: "new-epoch", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-a@2";
+  model.state = draftState();
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowCompletion.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+});
+
+test("workspace change during draft remove cannot publish A envelope into B", async () => {
+  const model = workspaceModel();
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const removeFinished = deferred();
+  const allowCompletion = deferred();
+  const originalUpdate = model.db.update.bind(model.db);
+  model.db.update = async (key, updater) => {
+    const envelope = await originalUpdate(key, updater);
+    removeFinished.resolve();
+    await allowCompletion.promise;
+    return envelope;
+  };
+  const pending = removePlanVersionDraftSession(model, session.draftId);
+  await removeFinished.promise;
+
+  const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-b@1";
+  model.state = draftState();
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowCompletion.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+});
+
+test("workspace change during hydration cannot publish or reapply A into B", async () => {
+  const dbA = memoryDb();
+  const stateA = draftState();
+  const seed = { state: stateA, db: dbA };
+  const sessionA = createPlanVersionDraftSession(stateA, "plan-00");
+  await savePlanVersionDraftSession(seed, sessionA);
+  const readStarted = deferred();
+  const allowRead = deferred();
+  const originalGet = dbA.get.bind(dbA);
+  dbA.get = async (key) => {
+    const value = await originalGet(key);
+    readStarted.resolve();
+    await allowRead.promise;
+    return value;
+  };
+  const model = workspaceModel({ state: { ...draftState(), kehoach: [], goithau: [] }, db: dbA });
+  const pending = hydratePlanVersionDraftSessions(model);
+  await readStarted.promise;
+
+  const stateB = { ...draftState(), kehoach: [{ id: "plan-b", rowVersion: 1 }], goithau: [] };
+  const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-b@1";
+  model.state = stateB;
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowRead.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+  assert.deepEqual(model.state.kehoach, [{ id: "plan-b", rowVersion: 1 }]);
+});
+
+test("workspace change during plan draft discard cannot delete B rows", async () => {
+  const model = workspaceModel();
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const removeFinished = deferred();
+  const allowCompletion = deferred();
+  const originalUpdate = model.db.update.bind(model.db);
+  model.db.update = async (key, updater) => {
+    const envelope = await originalUpdate(key, updater);
+    removeFinished.resolve();
+    await allowCompletion.promise;
+    return envelope;
+  };
+  const pending = discardPlanVersionDraftSession(model, session);
+  await removeFinished.promise;
+
+  const stateB = draftState();
+  stateB.kehoach = [{ id: "plan-b", rowVersion: 0 }];
+  const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-b@1";
+  model.state = stateB;
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowCompletion.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.state.kehoach, [{ id: "plan-b", rowVersion: 0 }]);
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+});
+
+test("workspace change between dirty-record draft saves cannot mutate B", async () => {
+  const model = workspaceModel();
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const secondWriteFinished = deferred();
+  const allowCompletion = deferred();
+  const originalUpdate = model.db.update.bind(model.db);
+  let calls = 0;
+  model.db.update = async (key, updater) => {
+    calls += 1;
+    const envelope = await originalUpdate(key, updater);
+    if (calls === 2) {
+      secondWriteFinished.resolve();
+      await allowCompletion.promise;
+    }
+    return envelope;
+  };
+  const controller = { model, planBreakdownDraft: { planId: "plan-00" } };
+  const pending = markPlanVersionDraftRecordsDirty(
+    controller, "chuyengia", [{ id: "expert-1" }],
+  );
+  await secondWriteFinished.promise;
+
+  const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-b@1";
+  model.state = draftState();
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowCompletion.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
 });
 
 test("intermediate save snapshots the complete aggregate and performs no server write", async () => {

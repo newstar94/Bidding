@@ -1,6 +1,10 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { SequentialRevisionController } from "./SequentialRevisionController.js";
-import { currentWorkspaceToken, workspaceChangedError } from "../app/workspaceLease.js";
+import {
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
+  workspaceChangedError,
+} from "../app/workspaceLease.js";
 import { discardPlanVersionDraftForImportSession } from "../plans/PlanVersionDraftSession.js";
 
 const RESUME_KEY = "procurement_import_resume_v1";
@@ -37,9 +41,12 @@ export class ProcurementImportResumeStore {
 }
 
 export function rememberProcurementImportSession(
-  controller, flow, { revisionNumber } = {},
+  controller, flow, {
+    revisionNumber,
+    storage = controller?.model?.workspaceStorage,
+  } = {},
 ) {
-  new ProcurementImportResumeStore(controller?.model?.workspaceStorage).save({
+  new ProcurementImportResumeStore(storage).save({
     sessionId: flow?.session?.sessionId,
     kind: flow?.session?.kind,
     familyNo: flow?.session?.familyNo,
@@ -47,35 +54,52 @@ export function rememberProcurementImportSession(
   });
 }
 
-export function forgetProcurementImportSession(controller) {
-  new ProcurementImportResumeStore(controller?.model?.workspaceStorage).clear();
+export function forgetProcurementImportSession(
+  controller, { storage = controller?.model?.workspaceStorage } = {},
+) {
+  new ProcurementImportResumeStore(storage).clear();
 }
 
 export async function cancelActiveProcurementImportSession() {
   const flow = this.procurementPlanImport || this.procurementPackageImport;
   if (!flow?.controller) return false;
   const kind = this.procurementPlanImport ? "plan" : "notice";
+  const flowSlot = kind === "plan"
+    ? "procurementPlanImport"
+    : "procurementPackageImport";
+  const sessionId = String(flow.session?.sessionId || "");
+  const lease = captureWorkspaceLease(this.model);
+  const storage = this.model?.workspaceStorage;
+  const isCurrentFlow = () => (
+    isWorkspaceLeaseCurrent(this.model, lease)
+    && this.model?.workspaceStorage === storage
+    && this[flowSlot] === flow
+    && String(this[flowSlot]?.session?.sessionId || "") === sessionId
+  );
   let remoteCancelled = true;
   try {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
-      flow.session.sessionId,
+      sessionId,
       {
-        workspaceLease: currentWorkspaceToken(this.model) || null,
+        workspaceLease: lease.token || null,
         kind,
       },
     );
   } catch (_error) {
     remoteCancelled = false;
-    this.view?.showToast?.(
-      "Đã hủy bản nháp trên máy",
-      "Không thể cập nhật trạng thái phiên nhập trên máy chủ; phiên sẽ tự hết hạn.",
-      "warning",
-    );
+    if (isCurrentFlow()) {
+      this.view?.showToast?.(
+        "Đã hủy bản nháp trên máy",
+        "Không thể cập nhật trạng thái phiên nhập trên máy chủ; phiên sẽ tự hết hạn.",
+        "warning",
+      );
+    }
   } finally {
-    flow.controller.cancel();
-    if (kind === "plan") this.procurementPlanImport = null;
-    else this.procurementPackageImport = null;
-    forgetProcurementImportSession(this);
+    if (isCurrentFlow()) {
+      flow.controller.cancel();
+      this[flowSlot] = null;
+      forgetProcurementImportSession(this, { storage });
+    }
   }
   return remoteCancelled;
 }
@@ -86,9 +110,16 @@ export async function resumeProcurementImportSession({
   const store = new ProcurementImportResumeStore(this.model?.workspaceStorage);
   const pointer = store.load();
   if (!pointer || this.procurementPlanImport || this.procurementPackageImport) return false;
-  const workspaceLease = currentWorkspaceToken(this.model);
+  const lease = captureWorkspaceLease(this.model);
+  const workspaceLease = lease.token;
+  const storage = this.model?.workspaceStorage;
   const assertCurrentWorkspace = () => {
-    if (currentWorkspaceToken(this.model) !== workspaceLease) throw workspaceChangedError();
+    if (
+      !isWorkspaceLeaseCurrent(this.model, lease)
+      || this.model?.workspaceStorage !== storage
+    ) {
+      throw workspaceChangedError();
+    }
   };
   try {
     const session = await client.getImportSession(pointer.sessionId, {

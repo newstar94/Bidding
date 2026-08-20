@@ -41,6 +41,7 @@ import {
 } from "../../frontend/procurement/ProcurementInlineLookup.js";
 import { shouldCreatePackageVersion } from "../../frontend/packages/GoiThauWorkflow.js";
 import {
+  cancelActiveProcurementImportSession,
   ProcurementImportResumeStore,
   resumeProcurementImportSession,
 } from "../../frontend/procurement/ProcurementImportResume.js";
@@ -48,6 +49,39 @@ import {
   createPlanVersionDraftSession,
   savePlanVersionDraftSession,
 } from "../../frontend/plans/PlanVersionDraftSession.js";
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function memoryStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+}
+
+function memoryEnvelopeDb() {
+  const values = new Map();
+  return {
+    values,
+    async get(key) { return structuredClone(values.get(key)); },
+    async update(key, updater) {
+      const next = updater(structuredClone(values.get(key) ?? null));
+      values.set(key, structuredClone(next));
+      return structuredClone(next);
+    },
+  };
+}
 
 
 class FakeElement {
@@ -956,7 +990,7 @@ test("failed next load leaves the workspace resume pointer on the next revision"
   );
 });
 
-test("failed next materialization retries once without duplicate plan or package snapshots", async () => {
+test("mid-persistence rollback and post-durable UI retry create no duplicate revision", async () => {
   const values = new Map();
   const storage = {
     getItem: (key) => values.get(key) ?? null,
@@ -1006,18 +1040,20 @@ test("failed next materialization retries once without duplicate plan or package
     hanghoaduthaunhathau: [], assignments: [],
   };
   let envelope = null;
-  let failMaterialization = false;
+  let failDraftPersistence = false;
+  let failPlanEdit = false;
+  const editedPlanIds = [];
   const model = {
     state, workspaceStorage: storage, planVersionDraftSessions: [],
     getWorkspaceToken: () => "user:org-a@1",
-    getLatestChuDauTu: () => {
-      if (failMaterialization) throw new Error("investor materialization failed");
-      return state.chudautu;
-    },
+    getLatestChuDauTu: () => state.chudautu,
     getCurrentDateTimeString: () => "2026-08-20 12:00:00",
     getPlanBaseCode: (value) => value,
     db: {
       async update(_key, updater) {
+        if (failDraftPersistence) {
+          throw new Error("next draft persistence failed");
+        }
         envelope = updater(structuredClone(envelope));
         return structuredClone(envelope);
       },
@@ -1026,7 +1062,12 @@ test("failed next materialization retries once without duplicate plan or package
   const controller = {
     model,
     view: { customConfirm: async () => true, customAlert: async () => {} },
-    plans: { edit: async () => {} },
+    plans: {
+      edit: async (planId) => {
+        editedPlanIds.push(planId);
+        if (failPlanEdit) throw new Error("plans edit failed after durable save");
+      },
+    },
   };
   const firstDraft = await sequential.loadCurrent();
   const materialized00 = await startProcurementPlanImport.call(controller, {
@@ -1037,14 +1078,22 @@ test("failed next materialization retries once without duplicate plan or package
     controller: sequential,
     currentDraft: firstDraft,
   });
+  state.goithauhanghoa.push({
+    id: "goods-00", goiThauId: materialized00.packages[0].id,
+    tenHangHoa: "Hàng hóa 00",
+  });
+  state.assignments.push({
+    id: "assignment-00", targetId: materialized00.packages[0].id,
+    type: "goithau", empId: "employee-1",
+  });
   const beforeFailure = structuredClone(state);
-  failMaterialization = true;
+  failDraftPersistence = true;
 
   await assert.rejects(
     completeProcurementPlanImportRevision.call(
       controller, materialized00.plan.id,
     ),
-    /investor materialization failed/,
+    /next draft persistence failed/,
   );
 
   assert.equal(sequential.currentIndex, 0);
@@ -1052,17 +1101,36 @@ test("failed next materialization retries once without duplicate plan or package
   assert.equal(controller.procurementPlanImport.currentDraft.revisionNumber, "00");
   assert.deepEqual(state, beforeFailure);
 
-  failMaterialization = false;
-  await completeProcurementPlanImportRevision.call(
-    controller, materialized00.plan.id,
+  failDraftPersistence = false;
+  failPlanEdit = true;
+  await assert.rejects(
+    completeProcurementPlanImportRevision.call(
+      controller, materialized00.plan.id,
+    ),
+    /plans edit failed after durable save/,
   );
 
   assert.deepEqual(loaded, ["00", "01", "01"]);
   assert.equal(sequential.currentIndex, 1);
+  assert.equal(sequential.state, "EDITING_REVISION");
   assert.equal(controller.procurementPlanImport.currentDraft.revisionNumber, "01");
   assert.deepEqual(state.kehoach.map((row) => row.phienBan), ["00", "01"]);
   assert.equal(state.goithau.length, 2);
   assert.equal(new Set(state.goithau.map((row) => row.id)).size, 2);
+  assert.equal(new Set(state.goithauhanghoa.map((row) => row.id)).size, state.goithauhanghoa.length);
+  assert.equal(new Set(state.assignments.map((row) => row.id)).size, state.assignments.length);
+
+  failPlanEdit = false;
+  await completeProcurementPlanImportRevision.call(
+    controller, materialized00.plan.id,
+  );
+  assert.deepEqual(loaded, ["00", "01", "01"]);
+  assert.deepEqual(state.kehoach.map((row) => row.phienBan), ["00", "01"]);
+  assert.equal(state.goithau.length, 2);
+  assert.equal(new Set(state.goithau.map((row) => row.id)).size, 2);
+  assert.equal(new Set(state.goithauhanghoa.map((row) => row.id)).size, state.goithauhanghoa.length);
+  assert.equal(new Set(state.assignments.map((row) => row.id)).size, state.assignments.length);
+  assert.equal(editedPlanIds.length, 3);
 });
 
 test("post-save callback failure never marks a durable revision editable again", async () => {
@@ -1207,21 +1275,138 @@ test("same-org new epoch rejects a late next plan revision without mutating B", 
   );
 });
 
-test("choosing no after plan 00 cancels remaining server revisions", async () => {
+test("late next from replaced flow cannot materialize into the new same-workspace flow", async () => {
+  const nextStarted = deferred();
+  const nextCompletion = deferred();
+  const storage = memoryStorage();
+  const db = memoryEnvelopeDb();
+  const authority = (revisionNumber) => ({
+    sessionId: "session-a", workspaceLease: "user:org-a@1",
+    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    revisionId: `revision-${revisionNumber}`, revisionNumber,
+    revisionDigest: `sha256:${revisionNumber}`,
+  });
+  const revisionDraft = (revisionNumber) => ({
+    familyNo: "PL2600000001", revisionNumber,
+    planDraft: {
+      maKeHoach: "PL2600000001", tenKeHoach: `Kế hoạch ${revisionNumber}`,
+      investorSource: { code: "vn3900786617" },
+      sourceRevision: authority(revisionNumber),
+    },
+    packageDrafts: [],
+  });
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => {
+      if (revision.revisionNumber === "00") return revisionDraft("00");
+      nextStarted.resolve();
+      return nextCompletion.promise;
+    },
+    saveRevision: async () => ({ ok: true }),
+  });
+  const state = {
+    chudautu: [{
+      id: "investor-a", rootId: "investor-a", maChuDauTu: "vn3900786617",
+      phienBan: "00", isLatest: 1,
+    }],
+    chuyengia: [], nhathau: [], kehoach: [], goithau: [],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const model = {
+    state, db, workspaceStorage: storage, planVersionDraftSessions: [],
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    getLatestChuDauTu: () => state.chudautu,
+    getCurrentDateTimeString: () => "2026-08-20 12:00:00",
+    getPlanBaseCode: (value) => value,
+  };
+  const controller = {
+    model,
+    view: { customConfirm: async () => true, customAlert: async () => {} },
+    plans: { edit: async () => {} },
+  };
+  const firstDraft = await sequential.loadCurrent();
+  const materialized00 = await startProcurementPlanImport.call(controller, {
+    session: {
+      sessionId: "session-a", kind: "PLAN", familyNo: "PL2600000001",
+      revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    },
+    controller: sequential, currentDraft: firstDraft,
+  });
+  const beforeNext = structuredClone(state);
+  const pending = completeProcurementPlanImportRevision.call(
+    controller, materialized00.plan.id,
+  );
+  await nextStarted.promise;
+
+  const replacementFlow = {
+    session: { sessionId: "session-a2", kind: "PLAN", familyNo: "PL2600000002" },
+    controller: { state: "EDITING_REVISION" },
+    importFlowIdentity: Object.freeze({}),
+  };
+  controller.procurementPlanImport = replacementFlow;
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-a2", kind: "PLAN", familyNo: "PL2600000002",
+    revisionNumber: "00",
+  });
+  nextCompletion.resolve(revisionDraft("01"));
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.equal(controller.procurementPlanImport, replacementFlow);
+  assert.deepEqual(state, beforeNext);
+  assert.equal(new ProcurementImportResumeStore(storage).load().sessionId, "session-a2");
+});
+
+test("declining next revision cancels all import work without an orphan draft", async () => {
   const calls = [];
+  const storage = memoryStorage();
+  const db = memoryEnvelopeDb();
+  const state = {
+    chudautu: [], chuyengia: [], nhathau: [],
+    kehoach: [{
+      id: "plan-00", rootId: "plan-00", phienBan: "00", isLatest: 1,
+      sourceRevision: { sessionId: "session-1", revisionNumber: "00" },
+    }],
+    goithau: [{
+      id: "package-00", rootId: "package-00", keHoachId: "plan-00",
+      phienBan: "00", isLatest: 1,
+      sourceRevision: { sessionId: "session-1", revisionNumber: "00" },
+    }],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const model = {
+    state, db, workspaceStorage: storage, planVersionDraftSessions: [],
+    workspaceScope: { key: "lease-1", organizationId: "org-1" },
+    getWorkspaceToken: () => "lease-1",
+  };
+  const draftSession = createPlanVersionDraftSession(state, "plan-00");
+  await savePlanVersionDraftSession(model, draftSession);
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001",
+    revisionNumber: "00",
+  });
   const sequential = new SequentialRevisionController({
     revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
     loadRevision: async () => ({}), saveRevision: async () => ({ ok: true }),
   });
   await sequential.loadCurrent();
+  let confirmationCopy = "";
   const controller = {
-    model: { getWorkspaceToken: () => "lease-1", workspaceStorage: null },
+    model,
     procurementPlanImport: {
-      session: { sessionId: "session-1" }, controller: sequential,
+      session: { sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001" },
+      controller: sequential,
       currentDraft: { revisionNumber: "00" },
       client: { cancelImportSession: async (...args) => calls.push(args) },
     },
-    view: { customConfirm: async () => false },
+    view: {
+      customConfirm: async (_title, message) => {
+        confirmationCopy = message;
+        return false;
+      },
+    },
   };
   controller.completeProcurementPlanImportRevision = completeProcurementPlanImportRevision.bind(controller);
 
@@ -1230,6 +1415,133 @@ test("choosing no after plan 00 cancels remaining server revisions", async () =>
   assert.deepEqual(calls, [["session-1", { workspaceLease: "lease-1", kind: "plan" }]]);
   assert.equal(sequential.state, "CANCELLED");
   assert.equal(controller.procurementPlanImport, null);
+  assert.deepEqual(model.planVersionDraftSessions, []);
+  assert.deepEqual(state.kehoach, []);
+  assert.deepEqual(state.goithau, []);
+  assert.equal(new ProcurementImportResumeStore(storage).load(), null);
+  assert.match(confirmationCopy, /toàn bộ.*bản nháp.*hủy|bản nháp.*xóa/i);
+});
+
+test("same-org workspace epoch change during plan cancel preserves B flow and pointer", async () => {
+  const remoteStarted = deferred();
+  const remoteCompletion = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  new ProcurementImportResumeStore(storageA).save({
+    sessionId: "session-a", kind: "PLAN", revisionNumber: "00",
+  });
+  new ProcurementImportResumeStore(storageB).save({
+    sessionId: "session-b", kind: "PLAN", revisionNumber: "01",
+  });
+  let token = "user:org-a@1";
+  let cancelledA = 0;
+  let cancelledB = 0;
+  const flowA = {
+    session: { sessionId: "session-a" },
+    controller: { cancel: () => { cancelledA += 1; } },
+    client: {
+      async cancelImportSession() {
+        remoteStarted.resolve();
+        return remoteCompletion.promise;
+      },
+    },
+  };
+  const flowB = {
+    session: { sessionId: "session-b" },
+    controller: { cancel: () => { cancelledB += 1; } },
+  };
+  const model = {
+    state: {}, db: {}, workspaceStorage: storageA,
+    getWorkspaceToken: () => token,
+  };
+  const controller = { model, procurementPlanImport: flowA };
+  const pending = cancelActiveProcurementImportSession.call(controller);
+  await remoteStarted.promise;
+
+  token = "user:org-a@2";
+  model.state = {};
+  model.db = {};
+  model.workspaceStorage = storageB;
+  controller.procurementPlanImport = flowB;
+  remoteCompletion.resolve({ ok: true });
+  await pending;
+
+  assert.equal(cancelledA, 0);
+  assert.equal(cancelledB, 0);
+  assert.equal(controller.procurementPlanImport, flowB);
+  assert.equal(new ProcurementImportResumeStore(storageB).load().sessionId, "session-b");
+});
+
+test("workspace change during package cancel preserves B package flow and pointer", async () => {
+  const remoteStarted = deferred();
+  const remoteCompletion = deferred();
+  const storageA = memoryStorage();
+  const storageB = memoryStorage();
+  new ProcurementImportResumeStore(storageB).save({
+    sessionId: "package-b", kind: "PACKAGE", revisionNumber: "01",
+  });
+  let token = "user:org-a@1";
+  const flowA = {
+    session: { sessionId: "package-a" }, controller: { cancel() {} },
+    client: {
+      async cancelImportSession() {
+        remoteStarted.resolve();
+        return remoteCompletion.promise;
+      },
+    },
+  };
+  const flowB = { session: { sessionId: "package-b" }, controller: { cancel() {} } };
+  const model = {
+    state: {}, db: {}, workspaceStorage: storageA,
+    getWorkspaceToken: () => token,
+  };
+  const controller = { model, procurementPackageImport: flowA };
+  const pending = cancelActiveProcurementImportSession.call(controller);
+  await remoteStarted.promise;
+
+  token = "user:org-b@1";
+  model.state = {};
+  model.db = {};
+  model.workspaceStorage = storageB;
+  controller.procurementPackageImport = flowB;
+  remoteCompletion.resolve({ ok: true });
+  await pending;
+
+  assert.equal(controller.procurementPackageImport, flowB);
+  assert.equal(new ProcurementImportResumeStore(storageB).load().sessionId, "package-b");
+});
+
+test("late cancel of old flow cannot clear a new flow in the same workspace", async () => {
+  const remoteStarted = deferred();
+  const remoteCompletion = deferred();
+  const storage = memoryStorage();
+  const model = {
+    state: {}, db: {}, workspaceStorage: storage,
+    getWorkspaceToken: () => "user:org-a@1",
+  };
+  const flowA = {
+    session: { sessionId: "session-a" }, controller: { cancel() {} },
+    client: {
+      async cancelImportSession() {
+        remoteStarted.resolve();
+        return remoteCompletion.promise;
+      },
+    },
+  };
+  const flowA2 = { session: { sessionId: "session-a2" }, controller: { cancel() {} } };
+  const controller = { model, procurementPlanImport: flowA };
+  const pending = cancelActiveProcurementImportSession.call(controller);
+  await remoteStarted.promise;
+
+  controller.procurementPlanImport = flowA2;
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-a2", kind: "PLAN", revisionNumber: "00",
+  });
+  remoteCompletion.resolve({ ok: true });
+  await pending;
+
+  assert.equal(controller.procurementPlanImport, flowA2);
+  assert.equal(new ProcurementImportResumeStore(storage).load().sessionId, "session-a2");
 });
 
 test("package 00 continues with 01 from prepared session without upstream prepare", async () => {

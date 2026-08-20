@@ -4,6 +4,7 @@ import { postJson } from "../shared/apiClient.js";
 import {
   captureWorkspaceLease,
   isWorkspaceLeaseCurrent,
+  workspaceChangedError,
 } from "../app/workspaceLease.js";
 
 export const PLAN_VERSION_DRAFT_STORAGE_KEY = "plan_version_drafts_v1";
@@ -196,39 +197,60 @@ function publishDurableSessions(model, envelope) {
   return model.planVersionDraftSessions;
 }
 
-async function updateDraftEnvelope(model, updater) {
-  if (typeof model?.db?.update === "function") {
-    return model.db.update(PLAN_VERSION_DRAFT_STORAGE_KEY, (current) => (
+function captureDraftStorageCapability(model) {
+  return Object.freeze({
+    lease: captureWorkspaceLease(model),
+    storage: model?.workspaceStorage,
+  });
+}
+
+function assertDraftStorageCapability(model, capability) {
+  if (
+    !isWorkspaceLeaseCurrent(model, capability?.lease)
+    || model?.workspaceStorage !== capability?.storage
+  ) {
+    throw workspaceChangedError();
+  }
+  return capability;
+}
+
+async function updateDraftEnvelope(db, updater) {
+  if (typeof db?.update === "function") {
+    return db.update(PLAN_VERSION_DRAFT_STORAGE_KEY, (current) => (
       updater(normalizeStoredEnvelope(current))
     ));
   }
   // Compatibility for small test doubles. BrowserDB always provides atomic update().
-  if (typeof model?.db?.set !== "function") {
+  if (typeof db?.set !== "function") {
     throw new Error("Không có kho lưu bền vững cho bản nháp phiên bản kế hoạch.");
   }
-  const current = typeof model.db.get === "function"
-    ? await model.db.get(PLAN_VERSION_DRAFT_STORAGE_KEY)
+  const current = typeof db.get === "function"
+    ? await db.get(PLAN_VERSION_DRAFT_STORAGE_KEY)
     : null;
   const next = updater(normalizeStoredEnvelope(current));
-  await model.db.set(PLAN_VERSION_DRAFT_STORAGE_KEY, next);
+  await db.set(PLAN_VERSION_DRAFT_STORAGE_KEY, next);
   return next;
 }
 
 export async function hydratePlanVersionDraftSessions(model) {
+  const capability = captureDraftStorageCapability(model);
   const envelope = normalizeStoredEnvelope(
-    await model?.db?.get?.(PLAN_VERSION_DRAFT_STORAGE_KEY),
+    await capability.lease.db?.get?.(PLAN_VERSION_DRAFT_STORAGE_KEY),
   );
+  assertDraftStorageCapability(model, capability);
   model.planVersionDraftSessions = envelope.sessions;
   await reapplyPlanVersionDraftSessions(model);
+  assertDraftStorageCapability(model, capability);
   return model.planVersionDraftSessions;
 }
 
 export async function savePlanVersionDraftSession(model, session) {
   if (!session?.draftId) throw new Error("Draft session không hợp lệ.");
+  const capability = captureDraftStorageCapability(model);
   const draftId = String(session.draftId);
   const expectedRevision = normalizeRevision(session.revision);
   let persistedSession;
-  const envelope = await updateDraftEnvelope(model, (current) => {
+  const envelope = await updateDraftEnvelope(capability.lease.db, (current) => {
     if (Object.hasOwn(current.tombstones, draftId)) {
       throw new Error("Stale plan draft revision cannot resurrect a removed session.");
     }
@@ -244,17 +266,19 @@ export async function savePlanVersionDraftSession(model, session) {
     else current.sessions.push(persistedSession);
     return current;
   });
+  assertDraftStorageCapability(model, capability);
   publishDurableSessions(model, envelope);
   session.revision = persistedSession.revision;
   return session;
 }
 
 export async function removePlanVersionDraftSession(model, draftId, { expectedRevision } = {}) {
+  const capability = captureDraftStorageCapability(model);
   const id = String(draftId || "");
   const hasExpectedRevision = expectedRevision !== undefined;
   const expected = normalizeRevision(expectedRevision);
   let removed = false;
-  const envelope = await updateDraftEnvelope(model, (current) => {
+  const envelope = await updateDraftEnvelope(capability.lease.db, (current) => {
     const existing = current.sessions.find((session) => String(session.draftId) === id);
     removed = Boolean(existing);
     const storedRevision = normalizeRevision(existing?.revision);
@@ -271,6 +295,7 @@ export async function removePlanVersionDraftSession(model, draftId, { expectedRe
     };
     return current;
   });
+  assertDraftStorageCapability(model, capability);
   publishDurableSessions(model, envelope);
   return removed;
 }
