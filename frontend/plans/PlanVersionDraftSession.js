@@ -373,7 +373,8 @@ export function buildPlanDraftFinalizePayload(model, session) {
   const changedRelatedRows = (table) => {
     const dirty = new Set(session?.dirtyRelatedRecords?.[table] || []);
     return (aggregate[table] || []).filter((row) => (
-      !(Number(row?.rowVersion) > 0) || dirty.has(String(row?.id || ""))
+      dirty.has(String(row?.id || ""))
+      || (row?.referenceOnly !== true && !(Number(row?.rowVersion) > 0))
     ));
   };
   return {

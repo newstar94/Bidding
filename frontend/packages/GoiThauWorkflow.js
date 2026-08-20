@@ -74,17 +74,20 @@ import {
 import {
   materializeProcurementPackageGoods,
 } from "../procurement/ProcurementDraftWorkflow.js";
-import { persistActivePlanVersionDraftSession } from "../plans/PlanVersionDraftSession.js";
+import {
+  findPlanVersionDraftSession,
+  persistActivePlanVersionDraftSession,
+} from "../plans/PlanVersionDraftSession.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function persistPackageFormChanges(controller, explicitUpserts, {
   draft = false,
   afterPersist,
 } = {}) {
-  if (draft) {
-    const planId = explicitUpserts?.goithau?.[0]?.keHoachId
-      || explicitUpserts?.kehoach?.[0]?.id
-      || controller?.planBreakdownDraft?.planId;
+  const planId = explicitUpserts?.goithau?.[0]?.keHoachId
+    || explicitUpserts?.kehoach?.[0]?.id
+    || controller?.planBreakdownDraft?.planId;
+  if (draft || isPackageDraftSaveActive(controller, planId)) {
     await persistActivePlanVersionDraftSession(controller, planId);
     return { ok: true, draft: true };
   }
@@ -102,6 +105,11 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     changes: { upserts: explicitUpserts },
     afterPersist,
   });
+}
+
+export function isPackageDraftSaveActive(controller, planId) {
+  return isPlanBreakdownDraftActive(controller, planId)
+    || Boolean(findPlanVersionDraftSession(controller?.model, planId));
 }
 
 export function shouldShowPackageSyncFailureDialog(syncResult) {
@@ -1051,7 +1059,13 @@ export async function handleGoiThauSubmit(e) {
   const selectedPlanId = formVals.keHoachId;
   const latestPlan = this.model.getLatestPlan(selectedPlanId);
   const planIdToSave = latestPlan ? latestPlan.id : selectedPlanId;
-  const draftPackageSave = isPlanBreakdownDraftActive(this, planIdToSave);
+  // A plan-version draft is the durable boundary for the whole aggregate.
+  // The child package modal can be opened after the breakdown controller has
+  // moved to another version (or after its transient breakdown marker was
+  // rebased), so relying on that marker alone would route this save through
+  // /api/sync and commit the MSC revision prematurely. Keep package changes
+  // memory-only whenever either draft marker identifies the target plan.
+  const draftPackageSave = isPackageDraftSaveActive(this, planIdToSave);
   const updateAssignments = async (targetId) => {
     if (draftPackageSave) {
       applyDraftAssignmentSelection(this.model, {

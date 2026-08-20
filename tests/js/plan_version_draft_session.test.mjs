@@ -867,6 +867,48 @@ test("new local shared reference is reapplied and clean server reference is omit
   assert.deepEqual(payload.chuyengia.map((row) => row.id), ["expert-local"]);
 });
 
+test("plan 01 team selection does not resend server reference rows that omit rowVersion", () => {
+  const state = draftState();
+  state.chudautu[0].referenceOnly = true;
+  state.chuyengia = [
+    { id: "expert-1", hoTen: "Đỗ Văn Xứng", referenceOnly: true },
+    { id: "expert-2", hoTen: "Nguyễn Trung Thành", referenceOnly: true },
+  ];
+  state.kehoach[0].isLatest = 0;
+  state.goithau[0].isLatest = 0;
+  state.kehoach.push({
+    ...structuredClone(state.kehoach[0]),
+    id: "plan-01",
+    rootId: "plan-00",
+    phienBan: "01",
+    isLatest: 1,
+  });
+  state.goithau.push({
+    ...structuredClone(state.goithau[0]),
+    id: "package-01",
+    rootId: "package-00",
+    keHoachId: "plan-01",
+    isLatest: 1,
+    toChuyenGia: [{ chuyenGiaId: "expert-1", chucVu: "Tổ trưởng" }],
+    toThamDinh: [{ chuyenGiaId: "expert-2", chucVu: "Tổ trưởng" }],
+  });
+  const model = { state, normalizeRecordKeys: (row) => row };
+  const session = createPlanVersionDraftSession(state, "plan-00");
+  refreshPlanVersionDraftSession(session, state, "plan-01");
+
+  const payload = buildPlanDraftFinalizePayload(model, session);
+
+  assert.deepEqual(payload.versions.map((item) => item.version), [0, 1]);
+  assert.deepEqual(payload.chudautu, []);
+  assert.deepEqual(payload.chuyengia, []);
+  assert.deepEqual(payload.goithau.at(-1).toChuyenGia, [
+    { chuyenGiaId: "expert-1", chucVu: "Tổ trưởng" },
+  ]);
+  assert.deepEqual(payload.goithau.at(-1).toThamDinh, [
+    { chuyenGiaId: "expert-2", chucVu: "Tổ trưởng" },
+  ]);
+});
+
 test("explicitly dirty shared reference preserves expected row version", () => {
   const state = draftState();
   state.chuyengia[0].rowVersion = 8;

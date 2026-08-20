@@ -5,6 +5,7 @@ import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.js";
 import {
+  isPackageDraftSaveActive,
   packageSyncRequiresReload,
   persistPackageFormChanges,
   shouldShowPackageSyncFailureDialog,
@@ -937,6 +938,51 @@ test("saving a package inside plan breakdown remains a memory-only draft", async
   assert.deepEqual(calls, [], "a child modal must not make the draft durable or sync it");
 });
 
+test("a durable plan-version draft keeps package modal saves out of /api/sync", async () => {
+  const calls = [];
+  const plan = {
+    id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1,
+  };
+  const pkg = {
+    id: "package-01", rootId: "package-root", phienBan: "00",
+    keHoachId: plan.id, isLatest: 1,
+  };
+  const aggregate = {
+    chudautu: [], chuyengia: [], nhathau: [], kehoach: [plan], goithau: [pkg],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const session = {
+    draftId: "draft-1", finalizeMutationId: "finalize-1", rootId: "plan-root",
+    revision: 0, currentVersionId: plan.id, aggregate,
+  };
+  let envelope = { version: 2, sessions: [session], tombstones: {} };
+  const controller = {
+    model: {
+      state: structuredClone(aggregate),
+      planVersionDraftSessions: [session],
+      db: {
+        async update(_key, updater) {
+          envelope = updater(envelope);
+          return envelope;
+        },
+      },
+      commitLocalMutation: () => calls.push("commitLocalMutation"),
+      persistChanges: async () => calls.push("persistChanges"),
+      flushMutationOutbox: async () => calls.push("flushMutationOutbox"),
+    },
+    planBreakdownDraft: null,
+    autoSync: async () => { calls.push("autoSync"); return { ok: true }; },
+  };
+
+  assert.equal(isPackageDraftSaveActive(controller, "plan-01"), true);
+  assert.equal(isPackageDraftSaveActive(controller, "plan-02"), false);
+  const result = await persistPackageFormChanges(controller, {
+    goithau: [{ ...pkg, tenGoiThau: "Gói đã chỉnh tổ chuyên gia" }],
+  });
+  assert.deepEqual(result, { ok: true, draft: true });
+  assert.deepEqual(calls, []);
+});
+
 test("confirmed package row conflict uses the F5 toast without a second failure dialog", () => {
   assert.equal(shouldShowPackageSyncFailureDialog({
     ok: false,
@@ -1812,6 +1858,15 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
   };
   const model = {
     state, workspaceStorage: null, getWorkspaceToken: () => "org-1",
+    db: {
+      values: new Map(),
+      async get(key) { return structuredClone(this.values.get(key)); },
+      async update(key, updater) {
+        const next = updater(structuredClone(this.values.get(key) ?? null));
+        this.values.set(key, structuredClone(next));
+        return structuredClone(next);
+      },
+    },
     getLatestChuDauTu: () => state.chudautu.filter((row) => row.isLatest == 1),
     getCurrentDateTimeString: () => "2026-08-13 10:00:00",
     getLatestPackagesForPlan: (planId) => state.goithau.filter(
@@ -1854,6 +1909,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     plans: {
       edit: async (id, options) => {
         planModalEditOptions.push(options);
+        controller.planBreakdownDraft.planId = id;
         const plan = state.kehoach.find((row) => row.id === id);
         controls.get("form-kehoach-id").value = id;
         fillPlanFormFromProcurementDraft(globalThis.document, plan, model);
@@ -1866,6 +1922,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     renderBreakdownPackagesList,
     openPlanBreakdownModal,
     closeModal: async () => {},
+    finalizePlanDraft: async () => ({ status: "success", rowVersions: [] }),
     autoSync: async () => {
       const current = state.kehoach.find((row) => row._procurementImportCurrent);
       persistedRevisions.push({
@@ -1896,6 +1953,11 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
       controller: sequential, currentDraft: firstDraft,
       client: { cancelImportSession: async () => {} },
     });
+    assert.equal(
+      controller.model.planVersionDraftSessions?.length,
+      1,
+      "a new MSC plan must create one durable plan-version draft session",
+    );
     assert.deepEqual(planModalEditOptions[0], {
       keepProcurementCodeEditable: true,
       preserveProcurementLookupSelection: true,
@@ -1916,13 +1978,8 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.deepEqual(persistedRevisions, [], "package modal save remains memory-only");
 
     await controller.savePlanBreakdown();
-    assert.deepEqual(
-      [...workspaceMutations[0].stagedTables].sort(),
-      ["chudautu", "goithau", "kehoach"],
-      "plan, investor, and packages must enter one workspace mutation before sync",
-    );
-    assert.equal(persistedRevisions[0].revision, "00");
-    assert.ok(persistedRevisions[0].packages.some((row) => row.price === 125));
+    assert.deepEqual(workspaceMutations, [], "finalize-draft must bypass the regular sync mutation lane");
+    assert.deepEqual(persistedRevisions, [], "intermediate/import save must not write the server before finalization");
     assert.deepEqual(loaded, ["00", "01"]);
     assert.equal(controls.get("form-kehoach-id").value, controller.procurementPlanImport.currentPlanId);
 
@@ -1931,14 +1988,8 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, /Gói B 01/);
     await controller.savePlanBreakdown();
 
-    assert.deepEqual(persistedRevisions.map((row) => row.revision), ["00", "01"]);
-    assert.ok(persistedRevisions[1].packages.some(
-      (row) => row.name === "Gói A 01" && row.price === 150,
-    ));
-    assert.ok(
-      persistedRevisions[1].packages.every((row) => row.version === "00"),
-      "plan version 01 must not create package version 01",
-    );
+    assert.deepEqual(workspaceMutations, [], "the complete import chain must remain outside /api/sync");
+    assert.deepEqual(persistedRevisions, []);
     assert.deepEqual(packageModalEdits, [packageA00.id]);
     assert.equal(controller.procurementPlanImport, null);
   } finally {
