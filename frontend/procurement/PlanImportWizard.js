@@ -527,7 +527,15 @@ export class PlanImportWizard {
 }
 
 export async function openProcurementImportWizard() {
+  const lease = captureWorkspaceLease(this.model);
+  const storage = this.model?.workspaceStorage;
   await this.ensureLazyModal?.("modal-procurement-import");
+  if (
+    !isWorkspaceLeaseCurrent(this.model, lease)
+    || this.model?.workspaceStorage !== storage
+  ) {
+    throw workspaceChangedError();
+  }
   const modal = globalThis.document.getElementById("modal-procurement-import");
   if (!modal) return;
   let wizard = modal._procurementImportWizard;
@@ -660,7 +668,7 @@ function replaceArrayInPlace(target, nextRows) {
   return rows;
 }
 
-function publishPlanImportCandidate(controller, candidate, sessions) {
+function publishPlanImportCandidate(controller, candidate, sessions, { invalidate = true } = {}) {
   const state = controller.model.state;
   PLAN_IMPORT_MATERIALIZATION_STATE_KEYS.forEach((key) => {
     if (!Object.hasOwn(candidate, key)) delete state[key];
@@ -671,7 +679,7 @@ function publishPlanImportCandidate(controller, candidate, sessions) {
     } else {
       state[key] = candidate[key];
     }
-    controller.model.entityIndexes?.invalidate?.(key);
+    if (invalidate) controller.model.entityIndexes?.invalidate?.(key);
   });
   controller.model.planVersionDraftSessions = sessions;
 }
@@ -819,6 +827,21 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     if (candidatePersisted) {
       nextFlow.pendingNextUiRecovery = { planId: materialized.plan.id };
       error.procurementMaterializationDurable = true;
+      if (planImportCapabilityIsCurrent(controller, flow, { allowUninstalled })) {
+        publishPlanImportCandidate(
+          controller,
+          candidateState,
+          nextFlow.durableDraftSessions || checkpoint.sessions,
+          { invalidate: false },
+        );
+        // The durable candidate owns the next revision. Publish its flow
+        // identity even when the UI hand-off failed, so retry recovery cannot
+        // leave the controller on the previous source revision.
+        controller.procurementPlanImport = nextFlow;
+        controller.planBreakdownDraft = materialized.draft;
+        controller.tempPlanData = { ...materialized.plan };
+        controller.tempPlanAction = "create";
+      }
     } else if (planImportCapabilityIsCurrent(controller, nextFlow)) {
       restorePlanImportMaterialization(controller, checkpoint);
     }
@@ -869,22 +892,30 @@ export async function completeProcurementPlanImportRevision(savedPlanId) {
     return true;
   }
   const nextRevision = flow.controller.revisions[flow.controller.currentIndex + 1];
+  const discardsLocalDraft = Boolean(
+    findPlanVersionDraftSession(this.model, savedPlanId),
+  );
   const pendingNextRevision = String(flow.pendingNextRevisionNumber || "");
   const shouldContinue = pendingNextRevision === String(nextRevision.revisionNumber)
     ? true
     : await this.view.customConfirm(
       `Đã lưu phiên bản ${savedRevision}`,
       `Kế hoạch trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. `
-        + "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
+        + (discardsLocalDraft
+          ? "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
+          : "Nếu không tiếp tục, hệ thống sẽ dừng tại phiên bản hiện tại; các phiên bản đã lưu được giữ nguyên. ")
         + "Bạn có muốn tiếp tục không?",
       "help-circle",
     );
   assertPlanImportWorkspace(this, flow);
   if (!shouldContinue) {
-    await discardPlanVersionDraftForImportSession(
-      this.model, flow.session.sessionId,
-    );
-    assertPlanImportWorkspace(this, flow);
+    if (discardsLocalDraft) {
+      await discardPlanVersionDraftForImportSession(
+        this.model, flow.session.sessionId,
+      );
+      assertPlanImportWorkspace(this, flow);
+    }
+    let remoteCancelled = false;
     try {
       await (flow.client || new ProcurementImportClient()).cancelImportSession(
         flow.session.sessionId,
@@ -894,8 +925,9 @@ export async function completeProcurementPlanImportRevision(savedPlanId) {
         },
       );
       assertPlanImportWorkspace(this, flow);
+      remoteCancelled = true;
     } finally {
-      if (planImportCapabilityIsCurrent(this, flow)) {
+      if (remoteCancelled && planImportCapabilityIsCurrent(this, flow)) {
         flow.controller.cancel();
         this.procurementPlanImport = null;
         forgetProcurementImportSession(this);

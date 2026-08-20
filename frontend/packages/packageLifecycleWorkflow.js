@@ -11,6 +11,7 @@ import {
   removeDraftPackageAggregate,
 } from "../plans/planBreakdownDraft.js";
 import { persistActivePlanVersionDraftSession } from "../plans/PlanVersionDraftSession.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 
 async function hydratePackageOwnedRows(controller, planId) {
   if (!controller.model?.useServerSidePagination || !planId) return;
@@ -69,7 +70,21 @@ async function hydratePackageFamilyAcrossPlanVersions(controller, target) {
 export function openPackageWizardStep() {
   if (!this.packageWizard.active) return;
   if (!document.getElementById("modal-goithau")) {
-    this.ensureLazyModal?.("modal-goithau").then(() => this.openPackageWizardStep());
+    const lease = captureWorkspaceLease(this.model);
+    const storage = this.model?.workspaceStorage;
+    const wizard = this.packageWizard;
+    Promise.resolve(this.ensureLazyModal?.("modal-goithau")).then(() => {
+      if (
+        !isWorkspaceLeaseCurrent(this.model, lease)
+        || this.model?.workspaceStorage !== storage
+        || this.packageWizard !== wizard
+      ) return;
+      this.openPackageWizardStep();
+    }).catch((error) => {
+      if (error?.code !== "WORKSPACE_CHANGED") {
+        console.error("Failed to lazy-load package wizard:", error);
+      }
+    });
     return;
   }
   this.editGoiThau(null);

@@ -36,6 +36,18 @@ import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 import { presentStatus } from "./LifecyclePolicy.js";
 import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
+import {
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
+  workspaceChangedError,
+} from "../app/workspaceLease.js";
+
+function stalePackageFlowError() {
+  const error = new Error("Package import flow changed before the operation completed");
+  error.name = "AbortError";
+  error.code = "FLOW_CHANGED";
+  return error;
+}
 
 export function shouldCreatePackageVersion(previousPackage, nextPackage, sourceRevision = null) {
   const effectiveSourceRevision = sourceRevision
@@ -212,9 +224,22 @@ export async function createOfficialPackageVersionFromForm(
 
 // eslint-disable-next-line complexity -- Legacy package form orchestration is isolated for a dedicated refactor.
 export async function editGoiThau(id, isReadOnly = false) {
+  const editLease = captureWorkspaceLease(this.model);
+  const editStorage = this.model.workspaceStorage;
+  const editPackageFlow = this.procurementPackageImport;
+  const assertEditWorkspaceCurrent = () => {
+    if (
+      !isWorkspaceLeaseCurrent(this.model, editLease)
+      || this.model.workspaceStorage !== editStorage
+    ) {
+      throw workspaceChangedError();
+    }
+    if (this.procurementPackageImport !== editPackageFlow) throw stalePackageFlowError();
+  };
   if (!document.getElementById("modal-goithau")) {
     await this.ensureLazyModal?.("modal-goithau");
   }
+  assertEditWorkspaceCurrent();
   const form = document.getElementById("form-goithau");
   const storedPackage = id
     ? this.model.state.goithau.find((g) => String(g.id) === String(id))
@@ -307,7 +332,9 @@ export async function editGoiThau(id, isReadOnly = false) {
   };
   try {
     await hydratePackageExpertOptions(this.model);
+    assertEditWorkspaceCurrent();
   } catch (error) {
+    if (["WORKSPACE_CHANGED", "FLOW_CHANGED"].includes(error?.code)) throw error;
     console.error("Failed to load experts for the package team selectors:", error);
     this.view.showToast(
       "Không thể tải chuyên gia",
@@ -794,6 +821,7 @@ export async function editGoiThau(id, isReadOnly = false) {
       statusId: "procurement-lookup-package-status",
     }),
   });
+  assertEditWorkspaceCurrent();
   this.view.openModal("modal-goithau");
 }
 // eslint-disable-next-line complexity -- Legacy package persistence orchestration is isolated for a dedicated refactor.

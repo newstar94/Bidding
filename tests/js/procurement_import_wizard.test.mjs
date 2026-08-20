@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 import { ProcurementImportClient } from "../../frontend/procurement/ProcurementImportClient.js";
+import { openProcurementNoticeImportWizard } from "../../frontend/procurement/NoticeImportWizard.js";
 import {
   applyOpeningImportToDraft,
   canApplyOpeningPreview,
@@ -23,6 +24,7 @@ import {
   startProcurementPlanImport,
   summarizePreview,
   completeProcurementPlanImportRevision,
+  openProcurementImportWizard,
 } from "../../frontend/procurement/PlanImportWizard.js";
 import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
 import {
@@ -273,6 +275,43 @@ test("declining plan import resume removes the durable local plan aggregate", as
   assert.deepEqual(model.planVersionDraftSessions, []);
   assert.equal(new ProcurementImportResumeStore(storage).load(), null);
   assert.deepEqual(calls, ["plans", "packages", "remote-cancel"]);
+});
+
+test("resume decline keeps its pointer when remote cancellation is not confirmed", async () => {
+  const storage = memoryStorage();
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "resume-cancel-retry", kind: "PLAN", familyNo: "PL2600225773",
+    revisionNumber: "01",
+  });
+  const model = {
+    state: { kehoach: [], goithau: [] },
+    db: memoryEnvelopeDb(),
+    workspaceStorage: storage,
+    planVersionDraftSessions: [],
+    getWorkspaceToken: () => "user:org-a@1",
+  };
+  const controller = {
+    model,
+    view: { customConfirm: async () => false },
+  };
+
+  await assert.rejects(
+    resumeProcurementImportSession.call(controller, {
+      client: {
+        getImportSession: async () => ({
+          sessionId: "resume-cancel-retry", kind: "PLAN", familyNo: "PL2600225773",
+          currentIndex: 0, status: "READY", revisions: [{ revisionNumber: "01" }],
+        }),
+        cancelImportSession: async () => { throw new Error("network unavailable"); },
+      },
+    }),
+    /network unavailable/,
+  );
+
+  assert.equal(
+    new ProcurementImportResumeStore(storage).load().sessionId,
+    "resume-cancel-retry",
+  );
 });
 
 
@@ -879,6 +918,95 @@ test("wizard discards a response after workspace change and cleanup clears autho
   assert.equal(applyButton.disabled, true);
 });
 
+test("workspace switch during lazy plan import modal load cannot open the wizard in B", async () => {
+  const previousDocument = globalThis.document;
+  const lazyStarted = deferred();
+  const allowLazyModal = deferred();
+  const modal = { _procurementImportWizard: null };
+  globalThis.document = {
+    getElementById(id) {
+      return id === "modal-procurement-import" ? modal : null;
+    },
+  };
+  const model = {
+    token: "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: {}, db: {}, workspaceStorage: memoryStorage(),
+    getWorkspaceToken() { return this.token; },
+  };
+  const controller = {
+    model,
+    ensureLazyModal: async () => {
+      lazyStarted.resolve();
+      await allowLazyModal.promise;
+    },
+    view: { openModal() { throw new Error("must not open stale import wizard"); } },
+  };
+
+  try {
+    const pending = openProcurementImportWizard.call(controller);
+    await lazyStarted.promise;
+    model.token = "user:org-b@1";
+    model.workspaceScope = { key: "user:org-b" };
+    model.state = {};
+    model.db = {};
+    model.workspaceStorage = memoryStorage();
+    allowLazyModal.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+    assert.equal(modal._procurementImportWizard, null);
+  } finally {
+    allowLazyModal.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("workspace switch during lazy notice import modal load cannot target a package in B", async () => {
+  const previousDocument = globalThis.document;
+  const lazyStarted = deferred();
+  const allowLazyModal = deferred();
+  const modal = { _procurementNoticeImportWizard: null };
+  globalThis.document = {
+    getElementById(id) {
+      return id === "modal-procurement-notice-import" ? modal : null;
+    },
+  };
+  const model = {
+    token: "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: { goithau: [{ id: "package-a" }] },
+    db: {}, workspaceStorage: memoryStorage(),
+    getWorkspaceToken() { return this.token; },
+  };
+  const controller = {
+    model,
+    ensureLazyModal: async () => {
+      lazyStarted.resolve();
+      await allowLazyModal.promise;
+    },
+    view: { openModal() { throw new Error("must not open stale notice wizard"); } },
+  };
+
+  try {
+    const pending = openProcurementNoticeImportWizard.call(controller, "package-a");
+    await lazyStarted.promise;
+    model.token = "user:org-b@1";
+    model.workspaceScope = { key: "user:org-b" };
+    model.state = { goithau: [{ id: "package-a" }] };
+    model.db = {};
+    model.workspaceStorage = memoryStorage();
+    allowLazyModal.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+    assert.equal(modal._procurementNoticeImportWizard, null);
+  } finally {
+    allowLazyModal.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 
 test("sequential revision controller never skips or advances after failed save", async () => {
   const loaded = [];
@@ -1358,6 +1486,80 @@ test("late next from replaced flow cannot materialize into the new same-workspac
   assert.equal(new ProcurementImportResumeStore(storage).load().sessionId, "session-a2");
 });
 
+test("durable next materialization failure keeps controller and draft flow on the same revision", async () => {
+  const storage = memoryStorage();
+  const db = memoryEnvelopeDb();
+  let failPublish = false;
+  const authority = (revisionNumber) => ({
+    sessionId: "session-recovery", workspaceLease: "user:org-a@1",
+    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    revisionId: `revision-${revisionNumber}`, revisionNumber,
+    revisionDigest: `sha256:${revisionNumber}`,
+  });
+  const revisionDraft = (revisionNumber) => ({
+    familyNo: "PL2600000001", revisionNumber,
+    planDraft: {
+      maKeHoach: "PL2600000001", tenKeHoach: `Kế hoạch ${revisionNumber}`,
+      investorSource: { code: "vn3900786617" }, sourceRevision: authority(revisionNumber),
+    },
+    packageDrafts: [],
+  });
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => revisionDraft(revision.revisionNumber),
+    saveRevision: async () => ({ ok: true }),
+  });
+  const state = {
+    chudautu: [{
+      id: "investor-a", rootId: "investor-a", maChuDauTu: "vn3900786617",
+      phienBan: "00", isLatest: 1,
+    }],
+    chuyengia: [], nhathau: [], kehoach: [], goithau: [],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const model = {
+    state, db, workspaceStorage: storage, planVersionDraftSessions: [],
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    getLatestChuDauTu: () => state.chudautu,
+    getCurrentDateTimeString: () => "2026-08-20 12:00:00",
+    getPlanBaseCode: (value) => value,
+    entityIndexes: {
+      invalidate() {
+        if (failPublish) throw new Error("publish UI failed");
+      },
+    },
+  };
+  const controller = {
+    model,
+    view: { customConfirm: async () => true, customAlert: async () => {} },
+    plans: { edit: async () => {} },
+  };
+  await sequential.loadCurrent();
+  const materialized00 = await startProcurementPlanImport.call(controller, {
+    session: {
+      sessionId: "session-recovery", kind: "PLAN", familyNo: "PL2600000001",
+      revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    },
+    controller: sequential, currentDraft: revisionDraft("00"),
+  });
+  failPublish = true;
+
+  await assert.rejects(
+    completeProcurementPlanImportRevision.call(controller, materialized00.plan.id),
+    /publish UI failed/,
+  );
+
+  assert.equal(sequential.currentIndex, 1);
+  assert.equal(sequential.state, "EDITING_REVISION");
+  assert.equal(controller.procurementPlanImport.currentDraft.revisionNumber, "01");
+  assert.notEqual(controller.procurementPlanImport.pendingNextUiRecovery.planId, materialized00.plan.id);
+  assert.equal(
+    state.kehoach.some((row) => row.id === controller.procurementPlanImport.pendingNextUiRecovery.planId),
+    true,
+  );
+});
+
 test("declining next revision cancels all import work without an orphan draft", async () => {
   const calls = [];
   const storage = memoryStorage();
@@ -1420,6 +1622,60 @@ test("declining next revision cancels all import work without an orphan draft", 
   assert.deepEqual(state.goithau, []);
   assert.equal(new ProcurementImportResumeStore(storage).load(), null);
   assert.match(confirmationCopy, /toàn bộ.*bản nháp.*hủy|bản nháp.*xóa/i);
+});
+
+test("decline_existing_plan_import_keeps_already_committed_revision", async () => {
+  const storage = memoryStorage();
+  const state = {
+    kehoach: [
+      { id: "plan-00", rootId: "plan-00", phienBan: "00", isLatest: 0, rowVersion: 1 },
+      {
+        id: "plan-01", rootId: "plan-00", phienBan: "01", isLatest: 1, rowVersion: 2,
+        sourceRevision: { sessionId: "existing-session", revisionNumber: "01" },
+      },
+    ],
+    goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  const model = {
+    state,
+    db: memoryEnvelopeDb(),
+    workspaceStorage: storage,
+    planVersionDraftSessions: [],
+    workspaceScope: { key: "lease-existing", organizationId: "org-1" },
+    getWorkspaceToken: () => "lease-existing",
+  };
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "01" }, { revisionNumber: "02" }],
+    loadRevision: async () => ({}),
+    saveRevision: async () => ({ ok: true }),
+  });
+  await sequential.loadCurrent();
+  let confirmationCopy = "";
+  const controller = {
+    model,
+    procurementPlanImport: {
+      session: { sessionId: "existing-session", kind: "PLAN", familyNo: "PL2600225773" },
+      controller: sequential,
+      currentDraft: { revisionNumber: "01" },
+      client: { cancelImportSession: async () => ({ ok: true }) },
+    },
+    view: {
+      customConfirm: async (_title, message) => {
+        confirmationCopy = message;
+        return false;
+      },
+    },
+  };
+
+  await completeProcurementPlanImportRevision.call(controller, "plan-01");
+
+  assert.deepEqual(state.kehoach.map((row) => [row.id, row.rowVersion]), [
+    ["plan-00", 1], ["plan-01", 2],
+  ]);
+  assert.match(confirmationCopy, /dừng tại phiên bản hiện tại/i);
+  assert.doesNotMatch(confirmationCopy, /toàn bộ.*bản nháp.*hủy|bản nháp.*xóa/i);
+  assert.equal(controller.procurementPlanImport, null);
 });
 
 test("same-org workspace epoch change during plan cancel preserves B flow and pointer", async () => {
@@ -1582,6 +1838,39 @@ test("active plan cancel discards its durable local aggregate before cancelling 
   assert.deepEqual(state.kehoach, []);
   assert.equal(new ProcurementImportResumeStore(storage).load(), null);
   assert.equal(controller.procurementPlanImport, null);
+});
+
+test("remote cancel failure keeps the active flow and resume pointer visible for retry", async () => {
+  const storage = memoryStorage();
+  const model = {
+    state: { kehoach: [], goithau: [] },
+    db: memoryEnvelopeDb(),
+    workspaceStorage: storage,
+    planVersionDraftSessions: [],
+    getWorkspaceToken: () => "user:org-a@1",
+  };
+  const flow = {
+    session: { sessionId: "cancel-retry", kind: "PLAN", familyNo: "PL2600225773" },
+    currentDraft: { revisionNumber: "01" },
+    controller: { state: "WAITING_NEXT_CONFIRMATION", cancel() { this.state = "CANCELLED"; } },
+    client: { cancelImportSession: async () => { throw new Error("network unavailable"); } },
+  };
+  const controller = {
+    model,
+    procurementPlanImport: flow,
+    view: { showToast() {} },
+  };
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "cancel-retry", kind: "PLAN", familyNo: "PL2600225773",
+    revisionNumber: "01",
+  });
+
+  const cancelled = await cancelActiveProcurementImportSession.call(controller);
+
+  assert.equal(cancelled, false);
+  assert.equal(controller.procurementPlanImport, flow);
+  assert.equal(flow.controller.state, "WAITING_NEXT_CONFIRMATION");
+  assert.equal(new ProcurementImportResumeStore(storage).load().sessionId, "cancel-retry");
 });
 
 test("workspace change during resume cannot clear or materialize into B", async () => {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildPlanDraftFinalizePayload,
   createPlanVersionDraftSession,
+  discardPlanVersionDraftForImportSession,
   discardPlanVersionDraftSession,
   finalizePlanVersionDraft,
   hydratePlanVersionDraftSessions,
@@ -15,7 +16,9 @@ import {
   validatePlanVersionDraftSession,
 } from "../../frontend/plans/PlanVersionDraftSession.js";
 import {
+  editKeHoach,
   handleKeHoachSubmit,
+  openPlanBreakdownModal,
   saveIntermediatePlanVersion,
   savePlanBreakdown,
 } from "../../frontend/plans/KeHoachWorkflow.js";
@@ -282,6 +285,61 @@ test("workspace change during plan draft discard cannot delete B rows", async ()
   await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
   assert.deepEqual(model.state.kehoach, [{ id: "plan-b", rowVersion: 0 }]);
   assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+});
+
+test("workspace_switch_between_discarded_sessions_stops_further_cleanup", async () => {
+  const dbA = memoryDb();
+  const model = workspaceModel({
+    state: {
+      ...draftState(),
+      kehoach: [{ id: "p1" }, { id: "p2" }, { id: "p3" }],
+      goithau: [], assignments: [],
+    },
+    db: dbA,
+  });
+  const sessions = ["p1", "p2", "p3"].map((planId, index) => ({
+    draftId: `draft-${index + 1}`,
+    rootId: planId,
+    revision: 0,
+    aggregate: {
+      kehoach: [{
+        id: planId,
+        sourceRevision: { sessionId: "source-session", revisionNumber: `0${index}` },
+      }],
+    },
+  }));
+  for (const session of sessions) await savePlanVersionDraftSession(model, session);
+  const secondWriteFinished = deferred();
+  const allowSecondCompletion = deferred();
+  const originalUpdate = dbA.update.bind(dbA);
+  let updates = 0;
+  dbA.update = async (key, updater) => {
+    updates += 1;
+    const envelope = await originalUpdate(key, updater);
+    if (updates === 2) {
+      secondWriteFinished.resolve();
+      await allowSecondCompletion.promise;
+    }
+    return envelope;
+  };
+
+  const pending = discardPlanVersionDraftForImportSession(model, "source-session");
+  await secondWriteFinished.promise;
+  const stateB = { ...draftState(), kehoach: [{ id: "plan-b" }], goithau: [] };
+  const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+  model.token = "user:org-b@1";
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  model.state = stateB;
+  model.db = memoryDb();
+  model.workspaceStorage = { getItem: () => null, setItem() {} };
+  model.planVersionDraftSessions = sessionsB;
+  allowSecondCompletion.resolve();
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(model.state.kehoach, [{ id: "plan-b" }]);
+  assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+  const durableA = await dbA.get("plan_version_drafts_v1");
+  assert.deepEqual(durableA.sessions.map((session) => session.draftId), ["draft-3"]);
 });
 
 test("workspace change between dirty-record draft saves cannot mutate B", async () => {
@@ -696,7 +754,6 @@ test("final plan action sends the whole draft chain only to the finalize endpoin
       customAlert: async () => {},
     },
   };
-
   try {
     const result = await savePlanBreakdown.call(controller);
     assert.equal(result, undefined);
@@ -1089,6 +1146,309 @@ test("initial_plan_draft_storage_failure_does_not_leave_ephemeral_plan", async (
     assert.equal(controller.planBreakdownDraft, null);
     assert.deepEqual(effects, { closed: 0, opened: 0 });
   } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("workspace_change_during_initial_plan_draft_save_cannot_restore_a_checkpoint_into_b", async () => {
+  const previousDocument = globalThis.document;
+  const stateA = {
+    chudautu: [], chuyengia: [], nhathau: [], kehoach: [], goithau: [],
+    goithauhanghoa: [], thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+    selectedPlanVersion: {}, selectedPackageVersion: {}, selectedPackageVersionIntent: {},
+  };
+  const model = workspaceModel({ state: stateA });
+  model.getCurrentDateTimeString = () => "2026-08-20 10:00:00";
+  model.convertDMYHMSToYMDHMS = (value) => value;
+  model.convertDMYToYMD = (value) => value;
+  model.parseVND = () => 0;
+  const writeFinished = deferred();
+  const allowCompletion = deferred();
+  const originalUpdate = model.db.update.bind(model.db);
+  model.db.update = async (key, updater) => {
+    const envelope = await originalUpdate(key, updater);
+    writeFinished.resolve();
+    await allowCompletion.promise;
+    return envelope;
+  };
+  const elements = new Map();
+  const element = (id) => {
+    if (!elements.has(id)) {
+      elements.set(id, {
+        value: "", dataset: {}, getAttribute: () => "", closest: () => null,
+      });
+    }
+    return elements.get(id);
+  };
+  element("kh-loaihinh").value = "Dự toán mua sắm";
+  element("kh-pheduyet").value = "Kế hoạch";
+  globalThis.document = { getElementById: element };
+  const effects = { closed: 0, opened: 0, rendered: 0 };
+  const controller = {
+    model,
+    tempPlanData: null,
+    tempPlanAction: null,
+    planBreakdownDraft: null,
+    backupKeHoachState: null,
+    backupGoiThauState: null,
+    view: {
+      validateForm: () => true,
+      closeModal: () => { effects.closed += 1; },
+      renderKeHoachTable: () => { effects.rendered += 1; },
+      renderGoiThauTable: () => { effects.rendered += 1; },
+    },
+    openPlanBreakdownModal: async () => { effects.opened += 1; },
+  };
+
+  try {
+    const pending = handleKeHoachSubmit.call(controller, { preventDefault() {} });
+    await writeFinished.promise;
+    const stateB = {
+      ...draftState(),
+      kehoach: [{ id: "plan-b", rootId: "plan-b", phienBan: "00" }],
+      goithau: [], assignments: [],
+    };
+    const sessionsB = [{ draftId: "draft-b", rootId: "plan-b", aggregate: { kehoach: [] } }];
+    model.token = "user:org-b@1";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    model.state = stateB;
+    model.db = memoryDb();
+    model.workspaceStorage = { getItem: () => null, setItem() {} };
+    model.planVersionDraftSessions = sessionsB;
+    controller.tempPlanData = { id: "plan-b" };
+    controller.tempPlanAction = "edit-b";
+    controller.planBreakdownDraft = { active: true, action: "edit", planId: "plan-b" };
+    controller.backupKeHoachState = [{ id: "backup-b" }];
+    controller.backupGoiThauState = [{ id: "package-backup-b" }];
+    allowCompletion.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+    assert.deepEqual(model.state.kehoach, [{ id: "plan-b", rootId: "plan-b", phienBan: "00" }]);
+    assert.deepEqual(model.planVersionDraftSessions, sessionsB);
+    assert.deepEqual(controller.tempPlanData, { id: "plan-b" });
+    assert.equal(controller.tempPlanAction, "edit-b");
+    assert.equal(controller.planBreakdownDraft.planId, "plan-b");
+    assert.deepEqual(controller.backupKeHoachState, [{ id: "backup-b" }]);
+    assert.deepEqual(controller.backupGoiThauState, [{ id: "package-backup-b" }]);
+    assert.deepEqual(effects, { closed: 0, opened: 0, rendered: 0 });
+  } finally {
+    allowCompletion.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("same_org_new_epoch_cannot_restore_previous_epoch_intermediate_checkpoint", async () => {
+  const previousDocument = globalThis.document;
+  const model = workspaceModel();
+  model.getCurrentDateTimeString = () => "2026-08-20 10:00:00";
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const writeFinished = deferred();
+  const allowCompletion = deferred();
+  const originalUpdate = model.db.update.bind(model.db);
+  model.db.update = async (key, updater) => {
+    const envelope = await originalUpdate(key, updater);
+    writeFinished.resolve();
+    await allowCompletion.promise;
+    return envelope;
+  };
+  const elements = new Map([
+    ["breakdown-plan-id", { value: "plan-00" }],
+    ["tbody-breakdown-dathuchien", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-khongapdung", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-chuadudieuKien", { querySelectorAll: () => [] }],
+  ]);
+  globalThis.document = { getElementById: (id) => elements.get(id) || null };
+  const effects = { rendered: 0, opened: 0 };
+  const controller = {
+    model,
+    planBreakdownDraft: { active: true, action: "create", planId: "plan-00" },
+    tempPlanAction: "create",
+    tempPlanData: { id: "plan-00" },
+    loadBreakdownPackageDetails: async () => {},
+    openPlanBreakdownModal: async () => { effects.opened += 1; },
+    view: {
+      renderKeHoachTable: () => { effects.rendered += 1; },
+      renderGoiThauTable: () => { effects.rendered += 1; },
+    },
+  };
+
+  try {
+    const pending = saveIntermediatePlanVersion.call(controller);
+    await writeFinished.promise;
+    const stateEpoch2 = {
+      ...draftState(),
+      kehoach: [{ id: "epoch-2-plan", rootId: "epoch-2-plan", phienBan: "00" }],
+      goithau: [], assignments: [],
+    };
+    const sessionsEpoch2 = [{
+      draftId: "epoch-2-draft", rootId: "epoch-2-plan", aggregate: { kehoach: [] },
+    }];
+    model.token = "user:org-a@2";
+    model.state = stateEpoch2;
+    model.db = memoryDb();
+    model.workspaceStorage = { getItem: () => null, setItem() {} };
+    model.planVersionDraftSessions = sessionsEpoch2;
+    controller.tempPlanAction = "edit-epoch-2";
+    controller.tempPlanData = { id: "epoch-2-plan" };
+    controller.planBreakdownDraft = {
+      active: true, action: "edit", planId: "epoch-2-plan", snapshot: {},
+    };
+    allowCompletion.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+    assert.deepEqual(model.state.kehoach, [{
+      id: "epoch-2-plan", rootId: "epoch-2-plan", phienBan: "00",
+    }]);
+    assert.deepEqual(model.planVersionDraftSessions, sessionsEpoch2);
+    assert.equal(controller.tempPlanAction, "edit-epoch-2");
+    assert.deepEqual(controller.tempPlanData, { id: "epoch-2-plan" });
+    assert.equal(controller.planBreakdownDraft.planId, "epoch-2-plan");
+    assert.deepEqual(effects, { rendered: 0, opened: 0 });
+  } finally {
+    allowCompletion.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("workspace_switch_during_lazy_plan_modal_load_cannot_populate_b_with_a_intent", async () => {
+  const previousDocument = globalThis.document;
+  const lazyStarted = deferred();
+  const allowLazyModal = deferred();
+  let modalAvailable = false;
+  let formMutations = 0;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "modal-kehoach") return modalAvailable ? {} : null;
+      if (id === "form-kehoach") {
+        return {
+          querySelectorAll: () => [{
+            classList: { remove: () => { formMutations += 1; } },
+          }],
+        };
+      }
+      return null;
+    },
+  };
+  const model = workspaceModel();
+  const controller = {
+    model,
+    ensureLazyModal: async () => {
+      lazyStarted.resolve();
+      await allowLazyModal.promise;
+      modalAvailable = true;
+    },
+    view: { openModal() { throw new Error("must not open stale plan modal"); } },
+  };
+
+  try {
+    const pending = editKeHoach.call(controller, "plan-00");
+    await lazyStarted.promise;
+    model.token = "user:org-b@1";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    model.state = { ...draftState(), kehoach: [{ id: "plan-b" }] };
+    model.db = memoryDb();
+    model.workspaceStorage = { getItem: () => null, setItem() {} };
+    allowLazyModal.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+    assert.equal(formMutations, 0);
+  } finally {
+    allowLazyModal.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("late_plan_edit_from_old_import_flow_cannot_open_new_flow_modal", async () => {
+  const previousDocument = globalThis.document;
+  const lazyStarted = deferred();
+  const allowLazyModal = deferred();
+  let modalAvailable = false;
+  let formMutations = 0;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "modal-kehoach") return modalAvailable ? {} : null;
+      if (id === "form-kehoach") {
+        return {
+          querySelectorAll: () => [{
+            classList: { remove: () => { formMutations += 1; } },
+          }],
+        };
+      }
+      return null;
+    },
+  };
+  const model = workspaceModel();
+  const flowA = { flowId: "flow-a" };
+  const controller = {
+    model,
+    procurementPlanImport: flowA,
+    ensureLazyModal: async () => {
+      lazyStarted.resolve();
+      await allowLazyModal.promise;
+      modalAvailable = true;
+    },
+    view: { openModal() { throw new Error("must not open stale plan modal"); } },
+  };
+
+  try {
+    const pending = editKeHoach.call(controller, "plan-00");
+    await lazyStarted.promise;
+    controller.procurementPlanImport = { flowId: "flow-b" };
+    allowLazyModal.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "FLOW_CHANGED");
+    assert.equal(formMutations, 0);
+  } finally {
+    allowLazyModal.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("late breakdown modal load cannot open an old plan intent in a new workspace", async () => {
+  const previousDocument = globalThis.document;
+  const lazyStarted = deferred();
+  const allowLazyModal = deferred();
+  let modalAvailable = false;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "modal-plan-breakdown") return modalAvailable ? {} : null;
+      return null;
+    },
+  };
+  const model = workspaceModel();
+  const controller = {
+    model,
+    ensureLazyModal: async () => {
+      lazyStarted.resolve();
+      await allowLazyModal.promise;
+      modalAvailable = true;
+    },
+  };
+  controller.openPlanBreakdownModal = openPlanBreakdownModal.bind(controller);
+
+  try {
+    let settled = false;
+    const pending = openPlanBreakdownModal.call(controller, "plan-00")
+      .finally(() => { settled = true; });
+    await lazyStarted.promise;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, "the public modal operation must own its lazy-load completion");
+    model.token = "user:org-b@1";
+    model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+    model.state = { ...draftState(), kehoach: [{ id: "plan-00", tenKeHoach: "B" }] };
+    model.db = memoryDb();
+    model.workspaceStorage = { getItem: () => null, setItem() {} };
+    allowLazyModal.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  } finally {
+    allowLazyModal.resolve();
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
   }

@@ -1,5 +1,10 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
-import { currentWorkspaceToken } from "../app/workspaceLease.js";
+import {
+  captureWorkspaceLease,
+  currentWorkspaceToken,
+  isWorkspaceLeaseCurrent,
+  workspaceChangedError,
+} from "../app/workspaceLease.js";
 
 
 export function canApplyNoticePreview(preview) {
@@ -210,7 +215,15 @@ export class NoticeImportWizard {
 
 
 export async function openProcurementNoticeImportWizard(packageId = null) {
+  const lease = captureWorkspaceLease(this.model);
+  const storage = this.model?.workspaceStorage;
   await this.ensureLazyModal?.("modal-procurement-notice-import");
+  if (
+    !isWorkspaceLeaseCurrent(this.model, lease)
+    || this.model?.workspaceStorage !== storage
+  ) {
+    throw workspaceChangedError();
+  }
   const modal = globalThis.document.getElementById("modal-procurement-notice-import");
   if (!modal) return;
   const selectedId = String(

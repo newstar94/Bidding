@@ -330,6 +330,8 @@ export async function discardPlanVersionDraftSession(model, session) {
 }
 
 export async function discardPlanVersionDraftForImportSession(model, sessionId) {
+  const capability = captureDraftStorageCapability(model);
+  assertDraftStorageCapability(model, capability);
   const sourceSessionId = String(sessionId || "");
   if (!sourceSessionId) return false;
   const matches = (model?.planVersionDraftSessions || []).filter((session) => (
@@ -340,7 +342,9 @@ export async function discardPlanVersionDraftForImportSession(model, sessionId) 
   ));
   let removed = false;
   for (const session of matches) {
+    assertDraftStorageCapability(model, capability);
     removed = await discardPlanVersionDraftSession(model, session) || removed;
+    assertDraftStorageCapability(model, capability);
   }
   return removed;
 }

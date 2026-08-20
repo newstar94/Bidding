@@ -3,6 +3,13 @@ import test from "node:test";
 
 import { savePackagePreparation } from "../../frontend/packages/packagePreparation.js";
 import { BiddingController } from "../../frontend/app/BiddingController.js";
+import { editGoiThau } from "../../frontend/packages/GoiThauWorkflow.js";
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 function buildScenario() {
   // The detail screen can render a lightweight projection of the package, and
@@ -69,6 +76,54 @@ function buildScenario() {
     generateRecordId: (type) => `${type}-new-${++sequence}`,
   };
 }
+
+test("workspace switch during lazy package modal load cannot populate the new workspace", async () => {
+  const previousDocument = globalThis.document;
+  const lazyStarted = deferred();
+  const allowLazyModal = deferred();
+  let modalAvailable = false;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "modal-goithau") return modalAvailable ? {} : null;
+      if (id === "form-goithau") return { querySelectorAll: () => [] };
+      return null;
+    },
+  };
+  const stateA = { goithau: [{ id: "pkg-a" }], thongtinmothau: [] };
+  const model = {
+    token: "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: stateA,
+    db: { name: "db-a" },
+    workspaceStorage: { name: "storage-a" },
+    getWorkspaceToken() { return this.token; },
+  };
+  const controller = {
+    model,
+    ensureLazyModal: async () => {
+      lazyStarted.resolve();
+      await allowLazyModal.promise;
+      modalAvailable = true;
+    },
+  };
+
+  try {
+    const pending = editGoiThau.call(controller, "pkg-a");
+    await lazyStarted.promise;
+    model.token = "user:org-b@1";
+    model.workspaceScope = { key: "user:org-b" };
+    model.state = { goithau: [{ id: "pkg-b" }], thongtinmothau: [] };
+    model.db = { name: "db-b" };
+    model.workspaceStorage = { name: "storage-b" };
+    allowLazyModal.resolve();
+
+    await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  } finally {
+    allowLazyModal.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
 
 test("versioning from the detail screen inherits status and assignees of the stored package", async () => {
   const scenario = buildScenario();

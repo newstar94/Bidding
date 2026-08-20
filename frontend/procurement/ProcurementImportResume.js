@@ -93,16 +93,15 @@ export async function cancelActiveProcurementImportSession() {
     if (isCurrentFlow()) {
       this.view?.showToast?.(
         "Đã hủy bản nháp trên máy",
-        "Không thể cập nhật trạng thái phiên nhập trên máy chủ; phiên sẽ tự hết hạn.",
+        "Chưa thể hủy phiên trên máy chủ. Phiên vẫn được giữ để bạn thử hủy lại.",
         "warning",
       );
     }
-  } finally {
-    if (isCurrentFlow()) {
-      flow.controller.cancel();
-      this[flowSlot] = null;
-      forgetProcurementImportSession(this, { storage });
-    }
+  }
+  if (remoteCancelled && isCurrentFlow()) {
+    flow.controller.cancel();
+    this[flowSlot] = null;
+    forgetProcurementImportSession(this, { storage });
   }
   return remoteCancelled;
 }
@@ -166,10 +165,22 @@ export async function resumeProcurementImportSession({
       store.clear();
       return false;
     }
+    const hasLocalPlanDraft = session.kind === "PLAN" && (
+      this.model?.planVersionDraftSessions || []
+    ).some((draft) => (
+      [
+        ...(draft.aggregate?.kehoach || []),
+        ...(draft.aggregate?.goithau || []),
+      ].some((row) => (
+        String(row?.sourceRevision?.sessionId || "") === String(session.sessionId || "")
+      ))
+    ));
     const shouldResume = await this.view?.customConfirm?.(
       "Tiếp tục nhập từ Mua Sắm Công",
       `Phiên nhập ${session.familyNo} đang dở ở phiên bản ${currentRevision.revisionNumber}. `
-        + "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
+        + (hasLocalPlanDraft
+          ? "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
+          : "Nếu không tiếp tục, phiên nhập sẽ dừng; mọi phiên bản đã lưu được giữ nguyên. ")
         + "Bạn có muốn tiếp tục không?",
       "rotate-ccw",
     );
@@ -183,14 +194,16 @@ export async function resumeProcurementImportSession({
         this.view?.renderKeHoachTable?.();
         this.view?.renderGoiThauTable?.();
       }
+      let remoteCancelled = false;
       try {
         await client.cancelImportSession(session.sessionId, {
           workspaceLease: workspaceLease || null,
           kind: session.kind === "PACKAGE" ? "notice" : "plan",
         });
         assertCurrentWorkspace();
+        remoteCancelled = true;
       } finally {
-        store.clear();
+        if (remoteCancelled) store.clear();
       }
       return false;
     }

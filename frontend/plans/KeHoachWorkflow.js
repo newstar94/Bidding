@@ -29,6 +29,7 @@ import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient
 import {
   captureWorkspaceLease,
   isWorkspaceLeaseCurrent,
+  workspaceChangedError,
 } from "../app/workspaceLease.js";
 import {
   capturePlanBreakdownDraft,
@@ -74,9 +75,22 @@ function stalePlanFinalizeResult() {
   };
 }
 
+function stalePlanFlowError() {
+  const error = new Error("Plan import flow changed before the operation completed");
+  error.name = "AbortError";
+  error.code = "FLOW_CHANGED";
+  return error;
+}
+
 function captureIntermediateDraftCheckpoint(controller) {
-  const state = controller.model.state;
+  const model = controller.model;
+  const state = model.state;
   return {
+    capability: Object.freeze({
+      model,
+      lease: captureWorkspaceLease(model),
+      storage: model.workspaceStorage,
+    }),
     state: Object.fromEntries(INTERMEDIATE_DRAFT_STATE_KEYS.map((key) => [
       key,
       {
@@ -95,6 +109,14 @@ function captureIntermediateDraftCheckpoint(controller) {
 }
 
 async function restoreIntermediateDraftCheckpoint(controller, checkpoint) {
+  const capability = checkpoint?.capability;
+  if (
+    controller.model !== capability?.model
+    || !isWorkspaceLeaseCurrent(capability.model, capability.lease)
+    || capability.model.workspaceStorage !== capability.storage
+  ) {
+    return false;
+  }
   for (const [key, captured] of Object.entries(checkpoint.state)) {
     if (!captured.present) delete controller.model.state[key];
     else controller.model.state[key] = cloneDraftValue(captured.value);
@@ -116,6 +138,7 @@ async function restoreIntermediateDraftCheckpoint(controller, checkpoint) {
   renderResults.filter((result) => result.status === "rejected").forEach((result) => {
     console.warn("Failed to render restored intermediate plan draft state:", result.reason);
   });
+  return true;
 }
 
 /**
@@ -250,9 +273,22 @@ export async function editKeHoach(id, {
   keepProcurementCodeEditable = false,
   preserveProcurementLookupSelection = false,
 } = {}) {
+  const editLease = captureWorkspaceLease(this.model);
+  const editStorage = this.model.workspaceStorage;
+  const editImportFlow = this.procurementPlanImport;
+  const assertEditCapabilityCurrent = () => {
+    if (
+      !isWorkspaceLeaseCurrent(this.model, editLease)
+      || this.model.workspaceStorage !== editStorage
+    ) {
+      throw workspaceChangedError();
+    }
+    if (this.procurementPlanImport !== editImportFlow) throw stalePlanFlowError();
+  };
   if (!document.getElementById("modal-kehoach")) {
     await this.ensureLazyModal?.("modal-kehoach");
   }
+  assertEditCapabilityCurrent();
   const form = document.getElementById("form-kehoach");
   const existingProcurementLookupCheckbox = document.getElementById(
     "procurement-lookup-plan-enabled",
@@ -516,6 +552,7 @@ export async function editKeHoach(id, {
     }),
   });
   lucide.createIcons();
+  assertEditCapabilityCurrent();
   this.view.openModal("modal-kehoach");
   const addWorkingDays = (startDateStr, days) => {
     if (!startDateStr) return "";
@@ -743,10 +780,22 @@ export async function handleKeHoachSubmit(e) {
   await this.openPlanBreakdownModal(targetPlanId);
 }
 export async function openPlanBreakdownModal(planId) {
+  const modalLease = captureWorkspaceLease(this.model);
+  const modalStorage = this.model.workspaceStorage;
+  const modalImportFlow = this.procurementPlanImport;
+  const assertModalCapabilityCurrent = () => {
+    if (
+      !isWorkspaceLeaseCurrent(this.model, modalLease)
+      || this.model.workspaceStorage !== modalStorage
+    ) {
+      throw workspaceChangedError();
+    }
+    if (this.procurementPlanImport !== modalImportFlow) throw stalePlanFlowError();
+  };
   if (!document.getElementById("modal-plan-breakdown")) {
-    this.ensureLazyModal?.("modal-plan-breakdown").then(() => this.openPlanBreakdownModal(planId));
-    return;
+    await this.ensureLazyModal?.("modal-plan-breakdown");
   }
+  assertModalCapabilityCurrent();
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
   if (!kh) return;
   document.getElementById("breakdown-plan-id").value = planId;
@@ -862,9 +911,11 @@ export async function openPlanBreakdownModal(planId) {
   });
   tabBtns[0].click();
   this.updateBreakdownTotal(planId);
+  assertModalCapabilityCurrent();
   this.view.openModal("modal-plan-breakdown");
   lucide.createIcons();
   await this.loadBreakdownPackageDetails(planId);
+  assertModalCapabilityCurrent();
 }
 async function loadBreakdownPackageDetailsForPlan(controller, planId) {
   const packages = controller.model.getLatestPackagesForPlan(planId);
