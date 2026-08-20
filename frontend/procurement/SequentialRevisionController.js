@@ -39,23 +39,46 @@ export class SequentialRevisionController {
       throw new Error("PROCUREMENT_REVISION_INVALID_STATE");
     }
     this.state = "SAVING_REVISION";
+    let result;
     try {
-      const result = await this.saveRevision?.(this.current(), ...args);
-      this.state = this.hasNext() ? "WAITING_NEXT_CONFIRMATION" : "COMPLETED";
-      await this.afterRevisionSaved?.(this.current(), result, this.hasNext());
-      return result;
+      result = await this.saveRevision?.(this.current(), ...args);
     } catch (error) {
       this.state = "EDITING_REVISION";
       throw error;
     }
+    this.state = this.hasNext() ? "WAITING_NEXT_CONFIRMATION" : "COMPLETED";
+    await this.afterRevisionSaved?.(this.current(), result, this.hasNext());
+    return result;
   }
 
   async next() {
     if (this.state !== "WAITING_NEXT_CONFIRMATION" || !this.hasNext()) {
       throw new Error("PROCUREMENT_REVISION_INVALID_STATE");
     }
+    const previousIndex = this.currentIndex;
     this.currentIndex += 1;
-    return this.loadCurrent();
+    this.state = "LOADING_NEXT_REVISION";
+    try {
+      const result = await this.loadRevision?.(this.current(), this.currentIndex);
+      this.state = "EDITING_REVISION";
+      return result;
+    } catch (error) {
+      this.currentIndex = previousIndex;
+      this.state = "WAITING_NEXT_CONFIRMATION";
+      throw error;
+    }
+  }
+
+  rollbackLoadedNext(previousIndex) {
+    if (
+      this.state !== "EDITING_REVISION"
+      || this.currentIndex !== previousIndex + 1
+    ) {
+      return false;
+    }
+    this.currentIndex = previousIndex;
+    this.state = "WAITING_NEXT_CONFIRMATION";
+    return true;
   }
 
   complete() {

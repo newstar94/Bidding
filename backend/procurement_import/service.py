@@ -772,6 +772,20 @@ class ProcurementImportPreparer:
                 "code": "OLDER_REVISIONS_PROVENANCE_ONLY_AFTER_APPLY",
                 "message": "Nên chọn toàn bộ lịch sử trước lần áp dụng đầu tiên.",
             })
+        latest_plan = (local_state or {}).get("latestPlan") or None
+        expected_predecessor = None
+        if latest_plan is not None:
+            predecessor_id = str(latest_plan.get("id") or "")
+            predecessor_root = str(
+                latest_plan.get("rootId") or predecessor_id
+            )
+            if predecessor_id and predecessor_root:
+                expected_predecessor = {
+                    "id": predecessor_id,
+                    "rootId": predecessor_root,
+                    "localVersion": int(latest_plan.get("localVersion") or 0),
+                    "rowVersion": int(latest_plan.get("rowVersion") or 0),
+                }
         bundle = {
             "schemaVersion": PREVIEW_SCHEMA_VERSION,
             "provider": self.source.name,
@@ -781,9 +795,10 @@ class ProcurementImportPreparer:
             "plan": {
                 "familyNo": normalized.base_code,
                 "expectedRowVersion": (
-                    None if local_state is None
-                    else (local_state.get("latestPlan") or {}).get("rowVersion")
+                    None if latest_plan is None
+                    else latest_plan.get("rowVersion")
                 ),
+                "expectedPredecessor": expected_predecessor,
                 "availableRevisions": [str(row.get("revisionNumber")) for row in sorted(available, key=lambda item: revision_sort_key(item.get("revisionNumber")))],
                 "selectedRevisions": [str(row["revisionNumber"]) for row in revisions],
                 "targetAction": "CREATE" if local_state is None else "VERSION",

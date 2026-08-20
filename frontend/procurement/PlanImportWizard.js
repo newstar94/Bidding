@@ -13,7 +13,12 @@ import {
   rememberProcurementImportSession,
 } from "./ProcurementImportResume.js";
 import { packageNoticeLabel, planPreviewFields } from "./fieldMapping.js";
-import { currentWorkspaceToken } from "../app/workspaceLease.js";
+import {
+  captureWorkspaceLease,
+  currentWorkspaceToken,
+  isWorkspaceLeaseCurrent,
+  workspaceChangedError,
+} from "../app/workspaceLease.js";
 import {
   createPlanVersionDraftSession,
   findPlanVersionDraftSession,
@@ -559,7 +564,27 @@ function latestPlanForFamily(model, familyNo) {
     .sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0))[0] || null;
 }
 
+function bindPlanImportWorkspace(controller, flow) {
+  if (flow?.importWorkspaceLease) return flow;
+  return {
+    ...flow,
+    importWorkspaceLease: captureWorkspaceLease(controller.model),
+    importWorkspaceStorage: controller.model?.workspaceStorage,
+  };
+}
+
+function assertPlanImportWorkspace(controller, flow) {
+  if (
+    !isWorkspaceLeaseCurrent(controller.model, flow?.importWorkspaceLease)
+    || controller.model?.workspaceStorage !== flow?.importWorkspaceStorage
+  ) {
+    throw workspaceChangedError();
+  }
+}
+
 async function materializePlanImportRevision(controller, flow, revisionDraft, previousPlanId = null) {
+  flow = bindPlanImportWorkspace(controller, flow);
+  assertPlanImportWorkspace(controller, flow);
   const source = revisionDraft?.planDraft?.investorSource || {};
   const investorResolution = await resolveImportedInvestorDraft({
     source,
@@ -567,6 +592,7 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     lookup: lookupPartnerInfo,
     timestamp: controller.model.getCurrentDateTimeString(),
   });
+  assertPlanImportWorkspace(controller, flow);
   const prior = previousPlanId
     ? (controller.model.state.kehoach || []).find(
       (plan) => String(plan.id) === String(previousPlanId),
@@ -632,13 +658,16 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
           controller.model.getCurrentDateTimeString?.(),
         );
       if (draftSession) await savePlanVersionDraftSession(controller.model, draftSession);
+      assertPlanImportWorkspace(controller, flow);
     }
   }
+  assertPlanImportWorkspace(controller, flow);
   rememberProcurementImportSession(controller, controller.procurementPlanImport);
   await controller.plans.edit(materialized.plan.id, {
     keepProcurementCodeEditable: true,
     preserveProcurementLookupSelection: true,
   });
+  assertPlanImportWorkspace(controller, flow);
   return materialized;
 }
 
@@ -646,13 +675,22 @@ export async function startProcurementPlanImport(flow) {
   if (!flow?.controller || !flow?.currentDraft) {
     throw new TypeError("PROCUREMENT_SESSION_INVALID");
   }
-  return materializePlanImportRevision(this, flow, flow.currentDraft);
+  const guardedFlow = bindPlanImportWorkspace(this, flow);
+  return materializePlanImportRevision(this, guardedFlow, flow.currentDraft);
 }
 
 export async function completeProcurementPlanImportRevision(savedPlanId) {
-  const flow = this.procurementPlanImport;
+  const flow = bindPlanImportWorkspace(this, this.procurementPlanImport);
   if (!flow?.controller) return false;
-  await flow.controller.saveCurrent(savedPlanId);
+  if (this.procurementPlanImport !== flow) this.procurementPlanImport = flow;
+  assertPlanImportWorkspace(this, flow);
+  const currentAlreadySaved = (
+    flow.controller.state === "WAITING_NEXT_CONFIRMATION"
+  );
+  if (!currentAlreadySaved) {
+    await flow.controller.saveCurrent(savedPlanId);
+    assertPlanImportWorkspace(this, flow);
+  }
   const savedRevision = flow.currentDraft.revisionNumber;
   if (!flow.controller.hasNext()) {
     await this.view.customAlert(
@@ -660,30 +698,54 @@ export async function completeProcurementPlanImportRevision(savedPlanId) {
       `Đã lưu phiên bản ${savedRevision}. Đã hoàn tất toàn bộ phiên bản của Kế hoạch.`,
       "check-circle",
     );
+    assertPlanImportWorkspace(this, flow);
     this.procurementPlanImport = null;
     forgetProcurementImportSession(this);
     return true;
   }
   const nextRevision = flow.controller.revisions[flow.controller.currentIndex + 1];
-  const shouldContinue = await this.view.customConfirm(
-    `Đã lưu phiên bản ${savedRevision}`,
-    `Kế hoạch trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
-    "help-circle",
-  );
+  const pendingNextRevision = String(flow.pendingNextRevisionNumber || "");
+  const shouldContinue = pendingNextRevision === String(nextRevision.revisionNumber)
+    ? true
+    : await this.view.customConfirm(
+      `Đã lưu phiên bản ${savedRevision}`,
+      `Kế hoạch trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
+      "help-circle",
+    );
+  assertPlanImportWorkspace(this, flow);
   if (!shouldContinue) {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
       flow.session.sessionId,
       {
-        workspaceLease: currentWorkspaceToken(this.model) || null,
+        workspaceLease: flow.importWorkspaceLease.token || null,
         kind: "plan",
       },
     );
+    assertPlanImportWorkspace(this, flow);
     flow.controller.cancel();
     this.procurementPlanImport = null;
     forgetProcurementImportSession(this);
     return true;
   }
-  const nextDraft = await flow.controller.next();
-  await materializePlanImportRevision(this, flow, nextDraft, savedPlanId);
+  flow.pendingNextRevisionNumber = String(nextRevision.revisionNumber);
+  rememberProcurementImportSession(this, flow, {
+    revisionNumber: nextRevision.revisionNumber,
+  });
+  const previousIndex = flow.controller.currentIndex;
+  try {
+    const nextDraft = await flow.controller.next();
+    assertPlanImportWorkspace(this, flow);
+    await materializePlanImportRevision(
+      this,
+      { ...flow, pendingNextRevisionNumber: null },
+      nextDraft,
+      savedPlanId,
+    );
+  } catch (error) {
+    if (this.procurementPlanImport === flow) {
+      flow.controller.rollbackLoadedNext?.(previousIndex);
+    }
+    throw error;
+  }
   return true;
 }

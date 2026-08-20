@@ -21,6 +21,8 @@ from backend.procurement_import.sync_binding import (
     _record_revision_commit,
     _session_records,
     _validate_session_authority,
+    persist_import_session_provenance,
+    persist_plan_draft_import_provenance,
     resolve_pending_imported_investor,
     validate_import_session_mutation,
 )
@@ -239,6 +241,10 @@ def test_later_plan_revision_keeps_the_prepared_predecessor_row_version(
                 "familyNo": "PL2600000001",
                 "targetAction": "VERSION",
                 "expectedRowVersion": 4,
+                "expectedPredecessor": {
+                    "id": "plan-00", "rootId": "plan-00",
+                    "rowVersion": 4, "localVersion": 0,
+                },
             },
         },
     }
@@ -256,7 +262,7 @@ def test_later_plan_revision_keeps_the_prepared_predecessor_row_version(
             return self
 
         def fetchone(self):
-            return ("plan-00", stored_row_version)
+            return ("plan-00", "plan-00", stored_row_version, 0)
 
     if conflicts:
         with pytest.raises(ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
@@ -268,6 +274,286 @@ def test_later_plan_revision_keeps_the_prepared_predecessor_row_version(
             Cursor(), payload, organization_id="org-1", user_id="user-1",
         )
         assert authority["revisionNumber"] == "01"
+
+
+def test_revision_02_uses_committed_01_as_its_immediate_predecessor(monkeypatch):
+    payload = {
+        "kehoach": [{
+            "id": "plan-02", "rootId": "plan-root", "phienBan": "02",
+            "sourceRevision": _authority("02"),
+        }],
+    }
+    session = {
+        "id": "session-1", "currentIndex": 1,
+        "revisions": [
+            {
+                "revisionNumber": "01", "status": "COMMITTED",
+                "committedPlan": {
+                    "id": "plan-01", "rootId": "plan-root",
+                    "rowVersion": 1, "localVersion": 1,
+                    "sourceRevisionNumber": "01",
+                },
+            },
+            {"revisionNumber": "02", "status": "READY"},
+        ],
+        "canonicalBundle": {
+            "plan": {
+                "familyNo": "PL2600000001", "targetAction": "VERSION",
+                "expectedRowVersion": 4,
+            },
+        },
+    }
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        lambda *_args, **_kwargs: (
+            session, {"revisionId": "revision-02"}, "sha256:" + "a" * 64,
+        ),
+    )
+
+    class Cursor:
+        def execute(self, _query, params):
+            assert params == ("org-1", "PL2600000001")
+            return self
+
+        def fetchone(self):
+            return ("plan-01", "plan-root", 1, 1)
+
+    authority = validate_import_session_mutation(
+        Cursor(), payload, organization_id="org-1", user_id="user-1",
+    )
+
+    assert authority["revisionNumber"] == "02"
+
+
+def test_revision_commit_records_the_server_written_plan_as_next_predecessor(
+    monkeypatch,
+):
+    captured = {}
+    session = {
+        "id": "session-1", "provider": "MUASAMCONG",
+        "familyNo": "PL2600000001", "kind": "PLAN",
+    }
+    revision = {
+        "revisionId": "revision-01", "revisionNumber": "01", "packages": [],
+    }
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        lambda *_args, **_kwargs: (
+            session, revision, "sha256:" + "a" * 64,
+        ),
+    )
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def mark_revision_committed(self, *_args, committed_plan=None, **_kwargs):
+            captured["committedPlan"] = committed_plan
+
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding.ProcurementImportSessionRepository",
+        Repository,
+    )
+
+    class Cursor:
+        def execute(self, query, _params=()):
+            self.query = " ".join(query.split())
+            return self
+
+        def fetchone(self):
+            if self.query.startswith("SELECT id, COALESCE(NULLIF(id_goc"):
+                return ("plan-01", "plan-root", 1, 1)
+            return None
+
+    result = persist_import_session_provenance(
+        Cursor(),
+        {
+            "kehoach": [{
+                "id": "plan-01", "rootId": "plan-root", "phienBan": "01",
+                "sourceRevision": _authority("01"),
+            }],
+            "goithau": [],
+        },
+        organization_id="org-1", user_id="user-1",
+    )
+
+    assert result["revisionNumber"] == "01"
+    assert captured["committedPlan"] == {
+        "id": "plan-01", "rootId": "plan-root", "rowVersion": 1,
+        "localVersion": 1, "sourceRevisionNumber": "01",
+    }
+
+
+def test_atomic_new_plan_finalize_records_historical_predecessor_tokens(
+    monkeypatch,
+):
+    committed = []
+    session = {
+        "id": "session-1", "provider": "MUASAMCONG",
+        "familyNo": "PL2600000001", "kind": "PLAN",
+    }
+
+    def load_revision(_cursor, context, *_args):
+        revision_number = context["revisionNumber"]
+        return (
+            session,
+            {
+                "revisionId": f"revision-{revision_number}",
+                "revisionNumber": revision_number,
+                "packages": [],
+            },
+            "sha256:" + "a" * 64,
+        )
+
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        load_revision,
+    )
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def mark_revision_committed(
+            self, *_args, revision_number=None, committed_plan=None, **_kwargs,
+        ):
+            committed.append((revision_number, committed_plan))
+
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding.ProcurementImportSessionRepository",
+        Repository,
+    )
+
+    class Cursor:
+        def execute(self, query, params=()):
+            normalized = " ".join(query.split())
+            self.row = None
+            if normalized.startswith("SELECT id, COALESCE(NULLIF(id_goc"):
+                plan_id = params[1]
+                rows = {
+                    "plan-00": ("plan-00", "plan-root", 1, 0, False),
+                    "plan-01": ("plan-01", "plan-root", 1, 1, True),
+                }
+                row = rows.get(plan_id)
+                if row and (row[4] or "is_latest = 1" not in normalized):
+                    self.row = row[:4]
+            return self
+
+        def fetchone(self):
+            return self.row
+
+    payload = {
+        "kehoach": [
+            {
+                "id": "plan-00", "rootId": "plan-root", "phienBan": "00",
+                "sourceRevision": _authority("00"),
+            },
+            {
+                "id": "plan-01", "rootId": "plan-root", "phienBan": "01",
+                "sourceRevision": _authority("01"),
+            },
+        ],
+        "goithau": [],
+    }
+
+    result = persist_plan_draft_import_provenance(
+        Cursor(), payload, organization_id="org-1", user_id="user-1",
+    )
+
+    assert result["revisionNumber"] == "01"
+    assert [item[0] for item in committed] == ["00", "01"]
+    assert [item[1]["id"] for item in committed] == ["plan-00", "plan-01"]
+
+
+def test_same_row_version_without_predecessor_identity_is_rejected(monkeypatch):
+    session = {
+        "id": "session-stale", "currentIndex": 0,
+        "canonicalBundle": {
+            "plan": {
+                "familyNo": "PL2600000001", "targetAction": "VERSION",
+                "expectedRowVersion": 1,
+            },
+        },
+    }
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        lambda *_args, **_kwargs: (
+            session, {"revisionId": "revision-01"}, "sha256:" + "a" * 64,
+        ),
+    )
+
+    class Cursor:
+        def execute(self, _query, _params=()):
+            return self
+
+        def fetchone(self):
+            return ("concurrent-plan-01", "plan-root", 1, 1)
+
+    with pytest.raises(
+        ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT",
+    ):
+        validate_import_session_mutation(
+            Cursor(),
+            {
+                "kehoach": [{
+                    "id": "stale-plan-01", "rootId": "plan-root",
+                    "phienBan": "01", "sourceRevision": _authority("01"),
+                }],
+            },
+            organization_id="org-1", user_id="user-1",
+        )
+
+
+@pytest.mark.parametrize(
+    "actual_latest",
+    [
+        ("concurrent-plan-01", "plan-root", 4, 0),
+        ("plan-00", "other-root", 4, 0),
+        ("plan-00", "plan-root", 5, 0),
+    ],
+)
+def test_predecessor_requires_exact_id_root_and_row_version(
+    monkeypatch, actual_latest,
+):
+    session = {
+        "id": "session-1", "currentIndex": 0,
+        "canonicalBundle": {
+            "plan": {
+                "familyNo": "PL2600000001", "targetAction": "VERSION",
+                "expectedPredecessor": {
+                    "id": "plan-00", "rootId": "plan-root",
+                    "rowVersion": 4, "localVersion": 0,
+                },
+            },
+        },
+    }
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        lambda *_args, **_kwargs: (
+            session, {"revisionId": "revision-01"}, "sha256:" + "a" * 64,
+        ),
+    )
+
+    class Cursor:
+        def execute(self, _query, _params=()):
+            return self
+
+        def fetchone(self):
+            return actual_latest
+
+    with pytest.raises(
+        ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT",
+    ):
+        validate_import_session_mutation(
+            Cursor(),
+            {
+                "kehoach": [{
+                    "id": "plan-01", "rootId": "plan-root",
+                    "phienBan": "01", "sourceRevision": _authority("01"),
+                }],
+            },
+            organization_id="org-1", user_id="user-1",
+        )
 
 
 @pytest.mark.parametrize("serialized_plan_version", ["01", 1])
@@ -531,6 +817,34 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
                 package("C", "01", 300),
             ],
         },
+        {
+            "revisionId": f"revision-02-{token}",
+            "revisionNumber": "02",
+            "name": "Kế hoạch 02 đã điều chỉnh",
+            "planType": "Dự toán mua sắm",
+            "projectName": "Dự toán kiểm thử",
+            "approvalDecisionNo": "03/QĐ",
+            "approvalDecisionDate": "2026-03-01",
+            "packages": [
+                package("A", "02", 120),
+                package("B", "02", 230),
+                package("C", "02", 310),
+            ],
+        },
+        {
+            "revisionId": f"revision-03-{token}",
+            "revisionNumber": "03",
+            "name": "Kế hoạch 03 đã điều chỉnh",
+            "planType": "Dự toán mua sắm",
+            "projectName": "Dự toán kiểm thử",
+            "approvalDecisionNo": "04/QĐ",
+            "approvalDecisionDate": "2026-04-01",
+            "packages": [
+                package("A", "03", 130),
+                package("B", "03", 240),
+                package("C", "03", 320),
+            ],
+        },
     ]
     for revision in revisions:
         revision["revisionDigest"] = canonical_digest(revision)
@@ -741,6 +1055,40 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
         assert response_01.status_code == 200
         assert body_01["procurementImport"]["revisionNumber"] == "01"
 
+        plan_ids = [plan_00_id, plan_01_id]
+        package_roots = {
+            "A": package_a_00_id,
+            "B": package_b_00_id,
+            "C": package_c_01_id,
+        }
+        for revision_number in ("02", "03"):
+            revision = next(
+                row for row in revisions
+                if row["revisionNumber"] == revision_number
+            )
+            plan_id = f"plan-{revision_number}-{token}"
+            payload = {
+                "clientMutationId": f"import-sync-{revision_number}-{token}",
+                "kehoach": [
+                    plan_row(revision_number, plan_id, root_id=plan_00_id),
+                ],
+                "goithau": [
+                    package_row(
+                        revision_number, package_data, plan_id,
+                        f"package-{package_data['symbol'].lower()}-"
+                        f"{revision_number}-{token}",
+                        root_id=package_roots[package_data["symbol"]],
+                    )
+                    for package_data in revision["packages"]
+                ],
+            }
+            response = sync_service.execute_sync_mutation(request, payload)
+            assert response.status_code == 200, json.loads(response.body)
+            assert json.loads(response.body)["procurementImport"][
+                "revisionNumber"
+            ] == revision_number
+            plan_ids.append(plan_id)
+
         check = database.get_connection()
         try:
             plans = check.execute(
@@ -752,7 +1100,9 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
             ).fetchall()
             assert [tuple(row) for row in plans] == [
                 (plan_00_id, 0, 0, "Ghi chú local được kế thừa"),
-                (plan_01_id, 1, 1, "Ghi chú local được kế thừa"),
+                (plan_01_id, 1, 0, "Ghi chú local được kế thừa"),
+                (plan_ids[2], 2, 0, "Ghi chú local được kế thừa"),
+                (plan_ids[3], 3, 1, "Ghi chú local được kế thừa"),
             ]
             packages = check.execute(
                 """SELECT id_goc, phien_ban, ten_goi_thau, gia_goi_thau
@@ -761,7 +1111,7 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
                     ORDER BY id_goc, phien_ban""",
                 (organization_id,),
             ).fetchall()
-            assert len(packages) == 5
+            assert len(packages) == 11
             assert (package_a_00_id, 0, "Gói A 01", 110) in {
                 tuple(row) for row in packages
             }
@@ -774,7 +1124,7 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
                     WHERE organization_id = ? AND id = ?""",
                 (organization_id, session["sessionId"]),
             ).fetchone()
-            assert tuple(session_row) == (2, "COMPLETED")
+            assert tuple(session_row) == (4, "COMPLETED")
             provenance = check.execute(
                 """SELECT revision_no, local_snapshot_id
                      FROM procurement_source_revision
@@ -784,12 +1134,25 @@ def test_api_sync_commits_plan_revisions_sequentially_with_atomic_provenance(
             ).fetchall()
             assert [tuple(row) for row in provenance] == [
                 ("00", plan_00_id), ("01", plan_01_id),
+                ("02", plan_ids[2]), ("03", plan_ids[3]),
             ]
             assert check.execute(
                 """SELECT COUNT(*) FROM procurement_source_binding
                     WHERE organization_id = ? AND family_key = ?""",
                 (organization_id, family_no),
-            ).fetchone()[0] == 5
+            ).fetchone()[0] == 11
+            revisions_json = check.execute(
+                """SELECT revisions_json FROM procurement_import_session
+                    WHERE organization_id = ? AND id = ?""",
+                (organization_id, session["sessionId"]),
+            ).fetchone()[0]
+            committed_tokens = [
+                row["committedPlan"] for row in json.loads(revisions_json)
+            ]
+            assert [row["id"] for row in committed_tokens] == plan_ids
+            assert [
+                row["sourceRevisionNumber"] for row in committed_tokens
+            ] == ["00", "01", "02", "03"]
         finally:
             check.close()
     finally:

@@ -296,22 +296,36 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
     return session, revision, expected_digest
 
 
-def _validate_plan_target_row_version(cursor, session, context, organization_id):
+def _expected_plan_predecessor(session, target):
+    """Use the prepared base once, then the prior committed server snapshot."""
+
+    current_index = int(session.get("currentIndex") or 0)
+    if current_index > 0:
+        revisions = session.get("revisions") or []
+        previous = revisions[current_index - 1] if current_index <= len(revisions) else None
+        if not isinstance(previous, dict) or previous.get("status") != "COMMITTED":
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        committed = previous.get("committedPlan")
+        if not isinstance(committed, dict):
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        return committed
+    prepared = target.get("expectedPredecessor")
+    return prepared if isinstance(prepared, dict) else None
+
+
+def _validate_plan_target_predecessor(cursor, session, context, organization_id):
     if not context.get("plans"):
         return
     target = (session.get("canonicalBundle") or {}).get("plan") or {}
     target_action = str(target.get("targetAction") or "").upper()
     if target_action not in {"CREATE", "VERSION"}:
         return
-    expected = target.get("expectedRowVersion")
-    if target_action == "VERSION":
-        try:
-            expected = int(expected)
-        except (TypeError, ValueError):
-            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT") from None
+    expected = _expected_plan_predecessor(session, target)
+    if target_action == "VERSION" and expected is None:
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
     family_no = str(target.get("familyNo") or context.get("familyNo") or "")
     current = cursor.execute(
-        """SELECT id, row_version
+        """SELECT id, COALESCE(NULLIF(id_goc, ''), id), row_version, phien_ban
              FROM ke_hoach_lcnt
             WHERE organization_id = ? AND upper(ma_ke_hoach) = upper(?)
               AND is_latest = 1 AND archived_at IS NULL
@@ -322,8 +336,17 @@ def _validate_plan_target_row_version(cursor, session, context, organization_id)
         if current is not None:
             raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
         return
-    if current is None or int(current[1]) != expected:
+    if current is None:
         raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    actual = {
+        "id": str(current[0]),
+        "rootId": str(current[1]),
+        "rowVersion": int(current[2]),
+        "localVersion": int(current[3]),
+    }
+    for field in ("id", "rootId", "rowVersion", "localVersion"):
+        if str(actual[field]) != str(expected.get(field)):
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
 
 
 def validate_import_session_mutation(
@@ -337,7 +360,7 @@ def validate_import_session_mutation(
     session, revision, digest = _load_trusted_revision(
         cursor, context, organization_id, user_id,
     )
-    _validate_plan_target_row_version(
+    _validate_plan_target_predecessor(
         cursor, session, context, organization_id,
     )
     return {
@@ -444,7 +467,45 @@ def resolve_pending_plan_draft_investor(cursor, payload, organization_id):
     return reused_id
 
 
-def persist_import_session_provenance(cursor, payload, *, organization_id, user_id):
+def _load_committed_plan_token(
+    cursor, *, organization_id, family_no, plan_id, source_revision_number,
+    allow_historical=False,
+):
+    if allow_historical:
+        row = cursor.execute(
+            """SELECT id, COALESCE(NULLIF(id_goc, ''), id), row_version, phien_ban
+                 FROM ke_hoach_lcnt
+                WHERE organization_id = ? AND id = ?
+                  AND upper(ma_ke_hoach) = upper(?)
+                  AND archived_at IS NULL
+                LIMIT 1 FOR UPDATE""",
+            (organization_id, plan_id, family_no),
+        ).fetchone()
+    else:
+        row = cursor.execute(
+            """SELECT id, COALESCE(NULLIF(id_goc, ''), id), row_version, phien_ban
+                 FROM ke_hoach_lcnt
+                WHERE organization_id = ? AND id = ?
+                  AND upper(ma_ke_hoach) = upper(?)
+                  AND is_latest = 1 AND archived_at IS NULL
+                LIMIT 1 FOR UPDATE""",
+            (organization_id, plan_id, family_no),
+        ).fetchone()
+    if row is None:
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+    return {
+        "id": str(row[0]),
+        "rootId": str(row[1]),
+        "rowVersion": int(row[2]),
+        "localVersion": int(row[3]),
+        "sourceRevisionNumber": str(source_revision_number),
+    }
+
+
+def persist_import_session_provenance(
+    cursor, payload, *, organization_id, user_id,
+    allow_historical_plan=False,
+):
     """Persist canonical evidence after local rows were validated and written."""
 
     started = time.perf_counter()
@@ -460,7 +521,18 @@ def persist_import_session_provenance(cursor, payload, *, organization_id, user_
     )
     plan = context["plans"][-1] if context["plans"] else None
     plan_id = str(plan.get("id") or "") if plan else None
-    plan_root = str(plan.get("rootId") or plan_id) if plan else None
+    committed_plan = (
+        _load_committed_plan_token(
+            cursor,
+            organization_id=organization_id,
+            family_no=session["familyNo"],
+            plan_id=plan_id,
+            source_revision_number=context["revisionNumber"],
+            allow_historical=allow_historical_plan,
+        )
+        if plan else None
+    )
+    plan_root = committed_plan["rootId"] if committed_plan else None
     entity_kind = "PLAN" if plan else "NOTICE"
     local_package = context["packages"][-1] if not plan and context["packages"] else None
     local_root = (
@@ -551,6 +623,7 @@ def persist_import_session_provenance(cursor, payload, *, organization_id, user_
     ProcurementImportSessionRepository(cursor).mark_revision_committed(
         session["id"], organization_id=organization_id,
         revision_number=context["revisionNumber"],
+        committed_plan=committed_plan,
     )
     result = {
         "sessionId": session["id"],
@@ -575,6 +648,7 @@ def persist_plan_draft_import_provenance(
             revision_payload,
             organization_id=organization_id,
             user_id=user_id,
+            allow_historical_plan=True,
         )
         if result is not None:
             results.append(result)

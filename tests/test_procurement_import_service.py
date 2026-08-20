@@ -556,6 +556,10 @@ def test_plan_session_starts_at_new_revision_after_earlier_revision_was_imported
                 "revisionId": "rev-01", "revisionNumber": "01",
                 "disposition": "MATERIALIZE",
             },
+            {
+                "revisionId": "rev-02", "revisionNumber": "02",
+                "disposition": "MATERIALIZE",
+            },
         ],
         "revisions": [
             {
@@ -566,6 +570,10 @@ def test_plan_session_starts_at_new_revision_after_earlier_revision_was_imported
                 "revisionId": "rev-01", "revisionNumber": "01",
                 "name": "Kế hoạch 01", "packages": [],
             },
+            {
+                "revisionId": "rev-02", "revisionNumber": "02",
+                "name": "Kế hoạch 02", "packages": [],
+            },
         ],
     }
 
@@ -574,7 +582,9 @@ def test_plan_session_starts_at_new_revision_after_earlier_revision_was_imported
         organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
     )
 
-    assert [row["revisionNumber"] for row in manifest["revisions"]] == ["01"]
+    assert [row["revisionNumber"] for row in manifest["revisions"]] == [
+        "01", "02",
+    ]
     draft = service.get_revision_draft(
         manifest["sessionId"], "01", organization_id="org-1",
         user_id="user-1", workspace_lease="lease-1",
@@ -630,9 +640,16 @@ def test_prepare_existing_family_carries_authoritative_plan_cas_version(tmp_path
     preview = ProcurementImportPreparer(_source(tmp_path), PreviewStore()).prepare_plan(
         code="PL2600000001", revision_mode="LATEST",
         organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
-        local_state={"latestPlan": {"id": "plan-1", "rowVersion": 7}},
+        local_state={"latestPlan": {
+            "id": "plan-1", "rootId": "plan-root", "localVersion": 3,
+            "rowVersion": 7,
+        }},
     )
     assert preview["plan"]["expectedRowVersion"] == 7
+    assert preview["plan"]["expectedPredecessor"] == {
+        "id": "plan-1", "rootId": "plan-root", "localVersion": 3,
+        "rowVersion": 7,
+    }
     assert not any(
         item["code"] == "OLDER_REVISIONS_PROVENANCE_ONLY_AFTER_APPLY"
         for item in preview["warnings"]
@@ -1884,6 +1901,59 @@ def test_session_commit_requires_exact_next_revision_and_retry_is_idempotent():
     )
     assert cursor.updated[1:3] == (1, "WAITING_NEXT_CONFIRMATION")
 
+
+def test_session_commit_persists_the_authoritative_plan_for_the_next_revision():
+    cursor = _ProgressCursor([
+        {"revisionNumber": "01", "status": "READY"},
+        {"revisionNumber": "02", "status": "READY"},
+    ])
+    repository = ProcurementImportSessionRepository(cursor)
+    committed_plan = {
+        "id": "plan-01", "rootId": "plan-root", "rowVersion": 1,
+        "localVersion": 1, "sourceRevisionNumber": "01",
+    }
+
+    repository.mark_revision_committed(
+        "session-1", organization_id="org-1", revision_number="01",
+        committed_plan=committed_plan,
+    )
+
+    import json
+    stored_revisions = json.loads(cursor.updated[0])
+    assert stored_revisions[0]["committedPlan"] == committed_plan
+    assert cursor.updated[1:3] == (1, "WAITING_NEXT_CONFIRMATION")
+
+
+def test_session_predecessor_token_advances_across_three_commits_and_reloads():
+    cursor = _ProgressCursor([
+        {"revisionNumber": number, "status": "READY"}
+        for number in ("01", "02", "03")
+    ])
+    repository = ProcurementImportSessionRepository(cursor)
+
+    for index, revision_number in enumerate(("01", "02", "03"), start=1):
+        committed_plan = {
+            "id": f"plan-{revision_number}", "rootId": "plan-root",
+            "rowVersion": 1, "localVersion": index,
+            "sourceRevisionNumber": revision_number,
+        }
+        repository.mark_revision_committed(
+            "session-1", organization_id="org-1",
+            revision_number=revision_number, committed_plan=committed_plan,
+        )
+        import json
+        cursor.revisions = json.loads(cursor.updated[0])
+        cursor.current_index = cursor.updated[1]
+        assert cursor.revisions[index - 1]["committedPlan"] == committed_plan
+
+        retry = repository.mark_revision_committed(
+            "session-1", organization_id="org-1",
+            revision_number=revision_number, committed_plan=committed_plan,
+        )
+        assert retry["currentIndex"] == index
+
+    assert cursor.current_index == 3
+    assert cursor.updated[2] == "COMPLETED"
 
 def test_session_cleanup_removes_only_expired_rows():
     class CleanupCursor:

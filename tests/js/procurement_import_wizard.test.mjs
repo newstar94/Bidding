@@ -20,7 +20,9 @@ import {
   createDebouncedPreparer,
   renderIssues,
   renderPackages,
+  startProcurementPlanImport,
   summarizePreview,
+  completeProcurementPlanImportRevision,
 } from "../../frontend/procurement/PlanImportWizard.js";
 import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
 import {
@@ -38,7 +40,6 @@ import {
   completeProcurementPackageImportRevision,
 } from "../../frontend/procurement/ProcurementInlineLookup.js";
 import { shouldCreatePackageVersion } from "../../frontend/packages/GoiThauWorkflow.js";
-import { completeProcurementPlanImportRevision } from "../../frontend/procurement/PlanImportWizard.js";
 import {
   ProcurementImportResumeStore,
   resumeProcurementImportSession,
@@ -119,6 +120,57 @@ test("refresh resumes the server session at its first uncommitted revision", asy
 
   assert.equal(resumed, true);
   assert.equal(calls[0].currentDraft.revisionNumber, "01");
+  assert.equal(calls[0].controller.currentIndex, 1);
+});
+
+test("reload after a durable local save resumes the next source revision", async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600000001",
+    revisionNumber: "01",
+  });
+  const loaded = [];
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceStorage: storage, getWorkspaceToken: () => "lease-1",
+      planVersionDraftSessions: [{
+        draftId: "draft-plan", rootId: "plan-00",
+        aggregate: {
+          kehoach: [{
+            id: "plan-00", phienBan: "00",
+            sourceRevision: {
+              sessionId: "session-plan", revisionNumber: "00",
+            },
+          }],
+        },
+      }],
+    },
+    view: { customConfirm: async () => true },
+    startProcurementPlanImport: async (flow) => calls.push(flow),
+  };
+
+  const resumed = await resumeProcurementImportSession.call(controller, {
+    client: {
+      getImportSession: async () => ({
+        sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600000001",
+        currentIndex: 0, status: "READY",
+        revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+      }),
+      getPlanRevisionDraft: async (_sessionId, revisionNumber) => {
+        loaded.push(revisionNumber);
+        return { revisionNumber, planDraft: {}, packageDrafts: [] };
+      },
+    },
+  });
+
+  assert.equal(resumed, true);
+  assert.deepEqual(loaded, ["01"]);
   assert.equal(calls[0].controller.currentIndex, 1);
 });
 
@@ -825,6 +877,334 @@ test("sequential revision controller never skips or advances after failed save",
   assert.deepEqual(loaded, ["00", "01"]);
   controller.cancel();
   assert.equal(controller.state, "CANCELLED");
+});
+
+test("failed next revision load restores the index and retries the same revision", async () => {
+  const loaded = [];
+  let failNext = true;
+  const controller = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => {
+      loaded.push(revision.revisionNumber);
+      if (revision.revisionNumber === "01" && failNext) {
+        failNext = false;
+        throw new Error("network failed");
+      }
+      return { revisionNumber: revision.revisionNumber };
+    },
+    saveRevision: async () => ({ ok: true }),
+  });
+
+  await controller.loadCurrent();
+  await controller.saveCurrent();
+  await assert.rejects(() => controller.next(), /network failed/);
+  assert.equal(controller.currentIndex, 0);
+  assert.equal(controller.current().revisionNumber, "00");
+  assert.equal(controller.state, "WAITING_NEXT_CONFIRMATION");
+
+  const retried = await controller.next();
+  assert.equal(retried.revisionNumber, "01");
+  assert.equal(controller.currentIndex, 1);
+  assert.deepEqual(loaded, ["00", "01", "01"]);
+});
+
+test("failed next load leaves the workspace resume pointer on the next revision", async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => {
+      if (revision.revisionNumber === "01") throw new Error("network failed");
+      return { revisionNumber: "00" };
+    },
+    saveRevision: async () => ({ ok: true }),
+  });
+  await sequential.loadCurrent();
+  const controller = {
+    model: {
+      state: {}, db: {}, workspaceStorage: storage,
+      getWorkspaceToken: () => "user:org-a@1",
+    },
+    procurementPlanImport: {
+      session: {
+        sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001",
+      },
+      controller: sequential,
+      currentDraft: { revisionNumber: "00" },
+    },
+    view: { customConfirm: async () => true },
+  };
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001",
+    revisionNumber: "00",
+  });
+
+  await assert.rejects(
+    completeProcurementPlanImportRevision.call(controller, "plan-00"),
+    /network failed/,
+  );
+
+  assert.equal(sequential.currentIndex, 0);
+  assert.equal(sequential.state, "WAITING_NEXT_CONFIRMATION");
+  assert.equal(
+    new ProcurementImportResumeStore(storage).load().revisionNumber,
+    "01",
+  );
+});
+
+test("failed next materialization retries once without duplicate plan or package snapshots", async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  const authority = (revisionNumber) => ({
+    sessionId: "session-plan", workspaceLease: "user:org-a@1",
+    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    revisionId: `plan-${revisionNumber}`, revisionNumber,
+    revisionDigest: `sha256:${revisionNumber}`,
+  });
+  const draft = (revisionNumber) => ({
+    familyNo: "PL2600000001", revisionNumber,
+    planDraft: {
+      maKeHoach: "PL2600000001", tenKeHoach: `Kế hoạch ${revisionNumber}`,
+      investorSource: { code: "vn3900786617" },
+      sourceRevision: authority(revisionNumber),
+    },
+    packageDrafts: [{
+      soHieuGoiThau: "A", tenGoiThau: `Gói A ${revisionNumber}`,
+      giaGoiThau: 100, thoiGianThucHien: "30 ngày",
+      nguonVon: "Ngân sách", thoiGianToChuc: "30 ngày",
+      thoiGianBatDauToChuc: "Quý I/2026",
+      sourceRevision: {
+        ...authority(revisionNumber),
+        stablePackageId: "stable-a",
+        packageObservationId: `detail-a-${revisionNumber}`,
+      },
+    }],
+  });
+  const loaded = [];
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => {
+      loaded.push(revision.revisionNumber);
+      return structuredClone(draft(revision.revisionNumber));
+    },
+    saveRevision: async () => ({ ok: true }),
+  });
+  const state = {
+    chudautu: [{
+      id: "investor-a", rootId: "investor-a",
+      maChuDauTu: "vn3900786617", phienBan: "00", isLatest: 1,
+    }],
+    kehoach: [], goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  let envelope = null;
+  let failMaterialization = false;
+  const model = {
+    state, workspaceStorage: storage, planVersionDraftSessions: [],
+    getWorkspaceToken: () => "user:org-a@1",
+    getLatestChuDauTu: () => {
+      if (failMaterialization) throw new Error("investor materialization failed");
+      return state.chudautu;
+    },
+    getCurrentDateTimeString: () => "2026-08-20 12:00:00",
+    getPlanBaseCode: (value) => value,
+    db: {
+      async update(_key, updater) {
+        envelope = updater(structuredClone(envelope));
+        return structuredClone(envelope);
+      },
+    },
+  };
+  const controller = {
+    model,
+    view: { customConfirm: async () => true, customAlert: async () => {} },
+    plans: { edit: async () => {} },
+  };
+  const firstDraft = await sequential.loadCurrent();
+  const materialized00 = await startProcurementPlanImport.call(controller, {
+    session: {
+      sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600000001",
+      revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    },
+    controller: sequential,
+    currentDraft: firstDraft,
+  });
+  const beforeFailure = structuredClone(state);
+  failMaterialization = true;
+
+  await assert.rejects(
+    completeProcurementPlanImportRevision.call(
+      controller, materialized00.plan.id,
+    ),
+    /investor materialization failed/,
+  );
+
+  assert.equal(sequential.currentIndex, 0);
+  assert.equal(sequential.state, "WAITING_NEXT_CONFIRMATION");
+  assert.equal(controller.procurementPlanImport.currentDraft.revisionNumber, "00");
+  assert.deepEqual(state, beforeFailure);
+
+  failMaterialization = false;
+  await completeProcurementPlanImportRevision.call(
+    controller, materialized00.plan.id,
+  );
+
+  assert.deepEqual(loaded, ["00", "01", "01"]);
+  assert.equal(sequential.currentIndex, 1);
+  assert.equal(controller.procurementPlanImport.currentDraft.revisionNumber, "01");
+  assert.deepEqual(state.kehoach.map((row) => row.phienBan), ["00", "01"]);
+  assert.equal(state.goithau.length, 2);
+  assert.equal(new Set(state.goithau.map((row) => row.id)).size, 2);
+});
+
+test("post-save callback failure never marks a durable revision editable again", async () => {
+  let saveCalls = 0;
+  const controller = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => revision,
+    saveRevision: async () => {
+      saveCalls += 1;
+      return { durable: true };
+    },
+    afterRevisionSaved: async () => {
+      throw new Error("post-save notification failed");
+    },
+  });
+
+  await controller.loadCurrent();
+  await assert.rejects(
+    () => controller.saveCurrent(), /post-save notification failed/,
+  );
+  assert.equal(saveCalls, 1);
+  assert.equal(controller.state, "WAITING_NEXT_CONFIRMATION");
+  await assert.rejects(
+    () => controller.saveCurrent(), /PROCUREMENT_REVISION_INVALID_STATE/,
+  );
+  assert.equal(saveCalls, 1);
+});
+
+test("same-org new epoch rejects a late next plan revision without mutating B", async () => {
+  const makeStorage = (initial = {}) => {
+    const values = new Map(Object.entries(initial));
+    return {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: (key) => values.delete(key),
+      values,
+    };
+  };
+  const makeWorkspace = (suffix) => {
+    let envelope = null;
+    const state = {
+      chudautu: [{
+        id: `investor-${suffix}`, rootId: `investor-${suffix}`,
+        maChuDauTu: "vn3900786617", phienBan: "00", isLatest: 1,
+      }],
+      kehoach: [], goithau: [], goithauhanghoa: [], thongtinmothau: [],
+      hanghoaduthaunhathau: [], assignments: [],
+    };
+    return {
+      state,
+      storage: makeStorage(),
+      db: {
+        async update(_key, updater) {
+          envelope = updater(structuredClone(envelope));
+          return structuredClone(envelope);
+        },
+      },
+      envelope: () => structuredClone(envelope),
+    };
+  };
+  const workspaceA = makeWorkspace("a");
+  const workspaceB = makeWorkspace("b");
+  workspaceB.storage.setItem("procurement_import_resume_v1", "b-original");
+  let workspaceToken = "user:org-a@1";
+  let nextStarted;
+  const nextStartedPromise = new Promise((resolve) => { nextStarted = resolve; });
+  let resolveNext;
+  const nextResponse = new Promise((resolve) => { resolveNext = resolve; });
+  const sourceAuthority = (revisionNumber) => ({
+    sessionId: "session-a", workspaceLease: "user:org-a@1",
+    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    revisionId: `revision-${revisionNumber}`, revisionNumber,
+    revisionDigest: `sha256:${revisionNumber}`,
+  });
+  const revision00 = {
+    familyNo: "PL2600000001", revisionNumber: "00",
+    planDraft: {
+      maKeHoach: "PL2600000001", investorSource: { code: "vn3900786617" },
+      sourceRevision: sourceAuthority("00"),
+    },
+    packageDrafts: [],
+  };
+  const revision01 = {
+    familyNo: "PL2600000001", revisionNumber: "01",
+    planDraft: {
+      maKeHoach: "PL2600000001", investorSource: { code: "vn3900786617" },
+      sourceRevision: sourceAuthority("01"),
+    },
+    packageDrafts: [],
+  };
+  const sequential = new SequentialRevisionController({
+    revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    loadRevision: async (revision) => {
+      if (revision.revisionNumber === "00") return structuredClone(revision00);
+      nextStarted();
+      return nextResponse;
+    },
+    saveRevision: async () => ({ ok: true }),
+  });
+  const model = {
+    state: workspaceA.state, db: workspaceA.db,
+    workspaceStorage: workspaceA.storage, planVersionDraftSessions: [],
+    getWorkspaceToken: () => workspaceToken,
+    getLatestChuDauTu() { return this.state.chudautu; },
+    getCurrentDateTimeString: () => "2026-08-20 12:00:00",
+    getPlanBaseCode: (value) => value,
+  };
+  const controller = {
+    model,
+    view: { customConfirm: async () => true, customAlert: async () => {} },
+    plans: { edit: async () => {} },
+  };
+  const firstDraft = await sequential.loadCurrent();
+  const materialized00 = await startProcurementPlanImport.call(controller, {
+    session: {
+      sessionId: "session-a", kind: "PLAN", familyNo: "PL2600000001",
+      revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    },
+    controller: sequential,
+    currentDraft: firstDraft,
+  });
+  const pending = completeProcurementPlanImportRevision.call(
+    controller, materialized00.plan.id,
+  );
+  await nextStartedPromise;
+
+  workspaceToken = "user:org-a@2";
+  model.state = workspaceB.state;
+  model.db = workspaceB.db;
+  model.workspaceStorage = workspaceB.storage;
+  model.planVersionDraftSessions = [];
+  const beforeB = structuredClone(workspaceB.state);
+  resolveNext(structuredClone(revision01));
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.deepEqual(workspaceB.state, beforeB);
+  assert.deepEqual(model.planVersionDraftSessions, []);
+  assert.equal(workspaceB.envelope(), null);
+  assert.equal(
+    workspaceB.storage.getItem("procurement_import_resume_v1"),
+    "b-original",
+  );
 });
 
 test("choosing no after plan 00 cancels remaining server revisions", async () => {

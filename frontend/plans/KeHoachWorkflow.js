@@ -1119,11 +1119,28 @@ export function updatePlanBreakdownDraftRows(controller, planId) {
 export async function saveIntermediatePlanVersion() {
   const planId = document.getElementById("breakdown-plan-id")?.value;
   if (!planId) return null;
+  const retryingPendingNextRevision = Boolean(
+    this.procurementPlanImport?.controller?.state === "WAITING_NEXT_CONFIRMATION"
+    && this.procurementPlanImport?.pendingNextRevisionNumber,
+  );
+  if (retryingPendingNextRevision) {
+    await this.completeProcurementPlanImportRevision?.(planId);
+    const nextPlanId = this.procurementPlanImport?.currentPlanId || planId;
+    const nextPlan = this.model.state.kehoach.find(
+      (candidate) => String(candidate.id) === String(nextPlanId),
+    );
+    return {
+      ok: true,
+      planId: nextPlan?.id || nextPlanId,
+      version: nextPlan?.phienBan,
+    };
+  }
   if (typeof this.loadBreakdownPackageDetails === "function") {
     await this.loadBreakdownPackageDetails(planId);
   }
   const checkpoint = captureIntermediateDraftCheckpoint(this);
   if (this.procurementPlanImport?.controller) {
+    let currentRevisionDurable = false;
     try {
       const currentPlan = updatePlanBreakdownDraftRows(this, planId);
       const currentSession = findPlanVersionDraftSession(this.model, planId);
@@ -1134,6 +1151,7 @@ export async function saveIntermediatePlanVersion() {
         cloneDraftValue(currentSession), this.model.state, planId,
       );
       await savePlanVersionDraftSession(this.model, refreshedSession);
+      currentRevisionDurable = true;
       await this.completeProcurementPlanImportRevision?.(planId);
       const nextPlanId = this.procurementPlanImport?.currentPlanId || planId;
       const nextPlan = this.model.state.kehoach.find(
@@ -1141,7 +1159,9 @@ export async function saveIntermediatePlanVersion() {
       ) || currentPlan;
       return { ok: true, planId: nextPlan.id, version: nextPlan.phienBan };
     } catch (error) {
-      await restoreIntermediateDraftCheckpoint(this, checkpoint);
+      if (!currentRevisionDurable) {
+        await restoreIntermediateDraftCheckpoint(this, checkpoint);
+      }
       throw error;
     }
   }

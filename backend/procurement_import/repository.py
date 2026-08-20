@@ -1177,7 +1177,10 @@ class ProcurementImportSessionRepository:
             "updatedAt": _session_datetime(row[14]),
         }
 
-    def mark_revision_committed(self, session_id, *, organization_id, revision_number):
+    def mark_revision_committed(
+        self, session_id, *, organization_id, revision_number,
+        committed_plan=None,
+    ):
         row = self.cursor.execute(
             """SELECT revisions_json, current_revision_index
                  FROM procurement_import_session
@@ -1194,7 +1197,36 @@ class ProcurementImportSessionRepository:
         if index is None:
             raise LookupError("PROCUREMENT_REVISION_INVALID")
         current_index = int(row[1] or 0)
+        normalized_plan = None
+        if committed_plan is not None:
+            try:
+                normalized_plan = {
+                    "id": str(committed_plan["id"]),
+                    "rootId": str(committed_plan["rootId"]),
+                    "rowVersion": int(committed_plan["rowVersion"]),
+                    "localVersion": int(committed_plan["localVersion"]),
+                    "sourceRevisionNumber": str(
+                        committed_plan["sourceRevisionNumber"]
+                    ),
+                }
+            except (KeyError, TypeError, ValueError):
+                raise ImportConflict(
+                    "PROCUREMENT_SOURCE_VERSION_CONFLICT"
+                ) from None
+            if (
+                not normalized_plan["id"] or not normalized_plan["rootId"]
+                or normalized_plan["rowVersion"] < 1
+                or normalized_plan["localVersion"] < 0
+                or normalized_plan["sourceRevisionNumber"]
+                != str(revision_number)
+            ):
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
         if revisions[index].get("status") == "COMMITTED":
+            if (
+                normalized_plan is not None
+                and revisions[index].get("committedPlan") != normalized_plan
+            ):
+                raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
             if index >= current_index:
                 raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
             return {
@@ -1207,6 +1239,8 @@ class ProcurementImportSessionRepository:
         if index != current_index:
             raise ImportConflict("PROCUREMENT_SOURCE_VERSION_CONFLICT")
         revisions[index]["status"] = "COMMITTED"
+        if normalized_plan is not None:
+            revisions[index]["committedPlan"] = normalized_plan
         next_index = index + 1
         status = "COMPLETED" if next_index >= len(revisions) else "WAITING_NEXT_CONFIRMATION"
         self.cursor.execute(

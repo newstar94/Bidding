@@ -166,6 +166,101 @@ test("intermediate save snapshots the complete aggregate and performs no server 
   }
 });
 
+test("next revision load failure cannot roll back the durable current draft", async () => {
+  const previousDocument = globalThis.document;
+  const state = draftState();
+  const db = memoryDb();
+  const model = workspaceModel({ state, db });
+  model.getCurrentDateTimeString = () => "2026-08-20 10:00:00";
+  const session = createPlanVersionDraftSession(state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const beforeRevision = model.planVersionDraftSessions[0].revision;
+  const elements = new Map([
+    ["breakdown-plan-id", { value: "plan-00" }],
+    ["tbody-breakdown-dathuchien", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-khongapdung", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-chuadudieuKien", { querySelectorAll: () => [] }],
+  ]);
+  globalThis.document = { getElementById: (id) => elements.get(id) || null };
+  const controller = {
+    model,
+    procurementPlanImport: { controller: {} },
+    planBreakdownDraft: { active: true, action: "create", planId: "plan-00" },
+    tempPlanAction: "create",
+    tempPlanData: { id: "plan-00" },
+    loadBreakdownPackageDetails: async () => {},
+    completeProcurementPlanImportRevision: async () => {
+      throw new Error("next revision network failed");
+    },
+    view: { renderKeHoachTable() {}, renderGoiThauTable() {} },
+  };
+
+  try {
+    await assert.rejects(
+      saveIntermediatePlanVersion.call(controller),
+      /next revision network failed/,
+    );
+    const durable = db.values.get("plan_version_drafts_v1").sessions[0];
+    assert.equal(durable.revision, beforeRevision + 1);
+    assert.equal(model.planVersionDraftSessions[0].revision, durable.revision);
+    assert.deepEqual(
+      model.planVersionDraftSessions[0].aggregate,
+      durable.aggregate,
+    );
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("retrying a pending next load does not save the durable current revision twice", async () => {
+  const previousDocument = globalThis.document;
+  const state = draftState();
+  const db = memoryDb();
+  const model = workspaceModel({ state, db });
+  const session = createPlanVersionDraftSession(state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const durableRevision = model.planVersionDraftSessions[0].revision;
+  const beforePlans = structuredClone(state.kehoach);
+  const beforePackages = structuredClone(state.goithau);
+  const elements = new Map([
+    ["breakdown-plan-id", { value: "plan-00" }],
+    ["tbody-breakdown-dathuchien", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-khongapdung", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-chuadudieuKien", { querySelectorAll: () => [] }],
+  ]);
+  globalThis.document = { getElementById: (id) => elements.get(id) || null };
+  let transitionCalls = 0;
+  const controller = {
+    model,
+    procurementPlanImport: {
+      controller: { state: "WAITING_NEXT_CONFIRMATION" },
+      pendingNextRevisionNumber: "01",
+      currentPlanId: "plan-00",
+    },
+    planBreakdownDraft: { active: true, action: "create", planId: "plan-00" },
+    loadBreakdownPackageDetails: async () => {},
+    completeProcurementPlanImportRevision: async () => { transitionCalls += 1; },
+    view: { renderKeHoachTable() {}, renderGoiThauTable() {} },
+  };
+
+  try {
+    const result = await saveIntermediatePlanVersion.call(controller);
+    assert.equal(result.ok, true);
+    assert.equal(transitionCalls, 1);
+    assert.equal(model.planVersionDraftSessions[0].revision, durableRevision);
+    assert.equal(
+      db.values.get("plan_version_drafts_v1").sessions[0].revision,
+      durableRevision,
+    );
+    assert.deepEqual(state.kehoach, beforePlans);
+    assert.deepEqual(state.goithau, beforePackages);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test("successive local versions freeze package A/B/C and E1 to E1+E2 to E2", async () => {
   const previousDocument = globalThis.document;
   const state = draftState();

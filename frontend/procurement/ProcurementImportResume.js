@@ -36,12 +36,14 @@ export class ProcurementImportResumeStore {
   }
 }
 
-export function rememberProcurementImportSession(controller, flow) {
+export function rememberProcurementImportSession(
+  controller, flow, { revisionNumber } = {},
+) {
   new ProcurementImportResumeStore(controller?.model?.workspaceStorage).save({
     sessionId: flow?.session?.sessionId,
     kind: flow?.session?.kind,
     familyNo: flow?.session?.familyNo,
-    revisionNumber: flow?.currentDraft?.revisionNumber,
+    revisionNumber: revisionNumber ?? flow?.currentDraft?.revisionNumber,
   });
 }
 
@@ -99,10 +101,32 @@ export async function resumeProcurementImportSession({
       return false;
     }
     const revisions = session.revisions || [];
-    const currentIndex = Math.min(
+    const serverIndex = Math.min(
       Math.max(0, Number(session.currentIndex) || 0),
       Math.max(0, revisions.length - 1),
     );
+    const pointerIndex = revisions.findIndex((revision) => (
+      String(revision?.revisionNumber || "") === String(pointer.revisionNumber || "")
+    ));
+    let currentIndex = serverIndex;
+    if (session.kind === "PLAN" && pointerIndex > serverIndex) {
+      const durableRevisionNumbers = new Set(
+        (this.model?.planVersionDraftSessions || []).flatMap((draft) => (
+          (draft.aggregate?.kehoach || [])
+            .filter((plan) => (
+              String(plan?.sourceRevision?.sessionId || "")
+              === String(session.sessionId || "")
+            ))
+            .map((plan) => String(plan?.sourceRevision?.revisionNumber || ""))
+        )),
+      );
+      const durablePrefix = revisions.slice(serverIndex, pointerIndex).every(
+        (revision) => durableRevisionNumbers.has(
+          String(revision?.revisionNumber || ""),
+        ),
+      );
+      if (durablePrefix) currentIndex = pointerIndex;
+    }
     const currentRevision = revisions[currentIndex];
     if (!currentRevision) {
       store.clear();
