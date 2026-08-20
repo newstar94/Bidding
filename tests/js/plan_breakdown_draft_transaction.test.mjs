@@ -1817,7 +1817,8 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     "kh-sototrinhdutoan", "kh-ngaypheduyetdutoan",
     "kh-quyetdinhpheduyetdutoan", "modal-plan-breakdown",
     "breakdown-plan-id", "breakdown-modal-subtitle", "btn-breakdown-add-package",
-    "btn-save-plan-breakdown", "btn-back-plan-breakdown", "gt-kehoachid",
+    "btn-save-plan-breakdown", "btn-save-plan-version-draft",
+    "btn-back-plan-breakdown", "gt-kehoachid",
     "tbody-breakdown-dathuchien", "tbody-breakdown-khongapdung",
     "tbody-breakdown-chuadudieuKien", "tbody-breakdown-goithau",
     "pane-dathuchien",
@@ -2053,6 +2054,16 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     });
     await controller.handleKeHoachSubmit({ preventDefault() {} });
     const plan00 = state.kehoach.find((row) => row.phienBan === "00");
+    assert.equal(
+      controls.get("btn-save-plan-version-draft").hidden,
+      false,
+      "revision 00 must expose the intermediate save action",
+    );
+    assert.equal(
+      controls.get("btn-save-plan-breakdown").hidden,
+      true,
+      "revision 00 must not expose finalization while revision 01 remains",
+    );
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, /Gói A 00/);
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, /Gói B 00/);
 
@@ -2066,6 +2077,14 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, />125</);
     assert.deepEqual(persistedRevisions, [], "package modal save remains memory-only");
 
+    const prematureFinalize = await controller.savePlanBreakdown();
+    assert.deepEqual(
+      prematureFinalize,
+      { ok: false, code: "PROCUREMENT_REVISIONS_REMAINING" },
+      "a stale or programmatic final-save call must be rejected before reaching the API",
+    );
+    assert.deepEqual(finalizeCalls, [], "revision 00 must never call finalize-draft");
+
     await controller.saveIntermediatePlanVersion();
     assert.deepEqual(workspaceMutations, [], "finalize-draft must bypass the regular sync mutation lane");
     assert.deepEqual(persistedRevisions, [], "intermediate/import save must not write the server before finalization");
@@ -2074,6 +2093,16 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.equal(controls.get("form-kehoach-id").value, controller.procurementPlanImport.currentPlanId);
 
     await controller.handleKeHoachSubmit({ preventDefault() {} });
+    assert.equal(
+      controls.get("btn-save-plan-version-draft").hidden,
+      true,
+      "the final source revision must hide the intermediate action",
+    );
+    assert.equal(
+      controls.get("btn-save-plan-breakdown").hidden,
+      false,
+      "the final source revision must expose finalization",
+    );
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, /Gói A 01/);
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, /Gói B 01/);
     await controller.savePlanBreakdown();
@@ -2175,6 +2204,73 @@ test("retrying the same procurement revision reuses the saved plan version", asy
   assert.equal(state.kehoach[0].isLatest, 1);
   assert.equal(state.goithau.length, 1);
   assert.equal(state.goithau[0].keHoachId, "plan-00");
+});
+
+test("a newly published revision extends persisted 00 without opening a new-plan draft", async () => {
+  const existingPlan = {
+    id: "plan-00", rootId: "plan-00", maKeHoach: "PL2600225773",
+    phienBan: "00", isLatest: 1, rowVersion: 4,
+  };
+  const state = {
+    chudautu: [{
+      id: "investor-1", rootId: "investor-1", maChuDauTu: "vn3900786617",
+      phienBan: "00", isLatest: 1, rowVersion: 2,
+    }],
+    kehoach: [existingPlan], goithau: [], goithauhanghoa: [],
+    thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  let draftEnvelope = null;
+  const controller = {
+    model: {
+      state, workspaceStorage: null, planVersionDraftSessions: [],
+      getLatestChuDauTu: () => state.chudautu,
+      getCurrentDateTimeString: () => "2026-08-20 12:00:00",
+      getPlanBaseCode: (value) => value,
+      getWorkspaceToken: () => "org-1",
+      db: {
+        async update(_key, updater) {
+          draftEnvelope = updater(structuredClone(draftEnvelope));
+          return structuredClone(draftEnvelope);
+        },
+      },
+    },
+    plans: { edit: async () => {} },
+  };
+  const revisionDraft = {
+    familyNo: "PL2600225773", revisionNumber: "01",
+    planDraft: {
+      maKeHoach: "PL2600225773", tenKeHoach: "Kế hoạch cập nhật 01",
+      investorSource: { code: "vn3900786617" },
+      sourceRevision: {
+        sessionId: "session-later-01", workspaceLease: "org-1",
+        provider: "MUASAMCONG", familyNo: "PL2600225773",
+        revisionId: "revision-01", revisionNumber: "01",
+        revisionDigest: "sha256:01",
+      },
+    },
+    packageDrafts: [],
+  };
+
+  const result = await startProcurementPlanImport.call(controller, {
+    session: {
+      sessionId: "session-later-01", familyNo: "PL2600225773",
+      revisions: [{ revisionNumber: "01" }],
+    },
+    controller: { hasNext: () => false },
+    currentDraft: revisionDraft,
+  });
+
+  assert.equal(result.plan.phienBan, "01");
+  assert.equal(result.plan.rootId, "plan-00");
+  assert.equal(existingPlan.isLatest, 0);
+  assert.equal(result.plan.isLatest, 1);
+  assert.equal(result.plan.rowVersion, undefined);
+  assert.deepEqual(
+    controller.model.planVersionDraftSessions,
+    [],
+    "persisted 00 + new 01 must use the normal optimistic aggregate-version save",
+  );
+  assert.equal(draftEnvelope, null);
 });
 
 test("procurement materialization replaces MSC option ids with internal child ids", () => {

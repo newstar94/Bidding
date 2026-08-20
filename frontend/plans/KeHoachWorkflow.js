@@ -794,24 +794,36 @@ export async function openPlanBreakdownModal(planId) {
     };
   }
   const btnSave = document.getElementById("btn-save-plan-breakdown");
-  btnSave.disabled = false;
-  btnSave.onclick = async () => {
-    if (btnSave.disabled) return;
-    btnSave.disabled = true;
-    btnSave.setAttribute("aria-busy", "true");
-    try {
-      await this.savePlanBreakdown();
-    } finally {
-      btnSave.disabled = false;
-      btnSave.removeAttribute("aria-busy");
-    }
-  };
   const versionDraft = findPlanVersionDraftSession(this.model, planId);
+  const hasActiveProcurementSequence = Boolean(
+    versionDraft && this.procurementPlanImport?.controller,
+  );
+  const hasNextProcurementRevision = Boolean(
+    hasActiveProcurementSequence
+    && this.procurementPlanImport.controller.hasNext(),
+  );
+  const canFinalize = !hasNextProcurementRevision;
+  btnSave.hidden = !canFinalize;
+  btnSave.disabled = !canFinalize;
+  btnSave.onclick = canFinalize
+    ? async () => {
+      if (btnSave.disabled) return;
+      btnSave.disabled = true;
+      btnSave.setAttribute("aria-busy", "true");
+      try {
+        await this.savePlanBreakdown();
+      } finally {
+        btnSave.disabled = false;
+        btnSave.removeAttribute("aria-busy");
+      }
+    }
+    : null;
   const btnIntermediate = document.getElementById("btn-save-plan-version-draft");
   if (btnIntermediate) {
-    const hasNextProcurementRevision = !this.procurementPlanImport?.controller
-      || this.procurementPlanImport.controller.hasNext();
-    const canSaveIntermediate = Boolean(versionDraft && hasNextProcurementRevision);
+    const canSaveIntermediate = Boolean(
+      versionDraft
+      && (!hasActiveProcurementSequence || hasNextProcurementRevision),
+    );
     btnIntermediate.hidden = !canSaveIntermediate;
     btnIntermediate.disabled = false;
     btnIntermediate.onclick = canSaveIntermediate
@@ -1201,6 +1213,13 @@ export async function savePlanBreakdown() {
   const planId = document.getElementById("breakdown-plan-id").value;
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
   if (!kh) return;
+  const activeVersionDraft = findPlanVersionDraftSession(this.model, planId);
+  if (
+    activeVersionDraft
+    && this.procurementPlanImport?.controller?.hasNext()
+  ) {
+    return { ok: false, code: "PROCUREMENT_REVISIONS_REMAINING" };
+  }
   if (typeof this.loadBreakdownPackageDetails === "function") {
     await this.loadBreakdownPackageDetails(planId);
   }

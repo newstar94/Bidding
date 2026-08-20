@@ -41,6 +41,23 @@ class ProcurementImportSessionService:
         if not revisions:
             raise LookupError("PROCUREMENT_REVISION_INVALID")
         kind = "PLAN" if bundle.get("plan") else "PACKAGE"
+        if kind == "PLAN":
+            dispositions = {
+                str(row.get("revisionId") or ""): str(
+                    row.get("disposition") or ""
+                ).upper()
+                for row in bundle.get("revisionPreviews") or []
+            }
+            pending_revisions = [
+                row for row in revisions
+                if dispositions.get(str(row.get("revisionId") or ""))
+                not in {"ALREADY_IMPORTED", "PROVENANCE_ONLY"}
+            ]
+            # Keep the existing retry behavior when every selected revision is
+            # already known, but never replay an imported prefix before a new
+            # source revision.
+            if pending_revisions:
+                revisions = pending_revisions
         family_no = (
             (bundle.get("plan") or {}).get("familyNo")
             or (bundle.get("notice") or {}).get("noticeNo")

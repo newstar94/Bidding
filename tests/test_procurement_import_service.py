@@ -541,6 +541,47 @@ def test_prepare_and_session_read_record_bounded_latency_phases(tmp_path):
     assert phases[("procurement_import", "session_read", "ok")] == 2
 
 
+def test_plan_session_starts_at_new_revision_after_earlier_revision_was_imported():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    bundle = {
+        "provider": "MUASAMCONG",
+        "plan": {"familyNo": "PL2600225773"},
+        "revisionPreviews": [
+            {
+                "revisionId": "rev-00", "revisionNumber": "00",
+                "disposition": "ALREADY_IMPORTED",
+            },
+            {
+                "revisionId": "rev-01", "revisionNumber": "01",
+                "disposition": "MATERIALIZE",
+            },
+        ],
+        "revisions": [
+            {
+                "revisionId": "rev-00", "revisionNumber": "00",
+                "name": "Kế hoạch 00", "packages": [],
+            },
+            {
+                "revisionId": "rev-01", "revisionNumber": "01",
+                "name": "Kế hoạch 01", "packages": [],
+            },
+        ],
+    }
+
+    manifest = service.create_from_bundle(
+        bundle,
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+
+    assert [row["revisionNumber"] for row in manifest["revisions"]] == ["01"]
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "01", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    assert draft["revisionNumber"] == "01"
+
+
 def test_procurement_import_phases_are_exposed_as_bounded_prometheus_labels(
     monkeypatch,
 ):

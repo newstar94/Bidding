@@ -296,6 +296,36 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
     return session, revision, expected_digest
 
 
+def _validate_plan_target_row_version(cursor, session, context, organization_id):
+    if not context.get("plans"):
+        return
+    target = (session.get("canonicalBundle") or {}).get("plan") or {}
+    target_action = str(target.get("targetAction") or "").upper()
+    if target_action not in {"CREATE", "VERSION"}:
+        return
+    expected = target.get("expectedRowVersion")
+    if target_action == "VERSION":
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT") from None
+    family_no = str(target.get("familyNo") or context.get("familyNo") or "")
+    current = cursor.execute(
+        """SELECT id, row_version
+             FROM ke_hoach_lcnt
+            WHERE organization_id = ? AND upper(ma_ke_hoach) = upper(?)
+              AND is_latest = 1 AND archived_at IS NULL
+            ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
+        (organization_id, family_no),
+    ).fetchone()
+    if target_action == "CREATE":
+        if current is not None:
+            raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+        return
+    if current is None or int(current[1]) != expected:
+        raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
+
+
 def validate_import_session_mutation(
     cursor, payload, *, organization_id, user_id,
 ):
@@ -306,6 +336,9 @@ def validate_import_session_mutation(
         return None
     session, revision, digest = _load_trusted_revision(
         cursor, context, organization_id, user_id,
+    )
+    _validate_plan_target_row_version(
+        cursor, session, context, organization_id,
     )
     return {
         "sessionId": session["id"],

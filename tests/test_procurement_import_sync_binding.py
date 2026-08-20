@@ -222,6 +222,54 @@ def test_preflight_returns_only_validated_import_package_ids(monkeypatch):
     assert authority["packageIds"] == ("package-imported",)
 
 
+@pytest.mark.parametrize(("stored_row_version", "conflicts"), [(4, False), (5, True)])
+def test_later_plan_revision_keeps_the_prepared_predecessor_row_version(
+    monkeypatch, stored_row_version, conflicts,
+):
+    payload = {
+        "kehoach": [{
+            "id": "plan-01", "rootId": "plan-00", "phienBan": "01",
+            "sourceRevision": _authority("01"),
+        }],
+    }
+    session = {
+        "id": "session-1",
+        "canonicalBundle": {
+            "plan": {
+                "familyNo": "PL2600000001",
+                "targetAction": "VERSION",
+                "expectedRowVersion": 4,
+            },
+        },
+    }
+    revision = {"revisionId": "revision-01"}
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding._load_trusted_revision",
+        lambda *_args, **_kwargs: (
+            session, revision, "sha256:" + "a" * 64,
+        ),
+    )
+
+    class Cursor:
+        def execute(self, _query, params):
+            assert params == ("org-1", "PL2600000001")
+            return self
+
+        def fetchone(self):
+            return ("plan-00", stored_row_version)
+
+    if conflicts:
+        with pytest.raises(ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+            validate_import_session_mutation(
+                Cursor(), payload, organization_id="org-1", user_id="user-1",
+            )
+    else:
+        authority = validate_import_session_mutation(
+            Cursor(), payload, organization_id="org-1", user_id="user-1",
+        )
+        assert authority["revisionNumber"] == "01"
+
+
 @pytest.mark.parametrize("serialized_plan_version", ["01", 1])
 def test_plan_revision_accepts_an_independent_unchanged_package_version(
     monkeypatch, serialized_plan_version,

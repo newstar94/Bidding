@@ -618,16 +618,21 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
   if (Number(materialized.plan?.rowVersion || 0) <= 0) {
     const existingDraft = findPlanVersionDraftSession(controller.model, materialized.plan.id)
       || findPlanVersionDraftSession(controller.model, prior?.id);
-    const draftSession = existingDraft
-      ? refreshPlanVersionDraftSession(
-        structuredClone(existingDraft), controller.model.state, materialized.plan.id,
-      )
-      : createPlanVersionDraftSession(
-        controller.model.state,
-        materialized.plan.id,
-        controller.model.getCurrentDateTimeString?.(),
-      );
-    if (draftSession) await savePlanVersionDraftSession(controller.model, draftSession);
+    const extendsPersistedPlan = Boolean(
+      prior && Number(prior.rowVersion || 0) > 0 && !existingDraft,
+    );
+    if (!extendsPersistedPlan) {
+      const draftSession = existingDraft
+        ? refreshPlanVersionDraftSession(
+          structuredClone(existingDraft), controller.model.state, materialized.plan.id,
+        )
+        : createPlanVersionDraftSession(
+          controller.model.state,
+          materialized.plan.id,
+          controller.model.getCurrentDateTimeString?.(),
+        );
+      if (draftSession) await savePlanVersionDraftSession(controller.model, draftSession);
+    }
   }
   rememberProcurementImportSession(controller, controller.procurementPlanImport);
   await controller.plans.edit(materialized.plan.id, {
