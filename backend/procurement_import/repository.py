@@ -1177,6 +1177,60 @@ class ProcurementImportSessionRepository:
             "updatedAt": _session_datetime(row[14]),
         }
 
+    def bind_decision_authority(
+        self,
+        session_id,
+        *,
+        organization_id,
+        user_id,
+        workspace_lease,
+        bundle_digest,
+        authority,
+    ):
+        row = self.cursor.execute(
+            """SELECT bundle_digest, canonical_bundle_json,
+                      current_revision_index, status
+                 FROM procurement_import_session
+                WHERE organization_id = ? AND id = ? AND user_id = ?
+                  AND workspace_lease = ?
+                FOR UPDATE""",
+            (organization_id, session_id, user_id, workspace_lease),
+        ).fetchone()
+        if row is None:
+            raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+        if str(row[0]) != str(bundle_digest):
+            raise ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        bundle = json.loads(row[1])
+        existing = bundle.get("decisionAuthority") or {}
+        if existing.get("status") == "BOUND":
+            if existing.get("decisionsDigest") != authority.get("decisionsDigest"):
+                raise ImportConflict("PROCUREMENT_DECISIONS_LOCKED")
+            return self.get_scoped(
+                session_id,
+                organization_id=organization_id,
+                user_id=user_id,
+                workspace_lease=workspace_lease,
+            )
+        if int(row[2] or 0) != 0 or str(row[3]) not in {"READY", "EDITING_REVISION"}:
+            raise ImportConflict("PROCUREMENT_DECISIONS_LOCKED")
+        bundle["decisionAuthority"] = deepcopy(authority)
+        self.cursor.execute(
+            """UPDATE procurement_import_session
+                  SET canonical_bundle_json = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE organization_id = ? AND id = ? AND user_id = ?
+                  AND workspace_lease = ? AND bundle_digest = ?""",
+            (
+                _json(bundle), organization_id, session_id, user_id,
+                workspace_lease, bundle_digest,
+            ),
+        )
+        return self.get_scoped(
+            session_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            workspace_lease=workspace_lease,
+        )
+
     def mark_revision_committed(
         self, session_id, *, organization_id, revision_number,
         committed_plan=None,

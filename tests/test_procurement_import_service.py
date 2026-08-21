@@ -15,6 +15,7 @@ from backend.procurement_import.domain import (
     project_source_lifecycle_to_bidding,
     three_way_merge_field,
 )
+from backend.procurement_import.decisions import ProcurementDecisionError
 from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_import.repository import ProcurementImportSessionRepository
@@ -1497,6 +1498,26 @@ class _MemorySessionRepository:
         self.rows[session_id]["currentIndex"] = current_index
         self.rows[session_id]["status"] = status
 
+    def bind_decision_authority(
+        self, session_id, *, organization_id, user_id, workspace_lease,
+        bundle_digest, authority,
+    ):
+        row = self.get_scoped(
+            session_id, organization_id=organization_id, user_id=user_id,
+            workspace_lease=workspace_lease,
+        )
+        if row["bundleDigest"] != bundle_digest:
+            raise ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        existing = row["canonicalBundle"].get("decisionAuthority") or {}
+        if existing:
+            if existing.get("decisionsDigest") != authority.get("decisionsDigest"):
+                raise ImportConflict("PROCUREMENT_DECISIONS_LOCKED")
+            return row
+        if row["currentIndex"] != 0:
+            raise ImportConflict("PROCUREMENT_DECISIONS_LOCKED")
+        row["canonicalBundle"]["decisionAuthority"] = deepcopy(authority)
+        return row
+
     def find_active_package_lineages(
         self, organization_id, provider, family_key,
     ):
@@ -1556,6 +1577,314 @@ def test_import_session_orders_manifest_and_serves_revision_draft_without_source
     assert "sourceCanonical" not in draft["packageDrafts"][0]
 
 
+def test_session_revision_draft_uses_reconciliation_effective_fields():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository, ttl_seconds=3600)
+    manifest = service.create_from_bundle(
+        {
+            "provider": "MUASAMCONG",
+            "plan": {"familyNo": "PL2600000001"},
+            "revisions": [{
+                "revisionId": "rev-00",
+                "revisionNumber": "00",
+                "name": "Kế hoạch 00",
+                "packages": [{
+                    "planDetailRevisionId": "detail-a",
+                    "symbol": "A",
+                    "name": "Gói A",
+                    "priceVnd": 100,
+                    "executionPeriod": "30 ngày",
+                    "capitalDetail": "Ngân sách",
+                    "selectionDuration": "30 ngày",
+                    "selectionStart": "2026-01",
+                }],
+            }],
+            "reconciliationByRevision": {
+                "rev-00": [{
+                    "planDetailRevisionId": "detail-a",
+                    "action": "UNCHANGED",
+                    "effectiveFields": {
+                        "symbol": "A",
+                        "name": "Gói A",
+                        "priceVnd": 120,
+                        "executionPeriod": "30 ngày",
+                        "capitalDetail": "Ngân sách",
+                        "selectionDuration": "30 ngày",
+                        "selectionStart": "2026-01",
+                    },
+                    "fieldConflicts": [],
+                }],
+            },
+        },
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    draft = service.get_revision_draft(
+        manifest["sessionId"],
+        "00",
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="lease-1",
+    )
+
+    assert draft["packageDrafts"][0]["giaGoiThau"] == 120
+
+
+def _sequential_decision_bundle(*, conflict=False, required_field=False):
+    package = {
+        "planDetailRevisionId": "detail-a", "symbol": "A", "name": "Gói A",
+        "priceVnd": 130, "executionPeriod": "30 ngày",
+        "capitalDetail": "" if required_field else "Ngân sách",
+        "selectionDuration": "30 ngày", "selectionStart": "2026-01",
+    }
+    effective = {**package, "priceVnd": 120}
+    return {
+        "provider": "MUASAMCONG",
+        "plan": {"familyNo": "PL2600000001"},
+        "revisions": [{
+            "revisionId": "rev-00", "revisionNumber": "00",
+            "name": "Kế hoạch 00", "packages": [package],
+        }],
+        "reconciliationByRevision": {"rev-00": [{
+            **package,
+            "action": "CHANGED",
+            "localTarget": {
+                "rootId": "root-a", "snapshotId": "snapshot-a",
+                "localVersion": 1, "rowVersion": 7,
+            },
+            "effectiveFields": effective,
+            "fieldConflicts": ([{
+                "field": "priceVnd", "baseValue": 100,
+                "localValue": 120, "sourceValue": 130,
+            }] if conflict else []),
+        }]},
+    }
+
+
+@pytest.mark.parametrize(
+    ("resolution", "expected"),
+    [("KEEP_LOCAL", 120), ("APPLY_SOURCE", 130)],
+    ids=[
+        "sequential_plan_keep_local_conflict_preserves_local_value",
+        "sequential_plan_apply_source_conflict_uses_source_value",
+    ],
+)
+def test_sequential_plan_conflict_decision_reaches_revision_draft(
+    resolution, expected,
+):
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(conflict=True),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={
+            "investorId": "investor-1", "packageMatches": [],
+            "fieldValues": [], "fieldConflicts": [{
+                "packageObservationId": "detail-a", "field": "priceVnd",
+                "resolution": resolution,
+            }],
+        },
+    )
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    assert draft["packageDrafts"][0]["giaGoiThau"] == expected
+
+
+def test_sequential_plan_unresolved_conflict_cannot_start():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(conflict=True),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_FIELD_CONFLICT"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"investorId": "investor-1"},
+        )
+
+
+def test_sequential_plan_required_field_override_reaches_revision_draft():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(required_field=True),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={
+            "investorId": "investor-1", "packageMatches": [],
+            "fieldConflicts": [], "fieldValues": [{
+                "packageObservationId": "detail-a", "field": "capitalDetail",
+                "value": "Vốn hợp lệ",
+            }],
+        },
+    )
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    assert draft["packageDrafts"][0]["nguonVon"] == "Vốn hợp lệ"
+
+
+def test_sequential_plan_ambiguous_match_uses_selected_local_root():
+    bundle = _sequential_decision_bundle()
+    row = bundle["reconciliationByRevision"]["rev-00"][0]
+    row.pop("localTarget", None)
+    row["action"] = "AMBIGUOUS"
+    row.pop("effectiveFields", None)
+    row["matchCandidates"] = [
+        {"rootId": "root-a", "snapshotId": "snapshot-a", "localVersion": 1, "rowVersion": 3},
+        {"rootId": "root-b", "snapshotId": "snapshot-b", "localVersion": 2, "rowVersion": 5},
+    ]
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={
+            "investorId": "investor-1", "fieldValues": [], "fieldConflicts": [],
+            "packageMatches": [{
+                "packageObservationId": "detail-a", "localRootId": "root-b",
+            }],
+        },
+    )
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    assert draft["packageDrafts"][0]["sourceRevision"]["localRootId"] == "root-b"
+
+
+def test_sequential_plan_invalid_ambiguous_target_is_rejected():
+    bundle = _sequential_decision_bundle()
+    row = bundle["reconciliationByRevision"]["rev-00"][0]
+    row["action"] = "AMBIGUOUS"
+    row.pop("effectiveFields", None)
+    row.pop("localTarget", None)
+    row["matchCandidates"] = [{"rootId": "root-a"}]
+    service = ProcurementImportSessionService(_MemorySessionRepository())
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_MATCH_DECISION_INVALID"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"packageMatches": [{
+                "packageObservationId": "detail-a", "localRootId": "foreign-root",
+            }]},
+        )
+
+
+def test_session_decisions_are_bound_to_exact_bundle_digest_and_are_immutable():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_PREVIEW_STALE"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest="sha256:" + "0" * 64,
+            decisions={"investorId": "investor-1"},
+        )
+    first = service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={"investorId": "investor-1"},
+    )
+    retry = service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={"investorId": "investor-1"},
+    )
+    assert retry["decisionAuthority"] == first["decisionAuthority"]
+    with pytest.raises(ImportConflict, match="PROCUREMENT_DECISIONS_LOCKED"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"investorId": "investor-2"},
+        )
+
+
+def test_sequential_plan_selected_investor_is_exactly_used_and_resumed():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={"investorId": "investor-b"},
+    )
+    first = service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    resumed = ProcurementImportSessionService(repository).get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    assert first["planDraft"]["chuDauTuId"] == "investor-b"
+    assert resumed["decisionAuthority"] == first["decisionAuthority"]
+
+
+def test_sequential_plan_invalid_selected_investor_is_rejected():
+    service = ProcurementImportSessionService(_MemorySessionRepository())
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="INVESTOR_INVALID"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"investorId": "investor-missing"},
+            validate_investor=lambda _value: (_ for _ in ()).throw(
+                ProcurementDecisionError(
+                    "PROCUREMENT_INVESTOR_INVALID", "Investor không hợp lệ.", 422,
+                )
+            ),
+        )
+
+
+def test_sequential_plan_foreign_workspace_investor_is_rejected():
+    service = ProcurementImportSessionService(_MemorySessionRepository())
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="INVESTOR_INVALID"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"investorId": "investor-org-2"},
+            validate_investor=lambda _value: (_ for _ in ()).throw(
+                ProcurementDecisionError(
+                    "PROCUREMENT_INVESTOR_INVALID", "Investor khác workspace.", 422,
+                )
+            ),
+        )
+
+
 def test_next_session_draft_carries_the_active_local_package_root():
     repository = _MemorySessionRepository()
     repository.package_lineages = [{
@@ -1577,6 +1906,10 @@ def test_next_session_draft_carries_the_active_local_package_root():
                     "symbol": "BP2600546627",
                     "name": "Gói thầu số 01",
                     "priceVnd": 100,
+                    "executionPeriod": "30 ngày",
+                    "capitalDetail": "Ngân sách",
+                    "selectionDuration": "30 ngày",
+                    "selectionStart": "2026-01",
                 }],
             }],
         },
@@ -1647,6 +1980,11 @@ def test_completed_plan_enrichment_serves_full_invitation_package_data():
                     "planDetailRevisionId": "detail-1",
                     "effectiveFields": {
                         "name": "Mua máy giặt công nghiệp và máy phân tích huyết học",
+                        "priceVnd": 28_000_000,
+                        "executionPeriod": "60 ngày",
+                        "capitalDetail": "Ngân sách",
+                        "selectionDuration": "30 ngày",
+                        "selectionStart": "2026-01",
                         "lifecycleStatus": "INVITED",
                         "bidGuaranteeVnd": 28_000_000,
                         "approvalDecisionNo": "123/QĐ-E-HSMT",

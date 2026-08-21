@@ -538,8 +538,9 @@ def test_procurement_import_routes_are_registered():
     routes = procurement_import_routes(Route)
     assert [(route.path, route.methods) for route in routes] == [
         ("/api/procurement/imports/plan/prepare", {"POST"}),
-        ("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", {"GET", "HEAD"}),
-        ("/api/procurement/imports/plan/sessions/{session_id}", {"GET", "HEAD"}),
+            ("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", {"GET", "HEAD"}),
+            ("/api/procurement/imports/plan/sessions/{session_id}/decisions", {"POST"}),
+            ("/api/procurement/imports/plan/sessions/{session_id}", {"GET", "HEAD"}),
         ("/api/procurement/imports/plan/sessions/{session_id}/cancel", {"POST"}),
         ("/api/procurement/imports/plan/apply", {"POST"}),
         ("/api/procurement/imports/notice/prepare", {"POST"}),
@@ -1281,6 +1282,24 @@ def test_apply_decisions_reject_unresolved_ambiguous_match():
         assert error.status_code == 409
     else:
         raise AssertionError("ambiguous preview must require a user decision")
+
+
+def test_apply_decisions_rejects_fake_observation_and_field():
+    revision = {"revisionId": "rev-01", "packages": [{
+        "planDetailRevisionId": "detail-a", "name": "Gói A", "priceVnd": 1,
+        "executionPeriod": "1 ngày", "capitalDetail": "Vốn",
+        "selectionDuration": "1 ngày", "selectionStart": "2026-01",
+    }]}
+    preview_rows = [{**revision["packages"][0], "action": "UNCHANGED"}]
+    with pytest.raises(ProcurementRouteError) as error:
+        _resolve_revision_decisions(
+            revision, preview_rows,
+            {"fieldValues": [{
+                "packageObservationId": "foreign-observation",
+                "field": "capitalDetail", "value": "Không được phép",
+            }]},
+        )
+    assert error.value.code == "PROCUREMENT_DECISION_INVALID"
 
 
 def test_completed_operation_resume_rejects_another_user_in_same_workspace(monkeypatch):

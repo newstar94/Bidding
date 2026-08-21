@@ -88,7 +88,41 @@ export function summarizePreview(preview) {
   }, { total: 0 });
 }
 
-export function canStartSequentialImport(preview) {
+function decisionPackageRows(preview) {
+  const rows = new Map();
+  [...(preview?.packages || []), ...(preview?.decisionPackages || [])].forEach((row) => {
+    const key = `${row.sourceRevisionId || "latest"}:${row.planDetailRevisionId || row.symbol || ""}`;
+    rows.set(key, row);
+  });
+  return [...rows.values()];
+}
+
+export function buildSequentialDecisionPayload(decisions, investorId) {
+  const splitKey = (key) => {
+    const separator = String(key).lastIndexOf(":");
+    return separator < 0
+      ? [String(key), ""]
+      : [String(key).slice(0, separator), String(key).slice(separator + 1)];
+  };
+  return {
+    investorId: String(investorId || "").trim() || null,
+    packageMatches: Object.entries(decisions?.packageMatches || {}).map(
+      ([packageObservationId, value]) => ({ packageObservationId, ...value }),
+    ),
+    fieldConflicts: Object.entries(decisions?.fieldConflicts || {}).map(
+      ([key, resolution]) => {
+        const [packageObservationId, field] = splitKey(key);
+        return { packageObservationId, field, resolution };
+      },
+    ),
+    fieldValues: Object.entries(decisions?.fieldValues || {}).map(([key, value]) => {
+      const [packageObservationId, field] = splitKey(key);
+      return { packageObservationId, field, value };
+    }),
+  };
+}
+
+export function canStartSequentialImport(preview, context) {
   if (!preview?.importSession?.sessionId) return false;
   const enrichmentStatus = String(
     preview?.enrichmentStatus
@@ -96,7 +130,30 @@ export function canStartSequentialImport(preview) {
     || "COMPLETED",
   ).toUpperCase();
   if (enrichmentStatus !== "COMPLETED") return false;
-  return !(preview.packages || []).some((row) => row.action === "AMBIGUOUS");
+  if (!context) {
+    return !decisionPackageRows(preview).some((row) => row.action === "AMBIGUOUS");
+  }
+  const decisions = context.decisions || {};
+  if (!String(context.investorId || "").trim()) return false;
+  const matches = decisions.packageMatches || {};
+  const conflicts = decisions.fieldConflicts || {};
+  const fieldValues = decisions.fieldValues || {};
+  if (decisionPackageRows(preview).some((row) => {
+    const observationId = String(row.planDetailRevisionId || "");
+    if (row.action === "AMBIGUOUS" && !matches[observationId]) return true;
+    return (row.fieldConflicts || []).some(
+      (conflict) => !conflicts[`${observationId}:${conflict.field || ""}`],
+    );
+  })) return false;
+  return !(preview.blockingIssues || []).some((issue) => {
+    if (
+      issue.code !== "PROCUREMENT_REQUIRED_FIELDS_MISSING"
+      || !issue.packageObservationId
+      || !issue.field
+    ) return false;
+    const value = fieldValues[`${issue.packageObservationId}:${issue.field}`];
+    return value === undefined || value === null || String(value).trim() === "";
+  });
 }
 
 export function createDebouncedPreparer(callback, delay = 600, timers = globalThis) {
@@ -157,13 +214,16 @@ function appendDecisionSelect(parent, { label, dataAttribute, observationId, opt
 export function renderPackages(modal, preview) {
   const body = modal.querySelector("[data-procurement-packages]");
   body.replaceChildren();
-  (preview.packages || []).forEach((pkg) => {
+  decisionPackageRows(preview).forEach((pkg) => {
     const row = body.ownerDocument.createElement("tr");
     row.dataset.action = pkg.action || "UNKNOWN";
     appendText(row, "td", pkg.symbol || "—");
     appendText(row, "td", pkg.name || "—");
     appendText(row, "td", packageNoticeLabel(pkg));
-    const actionCell = appendText(row, "td", pkg.action || "UNKNOWN");
+    const revisionLabel = pkg.sourceRevisionNumber
+      ? `PB ${pkg.sourceRevisionNumber} · `
+      : "";
+    const actionCell = appendText(row, "td", `${revisionLabel}${pkg.action || "UNKNOWN"}`);
     actionCell.className = "procurement-import__action";
     const observationId = String(pkg.planDetailRevisionId || "");
     if (pkg.action === "AMBIGUOUS") {
@@ -333,7 +393,10 @@ export class PlanImportWizard {
 
   refreshApplyGate() {
     const button = this.modal.querySelector("[data-procurement-apply]");
-    if (button) button.disabled = !canStartSequentialImport(this.preview);
+    if (button) button.disabled = !canStartSequentialImport(this.preview, {
+      decisions: this.decisions,
+      investorId: this.modal.querySelector("[data-procurement-investor]")?.value,
+    });
   }
 
   setStatus(message, urgent = false) {
@@ -397,10 +460,16 @@ export class PlanImportWizard {
       this.setStatus(
         enrichmentPending
           ? "Preview kế hoạch đã sẵn sàng; đang bổ sung đầy đủ dữ liệu TBMT liên kết…"
-          : canStartSequentialImport(preview)
+          : canStartSequentialImport(preview, {
+            decisions: this.decisions,
+            investorId: this.modal.querySelector("[data-procurement-investor]")?.value,
+          })
             ? "Dữ liệu đã sẵn sàng. Phiên bản đầu tiên sẽ mở trong biểu mẫu Kế hoạch."
             : "Preview còn trường hợp ghép gói mơ hồ hoặc enrichment chưa hoàn tất.",
-        !enrichmentPending && !canStartSequentialImport(preview),
+        !enrichmentPending && !canStartSequentialImport(preview, {
+          decisions: this.decisions,
+          investorId: this.modal.querySelector("[data-procurement-investor]")?.value,
+        }),
       );
       if (preview.enrichmentStatus === "PENDING" && preview.enrichmentOperationId) {
         this.trackEnrichment(preview.enrichmentOperationId);
@@ -447,7 +516,26 @@ export class PlanImportWizard {
       }
       if (!isEnrichmentCapabilityCurrent()) return;
       if (operation.status === "COMPLETED") {
-        this.preview = { ...this.preview, enrichmentStatus: "COMPLETED" };
+        let refreshedSession = null;
+        if (typeof this.client.getImportSession === "function") {
+          refreshedSession = await this.client.getImportSession(
+            preview.importSession?.sessionId,
+            {
+              workspaceLease: this.workspaceLease || null,
+              signal: this.enrichmentController.signal,
+              kind: "plan",
+            },
+          );
+          if (!isEnrichmentCapabilityCurrent()) return;
+        }
+        this.preview = {
+          ...this.preview,
+          bundleDigest: refreshedSession?.bundleDigest || this.preview.bundleDigest,
+          importSession: refreshedSession
+            ? { ...this.preview.importSession, ...refreshedSession }
+            : this.preview.importSession,
+          enrichmentStatus: "COMPLETED",
+        };
         this.refreshApplyGate();
         this.setStatus("Đã bổ sung đầy đủ dữ liệu TBMT; có thể tiếp tục nhập.");
       } else {
@@ -463,7 +551,11 @@ export class PlanImportWizard {
   }
 
   async apply() {
-    if (!canStartSequentialImport(this.preview)) return;
+    const investorId = this.modal.querySelector("[data-procurement-investor]")?.value || null;
+    if (!canStartSequentialImport(this.preview, {
+      decisions: this.decisions,
+      investorId,
+    })) return;
     const preview = this.preview;
     const importSession = preview?.importSession;
     if (!importSession?.sessionId || !(importSession.revisions || []).length) {
@@ -492,6 +584,17 @@ export class PlanImportWizard {
     button.disabled = true;
     this.setStatus("Đang mở phiên bản đầu tiên trong biểu mẫu Kế hoạch…");
     try {
+      const boundSession = await this.client.bindPlanSessionDecisions(
+        importSession.sessionId,
+        {
+          bundleDigest: preview.bundleDigest,
+          decisions: buildSequentialDecisionPayload(this.decisions, investorId),
+          workspaceLease: this.workspaceLease || null,
+        },
+        { signal: this.applyController.signal },
+      );
+      assertApplyCapabilityCurrent();
+      Object.assign(importSession, boundSession);
       const sequential = new SequentialRevisionController({
         revisions: importSession.revisions,
         loadRevision: (revision) => this.client.getPlanRevisionDraft(
@@ -749,12 +852,27 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
   assertPlanImportWorkspace(controller, flow, { allowUninstalled });
   const checkpoint = capturePlanImportMaterialization(controller);
   const source = revisionDraft?.planDraft?.investorSource || {};
-  const investorResolution = await resolveImportedInvestorDraft({
-    source,
-    records: controller.model?.getLatestChuDauTu?.() || [],
-    lookup: lookupPartnerInfo,
-    timestamp: controller.model.getCurrentDateTimeString(),
-  });
+  const investorRecords = controller.model?.getLatestChuDauTu?.() || [];
+  const authoritativeInvestorId = String(
+    revisionDraft?.planDraft?.chuDauTuId
+    || revisionDraft?.decisionAuthority?.investorId
+    || "",
+  ).trim();
+  let investorResolution;
+  if (authoritativeInvestorId) {
+    const investor = investorRecords.find(
+      (row) => String(row?.id || "") === authoritativeInvestorId,
+    );
+    if (!investor) throw new Error("PROCUREMENT_INVESTOR_RESOLUTION_FAILED");
+    investorResolution = { status: "EXISTING", investor };
+  } else {
+    investorResolution = await resolveImportedInvestorDraft({
+      source,
+      records: investorRecords,
+      lookup: lookupPartnerInfo,
+      timestamp: controller.model.getCurrentDateTimeString(),
+    });
+  }
   assertPlanImportWorkspace(controller, flow, { allowUninstalled });
   const candidateState = candidatePlanImportState(controller.model.state);
   const prior = previousPlanId

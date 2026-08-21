@@ -22,6 +22,16 @@ import {
   updateServerCapabilitiesFromSession,
 } from "../../frontend/auth/serverCapabilities.js";
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 
 test("lookup client sends only code and workspace lease with cancellation", async () => {
   const calls = [];
@@ -857,6 +867,135 @@ test("inline plan lookup closes loading after its valid flow handoff changes for
   assert.equal(form.attributes.has("aria-busy"), false);
   assert.equal(trigger.disabled, false);
   assert.equal(status.dataset.state, "success");
+});
+
+test("inline_plan_post_durable_handoff_failure_preserves_recovery_flow_and_resets_loading", async () => {
+  const identity = { value: "" };
+  const form = {
+    attributes: new Map(),
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    removeAttribute(name) { this.attributes.delete(name); },
+  };
+  const code = control("PL2600225773");
+  const trigger = inlineButton();
+  const status = inlineStatus();
+  const loading = inlineLoading();
+  const workspaceStorage = {};
+  const controls = {
+    "form-kehoach": form, "kh-ma": code,
+    "procurement-lookup-plan-enabled": trigger,
+    "procurement-lookup-plan-status": status,
+    "procurement-lookup-plan-loading": loading,
+  };
+  const controller = {
+    model: { workspaceStorage, getWorkspaceToken: () => "org-1" },
+    async startProcurementPlanImport(flow) {
+      identity.value = "durable-plan";
+      this.procurementPlanImport = {
+        ...flow, pendingNextUiRecovery: { planId: "durable-plan" },
+      };
+      const error = new Error("Không thể mở biểu mẫu sau durable point");
+      error.procurementMaterializationDurable = true;
+      throw error;
+    },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        return { importSession: {
+          sessionId: "session-durable", revisions: [{ revisionNumber: "00" }],
+        } };
+      },
+      async getPlanRevisionDraft() {
+        return { revisionNumber: "00", planDraft: {}, packageDrafts: [] };
+      },
+    },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const result = await lookup.run({
+    kind: "PLAN", formId: "form-kehoach", codeInputId: "kh-ma",
+    triggerId: "procurement-lookup-plan-enabled",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.equal(result, null);
+  assert.equal(controller.procurementPlanImport.pendingNextUiRecovery.planId, "durable-plan");
+  assert.equal(status.dataset.state, "error");
+  assert.equal(loading.hidden, true);
+  assert.equal(form.attributes.has("aria-busy"), false);
+  assert.equal(trigger.disabled, false);
+});
+
+test("old_inline_flow_failure_cannot_reset_new_flow_loading", async () => {
+  const handoff = deferred();
+  const startEntered = deferred();
+  const identity = { value: "" };
+  const form = {
+    attributes: new Map(),
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    removeAttribute(name) { this.attributes.delete(name); },
+  };
+  const code = control("PL2600225773");
+  const trigger = inlineButton();
+  const status = inlineStatus();
+  const loading = inlineLoading();
+  const workspaceStorage = {};
+  const controls = {
+    "form-kehoach": form, "kh-ma": code,
+    "procurement-lookup-plan-enabled": trigger,
+    "procurement-lookup-plan-status": status,
+    "procurement-lookup-plan-loading": loading,
+  };
+  const controller = {
+    model: { workspaceStorage, getWorkspaceToken: () => "org-1" },
+    async startProcurementPlanImport(flow) {
+      identity.value = "plan-a";
+      this.procurementPlanImport = { ...flow };
+      startEntered.resolve();
+      return handoff.promise;
+    },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        return { importSession: {
+          sessionId: "session-a", revisions: [{ revisionNumber: "00" }],
+        } };
+      },
+      async getPlanRevisionDraft() {
+        return { revisionNumber: "00", planDraft: {}, packageDrafts: [] };
+      },
+    },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+  const pending = lookup.run({
+    kind: "PLAN", formId: "form-kehoach", codeInputId: "kh-ma",
+    triggerId: "procurement-lookup-plan-enabled",
+    statusId: "procurement-lookup-plan-status",
+  });
+  await startEntered.promise;
+  controller.procurementPlanImport = { importFlowIdentity: Object.freeze({}) };
+  identity.value = "plan-b";
+  trigger.disabled = true;
+  trigger.textContent = "B đang nhập";
+  loading.hidden = false;
+  loading.setAttribute("aria-busy", "true");
+  form.setAttribute("aria-busy", "true");
+  status.textContent = "Luồng B đang chạy";
+  status.dataset.state = "loading";
+  handoff.reject(new Error("Lỗi muộn của A"));
+  await pending;
+
+  assert.equal(status.textContent, "Luồng B đang chạy");
+  assert.equal(status.dataset.state, "loading");
+  assert.equal(trigger.disabled, true);
+  assert.equal(loading.hidden, false);
+  assert.equal(form.attributes.get("aria-busy"), "true");
 });
 
 test("inline stale workspace completion cannot reset or overwrite the new UI", async () => {

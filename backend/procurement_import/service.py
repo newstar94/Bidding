@@ -523,6 +523,8 @@ class ProcurementImportPreparer:
                         {
                             "rootId": candidate.get("rootId") or candidate.get("id"),
                             "snapshotId": candidate.get("id"),
+                            "localVersion": int(candidate.get("localVersion") or 0),
+                            "rowVersion": int(candidate.get("rowVersion") or 1),
                             "name": candidate.get("name"),
                             "symbol": candidate.get("symbol"),
                         }
@@ -743,7 +745,26 @@ class ProcurementImportPreparer:
             )
             for revision in revisions
         }
-        packages = reconciliation_by_revision[str(revisions[-1]["revisionId"])]
+        latest_revision_id = str(revisions[-1]["revisionId"])
+        latest_revision_number = str(revisions[-1].get("revisionNumber") or "")
+        packages = [
+            {
+                **deepcopy(row),
+                "sourceRevisionId": latest_revision_id,
+                "sourceRevisionNumber": latest_revision_number,
+            }
+            for row in reconciliation_by_revision[latest_revision_id]
+        ]
+        decision_packages = []
+        for revision in revisions:
+            revision_id = str(revision.get("revisionId") or "")
+            for row in reconciliation_by_revision.get(revision_id, []):
+                if row.get("action") == PackageAction.AMBIGUOUS.value or row.get("fieldConflicts"):
+                    decision_packages.append({
+                        **deepcopy(row),
+                        "sourceRevisionId": revision_id,
+                        "sourceRevisionNumber": str(revision.get("revisionNumber") or ""),
+                    })
         if revision_previews[-1]["disposition"] == "ALREADY_IMPORTED":
             for package in packages:
                 if package.get("action") != PackageAction.REMOVED.value:
@@ -786,6 +807,13 @@ class ProcurementImportPreparer:
                     "localVersion": int(latest_plan.get("localVersion") or 0),
                     "rowVersion": int(latest_plan.get("rowVersion") or 0),
                 }
+        public_packages = deepcopy(packages)
+        public_decision_packages = deepcopy(decision_packages)
+        for collection in (public_packages, public_decision_packages):
+            for row in collection:
+                for candidate in row.get("matchCandidates") or []:
+                    candidate.pop("localVersion", None)
+                    candidate.pop("rowVersion", None)
         bundle = {
             "schemaVersion": PREVIEW_SCHEMA_VERSION,
             "provider": self.source.name,
@@ -812,7 +840,8 @@ class ProcurementImportPreparer:
             "revisions": revisions,
             "linkedNoticeRevisions": linked_notice_revisions,
             "reconciliationByRevision": reconciliation_by_revision,
-            "packages": packages,
+            "packages": public_packages,
+            "decisionPackages": public_decision_packages,
             "blockingIssues": blocking_issues,
             "warnings": warnings,
         }

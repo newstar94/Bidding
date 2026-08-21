@@ -26,9 +26,12 @@ from backend.procurement_import.command import (
 )
 from backend.procurement_import.domain import (
     ImportConflict,
-    SOURCE_OWNED_PACKAGE_FIELDS,
     canonical_digest,
-    required_package_issues,
+)
+from backend.procurement_import.decisions import (
+    ProcurementDecisionError,
+    resolve_plan_decision_authority,
+    resolve_revision_decisions,
 )
 from backend.procurement_import.repository import ProcurementImportRepository
 from backend.procurement_import.repository import ProcurementImportSessionRepository
@@ -79,6 +82,7 @@ _APPLY_FIELDS = {
     "previewId", "idempotencyKey", "expectedPlanRowVersion", "decisions",
     "workspaceLease",
 }
+_SESSION_DECISION_FIELDS = {"bundleDigest", "decisions", "workspaceLease"}
 _NOTICE_PREPARE_FIELDS = {
     "code", "revisionMode", "selectedRevision", "targetPackageRootId",
     "workspaceLease",
@@ -644,6 +648,82 @@ def _get_import_session_blocking(request, session_id, revision_number=None):
         connection.close()
 
 
+def _bind_import_session_decisions_blocking(request, session_id, payload):
+    session, organization_id, lease = _request_context(
+        request, payload.get("workspaceLease")
+    )
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        cursor = connection.cursor()
+        repository = ProcurementImportSessionRepository(cursor)
+        stored = repository.get_scoped(
+            session_id,
+            organization_id=organization_id,
+            user_id=session.user_id,
+            workspace_lease=lease,
+        )
+        if stored is None:
+            raise LookupError("PROCUREMENT_SESSION_EXPIRED")
+        if stored["kind"] != "PLAN" or not has_module_permission(
+            cursor, session, session.user_id, organization_id, "kehoach", "edit"
+        ):
+            raise ProcurementRouteError(
+                "ORGANIZATION_ACCESS_DENIED",
+                "Không có quyền xác nhận phiên nhập trong workspace hiện tại.",
+                403,
+            )
+
+        def validate_investor(investor_id):
+            _validate_investor(cursor, organization_id, investor_id)
+
+        def validate_local_target(target):
+            root_id = str(target.get("localRootId") or "")
+            snapshot_id = str(target.get("snapshotId") or "")
+            row_version = target.get("rowVersion")
+            local_version = target.get("localVersion")
+            current = cursor.execute(
+                """SELECT id, COALESCE(NULLIF(id_goc, ''), id),
+                          phien_ban, row_version
+                     FROM goi_thau
+                    WHERE organization_id = ? AND archived_at IS NULL
+                      AND is_latest = 1
+                      AND COALESCE(NULLIF(id_goc, ''), id) = ?
+                    ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
+                (organization_id, root_id),
+            ).fetchone()
+            if current is None or (
+                snapshot_id and str(current[0]) != snapshot_id
+            ) or (
+                row_version is not None and int(current[3]) != int(row_version)
+            ) or (
+                local_version is not None and int(current[2] or 0) != int(local_version)
+            ):
+                raise ProcurementRouteError(
+                    "PROCUREMENT_PREVIEW_STALE",
+                    "Gói thầu nội bộ đã thay đổi sau khi tạo preview.",
+                    409,
+                )
+
+        result = ProcurementImportSessionService(repository).bind_plan_decisions(
+            session_id,
+            organization_id=organization_id,
+            user_id=session.user_id,
+            workspace_lease=lease,
+            bundle_digest=payload.get("bundleDigest"),
+            decisions=payload.get("decisions") or {},
+            validate_investor=validate_investor,
+            validate_local_target=validate_local_target,
+        )
+        connection.commit()
+        return result
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def _cancel_import_session_blocking(request, session_id):
     session, organization_id, lease = _request_context(
         request, request.query_params.get("workspaceLease")
@@ -906,135 +986,16 @@ def _validate_investor(cursor, organization_id, investor_id):
         )
 
 
-def _decision_rows(decisions, key):
-    rows = decisions.get(key, [])
-    if not isinstance(rows, list) or len(rows) > 500 or not all(
-        isinstance(row, dict) for row in rows
-    ):
-        raise ProcurementRouteError(
-            "PROCUREMENT_DECISION_INVALID", "Quyết định preview không hợp lệ.", 400
-        )
-    return rows
-
-
 def _resolve_revision_decisions(revision, preview_rows, decisions):
-    observations = {
-        str(row.get("planDetailRevisionId") or ""): row
-        for row in revision.get("packages") or []
-    }
-    preview_by_id = {
-        str(row.get("planDetailRevisionId") or ""): row
-        for row in preview_rows
-        if row.get("planDetailRevisionId")
-    }
-    package_decisions = {}
-    for row in _decision_rows(decisions, "packageMatches"):
-        observation_id = str(row.get("packageObservationId") or "")
-        if observation_id not in observations:
-            continue
-        preview = preview_by_id.get(observation_id)
-        if not preview or preview.get("action") != "AMBIGUOUS":
-            raise ProcurementRouteError(
-                "PROCUREMENT_MATCH_DECISION_INVALID",
-                "Quyết định ghép gói không thuộc preview hiện tại.", 409,
-            )
-        selected_root = str(row.get("localRootId") or "").strip()
-        is_new = row.get("new") is True
-        candidate_roots = {
-            str(candidate.get("rootId") or "")
-            for candidate in preview.get("matchCandidates") or []
-        }
-        if is_new == bool(selected_root) or (
-            selected_root and selected_root not in candidate_roots
-        ):
-            raise ProcurementRouteError(
-                "PROCUREMENT_MATCH_DECISION_INVALID",
-                "Dòng gói được chọn không hợp lệ.", 409,
-            )
-        package_decisions[observation_id] = (
-            {"new": True} if is_new else {"localRootId": selected_root}
+    try:
+        resolved, package_decisions, _targets = resolve_revision_decisions(
+            revision, preview_rows, decisions,
         )
-    unresolved_matches = [
-        row for row in preview_rows
-        if row.get("action") == "AMBIGUOUS"
-        and str(row.get("planDetailRevisionId") or "") not in package_decisions
-    ]
-    if unresolved_matches:
+        return resolved, package_decisions
+    except ProcurementDecisionError as error:
         raise ProcurementRouteError(
-            "PROCUREMENT_MATCH_AMBIGUOUS",
-            "Phải xác nhận mọi gói có kết quả ghép mơ hồ.", 409,
-        )
-
-    allowed_fields = set(SOURCE_OWNED_PACKAGE_FIELDS)
-    overrides = {
-        observation_id: deepcopy(preview.get("effectiveFields") or {})
-        for observation_id, preview in preview_by_id.items()
-        if preview.get("effectiveFields")
-    }
-    for row in _decision_rows(decisions, "fieldValues"):
-        observation_id = str(row.get("packageObservationId") or "")
-        field = str(row.get("field") or "")
-        if observation_id not in observations:
-            continue
-        if field not in allowed_fields:
-            raise ProcurementRouteError(
-                "PROCUREMENT_DECISION_INVALID", "Field bổ sung không hợp lệ.", 400
-            )
-        overrides.setdefault(observation_id, {})[field] = deepcopy(row.get("value"))
-
-    conflict_resolutions = {}
-    for row in _decision_rows(decisions, "fieldConflicts"):
-        observation_id = str(row.get("packageObservationId") or "")
-        field = str(row.get("field") or "")
-        if observation_id not in observations:
-            continue
-        resolution = str(row.get("resolution") or "").upper()
-        preview = preview_by_id.get(observation_id) or {}
-        conflict = next((
-            item for item in preview.get("fieldConflicts") or []
-            if item.get("field") == field
-        ), None)
-        if conflict is None or resolution not in {"KEEP_LOCAL", "APPLY_SOURCE"}:
-            raise ProcurementRouteError(
-                "PROCUREMENT_DECISION_INVALID",
-                "Quyết định xung đột field không hợp lệ.", 400,
-            )
-        conflict_resolutions[(observation_id, field)] = resolution
-        overrides.setdefault(observation_id, {})[field] = deepcopy(
-            conflict.get("localValue")
-            if resolution == "KEEP_LOCAL"
-            else conflict.get("sourceValue")
-        )
-    unresolved_conflicts = [
-        (observation_id, conflict.get("field"))
-        for observation_id, preview in preview_by_id.items()
-        for conflict in preview.get("fieldConflicts") or []
-        if (observation_id, conflict.get("field")) not in conflict_resolutions
-    ]
-    if unresolved_conflicts:
-        raise ProcurementRouteError(
-            "PROCUREMENT_FIELD_CONFLICT",
-            "Phải xử lý mọi xung đột field trước khi áp dụng.", 409,
-        )
-
-    resolved = deepcopy(revision)
-    for observation in resolved.get("packages") or []:
-        observation_id = str(observation.get("planDetailRevisionId") or "")
-        observation["_canonicalSourceFields"] = {
-            key: deepcopy(value)
-            for key, value in observations.get(observation_id, {}).items()
-            if key in SOURCE_OWNED_PACKAGE_FIELDS
-        }
-        observation.update(overrides.get(observation_id, {}))
-        preview = preview_by_id.get(observation_id) or {}
-        if preview.get("action") in {"CHANGED", "UNCHANGED", "ALREADY_IMPORTED"}:
-            observation["_sourceAction"] = preview["action"]
-        if required_package_issues(observation):
-            raise ProcurementRouteError(
-                "PROCUREMENT_REQUIRED_FIELDS_MISSING",
-                "Gói thầu vẫn thiếu trường bắt buộc.", 422,
-            )
-    return resolved, package_decisions
+            error.code, error.message, error.status_code,
+        ) from error
 
 
 def _apply_one(
@@ -1288,6 +1249,31 @@ def _apply_blocking(request, payload):
         str(row.get("revisionId")): row.get("disposition")
         for row in bundle.get("revisionPreviews") or []
     }
+    active_revisions = [
+        revision for revision in bundle["revisions"]
+        if dispositions.get(str(revision.get("revisionId")))
+        not in {"PROVENANCE_ONLY", "ALREADY_IMPORTED"}
+    ]
+    if active_revisions:
+        active_bundle = {
+            **bundle,
+            "revisions": active_revisions,
+            "reconciliationByRevision": {
+                str(revision.get("revisionId")): reconciliation.get(
+                    str(revision.get("revisionId")), []
+                )
+                for revision in active_revisions
+            },
+        }
+        authority = resolve_plan_decision_authority(active_bundle, decisions)
+        resolved_by_id = {
+            str(revision.get("revisionId")): revision
+            for revision in authority["resolvedRevisions"]
+        }
+        package_decisions_by_id = authority["packageDecisionsByRevision"]
+    else:
+        resolved_by_id = {}
+        package_decisions_by_id = {}
     for revision in bundle["revisions"]:
         revision_id = str(revision.get("revisionId"))
         if dispositions.get(revision_id) in {
@@ -1295,9 +1281,8 @@ def _apply_blocking(request, payload):
         }:
             resolved, package_decisions = deepcopy(revision), {}
         else:
-            resolved, package_decisions = _resolve_revision_decisions(
-                revision, reconciliation.get(revision_id, []), decisions,
-            )
+            resolved = deepcopy(resolved_by_id[revision_id])
+            package_decisions = deepcopy(package_decisions_by_id[revision_id])
         resolved_revisions.append(resolved)
         package_decision_maps.append(package_decisions)
     all_history = bundle.get("revisionMode") == "ALL"
@@ -1672,6 +1657,10 @@ def _resume_blocking(request, operation_id):
 
 
 def _public_error(request, error):
+    if isinstance(error, ProcurementDecisionError):
+        return error_response(
+            request, error.code, error.message, status_code=error.status_code
+        )
     if isinstance(error, ProcurementRouteError):
         return error_response(
             request, error.code, error.message, status_code=error.status_code
@@ -1812,6 +1801,38 @@ async def get_plan_import_session(request):
         return response or log_and_error(
             request, error, "get_procurement_import_session",
             "PROCUREMENT_SESSION_FAILED", "Không thể đọc phiên nhập.", status_code=500,
+        )
+
+
+async def bind_plan_import_session_decisions(request):
+    payload, invalid = await read_json_object(request)
+    if invalid:
+        return invalid
+    if set(payload) - _SESSION_DECISION_FIELDS:
+        return error_response(
+            request,
+            "PROCUREMENT_DECISION_INVALID",
+            "Request quyết định chứa field không được hỗ trợ.",
+            status_code=400,
+        )
+    try:
+        result = await run_blocking_io(
+            _bind_import_session_decisions_blocking,
+            request,
+            request.path_params.get("session_id", ""),
+            payload,
+            timeout_seconds=8,
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request,
+            error,
+            "bind_procurement_import_session_decisions",
+            "PROCUREMENT_SESSION_FAILED",
+            "Không thể xác nhận quyết định nhập.",
+            status_code=500,
         )
 
 
@@ -1991,6 +2012,7 @@ def procurement_import_routes(Route):
     return [
         Route("/api/procurement/imports/plan/prepare", prepare_plan_import, methods=["POST"]),
         Route("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", get_plan_import_revision, methods=["GET"]),
+        Route("/api/procurement/imports/plan/sessions/{session_id}/decisions", bind_plan_import_session_decisions, methods=["POST"]),
         Route("/api/procurement/imports/plan/sessions/{session_id}", get_plan_import_session, methods=["GET"]),
         Route("/api/procurement/imports/plan/sessions/{session_id}/cancel", cancel_import_session, methods=["POST"]),
         Route("/api/procurement/imports/plan/apply", apply_plan_import, methods=["POST"]),

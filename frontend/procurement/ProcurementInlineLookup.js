@@ -193,7 +193,7 @@ export class ProcurementInlineLookup {
     const originStorage = this.controller?.model?.workspaceStorage;
     const identity = formIdentity(form);
     const importFlowIdentity = Object.freeze({});
-    let flowHandoffCompleted = false;
+    let flowHandoffAttempted = false;
     const isUiCapabilityCurrent = () => inlineImportCapabilityIsCurrent({
       controller: this.controller,
       generation,
@@ -211,7 +211,7 @@ export class ProcurementInlineLookup {
       const activeFlow = normalizedKind === "PACKAGE"
         ? this.controller?.procurementPackageImport
         : this.controller?.procurementPlanImport;
-      return flowHandoffCompleted
+      return flowHandoffAttempted
         && activeFlow?.importFlowIdentity === importFlowIdentity
         && generation === this.requestGeneration
         && String(codeInput?.value || "").trim().toUpperCase() === code
@@ -261,6 +261,37 @@ export class ProcurementInlineLookup {
             },
           });
           if (!isUiCapabilityCurrent()) return null;
+          if (typeof this.importClient.getImportSession === "function") {
+            const refreshedSession = await this.importClient.getImportSession(
+              importSession.sessionId,
+              {
+                workspaceLease: workspaceLease || null,
+                signal: this.lookupController.signal,
+                kind: "plan",
+              },
+            );
+            if (!isUiCapabilityCurrent()) return null;
+            Object.assign(importSession, refreshedSession);
+          }
+          if (typeof this.importClient.bindPlanSessionDecisions === "function") {
+            const selectedInvestorId = String(
+              this.document.getElementById("kh-chudautuid")?.value || "",
+            ).trim() || null;
+            const boundSession = await this.importClient.bindPlanSessionDecisions(
+              importSession.sessionId,
+              {
+                bundleDigest: importSession.bundleDigest || preview.bundleDigest,
+                decisions: {
+                  investorId: selectedInvestorId,
+                  packageMatches: [], fieldConflicts: [], fieldValues: [],
+                },
+                workspaceLease: workspaceLease || null,
+              },
+              { signal: this.lookupController.signal },
+            );
+            if (!isUiCapabilityCurrent()) return null;
+            Object.assign(importSession, boundSession);
+          }
         }
         const sequential = new SequentialRevisionController({
           revisions: importSession.revisions,
@@ -280,6 +311,7 @@ export class ProcurementInlineLookup {
         const start = normalizedKind === "PACKAGE"
           ? this.controller?.startProcurementPackageImport
           : this.controller?.startProcurementPlanImport;
+        flowHandoffAttempted = true;
         await start?.call(this.controller, {
           session: importSession,
           controller: sequential,
@@ -289,7 +321,6 @@ export class ProcurementInlineLookup {
           importWorkspaceStorage: originStorage,
           importFlowIdentity,
         });
-        flowHandoffCompleted = true;
         assertCompletionCapabilityCurrent();
         this.setStatus(
           status,

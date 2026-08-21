@@ -21,6 +21,7 @@ import {
 import {
   PlanImportWizard,
   PlanImportDraftStore,
+  buildSequentialDecisionPayload,
   canStartSequentialImport,
   createDebouncedPreparer,
   renderIssues,
@@ -414,6 +415,33 @@ test("session client loads one prepared revision without sending canonical paylo
   );
 });
 
+test("session decision binding sends only server-authorized bounded decisions", async () => {
+  const calls = [];
+  const client = new ProcurementImportClient({
+    post: async (url, body, options) => {
+      calls.push({ url, body, options });
+      return { sessionId: "session-1", decisionAuthority: { status: "BOUND" } };
+    },
+  });
+  await client.bindPlanSessionDecisions("session/1", {
+    bundleDigest: "sha256:" + "a".repeat(64),
+    decisions: { investorId: "investor-1" },
+    workspaceLease: "org-1@1",
+  });
+  assert.equal(
+    calls[0].url,
+    "/api/procurement/imports/plan/sessions/session%2F1/decisions",
+  );
+  assert.throws(
+    () => client.bindPlanSessionDecisions("session/1", {
+      bundleDigest: "sha256:" + "a".repeat(64),
+      decisions: {},
+      canonicalBundle: {},
+    }),
+    /digest.*decisions/i,
+  );
+});
+
 
 test("plan wizard starts editable workflow at first session revision and never bulk applies", async () => {
   const calls = [];
@@ -433,10 +461,14 @@ test("plan wizard starts editable workflow at first session revision and never b
   wizard.modal = {
     querySelector(selector) {
       if (selector === "[data-procurement-apply]") return { disabled: false };
+      if (selector === "[data-procurement-investor]") return { value: "investor-1" };
       return null;
     },
   };
   wizard.client = {
+    bindPlanSessionDecisions: async () => ({
+      sessionId: "session-1", decisionAuthority: { status: "BOUND" },
+    }),
     getPlanRevisionDraft: async (_sessionId, revisionNumber) => ({
       revisionNumber, planDraft: { maKeHoach: "PL2600000001" }, packageDrafts: [],
     }),
@@ -485,15 +517,20 @@ test("workspace change during plan wizard loadCurrent cannot start the stale flo
       revisions: [{ revisionNumber: "00" }],
     },
   };
+  wizard.decisions = { packageMatches: {}, fieldConflicts: {}, fieldValues: {} };
   wizard.requestGeneration = 4;
   wizard.workspaceLease = model.getWorkspaceToken();
   wizard.modal = {
     querySelector(selector) {
       if (selector === "[data-procurement-apply]") return { disabled: false };
+      if (selector === "[data-procurement-investor]") return { value: "investor-a" };
       return null;
     },
   };
   wizard.client = {
+    bindPlanSessionDecisions: async () => ({
+      sessionId: "session-a", decisionAuthority: { status: "BOUND" },
+    }),
     getPlanRevisionDraft: async () => draftResponse.promise,
   };
   wizard.controller = {
@@ -1205,6 +1242,114 @@ test("sequential plan import waits until linked-notice enrichment is complete", 
   assert.equal(canStartSequentialImport({
     ...preview, enrichmentStatus: "COMPLETED",
   }), true);
+});
+
+test("enrichment refreshes the session digest before decision binding", async () => {
+  const code = { value: "PL2600000001" };
+  const modal = {
+    querySelector(selector) {
+      if (selector === "[data-procurement-code]") return code;
+      if (selector === "[data-procurement-investor]") return { value: "investor-1" };
+      if (selector === "[data-procurement-apply]") return { disabled: true };
+      return null;
+    },
+  };
+  const wizard = Object.create(PlanImportWizard.prototype);
+  const session = { sessionId: "session-1", bundleDigest: "sha256:old" };
+  Object.assign(wizard, {
+    modal,
+    preview: {
+      importSession: session,
+      bundleDigest: "sha256:old",
+      enrichmentStatus: "PENDING",
+    },
+    decisions: { packageMatches: {}, fieldConflicts: {}, fieldValues: {} },
+    requestGeneration: 1,
+    workspaceLease: "org-1",
+    controller: { model: {
+      getWorkspaceToken: () => "org-1",
+      workspaceStorage: {},
+    } },
+    client: {
+      async getOperation() { return { status: "COMPLETED" }; },
+      async getImportSession() {
+        return {
+          ...session, bundleDigest: "sha256:new", status: "READY",
+          revisions: [{ revisionNumber: "00" }],
+        };
+      },
+    },
+    enrichmentController: null,
+    setStatus() {},
+    refreshApplyGate() {},
+  });
+  await wizard.trackEnrichment("operation-1");
+  assert.equal(wizard.preview.bundleDigest, "sha256:new");
+  assert.equal(wizard.preview.importSession.bundleDigest, "sha256:new");
+});
+
+test("sequential_plan_ambiguous_selection_enables_start", () => {
+  const preview = {
+    enrichmentStatus: "COMPLETED",
+    importSession: { sessionId: "session-1", revisions: [{ revisionNumber: "00" }] },
+    decisionPackages: [{
+      sourceRevisionId: "rev-00", sourceRevisionNumber: "00",
+      planDetailRevisionId: "detail-a", action: "AMBIGUOUS",
+      matchCandidates: [{ rootId: "root-a" }, { rootId: "root-b" }],
+    }],
+    blockingIssues: [],
+  };
+  assert.equal(canStartSequentialImport(preview, {
+    investorId: "investor-1",
+    decisions: { packageMatches: {}, fieldConflicts: {}, fieldValues: {} },
+  }), false);
+  assert.equal(canStartSequentialImport(preview, {
+    investorId: "investor-1",
+    decisions: {
+      packageMatches: { "detail-a": { localRootId: "root-b" } },
+      fieldConflicts: {}, fieldValues: {},
+    },
+  }), true);
+});
+
+test("all_mode_earlier_revision_ambiguity_cannot_be_bypassed_by_clean_latest_revision", () => {
+  const preview = {
+    enrichmentStatus: "COMPLETED",
+    importSession: {
+      sessionId: "session-all",
+      revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
+    },
+    packages: [{
+      sourceRevisionId: "rev-01", sourceRevisionNumber: "01",
+      planDetailRevisionId: "detail-clean", action: "UNCHANGED",
+    }],
+    decisionPackages: [{
+      sourceRevisionId: "rev-00", sourceRevisionNumber: "00",
+      planDetailRevisionId: "detail-ambiguous", action: "AMBIGUOUS",
+    }],
+    blockingIssues: [],
+  };
+  assert.equal(canStartSequentialImport(preview, {
+    investorId: "investor-1",
+    decisions: { packageMatches: {}, fieldConflicts: {}, fieldValues: {} },
+  }), false);
+});
+
+test("sequential decision payload binds every UI control to bounded rows", () => {
+  assert.deepEqual(buildSequentialDecisionPayload({
+    packageMatches: { "detail-a": { localRootId: "root-b" } },
+    fieldConflicts: { "detail-a:priceVnd": "KEEP_LOCAL" },
+    fieldValues: { "detail-a:capitalDetail": "Ngân sách" },
+  }, "investor-2"), {
+    investorId: "investor-2",
+    packageMatches: [{ packageObservationId: "detail-a", localRootId: "root-b" }],
+    fieldConflicts: [{
+      packageObservationId: "detail-a", field: "priceVnd", resolution: "KEEP_LOCAL",
+    }],
+    fieldValues: [{
+      packageObservationId: "detail-a", field: "capitalDetail", value: "Ngân sách",
+    }],
+  });
 });
 
 

@@ -9,6 +9,11 @@ import time
 
 from backend.procurement_import.domain import canonical_digest, revision_sort_key
 from backend.procurement_import.domain import derive_import_lifecycle_status
+from backend.procurement_import.decisions import (
+    ProcurementDecisionError,
+    resolve_plan_decision_authority,
+    resolve_revision_decisions,
+)
 from backend.procurement_import.draft_mapping import (
     map_package_canonical_to_draft,
     map_plan_canonical_to_draft,
@@ -100,6 +105,9 @@ class ProcurementImportSessionService:
             (row.get("canonicalBundle") or {}).get("enrichmentStatus")
             or "COMPLETED"
         ).upper()
+        decision_authority = deepcopy(
+            (row.get("canonicalBundle") or {}).get("decisionAuthority") or {}
+        )
         return {
             "sessionId": row["id"],
             "kind": row["kind"],
@@ -111,6 +119,11 @@ class ProcurementImportSessionService:
             "currentIndex": int(row.get("currentIndex") or 0),
             "expiresAt": row["expiresAt"].isoformat(),
             "revisions": deepcopy(row["revisions"]),
+            "decisionAuthority": {
+                key: decision_authority.get(key)
+                for key in ("status", "decisionsDigest", "investorId")
+                if decision_authority.get(key) is not None
+            },
         }
 
     def _get(self, session_id, *, organization_id, user_id, workspace_lease, now=None):
@@ -126,6 +139,95 @@ class ProcurementImportSessionService:
         if (now or datetime.now(timezone.utc)) >= expires_at:
             raise LookupError("PROCUREMENT_SESSION_EXPIRED")
         return row
+
+    def bind_plan_decisions(
+        self,
+        session_id,
+        *,
+        organization_id,
+        user_id,
+        workspace_lease,
+        bundle_digest,
+        decisions,
+        validate_investor=None,
+        validate_local_target=None,
+        now=None,
+    ):
+        row = self._get(
+            session_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            workspace_lease=workspace_lease,
+            now=now,
+        )
+        if row["kind"] != "PLAN":
+            raise LookupError("PROCUREMENT_REVISION_INVALID")
+        if str(bundle_digest or "") != str(row.get("bundleDigest") or ""):
+            raise ProcurementDecisionError(
+                "PROCUREMENT_PREVIEW_STALE",
+                "Preview không còn khớp với phiên nhập.",
+                409,
+            )
+        enrichment_status = str(
+            (row.get("canonicalBundle") or {}).get("enrichmentStatus")
+            or "COMPLETED"
+        ).upper()
+        if enrichment_status != "COMPLETED":
+            raise LookupError(
+                "PROCUREMENT_ENRICHMENT_PENDING"
+                if enrichment_status in {"PENDING", "RUNNING"}
+                else "PROCUREMENT_ENRICHMENT_INCOMPLETE"
+            )
+        investor_id = str((decisions or {}).get("investorId") or "").strip()
+        if investor_id and validate_investor is not None:
+            validate_investor(investor_id)
+        selected_revision_ids = [
+            str(item.get("revisionId") or "") for item in row["revisions"]
+        ]
+        authority = resolve_plan_decision_authority(
+            row["canonicalBundle"],
+            decisions or {},
+            selected_revision_ids,
+        )
+        if validate_local_target is not None:
+            for by_observation in authority["localTargetsByRevision"].values():
+                for target in by_observation.values():
+                    validate_local_target(target)
+        binder = getattr(self.repository, "bind_decision_authority", None)
+        if binder is None:
+            raise RuntimeError("PROCUREMENT_SESSION_DECISION_STORAGE_UNAVAILABLE")
+        stored = binder(
+            session_id,
+            organization_id=str(organization_id),
+            user_id=str(user_id),
+            workspace_lease=str(workspace_lease),
+            bundle_digest=str(bundle_digest),
+            authority=authority,
+        )
+        return self._public_manifest(stored)
+
+    @staticmethod
+    def _resolved_revision(row, revision):
+        bundle = row.get("canonicalBundle") or {}
+        authority = bundle.get("decisionAuthority") or {}
+        revision_id = str(revision.get("revisionId") or "")
+        if authority.get("status") == "BOUND":
+            resolved = next((
+                item for item in authority.get("resolvedRevisions") or []
+                if str(item.get("revisionId") or "") == revision_id
+            ), None)
+            if resolved is None:
+                raise LookupError("PROCUREMENT_REVISION_INVALID")
+            return deepcopy(resolved), authority
+        resolved, _explicit, local_targets = resolve_revision_decisions(
+            revision,
+            (bundle.get("reconciliationByRevision") or {}).get(revision_id, []),
+            {},
+        )
+        return resolved, {
+            "status": "IMPLICIT",
+            "localTargetsByRevision": {revision_id: local_targets},
+        }
 
     def get_revision_draft(
         self,
@@ -161,9 +263,13 @@ class ProcurementImportSessionService:
         if revision is None:
             raise LookupError("PROCUREMENT_REVISION_INVALID")
         if row["kind"] == "PLAN":
+            revision, decision_authority = self._resolved_revision(row, revision)
             plan_draft = map_plan_canonical_to_draft(
                 row["provider"], row["familyNo"], revision
             )
+            investor_id = str(decision_authority.get("investorId") or "").strip()
+            if investor_id:
+                plan_draft["chuDauTuId"] = investor_id
             package_drafts = [
                 map_package_canonical_to_draft(
                     row["provider"], row["familyNo"], revision, package
@@ -211,6 +317,7 @@ class ProcurementImportSessionService:
                         "revisions": history_drafts,
                     })
         else:
+            decision_authority = {}
             plan_draft = None
             package_drafts = [map_package_canonical_to_draft(
                 row["provider"], row["familyNo"], revision, revision
@@ -237,12 +344,19 @@ class ProcurementImportSessionService:
             if str(item.get("symbol") or "").strip()
         }
 
+        selected_local_targets = (
+            decision_authority.get("localTargetsByRevision") or {}
+        ).get(str(revision.get("revisionId") or ""), {})
+
         def attach_local_root(package_draft):
             source = package_draft.get("sourceRevision") or {}
+            observation_id = str(source.get("packageObservationId") or "")
+            selected = selected_local_targets.get(observation_id) or {}
             stable_id = str(source.get("stablePackageId") or "").strip()
             symbol = str(package_draft.get("soHieuGoiThau") or "").strip().casefold()
             local_root_id = (
-                lineage_by_stable.get(stable_id)
+                selected.get("localRootId")
+                or lineage_by_stable.get(stable_id)
                 or lineage_by_symbol.get(symbol)
             )
             if local_root_id:
@@ -289,6 +403,11 @@ class ProcurementImportSessionService:
             "packageDrafts": package_drafts,
             "packageRevisionHistories": package_revision_histories,
             "investorResolution": deepcopy(row.get("investorResolution") or {}),
+            "decisionAuthority": {
+                key: decision_authority.get(key)
+                for key in ("status", "decisionsDigest", "investorId")
+                if decision_authority.get(key) is not None
+            },
             "warnings": deepcopy(row["canonicalBundle"].get("warnings") or []),
         }
         record_database_phase(

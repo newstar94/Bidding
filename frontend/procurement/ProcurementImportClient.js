@@ -67,6 +67,19 @@ export class ProcurementImportClient {
     );
   }
 
+  bindPlanSessionDecisions(sessionId, request, { signal } = {}) {
+    const allowed = new Set(["bundleDigest", "decisions", "workspaceLease"]);
+    const untrustedFields = Object.keys(request || {}).filter((key) => !allowed.has(key));
+    if (untrustedFields.length) {
+      throw new TypeError("Decision binding chỉ nhận digest, decisions và workspace lease.");
+    }
+    return this.post(
+      `/api/procurement/imports/plan/sessions/${encodeURIComponent(sessionId)}/decisions`,
+      request,
+      { signal, retries: 1 },
+    );
+  }
+
   getImportSession(sessionId, { workspaceLease, signal, kind = "plan" } = {}) {
     const query = workspaceLease
       ? `?workspaceLease=${encodeURIComponent(workspaceLease)}`
