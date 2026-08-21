@@ -128,7 +128,9 @@ export class NoticeImportWizard {
   }
 
   async prepare() {
-    const code = this.modal.querySelector("[data-procurement-notice-code]").value.trim();
+    const modal = this.modal;
+    const codeControl = modal.querySelector("[data-procurement-notice-code]");
+    const code = codeControl.value.trim();
     if (!/^IB\d{10}(?:-\d{2})?$/i.test(code)) {
       this.setStatus("Mã thông báo phải có dạng IB + 10 chữ số, có thể kèm -00, -01…", true);
       return;
@@ -136,6 +138,19 @@ export class NoticeImportWizard {
     const generation = ++this.requestGeneration;
     const requestWorkspaceLease = this.workspaceLease;
     const requestTargetRoot = this.targetPackageRootId;
+    const originLease = captureWorkspaceLease(this.controller?.model);
+    const originStorage = this.controller?.model?.workspaceStorage;
+    const isPrepareCapabilityCurrent = () => (
+      generation === this.requestGeneration
+      && this.modal === modal
+      && modal.querySelector("[data-procurement-notice-code]") === codeControl
+      && codeControl.value.trim() === code
+      && this.workspaceLease === requestWorkspaceLease
+      && this.targetPackageRootId === requestTargetRoot
+      && requestWorkspaceLease === originLease.token
+      && isWorkspaceLeaseCurrent(this.controller?.model, originLease)
+      && this.controller?.model?.workspaceStorage === originStorage
+    );
     this.prepareController?.abort();
     this.prepareController = new AbortController();
     const mode = this.modal.querySelector("[data-procurement-notice-mode]").value;
@@ -151,17 +166,7 @@ export class NoticeImportWizard {
         targetPackageRootId: requestTargetRoot,
         workspaceLease: requestWorkspaceLease || null,
       }, { signal: this.prepareController.signal });
-      if (generation !== this.requestGeneration) return;
-      if (code !== this.modal.querySelector("[data-procurement-notice-code]").value.trim()) return;
-      if (
-        currentWorkspaceToken(this.controller?.model) !== requestWorkspaceLease
-        || this.targetPackageRootId !== requestTargetRoot
-      ) {
-        this.preview = null;
-        this.setStatus("Workspace hoặc gói đích đã thay đổi. Hãy chuẩn bị lại.", true);
-        this.refreshApplyGate();
-        return;
-      }
+      if (!isPrepareCapabilityCurrent()) return;
       this.preview = preview;
       renderPreview(this.modal, preview);
       this.refreshApplyGate();
@@ -172,6 +177,7 @@ export class NoticeImportWizard {
         !canApplyNoticePreview(preview),
       );
     } catch (error) {
+      if (!isPrepareCapabilityCurrent()) return;
       if (error?.name === "AbortError") return;
       this.preview = null;
       this.refreshApplyGate();
@@ -187,16 +193,15 @@ export class NoticeImportWizard {
     const originStorage = this.controller?.model?.workspaceStorage;
     const targetRootId = String(preview.notice?.targetPackageRootId
       || preview.notice?.targetPackage?.rootId || this.targetPackageRootId || "");
-    const assertApplyCapabilityCurrent = () => {
-      if (
+    const isApplyCapabilityCurrent = () => !(
         generation !== this.requestGeneration
         || this.preview !== preview
         || this.targetPackageRootId !== targetRootId
         || !isWorkspaceLeaseCurrent(this.controller?.model, originLease)
         || this.controller?.model?.workspaceStorage !== originStorage
-      ) {
-        throw workspaceChangedError();
-      }
+    );
+    const assertApplyCapabilityCurrent = () => {
+      if (!isApplyCapabilityCurrent()) throw workspaceChangedError();
     };
     this.applyController?.abort();
     this.applyController = new AbortController();
@@ -220,6 +225,7 @@ export class NoticeImportWizard {
       this.controller?.view?.closeModal?.("modal-procurement-notice-import");
       this.controller?.view?.closeModal?.("modal-goithau");
     } catch (error) {
+      if (!isApplyCapabilityCurrent()) return;
       if (error?.name === "AbortError") return;
       if (error?.code === "WORKSPACE_CHANGED") return;
       this.setStatus(error?.message || "Không thể áp dụng thông báo.", true);

@@ -364,7 +364,9 @@ export class PlanImportWizard {
   }
 
   async prepare() {
-    const code = this.modal.querySelector("[data-procurement-code]").value.trim();
+    const modal = this.modal;
+    const codeControl = modal.querySelector("[data-procurement-code]");
+    const code = codeControl.value.trim();
     if (!/^PL\d{10}(?:-\d{2})?$/i.test(code)) {
       this.setStatus("Mã KHLCNT phải có dạng PL + 10 chữ số, có thể kèm -00, -01…", true);
       return;
@@ -375,6 +377,17 @@ export class PlanImportWizard {
     const mode = this.modal.querySelector("[data-procurement-mode]").value;
     const selectedRevision = this.modal.querySelector("[data-procurement-revision]").value || null;
     const requestWorkspaceLease = this.workspaceLease;
+    const originLease = captureWorkspaceLease(this.controller?.model);
+    const originStorage = this.controller?.model?.workspaceStorage;
+    const isPrepareCapabilityCurrent = () => (
+      generation === this.requestGeneration
+      && this.modal === modal
+      && modal.querySelector("[data-procurement-code]") === codeControl
+      && codeControl.value.trim() === code
+      && requestWorkspaceLease === originLease.token
+      && isWorkspaceLeaseCurrent(this.controller?.model, originLease)
+      && this.controller?.model?.workspaceStorage === originStorage
+    );
     this.setStatus("Đang chuẩn bị preview từ nguồn…");
     try {
       const preview = await this.client.preparePlan({
@@ -384,15 +397,7 @@ export class PlanImportWizard {
         includeLinkedNotices: true,
         workspaceLease: this.workspaceLease || null,
       }, { signal: this.prepareController.signal });
-      if (generation !== this.requestGeneration) return;
-      if (code !== this.modal.querySelector("[data-procurement-code]").value.trim()) return;
-      const currentToken = currentWorkspaceToken(this.controller?.model);
-      if (currentToken !== requestWorkspaceLease) {
-        this.preview = null;
-        this.setStatus("Workspace đã thay đổi. Hãy chuẩn bị preview mới.", true);
-        this.refreshApplyGate();
-        return;
-      }
+      if (!isPrepareCapabilityCurrent()) return;
       this.preview = preview;
       const draft = this.draftStore.load();
       this.decisions = (
@@ -422,6 +427,7 @@ export class PlanImportWizard {
         this.trackEnrichment(preview.enrichmentOperationId);
       }
     } catch (error) {
+      if (!isPrepareCapabilityCurrent()) return;
       if (error?.name === "AbortError") return;
       this.setStatus(error?.message || "Không thể chuẩn bị preview.", true);
     }
@@ -431,12 +437,27 @@ export class PlanImportWizard {
     this.enrichmentController?.abort();
     this.enrichmentController = new AbortController();
     const generation = this.requestGeneration;
+    const preview = this.preview;
+    const modal = this.modal;
+    const codeControl = modal.querySelector("[data-procurement-code]");
+    const code = codeControl?.value?.trim() || "";
+    const originLease = captureWorkspaceLease(this.controller?.model);
+    const originStorage = this.controller?.model?.workspaceStorage;
+    const isEnrichmentCapabilityCurrent = () => (
+      generation === this.requestGeneration
+      && this.preview === preview
+      && this.modal === modal
+      && modal.querySelector("[data-procurement-code]") === codeControl
+      && String(codeControl?.value || "").trim() === code
+      && isWorkspaceLeaseCurrent(this.controller?.model, originLease)
+      && this.controller?.model?.workspaceStorage === originStorage
+    );
     try {
       let operation = await this.client.getOperation(operationId, {
         signal: this.enrichmentController.signal,
       });
       while (!TERMINAL_STATUSES.has(operation.status)) {
-        if (generation !== this.requestGeneration) return;
+        if (!isEnrichmentCapabilityCurrent()) return;
         this.setStatus(
           `Preview kế hoạch đã sẵn sàng; đang bổ sung dữ liệu TBMT ${operation.nextRevisionIndex || 0}/${operation.totalRevisions || 0}…`,
         );
@@ -445,7 +466,7 @@ export class PlanImportWizard {
           signal: this.enrichmentController.signal,
         });
       }
-      if (generation !== this.requestGeneration) return;
+      if (!isEnrichmentCapabilityCurrent()) return;
       if (operation.status === "COMPLETED") {
         this.preview = { ...this.preview, enrichmentStatus: "COMPLETED" };
         this.refreshApplyGate();
@@ -456,7 +477,7 @@ export class PlanImportWizard {
         this.setStatus("Preview kế hoạch vẫn sẵn sàng; một phần dữ liệu TBMT chưa lấy được.", true);
       }
     } catch (error) {
-      if (error?.name !== "AbortError" && generation === this.requestGeneration) {
+      if (error?.name !== "AbortError" && isEnrichmentCapabilityCurrent()) {
         this.setStatus("Preview kế hoạch vẫn sẵn sàng; enrichment nền tạm thời chưa hoàn tất.", true);
       }
     }
@@ -474,17 +495,16 @@ export class PlanImportWizard {
     const originLease = captureWorkspaceLease(this.controller?.model);
     const originStorage = this.controller?.model?.workspaceStorage;
     const flowIdentity = Object.freeze({});
-    const assertApplyCapabilityCurrent = () => {
-      if (
+    const isApplyCapabilityCurrent = () => !(
         generation !== this.requestGeneration
         || this.preview !== preview
         || this.preview?.importSession !== importSession
         || String(importSession.sessionId) !== String(preview?.importSession?.sessionId || "")
         || !isWorkspaceLeaseCurrent(this.controller?.model, originLease)
         || this.controller?.model?.workspaceStorage !== originStorage
-      ) {
-        throw workspaceChangedError();
-      }
+    );
+    const assertApplyCapabilityCurrent = () => {
+      if (!isApplyCapabilityCurrent()) throw workspaceChangedError();
     };
     this.applyController?.abort();
     this.enrichmentController?.abort();
@@ -520,21 +540,11 @@ export class PlanImportWizard {
       this.draftStore.clear();
       this.controller?.view?.closeModal?.("modal-procurement-import");
     } catch (error) {
+      if (!isApplyCapabilityCurrent()) return;
       if (error?.name === "AbortError") return;
       this.setStatus(error?.message || "Không thể áp dụng preview.", true);
       button.disabled = false;
     }
-  }
-
-  async monitor(operationId) {
-    let operation = await this.client.getOperation(operationId, { signal: this.applyController.signal });
-    while (!TERMINAL_STATUSES.has(operation.status)) {
-      this.setStatus(`Đang nhập ${operation.nextRevisionIndex}/${operation.totalRevisions} phiên bản…`);
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 400));
-      operation = await this.client.getOperation(operationId, { signal: this.applyController.signal });
-    }
-    if (operation.status === "FAILED") throw new Error("Tiến trình nhập toàn bộ lịch sử thất bại.");
-    return operation;
   }
 
   cleanup() {

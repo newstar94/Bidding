@@ -12,6 +12,7 @@ import {
   canApplyOpeningPreview,
   countOpeningContractors,
   financialOpeningTimestamp,
+  importFinancialOpeningFromMuasamcong,
   importOpeningFromMuasamcong,
   mapOpeningBidder,
   prepareOpeningForLifecycle,
@@ -649,6 +650,49 @@ test("notice apply from A cannot load, render, or close workspace B after commit
   assert.deepEqual(closed, []);
 });
 
+test("notice prepare cannot overwrite a newer same-workspace target status", async () => {
+  const response = deferred();
+  const code = { value: "IB2600000001" };
+  const status = { textContent: "", setAttribute() {} };
+  const applyButton = { disabled: false };
+  const modal = {
+    querySelector(selector) {
+      return {
+        "[data-procurement-notice-code]": code,
+        "[data-procurement-notice-mode]": { value: "LATEST" },
+        "[data-procurement-notice-revision]": { value: "" },
+        "[data-procurement-notice-status]": status,
+        "[data-procurement-notice-apply]": applyButton,
+      }[selector] || null;
+    },
+  };
+  const model = {
+    state: {}, db: {}, workspaceStorage: memoryStorage(), workspaceScope: { key: "org-a" },
+    getWorkspaceToken: () => "org-a@1",
+  };
+  const wizard = Object.create(NoticeImportWizard.prototype);
+  Object.assign(wizard, {
+    controller: { model }, modal,
+    client: { prepareNotice: () => response.promise },
+    preview: null, prepareController: null, requestGeneration: 0,
+    workspaceLease: "org-a@1", targetPackageRootId: "root-a",
+  });
+
+  const pending = wizard.prepare();
+  wizard.targetPackageRootId = "root-b";
+  status.textContent = "Target B đang chuẩn bị preview";
+  applyButton.disabled = false;
+  response.resolve({
+    previewId: "preview-a", blockingIssues: [], warnings: [],
+    notice: { targetPackage: { rootId: "root-a" }, expectedPackageRowVersion: 3 },
+  });
+  await pending;
+
+  assert.equal(wizard.preview, null);
+  assert.equal(status.textContent, "Target B đang chuẩn bị preview");
+  assert.equal(applyButton.disabled, false);
+});
+
 
 test("opening client keeps canonical opening payload server-side", async () => {
   const calls = [];
@@ -782,6 +826,139 @@ test("stale opening completion does not alert or reset workspace B UI", async ()
   }
 
   assert.deepEqual(alerts, []);
+  assert.equal(button.disabled, true);
+  assert.equal(button.dataset.loading, "true");
+});
+
+test("opening same-workspace target change cannot reset the new package button", async () => {
+  const previousDocument = globalThis.document;
+  const applyStarted = deferred();
+  const allowApply = deferred();
+  const select = { value: "package-a" };
+  const button = {
+    dataset: {}, innerHTML: "Lấy dữ liệu A", textContent: "Lấy dữ liệu A", disabled: false,
+    setAttribute(name, value) { this.dataset[name] = value; },
+    removeAttribute(name) { delete this.dataset[name]; },
+  };
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "mothau-goithau-select") return select;
+      if (id === "btn-mothau-import-msc") return button;
+      return null;
+    },
+  };
+  const model = {
+    state: { goithau: [
+      { id: "package-a", rootId: "root-a", maGoiThau: "IB2600000001", rowVersion: 3 },
+      { id: "package-b", rootId: "root-b", maGoiThau: "IB2600000002", rowVersion: 4 },
+    ] },
+    db: {}, workspaceStorage: memoryStorage(), workspaceScope: { key: "org-a" },
+    getWorkspaceToken: () => "org-a@1",
+  };
+  const alerts = [];
+  const controller = {
+    model,
+    view: { customAlert: (...args) => alerts.push(args) },
+    addMoThauRow() { assert.fail("stale opening must not populate package B"); },
+  };
+  const client = {
+    async prepareOpening() {
+      return { previewId: "preview-a", package: { id: "package-a", rowVersion: 3 } };
+    },
+    async applyOpening() {
+      applyStarted.resolve();
+      await allowApply.promise;
+      return { package: { id: "package-a", rowVersion: 3 }, opening: { bidders: [] } };
+    },
+  };
+
+  try {
+    const pending = importOpeningFromMuasamcong.call(controller, { client });
+    await applyStarted.promise;
+    select.value = "package-b";
+    button.innerHTML = "B đang lấy dữ liệu";
+    button.textContent = "B đang lấy dữ liệu";
+    button.disabled = true;
+    button.dataset.loading = "true";
+    allowApply.resolve();
+    await pending;
+  } finally {
+    allowApply.resolve();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
+  assert.deepEqual(alerts, []);
+  assert.equal(button.innerHTML, "B đang lấy dữ liệu");
+  assert.equal(button.disabled, true);
+  assert.equal(button.dataset.loading, "true");
+});
+
+test("financial opening completion cannot reset a button moved into a new wrapper", async () => {
+  const applyStarted = deferred();
+  const allowApply = deferred();
+  const button = {
+    dataset: {}, innerHTML: "Lấy tài chính A", textContent: "Lấy tài chính A", disabled: false,
+    setAttribute(name, value) { this.dataset[name] = value; },
+    removeAttribute(name) { delete this.dataset[name]; },
+  };
+  let currentWrapper;
+  let buttonInOldWrapper = true;
+  const ownerDocument = {
+    getElementById(id) {
+      return id === "detail-workflow-content-wrapper" ? currentWrapper : null;
+    },
+  };
+  const wrapperA = {
+    ownerDocument,
+    querySelector(selector) {
+      return selector === "#btn-opening-fin-import-msc" && buttonInOldWrapper ? button : null;
+    },
+    querySelectorAll() { return []; },
+  };
+  const wrapperB = {
+    ownerDocument,
+    querySelector(selector) {
+      return selector === "#btn-opening-fin-import-msc" ? button : null;
+    },
+    querySelectorAll() { return []; },
+  };
+  currentWrapper = wrapperA;
+  const pkg = { id: "package-a", rootId: "root-a", rowVersion: 3, maGoiThau: "IB2600000001" };
+  const model = {
+    state: { goithau: [pkg], thongtinmothau: [] },
+    db: {}, workspaceStorage: memoryStorage(), workspaceScope: { key: "org-a" },
+    getWorkspaceToken: () => "org-a@1",
+  };
+  const alerts = [];
+  const view = { model, customAlert: (...args) => alerts.push(args) };
+  const client = {
+    async prepareOpening() {
+      return { previewId: "preview-a", package: { id: pkg.id, rowVersion: 3 } };
+    },
+    async applyOpening() {
+      applyStarted.resolve();
+      await allowApply.promise;
+      return { package: { id: pkg.id, rowVersion: 3 }, opening: { bidders: [] } };
+    },
+  };
+
+  const pending = importFinancialOpeningFromMuasamcong({
+    view, pkg, contentWrapper: wrapperA, client,
+  });
+  await applyStarted.promise;
+  buttonInOldWrapper = false;
+  currentWrapper = wrapperB;
+  button.innerHTML = "B đang lấy tài chính";
+  button.textContent = "B đang lấy tài chính";
+  button.disabled = true;
+  button.dataset.loading = "true";
+  allowApply.resolve();
+  const result = await pending;
+
+  assert.equal(result, false);
+  assert.deepEqual(alerts, []);
+  assert.equal(button.innerHTML, "B đang lấy tài chính");
   assert.equal(button.disabled, true);
   assert.equal(button.dataset.loading, "true");
 });
@@ -1100,7 +1277,7 @@ test("preview renderer creates accessible controls for every server decision", (
 });
 
 
-test("wizard discards a response after workspace change and cleanup clears authority", async () => {
+test("plan prepare cannot overwrite newer wizard status after workspace change", async () => {
   let resolvePrepare;
   const code = { value: "PL2600000001" };
   const status = {
@@ -1136,10 +1313,11 @@ test("wizard discards a response after workspace change and cleanup clears autho
 
   const pending = wizard.prepare();
   workspaceToken = "org-2";
+  status.textContent = "Preview mới của workspace B đang chạy";
   resolvePrepare({ previewId: "stale-preview", blockingIssues: [], packages: [] });
   await pending;
   assert.equal(wizard.preview, null);
-  assert.match(status.textContent, /workspace/i);
+  assert.equal(status.textContent, "Preview mới của workspace B đang chạy");
 
   wizard.preview = { previewId: "authority-to-clear" };
   wizard.cleanup();
@@ -1150,6 +1328,45 @@ test("wizard discards a response after workspace change and cleanup clears autho
   assert.equal(wizard.applyController.aborted, true);
   assert.equal(wizard.debouncedPrepare.cancelled, true);
   assert.equal(applyButton.disabled, true);
+});
+
+test("old plan prepare error cannot overwrite a newer same-workspace request", async () => {
+  const requestA = deferred();
+  const requestB = deferred();
+  let calls = 0;
+  const code = { value: "PL2600000001" };
+  const status = { textContent: "", setAttribute() {} };
+  const modal = {
+    querySelector(selector) {
+      return {
+        "[data-procurement-code]": code,
+        "[data-procurement-mode]": { value: "LATEST" },
+        "[data-procurement-revision]": { value: "" },
+        "[data-procurement-status]": status,
+      }[selector] || null;
+    },
+  };
+  const model = {
+    state: {}, db: {}, workspaceStorage: memoryStorage(), workspaceScope: { key: "org-a" },
+    getWorkspaceToken: () => "org-a@1",
+  };
+  const wizard = Object.create(PlanImportWizard.prototype);
+  Object.assign(wizard, {
+    controller: { model }, modal,
+    client: { preparePlan: () => (++calls === 1 ? requestA.promise : requestB.promise) },
+    preview: null, prepareController: null, requestGeneration: 0,
+    workspaceLease: "org-a@1",
+  });
+
+  const pendingA = wizard.prepare();
+  const pendingB = wizard.prepare();
+  status.textContent = "A2 đang chuẩn bị preview";
+  requestA.reject(new Error("Lỗi cũ của A1"));
+  await pendingA;
+
+  assert.equal(status.textContent, "A2 đang chuẩn bị preview");
+  requestB.reject(Object.assign(new Error("cancelled"), { name: "AbortError" }));
+  await pendingB;
 });
 
 test("workspace switch during lazy plan import modal load cannot open the wizard in B", async () => {
@@ -2156,6 +2373,41 @@ test("workspace change during resume cannot clear or materialize into B", async 
   assert.equal(controller.procurementPlanImport, undefined);
   assert.deepEqual(workspaceB.state, { kehoach: [{ id: "plan-b" }] });
   assert.equal(new ProcurementImportResumeStore(storageB).load().sessionId, "session-b");
+});
+
+test("same-workspace replacement prevents an old resume from opening confirmation", async () => {
+  const storage = memoryStorage();
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-old", kind: "PLAN", familyNo: "PL2600000001",
+    revisionNumber: "00",
+  });
+  const response = deferred();
+  const model = {
+    state: { kehoach: [] }, db: {}, workspaceStorage: storage,
+    workspaceScope: { key: "org-a" }, getWorkspaceToken: () => "org-a@1",
+  };
+  let confirms = 0;
+  const controller = {
+    model,
+    view: { customConfirm: async () => { confirms += 1; return true; } },
+  };
+  const pending = resumeProcurementImportSession.call(controller, {
+    client: { getImportSession: () => response.promise },
+  });
+  const activeFlow = originatePlanImportFlow(controller, {
+    session: { sessionId: "session-new", kind: "PLAN" },
+    controller: {}, currentDraft: { revisionNumber: "00" },
+  });
+  controller.procurementPlanImport = activeFlow;
+  response.resolve({
+    sessionId: "session-old", kind: "PLAN", familyNo: "PL2600000001",
+    currentIndex: 0, status: "READY", revisions: [{ revisionNumber: "00" }],
+  });
+
+  await assert.rejects(pending, (error) => error?.code === "WORKSPACE_CHANGED");
+  assert.equal(confirms, 0);
+  assert.equal(controller.procurementPlanImport, activeFlow);
+  assert.equal(new ProcurementImportResumeStore(storage).load().sessionId, "session-old");
 });
 
 test("package 00 continues with 01 from prepared session without upstream prepare", async () => {

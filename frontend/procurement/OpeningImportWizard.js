@@ -7,6 +7,8 @@ import {
 } from "../app/workspaceLease.js";
 import { enhanceTableRowPagination } from "../shared/TablePagination.js";
 
+const openingButtonOperations = new WeakMap();
+
 
 function openingCaseType(pkg) {
   const hasLots = pkg.phanLo === "Có";
@@ -146,9 +148,17 @@ export async function prepareOpeningForLifecycle(
   const workspaceToken = lease.token;
   const storage = this.model?.workspaceStorage;
   const assertCurrentWorkspace = () => {
+    const packageRows = this.model?.state?.goithau;
+    const current = Array.isArray(packageRows)
+      ? packageRows.find((item) => String(item.id) === String(pkg.id))
+      : null;
     if (
       !isWorkspaceLeaseCurrent(this.model, lease)
       || this.model?.workspaceStorage !== storage
+      || (Array.isArray(packageRows) && (
+        String(current?.rootId || current?.id || "") !== String(pkg.rootId || pkg.id)
+        || Number(current?.rowVersion || 1) !== Number(pkg.rowVersion || 1)
+      ))
     ) throw workspaceChangedError();
   };
   const preview = await client.prepareOpening({
@@ -227,17 +237,23 @@ export async function importOpeningFromMuasamcong({
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = "Đang lấy dữ liệu…";
+  const operationIdentity = Object.freeze({});
+  openingButtonOperations.set(button, operationIdentity);
   const lease = captureWorkspaceLease(this.model);
   const workspaceToken = lease.token;
   const storage = this.model?.workspaceStorage;
-  const assertCurrentWorkspace = () => {
+  const isCurrentOperation = () => {
     const current = this.model?.state?.goithau?.find((item) => String(item.id) === String(pkg.id));
-    if (
-      !isWorkspaceLeaseCurrent(this.model, lease)
-      || this.model?.workspaceStorage !== storage
-      || String(select?.value || "") !== String(pkg.id)
-      || String(current?.rootId || current?.id || "") !== String(pkg.rootId || pkg.id)
-    ) throw workspaceChangedError();
+    return isWorkspaceLeaseCurrent(this.model, lease)
+      && this.model?.workspaceStorage === storage
+      && document.getElementById("mothau-goithau-select") === select
+      && document.getElementById("btn-mothau-import-msc") === button
+      && openingButtonOperations.get(button) === operationIdentity
+      && String(select?.value || "") === String(pkg.id)
+      && String(current?.rootId || current?.id || "") === String(pkg.rootId || pkg.id);
+  };
+  const assertCurrentWorkspace = () => {
+    if (!isCurrentOperation()) throw workspaceChangedError();
   };
   try {
     const preview = await client.prepareOpening({
@@ -268,6 +284,7 @@ export async function importOpeningFromMuasamcong({
       action: "OVERWRITE",
     });
   } catch (error) {
+    if (!isCurrentOperation()) return;
     if (error?.code === "WORKSPACE_CHANGED" || error?.name === "AbortError") return;
     const stale = String(error?.message || error).includes("PROCUREMENT_PREVIEW_STALE");
     await this.view.customAlert(
@@ -278,7 +295,8 @@ export async function importOpeningFromMuasamcong({
       "alert-triangle",
     );
   } finally {
-    if (isWorkspaceLeaseCurrent(this.model, lease) && this.model?.workspaceStorage === storage) {
+    if (isCurrentOperation()) {
+      openingButtonOperations.delete(button);
       delete button.dataset.loading;
       button.disabled = false;
       button.removeAttribute("aria-busy");
@@ -308,16 +326,24 @@ export async function importFinancialOpeningFromMuasamcong({
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = "Đang lấy dữ liệu…";
+  const operationIdentity = Object.freeze({});
+  openingButtonOperations.set(button, operationIdentity);
   const lease = captureWorkspaceLease(view.model);
   const workspaceToken = lease.token;
   const storage = view.model?.workspaceStorage;
-  const assertCurrentWorkspace = () => {
+  const isCurrentOperation = () => {
     const current = view.model?.state?.goithau?.find((item) => String(item.id) === String(pkg.id));
-    if (
-      !isWorkspaceLeaseCurrent(view.model, lease)
-      || view.model?.workspaceStorage !== storage
-      || String(current?.rootId || current?.id || "") !== String(pkg.rootId || pkg.id)
-    ) throw workspaceChangedError();
+    const ownerDocument = contentWrapper?.ownerDocument || globalThis.document;
+    const currentWrapper = ownerDocument?.getElementById?.("detail-workflow-content-wrapper");
+    return isWorkspaceLeaseCurrent(view.model, lease)
+      && view.model?.workspaceStorage === storage
+      && (!currentWrapper || currentWrapper === contentWrapper)
+      && contentWrapper?.querySelector?.("#btn-opening-fin-import-msc") === button
+      && openingButtonOperations.get(button) === operationIdentity
+      && String(current?.rootId || current?.id || "") === String(pkg.rootId || pkg.id);
+  };
+  const assertCurrentWorkspace = () => {
+    if (!isCurrentOperation()) throw workspaceChangedError();
   };
   try {
     const possibleNotice = /^IB\d{10}(?:-\d{2})?$/i.test(String(pkg.maGoiThau || ""))
@@ -380,6 +406,7 @@ export async function importFinancialOpeningFromMuasamcong({
     }
     return true;
   } catch (error) {
+    if (!isCurrentOperation()) return false;
     if (error?.code === "WORKSPACE_CHANGED" || error?.name === "AbortError") return false;
     const stale = String(error?.message || error).includes("PROCUREMENT_PREVIEW_STALE");
     await view.customAlert(
@@ -391,7 +418,8 @@ export async function importFinancialOpeningFromMuasamcong({
     );
     return false;
   } finally {
-    if (isWorkspaceLeaseCurrent(view.model, lease) && view.model?.workspaceStorage === storage) {
+    if (isCurrentOperation()) {
+      openingButtonOperations.delete(button);
       delete button.dataset.loading;
       button.disabled = false;
       button.removeAttribute("aria-busy");

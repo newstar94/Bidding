@@ -13,7 +13,6 @@ import {
 } from "./ProcurementLookupPreview.js";
 import {
   captureWorkspaceLease,
-  currentWorkspaceToken,
   isWorkspaceLeaseCurrent,
   workspaceChangedError,
 } from "../app/workspaceLease.js";
@@ -193,6 +192,20 @@ export class ProcurementInlineLookup {
     const workspaceLease = originLease.token;
     const originStorage = this.controller?.model?.workspaceStorage;
     const identity = formIdentity(form);
+    const isUiCapabilityCurrent = () => inlineImportCapabilityIsCurrent({
+      controller: this.controller,
+      generation,
+      currentGeneration: this.requestGeneration,
+      form,
+      identity,
+      codeInput,
+      code,
+      originLease,
+      originStorage,
+    });
+    const assertUiCapabilityCurrent = () => {
+      if (!isUiCapabilityCurrent()) throw workspaceChangedError();
+    };
     setButtonLoading(button, true);
     setLookupLoading(loadingScreen, form, true, code);
     this.setStatus(status, "Đang lấy dữ liệu từ Mua Sắm Công…", "loading");
@@ -209,20 +222,7 @@ export class ProcurementInlineLookup {
           }),
           workspaceLease: workspaceLease || null,
         }, { signal: this.lookupController.signal });
-        if (generation !== this.requestGeneration) return null;
-        const contextChanged = (
-          formIdentity(form) !== identity
-          || String(codeInput?.value || "").trim().toUpperCase() !== code
-          || currentWorkspaceToken(this.controller?.model) !== workspaceLease
-        );
-        if (contextChanged) {
-          this.setStatus(
-            status,
-            "Biểu mẫu hoặc workspace đã thay đổi. Hãy lấy dữ liệu lại.",
-            "error",
-          );
-          return null;
-        }
+        if (!isUiCapabilityCurrent()) return null;
         const importSession = preview?.importSession;
         if (!importSession?.sessionId || !(importSession.revisions || []).length) {
           throw new Error("Phiên nhập gói thầu chưa sẵn sàng.");
@@ -230,26 +230,16 @@ export class ProcurementInlineLookup {
         if (normalizedKind === "PLAN") {
           await waitForPlanEnrichment(this.importClient, preview, {
             signal: this.lookupController.signal,
-            onProgress: (operation) => this.setStatus(
-              status,
-              `Đang bổ sung dữ liệu TBMT ${operation?.nextRevisionIndex || 0}/${operation?.totalRevisions || 0}…`,
-              "loading",
-            ),
+            onProgress: (operation) => {
+              assertUiCapabilityCurrent();
+              this.setStatus(
+                status,
+                `Đang bổ sung dữ liệu TBMT ${operation?.nextRevisionIndex || 0}/${operation?.totalRevisions || 0}…`,
+                "loading",
+              );
+            },
           });
-          const changedWhileEnriching = (
-            generation !== this.requestGeneration
-            || formIdentity(form) !== identity
-            || String(codeInput?.value || "").trim().toUpperCase() !== code
-            || currentWorkspaceToken(this.controller?.model) !== workspaceLease
-          );
-          if (changedWhileEnriching) {
-            this.setStatus(
-              status,
-              "Biểu mẫu hoặc workspace đã thay đổi. Hãy lấy dữ liệu lại.",
-              "error",
-            );
-            return null;
-          }
+          if (!isUiCapabilityCurrent()) return null;
         }
         const sequential = new SequentialRevisionController({
           revisions: importSession.revisions,
@@ -265,19 +255,7 @@ export class ProcurementInlineLookup {
           saveRevision: async () => ({ ok: true }),
         });
         const currentDraft = await sequential.loadCurrent();
-        if (!inlineImportCapabilityIsCurrent({
-          controller: this.controller,
-          generation,
-          currentGeneration: this.requestGeneration,
-          form,
-          identity,
-          codeInput,
-          code,
-          originLease,
-          originStorage,
-        })) {
-          throw workspaceChangedError();
-        }
+        assertUiCapabilityCurrent();
         const start = normalizedKind === "PACKAGE"
           ? this.controller?.startProcurementPackageImport
           : this.controller?.startProcurementPlanImport;
@@ -290,6 +268,7 @@ export class ProcurementInlineLookup {
           importWorkspaceStorage: originStorage,
           importFlowIdentity: Object.freeze({}),
         });
+        assertUiCapabilityCurrent();
         this.setStatus(
           status,
           `Đã mở phiên bản ${currentDraft.revisionNumber}. Dữ liệu chưa được lưu.`,
@@ -306,20 +285,7 @@ export class ProcurementInlineLookup {
         },
         { signal: this.lookupController.signal },
       );
-      if (generation !== this.requestGeneration) return null;
-      const contextChanged = (
-        formIdentity(form) !== identity
-        || String(codeInput?.value || "").trim().toUpperCase() !== code
-        || currentWorkspaceToken(this.controller?.model) !== workspaceLease
-      );
-      if (contextChanged) {
-        this.setStatus(
-          status,
-          "Biểu mẫu hoặc workspace đã thay đổi. Hãy lấy dữ liệu lại.",
-          "error",
-        );
-        return null;
-      }
+      if (!isUiCapabilityCurrent()) return null;
       if (
         preview?.schemaVersion !== PREVIEW_SCHEMA
         || preview?.kind !== normalizedKind
@@ -367,6 +333,7 @@ export class ProcurementInlineLookup {
       );
       return { ...result, warnings: warningCount };
     } catch (error) {
+      if (!isUiCapabilityCurrent()) return null;
       if (error?.name === "AbortError") return null;
       this.setStatus(
         status,
@@ -375,7 +342,7 @@ export class ProcurementInlineLookup {
       );
       return null;
     } finally {
-      if (generation === this.requestGeneration) {
+      if (isUiCapabilityCurrent()) {
         setButtonLoading(button, false);
         setLookupLoading(loadingScreen, form, false);
       }

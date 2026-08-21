@@ -9,6 +9,7 @@ import {
 
 export const PLAN_VERSION_DRAFT_STORAGE_KEY = "plan_version_drafts_v1";
 export const PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT = 256;
+const firstSaveAuthorities = new WeakMap();
 export const PLAN_VERSION_DRAFT_TABLES = Object.freeze([
   "chudautu",
   "chuyengia",
@@ -144,7 +145,7 @@ export function createPlanVersionDraftSession(state, planId, now = new Date().to
   const rootId = rootOf(plan);
   const aggregate = capturePlanVersionDraftAggregate(state, rootId);
   aggregate.kehoach.forEach(strictVersionNumber);
-  return {
+  const session = {
     draftId: generateRecordId("plan-draft"),
     finalizeMutationId: generateRecordId("plan-finalize"),
     rootId,
@@ -157,6 +158,11 @@ export function createPlanVersionDraftSession(state, planId, now = new Date().to
     dirtyRelatedRecords: {},
     aggregate: clone(aggregate),
   };
+  // A revision-0 draft is valid only as the exact object issued by this
+  // factory. Structured/stale clones deliberately lose this non-copyable
+  // first-save authority, while durable revisions use normal CAS metadata.
+  firstSaveAuthorities.set(session, session.draftId);
+  return session;
 }
 
 export function refreshPlanVersionDraftSession(session, state, currentVersionId) {
@@ -285,6 +291,9 @@ export async function savePlanVersionDraftSession(model, session) {
     if (index < 0 && expectedRevision !== 0) {
       throw new Error("Stale plan draft revision cannot resurrect a removed session.");
     }
+    if (index < 0 && firstSaveAuthorities.get(session) !== draftId) {
+      throw new Error("Stale plan draft revision cannot resurrect a removed session.");
+    }
     const storedRevision = index >= 0
       ? normalizeRevision(current.sessions[index].revision)
       : 0;
@@ -297,6 +306,7 @@ export async function savePlanVersionDraftSession(model, session) {
     return current;
   });
   assertDraftStorageCapability(model, capability);
+  firstSaveAuthorities.delete(session);
   publishDurableSessions(model, envelope);
   session.revision = persistedSession.revision;
   return session;

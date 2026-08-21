@@ -794,6 +794,78 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
   assert.equal(trigger.disabled, false);
 });
 
+test("inline stale workspace completion cannot reset or overwrite the new UI", async () => {
+  let resolvePrepare;
+  let token = "org-a@1";
+  const identity = { value: "plan-a" };
+  const form = {
+    attributes: new Map(),
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    removeAttribute(name) { this.attributes.delete(name); },
+  };
+  const code = control("PL2600000001");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const loading = inlineLoading();
+  const model = {
+    state: {}, db: {}, workspaceStorage: {}, workspaceScope: { key: "org-a" },
+    getWorkspaceToken: () => token,
+  };
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "procurement-lookup-plan-enabled": button,
+    "procurement-lookup-plan-status": status,
+    "procurement-lookup-plan-loading": loading,
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller: { model, async startProcurementPlanImport() {} },
+    importClient: {
+      preparePlan: () => new Promise((resolve) => { resolvePrepare = resolve; }),
+    },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const pending = lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    triggerId: "procurement-lookup-plan-enabled",
+    statusId: "procurement-lookup-plan-status",
+  });
+  token = "org-b@1";
+  model.state = {};
+  model.db = {};
+  model.workspaceStorage = {};
+  model.workspaceScope = { key: "org-b" };
+  identity.value = "plan-b";
+  code.value = "PL2600000002";
+  button.dataset.defaultLabel = "B đang lấy dữ liệu";
+  button.textContent = "B đang lấy dữ liệu";
+  button.disabled = true;
+  loading.hidden = false;
+  loading.setAttribute("aria-busy", "true");
+  form.setAttribute("aria-busy", "true");
+  status.textContent = "Trạng thái mới của B";
+  status.dataset.state = "loading";
+  resolvePrepare({
+    importSession: {
+      sessionId: "session-a",
+      revisions: [{ revisionNumber: "00" }],
+    },
+  });
+  await pending;
+
+  assert.equal(status.textContent, "Trạng thái mới của B");
+  assert.equal(status.dataset.state, "loading");
+  assert.equal(button.textContent, "B đang lấy dữ liệu");
+  assert.equal(button.disabled, true);
+  assert.equal(loading.hidden, false);
+  assert.equal(loading.attributes.get("aria-busy"), "true");
+  assert.equal(form.attributes.get("aria-busy"), "true");
+});
+
 
 test("inline plan lookup prepares all revisions and opens editable revision 00 without another modal", async () => {
   const identity = { value: "plan-a" };
@@ -947,7 +1019,7 @@ test("inline plan lookup waits for enrichment before loading the revision draft"
 });
 
 
-test("inline lookup discards a response after the active form changes", async () => {
+test("inline lookup silently discards a response after the active form changes", async () => {
   let resolvePrepare;
   const status = inlineStatus();
   const code = control("PL2600000001");
@@ -979,6 +1051,11 @@ test("inline lookup discards a response after the active form changes", async ()
     statusId: "procurement-lookup-plan-status",
   });
   identity.value = "plan-b";
+  status.textContent = "A2 đang lấy dữ liệu";
+  status.dataset.state = "loading";
+  button.dataset.defaultLabel = "A2 đang lấy dữ liệu";
+  button.textContent = "A2 đang lấy dữ liệu";
+  button.disabled = true;
   resolvePrepare({
     importSession: {
       sessionId: "session-plan",
@@ -988,7 +1065,10 @@ test("inline lookup discards a response after the active form changes", async ()
   const result = await pending;
 
   assert.equal(result, null);
-  assert.match(status.textContent, /biểu mẫu.*thay đổi/i);
+  assert.equal(status.textContent, "A2 đang lấy dữ liệu");
+  assert.equal(status.dataset.state, "loading");
+  assert.equal(button.textContent, "A2 đang lấy dữ liệu");
+  assert.equal(button.disabled, true);
 });
 
 

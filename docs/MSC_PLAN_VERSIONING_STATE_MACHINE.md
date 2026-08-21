@@ -76,7 +76,11 @@ Rollback is a mutation: a checkpoint is restored only into the exact capability
 that created it. A stale completion returns `WORKSPACE_CHANGED` or
 `FLOW_CHANGED` and leaves the current workspace/flow untouched. Late employee
 or lookup callbacks must verify the edit flow and form identity before
-populating controls.
+populating controls. Status messages, alerts, apply gates, button labels/loading
+state, and modal open/close are side effects too: `catch` and `finally` may
+touch them only while the exact request generation, modal/form, target,
+workspace, storage, and control identity remain current. A replaced operation
+returns silently instead of writing a stale error into the newer UI.
 
 ## Resume and cancellation pointers
 
@@ -94,10 +98,20 @@ The local draft envelope is version 4 and contains `sessions` plus exact
 the oldest exact entries are removed deterministically; malformed timestamps
 sort first and are compacted without affecting any other draft ID. There are no
 hash buckets or retirement watermarks, so an unrelated fresh draft can never be
-rejected because another ID was removed. A removed durable draft can only be
-recreated with revision `0`; any stale snapshot with revision `>= 1` is rejected
-by the durable compare-and-swap path, even after its exact tombstone is
-compacted. Removing an ID that was never durable does not allocate a tombstone.
+rejected because another ID was removed.
+
+Revision `0` is authorized by a non-copyable first-save capability attached to
+the exact session object returned by `createPlanVersionDraftSession`. The first
+successful durable save consumes that capability. Structured clones, reloaded
+snapshots, caller-modified identities, and other stale revision-0 values do not
+carry it, so they cannot recreate a removed identity after its tombstone is
+compacted. A genuinely new unrelated draft is accepted because the factory
+issues a new exact object/identity capability; retirement metadata for another
+ID is never consulted. Durable revisions `>= 1` remain protected by the normal
+compare-and-swap revision check. The envelope migration from versions 2, 3, or
+4 discards legacy bucket watermarks, retains at most 256 exact tombstones, and
+does not grant first-save authority to deserialized revision-0 data. Removing
+an ID that was never durable does not allocate a tombstone.
 
 ## Historical and package invariants
 

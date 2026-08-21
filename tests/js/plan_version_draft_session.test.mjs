@@ -9,6 +9,7 @@ import {
   finalizePlanVersionDraft,
   hydratePlanVersionDraftSessions,
   markPlanVersionDraftRecordsDirty,
+  PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT,
   reapplyPlanVersionDraftSessions,
   refreshPlanVersionDraftSession,
   removePlanVersionDraftSession,
@@ -292,22 +293,20 @@ test("workspace_switch_between_discarded_sessions_stops_further_cleanup", async 
   const model = workspaceModel({
     state: {
       ...draftState(),
-      kehoach: [{ id: "p1" }, { id: "p2" }, { id: "p3" }],
+      kehoach: ["p1", "p2", "p3"].map((id) => ({
+        id, rootId: id, phienBan: "00", isLatest: 1,
+      })),
       goithau: [], assignments: [],
     },
     db: dbA,
   });
-  const sessions = ["p1", "p2", "p3"].map((planId, index) => ({
-    draftId: `draft-${index + 1}`,
-    rootId: planId,
-    revision: 0,
-    aggregate: {
-      kehoach: [{
-        id: planId,
-        sourceRevision: { sessionId: "source-session", revisionNumber: `0${index}` },
-      }],
-    },
-  }));
+  const sessions = ["p1", "p2", "p3"].map((planId, index) => {
+    const session = createPlanVersionDraftSession(model.state, planId);
+    session.aggregate.kehoach[0].sourceRevision = {
+      sessionId: "source-session", revisionNumber: `0${index}`,
+    };
+    return session;
+  });
   for (const session of sessions) await savePlanVersionDraftSession(model, session);
   const secondWriteFinished = deferred();
   const allowSecondCompletion = deferred();
@@ -339,7 +338,7 @@ test("workspace_switch_between_discarded_sessions_stops_further_cleanup", async 
   assert.deepEqual(model.state.kehoach, [{ id: "plan-b" }]);
   assert.deepEqual(model.planVersionDraftSessions, sessionsB);
   const durableA = await dbA.get("plan_version_drafts_v1");
-  assert.deepEqual(durableA.sessions.map((session) => session.draftId), ["draft-3"]);
+  assert.deepEqual(durableA.sessions.map((session) => session.draftId), [sessions[2].draftId]);
 });
 
 test("workspace change between dirty-record draft saves cannot mutate B", async () => {
@@ -1704,6 +1703,73 @@ test("draft tombstone compaction stays bounded without allowing a removed revisi
   );
 });
 
+test("stale revision zero clone cannot resurrect after exact tombstone compaction", async () => {
+  const db = memoryDb();
+  const model = { state: draftState(), db };
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  const staleRevisionZero = structuredClone(session);
+  await savePlanVersionDraftSession(model, session);
+  await removePlanVersionDraftSession(model, session.draftId, {
+    expectedRevision: session.revision,
+  });
+
+  for (let index = 0; index <= PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT; index += 1) {
+    const unrelated = createPlanVersionDraftSession(model.state, "plan-00");
+    await savePlanVersionDraftSession(model, unrelated);
+    await removePlanVersionDraftSession(model, unrelated.draftId, {
+      expectedRevision: unrelated.revision,
+    });
+  }
+
+  const compacted = await db.get("plan_version_drafts_v1");
+  assert.equal(Object.keys(compacted.tombstones).length, PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT);
+  assert.equal(Object.hasOwn(compacted.tombstones, session.draftId), false);
+  await assert.rejects(
+    savePlanVersionDraftSession(model, staleRevisionZero),
+    /stale/i,
+  );
+  assert.equal(
+    (await db.get("plan_version_drafts_v1")).sessions.some(
+      (candidate) => candidate.draftId === session.draftId,
+    ),
+    false,
+  );
+});
+
+test("legacy v2 v3 and v4 envelopes migrate without reviving revision zero clones", async () => {
+  for (const version of [2, 3, 4]) {
+    const db = memoryDb();
+    const model = { state: draftState(), db };
+    const issued = createPlanVersionDraftSession(model.state, "plan-00");
+    const staleRevisionZero = structuredClone(issued);
+    const tombstones = {};
+    for (let index = 0; index <= PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT; index += 1) {
+      tombstones[`legacy-${version}-${String(index).padStart(3, "0")}`] = {
+        revision: 2,
+        removedAt: index === 0 ? "malformed" : new Date(index).toISOString(),
+      };
+    }
+    await db.set("plan_version_drafts_v1", {
+      version,
+      sessions: [],
+      tombstones,
+      retiredBefore: { 0: "9999-12-31T23:59:59.999Z" },
+    });
+
+    const fresh = createPlanVersionDraftSession(model.state, "plan-00");
+    await savePlanVersionDraftSession(model, fresh);
+    await assert.rejects(
+      savePlanVersionDraftSession(model, staleRevisionZero),
+      /stale/i,
+    );
+    const migrated = await db.get("plan_version_drafts_v1");
+    assert.equal(migrated.version, 4);
+    assert.equal(Object.keys(migrated.tombstones).length, PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT);
+    assert.equal(Object.hasOwn(migrated, "retiredBefore"), false);
+    assert.equal(migrated.sessions[0].draftId, fresh.draftId);
+  }
+});
+
 test("malformed legacy tombstones compact without bypassing stale revision CAS", async () => {
   const db = memoryDb();
   const model = { state: draftState(), db };
@@ -1732,7 +1798,7 @@ test("malformed legacy tombstones compact without bypassing stale revision CAS",
   await assert.rejects(savePlanVersionDraftSession(model, stale), /stale/i);
 });
 
-test("draft created before an unrelated same-bucket retirement can first-save later", async () => {
+test("draft created before unrelated retirements can first-save later", async () => {
   const db = memoryDb();
   const model = { state: draftState(), db };
   const fresh = createPlanVersionDraftSession(
@@ -1740,7 +1806,6 @@ test("draft created before an unrelated same-bucket retirement can first-save la
     "plan-00",
     "2026-08-20T00:00:00.000Z",
   );
-  fresh.draftId = "plan-draft-collision-30";
   const tombstones = {
     "plan-draft-collision-9": {
       revision: 2,
@@ -1773,7 +1838,6 @@ test("malformed tombstone cannot poison an unrelated future draft", async () => 
   const db = memoryDb();
   const model = { state: draftState(), db };
   const fresh = createPlanVersionDraftSession(model.state, "plan-00");
-  fresh.draftId = "plan-draft-collision-30";
   const tombstones = {
     "plan-draft-collision-9": { revision: 2, removedAt: "invalid" },
   };

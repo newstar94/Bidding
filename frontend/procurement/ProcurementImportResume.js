@@ -116,13 +116,22 @@ export async function resumeProcurementImportSession({
   const lease = captureWorkspaceLease(this.model);
   const workspaceLease = lease.token;
   const storage = this.model?.workspaceStorage;
+  const resumeIdentity = Object.freeze({});
+  const importFlowIdentity = Object.freeze({});
+  let startingFlow = false;
+  this._procurementImportResumeIdentity = resumeIdentity;
+  const isCurrentResume = () => (
+    isWorkspaceLeaseCurrent(this.model, lease)
+    && this.model?.workspaceStorage === storage
+    && this._procurementImportResumeIdentity === resumeIdentity
+    && (startingFlow
+      ? [this.procurementPlanImport, this.procurementPackageImport].every(
+        (flow) => !flow || flow.importFlowIdentity === importFlowIdentity,
+      )
+      : !this.procurementPlanImport && !this.procurementPackageImport)
+  );
   const assertCurrentWorkspace = () => {
-    if (
-      !isWorkspaceLeaseCurrent(this.model, lease)
-      || this.model?.workspaceStorage !== storage
-    ) {
-      throw workspaceChangedError();
-    }
+    if (!isCurrentResume()) throw workspaceChangedError();
   };
   try {
     const session = await client.getImportSession(pointer.sessionId, {
@@ -226,19 +235,24 @@ export async function resumeProcurementImportSession({
     const start = session.kind === "PACKAGE"
       ? this.startProcurementPackageImport
       : this.startProcurementPlanImport;
+    startingFlow = true;
     await start?.call(this, {
       session, controller: sequential, currentDraft, client,
       importWorkspaceLease: lease,
       importWorkspaceStorage: storage,
-      importFlowIdentity: Object.freeze({}),
+      importFlowIdentity,
     });
     assertCurrentWorkspace();
     return true;
   } catch (error) {
     if (["PROCUREMENT_SESSION_EXPIRED", "PROCUREMENT_REVISION_INVALID"].includes(error?.code)) {
-      store.clear();
+      if (isCurrentResume()) store.clear();
       return false;
     }
     throw error;
+  } finally {
+    if (this._procurementImportResumeIdentity === resumeIdentity) {
+      delete this._procurementImportResumeIdentity;
+    }
   }
 }
