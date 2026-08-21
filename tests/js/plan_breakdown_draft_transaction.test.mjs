@@ -2517,6 +2517,7 @@ test("back from breakdown reopens the same plan draft and keeps breakdown rows i
     },
   };
   const events = [];
+  let editOptions;
   const plan = { id: "plan-draft" };
   const controller = {
     planBreakdownDraft: { active: true, action: "create", planId: "plan-draft" },
@@ -2531,7 +2532,10 @@ test("back from breakdown reopens the same plan draft and keeps breakdown rows i
       openModal: (id) => events.push(["open", id]),
     },
     plans: {
-      edit: async (id) => events.push(["edit", id]),
+      edit: async (id, options) => {
+        editOptions = options;
+        events.push(["edit", id]);
+      },
     },
   };
 
@@ -2552,6 +2556,10 @@ test("back from breakdown reopens the same plan draft and keeps breakdown rows i
     ["close", "modal-plan-breakdown"],
     ["edit", "plan-draft"],
   ]);
+  assert.deepEqual(editOptions, {
+    keepProcurementCodeEditable: true,
+    preserveProcurementLookupSelection: true,
+  });
   assert.equal(controller.planBreakdownDraft.active, true);
 });
 

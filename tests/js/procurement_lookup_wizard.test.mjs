@@ -1151,6 +1151,279 @@ test("inline plan lookup prepares all revisions and opens editable revision 00 w
 });
 
 
+test("inline plan lookup cancels the previous source flow before switching codes", async () => {
+  const identity = { value: "plan-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600225772");
+  const name = control("Tên cũ");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const cancelled = [];
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "kh-ten": name,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const controller = {
+    model: { getWorkspaceToken: () => "org-1" },
+    procurementPlanImport: {
+      session: { familyNo: "PL2600225773", sessionId: "old-session" },
+    },
+    async cancelActiveProcurementImportSession() {
+      cancelled.push(this.procurementPlanImport.session.sessionId);
+      this.procurementPlanImport = null;
+      return true;
+    },
+    async startProcurementPlanImport(flow) {
+      if (this.procurementPlanImport) {
+        throw Object.assign(new Error("stale source flow"), {
+          name: "AbortError", code: "FLOW_CHANGED",
+        });
+      }
+      this.procurementPlanImport = flow;
+      name.value = flow.currentDraft.planDraft.tenKeHoach;
+    },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        return {
+          importSession: {
+            sessionId: "new-session",
+            familyNo: "PL2600225772",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getPlanRevisionDraft() {
+        return {
+          revisionNumber: "00",
+          planDraft: {
+            maKeHoach: "PL2600225772",
+            tenKeHoach: "Kế hoạch 5772",
+          },
+          packageDrafts: [],
+        };
+      },
+    },
+    client: { async lookup() { assert.fail("plan session flow must not lookup LATEST"); } },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const result = await lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.equal(result.revisionNumber, "00");
+  assert.deepEqual(cancelled, ["old-session"]);
+  assert.equal(name.value, "Kế hoạch 5772");
+  assert.equal(status.dataset.state, "success");
+});
+
+
+test("inline plan lookup does not bind the previous code's investor decision", async () => {
+  const identity = { value: "plan-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600225771");
+  const investor = control("investor-5773");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const bound = [];
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "kh-chudautuid": investor,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const controller = {
+    model: { getWorkspaceToken: () => "org-1" },
+    procurementPlanImport: {
+      session: { familyNo: "PL2600225773", sessionId: "old-session" },
+    },
+    async cancelActiveProcurementImportSession() {
+      this.procurementPlanImport = null;
+      return true;
+    },
+    async startProcurementPlanImport() {},
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        return {
+          importSession: {
+            sessionId: "new-session", familyNo: "PL2600225771",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getPlanRevisionDraft() {
+        return {
+          revisionNumber: "00",
+          planDraft: { maKeHoach: "PL2600225771" },
+          packageDrafts: [],
+        };
+      },
+      async bindPlanSessionDecisions(_sessionId, payload) {
+        bound.push(payload.decisions.investorId);
+        return {};
+      },
+    },
+    client: { async lookup() { assert.fail("plan session flow must not lookup LATEST"); } },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  await lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.deepEqual(bound, [null]);
+});
+
+
+test("inline plan lookup clears a previous investor when the same form changes code", async () => {
+  const identity = { value: "plan-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600225773");
+  const investor = control("investor-5773");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const bound = [];
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "kh-chudautuid": investor,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const controller = {
+    model: { getWorkspaceToken: () => "org-1" },
+    async startProcurementPlanImport() {},
+  };
+  const importClient = {
+    async preparePlan() {
+      return {
+        importSession: {
+          sessionId: `session-${code.value}`,
+          familyNo: code.value,
+          revisions: [{ revisionNumber: "00" }],
+        },
+      };
+    },
+    async getPlanRevisionDraft() {
+      return { revisionNumber: "00", planDraft: { maKeHoach: code.value }, packageDrafts: [] };
+    },
+    async bindPlanSessionDecisions(_sessionId, payload) {
+      bound.push(payload.decisions.investorId);
+      return {};
+    },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller, importClient,
+    client: { async lookup() { assert.fail("plan session flow must not lookup LATEST"); } },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+  const options = {
+    kind: "PLAN", formId: "form-kehoach", codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan", statusId: "procurement-lookup-plan-status",
+  };
+
+  await lookup.run(options);
+  code.value = "PL2600225771";
+  await lookup.run(options);
+
+  assert.deepEqual(bound, ["investor-5773", null]);
+  assert.equal(investor.value, "");
+});
+
+
+test("inline plan lookup does not bind a local pending investor after returning from breakdown", async () => {
+  const identity = { value: "plan-5773" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600225773");
+  const investor = control("investor-pending");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const bound = [];
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "kh-chudautuid": investor,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const controller = {
+    model: {
+      getWorkspaceToken: () => "org-1",
+      getLatestChuDauTu: () => [{
+        id: "investor-pending", tenChuDauTu: "Chủ đầu tư hiển thị",
+      }],
+    },
+    procurementPlanImport: {
+      session: { familyNo: "PL2600225773", sessionId: "session-5773" },
+      investorResolution: {
+        status: "NEW",
+        investor: { id: "investor-pending" },
+      },
+    },
+    async startProcurementPlanImport() {},
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        return {
+          importSession: {
+            sessionId: "session-5773-refresh", familyNo: "PL2600225773",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getPlanRevisionDraft() {
+        return {
+          revisionNumber: "00", planDraft: { maKeHoach: "PL2600225773" },
+          packageDrafts: [],
+        };
+      },
+      async bindPlanSessionDecisions(_sessionId, payload) {
+        bound.push(payload.decisions.investorId);
+        return {};
+      },
+    },
+    client: { async lookup() { assert.fail("plan session flow must not lookup LATEST"); } },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  await lookup.run({
+    kind: "PLAN", formId: "form-kehoach", codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.deepEqual(bound, [null]);
+});
+
+
 test("inline plan lookup waits for enrichment before loading the revision draft", async () => {
   const identity = { value: "plan-a" };
   const form = {

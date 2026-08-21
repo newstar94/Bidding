@@ -879,6 +879,55 @@ test("same_authority_allows_materialization", () => {
   ));
 });
 
+test("plan materialization reuses the exact local investor before source resolution", async () => {
+  const storage = memoryStorage();
+  const investor = {
+    id: "investor-5772", rootId: "investor-5772", maChuDauTu: "LOCAL-5772",
+    tenChuDauTu: "Chủ đầu tư 5772", phienBan: "00", isLatest: 1,
+  };
+  const state = {
+    chudautu: [investor],
+    kehoach: [{
+      id: "plan-5772", rootId: "plan-5772", maKeHoach: "PL2600225772",
+      phienBan: "00", localVersion: 0, rowVersion: 4, isLatest: 1,
+      chuDauTuId: investor.id,
+    }],
+    goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+  };
+  const model = {
+    state, workspaceStorage: storage, planVersionDraftSessions: [],
+    getWorkspaceToken: () => "user:org-a@1",
+    getLatestChuDauTu: () => state.chudautu,
+    getCurrentDateTimeString: () => "2026-08-21 12:00:00",
+    getPlanBaseCode: (value) => value,
+  };
+  const controller = { model, plans: { edit: async () => {} } };
+  const flow = originatePlanImportFlow(controller, {
+    session: { sessionId: "session-5772", kind: "PLAN", familyNo: "PL2600225772" },
+    controller: {},
+    currentDraft: {
+      familyNo: "PL2600225772", revisionNumber: "01",
+      planDraft: {
+        maKeHoach: "PL2600225772", tenKeHoach: "Kế hoạch 5772 bản mới",
+        investorSource: {},
+        sourceRevision: { sessionId: "session-5772", revisionNumber: "01" },
+      },
+      packageDrafts: [],
+      planAuthority: {
+        familyNo: "PL2600225772",
+        expectedPredecessor: {
+          id: "plan-5772", rootId: "plan-5772", localVersion: 0, rowVersion: 4,
+        },
+      },
+    },
+  });
+
+  const result = await startProcurementPlanImport.call(controller, flow);
+
+  assert.equal(result.plan.chuDauTuId, investor.id);
+});
+
 test("old_revision_draft_cannot_overlay_newer_live_plan", () => {
   const state = { kehoach: [{
     id: "plan-live", rootId: "plan-root", maKeHoach: "PL2600000001",
@@ -3231,6 +3280,23 @@ test("investor resolver reuses an existing investor by normalized tax code", asy
   };
   const result = await resolveImportedInvestorDraft({
     source: { code: "missing-code", taxCode: " 0101234567 " },
+    records: [existing],
+    lookup: async () => { lookupCalls += 1; },
+  });
+
+  assert.equal(result.status, "EXISTING");
+  assert.equal(result.investor, existing);
+  assert.equal(lookupCalls, 0);
+});
+
+test("investor resolver reuses a unique existing investor by source name", async () => {
+  let lookupCalls = 0;
+  const existing = {
+    id: "investor-name", maChuDauTu: "LOCAL-NAME",
+    tenChuDauTu: "  Chủ đầu tư 5770  ",
+  };
+  const result = await resolveImportedInvestorDraft({
+    source: { name: "Chủ đầu tư 5770" },
     records: [existing],
     lookup: async () => { lookupCalls += 1; },
   });

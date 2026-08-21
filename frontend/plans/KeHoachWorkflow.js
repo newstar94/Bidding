@@ -1277,7 +1277,10 @@ export async function backToPlanDraft() {
   if (!planId) return;
   updatePlanBreakdownDraftRows(this, planId);
   this.view.closeModal("modal-plan-breakdown");
-  await this.plans.edit(planId);
+  await this.plans.edit(planId, {
+    keepProcurementCodeEditable: true,
+    preserveProcurementLookupSelection: true,
+  });
 }
 
 export async function savePlanBreakdown() {

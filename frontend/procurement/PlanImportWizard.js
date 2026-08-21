@@ -1243,10 +1243,19 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
   const checkpoint = capturePlanImportMaterialization(controller);
   const source = revisionDraft?.planDraft?.investorSource || {};
   const investorRecords = controller.model?.getLatestChuDauTu?.() || [];
+  const existingPlan = latestPlanForFamily(
+    controller.model,
+    revisionDraft?.familyNo,
+    controller.model?.state,
+  );
+  const existingPlanInvestorId = String(
+    existingPlan?.chuDauTuId || existingPlan?.investorId || "",
+  ).trim();
   const authoritativeInvestorId = String(
-    revisionDraft?.planDraft?.chuDauTuId
-    || revisionDraft?.decisionAuthority?.investorId
-    || "",
+    existingPlanInvestorId
+      || revisionDraft?.planDraft?.chuDauTuId
+      || revisionDraft?.decisionAuthority?.investorId
+      || "",
   ).trim();
   let investorResolution;
   if (authoritativeInvestorId) {

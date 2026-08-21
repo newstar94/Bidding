@@ -5,6 +5,7 @@ import { fillPackageFormFromProcurementDraft } from "./ProcurementDraftWorkflow.
 import {
   forgetProcurementImportSession,
   rememberProcurementImportSession,
+  cancelActiveProcurementImportSession,
 } from "./ProcurementImportResume.js";
 import {
   applyPackageDetails,
@@ -72,6 +73,38 @@ async function waitForPlanEnrichment(client, preview, {
 
 function baseCode(code) {
   return String(code || "").trim().toUpperCase().replace(/-\d{2}$/, "");
+}
+
+function importFlowSourceCode(flow) {
+  return baseCode(
+    flow?.session?.familyNo
+      || flow?.familyNo
+      || flow?.currentDraft?.familyNo
+      || flow?.currentDraft?.planDraft?.familyNo
+      || flow?.currentDraft?.planDraft?.maKeHoach,
+  );
+}
+
+function cancelStaleInlineImportFlow(controller, kind, code) {
+  const flowSlot = kind === "PLAN"
+    ? "procurementPlanImport"
+    : "procurementPackageImport";
+  const activeFlow = controller?.[flowSlot];
+  if (!activeFlow) return true;
+  const sourceCode = importFlowSourceCode(activeFlow);
+  if (sourceCode && sourceCode === baseCode(code)) return true;
+  if (typeof controller.cancelActiveProcurementImportSession === "function") {
+    return controller.cancelActiveProcurementImportSession();
+  }
+  return cancelActiveProcurementImportSession.call(controller);
+}
+
+function planInvestorDecision(activeFlow, sourceChanged, selectedInvestorId) {
+  if (sourceChanged || !selectedInvestorId) return selectedInvestorId;
+  const resolution = activeFlow?.investorResolution;
+  const pendingId = String(resolution?.investor?.id || "").trim();
+  if (resolution?.status === "NEW" && pendingId === selectedInvestorId) return null;
+  return selectedInvestorId;
 }
 
 function formIdentity(form) {
@@ -192,6 +225,10 @@ export class ProcurementInlineLookup {
     const workspaceLease = originLease.token;
     const originStorage = this.controller?.model?.workspaceStorage;
     const identity = formIdentity(form);
+    const lookupKey = `${normalizedKind}:${identity}`;
+    const previousLookupCode = this._lastLookupCodes?.get(lookupKey) || "";
+    this._lastLookupCodes ||= new Map();
+    this._lastLookupCodes.set(lookupKey, baseCode(code));
     const importFlowIdentity = Object.freeze({});
     let flowHandoffAttempted = false;
     const isUiCapabilityCurrent = () => inlineImportCapabilityIsCurrent({
@@ -274,15 +311,29 @@ export class ProcurementInlineLookup {
             Object.assign(importSession, refreshedSession);
           }
           if (typeof this.importClient.bindPlanSessionDecisions === "function") {
-            const selectedInvestorId = String(
-              this.document.getElementById("kh-chudautuid")?.value || "",
-            ).trim() || null;
+            const activeFlow = this.controller?.procurementPlanImport;
+            const activeFlowCode = importFlowSourceCode(activeFlow);
+            const sourceChanged = Boolean(
+              (activeFlow && activeFlowCode !== baseCode(code))
+                || (previousLookupCode && previousLookupCode !== baseCode(code)),
+            );
+            const investorControl = this.document.getElementById("kh-chudautuid");
+            if (sourceChanged && investorControl) investorControl.value = "";
+            const selectedInvestorId = sourceChanged
+              ? null
+              : String(
+                investorControl?.value || "",
+              ).trim() || null;
             const boundSession = await this.importClient.bindPlanSessionDecisions(
               importSession.sessionId,
               {
                 bundleDigest: importSession.bundleDigest || preview.bundleDigest,
                 decisions: {
-                  investorId: selectedInvestorId,
+                  investorId: planInvestorDecision(
+                    activeFlow,
+                    sourceChanged,
+                    selectedInvestorId,
+                  ),
                   packageMatches: [], fieldConflicts: [], fieldValues: [],
                 },
                 workspaceLease: workspaceLease || null,
@@ -307,6 +358,24 @@ export class ProcurementInlineLookup {
           saveRevision: async () => ({ ok: true }),
         });
         const currentDraft = await sequential.loadCurrent();
+        assertUiCapabilityCurrent();
+        // A completed inline import installs a live sequential flow on the
+        // controller. Switching the source code must retire that flow before
+        // the next revision is materialized; otherwise the new flow is rejected
+        // with FLOW_CHANGED and the old form values remain visible. Wait until
+        // the replacement preview is ready so a failed lookup does not discard
+        // the previous draft unnecessarily.
+        const cancellation = cancelStaleInlineImportFlow(
+          this.controller,
+          normalizedKind,
+          code,
+        );
+        if (cancellation && typeof cancellation.then === "function") {
+          const cancelled = await cancellation;
+          if (!cancelled) {
+            throw new Error("Không thể hủy phiên nhập Mua Sắm Công trước đó. Vui lòng thử lại.");
+          }
+        }
         assertUiCapabilityCurrent();
         const start = normalizedKind === "PACKAGE"
           ? this.controller?.startProcurementPackageImport

@@ -22,12 +22,27 @@ export function deriveInvestorShortName(approvalDecisionNo) {
   return match ? match[1].toLocaleUpperCase("vi") : "";
 }
 
-function findExisting(records, code, taxCode) {
-  return (records || []).find((record) => (
+function normalizedInvestorName(value) {
+  return normalizeOrganizationName(String(value || ""))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findExisting(records, code, taxCode, name = "") {
+  const direct = (records || []).find((record) => (
     code && normalizeProcurementOrgCode(record?.maChuDauTu) === code
   ) || (
     taxCode && normalizeVietnamTaxCode(record?.maSoThue) === taxCode
   ));
+  if (direct) return direct;
+  const normalizedName = normalizedInvestorName(name);
+  if (!normalizedName) return null;
+  const nameMatches = (records || []).filter((record) => (
+    normalizedInvestorName(
+      record?.tenChuDauTu || record?.investorName || record?.name,
+    ) === normalizedName
+  ));
+  return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
 function buildPendingInvestor(info, { createId, timestamp, effectiveDate, records }) {
@@ -77,13 +92,19 @@ export async function resolveImportedInvestorDraft({
 } = {}) {
   const code = sourceCode(source?.code);
   const taxCode = normalizeVietnamTaxCode(source?.taxCode);
-  const existing = findExisting(records, code, taxCode);
+  const name = source?.name || source?.investorName || source?.tenChuDauTu;
+  const existing = findExisting(records, code, taxCode, name);
   if (existing) return { status: "EXISTING", investor: existing };
   if (!code && !taxCode) throw new Error("PROCUREMENT_INVESTOR_RESOLUTION_FAILED");
   const info = await lookup?.({ orgCode: code, taxCode, partnerRole: "CDT" });
   const resolvedCode = sourceCode(info?.org_code || code);
   const resolvedTax = normalizeVietnamTaxCode(info?.tax_code || taxCode);
-  const raced = findExisting(records, resolvedCode, resolvedTax);
+  const raced = findExisting(
+    records,
+    resolvedCode,
+    resolvedTax,
+    info?.name || info?.investorName || info?.tenChuDauTu || name,
+  );
   if (raced) return { status: "EXISTING", investor: raced };
   const shortName = deriveInvestorShortName(source?.approvalDecisionNo);
   const investor = buildPendingInvestor(
