@@ -21,7 +21,6 @@ import {
 import {
   PlanImportWizard,
   PlanImportDraftStore,
-  canApplyPreview,
   canStartSequentialImport,
   createDebouncedPreparer,
   renderIssues,
@@ -1176,16 +1175,13 @@ test("debounced preparer cancels stale code and runs only the latest value", () 
 });
 
 
-test("summary and apply gate block ambiguous or incomplete preview", () => {
+test("plan preview summary counts package actions", () => {
   const ready = {
     previewId: "preview-1",
     blockingIssues: [],
     packages: [{ action: "UNCHANGED" }, { action: "ADDED" }],
   };
   assert.deepEqual(summarizePreview(ready), { total: 2, UNCHANGED: 1, ADDED: 1 });
-  assert.equal(canApplyPreview(ready), true);
-  assert.equal(canApplyPreview({ ...ready, blockingIssues: [{ field: "priceVnd" }] }), false);
-  assert.equal(canApplyPreview({ ...ready, packages: [{ action: "AMBIGUOUS" }] }), false);
 });
 
 
@@ -1209,30 +1205,6 @@ test("sequential plan import waits until linked-notice enrichment is complete", 
   assert.equal(canStartSequentialImport({
     ...preview, enrichmentStatus: "COMPLETED",
   }), true);
-});
-
-
-test("apply gate opens only after every ambiguity, field conflict, and required value is decided", () => {
-  const preview = {
-    previewId: "preview-1",
-    blockingIssues: [{ packageObservationId: "detail-a", field: "capitalDetail" }],
-    packages: [{
-      planDetailRevisionId: "detail-a",
-      action: "AMBIGUOUS",
-      fieldConflicts: [{ field: "priceVnd" }],
-    }],
-  };
-  const decisions = {
-    packageMatches: { "detail-a": { localRootId: "root-a" } },
-    fieldConflicts: { "detail-a:priceVnd": "KEEP_LOCAL" },
-    fieldValues: { "detail-a:capitalDetail": "Ngân sách" },
-  };
-  assert.equal(canApplyPreview(preview, {}), false);
-  assert.equal(canApplyPreview(preview, decisions), true);
-  assert.equal(canApplyPreview(preview, {
-    ...decisions,
-    fieldValues: { "detail-a:capitalDetail": "" },
-  }), false);
 });
 
 

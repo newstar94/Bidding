@@ -88,27 +88,6 @@ export function summarizePreview(preview) {
   }, { total: 0 });
 }
 
-export function canApplyPreview(preview, decisions = {}) {
-  if (!preview?.previewId) return false;
-  const packageMatches = decisions.packageMatches || {};
-  const fieldConflicts = decisions.fieldConflicts || {};
-  const fieldValues = decisions.fieldValues || {};
-  if ((preview.blockingIssues || []).some((issue) => {
-    const observationId = issue.packageObservationId || issue.packageObservationId;
-    const key = `${observationId || ""}:${issue.field || ""}`;
-    const value = fieldValues[key];
-    if (value === null || value === undefined || String(value).trim() === "") return true;
-    return issue.field === "priceVnd" && !/^\d+$/.test(String(value));
-  })) return false;
-  return !(preview.packages || []).some((row) => {
-    const observationId = String(row.planDetailRevisionId || "");
-    if (row.action === "AMBIGUOUS" && !packageMatches[observationId]) return true;
-    return (row.fieldConflicts || []).some(
-      (conflict) => !fieldConflicts[`${observationId}:${conflict.field}`],
-    );
-  });
-}
-
 export function canStartSequentialImport(preview) {
   if (!preview?.importSession?.sessionId) return false;
   const enrichmentStatus = String(

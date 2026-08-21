@@ -794,6 +794,71 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
   assert.equal(trigger.disabled, false);
 });
 
+test("inline plan lookup closes loading after its valid flow handoff changes form identity", async () => {
+  const identity = { value: "" };
+  const form = {
+    attributes: new Map(),
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    removeAttribute(name) { this.attributes.delete(name); },
+  };
+  const code = control("PL2600225773");
+  const trigger = inlineButton();
+  trigger.type = "checkbox";
+  const status = inlineStatus();
+  const loading = inlineLoading();
+  const workspaceStorage = {};
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "procurement-lookup-plan-enabled": trigger,
+    "procurement-lookup-plan-status": status,
+    "procurement-lookup-plan-loading": loading,
+  };
+  const controller = {
+    model: {
+      workspaceStorage,
+      getWorkspaceToken: () => "org-1",
+    },
+    async startProcurementPlanImport(flow) {
+      identity.value = "kh-materialized";
+      this.procurementPlanImport = { ...flow };
+    },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        return {
+          importSession: {
+            sessionId: "session-materialized",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getPlanRevisionDraft() {
+        return { revisionNumber: "00", planDraft: {}, packageDrafts: [] };
+      },
+    },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+
+  const result = await lookup.run({
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    triggerId: "procurement-lookup-plan-enabled",
+    statusId: "procurement-lookup-plan-status",
+  });
+
+  assert.deepEqual(result, { applied: true, revisionNumber: "00" });
+  assert.equal(loading.hidden, true);
+  assert.equal(loading.attributes.get("aria-busy"), "false");
+  assert.equal(form.attributes.has("aria-busy"), false);
+  assert.equal(trigger.disabled, false);
+  assert.equal(status.dataset.state, "success");
+});
+
 test("inline stale workspace completion cannot reset or overwrite the new UI", async () => {
   let resolvePrepare;
   let token = "org-a@1";

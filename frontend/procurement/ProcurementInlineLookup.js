@@ -192,6 +192,8 @@ export class ProcurementInlineLookup {
     const workspaceLease = originLease.token;
     const originStorage = this.controller?.model?.workspaceStorage;
     const identity = formIdentity(form);
+    const importFlowIdentity = Object.freeze({});
+    let flowHandoffCompleted = false;
     const isUiCapabilityCurrent = () => inlineImportCapabilityIsCurrent({
       controller: this.controller,
       generation,
@@ -203,8 +205,27 @@ export class ProcurementInlineLookup {
       originLease,
       originStorage,
     });
+    const isFlowHandoffCapabilityCurrent = () => {
+      // Materialization intentionally replaces the new-form identity. Only
+      // the exact flow started by this request may finish that UI handoff.
+      const activeFlow = normalizedKind === "PACKAGE"
+        ? this.controller?.procurementPackageImport
+        : this.controller?.procurementPlanImport;
+      return flowHandoffCompleted
+        && activeFlow?.importFlowIdentity === importFlowIdentity
+        && generation === this.requestGeneration
+        && String(codeInput?.value || "").trim().toUpperCase() === code
+        && isWorkspaceLeaseCurrent(this.controller?.model, originLease)
+        && this.controller?.model?.workspaceStorage === originStorage;
+    };
+    const isCompletionCapabilityCurrent = () => (
+      isUiCapabilityCurrent() || isFlowHandoffCapabilityCurrent()
+    );
     const assertUiCapabilityCurrent = () => {
       if (!isUiCapabilityCurrent()) throw workspaceChangedError();
+    };
+    const assertCompletionCapabilityCurrent = () => {
+      if (!isCompletionCapabilityCurrent()) throw workspaceChangedError();
     };
     setButtonLoading(button, true);
     setLookupLoading(loadingScreen, form, true, code);
@@ -266,9 +287,10 @@ export class ProcurementInlineLookup {
           client: this.importClient,
           importWorkspaceLease: originLease,
           importWorkspaceStorage: originStorage,
-          importFlowIdentity: Object.freeze({}),
+          importFlowIdentity,
         });
-        assertUiCapabilityCurrent();
+        flowHandoffCompleted = true;
+        assertCompletionCapabilityCurrent();
         this.setStatus(
           status,
           `Đã mở phiên bản ${currentDraft.revisionNumber}. Dữ liệu chưa được lưu.`,
@@ -333,7 +355,7 @@ export class ProcurementInlineLookup {
       );
       return { ...result, warnings: warningCount };
     } catch (error) {
-      if (!isUiCapabilityCurrent()) return null;
+      if (!isCompletionCapabilityCurrent()) return null;
       if (error?.name === "AbortError") return null;
       this.setStatus(
         status,
@@ -342,7 +364,7 @@ export class ProcurementInlineLookup {
       );
       return null;
     } finally {
-      if (isUiCapabilityCurrent()) {
+      if (isCompletionCapabilityCurrent()) {
         setButtonLoading(button, false);
         setLookupLoading(loadingScreen, form, false);
       }
