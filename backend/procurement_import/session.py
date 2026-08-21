@@ -105,6 +105,24 @@ class ProcurementImportSessionService:
         return self._public_manifest(stored)
 
     @staticmethod
+    def _public_decision_rows(rows):
+        public = deepcopy(rows or [])
+        for row in public:
+            for candidate in row.get("matchCandidates") or []:
+                for key in (
+                    "localVersion", "rowVersion", "isLatest",
+                    "baseFields", "localFields",
+                ):
+                    candidate.pop(key, None)
+            for surface in (row.get("candidateMergeSurfaces") or {}).values():
+                for key in (
+                    "localVersion", "rowVersion", "isLatest",
+                    "baseFields", "localFields",
+                ):
+                    surface.pop(key, None)
+        return public
+
+    @staticmethod
     def _public_manifest(row):
         enrichment_status = str(
             (row.get("canonicalBundle") or {}).get("enrichmentStatus")
@@ -114,12 +132,18 @@ class ProcurementImportSessionService:
             (row.get("canonicalBundle") or {}).get("decisionAuthority") or {}
         )
         bundle = row.get("canonicalBundle") or {}
+        plan = bundle.get("plan") or {}
+        plan_authority = {
+            "familyNo": row["familyNo"],
+            "expectedPredecessor": deepcopy(plan.get("expectedPredecessor")),
+            "expectedRowVersion": plan.get("expectedRowVersion"),
+        }
         active_revision_ids = {
             str(item.get("revisionId") or "")
             for item in row.get("revisions") or []
         }
         decision_packages = [
-            deepcopy(item)
+            item
             for item in bundle.get("decisionPackages") or []
             if str(item.get("sourceRevisionId") or "") in active_revision_ids
         ]
@@ -140,9 +164,11 @@ class ProcurementImportSessionService:
             "expiresAt": row["expiresAt"].isoformat(),
             "revisions": deepcopy(row["revisions"]),
             "activeRevisionIds": sorted(active_revision_ids),
-            "decisionPackages": decision_packages,
+            "decisionPackages": ProcurementImportSessionService._public_decision_rows(
+                decision_packages
+            ),
             "blockingIssues": blocking_issues,
-            "planAuthority": deepcopy(bundle.get("plan") or {}),
+            "planAuthority": plan_authority,
             "decisionAuthority": {
                 key: decision_authority.get(key)
                 for key in ("status", "decisionsDigest", "investorId")
@@ -274,6 +300,7 @@ class ProcurementImportSessionService:
         workspace_lease,
         now=None,
         validate_plan_authority=None,
+        validate_local_target=None,
     ):
         started = time.perf_counter()
         row = self._get(
@@ -304,6 +331,13 @@ class ProcurementImportSessionService:
             raise LookupError("PROCUREMENT_REVISION_INVALID")
         if row["kind"] == "PLAN":
             revision, decision_authority = self._resolved_revision(row, revision)
+            if validate_local_target is not None:
+                for target in (
+                    (decision_authority.get("localTargetsByRevision") or {})
+                    .get(str(revision.get("revisionId") or ""), {})
+                    .values()
+                ):
+                    validate_local_target(deepcopy(target))
             plan_draft = map_plan_canonical_to_draft(
                 row["provider"], row["familyNo"], revision
             )
@@ -420,6 +454,28 @@ class ProcurementImportSessionService:
                 revision.get("revisionDigest") or canonical_digest(revision)
             ),
         }
+        package_authorities = []
+        for observation_id, target in selected_local_targets.items():
+            package_authorities.append({
+                "packageObservationId": str(observation_id),
+                "localRootId": str(target.get("localRootId") or ""),
+                "snapshotId": target.get("snapshotId"),
+                "localVersion": target.get("localVersion"),
+                "rowVersion": target.get("rowVersion"),
+                "isLatest": bool(target.get("isLatest", True)),
+            })
+        plan = row.get("canonicalBundle", {}).get("plan") or {}
+        expected_predecessor = plan.get("expectedPredecessor")
+        plan_authority = {
+            "familyNo": row["familyNo"],
+            "expectedPredecessor": deepcopy(expected_predecessor),
+        }
+        if isinstance(expected_predecessor, dict):
+            plan_authority.update({
+                key: expected_predecessor.get(key)
+                for key in ("id", "rootId", "localVersion", "rowVersion")
+            })
+            plan_authority["isLatest"] = True
         if plan_draft is not None:
             plan_draft["sourceRevision"] = {
                 **plan_draft.get("sourceRevision", {}), **authority,
@@ -443,6 +499,8 @@ class ProcurementImportSessionService:
             "packageDrafts": package_drafts,
             "packageRevisionHistories": package_revision_histories,
             "investorResolution": deepcopy(row.get("investorResolution") or {}),
+            "planAuthority": plan_authority,
+            "packageAuthorities": package_authorities,
             "decisionAuthority": {
                 key: decision_authority.get(key)
                 for key in ("status", "decisionsDigest", "investorId")

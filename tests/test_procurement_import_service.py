@@ -722,6 +722,10 @@ def test_prepare_surfaces_ambiguous_exact_symbol_candidates(tmp_path):
         {"rootId": "r1", "snapshotId": "a1", "name": "Một", "symbol": "A"},
         {"rootId": "r2", "snapshotId": "a2", "name": "Hai", "symbol": "A"},
     ]
+    surface = row["candidateMergeSurfaces"]["r1"]
+    assert "effectiveFields" in surface
+    assert "baseFields" not in surface
+    assert "localFields" not in surface
 
 
 def test_prepare_enriches_exact_linked_notice_without_creating_another_package(tmp_path):
@@ -1770,6 +1774,246 @@ def test_sequential_plan_ambiguous_match_uses_selected_local_root():
     assert draft["packageDrafts"][0]["sourceRevision"]["localRootId"] == "root-b"
 
 
+def _ambiguous_candidate_bundle(*, base=None, local=None, source=None):
+    bundle = _sequential_decision_bundle()
+    source_fields = {
+        **bundle["revisions"][0]["packages"][0],
+        **(source or {}),
+    }
+    bundle["revisions"][0]["packages"][0] = source_fields
+    row = bundle["reconciliationByRevision"]["rev-00"][0]
+    row.clear()
+    row.update({
+        **source_fields,
+        "action": "AMBIGUOUS",
+        "matchCandidates": [{
+            "rootId": "root-b",
+            "snapshotId": "snapshot-b",
+            "localVersion": 2,
+            "rowVersion": 5,
+            "baseFields": {**source_fields, **(base or {})},
+            "localFields": {**source_fields, **(local or {})},
+        }],
+    })
+    return bundle
+
+
+def _bind_ambiguous_candidate(bundle, *, field_conflicts=None, field_values=None):
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={
+            "investorId": "investor-1",
+            "packageMatches": [{
+                "revisionId": "rev-00",
+                "packageObservationId": "detail-a",
+                "localRootId": "root-b",
+            }],
+            "fieldConflicts": field_conflicts or [],
+            "fieldValues": field_values or [],
+        },
+    )
+    return service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+
+
+def test_ambiguous_selected_candidate_local_only_change_survives():
+    draft = _bind_ambiguous_candidate(_ambiguous_candidate_bundle(
+        base={"capitalDetail": "A"},
+        local={"capitalDetail": "B"},
+        source={"capitalDetail": "A"},
+    ))
+    assert draft["packageDrafts"][0]["nguonVon"] == "B"
+
+
+def test_ambiguous_selected_candidate_source_only_change_applies():
+    draft = _bind_ambiguous_candidate(_ambiguous_candidate_bundle(
+        base={"priceVnd": 100},
+        local={"priceVnd": 100},
+        source={"priceVnd": 130},
+    ))
+    assert draft["packageDrafts"][0]["giaGoiThau"] == 130
+
+
+def test_ambiguous_selected_candidate_conflict_requires_resolution():
+    bundle = _ambiguous_candidate_bundle(
+        base={"priceVnd": 100},
+        local={"priceVnd": 120},
+        source={"priceVnd": 130},
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_FIELD_CONFLICT"):
+        _bind_ambiguous_candidate(bundle)
+
+
+@pytest.mark.parametrize(
+    ("resolution", "expected"),
+    [("KEEP_LOCAL", 120), ("APPLY_SOURCE", 130)],
+    ids=[
+        "ambiguous_selected_candidate_KEEP_LOCAL_preserves_local",
+        "ambiguous_selected_candidate_APPLY_SOURCE_uses_source",
+    ],
+)
+def test_ambiguous_selected_candidate_conflict_resolution(resolution, expected):
+    bundle = _ambiguous_candidate_bundle(
+        base={"priceVnd": 100},
+        local={"priceVnd": 120},
+        source={"priceVnd": 130},
+    )
+    draft = _bind_ambiguous_candidate(bundle, field_conflicts=[{
+        "revisionId": "rev-00",
+        "packageObservationId": "detail-a",
+        "localRootId": "root-b",
+        "field": "priceVnd",
+        "resolution": resolution,
+    }])
+    assert draft["packageDrafts"][0]["giaGoiThau"] == expected
+
+
+def test_ambiguous_selected_candidate_required_local_value_prevents_false_missing_issue():
+    draft = _bind_ambiguous_candidate(_ambiguous_candidate_bundle(
+        base={"capitalDetail": ""},
+        local={"capitalDetail": "Ngân sách"},
+        source={"capitalDetail": ""},
+    ))
+    assert draft["packageDrafts"][0]["nguonVon"] == "Ngân sách"
+
+
+def test_source_missing_required_but_local_effective_value_does_not_block():
+    draft = _bind_ambiguous_candidate(_ambiguous_candidate_bundle(
+        base={"capitalDetail": ""},
+        local={"capitalDetail": "Ngân sách"},
+        source={"capitalDetail": ""},
+    ))
+    assert draft["packageDrafts"][0]["nguonVon"] == "Ngân sách"
+
+
+def test_source_missing_required_and_local_missing_does_block():
+    with pytest.raises(
+        ProcurementDecisionError, match="PROCUREMENT_REQUIRED_FIELDS_MISSING",
+    ):
+        _bind_ambiguous_candidate(_ambiguous_candidate_bundle(
+            base={"capitalDetail": ""},
+            local={"capitalDetail": ""},
+            source={"capitalDetail": ""},
+        ))
+
+
+def test_KEEP_LOCAL_value_satisfies_required_field():
+    draft = _bind_ambiguous_candidate(
+        _ambiguous_candidate_bundle(
+            base={"capitalDetail": "Ban đầu"},
+            local={"capitalDetail": "Ngân sách"},
+            source={"capitalDetail": ""},
+        ),
+        field_conflicts=[{
+            "revisionId": "rev-00",
+            "packageObservationId": "detail-a",
+            "localRootId": "root-b",
+            "field": "capitalDetail",
+            "resolution": "KEEP_LOCAL",
+        }],
+    )
+    assert draft["packageDrafts"][0]["nguonVon"] == "Ngân sách"
+
+
+def test_APPLY_SOURCE_empty_value_still_requires_resolution_if_required():
+    with pytest.raises(
+        ProcurementDecisionError, match="PROCUREMENT_REQUIRED_FIELDS_MISSING",
+    ):
+        _bind_ambiguous_candidate(
+            _ambiguous_candidate_bundle(
+                base={"capitalDetail": "Ban đầu"},
+                local={"capitalDetail": "Ngân sách"},
+                source={"capitalDetail": ""},
+            ),
+            field_conflicts=[{
+                "revisionId": "rev-00",
+                "packageObservationId": "detail-a",
+                "localRootId": "root-b",
+                "field": "capitalDetail",
+                "resolution": "APPLY_SOURCE",
+            }],
+        )
+
+
+def test_fieldValue_override_satisfies_required_field():
+    draft = _bind_ambiguous_candidate(
+        _ambiguous_candidate_bundle(
+            base={"capitalDetail": ""},
+            local={"capitalDetail": ""},
+            source={"capitalDetail": ""},
+        ),
+        field_values=[{
+            "revisionId": "rev-00",
+            "packageObservationId": "detail-a",
+            "localRootId": "root-b",
+            "field": "capitalDetail",
+            "value": "Ngân sách",
+        }],
+    )
+    assert draft["packageDrafts"][0]["nguonVon"] == "Ngân sách"
+
+
+def test_required_validation_runs_on_final_resolved_package_not_raw_source():
+    draft = _bind_ambiguous_candidate(_ambiguous_candidate_bundle(
+        base={"capitalDetail": ""},
+        local={"capitalDetail": "Vốn hợp lệ cuối cùng"},
+        source={"capitalDetail": ""},
+    ))
+    assert draft["packageDrafts"][0]["nguonVon"] == "Vốn hợp lệ cuối cùng"
+
+
+def test_ambiguous_new_package_uses_source_without_local_merge():
+    bundle = _ambiguous_candidate_bundle(source={"priceVnd": 130})
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={
+            "investorId": "investor-1",
+            "packageMatches": [{
+                "revisionId": "rev-00", "packageObservationId": "detail-a",
+                "new": True,
+            }],
+        },
+    )
+    draft = service.get_revision_draft(
+        manifest["sessionId"], "00", organization_id="org-1",
+        user_id="user-1", workspace_lease="lease-1",
+    )
+    assert draft["packageDrafts"][0]["giaGoiThau"] == 130
+    assert "localRootId" not in draft["packageDrafts"][0]["sourceRevision"]
+
+
+def test_ambiguous_candidate_change_invalidates_previous_conflict_decisions():
+    bundle = _ambiguous_candidate_bundle(
+        base={"priceVnd": 100}, local={"priceVnd": 100}, source={"priceVnd": 130},
+    )
+    bundle["reconciliationByRevision"]["rev-00"][0]["fieldConflicts"] = [{
+        "localRootId": "root-a", "field": "priceVnd",
+        "baseValue": 100, "localValue": 120, "sourceValue": 130,
+    }]
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_DECISION_INVALID"):
+        _bind_ambiguous_candidate(bundle, field_conflicts=[{
+            "revisionId": "rev-00",
+            "packageObservationId": "detail-a",
+            "localRootId": "root-a",
+            "field": "priceVnd",
+            "resolution": "KEEP_LOCAL",
+        }])
+
+
 def test_sequential_plan_invalid_ambiguous_target_is_rejected():
     bundle = _sequential_decision_bundle()
     row = bundle["reconciliationByRevision"]["rev-00"][0]
@@ -1950,6 +2194,38 @@ def test_plan_predecessor_cas_is_rechecked_before_revision_materialization():
                 )
             ),
         )
+
+
+def test_package_changes_after_decision_bind_before_revision_draft_is_rejected():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        _sequential_decision_bundle(),
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={"investorId": "investor-1"},
+    )
+    checked = []
+
+    def reject_changed_target(target):
+        checked.append(target)
+        raise ProcurementDecisionError(
+            "PROCUREMENT_PREVIEW_STALE", "Gói thầu đã thay đổi.", 409,
+        )
+
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_PREVIEW_STALE"):
+        service.get_revision_draft(
+            manifest["sessionId"], "00", organization_id="org-1",
+            user_id="user-1", workspace_lease="lease-1",
+            validate_local_target=reject_changed_target,
+        )
+    assert checked == [{
+        "localRootId": "root-a", "snapshotId": "snapshot-a",
+        "localVersion": 1, "rowVersion": 7, "isLatest": True,
+    }]
 
 
 def test_session_public_decision_surface_excludes_skipped_revisions():

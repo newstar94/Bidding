@@ -12,11 +12,113 @@ from backend.integrations.muasamcong_browser.procurement_source import (
 import backend.procurement_import.routes as routes_module
 from backend.procurement_import.routes import (
     ProcurementRouteError,
+    _bundle_local_authority_signature,
     _load_opening_from_raw_snapshot,
     _resolve_revision_decisions,
+    _validate_plan_local_target,
     build_procurement_source,
     procurement_import_routes,
 )
+from backend.procurement_import.domain import canonical_digest
+
+
+class _PackageAuthorityCursor:
+    def __init__(self, current):
+        self.current = current
+        self.params = None
+
+    def execute(self, _query, params):
+        self.params = params
+        return self
+
+    def fetchone(self):
+        return self.current
+
+
+def _assert_package_authority_stale(current, target=None, organization_id="org-1"):
+    cursor = _PackageAuthorityCursor(current)
+    expected = target or {
+        "localRootId": "root-a",
+        "snapshotId": "snapshot-a",
+        "localVersion": 1,
+        "rowVersion": 7,
+        "isLatest": True,
+    }
+    with pytest.raises(ProcurementRouteError) as caught:
+        _validate_plan_local_target(cursor, organization_id, expected)
+    assert caught.value.code == "PROCUREMENT_PREVIEW_STALE"
+    assert cursor.params == (organization_id, expected["localRootId"])
+
+
+def test_package_same_root_new_rowversion_after_bind_is_rejected():
+    _assert_package_authority_stale(("snapshot-a", "root-a", 1, 8, 1))
+
+
+def test_package_same_root_new_localversion_after_bind_is_rejected():
+    _assert_package_authority_stale(("snapshot-a", "root-a", 2, 7, 1))
+
+
+def test_package_snapshot_id_changed_after_bind_is_rejected():
+    _assert_package_authority_stale(("snapshot-b", "root-a", 1, 7, 1))
+
+
+def test_package_deleted_after_bind_is_rejected():
+    _assert_package_authority_stale(None)
+
+
+def test_package_no_longer_latest_after_bind_is_rejected():
+    _assert_package_authority_stale(("snapshot-a", "root-a", 1, 7, 0))
+
+
+def test_package_from_other_org_cannot_be_revalidated_as_target():
+    # The organization-scoped query cannot see a row that exists only elsewhere.
+    _assert_package_authority_stale(None, organization_id="org-current")
+
+
+def test_background_enrichment_does_not_rebase_to_new_plan_predecessor():
+    original = {"plan": {"expectedPredecessor": {
+        "id": "plan-1", "rootId": "plan-root", "localVersion": 1, "rowVersion": 3,
+    }}}
+    refreshed = deepcopy(original)
+    refreshed["plan"]["expectedPredecessor"]["rowVersion"] = 4
+    assert _bundle_local_authority_signature(original) != _bundle_local_authority_signature(refreshed)
+
+
+def test_background_enrichment_does_not_rebase_to_new_package_snapshot():
+    original = {
+        "revisions": [{"revisionId": "rev-00"}],
+        "reconciliationByRevision": {"rev-00": [{
+            "planDetailRevisionId": "detail-a",
+            "localTarget": {
+                "rootId": "root-a", "snapshotId": "snapshot-a",
+                "localVersion": 1, "rowVersion": 3,
+            },
+        }]},
+    }
+    refreshed = deepcopy(original)
+    refreshed["reconciliationByRevision"]["rev-00"][0]["localTarget"]["snapshotId"] = "snapshot-b"
+    assert _bundle_local_authority_signature(original) != _bundle_local_authority_signature(refreshed)
+
+
+def test_enrichment_digest_change_invalidates_candidate_specific_decisions():
+    original = {
+        "revisions": [{"revisionId": "rev-00"}],
+        "decisionAuthority": {"status": "BOUND", "decisionsDigest": "old"},
+        "reconciliationByRevision": {"rev-00": [{
+            "planDetailRevisionId": "detail-a", "action": "AMBIGUOUS",
+            "matchCandidates": [{
+                "rootId": "root-a", "snapshotId": "snapshot-a",
+                "localVersion": 1, "rowVersion": 3,
+            }],
+        }]},
+    }
+    enriched = deepcopy(original)
+    enriched.pop("decisionAuthority", None)
+    enriched["revisions"][0]["packages"] = [{
+        "planDetailRevisionId": "detail-a", "name": "Gói mới",
+    }]
+    assert canonical_digest(original) != canonical_digest(enriched)
+    assert "decisionAuthority" not in enriched
 from backend.procurement_import.service import PreviewStore
 
 

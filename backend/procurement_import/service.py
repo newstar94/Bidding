@@ -19,10 +19,9 @@ from backend.procurement_import.domain import (
     derive_import_lifecycle_status,
     normalize_procurement_code,
     package_source_fields,
-    required_package_issues,
+    resolve_package_against_local_target,
     revision_requires_materialization,
     revision_sort_key,
-    three_way_merge_field,
 )
 from backend.observability.recording import record_database_phase
 
@@ -518,61 +517,77 @@ class ProcurementImportPreparer:
                 matched_snapshot_ids.update(
                     str(candidate.get("id")) for candidate in candidates
                 )
+                candidate_surfaces = []
+                candidate_merge_surfaces = {}
+                for candidate in candidates:
+                    surface = resolve_package_against_local_target(
+                        observation, candidate,
+                    )
+                    root_id = str(candidate.get("rootId") or candidate.get("id") or "")
+                    candidate_surfaces.append({
+                        "rootId": root_id,
+                        "snapshotId": candidate.get("id"),
+                        "localVersion": int(candidate.get("localVersion") or 0),
+                        "rowVersion": int(candidate.get("rowVersion") or 1),
+                        "isLatest": bool(candidate.get("isLatest", True)),
+                        "name": candidate.get("name"),
+                        "symbol": candidate.get("symbol"),
+                    })
+                    candidate_merge_surfaces[root_id] = {
+                        "rootId": root_id,
+                        "snapshotId": candidate.get("id"),
+                        "localVersion": int(candidate.get("localVersion") or 0),
+                        "rowVersion": int(candidate.get("rowVersion") or 1),
+                        "isLatest": bool(candidate.get("isLatest", True)),
+                        "baseFields": deepcopy(candidate.get("sourceFields") or {}),
+                        "localFields": deepcopy(candidate.get("localFields") or {}),
+                        "effectiveFields": surface["effectiveFields"],
+                        "fieldConflicts": [
+                            {**conflict, "localRootId": root_id}
+                            for conflict in surface["fieldConflicts"]
+                        ],
+                        "requiredIssues": [
+                            {**issue, "localRootId": root_id}
+                            for issue in surface["requiredIssues"]
+                        ],
+                    }
+                new_surface = resolve_package_against_local_target(
+                    observation, None,
+                )
                 row.update({
                     "action": PackageAction.AMBIGUOUS.value,
-                    "matchCandidates": [
-                        {
-                            "rootId": candidate.get("rootId") or candidate.get("id"),
-                            "snapshotId": candidate.get("id"),
-                            "localVersion": int(candidate.get("localVersion") or 0),
-                            "rowVersion": int(candidate.get("rowVersion") or 1),
-                            "name": candidate.get("name"),
-                            "symbol": candidate.get("symbol"),
-                        }
-                        for candidate in candidates
-                    ],
+                    "matchCandidates": candidate_surfaces,
+                    "candidateMergeSurfaces": candidate_merge_surfaces,
+                    "newPackageRequiredIssues": new_surface["requiredIssues"],
                 })
                 preview_rows.append(row)
                 continue
             if not candidates:
                 row["action"] = PackageAction.ADDED.value
-                row["effectiveFields"] = package_source_fields(observation)
+                surface = resolve_package_against_local_target(observation, None)
+                row.update(surface)
+                row.pop("localTargetAuthority", None)
                 preview_rows.append(row)
                 continue
             matched = candidates[0]
             matched_snapshot_ids.add(str(matched.get("id")))
-            base_fields = matched.get("sourceFields") or {}
-            local_fields = matched.get("localFields") or base_fields
             source_fields = package_source_fields(observation)
-            effective_fields = {}
-            field_conflicts = []
-            for field in dict.fromkeys((*base_fields, *local_fields, *source_fields)):
-                effective, disposition = three_way_merge_field(
-                    base_fields.get(field), local_fields.get(field),
-                    source_fields.get(field),
-                )
-                effective_fields[field] = effective
-                if disposition == "CONFLICT":
-                    field_conflicts.append({
-                        "field": field,
-                        "baseValue": deepcopy(base_fields.get(field)),
-                        "localValue": deepcopy(local_fields.get(field)),
-                        "sourceValue": deepcopy(source_fields.get(field)),
-                    })
+            surface = resolve_package_against_local_target(observation, matched)
+            authority = surface.pop("localTargetAuthority")
             row.update({
                 "action": (
                     PackageAction.CHANGED.value
-                    if source_fields != base_fields
+                    if source_fields != (matched.get("sourceFields") or {})
                     else PackageAction.UNCHANGED.value
                 ),
                 "localTarget": {
-                    "rootId": matched.get("rootId") or matched.get("id"),
-                    "snapshotId": matched.get("id"),
-                    "localVersion": int(matched.get("localVersion") or 0),
-                    "rowVersion": int(matched.get("rowVersion") or 1),
+                    "rootId": authority["localRootId"],
+                    "snapshotId": authority["snapshotId"],
+                    "localVersion": authority["localVersion"],
+                    "rowVersion": authority["rowVersion"],
+                    "isLatest": authority["isLatest"],
                 },
-                "fieldConflicts": field_conflicts,
-                "effectiveFields": effective_fields,
+                **surface,
             })
             preview_rows.append(row)
         for local in local_packages:
@@ -729,14 +744,6 @@ class ProcurementImportPreparer:
                 "revisionDigest": revision_digest,
                 "disposition": disposition,
             })
-            if revision_requires_materialization(disposition):
-                for package in revision.get("packages", []):
-                    for issue in required_package_issues(package):
-                        blocking_issues.append({
-                            **issue,
-                            "sourceRevisionId": revision["revisionId"],
-                            "sourceRevisionNumber": revision["revisionNumber"],
-                        })
         # The package table is a preview of the effective (latest selected)
         # snapshot.  ALL mode still keeps every canonical revision server-side
         # for chronological apply and validates every one above.
@@ -746,6 +753,24 @@ class ProcurementImportPreparer:
             )
             for revision in revisions
         }
+        for revision in revisions:
+            revision_id = str(revision.get("revisionId") or "")
+            disposition = next((
+                str(item.get("disposition") or "").upper()
+                for item in revision_previews
+                if str(item.get("revisionId") or "") == revision_id
+            ), "")
+            if not revision_requires_materialization(disposition):
+                continue
+            for row in reconciliation_by_revision.get(revision_id, []):
+                if row.get("action") == PackageAction.AMBIGUOUS.value:
+                    continue
+                for issue in row.get("requiredIssues") or []:
+                    blocking_issues.append({
+                        **issue,
+                        "sourceRevisionId": revision_id,
+                        "sourceRevisionNumber": str(revision.get("revisionNumber") or ""),
+                    })
         latest_revision_id = str(revisions[-1]["revisionId"])
         latest_revision_number = str(revisions[-1].get("revisionNumber") or "")
         packages = [
@@ -826,9 +851,20 @@ class ProcurementImportPreparer:
         public_decision_packages = deepcopy(decision_packages)
         for collection in (public_packages, public_decision_packages):
             for row in collection:
+                if isinstance(row.get("localTarget"), dict):
+                    row["localTarget"].pop("isLatest", None)
                 for candidate in row.get("matchCandidates") or []:
                     candidate.pop("localVersion", None)
                     candidate.pop("rowVersion", None)
+                    candidate.pop("isLatest", None)
+                    candidate.pop("baseFields", None)
+                    candidate.pop("localFields", None)
+                for surface in (row.get("candidateMergeSurfaces") or {}).values():
+                    surface.pop("baseFields", None)
+                    surface.pop("localFields", None)
+                    surface.pop("localVersion", None)
+                    surface.pop("rowVersion", None)
+                    surface.pop("isLatest", None)
         bundle = {
             "schemaVersion": PREVIEW_SCHEMA_VERSION,
             "provider": self.source.name,

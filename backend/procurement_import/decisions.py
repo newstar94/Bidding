@@ -8,6 +8,7 @@ from backend.procurement_import.domain import (
     SOURCE_OWNED_PACKAGE_FIELDS,
     canonical_digest,
     required_package_issues,
+    resolve_package_against_local_target,
 )
 
 
@@ -102,6 +103,16 @@ def _reject_duplicate(rows, key):
         seen.add(marker)
 
 
+def _has_candidate_specific_surface(preview):
+    return bool(
+        (preview.get("candidateMergeSurfaces") or {})
+        or any(
+            "baseFields" in candidate or "localFields" in candidate
+            for candidate in preview.get("matchCandidates") or []
+        )
+    )
+
+
 def _validate_bundle_decisions(revisions, reconciliation, decisions):
     observation_revisions = _observation_revisions(revisions)
     observations = {
@@ -127,26 +138,6 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
         for row in preview_rows
         if row.get("action") == "AMBIGUOUS"
     }
-    conflicts = {
-        (
-            str(row.get("sourceRevisionId") or ""),
-            str(row.get("planDetailRevisionId") or ""),
-            str(item.get("field") or ""),
-        )
-        for row in preview_rows
-        for item in row.get("fieldConflicts") or []
-    }
-    required = {
-        (
-            str(revision.get("revisionId") or ""),
-            str(package.get("planDetailRevisionId") or ""),
-            str(issue.get("field") or ""),
-        )
-        for revision in revisions
-        for package in revision.get("packages") or []
-        for issue in required_package_issues(package)
-    }
-
     matches = decision_rows(decisions, "packageMatches")
     field_values = decision_rows(decisions, "fieldValues")
     field_conflicts = decision_rows(decisions, "fieldConflicts")
@@ -215,7 +206,7 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
             observation_id,
             str(row.get("field") or ""),
         )
-        if marker not in required or marker[2] not in SOURCE_OWNED_PACKAGE_FIELDS:
+        if marker[2] not in SOURCE_OWNED_PACKAGE_FIELDS:
             raise ProcurementDecisionError(
                 "PROCUREMENT_DECISION_INVALID",
                 "Field bổ sung không thuộc blocking issue hiện tại.",
@@ -237,7 +228,7 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
             observation_id,
             str(row.get("field") or ""),
         )
-        if marker not in conflicts or str(row.get("resolution") or "").upper() not in {
+        if str(row.get("resolution") or "").upper() not in {
             "KEEP_LOCAL", "APPLY_SOURCE",
         }:
             raise ProcurementDecisionError(
@@ -321,19 +312,61 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
             409,
         )
 
+    surfaces = {}
+    for observation_id, observation in observations.items():
+        preview = preview_by_id.get(observation_id) or {}
+        explicit = package_decisions.get(observation_id) or {}
+        if preview.get("action") == "AMBIGUOUS":
+            if explicit.get("new"):
+                surface = resolve_package_against_local_target(observation, None)
+            else:
+                selected_root = str(explicit.get("localRootId") or "")
+                candidate = (
+                    (preview.get("candidateMergeSurfaces") or {}).get(selected_root)
+                    or next((
+                    item for item in preview.get("matchCandidates") or []
+                    if str(item.get("rootId") or "") == selected_root
+                    ), None)
+                )
+                if candidate is None:
+                    raise ProcurementDecisionError(
+                        "PROCUREMENT_MATCH_DECISION_INVALID",
+                        "Ứng viên gói được chọn không còn thuộc preview hiện tại.",
+                        409,
+                    )
+                surface = resolve_package_against_local_target(observation, candidate)
+                if not surface.get("fieldConflicts") and not (
+                    preview.get("candidateMergeSurfaces") or {}
+                ):
+                    surface["fieldConflicts"] = deepcopy(
+                        preview.get("fieldConflicts") or []
+                    )
+                surface["localRootId"] = selected_root
+        else:
+            surface = {
+                "effectiveFields": deepcopy(preview.get("effectiveFields") or {}),
+                "fieldConflicts": deepcopy(preview.get("fieldConflicts") or []),
+                "requiredIssues": deepcopy(
+                    preview.get("requiredIssues")
+                    or required_package_issues(
+                        preview.get("effectiveFields")
+                        if isinstance(preview.get("effectiveFields"), dict)
+                        else observation
+                    )
+                ),
+                "localTargetAuthority": deepcopy(preview.get("localTarget") or None),
+            }
+        surfaces[observation_id] = surface
+
     overrides = {
-        observation_id: deepcopy(preview.get("effectiveFields") or {})
-        for observation_id, preview in preview_by_id.items()
-        if preview.get("effectiveFields")
+        observation_id: deepcopy(surface.get("effectiveFields") or {})
+        for observation_id, surface in surfaces.items()
+        if surface.get("effectiveFields")
     }
     required_by_observation = {
         observation_id: {
             str(issue.get("field") or "")
-            for issue in required_package_issues(
-                observation.get("effectiveFields")
-                if isinstance(observation.get("effectiveFields"), dict)
-                else observation
-            )
+            for issue in surfaces.get(observation_id, {}).get("requiredIssues") or []
         }
         for observation_id, observation in observations.items()
     }
@@ -345,6 +378,20 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
                 "PROCUREMENT_DECISION_INVALID",
                 "Quyết định không thuộc revision hiện tại.",
                 400,
+            )
+        preview = preview_by_id.get(observation_id) or {}
+        explicit = package_decisions.get(observation_id) or {}
+        expected_root = str(explicit.get("localRootId") or "")
+        if (
+            preview.get("action") == "AMBIGUOUS"
+            and _has_candidate_specific_surface(preview)
+            and not explicit.get("new")
+            and str(row.get("localRootId") or "") != expected_root
+        ):
+            raise ProcurementDecisionError(
+                "PROCUREMENT_DECISION_INVALID",
+                "Quyết định field không thuộc ứng viên gói đang chọn.",
+                409,
             )
         if field not in required_by_observation.get(observation_id, set()):
             raise ProcurementDecisionError(
@@ -368,8 +415,21 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
             )
         resolution = str(row.get("resolution") or "").upper()
         preview = preview_by_id.get(observation_id) or {}
+        explicit = package_decisions.get(observation_id) or {}
+        expected_root = str(explicit.get("localRootId") or "")
+        if (
+            preview.get("action") == "AMBIGUOUS"
+            and _has_candidate_specific_surface(preview)
+            and not explicit.get("new")
+            and str(row.get("localRootId") or "") != expected_root
+        ):
+            raise ProcurementDecisionError(
+                "PROCUREMENT_DECISION_INVALID",
+                "Quyết định xung đột không thuộc ứng viên gói đang chọn.",
+                409,
+            )
         conflict = next((
-            item for item in preview.get("fieldConflicts") or []
+            item for item in surfaces.get(observation_id, {}).get("fieldConflicts") or []
             if item.get("field") == field
         ), None)
         if conflict is None or resolution not in {"KEEP_LOCAL", "APPLY_SOURCE"}:
@@ -386,8 +446,8 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
         )
     unresolved_conflicts = [
         (observation_id, conflict.get("field"))
-        for observation_id, preview in preview_by_id.items()
-        for conflict in preview.get("fieldConflicts") or []
+        for observation_id, surface in surfaces.items()
+        for conflict in surface.get("fieldConflicts") or []
         if (observation_id, conflict.get("field")) not in conflict_resolutions
     ]
     if unresolved_conflicts:
@@ -415,7 +475,9 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
         if preview.get("action") in {"CHANGED", "UNCHANGED", "ALREADY_IMPORTED"}:
             observation["_sourceAction"] = preview["action"]
         explicit = package_decisions.get(observation_id) or {}
-        local_target = preview.get("localTarget") or {}
+        local_target = surfaces.get(observation_id, {}).get(
+            "localTargetAuthority"
+        ) or preview.get("localTarget") or {}
         selected_root = explicit.get("localRootId") or local_target.get("rootId")
         if selected_root:
             local_targets[observation_id] = {
@@ -423,6 +485,7 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
                 "snapshotId": local_target.get("snapshotId"),
                 "localVersion": local_target.get("localVersion"),
                 "rowVersion": local_target.get("rowVersion"),
+                "isLatest": bool(local_target.get("isLatest", True)),
             }
             if explicit.get("localRootId"):
                 candidate = next((
@@ -433,6 +496,7 @@ def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_req
                     "snapshotId": candidate.get("snapshotId"),
                     "localVersion": candidate.get("localVersion"),
                     "rowVersion": candidate.get("rowVersion"),
+                    "isLatest": bool(candidate.get("isLatest", True)),
                 })
         validation_observation = (
             observation.get("effectiveFields")
@@ -473,22 +537,6 @@ def resolve_plan_decision_authority(bundle, decisions, selected_revision_ids=Non
     for revision in revisions:
         revision_id = str(revision.get("revisionId") or "")
         revision_preview = reconciliation.get(revision_id, [])
-        revision_required = {
-            (
-                str(item.get("planDetailRevisionId") or ""),
-                str(issue.get("field") or ""),
-            )
-            for item in revision.get("packages") or []
-            for issue in required_package_issues(item)
-        }
-        revision_conflicts = {
-            (
-                str(item.get("planDetailRevisionId") or ""),
-                str(conflict.get("field") or ""),
-            )
-            for item in revision_preview
-            for conflict in item.get("fieldConflicts") or []
-        }
         scoped_decisions = {
             **(decisions or {}),
             "packageMatches": [
@@ -501,19 +549,13 @@ def resolve_plan_decision_authority(bundle, decisions, selected_revision_ids=Non
                 item for item in decision_rows(decisions, "fieldValues")
                 if _row_applies_to_revision(
                     item, revision_id, observation_revisions
-                ) and (
-                    str(item.get("packageObservationId") or ""),
-                    str(item.get("field") or ""),
-                ) in revision_required
+                )
             ],
             "fieldConflicts": [
                 item for item in decision_rows(decisions, "fieldConflicts")
                 if _row_applies_to_revision(
                     item, revision_id, observation_revisions
-                ) and (
-                    str(item.get("packageObservationId") or ""),
-                    str(item.get("field") or ""),
-                ) in revision_conflicts
+                )
             ],
         }
         resolved, explicit, targets = resolve_revision_decisions(

@@ -301,6 +301,78 @@ def _linked_notice_numbers(bundle):
     return notices
 
 
+def _bundle_local_authority_signature(bundle):
+    """Return only local target identity, excluding refreshable source evidence."""
+
+    plan = (bundle or {}).get("plan") or {}
+    predecessor = plan.get("expectedPredecessor")
+    plan_signature = None if predecessor is None else tuple(
+        str(predecessor.get(key) or "")
+        for key in ("id", "rootId", "localVersion", "rowVersion")
+    )
+    targets = []
+    for revision in (bundle or {}).get("revisions") or []:
+        revision_id = str(revision.get("revisionId") or "")
+        rows = ((bundle or {}).get("reconciliationByRevision") or {}).get(
+            revision_id, []
+        )
+        for row in rows:
+            observation_id = str(row.get("planDetailRevisionId") or "")
+            target = row.get("localTarget") or {}
+            if target.get("rootId") or target.get("snapshotId"):
+                targets.append((
+                    revision_id, observation_id, "selected",
+                    str(target.get("rootId") or ""),
+                    str(target.get("snapshotId") or ""),
+                    str(target.get("localVersion") or ""),
+                    str(target.get("rowVersion") or ""),
+                ))
+            candidates = list(row.get("matchCandidates") or [])
+            candidates += list((row.get("candidateMergeSurfaces") or {}).values())
+            for candidate in candidates:
+                if candidate.get("rootId") or candidate.get("localRootId"):
+                    targets.append((
+                        revision_id, observation_id, "candidate",
+                        str(candidate.get("rootId") or candidate.get("localRootId") or ""),
+                        str(candidate.get("snapshotId") or ""),
+                        str(candidate.get("localVersion") or ""),
+                        str(candidate.get("rowVersion") or ""),
+                    ))
+    return plan_signature, tuple(sorted(set(targets)))
+
+
+def _bundle_local_targets(bundle):
+    targets = []
+    for revision in (bundle or {}).get("revisions") or []:
+        revision_id = str(revision.get("revisionId") or "")
+        rows = ((bundle or {}).get("reconciliationByRevision") or {}).get(
+            revision_id, []
+        )
+        for row in rows:
+            local_target = row.get("localTarget") or {}
+            if local_target.get("rootId") or local_target.get("snapshotId"):
+                targets.append({
+                    "localRootId": local_target.get("rootId"),
+                    "snapshotId": local_target.get("snapshotId"),
+                    "localVersion": local_target.get("localVersion"),
+                    "rowVersion": local_target.get("rowVersion"),
+                    "isLatest": bool(local_target.get("isLatest", True)),
+                })
+            targets.extend({
+                "localRootId": candidate.get("rootId") or candidate.get("localRootId"),
+                "snapshotId": candidate.get("snapshotId"),
+                "localVersion": candidate.get("localVersion"),
+                "rowVersion": candidate.get("rowVersion"),
+                "isLatest": bool(candidate.get("isLatest", True)),
+            } for candidate in list(row.get("matchCandidates") or [])
+                + list((row.get("candidateMergeSurfaces") or {}).values()))
+    return {
+        (str(target.get("localRootId") or ""), str(target.get("snapshotId") or "")): target
+        for target in targets
+        if target.get("localRootId") and target.get("snapshotId")
+    }.values()
+
+
 def _create_enrichment_operation(context, bundle, notices):
     """Create an idempotent progress record for background TBMT enrichment."""
     idempotency_key = f"enrichment:{context['sessionId']}"
@@ -452,6 +524,14 @@ def _run_plan_enrichment(context, operation_id):
             user_id=context["userId"],
             workspace_lease=context["workspaceLease"],
         )
+        if _bundle_local_authority_signature(
+            session_row.get("canonicalBundle") or {}
+        ) != _bundle_local_authority_signature(stored.canonical_bundle):
+            raise ProcurementRouteError(
+                "PROCUREMENT_PREVIEW_STALE",
+                "Dữ liệu nội bộ đã thay đổi trong lúc bổ sung dữ liệu nguồn.",
+                409,
+            )
         failed_notices = {
             str(item.get("noticeNo") or "").strip().upper()
             for item in (stored.canonical_bundle.get("warnings") or [])
@@ -466,8 +546,20 @@ def _run_plan_enrichment(context, operation_id):
         update_connection = database.get_connection()
         try:
             update_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+            update_cursor = update_connection.cursor()
+            _validate_plan_predecessor(
+                update_cursor,
+                context["organizationId"],
+                session_row.get("canonicalBundle", {}).get("plan") or {},
+            )
+            for target in _bundle_local_targets(
+                session_row.get("canonicalBundle") or {}
+            ):
+                _validate_plan_local_target(
+                    update_cursor, context["organizationId"], target,
+                )
             updated = ProcurementImportSessionRepository(
-                update_connection.cursor()
+                update_cursor
             ).update_canonical_bundle(
                 context["sessionId"],
                 organization_id=context["organizationId"],
@@ -661,6 +753,9 @@ def _get_import_session_blocking(request, session_id, revision_number=None):
             validate_plan_authority=lambda plan_authority: _validate_plan_predecessor(
                 cursor, organization_id, plan_authority
             ),
+            validate_local_target=lambda target: _validate_plan_local_target(
+                cursor, organization_id, target
+            ),
         )
     finally:
         connection.rollback()
@@ -697,32 +792,7 @@ def _bind_import_session_decisions_blocking(request, session_id, payload):
             _validate_investor(cursor, organization_id, investor_id)
 
         def validate_local_target(target):
-            root_id = str(target.get("localRootId") or "")
-            snapshot_id = str(target.get("snapshotId") or "")
-            row_version = target.get("rowVersion")
-            local_version = target.get("localVersion")
-            current = cursor.execute(
-                """SELECT id, COALESCE(NULLIF(id_goc, ''), id),
-                          phien_ban, row_version
-                     FROM goi_thau
-                    WHERE organization_id = ? AND archived_at IS NULL
-                      AND is_latest = 1
-                      AND COALESCE(NULLIF(id_goc, ''), id) = ?
-                    ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
-                (organization_id, root_id),
-            ).fetchone()
-            if current is None or (
-                snapshot_id and str(current[0]) != snapshot_id
-            ) or (
-                row_version is not None and int(current[3]) != int(row_version)
-            ) or (
-                local_version is not None and int(current[2] or 0) != int(local_version)
-            ):
-                raise ProcurementRouteError(
-                    "PROCUREMENT_PREVIEW_STALE",
-                    "Gói thầu nội bộ đã thay đổi sau khi tạo preview.",
-                    409,
-                )
+            _validate_plan_local_target(cursor, organization_id, target)
 
         result = ProcurementImportSessionService(repository).bind_plan_decisions(
             session_id,
@@ -1054,6 +1124,48 @@ def _validate_plan_predecessor(cursor, organization_id, plan_authority):
         raise ProcurementRouteError(
             "PROCUREMENT_PREVIEW_STALE",
             "Kế hoạch đã thay đổi sau khi tạo preview.",
+            409,
+        )
+
+
+def _validate_plan_local_target(cursor, organization_id, target):
+    """Re-CAS one exact latest package target before serving a draft."""
+
+    root_id = str((target or {}).get("localRootId") or "").strip()
+    snapshot_id = str((target or {}).get("snapshotId") or "").strip()
+    if not root_id or not snapshot_id:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE",
+            "Gói thầu nội bộ không còn là đúng bản ghi đã xem trước.",
+            409,
+        )
+    current = cursor.execute(
+        """SELECT id, COALESCE(NULLIF(id_goc, ''), id), phien_ban,
+                          row_version, is_latest
+                     FROM goi_thau
+                    WHERE organization_id = ? AND archived_at IS NULL
+                      AND is_latest = 1
+                      AND COALESCE(NULLIF(id_goc, ''), id) = ?
+                    ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
+        (organization_id, root_id),
+    ).fetchone()
+    expected_local_version = (target or {}).get("localVersion")
+    expected_row_version = (target or {}).get("rowVersion")
+    expected_latest = bool((target or {}).get("isLatest", True))
+    if current is None or str(current[0]) != snapshot_id or not bool(current[4]):
+        stale = True
+    else:
+        stale = (
+            expected_local_version is not None
+            and int(current[2] or 0) != int(expected_local_version)
+        ) or (
+            expected_row_version is not None
+            and int(current[3] or 0) != int(expected_row_version)
+        ) or (bool(current[4]) != expected_latest)
+    if stale:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE",
+            "Gói thầu nội bộ đã thay đổi sau khi tạo preview.",
             409,
         )
 

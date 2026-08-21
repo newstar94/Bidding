@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
 import json
@@ -342,3 +343,69 @@ def three_way_merge_field(base, local, source, *, source_owned=True):
     if source_changed:
         return source, "APPLY_SOURCE"
     return local, "KEEP_LOCAL"
+
+
+def resolve_package_against_local_target(
+    source_package: dict,
+    local_candidate: dict | None,
+) -> dict:
+    """Build the canonical candidate-specific merge surface."""
+
+    source_fields = package_source_fields(source_package)
+    if local_candidate is None:
+        effective_fields = deepcopy(source_fields)
+        return {
+            "effectiveFields": effective_fields,
+            "fieldConflicts": [],
+            "requiredIssues": required_package_issues({
+                **source_package, **effective_fields,
+            }),
+            "localTargetAuthority": None,
+        }
+    base_fields = deepcopy(
+        local_candidate.get("baseFields")
+        or local_candidate.get("sourceFields")
+        or {}
+    )
+    local_fields = deepcopy(
+        local_candidate.get("localFields") or base_fields
+    )
+    effective_fields = {}
+    field_conflicts = []
+    for field in dict.fromkeys((*base_fields, *local_fields, *source_fields)):
+        if field not in SOURCE_OWNED_PACKAGE_FIELDS:
+            continue
+        effective, disposition = three_way_merge_field(
+            base_fields.get(field),
+            local_fields.get(field),
+            source_fields.get(field),
+        )
+        effective_fields[field] = deepcopy(effective)
+        if disposition == "CONFLICT":
+            field_conflicts.append({
+                "field": field,
+                "baseValue": deepcopy(base_fields.get(field)),
+                "localValue": deepcopy(local_fields.get(field)),
+                "sourceValue": deepcopy(source_fields.get(field)),
+            })
+    root_id = str(
+        local_candidate.get("rootId")
+        or local_candidate.get("localRootId")
+        or local_candidate.get("id")
+        or ""
+    )
+    authority = {
+        "localRootId": root_id,
+        "snapshotId": local_candidate.get("snapshotId") or local_candidate.get("id"),
+        "localVersion": local_candidate.get("localVersion"),
+        "rowVersion": local_candidate.get("rowVersion"),
+        "isLatest": bool(local_candidate.get("isLatest", True)),
+    }
+    return {
+        "effectiveFields": effective_fields,
+        "fieldConflicts": field_conflicts,
+        "requiredIssues": required_package_issues({
+            **source_package, **effective_fields,
+        }),
+        "localTargetAuthority": authority,
+    }

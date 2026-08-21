@@ -1,96 +1,102 @@
 # MSC plan import: authoritative sequential state machine
 
-This document is the canonical contract for the sequential Mua Sắm Công plan
-import path. It does not change tenant, module, assignment, record-scope, or
+This is the business and consistency contract for sequential Mua Sắm Công plan
+imports. It does not change tenant, module, assignment, record-scope, or
 full-record read permissions.
 
-## Authority flow
+## Final flow
 
 ```text
-preview bundle (digest + exact plan predecessor + reconciliationByRevision)
-    -> session creation (server-owned canonical bundle)
-    -> decision binding (bounded choices, CAS on bundle digest)
-    -> resolved revision draft (effective fields, validated decisions)
-    -> local plan-version draft session
-    -> form editing and intermediate saves
-    -> atomic finalization / resume
+PREVIEW
+  -> server session owns source bundle, active revisions and local authorities
+  -> candidate decision (if AMBIGUOUS)
+  -> candidate-specific three-way merge refinement
+  -> explicit KEEP_LOCAL/APPLY_SOURCE decision (if conflict)
+  -> FINAL DECISION AUTHORITY (serializable bind + immutable digest)
+  -> REVISION DRAFT
+  -> server Plan + package authority re-CAS
+  -> frontend last-mile authority re-CAS against live model
+  -> off-state materialization
+  -> durable PlanVersionDraftSession / form
+  -> next revision with exact authority recheck
 ```
 
-The server is the authority for source, base/local fields, three-way merge,
-package candidates, required-field observations, the exact plan predecessor,
-and selected investor. A client sends only `bundleDigest`, `investorId`, `packageMatches`,
-`fieldConflicts`, and `fieldValues` in the decision-binding request. It never
-sends a canonical source object or an arbitrary local root as authority.
+The server is authoritative for source, base/local fields, candidate surfaces,
+effective fields, required issues, exact Plan predecessor, exact package
+targets, and selected investor. The browser sends only bounded decisions and
+never sends a canonical source object or arbitrary local row as authority.
 
-## Decision binding
+## Candidate merge and required fields
 
-`POST /api/procurement/imports/plan/sessions/{sessionId}/decisions` validates
-the workspace/session scope, preview digest, exact plan predecessor (`id`,
-`rootId`, `localVersion`, `rowVersion`), candidate root and snapshot,
-row/local version, required field and type/domain, and investor workspace
-membership in one serializable transaction. The same predecessor is checked
-again when each revision draft is requested, closing the bind-to-materialize
-TOCTOU window. The resulting authority is immutable and idempotent: the same
-digest and decisions may be retried, while changed decisions are rejected.
+An `AMBIGUOUS` match is unresolved until the selected candidate is merged. The
+server keeps bounded candidate merge inputs privately and exposes only the
+candidate-specific effective fields, conflict values, and required issue names
+needed by the decision surface. Selecting `root-b` therefore recomputes:
 
-An active plan session must bind decision authority before any revision draft
-is materialized, including a clean revision. Inline lookup explicitly binds
-its bounded investor/decision payload first. A revision with an ambiguity,
-conflict, or missing required field must be bound before it can be materialized.
+```text
+baseFields(root-b) + localFields(root-b) + sourceFields
+  -> effectiveFields(root-b), fieldConflicts(root-b), requiredIssues(root-b)
+```
 
-## Sequential and ALL semantics
+The same canonical merge helper is used for unique matches and selected
+candidates. A `__NEW__` choice has no local target and uses source-owned fields
+only. Candidate-specific conflict and required-field decisions carry the
+selected `localRootId`; switching candidates clears incompatible transient UI
+decisions before the next bind.
 
-The session manifest contains only the selected, materializable revisions and
-keeps their chronological order. `ALREADY_IMPORTED` and `PROVENANCE_ONLY`
-revisions are skipped consistently by session creation, `decisionPackages`,
-`blockingIssues`, resolver scope, and the frontend. `MATERIALIZE` and `RESYNC`
-are active. ALL mode cannot bypass an unresolved issue in an earlier active
-revision because decision requirements are collected across every selected
-revision and binding resolves every one before the first draft opens.
+Required fields are checked on the final effective value, after merge and
+explicit decisions. A local value therefore satisfies a missing source value;
+an empty `APPLY_SOURCE` value remains a blocker until the user supplies a
+bounded field value.
 
-Required fields enforced for `RESYNC` are surfaced in the same blocking issue
-surface as materialization; they are not silently disabled. Decision identity
-is revision-qualified when an observation identifier is reused across source
-revisions.
+## Authority and CAS
 
-Each later revision targets the exact committed predecessor (`id`, `rootId`,
-`localVersion`, and `rowVersion`). Historical snapshots remain immutable.
+Decision binding runs in one serializable transaction and validates workspace,
+session, bundle digest, investor, Plan predecessor, and every exact package
+target (`organizationId`, `rootId`, `snapshotId`, `localVersion`, `rowVersion`,
+`isLatest`). Row version alone is never treated as identity. The authority is
+immutable and idempotent: the same digest and decisions may retry, while a
+changed decision or changed target is rejected.
 
-## Local materialization and recovery
+`GET revision draft` revalidates the Plan predecessor and every selected
+package target after bind and before mapping the draft. The response carries
+bounded `planAuthority` and `packageAuthorities`. Before materialization, the
+frontend compares those authorities with the live Plan/package model; a stale
+response aborts before publishing any candidate state.
 
-Resolved effective fields are the only source fields presented to local
-materialization. Local-only changes therefore survive, `KEEP_LOCAL` keeps the
-local value, and `APPLY_SOURCE` applies the source value. Application metadata,
-assignments, child snapshots, workflow/appraisal state, and historical rows are
-preserved by the existing aggregate materializers.
+The same checks apply during resume and next-revision loading. Historical Plan
+and package snapshots remain immutable, and package version inheritance keeps
+assignments, responsible users, workflow state, and local-only metadata under
+the existing domain rules.
 
-The selected investor is copied as an authoritative `chuDauTuId` only after
-server validation. Inline lookup without a selected investor retains its
-existing source-based resolver behavior; the required modal selection must be
-bound and is never silently replaced.
+## Enrichment, recovery, and UI
 
-Restored wizard decisions are rehydrated into the visible select/input controls
-after every render. Decisions whose issue or candidate is no longer in the
-current digest surface are discarded, so no hidden decision can be submitted.
-Enrichment refreshes the session digest and decision surface; a changed digest
-invalidates the old transient decision map until the user resolves the new
+Background enrichment may refresh source evidence and the session digest. It
+must not rebase the session onto a newer local Plan or package authority; a
+local authority change marks the session stale. A changed digest invalidates
+candidate-specific transient decisions and re-renders the authoritative
 surface.
 
-After a durable local draft exists, a UI handoff failure retains the exact flow
-and recovery pointer while releasing loading state. Flow identity, workspace
-lease/storage identity, and session identity guard every asynchronous side
-effect; a replaced flow in the same workspace cannot reset or mutate the new
-flow.
+LocalStorage stores only bounded UI recovery. Investor recovery is restored
+only for the same normalized Plan code and same preview digest; a changed code
+cannot inherit the old investor. When a corrected code already has a latest
+local Plan, its exact existing `chuDauTuId` seeds the visible investor option
+before source code/name matching; no unrelated investor is invented. The
+visible controls, submitted decision
+payload, and server decision surface are the same state. Workspace lease,
+storage identity, flow identity, session identity, request generation, and
+post-durable recovery guards protect every asynchronous side effect.
 
 ## Compatibility and migration
 
-The decision authority is stored inside the existing session canonical JSON;
-no table or migration is required. Existing sessions without an authority are
-retained for legacy service callers, while production plan sessions mark
-decision binding as required before any revision is materialized. Enrichment
-updates replace only the server-owned canonical bundle before binding. Resume
-reads the bound authority from the session and never stores the canonical
-bundle in browser storage.
+Decision authority remains in the existing session canonical JSON; no schema
+migration is required. Legacy service callers without an authority retain
+their compatibility behavior, while production plan sessions require binding
+before any revision draft is materialized. Enrichment replaces only the
+server-owned unbound canonical bundle, and resume never stores that bundle in
+browser storage.
 
-Regression coverage is maintained at the session service, route resolver,
-wizard gate/client, materializer, resume, and inline handoff seams.
+Regression coverage spans the canonical merge helper, session bind/draft CAS,
+route authority validation, wizard decision rehydration and candidate identity,
+frontend last-mile checks, resume/next, enrichment, lifecycle protections,
+package inheritance, and historical immutability.

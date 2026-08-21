@@ -133,6 +133,50 @@ function decisionPackageRows(preview) {
   return [...rows.values()];
 }
 
+function selectedPackageDecision(row, decisions) {
+  const key = decisionKeyForPreview(row, decisions?.preview || row?.__preview);
+  return decisions?.packageMatches?.[key] || null;
+}
+
+function candidateMergeSurface(row, decisions) {
+  const match = selectedPackageDecision(row, decisions);
+  if (!match || match.new) return null;
+  const rootId = String(match.localRootId || "");
+  return (row.candidateMergeSurfaces || {})[rootId] || null;
+}
+
+function decisionConflictsFor(row, decisions) {
+  if (row.action !== "AMBIGUOUS") return row.fieldConflicts || [];
+  if (selectedPackageDecision(row, decisions)?.new) return [];
+  return candidateMergeSurface(row, decisions)?.fieldConflicts || row.fieldConflicts || [];
+}
+
+function decisionIssuesFor(row, decisions) {
+  if (row.action !== "AMBIGUOUS") return [];
+  const match = selectedPackageDecision(row, decisions);
+  if (match?.new) return row.newPackageRequiredIssues || [];
+  return candidateMergeSurface(row, decisions)?.requiredIssues || [];
+}
+
+function decisionBlockingIssues(preview, decisions) {
+  const active = activeRevisionIds(preview);
+  const issues = [...(preview?.blockingIssues || [])];
+  decisionPackageRows(preview).forEach((row) => {
+    decisionIssuesFor(row, decisions).forEach((issue) => {
+      issues.push({
+        ...issue,
+        sourceRevisionId: issue.sourceRevisionId || row.sourceRevisionId,
+        code: issue.code || "PROCUREMENT_REQUIRED_FIELDS_MISSING",
+      });
+    });
+  });
+  return issues.filter((issue) => (
+    !issue.sourceRevisionId
+    || !active.size
+    || active.has(String(issue.sourceRevisionId))
+  ));
+}
+
 export function buildSequentialDecisionPayload(decisions, investorId) {
   const splitKey = (key) => {
     const separator = String(key).lastIndexOf(":");
@@ -159,12 +203,18 @@ export function buildSequentialDecisionPayload(decisions, investorId) {
     fieldConflicts: Object.entries(decisions?.fieldConflicts || {}).map(
       ([key, resolution]) => {
         const { revisionId, packageObservationId, field } = splitKey(key);
-        return { ...(revisionId ? { revisionId } : {}), packageObservationId, field, resolution };
+        const value = resolution && typeof resolution === "object"
+          ? resolution : { resolution };
+        return {
+          ...(revisionId ? { revisionId } : {}), packageObservationId, field,
+          ...value,
+        };
       },
     ),
     fieldValues: Object.entries(decisions?.fieldValues || {}).map(([key, value]) => {
       const { revisionId, packageObservationId, field } = splitKey(key);
-      return { ...(revisionId ? { revisionId } : {}), packageObservationId, field, value };
+      const item = value && typeof value === "object" ? value : { value };
+      return { ...(revisionId ? { revisionId } : {}), packageObservationId, field, ...item };
     }),
   };
 }
@@ -189,13 +239,13 @@ export function canStartSequentialImport(preview, context) {
   if (decisionPackageRows(preview).some((row) => {
     const observationId = decisionKeyForPreview(row, preview);
     if (row.action === "AMBIGUOUS" && !matches[observationId]) return true;
-    return (row.fieldConflicts || []).some(
+    return decisionConflictsFor(row, { ...decisions, preview }).some(
       (conflict) => !conflicts[
         `${observationId}:${String(conflict.field || "")}`
       ],
     );
   })) return false;
-  return !(preview.blockingIssues || []).some((issue) => {
+  return !decisionBlockingIssues(preview, { ...decisions, preview }).some((issue) => {
     if (
       issue.sourceRevisionId
       && active.size
@@ -206,9 +256,10 @@ export function canStartSequentialImport(preview, context) {
       || !issue.packageObservationId
       || !issue.field
     ) return false;
-    const value = fieldValues[
+    const stored = fieldValues[
       `${decisionKeyForPreview(issue, preview)}:${String(issue.field || "")}`
     ];
+    const value = stored && typeof stored === "object" ? stored.value : stored;
     return value === undefined || value === null || String(value).trim() === "";
   });
 }
@@ -268,7 +319,7 @@ function appendDecisionSelect(parent, { label, dataAttribute, observationId, opt
   return select;
 }
 
-export function renderPackages(modal, preview) {
+export function renderPackages(modal, preview, decisions = {}) {
   const body = modal.querySelector("[data-procurement-packages]");
   body.replaceChildren();
   decisionPackageRows(preview).forEach((pkg) => {
@@ -297,7 +348,7 @@ export function renderPackages(modal, preview) {
         ],
       });
     }
-    (pkg.fieldConflicts || []).forEach((conflict) => {
+    decisionConflictsFor(pkg, { ...decisions, preview }).forEach((conflict) => {
       const select = appendDecisionSelect(actionCell, {
         label: `Xử lý xung đột ${conflict.field} của gói ${pkg.symbol || observationId}`,
         dataAttribute: "procurementConflict",
@@ -308,20 +359,16 @@ export function renderPackages(modal, preview) {
         ],
       });
       select.dataset.field = conflict.field;
+      if (conflict.localRootId) select.dataset.candidateRoot = conflict.localRootId;
     });
     body.append(row);
   });
 }
 
-export function renderIssues(modal, preview) {
+export function renderIssues(modal, preview, decisions = {}) {
   const target = modal.querySelector("[data-procurement-issues]");
   target.replaceChildren();
-  const active = activeRevisionIds(preview);
-  const scopedIssues = (preview.blockingIssues || []).filter((item) => (
-    !item.sourceRevisionId
-    || !active.size
-    || active.has(String(item.sourceRevisionId))
-  ));
+  const scopedIssues = decisionBlockingIssues(preview, { ...decisions, preview });
   const items = [
     ...scopedIssues.map((item) => ({ ...item, blocking: true })),
     ...(preview.warnings || []),
@@ -341,6 +388,7 @@ export function renderIssues(modal, preview) {
       input.min = item.field === "priceVnd" ? "0" : "";
       input.dataset.procurementFieldValue = decisionObservationKey(item);
       input.dataset.field = String(item.field);
+      if (item.localRootId) input.dataset.candidateRoot = item.localRootId;
       input.setAttribute(
         "aria-label",
         `Bổ sung ${item.field} cho gói ${item.packageObservationId}`,
@@ -355,6 +403,72 @@ export function renderIssues(modal, preview) {
 function optionExists(select, value) {
   return [...(select?.options || select?.children || [])]
     .some((option) => String(option?.value ?? "") === String(value ?? ""));
+}
+
+function normalizeInvestorMatchValue(value, { code = false } = {}) {
+  const normalized = String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase("vi-VN");
+  return code ? normalized.replace(/[\s._-]+/g, "") : normalized.replace(/\s+/g, " ");
+}
+
+export function resolvePreviewInvestorId(preview, select, context = {}) {
+  const source = preview?.plan?.preview || {};
+  const options = [...(select?.options || select?.children || [])]
+    .filter((option) => String(option?.value || "").trim());
+  const model = context?.model;
+  const familyNo = String(
+    context?.familyNo || preview?.plan?.familyNo || "",
+  ).trim().toUpperCase();
+  if (model && familyNo) {
+    const existingPlan = latestPlanForFamily(model, familyNo, model.state);
+    const existingInvestorId = String(
+      existingPlan?.chuDauTuId || existingPlan?.investorId || "",
+    ).trim();
+    if (existingInvestorId && optionExists(select, existingInvestorId)) {
+      return existingInvestorId;
+    }
+  }
+  const sourceInvestorId = String(
+    source.investorId
+      || source.chuDauTuId
+      || source.investor?.id
+      || "",
+  ).trim();
+  if (sourceInvestorId && optionExists(select, sourceInvestorId)) {
+    return sourceInvestorId;
+  }
+  const sourceCode = normalizeInvestorMatchValue(
+    source.investorCode
+      || source.createdBy
+      || source.newInvestorCode
+      || source.maChuDauTu,
+    { code: true },
+  );
+  if (sourceCode) {
+    const codeMatches = options.filter((option) => (
+      normalizeInvestorMatchValue(
+        option?.dataset?.investorCode
+          || option?.dataset?.maChuDauTu
+          || option?.dataset?.createdBy,
+        { code: true },
+      )
+      === sourceCode
+    ));
+    if (codeMatches.length === 1) return String(codeMatches[0].value);
+  }
+  const sourceName = normalizeInvestorMatchValue(
+    source.investorName || source.newInvestorName || source.tenChuDauTu,
+  );
+  if (!sourceName) return null;
+  const nameMatches = options.filter((option) => (
+    normalizeInvestorMatchValue(
+      option?.dataset?.investorName
+        || option?.dataset?.tenChuDauTu,
+    ) === sourceName
+  ));
+  return nameMatches.length === 1 ? String(nameMatches[0].value) : null;
 }
 
 export function rehydrateDecisionControls(modal, preview, decisions, investorId = null) {
@@ -383,7 +497,9 @@ export function rehydrateDecisionControls(modal, preview, decisions, investorId 
         : "";
       if (conflictKey) {
         allowedConflicts.add(conflictKey);
-        const value = next.fieldConflicts[conflictKey];
+        const stored = next.fieldConflicts[conflictKey];
+        const value = stored && typeof stored === "object"
+          ? stored.resolution : stored;
         if (value && optionExists(control, value)) control.value = value;
         else delete next.fieldConflicts[conflictKey];
       }
@@ -398,7 +514,10 @@ export function rehydrateDecisionControls(modal, preview, decisions, investorId 
       if (!key) continue;
       allowedFields.add(key);
       if (Object.hasOwn(next.fieldValues, key)) {
-        control.value = String(next.fieldValues[key] ?? "");
+        const stored = next.fieldValues[key];
+        control.value = String(
+          stored && typeof stored === "object" ? stored.value : stored ?? "",
+        );
       } else {
         delete next.fieldValues[key];
       }
@@ -494,7 +613,11 @@ export class PlanImportWizard {
     const mode = this.modal.querySelector("[data-procurement-mode]");
     const revision = this.modal.querySelector("[data-procurement-revision]");
     const investor = this.modal.querySelector("[data-procurement-investor]");
-    if (code && draft.code) code.value = draft.code;
+    const currentCode = String(code?.value || "").trim().toUpperCase();
+    const draftCode = String(draft.code || "").trim().toUpperCase();
+    const sameCode = !currentCode || currentCode === draftCode;
+    if (code && draft.code && !currentCode) code.value = draft.code;
+    if (!sameCode) return draft;
     if (mode && draft.revisionMode) mode.value = draft.revisionMode;
     if (revision && draft.selectedRevision) revision.value = draft.selectedRevision;
     if (investor && draft.investorId) investor.value = draft.investorId;
@@ -506,19 +629,55 @@ export class PlanImportWizard {
     if (!(target instanceof globalThis.HTMLElement)) return;
     if (target.dataset.procurementMatch) {
       const value = target.value;
-      if (!value) delete this.decisions.packageMatches[target.dataset.procurementMatch];
-      else this.decisions.packageMatches[target.dataset.procurementMatch] = value === "__NEW__"
+      const observationKey = target.dataset.procurementMatch;
+      if (!value) delete this.decisions.packageMatches[observationKey];
+      else this.decisions.packageMatches[observationKey] = value === "__NEW__"
         ? { new: true }
         : { localRootId: value };
+      Object.keys(this.decisions.fieldConflicts || {}).forEach((key) => {
+        if (key.startsWith(`${observationKey}:`)) {
+          const stored = this.decisions.fieldConflicts[key];
+          if (stored && typeof stored === "object" && stored.localRootId !== value) {
+            delete this.decisions.fieldConflicts[key];
+          }
+        }
+      });
+      Object.keys(this.decisions.fieldValues || {}).forEach((key) => {
+        if (key.startsWith(`${observationKey}:`)) {
+          const stored = this.decisions.fieldValues[key];
+          if (stored && typeof stored === "object" && stored.localRootId !== value) {
+            delete this.decisions.fieldValues[key];
+          }
+        }
+      });
+      renderPackages(this.modal, this.preview, this.decisions);
+      renderIssues(this.modal, this.preview, this.decisions);
+      const rehydrated = rehydrateDecisionControls(
+        this.modal,
+        this.preview,
+        this.decisions,
+        this.modal.querySelector("[data-procurement-investor]")?.value,
+      );
+      this.decisions = rehydrated.decisions;
     }
     if (target.dataset.procurementConflict) {
       const key = `${target.dataset.procurementConflict}:${target.dataset.field || ""}`;
-      if (target.value) this.decisions.fieldConflicts[key] = target.value;
+      const match = this.decisions.packageMatches[target.dataset.procurementConflict] || {};
+      const candidateRoot = target.dataset.candidateRoot || match.localRootId || "";
+      if (target.value) {
+        this.decisions.fieldConflicts[key] = candidateRoot
+          ? { resolution: target.value, localRootId: candidateRoot }
+          : target.value;
+      }
       else delete this.decisions.fieldConflicts[key];
     }
     if (target.dataset.procurementFieldValue) {
       const key = `${target.dataset.procurementFieldValue}:${target.dataset.field || ""}`;
-      this.decisions.fieldValues[key] = target.value;
+      const match = this.decisions.packageMatches[target.dataset.procurementFieldValue] || {};
+      const candidateRoot = target.dataset.candidateRoot || match.localRootId || "";
+      this.decisions.fieldValues[key] = candidateRoot
+        ? { value: target.value, localRootId: candidateRoot }
+        : target.value;
     }
     this.saveDraft();
     this.refreshApplyGate();
@@ -575,24 +734,31 @@ export class PlanImportWizard {
       if (!isPrepareCapabilityCurrent()) return;
       this.preview = preview;
       const draft = this.draftStore.load();
+      const draftMatchesPreview = draft?.bundleDigest === preview.bundleDigest;
       this.decisions = (
-        draft?.bundleDigest === preview.bundleDigest && draft?.decisions
+        draftMatchesPreview && draft?.decisions
       ) ? draft.decisions : {
         packageMatches: {}, fieldConflicts: {}, fieldValues: {},
       };
       renderPlan(this.modal, preview);
-      renderPackages(this.modal, preview);
-      renderIssues(this.modal, preview);
+      renderPackages(this.modal, preview, this.decisions);
+      renderIssues(this.modal, preview, this.decisions);
       renderRevisions(this.modal, preview);
+      const investor = this.modal.querySelector("[data-procurement-investor]");
+      const investorId = draftMatchesPreview
+        ? (draft?.investorId || investor?.value)
+        : resolvePreviewInvestorId(preview, investor, {
+          model: this.controller?.model,
+          familyNo: preview?.plan?.familyNo || code.value,
+        });
       const rehydrated = rehydrateDecisionControls(
         this.modal,
         preview,
         this.decisions,
-        draft?.investorId || this.modal.querySelector("[data-procurement-investor]")?.value,
+        investorId,
       );
       this.decisions = rehydrated.decisions;
       if (rehydrated.investorId) {
-        const investor = this.modal.querySelector("[data-procurement-investor]");
         if (investor) investor.value = rehydrated.investorId;
       }
       const summary = summarizePreview(preview);
@@ -695,8 +861,8 @@ export class PlanImportWizard {
             packageMatches: {}, fieldConflicts: {}, fieldValues: {},
           };
         }
-        renderPackages(this.modal, this.preview);
-        renderIssues(this.modal, this.preview);
+        renderPackages(this.modal, this.preview, this.decisions);
+        renderIssues(this.modal, this.preview, this.decisions);
         const rehydrated = rehydrateDecisionControls(
           this.modal,
           this.preview,
@@ -844,6 +1010,11 @@ export async function openProcurementImportWizard() {
   (this.model?.getLatestChuDauTu?.() || []).forEach((row) => {
     const option = investor.ownerDocument.createElement("option");
     option.value = row.id;
+    option.dataset.investorCode = String(row.maChuDauTu || "");
+    option.dataset.maChuDauTu = String(row.maChuDauTu || "");
+    option.dataset.createdBy = String(row.createdBy || "");
+    option.dataset.investorName = String(row.tenChuDauTu || "");
+    option.dataset.tenChuDauTu = String(row.tenChuDauTu || "");
     option.textContent = `${row.maChuDauTu ? `${row.maChuDauTu} · ` : ""}${row.tenChuDauTu}`;
     investor.append(option);
   });
@@ -909,6 +1080,56 @@ function planImportCapabilityIsCurrent(controller, flow, options = {}) {
 function assertPlanImportWorkspace(controller, flow, options = {}) {
   if (!planImportCapabilityIsCurrent(controller, flow, options)) {
     throw workspaceChangedError();
+  }
+}
+
+function staleRevisionAuthorityError() {
+  const error = new Error("Preview đã cũ vì dữ liệu nội bộ vừa thay đổi.");
+  error.code = "PROCUREMENT_PREVIEW_STALE";
+  return error;
+}
+
+function currentPlanAuthority(model, familyNo) {
+  return latestPlanForFamily(model, familyNo, model?.state);
+}
+
+export function assertRevisionDraftLiveAuthority(controller, flow, revisionDraft) {
+  if (!revisionDraft || !Object.hasOwn(revisionDraft, "planAuthority")) return;
+  const model = controller?.model;
+  const planAuthority = revisionDraft.planAuthority || {};
+  const expected = planAuthority.expectedPredecessor;
+  const current = currentPlanAuthority(model, planAuthority.familyNo || revisionDraft.familyNo);
+  if (expected == null) {
+    if (current) throw staleRevisionAuthorityError();
+  } else {
+    const actual = current && {
+      id: String(current.id || ""),
+      rootId: String(current.rootId || current.id_goc || current.id || ""),
+      localVersion: Number(current.localVersion ?? current.phienBan ?? 0),
+      rowVersion: Number(current.rowVersion ?? 0),
+    };
+    const expectedAuthority = {
+      id: String(expected.id || ""),
+      rootId: String(expected.rootId || expected.id || ""),
+      localVersion: Number(expected.localVersion ?? 0),
+      rowVersion: Number(expected.rowVersion ?? 0),
+    };
+    if (!actual || JSON.stringify(actual) !== JSON.stringify(expectedAuthority)) {
+      throw staleRevisionAuthorityError();
+    }
+  }
+  for (const authority of revisionDraft.packageAuthorities || []) {
+    const rootId = String(authority.localRootId || "");
+    const snapshotId = String(authority.snapshotId || "");
+    const live = (model?.state?.goithau || []).find((pkg) => (
+      String(pkg.rootId || pkg.id_goc || pkg.id || "") === rootId
+      && String(pkg.id || "") === snapshotId
+    ));
+    if (!live || Number(live.localVersion ?? live.phienBan ?? 0) !== Number(authority.localVersion ?? 0)
+      || Number(live.rowVersion ?? 0) !== Number(authority.rowVersion ?? 0)
+      || live.isLatest == 0) {
+      throw staleRevisionAuthorityError();
+    }
   }
 }
 
@@ -1018,6 +1239,7 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
   flow = bindPlanImportWorkspace(controller, flow);
   const allowUninstalled = !controller.procurementPlanImport;
   assertPlanImportWorkspace(controller, flow, { allowUninstalled });
+  assertRevisionDraftLiveAuthority(controller, flow, revisionDraft);
   const checkpoint = capturePlanImportMaterialization(controller);
   const source = revisionDraft?.planDraft?.investorSource || {};
   const investorRecords = controller.model?.getLatestChuDauTu?.() || [];
@@ -1042,6 +1264,7 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     });
   }
   assertPlanImportWorkspace(controller, flow, { allowUninstalled });
+  assertRevisionDraftLiveAuthority(controller, flow, revisionDraft);
   const candidateState = candidatePlanImportState(controller.model.state);
   const prior = previousPlanId
     ? (candidateState.kehoach || []).find(
@@ -1114,10 +1337,12 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
         candidatePersisted = true;
       }
       assertPlanImportWorkspace(controller, flow, { allowUninstalled });
+      assertRevisionDraftLiveAuthority(controller, flow, revisionDraft);
       nextFlow.durableDraftSessions = draftResources.planVersionDraftSessions;
     }
   }
   assertPlanImportWorkspace(controller, flow, { allowUninstalled });
+  assertRevisionDraftLiveAuthority(controller, flow, revisionDraft);
   try {
     publishPlanImportCandidate(
       controller,

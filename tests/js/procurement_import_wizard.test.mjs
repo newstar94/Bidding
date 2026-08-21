@@ -27,6 +27,8 @@ import {
   renderIssues,
   renderPackages,
   rehydrateDecisionControls,
+  assertRevisionDraftLiveAuthority,
+  resolvePreviewInvestorId,
   startProcurementPlanImport,
   summarizePreview,
   completeProcurementPlanImportRevision,
@@ -346,6 +348,44 @@ test("plan import recovery draft is local UI state, not a Bidding version", () =
   assert.equal(store.load(), null);
 });
 
+test("investor recovery is scoped to the current normalized plan code", () => {
+  const storage = memoryStorage();
+  const code = { value: "PL2600225772" };
+  const mode = { value: "LATEST" };
+  const revision = { value: "" };
+  const investor = { value: "live-investor" };
+  const modal = {
+    querySelector(selector) {
+      return {
+        "[data-procurement-code]": code,
+        "[data-procurement-mode]": mode,
+        "[data-procurement-revision]": revision,
+        "[data-procurement-investor]": investor,
+      }[selector] || null;
+    },
+  };
+  const wizard = Object.create(PlanImportWizard.prototype);
+  wizard.modal = modal;
+  wizard.draftStore = new PlanImportDraftStore(storage);
+  wizard.draftStore.save({
+    code: "PL2600225773", revisionMode: "ALL", selectedRevision: "01",
+    investorId: "old-investor", bundleDigest: "sha256:old",
+  });
+
+  const restored = wizard.restoreDraft();
+  assert.equal(restored.investorId, "old-investor");
+  assert.equal(code.value, "PL2600225772");
+  assert.equal(mode.value, "LATEST");
+  assert.equal(investor.value, "live-investor");
+
+  code.value = "pl2600225773";
+  wizard.restoreDraft();
+  assert.equal(code.value, "pl2600225773");
+  assert.equal(mode.value, "ALL");
+  assert.equal(revision.value, "01");
+  assert.equal(investor.value, "old-investor");
+});
+
 
 function fakeDocument() {
   const document = {};
@@ -497,6 +537,141 @@ test("plan wizard starts editable workflow at first session revision and never b
   assert.equal(calls[1], "modal-procurement-import");
 });
 
+test("correcting a plan code selects its existing investor and Apply submits that visible investor", async () => {
+  const document = fakeDocument();
+  const code = { value: "PL2600225773" };
+  const mode = { value: "ALL" };
+  const revision = new FakeElement(document, "select");
+  const status = { textContent: "", setAttribute() {} };
+  const applyButton = { disabled: true };
+  const investor = {
+    value: "",
+    options: [
+      { value: "", textContent: "-- Chọn chủ đầu tư hiện hữu --", dataset: {} },
+      {
+        value: "investor-5773",
+        textContent: "INV-5773 · Chủ đầu tư của 5773",
+        dataset: { investorCode: "INV-5773", investorName: "Chủ đầu tư của 5773" },
+      },
+      {
+        value: "investor-5772",
+        textContent: "INV-5772 · Chủ đầu tư của 5772",
+        dataset: { investorCode: "INV-5772", investorName: "Chủ đầu tư của 5772" },
+      },
+    ],
+  };
+  const elements = {
+    "[data-procurement-code]": code,
+    "[data-procurement-mode]": mode,
+    "[data-procurement-revision]": revision,
+    "[data-procurement-status]": status,
+    "[data-procurement-apply]": applyButton,
+    "[data-procurement-investor]": investor,
+    "[data-procurement-plan-preview]": new FakeElement(document, "dl"),
+    "[data-procurement-packages]": new FakeElement(document, "tbody"),
+    "[data-procurement-issues]": new FakeElement(document, "ul"),
+    "[data-procurement-summary]": { textContent: "" },
+  };
+  const modal = { querySelector: (selector) => elements[selector] || null };
+  const previewFor = (familyNo, investorCode, investorName) => ({
+    previewId: `preview-${familyNo}`,
+    bundleDigest: `sha256:${familyNo}`,
+    enrichmentStatus: "COMPLETED",
+    plan: {
+      familyNo,
+      availableRevisions: ["00"],
+      selectedRevisions: ["00"],
+      preview: { investorCode, investorName },
+    },
+    packages: [],
+    decisionPackages: [],
+    blockingIssues: [],
+    importSession: {
+      sessionId: `session-${familyNo}`,
+      revisions: [{ revisionId: `revision-${familyNo}`, revisionNumber: "00" }],
+    },
+  });
+  const bindCalls = [];
+  const storage = memoryStorage();
+  const model = {
+    state: {
+      kehoach: [{
+        id: "local-plan-5772", maKeHoach: "PL2600225772", isLatest: 1,
+        chuDauTuId: "investor-5772",
+      }],
+    }, db: {}, workspaceStorage: storage,
+    workspaceScope: { key: "org-1" }, getWorkspaceToken: () => "org-1",
+  };
+  const wizard = Object.create(PlanImportWizard.prototype);
+  Object.assign(wizard, {
+    controller: {
+      model,
+      startProcurementPlanImport: async () => {},
+      view: { closeModal() {} },
+    },
+    modal,
+    client: {
+      preparePlan: async ({ code: requestedCode }) => requestedCode.endsWith("5773")
+        ? previewFor("PL2600225773", "INV-5773", "Chủ đầu tư của 5773")
+        : previewFor("PL2600225772", "INV-SOURCE-5772", ""),
+      bindPlanSessionDecisions: async (sessionId, payload) => {
+        bindCalls.push({ sessionId, payload });
+        return { sessionId, decisionAuthority: { status: "BOUND" } };
+      },
+      getPlanRevisionDraft: async (_sessionId, revisionNumber) => ({
+        revisionNumber, planDraft: {}, packageDrafts: [],
+      }),
+    },
+    preview: null,
+    decisions: { packageMatches: {}, fieldConflicts: {}, fieldValues: {} },
+    prepareController: null,
+    applyController: null,
+    enrichmentController: null,
+    requestGeneration: 0,
+    workspaceLease: "org-1",
+    draftStore: new PlanImportDraftStore(storage),
+  });
+
+  await wizard.prepare();
+  assert.equal(investor.value, "investor-5773");
+
+  code.value = "PL2600225772";
+  await wizard.prepare();
+  assert.equal(investor.value, "investor-5772");
+
+  await wizard.apply();
+  assert.equal(bindCalls.length, 1);
+  assert.equal(bindCalls[0].sessionId, "session-PL2600225772");
+  assert.equal(bindCalls[0].payload.decisions.investorId, "investor-5772");
+});
+
+test("corrected existing plan falls back to its exact local investor when source identity is unavailable", () => {
+  const select = {
+    options: [
+      { value: "investor-old", dataset: { investorCode: "INV-OLD", investorName: "Cũ" } },
+      { value: "investor-correct", dataset: { investorCode: "INV-CORRECT", investorName: "Đúng" } },
+    ],
+  };
+  const preview = {
+    plan: {
+      familyNo: "PL2600225772",
+      preview: { investorCode: "SOURCE-IDENTITY-NOT-IN-LOCAL-CATALOG", investorName: "" },
+    },
+  };
+  const model = {
+    state: {
+      kehoach: [{
+        id: "plan-5772", maKeHoach: "PL2600225772", isLatest: 1,
+        chuDauTuId: "investor-correct",
+      }],
+    },
+  };
+  assert.equal(
+    resolvePreviewInvestorId(preview, select, { model, familyNo: "PL2600225772" }),
+    "investor-correct",
+  );
+});
+
 test("workspace change during plan wizard loadCurrent cannot start the stale flow", async () => {
   const draftResponse = deferred();
   const starts = [];
@@ -597,6 +772,197 @@ test("plan flow start rejects a replaced session in the same workspace", async (
     (error) => error?.code === "FLOW_CHANGED",
   );
   assert.equal(controller.procurementPlanImport, activeFlow);
+});
+
+test("live_plan_changes_after_revision_draft_response_before_materialization_is_rejected", async () => {
+  const storage = memoryStorage();
+  const state = {
+    kehoach: [{
+      id: "plan-live", rootId: "plan-root", maKeHoach: "PL2600000001",
+      phienBan: 1, rowVersion: 8, isLatest: 1,
+    }],
+    goithau: [], chudautu: [],
+  };
+  const model = {
+    state, db: {}, workspaceStorage: storage,
+    getWorkspaceToken: () => "user:org-a@1",
+    getPlanBaseCode: (value) => value,
+  };
+  const controller = { model, procurementPlanImport: null };
+  const flow = originatePlanImportFlow(controller, {
+    session: { sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001" },
+    controller: {},
+    currentDraft: {
+      familyNo: "PL2600000001", revisionNumber: "00", planDraft: {}, packageDrafts: [],
+      planAuthority: {
+        familyNo: "PL2600000001",
+        expectedPredecessor: {
+          id: "plan-live", rootId: "plan-root", localVersion: 1, rowVersion: 7,
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    startProcurementPlanImport.call(controller, flow),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
+  assert.equal(state.kehoach[0].rowVersion, 8);
+  assert.equal(controller.procurementPlanImport, null);
+});
+
+test("live_package_changes_after_revision_draft_response_before_materialization_is_rejected", async () => {
+  const storage = memoryStorage();
+  const state = {
+    kehoach: [],
+    goithau: [{
+      id: "package-live", rootId: "package-root", phienBan: 1,
+      rowVersion: 8, isLatest: 1,
+    }],
+    chudautu: [],
+  };
+  const model = {
+    state, db: {}, workspaceStorage: storage,
+    getWorkspaceToken: () => "user:org-a@1",
+    getPlanBaseCode: (value) => value,
+  };
+  const controller = { model, procurementPlanImport: null };
+  const flow = originatePlanImportFlow(controller, {
+    session: { sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001" },
+    controller: {},
+    currentDraft: {
+      familyNo: "PL2600000001", revisionNumber: "00", planDraft: {}, packageDrafts: [],
+      planAuthority: { familyNo: "PL2600000001", expectedPredecessor: null },
+      packageAuthorities: [{
+        packageObservationId: "detail-a", localRootId: "package-root",
+        snapshotId: "package-live", localVersion: 1, rowVersion: 7, isLatest: true,
+      }],
+    },
+  });
+  await assert.rejects(
+    startProcurementPlanImport.call(controller, flow),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
+  assert.equal(state.goithau[0].rowVersion, 8);
+  assert.equal(controller.procurementPlanImport, null);
+});
+
+test("same_authority_allows_materialization", () => {
+  const model = {
+    state: {
+      kehoach: [{
+        id: "plan-live", rootId: "plan-root", maKeHoach: "PL2600000001",
+        phienBan: 1, rowVersion: 7, isLatest: 1,
+      }],
+      goithau: [{
+        id: "package-live", rootId: "package-root", phienBan: 1,
+        rowVersion: 7, isLatest: 1,
+      }],
+    },
+    getPlanBaseCode: (value) => value,
+  };
+  assert.doesNotThrow(() => assertRevisionDraftLiveAuthority(
+    { model },
+    {},
+    {
+      familyNo: "PL2600000001",
+      planAuthority: {
+        familyNo: "PL2600000001",
+        expectedPredecessor: {
+          id: "plan-live", rootId: "plan-root", localVersion: 1, rowVersion: 7,
+        },
+      },
+      packageAuthorities: [{
+        localRootId: "package-root", snapshotId: "package-live",
+        localVersion: 1, rowVersion: 7, isLatest: true,
+      }],
+    },
+  ));
+});
+
+test("old_revision_draft_cannot_overlay_newer_live_plan", () => {
+  const state = { kehoach: [{
+    id: "plan-live", rootId: "plan-root", maKeHoach: "PL2600000001",
+    phienBan: 2, rowVersion: 8, isLatest: 1,
+  }], goithau: [] };
+  assert.throws(
+    () => assertRevisionDraftLiveAuthority(
+      { model: { state, getPlanBaseCode: (value) => value } },
+      {},
+      {
+        familyNo: "PL2600000001",
+        planAuthority: {
+          familyNo: "PL2600000001",
+          expectedPredecessor: {
+            id: "plan-old", rootId: "plan-root", localVersion: 1, rowVersion: 7,
+          },
+        },
+      },
+    ),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
+});
+
+test("old_revision_draft_cannot_overlay_newer_live_package", () => {
+  const state = { kehoach: [], goithau: [{
+    id: "package-new", rootId: "package-root", phienBan: 2,
+    rowVersion: 8, isLatest: 1,
+  }] };
+  assert.throws(
+    () => assertRevisionDraftLiveAuthority(
+      { model: { state, getPlanBaseCode: (value) => value } },
+      {},
+      {
+        familyNo: "PL2600000001",
+        planAuthority: { familyNo: "PL2600000001", expectedPredecessor: null },
+        packageAuthorities: [{
+          localRootId: "package-root", snapshotId: "package-old",
+          localVersion: 1, rowVersion: 7, isLatest: true,
+        }],
+      },
+    ),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
+});
+
+test("stale_rejection_occurs_before_partial_candidate_publish", async () => {
+  const state = {
+    kehoach: [{
+      id: "plan-new", rootId: "plan-root", maKeHoach: "PL2600000001",
+      phienBan: 2, rowVersion: 8, isLatest: 1,
+    }],
+    goithau: [{ id: "existing-package", rootId: "existing-package", isLatest: 1 }],
+    chudautu: [],
+  };
+  const before = structuredClone(state);
+  const controller = {
+    model: {
+      state, db: {}, workspaceStorage: memoryStorage(),
+      getWorkspaceToken: () => "user:org-a@1",
+      getPlanBaseCode: (value) => value,
+    },
+    procurementPlanImport: null,
+  };
+  const flow = originatePlanImportFlow(controller, {
+    session: { sessionId: "session-1", kind: "PLAN", familyNo: "PL2600000001" },
+    controller: {},
+    currentDraft: {
+      familyNo: "PL2600000001", revisionNumber: "00",
+      planDraft: { id: "stale-candidate-plan" },
+      packageDrafts: [{ id: "stale-candidate-package" }],
+      planAuthority: {
+        familyNo: "PL2600000001",
+        expectedPredecessor: {
+          id: "plan-old", rootId: "plan-root", localVersion: 1, rowVersion: 7,
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    startProcurementPlanImport.call(controller, flow),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
+  assert.deepEqual(state, before);
+  assert.equal(controller.procurementPlanImport, null);
 });
 
 
@@ -1358,6 +1724,65 @@ test("sequential decision payload binds every UI control to bounded rows", () =>
       packageObservationId: "detail-a", field: "capitalDetail", value: "Ngân sách",
     }],
   });
+});
+
+test("candidate-specific merge surface renders only after the selected candidate and keeps its identity in Apply payload", () => {
+  const document = fakeDocument();
+  const packageBody = new FakeElement(document, "tbody");
+  const issues = new FakeElement(document, "ul");
+  const modal = {
+    querySelector(selector) {
+      if (selector === "[data-procurement-packages]") return packageBody;
+      if (selector === "[data-procurement-issues]") return issues;
+      return null;
+    },
+  };
+  const preview = {
+    packages: [{
+      planDetailRevisionId: "detail-a", symbol: "A", name: "Gói A",
+      action: "AMBIGUOUS",
+      matchCandidates: [
+        { rootId: "root-a", symbol: "A", name: "Gói A1" },
+        { rootId: "root-b", symbol: "A", name: "Gói A2" },
+      ],
+      candidateMergeSurfaces: {
+        "root-b": {
+          effectiveFields: { capitalDetail: "Ngân sách" },
+          fieldConflicts: [{
+            localRootId: "root-b", field: "priceVnd",
+            localValue: 120, sourceValue: 130,
+          }],
+          requiredIssues: [],
+        },
+      },
+      newPackageRequiredIssues: [{
+        code: "PROCUREMENT_REQUIRED_FIELDS_MISSING",
+        packageObservationId: "detail-a", field: "capitalDetail",
+      }],
+    }],
+    blockingIssues: [], warnings: [],
+  };
+  const decisions = {
+    packageMatches: { "detail-a": { localRootId: "root-b" } },
+    fieldConflicts: {}, fieldValues: {},
+  };
+  renderPackages(modal, preview, decisions);
+  renderIssues(modal, preview, decisions);
+  const actionCell = packageBody.children[0].children[3];
+  assert.equal(actionCell.children.length, 2);
+  assert.equal(actionCell.children[1].dataset.candidateRoot, "root-b");
+  assert.equal(issues.children.length, 0);
+
+  const payload = buildSequentialDecisionPayload({
+    ...decisions,
+    fieldConflicts: {
+      "detail-a:priceVnd": { resolution: "KEEP_LOCAL", localRootId: "root-b" },
+    },
+  }, "investor-1");
+  assert.deepEqual(payload.fieldConflicts, [{
+    packageObservationId: "detail-a", field: "priceVnd",
+    resolution: "KEEP_LOCAL", localRootId: "root-b",
+  }]);
 });
 
 
