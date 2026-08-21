@@ -132,7 +132,13 @@ test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation
   await fillExpertForm(page, suffix);
   await page.locator("#form-chuyengia button[type='submit']").click();
 
-  await page.waitForTimeout(100);
+  // The submit handler stages the local mutation before it waits on the
+  // authoritative startup boundary.  Wait for that observable state instead
+  // of assuming WebKit has dispatched the async handler within a fixed delay.
+  await expect(page.locator("#btn-force-sync")).toHaveAttribute(
+    "data-sync-state",
+    "local-pending",
+  );
   expect(syncPosts).toBe(0);
   expect(new URL(page.url()).pathname).toBe(formRoute);
 

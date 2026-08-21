@@ -62,6 +62,16 @@ def is_request_secure(request):
     return request.headers.get("X-Forwarded-Proto", "").strip().lower() == "https"
 
 
+def should_use_secure_cookie(request, configured_secure):
+    """Keep local HTTP cookies usable while failing closed in production."""
+
+    if not configured_secure:
+        return False
+    if os.environ.get("APP_ENV", "development").strip().lower() in {"prod", "production"}:
+        return True
+    return is_request_secure(request)
+
+
 def get_client_ip(request):
     """Return the first untrusted hop, starting from the socket peer.
 

@@ -25,7 +25,7 @@ from backend.auth.auth_service import (
     rate_limit_response,
     clear_rate_limit_buckets,
     build_user_access_payload,
-    _SECURE_COOKIES,
+    session_cookie_secure,
     SESSION_EXPIRY_HOURS,
     SESSION_INACTIVITY_TIMEOUT_HOURS,
 )
@@ -461,7 +461,7 @@ async def google_login_api(request):
         cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(
             "session_token", session_token,
-            httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age,
+            httponly=True, secure=session_cookie_secure(request), samesite="lax", path="/", max_age=cookie_max_age,
         )
         response.delete_cookie("username", path="/")
         return response

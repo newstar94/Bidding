@@ -84,6 +84,16 @@ async function savePlanBreakdown(page, timeout = 30_000) {
   await dismissOptionalDialog(page);
 }
 
+async function selectVisibleVersion(packageRow, label) {
+  const nativeSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
+  await nativeSelect.evaluate((select, requestedLabel) => {
+    const option = [...select.options].find((candidate) => candidate.textContent.trim() === requestedLabel);
+    if (!option) throw new Error(`Version option not found: ${requestedLabel}`);
+    select.value = option.value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }, label);
+}
+
 async function createOwner(page, { code, name }) {
   await openCreateModal(page, "/chu-dau-tu", "#btn-add-chudautu", "#modal-chudautu");
   await page.locator("#cdt-ma").fill(code);
@@ -573,12 +583,12 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
     const versionSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
     await expect(versionSelect.locator("option")).toHaveCount(2);
-    await versionSelect.selectOption({ label: "00" }, { force: true });
+    await selectVisibleVersion(packageRow, "00");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(0);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(0);
     await expect(packageRow.locator('.action-btn[data-bf-action="show-package"]')).toHaveCount(1);
-    await packageRow.locator('select[data-bf-change="change-package-version"]').selectOption({ label: "01" }, { force: true });
+    await selectVisibleVersion(packageRow, "01");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);

@@ -186,15 +186,16 @@ function validTimestamp(value) {
 
 function compactDraftTombstones(envelope) {
   const tombstones = Object.entries(envelope.tombstones || {})
-    .map(([draftId, tombstone]) => ({
+    .map(([draftId, tombstone], insertionOrder) => ({
       draftId,
       tombstone,
       removedAt: validTimestamp(tombstone?.removedAt),
+      insertionOrder,
     }))
     .sort((left, right) => (
       (left.removedAt ?? Number.NEGATIVE_INFINITY)
       - (right.removedAt ?? Number.NEGATIVE_INFINITY)
-      || left.draftId.localeCompare(right.draftId)
+      || left.insertionOrder - right.insertionOrder
     ));
   let retainedCount = tombstones.length;
   for (const entry of tombstones) {

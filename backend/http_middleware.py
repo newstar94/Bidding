@@ -9,7 +9,11 @@ from starlette.datastructures import MutableHeaders
 from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse, Response
 
-from backend.shared.client_ip import is_request_secure, is_trusted_proxy_peer
+from backend.shared.client_ip import (
+    is_request_secure,
+    is_trusted_proxy_peer,
+    should_use_secure_cookie,
+)
 from backend.shared.logging_utils import error_response
 from backend.shared.origin_policy import (
     get_allowed_websocket_origins,
@@ -409,7 +413,10 @@ class CSRFMiddleware:
             cookie_response = Response()
             cookie_response.set_cookie(
                 "csrf_token", csrf_token, httponly=False,
-                secure=os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true",
+                secure=should_use_secure_cookie(
+                    request,
+                    os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true",
+                ),
                 samesite="lax", path="/",
             )
             cookie_header = cookie_response.headers.get("set-cookie")

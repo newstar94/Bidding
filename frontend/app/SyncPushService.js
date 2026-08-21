@@ -386,7 +386,7 @@ export function autoSync(options = {}) {
     return this.model.flushMutationOutbox().then(() => {
       if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
       const settledStatus = this.model?.getMutationOutboxStatus?.();
-      if (settledStatus?.trusted !== false) return this.autoSync();
+      if (settledStatus?.trusted !== false) return this.autoSync(options);
       const error = Object.assign(new Error("Mutation outbox durability is pending"), {
         code: settledStatus?.code || "OUTBOX_DURABILITY_PENDING",
       });
@@ -425,7 +425,7 @@ export function autoSync(options = {}) {
           if (this._syncRepairPromise === trackedRepair) this._syncRepairPromise = null;
         }
         if (deferPostCommitRender) this._deferPostCommitRender = true;
-        return this.autoSync({ skipDuplicatePlanRepair: true });
+        return this.autoSync({ ...options, skipDuplicatePlanRepair: true });
       }).catch((error) => {
         if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
         this.updateSyncState?.({

@@ -13,13 +13,22 @@ from backend.auth.roles import (
 from backend.shared.workspace_scope import personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscription
 from backend.shared.date_utils import vietnam_date_from_epoch
-from backend.shared.client_ip import get_client_ip as get_client_ip
+from backend.shared.client_ip import (
+    get_client_ip as get_client_ip,
+    should_use_secure_cookie,
+)
 
 
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
 SESSION_EXPIRY_HOURS = int(os.environ.get("SESSION_EXPIRY_HOURS", "12"))
 SESSION_REMEMBER_EXPIRY_HOURS = int(os.environ.get("SESSION_REMEMBER_EXPIRY_HOURS", "720"))
 SESSION_INACTIVITY_TIMEOUT_HOURS = int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10"))
+
+
+def session_cookie_secure(request) -> bool:
+    """Keep local HTTP sessions usable without weakening production policy."""
+
+    return should_use_secure_cookie(request, _SECURE_COOKIES)
 
 
 RATE_LIMIT_MAX = max(1, int(os.environ.get("RATE_LIMIT_MAX_ATTEMPTS", "5")))

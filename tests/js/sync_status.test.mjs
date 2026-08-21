@@ -636,6 +636,78 @@ test("automatic push waits behind startup authoritative reconciliation", async (
   assert.deepEqual(calls, ["build", "idle"]);
 });
 
+test("startup replay preserves its reconciliation authority after pending outbox flush", async () => {
+  let durabilityState = "pending";
+  let barrierAwaited = false;
+  const controller = {
+    model: {
+      workspaceScope: { organizationId: "org-1" },
+      getWorkspaceToken: () => "workspace-1",
+      isWorkspaceCurrent: () => true,
+      getMutationOutboxStatus: () => ({
+        state: durabilityState,
+        trusted: durabilityState === "ready",
+      }),
+      async flushMutationOutbox() { durabilityState = "ready"; },
+      repairPendingDuplicatePlanVersions: () => null,
+      buildMutationSyncPayload: () => null,
+      hasPendingMutationOutboxChanges: () => false,
+    },
+    autoSync,
+    getStartupReconciliationState: () => ({
+      phase: "RECONCILING",
+      promise: {
+        then() { barrierAwaited = true; },
+      },
+    }),
+    updateSyncState() {},
+  };
+
+  const result = await Promise.race([
+    autoSync.call(controller, { startupReconciliation: true }),
+    new Promise((resolve) => setImmediate(() => resolve({ timedOut: true }))),
+  ]);
+
+  assert.deepEqual(result, { ok: true, skipped: true });
+  assert.equal(barrierAwaited, false);
+});
+
+test("startup replay preserves its reconciliation authority after outbox repair", async () => {
+  let repairRequired = true;
+  let barrierAwaited = false;
+  const controller = {
+    model: {
+      workspaceScope: { organizationId: "org-1" },
+      getWorkspaceToken: () => "workspace-1",
+      isWorkspaceCurrent: () => true,
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      repairPendingDuplicatePlanVersions: () => {
+        if (!repairRequired) return null;
+        repairRequired = false;
+        return Promise.resolve({ duplicatePlanIds: ["plan-duplicate"] });
+      },
+      buildMutationSyncPayload: () => null,
+      hasPendingMutationOutboxChanges: () => false,
+    },
+    autoSync,
+    getStartupReconciliationState: () => ({
+      phase: "RECONCILING",
+      promise: {
+        then() { barrierAwaited = true; },
+      },
+    }),
+    updateSyncState() {},
+  };
+
+  const result = await Promise.race([
+    autoSync.call(controller, { startupReconciliation: true }),
+    new Promise((resolve) => setImmediate(() => resolve({ timedOut: true }))),
+  ]);
+
+  assert.deepEqual(result, { ok: true, skipped: true });
+  assert.equal(barrierAwaited, false);
+});
+
 test("automatic push cannot replay a mutation after startup reconciliation conflicts", async () => {
   const previousFetch = globalThis.fetch;
   let fetchCalls = 0;
