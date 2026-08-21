@@ -11,7 +11,12 @@ import {
   applySelectedRows,
   buildComparisonRows,
 } from "./ProcurementLookupPreview.js";
-import { currentWorkspaceToken } from "../app/workspaceLease.js";
+import {
+  captureWorkspaceLease,
+  currentWorkspaceToken,
+  isWorkspaceLeaseCurrent,
+  workspaceChangedError,
+} from "../app/workspaceLease.js";
 
 const PREVIEW_SCHEMA = "biddingflow-procurement-preview-v1";
 const CODE_PATTERN = /^(PL|IB)\d{10}(?:-\d{2})?$/i;
@@ -107,6 +112,24 @@ function setLookupLoading(loadingScreen, form, loading, code = "") {
   loadingScreen.hidden = !loading;
 }
 
+function inlineImportCapabilityIsCurrent({
+  controller,
+  generation,
+  currentGeneration,
+  form,
+  identity,
+  codeInput,
+  code,
+  originLease,
+  originStorage,
+}) {
+  return generation === currentGeneration
+    && formIdentity(form) === identity
+    && String(codeInput?.value || "").trim().toUpperCase() === code
+    && isWorkspaceLeaseCurrent(controller?.model, originLease)
+    && controller?.model?.workspaceStorage === originStorage;
+}
+
 export class ProcurementInlineLookup {
   constructor({
     controller,
@@ -166,7 +189,9 @@ export class ProcurementInlineLookup {
     const generation = ++this.requestGeneration;
     this.lookupController?.abort();
     this.lookupController = new AbortController();
-    const workspaceLease = currentWorkspaceToken(this.controller?.model);
+    const originLease = captureWorkspaceLease(this.controller?.model);
+    const workspaceLease = originLease.token;
+    const originStorage = this.controller?.model?.workspaceStorage;
     const identity = formIdentity(form);
     setButtonLoading(button, true);
     setLookupLoading(loadingScreen, form, true, code);
@@ -240,6 +265,19 @@ export class ProcurementInlineLookup {
           saveRevision: async () => ({ ok: true }),
         });
         const currentDraft = await sequential.loadCurrent();
+        if (!inlineImportCapabilityIsCurrent({
+          controller: this.controller,
+          generation,
+          currentGeneration: this.requestGeneration,
+          form,
+          identity,
+          codeInput,
+          code,
+          originLease,
+          originStorage,
+        })) {
+          throw workspaceChangedError();
+        }
         const start = normalizedKind === "PACKAGE"
           ? this.controller?.startProcurementPackageImport
           : this.controller?.startProcurementPlanImport;
@@ -248,6 +286,9 @@ export class ProcurementInlineLookup {
           controller: sequential,
           currentDraft,
           client: this.importClient,
+          importWorkspaceLease: originLease,
+          importWorkspaceStorage: originStorage,
+          importFlowIdentity: Object.freeze({}),
         });
         this.setStatus(
           status,
@@ -351,25 +392,73 @@ export async function runProcurementInlineLookup(options) {
   return this._procurementInlineLookup.run(options);
 }
 
+export function originatePackageImportFlow(controller, flow) {
+  return {
+    ...flow,
+    importWorkspaceLease: captureWorkspaceLease(controller?.model),
+    importWorkspaceStorage: controller?.model?.workspaceStorage,
+    importFlowIdentity: Object.freeze({}),
+  };
+}
+
+function assertPackageImportCapabilityCurrent(controller, flow) {
+  if (
+    !flow?.importWorkspaceLease
+    || !flow?.importFlowIdentity
+    || !Object.hasOwn(flow, "importWorkspaceStorage")
+    || !isWorkspaceLeaseCurrent(controller?.model, flow.importWorkspaceLease)
+    || controller?.model?.workspaceStorage !== flow.importWorkspaceStorage
+    || controller?.procurementPackageImport !== flow
+  ) {
+    throw workspaceChangedError();
+  }
+  return flow;
+}
+
+function packageImportFlowChangedError() {
+  const error = new Error("Procurement package import flow changed");
+  error.name = "AbortError";
+  error.code = "FLOW_CHANGED";
+  return error;
+}
+
 export async function startProcurementPackageImport(flow) {
   const packageDraft = flow?.currentDraft?.packageDrafts?.[0];
   if (!flow?.controller || !packageDraft) {
     throw new TypeError("PROCUREMENT_SESSION_INVALID");
   }
-  this.procurementPackageImport = {
+  if (
+    !flow.importWorkspaceLease
+    || !flow.importFlowIdentity
+    || !Object.hasOwn(flow, "importWorkspaceStorage")
+    || !isWorkspaceLeaseCurrent(this.model, flow.importWorkspaceLease)
+    || this.model?.workspaceStorage !== flow.importWorkspaceStorage
+  ) {
+    throw workspaceChangedError();
+  }
+  const activeFlow = this.procurementPackageImport;
+  if (activeFlow && activeFlow.importFlowIdentity !== flow.importFlowIdentity) {
+    throw packageImportFlowChangedError();
+  }
+  const nextFlow = {
     ...flow,
     currentDraft: flow.currentDraft,
     sourcePackageDraft: packageDraft,
   };
-  rememberProcurementImportSession(this, this.procurementPackageImport);
+  this.procurementPackageImport = nextFlow;
+  assertPackageImportCapabilityCurrent(this, nextFlow);
+  rememberProcurementImportSession(this, nextFlow);
+  assertPackageImportCapabilityCurrent(this, nextFlow);
   fillPackageFormFromProcurementDraft(globalThis.document, packageDraft, this);
   return packageDraft;
 }
 
 export async function completeProcurementPackageImportRevision(savedPackageId) {
-  const flow = this.procurementPackageImport;
-  if (!flow?.controller) return false;
+  const currentFlow = this.procurementPackageImport;
+  if (!currentFlow?.controller) return false;
+  const flow = assertPackageImportCapabilityCurrent(this, currentFlow);
   await flow.controller.saveCurrent(savedPackageId);
+  assertPackageImportCapabilityCurrent(this, flow);
   const savedRevision = flow.currentDraft.revisionNumber;
   if (!flow.controller.hasNext()) {
     await this.view.customAlert(
@@ -377,8 +466,9 @@ export async function completeProcurementPackageImportRevision(savedPackageId) {
       `Đã lưu phiên bản ${savedRevision}. Đã hoàn tất toàn bộ phiên bản của Gói thầu.`,
       "check-circle",
     );
+    assertPackageImportCapabilityCurrent(this, flow);
     this.procurementPackageImport = null;
-    forgetProcurementImportSession(this);
+    forgetProcurementImportSession(this, { storage: flow.importWorkspaceStorage });
     return true;
   }
   const nextRevision = flow.controller.revisions[flow.controller.currentIndex + 1];
@@ -387,28 +477,34 @@ export async function completeProcurementPackageImportRevision(savedPackageId) {
     `Gói thầu trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
     "help-circle",
   );
+  assertPackageImportCapabilityCurrent(this, flow);
   if (!shouldContinue) {
     await (flow.client || new ProcurementImportClient()).cancelImportSession(
       flow.session.sessionId,
       {
-        workspaceLease: currentWorkspaceToken(this.model) || null,
+        workspaceLease: flow.importWorkspaceLease.token || null,
         kind: "notice",
       },
     );
+    assertPackageImportCapabilityCurrent(this, flow);
     flow.controller.cancel();
     this.procurementPackageImport = null;
-    forgetProcurementImportSession(this);
+    forgetProcurementImportSession(this, { storage: flow.importWorkspaceStorage });
     return true;
   }
   const nextDraft = await flow.controller.next();
+  assertPackageImportCapabilityCurrent(this, flow);
   const packageDraft = nextDraft.packageDrafts?.[0];
-  this.procurementPackageImport = {
+  const nextFlow = {
     ...flow,
     currentDraft: nextDraft,
     sourcePackageDraft: packageDraft,
   };
-  rememberProcurementImportSession(this, this.procurementPackageImport);
+  this.procurementPackageImport = nextFlow;
+  assertPackageImportCapabilityCurrent(this, nextFlow);
+  rememberProcurementImportSession(this, nextFlow);
   await this.packages.edit(savedPackageId);
+  assertPackageImportCapabilityCurrent(this, nextFlow);
   fillPackageFormFromProcurementDraft(globalThis.document, packageDraft, this);
   return true;
 }

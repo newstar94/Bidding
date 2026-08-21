@@ -68,8 +68,9 @@ export async function cancelActiveProcurementImportSession() {
     ? "procurementPlanImport"
     : "procurementPackageImport";
   const sessionId = String(flow.session?.sessionId || "");
-  const lease = captureWorkspaceLease(this.model);
-  const storage = this.model?.workspaceStorage;
+  const lease = flow.importWorkspaceLease;
+  const storage = flow.importWorkspaceStorage;
+  if (!lease || !Object.hasOwn(flow, "importWorkspaceStorage")) return false;
   const isCurrentFlow = () => (
     isWorkspaceLeaseCurrent(this.model, lease)
     && this.model?.workspaceStorage === storage
@@ -227,6 +228,9 @@ export async function resumeProcurementImportSession({
       : this.startProcurementPlanImport;
     await start?.call(this, {
       session, controller: sequential, currentDraft, client,
+      importWorkspaceLease: lease,
+      importWorkspaceStorage: storage,
+      importFlowIdentity: Object.freeze({}),
     });
     assertCurrentWorkspace();
     return true;

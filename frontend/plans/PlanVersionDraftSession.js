@@ -9,8 +9,6 @@ import {
 
 export const PLAN_VERSION_DRAFT_STORAGE_KEY = "plan_version_drafts_v1";
 export const PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT = 256;
-const PLAN_VERSION_DRAFT_RETIREMENT_BUCKETS = 64;
-const INVALID_TOMBSTONE_RETIREMENT_TIME = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
 export const PLAN_VERSION_DRAFT_TABLES = Object.freeze([
   "chudautu",
   "chuyengia",
@@ -175,46 +173,9 @@ export function refreshPlanVersionDraftSession(session, state, currentVersionId)
   return session;
 }
 
-function draftRetirementBucket(draftId) {
-  let hash = 2166136261;
-  for (const character of String(draftId || "")) {
-    hash ^= character.codePointAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return String((hash >>> 0) % PLAN_VERSION_DRAFT_RETIREMENT_BUCKETS);
-}
-
 function validTimestamp(value) {
   const timestamp = Date.parse(String(value || ""));
   return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-function normalizeRetirementWatermarks(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value).filter(([bucket, retiredBefore]) => (
-    /^\d+$/.test(bucket)
-    && Number(bucket) < PLAN_VERSION_DRAFT_RETIREMENT_BUCKETS
-    && validTimestamp(retiredBefore) !== null
-  )));
-}
-
-function recordRetirementWatermark(envelope, draftId, tombstone) {
-  const bucket = draftRetirementBucket(draftId);
-  const capturedRetirement = Math.max(
-    validTimestamp(tombstone?.removedAt) ?? Number.NEGATIVE_INFINITY,
-    validTimestamp(tombstone?.draftCreatedAt) ?? Number.NEGATIVE_INFINITY,
-  );
-  // Corrupted legacy metadata must fail closed: compact it into a permanent
-  // bucket watermark instead of either growing forever or forgetting deletion.
-  const retiredAt = Number.isFinite(capturedRetirement)
-    ? capturedRetirement
-    : INVALID_TOMBSTONE_RETIREMENT_TIME;
-  const previous = validTimestamp(envelope.retiredBefore?.[bucket]);
-  envelope.retiredBefore ||= {};
-  if (previous === null || retiredAt > previous) {
-    envelope.retiredBefore[bucket] = new Date(retiredAt).toISOString();
-  }
-  return true;
 }
 
 function compactDraftTombstones(envelope) {
@@ -225,14 +186,13 @@ function compactDraftTombstones(envelope) {
       removedAt: validTimestamp(tombstone?.removedAt),
     }))
     .sort((left, right) => (
-      (left.removedAt ?? Number.POSITIVE_INFINITY)
-      - (right.removedAt ?? Number.POSITIVE_INFINITY)
+      (left.removedAt ?? Number.NEGATIVE_INFINITY)
+      - (right.removedAt ?? Number.NEGATIVE_INFINITY)
       || left.draftId.localeCompare(right.draftId)
     ));
   let retainedCount = tombstones.length;
   for (const entry of tombstones) {
     if (retainedCount <= PLAN_VERSION_DRAFT_TOMBSTONE_LIMIT) break;
-    if (!recordRetirementWatermark(envelope, entry.draftId, entry.tombstone)) continue;
     delete envelope.tombstones[entry.draftId];
     retainedCount -= 1;
   }
@@ -241,17 +201,16 @@ function compactDraftTombstones(envelope) {
 
 function normalizeStoredEnvelope(value) {
   if (!value || typeof value !== "object" || !Array.isArray(value.sessions)) {
-    return { version: 3, sessions: [], tombstones: {}, retiredBefore: {} };
+    return { version: 4, sessions: [], tombstones: {} };
   }
   return {
-    version: 3,
+    version: 4,
     sessions: value.sessions.filter((session) => (
       session?.draftId && session?.rootId && session?.aggregate
     )).map((session) => ({ ...clone(session), revision: normalizeRevision(session.revision) })),
     tombstones: value.tombstones && typeof value.tombstones === "object"
       ? clone(value.tombstones)
       : {},
-    retiredBefore: normalizeRetirementWatermarks(value.retiredBefore),
   };
 }
 
@@ -326,15 +285,6 @@ export async function savePlanVersionDraftSession(model, session) {
     if (index < 0 && expectedRevision !== 0) {
       throw new Error("Stale plan draft revision cannot resurrect a removed session.");
     }
-    if (index < 0) {
-      const retiredBefore = validTimestamp(
-        current.retiredBefore?.[draftRetirementBucket(draftId)],
-      );
-      const createdAt = validTimestamp(session.createdAt);
-      if (retiredBefore !== null && (createdAt === null || createdAt <= retiredBefore)) {
-        throw new Error("Stale plan draft revision cannot resurrect a removed session.");
-      }
-    }
     const storedRevision = index >= 0
       ? normalizeRevision(current.sessions[index].revision)
       : 0;
@@ -371,7 +321,6 @@ export async function removePlanVersionDraftSession(model, draftId, { expectedRe
     current.tombstones[id] = {
       revision: currentRevision + 1,
       removedAt: new Date().toISOString(),
-      draftCreatedAt: existing.createdAt,
     };
     return current;
   });

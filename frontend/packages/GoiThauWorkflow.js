@@ -318,15 +318,22 @@ export async function editGoiThau(id, isReadOnly = false) {
     empDropdown.innerHTML = trustedHTML('<option value="" disabled>-- Chọn một hoặc nhiều Chuyên viên phụ trách --</option>' + optHtml);
     restoreEmpValue();
   };
-  const loadAndPopulateEmpDropdown = () => {
+  const loadAndPopulateEmpDropdown = async () => {
     if (!this.model.state.employees || this.model.state.employees.length === 0) {
-      loadWorkspaceEmployees(this.model, { onLoaded: _populateEmpDropdown }).catch((err) => {
+      try {
+        await loadWorkspaceEmployees(this.model);
+        assertEditWorkspaceCurrent();
+        _populateEmpDropdown();
+      } catch (err) {
+        if (err?.code === "WORKSPACE_CHANGED" || err?.code === "FLOW_CHANGED") throw err;
         if (err?.code !== "WORKSPACE_CHANGED") {
           console.error("Failed to load users:", err);
+          assertEditWorkspaceCurrent();
           _populateEmpDropdown();
         }
-      });
+      }
     } else {
+      assertEditWorkspaceCurrent();
       _populateEmpDropdown();
     }
   };
@@ -442,7 +449,8 @@ export async function editGoiThau(id, isReadOnly = false) {
   setupCheckboxListeners("to-chuyengia-tbody", "tochuyengia-select", "tochuyengia-chucvu", "tochuyengia-congviec", "to-thamdinh-tbody");
   setupCheckboxListeners("to-thamdinh-tbody", "tothamdinh-select", "tothamdinh-chucvu", "tothamdinh-congviec", "to-chuyengia-tbody");
   if (id) {
-    loadAndPopulateEmpDropdown();
+    await loadAndPopulateEmpDropdown();
+    assertEditWorkspaceCurrent();
     captureModalReturnState(this.model.state.activetab || "goithau", this.model.state.activeaction || null);
     this.switchTab("goithau", "chinhsua", true);
     document.getElementById("modal-goithau-title").textContent = isReadOnly ? "Chi tiết Gói thầu" : "Cập nhật Gói thầu";
@@ -578,7 +586,8 @@ export async function editGoiThau(id, isReadOnly = false) {
     if (inputMoEhsdxtc) inputMoEhsdxtc.value = "";
     document.getElementById("modal-goithau-title").textContent = isReadOnly ? "Chi tiết Gói thầu" : "Thêm Gói thầu mới";
     form.reset();
-    loadAndPopulateEmpDropdown();
+    await loadAndPopulateEmpDropdown();
+    assertEditWorkspaceCurrent();
     if (this.updatePhuongPhapDanhGiaOptions) {
       this.updatePhuongPhapDanhGiaOptions();
     }

@@ -1665,7 +1665,7 @@ test("draft tombstone compaction stays bounded without allowing a removed revisi
     "2026-08-20T00:00:00.000Z",
   );
   stale.draftId = "plan-draft-retired-oldest";
-  stale.revision = 0;
+  stale.revision = 1;
   const tombstones = {
     [stale.draftId]: {
       revision: 2,
@@ -1704,11 +1704,12 @@ test("draft tombstone compaction stays bounded without allowing a removed revisi
   );
 });
 
-test("malformed legacy tombstones compact fail-closed instead of bypassing the bound", async () => {
+test("malformed legacy tombstones compact without bypassing stale revision CAS", async () => {
   const db = memoryDb();
   const model = { state: draftState(), db };
   const stale = createPlanVersionDraftSession(model.state, "plan-00");
   stale.draftId = "000-plan-draft-malformed-retired";
+  stale.revision = 1;
   const tombstones = {};
   for (let index = 0; index < 257; index += 1) {
     const draftId = index === 0
@@ -1729,6 +1730,73 @@ test("malformed legacy tombstones compact fail-closed instead of bypassing the b
   assert.equal(Object.keys(compacted.tombstones).length, 256);
   assert.equal(Object.hasOwn(compacted.tombstones, stale.draftId), false);
   await assert.rejects(savePlanVersionDraftSession(model, stale), /stale/i);
+});
+
+test("draft created before an unrelated same-bucket retirement can first-save later", async () => {
+  const db = memoryDb();
+  const model = { state: draftState(), db };
+  const fresh = createPlanVersionDraftSession(
+    model.state,
+    "plan-00",
+    "2026-08-20T00:00:00.000Z",
+  );
+  fresh.draftId = "plan-draft-collision-30";
+  const tombstones = {
+    "plan-draft-collision-9": {
+      revision: 2,
+      removedAt: "2026-08-20T01:00:00.000Z",
+    },
+  };
+  for (let index = 0; index < 256; index += 1) {
+    tombstones[`plan-draft-retired-unrelated-${String(index).padStart(3, "0")}`] = {
+      revision: 2,
+      removedAt: new Date(Date.parse("2026-08-20T02:00:00.000Z") + index).toISOString(),
+    };
+  }
+  await db.set("plan_version_drafts_v1", {
+    version: 3,
+    sessions: [],
+    tombstones,
+    retiredBefore: {},
+  });
+  await removePlanVersionDraftSession(model, "plan-draft-never-existed");
+
+  await savePlanVersionDraftSession(model, fresh);
+
+  assert.equal(
+    (await db.get("plan_version_drafts_v1")).sessions[0].draftId,
+    fresh.draftId,
+  );
+});
+
+test("malformed tombstone cannot poison an unrelated future draft", async () => {
+  const db = memoryDb();
+  const model = { state: draftState(), db };
+  const fresh = createPlanVersionDraftSession(model.state, "plan-00");
+  fresh.draftId = "plan-draft-collision-30";
+  const tombstones = {
+    "plan-draft-collision-9": { revision: 2, removedAt: "invalid" },
+  };
+  for (let index = 0; index < 256; index += 1) {
+    tombstones[`plan-draft-z-malformed-${String(index).padStart(3, "0")}`] = {
+      revision: 2,
+      removedAt: "invalid",
+    };
+  }
+  await db.set("plan_version_drafts_v1", {
+    version: 3,
+    sessions: [],
+    tombstones,
+    retiredBefore: {},
+  });
+  await removePlanVersionDraftSession(model, "plan-draft-never-existed");
+
+  await savePlanVersionDraftSession(model, fresh);
+
+  assert.equal(
+    (await db.get("plan_version_drafts_v1")).sessions[0].draftId,
+    fresh.draftId,
+  );
 });
 
 test("removing an unknown draft does not allocate a tombstone", async () => {

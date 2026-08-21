@@ -10,6 +10,7 @@ import {
 } from "../../frontend/procurement/ProcurementLookupPreview.js";
 import {
   ProcurementInlineLookup,
+  originatePackageImportFlow,
   startProcurementPackageImport,
 } from "../../frontend/procurement/ProcurementInlineLookup.js";
 import { bindProcurementCodeAutoLookup } from "../../frontend/procurement/ProcurementAutoLookup.js";
@@ -416,14 +417,17 @@ test("inline package import materializes source goods before the package form is
   };
   state.goithau[0].phanLo = String.fromCharCode(67, 195, 179);
   const controller = {
-    model: { state, getWorkspaceToken: () => "org-1" },
+    model: {
+      state, db: {}, workspaceStorage: { setItem() {}, getItem() {}, removeItem() {} },
+      workspaceScope: { key: "org-1" }, getWorkspaceToken: () => "org-1",
+    },
     _loadPhanLoRows: (rows) => lotRows.push(...rows),
     _loadTuyChonMuaThemRows: () => undefined,
   };
 
   globalThis.document = document;
   try {
-    await startProcurementPackageImport.call(controller, {
+    await startProcurementPackageImport.call(controller, originatePackageImportFlow(controller, {
       currentDraft: {
         revisionNumber: "00",
         packageDrafts: [{
@@ -440,7 +444,7 @@ test("inline package import materializes source goods before the package form is
       },
       session: { sessionId: "session-package" },
       controller: { revisions: [] },
-    });
+    }));
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
@@ -453,6 +457,59 @@ test("inline package import materializes source goods before the package form is
     state.goithauhanghoa[0].phanLoId,
     state.goithau[0].phanLoList[0].id,
   );
+});
+
+test("package flow start rejects an origin capability from a previous workspace", async () => {
+  const controller = {
+    model: {
+      state: {}, db: { name: "db-b" }, workspaceStorage: { name: "storage-b" },
+      workspaceScope: { key: "org-b" }, getWorkspaceToken: () => "org-b@1",
+    },
+  };
+  const origin = {
+    ...controller.model,
+    db: { name: "db-a" },
+    workspaceStorage: { name: "storage-a" },
+    workspaceScope: { key: "org-a" },
+    getWorkspaceToken: () => "org-a@1",
+  };
+  const flow = originatePackageImportFlow({ model: origin }, {
+    session: { sessionId: "session-a" },
+    controller: { revisions: [] },
+    currentDraft: { revisionNumber: "00", packageDrafts: [{ maGoiThau: "IB2600000001" }] },
+  });
+
+  await assert.rejects(
+    startProcurementPackageImport.call(controller, flow),
+    (error) => error?.code === "WORKSPACE_CHANGED",
+  );
+  assert.equal(controller.procurementPackageImport, undefined);
+});
+
+test("package flow start rejects a replaced session in the same workspace", async () => {
+  const controller = {
+    model: {
+      state: {}, db: { name: "db-a" }, workspaceStorage: { name: "storage-a" },
+      workspaceScope: { key: "org-a" }, getWorkspaceToken: () => "org-a@1",
+    },
+  };
+  const activeFlow = originatePackageImportFlow(controller, {
+    session: { sessionId: "session-new" },
+    controller: { revisions: [] },
+    currentDraft: { revisionNumber: "00", packageDrafts: [{ maGoiThau: "IB2600000002" }] },
+  });
+  controller.procurementPackageImport = activeFlow;
+  const staleFlow = originatePackageImportFlow(controller, {
+    session: { sessionId: "session-old" },
+    controller: { revisions: [] },
+    currentDraft: { revisionNumber: "00", packageDrafts: [{ maGoiThau: "IB2600000001" }] },
+  });
+
+  await assert.rejects(
+    startProcurementPackageImport.call(controller, staleFlow),
+    (error) => error?.code === "FLOW_CHANGED",
+  );
+  assert.equal(controller.procurementPackageImport, activeFlow);
 });
 
 test("package details select medicine and multi-lot then load authoritative lots", () => {

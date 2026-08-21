@@ -464,11 +464,28 @@ export class PlanImportWizard {
 
   async apply() {
     if (!canStartSequentialImport(this.preview)) return;
-    const importSession = this.preview?.importSession;
+    const preview = this.preview;
+    const importSession = preview?.importSession;
     if (!importSession?.sessionId || !(importSession.revisions || []).length) {
       this.setStatus("Phiên nhập tuần tự chưa sẵn sàng. Hãy chuẩn bị lại dữ liệu.", true);
       return;
     }
+    const generation = ++this.requestGeneration;
+    const originLease = captureWorkspaceLease(this.controller?.model);
+    const originStorage = this.controller?.model?.workspaceStorage;
+    const flowIdentity = Object.freeze({});
+    const assertApplyCapabilityCurrent = () => {
+      if (
+        generation !== this.requestGeneration
+        || this.preview !== preview
+        || this.preview?.importSession !== importSession
+        || String(importSession.sessionId) !== String(preview?.importSession?.sessionId || "")
+        || !isWorkspaceLeaseCurrent(this.controller?.model, originLease)
+        || this.controller?.model?.workspaceStorage !== originStorage
+      ) {
+        throw workspaceChangedError();
+      }
+    };
     this.applyController?.abort();
     this.enrichmentController?.abort();
     this.applyController = new AbortController();
@@ -489,12 +506,17 @@ export class PlanImportWizard {
         saveRevision: async () => ({ ok: true }),
       });
       const currentDraft = await sequential.loadCurrent();
+      assertApplyCapabilityCurrent();
       await this.controller?.startProcurementPlanImport?.({
         session: importSession,
         controller: sequential,
         currentDraft,
         client: this.client,
+        importWorkspaceLease: originLease,
+        importWorkspaceStorage: originStorage,
+        importFlowIdentity: flowIdentity,
       });
+      assertApplyCapabilityCurrent();
       this.draftStore.clear();
       this.controller?.view?.closeModal?.("modal-procurement-import");
     } catch (error) {
@@ -585,16 +607,31 @@ function latestPlanForFamily(model, familyNo, state = model?.state) {
     .sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0))[0] || null;
 }
 
-function bindPlanImportWorkspace(controller, flow) {
-  if (flow?.importWorkspaceLease && flow?.importFlowIdentity) return flow;
+export function originatePlanImportFlow(controller, flow) {
   return {
     ...flow,
-    importWorkspaceLease: flow?.importWorkspaceLease
-      || captureWorkspaceLease(controller.model),
-    importWorkspaceStorage: flow?.importWorkspaceStorage
-      ?? controller.model?.workspaceStorage,
-    importFlowIdentity: flow?.importFlowIdentity || Object.freeze({}),
+    importWorkspaceLease: captureWorkspaceLease(controller?.model),
+    importWorkspaceStorage: controller?.model?.workspaceStorage,
+    importFlowIdentity: Object.freeze({}),
   };
+}
+
+function bindPlanImportWorkspace(controller, flow) {
+  if (
+    !flow?.importWorkspaceLease
+    || !flow?.importFlowIdentity
+    || !Object.hasOwn(flow, "importWorkspaceStorage")
+  ) {
+    throw new TypeError("PROCUREMENT_ORIGIN_CAPABILITY_REQUIRED");
+  }
+  return flow;
+}
+
+function planImportFlowChangedError() {
+  const error = new Error("Procurement plan import flow changed");
+  error.name = "AbortError";
+  error.code = "FLOW_CHANGED";
+  return error;
 }
 
 function planImportFlowIsCurrent(controller, flow, { allowUninstalled = false } = {}) {
@@ -854,6 +891,18 @@ export async function startProcurementPlanImport(flow) {
     throw new TypeError("PROCUREMENT_SESSION_INVALID");
   }
   const guardedFlow = bindPlanImportWorkspace(this, flow);
+  const activeFlow = this.procurementPlanImport;
+  if (activeFlow && activeFlow.importFlowIdentity !== guardedFlow.importFlowIdentity) {
+    throw planImportFlowChangedError();
+  }
+  if (
+    String(guardedFlow.session?.sessionId || "") === ""
+    || String(guardedFlow.currentDraft?.sessionId || guardedFlow.session?.sessionId || "")
+      !== String(guardedFlow.session.sessionId)
+  ) {
+    throw new TypeError("PROCUREMENT_SESSION_INVALID");
+  }
+  assertPlanImportWorkspace(this, guardedFlow, { allowUninstalled: true });
   return materializePlanImportRevision(this, guardedFlow, flow.currentDraft);
 }
 

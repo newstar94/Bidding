@@ -45,6 +45,7 @@ import {
 import { persistExpertFormChanges } from "../../frontend/experts/ChuyenGiaWorkflow.js";
 import {
   completeProcurementPlanImportRevision,
+  originatePlanImportFlow,
   startProcurementPlanImport,
 } from "../../frontend/procurement/PlanImportWizard.js";
 import { SequentialRevisionController } from "../../frontend/procurement/SequentialRevisionController.js";
@@ -2035,14 +2036,14 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
   controller.savePlanBreakdown = savePlanBreakdown.bind(controller);
 
   try {
-    await controller.startProcurementPlanImport({
+    await controller.startProcurementPlanImport(originatePlanImportFlow(controller, {
       session: {
         sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600000001",
         revisions: [{ revisionNumber: "00" }, { revisionNumber: "01" }],
       },
       controller: sequential, currentDraft: firstDraft,
       client: { cancelImportSession: async () => {} },
-    });
+    }));
     assert.equal(
       controller.model.planVersionDraftSessions?.length,
       1,
@@ -2192,11 +2193,11 @@ test("retrying the same procurement revision reuses the saved plan version", asy
     }],
   };
 
-  const result = await startProcurementPlanImport.call(controller, {
+  const result = await startProcurementPlanImport.call(controller, originatePlanImportFlow(controller, {
     session: { sessionId: "session-1", familyNo: "PL2600164871" },
     controller: {},
     currentDraft: revisionDraft,
-  });
+  }));
 
   assert.equal(result.plan.id, "plan-00");
   assert.equal(state.kehoach.length, 1);
@@ -2251,14 +2252,14 @@ test("a newly published revision extends persisted 00 without opening a new-plan
     packageDrafts: [],
   };
 
-  const result = await startProcurementPlanImport.call(controller, {
+  const result = await startProcurementPlanImport.call(controller, originatePlanImportFlow(controller, {
     session: {
       sessionId: "session-later-01", familyNo: "PL2600225773",
       revisions: [{ revisionNumber: "01" }],
     },
     controller: { hasNext: () => false },
     currentDraft: revisionDraft,
-  });
+  }));
 
   assert.equal(result.plan.phienBan, "01");
   assert.equal(result.plan.rootId, "plan-00");

@@ -181,24 +181,47 @@ export class NoticeImportWizard {
 
   async apply() {
     if (!canApplyNoticePreview(this.preview)) return;
+    const preview = this.preview;
+    const generation = ++this.requestGeneration;
+    const originLease = captureWorkspaceLease(this.controller?.model);
+    const originStorage = this.controller?.model?.workspaceStorage;
+    const targetRootId = String(preview.notice?.targetPackageRootId
+      || preview.notice?.targetPackage?.rootId || this.targetPackageRootId || "");
+    const assertApplyCapabilityCurrent = () => {
+      if (
+        generation !== this.requestGeneration
+        || this.preview !== preview
+        || this.targetPackageRootId !== targetRootId
+        || !isWorkspaceLeaseCurrent(this.controller?.model, originLease)
+        || this.controller?.model?.workspaceStorage !== originStorage
+      ) {
+        throw workspaceChangedError();
+      }
+    };
     this.applyController?.abort();
     this.applyController = new AbortController();
     this.refreshApplyGate();
     this.setStatus("Đang áp dụng notice revision vào gói thầu…");
     try {
+      assertApplyCapabilityCurrent();
       await this.client.applyNotice({
         previewId: this.preview.previewId,
         idempotencyKey: idempotencyKey(),
         expectedPackageRowVersion: this.preview.notice.expectedPackageRowVersion,
         workspaceLease: this.workspaceLease || null,
       }, { signal: this.applyController.signal });
+      assertApplyCapabilityCurrent();
       await this.controller?.model?.loadStorageKeys?.(["GOITHAU", "ASSIGNMENTS"]);
+      assertApplyCapabilityCurrent();
       this.controller?.view?.renderGoiThauTable?.();
+      assertApplyCapabilityCurrent();
       this.setStatus("Đã cập nhật thông báo vào đúng dòng phiên bản gói thầu.");
+      assertApplyCapabilityCurrent();
       this.controller?.view?.closeModal?.("modal-procurement-notice-import");
       this.controller?.view?.closeModal?.("modal-goithau");
     } catch (error) {
       if (error?.name === "AbortError") return;
+      if (error?.code === "WORKSPACE_CHANGED") return;
       this.setStatus(error?.message || "Không thể áp dụng thông báo.", true);
       this.refreshApplyGate();
     }
