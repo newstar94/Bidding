@@ -48,6 +48,18 @@ class ImportConflict(RuntimeError):
     """A stable public conflict code from prepare/apply."""
 
 
+SKIPPED_REVISION_DISPOSITIONS = frozenset({
+    "ALREADY_IMPORTED",
+    "PROVENANCE_ONLY",
+})
+
+
+def revision_requires_materialization(disposition: object) -> bool:
+    """Return whether a source revision belongs to the active import surface."""
+
+    return str(disposition or "").strip().upper() not in SKIPPED_REVISION_DISPOSITIONS
+
+
 @dataclass(frozen=True, slots=True)
 class ProcurementCode:
     original: str

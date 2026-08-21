@@ -20,6 +20,7 @@ from backend.procurement_import.domain import (
     normalize_procurement_code,
     package_source_fields,
     required_package_issues,
+    revision_requires_materialization,
     revision_sort_key,
     three_way_merge_field,
 )
@@ -728,7 +729,7 @@ class ProcurementImportPreparer:
                 "revisionDigest": revision_digest,
                 "disposition": disposition,
             })
-            if disposition == "MATERIALIZE":
+            if revision_requires_materialization(disposition):
                 for package in revision.get("packages", []):
                     for issue in required_package_issues(package):
                         blocking_issues.append({
@@ -755,11 +756,25 @@ class ProcurementImportPreparer:
             }
             for row in reconciliation_by_revision[latest_revision_id]
         ]
+        dispositions = {
+            str(row.get("revisionId") or ""): str(
+                row.get("disposition") or ""
+            ).upper()
+            for row in revision_previews
+        }
         decision_packages = []
         for revision in revisions:
             revision_id = str(revision.get("revisionId") or "")
             for row in reconciliation_by_revision.get(revision_id, []):
-                if row.get("action") == PackageAction.AMBIGUOUS.value or row.get("fieldConflicts"):
+                if (
+                    revision_requires_materialization(
+                        dispositions.get(revision_id)
+                    )
+                    and (
+                        row.get("action") == PackageAction.AMBIGUOUS.value
+                        or row.get("fieldConflicts")
+                    )
+                ):
                     decision_packages.append({
                         **deepcopy(row),
                         "sourceRevisionId": revision_id,

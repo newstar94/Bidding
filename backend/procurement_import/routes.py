@@ -27,6 +27,7 @@ from backend.procurement_import.command import (
 from backend.procurement_import.domain import (
     ImportConflict,
     canonical_digest,
+    revision_requires_materialization,
 )
 from backend.procurement_import.decisions import (
     ProcurementDecisionError,
@@ -221,6 +222,7 @@ def _prepare_blocking(request, payload):
     )
     linked = _linked_notice_numbers(stored.canonical_bundle)
     session_bundle = deepcopy(stored.canonical_bundle)
+    session_bundle["decisionBindingRequired"] = True
     if quick_enrichment:
         session_bundle["enrichmentStatus"] = (
             "PENDING" if linked else "COMPLETED"
@@ -243,7 +245,20 @@ def _prepare_blocking(request, payload):
         raise
     finally:
         connection.close()
-    result = {**preview, "importSession": import_session}
+    result = {
+        **preview,
+        "importSession": import_session,
+        "decisionPackages": deepcopy(
+            import_session["decisionPackages"]
+            if "decisionPackages" in import_session
+            else preview.get("decisionPackages") or []
+        ),
+        "blockingIssues": deepcopy(
+            import_session["blockingIssues"]
+            if "blockingIssues" in import_session
+            else preview.get("blockingIssues") or []
+        ),
+    }
     if quick_enrichment:
         if linked:
             result.update({
@@ -443,6 +458,7 @@ def _run_plan_enrichment(context, operation_id):
             if item.get("code") == "PROCUREMENT_ENRICHMENT_PARTIAL"
         }
         enriched_bundle = deepcopy(stored.canonical_bundle)
+        enriched_bundle["decisionBindingRequired"] = True
         enriched_bundle["enrichmentStatus"] = (
             "PARTIAL" if failed_notices else "COMPLETED"
         )
@@ -642,6 +658,9 @@ def _get_import_session_blocking(request, session_id, revision_number=None):
             session_id, revision_number,
             organization_id=organization_id, user_id=session.user_id,
             workspace_lease=lease,
+            validate_plan_authority=lambda plan_authority: _validate_plan_predecessor(
+                cursor, organization_id, plan_authority
+            ),
         )
     finally:
         connection.rollback()
@@ -714,6 +733,9 @@ def _bind_import_session_decisions_blocking(request, session_id, payload):
             decisions=payload.get("decisions") or {},
             validate_investor=validate_investor,
             validate_local_target=validate_local_target,
+            validate_plan_authority=lambda plan_authority: _validate_plan_predecessor(
+                cursor, organization_id, plan_authority
+            ),
         )
         connection.commit()
         return result
@@ -986,6 +1008,56 @@ def _validate_investor(cursor, organization_id, investor_id):
         )
 
 
+def _validate_plan_predecessor(cursor, organization_id, plan_authority):
+    """Validate the exact latest plan captured when the preview was made."""
+
+    family_no = str((plan_authority or {}).get("familyNo") or "").strip().upper()
+    expected = (plan_authority or {}).get("expectedPredecessor")
+    if not family_no:
+        return
+    current = cursor.execute(
+        """SELECT id, COALESCE(NULLIF(id_goc, ''), id), phien_ban,
+                          row_version, is_latest
+             FROM ke_hoach_lcnt
+            WHERE organization_id = ? AND upper(ma_ke_hoach) = ?
+              AND archived_at IS NULL AND is_latest = 1
+            ORDER BY phien_ban DESC, id DESC LIMIT 1 FOR UPDATE""",
+        (organization_id, family_no),
+    ).fetchone()
+    if expected is None:
+        if current is not None:
+            raise ProcurementRouteError(
+                "PROCUREMENT_PREVIEW_STALE",
+                "Kế hoạch đã xuất hiện sau khi tạo preview.",
+                409,
+            )
+        return
+    if current is None:
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE",
+            "Kế hoạch tiền nhiệm không còn tồn tại.",
+            409,
+        )
+    actual = {
+        "id": str(current[0]),
+        "rootId": str(current[1]),
+        "localVersion": int(current[2] or 0),
+        "rowVersion": int(current[3] or 0),
+    }
+    expected_normalized = {
+        "id": str(expected.get("id") or ""),
+        "rootId": str(expected.get("rootId") or ""),
+        "localVersion": int(expected.get("localVersion") or 0),
+        "rowVersion": int(expected.get("rowVersion") or 0),
+    }
+    if actual != expected_normalized or not bool(current[4]):
+        raise ProcurementRouteError(
+            "PROCUREMENT_PREVIEW_STALE",
+            "Kế hoạch đã thay đổi sau khi tạo preview.",
+            409,
+        )
+
+
 def _resolve_revision_decisions(revision, preview_rows, decisions):
     try:
         resolved, package_decisions, _targets = resolve_revision_decisions(
@@ -1251,8 +1323,9 @@ def _apply_blocking(request, payload):
     }
     active_revisions = [
         revision for revision in bundle["revisions"]
-        if dispositions.get(str(revision.get("revisionId")))
-        not in {"PROVENANCE_ONLY", "ALREADY_IMPORTED"}
+        if revision_requires_materialization(
+            dispositions.get(str(revision.get("revisionId")))
+        )
     ]
     if active_revisions:
         active_bundle = {
@@ -1276,9 +1349,7 @@ def _apply_blocking(request, payload):
         package_decisions_by_id = {}
     for revision in bundle["revisions"]:
         revision_id = str(revision.get("revisionId"))
-        if dispositions.get(revision_id) in {
-            "PROVENANCE_ONLY", "ALREADY_IMPORTED",
-        }:
+        if not revision_requires_materialization(dispositions.get(revision_id)):
             resolved, package_decisions = deepcopy(revision), {}
         else:
             resolved = deepcopy(resolved_by_id[revision_id])

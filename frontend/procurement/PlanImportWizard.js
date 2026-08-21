@@ -88,10 +88,46 @@ export function summarizePreview(preview) {
   }, { total: 0 });
 }
 
+function activeRevisionIds(preview) {
+  const explicit = preview?.importSession?.activeRevisionIds;
+  if (Array.isArray(explicit) && explicit.length) return new Set(explicit.map(String));
+  const revisions = preview?.importSession?.revisions;
+  return new Set(
+    Array.isArray(revisions)
+      ? revisions.map((row) => String(row?.revisionId || "")).filter(Boolean)
+      : [],
+  );
+}
+
+function decisionObservationKey(row) {
+  const observationId = String(row?.planDetailRevisionId || row?.packageObservationId || "");
+  const revisionId = String(row?.sourceRevisionId || row?.revisionId || "");
+  return revisionId && observationId ? `${revisionId}::${observationId}` : observationId;
+}
+
+function splitDecisionObservationKey(value) {
+  const text = String(value || "");
+  const marker = text.indexOf("::");
+  if (marker < 0) return { revisionId: null, packageObservationId: text };
+  return {
+    revisionId: text.slice(0, marker) || null,
+    packageObservationId: text.slice(marker + 2),
+  };
+}
+
+function decisionKeyForPreview(row, preview) {
+  const active = activeRevisionIds(preview);
+  if (active.size && row?.sourceRevisionId) return decisionObservationKey(row);
+  return String(row?.planDetailRevisionId || row?.packageObservationId || "");
+}
+
 function decisionPackageRows(preview) {
+  const active = activeRevisionIds(preview);
   const rows = new Map();
   [...(preview?.packages || []), ...(preview?.decisionPackages || [])].forEach((row) => {
-    const key = `${row.sourceRevisionId || "latest"}:${row.planDetailRevisionId || row.symbol || ""}`;
+    const sourceRevisionId = String(row?.sourceRevisionId || "");
+    if (sourceRevisionId && active.size && !active.has(sourceRevisionId)) return;
+    const key = `${sourceRevisionId || "latest"}:${row.planDetailRevisionId || row.symbol || ""}`;
     rows.set(key, row);
   });
   return [...rows.values()];
@@ -100,24 +136,35 @@ function decisionPackageRows(preview) {
 export function buildSequentialDecisionPayload(decisions, investorId) {
   const splitKey = (key) => {
     const separator = String(key).lastIndexOf(":");
-    return separator < 0
-      ? [String(key), ""]
-      : [String(key).slice(0, separator), String(key).slice(separator + 1)];
+    const observation = separator < 0
+      ? String(key)
+      : String(key).slice(0, separator);
+    return {
+      ...splitDecisionObservationKey(observation),
+      field: separator < 0 ? "" : String(key).slice(separator + 1),
+    };
   };
   return {
     investorId: String(investorId || "").trim() || null,
     packageMatches: Object.entries(decisions?.packageMatches || {}).map(
-      ([packageObservationId, value]) => ({ packageObservationId, ...value }),
+      ([key, value]) => {
+        const parsed = splitDecisionObservationKey(key);
+        return {
+          ...(parsed.revisionId ? { revisionId: parsed.revisionId } : {}),
+          packageObservationId: parsed.packageObservationId,
+          ...value,
+        };
+      },
     ),
     fieldConflicts: Object.entries(decisions?.fieldConflicts || {}).map(
       ([key, resolution]) => {
-        const [packageObservationId, field] = splitKey(key);
-        return { packageObservationId, field, resolution };
+        const { revisionId, packageObservationId, field } = splitKey(key);
+        return { ...(revisionId ? { revisionId } : {}), packageObservationId, field, resolution };
       },
     ),
     fieldValues: Object.entries(decisions?.fieldValues || {}).map(([key, value]) => {
-      const [packageObservationId, field] = splitKey(key);
-      return { packageObservationId, field, value };
+      const { revisionId, packageObservationId, field } = splitKey(key);
+      return { ...(revisionId ? { revisionId } : {}), packageObservationId, field, value };
     }),
   };
 }
@@ -138,20 +185,30 @@ export function canStartSequentialImport(preview, context) {
   const matches = decisions.packageMatches || {};
   const conflicts = decisions.fieldConflicts || {};
   const fieldValues = decisions.fieldValues || {};
+  const active = activeRevisionIds(preview);
   if (decisionPackageRows(preview).some((row) => {
-    const observationId = String(row.planDetailRevisionId || "");
+    const observationId = decisionKeyForPreview(row, preview);
     if (row.action === "AMBIGUOUS" && !matches[observationId]) return true;
     return (row.fieldConflicts || []).some(
-      (conflict) => !conflicts[`${observationId}:${conflict.field || ""}`],
+      (conflict) => !conflicts[
+        `${observationId}:${String(conflict.field || "")}`
+      ],
     );
   })) return false;
   return !(preview.blockingIssues || []).some((issue) => {
+    if (
+      issue.sourceRevisionId
+      && active.size
+      && !active.has(String(issue.sourceRevisionId))
+    ) return false;
     if (
       issue.code !== "PROCUREMENT_REQUIRED_FIELDS_MISSING"
       || !issue.packageObservationId
       || !issue.field
     ) return false;
-    const value = fieldValues[`${issue.packageObservationId}:${issue.field}`];
+    const value = fieldValues[
+      `${decisionKeyForPreview(issue, preview)}:${String(issue.field || "")}`
+    ];
     return value === undefined || value === null || String(value).trim() === "";
   });
 }
@@ -225,7 +282,7 @@ export function renderPackages(modal, preview) {
       : "";
     const actionCell = appendText(row, "td", `${revisionLabel}${pkg.action || "UNKNOWN"}`);
     actionCell.className = "procurement-import__action";
-    const observationId = String(pkg.planDetailRevisionId || "");
+    const observationId = decisionObservationKey(pkg);
     if (pkg.action === "AMBIGUOUS") {
       appendDecisionSelect(actionCell, {
         label: `Ghép gói ${pkg.symbol || pkg.name || observationId}`,
@@ -259,8 +316,14 @@ export function renderPackages(modal, preview) {
 export function renderIssues(modal, preview) {
   const target = modal.querySelector("[data-procurement-issues]");
   target.replaceChildren();
+  const active = activeRevisionIds(preview);
+  const scopedIssues = (preview.blockingIssues || []).filter((item) => (
+    !item.sourceRevisionId
+    || !active.size
+    || active.has(String(item.sourceRevisionId))
+  ));
   const items = [
-    ...(preview.blockingIssues || []).map((item) => ({ ...item, blocking: true })),
+    ...scopedIssues.map((item) => ({ ...item, blocking: true })),
     ...(preview.warnings || []),
   ];
   items.forEach((item) => {
@@ -276,7 +339,7 @@ export function renderIssues(modal, preview) {
       const input = target.ownerDocument.createElement("input");
       input.type = item.field === "priceVnd" ? "number" : "text";
       input.min = item.field === "priceVnd" ? "0" : "";
-      input.dataset.procurementFieldValue = String(item.packageObservationId);
+      input.dataset.procurementFieldValue = decisionObservationKey(item);
       input.dataset.field = String(item.field);
       input.setAttribute(
         "aria-label",
@@ -287,6 +350,76 @@ export function renderIssues(modal, preview) {
     target.append(row);
   });
   target.hidden = items.length === 0;
+}
+
+function optionExists(select, value) {
+  return [...(select?.options || select?.children || [])]
+    .some((option) => String(option?.value ?? "") === String(value ?? ""));
+}
+
+export function rehydrateDecisionControls(modal, preview, decisions, investorId = null) {
+  const next = {
+    packageMatches: { ...(decisions?.packageMatches || {}) },
+    fieldConflicts: { ...(decisions?.fieldConflicts || {}) },
+    fieldValues: { ...(decisions?.fieldValues || {}) },
+  };
+  const allowedMatches = new Set();
+  const allowedConflicts = new Set();
+  const allowedFields = new Set();
+  const body = modal.querySelector("[data-procurement-packages]");
+  for (const row of body?.children || []) {
+    const actionCell = row.children?.[3];
+    for (const control of actionCell?.children || []) {
+      const key = String(control.dataset?.procurementMatch || "");
+      if (key) {
+        allowedMatches.add(key);
+        const decision = next.packageMatches[key];
+        const value = decision?.new ? "__NEW__" : decision?.localRootId || "";
+        if (value && optionExists(control, value)) control.value = value;
+        else delete next.packageMatches[key];
+      }
+      const conflictKey = control.dataset?.procurementConflict
+        ? `${control.dataset.procurementConflict}:${control.dataset.field || ""}`
+        : "";
+      if (conflictKey) {
+        allowedConflicts.add(conflictKey);
+        const value = next.fieldConflicts[conflictKey];
+        if (value && optionExists(control, value)) control.value = value;
+        else delete next.fieldConflicts[conflictKey];
+      }
+    }
+  }
+  const issues = modal.querySelector("[data-procurement-issues]");
+  for (const row of issues?.children || []) {
+    for (const control of row.children || []) {
+      const key = control.dataset?.procurementFieldValue
+        ? `${control.dataset.procurementFieldValue}:${control.dataset.field || ""}`
+        : "";
+      if (!key) continue;
+      allowedFields.add(key);
+      if (Object.hasOwn(next.fieldValues, key)) {
+        control.value = String(next.fieldValues[key] ?? "");
+      } else {
+        delete next.fieldValues[key];
+      }
+    }
+  }
+  Object.keys(next.packageMatches).forEach((key) => {
+    if (!allowedMatches.has(key)) delete next.packageMatches[key];
+  });
+  Object.keys(next.fieldConflicts).forEach((key) => {
+    if (!allowedConflicts.has(key)) delete next.fieldConflicts[key];
+  });
+  Object.keys(next.fieldValues).forEach((key) => {
+    if (!allowedFields.has(key)) delete next.fieldValues[key];
+  });
+  const investor = modal.querySelector("[data-procurement-investor]");
+  const restoredInvestorId = String(investorId || "").trim();
+  const visibleInvestorId = restoredInvestorId && optionExists(investor, restoredInvestorId)
+    ? restoredInvestorId
+    : "";
+  if (investor) investor.value = visibleInvestorId;
+  return { decisions: next, investorId: visibleInvestorId || null };
 }
 
 function renderRevisions(modal, preview) {
@@ -451,6 +584,17 @@ export class PlanImportWizard {
       renderPackages(this.modal, preview);
       renderIssues(this.modal, preview);
       renderRevisions(this.modal, preview);
+      const rehydrated = rehydrateDecisionControls(
+        this.modal,
+        preview,
+        this.decisions,
+        draft?.investorId || this.modal.querySelector("[data-procurement-investor]")?.value,
+      );
+      this.decisions = rehydrated.decisions;
+      if (rehydrated.investorId) {
+        const investor = this.modal.querySelector("[data-procurement-investor]");
+        if (investor) investor.value = rehydrated.investorId;
+      }
       const summary = summarizePreview(preview);
       this.modal.querySelector("[data-procurement-summary]").textContent =
         `${summary.total} gói · ${preview.plan?.selectedRevisions?.length || 0} phiên bản nguồn`;
@@ -516,6 +660,7 @@ export class PlanImportWizard {
       }
       if (!isEnrichmentCapabilityCurrent()) return;
       if (operation.status === "COMPLETED") {
+        const previousDigest = this.preview.bundleDigest;
         let refreshedSession = null;
         if (typeof this.client.getImportSession === "function") {
           refreshedSession = await this.client.getImportSession(
@@ -528,14 +673,37 @@ export class PlanImportWizard {
           );
           if (!isEnrichmentCapabilityCurrent()) return;
         }
+        const refreshedDigest = refreshedSession?.bundleDigest || this.preview.bundleDigest;
         this.preview = {
           ...this.preview,
-          bundleDigest: refreshedSession?.bundleDigest || this.preview.bundleDigest,
+          bundleDigest: refreshedDigest,
           importSession: refreshedSession
             ? { ...this.preview.importSession, ...refreshedSession }
             : this.preview.importSession,
+          decisionPackages: refreshedSession
+            && Object.hasOwn(refreshedSession, "decisionPackages")
+            ? refreshedSession.decisionPackages
+            : this.preview.decisionPackages,
+          blockingIssues: refreshedSession
+            && Object.hasOwn(refreshedSession, "blockingIssues")
+            ? refreshedSession.blockingIssues
+            : this.preview.blockingIssues,
           enrichmentStatus: "COMPLETED",
         };
+        if (refreshedDigest !== previousDigest) {
+          this.decisions = {
+            packageMatches: {}, fieldConflicts: {}, fieldValues: {},
+          };
+        }
+        renderPackages(this.modal, this.preview);
+        renderIssues(this.modal, this.preview);
+        const rehydrated = rehydrateDecisionControls(
+          this.modal,
+          this.preview,
+          this.decisions,
+          this.modal.querySelector("[data-procurement-investor]")?.value,
+        );
+        this.decisions = rehydrated.decisions;
         this.refreshApplyGate();
         this.setStatus("Đã bổ sung đầy đủ dữ liệu TBMT; có thể tiếp tục nhập.");
       } else {

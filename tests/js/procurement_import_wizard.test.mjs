@@ -26,6 +26,7 @@ import {
   createDebouncedPreparer,
   renderIssues,
   renderPackages,
+  rehydrateDecisionControls,
   startProcurementPlanImport,
   summarizePreview,
   completeProcurementPlanImportRevision,
@@ -1263,7 +1264,10 @@ test("enrichment refreshes the session digest before decision binding", async ()
       bundleDigest: "sha256:old",
       enrichmentStatus: "PENDING",
     },
-    decisions: { packageMatches: {}, fieldConflicts: {}, fieldValues: {} },
+    decisions: {
+      packageMatches: { "rev-00::detail-a": { localRootId: "root-a" } },
+      fieldConflicts: {}, fieldValues: {},
+    },
     requestGeneration: 1,
     workspaceLease: "org-1",
     controller: { model: {
@@ -1276,6 +1280,7 @@ test("enrichment refreshes the session digest before decision binding", async ()
         return {
           ...session, bundleDigest: "sha256:new", status: "READY",
           revisions: [{ revisionNumber: "00" }],
+          decisionPackages: [], blockingIssues: [],
         };
       },
     },
@@ -1286,6 +1291,9 @@ test("enrichment refreshes the session digest before decision binding", async ()
   await wizard.trackEnrichment("operation-1");
   assert.equal(wizard.preview.bundleDigest, "sha256:new");
   assert.equal(wizard.preview.importSession.bundleDigest, "sha256:new");
+  assert.deepEqual(wizard.decisions, {
+    packageMatches: {}, fieldConflicts: {}, fieldValues: {},
+  });
 });
 
 test("sequential_plan_ambiguous_selection_enables_start", () => {
@@ -1391,6 +1399,77 @@ test("preview renderer creates accessible controls for every server decision", (
   assert.equal(requiredInput.dataset.procurementFieldValue, "detail-a");
   assert.equal(requiredInput.dataset.field, "capitalDetail");
   assert.match(requiredInput.attributes["aria-label"], /capitalDetail/);
+});
+
+test("skipped revision decision rows are not rendered", () => {
+  const document = fakeDocument();
+  const packageBody = new FakeElement(document, "tbody");
+  const modal = {
+    querySelector(selector) {
+      if (selector === "[data-procurement-packages]") return packageBody;
+      return null;
+    },
+  };
+  renderPackages(modal, {
+    importSession: { revisions: [{ revisionId: "rev-01" }] },
+    decisionPackages: [
+      { sourceRevisionId: "rev-00", planDetailRevisionId: "old", action: "AMBIGUOUS" },
+      { sourceRevisionId: "rev-01", planDetailRevisionId: "active", action: "AMBIGUOUS" },
+    ],
+  });
+  assert.equal(packageBody.children.length, 1);
+  assert.equal(packageBody.children[0].children[3].children.length, 1);
+});
+
+test("restored decisions are rehydrated into visible controls and stale entries are dropped", () => {
+  const document = fakeDocument();
+  const packageBody = new FakeElement(document, "tbody");
+  const issues = new FakeElement(document, "ul");
+  const investor = {
+    value: "",
+    options: [{ value: "investor-1" }],
+  };
+  const modal = {
+    querySelector(selector) {
+      if (selector === "[data-procurement-packages]") return packageBody;
+      if (selector === "[data-procurement-issues]") return issues;
+      if (selector === "[data-procurement-investor]") return investor;
+      return null;
+    },
+  };
+  const preview = {
+    importSession: { revisions: [{ revisionId: "rev-01" }] },
+    decisionPackages: [{
+      sourceRevisionId: "rev-01", planDetailRevisionId: "active",
+      action: "AMBIGUOUS", matchCandidates: [{ rootId: "root-b" }],
+      fieldConflicts: [{ field: "priceVnd" }],
+    }],
+    blockingIssues: [{
+      sourceRevisionId: "rev-01", code: "PROCUREMENT_REQUIRED_FIELDS_MISSING",
+      packageObservationId: "active", field: "capitalDetail",
+    }],
+  };
+  renderPackages(modal, preview);
+  renderIssues(modal, preview);
+  const decisions = {
+    packageMatches: { "rev-01::active": { localRootId: "root-b" } },
+    fieldConflicts: { "rev-01::active:priceVnd": "KEEP_LOCAL" },
+    fieldValues: {
+      "rev-01::active:capitalDetail": "Ngân sách",
+      "rev-01::removed:capitalDetail": "stale",
+    },
+  };
+  const restored = rehydrateDecisionControls(modal, preview, decisions, "investor-1");
+  const actionCell = packageBody.children[0].children[3];
+  assert.equal(actionCell.children[0].value, "root-b");
+  assert.equal(actionCell.children[1].value, "KEEP_LOCAL");
+  assert.equal(issues.children[0].children[1].value, "Ngân sách");
+  assert.equal(investor.value, "investor-1");
+  assert.deepEqual(restored.decisions, {
+    packageMatches: { "rev-01::active": { localRootId: "root-b" } },
+    fieldConflicts: { "rev-01::active:priceVnd": "KEEP_LOCAL" },
+    fieldValues: { "rev-01::active:capitalDetail": "Ngân sách" },
+  });
 });
 
 

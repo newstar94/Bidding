@@ -34,11 +34,25 @@ def decision_rows(decisions, key):
     return rows
 
 
-def _decision_key(row):
-    return (
-        str(row.get("packageObservationId") or ""),
-        str(row.get("field") or ""),
-    )
+def _observation_revisions(revisions):
+    result = {}
+    for revision in revisions:
+        revision_id = str(revision.get("revisionId") or "")
+        for package in revision.get("packages") or []:
+            observation_id = str(package.get("planDetailRevisionId") or "")
+            if observation_id:
+                result.setdefault(observation_id, set()).add(revision_id)
+    return result
+
+
+def _row_applies_to_revision(row, revision_id, observation_revisions):
+    explicit_revision = str(row.get("revisionId") or "")
+    if explicit_revision:
+        return explicit_revision == str(revision_id)
+    candidates = observation_revisions.get(
+        str(row.get("packageObservationId") or "")
+    ) or set()
+    return len(candidates) == 1 and str(revision_id) in candidates
 
 
 def _coerce_required_value(field, value):
@@ -89,29 +103,42 @@ def _reject_duplicate(rows, key):
 
 
 def _validate_bundle_decisions(revisions, reconciliation, decisions):
+    observation_revisions = _observation_revisions(revisions)
     observations = {
-        str(package.get("planDetailRevisionId") or "")
+        (str(revision.get("revisionId") or ""),
+         str(package.get("planDetailRevisionId") or ""))
         for revision in revisions
         for package in revision.get("packages") or []
         if package.get("planDetailRevisionId")
     }
     preview_rows = [
-        row
+        {
+            **row,
+            "sourceRevisionId": str(revision.get("revisionId") or ""),
+        }
         for revision in revisions
         for row in reconciliation.get(str(revision.get("revisionId") or ""), [])
     ]
     ambiguous = {
-        str(row.get("planDetailRevisionId") or ""): row
+        (
+            str(row.get("sourceRevisionId") or ""),
+            str(row.get("planDetailRevisionId") or ""),
+        ): row
         for row in preview_rows
         if row.get("action") == "AMBIGUOUS"
     }
     conflicts = {
-        (str(row.get("planDetailRevisionId") or ""), str(item.get("field") or ""))
+        (
+            str(row.get("sourceRevisionId") or ""),
+            str(row.get("planDetailRevisionId") or ""),
+            str(item.get("field") or ""),
+        )
         for row in preview_rows
         for item in row.get("fieldConflicts") or []
     }
     required = {
         (
+            str(revision.get("revisionId") or ""),
             str(package.get("planDetailRevisionId") or ""),
             str(issue.get("field") or ""),
         )
@@ -123,14 +150,36 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
     matches = decision_rows(decisions, "packageMatches")
     field_values = decision_rows(decisions, "fieldValues")
     field_conflicts = decision_rows(decisions, "fieldConflicts")
-    _reject_duplicate(matches, lambda row: str(row.get("packageObservationId") or ""))
-    _reject_duplicate(field_values, _decision_key)
-    _reject_duplicate(field_conflicts, _decision_key)
+    def normalized_key(row, include_field=True):
+        observation_id = str(row.get("packageObservationId") or "")
+        candidates = observation_revisions.get(observation_id) or set()
+        revision_id = str(row.get("revisionId") or "")
+        if not revision_id and len(candidates) == 1:
+            revision_id = next(iter(candidates))
+        return (
+            revision_id,
+            observation_id,
+            str(row.get("field") or "") if include_field else "",
+        )
+    _reject_duplicate(matches, lambda row: (
+        normalized_key(row, include_field=False)
+    ))
+    _reject_duplicate(field_values, normalized_key)
+    _reject_duplicate(field_conflicts, normalized_key)
 
     for row in matches:
         observation_id = str(row.get("packageObservationId") or "")
-        preview = ambiguous.get(observation_id)
-        if observation_id not in observations or preview is None:
+        revisions_for_observation = observation_revisions.get(observation_id) or set()
+        row_revision = str(row.get("revisionId") or "")
+        if not row_revision and len(revisions_for_observation) > 1:
+            raise ProcurementDecisionError(
+                "PROCUREMENT_DECISION_INVALID",
+                "Quyết định phải nêu rõ revision nguồn.",
+                400,
+            )
+        effective_revision = row_revision or next(iter(revisions_for_observation), "")
+        preview = ambiguous.get((effective_revision, observation_id))
+        if (effective_revision, observation_id) not in observations or preview is None:
             raise ProcurementDecisionError(
                 "PROCUREMENT_MATCH_DECISION_INVALID",
                 "Quyết định ghép gói không thuộc preview hiện tại.",
@@ -152,8 +201,21 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
             )
 
     for row in field_values:
-        marker = _decision_key(row)
-        if marker not in required or marker[1] not in SOURCE_OWNED_PACKAGE_FIELDS:
+        observation_id = str(row.get("packageObservationId") or "")
+        revisions_for_observation = observation_revisions.get(observation_id) or set()
+        row_revision = str(row.get("revisionId") or "")
+        if not row_revision and len(revisions_for_observation) > 1:
+            raise ProcurementDecisionError(
+                "PROCUREMENT_DECISION_INVALID",
+                "Quyết định phải nêu rõ revision nguồn.",
+                400,
+            )
+        marker = (
+            row_revision or next(iter(revisions_for_observation), ""),
+            observation_id,
+            str(row.get("field") or ""),
+        )
+        if marker not in required or marker[2] not in SOURCE_OWNED_PACKAGE_FIELDS:
             raise ProcurementDecisionError(
                 "PROCUREMENT_DECISION_INVALID",
                 "Field bổ sung không thuộc blocking issue hiện tại.",
@@ -161,7 +223,20 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
             )
 
     for row in field_conflicts:
-        marker = _decision_key(row)
+        observation_id = str(row.get("packageObservationId") or "")
+        revisions_for_observation = observation_revisions.get(observation_id) or set()
+        row_revision = str(row.get("revisionId") or "")
+        if not row_revision and len(revisions_for_observation) > 1:
+            raise ProcurementDecisionError(
+                "PROCUREMENT_DECISION_INVALID",
+                "Quyết định phải nêu rõ revision nguồn.",
+                400,
+            )
+        marker = (
+            row_revision or next(iter(revisions_for_observation), ""),
+            observation_id,
+            str(row.get("field") or ""),
+        )
         if marker not in conflicts or str(row.get("resolution") or "").upper() not in {
             "KEEP_LOCAL", "APPLY_SOURCE",
         }:
@@ -175,6 +250,22 @@ def _validate_bundle_decisions(revisions, reconciliation, decisions):
 def resolve_revision_decisions(revision, preview_rows, decisions, *, enforce_required=True):
     """Resolve one canonical revision using only preview-authorized choices."""
 
+    revision_id = str(revision.get("revisionId") or "")
+    decisions = {
+        **(decisions or {}),
+        "packageMatches": [
+            row for row in decision_rows(decisions, "packageMatches")
+            if not row.get("revisionId") or str(row.get("revisionId")) == revision_id
+        ],
+        "fieldConflicts": [
+            row for row in decision_rows(decisions, "fieldConflicts")
+            if not row.get("revisionId") or str(row.get("revisionId")) == revision_id
+        ],
+        "fieldValues": [
+            row for row in decision_rows(decisions, "fieldValues")
+            if not row.get("revisionId") or str(row.get("revisionId")) == revision_id
+        ],
+    }
     observations = {
         str(row.get("planDetailRevisionId") or ""): row
         for row in revision.get("packages") or []
@@ -375,15 +466,12 @@ def resolve_plan_decision_authority(bundle, decisions, selected_revision_ids=Non
         ]
     reconciliation = bundle.get("reconciliationByRevision") or {}
     _validate_bundle_decisions(revisions, reconciliation, decisions)
+    observation_revisions = _observation_revisions(revisions)
     resolved_revisions = []
     package_decisions = {}
     local_targets = {}
     for revision in revisions:
         revision_id = str(revision.get("revisionId") or "")
-        revision_observations = {
-            str(item.get("planDetailRevisionId") or "")
-            for item in revision.get("packages") or []
-        }
         revision_preview = reconciliation.get(revision_id, [])
         revision_required = {
             (
@@ -405,15 +493,27 @@ def resolve_plan_decision_authority(bundle, decisions, selected_revision_ids=Non
             **(decisions or {}),
             "packageMatches": [
                 item for item in decision_rows(decisions, "packageMatches")
-                if str(item.get("packageObservationId") or "") in revision_observations
+                if _row_applies_to_revision(
+                    item, revision_id, observation_revisions
+                )
             ],
             "fieldValues": [
                 item for item in decision_rows(decisions, "fieldValues")
-                if _decision_key(item) in revision_required
+                if _row_applies_to_revision(
+                    item, revision_id, observation_revisions
+                ) and (
+                    str(item.get("packageObservationId") or ""),
+                    str(item.get("field") or ""),
+                ) in revision_required
             ],
             "fieldConflicts": [
                 item for item in decision_rows(decisions, "fieldConflicts")
-                if _decision_key(item) in revision_conflicts
+                if _row_applies_to_revision(
+                    item, revision_id, observation_revisions
+                ) and (
+                    str(item.get("packageObservationId") or ""),
+                    str(item.get("field") or ""),
+                ) in revision_conflicts
             ],
         }
         resolved, explicit, targets = resolve_revision_decisions(
@@ -428,11 +528,15 @@ def resolve_plan_decision_authority(bundle, decisions, selected_revision_ids=Non
         "investorId": str((decisions or {}).get("investorId") or "") or None,
         "packageMatches": sorted(
             deepcopy(decision_rows(decisions, "packageMatches")),
-            key=lambda row: str(row.get("packageObservationId") or ""),
+            key=lambda row: (
+                str(row.get("revisionId") or ""),
+                str(row.get("packageObservationId") or ""),
+            ),
         ),
         "fieldConflicts": sorted(
             deepcopy(decision_rows(decisions, "fieldConflicts")),
             key=lambda row: (
+                str(row.get("revisionId") or ""),
                 str(row.get("packageObservationId") or ""),
                 str(row.get("field") or ""),
             ),
@@ -440,6 +544,7 @@ def resolve_plan_decision_authority(bundle, decisions, selected_revision_ids=Non
         "fieldValues": sorted(
             deepcopy(decision_rows(decisions, "fieldValues")),
             key=lambda row: (
+                str(row.get("revisionId") or ""),
                 str(row.get("packageObservationId") or ""),
                 str(row.get("field") or ""),
             ),

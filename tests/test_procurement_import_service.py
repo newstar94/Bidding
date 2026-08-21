@@ -1823,6 +1823,21 @@ def test_session_decisions_are_bound_to_exact_bundle_digest_and_are_immutable():
         )
 
 
+def test_plan_session_cannot_materialize_before_decision_authority_is_bound():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    bundle = _sequential_decision_bundle()
+    bundle["decisionBindingRequired"] = True
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_DECISIONS_REQUIRED"):
+        service.get_revision_draft(
+            manifest["sessionId"], "00", organization_id="org-1",
+            user_id="user-1", workspace_lease="lease-1",
+        )
+
+
 def test_sequential_plan_selected_investor_is_exactly_used_and_resumed():
     repository = _MemorySessionRepository()
     service = ProcurementImportSessionService(repository)
@@ -1883,6 +1898,143 @@ def test_sequential_plan_foreign_workspace_investor_is_rejected():
                 )
             ),
         )
+
+
+def test_plan_predecessor_cas_is_checked_before_decision_binding():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    bundle = _sequential_decision_bundle()
+    bundle["plan"]["expectedPredecessor"] = {
+        "id": "plan-3", "rootId": "plan-root", "localVersion": 3,
+        "rowVersion": 7,
+    }
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_PREVIEW_STALE"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"investorId": "investor-1"},
+            validate_plan_authority=lambda _expected: (_ for _ in ()).throw(
+                ProcurementDecisionError(
+                    "PROCUREMENT_PREVIEW_STALE", "Kế hoạch đã thay đổi.", 409,
+                )
+            ),
+        )
+
+
+def test_plan_predecessor_cas_is_rechecked_before_revision_materialization():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    bundle = _sequential_decision_bundle()
+    bundle["plan"]["expectedPredecessor"] = {
+        "id": "plan-3", "rootId": "plan-root", "localVersion": 3,
+        "rowVersion": 7,
+    }
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={"investorId": "investor-1"},
+    )
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_PREVIEW_STALE"):
+        service.get_revision_draft(
+            manifest["sessionId"], "00", organization_id="org-1",
+            user_id="user-1", workspace_lease="lease-1",
+            validate_plan_authority=lambda _expected: (_ for _ in ()).throw(
+                ProcurementDecisionError(
+                    "PROCUREMENT_PREVIEW_STALE", "Kế hoạch đã thay đổi.", 409,
+                )
+            ),
+        )
+
+
+def test_session_public_decision_surface_excludes_skipped_revisions():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    bundle = _sequential_decision_bundle()
+    bundle["revisions"].append({
+        "revisionId": "rev-01", "revisionNumber": "01", "packages": [],
+    })
+    bundle["revisionPreviews"] = [
+        {"revisionId": "rev-00", "revisionNumber": "00", "disposition": "ALREADY_IMPORTED"},
+        {"revisionId": "rev-01", "revisionNumber": "01", "disposition": "MATERIALIZE"},
+    ]
+    bundle["decisionPackages"] = [
+        {"sourceRevisionId": "rev-00", "planDetailRevisionId": "old-detail", "action": "AMBIGUOUS"},
+        {"sourceRevisionId": "rev-01", "planDetailRevisionId": "active-detail", "action": "AMBIGUOUS"},
+    ]
+    bundle["blockingIssues"] = [
+        {"sourceRevisionId": "rev-00", "packageObservationId": "old-detail", "field": "name"},
+        {"sourceRevisionId": "rev-01", "packageObservationId": "active-detail", "field": "name"},
+    ]
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    assert [row["sourceRevisionId"] for row in manifest["decisionPackages"]] == ["rev-01"]
+    assert [row["sourceRevisionId"] for row in manifest["blockingIssues"]] == ["rev-01"]
+    assert [row["revisionId"] for row in manifest["revisions"]] == ["rev-01"]
+
+
+def test_resync_required_field_is_public_and_must_be_resolved():
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    bundle = _sequential_decision_bundle(required_field=True)
+    bundle["revisionPreviews"] = [{
+        "revisionId": "rev-00", "revisionNumber": "00", "disposition": "RESYNC",
+    }]
+    bundle["blockingIssues"] = [{
+        "sourceRevisionId": "rev-00", "packageObservationId": "detail-a",
+        "field": "capitalDetail", "code": "PROCUREMENT_REQUIRED_FIELDS_MISSING",
+    }]
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    assert manifest["blockingIssues"][0]["field"] == "capitalDetail"
+    with pytest.raises(ProcurementDecisionError, match="PROCUREMENT_REQUIRED_FIELDS_MISSING"):
+        service.bind_plan_decisions(
+            manifest["sessionId"], organization_id="org-1", user_id="user-1",
+            workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+            decisions={"investorId": "investor-1"},
+        )
+
+
+def test_same_observation_id_across_revisions_is_scoped_by_revision_id():
+    bundle = _sequential_decision_bundle()
+    first = bundle["revisions"][0]
+    second = deepcopy(first)
+    second["revisionId"] = "rev-01"
+    second["revisionNumber"] = "01"
+    bundle["revisions"].append(second)
+    bundle["reconciliationByRevision"]["rev-01"] = [{
+        **bundle["reconciliationByRevision"]["rev-00"][0],
+        "action": "AMBIGUOUS", "matchCandidates": [{"rootId": "root-b"}],
+    }]
+    bundle["reconciliationByRevision"]["rev-00"][0]["action"] = "AMBIGUOUS"
+    bundle["reconciliationByRevision"]["rev-00"][0]["matchCandidates"] = [{"rootId": "root-a"}]
+    repository = _MemorySessionRepository()
+    service = ProcurementImportSessionService(repository)
+    manifest = service.create_from_bundle(
+        bundle, organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    authority = service.bind_plan_decisions(
+        manifest["sessionId"], organization_id="org-1", user_id="user-1",
+        workspace_lease="lease-1", bundle_digest=manifest["bundleDigest"],
+        decisions={
+            "investorId": "investor-1", "fieldValues": [], "fieldConflicts": [],
+            "packageMatches": [{
+                "revisionId": "rev-00", "packageObservationId": "detail-a",
+                "localRootId": "root-a",
+            }, {
+                "revisionId": "rev-01", "packageObservationId": "detail-a",
+                "localRootId": "root-b",
+            }],
+        },
+    )
+    assert authority["decisionAuthority"]["status"] == "BOUND"
 
 
 def test_next_session_draft_carries_the_active_local_package_root():

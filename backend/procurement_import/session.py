@@ -7,7 +7,11 @@ from datetime import datetime, timedelta, timezone
 import secrets
 import time
 
-from backend.procurement_import.domain import canonical_digest, revision_sort_key
+from backend.procurement_import.domain import (
+    canonical_digest,
+    revision_requires_materialization,
+    revision_sort_key,
+)
 from backend.procurement_import.domain import derive_import_lifecycle_status
 from backend.procurement_import.decisions import (
     ProcurementDecisionError,
@@ -55,8 +59,9 @@ class ProcurementImportSessionService:
             }
             pending_revisions = [
                 row for row in revisions
-                if dispositions.get(str(row.get("revisionId") or ""))
-                not in {"ALREADY_IMPORTED", "PROVENANCE_ONLY"}
+                if revision_requires_materialization(
+                    dispositions.get(str(row.get("revisionId") or ""))
+                )
             ]
             # Keep the existing retry behavior when every selected revision is
             # already known, but never replay an imported prefix before a new
@@ -108,6 +113,21 @@ class ProcurementImportSessionService:
         decision_authority = deepcopy(
             (row.get("canonicalBundle") or {}).get("decisionAuthority") or {}
         )
+        bundle = row.get("canonicalBundle") or {}
+        active_revision_ids = {
+            str(item.get("revisionId") or "")
+            for item in row.get("revisions") or []
+        }
+        decision_packages = [
+            deepcopy(item)
+            for item in bundle.get("decisionPackages") or []
+            if str(item.get("sourceRevisionId") or "") in active_revision_ids
+        ]
+        blocking_issues = [
+            deepcopy(item)
+            for item in bundle.get("blockingIssues") or []
+            if str(item.get("sourceRevisionId") or "") in active_revision_ids
+        ]
         return {
             "sessionId": row["id"],
             "kind": row["kind"],
@@ -119,6 +139,10 @@ class ProcurementImportSessionService:
             "currentIndex": int(row.get("currentIndex") or 0),
             "expiresAt": row["expiresAt"].isoformat(),
             "revisions": deepcopy(row["revisions"]),
+            "activeRevisionIds": sorted(active_revision_ids),
+            "decisionPackages": decision_packages,
+            "blockingIssues": blocking_issues,
+            "planAuthority": deepcopy(bundle.get("plan") or {}),
             "decisionAuthority": {
                 key: decision_authority.get(key)
                 for key in ("status", "decisionsDigest", "investorId")
@@ -151,6 +175,7 @@ class ProcurementImportSessionService:
         decisions,
         validate_investor=None,
         validate_local_target=None,
+        validate_plan_authority=None,
         now=None,
     ):
         row = self._get(
@@ -162,6 +187,10 @@ class ProcurementImportSessionService:
         )
         if row["kind"] != "PLAN":
             raise LookupError("PROCUREMENT_REVISION_INVALID")
+        if validate_plan_authority is not None:
+            validate_plan_authority(
+                deepcopy((row.get("canonicalBundle") or {}).get("plan") or {})
+            )
         if str(bundle_digest or "") != str(row.get("bundleDigest") or ""):
             raise ProcurementDecisionError(
                 "PROCUREMENT_PREVIEW_STALE",
@@ -219,6 +248,12 @@ class ProcurementImportSessionService:
             if resolved is None:
                 raise LookupError("PROCUREMENT_REVISION_INVALID")
             return deepcopy(resolved), authority
+        if bundle.get("decisionBindingRequired"):
+            raise ProcurementDecisionError(
+                "PROCUREMENT_DECISIONS_REQUIRED",
+                "Phải xác nhận quyết định preview trước khi mở bản nháp.",
+                409,
+            )
         resolved, _explicit, local_targets = resolve_revision_decisions(
             revision,
             (bundle.get("reconciliationByRevision") or {}).get(revision_id, []),
@@ -238,6 +273,7 @@ class ProcurementImportSessionService:
         user_id,
         workspace_lease,
         now=None,
+        validate_plan_authority=None,
     ):
         started = time.perf_counter()
         row = self._get(
@@ -255,6 +291,10 @@ class ProcurementImportSessionService:
             raise LookupError("PROCUREMENT_ENRICHMENT_PENDING")
         if row["kind"] == "PLAN" and enrichment_status in {"PARTIAL", "FAILED"}:
             raise LookupError("PROCUREMENT_ENRICHMENT_INCOMPLETE")
+        if row["kind"] == "PLAN" and validate_plan_authority is not None:
+            validate_plan_authority(
+                deepcopy((row.get("canonicalBundle") or {}).get("plan") or {})
+            )
         revision_number = str(revision_number)
         revision = next((
             item for item in row["canonicalBundle"].get("revisions") or []
