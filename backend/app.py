@@ -627,6 +627,8 @@ from backend.documents.export_routes import (
     export_report_api,
     export_timeline_api,
     list_templates_api,
+    get_word_publication_template_assignments_api,
+    save_word_publication_template_assignments_api,
     view_template_api,
     set_active_template_api,
     upload_template_api,
@@ -983,6 +985,16 @@ routes = [
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
     Route("/api/templates/upload", upload_template_api, methods=["POST"]),
+    Route(
+        "/api/word-publication-template-assignments",
+        get_word_publication_template_assignments_api,
+        methods=["GET"],
+    ),
+    Route(
+        "/api/word-publication-template-assignments",
+        save_word_publication_template_assignments_api,
+        methods=["PUT"],
+    ),
     Route("/api/templates/{filename}", view_template_api, methods=["GET"]),
     Route("/api/templates/{filename}", replace_template_api, methods=["PUT"]),
     Route("/api/templates/{filename}", delete_template_api, methods=["DELETE"]),
@@ -1065,6 +1077,7 @@ routes = [
     Route("/hop-dong", index, methods=["GET"]),
     Route("/hop-dong/{action}", index, methods=["GET"]),
     Route("/bieu-mau", index, methods=["GET"]),
+    Route("/xuat-ban-word", index, methods=["GET"]),
     Route("/reset-password", index, methods=["GET"]),
 
     Route("/tong-quan-admin", index, methods=["GET"]),

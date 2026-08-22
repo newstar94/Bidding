@@ -512,6 +512,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     chuyengia: "Tổ Chuyên gia Đấu thầu",
     hopdong: "Danh sách Hợp đồng",
     bieumau: "Quản lý Biểu mẫu & Từ điển",
+    "xuatban-word": "Xuất bản Word",
     "superadmin-dashboard": "Bảng điều khiển Super Admin BiddingFlow",
     superadmin: "Quản lý Đơn vị & Tài khoản Thành viên",
     managernhanvien: "Quản lý Chuyên viên & Phân quyền Matrix",
@@ -632,6 +633,8 @@ export function renderTabData(tabName, action = null) {
       this.view.renderDictionary("global");
       this.setupCopyVariableEvents();
       break;
+    case "xuatban-word":
+      return this.setupWordPublicationPage();
     case "superadmin-dashboard":
       this.view.renderSuperAdminDashboard();
       break;

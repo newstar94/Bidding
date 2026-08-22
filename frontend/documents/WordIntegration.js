@@ -17,8 +17,14 @@ import {
   finishWorkspaceRequest,
   isWorkspaceLeaseCurrent,
 } from "../app/workspaceLease.js";
+const loadWordTemplateAssignments = async () => {
+  const module = await import("./WordTemplateAssignments.js");
+  await module.loadWordTemplateAssignmentStyles();
+  return module;
+};
 
 const pendingWordTemplateDeletes = new Set();
+const pendingWordTemplateAvailabilityChanges = new Set();
 
 export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   const isReadonly = !canManageWordVariables;
@@ -76,6 +82,11 @@ export function setupWordTemplatesEvents() {
     trigger: addButton,
     validation: validationResult,
   }, canUploadTemplates);
+  void loadWordTemplateAssignments().then((module) => {
+    module.setupWordTemplateAssignmentEvents(this);
+  }).catch((error) => {
+    console.error("Failed to initialize Word template assignments:", error);
+  });
   if (templateInput && !templateInput.dataset.wordUploadBound) {
     templateInput.dataset.wordUploadBound = "true";
     templateInput.addEventListener("change", async (e) => {
@@ -1022,23 +1033,42 @@ export async function loadWordTemplates() {
   const model = this.model;
   const request = beginWorkspaceRequest(model);
   let shouldLoadMappings = true;
+  let templatesForAssignments = null;
+  let templatesError = "";
   try {
     const res = await apiFetch("/api/templates", { signal: request.signal });
     assertWorkspaceLeaseCurrent(model, request.lease);
     if (res.ok) {
       const templates = await res.json();
       assertWorkspaceLeaseCurrent(model, request.lease);
+      templatesForAssignments = Array.isArray(templates) ? templates : [];
       this.view.renderWordTemplates(templates);
       this.setupTemplateActivationEvents();
+    } else {
+      throw new Error(`HTTP ${res.status}`);
     }
   } catch (err) {
     if (!isWorkspaceLeaseCurrent(model, request.lease)) {
       shouldLoadMappings = false;
     } else {
+      templatesError = err instanceof Error ? err.message : String(err);
       console.error("Failed to load templates:", err);
     }
   } finally {
     finishWorkspaceRequest(model, request);
+  }
+  if (isWorkspaceLeaseCurrent(model, request.lease)) {
+    const assignmentModule = await loadWordTemplateAssignments();
+    if (templatesForAssignments) {
+      await assignmentModule.loadAndRenderWordTemplateAssignments(
+        this,
+        templatesForAssignments,
+      );
+    } else {
+      assignmentModule.renderWordTemplateAssignments(this, [], {}, {
+        error: templatesError || "Không tải được danh sách biểu mẫu Word.",
+      });
+    }
   }
   if (shouldLoadMappings && isWorkspaceLeaseCurrent(model, request.lease)) {
     await this.loadWordMappings();
@@ -1084,29 +1114,39 @@ export async function loadWordMappings() {
   }
 }
 export function setupTemplateActivationEvents() {
-  if (!canUploadWorkspaceAssets(
-    this.model.state.activeuser || {},
-    this.model.state.activerole,
-  )) return;
-  document.querySelectorAll(".btn-activate-template").forEach((btn) => {
-    btn.onclick = async (e) => {
-      const targetEl = e.target.closest(".btn-activate-template");
-      if (!targetEl) return;
-      const filename = targetEl.getAttribute("data-filename");
+  const activeUser = this.model.state.activeuser || {};
+  const activeRole = this.model.state.activerole;
+  const canManageAvailability = canManageWorkspaceWordVariables(
+    activeUser,
+    activeRole,
+  );
+  const canMutateFiles = canUploadWorkspaceAssets(
+    activeUser,
+    activeRole,
+  );
+  if (canManageAvailability) document.querySelectorAll(".btn-toggle-template-availability").forEach((btn) => {
+    btn.onclick = async (event) => {
+      const target = event.target.closest(".btn-toggle-template-availability");
+      if (!target || target.disabled) return;
+      const filename = target.getAttribute("data-filename");
+      const nextEnabled = target.getAttribute("aria-pressed") !== "true";
+      target.disabled = true;
+      target.setAttribute("aria-busy", "true");
       try {
-        const res = await apiFetch("/api/templates/active", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename })
-        });
-        if (res.ok) {
-          await this.loadWordTemplates();
+        await handleWordTemplateAvailabilityToggle.call(
+          this,
+          filename,
+          nextEnabled,
+        );
+      } finally {
+        if (target.isConnected) {
+          target.disabled = false;
+          target.removeAttribute("aria-busy");
         }
-      } catch (err) {
-        console.error("Failed to set active template:", err);
       }
     };
   });
+  if (!canMutateFiles) return;
   document.querySelectorAll(".btn-edit-template").forEach((btn) => {
     btn.onclick = (e) => {
       const targetEl = e.target.closest(".btn-edit-template");
@@ -1351,6 +1391,13 @@ export async function handleWordTemplateUpload(file, { notify = true, reload = t
   }
 }
 
+function canManageWordTemplateAvailability(controller) {
+  return canManageWorkspaceWordVariables(
+    controller.model.state.activeuser || {},
+    controller.model.state.activerole,
+  );
+}
+
 async function handleWordTemplateBatchUpload(files) {
   if (!canMutateWordTemplates(this)) {
     await showTemplateAccessDenied(this);
@@ -1420,6 +1467,48 @@ export async function handleWordTemplateReplace(
     if (inline && this.view.showToast) this.view.showToast("Lỗi hệ thống", message, "error");
     else await this.view.customAlert("Lỗi hệ thống", message, "alert-triangle");
     return false;
+  }
+}
+
+export async function handleWordTemplateAvailabilityToggle(filename, enabled) {
+  if (!canManageWordTemplateAvailability(this)) {
+    await showTemplateAccessDenied(this);
+    return false;
+  }
+  const key = String(filename || "").normalize("NFC");
+  if (!key || pendingWordTemplateAvailabilityChanges.has(key)) return false;
+  pendingWordTemplateAvailabilityChanges.add(key);
+  try {
+    const response = await apiFetch("/api/templates/active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        template_name: key,
+        enabled: Boolean(enabled),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Không thể cập nhật trạng thái biểu mẫu.");
+    }
+    this.view?.showToast?.(
+      enabled ? "Đã cho phép sử dụng" : "Đã tạm ngừng biểu mẫu",
+      enabled
+        ? `Biểu mẫu “${key}” đã sẵn sàng để gán và xuất Word.`
+        : `Biểu mẫu “${key}” đã được loại khỏi danh sách có thể gán và xuất Word.`,
+      "success",
+    );
+    await this.loadWordTemplates();
+    return true;
+  } catch (error) {
+    await this.view?.customAlert?.(
+      "Không thể cập nhật biểu mẫu",
+      error instanceof Error ? error.message : String(error),
+      "x-circle",
+    );
+    return false;
+  } finally {
+    pendingWordTemplateAvailabilityChanges.delete(key);
   }
 }
 

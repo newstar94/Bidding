@@ -19,6 +19,9 @@ test("Word template manager uses an add button without seeded default rows", asy
   assert.match(html, /<th class="text-center">STT<\/th>/);
   assert.match(html, /<th>File mẫu<\/th>/);
   assert.match(html, /colspan="5"/);
+  assert.match(html, /id="word-template-assignment-list"/);
+  assert.match(html, /id="word-template-assignment-save"/);
+  assert.match(html, /Cài đặt biểu mẫu theo chức năng/u);
   assert.doesNotMatch(html, /id="word-drag-drop-zone"/);
   assert.doesNotMatch(html, /id="word-template-replace-input"/);
   assert.doesNotMatch(html, /Bản báo cáo đánh giá mặc định/);
@@ -99,7 +102,7 @@ test("Word template action column shrinks to its controls", async () => {
         <table class="data-table" id="word-templates-table" style="width:1200px">
           <thead><tr><th>STT</th><th>Tên biểu mẫu</th><th>File mẫu</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
           <tbody><tr>
-            <td>1</td><td>Biểu mẫu báo cáo</td><td>bao-cao.docx</td><td>Đang hoạt động</td>
+            <td>1</td><td>Biểu mẫu báo cáo</td><td>bao-cao.docx</td><td>Sẵn sàng</td>
             <td><div class="word-template-actions"><button class="btn">Sửa</button><button class="btn">Xóa</button></div></td>
           </tr></tbody>
         </table>

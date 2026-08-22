@@ -60,6 +60,22 @@ async def list_templates_api(request):
     return await _dispatch("routes_docx", "list_templates_api", request)
 
 
+async def get_word_publication_template_assignments_api(request):
+    return await _dispatch(
+        "routes_docx",
+        "get_word_publication_template_assignments_api",
+        request,
+    )
+
+
+async def save_word_publication_template_assignments_api(request):
+    return await _dispatch(
+        "routes_docx",
+        "save_word_publication_template_assignments_api",
+        request,
+    )
+
+
 async def view_template_api(request):
     return await _dispatch("routes_docx", "view_template_api", request)
 

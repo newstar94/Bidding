@@ -1,0 +1,123 @@
+<section class="tab-pane word-publication-page" id="tab-xuatban-word" aria-labelledby="word-publication-page-heading">
+    <div class="word-publication-hero">
+        <div>
+            <span class="word-publication-kicker">Hệ thống văn bản</span>
+            <h2 id="word-publication-page-heading">Xuất bản Word</h2>
+            <p>Chọn dữ liệu canonical đã được phân quyền để xem các văn bản phù hợp với gói thầu.</p>
+        </div>
+        <div class="word-publication-hero-icon" aria-hidden="true">
+            <i data-lucide="file-down"></i>
+        </div>
+    </div>
+
+    <div class="dashboard-card word-publication-selector-card">
+        <div class="card-header">
+            <div>
+                <span class="word-publication-step">Bước 1</span>
+                <h3 class="card-title">Chọn dữ liệu</h3>
+            </div>
+            <i data-lucide="list-filter" class="text-muted" aria-hidden="true"></i>
+        </div>
+        <div class="card-body">
+            <div class="word-publication-selector-grid">
+                <div class="form-group">
+                    <label for="word-publication-plan-select">Kế hoạch lựa chọn nhà thầu</label>
+                    <select id="word-publication-plan-select" data-no-custom="true" aria-describedby="word-publication-plan-help">
+                        <option value="">Đang tải kế hoạch...</option>
+                    </select>
+                    <small class="helper-text" id="word-publication-plan-help">Tìm theo mã hoặc tên Kế hoạch.</small>
+                </div>
+                <div class="form-group">
+                    <label for="word-publication-package-select">Gói thầu</label>
+                    <select id="word-publication-package-select" data-no-custom="true" aria-describedby="word-publication-package-help" disabled>
+                        <option value="">Vui lòng chọn Kế hoạch trước</option>
+                    </select>
+                    <small class="helper-text" id="word-publication-package-help">Danh sách chỉ gồm Gói thầu thuộc Kế hoạch đang chọn.</small>
+                </div>
+            </div>
+            <p class="word-publication-live-status" id="word-publication-live-status" role="status" aria-live="polite"></p>
+        </div>
+    </div>
+
+    <div class="word-publication-empty" id="word-publication-empty">
+        <i data-lucide="files" aria-hidden="true"></i>
+        <h3>Chọn Kế hoạch và Gói thầu để bắt đầu</h3>
+        <p>Hệ thống sẽ tự xác định phương thức, hình thức lựa chọn và danh sách văn bản có thể xuất.</p>
+    </div>
+
+    <section class="dashboard-card word-publication-summary" id="word-publication-summary" aria-labelledby="word-publication-summary-heading" hidden>
+        <div class="card-header">
+            <div>
+                <span class="word-publication-step">Bước 2</span>
+                <h3 class="card-title" id="word-publication-summary-heading">Thông tin gói thầu</h3>
+            </div>
+            <i data-lucide="briefcase-business" class="text-muted" aria-hidden="true"></i>
+        </div>
+        <div class="card-body">
+            <dl class="word-publication-summary-grid">
+                <div><dt>Mã gói</dt><dd id="word-publication-package-code">—</dd></div>
+                <div><dt>Tên gói</dt><dd id="word-publication-package-name">—</dd></div>
+                <div><dt>Phương thức</dt><dd id="word-publication-selection-method">—</dd></div>
+                <div><dt>Hình thức LCNT</dt><dd id="word-publication-procurement-form">—</dd></div>
+            </dl>
+        </div>
+    </section>
+
+    <section class="word-publication-documents" id="word-publication-documents" aria-labelledby="word-publication-documents-heading" hidden>
+        <div class="word-publication-section-heading">
+            <div>
+                <span class="word-publication-step">Bước 3</span>
+                <h3 id="word-publication-documents-heading">Loại văn bản có thể xuất bản</h3>
+            </div>
+            <span class="word-publication-count" id="word-publication-document-count"></span>
+        </div>
+        <div class="word-publication-document-grid" id="word-publication-document-grid"></div>
+    </section>
+
+    <dialog class="word-publication-export-dialog" id="word-publication-export-dialog"
+            aria-labelledby="word-publication-export-dialog-heading"
+            aria-describedby="word-publication-export-dialog-description">
+        <form class="word-publication-export-dialog-panel" method="dialog">
+            <div class="word-publication-export-dialog-header">
+                <div>
+                    <span class="word-publication-step">Chọn biểu mẫu</span>
+                    <h3 id="word-publication-export-dialog-heading">Chọn file cần xuất</h3>
+                    <p id="word-publication-export-dialog-description">
+                        Chỉ các file được chọn trong bảng dưới đây mới được tạo và tải xuống.
+                    </p>
+                </div>
+                <button class="word-publication-dialog-close" type="button"
+                        data-word-publication-cancel aria-label="Đóng bảng chọn file">
+                    <i data-lucide="x" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="word-publication-export-table-wrap">
+                <table class="word-publication-export-table">
+                    <thead>
+                        <tr>
+                            <th class="word-publication-export-check-column" scope="col">
+                                <input id="word-publication-select-all" type="checkbox"
+                                       data-word-publication-select-all aria-label="Chọn tất cả">
+                            </th>
+                            <th scope="col">Tên file biểu mẫu</th>
+                            <th class="word-publication-export-status-column" scope="col">Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="word-publication-export-table-body"></tbody>
+                </table>
+            </div>
+
+            <div class="word-publication-export-dialog-footer">
+                <p id="word-publication-export-selection-status" role="status" aria-live="polite"></p>
+                <div class="word-publication-export-dialog-actions">
+                    <button class="btn btn-secondary" type="button" data-word-publication-cancel>Hủy</button>
+                    <button class="btn btn-primary" type="submit" data-word-publication-confirm disabled>
+                        <i data-lucide="download" aria-hidden="true"></i>
+                        <span>Xuất 0 file</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </dialog>
+</section>

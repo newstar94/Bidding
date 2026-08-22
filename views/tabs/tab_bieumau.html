@@ -306,6 +306,30 @@
                     <nav class="pagination-container" id="word-templates-pagination" aria-label="Phân trang biểu mẫu Word"></nav>
                 </div>
             </div>
+
+            <div class="dashboard-card word-template-assignment-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Cài đặt biểu mẫu theo chức năng</h3>
+                        <p class="word-template-assignment-intro">
+                            Chọn một hoặc nhiều file Word đang ở trạng thái Sẵn sàng cho từng loại văn bản. Khi xuất, người dùng tiếp tục chọn các file cụ thể cần tạo.
+                        </p>
+                    </div>
+                    <i data-lucide="list-checks" class="text-muted" aria-hidden="true"></i>
+                </div>
+                <div class="card-body">
+                    <div class="word-template-assignment-list" id="word-template-assignment-list" aria-busy="true">
+                        <p class="word-template-assignment-empty">Đang tải cài đặt biểu mẫu theo chức năng...</p>
+                    </div>
+                    <div class="word-template-assignment-footer">
+                        <p class="word-template-assignment-live-status" id="word-template-assignment-status" role="status" aria-live="polite"></p>
+                        <button type="button" class="btn btn-primary" id="word-template-assignment-save" disabled>
+                            <i data-lucide="save" aria-hidden="true"></i>
+                            Lưu cài đặt
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>

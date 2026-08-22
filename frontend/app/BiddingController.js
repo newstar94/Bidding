@@ -74,6 +74,7 @@ export class BiddingController {
       "nhathau": "nha-thau",
       "chuyengia": "chuyen-gia",
       "bieumau": "bieu-mau",
+      "xuatban-word": "xuat-ban-word",
       "superadmin-dashboard": "tong-quan-admin",
       "superadmin": "quan-ly-tai-khoan",
       "managernhanvien": "nhan-su",
@@ -99,6 +100,7 @@ export class BiddingController {
       "nhathau-detail": "/tabs/tab_nhathau_detail.html",
       "hopdong-detail": "/tabs/tab_hopdong_detail.html",
       bieumau: "/tabs/tab_bieumau.html",
+      "xuatban-word": "/tabs/tab_xuatban_word.html",
       "superadmin-dashboard": "/tabs/tab_superadmin_dashboard.html",
       superadmin: "/tabs/tab_superadmin.html",
       managernhanvien: "/tabs/tab_managernhanvien.html",
@@ -622,7 +624,8 @@ export class BiddingController {
       [this.routeMap.nhathau]: ["NHATHAU", "GOITHAU", "HOPDONG", "THONGTINMOTHAU"],
       [this.routeMap["nhathau-detail"]]: ["NHATHAU", "GOITHAU", "HOPDONG", "THONGTINMOTHAU"],
       [this.routeMap.chuyengia]: ["CHUYENGIA"],
-      [this.routeMap.bieumau]: ["GOITHAU", "KEHOACH", "HOPDONG", "CHUDAUTU", "NHATHAU"]
+      [this.routeMap.bieumau]: ["GOITHAU", "KEHOACH", "HOPDONG", "CHUDAUTU", "NHATHAU"],
+      [this.routeMap["xuatban-word"]]: ["KEHOACH", "GOITHAU"]
     };
     return Array.from(new Set(byRoute[tab] || byRoute[this.routeMap.dashboard]));
   }

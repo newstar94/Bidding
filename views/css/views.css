@@ -3412,6 +3412,61 @@ input#edit-pkg-price {
     font-variant-numeric: tabular-nums;
 }
 
+#tab-bieumau .word-template-status-toggle,
+#tab-bieumau .word-template-status-state {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    font-size: 0.76rem;
+    font-weight: 750;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+#tab-bieumau .word-template-status-toggle {
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+#tab-bieumau .word-template-status-toggle.is-enabled,
+#tab-bieumau .word-template-status-state.is-enabled {
+    border-color: color-mix(in srgb, var(--success) 20%, transparent);
+    color: var(--success);
+    background: var(--success-soft);
+}
+
+#tab-bieumau .word-template-status-toggle.is-paused,
+#tab-bieumau .word-template-status-state.is-paused {
+    border-color: var(--border-color);
+    color: var(--text-muted);
+    background: var(--neutral-soft);
+}
+
+#tab-bieumau .word-template-status-toggle:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--primary) 42%, var(--border-color));
+}
+
+#tab-bieumau .word-template-status-toggle:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+}
+
+#tab-bieumau .word-template-status-toggle:disabled {
+    cursor: wait;
+}
+
+#tab-bieumau .word-template-status-toggle svg,
+#tab-bieumau .word-template-status-state svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+}
+
 #tab-bieumau .word-template-actions .btn,
 #tab-bieumau .word-template-file-link,
 #tab-bieumau .word-template-choose-file {
@@ -3474,11 +3529,6 @@ input#edit-pkg-price {
 #tab-bieumau tr.is-editing > td {
     background: var(--primary-soft);
     vertical-align: top;
-}
-
-#tab-bieumau tr.is-editing .word-template-status-cell .btn-activate-template {
-    pointer-events: none;
-    opacity: 0.65;
 }
 
 #tab-bieumau [data-word-template-display][hidden],

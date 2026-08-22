@@ -155,6 +155,7 @@
     "nha-thau": ["nhathau", "Danh mục Nhà thầu", "danh mục nhà thầu"],
     "chuyen-gia": ["chuyengia", "Tổ Chuyên gia Đấu thầu", "danh sách chuyên gia"],
     "bieu-mau": ["bieumau", "Quản lý Biểu mẫu & Từ điển", "biểu mẫu và từ điển"],
+    "xuat-ban-word": ["xuatban-word", "Xuất bản Word", "xuất bản Word"],
     "tong-quan-admin": ["superadmin-dashboard", "Bảng điều khiển Super Admin BiddingFlow", "tổng quan quản trị"],
     "quan-ly-tai-khoan": ["superadmin", "Quản lý Đơn vị & Tài khoản Thành viên", "tài khoản thành viên"],
     "nhan-su": ["managernhanvien", "Quản lý Chuyên viên & Phân quyền Matrix", "nhân sự và phân quyền"],

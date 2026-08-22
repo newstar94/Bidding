@@ -118,6 +118,7 @@ export function validateUsernameClient(username) {
     "chuyen-gia",
     "hop-dong",
     "bieu-mau",
+    "xuat-ban-word",
     "tong-quan-admin",
     "quan-ly-tai-khoan",
     "nhan-su",

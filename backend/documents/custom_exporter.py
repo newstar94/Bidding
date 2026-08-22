@@ -3,6 +3,8 @@ import re
 import json
 import zipfile
 import traceback
+import threading
+import uuid
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from docxtpl import DocxTemplate, InlineImage
@@ -28,6 +30,7 @@ from backend.shared.logging_utils import append_runtime_log, log_error
 
 
 _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
+_WORD_CONFIG_LOCK = threading.RLock()
 
 
 def number_to_vietnamese_words(n):
@@ -428,27 +431,269 @@ def get_scope_template_dir(owner_type, owner_id, *, create=True):
         os.makedirs(path, exist_ok=True)
     return path
 
+def _template_config_path(owner_id=None, *, owner_type='personal', create=False):
+    scope_dir = (
+        get_scope_template_dir(owner_type, owner_id, create=create)
+        if owner_id else TEMPLATE_DIR
+    )
+    return os.path.join(scope_dir, 'config.json')
+
+
+def _load_template_config(owner_id=None, *, owner_type='personal'):
+    config_path = _template_config_path(owner_id, owner_type=owner_type)
+    if not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, 'r', encoding='utf-8') as file_obj:
+            config = json.load(file_obj)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    return config if isinstance(config, dict) else {}
+
+
+def _write_template_config(config, owner_id=None, *, owner_type='personal'):
+    config_path = _template_config_path(
+        owner_id,
+        owner_type=owner_type,
+        create=True,
+    )
+    temporary_path = f"{config_path}.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(temporary_path, 'x', encoding='utf-8') as file_obj:
+            json.dump(config, file_obj, ensure_ascii=False, indent=4, sort_keys=True)
+        os.replace(temporary_path, config_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+
 def get_active_template(owner_id=None, *, owner_type='personal'):
-    scope_dir = get_scope_template_dir(owner_type, owner_id, create=False) if owner_id else TEMPLATE_DIR
-    config_path = os.path.join(scope_dir, 'config.json')
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                return config.get('active_template', DEFAULT_TEMPLATE)
-        except (OSError, json.JSONDecodeError, TypeError):
-            pass
-    return DEFAULT_TEMPLATE
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        return str(config.get('active_template') or DEFAULT_TEMPLATE)
+
+
+def _enabled_template_names_from_config(config):
+    if 'enabled_templates' in config:
+        return _normalize_template_assignment_values(
+            config.get('enabled_templates')
+        )
+    legacy_names = []
+    active_template = str(config.get('active_template') or '').strip()
+    if active_template:
+        legacy_names.append(active_template)
+    assignments = config.get('template_assignments')
+    if isinstance(assignments, dict):
+        for filenames in assignments.values():
+            legacy_names.extend(_normalize_template_assignment_values(filenames))
+    return _normalize_template_assignment_values(legacy_names)
+
+
+def get_enabled_templates(owner_id=None, *, owner_type='personal'):
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        return _enabled_template_names_from_config(config)
+
+
+def is_template_enabled(filename, owner_id=None, *, owner_type='personal'):
+    identity = str(filename or '').strip().casefold()
+    if not identity:
+        return False
+    return any(
+        item.casefold() == identity
+        for item in get_enabled_templates(owner_id, owner_type=owner_type)
+    )
+
+
+def set_template_enabled(
+    filename,
+    enabled,
+    owner_id=None,
+    *,
+    owner_type='personal',
+):
+    safe_name = str(filename or '').strip()
+    if not safe_name:
+        raise ValueError('Tên biểu mẫu không được để trống')
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        enabled_templates = _enabled_template_names_from_config(config)
+        target_identity = safe_name.casefold()
+        enabled_templates = [
+            item for item in enabled_templates
+            if item.casefold() != target_identity
+        ]
+        if enabled:
+            enabled_templates.append(safe_name)
+        config['enabled_templates'] = enabled_templates
+
+        active_template = str(config.get('active_template') or '').strip()
+        enabled_identities = {
+            item.casefold() for item in enabled_templates
+        }
+        if active_template.casefold() not in enabled_identities:
+            config['active_template'] = (
+                enabled_templates[0] if enabled_templates else ''
+            )
+        _write_template_config(config, owner_id, owner_type=owner_type)
+    return enabled_templates
+
+
+def get_template_assignments(owner_id=None, *, owner_type='personal'):
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        assignments = config.get('template_assignments')
+        if not isinstance(assignments, dict):
+            return {}
+        normalized = {}
+        for document_type, filenames in assignments.items():
+            safe_type = str(document_type).strip()
+            safe_filenames = _normalize_template_assignment_values(filenames)
+            if safe_type and safe_filenames:
+                normalized[safe_type] = safe_filenames
+        return normalized
+
+
+def _normalize_template_assignment_values(value):
+    candidates = [value] if isinstance(value, str) else value
+    if not isinstance(candidates, (list, tuple)):
+        return []
+    normalized = []
+    seen = set()
+    for filename in candidates:
+        if not isinstance(filename, str):
+            continue
+        safe_name = filename.strip()
+        identity = safe_name.casefold()
+        if not safe_name or identity in seen:
+            continue
+        seen.add(identity)
+        normalized.append(safe_name)
+    return normalized
+
+
+def set_template_assignments(assignments, owner_id=None, *, owner_type='personal'):
+    normalized = {}
+    for document_type, filenames in dict(assignments or {}).items():
+        safe_type = str(document_type).strip()
+        safe_filenames = _normalize_template_assignment_values(filenames)
+        if safe_type and safe_filenames:
+            normalized[safe_type] = safe_filenames
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        config['template_assignments'] = normalized
+        _write_template_config(config, owner_id, owner_type=owner_type)
+    return normalized
+
+
+def replace_template_reference(
+    current_filename,
+    next_filename,
+    owner_id=None,
+    *,
+    owner_type='personal',
+):
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        changed = False
+        if config.get('active_template') == current_filename:
+            config['active_template'] = next_filename
+            changed = True
+        enabled_templates = config.get('enabled_templates')
+        if isinstance(enabled_templates, (list, tuple)):
+            values = _normalize_template_assignment_values(enabled_templates)
+            if current_filename in values:
+                updated = [
+                    next_filename if filename == current_filename else filename
+                    for filename in values
+                    if filename != current_filename or next_filename
+                ]
+                config['enabled_templates'] = (
+                    _normalize_template_assignment_values(updated)
+                )
+                changed = True
+        assignments = config.get('template_assignments')
+        if isinstance(assignments, dict):
+            for document_type, filenames in list(assignments.items()):
+                values = _normalize_template_assignment_values(filenames)
+                if current_filename not in values:
+                    continue
+                updated = [
+                    next_filename if filename == current_filename else filename
+                    for filename in values
+                    if filename != current_filename or next_filename
+                ]
+                updated = _normalize_template_assignment_values(updated)
+                if updated:
+                    assignments[document_type] = updated
+                else:
+                    assignments.pop(document_type, None)
+                changed = True
+        if changed:
+            _write_template_config(config, owner_id, owner_type=owner_type)
+
+
+def resolve_publication_templates(
+    document_type,
+    owner_id=None,
+    *,
+    owner_type='personal',
+    allow_active_fallback=False,
+):
+    assignments = get_template_assignments(owner_id, owner_type=owner_type)
+    assigned = assignments.get(str(document_type or '').strip(), [])
+    if assigned:
+        enabled = {
+            filename.casefold()
+            for filename in get_enabled_templates(
+                owner_id,
+                owner_type=owner_type,
+            )
+        }
+        return [
+            filename for filename in assigned
+            if filename.casefold() in enabled
+        ], 'assignment'
+    if allow_active_fallback:
+        active = get_active_template(owner_id, owner_type=owner_type)
+        if active and is_template_enabled(
+            active,
+            owner_id,
+            owner_type=owner_type,
+        ):
+            return [active], 'legacy-active'
+    return [], 'unassigned'
+
+
+def resolve_publication_template(
+    document_type,
+    owner_id=None,
+    *,
+    owner_type='personal',
+    allow_active_fallback=False,
+):
+    templates, source = resolve_publication_templates(
+        document_type,
+        owner_id,
+        owner_type=owner_type,
+        allow_active_fallback=allow_active_fallback,
+    )
+    return (templates[0] if templates else ''), source
+
 
 def set_active_template(filename, owner_id=None, *, owner_type='personal'):
-    scope_dir = get_scope_template_dir(owner_type, owner_id) if owner_id else TEMPLATE_DIR
-    config_path = os.path.join(scope_dir, 'config.json')
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump({'active_template': filename}, f, ensure_ascii=False, indent=4)
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        config['active_template'] = filename
+        _write_template_config(config, owner_id, owner_type=owner_type)
 
 def list_templates(owner_id=None, *, owner_type='personal'):
     templates = []
     active_template = get_active_template(owner_id, owner_type=owner_type)
+    enabled_templates = {
+        filename.casefold()
+        for filename in get_enabled_templates(owner_id, owner_type=owner_type)
+    }
     scope_dir = get_scope_template_dir(owner_type, owner_id, create=False) if owner_id else TEMPLATE_DIR
     scoped_filenames = set()
     if os.path.exists(scope_dir):
@@ -463,6 +708,7 @@ def list_templates(owner_id=None, *, owner_type='personal'):
                     'is_system': False,
                     'is_mutable': True,
                     'is_available': True,
+                    'is_enabled': f.casefold() in enabled_templates,
                     'is_active': active_template == f
                 })
 
@@ -480,6 +726,7 @@ def list_templates(owner_id=None, *, owner_type='personal'):
                 'is_mutable': True,
                 'is_legacy': True,
                 'is_available': True,
+                'is_enabled': filename.casefold() in enabled_templates,
                 'is_active': active_template == filename,
             })
     return templates

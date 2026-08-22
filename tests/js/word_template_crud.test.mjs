@@ -4,15 +4,48 @@ import test from "node:test";
 import {
   buildWordTemplateActions,
   buildWordTemplateFileLink,
+  buildWordTemplateStatus,
 } from "../../frontend/partners/PartnerView.js";
 import {
+  handleWordTemplateAvailabilityToggle,
   handleWordTemplateDelete,
   normalizeWordTemplateName,
   templateResourceUrl,
   validateWordTemplateName,
 } from "../../frontend/documents/WordIntegration.js";
 
-test("system template actions never include edit or delete", () => {
+test("manager independently enables or pauses each Word template", () => {
+  const enabled = buildWordTemplateStatus({
+    filename: "bao-cao.docx",
+    is_available: true,
+    is_enabled: true,
+  }, true);
+  const paused = buildWordTemplateStatus({
+    filename: "quyet-dinh.docx",
+    is_available: true,
+    is_enabled: false,
+  }, true);
+
+  assert.match(enabled, /btn-toggle-template-availability/);
+  assert.match(enabled, /aria-pressed="true"/);
+  assert.match(enabled, /Sẵn sàng/);
+  assert.match(paused, /aria-pressed="false"/);
+  assert.match(paused, /Tạm ngừng/);
+  assert.match(paused, /Cho phép sử dụng biểu mẫu quyet-dinh\.docx/);
+});
+
+test("read-only user sees template availability without a toggle", () => {
+  const html = buildWordTemplateStatus({
+    filename: "bao-cao.docx",
+    is_available: true,
+    is_enabled: false,
+  }, false);
+
+  assert.doesNotMatch(html, /<button/);
+  assert.match(html, /Tạm ngừng/);
+});
+
+test("system template actions do not expose legacy activation, edit or delete", () => {
   const html = buildWordTemplateActions({
     filename: "mau_bao_cao_dau_thau.docx",
     is_system: true,
@@ -20,7 +53,7 @@ test("system template actions never include edit or delete", () => {
     is_active: false,
   }, true);
 
-  assert.match(html, /btn-activate-template/);
+  assert.doesNotMatch(html, /btn-activate-template/);
   assert.doesNotMatch(html, /btn-edit-template/);
   assert.doesNotMatch(html, /btn-delete-template/);
 });
@@ -53,7 +86,7 @@ test("active template actions do not repeat the active status label", () => {
   assert.match(html, /btn-delete-template/);
 });
 
-test("manager can use, edit, and delete a custom template", () => {
+test("manager can edit and delete every ready custom template without activating one", () => {
   const html = buildWordTemplateActions({
     filename: "bao cao & quyet dinh.docx",
     is_system: false,
@@ -61,10 +94,9 @@ test("manager can use, edit, and delete a custom template", () => {
     is_active: false,
   }, true);
 
-  assert.match(html, /btn-activate-template/);
+  assert.doesNotMatch(html, /btn-activate-template/);
   assert.match(html, /btn-edit-template/);
   assert.match(html, /btn-delete-template/);
-  assert.match(html, /aria-label="Sử dụng biểu mẫu bao cao &amp; quyet dinh\.docx"/);
   assert.match(html, /aria-label="Sửa biểu mẫu bao cao &amp; quyet dinh\.docx"/);
   assert.match(html, /aria-label="Xóa biểu mẫu bao cao &amp; quyet dinh\.docx"/);
   assert.doesNotMatch(html, /<\/i>\s*(?:Sử dụng|Sửa|Xóa)\s*<\/button>/);
@@ -111,6 +143,62 @@ test("edited template names retain Unicode and receive the docx extension", () =
   );
   assert.equal(validateWordTemplateName("Báo cáo lựa chọn nhà thầu"), "");
   assert.match(validateWordTemplateName("bad/name"), /không hợp lệ/);
+});
+
+test("availability toggle persists the independent enabled state", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    return new Response(JSON.stringify({
+      success: true,
+      filename: "bao-cao.docx",
+      enabled: false,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  let reloads = 0;
+  const controller = {
+    model: {
+      state: {
+        activerole: "manager",
+        activeuser: {
+          activeOrganizationId: "org-a",
+          organizations: [{
+            id: "org-a",
+            name: "Đơn vị A",
+            scope_type: "organization",
+            role: "manager",
+            status: "active",
+          }],
+        },
+      },
+    },
+    view: { showToast() {}, customAlert: async () => {} },
+    loadWordTemplates: async () => { reloads += 1; },
+  };
+
+  try {
+    const result = await handleWordTemplateAvailabilityToggle.call(
+      controller,
+      "bao-cao.docx",
+      false,
+    );
+    assert.equal(result, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/api/templates/active");
+  assert.equal(requests[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    template_name: "bao-cao.docx",
+    enabled: false,
+  });
+  assert.equal(reloads, 1);
 });
 
 test("duplicate delete gestures send only one request per template", async () => {

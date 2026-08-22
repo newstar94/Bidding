@@ -1,0 +1,141 @@
+import { apiFetch } from "../shared/apiClient.js";
+import {
+  assertWorkspaceLeaseCurrent,
+  beginWorkspaceRequest,
+  finishWorkspaceRequest,
+} from "../app/workspaceLease.js";
+
+export const WORD_PUBLICATION_TEMPLATE_ASSIGNMENTS_ENDPOINT = (
+  "/api/word-publication-template-assignments"
+);
+
+function stringListMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([key, item]) => {
+    const normalizedKey = String(key || "").trim();
+    const values = Array.isArray(item) ? item : [item];
+    const seen = new Set();
+    const normalizedValues = values.flatMap((filename) => {
+      const normalized = String(filename || "").trim();
+      const identity = normalized.toLocaleLowerCase("vi");
+      if (!normalized || seen.has(identity)) return [];
+      seen.add(identity);
+      return [normalized];
+    });
+    return normalizedKey && normalizedValues.length ? [[normalizedKey, normalizedValues]] : [];
+  }));
+}
+
+function resolvedTemplateListMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([documentType, items]) => {
+      const candidates = Array.isArray(items) ? items : [items];
+      const normalized = candidates.flatMap((item) => {
+        const filename = String(item?.filename || "").trim();
+        if (!filename) return [];
+        return [{
+          filename,
+          source: String(item?.source || "assignment").trim(),
+        }];
+      });
+      return normalized.length ? [[String(documentType), normalized]] : [];
+    }),
+  );
+}
+
+export function normalizeWordPublicationTemplateConfig(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Phản hồi cấu hình biểu mẫu Word không đúng định dạng.");
+  }
+  const documentTypes = Array.isArray(payload.documentTypes)
+    ? payload.documentTypes.filter((item) => (
+      item && typeof item === "object" && String(item.id || "").trim()
+    )).map((item) => ({
+      id: String(item.id).trim(),
+      label: String(item.label || item.id).trim(),
+      scope: String(item.scope || "").trim(),
+      contextType: String(item.contextType || "").trim(),
+      legacyActiveFallback: item.legacyActiveFallback === true,
+    }))
+    : [];
+  const assignmentSets = stringListMap(
+    payload.assignmentSets || payload.assignments,
+  );
+  const resolvedTemplateSets = resolvedTemplateListMap(
+    payload.resolvedTemplateSets || payload.resolvedTemplates,
+  );
+  return {
+    documentTypes,
+    assignments: assignmentSets,
+    assignmentSets,
+    resolvedTemplates: Object.fromEntries(
+      Object.entries(resolvedTemplateSets).map(([documentType, items]) => (
+        [documentType, items[0]]
+      )),
+    ),
+    resolvedTemplateSets,
+    activeTemplate: String(payload.activeTemplate || "").trim(),
+  };
+}
+
+async function readConfigResponse(response) {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `HTTP ${response.status}`);
+  }
+  return normalizeWordPublicationTemplateConfig(payload);
+}
+
+export async function loadWordPublicationTemplateConfig(controller) {
+  const request = beginWorkspaceRequest(controller.model);
+  try {
+    const response = await apiFetch(WORD_PUBLICATION_TEMPLATE_ASSIGNMENTS_ENDPOINT, {
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(controller.model, request.lease);
+    const config = await readConfigResponse(response);
+    assertWorkspaceLeaseCurrent(controller.model, request.lease);
+    controller._wordPublicationTemplateConfig = config;
+    controller._wordPublicationTemplateConfigError = "";
+    return config;
+  } catch (error) {
+    controller._wordPublicationTemplateConfigError = error instanceof Error
+      ? error.message
+      : String(error);
+    throw error;
+  } finally {
+    finishWorkspaceRequest(controller.model, request);
+  }
+}
+
+export async function saveWordPublicationTemplateAssignments(controller, assignments) {
+  const request = beginWorkspaceRequest(controller.model);
+  try {
+    const response = await apiFetch(WORD_PUBLICATION_TEMPLATE_ASSIGNMENTS_ENDPOINT, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignmentSets: assignments }),
+      signal: request.signal,
+    });
+    assertWorkspaceLeaseCurrent(controller.model, request.lease);
+    const config = await readConfigResponse(response);
+    assertWorkspaceLeaseCurrent(controller.model, request.lease);
+    controller._wordPublicationTemplateConfig = config;
+    controller._wordPublicationTemplateConfigError = "";
+    return config;
+  } finally {
+    finishWorkspaceRequest(controller.model, request);
+  }
+}
+
+export function resolvedWordPublicationTemplate(config, documentType) {
+  return resolvedWordPublicationTemplates(config, documentType)[0] || null;
+}
+
+export function resolvedWordPublicationTemplates(config, documentType) {
+  const templates = config?.resolvedTemplateSets?.[documentType];
+  if (Array.isArray(templates)) return templates;
+  const legacy = config?.resolvedTemplates?.[documentType];
+  return legacy ? [legacy] : [];
+}

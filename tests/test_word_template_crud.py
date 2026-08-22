@@ -7,6 +7,7 @@ from urllib.parse import quote
 import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
@@ -21,6 +22,7 @@ from backend.documents.routes_docx import (
     _update_scoped_template,
     _validate_docx_upload,
     delete_template_api,
+    set_active_template_api,
     view_template_api,
 )
 
@@ -105,6 +107,167 @@ def test_upload_allows_same_name_in_different_scopes(template_root, tmp_path):
         / filename
     )
     assert stored.read_bytes() == b"organization-b"
+
+
+def test_new_upload_requires_explicit_enablement(template_root, tmp_path):
+    upload = tmp_path / "validated-upload.docx"
+    upload.write_bytes(b"new")
+
+    _persist_scoped_template_from_path(
+        "organization",
+        "org-a",
+        "Biểu mẫu mới.docx",
+        str(upload),
+    )
+
+    template = next(
+        item for item in custom_exporter.list_templates(
+            "org-a",
+            owner_type="organization",
+        )
+        if item["filename"] == "Biểu mẫu mới.docx"
+    )
+    assert template["is_enabled"] is False
+
+
+def test_template_enablement_allows_multiple_independent_choices(template_root):
+    _custom_template(template_root, "organization", "org-a", "one.docx", b"one")
+    _custom_template(template_root, "organization", "org-a", "two.docx", b"two")
+    custom_exporter.set_active_template(
+        "one.docx",
+        "org-a",
+        owner_type="organization",
+    )
+
+    assert custom_exporter.get_enabled_templates(
+        "org-a",
+        owner_type="organization",
+    ) == ["one.docx"]
+
+    custom_exporter.set_template_enabled(
+        "two.docx",
+        True,
+        "org-a",
+        owner_type="organization",
+    )
+    assert custom_exporter.get_enabled_templates(
+        "org-a",
+        owner_type="organization",
+    ) == ["one.docx", "two.docx"]
+
+    custom_exporter.set_template_enabled(
+        "one.docx",
+        False,
+        "org-a",
+        owner_type="organization",
+    )
+    assert custom_exporter.get_enabled_templates(
+        "org-a",
+        owner_type="organization",
+    ) == ["two.docx"]
+    assert custom_exporter.get_active_template(
+        "org-a",
+        owner_type="organization",
+    ) == "two.docx"
+
+
+def test_template_availability_api_persists_and_audits_the_choice(
+    template_root,
+    monkeypatch,
+):
+    _custom_template(
+        template_root,
+        "organization",
+        "org-a",
+        "bao-cao.docx",
+        b"content",
+    )
+    audits = []
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-a")),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_config_access_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.get_active_org",
+        lambda *_args: "org-a",
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.log_audit",
+        lambda event, **kwargs: audits.append((event, kwargs)),
+    )
+    client = TestClient(Starlette(routes=[
+        Route(
+            "/api/templates/active",
+            set_active_template_api,
+            methods=["POST"],
+        ),
+    ]))
+
+    response = client.post(
+        "/api/templates/active",
+        json={"template_name": "bao-cao.docx", "enabled": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "filename": "bao-cao.docx",
+        "enabled": True,
+    }
+    assert custom_exporter.is_template_enabled(
+        "bao-cao.docx",
+        "org-a",
+        owner_type="organization",
+    )
+    assert audits[0][0] == "document.word_template_availability_updated"
+    assert audits[0][1]["metadata"]["enabled"] is True
+
+
+def test_template_availability_api_reuses_word_config_write_permission(
+    template_root,
+    monkeypatch,
+):
+    _custom_template(
+        template_root,
+        "organization",
+        "org-a",
+        "bao-cao.docx",
+        b"content",
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-a")),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_config_access_response",
+        lambda _request, _session, *, write=False: (
+            JSONResponse({"error": "forbidden"}, status_code=403)
+            if write else None
+        ),
+    )
+    client = TestClient(Starlette(routes=[
+        Route(
+            "/api/templates/active",
+            set_active_template_api,
+            methods=["POST"],
+        ),
+    ]))
+
+    response = client.post(
+        "/api/templates/active",
+        json={"template_name": "bao-cao.docx", "enabled": True},
+    )
+
+    assert response.status_code == 403
+    assert not custom_exporter.is_template_enabled(
+        "bao-cao.docx",
+        "org-a",
+        owner_type="organization",
+    )
 
 
 def test_replace_custom_template_preserves_name_and_active_selection(template_root, tmp_path):

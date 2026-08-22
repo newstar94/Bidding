@@ -15,6 +15,16 @@ const ROUTES = Object.freeze([
   ["frontend/legal/LegalPage.js", ".legal-document-note", "frontend/app/app.js"],
   ["frontend/errors/NotFoundPage.js", ".bf-not-found", "frontend/app/app.js"],
   ["frontend/assistant/AssistantLoader.js", ".bf-assistant-panel", "frontend/app/workspaceBootstrap.js"],
+  [
+    "frontend/documents/WordPublication.js",
+    ".word-publication-page",
+    "frontend/app/workspaceBootstrap.js",
+  ],
+  [
+    "frontend/documents/WordTemplateAssignments.js",
+    ".word-template-assignment-card",
+    "frontend/documents/WordIntegration.js",
+  ],
 ]);
 
 const fail = (message) => {

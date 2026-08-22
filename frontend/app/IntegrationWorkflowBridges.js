@@ -1,5 +1,6 @@
 const loadExcelIntegration = () => import("../documents/ExcelIntegration.js");
 const loadWordIntegration = () => import("../documents/WordIntegration.js");
+const loadWordPublication = () => import("../documents/WordPublication.js");
 
 async function callLazyWorkflow(loader, fnName, controller, args) {
   const mod = await loader();
@@ -57,4 +58,7 @@ export function setupTemplateActivationEvents(...args) {
 }
 export function handleWordTemplateUpload(...args) {
   return callLazyWorkflow(loadWordIntegration, "handleWordTemplateUpload", this, args);
+}
+export function setupWordPublicationPage(...args) {
+  return callLazyWorkflow(loadWordPublication, "setupWordPublicationPage", this, args);
 }

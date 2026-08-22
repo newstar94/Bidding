@@ -5,6 +5,7 @@ import shutil
 import unicodedata
 from io import BytesIO
 from urllib.parse import quote
+from zipfile import ZIP_DEFLATED, ZipFile
 from starlette.responses import FileResponse, StreamingResponse, JSONResponse
 
 from backend.shared.helpers import (
@@ -59,6 +60,12 @@ from backend.documents.word_mapping_registry import (
     reset_word_mapping,
     resolve_word_mappings,
     save_word_mapping,
+)
+from backend.documents.word_publication_policy import (
+    WORD_PUBLICATION_DOCUMENT_BY_ID,
+    WORD_PUBLICATION_DOCUMENT_IDS,
+    is_word_publication_document_applicable,
+    public_word_publication_definitions,
 )
 from backend.documents.export_policy_registry import governed_export
 import uuid
@@ -373,11 +380,6 @@ def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_pa
             shutil.copyfileobj(source, destination)
     except FileExistsError:
         raise FileExistsError('Tên biểu mẫu đã tồn tại') from None
-    custom_exporter.set_active_template(
-        filename,
-        owner_id,
-        owner_type=owner_type,
-    )
 
 
 def _replace_file_content(path, content):
@@ -448,12 +450,9 @@ def _update_scoped_template(
             os.replace(case_temp_path, current_path)
             raise
 
-    if (
-        current_name != next_name
-        and custom_exporter.get_active_template(owner_id, owner_type=owner_type)
-        == current_name
-    ):
-        custom_exporter.set_active_template(
+    if current_name != next_name:
+        custom_exporter.replace_template_reference(
+            current_name,
             next_name,
             owner_id,
             owner_type=owner_type,
@@ -464,14 +463,12 @@ def _update_scoped_template(
 def _delete_scoped_template(owner_type, owner_id, filename):
     path, safe_name = _resolve_custom_template_path(owner_type, owner_id, filename)
     os.remove(path)
-    if custom_exporter.get_active_template(
-        owner_id, owner_type=owner_type
-    ) == safe_name:
-        custom_exporter.set_active_template(
-            '',
-            owner_id,
-            owner_type=owner_type,
-        )
+    custom_exporter.replace_template_reference(
+        safe_name,
+        '',
+        owner_id,
+        owner_type=owner_type,
+    )
 
 
 def _validate_docx_upload(filename, content, *, deep_validation=True, total_size=None):
@@ -531,7 +528,205 @@ def _load_word_export_policy(
         conn.close()
 
 
-def _prepare_plan_render(plan_id, user_id, organization_id, role_str):
+def _resolve_publication_template_paths(
+    owner_type,
+    owner_id,
+    publication_type,
+    requested_template_filenames=None,
+):
+    definition = WORD_PUBLICATION_DOCUMENT_BY_ID.get(publication_type)
+    if definition is None:
+        raise ValueError("Loại văn bản xuất bản không hợp lệ")
+    template_names, source = custom_exporter.resolve_publication_templates(
+        publication_type,
+        owner_id,
+        owner_type=owner_type,
+        allow_active_fallback=definition.legacy_active_fallback,
+    )
+    if not template_names:
+        raise FileNotFoundError(
+            "Chưa chọn biểu mẫu Word cho loại văn bản này"
+        )
+    if requested_template_filenames is not None:
+        if not isinstance(requested_template_filenames, (list, tuple)):
+            raise ValueError("Danh sách file biểu mẫu cần xuất không hợp lệ")
+        if not requested_template_filenames:
+            raise ValueError("Phải chọn ít nhất một file biểu mẫu để xuất")
+        assigned_by_identity = {
+            template_name.casefold(): template_name
+            for template_name in template_names
+        }
+        requested_identities = set()
+        for filename in requested_template_filenames:
+            if not isinstance(filename, str) or not filename.strip():
+                raise ValueError("Tên file biểu mẫu cần xuất không hợp lệ")
+            safe_name = _normalize_custom_template_filename(filename)
+            identity = safe_name.casefold()
+            if identity not in assigned_by_identity:
+                raise ValueError(
+                    "File biểu mẫu được chọn không được gán cho chức năng này"
+                )
+            requested_identities.add(identity)
+        template_names = [
+            template_name
+            for template_name in template_names
+            if template_name.casefold() in requested_identities
+        ]
+    targets = []
+    for template_name in template_names:
+        template_path, safe_name = _resolve_template_path(
+            owner_type,
+            owner_id,
+            template_name,
+        )
+        targets.append({
+            "path": template_path,
+            "filename": safe_name,
+            "source": source,
+        })
+    return targets
+
+
+def _resolve_publication_template_path(owner_type, owner_id, publication_type):
+    target = _resolve_publication_template_paths(
+        owner_type,
+        owner_id,
+        publication_type,
+    )[0]
+    return target["path"], target["filename"], target["source"]
+
+
+def _word_publication_assignment_payload(owner_type, owner_id):
+    stored_assignment_sets = custom_exporter.get_template_assignments(
+        owner_id,
+        owner_type=owner_type,
+    )
+    enabled_identities = {
+        filename.casefold()
+        for filename in custom_exporter.get_enabled_templates(
+            owner_id,
+            owner_type=owner_type,
+        )
+    }
+    assignment_sets = {
+        document_type: [
+            filename for filename in filenames
+            if filename.casefold() in enabled_identities
+        ]
+        for document_type, filenames in stored_assignment_sets.items()
+    }
+    assignment_sets = {
+        document_type: filenames
+        for document_type, filenames in assignment_sets.items()
+        if filenames
+    }
+    configured_active_template = custom_exporter.get_active_template(
+        owner_id,
+        owner_type=owner_type,
+    )
+    active_template = (
+        configured_active_template
+        if configured_active_template.casefold() in enabled_identities
+        else ""
+    )
+    resolved_template_sets = {}
+    for definition in WORD_PUBLICATION_DOCUMENT_BY_ID.values():
+        template_names, source = custom_exporter.resolve_publication_templates(
+            definition.id,
+            owner_id,
+            owner_type=owner_type,
+            allow_active_fallback=definition.legacy_active_fallback,
+        )
+        if not template_names:
+            continue
+        resolved_items = []
+        for template_name in template_names:
+            try:
+                _, safe_name = _resolve_template_path(
+                    owner_type,
+                    owner_id,
+                    template_name,
+                )
+            except (FileNotFoundError, ValueError):
+                continue
+            resolved_items.append({
+                "filename": safe_name,
+                "source": source,
+            })
+        if resolved_items:
+            resolved_template_sets[definition.id] = resolved_items
+    assignments = {
+        document_type: filenames[0]
+        for document_type, filenames in assignment_sets.items()
+        if filenames
+    }
+    resolved = {
+        document_type: templates[0]
+        for document_type, templates in resolved_template_sets.items()
+        if templates
+    }
+    return {
+        "documentTypes": public_word_publication_definitions(),
+        "assignments": assignments,
+        "assignmentSets": assignment_sets,
+        "resolvedTemplates": resolved,
+        "resolvedTemplateSets": resolved_template_sets,
+        "activeTemplate": active_template,
+    }
+
+
+def _save_word_publication_assignments(
+    owner_type,
+    owner_id,
+    assignments,
+):
+    unknown_ids = sorted(set(assignments) - WORD_PUBLICATION_DOCUMENT_IDS)
+    if unknown_ids:
+        raise ValueError("Loại văn bản xuất bản không hợp lệ")
+    normalized = {}
+    for document_type, filenames in assignments.items():
+        if filenames in (None, "", []):
+            continue
+        candidates = [filenames] if isinstance(filenames, str) else filenames
+        if not isinstance(candidates, list):
+            raise ValueError("Danh sách biểu mẫu Word không hợp lệ")
+        safe_names = []
+        seen = set()
+        for filename in candidates:
+            if not isinstance(filename, str):
+                raise ValueError("Tên biểu mẫu Word không hợp lệ")
+            safe_name = _normalize_custom_template_filename(filename)
+            _resolve_template_path(owner_type, owner_id, safe_name)
+            if not custom_exporter.is_template_enabled(
+                safe_name,
+                owner_id,
+                owner_type=owner_type,
+            ):
+                raise ValueError(
+                    "Biểu mẫu Word chưa được cho phép sử dụng"
+                )
+            identity = safe_name.casefold()
+            if identity not in seen:
+                seen.add(identity)
+                safe_names.append(safe_name)
+        if safe_names:
+            normalized[document_type] = safe_names
+    custom_exporter.set_template_assignments(
+        normalized,
+        owner_id,
+        owner_type=owner_type,
+    )
+    return _word_publication_assignment_payload(owner_type, owner_id)
+
+
+def _prepare_plan_render(
+    plan_id,
+    user_id,
+    organization_id,
+    role_str,
+    publication_type=None,
+    requested_template_filenames=None,
+):
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, "plan"
     )
@@ -548,13 +743,37 @@ def _prepare_plan_render(plan_id, user_id, organization_id, role_str):
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
-    active_template = custom_exporter.get_active_template(
-        owner_id,
-        owner_type=owner_type,
-    )
-    template_path, _ = _resolve_template_path(
-        owner_type, owner_id, active_template
-    )
+    if publication_type:
+        definition = WORD_PUBLICATION_DOCUMENT_BY_ID.get(publication_type)
+        if (
+            definition is None
+            or definition.scope != "plan"
+            or definition.context_type != "plan"
+            or not is_word_publication_document_applicable(publication_type)
+        ):
+            raise ValueError("Loại văn bản không áp dụng cho Kế hoạch này")
+        template_path = _resolve_publication_template_paths(
+            owner_type,
+            owner_id,
+            publication_type,
+            requested_template_filenames,
+        )
+    else:
+        active_template = custom_exporter.get_active_template(
+            owner_id,
+            owner_type=owner_type,
+        )
+        if not custom_exporter.is_template_enabled(
+            active_template,
+            owner_id,
+            owner_type=owner_type,
+        ):
+            raise FileNotFoundError(
+                "Biểu mẫu Word đang tạm ngừng sử dụng"
+            )
+        template_path, _ = _resolve_template_path(
+            owner_type, owner_id, active_template
+        )
     return context, manifest, template_path, sensitive_groups
 
 
@@ -564,6 +783,8 @@ def _prepare_report_render(
     organization_id,
     role_str,
     document_type,
+    publication_type=None,
+    requested_template_filenames=None,
 ):
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, document_type
@@ -585,19 +806,109 @@ def _prepare_report_render(
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
-    active_template = custom_exporter.get_active_template(
-        owner_id,
-        owner_type=owner_type,
-    )
-    template_path, _ = _resolve_template_path(
-        owner_type, owner_id, active_template
-    )
+    if publication_type:
+        definition = WORD_PUBLICATION_DOCUMENT_BY_ID.get(publication_type)
+        package_record = context.get("goi_thau") or {}
+        if (
+            definition is None
+            or definition.scope != "package"
+            or definition.context_type != document_type
+            or not is_word_publication_document_applicable(
+                publication_type,
+                package_record,
+            )
+        ):
+            raise ValueError("Loại văn bản không áp dụng cho Gói thầu này")
+        template_path = _resolve_publication_template_paths(
+            owner_type,
+            owner_id,
+            publication_type,
+            requested_template_filenames,
+        )
+    else:
+        active_template = custom_exporter.get_active_template(
+            owner_id,
+            owner_type=owner_type,
+        )
+        if not custom_exporter.is_template_enabled(
+            active_template,
+            owner_id,
+            owner_type=owner_type,
+        ):
+            raise FileNotFoundError(
+                "Biểu mẫu Word đang tạm ngừng sử dụng"
+            )
+        template_path, _ = _resolve_template_path(
+            owner_type, owner_id, active_template
+        )
     return context, manifest, template_path, sensitive_groups
+
+
+def _archive_rendered_word_documents(rendered_documents):
+    output = BytesIO()
+    used_names = set()
+    with ZipFile(output, "w", ZIP_DEFLATED) as archive:
+        for filename, content in rendered_documents:
+            stem, extension = os.path.splitext(filename)
+            candidate = filename
+            suffix = 2
+            while candidate.casefold() in used_names:
+                candidate = f"{stem} ({suffix}){extension}"
+                suffix += 1
+            used_names.add(candidate.casefold())
+            archive.writestr(candidate, content)
+    return output.getvalue()
+
+
+async def _render_word_selection(
+    template_selection,
+    context,
+    context_manifest,
+    *,
+    fallback_filename,
+):
+    if isinstance(template_selection, list):
+        targets = template_selection
+    else:
+        targets = [{"path": template_selection, "filename": fallback_filename}]
+    rendered_documents = []
+    for target in targets:
+        content = await run_document_job_async(
+            "render_docx",
+            {
+                "template_path": target["path"],
+                "context": context,
+                "context_manifest": context_manifest,
+            },
+        )
+        rendered_documents.append((target.get("filename") or fallback_filename, content))
+    if len(rendered_documents) == 1:
+        return (
+            rendered_documents[0][1],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            rendered_documents[0][0],
+            1,
+        )
+    archive_filename = f"{os.path.splitext(fallback_filename)[0]}.zip"
+    return (
+        _archive_rendered_word_documents(rendered_documents),
+        "application/zip",
+        archive_filename,
+        len(rendered_documents),
+    )
 
 
 @governed_export("docx.plan")
 async def export_plan_api(request):
     plan_id = clean_id(request.path_params.get('plan_id'))
+    publication_type = str(
+        request.query_params.get('publicationType') or ''
+    ).strip()
+    requested_template_filenames = (
+        request.query_params.getlist('templateFilename')
+        if 'templateFilename' in request.query_params
+        else None
+    )
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -624,21 +935,24 @@ async def export_plan_api(request):
                 user_id,
                 org_name,
                 role_or_err,
+                publication_type or None,
+                requested_template_filenames,
                 timeout_seconds=30,
             )
         except BlockingIOBusyError:
             return _database_read_unavailable_response(request)
         except BlockingIOTimeoutError:
             return _database_read_unavailable_response(request, timed_out=True)
-        docx_bytes = await run_document_job_async(
-            "render_docx",
-            {
-                "template_path": tpl_path,
-                "context": unified_context,
-                "context_manifest": context_manifest,
-            },
+        fallback_filename = (
+            f"Ke_hoach_LCNT_{unified_context['ke_hoach']['ma_ke_hoach']}.docx"
         )
-        docx_stream = BytesIO(docx_bytes)
+        document_bytes, media_type, filename, template_count = await _render_word_selection(
+            tpl_path,
+            unified_context,
+            context_manifest,
+            fallback_filename=fallback_filename,
+        )
+        document_stream = BytesIO(document_bytes)
 
         snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
         if snapshot_error is not None:
@@ -654,15 +968,16 @@ async def export_plan_api(request):
             metadata={
                 "organization_id": org_name,
                 "document_type": "plan",
+                "publication_type": publication_type or None,
+                "template_count": template_count,
                 "sensitive_capabilities_used": sensitive_groups,
             },
             required=True,
         )
 
-        filename = f"Ke_hoach_LCNT_{unified_context['ke_hoach']['ma_ke_hoach']}.docx"
         return StreamingResponse(
-            docx_stream,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            document_stream,
+            media_type=media_type,
             headers={"Content-Disposition": _content_disposition(filename)}
         )
     except OrgPermissionError as e:
@@ -678,6 +993,14 @@ async def export_plan_api(request):
 async def export_report_api(request):
     package_id = clean_id(request.path_params.get('package_id'))
     type_param = request.query_params.get('type', 'evaluation')
+    publication_type = str(
+        request.query_params.get('publicationType') or ''
+    ).strip()
+    requested_template_filenames = (
+        request.query_params.getlist('templateFilename')
+        if 'templateFilename' in request.query_params
+        else None
+    )
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -713,21 +1036,29 @@ async def export_report_api(request):
                 org_name,
                 role_or_err,
                 type_param,
+                publication_type or None,
+                requested_template_filenames,
                 timeout_seconds=30,
             )
         except BlockingIOBusyError:
             return _database_read_unavailable_response(request)
         except BlockingIOTimeoutError:
             return _database_read_unavailable_response(request, timed_out=True)
-        docx_bytes = await run_document_job_async(
-            "render_docx",
-            {
-                "template_path": tpl_path,
-                "context": unified_context,
-                "context_manifest": context_manifest,
-            },
+        if type_param in ('contract', 'liquidation'):
+            prefix = "Thanh_ly_hop_dong" if type_param == 'liquidation' else "Hop_dong"
+            fallback_filename = f"{prefix}_{unified_context['hop_dong'].get('so_hop_dong', 'LCNT')}.docx"
+        elif type_param in ['hsmt', 'opening']:
+            fallback_filename = f"{type_param.upper()}_{unified_context['goi_thau']['ma_goi_thau']}.docx"
+        else:
+            fallback_filename = f"Bao_cao_danh_gia_goi_thau_{unified_context['goi_thau']['ma_goi_thau']}.docx"
+
+        document_bytes, media_type, filename, template_count = await _render_word_selection(
+            tpl_path,
+            unified_context,
+            context_manifest,
+            fallback_filename=fallback_filename,
         )
-        docx_stream = BytesIO(docx_bytes)
+        document_stream = BytesIO(document_bytes)
 
         snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
         if snapshot_error is not None:
@@ -743,22 +1074,16 @@ async def export_report_api(request):
             metadata={
                 "organization_id": org_name,
                 "document_type": type_param,
+                "publication_type": publication_type or None,
+                "template_count": template_count,
                 "sensitive_capabilities_used": sensitive_groups,
             },
             required=True,
         )
 
-        if type_param in ('contract', 'liquidation'):
-            prefix = "Thanh_ly_hop_dong" if type_param == 'liquidation' else "Hop_dong"
-            filename = f"{prefix}_{unified_context['hop_dong'].get('so_hop_dong', 'LCNT')}.docx"
-        elif type_param in ['hsmt', 'opening']:
-            filename = f"{type_param.upper()}_{unified_context['goi_thau']['ma_goi_thau']}.docx"
-        else:
-            filename = f"Bao_cao_danh_gia_goi_thau_{unified_context['goi_thau']['ma_goi_thau']}.docx"
-
         return StreamingResponse(
-            docx_stream,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            document_stream,
+            media_type=media_type,
             headers={"Content-Disposition": _content_disposition(filename)}
         )
     except OrgPermissionError as e:
@@ -792,6 +1117,109 @@ async def list_templates_api(request):
         return JSONResponse(templates)
     except Exception as e:
         return _docx_error(request, e, "list_templates_api")
+
+
+async def get_word_publication_template_assignments_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err)
+        if access_error is not None:
+            return access_error
+        organization_id = get_active_org(request, user_id)
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        payload = await run_blocking_io(
+            _word_publication_assignment_payload,
+            owner_type,
+            owner_id,
+            timeout_seconds=5,
+        )
+        return JSONResponse(payload)
+    except (
+        BlockingIOBusyError,
+        BlockingIOTimeoutError,
+        DatabaseError,
+        OrgPermissionError,
+        OSError,
+    ) as e:
+        return _docx_error(
+            request,
+            e,
+            "get_word_publication_template_assignments_api",
+        )
+
+
+async def save_word_publication_template_assignments_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        access_error = _word_config_access_response(
+            request,
+            role_or_err,
+            write=True,
+        )
+        if access_error is not None:
+            return access_error
+        organization_id = get_active_org(request, user_id)
+        owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        data, json_error = await read_json_object(request)
+        if json_error is not None:
+            return json_error
+        assignment_field = (
+            "assignmentSets" if "assignmentSets" in data else "assignments"
+        )
+        invalid = validate_or_response(request, data, {
+            assignment_field: {
+                "type": "object",
+                "required": True,
+                "max_length": len(WORD_PUBLICATION_DOCUMENT_IDS),
+            },
+        })
+        if invalid:
+            return invalid
+        payload = await run_blocking_io(
+            _save_word_publication_assignments,
+            owner_type,
+            owner_id,
+            data[assignment_field],
+            timeout_seconds=5,
+        )
+        log_audit(
+            "document.word_template_assignments_updated",
+            actor_user_id=user_id,
+            organization_id=organization_id,
+            target_type="word_template_config",
+            target_id=owner_id,
+            request=request,
+            metadata={
+                "organization_id": organization_id,
+                "assigned_document_types": sorted(payload["assignmentSets"]),
+            },
+            required=True,
+        )
+        return JSONResponse(payload)
+    except (FileNotFoundError, ValueError) as e:
+        return _docx_error(
+            request,
+            e,
+            "save_word_publication_template_assignments_api",
+        )
+    except (
+        BlockingIOBusyError,
+        BlockingIOTimeoutError,
+        DatabaseError,
+        OrgPermissionError,
+        OSError,
+    ) as e:
+        return _docx_error(
+            request,
+            e,
+            "save_word_publication_template_assignments_api",
+        )
 
 
 async def view_template_api(request):
@@ -852,6 +1280,7 @@ async def set_active_template_api(request):
         invalid = validate_or_response(request, data, {
             "template_name": {"type": "string", "max_length": 255},
             "filename": {"type": "string", "max_length": 255},
+            "enabled": {"type": "boolean"},
         })
         if invalid:
             return invalid
@@ -866,14 +1295,41 @@ async def set_active_template_api(request):
             template_name,
             timeout_seconds=5,
         )
+        enabled = data.get("enabled", True)
+        if "enabled" not in data:
+            await run_blocking_io(
+                custom_exporter.set_active_template,
+                safe_name,
+                owner_id,
+                owner_type=owner_type,
+                timeout_seconds=5,
+            )
         await run_blocking_io(
-            custom_exporter.set_active_template,
+            custom_exporter.set_template_enabled,
             safe_name,
+            enabled,
             owner_id,
             owner_type=owner_type,
             timeout_seconds=5,
         )
-        return JSONResponse({"success": True})
+        log_audit(
+            "document.word_template_availability_updated",
+            actor_user_id=user_id,
+            organization_id=organization_id,
+            target_type="word_template",
+            target_id=safe_name,
+            request=request,
+            metadata={
+                "organization_id": organization_id,
+                "enabled": enabled,
+            },
+            required=True,
+        )
+        return JSONResponse({
+            "success": True,
+            "filename": safe_name,
+            "enabled": enabled,
+        })
     except FileNotFoundError as e:
         return _docx_error(request, e, "set_active_template_api")
     except ValueError as e:

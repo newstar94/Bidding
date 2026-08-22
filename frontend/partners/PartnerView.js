@@ -34,16 +34,11 @@ export function buildWordTemplateActions(tpl, canManageTemplates) {
   const isAvailable = tpl.is_available !== false;
   if (!isAvailable) return '<span class="text-muted">Chưa cài đặt</span>';
   if (!canManageTemplates) {
-    return tpl.is_active
-      ? '<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>'
-      : '<span class="text-muted">Do Quản lý thiết lập</span>';
+    return '<span class="text-muted">Chỉ xem</span>';
   }
 
   const safeFilename = safeAttr(tpl.filename);
   const actions = [];
-  if (!tpl.is_active) {
-    actions.push(`<button type="button" class="btn btn-outline btn-sm word-template-action-button btn-activate-template" data-filename="${safeFilename}" aria-label="Sử dụng biểu mẫu ${safeFilename}" title="Sử dụng làm mẫu chính"><i data-lucide="play" aria-hidden="true"></i></button>`);
-  }
   const isMutable = tpl.is_mutable === undefined ? !tpl.is_system : tpl.is_mutable;
   if (isMutable) {
     actions.push(`<button type="button" class="btn btn-outline btn-sm word-template-action-button btn-edit-template" data-filename="${safeFilename}" aria-label="Sửa biểu mẫu ${safeFilename}" title="Sửa"><i data-lucide="pencil" aria-hidden="true"></i></button>`);
@@ -59,6 +54,26 @@ export function buildWordTemplateFileLink(tpl) {
   const safeUrl = safeAttr(`/api/templates/${encodeURIComponent(filename)}`);
   return `<a class="word-template-file-link" href="${safeUrl}" target="_blank" rel="noopener" data-word-template-display aria-label="Xem file mẫu ${safeAttr(tpl.name || filename)}"><i data-lucide="file-text" aria-hidden="true"></i><span>${safeFilename}</span><i data-lucide="external-link" aria-hidden="true"></i></a>`;
 }
+
+export function buildWordTemplateStatus(tpl, canManageTemplates) {
+  if (tpl.is_available === false) {
+    return '<span class="badge badge-neutral"><i data-lucide="file-x" aria-hidden="true"></i> Chưa có tệp mẫu</span>';
+  }
+  const enabled = tpl.is_enabled === true;
+  const filename = String(tpl.filename || "");
+  const safeFilename = safeAttr(filename);
+  const label = enabled ? "Sẵn sàng" : "Tạm ngừng";
+  const icon = enabled ? "check-circle" : "pause-circle";
+  const stateClass = enabled ? "is-enabled" : "is-paused";
+  if (!canManageTemplates) {
+    return `<span class="word-template-status-state ${stateClass}"><i data-lucide="${icon}" aria-hidden="true"></i> ${label}</span>`;
+  }
+  const actionLabel = enabled
+    ? `Tạm ngừng sử dụng biểu mẫu ${safeFilename}`
+    : `Cho phép sử dụng biểu mẫu ${safeFilename}`;
+  return `<button type="button" class="word-template-status-toggle btn-toggle-template-availability ${stateClass}" data-filename="${safeFilename}" aria-pressed="${enabled}" aria-label="${actionLabel}" title="${actionLabel}"><i data-lucide="${icon}" aria-hidden="true"></i><span>${label}</span></button>`;
+}
+
 export function renderBieumauTab(templatesList = []) {
   const tbody = document.getElementById("word-templates-tbody");
   if (!tbody) return;
@@ -76,14 +91,7 @@ export function renderBieumauTab(templatesList = []) {
   }
   tbody.innerHTML = trustedHTML(templatesPage.items.map((tpl, index) => {
     const safeFilename = safeAttr(tpl.filename);
-    const isAvailable = tpl.is_available !== false;
-    const activeBadge = !isAvailable
-      ? '<span class="badge badge-neutral"><i data-lucide="file-x"></i> Chưa có tệp mẫu</span>'
-      : tpl.is_active
-        ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đang hoạt động</span>'
-        : canManageWordVariables
-          ? `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`
-          : '<span class="badge badge-neutral">Chỉ xem</span>';
+    const statusBadge = buildWordTemplateStatus(tpl, canManageWordVariables);
     const actionButton = buildWordTemplateActions(tpl, canManageWordVariables);
     const fileLink = buildWordTemplateFileLink(tpl);
     return `
@@ -91,7 +99,7 @@ export function renderBieumauTab(templatesList = []) {
                 <td class="text-center word-template-index-cell">${templatesPage.startIndex + index + 1}</td>
                 <td class="fw-bold word-template-name-cell"><span data-word-template-display>${escapeHtml(tpl.name)}</span></td>
                 <td class="word-template-file-cell">${fileLink}</td>
-                <td class="word-template-status-cell">${activeBadge}</td>
+                <td class="word-template-status-cell">${statusBadge}</td>
                 <td class="text-right word-template-action-cell">${actionButton}</td>
             </tr>
         `;
