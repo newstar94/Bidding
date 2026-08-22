@@ -94,7 +94,7 @@ function createSearch(copy) {
   form.setAttribute("role", "search");
   form.setAttribute("aria-label", "Tìm kiếm trong BiddingFlow");
 
-  const label = element("label", "bf-not-found__sr-only", "Tìm gói thầu, kế hoạch, hợp đồng");
+  const label = element("label", "bf-not-found__search-label", "Tìm nội dung trong BiddingFlow");
   const input = element("input", "bf-not-found__search-input");
   input.type = "search";
   input.name = "q";
