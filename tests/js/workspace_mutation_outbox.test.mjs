@@ -77,6 +77,32 @@ test("outbox only acknowledges the generations that were sent", async () => {
   await outbox.flush();
 });
 
+test("record-scoped receipt preserves unrelated and newer outbox generations", () => {
+  const { outbox } = createOutbox();
+  outbox.enqueue({
+    kind: "upsert",
+    table: "goithau",
+    records: [
+      { id: "package-finalized", name: "finalized value" },
+      { id: "package-unrelated", name: "unrelated value" },
+    ],
+  });
+  const receipt = outbox.captureReceiptForRecords({
+    goithau: [{ id: "package-finalized" }],
+  });
+  outbox.enqueue({
+    kind: "upsert",
+    table: "goithau",
+    records: [{ id: "package-finalized", name: "newer local value" }],
+  });
+
+  assert.equal(outbox.ack(receipt), false);
+  assert.deepEqual(outbox.snapshot().upserts.goithau, {
+    "package-finalized": { id: "package-finalized", name: "newer local value" },
+    "package-unrelated": { id: "package-unrelated", name: "unrelated value" },
+  });
+});
+
 test("older_upsert_response_advances_newer_delete_expected_version_without_acknowledging_it", () => {
   const { outbox } = createOutbox();
   outbox.enqueue({
@@ -159,6 +185,68 @@ test("terminal unscoped validation rejects only the sent outbox generation", () 
     conflictingId: "",
   }]);
   assert.deepEqual(outbox.snapshot().upserts, {});
+});
+
+test("unscoped historical validation preserves a current assignment deletion", () => {
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "1",
+    createId: (() => {
+      let id = 0;
+      return () => `mutation-${++id}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  outbox.enqueue({
+    table: "kehoach",
+    kind: "upsert",
+    records: [{ id: "plan-history", isLatest: 0 }],
+  });
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ id: "package-history", keHoachId: "plan-history" }],
+  });
+  outbox.enqueue({
+    table: "assignments",
+    kind: "delete",
+    records: [{
+      id: "assignment-current",
+      targetId: "package-current",
+      type: "goithau",
+      rowVersion: 2,
+    }],
+  });
+  const sent = outbox.snapshotForSync({});
+
+  const rejected = outbox.reject(sent.snapshot, [{
+    field: "$record",
+    code: "HISTORICAL_PARENT_IMMUTABLE",
+  }], {
+    fallbackToBatch: true,
+    state: {
+      kehoach: [
+        { id: "plan-history", isLatest: 0 },
+        { id: "plan-current", isLatest: 1 },
+      ],
+      goithau: [
+        { id: "package-history", keHoachId: "plan-history" },
+        { id: "package-current", keHoachId: "plan-current" },
+      ],
+    },
+  });
+
+  assert.deepEqual(rejected.map(({ type, id, operation }) => ({ type, id, operation })), [
+    { type: "kehoach", id: "plan-history", operation: "upsert" },
+    { type: "goithau", id: "package-history", operation: "upsert" },
+  ]);
+  assert.deepEqual(outbox.snapshot().upserts, {});
+  assert.deepEqual(outbox.snapshot().deletes, [{
+    table: "assignments",
+    id: "assignment-current",
+    expectedVersion: 2,
+  }]);
 });
 
 test("terminal validation cannot discard a newer edit made after the sent receipt", () => {

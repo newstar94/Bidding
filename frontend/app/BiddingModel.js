@@ -899,7 +899,10 @@ export class BiddingModel {
     return restored;
   }
   discardRejectedMutations(errors, snapshot = null, options = {}) {
-    return this._getMutationOutbox().reject(snapshot, errors, options);
+    return this._getMutationOutbox().reject(snapshot, errors, {
+      ...options,
+      state: options.state || this.state,
+    });
   }
   acknowledgeServerDeletions(deletionsByTable = {}) {
     return this._getMutationOutbox().enqueue({

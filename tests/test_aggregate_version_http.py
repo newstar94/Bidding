@@ -140,3 +140,16 @@ def test_generated_aggregate_write_lane_does_not_use_per_record_savepoints():
     atomic_branch = source.index("if atomic_command:", source.index("for payload_key"))
     savepoint = source.index('cursor.execute("SAVEPOINT sync_item")', atomic_branch)
     assert source.index("continue", atomic_branch, savepoint) < savepoint
+
+
+def test_sync_settles_staged_latest_flags_before_deletion_mutability_checks():
+    source = Path(sync_service.__file__).read_text(encoding="utf-8")
+    write_loop = source.index("for payload_key, table_name, items in iter_sync_table_payloads(data):")
+    deletion_call = source.index("deletion_result = apply_sync_deletions(", write_loop)
+    pre_delete_recalculation = source.rindex(
+        "mutation_tracker.apply_recalculations(",
+        write_loop,
+        deletion_call,
+    )
+
+    assert write_loop < pre_delete_recalculation < deletion_call

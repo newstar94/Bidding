@@ -1068,8 +1068,15 @@ def execute_sync_mutation(
                             record_id=item_id,
                             correlation_id=public_correlation_id,
                         ))
-
-
+        # Versioned upserts are staged with ``is_latest = 0`` to satisfy the
+        # partial unique indexes. Settle those derived flags before deletion
+        # guards inspect parent mutability in the same transaction.
+        mutation_tracker.apply_recalculations(
+            cursor,
+            org_name,
+            recalculate_latest=recalculate_is_latest,
+            recalculate_plan_total=recalculate_tong_muc_dau_tu,
+        )
         deletion_result = apply_sync_deletions(
             cursor,
             data.get("deletions", []),

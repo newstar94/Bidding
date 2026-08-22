@@ -71,6 +71,87 @@ function parentKeysForRecord(table, record) {
   return keys;
 }
 
+function latestFlag(record) {
+  if (!record || typeof record !== "object") return null;
+  const value = record.isLatest ?? record.is_latest;
+  if (value === undefined || value === null || value === "") return null;
+  return Number(value) === 1;
+}
+
+function recordById(state, table, id) {
+  return (state?.[table] || []).find(
+    (record) => String(record?.id || "") === String(id),
+  ) || null;
+}
+
+function historicalAggregateKeysForReceipt(receipt, queue, state) {
+  if (!state || typeof state !== "object") return new Set();
+  const sentRecords = new Map();
+  for (const operation of ["upserts", "patches"]) {
+    Object.entries(receipt?.[operation] || {}).forEach(([table, records]) => {
+      Object.keys(records || {}).forEach((id) => {
+        const pending = queue?.[operation]?.[table]?.[id];
+        if (!pending) return;
+        const current = recordById(state, table, id) || {};
+        sentRecords.set(`${table}:${String(id)}`, {
+          table,
+          id: String(id),
+          record: operation === "patches"
+            ? { ...current, ...pending }
+            : pending,
+        });
+      });
+    });
+  }
+
+  const historicalPlanIds = new Set();
+  const plans = [
+    ...(state.kehoach || []),
+    ...Object.values(queue?.upserts?.kehoach || {}),
+  ];
+  plans.forEach((plan) => {
+    if (latestFlag(plan) === false && plan?.id) {
+      historicalPlanIds.add(String(plan.id));
+    }
+  });
+
+  const historicalPackageIds = new Set();
+  const packages = [
+    ...(state.goithau || []),
+    ...Object.values(queue?.upserts?.goithau || {}),
+  ];
+  packages.forEach((pkg) => {
+    if (pkg?.id && historicalPlanIds.has(String(pkg.keHoachId || ""))) {
+      historicalPackageIds.add(String(pkg.id));
+    }
+  });
+
+  const rejected = new Set();
+  sentRecords.forEach(({ table, id, record }, key) => {
+    if (table === "kehoach" && historicalPlanIds.has(id)) rejected.add(key);
+    if (table === "goithau" && historicalPackageIds.has(id)) rejected.add(key);
+    if (parentKeysForRecord(table, record).some((parentKey) => (
+      rejected.has(parentKey)
+      || historicalPlanIds.has(parentKey.replace(/^kehoach:/, ""))
+        && parentKey.startsWith("kehoach:")
+      || historicalPackageIds.has(parentKey.replace(/^goithau:/, ""))
+        && parentKey.startsWith("goithau:")
+    ))) rejected.add(key);
+  });
+
+  let dependencyAdded = true;
+  while (dependencyAdded) {
+    dependencyAdded = false;
+    sentRecords.forEach(({ table, record }, key) => {
+      if (rejected.has(key)) return;
+      if (!parentKeysForRecord(table, record).some((parentKey) => rejected.has(parentKey))) return;
+      rejected.add(key);
+      dependencyAdded = true;
+    });
+  }
+  return rejected;
+}
+
 function planVersionKey(record) {
   const rootId = String(record?.rootId || record?.id || "").trim();
   const rawVersion = String(record?.phienBan ?? "").trim();
@@ -203,6 +284,42 @@ export class WorkspaceMutationOutbox {
         .filter((item) => deletionKeys.has(`${item.table}:${String(item.id)}`))
         .map((item) => cloneValue(item)),
     };
+  }
+
+  captureReceiptForRecords(recordsByTable = {}) {
+    const receipt = {
+      upserts: {},
+      patches: {},
+      deletes: {},
+      dirtyTables: {},
+    };
+    Object.entries(recordsByTable || {}).forEach(([table, records]) => {
+      if (!Array.isArray(records)) return;
+      records.forEach((record) => {
+        const id = String(record?.id || "");
+        if (!id) return;
+        const upsertGeneration = this.recordGenerations.get(
+          recordKey("upsert", table, id),
+        );
+        if (upsertGeneration !== undefined) {
+          receipt.upserts[table] ||= {};
+          receipt.upserts[table][id] = upsertGeneration;
+        }
+        const patchGeneration = this.recordGenerations.get(
+          recordKey("patch", table, id),
+        );
+        if (patchGeneration !== undefined) {
+          receipt.patches[table] ||= {};
+          receipt.patches[table][id] = patchGeneration;
+        }
+        const deleteKey = recordKey("delete", table, id);
+        const deleteGeneration = this.recordGenerations.get(deleteKey);
+        if (deleteGeneration !== undefined) {
+          receipt.deletes[deleteKey] = deleteGeneration;
+        }
+      });
+    });
+    return receipt;
   }
 
   restore(checkpoint) {
@@ -441,14 +558,28 @@ export class WorkspaceMutationOutbox {
     return changed;
   }
 
-  reject(receipt, errors = [], { fallbackToBatch = false } = {}) {
+  reject(receipt, errors = [], { fallbackToBatch = false, state = null } = {}) {
     const rejectedKeys = new Set();
     let hasUnscopedError = false;
     (errors || []).forEach((error) => {
       const type = this.resolveServerTable(error?.table) || error?.table;
       const id = String(error?.id || "");
-      if (type && id) rejectedKeys.add(`${type}:${id}`);
-      else hasUnscopedError = true;
+      if (type && id) {
+        rejectedKeys.add(`${type}:${id}`);
+        return;
+      }
+      if (error?.code === "HISTORICAL_PARENT_IMMUTABLE") {
+        const historicalKeys = historicalAggregateKeysForReceipt(
+          receipt,
+          this.queue,
+          state,
+        );
+        if (historicalKeys.size > 0) {
+          historicalKeys.forEach((key) => rejectedKeys.add(key));
+          return;
+        }
+      }
+      hasUnscopedError = true;
     });
     const receiptContains = (key) => {
       const separator = key.indexOf(":");

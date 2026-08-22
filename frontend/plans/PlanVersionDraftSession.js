@@ -671,11 +671,17 @@ export async function finalizePlanVersionDraft(controller, session, {
   model.planVersionDraftSessions = clone(resources.planVersionDraftSessions);
   Object.assign(session, clone(refreshed));
   const payload = buildPlanDraftFinalizePayload(resources, refreshed);
+  const finalizedMutationReceipt = resources.outbox?.captureReceiptForRecords?.(payload);
   if (!isCurrent()) return staleFinalizeResult();
   const response = await send(payload);
   if (!isCurrent()) return staleFinalizeResult();
   const applied = await applyCanonicalFinalizeResponse(resources, response, isCurrent);
   if (!applied || !isCurrent()) return staleFinalizeResult();
+  if (finalizedMutationReceipt) {
+    resources.outbox?.ack?.(finalizedMutationReceipt);
+    await resources.outbox?.flush?.();
+    if (!isCurrent()) return staleFinalizeResult();
+  }
   await removePlanVersionDraftSession(resources, refreshed.draftId, {
     expectedRevision: refreshed.revision,
   });

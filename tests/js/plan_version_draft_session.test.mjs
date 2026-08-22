@@ -23,6 +23,7 @@ import {
   saveIntermediatePlanVersion,
   savePlanBreakdown,
 } from "../../frontend/plans/KeHoachWorkflow.js";
+import { WorkspaceMutationOutbox } from "../../frontend/app/WorkspaceMutationOutbox.js";
 
 function draftState() {
   return {
@@ -891,6 +892,92 @@ test("finalize response rebases captured workspace outbox row versions", async (
   assert.deepEqual(enqueued, [{
     kind: "server-row-version",
     entries: [{ table: "kehoach", id: "plan-00", rowVersion: 7 }],
+  }]);
+});
+
+test("finalize acknowledges stale aggregate mutations without clearing unrelated outbox work", async () => {
+  const state = draftState();
+  state.kehoach[0].isLatest = 0;
+  state.kehoach.push({
+    ...structuredClone(state.kehoach[0]),
+    id: "plan-01",
+    rootId: "plan-00",
+    phienBan: "01",
+    isLatest: 1,
+  });
+  state.goithau[0].isLatest = 0;
+  state.goithau.push({
+    ...structuredClone(state.goithau[0]),
+    id: "package-01",
+    rootId: "package-00",
+    keHoachId: "plan-01",
+    isLatest: 1,
+  });
+  state.goithauhanghoa = [];
+  state.assignments = [{
+    id: "package-assignment-01",
+    targetId: "package-01",
+    type: "goithau",
+    empId: "employee-1",
+  }];
+  const model = workspaceModel({ state });
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "1",
+    createId: (() => {
+      let sequence = 0;
+      return () => `mutation-${++sequence}`;
+    })(),
+    isSyncedType: () => true,
+    normalizeRecord: (record) => structuredClone(record),
+  });
+  model._getMutationOutbox = () => outbox;
+  for (const [table, records] of Object.entries({
+    kehoach: model.state.kehoach,
+    goithau: model.state.goithau,
+    assignments: model.state.assignments,
+    hopdong: [{ id: "contract-unrelated", tenHopDong: "Unrelated local edit" }],
+  })) {
+    outbox.enqueue({ kind: "upsert", table, records });
+  }
+  const session = createPlanVersionDraftSession(model.state, "plan-01");
+  await savePlanVersionDraftSession(model, session);
+
+  await finalizePlanVersionDraft({ model }, session, {
+    send: async () => ({
+      status: "success",
+      syncVersion: 24,
+      rowVersions: [
+        { table: "kehoach", id: "plan-00", rowVersion: 1 },
+        { table: "kehoach", id: "plan-01", rowVersion: 1 },
+        { table: "goithau", id: "package-00", rowVersion: 1 },
+        { table: "goithau", id: "package-01", rowVersion: 1 },
+        { table: "assignments", id: "package-assignment-01", rowVersion: 1 },
+      ],
+    }),
+  });
+
+  assert.deepEqual(outbox.snapshot().upserts, {
+    hopdong: {
+      "contract-unrelated": {
+        id: "contract-unrelated",
+        tenHopDong: "Unrelated local edit",
+      },
+    },
+  });
+
+  outbox.enqueue({
+    kind: "delete",
+    table: "assignments",
+    records: [model.state.assignments[0]],
+  });
+  const nextPayload = outbox.snapshotForSync(model.state).payload;
+  assert.equal(Object.hasOwn(nextPayload, "kehoach"), false);
+  assert.equal(Object.hasOwn(nextPayload, "goithau"), false);
+  assert.deepEqual(nextPayload.deletions, [{
+    table: "assignments",
+    id: "package-assignment-01",
+    expectedVersion: 1,
   }]);
 });
 
