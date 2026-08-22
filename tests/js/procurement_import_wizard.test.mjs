@@ -189,7 +189,14 @@ test("reload after a durable local save resumes the next source revision", async
         draftId: "draft-plan", rootId: "plan-00",
         aggregate: {
           kehoach: [{
-            id: "plan-00", phienBan: "00",
+            id: "plan-00", rootId: "plan-root", phienBan: "00", rowVersion: 0,
+            sourceRevision: {
+              sessionId: "session-plan", revisionNumber: "00",
+            },
+          }],
+          goithau: [{
+            id: "package-00", rootId: "package-root", keHoachId: "plan-00",
+            phienBan: "00", rowVersion: 0,
             sourceRevision: {
               sessionId: "session-plan", revisionNumber: "00",
             },
@@ -218,6 +225,65 @@ test("reload after a durable local save resumes the next source revision", async
   assert.equal(resumed, true);
   assert.deepEqual(loaded, ["01"]);
   assert.equal(calls[0].controller.currentIndex, 1);
+  assert.deepEqual(calls[0].materializedPlanAuthority, {
+    id: "plan-00", rootId: "plan-root", localVersion: 0, rowVersion: 0,
+  });
+  assert.deepEqual(calls[0].materializedPackageAuthorities, [{
+    id: "package-00", rootId: "package-root", localVersion: 0, rowVersion: 0,
+  }]);
+});
+
+test("plan import resume hydrates workflow data before materializing the form", async () => {
+  const storage = memoryStorage();
+  new ProcurementImportResumeStore(storage).save({
+    sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600225771",
+    revisionNumber: "00",
+  });
+  const openedPlanIds = [];
+  const workflowCalls = [];
+  let workflowReady = false;
+  const controller = {
+    model: {
+      workspaceStorage: storage,
+      getWorkspaceToken: () => "lease-1",
+      planVersionDraftSessions: [],
+    },
+    view: { customConfirm: async () => true },
+    async ensureWorkflowReady(methodName) {
+      workflowCalls.push(methodName);
+      workflowReady = true;
+    },
+    plans: {
+      edit: async (planId) => openedPlanIds.push(planId),
+    },
+    async startProcurementPlanImport(flow) {
+      if (!workflowReady) throw new Error("investor data not hydrated");
+      this.procurementPlanImport = flow;
+      await this.plans.edit("plan-resumed-00");
+      return { plan: { id: "plan-resumed-00" }, packages: [] };
+    },
+  };
+
+  const resumed = await resumeProcurementImportSession.call(controller, {
+    client: {
+      getImportSession: async () => ({
+        sessionId: "session-plan", kind: "PLAN", familyNo: "PL2600225771",
+        currentIndex: 0, status: "READY",
+        revisions: [{ revisionNumber: "00" }],
+      }),
+      getPlanRevisionDraft: async () => ({
+        revisionNumber: "00",
+        planDraft: { maKeHoach: "PL2600225771" },
+        packageDrafts: [],
+      }),
+    },
+  });
+
+  assert.deepEqual({ resumed, workflowCalls, openedPlanIds }, {
+    resumed: true,
+    workflowCalls: ["editKeHoach"],
+    openedPlanIds: ["plan-resumed-00"],
+  });
 });
 
 test("declining plan import resume removes the durable local plan aggregate", async () => {
@@ -877,6 +943,76 @@ test("same_authority_allows_materialization", () => {
       }],
     },
   ));
+});
+
+test("materialized flow authority still rejects a later plan row-version change", () => {
+  const plan = {
+    id: "plan-00", rootId: "plan-root", maKeHoach: "PL2600225773",
+    phienBan: "00", rowVersion: 8, isLatest: 1,
+    sourceRevision: { sessionId: "session-plan", revisionNumber: "00" },
+  };
+  const controller = {
+    model: {
+      state: { kehoach: [plan], goithau: [] },
+      getPlanBaseCode: (value) => value,
+    },
+  };
+  const flow = {
+    session: { sessionId: "session-plan" },
+    materializedPlanAuthority: {
+      id: "plan-00", rootId: "plan-root", localVersion: 0, rowVersion: 7,
+    },
+    materializedPackageAuthorities: [],
+  };
+
+  assert.throws(
+    () => assertRevisionDraftLiveAuthority(controller, flow, {
+      familyNo: "PL2600225773",
+      planAuthority: { familyNo: "PL2600225773", expectedPredecessor: null },
+      packageAuthorities: [],
+    }),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
+});
+
+test("materialized flow authority still rejects a later package row-version change", () => {
+  const plan = {
+    id: "plan-00", rootId: "plan-root", maKeHoach: "PL2600225773",
+    phienBan: "00", rowVersion: 0, isLatest: 1,
+    sourceRevision: { sessionId: "session-plan", revisionNumber: "00" },
+  };
+  const pkg = {
+    id: "package-00", rootId: "package-root", phienBan: "00",
+    rowVersion: 8, isLatest: 1,
+    sourceRevision: { sessionId: "session-plan", revisionNumber: "00" },
+  };
+  const controller = {
+    model: {
+      state: { kehoach: [plan], goithau: [pkg] },
+      getPlanBaseCode: (value) => value,
+    },
+  };
+  const flow = {
+    session: { sessionId: "session-plan" },
+    materializedPlanAuthority: {
+      id: "plan-00", rootId: "plan-root", localVersion: 0, rowVersion: 0,
+    },
+    materializedPackageAuthorities: [{
+      id: "package-00", rootId: "package-root", localVersion: 0, rowVersion: 7,
+    }],
+  };
+
+  assert.throws(
+    () => assertRevisionDraftLiveAuthority(controller, flow, {
+      familyNo: "PL2600225773",
+      planAuthority: { familyNo: "PL2600225773", expectedPredecessor: null },
+      packageAuthorities: [{
+        localRootId: "package-root", snapshotId: "pre-import-package",
+        localVersion: 0, rowVersion: 3, isLatest: true,
+      }],
+    }),
+    (error) => error?.code === "PROCUREMENT_PREVIEW_STALE",
+  );
 });
 
 test("plan materialization reuses the exact local investor before source resolution", async () => {
@@ -3315,6 +3451,30 @@ test("investor short name is derived only from a QĐ decision suffix", () => {
   assert.equal(deriveInvestorShortName(""), "");
 });
 
+test("investor resolver skips malformed optional MSC fields", async () => {
+  const result = await resolveImportedInvestorDraft({
+    source: { code: "vnz000005655" },
+    records: [],
+    lookup: async () => ({
+      org_code: "vnz000005655",
+      tax_code: "not-a-tax-code",
+      name: "Ban Noi chinh Trung uong",
+      representative_name: "Ta Van Giang",
+      representative_position: "Chanh Van phong",
+      address: "Nha A4 Nguyen Canh Chan, Ba Dinh",
+      phone: "08045306",
+      email: "invalid-email",
+    }),
+    createId: () => "investor-vnz-5655",
+  });
+
+  assert.equal(result.status, "NEW");
+  assert.equal(result.investor.maChuDauTu, "vnz000005655");
+  assert.equal(result.investor.maSoThue, "");
+  assert.equal(result.investor.soDienThoai, "");
+  assert.equal(result.investor.email, "");
+});
+
 test("investor resolver creates one pending initial version through shared validation", async () => {
   const result = await resolveImportedInvestorDraft({
     source: {
@@ -3422,21 +3582,20 @@ test("manual and imported investor creation share normalization validation and v
   );
   assert.ok(manualErrors.some((error) => error.controlId === "cdt-email"));
 
-  await assert.rejects(
-    () => resolveImportedInvestorDraft({
-      source: { code: sourceRecord.maChuDauTu }, records: [],
-      lookup: async () => ({
-        org_code: sourceRecord.maChuDauTu,
-        tax_code: sourceRecord.maSoThue,
-        name: sourceRecord.tenChuDauTu,
-        representative_name: sourceRecord.daiDienCdt,
-        representative_position: sourceRecord.chucVuDaiDien,
-        address: sourceRecord.diaChi,
-        email: sourceRecord.email,
-      }),
+  const imported = await resolveImportedInvestorDraft({
+    source: { code: sourceRecord.maChuDauTu }, records: [],
+    lookup: async () => ({
+      org_code: sourceRecord.maChuDauTu,
+      tax_code: sourceRecord.maSoThue,
+      name: sourceRecord.tenChuDauTu,
+      representative_name: sourceRecord.daiDienCdt,
+      representative_position: sourceRecord.chucVuDaiDien,
+      address: sourceRecord.diaChi,
+      email: sourceRecord.email,
     }),
-    /PROCUREMENT_INVESTOR_RESOLUTION_FAILED/,
-  );
+  });
+  assert.equal(imported.status, "NEW");
+  assert.equal(imported.investor.email, "");
 
   const initial = buildInitialPartnerVersion(
     { ...normalized, email: "contact@example.test" },

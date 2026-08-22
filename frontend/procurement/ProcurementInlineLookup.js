@@ -85,14 +85,12 @@ function importFlowSourceCode(flow) {
   );
 }
 
-function cancelStaleInlineImportFlow(controller, kind, code) {
+function replaceActiveInlineImportFlow(controller, kind) {
   const flowSlot = kind === "PLAN"
     ? "procurementPlanImport"
     : "procurementPackageImport";
   const activeFlow = controller?.[flowSlot];
   if (!activeFlow) return true;
-  const sourceCode = importFlowSourceCode(activeFlow);
-  if (sourceCode && sourceCode === baseCode(code)) return true;
   if (typeof controller.cancelActiveProcurementImportSession === "function") {
     return controller.cancelActiveProcurementImportSession();
   }
@@ -360,15 +358,15 @@ export class ProcurementInlineLookup {
         const currentDraft = await sequential.loadCurrent();
         assertUiCapabilityCurrent();
         // A completed inline import installs a live sequential flow on the
-        // controller. Switching the source code must retire that flow before
-        // the next revision is materialized; otherwise the new flow is rejected
-        // with FLOW_CHANGED and the old form values remain visible. Wait until
-        // the replacement preview is ready so a failed lookup does not discard
-        // the previous draft unnecessarily.
-        const cancellation = cancelStaleInlineImportFlow(
+        // controller. Every later lookup is a replacement attempt, including
+        // entering the same code again after clearing the field. Retire the
+        // previous flow before materializing the new revision; otherwise the
+        // new flow is rejected with FLOW_CHANGED and the status remains stuck
+        // at "loading". Wait until the replacement preview is ready so a failed
+        // lookup does not discard the previous draft unnecessarily.
+        const cancellation = replaceActiveInlineImportFlow(
           this.controller,
           normalizedKind,
-          code,
         );
         if (cancellation && typeof cancellation.then === "function") {
           const cancelled = await cancellation;

@@ -228,6 +228,24 @@ test("package preview protects existing draft values and rejects unknown enums",
   assert.match(byField.bidForm.warning, /không nhận diện/i);
 });
 
+test("plan and package previews skip malformed source dates", () => {
+  const planDate = control("");
+  const packageDate = control("");
+  const planRows = buildComparisonRows("PLAN", {
+    decisionDate: "31/02/2026",
+  }, { getControl: (id) => (id === "kh-ngaypheduyet" ? planDate : null) });
+  const packageRows = buildComparisonRows("PACKAGE", {
+    bidCloseDate: "2026-13-40T99:99:00",
+  }, { getControl: (id) => (id === "gt-thoigiandongthau" ? packageDate : null) });
+
+  const planMapped = planRows.find((row) => row.field === "decisionDate");
+  const packageMapped = packageRows.find((row) => row.field === "bidCloseDate");
+  assert.equal(planMapped.draftValue, null);
+  assert.equal(planMapped.apply, false);
+  assert.equal(packageMapped.draftValue, null);
+  assert.equal(packageMapped.apply, false);
+});
+
 
 test("package preview maps Mua Sam Cong TG contract code", () => {
   const contract = control("", ["Trọn gói", "Theo đơn giá cố định"]);
@@ -1227,6 +1245,95 @@ test("inline plan lookup cancels the previous source flow before switching codes
   assert.deepEqual(cancelled, ["old-session"]);
   assert.equal(name.value, "Kế hoạch 5772");
   assert.equal(status.dataset.state, "success");
+});
+
+
+test("inline plan lookup replaces the previous flow when the same code is entered again", async () => {
+  const identity = { value: "plan-a" };
+  const form = {
+    querySelector: (selector) => (selector === "input[type='hidden']" ? identity : null),
+  };
+  const code = control("PL2600225771");
+  const button = inlineButton();
+  const status = inlineStatus();
+  const cancelled = [];
+  let prepareCount = 0;
+  const controls = {
+    "form-kehoach": form,
+    "kh-ma": code,
+    "btn-open-procurement-lookup-plan": button,
+    "procurement-lookup-plan-status": status,
+  };
+  const controller = {
+    model: { getWorkspaceToken: () => "org-1" },
+    async cancelActiveProcurementImportSession() {
+      cancelled.push(this.procurementPlanImport.session.sessionId);
+      this.procurementPlanImport = null;
+      return true;
+    },
+    async startProcurementPlanImport(flow) {
+      if (this.procurementPlanImport) {
+        throw Object.assign(new Error("stale source flow"), {
+          name: "AbortError", code: "FLOW_CHANGED",
+        });
+      }
+      this.procurementPlanImport = flow;
+    },
+  };
+  const lookup = new ProcurementInlineLookup({
+    controller,
+    importClient: {
+      async preparePlan() {
+        prepareCount += 1;
+        return {
+          importSession: {
+            sessionId: `session-${prepareCount}`,
+            familyNo: "PL2600225771",
+            revisions: [{ revisionNumber: "00" }],
+          },
+        };
+      },
+      async getPlanRevisionDraft() {
+        return {
+          revisionNumber: "00",
+          planDraft: { maKeHoach: "PL2600225771" },
+          packageDrafts: [],
+        };
+      },
+    },
+    client: { async lookup() { assert.fail("plan session flow must not lookup LATEST"); } },
+    document: { getElementById: (id) => controls[id] || null },
+  });
+  const options = {
+    kind: "PLAN",
+    formId: "form-kehoach",
+    codeInputId: "kh-ma",
+    buttonId: "btn-open-procurement-lookup-plan",
+    statusId: "procurement-lookup-plan-status",
+  };
+
+  const first = await lookup.run(options);
+  code.value = "";
+  code.value = "PL2600225771";
+  const second = await lookup.run(options);
+
+  assert.deepEqual({
+    firstRevision: first?.revisionNumber,
+    secondRevision: second?.revisionNumber,
+    cancelled,
+    activeSession: controller.procurementPlanImport.session.sessionId,
+    statusState: status.dataset.state,
+    statusStillLoading: /Đang lấy dữ liệu/i.test(status.textContent),
+    buttonDisabled: button.disabled,
+  }, {
+    firstRevision: "00",
+    secondRevision: "00",
+    cancelled: ["session-1"],
+    activeSession: "session-2",
+    statusState: "success",
+    statusStillLoading: false,
+    buttonDisabled: false,
+  });
 });
 
 

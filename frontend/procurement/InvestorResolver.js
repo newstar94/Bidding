@@ -8,6 +8,7 @@ import { generateRecordId } from "../shared/idUtils.js";
 import {
   buildInitialPartnerVersion,
   PARTNER_FORM_CONFIGS,
+  sanitizePartnerLookupData,
 } from "../partners/PartnerFormController.js";
 
 function sourceCode(value) {
@@ -46,6 +47,7 @@ function findExisting(records, code, taxCode, name = "") {
 }
 
 function buildPendingInvestor(info, { createId, timestamp, effectiveDate, records }) {
+  info = sanitizePartnerLookupData(info);
   const code = sourceCode(info?.org_code);
   const name = normalizeOrganizationName(info?.name || "");
   const representative = normalizePersonName(info?.representative_name || "");
@@ -57,7 +59,7 @@ function buildPendingInvestor(info, { createId, timestamp, effectiveDate, record
   const id = createId("chudautu");
   return buildInitialPartnerVersion({
     maChuDauTu: code,
-    maSoThue: normalizeVietnamTaxCode(info?.tax_code),
+    maSoThue: info.tax_code,
     tenChuDauTu: name,
     tenVietTat: String(info?.short_name || "").trim(),
     ngayApDung: effectiveDate,
@@ -67,8 +69,8 @@ function buildPendingInvestor(info, { createId, timestamp, effectiveDate, record
     danhXung: String(info?.salutation || "Ông/Bà").trim(),
     diaChi: address,
     diaChiGoc: address,
-    soDienThoai: String(info?.phone || "").trim(),
-    email: String(info?.email || "").trim(),
+    soDienThoai: info.phone,
+    email: info.email,
     soTaiKhoan: String(info?.bank_account || "").trim(),
     noiMoTaiKhoan: String(info?.bank_name || "").trim(),
     maQHNS: String(info?.budget_code || "").trim(),

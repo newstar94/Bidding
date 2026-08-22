@@ -83,9 +83,25 @@ function formatMoney(value) {
 function formatPortalDate(value, includeTime = false) {
   if (!hasValue(value)) return null;
   const text = String(value).trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(text);
-  if (!match) return text;
-  const [, year, month, day, hour, minute] = match;
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/u.exec(text);
+  const localMatch = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/u.exec(text);
+  const match = isoMatch || localMatch;
+  if (!match) return null;
+  const iso = Boolean(isoMatch);
+  const year = iso ? match[1] : match[3];
+  const month = match[2];
+  const day = iso ? match[3] : match[1];
+  const hour = match[4];
+  const minute = match[5];
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (
+    !Number.isFinite(date.getTime())
+    || date.getUTCFullYear() !== Number(year)
+    || date.getUTCMonth() !== Number(month) - 1
+    || date.getUTCDate() !== Number(day)
+    || (hour !== undefined && Number(hour) > 23)
+    || (minute !== undefined && Number(minute) > 59)
+  ) return null;
   if (includeTime && hour && minute) return `${day}/${month}/${year} ${hour}:${minute}`;
   return `${day}/${month}/${year}`;
 }

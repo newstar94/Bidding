@@ -242,6 +242,40 @@ test("investor lookup does not replace the exact code entered by the user", asyn
   assert.equal(controls.get("cdt-ma").value, "vn123456789");
 });
 
+test("partner lookup skips malformed optional fields for both roles", async () => {
+  const makeLookup = (config, codeId, taxId, phoneId, emailId) => {
+    const controls = new Map([
+      [codeId, { value: "" }],
+      [taxId, { value: "" }],
+      [phoneId, { value: "" }],
+      [emailId, { value: "" }],
+    ]);
+    const { applyLookupData } = createPartnerLookupHandlers({
+      form: { dataset: {} },
+      config,
+      root: { getElementById: (id) => controls.get(id) || null },
+      applyAddress: async () => {},
+    });
+    return { controls, applyLookupData };
+  };
+
+  for (const [config, ids] of [
+    [PARTNER_FORM_CONFIGS.chudautu.lookup, ["cdt-ma", "cdt-mst", "cdt-sdt", "cdt-email"]],
+    [PARTNER_FORM_CONFIGS.nhathau.lookup, ["nt-ma", "nt-mst", "nt-sdt", "nt-email"]],
+  ]) {
+    const { controls, applyLookupData } = makeLookup(config, ...ids);
+    await applyLookupData({
+      org_code: "vnz000005655",
+      tax_code: "not-a-tax-code",
+      phone: "08045306",
+      email: "invalid-email",
+    });
+    assert.equal(controls.get(ids[1]).value, "");
+    assert.equal(controls.get(ids[2]).value, "");
+    assert.equal(controls.get(ids[3]).value, "");
+  }
+});
+
 test("opening save always reports unexpected failures and restores the button", async () => {
   const originalDocument = globalThis.document;
   const originalLucide = globalThis.lucide;

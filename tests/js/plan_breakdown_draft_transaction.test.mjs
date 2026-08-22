@@ -1849,6 +1849,10 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
   const revisionDrafts = {
     "00": {
       familyNo: "PL2600000001", revisionNumber: "00",
+      planAuthority: {
+        familyNo: "PL2600000001", expectedPredecessor: null,
+      },
+      packageAuthorities: [],
       planDraft: {
         maKeHoach: "PL2600000001", tenKeHoach: "Kế hoạch 00",
         loaiHinhMuaSam: "Dự toán mua sắm", tenDuAnDuToan: "Dự toán A",
@@ -1885,6 +1889,10 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     },
     "01": {
       familyNo: "PL2600000001", revisionNumber: "01",
+      planAuthority: {
+        familyNo: "PL2600000001", expectedPredecessor: null,
+      },
+      packageAuthorities: [],
       planDraft: {
         maKeHoach: "PL2600000001", tenKeHoach: "Kế hoạch 01",
         loaiHinhMuaSam: "Dự toán mua sắm", tenDuAnDuToan: "Dự toán A",
@@ -2074,6 +2082,12 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     await controller.packages.edit(packageA00.id);
     packageA00.giaGoiThau = 125;
     await persistPackageFormChanges(controller, { goithau: [packageA00] }, { draft: true });
+    applyDraftAssignmentSelection(model, {
+      targetId: packageA00.id,
+      type: "goithau",
+      selectedIds: ["expert-00"],
+      createId: () => "assignment-expert-00",
+    });
     controller.renderBreakdownPackagesList(plan00.id);
     assert.match(controls.get("tbody-breakdown-goithau").innerHTML, />125</);
     assert.deepEqual(persistedRevisions, [], "package modal save remains memory-only");
@@ -2092,6 +2106,18 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.deepEqual(finalizeCalls, [], "revision 00 must stay local until the last source revision");
     assert.deepEqual(loaded, ["00", "01"]);
     assert.equal(controls.get("form-kehoach-id").value, controller.procurementPlanImport.currentPlanId);
+    const plan01 = state.kehoach.find((row) => row.phienBan === "01");
+    const packageA01 = state.goithau.find(
+      (row) => row.keHoachId === plan01.id
+        && row.sourceRevision?.stablePackageId === "stable-a",
+    );
+    assert.deepEqual(
+      state.assignments
+        .filter((row) => row.targetId === packageA01.id)
+        .map((row) => row.empId),
+      ["expert-00"],
+      "revision 01 must inherit the expert selected in revision 00",
+    );
 
     await controller.handleKeHoachSubmit({ preventDefault() {} });
     assert.equal(

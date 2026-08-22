@@ -1,5 +1,11 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
-import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../app/domUtils.js";
+import {
+  isVietnamTaxCode,
+  normalizeOrganizationName,
+  normalizePersonName,
+  normalizeProcurementOrgCode,
+  normalizeVietnamTaxCode,
+} from "../app/domUtils.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { setValidationError } from "../shared/FormValidation.js";
 import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../shared/PartnerHelpers.js";
@@ -94,7 +100,7 @@ function bindInvestorHeadPosition(root, config) {
 }
 
 export function mapPartnerLookupFields(data, config) {
-  const lookupData = { ...data };
+  const lookupData = sanitizePartnerLookupData(data);
   if (config.extraFields?.head_position && !lookupData.head_position) {
     lookupData.head_position = deriveInvestorHeadPosition(lookupData.representative_position);
   }
@@ -181,6 +187,18 @@ export function collectPartnerFormData(root, form, config, { convertDate, fallba
   );
   data.diaChiGoc = form?.dataset?.diaChiGoc || "";
   return data;
+}
+
+export function sanitizePartnerLookupData(data) {
+  const lookupData = { ...(data || {}) };
+  const taxCode = normalizeVietnamTaxCode(lookupData.tax_code);
+  const phone = String(lookupData.phone || "").trim();
+  const email = String(lookupData.email || "").trim();
+  lookupData.org_code = normalizeProcurementOrgCode(lookupData.org_code) || "";
+  lookupData.tax_code = isVietnamTaxCode(taxCode) ? taxCode : "";
+  lookupData.phone = /^[0-9\s+\-()]{9,15}$/.test(phone) ? phone : "";
+  lookupData.email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : "";
+  return lookupData;
 }
 
 export function normalizePartnerRecord(data, config) {

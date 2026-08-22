@@ -10,6 +10,40 @@ import { discardPlanVersionDraftForImportSession } from "../plans/PlanVersionDra
 const RESUME_KEY = "procurement_import_resume_v1";
 const ACTIVE_STATUSES = new Set(["READY", "EDITING_REVISION", "WAITING_NEXT_CONFIRMATION"]);
 
+function recordRevisionAuthority(record) {
+  if (!record) return null;
+  return {
+    id: String(record.id || ""),
+    rootId: String(record.rootId || record.id_goc || record.id || ""),
+    localVersion: Number(record.localVersion ?? record.phienBan ?? 0),
+    rowVersion: Number(record.rowVersion ?? 0),
+  };
+}
+
+function recoverMaterializedDraftAuthorities(model, sessionId) {
+  const sessionRows = (model?.planVersionDraftSessions || []).flatMap((draft) => {
+    const aggregate = draft?.aggregate || {};
+    return (aggregate.kehoach || [])
+      .filter((plan) => (
+        String(plan?.sourceRevision?.sessionId || "") === String(sessionId || "")
+      ))
+      .map((plan) => ({ plan, aggregate }));
+  });
+  const latest = sessionRows.sort((left, right) => (
+    Number(right.plan?.sourceRevision?.revisionNumber ?? right.plan?.phienBan ?? 0)
+    - Number(left.plan?.sourceRevision?.revisionNumber ?? left.plan?.phienBan ?? 0)
+  ))[0];
+  if (!latest) return {};
+  const packages = (latest.aggregate.goithau || []).filter((pkg) => (
+    String(pkg?.keHoachId || "") === String(latest.plan.id || "")
+    && String(pkg?.sourceRevision?.sessionId || "") === String(sessionId || "")
+  ));
+  return {
+    materializedPlanAuthority: recordRevisionAuthority(latest.plan),
+    materializedPackageAuthorities: packages.map(recordRevisionAuthority),
+  };
+}
+
 export class ProcurementImportResumeStore {
   constructor(storage) {
     this.storage = storage;
@@ -175,6 +209,18 @@ export async function resumeProcurementImportSession({
       store.clear();
       return false;
     }
+    // A reload restores the import pointer before the normal workflow data
+    // hydration finishes. Resume must wait for the same data boundary used by
+    // the edit form (especially the investor/contractor catalogs); otherwise
+    // materialization can fail before the form is opened and the background
+    // startup task only reports the failure to the console.
+    const resumeWorkflowMethod = session.kind === "PACKAGE"
+      ? "editGoiThau"
+      : "editKeHoach";
+    if (typeof this.ensureWorkflowReady === "function") {
+      await this.ensureWorkflowReady(resumeWorkflowMethod);
+      assertCurrentWorkspace();
+    }
     const hasLocalPlanDraft = session.kind === "PLAN" && (
       this.model?.planVersionDraftSessions || []
     ).some((draft) => (
@@ -235,12 +281,16 @@ export async function resumeProcurementImportSession({
     const start = session.kind === "PACKAGE"
       ? this.startProcurementPackageImport
       : this.startProcurementPlanImport;
+    const recoveredAuthorities = session.kind === "PLAN"
+      ? recoverMaterializedDraftAuthorities(this.model, session.sessionId)
+      : {};
     startingFlow = true;
     await start?.call(this, {
       session, controller: sequential, currentDraft, client,
       importWorkspaceLease: lease,
       importWorkspaceStorage: storage,
       importFlowIdentity,
+      ...recoveredAuthorities,
     });
     assertCurrentWorkspace();
     return true;

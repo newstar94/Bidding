@@ -1093,6 +1093,44 @@ function currentPlanAuthority(model, familyNo) {
   return latestPlanForFamily(model, familyNo, model?.state);
 }
 
+function recordRevisionAuthority(record) {
+  if (!record) return null;
+  return {
+    id: String(record.id || ""),
+    rootId: String(record.rootId || record.id_goc || record.id || ""),
+    localVersion: Number(record.localVersion ?? record.phienBan ?? 0),
+    rowVersion: Number(record.rowVersion ?? 0),
+  };
+}
+
+function revisionAuthoritiesEqual(actual, expected) {
+  return Boolean(
+    actual && expected
+    && JSON.stringify(actual) === JSON.stringify(expected)
+  );
+}
+
+function flowOwnsMaterializedPlan(flow, current) {
+  const installed = flow?.materializedPlanAuthority;
+  if (!revisionAuthoritiesEqual(recordRevisionAuthority(current), installed)) return false;
+  return String(current?.sourceRevision?.sessionId || "")
+    === String(flow?.session?.sessionId || "");
+}
+
+function flowOwnsMaterializedPackage(model, flow, rootId) {
+  const installed = (flow?.materializedPackageAuthorities || []).find(
+    (authority) => String(authority?.rootId || "") === String(rootId || ""),
+  );
+  if (!installed) return false;
+  const live = (model?.state?.goithau || []).find(
+    (pkg) => String(pkg?.id || "") === String(installed.id || ""),
+  );
+  return revisionAuthoritiesEqual(recordRevisionAuthority(live), installed)
+    && live?.isLatest != 0
+    && String(live?.sourceRevision?.sessionId || "")
+      === String(flow?.session?.sessionId || "");
+}
+
 export function assertRevisionDraftLiveAuthority(controller, flow, revisionDraft) {
   if (!revisionDraft || !Object.hasOwn(revisionDraft, "planAuthority")) return;
   const model = controller?.model;
@@ -1100,21 +1138,21 @@ export function assertRevisionDraftLiveAuthority(controller, flow, revisionDraft
   const expected = planAuthority.expectedPredecessor;
   const current = currentPlanAuthority(model, planAuthority.familyNo || revisionDraft.familyNo);
   if (expected == null) {
-    if (current) throw staleRevisionAuthorityError();
+    if (current && !flowOwnsMaterializedPlan(flow, current)) {
+      throw staleRevisionAuthorityError();
+    }
   } else {
-    const actual = current && {
-      id: String(current.id || ""),
-      rootId: String(current.rootId || current.id_goc || current.id || ""),
-      localVersion: Number(current.localVersion ?? current.phienBan ?? 0),
-      rowVersion: Number(current.rowVersion ?? 0),
-    };
+    const actual = recordRevisionAuthority(current);
     const expectedAuthority = {
       id: String(expected.id || ""),
       rootId: String(expected.rootId || expected.id || ""),
       localVersion: Number(expected.localVersion ?? 0),
       rowVersion: Number(expected.rowVersion ?? 0),
     };
-    if (!actual || JSON.stringify(actual) !== JSON.stringify(expectedAuthority)) {
+    if (
+      !revisionAuthoritiesEqual(actual, expectedAuthority)
+      && !flowOwnsMaterializedPlan(flow, current)
+    ) {
       throw staleRevisionAuthorityError();
     }
   }
@@ -1125,9 +1163,10 @@ export function assertRevisionDraftLiveAuthority(controller, flow, revisionDraft
       String(pkg.rootId || pkg.id_goc || pkg.id || "") === rootId
       && String(pkg.id || "") === snapshotId
     ));
-    if (!live || Number(live.localVersion ?? live.phienBan ?? 0) !== Number(authority.localVersion ?? 0)
+    if ((!live || Number(live.localVersion ?? live.phienBan ?? 0) !== Number(authority.localVersion ?? 0)
       || Number(live.rowVersion ?? 0) !== Number(authority.rowVersion ?? 0)
-      || live.isLatest == 0) {
+      || live.isLatest == 0)
+      && !flowOwnsMaterializedPackage(model, flow, rootId)) {
       throw staleRevisionAuthorityError();
     }
   }
@@ -1317,6 +1356,8 @@ async function materializePlanImportRevision(controller, flow, revisionDraft, pr
     ...flow,
     currentDraft: revisionDraft,
     currentPlanId: materialized.plan.id,
+    materializedPlanAuthority: recordRevisionAuthority(materialized.plan),
+    materializedPackageAuthorities: materialized.packages.map(recordRevisionAuthority),
     investorResolution,
     pendingNextRevisionNumber: null,
   };
