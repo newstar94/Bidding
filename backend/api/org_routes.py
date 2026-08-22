@@ -49,6 +49,43 @@ _MEMBERSHIP_CANDIDATE_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _QUERY_CHUNK_SIZE = 500
 
 
+def _lock_and_can_manage_organization_mutation(
+    cursor,
+    session_role,
+    user_id,
+    organization_id,
+):
+    """Serialize with role changes and re-read the actor's current authority."""
+
+    if getattr(session_role, "active_role", None) == "employee":
+        return False
+    if not lock_organization_membership_invariants(cursor, organization_id):
+        return False
+    account = cursor.execute(
+        """SELECT vai_tro, trang_thai
+             FROM tai_khoan
+            WHERE id = ?
+            FOR UPDATE""",
+        (user_id,),
+    ).fetchone()
+    if not account or str(account[1] or "").strip().lower() != "active":
+        return False
+    if str(account[0] or "").strip().lower() == "super_admin":
+        return True
+    membership = cursor.execute(
+        """SELECT vai_tro_trong_to_chuc, trang_thai_thanh_vien
+             FROM thanh_vien_to_chuc
+            WHERE user_id = ? AND organization_id = ?
+            FOR UPDATE""",
+        (user_id, organization_id),
+    ).fetchone()
+    return bool(
+        membership
+        and str(membership[0] or "").strip().lower() == "manager"
+        and str(membership[1] or "active").strip().lower() == "active"
+    )
+
+
 def _insert_assignment_departure_history(
     cursor,
     organization_id,
@@ -612,13 +649,19 @@ async def add_user_to_org_api(request):
                 status_code=409,
             )
 
-        if not is_organization_manager(
+        if not _lock_and_can_manage_organization_mutation(
             cursor, role_or_err, role_or_err.user_id, org_id
         ):
             conn.rollback()
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
 
-        effective_roles = get_effective_roles(role_or_err)
+        actor_platform_role = cursor.execute(
+            "SELECT vai_tro FROM tai_khoan WHERE id = ?",
+            (role_or_err.user_id,),
+        ).fetchone()
+        effective_roles = get_effective_roles(
+            actor_platform_role[0] if actor_platform_role else ""
+        )
 
         membership = cursor.execute(
             """SELECT user_id, COALESCE(trang_thai_thanh_vien, 'active') AS membership_status
@@ -851,12 +894,11 @@ async def remove_user_from_org_api(request):
                 {"error": "Không thể quản lý thành viên trong không gian cá nhân.", "code": "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN"},
                 status_code=409,
             )
-        if not is_organization_manager(
+        if not _lock_and_can_manage_organization_mutation(
             cursor, role_or_err, role_or_err.user_id, org_id
         ):
             conn.close()
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
-        lock_organization_membership_invariants(cursor, org_id)
         sync_version = next_sync_version(cursor, org_id)
 
         cursor.execute(
@@ -1239,7 +1281,7 @@ async def get_document_export_capabilities_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not _can_manage_document_export_grants(
-            cursor, str(role_or_error), role_or_error.user_id, organization_id
+            cursor, role_or_error, role_or_error.user_id, organization_id
         ):
             return error_response(
                 request,
@@ -1320,9 +1362,20 @@ async def update_document_export_capabilities_api(request):
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
-        if not _can_manage_document_export_grants(
-            cursor, str(role_or_error), role_or_error.user_id, organization_id
-        ):
+        if is_business_organization(cursor, organization_id):
+            can_manage = _lock_and_can_manage_organization_mutation(
+                cursor,
+                role_or_error,
+                role_or_error.user_id,
+                organization_id,
+            )
+        else:
+            can_manage = is_personal_workspace_owner(
+                cursor,
+                role_or_error.user_id,
+                organization_id,
+            )
+        if not can_manage:
             conn.rollback()
             return error_response(
                 request,

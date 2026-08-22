@@ -13,7 +13,10 @@ from datetime import date, datetime
 from typing import Any, Mapping
 
 from backend.documents.word_defaults import WORD_SINGLE_SOURCES
-from backend.shared.media_helper import normalize_managed_image_path
+from backend.shared.media_helper import (
+    managed_image_path_matches_tenant,
+    normalize_managed_image_path,
+)
 
 
 MANIFEST_VERSION = 1
@@ -559,17 +562,38 @@ def _safe_clone(value: Any, *, depth: int = 0) -> Any:
     return None
 
 
-def _sanitize_image_value(field_name: str, value: Any) -> Any:
-    expected_subfolder = BASE_IMAGE_FIELDS.get(field_name)
+def _sanitize_managed_image_path(
+    value: Any,
+    expected_subfolder: str | None,
+    organization_id: str | None,
+) -> Any:
     if not expected_subfolder or not isinstance(value, str):
         return value
     managed = normalize_managed_image_path(value)
     if not managed.startswith(f"images/{expected_subfolder}/"):
         return ""
-    relative = managed.removeprefix(f"images/{expected_subfolder}/")
-    if not relative or "/" in relative or "\\" in relative or relative in {".", ".."}:
+    parts = managed.split("/")
+    if len(parts) == 4:
+        if not organization_id or not managed_image_path_matches_tenant(
+            managed,
+            organization_id,
+        ):
+            return ""
+    elif len(parts) != 3:
         return ""
     return managed
+
+
+def _sanitize_image_value(
+    field_name: str,
+    value: Any,
+    organization_id: str | None = None,
+) -> Any:
+    return _sanitize_managed_image_path(
+        value,
+        BASE_IMAGE_FIELDS.get(field_name),
+        organization_id,
+    )
 
 
 def _capability_enabled(capabilities: Any, capability_id: str) -> bool:
@@ -589,6 +613,7 @@ def project_entity(
     entity_name: str,
     value: Any,
     capabilities: Any = None,
+    organization_id: str | None = None,
 ) -> dict[str, Any]:
     """Return an allowlisted, JSON-safe copy of one export entity."""
     spec = ENTITY_SPECS[entity_name]
@@ -606,16 +631,30 @@ def project_entity(
             ]
         elif child_spec:
             result[key] = [
-                project_entity(child_spec, item, capabilities)
+                project_entity(
+                    child_spec,
+                    item,
+                    capabilities,
+                    organization_id,
+                )
                 for item in (child or [])
                 if isinstance(item, dict)
             ]
         elif _is_scalar(child):
-            result[key] = _sanitize_image_value(key, _safe_scalar(child))
+            result[key] = _sanitize_image_value(
+                key,
+                _safe_scalar(child),
+                organization_id,
+            )
     return result
 
 
-def _project_root(spec_name: str, value: Any, capabilities: Any = None) -> Any:
+def _project_root(
+    spec_name: str,
+    value: Any,
+    capabilities: Any = None,
+    organization_id: str | None = None,
+) -> Any:
     if spec_name == "scalar":
         return _safe_scalar(value)
     if spec_name == "safe_list":
@@ -623,17 +662,19 @@ def _project_root(spec_name: str, value: Any, capabilities: Any = None) -> Any:
     if spec_name.endswith("_list"):
         entity_name = spec_name.removesuffix("_list")
         return [
-            project_entity(entity_name, item, capabilities)
+            project_entity(entity_name, item, capabilities, organization_id)
             for item in (value or [])
             if isinstance(item, dict)
         ]
-    return project_entity(spec_name, value, capabilities)
+    return project_entity(spec_name, value, capabilities, organization_id)
 
 
 def project_docx_context(
     document_type: str,
     context: Mapping[str, Any],
     capabilities: Any = None,
+    *,
+    organization_id: str | None = None,
 ) -> dict[str, Any]:
     """Project fixed context roots according to the requested document type."""
     root_specs = ROOT_SPECS_BY_DOCUMENT_TYPE.get(document_type)
@@ -642,7 +683,12 @@ def project_docx_context(
     if not isinstance(context, Mapping):
         raise ValueError("Ngữ cảnh tài liệu Word không hợp lệ.")
     return {
-        key: _project_root(spec_name, context[key], capabilities)
+        key: _project_root(
+            spec_name,
+            context[key],
+            capabilities,
+            organization_id,
+        )
         for key, spec_name in root_specs.items()
         if key in context
     }
@@ -743,19 +789,20 @@ def _project_custom_mapping_value(
     source_table: str,
     source_column: str,
     capabilities: Any = None,
+    organization_id: str | None = None,
 ):
     """Project one mapping result according to its declared source contract."""
     if source_table in {"__computed__", "__context__"} or source_column:
         if not _field_is_allowed(source_column, capabilities):
             return None
         scalar = _safe_scalar(value)
-        return _sanitize_image_value(source_column, scalar)
+        return _sanitize_image_value(source_column, scalar, organization_id)
 
     entity_name = _MAPPING_LIST_ENTITY_BY_SOURCE.get(source_table)
     if entity_name is None:
         return []
     return [
-        project_entity(entity_name, item, capabilities)
+        project_entity(entity_name, item, capabilities, organization_id)
         for item in (value or [])
         if isinstance(item, dict)
     ]
@@ -766,9 +813,16 @@ def seal_docx_context(
     context,
     mapping_rows=(),
     capabilities: Any = None,
+    *,
+    organization_id: str | None = None,
 ):
     """Return the final DTO and a worker-verifiable rendering manifest."""
-    safe_context = project_docx_context(document_type, context, capabilities)
+    safe_context = project_docx_context(
+        document_type,
+        context,
+        capabilities,
+        organization_id=organization_id,
+    )
     safe_mappings = filter_mapping_rows(mapping_rows, document_type, capabilities)
     custom_roots = []
     image_fields = (
@@ -780,7 +834,11 @@ def seal_docx_context(
         if variable_name not in context:
             continue
         safe_context[variable_name] = _project_custom_mapping_value(
-            context[variable_name], source_table, source_column, capabilities
+            context[variable_name],
+            source_table,
+            source_column,
+            capabilities,
+            organization_id,
         )
         custom_roots.append(variable_name)
         image_subfolder = _IMAGE_SOURCE_FIELDS.get((source_table, source_column))
@@ -793,6 +851,7 @@ def seal_docx_context(
         "root_keys": sorted(safe_context),
         "custom_root_keys": sorted(set(custom_roots)),
         "image_fields": image_fields,
+        "media_organization_id": str(organization_id or "").strip(),
     }
     validate_docx_context_manifest(safe_context, manifest)
     return safe_context, manifest
@@ -858,8 +917,37 @@ def validate_docx_context_manifest(context, manifest):
         if key not in BASE_IMAGE_FIELDS and key not in custom_set:
             raise ValueError("Manifest ảnh Word cấp quyền cho trường không được phép.")
 
+    media_organization_id = str(
+        manifest.get("media_organization_id") or ""
+    ).strip()
+    if len(media_organization_id) > 160:
+        raise ValueError("Phạm vi tổ chức của ảnh Word không hợp lệ.")
+
+    def validate_images(value: Any, depth: int = 0) -> None:
+        if depth > 10:
+            return
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                expected_subfolder = image_fields.get(str(key))
+                if expected_subfolder and isinstance(child, str) and child:
+                    normalized = normalize_managed_image_path(child)
+                    sanitized = _sanitize_managed_image_path(
+                        child,
+                        expected_subfolder,
+                        media_organization_id or None,
+                    )
+                    if not normalized or sanitized != normalized:
+                        raise ValueError("Ảnh Word không thuộc tổ chức hiện tại.")
+                validate_images(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value[:10_000]:
+                validate_images(child, depth + 1)
+
+    validate_images(context)
+
     return {
         "document_type": document_type,
         "allowed_root_keys": declared_set,
         "allowed_image_fields": dict(image_fields),
+        "media_organization_id": media_organization_id,
     }

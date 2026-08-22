@@ -15,51 +15,6 @@ export function copyAsNewRecord(source, overrides = {}) {
   return record;
 }
 
-function copyChildRows(rows, transform = (row) => row) {
-  return (Array.isArray(rows) ? rows : []).map((source) => {
-    const row = copyAsNewRecord(source);
-    delete row.id;
-    return transform(row);
-  });
-}
-
-/**
- * Create the data portion of a new package snapshot.
- *
- * Planning data is retained, while opening/evaluation/award/cancellation data
- * belongs to the historical package version and must never leak into a new
- * procurement process. Child IDs are also removed because they are globally
- * unique database rows, not lineage identifiers.
- */
-export function preparePackageSnapshot(source, overrides = {}) {
-  const packageData = copyAsNewRecord(source, overrides);
-  return {
-    ...packageData,
-    trangThai: "Chuẩn bị",
-    nhaThauTrungThauId: null,
-    giaTrungThau: null,
-    soQuyetDinhKetQua: "",
-    ngayQuyetDinhKetQua: "",
-    thoiGianGoiThau: "",
-    thoiGianHopDong: "",
-    danhGiaHsdtMetadata: null,
-    phanLoList: copyChildRows(packageData.phanLoList, (row) => ({
-      ...row,
-      nhaThauTrungThauId: null,
-      giaTrungThau: null,
-      thoiGianGoiThau: "",
-      thoiGianHopDong: ""
-    })),
-    awardedPhanLoList: [],
-    tuyChonMuaThemList: copyChildRows(packageData.tuyChonMuaThemList),
-    giaHanList: [],
-    yeuCauLamRoList: [],
-    traLoiLamRoList: [],
-    timelineItems: [],
-    ehsmtAdjustments: []
-  };
-}
-
 export function buildVersionEhsmtAdjustment(packageData = {}) {
   const sequence = Number.parseInt(packageData.phienBan || "0", 10) || 0;
   const packageId = String(packageData.id || "").trim();

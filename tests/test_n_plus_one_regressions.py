@@ -395,7 +395,15 @@ class _OrganizationRemovalCursor:
         normalized = " ".join(str(sql).split())
         parameters = tuple(params)
         self.calls.append((normalized, parameters))
-        if normalized.startswith("SELECT vai_tro_trong_to_chuc"):
+        if normalized.startswith("SELECT id FROM to_chuc"):
+            self.answer = _Answer(one=("organization-1",))
+        elif normalized.startswith("SELECT vai_tro, trang_thai FROM tai_khoan"):
+            self.answer = _Answer(one=("user", "active"))
+        elif normalized.startswith(
+            "SELECT vai_tro_trong_to_chuc, trang_thai_thanh_vien"
+        ):
+            self.answer = _Answer(one=("manager", "active"))
+        elif normalized.startswith("SELECT vai_tro_trong_to_chuc"):
             self.answer = _Answer(one=("employee",))
         elif normalized.startswith("SELECT pc.*"):
             self.answer = _Answer(rows=self.assignments)

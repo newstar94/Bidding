@@ -4,6 +4,16 @@ import { expect, test } from "@playwright/test";
 const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 const packageId = String(process.env.E2E_CONTRACTOR_VIOLATION_PACKAGE_ID || "");
+const fixtureReady = Boolean(
+  password
+  && packageId
+  && process.env.VNEPS_VIOLATION_FIXTURE_PATH
+);
+
+test.skip(
+  !fixtureReady,
+  "Requires E2E password, contractor package ID and violation fixture.",
+);
 
 
 async function waitForApp(page) {

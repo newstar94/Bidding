@@ -23,6 +23,7 @@ from backend.documents.routes_docx import (
     _validate_docx_upload,
     delete_template_api,
     set_active_template_api,
+    replace_template_api,
     view_template_api,
 )
 
@@ -209,7 +210,11 @@ def test_template_availability_api_persists_and_audits_the_choice(
 
     response = client.post(
         "/api/templates/active",
-        json={"template_name": "bao-cao.docx", "enabled": True},
+        json={
+            "template_name": "bao-cao.docx",
+            "enabled": True,
+            "expectedRevision": 0,
+        },
     )
 
     assert response.status_code == 200
@@ -217,14 +222,40 @@ def test_template_availability_api_persists_and_audits_the_choice(
         "success": True,
         "filename": "bao-cao.docx",
         "enabled": True,
+        "revision": 1,
     }
     assert custom_exporter.is_template_enabled(
         "bao-cao.docx",
         "org-a",
         owner_type="organization",
     )
-    assert audits[0][0] == "document.word_template_availability_updated"
-    assert audits[0][1]["metadata"]["enabled"] is True
+    assert [event for event, _kwargs in audits[:2]] == [
+        "document.word_template_availability_update_requested",
+        "document.word_template_availability_updated",
+    ]
+    assert audits[1][1]["metadata"]["enabled"] is True
+
+    stale_response = client.post(
+        "/api/templates/active",
+        json={
+            "template_name": "bao-cao.docx",
+            "enabled": False,
+            "expectedRevision": 0,
+        },
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.json()["code"] == "WORD_TEMPLATE_CONFIG_CONFLICT"
+    assert stale_response.json()["currentRevision"] == 1
+    assert custom_exporter.is_template_enabled(
+        "bao-cao.docx",
+        "org-a",
+        owner_type="organization",
+    )
+    assert [event for event, _kwargs in audits] == [
+        "document.word_template_availability_update_requested",
+        "document.word_template_availability_updated",
+        "document.word_template_availability_update_requested",
+    ]
 
 
 def test_template_availability_api_reuses_word_config_write_permission(
@@ -268,6 +299,68 @@ def test_template_availability_api_reuses_word_config_write_permission(
         "org-a",
         owner_type="organization",
     )
+
+
+def test_template_availability_rolls_back_when_required_audit_fails(
+    template_root,
+    monkeypatch,
+):
+    _custom_template(
+        template_root,
+        "organization",
+        "org-a",
+        "bao-cao.docx",
+        b"content",
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-a")),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_config_access_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.get_active_org",
+        lambda *_args: "org-a",
+    )
+    audits = []
+
+    def fail_result_audit(event, **_kwargs):
+        audits.append(event)
+        if event == "document.word_template_availability_updated":
+            raise OSError("audit unavailable")
+
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.log_audit",
+        fail_result_audit,
+    )
+    client = TestClient(Starlette(routes=[
+        Route("/api/templates/active", set_active_template_api, methods=["POST"]),
+    ]))
+
+    response = client.post(
+        "/api/templates/active",
+        json={
+            "template_name": "bao-cao.docx",
+            "enabled": True,
+            "expectedRevision": 0,
+        },
+    )
+
+    assert response.status_code == 500
+    assert custom_exporter.get_template_config_revision(
+        "org-a", owner_type="organization"
+    ) == 0
+    assert not custom_exporter.is_template_enabled(
+        "bao-cao.docx",
+        "org-a",
+        owner_type="organization",
+    )
+    assert audits == [
+        "document.word_template_availability_update_requested",
+        "document.word_template_availability_updated",
+    ]
 
 
 def test_replace_custom_template_preserves_name_and_active_selection(template_root, tmp_path):
@@ -335,6 +428,11 @@ def test_delete_route_decodes_percent_encoded_unicode_filename(
         "backend.documents.routes_docx.get_active_org",
         lambda *_args: "org-a",
     )
+    audits = []
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.log_audit",
+        lambda event, **kwargs: audits.append((event, kwargs)),
+    )
     app = Starlette(routes=[
         Route("/api/templates/{filename}", delete_template_api, methods=["DELETE"]),
     ])
@@ -347,6 +445,10 @@ def test_delete_route_decodes_percent_encoded_unicode_filename(
     assert response.status_code == 200
     assert repeated_response.status_code == 200
     assert not target.exists()
+    assert [event for event, _kwargs in audits] == [
+        "document.word_template_delete_requested",
+        "document.word_template_deleted",
+    ]
 
 
 def test_rename_custom_template_preserves_active_selection(template_root):
@@ -367,6 +469,54 @@ def test_rename_custom_template_preserves_active_selection(template_root):
     assert custom_exporter.get_active_template(
         "org-a", owner_type="organization"
     ) == filename
+
+
+def test_replace_route_audits_renamed_template(template_root, monkeypatch):
+    original = _custom_template(
+        template_root, "organization", "org-a", "old.docx", b"content"
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-a")),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_config_access_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_template_upload_access_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.get_active_org",
+        lambda *_args: "org-a",
+    )
+    audits = []
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.log_audit",
+        lambda event, **kwargs: audits.append((event, kwargs)),
+    )
+    client = TestClient(Starlette(routes=[
+        Route(
+            "/api/templates/{filename}",
+            replace_template_api,
+            methods=["PUT"],
+        ),
+    ]))
+
+    response = client.put(
+        "/api/templates/old.docx",
+        data={"name": "new.docx"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["filename"] == "new.docx"
+    assert not original.exists()
+    assert (original.parent / "new.docx").read_bytes() == b"content"
+    assert [event for event, _kwargs in audits] == [
+        "document.word_template_replace_requested",
+        "document.word_template_replaced",
+    ]
 
 
 def test_rename_custom_template_rejects_duplicate_name(template_root):
@@ -458,6 +608,84 @@ def test_edit_can_rename_and_replace_template_in_one_update(template_root, tmp_p
     assert not original.exists()
     assert filename == "Báo cáo mới.docx"
     assert Path(updated).read_bytes() == b"new"
+
+
+def test_upload_file_is_removed_when_required_audit_fails(template_root, tmp_path):
+    upload = tmp_path / "validated-upload.docx"
+    upload.write_bytes(b"new")
+
+    with pytest.raises(OSError, match="audit unavailable"):
+        _persist_scoped_template_from_path(
+            "organization",
+            "org-a",
+            "new.docx",
+            str(upload),
+            audit_callback=lambda *_args: (_ for _ in ()).throw(
+                OSError("audit unavailable")
+            ),
+        )
+
+    stored = Path(
+        custom_exporter.get_scope_template_dir("organization", "org-a")
+    ) / "new.docx"
+    assert not stored.exists()
+
+
+def test_rename_and_config_are_restored_when_required_audit_fails(template_root):
+    original = _custom_template(
+        template_root, "organization", "org-a", "old.docx", b"old"
+    )
+    custom_exporter.set_active_template(
+        "old.docx", "org-a", owner_type="organization"
+    )
+    config_path = original.parent / "config.json"
+    original_config = config_path.read_bytes()
+
+    with pytest.raises(OSError, match="audit unavailable"):
+        _update_scoped_template(
+            "organization",
+            "org-a",
+            "old.docx",
+            "new.docx",
+            audit_callback=lambda *_args: (_ for _ in ()).throw(
+                OSError("audit unavailable")
+            ),
+        )
+
+    assert original.read_bytes() == b"old"
+    assert not (original.parent / "new.docx").exists()
+    assert config_path.read_bytes() == original_config
+
+
+def test_deleted_file_and_config_are_restored_when_required_audit_fails(
+    template_root,
+):
+    original = _custom_template(
+        template_root, "organization", "org-a", "delete.docx", b"old"
+    )
+    custom_exporter.set_template_assignments(
+        {"procurement_plan": ["delete.docx"]},
+        "org-a",
+        owner_type="organization",
+    )
+    config_path = original.parent / "config.json"
+    original_config = config_path.read_bytes()
+
+    with pytest.raises(OSError, match="audit unavailable"):
+        _delete_scoped_template(
+            "organization",
+            "org-a",
+            "delete.docx",
+            audit_callback=lambda *_args: (_ for _ in ()).throw(
+                OSError("audit unavailable")
+            ),
+        )
+
+    assert original.read_bytes() == b"old"
+    assert config_path.read_bytes() == original_config
+    assert custom_exporter.get_template_assignments(
+        "org-a", owner_type="organization"
+    ) == {"procurement_plan": ["delete.docx"]}
 
 
 def test_invalid_replacement_returns_the_safe_document_validation_reason():

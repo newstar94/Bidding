@@ -84,10 +84,6 @@ export function selectPartnerVersionForDate(records, partnerVersionId, businessD
   return resolvePartnerVersionForDate(records, partnerVersionId, businessDate).record;
 }
 
-export function selectContractorVersionForDate(model, contractorVersionId, businessDate) {
-  return selectPartnerVersionForDate(model?.state?.nhathau || [], contractorVersionId, businessDate);
-}
-
 export function resolveBidContractorName(model, bid) {
   if (!bid) return "";
   return bid.tenNhaThau || getExactContractorVersion(model, bid.nhaThauId)?.tenNhaThau || "";

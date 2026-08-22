@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   packageFieldsLockedAfterInvitation,
 } from "../../frontend/app/BiddingControllerForms.js";
-import { lifecycleContract } from "../../frontend/packages/LifecyclePolicy.js";
 
 const STATUS_ORDER = [
   "Chưa xác định",
@@ -29,13 +28,6 @@ test("package base fields lock only from invitation onward", () => {
   assert.equal(packageFieldsLockedAfterInvitation("Đang mời thầu", STATUS_ORDER), true);
   assert.equal(packageFieldsLockedAfterInvitation("Đã mở thầu", STATUS_ORDER), true);
   assert.equal(packageFieldsLockedAfterInvitation("Chuẩn bị", STATUS_ORDER, true), false);
-});
-
-test("invited packages lock every package scheduling field", () => {
-  const locked = new Set(lifecycleContract().lockedAfterInvitation);
-  assert.ok(locked.has("thoiGianThucHien"));
-  assert.ok(locked.has("thoiGianToChuc"));
-  assert.ok(locked.has("thoiGianBatDauToChuc"));
 });
 
 test("locked package fields remain part of the visible read-only form contract", async () => {

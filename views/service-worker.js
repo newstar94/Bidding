@@ -5,8 +5,13 @@ const HASHED_ASSET = /^\/dist\/assets\/.+-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
 
 async function initialHashedAssets() {
   const response = await fetch("/dist/.vite/manifest.json", { cache: "no-store", credentials: "same-origin" });
-  if (!response.ok) return [];
+  if (!response.ok) {
+    throw new Error(`Service worker manifest request failed: HTTP ${response.status}`);
+  }
   const manifest = await response.json();
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("Service worker manifest is invalid");
+  }
   const entryKey = "frontend/app/app.js";
   const pending = [entryKey];
   const visited = new Set();
@@ -24,15 +29,23 @@ async function initialHashedAssets() {
     }
     pending.push(...(item.imports || []));
   }
-  return [...new Set(assets)];
+  const uniqueAssets = [...new Set(assets)];
+  if (!uniqueAssets.length) {
+    throw new Error("Service worker manifest has no precache assets");
+  }
+  return uniqueAssets;
 }
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const assets = await initialHashedAssets();
-    if (assets.length) await (await caches.open(CACHE_NAME)).addAll(assets);
-    await self.skipWaiting();
-  })().catch(() => self.skipWaiting()));
+    try {
+      await (await caches.open(CACHE_NAME)).addAll(assets);
+    } catch (error) {
+      await caches.delete(CACHE_NAME);
+      throw error;
+    }
+  })());
 });
 
 self.addEventListener("activate", (event) => {
@@ -41,7 +54,6 @@ self.addEventListener("activate", (event) => {
     await Promise.all(names
       .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
       .map((name) => caches.delete(name)));
-    await self.clients.claim();
   })());
 });
 

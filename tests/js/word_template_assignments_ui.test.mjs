@@ -89,6 +89,7 @@ async function withAssignmentPage(run) {
         const assignmentSets = payload.assignmentSets || {};
         response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({
+          revision: payload.expectedRevision + 1,
           documentTypes: [],
           assignments: Object.fromEntries(
             Object.entries(assignmentSets).map(([id, filenames]) => [id, filenames[0]]),
@@ -140,6 +141,7 @@ async function withAssignmentPage(run) {
 
 function configuration(assignmentSets = {}) {
   return {
+    revision: 7,
     documentTypes: [],
     assignments: assignmentSets,
     assignmentSets,
@@ -236,6 +238,7 @@ test("manager assigns searchable Word templates by function and saves once", asy
 
     assert.equal(saves.length, 1);
     assert.deepEqual(saves[0], {
+      expectedRevision: 7,
       assignmentSets: {
         consultant_evaluation_step_1: ["Mẫu chính.docx", "Mẫu tư vấn.docx"],
       },

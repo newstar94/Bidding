@@ -5,6 +5,10 @@ import {
   saveWordPublicationTemplateAssignments,
 } from "./WordPublicationTemplateConfig.js";
 import { WORD_PUBLICATION_DOCUMENTS } from "./WordPublicationPolicy.js";
+import {
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
+} from "../app/workspaceLease.js";
 
 const WORD_TEMPLATE_ASSIGNMENTS_STYLESHEET_URL = new URL(
   "./WordTemplateAssignments.css?no-inline", import.meta.url,
@@ -525,14 +529,18 @@ export function renderWordTemplateAssignments(
 }
 
 export async function loadAndRenderWordTemplateAssignments(controller, templates) {
+  const lease = captureWorkspaceLease(controller.model);
   await loadWordTemplateAssignmentStyles();
+  if (!isWorkspaceLeaseCurrent(controller.model, lease)) return null;
   controller._wordPublicationTemplates = Array.isArray(templates) ? templates : [];
   renderWordTemplateAssignments(controller, templates, {}, { loading: true });
   try {
     const config = await loadWordPublicationTemplateConfig(controller);
+    if (!isWorkspaceLeaseCurrent(controller.model, lease)) return null;
     renderWordTemplateAssignments(controller, templates, config);
     return config;
   } catch (error) {
+    if (!isWorkspaceLeaseCurrent(controller.model, lease)) return null;
     renderWordTemplateAssignments(controller, templates, {}, {
       error: error instanceof Error ? error.message : String(error),
     });

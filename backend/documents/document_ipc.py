@@ -12,6 +12,11 @@ import shutil
 import stat
 from typing import Any
 
+from backend.shared.media_helper import (
+    managed_image_path_matches_tenant,
+    normalize_managed_image_path,
+)
+
 
 IPC_VERSION = 1
 JOB_FORMAT = "biddingflow-document-job"
@@ -95,8 +100,13 @@ def _copy_source(source: Path, destination: Path) -> None:
     destination.chmod(0o600)
 
 
-def _copy_referenced_images(context: Any, job_dir: Path, image_root: Path) -> int:
-    references: set[tuple[str, str]] = set()
+def _copy_referenced_images(
+    context: Any,
+    job_dir: Path,
+    image_root: Path,
+    organization_id: str | None = None,
+) -> int:
+    references: set[str] = set()
 
     def collect(value: Any, depth: int = 0) -> None:
         if depth > MAX_DEPTH:
@@ -108,27 +118,41 @@ def _copy_referenced_images(context: Any, job_dir: Path, image_root: Path) -> in
             for child in value:
                 collect(child, depth + 1)
         elif isinstance(value, str):
-            normalized = value.strip().replace("\\", "/").lstrip("/")
-            parts = normalized.split("/")
-            if len(parts) == 3 and parts[0] == "images" and parts[1] in {"chuyen_gia", "nha_thau"}:
-                filename = parts[2]
-                if filename not in {"", ".", ".."} and "/" not in filename and "\\" not in filename:
-                    references.add((parts[1], filename))
+            managed = normalize_managed_image_path(value)
+            if not managed:
+                return
+            parts = managed.split("/")
+            if len(parts) == 4 and (
+                not organization_id
+                or not managed_image_path_matches_tenant(
+                    managed,
+                    organization_id,
+                )
+            ):
+                raise DocumentIpcError(
+                    "Ảnh của tác vụ không thuộc tổ chức hiện tại."
+                )
+            references.add(managed)
 
     collect(context)
     total_bytes = 0
-    for folder, filename in references:
+    for managed in references:
+        parts = managed.split("/")
+        folder = parts[1]
+        relative_parts = parts[2:]
         source_root = (image_root / folder).resolve()
-        source_candidate = source_root / filename
+        source_candidate = source_root.joinpath(*relative_parts)
         source = source_candidate.resolve()
         try:
             if os.path.commonpath([str(source_root), str(source)]) != str(source_root) or not source.is_file():
                 continue
         except (OSError, ValueError):
             continue
-        target_root = job_dir / "assets" / "images" / folder
-        target_root.mkdir(parents=True, exist_ok=True)
-        _copy_source(source_candidate, target_root / filename)
+        target = (job_dir / "assets" / "images" / folder).joinpath(
+            *relative_parts
+        )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _copy_source(source_candidate, target)
         total_bytes += source.stat().st_size
         if total_bytes > MAX_TOTAL_BYTES:
             raise DocumentIpcError("Tổng kích thước ảnh của tác vụ vượt quá giới hạn.")
@@ -190,7 +214,18 @@ def write_job_manifest(path: Path, operation: str, payload: dict[str, Any], *, i
         prepared["template_path"] = _FileSource(Path(str(prepared["template_path"])), "path")
     image_bytes = 0
     if "context" in prepared:
-        image_bytes = _copy_referenced_images(prepared["context"], path.parent, image_root)
+        context_manifest = prepared.get("context_manifest")
+        organization_id = (
+            str(context_manifest.get("media_organization_id") or "").strip()
+            if isinstance(context_manifest, dict)
+            else ""
+        )
+        image_bytes = _copy_referenced_images(
+            prepared["context"],
+            path.parent,
+            image_root,
+            organization_id or None,
+        )
 
     state = {"files": 0, "bytes": image_bytes, "items": 0}
     manifest = {

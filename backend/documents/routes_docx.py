@@ -4,6 +4,7 @@ import re
 import shutil
 import unicodedata
 from io import BytesIO
+from pathlib import Path
 from urllib.parse import quote
 from zipfile import ZIP_DEFLATED, ZipFile
 from starlette.responses import FileResponse, StreamingResponse, JSONResponse
@@ -25,7 +26,7 @@ from backend.shared.access_policy import (
 )
 from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.subscription_policy import can_use_word_export
-from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.logging_utils import error_response, get_request_id, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.async_io import (
     BlockingIOBusyError,
@@ -80,6 +81,21 @@ COMPUTED_SOURCE_TABLE = '__computed__'
 
 
 def _docx_error(request, exception, context):
+    if isinstance(exception, custom_exporter.WordTemplateConfigConflictError):
+        request_id = get_request_id(request)
+        current_revision = exception.current_revision
+        return JSONResponse(
+            {
+                "code": "WORD_TEMPLATE_CONFIG_CONFLICT",
+                "message": "Cấu hình biểu mẫu Word đã thay đổi. Vui lòng tải lại.",
+                "error": "Cấu hình biểu mẫu Word đã thay đổi. Vui lòng tải lại.",
+                "currentRevision": current_revision,
+                "fields": {"currentRevision": current_revision},
+                "requestId": request_id,
+            },
+            status_code=409,
+            headers={"X-Request-ID": request_id},
+        )
     if isinstance(exception, OrgPermissionError):
         return error_response(
             request,
@@ -362,7 +378,14 @@ def _resolve_custom_template_path(owner_type, owner_id, filename):
     raise FileNotFoundError('Không tìm thấy mẫu Word tùy chỉnh')
 
 
-def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_path):
+def _persist_scoped_template_from_path(
+    owner_type,
+    owner_id,
+    filename,
+    source_path,
+    *,
+    audit_callback=None,
+):
     filename = _normalize_custom_template_filename(filename)
     scope_dir = os.path.realpath(
         custom_exporter.get_scope_template_dir(owner_type, owner_id)
@@ -370,16 +393,33 @@ def _persist_scoped_template_from_path(owner_type, owner_id, filename, source_pa
     dest_path = os.path.realpath(os.path.join(scope_dir, filename))
     if not dest_path.startswith(scope_dir + os.sep):
         raise ValueError("Tên tệp không hợp lệ")
-    if any(
-        existing_name.casefold() == filename.casefold()
-        for existing_name in os.listdir(scope_dir)
+    with custom_exporter.template_scope_file_lock(
+        owner_id,
+        owner_type=owner_type,
     ):
-        raise FileExistsError('Tên biểu mẫu đã tồn tại')
-    try:
-        with open(source_path, 'rb') as source, open(dest_path, 'xb') as destination:
-            shutil.copyfileobj(source, destination)
-    except FileExistsError:
-        raise FileExistsError('Tên biểu mẫu đã tồn tại') from None
+        if any(
+            existing_name.casefold() == filename.casefold()
+            for existing_name in os.listdir(scope_dir)
+        ):
+            raise FileExistsError('Tên biểu mẫu đã tồn tại')
+        try:
+            with open(source_path, 'rb') as source, open(dest_path, 'xb') as destination:
+                shutil.copyfileobj(source, destination)
+            if audit_callback is not None:
+                audit_callback(
+                    filename,
+                    custom_exporter.get_template_config_revision(
+                        owner_id,
+                        owner_type=owner_type,
+                    ),
+                )
+        except FileExistsError:
+            raise FileExistsError('Tên biểu mẫu đã tồn tại') from None
+        except Exception:
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            raise
+    return dest_path
 
 
 def _replace_file_content(path, content):
@@ -411,64 +451,109 @@ def _update_scoped_template(
     new_filename,
     *,
     source_path=None,
+    audit_callback=None,
 ):
-    current_path, current_name = _resolve_custom_template_path(
-        owner_type, owner_id, filename
-    )
-    next_name = _normalize_custom_template_filename(new_filename or current_name)
-    scope_dir = os.path.realpath(
-        custom_exporter.get_scope_template_dir(owner_type, owner_id)
-    )
-    next_path = os.path.abspath(os.path.join(scope_dir, next_name))
-    common_dir = os.path.normcase(os.path.commonpath([scope_dir, next_path]))
-    if common_dir != os.path.normcase(scope_dir):
-        raise ValueError('Tên biểu mẫu không hợp lệ')
-    same_path = os.path.normcase(next_path) == os.path.normcase(current_path)
-    if not same_path and os.path.exists(next_path):
-        raise FileExistsError('Tên biểu mẫu đã tồn tại')
-
-    if source_path:
-        temp_path = os.path.join(scope_dir, f'.{next_name}.{uuid.uuid4().hex}.tmp')
-        try:
-            shutil.copyfile(source_path, temp_path)
-            os.replace(temp_path, next_path)
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        if not same_path:
-            os.remove(current_path)
-    elif not same_path:
-        os.replace(current_path, next_path)
-    elif current_name != next_name:
-        case_temp_path = os.path.join(
-            scope_dir, f'.{current_name}.{uuid.uuid4().hex}.rename'
-        )
-        os.replace(current_path, case_temp_path)
-        try:
-            os.replace(case_temp_path, next_path)
-        except OSError:
-            os.replace(case_temp_path, current_path)
-            raise
-
-    if current_name != next_name:
-        custom_exporter.replace_template_reference(
-            current_name,
-            next_name,
-            owner_id,
-            owner_type=owner_type,
-        )
-    return next_path, next_name
-
-
-def _delete_scoped_template(owner_type, owner_id, filename):
-    path, safe_name = _resolve_custom_template_path(owner_type, owner_id, filename)
-    os.remove(path)
-    custom_exporter.replace_template_reference(
-        safe_name,
-        '',
+    with custom_exporter.template_scope_file_lock(
         owner_id,
         owner_type=owner_type,
-    )
+    ):
+        current_path, current_name = _resolve_custom_template_path(
+            owner_type, owner_id, filename
+        )
+        original_content = Path(current_path).read_bytes()
+        next_name = _normalize_custom_template_filename(new_filename or current_name)
+        scope_dir = os.path.realpath(
+            custom_exporter.get_scope_template_dir(owner_type, owner_id)
+        )
+        next_path = os.path.abspath(os.path.join(scope_dir, next_name))
+        common_dir = os.path.normcase(os.path.commonpath([scope_dir, next_path]))
+        if common_dir != os.path.normcase(scope_dir):
+            raise ValueError('Tên biểu mẫu không hợp lệ')
+        same_path = os.path.normcase(next_path) == os.path.normcase(current_path)
+        if not same_path and os.path.exists(next_path):
+            raise FileExistsError('Tên biểu mẫu đã tồn tại')
+
+        try:
+            if source_path:
+                temp_path = os.path.join(scope_dir, f'.{next_name}.{uuid.uuid4().hex}.tmp')
+                try:
+                    shutil.copyfile(source_path, temp_path)
+                    os.replace(temp_path, next_path)
+                finally:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                if not same_path:
+                    os.remove(current_path)
+            elif not same_path:
+                os.replace(current_path, next_path)
+            elif current_name != next_name:
+                case_temp_path = os.path.join(
+                    scope_dir, f'.{current_name}.{uuid.uuid4().hex}.rename'
+                )
+                os.replace(current_path, case_temp_path)
+                try:
+                    os.replace(case_temp_path, next_path)
+                except OSError:
+                    os.replace(case_temp_path, current_path)
+                    raise
+
+            if current_name != next_name:
+                custom_exporter.replace_template_reference(
+                    current_name,
+                    next_name,
+                    owner_id,
+                    owner_type=owner_type,
+                    commit_callback=(
+                        (lambda revision: audit_callback(next_name, revision))
+                        if audit_callback is not None
+                        else None
+                    ),
+                )
+            elif audit_callback is not None:
+                audit_callback(
+                    next_name,
+                    custom_exporter.get_template_config_revision(
+                        owner_id,
+                        owner_type=owner_type,
+                    ),
+                )
+        except Exception:
+            if not same_path and os.path.exists(next_path):
+                os.remove(next_path)
+            _replace_file_content(current_path, original_content)
+            raise
+        return next_path, next_name
+
+
+def _delete_scoped_template(
+    owner_type,
+    owner_id,
+    filename,
+    *,
+    audit_callback=None,
+):
+    with custom_exporter.template_scope_file_lock(
+        owner_id,
+        owner_type=owner_type,
+    ):
+        path, safe_name = _resolve_custom_template_path(owner_type, owner_id, filename)
+        original_content = Path(path).read_bytes()
+        os.remove(path)
+        try:
+            custom_exporter.replace_template_reference(
+                safe_name,
+                '',
+                owner_id,
+                owner_type=owner_type,
+                commit_callback=(
+                    (lambda revision: audit_callback(safe_name, revision))
+                    if audit_callback is not None
+                    else None
+                ),
+            )
+        except Exception:
+            _replace_file_content(path, original_content)
+            raise
 
 
 def _validate_docx_upload(filename, content, *, deep_validation=True, total_size=None):
@@ -666,6 +751,10 @@ def _word_publication_assignment_payload(owner_type, owner_id):
         if templates
     }
     return {
+        "revision": custom_exporter.get_template_config_revision(
+            owner_id,
+            owner_type=owner_type,
+        ),
         "documentTypes": public_word_publication_definitions(),
         "assignments": assignments,
         "assignmentSets": assignment_sets,
@@ -679,6 +768,9 @@ def _save_word_publication_assignments(
     owner_type,
     owner_id,
     assignments,
+    expected_revision,
+    audit_intent_callback=None,
+    audit_callback=None,
 ):
     unknown_ids = sorted(set(assignments) - WORD_PUBLICATION_DOCUMENT_IDS)
     if unknown_ids:
@@ -711,10 +803,18 @@ def _save_word_publication_assignments(
                 safe_names.append(safe_name)
         if safe_names:
             normalized[document_type] = safe_names
+    if audit_intent_callback is not None:
+        audit_intent_callback(normalized, expected_revision)
     custom_exporter.set_template_assignments(
         normalized,
         owner_id,
         owner_type=owner_type,
+        expected_revision=expected_revision,
+        commit_callback=(
+            (lambda revision: audit_callback(normalized, revision))
+            if audit_callback is not None
+            else None
+        ),
     )
     return _word_publication_assignment_payload(owner_type, owner_id)
 
@@ -739,7 +839,11 @@ def _prepare_plan_render(
     apply_computed_mappings(context, mappings)
     lowercase_partner_identity_codes(context, mappings)
     context, manifest = seal_docx_context(
-        "plan", context, mappings, capabilities
+        "plan",
+        context,
+        mappings,
+        capabilities,
+        organization_id=organization_id,
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
@@ -802,7 +906,11 @@ def _prepare_report_render(
     apply_computed_mappings(context, mappings)
     lowercase_partner_identity_codes(context, mappings)
     context, manifest = seal_docx_context(
-        document_type, context, mappings, capabilities
+        document_type,
+        context,
+        mappings,
+        capabilities,
+        organization_id=organization_id,
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
@@ -1173,6 +1281,11 @@ async def save_word_publication_template_assignments_api(request):
             "assignmentSets" if "assignmentSets" in data else "assignments"
         )
         invalid = validate_or_response(request, data, {
+            "expectedRevision": {
+                "type": "integer",
+                "required": True,
+                "min": 0,
+            },
             assignment_field: {
                 "type": "object",
                 "required": True,
@@ -1181,25 +1294,47 @@ async def save_word_publication_template_assignments_api(request):
         })
         if invalid:
             return invalid
+        def audit_assignment_commit(normalized, revision):
+            log_audit(
+                "document.word_template_assignments_updated",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template_config",
+                target_id=owner_id,
+                request=request,
+                metadata={
+                    "organization_id": organization_id,
+                    "assigned_document_types": sorted(normalized),
+                    "config_revision": revision,
+                },
+                required=True,
+            )
+
+        def audit_assignment_intent(normalized, expected_revision):
+            log_audit(
+                "document.word_template_assignments_update_requested",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template_config",
+                target_id=owner_id,
+                request=request,
+                metadata={
+                    "organization_id": organization_id,
+                    "assigned_document_types": sorted(normalized),
+                    "expected_config_revision": expected_revision,
+                },
+                required=True,
+            )
+
         payload = await run_blocking_io(
             _save_word_publication_assignments,
             owner_type,
             owner_id,
             data[assignment_field],
+            data["expectedRevision"],
+            audit_assignment_intent,
+            audit_assignment_commit,
             timeout_seconds=5,
-        )
-        log_audit(
-            "document.word_template_assignments_updated",
-            actor_user_id=user_id,
-            organization_id=organization_id,
-            target_type="word_template_config",
-            target_id=owner_id,
-            request=request,
-            metadata={
-                "organization_id": organization_id,
-                "assigned_document_types": sorted(payload["assignmentSets"]),
-            },
-            required=True,
         )
         return JSONResponse(payload)
     except (FileNotFoundError, ValueError) as e:
@@ -1281,6 +1416,11 @@ async def set_active_template_api(request):
             "template_name": {"type": "string", "max_length": 255},
             "filename": {"type": "string", "max_length": 255},
             "enabled": {"type": "boolean"},
+            "expectedRevision": {
+                "type": "integer",
+                "required": True,
+                "min": 0,
+            },
         })
         if invalid:
             return invalid
@@ -1296,24 +1436,25 @@ async def set_active_template_api(request):
             timeout_seconds=5,
         )
         enabled = data.get("enabled", True)
-        if "enabled" not in data:
-            await run_blocking_io(
-                custom_exporter.set_active_template,
-                safe_name,
-                owner_id,
-                owner_type=owner_type,
-                timeout_seconds=5,
+
+        def audit_availability_commit(revision):
+            log_audit(
+                "document.word_template_availability_updated",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template",
+                target_id=safe_name,
+                request=request,
+                metadata={
+                    "organization_id": organization_id,
+                    "enabled": enabled,
+                    "config_revision": revision,
+                },
+                required=True,
             )
-        await run_blocking_io(
-            custom_exporter.set_template_enabled,
-            safe_name,
-            enabled,
-            owner_id,
-            owner_type=owner_type,
-            timeout_seconds=5,
-        )
+
         log_audit(
-            "document.word_template_availability_updated",
+            "document.word_template_availability_update_requested",
             actor_user_id=user_id,
             organization_id=organization_id,
             target_type="word_template",
@@ -1322,13 +1463,27 @@ async def set_active_template_api(request):
             metadata={
                 "organization_id": organization_id,
                 "enabled": enabled,
+                "expected_config_revision": data["expectedRevision"],
             },
             required=True,
+        )
+
+        _enabled_templates, revision = await run_blocking_io(
+            custom_exporter.configure_template_availability,
+            safe_name,
+            enabled,
+            owner_id,
+            owner_type=owner_type,
+            expected_revision=data["expectedRevision"],
+            activate="enabled" not in data,
+            commit_callback=audit_availability_commit,
+            timeout_seconds=5,
         )
         return JSONResponse({
             "success": True,
             "filename": safe_name,
             "enabled": enabled,
+            "revision": revision,
         })
     except FileNotFoundError as e:
         return _docx_error(request, e, "set_active_template_api")
@@ -1355,6 +1510,23 @@ async def upload_template_api(request):
         if upload_access_error is not None:
             return upload_access_error
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        mutation_revision = {"value": None}
+
+        def audit_upload(filename, revision):
+            log_audit(
+                "document.word_template_uploaded",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template",
+                target_id=filename,
+                request=request,
+                metadata={
+                    "organization_id": organization_id,
+                    "config_revision": revision,
+                },
+                required=True,
+            )
+            mutation_revision["value"] = revision
 
         form = await request.form()
         file_obj = form.get('file')
@@ -1380,15 +1552,30 @@ async def upload_template_api(request):
             except ValueError as e:
                 return _docx_error(request, e, "upload_template_api")
 
+            log_audit(
+                "document.word_template_upload_requested",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template",
+                target_id=filename,
+                request=request,
+                metadata={"organization_id": organization_id},
+                required=True,
+            )
             await run_blocking_io(
                 _persist_scoped_template_from_path,
                 owner_type,
                 owner_id,
                 filename,
                 str(upload_path),
+                audit_callback=audit_upload,
                 timeout_seconds=10,
             )
-        return JSONResponse({"success": True, "filename": filename})
+        return JSONResponse({
+            "success": True,
+            "filename": filename,
+            "revision": mutation_revision["value"],
+        })
     except (FileExistsError, ValueError, DocumentWorkerError) as e:
         return _docx_error(request, e, "upload_template_api")
     except Exception as e:
@@ -1427,6 +1614,39 @@ async def replace_template_api(request):
         new_name = _normalize_custom_template_filename(
             form.get('name') or safe_name
         )
+        mutation_revision = {"value": None}
+
+        def audit_replace(filename, revision):
+            log_audit(
+                "document.word_template_replaced",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template",
+                target_id=filename,
+                request=request,
+                metadata={
+                    "organization_id": organization_id,
+                    "previous_filename": safe_name,
+                    "config_revision": revision,
+                },
+                required=True,
+            )
+            mutation_revision["value"] = revision
+
+        log_audit(
+            "document.word_template_replace_requested",
+            actor_user_id=user_id,
+            organization_id=organization_id,
+            target_type="word_template",
+            target_id=safe_name,
+            request=request,
+            metadata={
+                "organization_id": organization_id,
+                "next_filename": new_name,
+            },
+            required=True,
+        )
+
         if file_obj:
             async with spooled_upload(
                 file_obj,
@@ -1457,6 +1677,7 @@ async def replace_template_api(request):
                     safe_name,
                     new_name,
                     source_path=str(upload_path),
+                    audit_callback=audit_replace,
                     timeout_seconds=10,
                 )
         else:
@@ -1466,9 +1687,14 @@ async def replace_template_api(request):
                 owner_id,
                 safe_name,
                 new_name,
+                audit_callback=audit_replace,
                 timeout_seconds=5,
             )
-        return JSONResponse({"success": True, "filename": new_name})
+        return JSONResponse({
+            "success": True,
+            "filename": new_name,
+            "revision": mutation_revision["value"],
+        })
     except (FileNotFoundError, FileExistsError, ValueError, DocumentWorkerError) as e:
         return _docx_error(request, e, "replace_template_api")
     except (DatabaseError, OrgPermissionError, BlockingIOBusyError, BlockingIOTimeoutError, OSError) as e:
@@ -1494,14 +1720,55 @@ async def delete_template_api(request):
             return upload_access_error
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
         template_name = request.path_params.get('filename')
-        await run_blocking_io(
-            _delete_scoped_template,
+        _delete_path, delete_safe_name = await run_blocking_io(
+            _resolve_custom_template_path,
             owner_type,
             owner_id,
             template_name,
             timeout_seconds=5,
         )
-        return JSONResponse({"success": True, "deleted": True})
+        mutation_revision = {"value": None}
+
+        def audit_delete(filename, revision):
+            log_audit(
+                "document.word_template_deleted",
+                actor_user_id=user_id,
+                organization_id=organization_id,
+                target_type="word_template",
+                target_id=filename,
+                request=request,
+                metadata={
+                    "organization_id": organization_id,
+                    "config_revision": revision,
+                },
+                required=True,
+            )
+            mutation_revision["value"] = revision
+
+        log_audit(
+            "document.word_template_delete_requested",
+            actor_user_id=user_id,
+            organization_id=organization_id,
+            target_type="word_template",
+            target_id=delete_safe_name,
+            request=request,
+            metadata={"organization_id": organization_id},
+            required=True,
+        )
+
+        await run_blocking_io(
+            _delete_scoped_template,
+            owner_type,
+            owner_id,
+            template_name,
+            audit_callback=audit_delete,
+            timeout_seconds=5,
+        )
+        return JSONResponse({
+            "success": True,
+            "deleted": True,
+            "revision": mutation_revision["value"],
+        })
     except FileNotFoundError:
         return JSONResponse({"success": True, "deleted": False})
     except ValueError as e:

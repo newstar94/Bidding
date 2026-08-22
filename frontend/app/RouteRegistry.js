@@ -90,22 +90,6 @@ export class RouteRegistry {
     return externalUrl(url);
   }
 
-  static navigate(route, {
-    replace = false,
-    preserveDirty = false,
-    isDirty = () => false,
-    historyAdapter = globalThis.history,
-    currentUrl = globalThis.location?.href || "/",
-  } = {}) {
-    if (preserveDirty && isDirty()) {
-      return { status: "blocked", reason: "DIRTY_STATE" };
-    }
-    const normalized = normalizedRoute(route);
-    const url = RouteRegistry.serialize(normalized, currentUrl);
-    const method = replace ? "replaceState" : "pushState";
-    historyAdapter?.[method]?.({ route: normalized }, "", url);
-    return { status: "navigated", route: normalized, url };
-  }
 }
 
 export { normalizedRoute as normalizeAppRoute };

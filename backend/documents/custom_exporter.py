@@ -1,10 +1,13 @@
 import os
 import re
 import json
+import copy
 import zipfile
 import traceback
 import threading
+import time
 import uuid
+from contextlib import contextmanager
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from docxtpl import DocxTemplate, InlineImage
@@ -27,10 +30,35 @@ from backend.documents.docx_context_policy import (
 )
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
 from backend.shared.logging_utils import append_runtime_log, log_error
+from backend.shared.media_helper import (
+    managed_image_path_matches_tenant,
+    normalize_managed_image_path,
+)
 
 
 _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
 _WORD_CONFIG_LOCK = threading.RLock()
+_WORD_CONFIG_LOCK_TIMEOUT_SECONDS = 5.0
+
+
+class WordTemplateConfigError(OSError):
+    """Base class for durable Word template configuration failures."""
+
+
+class WordTemplateConfigCorruptError(WordTemplateConfigError):
+    """Raised when an existing config cannot be decoded without data loss."""
+
+
+class WordTemplateConfigConflictError(WordTemplateConfigError):
+    """Raised when a compare-and-swap write uses a stale revision."""
+
+    def __init__(self, current_revision):
+        self.current_revision = int(current_revision)
+        super().__init__("Cấu hình biểu mẫu Word đã được thay đổi.")
+
+
+class WordTemplateConfigLockTimeoutError(WordTemplateConfigError):
+    """Raised when another process holds the config mutation lock too long."""
 
 
 def number_to_vietnamese_words(n):
@@ -439,6 +467,15 @@ def _template_config_path(owner_id=None, *, owner_type='personal', create=False)
     return os.path.join(scope_dir, 'config.json')
 
 
+def _template_config_revision(config):
+    revision = config.get('revision', 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        raise WordTemplateConfigCorruptError(
+            'Revision cấu hình biểu mẫu Word không hợp lệ.'
+        )
+    return revision
+
+
 def _load_template_config(owner_id=None, *, owner_type='personal'):
     config_path = _template_config_path(owner_id, owner_type=owner_type)
     if not os.path.exists(config_path):
@@ -446,9 +483,103 @@ def _load_template_config(owner_id=None, *, owner_type='personal'):
     try:
         with open(config_path, 'r', encoding='utf-8') as file_obj:
             config = json.load(file_obj)
-    except (OSError, json.JSONDecodeError, TypeError):
-        return {}
-    return config if isinstance(config, dict) else {}
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as error:
+        raise WordTemplateConfigCorruptError(
+            'Cấu hình biểu mẫu Word bị hỏng; dữ liệu gốc được giữ nguyên.'
+        ) from error
+    if not isinstance(config, dict):
+        raise WordTemplateConfigCorruptError(
+            'Cấu hình biểu mẫu Word phải là một JSON object.'
+        )
+    _template_config_revision(config)
+    return config
+
+
+@contextmanager
+def _exclusive_file_lock(
+    lock_path,
+    *,
+    timeout_seconds=_WORD_CONFIG_LOCK_TIMEOUT_SECONDS,
+):
+    deadline = time.monotonic() + max(float(timeout_seconds), 0.0)
+    with open(lock_path, 'a+b') as lock_file:
+        if os.name == 'nt':
+            import msvcrt
+
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b'\0')
+                lock_file.flush()
+            while True:
+                try:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as error:
+                    if time.monotonic() >= deadline:
+                        raise WordTemplateConfigLockTimeoutError(
+                            'Cấu hình biểu mẫu Word đang được cập nhật.'
+                        ) from error
+                    time.sleep(0.01)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            while True:
+                try:
+                    fcntl.flock(
+                        lock_file.fileno(),
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                    break
+                except BlockingIOError as error:
+                    if time.monotonic() >= deadline:
+                        raise WordTemplateConfigLockTimeoutError(
+                            'Cấu hình biểu mẫu Word đang được cập nhật.'
+                        ) from error
+                    time.sleep(0.01)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _template_config_file_lock(
+    owner_id=None,
+    *,
+    owner_type='personal',
+    timeout_seconds=_WORD_CONFIG_LOCK_TIMEOUT_SECONDS,
+):
+    config_path = _template_config_path(
+        owner_id,
+        owner_type=owner_type,
+        create=True,
+    )
+    with _exclusive_file_lock(
+        f'{config_path}.lock',
+        timeout_seconds=timeout_seconds,
+    ):
+        yield
+
+
+@contextmanager
+def template_scope_file_lock(
+    owner_id,
+    *,
+    owner_type='personal',
+    timeout_seconds=_WORD_CONFIG_LOCK_TIMEOUT_SECONDS,
+):
+    scope_dir = get_scope_template_dir(owner_type, owner_id, create=True)
+    with _exclusive_file_lock(
+        os.path.join(scope_dir, '.templates.lock'),
+        timeout_seconds=timeout_seconds,
+    ):
+        yield
 
 
 def _write_template_config(config, owner_id=None, *, owner_type='personal'):
@@ -461,10 +592,65 @@ def _write_template_config(config, owner_id=None, *, owner_type='personal'):
     try:
         with open(temporary_path, 'x', encoding='utf-8') as file_obj:
             json.dump(config, file_obj, ensure_ascii=False, indent=4, sort_keys=True)
+            file_obj.flush()
+            os.fsync(file_obj.fileno())
         os.replace(temporary_path, config_path)
     finally:
         if os.path.exists(temporary_path):
             os.remove(temporary_path)
+
+
+def _mutate_template_config(
+    mutation,
+    owner_id=None,
+    *,
+    owner_type='personal',
+    expected_revision=None,
+    commit_callback=None,
+):
+    with _WORD_CONFIG_LOCK:
+        with _template_config_file_lock(owner_id, owner_type=owner_type):
+            config = _load_template_config(owner_id, owner_type=owner_type)
+            original_config = copy.deepcopy(config)
+            config_path = _template_config_path(
+                owner_id,
+                owner_type=owner_type,
+            )
+            config_existed = os.path.exists(config_path)
+            current_revision = _template_config_revision(config)
+            if (
+                expected_revision is not None
+                and expected_revision != current_revision
+            ):
+                raise WordTemplateConfigConflictError(current_revision)
+            changed = mutation(config)
+            if changed is False:
+                if commit_callback is not None:
+                    commit_callback(current_revision)
+                return current_revision
+            next_revision = current_revision + 1
+            config['revision'] = next_revision
+            _write_template_config(config, owner_id, owner_type=owner_type)
+            if commit_callback is not None:
+                try:
+                    commit_callback(next_revision)
+                except Exception:
+                    if config_existed:
+                        _write_template_config(
+                            original_config,
+                            owner_id,
+                            owner_type=owner_type,
+                        )
+                    elif os.path.exists(config_path):
+                        os.remove(config_path)
+                    raise
+            return next_revision
+
+
+def get_template_config_revision(owner_id=None, *, owner_type='personal'):
+    with _WORD_CONFIG_LOCK:
+        config = _load_template_config(owner_id, owner_type=owner_type)
+        return _template_config_revision(config)
 
 
 def get_active_template(owner_id=None, *, owner_type='personal'):
@@ -505,18 +691,23 @@ def is_template_enabled(filename, owner_id=None, *, owner_type='personal'):
     )
 
 
-def set_template_enabled(
+def configure_template_availability(
     filename,
     enabled,
     owner_id=None,
     *,
     owner_type='personal',
+    expected_revision=None,
+    activate=False,
+    commit_callback=None,
 ):
     safe_name = str(filename or '').strip()
     if not safe_name:
         raise ValueError('Tên biểu mẫu không được để trống')
-    with _WORD_CONFIG_LOCK:
-        config = _load_template_config(owner_id, owner_type=owner_type)
+    enabled_templates = []
+
+    def mutate(config):
+        nonlocal enabled_templates
         enabled_templates = _enabled_template_names_from_config(config)
         target_identity = safe_name.casefold()
         enabled_templates = [
@@ -527,6 +718,8 @@ def set_template_enabled(
             enabled_templates.append(safe_name)
         config['enabled_templates'] = enabled_templates
 
+        if activate and enabled:
+            config['active_template'] = safe_name
         active_template = str(config.get('active_template') or '').strip()
         enabled_identities = {
             item.casefold() for item in enabled_templates
@@ -535,7 +728,31 @@ def set_template_enabled(
             config['active_template'] = (
                 enabled_templates[0] if enabled_templates else ''
             )
-        _write_template_config(config, owner_id, owner_type=owner_type)
+    revision = _mutate_template_config(
+        mutate,
+        owner_id,
+        owner_type=owner_type,
+        expected_revision=expected_revision,
+        commit_callback=commit_callback,
+    )
+    return enabled_templates, revision
+
+
+def set_template_enabled(
+    filename,
+    enabled,
+    owner_id=None,
+    *,
+    owner_type='personal',
+    expected_revision=None,
+):
+    enabled_templates, _revision = configure_template_availability(
+        filename,
+        enabled,
+        owner_id,
+        owner_type=owner_type,
+        expected_revision=expected_revision,
+    )
     return enabled_templates
 
 
@@ -572,17 +789,29 @@ def _normalize_template_assignment_values(value):
     return normalized
 
 
-def set_template_assignments(assignments, owner_id=None, *, owner_type='personal'):
+def set_template_assignments(
+    assignments,
+    owner_id=None,
+    *,
+    owner_type='personal',
+    expected_revision=None,
+    commit_callback=None,
+):
     normalized = {}
     for document_type, filenames in dict(assignments or {}).items():
         safe_type = str(document_type).strip()
         safe_filenames = _normalize_template_assignment_values(filenames)
         if safe_type and safe_filenames:
             normalized[safe_type] = safe_filenames
-    with _WORD_CONFIG_LOCK:
-        config = _load_template_config(owner_id, owner_type=owner_type)
+    def mutate(config):
         config['template_assignments'] = normalized
-        _write_template_config(config, owner_id, owner_type=owner_type)
+    _mutate_template_config(
+        mutate,
+        owner_id,
+        owner_type=owner_type,
+        expected_revision=expected_revision,
+        commit_callback=commit_callback,
+    )
     return normalized
 
 
@@ -592,9 +821,9 @@ def replace_template_reference(
     owner_id=None,
     *,
     owner_type='personal',
+    commit_callback=None,
 ):
-    with _WORD_CONFIG_LOCK:
-        config = _load_template_config(owner_id, owner_type=owner_type)
+    def mutate(config):
         changed = False
         if config.get('active_template') == current_filename:
             config['active_template'] = next_filename
@@ -629,8 +858,14 @@ def replace_template_reference(
                 else:
                     assignments.pop(document_type, None)
                 changed = True
-        if changed:
-            _write_template_config(config, owner_id, owner_type=owner_type)
+        return changed
+
+    return _mutate_template_config(
+        mutate,
+        owner_id,
+        owner_type=owner_type,
+        commit_callback=commit_callback,
+    )
 
 
 def resolve_publication_templates(
@@ -681,11 +916,21 @@ def resolve_publication_template(
     return (templates[0] if templates else ''), source
 
 
-def set_active_template(filename, owner_id=None, *, owner_type='personal'):
-    with _WORD_CONFIG_LOCK:
-        config = _load_template_config(owner_id, owner_type=owner_type)
+def set_active_template(
+    filename,
+    owner_id=None,
+    *,
+    owner_type='personal',
+    expected_revision=None,
+):
+    def mutate(config):
         config['active_template'] = filename
-        _write_template_config(config, owner_id, owner_type=owner_type)
+    _mutate_template_config(
+        mutate,
+        owner_id,
+        owner_type=owner_type,
+        expected_revision=expected_revision,
+    )
 
 def list_templates(owner_id=None, *, owner_type='personal'):
     templates = []
@@ -860,8 +1105,6 @@ def translate_xml_tags(xml_content, valid_vars):
 
     xml_content = pull_tr_loops_out(xml_content)
     return xml_content
-
-_TRANSLATED_TEMPLATES_CACHE = {}
 
 _TRANSLATED_DOCXTPL_CACHE = {}
 
@@ -1060,22 +1303,37 @@ def prewarm_image_cache():
         log_error(e, "Document.ImagePrewarm")
 
 
-def _resolve_docx_image_path(value, expected_subfolder):
+def _resolve_docx_image_path(
+    value,
+    expected_subfolder,
+    media_organization_id=None,
+):
     if not isinstance(value, str) or expected_subfolder not in {"chuyen_gia", "nha_thau"}:
         return "", ""
-    normalized = value.strip().replace("\\", "/").lstrip("/")
+    normalized = normalize_managed_image_path(value)
     expected_prefix = f"images/{expected_subfolder}/"
     if not normalized.startswith(expected_prefix):
         return "", ""
-    filename = normalized.removeprefix(expected_prefix)
-    if not filename or "/" in filename or filename in {".", ".."}:
+    parts = normalized.split("/")
+    if len(parts) == 4 and (
+        not media_organization_id
+        or not managed_image_path_matches_tenant(
+            normalized,
+            media_organization_id,
+        )
+    ):
         return "", ""
+    if len(parts) not in {3, 4}:
+        return "", ""
+    filename = parts[-1]
     if os.path.splitext(filename)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
         return "", ""
 
     images_root = os.path.realpath(IMAGE_DIR)
     allowed_root = os.path.realpath(os.path.join(images_root, expected_subfolder))
-    filepath = os.path.realpath(os.path.join(allowed_root, filename))
+    filepath = os.path.realpath(
+        os.path.join(allowed_root, *parts[2:])
+    )
     try:
         if os.path.commonpath([allowed_root, filepath]) != allowed_root:
             return "", ""
@@ -1088,9 +1346,9 @@ def _resolve_docx_image_path(value, expected_subfolder):
 
 def _collect_image_tasks(
     data,
-    project_root=None,
     tasks=None,
     allowed_image_fields=None,
+    media_organization_id=None,
 ):
 
     if tasks is None:
@@ -1101,7 +1359,11 @@ def _collect_image_tasks(
         for k, v in list(data.items()):
             if isinstance(v, str):
                 expected_subfolder = allowed_image_fields.get(str(k))
-                norm_v, filepath = _resolve_docx_image_path(v, expected_subfolder)
+                norm_v, filepath = _resolve_docx_image_path(
+                    v,
+                    expected_subfolder,
+                    media_organization_id,
+                )
                 if filepath:
                     data[k] = norm_v
                     max_w = 300
@@ -1113,22 +1375,27 @@ def _collect_image_tasks(
             else:
                 _collect_image_tasks(
                     v,
-                    project_root,
                     tasks,
                     allowed_image_fields,
+                    media_organization_id,
                 )
     elif isinstance(data, list):
         for item in data:
             _collect_image_tasks(
                 item,
-                project_root,
                 tasks,
                 allowed_image_fields,
+                media_organization_id,
             )
     return tasks
 
 
-def convert_images_in_context(doc, data, allowed_image_fields=None):
+def convert_images_in_context(
+    doc,
+    data,
+    allowed_image_fields=None,
+    media_organization_id=None,
+):
 
 
     try:
@@ -1140,12 +1407,12 @@ def convert_images_in_context(doc, data, allowed_image_fields=None):
 
     tasks = _collect_image_tasks(
         data,
-        project_root,
         allowed_image_fields=(
             BASE_IMAGE_FIELDS
             if allowed_image_fields is None
             else allowed_image_fields
         ),
+        media_organization_id=media_organization_id,
     )
     if not tasks:
         return
@@ -1180,9 +1447,11 @@ def generate_report_from_custom_template(
         render_policy = validate_docx_context_manifest(context, context_manifest)
         allowed_root_keys = render_policy["allowed_root_keys"]
         allowed_image_fields = render_policy["allowed_image_fields"]
+        media_organization_id = render_policy["media_organization_id"]
     else:
         allowed_root_keys = set(context or {})
         allowed_image_fields = BASE_IMAGE_FIELDS
+        media_organization_id = None
     context = replace_placeholders_with_empty(context)
 
     enrich_context_with_words(context)
@@ -1200,6 +1469,7 @@ def generate_report_from_custom_template(
             doc,
             context,
             allowed_image_fields=allowed_image_fields,
+            media_organization_id=media_organization_id,
         )
         doc.render(context, jinja_env=create_template_environment())
     except Exception as e:

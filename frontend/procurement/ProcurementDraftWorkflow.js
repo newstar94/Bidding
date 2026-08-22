@@ -848,24 +848,6 @@ function setRadioValue(document, name, value) {
   return true;
 }
 
-export function fillPlanFormFromProcurementDraft(document, planDraft, model) {
-  const money = planDraft?.tongMucDauTu;
-  const values = {
-    "kh-ma": planDraft?.maKeHoach,
-    "kh-ten": planDraft?.tenKeHoach,
-    "kh-loaihinh": planDraft?.loaiHinhMuaSam,
-    "kh-duan": planDraft?.tenDuAnDuToan,
-    "kh-tongmuc": money == null ? "" : model?.formatVND?.(money) ?? String(money),
-    "kh-nguonvon": planDraft?.nguonVon,
-    "kh-quyetdinh": planDraft?.quyetDinhPheDuyet,
-    "kh-ngaypheduyet": model?.formatForDateInput?.(planDraft?.ngayPheDuyet) ?? planDraft?.ngayPheDuyet,
-    "kh-thoigiandang": model?.formatForDatetimeLocal?.(planDraft?.thoiGianDangMa) ?? planDraft?.thoiGianDangMa,
-    "kh-pheduyet": planDraft?.pheDuyet || "Dự toán và kế hoạch",
-  };
-  Object.entries(values).forEach(([id, value]) => setControlValue(document, id, value));
-  return values;
-}
-
 export function fillPackageFormFromProcurementDraft(document, packageDraft, controller) {
   const money = (value) => value == null ? "" : controller?.model?.formatVND?.(value) ?? String(value);
   const date = (value) => value

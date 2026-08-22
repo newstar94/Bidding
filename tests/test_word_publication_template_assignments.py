@@ -79,6 +79,12 @@ def _api_client():
     ]))
 
 
+def _assignment_revision(client):
+    response = client.get("/api/word-publication-template-assignments")
+    assert response.status_code == 200
+    return response.json()["revision"]
+
+
 def test_active_template_updates_preserve_explicit_assignments(template_root):
     _template("organization", "org-a", "main.docx")
     _template("organization", "org-a", "consultant.docx")
@@ -168,9 +174,13 @@ def test_assignment_api_rejects_template_that_is_not_enabled(
         owner_type="organization",
     )
 
-    response = _api_client().put(
+    client = _api_client()
+    response = client.put(
         "/api/word-publication-template-assignments",
-        json={"assignmentSets": {"procurement_plan": ["paused.docx"]}},
+        json={
+            "expectedRevision": _assignment_revision(client),
+            "assignmentSets": {"procurement_plan": ["paused.docx"]},
+        },
     )
 
     assert response.status_code == 400
@@ -350,6 +360,7 @@ def test_assignment_api_resolves_legacy_fallback_and_explicit_templates(
     saved = client.put(
         "/api/word-publication-template-assignments",
         json={
+            "expectedRevision": initial.json()["revision"],
             "assignmentSets": {
                 "consultant_evaluation_step_1": ["main.docx", "consultant.docx"],
             },
@@ -372,6 +383,93 @@ def test_assignment_api_resolves_legacy_fallback_and_explicit_templates(
     ]
 
 
+def test_assignment_api_rejects_a_stale_config_revision(
+    template_root,
+    monkeypatch,
+):
+    _configure_api(monkeypatch)
+    _template("organization", "org-a", "first.docx")
+    _template("organization", "org-a", "second.docx")
+    custom_exporter.set_template_enabled(
+        "first.docx", True, "org-a", owner_type="organization"
+    )
+    custom_exporter.set_template_enabled(
+        "second.docx", True, "org-a", owner_type="organization"
+    )
+    client = _api_client()
+    revision = client.get(
+        "/api/word-publication-template-assignments"
+    ).json()["revision"]
+
+    first_save = client.put(
+        "/api/word-publication-template-assignments",
+        json={
+            "expectedRevision": revision,
+            "assignmentSets": {"procurement_plan": ["first.docx"]},
+        },
+    )
+    stale_save = client.put(
+        "/api/word-publication-template-assignments",
+        json={
+            "expectedRevision": revision,
+            "assignmentSets": {"procurement_plan": ["second.docx"]},
+        },
+    )
+
+    assert first_save.status_code == 200
+    assert first_save.json()["revision"] == revision + 1
+    assert stale_save.status_code == 409
+    assert stale_save.json()["code"] == "WORD_TEMPLATE_CONFIG_CONFLICT"
+    assert stale_save.json()["currentRevision"] == revision + 1
+    assert custom_exporter.get_template_assignments(
+        "org-a", owner_type="organization"
+    ) == {"procurement_plan": ["first.docx"]}
+
+
+def test_assignment_api_rolls_back_config_when_required_audit_fails(
+    template_root,
+    monkeypatch,
+):
+    _configure_api(monkeypatch)
+    _template("organization", "org-a", "first.docx")
+    custom_exporter.set_template_enabled(
+        "first.docx", True, "org-a", owner_type="organization"
+    )
+    client = _api_client()
+    revision = _assignment_revision(client)
+    audits = []
+
+    def fail_result_audit(event, **_kwargs):
+        audits.append(event)
+        if event == "document.word_template_assignments_updated":
+            raise OSError("audit unavailable")
+
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.log_audit",
+        fail_result_audit,
+    )
+
+    response = client.put(
+        "/api/word-publication-template-assignments",
+        json={
+            "expectedRevision": revision,
+            "assignmentSets": {"procurement_plan": ["first.docx"]},
+        },
+    )
+
+    assert response.status_code == 500
+    assert custom_exporter.get_template_config_revision(
+        "org-a", owner_type="organization"
+    ) == revision
+    assert custom_exporter.get_template_assignments(
+        "org-a", owner_type="organization"
+    ) == {}
+    assert audits == [
+        "document.word_template_assignments_update_requested",
+        "document.word_template_assignments_updated",
+    ]
+
+
 def test_assignment_api_rejects_unknown_types_and_cross_workspace_templates(
     template_root,
     monkeypatch,
@@ -379,14 +477,19 @@ def test_assignment_api_rejects_unknown_types_and_cross_workspace_templates(
     _configure_api(monkeypatch)
     _template("organization", "org-b", "other-workspace.docx")
     client = _api_client()
+    revision = _assignment_revision(client)
 
     unknown = client.put(
         "/api/word-publication-template-assignments",
-        json={"assignments": {"invented_document": "other-workspace.docx"}},
+        json={
+            "expectedRevision": revision,
+            "assignments": {"invented_document": "other-workspace.docx"},
+        },
     )
     cross_workspace = client.put(
         "/api/word-publication-template-assignments",
         json={
+            "expectedRevision": revision,
             "assignments": {
                 "consultant_evaluation_step_1": "other-workspace.docx",
             },
@@ -417,6 +520,7 @@ def test_assignment_write_reuses_word_config_manage_permission(
     response = _api_client().put(
         "/api/word-publication-template-assignments",
         json={
+            "expectedRevision": 0,
             "assignments": {
                 "consultant_evaluation_step_1": "consultant.docx",
             },
@@ -547,7 +651,7 @@ def test_report_render_uses_assigned_template_and_rejects_inapplicable_type(
     )
     monkeypatch.setattr(
         "backend.documents.routes_docx.seal_docx_context",
-        lambda _type, context, *_args: (context, {}),
+        lambda _type, context, *_args, **_kwargs: (context, {}),
     )
     monkeypatch.setattr(
         "backend.documents.routes_docx.sensitive_capability_groups_present",

@@ -3,6 +3,7 @@ import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
   finishWorkspaceRequest,
+  isWorkspaceLeaseCurrent,
 } from "../app/workspaceLease.js";
 
 export const WORD_PUBLICATION_TEMPLATE_ASSIGNMENTS_ENDPOINT = (
@@ -65,7 +66,12 @@ export function normalizeWordPublicationTemplateConfig(payload) {
   const resolvedTemplateSets = resolvedTemplateListMap(
     payload.resolvedTemplateSets || payload.resolvedTemplates,
   );
+  const revision = Number(payload.revision);
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error("Phiên bản cấu hình biểu mẫu Word không hợp lệ.");
+  }
   return {
+    revision,
     documentTypes,
     assignments: assignmentSets,
     assignmentSets,
@@ -89,6 +95,11 @@ async function readConfigResponse(response) {
 
 export async function loadWordPublicationTemplateConfig(controller) {
   const request = beginWorkspaceRequest(controller.model);
+  if (controller._wordPublicationTemplateConfigWorkspaceToken !== request.lease.token) {
+    controller._wordPublicationTemplateConfigWorkspaceToken = request.lease.token;
+    controller._wordPublicationTemplateConfig = null;
+    controller._wordPublicationTemplateConfigError = "";
+  }
   try {
     const response = await apiFetch(WORD_PUBLICATION_TEMPLATE_ASSIGNMENTS_ENDPOINT, {
       signal: request.signal,
@@ -100,9 +111,11 @@ export async function loadWordPublicationTemplateConfig(controller) {
     controller._wordPublicationTemplateConfigError = "";
     return config;
   } catch (error) {
-    controller._wordPublicationTemplateConfigError = error instanceof Error
-      ? error.message
-      : String(error);
+    if (isWorkspaceLeaseCurrent(controller.model, request.lease)) {
+      controller._wordPublicationTemplateConfigError = error instanceof Error
+        ? error.message
+        : String(error);
+    }
     throw error;
   } finally {
     finishWorkspaceRequest(controller.model, request);
@@ -112,10 +125,26 @@ export async function loadWordPublicationTemplateConfig(controller) {
 export async function saveWordPublicationTemplateAssignments(controller, assignments) {
   const request = beginWorkspaceRequest(controller.model);
   try {
+    if (
+      request.lease.token
+      && controller._wordPublicationTemplateConfigWorkspaceToken !== request.lease.token
+    ) {
+      throw new Error("Cần tải lại cấu hình biểu mẫu Word cho workspace hiện tại.");
+    }
+    const revision = Number(
+      controller._wordTemplateAssignmentState?.config?.revision
+      ?? controller._wordPublicationTemplateConfig?.revision,
+    );
+    if (!Number.isSafeInteger(revision) || revision < 0) {
+      throw new Error("Cần tải lại cấu hình biểu mẫu Word trước khi lưu.");
+    }
     const response = await apiFetch(WORD_PUBLICATION_TEMPLATE_ASSIGNMENTS_ENDPOINT, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignmentSets: assignments }),
+      body: JSON.stringify({
+        expectedRevision: revision,
+        assignmentSets: assignments,
+      }),
       signal: request.signal,
     });
     assertWorkspaceLeaseCurrent(controller.model, request.lease);
@@ -127,10 +156,6 @@ export async function saveWordPublicationTemplateAssignments(controller, assignm
   } finally {
     finishWorkspaceRequest(controller.model, request);
   }
-}
-
-export function resolvedWordPublicationTemplate(config, documentType) {
-  return resolvedWordPublicationTemplates(config, documentType)[0] || null;
 }
 
 export function resolvedWordPublicationTemplates(config, documentType) {

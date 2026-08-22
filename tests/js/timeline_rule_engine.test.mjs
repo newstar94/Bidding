@@ -5,13 +5,9 @@ import test from "node:test";
 import {
   buildEffectiveTimeline,
   mergeSavedTimelineEntries,
-  resolveLatestBidClosingTime,
-  timelineProgress
+  resolveLatestBidClosingTime
 } from "../../frontend/packages/timelineRuleEngine.js";
-import {
-  ensureVersionEhsmtAdjustment,
-  preparePackageSnapshot
-} from "../../frontend/shared/VersionedEntityService.js";
+import { ensureVersionEhsmtAdjustment } from "../../frontend/shared/VersionedEntityService.js";
 import {
   findTimelineContracts,
   buildTimelineLineagePresentation,
@@ -439,7 +435,7 @@ test("a package version automatically creates one stable E-HSMT adjustment", () 
   assert.equal(adjustment.ngayThucTe, "2026-07-20");
 });
 
-test("legacy package versions infer the adjustment and new snapshots reset process children", () => {
+test("legacy package versions infer the adjustment", () => {
   const packageVersion = {
     ...base,
     id: "legacy-v03",
@@ -450,12 +446,6 @@ test("legacy package versions infer the adjustment and new snapshots reset proce
   const rows = buildEffectiveTimeline(packageVersion, { plan: { pheDuyet: "Kế hoạch" } }, []);
   const adjustment = rows.find((row) => row.milestoneKey === "E_HSMT_ADJUSTMENT_APPROVAL");
   assert.equal(adjustment.instanceKey, "package-version:legacy-v03");
-  const snapshot = preparePackageSnapshot({
-    timelineItems: [{ id: "old-timeline" }],
-    ehsmtAdjustments: [{ id: "old-adjustment" }]
-  });
-  assert.deepEqual(snapshot.timelineItems, []);
-  assert.deepEqual(snapshot.ehsmtAdjustments, []);
 });
 
 test("effective bid closing time is the latest package or active extension time", () => {
@@ -469,11 +459,9 @@ test("effective bid closing time is the latest package or active extension time"
   ), "2026-07-20T10:00:00");
 });
 
-test("hidden saved entries are retained and conditional rows do not affect progress", () => {
+test("hidden saved entries are retained", () => {
   const active = buildEffectiveTimeline(base, { plan: { pheDuyet: "Kế hoạch" } }, []);
   const hidden = { id: "hidden", milestoneKey: "FINANCIAL_OPENING_MINUTES", instanceKey: "", soVanBan: "old" };
   const merged = mergeSavedTimelineEntries([hidden], active);
   assert.equal(merged.some((row) => row.id === "hidden"), true);
-  const progress = timelineProgress(active);
-  assert.equal(progress.total, active.filter((row) => row.applicability === "APPLICABLE").length);
 });

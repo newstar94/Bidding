@@ -102,11 +102,18 @@ def verify_document_job_policy(cursor, job):
     ).fetchone()
     if not account or str(account[1] or "") != "active":
         raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_PERMISSION_REVOKED")
+    current_platform_role = str(account[2] or "user").strip() or "user"
+    snapshot_active_role = str(policy.get("activeRole") or "").strip() or None
+    if (
+        snapshot_active_role == "super_admin"
+        and current_platform_role != "super_admin"
+    ):
+        raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_PERMISSION_REVOKED")
     role = SessionRole(
-        str(policy.get("activeRole") or policy.get("platformRole") or account[2]),
+        snapshot_active_role or current_platform_role,
         user_id,
-        platform_role=str(account[2] or policy.get("platformRole") or "user"),
-        active_role=str(policy.get("activeRole") or "") or None,
+        platform_role=current_platform_role,
+        active_role=snapshot_active_role,
         active_role_organization_id=(
             str(policy.get("activeRoleOrganizationId") or "") or None
         ),

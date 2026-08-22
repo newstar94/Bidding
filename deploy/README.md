@@ -13,7 +13,7 @@ values, and verifies the secure-build marker against `APP_RELEASE_ID` (or
 `GITHUB_SHA` in CI) before selecting any runtime files.
 
 Phiếu thông tin cần thu thập trước khi điền production nằm tại
-`deploy/production-security-information.md`. Không ghi secret thật vào phiếu;
+`docs/production-security-information.md`. Không ghi secret thật vào phiếu;
 chỉ ghi tên và nơi lưu secret.
 
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.
@@ -41,6 +41,9 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
    Việc loại bỏ duplicate audit index ở schema v47 phải làm theo
    deploy/runbooks/database-upgrade-v47.md, gồm preflight, dry-run, hậu kiểm
    constraint-backed uniqueness và rollback có kiểm soát.
+   Database đi qua schema v49–v62 phải làm theo
+   deploy/runbooks/database-upgrade-v49-v62.md, gồm duplicate/cardinality/lock
+   preflight, transactional dry-run và gate mapping bắt buộc trước v61.
 5. Verify document worker service account, DB role và Linux sandbox.
 6. Nếu dùng Turnstile, tạo widget `Managed`, allow đúng hostname production và
    lưu site/secret key trong secret manager. `TURNSTILE_ENABLED=auto` tự bật khi

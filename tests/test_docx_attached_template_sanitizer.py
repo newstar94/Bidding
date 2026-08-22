@@ -155,6 +155,11 @@ def test_upload_route_sanitizes_attached_template_before_persisting(
         "backend.documents.routes_docx.get_active_org",
         lambda *_args: "org-a",
     )
+    audits = []
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.log_audit",
+        lambda event, **kwargs: audits.append((event, kwargs)),
+    )
     async def run_worker(operation, payload, **_kwargs):
         return _run_operation(
             operation,
@@ -175,3 +180,7 @@ def test_upload_route_sanitizes_attached_template_before_persisting(
         / filename
     )
     validate_ooxml_archive(stored.read_bytes(), "docx")
+    assert [event for event, _kwargs in audits] == [
+        "document.word_template_upload_requested",
+        "document.word_template_uploaded",
+    ]

@@ -1,5 +1,6 @@
 const installedModules = new WeakMap();
 
+/** @internal Diagnostic/test projection; never installed as a controller command. */
 export function getPrototypeModuleInventory(TargetClass) {
   return Object.freeze(Object.fromEntries(
     [...(installedModules.get(TargetClass) || new Map()).entries()]

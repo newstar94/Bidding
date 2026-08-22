@@ -2,6 +2,23 @@ import { assertSafeStyleURL, trustedScriptURL } from "./trustedTypes.js";
 
 const SCRIPT_LOADERS = /* @__PURE__ */ new Map();
 const STYLE_LOADERS = /* @__PURE__ */ new Map();
+
+function assetError(message, node, loaders, key) {
+  node.dataset.assetState = "error";
+  node.remove?.();
+  loaders.delete(key);
+  return new Error(message);
+}
+
+function scriptResult(src, globalName, node) {
+  const result = globalName ? window[globalName] : true;
+  if (globalName && !result) {
+    throw new Error(`Thư viện ${src} đã tải nhưng thiếu global ${globalName}`);
+  }
+  node.dataset.assetState = "loaded";
+  return result;
+}
+
 export function loadScriptOnce(src, globalName) {
   if (globalName && window[globalName]) {
     return Promise.resolve(window[globalName]);
@@ -9,19 +26,39 @@ export function loadScriptOnce(src, globalName) {
   if (SCRIPT_LOADERS.has(src)) {
     return SCRIPT_LOADERS.get(src);
   }
+  const existing = document.querySelector(`script[src="${src}"]`);
   const promise = new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(globalName ? window[globalName] : true), { once: true });
-      existing.addEventListener("error", () => reject(new Error(`Không thể tải thư viện: ${src}`)), { once: true });
+    const script = existing || document.createElement("script");
+    const loaded = () => {
+      try {
+        resolve(scriptResult(src, globalName, script));
+      } catch (error) {
+        reject(assetError(error.message, script, SCRIPT_LOADERS, src));
+      }
+    };
+    const failed = () => reject(assetError(
+      `Không thể tải thư viện: ${src}`,
+      script,
+      SCRIPT_LOADERS,
+      src,
+    ));
+    if (
+      existing
+      && (existing.dataset.assetState === "loaded"
+        || existing.readyState === "loaded"
+        || existing.readyState === "complete")
+    ) {
+      loaded();
       return;
     }
-    const script = document.createElement("script");
-    script.src = trustedScriptURL(src);
-    script.async = true;
-    script.onload = () => resolve(globalName ? window[globalName] : true);
-    script.onerror = () => reject(new Error(`Không thể tải thư viện: ${src}`));
-    document.head.appendChild(script);
+    script.dataset.assetState = "loading";
+    script.addEventListener("load", loaded, { once: true });
+    script.addEventListener("error", failed, { once: true });
+    if (!existing) {
+      script.src = trustedScriptURL(src);
+      script.async = true;
+      document.head.appendChild(script);
+    }
   });
   SCRIPT_LOADERS.set(src, promise);
   return promise;
@@ -31,19 +68,40 @@ export function ensureXlsxLoaded() {
 }
 export function loadStyleOnce(href) {
   const safeHref = assertSafeStyleURL(href);
-  if (document.querySelector(`link[href="${safeHref}"]`)) {
-    return Promise.resolve(true);
-  }
   if (STYLE_LOADERS.has(safeHref)) {
     return STYLE_LOADERS.get(safeHref);
   }
+  const existing = document.querySelector(`link[href="${safeHref}"]`);
   const promise = new Promise((resolve, reject) => {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = safeHref;
-    link.onload = () => resolve(true);
-    link.onerror = () => reject(new Error(`Không thể tải stylesheet: ${href}`));
-    document.head.appendChild(link);
+    const link = existing || document.createElement("link");
+    const loaded = () => {
+      link.dataset.assetState = "loaded";
+      resolve(true);
+    };
+    const failed = () => reject(assetError(
+      `Không thể tải stylesheet: ${href}`,
+      link,
+      STYLE_LOADERS,
+      safeHref,
+    ));
+    let existingSheet = false;
+    try {
+      existingSheet = Boolean(existing?.sheet);
+    } catch {
+      existingSheet = false;
+    }
+    if (existing && (existing.dataset.assetState === "loaded" || existingSheet)) {
+      loaded();
+      return;
+    }
+    link.dataset.assetState = "loading";
+    link.addEventListener("load", loaded, { once: true });
+    link.addEventListener("error", failed, { once: true });
+    if (!existing) {
+      link.rel = "stylesheet";
+      link.href = safeHref;
+      document.head.appendChild(link);
+    }
   });
   STYLE_LOADERS.set(safeHref, promise);
   return promise;

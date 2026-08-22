@@ -62,7 +62,7 @@ export function shouldShowLocalPending(currentPhase) {
   return !ACTIONABLE_PENDING_PHASES.has(String(currentPhase || ""));
 }
 
-
+/** @internal Diagnostic/test projection of sync activity state. */
 export function getSyncActivitySnapshot(controller) {
   const outboxStatus = controller?.model?.getMutationOutboxStatus?.() || {};
   const sendableMutation = controller?.model?.buildMutationSyncPayload?.() || null;

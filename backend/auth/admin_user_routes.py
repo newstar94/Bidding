@@ -4,6 +4,7 @@ from collections import defaultdict
 from starlette.responses import JSONResponse
 
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.access_policy import is_organization_manager
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.date_utils import vietnam_date_from_epoch
 from backend.shared.helpers import (
@@ -72,7 +73,8 @@ def _list_users_sync(request):
 
         req_role = str(role_or_err)
         effective_roles = get_effective_roles(req_role)
-        if 'super_admin' in effective_roles:
+        is_platform_admin = 'super_admin' in effective_roles
+        if is_platform_admin:
             controls_valid, elevated_role_or_err = verify_session(
                 request,
                 required_role='super_admin',
@@ -89,7 +91,8 @@ def _list_users_sync(request):
         email_query = (request.query_params.get('email') or '').strip().lower()
         email_filter_tk_sql = " AND tk.email_norm = ?" if email_query else ""
 
-        if 'super_admin' in effective_roles:
+        active_org_id = None
+        if is_platform_admin:
             if email_query:
                 cursor.execute(sql_base + " AND email_norm = ?", (email_query,))
             else:
@@ -97,18 +100,12 @@ def _list_users_sync(request):
             users_raw = cursor.fetchall()
         else:
             active_org_id = get_active_org(request, role_or_err.user_id)
-            cursor.execute(
-                """
-                SELECT lower(trim(vai_tro_trong_to_chuc))
-                FROM thanh_vien_to_chuc
-                WHERE user_id = ? AND organization_id = ?
-                  AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'
-                """,
-                (role_or_err.user_id, active_org_id),
-            )
-            membership = cursor.fetchone()
-            membership_role = str(membership[0] or "").strip().lower() if membership else ""
-            if membership_role != 'manager':
+            if not is_organization_manager(
+                cursor,
+                role_or_err,
+                role_or_err.user_id,
+                active_org_id,
+            ):
                 cursor.execute(f"""
                     SELECT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
                            tvtc.vai_tro_trong_to_chuc AS role,
@@ -139,6 +136,12 @@ def _list_users_sync(request):
         orgs_by_user = defaultdict(list)
         if user_ids:
             placeholders = ",".join("?" for _ in user_ids)
+            organization_scope_sql = (
+                "" if is_platform_admin else " AND tvtc.organization_id = ?"
+            )
+            organization_scope_params = (
+                () if is_platform_admin else (active_org_id,)
+            )
             cursor.execute(f"""
                 SELECT tvtc.user_id, tc.id, tc.ten_to_chuc,
                        tc.trang_thai AS organization_status,
@@ -165,7 +168,8 @@ def _list_users_sync(request):
                   ON export_grant.organization_id = tc.id AND export_grant.user_id = tvtc.user_id
                 WHERE tvtc.user_id IN ({placeholders})
                   AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
-            """, user_ids)
+                  {organization_scope_sql}
+            """, (*user_ids, *organization_scope_params))
             for row in cursor.fetchall():
                 has_subscription = row['package_id'] is not None
                 expires_at = int(row['expires_at']) if row['expires_at'] is not None else None
@@ -221,14 +225,23 @@ def _list_users_sync(request):
                     },
                 })
 
-        account_subscriptions = get_account_subscriptions_by_user_ids(cursor, user_ids)
+        account_subscriptions = (
+            get_account_subscriptions_by_user_ids(cursor, user_ids)
+            if is_platform_admin
+            else {}
+        )
         users = []
         for row in users_raw:
             u = dict(row)
-            account_subscription = account_subscriptions.get(u['id'])
-            u['account_subscription'] = account_subscription
             u['organizations'] = list(orgs_by_user[u['id']])
-            if str(u.get('platform_role') or '').strip().lower() != 'super_admin':
+            if is_platform_admin:
+                account_subscription = account_subscriptions.get(u['id'])
+                u['account_subscription'] = account_subscription
+            if (
+                is_platform_admin
+                and str(u.get('platform_role') or '').strip().lower()
+                != 'super_admin'
+            ):
                 u['organizations'].append(
                     personal_workspace_payload(
                         u['id'], u.get('name'), account_subscription

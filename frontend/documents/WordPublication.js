@@ -17,6 +17,10 @@ import {
   loadWordPublicationTemplateConfig,
   resolvedWordPublicationTemplates,
 } from "./WordPublicationTemplateConfig.js";
+import {
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
+} from "../app/workspaceLease.js";
 
 const WORD_PUBLICATION_STYLESHEET_URL = new URL(
   "./WordPublication.css?no-inline", import.meta.url,
@@ -582,10 +586,19 @@ function bindWordPublicationEvents(root) {
 
 export async function setupWordPublicationPage() {
   const controller = this;
+  const lease = captureWorkspaceLease(controller.model);
   const root = document.getElementById("tab-xuatban-word");
   if (!root) return;
   await loadStyleOnce(WORD_PUBLICATION_STYLESHEET_URL);
-  controller._wordPublicationState ||= createWordPublicationState();
+  if (!isWorkspaceLeaseCurrent(controller.model, lease)) return;
+  if (controller._wordPublicationWorkspaceToken !== lease.token) {
+    controller._wordPublicationWorkspaceToken = lease.token;
+    controller._wordPublicationState = createWordPublicationState();
+    controller._wordPublicationTemplateConfig = null;
+    controller._wordPublicationTemplateConfigError = "";
+  } else {
+    controller._wordPublicationState ||= createWordPublicationState();
+  }
   root.__bfWordPublicationController = controller;
   const planSelect = root.querySelector("#word-publication-plan-select");
   const packageSelect = root.querySelector("#word-publication-package-select");
@@ -595,6 +608,7 @@ export async function setupWordPublicationPage() {
   makeSearchableSelect(planSelect, "Tìm và chọn Kế hoạch...");
   makeSearchableSelect(packageSelect, "Tìm và chọn Gói thầu...");
   await Promise.resolve();
+  if (!isWorkspaceLeaseCurrent(controller.model, lease)) return;
   controller._wordPublicationTemplateConfigLoading = true;
   controller._wordPublicationTemplateConfigError = "";
   renderWordPublicationPage(controller, root);
@@ -603,7 +617,9 @@ export async function setupWordPublicationPage() {
   } catch {
     // Record data remains visible; export actions explain the configuration error.
   } finally {
-    controller._wordPublicationTemplateConfigLoading = false;
-    renderWordPublicationPage(controller, root);
+    if (isWorkspaceLeaseCurrent(controller.model, lease)) {
+      controller._wordPublicationTemplateConfigLoading = false;
+      renderWordPublicationPage(controller, root);
+    }
   }
 }

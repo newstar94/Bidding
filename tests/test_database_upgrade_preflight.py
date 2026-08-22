@@ -29,6 +29,8 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
         (0, 0),
         (0, 0, 0, 0, 0, 0),
         (True, True, True),
+        (1_000, 50, 10_000),
+        (2, 10),
     )
 
     report = inspect_database_upgrade(cursor, 35, target_version=DB_SCHEMA_VERSION)
@@ -73,8 +75,49 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
             "constraintBackedIndexPresent": True,
             "exactDuplicate": True,
         },
+        "v49ToV62Operational": {
+            "applies": True,
+            "versions": list(range(49, 63)),
+            "requiresTransactionalDryRun": True,
+            "requiresLockBudget": True,
+        },
+        "v50BindingSnapshotUniqueness": {
+            "applies": True,
+            "duplicateGroups": 0,
+            "requiresDataRepair": False,
+        },
+        "v54ObservationUniqueness": {
+            "applies": True,
+            "duplicateObservationGroups": 0,
+            "duplicateIdempotencyGroups": 0,
+            "requiresDataRepair": False,
+        },
+        "v59WebsocketDispatchRewrite": {
+            "applies": True,
+            "requiresTransactionalDryRun": True,
+            "eventRows": 1_000,
+            "deliveredRowsToRewrite": 50,
+            "relationBytes": 10_000,
+        },
+        "v60SyncedDeleteSnapshot": {
+            "applies": True,
+            "requiresFunctionRehearsal": True,
+            "requiresRollbackRehearsal": True,
+        },
+        "v61DefaultWorkspaceRename": {
+            "applies": True,
+            "candidateOrganizations": 2,
+            "organizationRows": 10,
+            "requiresApprovedTenantMapping": True,
+            "automaticRemediationAllowed": False,
+        },
+        "v62AiMessageIdempotency": {
+            "applies": True,
+            "requiresIndexBuildBudget": True,
+            "newColumnStartsNull": True,
+        },
     }
-    assert len(cursor.statements) == 4
+    assert len(cursor.statements) == 6
     assert "COUNT(*) FILTER (WHERE archived_at IS NULL)" in cursor.statements[0][0]
     assert "pg_total_relation_size" in cursor.statements[0][0]
 
@@ -85,7 +128,13 @@ def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
 ):
     cursor = _CardinalityCursor(
         *((
-            ((0, 0), (0, 0, 0, 0, 0, 0), (True, True, True))
+            (
+                (0, 0),
+                (0, 0, 0, 0, 0, 0),
+                (True, True, True),
+                (0, 0, 0),
+                (0, 0),
+            )
             if current_version == 36
             else ()
         ))
@@ -165,6 +214,63 @@ def test_v47_preflight_verifies_exact_duplicate_audit_index_before_drop():
     assert len(cursor.statements) == 1
     assert "idx_audit_log_single_successor" in cursor.statements[0][0]
     assert "audit_log_chain_id_previous_hash_key" in cursor.statements[0][0]
+
+
+def test_v50_preflight_reports_duplicate_binding_snapshot_groups():
+    cursor = _CardinalityCursor((3,))
+
+    report = inspect_database_upgrade(cursor, 49, target_version=50)
+
+    assert report["v50BindingSnapshotUniqueness"] == {
+        "applies": True,
+        "duplicateGroups": 3,
+        "requiresDataRepair": True,
+    }
+    assert "local_snapshot_id" in cursor.statements[0][0]
+
+
+def test_v54_preflight_reports_both_target_uniqueness_collisions():
+    cursor = _CardinalityCursor((2, 4))
+
+    report = inspect_database_upgrade(cursor, 53, target_version=54)
+
+    assert report["v54ObservationUniqueness"] == {
+        "applies": True,
+        "duplicateObservationGroups": 2,
+        "duplicateIdempotencyGroups": 4,
+        "requiresDataRepair": True,
+    }
+
+
+def test_v59_preflight_reports_websocket_rows_rewritten_in_transaction():
+    cursor = _CardinalityCursor((25_000, 4_000, 8_388_608))
+
+    report = inspect_database_upgrade(cursor, 58, target_version=59)
+
+    assert report["v59WebsocketDispatchRewrite"] == {
+        "applies": True,
+        "requiresTransactionalDryRun": True,
+        "eventRows": 25_000,
+        "deliveredRowsToRewrite": 4_000,
+        "relationBytes": 8_388_608,
+    }
+
+
+def test_v61_preflight_counts_candidates_without_exposing_or_rewriting_tenants():
+    cursor = _CardinalityCursor((2, 17))
+
+    report = inspect_database_upgrade(cursor, 60, target_version=61)
+
+    assert report["v61DefaultWorkspaceRename"] == {
+        "applies": True,
+        "candidateOrganizations": 2,
+        "organizationRows": 17,
+        "requiresApprovedTenantMapping": True,
+        "automaticRemediationAllowed": False,
+    }
+    assert len(cursor.statements) == 1
+    assert cursor.statements[0][0].startswith("SELECT")
+    assert "UPDATE" not in cursor.statements[0][0]
 
 
 def test_database_dry_run_rolls_back_successful_upgrade(monkeypatch):
@@ -368,5 +474,33 @@ def test_v36_operator_runbook_requires_preflight_dry_run_backup_and_quiescence()
         "DATABASE_STATEMENT_TIMEOUT_MS",
         "DATABASE_LOCK_TIMEOUT_MS",
         "không sửa migration v36",
+    ):
+        assert required.casefold() in runbook.casefold()
+
+
+def test_v49_v62_runbook_blocks_unapproved_v61_mapping_and_requires_rehearsal():
+    runbook = (
+        Path(__file__).resolve().parents[1]
+        / "deploy"
+        / "runbooks"
+        / "database-upgrade-v49-v62.md"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "--preflight",
+        "--dry-run",
+        "backup",
+        "restore",
+        "maintenance",
+        "v50BindingSnapshotUniqueness",
+        "v54ObservationUniqueness",
+        "v59WebsocketDispatchRewrite",
+        "v61DefaultWorkspaceRename",
+        "requiresApprovedTenantMapping",
+        "automaticRemediationAllowed",
+        "DATABASE_STATEMENT_TIMEOUT_MS",
+        "DATABASE_LOCK_TIMEOUT_MS",
+        "không sửa migration v61",
+        "không tự động đổi",
     ):
         assert required.casefold() in runbook.casefold()

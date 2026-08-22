@@ -21,14 +21,6 @@ export const PLAN_VERSION_DRAFT_TABLES = Object.freeze([
   "hanghoaduthaunhathau",
   "assignments",
 ]);
-export const PLAN_VERSION_DRAFT_OWNED_TABLES = Object.freeze([
-  "kehoach",
-  "goithau",
-  "goithauhanghoa",
-  "thongtinmothau",
-  "hanghoaduthaunhathau",
-  "assignments",
-]);
 export const PLAN_VERSION_DRAFT_SHARED_TABLES = Object.freeze([
   "chudautu",
   "chuyengia",

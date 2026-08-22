@@ -481,9 +481,3 @@ export function mergeSavedTimelineEntries(existingEntries = [], effectiveRows = 
   retained.push(...updated.values());
   return retained;
 }
-
-export function timelineProgress(rows = []) {
-  const applicable = rows.filter((row) => row.applicability === "APPLICABLE");
-  const completed = applicable.filter((row) => ["DONE", "COMPLETED"].includes(String(row.status || row.trangThai || "").toUpperCase())).length;
-  return { completed, total: applicable.length, ratio: applicable.length ? completed / applicable.length : 0 };
-}

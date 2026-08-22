@@ -1,3 +1,4 @@
+import sqlite3
 from types import SimpleNamespace
 
 from backend.documents.document_job_policy import (
@@ -109,3 +110,63 @@ def test_document_job_policy_rejects_tampered_or_legacy_policy():
             assert error.code == "DOCUMENT_EXPORT_POLICY_INVALID"
         else:
             raise AssertionError("invalid policy must fail closed")
+
+
+def test_document_job_policy_uses_current_platform_role_after_demotion():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.executescript(
+        """
+        CREATE TABLE tai_khoan (
+            id TEXT PRIMARY KEY,
+            trang_thai TEXT NOT NULL,
+            vai_tro TEXT NOT NULL
+        );
+        CREATE TABLE goi_thau (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            row_version INTEGER NOT NULL,
+            archived_at TEXT
+        );
+        CREATE TABLE thanh_vien_to_chuc (
+            user_id TEXT NOT NULL,
+            organization_id TEXT NOT NULL,
+            vai_tro_trong_to_chuc TEXT NOT NULL,
+            trang_thai_thanh_vien TEXT NOT NULL
+        );
+        INSERT INTO tai_khoan (id, trang_thai, vai_tro)
+        VALUES ('demoted-user', 'active', 'user');
+        INSERT INTO goi_thau
+            (id, organization_id, row_version, archived_at)
+        VALUES ('package', 'org', 7, NULL);
+        """
+    )
+    snapshot_role = SimpleNamespace(
+        user_id="demoted-user",
+        platform_role="super_admin",
+        active_role=None,
+        active_role_organization_id=None,
+    )
+    policy, fingerprint = build_document_job_policy(
+        snapshot_role,
+        package_revision=7,
+        document_format="docx",
+    )
+
+    try:
+        verify_document_job_policy(
+            connection.cursor(),
+            {
+                "organization_id": "org",
+                "user_id": "demoted-user",
+                "package_id": "package",
+                "policy_json": policy,
+                "policy_hash": fingerprint,
+            },
+        )
+    except DocumentJobAuthorizationError as error:
+        assert error.code == "DOCUMENT_EXPORT_ENTITLEMENT_REQUIRED"
+    else:
+        raise AssertionError("a demoted account must not retain snapshot super-admin authority")
+    finally:
+        connection.close()

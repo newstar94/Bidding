@@ -1346,7 +1346,7 @@
   background: var(--surface);
 }
 #cg-preview-container {
-  background-color: #ffffff !important;
+  background-color: var(--surface) !important;
   border: 1px dashed var(--border-color) !important;
   padding: 12px !important;
   height: 140px !important;
@@ -1357,7 +1357,7 @@
   object-fit: contain !important;
 }
 #cg-preview-container-chuky {
-  background-color: #ffffff !important;
+  background-color: var(--surface) !important;
   border: 1px dashed var(--border-color) !important;
   padding: 16px !important;
 }
@@ -1368,7 +1368,7 @@
   filter: contrast(1.1);
 }
 .signature-display-frame {
-  background-color: #ffffff;
+  background-color: var(--surface);
   border: 1px dashed var(--border-color);
   border-radius: var(--radius-md);
   padding: 12px;
@@ -2145,9 +2145,9 @@ table th {
   transition: color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 .auth-brand-action:hover {
-  background: #fff;
+  background: var(--surface);
   color: var(--primary-hover);
-  box-shadow: 0 14px 30px rgb(15 23 42 / 0.25), inset 0 1px 0 #fff;
+  box-shadow: 0 14px 30px rgb(15 23 42 / 0.25), inset 0 1px 0 var(--surface);
   transform: translateY(-2px);
 }
 .auth-brand-action:active {
@@ -2736,7 +2736,7 @@ table th {
   justify-content: center;
   font-weight: 700;
   font-size: 0.85rem;
-  color: #fff;
+  color: var(--surface);
   background:
     linear-gradient(
       135deg,
@@ -4721,7 +4721,7 @@ input#edit-pkg-price {
   border: 1px solid var(--border-color, #d9e0ea);
   border-radius: var(--radius-sm, 8px);
   color: var(--text-main, #172033);
-  background: var(--surface, #fff);
+  background: var(--surface, var(--surface));
   font: inherit;
   text-overflow: ellipsis;
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
@@ -4793,7 +4793,7 @@ input#edit-pkg-price {
   overflow-y: auto;
   border: 1px solid var(--border-color, #d9e0ea);
   border-radius: var(--radius-sm, 8px);
-  background: var(--surface, #fff);
+  background: var(--surface, var(--surface));
   box-shadow: 0 12px 28px rgba(17, 26, 44, 0.14);
   list-style: none;
 }

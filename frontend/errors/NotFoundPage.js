@@ -82,23 +82,22 @@ function createArt() {
   return art;
 }
 
-function destinationForQuery(value) {
+export function notFoundNavigationTarget(value) {
   const normalized = String(value || "").trim().toUpperCase();
+  if (!normalized) return "";
   if (/^PL\d{10}(?:-\d{2})?$/.test(normalized)) return "/ke-hoach";
   if (/^IB\d{10}(?:-\d{2})?$/.test(normalized)) return "/goi-thau";
   return "/tong-quan";
 }
 
-function createSearch(copy) {
+function createNavigation(copy) {
   const form = element("form", "bf-not-found__search");
-  form.setAttribute("role", "search");
-  form.setAttribute("aria-label", "Tìm kiếm trong BiddingFlow");
+  form.setAttribute("aria-label", "Mở khu vực phù hợp trong BiddingFlow");
 
-  const label = element("label", "bf-not-found__search-label", "Tìm nội dung trong BiddingFlow");
+  const label = element("label", "bf-not-found__search-label", "Mở khu vực theo mã tham chiếu");
   const input = element("input", "bf-not-found__search-input");
-  input.type = "search";
-  input.name = "q";
-  input.placeholder = "Tìm gói thầu, kế hoạch, hợp đồng...";
+  input.type = "text";
+  input.placeholder = "Nhập mã PL hoặc IB...";
   input.autocomplete = "off";
   input.setAttribute("aria-describedby", "bf-not-found-search-help");
   label.htmlFor = "bf-not-found-search-input";
@@ -106,21 +105,24 @@ function createSearch(copy) {
 
   const submit = element("button", "bf-not-found__search-button");
   submit.type = "submit";
-  submit.setAttribute("aria-label", "Tìm kiếm");
-  submit.append(icon("search"));
-  const help = element("span", "bf-not-found__sr-only", "Nhập mã PL, IB hoặc từ khóa để mở danh sách phù hợp.");
+  submit.setAttribute("aria-label", "Mở khu vực phù hợp");
+  submit.append(icon("arrow-right"));
+  const help = element(
+    "span",
+    "bf-not-found__sr-only",
+    "Mã PL mở danh sách kế hoạch, mã IB mở danh sách gói thầu; nội dung khác mở tổng quan.",
+  );
   help.id = "bf-not-found-search-help";
   form.append(label, input, submit, help);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const query = input.value.trim();
-    if (!query) {
+    const destination = notFoundNavigationTarget(input.value);
+    if (!destination) {
       input.focus();
-      copy.textContent = "Nhập mã hoặc từ khóa để tiếp tục tìm kiếm.";
+      copy.textContent = "Nhập mã tham chiếu để mở khu vực phù hợp.";
       return;
     }
-    const destination = destinationForQuery(query);
-    window.location.assign(`${destination}?q=${encodeURIComponent(query)}`);
+    window.location.assign(destination);
   });
   return form;
 }
@@ -140,7 +142,7 @@ function createPage() {
   const description = element(
     "p",
     "bf-not-found__description",
-    "Trang bạn đang tìm có thể đã được di chuyển, xóa hoặc chưa từng tồn tại. Hãy quay lại bằng điều khiển hoặc tiếp tục tìm kiếm.",
+    "Trang bạn đang tìm có thể đã được di chuyển, xóa hoặc chưa từng tồn tại. Hãy quay lại hoặc mở khu vực phù hợp theo mã tham chiếu.",
   );
   const actions = element("div", "bf-not-found__actions");
   const home = element("a", "bf-not-found__button bf-not-found__button--primary", "Về trang chủ");
@@ -154,8 +156,8 @@ function createPage() {
     else window.location.assign(HOME_PATH);
   });
   actions.append(home, back);
-  const search = createSearch(description);
-  copy.append(eyebrow, title, description, actions, search);
+  const navigation = createNavigation(description);
+  copy.append(eyebrow, title, description, actions, navigation);
   inner.append(copy, createArt());
   page.append(inner);
   return page;

@@ -30,7 +30,6 @@ import {
 } from "../../frontend/plans/planBreakdownDraft.js";
 import {
   fillPackageFormFromProcurementDraft,
-  fillPlanFormFromProcurementDraft,
   materializeProcurementRevisionDraft,
   materializeProcurementRevisionIntoExisting,
   materializeProcurementRevisionFromPrevious,
@@ -2007,7 +2006,23 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         controller.planBreakdownDraft.planId = id;
         const plan = state.kehoach.find((row) => row.id === id);
         controls.get("form-kehoach-id").value = id;
-        fillPlanFormFromProcurementDraft(globalThis.document, plan, model);
+        const importedPlanValues = {
+          "kh-ma": plan.maKeHoach,
+          "kh-ten": plan.tenKeHoach,
+          "kh-loaihinh": plan.loaiHinhMuaSam,
+          "kh-duan": plan.tenDuAnDuToan,
+          "kh-tongmuc": plan.tongMucDauTu == null
+            ? ""
+            : model.formatVND(plan.tongMucDauTu),
+          "kh-nguonvon": plan.nguonVon,
+          "kh-quyetdinh": plan.quyetDinhPheDuyet,
+          "kh-ngaypheduyet": model.formatForDateInput(plan.ngayPheDuyet),
+          "kh-thoigiandang": model.formatForDatetimeLocal(plan.thoiGianDangMa),
+          "kh-pheduyet": plan.pheDuyet || "Dự toán và kế hoạch",
+        };
+        Object.entries(importedPlanValues).forEach(([controlId, value]) => {
+          controls.get(controlId).value = value == null ? "" : String(value);
+        });
         controls.get("kh-chudautuid").value = plan.chuDauTuId || "investor-1";
       },
     },

@@ -111,6 +111,9 @@ Contract này quy định danh sách loại văn bản được hiển thị tr�
 - API cấu hình mới dùng `assignmentSets` và `resolvedTemplateSets` để biểu diễn
   danh sách. Hai trường singleton `assignments` và `resolvedTemplates` vẫn được
   trả về với phần tử đầu tiên để client cũ tiếp tục đọc được.
+- API đọc cấu hình trả thêm `revision`; mutation assignment và availability gửi
+  `expectedRevision`. Ghi trên revision cũ bị từ chối bằng `409` thay vì ghi đè
+  thay đổi của quản trị viên khác.
 - Client Xuất bản Word mới gửi một tham số `templateFilename` cho mỗi file đã
   chọn. Endpoint không có tham số này tiếp tục xuất toàn bộ assignment để tương
   thích với client cũ; không thay đổi route hoặc entitlement xuất Word.
@@ -133,6 +136,8 @@ Contract này quy định danh sách loại văn bản được hiển thị tr�
 - Assignment được bổ sung vào `config.json` sẵn có theo workspace dưới dạng mảng
   tên file. Giá trị chuỗi singleton từ phiên bản trước tự động được đọc thành
   mảng một phần tử và được chuẩn hóa khi cấu hình được lưu/đổi tên lần tiếp theo.
+- Config legacy chưa có `revision` được xem là revision `0` và được nâng lazy ở
+  mutation đầu tiên; không cần migration schema hoặc rewrite hàng loạt.
 - Cấu hình cũ chỉ có `active_template` vẫn hợp lệ và được đọc theo fallback nêu
   trên; không cần migration schema hoặc thao tác dữ liệu thủ công.
 - Availability được tính lại từ dữ liệu canonical của Gói thầu mỗi lần chọn hoặc
@@ -159,3 +164,5 @@ Contract này quy định danh sách loại văn bản được hiển thị tr�
   mẫu tạm ngừng, save flow, read-only behavior, accessibility và mobile layout.
 - `tests/test_word_template_crud.py` và `tests/js/word_template_crud.test.mjs`:
   bật/tắt nhiều mẫu độc lập, mặc định file mới, API/audit và điều khiển truy cập.
+- `tests/test_word_template_config_concurrency.py`: CAS đa process, stale writer,
+  config corruption và compatibility của config legacy.

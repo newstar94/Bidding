@@ -412,6 +412,93 @@ def test_permission_revoked_during_render_prevents_artifact_publication(
         database.close()
 
 
+def test_platform_demotion_during_render_prevents_artifact_publication(
+    tmp_path, monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    database = PostgresDatabase(database_url)
+    connection = database.get_connection()
+    job_id = None
+    organization_id = None
+    try:
+        (
+            organization_id,
+            user_id,
+            package_id,
+            _policy,
+            _fingerprint,
+        ) = _seed_export_job_scope(connection)
+        connection.execute(
+            "UPDATE tai_khoan SET vai_tro = 'super_admin' WHERE id = ?",
+            (user_id,),
+        )
+        connection.execute(
+            """UPDATE thanh_vien_to_chuc
+                  SET trang_thai_thanh_vien = 'left'
+                WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, user_id),
+        )
+        package_revision = connection.execute(
+            "SELECT row_version FROM goi_thau WHERE organization_id = ? AND id = ?",
+            (organization_id, package_id),
+        ).fetchone()[0]
+        connection.commit()
+        policy, fingerprint = build_document_job_policy(
+            SessionRole(
+                "super_admin",
+                user_id,
+                platform_role="super_admin",
+                active_role="super_admin",
+            ),
+            package_revision=int(package_revision),
+            document_format="xlsx",
+        )
+        job_id = enqueue_document_export(
+            "export_excel",
+            {"function": "create_phanlo_excel", "args": [[]]},
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
+            filename="export.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
+            database=database,
+        )
+
+        def render_then_demote(*_args, **_kwargs):
+            demotion_connection = database.get_connection()
+            try:
+                demotion_connection.execute(
+                    "UPDATE tai_khoan SET vai_tro = 'user' WHERE id = ?",
+                    (user_id,),
+                )
+                demotion_connection.commit()
+            finally:
+                demotion_connection.close()
+            return b"rendered-with-revoked-platform-role"
+
+        monkeypatch.setattr(document_worker, "run_document_job", render_then_demote)
+
+        assert process_next_durable_document_job(database, job_id=job_id)
+        job = get_document_export_job(database, job_id, organization_id, user_id)
+        assert job["status"] == "failed"
+        assert job["last_error_code"] == "DocumentJobAuthorizationError"
+        assert not (_document_job_dir(job_id) / "result.json").exists()
+    finally:
+        connection.rollback()
+        if job_id:
+            connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
+            shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        if organization_id:
+            _cleanup_export_job_scope(connection, organization_id)
+        connection.close()
+        database.close()
+
+
 def test_completed_export_is_not_downloadable_after_permission_revocation(
     tmp_path, monkeypatch,
 ):

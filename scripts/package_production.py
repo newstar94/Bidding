@@ -42,6 +42,7 @@ RUNTIME_FILES = (
     "package.json",
     "package-lock.json",
     "requirements.txt",
+    "docs/production-security-information.md",
     "scripts/backup.py",
     "scripts/configure_database_roles.py",
     "scripts/env_utils.py",
@@ -54,6 +55,10 @@ RUNTIME_FILES = (
     "scripts/verify_document_sandbox.py",
     "scripts/research_muasamcong.py",
 )
+
+ALLOWED_OPERATIONAL_DOCS = {
+    "docs/production-security-information.md",
+}
 
 FORBIDDEN_TOP_LEVEL_PARTS = {
     ".agents",
@@ -96,8 +101,12 @@ def _relative(path: Path) -> Path:
 
 
 def _assert_safe(relative_path: Path) -> None:
+    relative_name = relative_path.as_posix()
     if (
-        relative_path.parts[0] in FORBIDDEN_TOP_LEVEL_PARTS
+        (
+            relative_path.parts[0] in FORBIDDEN_TOP_LEVEL_PARTS
+            and relative_name not in ALLOWED_OPERATIONAL_DOCS
+        )
         or FORBIDDEN_NESTED_PARTS.intersection(relative_path.parts)
     ):
         raise RuntimeError(f"Forbidden production path: {relative_path.as_posix()}")

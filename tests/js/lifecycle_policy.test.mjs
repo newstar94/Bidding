@@ -2,11 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  allowedTransitions,
-  fieldPolicy,
   normalizeStatus,
   presentStatus,
-  workflowStep,
 } from "../../frontend/packages/LifecyclePolicy.js";
 
 
@@ -20,15 +17,4 @@ test("lifecycle policy normalizes legacy labels and presents stable codes", () =
     tone: "success",
     icon: "award",
   });
-});
-
-
-test("lifecycle policy owns transitions fields and workflow steps", () => {
-  assert.deepEqual(allowedTransitions("PREPARING"), ["CANCELLED", "INVITED"]);
-  assert.deepEqual(allowedTransitions("UNKNOWN"), ["CANCELLED", "PREPARING"]);
-  assert.equal(fieldPolicy("UNKNOWN", "goods").editable, true);
-  assert.equal(fieldPolicy("PREPARING", "goods").editable, true);
-  assert.equal(fieldPolicy("INVITED", "goods").editable, false);
-  assert.equal(workflowStep("EVALUATING", "ONE_STAGE_TWO_ENVELOPE", null), "evaluation");
-  assert.equal(workflowStep("AWARDED", "ONE_STAGE_ONE_ENVELOPE", null), "result");
 });

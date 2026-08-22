@@ -70,6 +70,7 @@ async function withPublicationPage(run) {
       if (pathname === "/api/word-publication-template-assignments") {
         response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({
+          revision: 0,
           documentTypes: [],
           assignments: {},
           resolvedTemplates: {

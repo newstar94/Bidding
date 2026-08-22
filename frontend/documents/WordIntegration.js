@@ -1477,6 +1477,15 @@ export async function handleWordTemplateAvailabilityToggle(filename, enabled) {
   }
   const key = String(filename || "").normalize("NFC");
   if (!key || pendingWordTemplateAvailabilityChanges.has(key)) return false;
+  const expectedRevision = Number(this._wordPublicationTemplateConfig?.revision);
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    await this.view?.customAlert?.(
+      "Không thể cập nhật biểu mẫu",
+      "Cần tải lại cấu hình biểu mẫu Word trước khi thay đổi trạng thái.",
+      "x-circle",
+    );
+    return false;
+  }
   pendingWordTemplateAvailabilityChanges.add(key);
   try {
     const response = await apiFetch("/api/templates/active", {
@@ -1485,11 +1494,15 @@ export async function handleWordTemplateAvailabilityToggle(filename, enabled) {
       body: JSON.stringify({
         template_name: key,
         enabled: Boolean(enabled),
+        expectedRevision,
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload.error || "Không thể cập nhật trạng thái biểu mẫu.");
+    }
+    if (Number.isSafeInteger(payload.revision) && payload.revision >= 0) {
+      this._wordPublicationTemplateConfig.revision = payload.revision;
     }
     this.view?.showToast?.(
       enabled ? "Đã cho phép sử dụng" : "Đã tạm ngừng biểu mẫu",

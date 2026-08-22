@@ -154,6 +154,7 @@ test("availability toggle persists the independent enabled state", async () => {
       success: true,
       filename: "bao-cao.docx",
       enabled: false,
+      revision: 9,
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -177,6 +178,7 @@ test("availability toggle persists the independent enabled state", async () => {
       },
     },
     view: { showToast() {}, customAlert: async () => {} },
+    _wordPublicationTemplateConfig: { revision: 8 },
     loadWordTemplates: async () => { reloads += 1; },
   };
 
@@ -197,6 +199,7 @@ test("availability toggle persists the independent enabled state", async () => {
   assert.deepEqual(JSON.parse(requests[0].options.body), {
     template_name: "bao-cao.docx",
     enabled: false,
+    expectedRevision: 8,
   });
   assert.equal(reloads, 1);
 });

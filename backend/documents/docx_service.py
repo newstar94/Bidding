@@ -390,7 +390,12 @@ def build_plan_context(plan_id, user_id, org_name, capabilities=None):
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
-    return project_docx_context("plan", unified_context, capabilities)
+    return project_docx_context(
+        "plan",
+        unified_context,
+        capabilities,
+        organization_id=org_name,
+    )
 
 def build_report_context(
     package_id,
@@ -582,4 +587,9 @@ def build_report_context(
         'today': now.date().isoformat()
     }
     unified_context.update(build_detailed_evaluation_context(pkg, bids))
-    return project_docx_context(type_param, unified_context, capabilities)
+    return project_docx_context(
+        type_param,
+        unified_context,
+        capabilities,
+        organization_id=org_name,
+    )

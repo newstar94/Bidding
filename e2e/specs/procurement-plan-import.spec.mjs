@@ -4,6 +4,17 @@ import { expect, test } from "@playwright/test";
 const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 const planCode = String(process.env.E2E_PROCUREMENT_PLAN_CODE || "PL2600000001");
+const fixtureReady = Boolean(
+  password
+  && String(process.env.VNEPS_PROCUREMENT_IMPORT_ENABLED || "").toLowerCase() === "true"
+  && String(process.env.VNEPS_PROCUREMENT_PROVIDER || "").toLowerCase() === "fixture"
+  && process.env.VNEPS_PROCUREMENT_FIXTURE_PATH
+);
+
+test.skip(
+  !fixtureReady,
+  "Requires the approved fixture-backed legacy procurement import environment.",
+);
 
 
 async function waitForApp(page) {

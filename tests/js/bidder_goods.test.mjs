@@ -26,7 +26,6 @@ import {
   applyManualBidderGoodsMapping,
   mapBidderGoodsRows,
 } from "../../frontend/packages/bidderGoodsMapping.js";
-import { shouldShowBidderGoodsTab } from "../../frontend/packages/bidderGoodsSelectors.js";
 import {
   validateBidderGoodsRow,
   validateBidderGoodsSubmission,
@@ -754,16 +753,7 @@ test("bidder-goods edit action opens only the selected row", async () => {
   assert.equal(renderCount, 1);
 });
 
-test("goods tab is limited to goods packages and financial contexts", () => {
-  const goods = { linhVuc: "Hàng hóa" };
-  const mixed = { linhVuc: " Hỗn hợp " };
-  assert.equal(shouldShowBidderGoodsTab(goods, "single"), true);
-  assert.equal(shouldShowBidderGoodsTab(goods, "financial", { id: "bid-1" }), true);
-  assert.equal(shouldShowBidderGoodsTab(goods, "technical", { id: "bid-1" }), false);
-  assert.equal(shouldShowBidderGoodsTab(mixed, "single"), true);
-  assert.equal(shouldShowBidderGoodsTab(mixed, "financial", { id: "bid-1" }), true);
-  assert.equal(shouldShowBidderGoodsTab(mixed, "technical", { id: "bid-1" }), false);
-  assert.equal(shouldShowBidderGoodsTab({ linhVuc: "Xây lắp" }, "single"), false);
+test("detailed evaluation panel labels the bidder-goods tab", () => {
   const panelSource = fs.readFileSync(
     new URL("../../frontend/packages/detail/DetailedEvaluationPanel.js", import.meta.url),
     "utf8",

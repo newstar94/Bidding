@@ -108,14 +108,20 @@ def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
     workflow = _ci_workflow()
     config = (PROJECT_ROOT / "playwright.config.mjs").read_text(encoding="utf-8")
     smoke = PROJECT_ROOT / "e2e" / "specs" / "browser-matrix.spec.mjs"
+    discovery = (
+        PROJECT_ROOT / "scripts" / "check_playwright_discovery.mjs"
+    ).read_text(encoding="utf-8")
 
     assert "npm run test:e2e:smoke" in _job_runs(workflow, "e2e")
+    assert "npm run check:e2e-discovery" in _job_runs(workflow, "e2e")
     assert workflow["jobs"]["e2e"]["env"]["VNEPS_VIOLATION_FIXTURE_PATH"] == (
         "tests/fixtures/vneps_contractor_violations.json"
     )
     for browser in ("chromium", "firefox", "webkit"):
         assert f'name: "{browser}"' in config
-    assert "contractorViolationReady" in config
+    assert "testIgnore" not in config
+    assert "contractor-violation.spec.mjs" in discovery
+    assert "procurement-plan-import.spec.mjs" in discovery
     assert smoke.is_file()
     assert "test.skip" not in smoke.read_text(encoding="utf-8")
 

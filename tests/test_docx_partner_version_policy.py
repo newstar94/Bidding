@@ -178,7 +178,7 @@ def test_report_context_passes_its_milestone_to_investor_version_loading(
     monkeypatch.setattr(
         docx_service,
         "project_docx_context",
-        lambda _type, context, _capabilities: context,
+        lambda _type, context, _capabilities, **_kwargs: context,
     )
     monkeypatch.setattr(
         docx_service,

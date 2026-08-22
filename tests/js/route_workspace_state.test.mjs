@@ -32,26 +32,6 @@ test("route registry round-trips package workspace state with stable lot scope",
 });
 
 
-test("route registry rejects navigation that would silently discard dirty state", () => {
-  const calls = [];
-  const result = RouteRegistry.navigate(
-    { pathname: "/goithau-detail/GT-02", packageId: "package-2" },
-    {
-      preserveDirty: true,
-      isDirty: () => true,
-      historyAdapter: {
-        pushState: (...args) => calls.push(args),
-        replaceState: (...args) => calls.push(args),
-      },
-      currentUrl: "https://example.test/goithau-detail/GT-01",
-    },
-  );
-
-  assert.deepEqual(result, { status: "blocked", reason: "DIRTY_STATE" });
-  assert.deepEqual(calls, []);
-});
-
-
 test("package workspace owns transitions, subscriptions and serializable snapshots", () => {
   const workspace = new PackageWorkspaceState();
   const observed = [];
