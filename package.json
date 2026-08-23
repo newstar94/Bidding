@@ -73,7 +73,7 @@
     "eslint": "10.7.0",
     "javascript-obfuscator": "5.4.3",
     "source-map-js": "1.2.1",
-    "vite": "8.1.4"
+    "vite": "8.2.1"
   },
   "dependencies": {
     "dompurify": "3.4.13",
