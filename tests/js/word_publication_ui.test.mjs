@@ -72,21 +72,30 @@ async function withPublicationPage(run) {
         response.end(JSON.stringify({
           revision: 0,
           documentTypes: [],
-          assignments: {},
+          assignments: {
+            procurement_plan: "mau-chinh.docx",
+            bid_evaluation_report: "bao-cao.docx",
+            contractor_selection_result: "mau-chinh.docx",
+          },
+          assignmentSets: {
+            procurement_plan: ["mau-chinh.docx"],
+            bid_evaluation_report: ["bao-cao.docx", "quyet-dinh.docx"],
+            contractor_selection_result: ["mau-chinh.docx"],
+          },
           resolvedTemplates: {
-            procurement_plan: { filename: "mau-chinh.docx", source: "legacy-active" },
-            bid_evaluation_report: { filename: "mau-chinh.docx", source: "legacy-active" },
-            contractor_selection_result: { filename: "mau-chinh.docx", source: "legacy-active" },
+            procurement_plan: { filename: "mau-chinh.docx", source: "assignment" },
+            bid_evaluation_report: { filename: "bao-cao.docx", source: "assignment" },
+            contractor_selection_result: { filename: "mau-chinh.docx", source: "assignment" },
           },
           resolvedTemplateSets: {
-            procurement_plan: [{ filename: "mau-chinh.docx", source: "legacy-active" }],
+            procurement_plan: [{ filename: "mau-chinh.docx", source: "assignment" }],
             bid_evaluation_report: [
               { filename: "bao-cao.docx", source: "assignment" },
               { filename: "quyet-dinh.docx", source: "assignment" },
             ],
             contractor_selection_result: [{
               filename: "mau-chinh.docx",
-              source: "legacy-active",
+              source: "assignment",
             }],
           },
           activeTemplate: "mau-chinh.docx",

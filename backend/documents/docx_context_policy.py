@@ -394,7 +394,11 @@ REPORT_ROOT_SPECS = {
     },
     **{key: "scalar" for key in _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS},
 }
-CONTRACT_ROOT_SPECS = {**REPORT_ROOT_SPECS, "hop_dong": "contract"}
+CONTRACT_ROOT_SPECS = {
+    **REPORT_ROOT_SPECS,
+    "thong_tin_mo_thau": "bid_list",
+    "hop_dong": "contract",
+}
 TIMELINE_ROOT_SPECS = {
     "goi_thau": "package",
     "ke_hoach": "plan",

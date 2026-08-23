@@ -45,20 +45,9 @@ function normalizeAssignments(config) {
   }));
 }
 
-function fallbackTemplate(config, documentType) {
-  const resolved = config?.resolvedTemplateSets?.[documentType.id]
-    || (config?.resolvedTemplates?.[documentType.id]
-      ? [config.resolvedTemplates[documentType.id]]
-      : []);
-  return resolved.find((item) => item?.source === "legacy-active")?.filename || "";
-}
-
-function assignmentStatus(config, documentType, selected) {
+function assignmentStatus(selected) {
   if (selected.length) {
     return { label: `Đã gán ${selected.length} biểu mẫu`, className: "is-configured" };
-  }
-  if (fallbackTemplate(config, documentType)) {
-    return { label: "Theo mẫu tương thích", className: "is-fallback" };
   }
   return { label: "Chưa cấu hình", className: "is-missing" };
 }
@@ -78,10 +67,9 @@ function collectAssignments(controller) {
   )));
 }
 
-function renderSelectionPreview(container, filenames, fallback = "") {
+function renderSelectionPreview(container, filenames) {
   container.replaceChildren();
-  const values = filenames.length ? filenames : fallback ? [fallback] : [];
-  if (!values.length) {
+  if (!filenames.length) {
     container.appendChild(createElement(
       "span",
       "word-template-assignment-preview-empty",
@@ -89,23 +77,16 @@ function renderSelectionPreview(container, filenames, fallback = "") {
     ));
     return;
   }
-  values.slice(0, 3).forEach((filename) => {
+  filenames.slice(0, 3).forEach((filename) => {
     const chip = createElement("span", "word-template-assignment-chip", filename);
     chip.title = filename;
     container.appendChild(chip);
   });
-  if (values.length > 3) {
+  if (filenames.length > 3) {
     container.appendChild(createElement(
       "span",
       "word-template-assignment-chip is-count",
-      `+${values.length - 3}`,
-    ));
-  }
-  if (!filenames.length && fallback) {
-    container.appendChild(createElement(
-      "span",
-      "word-template-assignment-fallback-note",
-      "Mẫu tương thích",
+      `+${filenames.length - 3}`,
     ));
   }
 }
@@ -116,7 +97,7 @@ function updateAssignmentRow(controller, documentType) {
   const row = root?.querySelector(`[data-document-type="${documentType.id}"]`);
   if (!state || !row) return;
   const selected = state.draft[documentType.id] || [];
-  const status = assignmentStatus(state.config, documentType, selected);
+  const status = assignmentStatus(selected);
   const badge = row.querySelector(".word-template-assignment-badge");
   if (badge) {
     badge.textContent = status.label;
@@ -125,7 +106,6 @@ function updateAssignmentRow(controller, documentType) {
   renderSelectionPreview(
     row.querySelector(".word-template-assignment-preview"),
     selected,
-    fallbackTemplate(state.config, documentType),
   );
   const count = row.querySelector(".word-template-assignment-trigger-count");
   if (count) count.textContent = String(selected.length);
@@ -490,7 +470,7 @@ export function renderWordTemplateAssignments(
     const heading = createElement("div", "word-template-assignment-heading");
     const label = createElement("div", "word-template-assignment-label", documentType.label);
     label.id = `word-template-assignment-${documentType.id}-label`;
-    const status = assignmentStatus(config, documentType, selected);
+    const status = assignmentStatus(selected);
     const badge = createElement(
       "span",
       `word-template-assignment-badge ${status.className}`,
@@ -503,7 +483,7 @@ export function renderWordTemplateAssignments(
     const selection = createElement("div", "word-template-assignment-selection");
     const preview = createElement("div", "word-template-assignment-preview");
     preview.setAttribute("aria-label", `Biểu mẫu đã gán cho ${documentType.label}`);
-    renderSelectionPreview(preview, selected, fallbackTemplate(config, documentType));
+    renderSelectionPreview(preview, selected);
     const trigger = createElement("button", "btn btn-outline word-template-assignment-picker-trigger");
     trigger.type = "button";
     trigger.setAttribute(

@@ -14,7 +14,6 @@ export function buildAwardedResultPanelMarkup({
   appraisalNumber = "",
   appraisalDate = "",
   isEditable = false,
-  wordExportEnabled = false,
   awardResultExcelExportEnabled = false,
   winningGoodsExportEnabled = false,
   formatCurrency,
@@ -32,9 +31,6 @@ export function buildAwardedResultPanelMarkup({
         <div class="compact-action-group">
           ${buildAwardResultExcelButtonMarkup(awardResultExcelExportEnabled)}
           ${winningGoodsExportEnabled ? '<button class="btn btn-outline action-strong" id="btn-export-winning-goods"><i data-lucide="file-spreadsheet"></i> Xuất danh sách hàng hóa trúng thầu</button>' : ""}
-          <button class="btn btn-primary action-strong" id="btn-export-docx-report"
-            ${wordExportEnabled ? "" : "disabled"}
-            title="${wordExportEnabled ? "Xuất báo cáo kết quả ra Word" : "Cần gói trả phí đang hoạt động để xuất Word"}"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
         </div>
       </div>
       ${buildAwardResultExcelPanelMarkup()}
@@ -64,7 +60,6 @@ export function renderAwardedResultPanel(container, options = {}) {
 
 export function bindAwardResultPanel(container, {
   onEdit,
-  onExport,
   onExportWinningGoods,
   onExportError,
   onWinningGoodsExportError,
@@ -92,7 +87,6 @@ export function bindAwardResultPanel(container, {
       }
     };
   };
-  bindExport(container.querySelector?.("#btn-export-docx-report"), onExport, "Đang xuất Word...");
   bindExport(
     container.querySelector?.("#btn-export-winning-goods"),
     onExportWinningGoods,

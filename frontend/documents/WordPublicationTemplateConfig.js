@@ -160,7 +160,9 @@ export async function saveWordPublicationTemplateAssignments(controller, assignm
 
 export function resolvedWordPublicationTemplates(config, documentType) {
   const templates = config?.resolvedTemplateSets?.[documentType];
-  if (Array.isArray(templates)) return templates;
+  if (Array.isArray(templates)) {
+    return templates.filter((template) => template?.source === "assignment");
+  }
   const legacy = config?.resolvedTemplates?.[documentType];
-  return legacy ? [legacy] : [];
+  return legacy?.source === "assignment" ? [legacy] : [];
 }

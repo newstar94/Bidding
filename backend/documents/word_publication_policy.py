@@ -36,7 +36,13 @@ WORD_PUBLICATION_DOCUMENTS = (
         "plan",
         "plan",
         ALL_PACKAGES,
-        True,
+    ),
+    WordPublicationDocument(
+        "package_full_profile",
+        "Hồ sơ tổng hợp gói thầu",
+        "package",
+        "contract",
+        ALL_PACKAGES,
     ),
     WordPublicationDocument(
         "consultant_evaluation_step_1",
@@ -72,7 +78,6 @@ WORD_PUBLICATION_DOCUMENTS = (
         "package",
         "evaluation",
         ONE_ENVELOPE,
-        True,
     ),
     WordPublicationDocument(
         "technical_bid_evaluation_report_01",
@@ -108,7 +113,6 @@ WORD_PUBLICATION_DOCUMENTS = (
         "package",
         "result",
         DIRECT_OR_SPECIAL,
-        True,
     ),
 )
 
@@ -150,6 +154,8 @@ def is_word_publication_document_applicable(
         return definition.applicability == ALL_PACKAGES
     if not package_record:
         return False
+    if definition.applicability == ALL_PACKAGES:
+        return True
 
     selection_method = _value(
         package_record,

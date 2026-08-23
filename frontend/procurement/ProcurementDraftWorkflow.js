@@ -108,6 +108,35 @@ function mapProcurementGoods(items, packageRecord, createId) {
   return result;
 }
 
+function reconcileInheritedProcurementGoods(
+  existingRows,
+  sourceRows,
+  packageRecord,
+  createId,
+) {
+  const desiredRows = mapProcurementGoods(sourceRows, packageRecord, createId);
+  const existingByCode = new Map();
+  existingRows.forEach((row) => {
+    const code = normalizedSourceCode(row?.maHangHoa);
+    if (!code) return;
+    const matches = existingByCode.get(code) || [];
+    matches.push(row);
+    existingByCode.set(code, matches);
+  });
+  return desiredRows.map((desired) => {
+    const code = normalizedSourceCode(desired.maHangHoa);
+    const matches = existingByCode.get(code) || [];
+    const inherited = matches.shift();
+    if (!inherited) return desired;
+    return {
+      ...inherited,
+      goiThauId: packageRecord.id,
+      phanLoId: desired.phanLoId,
+      sortOrder: desired.sortOrder,
+    };
+  });
+}
+
 function seedProcurementGoods(
   state,
   packageRecord,
@@ -116,10 +145,36 @@ function seedProcurementGoods(
   aggregate = null,
 ) {
   state.goithauhanghoa ||= [];
-  const alreadyMaterialized = state.goithauhanghoa.some(
+  const existingRows = state.goithauhanghoa.filter(
     (item) => String(item?.goiThauId || "") === String(packageRecord?.id || ""),
   );
-  if (alreadyMaterialized) return [];
+  if (existingRows.length > 0) {
+    // A new plan revision starts as a snapshot of the previous revision. When
+    // the authoritative source changes the package lot structure, those
+    // inherited goods still point at the old (or no) lots. Reconcile only the
+    // unpersisted snapshot represented by ``aggregate``; same-revision resync
+    // keeps its established behavior of preserving local goods edits.
+    if (aggregate && Array.isArray(sourcePackage?.danhSachHangHoa)) {
+      const rows = reconcileInheritedProcurementGoods(
+        existingRows,
+        sourcePackage.danhSachHangHoa,
+        packageRecord,
+        createId,
+      );
+      const packageId = String(packageRecord?.id || "");
+      state.goithauhanghoa = state.goithauhanghoa.filter(
+        (item) => String(item?.goiThauId || "") !== packageId,
+      );
+      state.goithauhanghoa.push(...rows);
+      aggregate.goithauhanghoa ||= [];
+      aggregate.goithauhanghoa = aggregate.goithauhanghoa.filter(
+        (item) => String(item?.goiThauId || "") !== packageId,
+      );
+      aggregate.goithauhanghoa.push(...rows);
+      return rows;
+    }
+    return [];
+  }
   const rows = mapProcurementGoods(
     sourcePackage?.danhSachHangHoa,
     packageRecord,

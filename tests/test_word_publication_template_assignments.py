@@ -336,7 +336,7 @@ def test_template_rename_and_delete_update_every_assignment_reference(template_r
     ) == {}
 
 
-def test_assignment_api_resolves_legacy_fallback_and_explicit_templates(
+def test_assignment_api_requires_explicit_templates_even_when_active_template_exists(
     template_root,
     monkeypatch,
 ):
@@ -368,11 +368,15 @@ def test_assignment_api_resolves_legacy_fallback_and_explicit_templates(
     )
 
     assert initial.status_code == 200
-    assert initial.json()["resolvedTemplates"]["procurement_plan"] == {
-        "filename": "main.docx",
-        "source": "legacy-active",
-    }
+    assert "procurement_plan" not in initial.json()["resolvedTemplates"]
+    assert "procurement_plan" not in initial.json()["resolvedTemplateSets"]
     assert "consultant_evaluation_step_1" not in initial.json()["resolvedTemplates"]
+    with pytest.raises(FileNotFoundError, match="Chưa chọn biểu mẫu Word"):
+        _resolve_publication_template_paths(
+            "organization",
+            "org-a",
+            "procurement_plan",
+        )
     assert saved.status_code == 200
     assert saved.json()["assignmentSets"] == {
         "consultant_evaluation_step_1": ["main.docx", "consultant.docx"],
@@ -538,7 +542,7 @@ def test_assignment_write_reuses_word_config_manage_permission(
     "procurement_form",
     [DIRECT_APPOINTMENT_SHORTENED, SPECIAL_SELECTION],
 )
-def test_direct_and_special_packages_have_only_two_server_allowed_documents(
+def test_direct_and_special_packages_include_full_profile_document(
     procurement_form,
 ):
     package = {
@@ -552,7 +556,28 @@ def test_direct_and_special_packages_have_only_two_server_allowed_documents(
         if is_word_publication_document_applicable(definition.id, package)
     ]
 
-    assert applicable == ["procurement_plan", "contractor_selection_result"]
+    assert applicable == [
+        "procurement_plan",
+        "package_full_profile",
+        "contractor_selection_result",
+    ]
+
+
+def test_package_full_profile_uses_contract_context_for_every_package():
+    definition = next(
+        item for item in WORD_PUBLICATION_DOCUMENTS
+        if item.id == "package_full_profile"
+    )
+
+    assert definition.scope == "package"
+    assert definition.context_type == "contract"
+    assert is_word_publication_document_applicable(
+        definition.id,
+        {
+            "phuong_thuc_lua_chon": "Phương thức khác",
+            "hinh_thuc_lua_chon": "Hình thức khác",
+        },
+    )
 
 
 def test_server_policy_keeps_one_and_two_envelope_documents_distinct():

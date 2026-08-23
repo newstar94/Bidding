@@ -199,6 +199,10 @@ test("manager assigns searchable Word templates by function and saves once", asy
     assert.equal(await page.locator(".word-template-assignment-picker-trigger").count(), 11);
     assert.equal(await page.locator('input[type="checkbox"]').count(), 0);
     assert.equal(await page.getByText("Mẫu tạm ngừng.docx", { exact: true }).count(), 0);
+    const planRow = page.locator('[data-document-type="procurement_plan"]');
+    assert.match(await planRow.textContent(), /Chưa cấu hình/u);
+    assert.doesNotMatch(await planRow.textContent(), /Theo mẫu tương thích|Mẫu tương thích/u);
+    assert.doesNotMatch(await planRow.textContent(), /Mẫu chính\.docx/u);
     const consultantRow = page.locator(
       '[data-document-type="consultant_evaluation_step_1"]',
     );

@@ -44,7 +44,7 @@ def apply_custom_mappings(context, mappings_rows):
         'goi_thau': ['goi_thau'],
         'goi_thau_trong_ke_hoach': ['goi_thau_trong_ke_hoach'],
         'goi_thau_versions': ['goi_thau_versions'],
-        'thong_tin_mo_thau': ['nha_thau'],
+        'thong_tin_mo_thau': ['thong_tin_mo_thau', 'nha_thau'],
         'nha_thau': ['nha_thau'],
         'chu_dau_tu': ['chu_dau_tu'],
         'hop_dong': ['hop_dong'],

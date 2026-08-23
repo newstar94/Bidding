@@ -626,7 +626,7 @@ def _resolve_publication_template_paths(
         publication_type,
         owner_id,
         owner_type=owner_type,
-        allow_active_fallback=definition.legacy_active_fallback,
+        allow_active_fallback=False,
     )
     if not template_names:
         raise FileNotFoundError(
@@ -720,7 +720,7 @@ def _word_publication_assignment_payload(owner_type, owner_id):
             definition.id,
             owner_id,
             owner_type=owner_type,
-            allow_active_fallback=definition.legacy_active_fallback,
+            allow_active_fallback=False,
         )
         if not template_names:
             continue

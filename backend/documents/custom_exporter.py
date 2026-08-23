@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from backend.documents.archive_validation import validate_ooxml_archive
 from backend.documents.docx_column_loop import (
     COLUMN_LITERAL_CONTEXT,
+    DOCX_INTERNAL_EMPTY_LIST,
+    DOCX_INTERNAL_EMPTY_VALUE,
     expand_column_loops,
 )
 from backend.documents.template_security import (
@@ -976,7 +978,9 @@ def list_templates(owner_id=None, *, owner_type='personal'):
             })
     return templates
 
-def translate_xml_tags(xml_content, valid_vars):
+def translate_xml_tags(xml_content, valid_vars, root_vars=None):
+
+    root_vars = set(valid_vars if root_vars is None else root_vars)
 
 
     def clean_braces(text):
@@ -1030,7 +1034,7 @@ def translate_xml_tags(xml_content, valid_vars):
                 return var_match.group(0)
             if var_name in valid_vars:
                 return f"{{{{ item.{var_name} }}}}"
-            return var_match.group(0)
+            return f"{{{{ {DOCX_INTERNAL_EMPTY_VALUE} }}}}"
 
         new_content = re.sub(r'(?<!\{)\{((?:item\.)?[A-Za-z0-9_]+)\}(?!\})', replace_var, block_content, flags=re.IGNORECASE)
         return f"{{#{loop_name}}}{new_content}{{/{loop_name}}}"
@@ -1041,8 +1045,7 @@ def translate_xml_tags(xml_content, valid_vars):
 
     def replace_open_loop(match):
         loop_name = match.group(1).lower()
-        if loop_name not in valid_vars:
-            return match.group(0)
+        iterable_name = loop_name if loop_name in root_vars else DOCX_INTERNAL_EMPTY_LIST
         index = match.start()
 
 
@@ -1051,14 +1054,11 @@ def translate_xml_tags(xml_content, valid_vars):
         in_table_row = pos_start > pos_end
 
         if in_table_row:
-            return f'{{%tr for item in {loop_name} %}}'
+            return f'{{%tr for item in {iterable_name} %}}'
         else:
-            return f'{{% for item in {loop_name} %}}'
+            return f'{{% for item in {iterable_name} %}}'
 
     def replace_close_loop(match):
-        loop_name = match.group(1).lower()
-        if loop_name not in valid_vars:
-            return match.group(0)
         index = match.start()
 
         pos_start = xml_content.rfind('<w:tr', 0, index)
@@ -1079,9 +1079,9 @@ def translate_xml_tags(xml_content, valid_vars):
         var_name = match.group(1).lower()
         if var_name.startswith('#') or var_name.startswith('/') or var_name.startswith('%') or var_name.startswith('^'):
             return match.group(0)
-        if var_name in valid_vars:
+        if var_name in root_vars:
             return f"{{{{ {var_name} }}}}"
-        return match.group(0)
+        return f"{{{{ {DOCX_INTERNAL_EMPTY_VALUE} }}}}"
 
     xml_content = re.sub(r'(?<!\{)\{([A-Za-z0-9_]+)\}(?!\})', replace_global_var, xml_content)
 
@@ -1118,7 +1118,8 @@ def translate_docx_template(template_path, context, allowed_root_keys=None):
     if allowed_root_keys is not None:
         allowed_root_keys = set(allowed_root_keys) | set(COLUMN_LITERAL_CONTEXT)
     enrich_context_with_lowercase_keys(context)
-    valid_vars = set(context.keys())
+    root_vars = set(context.keys())
+    valid_vars = set(root_vars)
     for val in context.values():
         if isinstance(val, list):
             for item in val:
@@ -1127,7 +1128,7 @@ def translate_docx_template(template_path, context, allowed_root_keys=None):
         elif isinstance(val, dict):
             valid_vars.update(val.keys())
 
-    valid_vars_hash = hash(frozenset(valid_vars))
+    valid_vars_hash = hash((frozenset(valid_vars), frozenset(root_vars)))
 
     cached = _TRANSLATED_DOCXTPL_CACHE.get(template_path)
     if cached and cached[0] == mtime and cached[1] == valid_vars_hash:
@@ -1151,7 +1152,11 @@ def translate_docx_template(template_path, context, allowed_root_keys=None):
                 data = yin.read(item.filename)
                 if item.filename in ['word/document.xml', 'word/header1.xml', 'word/header2.xml', 'word/footer1.xml', 'word/footer2.xml']:
                     xml_str = data.decode('utf-8')
-                    translated_xml = translate_xml_tags(xml_str, valid_vars)
+                    translated_xml = translate_xml_tags(
+                        xml_str,
+                        valid_vars,
+                        root_vars=root_vars,
+                    )
                     data = translated_xml.encode('utf-8')
                 if item.filename.startswith('word/') and item.filename.lower().endswith('.xml'):
                     translated_xml_parts.append(data.decode('utf-8'))

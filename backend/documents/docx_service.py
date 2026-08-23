@@ -500,6 +500,7 @@ def build_report_context(
             bids = [bid for bid in bids if str(bid.get('nha_thau_id')) in winning_ids or str(bindings.get(str(bid.get('id') or ''), {}).get('contractorVersionId')) in winning_ids]
         _enrich_opening_bid_contractor_versions(cursor, {str(bid.get('id')): bid for bid in bids}, org_name, 'snake')
     enrich_bids_with_contractor_fields(cursor, bids, org_name)
+    opening_bids = bids
 
 
     id_goc = pkg.get('id_goc')
@@ -577,6 +578,10 @@ def build_report_context(
         'to_chuc': org_data,
         'goi_dich_vu': gdv_data,
         'nha_thau': bids,
+        # Contract documents use ``nha_thau`` for the linked contractor. Keep
+        # the opening rows separately so an explicitly configured composite
+        # template can still render ``ds_mo_thau`` from its declared source.
+        'thong_tin_mo_thau': opening_bids,
         'to_chuyen_gia': to_chuyen_gia,
         'to_tham_dinh': to_tham_dinh,
         'hop_dong': contract_data,

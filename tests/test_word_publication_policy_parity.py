@@ -41,3 +41,4 @@ def test_frontend_word_publication_policy_matches_authoritative_backend_metadata
     ]
 
     assert frontend_contract == backend_contract
+    assert not any(item["legacyActiveFallback"] for item in backend_contract)

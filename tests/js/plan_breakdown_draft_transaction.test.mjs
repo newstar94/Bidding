@@ -385,6 +385,87 @@ test("non-lot procurement package drops a synthetic source lot before sync", () 
   assert.equal(state.goithauhanghoa[0].phanLoId, null);
 });
 
+test("next imported plan revision remaps inherited non-lot goods into source lots", () => {
+  let sequence = 0;
+  const state = {
+    chudautu: [], kehoach: [], goithau: [], goithauhanghoa: [],
+    thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const revision00 = materializeProcurementRevisionDraft(state, {
+    revisionNumber: "00",
+    planDraft: { maKeHoach: "PL2500201238", phienBan: "00" },
+    packageDrafts: [{
+      maGoiThau: "IB2500426513",
+      tenGoiThau: "Gói chuyển sang phân lô",
+      phanLo: false,
+      sourceRevision: { stablePackageId: "stable-split-transition" },
+      danhSachHangHoa: [
+        {
+          maHangHoa: "1", tenHangHoa: "Hàng hóa 1",
+          donViTinh: "Cái", soLuong: 1,
+        },
+        {
+          maHangHoa: "2", tenHangHoa: "Hàng hóa 2",
+          donViTinh: "Cái", soLuong: 2,
+        },
+      ],
+    }],
+  }, {
+    createId: (kind) => `${kind}-split-${++sequence}`,
+    timestamp: "2026-08-23T00:00:00Z",
+  });
+
+  const revision01 = materializeProcurementRevisionFromPrevious(
+    state,
+    revision00.plan.id,
+    {
+      revisionNumber: "01",
+      planDraft: { maKeHoach: "PL2500201238", phienBan: "01" },
+      packageDrafts: [{
+        maGoiThau: "IB2500426513",
+        tenGoiThau: "Gói chuyển sang phân lô",
+        phanLo: true,
+        sourceRevision: { stablePackageId: "stable-split-transition" },
+        danhSachPhanLo: [
+          { lotNo: "PP01", lotName: "Phần 1" },
+          { lotNo: "PP02", lotName: "Phần 2" },
+        ],
+        danhSachHangHoa: [
+          {
+            maPhanLo: "PP01", maHangHoa: "1", tenHangHoa: "Hàng hóa 1",
+            donViTinh: "Cái", soLuong: 1,
+          },
+          {
+            maPhanLo: "PP02", maHangHoa: "2", tenHangHoa: "Hàng hóa 2",
+            donViTinh: "Cái", soLuong: 2,
+          },
+        ],
+      }],
+    },
+    {
+      createId: (kind) => `${kind}-split-${++sequence}`,
+      timestamp: "2026-08-23T00:01:00Z",
+    },
+  );
+
+  const previousGoods = state.goithauhanghoa.filter(
+    (row) => row.goiThauId === revision00.packages[0].id,
+  );
+  const latestPackage = revision01.packages[0];
+  const latestGoods = state.goithauhanghoa.filter(
+    (row) => row.goiThauId === latestPackage.id,
+  );
+  const lotsByCode = new Map(latestPackage.phanLoList.map(
+    (lot) => [lot.maPhanLo, lot.id],
+  ));
+
+  assert.deepEqual(previousGoods.map((row) => row.phanLoId), [null, null]);
+  assert.deepEqual(latestGoods.map((row) => row.phanLoId), [
+    lotsByCode.get("PP01"),
+    lotsByCode.get("PP02"),
+  ]);
+});
+
 test("revision 01 keeps procurement purchase-option flags sync-safe for inherited and new packages", () => {
   let sequence = 0;
   const state = {

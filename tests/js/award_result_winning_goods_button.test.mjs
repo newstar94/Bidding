@@ -25,6 +25,12 @@ test("winning-goods export action is omitted when unavailable and rendered enabl
   assert.doesNotMatch(markup.match(/<button[^>]+id="btn-export-winning-goods"[^>]*>/)?.[0] || "", /disabled/);
 });
 
+test("award-result summary never renders the legacy Word export action", () => {
+  const markup = buildAwardedResultPanelMarkup(options({ wordExportEnabled: true }));
+  assert.doesNotMatch(markup, /btn-export-docx-report/);
+  assert.doesNotMatch(markup, /Xuất Báo cáo Kết quả \(Word\)/);
+});
+
 test("winning-goods export binding installs its independent Excel action", () => {
   const button = { innerHTML: "Xuất", disabled: false, onclick: null };
   const container = {

@@ -18,6 +18,7 @@ const APPLICABILITY = Object.freeze({
 });
 
 const planExport = Object.freeze({ scope: "plan", reportType: "plan" });
+const contractExport = Object.freeze({ scope: "package", reportType: "contract" });
 const evaluationExport = Object.freeze({ scope: "package", reportType: "evaluation" });
 const resultExport = Object.freeze({ scope: "package", reportType: "result" });
 
@@ -33,7 +34,14 @@ export const WORD_PUBLICATION_DOCUMENTS = Object.freeze([
     icon: "clipboard-list",
     applicability: APPLICABILITY.ALL_PACKAGES,
     exportTarget: planExport,
-    legacyActiveFallback: true,
+  }),
+  definition({
+    id: "package_full_profile",
+    label: "Hồ sơ tổng hợp gói thầu",
+    description: "Xuất dữ liệu kế hoạch, gói thầu, tổ chuyên gia, tổ thẩm định, mở thầu và hợp đồng.",
+    icon: "folder-kanban",
+    applicability: APPLICABILITY.ALL_PACKAGES,
+    exportTarget: contractExport,
   }),
   definition({
     id: "consultant_evaluation_step_1",
@@ -74,7 +82,6 @@ export const WORD_PUBLICATION_DOCUMENTS = Object.freeze([
     icon: "file-chart-column-increasing",
     applicability: APPLICABILITY.ONE_ENVELOPE,
     exportTarget: evaluationExport,
-    legacyActiveFallback: true,
   }),
   definition({
     id: "technical_bid_evaluation_report_01",
@@ -115,7 +122,6 @@ export const WORD_PUBLICATION_DOCUMENTS = Object.freeze([
     icon: "badge-check",
     applicability: APPLICABILITY.DIRECT_OR_SPECIAL,
     exportTarget: resultExport,
-    legacyActiveFallback: true,
   }),
 ]);
 

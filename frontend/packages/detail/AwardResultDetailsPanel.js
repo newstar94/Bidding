@@ -1,12 +1,9 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
-import { authFetchDownload } from "../../shared/view_helpers.js";
 import { bindAwardResultPanel, renderAwardedResultPanel } from "./AwardResultPanel.js";
 import { buildAwardResultViewModel } from "./AwardResultViewModel.js";
 import {
   commitPackageResultEditState,
 } from "../packageEvaluationProgress.js";
-import { executeAppCommand } from "../../app/commandBus.js";
-import { appendExportSnapshotVersion } from "../../shared/exportSnapshot.js";
 import { buildAwardResultApprovalMarkup } from "./AwardResultApprovalMarkup.js";
 import { buildOfficialResultHistoryMarkup } from "./AwardResultHistoryMarkup.js";
 import { buildAwardResultSummaryPresentation } from "./AwardResultSummaryPresentation.js";
@@ -159,7 +156,6 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           appraisalNumber: soBctdResult,
           appraisalDate: ngayBctdResult,
           isEditable,
-          wordExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
           awardResultExcelExportEnabled: Boolean(
             view.model.state.activeuser?.awardResultExcelExportEnabled,
           ),
@@ -175,15 +171,6 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             const didBeginEdit = beginWholePackageResultEdit(view, gt, rerenderResultPanel);
             if (didBeginEdit) await persistResultEditState();
           },
-          onExport: async () => {
-            const snapshotVersion = appController?.prepareExportSnapshot
-              ? await appController.prepareExportSnapshot()
-              : await executeAppCommand("prepareExportSnapshot");
-            return authFetchDownload(
-              appendExportSnapshotVersion(`/api/export-report/${id}?type=result`, snapshotVersion),
-              `Bao_cao_ket_qua_danh_gia_ho_so_du_thau_${gt.maGoiThau}.docx`
-            );
-          },
           onExportWinningGoods: async () => {
             await downloadOfficialWinningGoodsWorkbook({
               packageId: gt.id,
@@ -191,7 +178,6 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               expectedRevision: gt.rowVersion,
             });
           },
-          onExportError: (error) => view.customAlert("Lỗi", "Lỗi xuất báo cáo: " + error.message, "x-circle"),
           onWinningGoodsExportError: (error) => view.customAlert(
             "Không thể xuất hàng hóa trúng thầu",
             error.message,

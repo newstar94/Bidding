@@ -35,9 +35,13 @@ END_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 VARIABLE_RE = re.compile(r"(?<!\{)\{([A-Za-z0-9_]+)\}(?!\})")
+DOCX_INTERNAL_EMPTY_LIST = "docx_internal_empty_list"
+DOCX_INTERNAL_EMPTY_VALUE = "docx_internal_empty_value"
 COLUMN_LITERAL_CONTEXT = {
     "docx_column_literal_open_brace": "{",
     "docx_column_literal_close_brace": "}",
+    DOCX_INTERNAL_EMPTY_LIST: (),
+    DOCX_INTERNAL_EMPTY_VALUE: "",
 }
 OPEN_BRACE_TEMPLATE = "{{ docx_column_literal_open_brace }}"
 CLOSE_BRACE_TEMPLATE = "{{ docx_column_literal_close_brace }}"
