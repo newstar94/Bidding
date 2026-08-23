@@ -76,7 +76,7 @@
     "vite": "8.1.4"
   },
   "dependencies": {
-    "dompurify": "3.4.13",
+    "dompurify": "3.4.14",
     "playwright": "1.62.0",
     "puppeteer": "^25.6.0"
   },
