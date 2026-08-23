@@ -196,7 +196,8 @@ test("manager assigns searchable Word templates by function and saves once", asy
     }, { templateFixtures: templates, config: configuration() });
 
     assert.equal(await page.locator('input[type="search"]').count(), 0);
-    assert.equal(await page.locator(".word-template-assignment-picker-trigger").count(), 12);
+    assert.equal(await page.locator(".word-template-assignment-picker-trigger").count(), 11);
+    assert.equal(await page.locator('[data-document-type="package_full_profile"]').count(), 0);
     assert.equal(await page.locator('input[type="checkbox"]').count(), 0);
     assert.equal(await page.getByText("Mẫu tạm ngừng.docx", { exact: true }).count(), 0);
     const planRow = page.locator('[data-document-type="procurement_plan"]');

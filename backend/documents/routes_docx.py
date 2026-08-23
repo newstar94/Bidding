@@ -79,6 +79,46 @@ SHARED_TEMPLATES = LEGACY_MANAGED_TEMPLATES
 MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
 
+_CONTRACT_CLASSIFICATION_BY_PUBLICATION_TYPE = {
+    "consultant_evaluation_step_1": "tu van",
+    "consultant_evaluation_step_2": "tu van",
+    "consultant_appraisal_step_1": "tham dinh",
+    "consultant_appraisal_step_2": "tham dinh",
+}
+
+
+def _normalized_contract_classification(value):
+    normalized = unicodedata.normalize("NFKD", str(value or "")).casefold()
+    normalized = "".join(
+        character
+        for character in normalized
+        if not unicodedata.combining(character)
+    )
+    return " ".join(normalized.replace("đ", "d").split())
+
+
+def _scope_contracts_for_word_publication(context, publication_type):
+    expected_classification = _CONTRACT_CLASSIFICATION_BY_PUBLICATION_TYPE.get(
+        publication_type
+    )
+    if expected_classification is None:
+        return
+
+    contracts = context.get("hop_dong_list")
+    if not isinstance(contracts, list):
+        context["hop_dong_list"] = []
+        return
+
+    context["hop_dong_list"] = [
+        contract
+        for contract in contracts
+        if isinstance(contract, dict)
+        and _normalized_contract_classification(
+            contract.get("phan_loai") or contract.get("phanLoai")
+        )
+        == expected_classification
+    ]
+
 
 def _docx_error(request, exception, context):
     if isinstance(exception, custom_exporter.WordTemplateConfigConflictError):
@@ -699,6 +739,7 @@ def _word_publication_assignment_payload(owner_type, owner_id):
             if filename.casefold() in enabled_identities
         ]
         for document_type, filenames in stored_assignment_sets.items()
+        if document_type in WORD_PUBLICATION_DOCUMENT_IDS
     }
     assignment_sets = {
         document_type: filenames
@@ -900,6 +941,7 @@ def _prepare_report_render(
         document_type,
         capabilities,
     )
+    _scope_contracts_for_word_publication(context, publication_type)
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
     apply_custom_mappings(context, mappings)

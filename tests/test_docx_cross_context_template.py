@@ -11,6 +11,7 @@ from backend.documents.custom_exporter import (
 from backend.documents.docx_context_policy import MANIFEST_VERSION
 from backend.documents.docx_context_policy import project_docx_context
 from backend.documents.docx_mapping_service import apply_custom_mappings
+from backend.documents.routes_docx import _scope_contracts_for_word_publication
 
 
 def _all_document_text(document):
@@ -23,6 +24,22 @@ def _all_document_text(document):
             for cell in row.cells
         ]
     )
+
+
+def test_combined_sample_template_documents_derived_variable_usage():
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+    )
+
+    text = _all_document_text(Document(template_path))
+
+    assert "6. Hướng dẫn sử dụng biến dẫn xuất" in text
+    assert "{bangchu_gia_gt}" in text
+    assert "{S_tg_dang_tai_kh}" in text
+    assert "dd/MM/yyyy" in text
+    assert "Mười hai triệu đồng" in text
 
 
 def test_combined_sample_template_renders_evaluation_list_source_fields():
@@ -226,10 +243,61 @@ def test_combined_template_renders_contracts_from_evaluation_context():
     assert "12.000.000" in text
 
 
+def test_combined_template_renders_only_consulting_contract_for_consultant_step():
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+    )
+    context = project_docx_context(
+        "evaluation",
+        {
+            "hop_dong_list": [
+                {
+                    "id": "contract-appraisal",
+                    "phan_loai": "Thẩm định",
+                    "ten_hop_dong": "Tư vấn thẩm định HSMT",
+                },
+                {
+                    "id": "contract-consulting",
+                    "phan_loai": "Tư vấn",
+                    "ten_hop_dong": "Tư vấn lập HSMT",
+                },
+            ],
+        },
+    )
+    _scope_contracts_for_word_publication(
+        context,
+        "consultant_evaluation_step_1",
+    )
+    apply_custom_mappings(
+        context,
+        [("ds_hop_dong", "hop_dong_list", "")],
+    )
+
+    output = generate_report_from_custom_template(
+        str(template_path),
+        context,
+        {
+            "version": MANIFEST_VERSION,
+            "document_type": "evaluation",
+            "root_keys": sorted(context),
+            "custom_root_keys": ["ds_hop_dong"],
+            "image_fields": {},
+            "media_organization_id": "org-a",
+        },
+    )
+
+    text = _all_document_text(Document(BytesIO(output.getvalue())))
+    assert "Tư vấn lập HSMT" in text
+    assert "Tư vấn thẩm định HSMT" not in text
+
+
 def test_datetime_mapping_alias_keeps_hours_and_minutes(tmp_path):
     template_path = tmp_path / "datetime-alias.docx"
     template = Document()
     template.add_paragraph("Thời gian đăng tải: {tg_dang_tai_kh}")
+    template.add_paragraph("Ngày đăng tải ngắn: {S_tg_dang_tai_kh}")
     template.save(template_path)
     context = {"tg_dang_tai_kh": "2026-03-05 14:55:00"}
 
@@ -242,6 +310,8 @@ def test_datetime_mapping_alias_keeps_hours_and_minutes(tmp_path):
             "root_keys": ["tg_dang_tai_kh"],
             "custom_root_keys": ["tg_dang_tai_kh"],
             "datetime_root_keys": ["tg_dang_tai_kh"],
+            "date_root_keys": ["tg_dang_tai_kh"],
+            "money_root_keys": [],
             "image_fields": {},
             "media_organization_id": "org-a",
         },
@@ -249,6 +319,41 @@ def test_datetime_mapping_alias_keeps_hours_and_minutes(tmp_path):
 
     text = _all_document_text(Document(BytesIO(output.getvalue())))
     assert "14:55 ngày 05/3/2026" in text
+    assert "Ngày đăng tải ngắn: 05/03/2026" in text
+
+
+def test_money_mapping_alias_supports_amount_in_words_for_numbers_and_numeric_strings(
+    tmp_path,
+):
+    template_path = tmp_path / "money-in-words.docx"
+    template = Document()
+    template.add_paragraph("Giá gói thầu: {bangchu_gia_gt}")
+    template.add_paragraph("Giá hợp đồng: {BangChu_hd_gia_tri}")
+    template.save(template_path)
+    context = {
+        "gia_gt": 12000000,
+        "hd_gia_tri": "9000000",
+    }
+
+    output = generate_report_from_custom_template(
+        str(template_path),
+        context,
+        {
+            "version": MANIFEST_VERSION,
+            "document_type": "evaluation",
+            "root_keys": sorted(context),
+            "custom_root_keys": sorted(context),
+            "datetime_root_keys": [],
+            "date_root_keys": [],
+            "money_root_keys": sorted(context),
+            "image_fields": {},
+            "media_organization_id": "org-a",
+        },
+    )
+
+    text = _all_document_text(Document(BytesIO(output.getvalue())))
+    assert "Giá gói thầu: Mười hai triệu đồng" in text
+    assert "Giá hợp đồng: Chín triệu đồng" in text
 
 
 def test_template_skips_unavailable_list_when_assigned_to_plan_context(tmp_path):

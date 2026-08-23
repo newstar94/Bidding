@@ -8,9 +8,15 @@ import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
 import { canManageWorkspaceWordVariables } from "../auth/accessContext.js";
 import {
+  FIELD_METADATA_BY_TABLE,
   getWordColumnLabel,
   getWordSourceTableLabel,
 } from "../documents/wordVariableManifest.js";
+import {
+  getDerivedWordVariableCodes,
+  matchesWordVariableSearch,
+  normalizeWordVariableSearch,
+} from "../documents/wordVariablePresentation.js";
 import {
   paginateOwnedTable,
   renderTablePagination,
@@ -126,8 +132,7 @@ export function renderDictionary(group) {
     custom_lists: []
   };
   const getTableLabel = (tbl) => getWordSourceTableLabel(tbl);
-  const getColumnLabel = (tbl, col) => {
-    if (!col || col === "*") return "Toàn bộ bảng (Biến danh sách)";
+  const normalizeSourceTable = (tbl) => {
     let normTbl = tbl || "";
     if (normTbl.endsWith("_list")) {
       normTbl = normTbl.substring(0, normTbl.length - 5);
@@ -141,6 +146,14 @@ export function renderDictionary(group) {
     if (normTbl === "user") {
       normTbl = "tai_khoan";
     }
+    return normTbl;
+  };
+  const getColumnFormat = (tbl, col) => (
+    FIELD_METADATA_BY_TABLE[normalizeSourceTable(tbl)]?.[col]?.format || "text"
+  );
+  const getColumnLabel = (tbl, col) => {
+    if (!col || col === "*") return "Toàn bộ bảng (Biến danh sách)";
+    const normTbl = normalizeSourceTable(tbl);
     const manifestLabel = getWordColumnLabel(normTbl, col);
     if (manifestLabel !== col) return manifestLabel;
     const cols = {
@@ -460,6 +473,7 @@ export function renderDictionary(group) {
       id: m.id,
       sourceTable: m.sourceTable,
       sourceColumn: m.sourceColumn,
+      format: getColumnFormat(m.sourceTable, m.sourceColumn),
       tenBien: m.tenBien,
       origin: m.origin,
       canReset: Boolean(m.isModified && m.origin === "override")
@@ -473,6 +487,7 @@ export function renderDictionary(group) {
       id: m.id,
       sourceTable: m.sourceTable,
       sourceColumn: m.sourceColumn,
+      format: getColumnFormat(m.sourceTable, m.sourceColumn),
       tenBien: m.tenBien
     }));
     variables = [...variables, ...customVars, ...hiddenVars];
@@ -537,10 +552,36 @@ export function renderDictionary(group) {
   if (filterColumn) {
     variables = variables.filter((v) => v.sourceColumn === filterColumn);
   }
-  const dictionaryPageKey = `dictionary:${group}:${filterTable || "all"}:${filterColumn || "all"}`;
+  variables = variables.map((variable) => ({
+    ...variable,
+    derivedCodes: (
+      variable.isHidden || variable.isList || variable.isComputed
+        ? []
+        : getDerivedWordVariableCodes(variable.tenBien, variable.format)
+    ),
+  }));
+  const dictionarySearch = document.getElementById("dictionary-search");
+  const searchQuery = dictionarySearch?.value || "";
+  const normalizedSearchQuery = normalizeWordVariableSearch(searchQuery);
+  if (normalizedSearchQuery) {
+    variables = variables.filter((variable) => matchesWordVariableSearch(searchQuery, [
+      variable.code,
+      variable.tenBien,
+      variable.desc,
+      variable.sourceTable,
+      variable.sourceColumn,
+      getTableLabel(variable.sourceTable),
+      getColumnLabel(variable.sourceTable, variable.sourceColumn),
+      variable.derivedCodes.map((item) => [item.code, item.label]),
+    ]));
+  }
+  const dictionaryPageKey = `dictionary:${group}:${filterTable || "all"}:${filterColumn || "all"}:${normalizedSearchQuery || "all"}`;
   const dictionaryPage = paginateOwnedTable(this, dictionaryPageKey, variables);
   if (variables.length === 0) {
-    tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Chưa có biến nào trong nhóm này.</td></tr>`);
+    const emptyMessage = normalizedSearchQuery
+      ? "Không tìm thấy biến phù hợp."
+      : "Chưa có biến nào trong nhóm này.";
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">${emptyMessage}</td></tr>`);
     renderTablePagination(document.getElementById("dictionary-pagination"), dictionaryPage);
     return;
   }
@@ -550,6 +591,15 @@ export function renderDictionary(group) {
     const safeVariableName = escapeHtml(v.tenBien || "");
     const safeCode = escapeHtml(v.code || "");
     const safeCopyCode = safeAttr(v.code || "");
+    const derivedCodeHTML = (v.derivedCodes || []).map((item) => {
+      const safeDerivedCode = escapeHtml(item.code);
+      return `
+                    <button type="button" class="word-derived-code-copy btn-copy-var" data-copy="${safeAttr(item.code)}" title="Sao chép ${escapeHtml(item.label)}">
+                        <span>${escapeHtml(item.label)}</span>
+                        <code>${safeDerivedCode}</code>
+                        <i data-lucide="copy" aria-hidden="true"></i>
+                    </button>`;
+    }).join("");
     const editArgsKey = registerCommandArgs([String(v.id || "")]);
     const deleteArgsKey = registerCommandArgs([String(v.id || "")]);
     const resetArgsKey = registerCommandArgs([String(v.id || "")]);
@@ -584,7 +634,11 @@ export function renderDictionary(group) {
                 </div>
             `;
     } else {
-      codeHTML = `<code class="bf-s-79f6019cdd">${safeCode}</code>`;
+      codeHTML = `
+                <div class="word-variable-code-stack">
+                    <code class="bf-s-79f6019cdd">${safeCode}</code>
+                    ${derivedCodeHTML}
+                </div>`;
       if (v.isCustom) {
         actionHTML = `
                     <div class="action-btn-group bf-s-207bd5e89c">

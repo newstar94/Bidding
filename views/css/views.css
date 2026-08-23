@@ -2730,6 +2730,95 @@ input#edit-pkg-price {
     align-items: stretch !important;
 }
 
+#tab-bieumau .word-dictionary-toolbar {
+    display: grid;
+    grid-template-columns: minmax(200px, 280px) minmax(320px, 1fr);
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+#tab-bieumau .word-dictionary-group-filter,
+#tab-bieumau .word-dictionary-search {
+    min-width: 0;
+}
+
+#tab-bieumau .word-dictionary-search {
+    position: relative;
+}
+
+#tab-bieumau .word-dictionary-search > svg {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    z-index: 1;
+    width: 17px;
+    height: 17px;
+    color: var(--text-muted);
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+
+#tab-bieumau #dictionary-search {
+    width: 100%;
+    padding-left: 38px;
+}
+
+#tab-bieumau .word-variable-code-stack {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+#tab-bieumau .word-derived-code-copy {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border-color));
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--primary-soft) 45%, var(--bg-card));
+    cursor: pointer;
+}
+
+#tab-bieumau .word-derived-code-copy:hover {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+}
+
+#tab-bieumau .word-derived-code-copy:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+#tab-bieumau .word-derived-code-copy span {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#tab-bieumau .word-derived-code-copy code {
+    overflow-wrap: anywhere;
+}
+
+#tab-bieumau .word-derived-code-copy svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    color: var(--primary);
+}
+
+@media (max-width: 760px) {
+    #tab-bieumau .word-dictionary-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 #tab-bieumau .word-resource-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

@@ -839,6 +839,8 @@ def seal_docx_context(
     safe_mappings = filter_mapping_rows(mapping_rows, document_type, capabilities)
     custom_roots = []
     datetime_roots = []
+    date_roots = []
+    money_roots = []
     image_fields = (
         dict(BASE_IMAGE_FIELDS)
         if _capability_enabled(capabilities, "signature")
@@ -855,8 +857,13 @@ def seal_docx_context(
             organization_id,
         )
         custom_roots.append(variable_name)
-        if field_format(source_column) == "datetime":
+        mapping_format = field_format(source_column)
+        if mapping_format == "datetime":
             datetime_roots.append(variable_name)
+        if mapping_format in {"date", "datetime"}:
+            date_roots.append(variable_name)
+        if mapping_format == "currency":
+            money_roots.append(variable_name)
         image_subfolder = _IMAGE_SOURCE_FIELDS.get((source_table, source_column))
         if image_subfolder:
             image_fields[variable_name] = image_subfolder
@@ -867,6 +874,8 @@ def seal_docx_context(
         "root_keys": sorted(safe_context),
         "custom_root_keys": sorted(set(custom_roots)),
         "datetime_root_keys": sorted(set(datetime_roots)),
+        "date_root_keys": sorted(set(date_roots)),
+        "money_root_keys": sorted(set(money_roots)),
         "image_fields": image_fields,
         "media_organization_id": str(organization_id or "").strip(),
     }
@@ -923,19 +932,42 @@ def validate_docx_context_manifest(context, manifest):
     if not declared_set <= set(root_specs) | custom_set:
         raise ValueError("Context Word chứa khóa gốc không được phép.")
 
-    datetime_roots = manifest.get("datetime_root_keys", [])
-    if not isinstance(datetime_roots, list):
-        raise ValueError("Danh sách biến ngày giờ Word không hợp lệ.")
-    datetime_set = set(datetime_roots)
-    if len(datetime_set) != len(datetime_roots):
-        raise ValueError("Manifest Word chứa biến ngày giờ trùng lặp.")
-    if any(
-        not isinstance(key, str) or not _SAFE_ROOT_RE.fullmatch(key)
-        for key in datetime_set
-    ):
-        raise ValueError("Manifest Word chứa biến ngày giờ không hợp lệ.")
-    if not datetime_set <= declared_set:
-        raise ValueError("Manifest Word khai báo biến ngày giờ ngoài ngữ cảnh.")
+    def validated_format_roots(manifest_key, label):
+        values = manifest.get(manifest_key, [])
+        if not isinstance(values, list):
+            raise ValueError(f"Danh sách biến {label} Word không hợp lệ.")
+        value_set = set(values)
+        if len(value_set) != len(values):
+            raise ValueError(f"Manifest Word chứa biến {label} trùng lặp.")
+        if any(
+            not isinstance(key, str) or not _SAFE_ROOT_RE.fullmatch(key)
+            for key in value_set
+        ):
+            raise ValueError(f"Manifest Word chứa biến {label} không hợp lệ.")
+        if not value_set <= declared_set:
+            raise ValueError(
+                f"Manifest Word khai báo biến {label} ngoài ngữ cảnh."
+            )
+        return value_set
+
+    datetime_set = validated_format_roots(
+        "datetime_root_keys",
+        "ngày giờ",
+    )
+    date_set = validated_format_roots("date_root_keys", "ngày")
+    money_set = validated_format_roots("money_root_keys", "tiền")
+    if not datetime_set <= date_set:
+        raise ValueError("Biến ngày giờ Word phải thuộc danh sách biến ngày.")
+
+    derived_root_keys = {
+        derived
+        for root in money_set
+        for derived in (f"bangchu_{root}", f"BangChu_{root}")
+    } | {
+        derived
+        for root in date_set
+        for derived in (f"S_{root}", f"s_{root}")
+    }
 
     image_fields = manifest.get("image_fields")
     if not isinstance(image_fields, dict):
@@ -978,8 +1010,10 @@ def validate_docx_context_manifest(context, manifest):
 
     return {
         "document_type": document_type,
-        "allowed_root_keys": declared_set,
+        "allowed_root_keys": declared_set | derived_root_keys,
         "allowed_image_fields": dict(image_fields),
         "datetime_root_keys": datetime_set,
+        "date_root_keys": date_set,
+        "money_root_keys": money_set,
         "media_organization_id": media_organization_id,
     }

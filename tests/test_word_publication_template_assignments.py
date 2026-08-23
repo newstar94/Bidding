@@ -542,7 +542,7 @@ def test_assignment_write_reuses_word_config_manage_permission(
     "procurement_form",
     [DIRECT_APPOINTMENT_SHORTENED, SPECIAL_SELECTION],
 )
-def test_direct_and_special_packages_include_full_profile_document(
+def test_direct_and_special_packages_exclude_data_only_full_profile(
     procurement_form,
 ):
     package = {
@@ -558,26 +558,40 @@ def test_direct_and_special_packages_include_full_profile_document(
 
     assert applicable == [
         "procurement_plan",
-        "package_full_profile",
         "contractor_selection_result",
     ]
 
 
-def test_package_full_profile_uses_contract_context_for_every_package():
-    definition = next(
-        item for item in WORD_PUBLICATION_DOCUMENTS
-        if item.id == "package_full_profile"
-    )
-
-    assert definition.scope == "package"
-    assert definition.context_type == "contract"
-    assert is_word_publication_document_applicable(
-        definition.id,
+def test_package_full_profile_is_not_a_publication_document():
+    assert "package_full_profile" not in {
+        item.id for item in WORD_PUBLICATION_DOCUMENTS
+    }
+    assert not is_word_publication_document_applicable(
+        "package_full_profile",
         {
             "phuong_thuc_lua_chon": "Phương thức khác",
             "hinh_thuc_lua_chon": "Hình thức khác",
         },
     )
+
+
+def test_assignment_payload_ignores_legacy_data_only_full_profile(template_root):
+    _template("organization", "org-a", "legacy.docx")
+    custom_exporter.set_template_assignments(
+        {"package_full_profile": ["legacy.docx"]},
+        "org-a",
+        owner_type="organization",
+    )
+
+    payload = _word_publication_assignment_payload("organization", "org-a")
+
+    assert "package_full_profile" not in payload["assignmentSets"]
+    assert "package_full_profile" not in payload["assignments"]
+    assert "package_full_profile" not in payload["resolvedTemplateSets"]
+    assert "package_full_profile" not in payload["resolvedTemplates"]
+    assert "package_full_profile" not in {
+        item["id"] for item in payload["documentTypes"]
+    }
 
 
 def test_server_policy_keeps_one_and_two_envelope_documents_distinct():
@@ -722,3 +736,128 @@ def test_report_render_uses_assigned_template_and_rejects_inapplicable_type(
             "evaluation",
             "consultant_evaluation_step_1",
         )
+
+
+@pytest.mark.parametrize(
+    ("document_type", "publication_type", "expected_contract_ids"),
+    [
+        (
+            "evaluation",
+            "consultant_evaluation_step_1",
+            ["contract-consulting"],
+        ),
+        (
+            "evaluation",
+            "consultant_evaluation_step_2",
+            ["contract-consulting"],
+        ),
+        (
+            "evaluation",
+            "consultant_appraisal_step_1",
+            ["contract-appraisal"],
+        ),
+        (
+            "evaluation",
+            "consultant_appraisal_step_2",
+            ["contract-appraisal"],
+        ),
+        (
+            "evaluation",
+            "bid_evaluation_report",
+            ["contract-appraisal", "contract-consulting"],
+        ),
+    ],
+)
+def test_report_render_scopes_contracts_to_the_publication_function(
+    template_root,
+    monkeypatch,
+    document_type,
+    publication_type,
+    expected_contract_ids,
+):
+    _template("organization", "org-a", "combined.docx")
+    custom_exporter.set_template_assignments(
+        {publication_type: ["combined.docx"]},
+        "org-a",
+        owner_type="organization",
+    )
+    package = {
+        "phuong_thuc_lua_chon": ONE_STAGE_ONE_ENVELOPE,
+        "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+    }
+
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._load_word_export_policy",
+        lambda *_args: (
+            {},
+            [("ds_hop_dong", "hop_dong_list", "")],
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.docx_service.build_report_context",
+        lambda *_args: {
+            "goi_thau": dict(package),
+            "hop_dong_list": [
+                {
+                    "id": "contract-appraisal",
+                    "phan_loai": "Thẩm định",
+                },
+                {
+                    "id": "contract-consulting",
+                    "phan_loai": "  TƯ VẤN  ",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.enrich_context_with_lot_summaries",
+        lambda _context: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.enrich_context_with_filtered_bidders",
+        lambda _context: None,
+    )
+
+    def map_contracts(context, *_args):
+        context["ds_hop_dong"] = list(context["hop_dong_list"])
+
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.apply_custom_mappings",
+        map_contracts,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.apply_computed_mappings",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.lowercase_partner_identity_codes",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.seal_docx_context",
+        lambda _type, context, *_args, **_kwargs: (context, {}),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.sensitive_capability_groups_present",
+        lambda _context: set(),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_template_scope",
+        lambda *_args: ("organization", "org-a"),
+    )
+
+    context, _manifest, _templates, _sensitive_groups = _prepare_report_render(
+        "package-a",
+        "user-a",
+        "org-a",
+        "manager",
+        document_type,
+        publication_type,
+    )
+
+    assert [item["id"] for item in context["hop_dong_list"]] == (
+        expected_contract_ids
+    )
+    assert [item["id"] for item in context["ds_hop_dong"]] == (
+        expected_contract_ids
+    )

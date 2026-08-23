@@ -29,23 +29,27 @@ biểu mẫu tương thích.
    Word legacy không truyền `publicationType`; quyết định này không thay đổi các
    luồng đó.
 6. Một biểu mẫu được gán rõ ràng có thể chứa biến của nhiều loại ngữ cảnh. Với
-   mọi tài liệu cấp gói thầu, danh sách hợp đồng hiện hành liên kết với gói thầu
-   là dữ liệu dùng chung và được cấp cho mapping `ds_hop_dong`. Các biến đơn
-   không có trong manifest hiện tại vẫn được để trống, vòng lặp khác không có
-   trong manifest vẫn sinh 0 dòng, và biểu thức Jinja hoặc root ngoài manifest
+   tài liệu cấp gói thầu, danh sách hợp đồng hiện hành liên kết với gói thầu được
+   cấp cho mapping `ds_hop_dong` theo phạm vi của stable document ID: tư vấn
+   lập/đánh giá Bước 1 hoặc 2 chỉ nhận hợp đồng phân loại `Tư vấn`; tư vấn thẩm
+   định Bước 1 hoặc 2 chỉ nhận hợp đồng phân loại `Thẩm định`. Các tài liệu cấp
+   gói thầu khác giữ nguyên danh sách đầy đủ. Các biến đơn không có trong
+   manifest hiện tại vẫn được để trống, vòng lặp khác không
+   có trong manifest vẫn sinh 0 dòng, và biểu thức Jinja hoặc root ngoài manifest
    vẫn bị từ chối.
 7. Không thay đổi entitlement xuất Word, role, module permission, record scope,
    assignment scope hay dữ liệu được hiển thị.
-8. Biểu mẫu tổng hợp nhiều giai đoạn không được gán cho
-   `procurement_plan`. Stable document ID `package_full_profile` (“Hồ sơ tổng
-   hợp gói thầu”) có scope `package`, context `contract` và áp dụng cho mọi gói
-   thầu. Context này giữ riêng nhà thầu của hợp đồng và danh sách thông tin mở
-   thầu để một biểu mẫu có thể xuất đồng thời kế hoạch, gói thầu, tổ chuyên gia,
-   tổ thẩm định, mở thầu và hợp đồng.
+8. “Hồ sơ tổng hợp gói thầu” là ngữ cảnh dữ liệu dùng để điền các tài liệu Word,
+   không phải một loại tài liệu xuất bản. `package_full_profile` không thuộc tập
+   stable document ID, không được hiển thị trong màn hình gán biểu mẫu hoặc xuất
+   bản và không có endpoint xuất riêng. Ngữ cảnh tổng hợp vẫn giữ dữ liệu kế
+   hoạch, gói thầu, tổ chuyên gia, tổ thẩm định, mở thầu và hợp đồng để các loại
+   tài liệu xuất bản hợp lệ có thể dùng khi mapping yêu cầu.
 9. Context `contract` giữ `hop_dong` đơn để tương thích mẫu cũ và bổ sung
    `hop_dong_list`/mapping mặc định `ds_hop_dong` chứa mọi hợp đồng hiện hành
-   liên kết với dòng phiên bản gói thầu. Biểu mẫu tổng hợp lặp toàn bộ danh sách
-   này trong một file; không yêu cầu người dùng xuất nhiều lượt hoặc dựa vào
+   liên kết với dòng phiên bản gói thầu. Mapping danh sách có thể lặp toàn bộ các
+   hợp đồng thuộc phạm vi của tài liệu trong một file; không yêu cầu người dùng
+   xuất nhiều lượt hoặc dựa vào
    lựa chọn `LIMIT 1` không xác định.
 10. Các cột tiền thuộc schema được định dạng ở bản sao DTO dành cho kết xuất Word,
     kể cả khi giá trị đầu vào là số hoặc chuỗi chỉ chứa số. Dữ liệu lưu, dữ liệu
@@ -53,12 +57,20 @@ biểu mẫu tương thích.
 11. Manifest kết xuất mang danh sách các biến tùy chỉnh ánh xạ từ cột có định dạng
     `datetime`. Formatter phải dùng metadata này để giữ giờ/phút, không được suy
     đoán chỉ từ tên alias Word. Biến ngày thuần (`date`) vẫn chỉ xuất ngày tháng.
+12. Manifest kết xuất khai báo riêng root của trường `date`/`datetime` và trường
+    tiền. Chỉ các root này được sinh biến dẫn xuất: `S_<biến>`/`s_<biến>` cho ngày
+    rút gọn và `bangchu_<biến>`/`BangChu_<biến>` cho tiền bằng chữ. Giá trị tiền
+    có thể là số hoặc chuỗi chỉ chứa số; ngày rút gọn dùng dạng `dd/MM/yyyy`.
+13. Phạm vi hợp đồng được xác định từ `publicationType` ổn định và trường phân
+    loại hợp đồng, không suy đoán từ tên file biểu mẫu hoặc tên hợp đồng. So sánh
+    phân loại không phụ thuộc chữ hoa/thường, dấu tiếng Việt hoặc khoảng trắng.
 
 ## Compatibility impact
 
 - Workspace trước đây chỉ chọn một biểu mẫu hoạt động nhưng chưa gán theo chức
   năng sẽ không còn xuất tự động Kế hoạch, Báo cáo hoặc Kết quả.
-- Các assignment đã lưu vẫn giữ nguyên và tiếp tục hoạt động.
+- Các assignment hợp lệ đã lưu vẫn giữ nguyên và tiếp tục hoạt động; riêng ID dữ
+  liệu-only `package_full_profile` được xử lý như mô tả bên dưới.
 - Response cấu hình vẫn giữ `activeTemplate` và trường compatibility
   `legacyActiveFallback`, nhưng giá trị fallback là `false` cho toàn bộ document ID.
 - Client cũ nhận response mới sẽ thấy các loại chưa gán là không có resolved
@@ -66,14 +78,17 @@ biểu mẫu tương thích.
 - Template đa ngữ cảnh trước đây có thể nhận HTTP 422 khi chứa vòng lặp không có
   trong context; sau thay đổi, phần ngoài ngữ cảnh được để trống mà không mở rộng
   dữ liệu được cấp cho document worker.
-- Biểu mẫu tổng hợp được gán rõ ràng cho các tài liệu cấp gói thầu như HSMT, mở
-  thầu, đánh giá hoặc kết quả sẽ nhận `ds_hop_dong` gồm mọi hợp đồng hiện hành
-  liên kết với dòng phiên bản gói thầu. Nhà đầu tư và nhà thầu chính của từng
-  loại tài liệu vẫn giữ nguyên; chỉ context `contract`/`liquidation` mới dùng
-  một hợp đồng làm bản ghi vô hướng `hop_dong`.
-- Có thêm một hàng cấu hình `package_full_profile`. Client cũ không biết stable
-  ID này vẫn tiếp tục dùng 11 loại cũ; `procurement_plan` vẫn chỉ có nghĩa là
-  xuất Kế hoạch và không tự nhận dữ liệu cấp gói thầu/hợp đồng.
+- Các tài liệu cấp gói thầu ngoài bốn chức năng tư vấn vẫn nhận `ds_hop_dong`
+  gồm mọi hợp đồng hiện hành liên kết với dòng phiên bản gói thầu. Hai chức năng
+  tư vấn lập/đánh giá chỉ
+  nhận hợp đồng `Tư vấn`; hai chức năng tư vấn thẩm định chỉ nhận hợp đồng `Thẩm
+  định`. Nhà đầu tư và nhà thầu chính của từng loại tài liệu vẫn giữ nguyên; chỉ
+  context `contract`/`liquidation` mới dùng một hợp đồng làm bản ghi vô hướng
+  `hop_dong`.
+- Hàng cấu hình và thẻ xuất `package_full_profile` không còn được công bố. Cấu
+  hình cũ mang ID này bị bỏ qua khi đọc và bị loại khỏi cấu hình lưu ở lần ghi
+  tiếp theo; 11 loại tài liệu xuất bản hợp lệ không đổi. `procurement_plan` vẫn
+  chỉ có nghĩa là xuất Kế hoạch và không tự nhận một loại tài liệu tổng hợp mới.
 - Context `contract` giữ thêm bản chiếu `thong_tin_mo_thau` đã được kiểm soát bởi
   cùng tenant, module, assignment, record authorization và entitlement xuất Word
   của gói thầu. Không thay đổi API đọc bản ghi hoặc quyền xem dữ liệu trên màn hình.
@@ -85,6 +100,10 @@ biểu mẫu tương thích.
 - Biến Word ánh xạ từ trường ngày giờ, kể cả alias do người dùng tự cấu hình, sẽ
   xuất cả giờ/phút. Ví dụ `2026-03-05 14:55:00` được trình bày thành
   `14:55 ngày 05/3/2026`; biến ánh xạ từ trường ngày thuần không thay đổi.
+- Mẫu có thể dùng `bangchu_<biến-tiền>` để trình bày tiền bằng chữ và
+  `S_<biến-ngày>` để trình bày ngày rút gọn theo `dd/MM/yyyy`. Biến không ánh xạ
+  từ đúng kiểu schema không được tự suy đoán là tiền hoặc ngày; điều này giữ
+  nguyên phạm vi dữ liệu và tránh tạo biến dẫn xuất ngoài manifest.
 
 ## Migration và rollout
 
@@ -95,12 +114,21 @@ biểu mẫu tương thích.
    năng và lưu cấu hình.
 4. Có thể gán cùng một file cho nhiều chức năng nếu đó là lựa chọn rõ ràng của
    người quản lý.
-5. Không tự gán biểu mẫu đang dùng cho `package_full_profile`. Người quản lý phải
-   chọn file cho “Hồ sơ tổng hợp gói thầu” và lưu cấu hình trước khi xuất.
+5. Không có migration schema. Assignment cũ mang ID `package_full_profile` được
+   bỏ qua trong response cấu hình và bị loại khi người quản lý lưu lại 11
+   assignment hợp lệ; không xóa file biểu mẫu hoặc dữ liệu tổng hợp gói thầu.
 6. Default mapping version 15 bổ sung `ds_hop_dong`; registry hiện hữu nhận mapping
    hệ thống này theo cơ chế nâng version sẵn có, không ghi đè mapping tùy chỉnh.
 7. Không có migration dữ liệu cho định dạng ngày giờ; metadata được tạo lại trong
    manifest ở mỗi lần xuất Word.
+8. Không có migration dữ liệu cho biến dẫn xuất tiền/ngày. Các mẫu hiện hữu tiếp
+   tục hoạt động; người quản lý chỉ thêm tiền tố khi chủ động muốn cách trình bày
+   mới. File mẫu kiểm thử được bổ sung hướng dẫn và ví dụ ngay trong tài liệu.
+9. Không có migration schema hoặc dữ liệu hợp đồng cho phạm vi theo chức năng.
+   Phạm vi được tính lại ở mỗi lần xuất từ `publicationType` và `phan_loai` hiện
+   có; hợp đồng thiếu hoặc có phân loại khác không được đưa vào bốn tài liệu tư
+   vấn chuyên biệt nhưng vẫn có trong ngữ cảnh dữ liệu của các tài liệu cấp gói
+   thầu khác.
 
 ## Rollback strategy
 
@@ -120,8 +148,9 @@ biểu mẫu tương thích.
   được để trống, trong khi biểu thức Jinja ngoài manifest vẫn bị từ chối.
 - `tests/test_docx_mapping_policy.py`: context hợp đồng giữ riêng danh sách mở
   thầu; mapping `ds_mo_thau` không lấy nhầm bản ghi nhà thầu của hợp đồng.
-- `tests/js/word_publication_policy.test.mjs`: `package_full_profile` dùng endpoint
-  báo cáo gói thầu với `type=contract` và áp dụng cho mọi gói thầu.
+- `tests/js/word_publication_policy.test.mjs` và
+  `tests/test_word_publication_template_assignments.py`: `package_full_profile`
+  không phải tài liệu xuất bản; policy frontend/backend cùng công bố 11 loại.
 - `tests/test_contract_relation_policy.py`: context Word chỉ giữ các hợp đồng hiện
   hành và không làm rơi hợp đồng thứ hai.
 - `tests/test_docx_mapping_policy.py` và `tests/test_docx_partner_version_policy.py`:
@@ -131,3 +160,17 @@ biểu mẫu tương thích.
   dạng cả tiền kiểu số lẫn chuỗi số trong các danh sách.
 - `tests/test_docx_cross_context_template.py` và `tests/test_docx_mapping_policy.py`:
   alias ánh xạ từ `datetime` được khai báo trong manifest và giữ giờ/phút khi render.
+- `tests/test_docx_cross_context_template.py`: biến tiền bằng chữ chấp nhận cả số
+  và chuỗi số; biến ngày ngắn xuất `dd/MM/yyyy`; file mẫu có hướng dẫn cùng cú
+  pháp minh họa.
+- `tests/test_docx_mapping_policy.py`: manifest chỉ đánh dấu alias tiền, ngày và
+  ngày giờ theo định dạng của cột nguồn.
+- `tests/test_word_publication_template_assignments.py`: context được lọc trước
+  mapping theo bốn stable document ID tư vấn; các báo cáo cấp gói thầu khác vẫn
+  giữ danh sách đầy đủ.
+- `tests/test_docx_cross_context_template.py`: cùng file mẫu tổng hợp chỉ render
+  hợp đồng Tư vấn khi xuất “Tư vấn lập, đánh giá Bước 1”.
+- `tests/js/word_resources_layout.test.mjs` và
+  `tests/js/word_variable_presentation.test.mjs`: màn hình Biểu mẫu đưa mã tiền
+  bằng chữ/ngày rút gọn vào đúng dòng biến tương ứng và cho phép tìm không phân
+  biệt dấu theo mã biến, ý nghĩa hoặc nguồn ánh xạ.

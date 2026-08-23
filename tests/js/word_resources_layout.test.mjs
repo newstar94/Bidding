@@ -22,6 +22,9 @@ test("Word template manager uses an add button without seeded default rows", asy
   assert.match(html, /id="word-template-assignment-list"/);
   assert.match(html, /id="word-template-assignment-save"/);
   assert.match(html, /Cài đặt biểu mẫu theo chức năng/u);
+  assert.doesNotMatch(html, /id="word-derived-variable-guide"/);
+  assert.match(html, /id="dictionary-search"/);
+  assert.match(html, /Tìm theo mã biến, ý nghĩa hoặc nguồn ánh xạ/u);
   assert.doesNotMatch(html, /id="word-drag-drop-zone"/);
   assert.doesNotMatch(html, /id="word-template-replace-input"/);
   assert.doesNotMatch(html, /Bản báo cáo đánh giá mặc định/);
@@ -88,6 +91,48 @@ test("Word resource cards stack on narrow screens", async () => {
     const second = await cards.nth(1).boundingBox();
 
     assert.ok(second.y > first.y + first.height);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Word dictionary search shares a desktop row with group filter and stacks on mobile", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+    await page.setContent(`
+      <section id="tab-bieumau">
+        <div class="word-dictionary-toolbar" style="width:1000px">
+          <div class="select-wrapper word-dictionary-group-filter">
+            <select class="form-control"><option>Biến ánh xạ</option></select>
+          </div>
+          <div class="word-dictionary-search">
+            <svg></svg>
+            <input class="form-control" type="search">
+          </div>
+        </div>
+      </section>
+    `);
+    await page.addStyleTag({ path: viewsStylesheet });
+
+    const groupFilter = page.locator(".word-dictionary-group-filter");
+    const search = page.locator(".word-dictionary-search");
+    const desktopGroup = await groupFilter.boundingBox();
+    const desktopSearch = await search.boundingBox();
+
+    assert.ok(Math.abs(desktopGroup.y - desktopSearch.y) <= 1);
+    assert.ok(desktopSearch.width > desktopGroup.width);
+
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.locator(".word-dictionary-toolbar").evaluate((element) => {
+      element.style.width = "350px";
+    });
+    const mobileGroup = await groupFilter.boundingBox();
+    const mobileSearch = await search.boundingBox();
+    const mobileScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+
+    assert.ok(mobileSearch.y >= mobileGroup.y + mobileGroup.height);
+    assert.equal(mobileScrollWidth, 390);
   } finally {
     await browser.close();
   }

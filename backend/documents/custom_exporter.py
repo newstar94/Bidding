@@ -175,25 +175,44 @@ def enrich_context_with_lowercase_keys(data):
         for item in data:
             enrich_context_with_lowercase_keys(item)
 
-def enrich_context_with_words(data):
+def enrich_context_with_words(data, money_field_names=None):
+    configured_money_fields = (
+        None
+        if money_field_names is None
+        else {
+            str(name or '').strip().strip('{}').lower()
+            for name in money_field_names
+        }
+    )
     if isinstance(data, dict):
         new_items = {}
         for k, v in list(data.items()):
 
-            enrich_context_with_words(v)
+            enrich_context_with_words(v, money_field_names)
 
             is_num = False
             num_val = None
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 is_num = True
                 num_val = v
+            elif (
+                isinstance(v, str)
+                and re.fullmatch(r'-?\d+(?:\.\d+)?', v.strip())
+            ):
+                is_num = True
+                num_val = v.strip()
 
-            if is_num:
+            clean_k = str(k or '')
+            while clean_k.startswith('{') and clean_k.endswith('}'):
+                clean_k = clean_k[1:-1].strip()
+            is_money_field = (
+                configured_money_fields is None
+                or clean_k.lower() in configured_money_fields
+                or clean_k.lower() in _DOCX_MONEY_FIELD_NAMES
+            )
+
+            if is_num and is_money_field:
                 words = number_to_vietnamese_words(num_val) + " đồng"
-
-                clean_k = k
-                while clean_k.startswith('{') and clean_k.endswith('}'):
-                    clean_k = clean_k[1:-1].strip()
 
 
                 new_items["bangchu_" + clean_k] = words
@@ -212,7 +231,7 @@ def enrich_context_with_words(data):
         data.update(new_items)
     elif isinstance(data, list):
         for item in data:
-            enrich_context_with_words(item)
+            enrich_context_with_words(item, money_field_names)
 
 def normalize_date_str(val_str):
     if not isinstance(val_str, str):
@@ -382,9 +401,7 @@ def format_context_dates(data, datetime_field_names=None):
                 if dt_match:
                     is_date = True
                     d, m, y = dt_match.group(1), dt_match.group(2), dt_match.group(3)
-                    m_int = int(m)
-                    m_str = f"{m_int:02d}" if m_int in [1, 2] else str(m_int)
-                    date_only_val = f"{d}/{m_str}/{y}"
+                    date_only_val = f"{d}/{int(m):02d}/{y}"
                     year_val = y
 
 
@@ -392,9 +409,7 @@ def format_context_dates(data, datetime_field_names=None):
                 if d_match:
                     is_date = True
                     d, m, y = d_match.group(1), d_match.group(2), d_match.group(3)
-                    m_int = int(m)
-                    m_str = f"{m_int:02d}" if m_int in [1, 2] else str(m_int)
-                    date_only_val = f"{d}/{m_str}/{y}"
+                    date_only_val = f"{d}/{int(m):02d}/{y}"
                     year_val = y
 
                 if is_date:
@@ -1495,16 +1510,23 @@ def generate_report_from_custom_template(
         allowed_image_fields = render_policy["allowed_image_fields"]
         media_organization_id = render_policy["media_organization_id"]
         datetime_root_keys = render_policy["datetime_root_keys"]
+        money_root_keys = render_policy["money_root_keys"]
+        legacy_manifest = False
     else:
         allowed_root_keys = set(context or {})
         allowed_image_fields = BASE_IMAGE_FIELDS
         media_organization_id = None
         datetime_root_keys = set()
+        money_root_keys = None
+        legacy_manifest = True
     context = replace_placeholders_with_empty(context)
 
-    enrich_context_with_words(context)
+    enrich_context_with_words(context, money_root_keys)
 
     format_context_dates(context, datetime_root_keys)
+
+    if legacy_manifest:
+        allowed_root_keys.update(context)
 
     context = format_context_money_values(context)
 

@@ -106,6 +106,7 @@ export function setupWordTemplatesEvents() {
     });
   }
   const dictionarySelect = document.getElementById("dictionary-group-select");
+  const dictionarySearch = document.getElementById("dictionary-search");
   const renderDictionaryControls = (targetGroup = "global", shouldRender = false) => {
     if (!dictionarySelect) return;
     const groups = [
@@ -130,6 +131,14 @@ export function setupWordTemplatesEvents() {
     renderDictionaryControls(dictionarySelect.value || "global");
     dictionarySelect.addEventListener("change", (e) => {
       this.view.renderDictionary(e.target.value);
+      this.setupCopyVariableEvents();
+    });
+  }
+  if (dictionarySearch && !dictionarySearch.dataset.wordDictionarySearchBound) {
+    dictionarySearch.dataset.wordDictionarySearchBound = "true";
+    dictionarySearch.addEventListener("input", () => {
+      const group = dictionarySelect?.value || "global";
+      this.view.renderDictionary(group);
       this.setupCopyVariableEvents();
     });
   }

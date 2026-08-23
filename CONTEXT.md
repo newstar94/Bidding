@@ -60,6 +60,10 @@ _Avoid_: Xóa bản ghi nghiệp vụ, tombstone xóa dữ liệu
 Tài liệu được tạo từ snapshot đã commit trên máy chủ, có kiểm tra quyền và entitlement tại thời điểm phát hành, dùng làm kết quả nghiệp vụ hoặc tuân thủ.
 _Avoid_: Xuất bản nháp cục bộ, tải mẫu rỗng
 
+**Phạm vi hợp đồng của tài liệu Word**:
+Hồ sơ tổng hợp gói thầu là ngữ cảnh dữ liệu dùng để điền các tài liệu Word, không phải một loại tài liệu xuất bản và không có hàng gán biểu mẫu riêng. Tập hợp hợp đồng hiện hành được đưa vào từng tài liệu theo đúng chức năng xuất bản: tư vấn lập/đánh giá chỉ nhận hợp đồng Tư vấn, tư vấn thẩm định chỉ nhận hợp đồng Thẩm định, còn các tài liệu cấp gói thầu khác giữ danh sách hợp đồng đầy đủ khi mapping cần dùng.
+_Avoid_: Danh sách hợp đồng dùng chung không phân loại, lọc theo tên biểu mẫu
+
 **Đọc đầy đủ bản ghi đã được cấp quyền**:
 Sau khi tenant, module, assignment và record scope cho phép đọc một bản ghi, người dùng xem đầy đủ các trường nghiệp vụ của bản ghi đó, bao gồm thông tin tài chính, định danh, chữ ký và con dấu. Quyền xuất Word chỉ kiểm soát hành động xuất tài liệu, không kiểm soát hiển thị trường.
 _Avoid_: Capability đọc nhạy cảm riêng, masking mặc định, dùng entitlement Word để che dữ liệu

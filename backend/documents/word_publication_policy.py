@@ -38,13 +38,6 @@ WORD_PUBLICATION_DOCUMENTS = (
         ALL_PACKAGES,
     ),
     WordPublicationDocument(
-        "package_full_profile",
-        "Hồ sơ tổng hợp gói thầu",
-        "package",
-        "contract",
-        ALL_PACKAGES,
-    ),
-    WordPublicationDocument(
         "consultant_evaluation_step_1",
         "Tư vấn lập, đánh giá Bước 1",
         "package",

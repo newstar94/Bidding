@@ -32,7 +32,7 @@ const packageFixture = ({
 });
 
 test("Word publication definitions have stable unique identities", () => {
-  assert.equal(WORD_PUBLICATION_DOCUMENTS.length, 12);
+  assert.equal(WORD_PUBLICATION_DOCUMENTS.length, 11);
   assert.equal(
     new Set(WORD_PUBLICATION_DOCUMENTS.map((item) => item.id)).size,
     WORD_PUBLICATION_DOCUMENTS.length,
@@ -60,7 +60,7 @@ test("Word publication definitions have stable unique identities", () => {
 
 test("1G1T exposes the one-envelope report and excludes all E-HSĐXKT identities", () => {
   const ids = idsFor(packageFixture());
-  assert.equal(ids.includes("package_full_profile"), true);
+  assert.equal(ids.includes("package_full_profile"), false);
   assert.equal(ids.includes("bid_evaluation_report"), true);
   assert.equal(ids.some((id) => id.startsWith("technical_bid_evaluation_report_")), false);
   assert.equal(ids.includes("award_result_appraisal_report"), true);
@@ -90,11 +90,10 @@ for (const procurementForm of [
   WORD_PUBLICATION_PROCUREMENT_FORM.DIRECT_APPOINTMENT_SHORTENED,
   WORD_PUBLICATION_PROCUREMENT_FORM.SPECIAL_SELECTION,
 ]) {
-  test(`${procurementForm} exposes plan, full profile and selection result`, () => {
+  test(`${procurementForm} exposes plan and selection result`, () => {
     const ids = idsFor(packageFixture({ procurementForm }));
     assert.deepEqual(ids, [
       "procurement_plan",
-      "package_full_profile",
       "contractor_selection_result",
     ]);
   });
@@ -161,7 +160,6 @@ test("export requests reuse existing plan and package Word endpoints", () => {
   const planDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "procurement_plan");
   const evaluationDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "bid_evaluation_report");
   const consultantDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "consultant_evaluation_step_1");
-  const fullProfileDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "package_full_profile");
   const plan = { id: "plan/a", maKeHoach: "KH/2026" };
   const packageRecord = { id: "package/a", maGoiThau: "Gói 01" };
 
@@ -177,17 +175,6 @@ test("export requests reuse existing plan and package Word endpoints", () => {
     {
       url: "/api/export-report/package%2Fa?type=evaluation&publicationType=bid_evaluation_report",
       filename: "bid_evaluation_report_Goi_01.docx",
-    },
-  );
-  assert.deepEqual(
-    buildWordPublicationExportRequest({
-      documentType: fullProfileDocument,
-      plan,
-      packageRecord,
-    }),
-    {
-      url: "/api/export-report/package%2Fa?type=contract&publicationType=package_full_profile",
-      filename: "package_full_profile_Goi_01.docx",
     },
   );
   assert.deepEqual(

@@ -9,7 +9,6 @@
                 Bạn đang dùng bộ biến Word chung do Quản lý của tổ chức thiết lập. Bạn có thể xem và sao chép biến nhưng không thể thêm, sửa hoặc xóa.
             </div>
 
-
             <div class="dashboard-card bf-s-9d1e61c8b9">
                 <div class="card-header bf-s-cd114b4938">
                     <h3 class="card-title">Cấu hình biến tùy chỉnh</h3>
@@ -242,13 +241,19 @@
                         chỉnh.
                     </p>
 
-                    <div class="bf-s-51f8db7b89">
-                        <div class="select-wrapper">
-                            <select id="dictionary-group-select" class="form-control">
+                    <div class="word-dictionary-toolbar">
+                        <div class="select-wrapper word-dictionary-group-filter">
+                            <select id="dictionary-group-select" class="form-control" aria-label="Nhóm biến Word">
                                 <option value="global">Bi&#7871;n &#225;nh x&#7841;</option>
                                 <option value="computed">Bi&#7871;n k&#7871;t qu&#7843;</option>
                                 <option value="custom_lists">Danh s&#225;ch</option>
                             </select>
+                        </div>
+                        <div class="word-dictionary-search">
+                            <i data-lucide="search" aria-hidden="true"></i>
+                            <input type="search" id="dictionary-search" class="form-control"
+                                placeholder="Tìm theo mã biến, ý nghĩa hoặc nguồn ánh xạ"
+                                aria-label="Tìm theo mã biến, ý nghĩa hoặc nguồn ánh xạ" autocomplete="off">
                         </div>
                     </div>
 

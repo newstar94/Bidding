@@ -124,3 +124,19 @@ def test_context_manifest_marks_datetime_mapping_aliases():
 
     assert context["custom_publish_time"] == "2026-03-05 14:55:00"
     assert manifest["datetime_root_keys"] == ["custom_publish_time"]
+    assert manifest["date_root_keys"] == ["custom_publish_time"]
+
+
+def test_context_manifest_marks_money_mapping_aliases():
+    context, manifest = seal_docx_context(
+        "evaluation",
+        {
+            "goi_thau": {"id": "package-1"},
+            "custom_amount": 12000000,
+        },
+        [("custom_amount", "goi_thau", "gia_goi_thau")],
+        organization_id="org-a",
+    )
+
+    assert context["custom_amount"] == 12000000
+    assert manifest["money_root_keys"] == ["custom_amount"]
